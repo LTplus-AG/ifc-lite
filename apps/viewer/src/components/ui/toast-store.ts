@@ -44,10 +44,11 @@ export function registerToastDialog(id: string, ancestors: readonly string[]): (
     const reassigned = toasts.map(item => item.dialogId === id
       ? { ...item, dialogId: currentDialog(item.dialogScopes) } : item);
     // Independent unkeyed notices can now share an anchor. Coalesce before
-    // the next emission enforces the cap, keeping the latest action/lifetime.
+    // the next emission enforces the cap, keeping the latest lifetime only for true duplicates.
     toasts = reassigned.reduce<Toast[]>((kept, item) => {
       const previous = item.key === undefined ? kept.find(t => t.key === undefined
-        && t.dialogId === item.dialogId && t.type === item.type && t.message === item.message) : undefined;
+        && t.dialogId === item.dialogId && t.type === item.type && t.message === item.message
+        && t.action === item.action) : undefined;
       if (!previous) return [...kept, item];
       // A transient duplicate must not give a persistent error an expiry.
       const survivorId = timers.has(previous.id) ? item.id : previous.id;
@@ -102,9 +103,9 @@ function clearTimer(id: number) {
 function addToast(type: Toast['type'], message: string, durationMs: number | null, action?: Toast['action'], key?: string): number {
   const dialogId = currentDialog();
   // Explicit keys identify an operation globally; unkeyed messages belong to a surface.
-  // Closing dialogs can also bring formerly independent messages to the same anchor.
+  // Action identity distinguishes independent operations, including after a surface handoff.
   const matching = toasts.filter((t) => key !== undefined ? t.key === key
-    : t.dialogId === dialogId && t.key === undefined && t.type === type && t.message === message);
+    : t.dialogId === dialogId && t.key === undefined && t.type === type && t.message === message && t.action === action);
   // Identical repeats retain persistence in either order. A keyed operation
   // changing its message/type is still a replacement with its own lifetime.
   const persistentDuplicate = matching.some(t => t.type === type && t.message === message && !timers.has(t.id));

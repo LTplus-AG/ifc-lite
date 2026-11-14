@@ -7,7 +7,12 @@ export function positionDialogNotices(shelf: HTMLElement): void {
   if (!panel) return;
   // Measure the original content box even after a previous capped fallback.
   shelf.style.position = 'absolute';
+  // Exclude the shelf itself from scrollHeight, including a prior bottom placement.
+  const display = shelf.style.display;
+  shelf.style.display = 'none';
+  const contentOverflows = panel.scrollHeight > panel.clientHeight;
   const bounds = panel.getBoundingClientRect();
+  shelf.style.display = display;
   const gap = 8;
   const margin = 16;
   const above = Math.max(0, bounds.top - gap - margin);
@@ -16,7 +21,8 @@ export function positionDialogNotices(shelf: HTMLElement): void {
   const cap = Number.parseFloat(getComputedStyle(panel).maxHeight);
   // Only a panel already at its cap may trade body space for an in-flow shelf.
   const atCap = Number.isFinite(cap) && bounds.height >= cap - 1;
-  const inFlow = above < needed && below < needed && atCap;
+  // Never expose overflowing form content just because a notice fits outside.
+  const inFlow = contentOverflows || (above < needed && below < needed && atCap);
   const onTop = above >= needed || (below < needed && above >= below);
   shelf.dataset.noticePlacement = inFlow ? 'flow' : onTop ? 'above' : 'below';
   Object.assign(shelf.style, {

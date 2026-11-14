@@ -175,3 +175,43 @@ for (const layout of ['grid', 'below', 'gridTall', 'scrollBody', 'viewportBounds
     });
   });
 }
+
+it('#9879 an overflowing non-scrollBody dialog retains clipping and scrolling when a notice fits above', async () => {
+  render(<Toaster />);
+  render(<Dialog open><DialogContent viewportBounds="height">
+    <DialogHeader><DialogTitle>Long form</DialogTitle><DialogDescription>Review all fields</DialogDescription></DialogHeader>
+    <div style={{ height: 1800 }}>Long content</div>
+    <button>Last field</button>
+  </DialogContent></Dialog>);
+  act(() => toast.info('Saved'));
+  await withThemedPage('light', document.body.innerHTML, async page => {
+    await settle(page, 1600, 1200);
+    const panel = page.getByRole('dialog');
+    const shelf = panel.locator('[data-dialog-notices]');
+    const room = await panel.evaluate(element => element.getBoundingClientRect().top - 24);
+    const needed = await shelf.evaluate(element => element.scrollHeight);
+    assert.ok(room >= needed, 'the short notice fits above the 85dvh panel');
+    await shelf.evaluate(positionDialogNotices);
+    const metrics = await panel.evaluate(element => ({
+      height: element.getBoundingClientRect().height,
+      overflow: getComputedStyle(element).overflowY,
+      overflows: element.scrollHeight > element.clientHeight,
+    }));
+    assert.ok(metrics.height <= 1200 * 0.85 + 1);
+    assert.ok(metrics.overflows);
+    assert.match(metrics.overflow, /auto|scroll/, 'overflowing content must keep its scroller');
+    const spills = await panel.getByText('Long content', { exact: true }).evaluate(element => {
+      const bounds = element.closest('[role="dialog"]')!.getBoundingClientRect();
+      const y = bounds.bottom + 8;
+      if (y >= window.innerHeight) throw new Error('Expected a probe point inside the viewport');
+      return element.contains(document.elementFromPoint(bounds.x + bounds.width / 2, y));
+    });
+    assert.equal(spills, false, 'long content must not paint just below the panel inside the viewport');
+    assert.equal(await receivesPointer(panel.getByRole('button', { name: 'Last field' })), false,
+      'the overflowing bottom control must not paint outside the panel');
+    await panel.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    assert.ok(await panel.evaluate(element => element.scrollTop > 0));
+    assert.equal(await receivesPointer(panel.getByRole('button', { name: 'Last field' })), true,
+      'scrolling reveals the previously clipped control');
+  });
+});

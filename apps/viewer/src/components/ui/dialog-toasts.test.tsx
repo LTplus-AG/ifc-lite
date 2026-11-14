@@ -282,3 +282,30 @@ for (const persistentFirst of [true, false]) {
     assert.ok(!anchor.textContent?.includes('Export still failed'), 'explicit dismissal still clears the coalesced error');
   });
 }
+
+for (const acrossDialog of [false, true]) {
+  it(`#9879 distinct Undo operations survive ${acrossDialog ? 'dialog convergence' : 'same-anchor emission'}`, () => {
+    const undone: string[] = [];
+    render(<Toaster />);
+    act(() => toast.success('Level added', { label: 'Undo', onClick: () => undone.push('first') }));
+    if (acrossDialog) render(<Dialog open><DialogContent><DialogTitle>Levels</DialogTitle><DialogDescription>Edit levels</DialogDescription></DialogContent></Dialog>);
+    act(() => toast.success('Level added', { label: 'Undo', onClick: () => undone.push('second') }));
+    if (acrossDialog) { cleanup(); render(<Toaster />); }
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('button')].filter(button => button.textContent === 'Undo');
+    assert.equal(buttons.length, 2, 'each independent operation retains its Undo');
+    for (const button of buttons) act(() => button.click());
+    assert.deepEqual(undone.sort(), ['first', 'second']);
+  });
+}
+
+it('#9879 a repeated identical action still deduplicates', () => {
+  const undone: string[] = [];
+  const action = { label: 'Undo', onClick: () => undone.push('once') };
+  const host = render(<Toaster />);
+  act(() => { toast.success('Level added', action); toast.success('Level added', action); });
+  const buttons = [...host.querySelectorAll<HTMLButtonElement>('button')].filter(button => button.textContent === 'Undo');
+  assert.equal(buttons.length, 1);
+  assert.match(host.textContent ?? '', /×2/);
+  act(() => buttons[0]!.click());
+  assert.deepEqual(undone, ['once']);
+});

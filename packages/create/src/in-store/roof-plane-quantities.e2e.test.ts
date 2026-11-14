@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView, recordCompoundMutation, StoreEditor, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { addRoofToStore } from './roof.js';
+import { addOpeningToStore } from './opening.js';
+import { resolveHostAnchor } from './resolve-host.js';
 import { editFootprintRoofInStore } from './roof-footprint.js';
 import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
 import { refId } from './host-geometry-frame.js';
@@ -82,6 +84,62 @@ describe('standard footprint roof plane measurements (#9357)', () => {
     expect(exportedVolume).toBeCloseTo(volume, 7);
   });
 
+  it('plane styles follow edge Tags when aggregate order changes, including export/reopen (#9357 review)', async () => {
+    const s = await session(), { roofId } = addRoofToStore(s.editor, s.anchor, HIP);
+    const reader = new AnchorEntityReader(s.store, s.view), ids = parts(s, roofId);
+    for (const [i, id] of ids.entries()) {
+      const shape = reader.entity(refId(reader.entity(id)!.attributes[6])!)!;
+      const rep = reader.entity(refId((shape.attributes[2] as unknown[])[0])!)!;
+      const solid = refId((rep.attributes[3] as unknown[])[0])!;
+      const rgb = s.editor.addEntity('IfcColourRgb', [null, i/4, .5, 1]).expressId;
+      const shading = s.editor.addEntity('IfcSurfaceStyleShading', [`#${rgb}`, 0]).expressId;
+      const style = s.editor.addEntity('IfcSurfaceStyle', [`Edge ${i}`, '.BOTH.', [`#${shading}`]]).expressId;
+      s.editor.addEntity('IfcStyledItem', [`#${solid}`, [`#${style}`], null]);
+    }
+    const edgeStyles = (model: Pick<Session, 'store' | 'view'>) => {
+      const r = new AnchorEntityReader(model.store, model.view);
+      const styled = new Map([...r.ids('IFCSTYLEDITEM')].map(id => {
+        const a = r.entity(id)!.attributes; return [refId(a[0]), Array.isArray(a[1]) ? a[1].map(refId) : []] as const;
+      }));
+      return parts(model, roofId).map(id => {
+        const a = r.entity(id)!.attributes, shape = r.entity(refId(a[6])!)!;
+        const rep = r.entity(refId((shape.attributes[2] as unknown[])[0])!)!;
+        return [Number(a[7]), styled.get(refId((rep.attributes[3] as unknown[])[0]))] as const;
+      }).sort((a,b) => a[0]-b[0]);
+    };
+    const expected = edgeStyles(s);
+    const rel = [...reader.ids('IFCRELAGGREGATES')].find(id => refId(reader.entity(id)!.attributes[4]) === roofId)!;
+    s.editor.setPositionalAttribute(rel, 5, [...ids].reverse().map(id => `#${id}`));
+    editFootprintRoofInStore(s.store, s.editor, roofId, { Thickness: .3 });
+    expect(edgeStyles(s)).toEqual(expected);
+    const store = await parse(exportText(s));
+    expect(edgeStyles({ store, view: new MutablePropertyView(null, 'saved') })).toEqual(expected);
+  });
+
+  it('copy and repeated copy retain deleted saved plane and footprint properties (#9357 review)', async () => {
+    const first = await session(), { roofId } = addRoofToStore(first.editor, first.anchor, HIP);
+    first.view.setProperty(parts(first, roofId)[0], 'Pset_SlabCommon', 'IsExternal', true, PropertyValueType.Boolean);
+    first.view.setProperty(roofId, 'IfcLite_RoofFootprint', 'ReviewNote', 'remove', PropertyValueType.Text);
+    const store = await parse(exportText(first)), view = new MutablePropertyView(null, 'copy-properties');
+    const editor = new StoreEditor(store, view), s = { ...first, store, view, editor };
+    view.setOnDemandExtractor(id => extractPropertiesOnDemand(store, id));
+    view.deleteProperty(parts(s, roofId)[0], 'Pset_SlabCommon', 'IsExternal');
+    view.deleteProperty(roofId, 'IfcLite_RoofFootprint', 'ReviewNote');
+    const copy = copyBatchInStore(store, editor, [roofId], [{ offset: [20,0,0] }])[0].copyId;
+    const again = copyBatchInStore(store, editor, [copy], [{ offset: [20,0,0] }])[0].copyId;
+    const copies = [copy, again];
+    const saved = await parse(exportText(s));
+    for (const id of copies) {
+      const plane = parts({ store: saved, view: new MutablePropertyView(null, 'saved') }, id)[0];
+      const sets = extractPropertiesOnDemand(saved, plane).filter(set => set.name === 'Pset_SlabCommon');
+      expect(sets).toHaveLength(1);
+      const props = sets[0].properties;
+      expect(props.some(p => p.name === 'IsExternal')).toBe(false);
+      expect(props.some(p => p.name === 'PitchAngle')).toBe(true);
+      expect(extractPropertiesOnDemand(saved, id).find(set => set.name === 'IfcLite_RoofFootprint')!.properties.some(p => p.name === 'ReviewNote')).toBe(false);
+    }
+  });
+
   it('a rebuild replaces owned plane measurements, and Undo restores the original whole roof', async () => {
     const s = await session();
     const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);
@@ -97,6 +155,29 @@ describe('standard footprint roof plane measurements (#9357)', () => {
     undoRecordedMutationOperations(s.view, 1, () => { throw new Error('one compound roof edit expected'); });
     expect(parts(s, roofId)).toEqual(before);
     expect(parts(s, roofId).reduce((v, id) => v + quantities(s, id, 'Qto_SlabBaseQuantities').NetVolume, 0)).toBeCloseTo(80 / Math.cos(30 * D) * .25, 7);
+  });
+
+  it.each([false, true])('a later plane opening withholds uncut explicit net values without a roof rebuild (saved=%s, #9357 review)', async saved => {
+    const first = await session(), { roofId } = addRoofToStore(first.editor, first.anchor, HIP);
+    const store = saved ? await parse(exportText(first)) : first.store;
+    const view = saved ? new MutablePropertyView(null, 'opening') : first.view;
+    view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
+    const editor = new StoreEditor(store, view), s = { ...first, store, view, editor };
+    const children = parts(s, roofId);
+    expect(quantities(s, children[0], 'Qto_SlabBaseQuantities').NetVolume).toBeGreaterThan(0);
+    const host = resolveHostAnchor(store, children[0], view);
+    expect(host.roofId).toBe(roofId);
+    recordCompoundMutation(view, draft => addOpeningToStore(new StoreEditor(store, draft), host,
+      { Position: [5,1], Width: 1, Depth: 1, CutDepth: 6 }));
+    expect(quantities(s, children[0], 'Qto_SlabBaseQuantities').NetVolume).toBeUndefined();
+    expect(quantities(s, children[0], 'Qto_SlabBaseQuantities').NetArea).toBeUndefined();
+    expect(quantities(s, roofId, 'Qto_RoofBaseQuantities').NetArea).toBeUndefined();
+    const reopened = await parse(exportText(s));
+    expect(extractQuantitiesOnDemand(reopened, children[0]).flatMap(set => set.quantities).some(q => q.name === 'NetVolume')).toBe(false);
+    expect(quantities(s, children[1], 'Qto_SlabBaseQuantities').NetVolume).toBeGreaterThan(0);
+    undoRecordedMutationOperations(view, 1, () => { throw new Error('one opening compound expected'); });
+    expect(quantities(s, children[0], 'Qto_SlabBaseQuantities').NetVolume).toBeGreaterThan(0);
+    expect(quantities(s, roofId, 'Qto_RoofBaseQuantities').NetArea).toBeGreaterThan(0);
   });
 
   it('a void on a geometric plane withholds that plane and the aggregate net values after rebuild/reopen (#9357 review)', async () => {

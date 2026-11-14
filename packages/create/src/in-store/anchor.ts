@@ -138,6 +138,8 @@ export interface HostBounds {
  */
 export interface HostAnchor extends SpatialAnchor {
   hostId: number;
+  /** Owning footprint roof when the host is one of its geometric slab planes. */
+  roofId?: number;
   hostKind: HostKind;
   /** The host's own IfcLocalPlacement; openings are placed relative to it. */
   hostPlacementId: number;

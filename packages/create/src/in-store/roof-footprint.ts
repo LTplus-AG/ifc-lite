@@ -302,7 +302,10 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
     const scale = { lengthUnitScale: getModelLengthUnitScale(store) };
     const body = emitFootprintRoofBody(draft, scale, oldBodies[0].context, next);
     const oldPlan = planFootprintRoofNative(scale, current);
-    const oldEdges = oldPlan.planes.length ? oldPlan.planes.map(plane => plane.edge) : [-1];
+    const oldEdges = parts.length
+      ? parts.flatMap((id, index) => oldBodies[index].solids.map(() => Number(reader.entity(id)?.attributes[7])))
+      : oldPlan.planes.length ? oldPlan.planes.map(plane => plane.edge) : [-1];
+    if (oldEdges.some(edge => !Number.isInteger(edge))) throw new Error('Unreadable roof plane edge tag');
     const newEdges = body.plan.planes.length ? body.plan.planes.map(plane => plane.edge) : [-1];
     carryPlaneStyles(store, draft, new Map(replaced.map((id, index): [number, readonly number[]] => {
       const edge = oldEdges[index], next = newEdges.indexOf(edge);

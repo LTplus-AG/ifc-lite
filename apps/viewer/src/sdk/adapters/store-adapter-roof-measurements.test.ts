@@ -44,6 +44,14 @@ for (const host of ['roof', 'plane']) for (const failAfterDeletion of [false, tr
   const target = { modelId: 'roof-measures', dataStore, view, editor };
   const publish = () => mirrorRoofMeasurements(useViewerStore, target, roof.roofId, view);
   publish();
+  for (const id of [roof.roofId, ...parts]) {
+    const path = pathForEntity(dataStore, id); assert.ok(path);
+    const set = id === roof.roofId ? 'Qto_RoofBaseQuantities' : 'Qto_SlabBaseQuantities';
+    for (const name of id === roof.roofId ? ['NetArea'] : ['NetArea', 'NetVolume']) {
+      const value = collab.getQuantityValue(session.doc, path, set, name);
+      assert.ok(typeof value === 'number' && Number.isFinite(value) && value > 0, `${id} initially publishes ${name}`);
+    }
+  }
   const before = session.snapshot().data;
   const ownerId = resolveSpatialAnchor(dataStore, storey, view).ownerHistoryId;
   const owner = ownerId === null ? null : `#${ownerId}`;

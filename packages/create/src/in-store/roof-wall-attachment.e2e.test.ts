@@ -62,7 +62,9 @@ it.each(['roof-first', 'wall-first'] as const)('moving a roof and attached wall 
     selected: order === 'roof-first' ? [roof,wall] : [wall,roof], op: {kind: 'move',delta: [20,0]},
   });
   expect(moved.remesh).toEqual(expect.arrayContaining([roof,wall]));
-  expect(moved.remesh).toEqual(expect.arrayContaining(getFootprintRoofPlaneParts(s.store, s.view, roof)));
+  const planes = getFootprintRoofPlaneParts(s.store, s.view, roof);
+  expect(planes).toHaveLength(2);
+  expect(moved.remesh).toEqual(expect.arrayContaining([roof,wall,...planes]));
   const parts = meshWalls(api, exportText(s)).get(wall) ?? [];
   for (const y of [1,4,7]) {
     const z = 4 + Math.min(y,8-y) * Math.tan(Math.PI / 6);

@@ -51,10 +51,6 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
         && change.deleted && change.setName === name && change.name !== undefined).map(change => change.name!));
       present = new Set(view.getQuantitiesForEntity(original, base => extractQuantitiesOnDemand(store, base))
         .filter(set => set.name === name).flatMap(set => set.quantities.map(q => q.name)));
-    } else if (type === 'IFCPROPERTYSET' && (name === 'Pset_SlabCommon' || name === ROOF_FOOTPRINT_PSET)) {
-      slot = 4; owned = name === 'Pset_SlabCommon' ? ['PitchAngle'] : ['Footprint', 'EdgeSlopes', 'Overhang', 'Thickness'];
-      present = new Set(view.getForEntity(original, baseProperties)
-        .filter(set => set.name === name).flatMap(set => set.properties.map(p => p.name)));
     } else return definition;
     const members = record.attributes[slot];
     if (!Array.isArray(members)) throw new Error('Unreadable roof measurement members');
@@ -80,8 +76,10 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
     const properties = view.getForEntity(original, baseProperties);
     const deletions = view.getEffectiveChanges(original).filter(change => change.kind === 'quantity'
       && change.deleted && change.setName === quantitySet && change.name !== undefined);
+    const propertyDeletions = view.getEffectiveChanges(original).filter(change => change.kind === 'property'
+      && change.deleted && change.setName === propertySet && change.name !== undefined);
     spend(quantities.filter(set => set.name === quantitySet).reduce((sum, set) => sum + set.quantities.length, 0)
-      + properties.filter(set => set.name === propertySet).reduce((sum, set) => sum + set.properties.length, 0) + deletions.length);
+      + properties.filter(set => set.name === propertySet).reduce((sum, set) => sum + set.properties.length, 0) + deletions.length + propertyDeletions.length);
     for (const set of quantities.filter(set => set.name === quantitySet)) for (const q of set.quantities) {
       view.setQuantity(id, set.name, q.name, q.value, q.type, q.unit);
     }
@@ -89,6 +87,7 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
     for (const set of properties.filter(set => set.name === propertySet)) for (const p of set.properties) {
       view.setProperty(id, set.name, p.name, p.value, p.type, p.unit, false, p.dataType);
     }
+    for (const change of propertyDeletions) view.deleteProperty(id, propertySet, change.name!);
   };
   for (const [id, original] of copied) copyMeasurements(original, id, 'Qto_SlabBaseQuantities', 'Pset_SlabCommon');
   copyMeasurements(source, target, 'Qto_RoofBaseQuantities', ROOF_FOOTPRINT_PSET);
@@ -101,6 +100,14 @@ export function copyRoofPlaneParts(store: IfcDataStore, editor: StoreEditor, sou
     const product = Array.isArray(related) && related.length === 1 ? refId(related[0]) : null;
     const original = product === null ? undefined : copied.get(product);
     if (original === undefined || definition === null) continue;
+    const metadata = measurementRecord(definition);
+    if (metadata?.type.toUpperCase() === 'IFCPROPERTYSET'
+      && (metadata.attributes[2] === 'Pset_SlabCommon' || metadata.attributes[2] === ROOF_FOOTPRINT_PSET)) {
+      // copyMeasurements wrote the entire effective property set above. A
+      // second native association would duplicate its name on export (#9357).
+      editor.removeEntity(relation);
+      continue;
+    }
     const copiedDefinition = definitionForCopy(definition, original);
     if (copiedDefinition === null) editor.removeEntity(relation);
     else if (copiedDefinition !== definition) editor.setPositionalAttribute(relation, 5, `#${copiedDefinition}`);

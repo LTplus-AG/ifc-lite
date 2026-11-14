@@ -12,6 +12,8 @@ import '@/test/setup-dom.js';
 import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { getFootprintRoofPlaneParts } from '@ifc-lite/create';
+import { AnchorEntityReader } from '../../../../../packages/create/src/in-store/resolve-anchor.js';
+import { refId } from '../../../../../packages/create/src/in-store/host-geometry-frame.js';
 import type { RoofEditOutcome } from './mutation-roof.js';
 import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
@@ -47,7 +49,13 @@ const body = (roofId: number) => {
 function assertRoofRemesh(outcome: RoofEditOutcome, id: number): void {
   if (!outcome.ok) throw new Error(outcome.reason);
   const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
-  assert.deepEqual(outcome.remesh, [id, ...getFootprintRoofPlaneParts(target.dataStore, target.view, id)]);
+  const reader = new AnchorEntityReader(target.dataStore, target.view);
+  const parts = [...reader.ids('IFCRELAGGREGATES')].flatMap(rel => {
+    const a = reader.entity(rel)?.attributes;
+    return a && refId(a[4]) === id && Array.isArray(a[5]) ? a[5].map(refId).filter((n): n is number => n !== null) : [];
+  });
+  assert.ok(parts.length >= 2, 'the edited pitched roof has multiple geometric planes');
+  assert.deepEqual(outcome.remesh, [id, ...parts]);
 }
 
 /** Check the real edit's journal, including absent tags rather than only distinct values. */

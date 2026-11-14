@@ -21,6 +21,7 @@ import { countEffectiveEntityTypes, iterateEffectiveEntities } from '@ifc-lite/d
 import { createSyntheticDataStore, IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 
 import { canWriteIfcFromStores } from '@/components/viewer/export-model-selection';
+import { exportModelStep } from '@/lib/export/model-step-export';
 import { buildShareSeed, isSeedableModel } from '@/lib/collab/share-scope';
 import { isIfcxDataStore, type FederatedModel } from '@/store/types';
 import { craftRhino3dm, rhinoPayloadOf } from '@/test/rhino-3dm-fixture.js';
@@ -96,19 +97,24 @@ describe('a loaded .3dm store, and the gates that read it', () => {
     const alone = new Map([['rhino', rhino]]), both = new Map([['rhino', rhino], ['step', step]]);
 
     assert.equal(step.ifcDataStore?.sourceKind, 'step', 'the comparison store is really STEP-backed');
-    assert.equal(canWriteIfcFromStores(alone, rhino, 'single', false), false);
+    // The single path is offered and refused by `exportModelStep` itself,
+    // with the model named (#10099), so nothing downloads.
+    assert.equal(canWriteIfcFromStores(alone, 'single', false), true);
+    await assert.rejects(
+      exportModelStep({ modelId: 'rhino', dataStore, options: { schema: 'IFC4', applyMutations: true }, scheduleState: null }),
+      (error: unknown) => (error as { reason?: string }).reason === 'noRecords',
+    );
     // Nothing writable in the federation at all: the merged export refuses.
-    assert.equal(canWriteIfcFromStores(alone, rhino, 'merged', false), false);
+    assert.equal(canWriteIfcFromStores(alone, 'merged', false), false);
     // An IFCX target reads the tables, so it is allowed.
-    assert.equal(canWriteIfcFromStores(alone, rhino, 'single', true), true);
+    assert.equal(canWriteIfcFromStores(alone, 'merged', true), true);
     // One tabular model beside a STEP one does not refuse the merge: it is
     // skipped, the way a model with no store is.
-    assert.equal(canWriteIfcFromStores(both, step, 'merged', false), true);
-    assert.equal(canWriteIfcFromStores(both, step, 'single', false), true);
+    assert.equal(canWriteIfcFromStores(both, 'merged', false), true);
     // A store from before the marker existed states none, and still exports.
     const unmarked = unmarkedModel('unmarked');
     assert.equal(unmarked.ifcDataStore?.sourceKind, undefined);
-    assert.equal(canWriteIfcFromStores(new Map([['unmarked', unmarked]]), unmarked, 'single', false), true);
+    assert.equal(canWriteIfcFromStores(new Map([['unmarked', unmarked]]), 'merged', false), true);
   });
 
   it('is left out of a room seed, because neither seed path can carry it', async () => {

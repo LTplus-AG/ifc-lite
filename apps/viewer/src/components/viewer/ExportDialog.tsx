@@ -171,7 +171,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
     [models, selectedModel, exportScope]);
   const canExportIfc = landXmlPlan === null || (landXmlPlan.covered && schema === 'IFC4X3');
   // Mutation deltas are source-independent JSON; only full IFC synthesis is refused.
-  const exportAllowed = (canExportIfc && canWriteIfcFromStores(models, selectedModel, exportScope, isIfc5)) || (changesOnly && !isIfc5);
+  const exportAllowed = (canExportIfc && canWriteIfcFromStores(models, exportScope, isIfc5)) || (changesOnly && !isIfc5);
   const portableRoomStore = selectedModel?.ifcDataStore
     && canExportRoomAsStep(selectedModel.ifcDataStore, selectedRoomView)
     ? roomSymbolicSource(selectedModel.ifcDataStore)?.dataStore

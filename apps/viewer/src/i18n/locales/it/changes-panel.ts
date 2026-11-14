@@ -19,4 +19,5 @@ export const changesPanelIt = {
   "changesPanel.revertPermission": "Attiva la modalità Modifica o chiedi l'accesso in modifica prima di annullare la modifica.",
   "changesPanel.revertSharedRoom": "Esci dalla stanza condivisa prima di annullare una modifica. La stanza non può ancora sincronizzare questo annullamento.",
   "changesPanel.revertUnsupported": "Questa modifica non può essere annullata dal pannello. Usa Annulla quando è il passaggio più recente.",
+  "changesPanel.byAgent": "Agente locale · {field}",
 } satisfies Catalogue;

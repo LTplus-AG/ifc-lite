@@ -69,6 +69,8 @@ export const drawing2DTeardown = defineSliceTeardown(
     'cloudAnnotations2D',
     'dimension2DPoints',
     'dimensions2D',
+    'dimension2DUndo',
+    'dimension2DRedo',
     'selectedAnnotation2D',
   ],
   {
@@ -113,6 +115,8 @@ export const drawing2DTeardown = defineSliceTeardown(
         cloudAnnotations2D: defaults.cloudAnnotations2D,
         dimension2DPoints: defaults.dimension2DPoints,
         dimensions2D: defaults.dimensions2D,
+        dimension2DUndo: defaults.dimension2DUndo,
+        dimension2DRedo: defaults.dimension2DRedo,
         selectedAnnotation2D: defaults.selectedAnnotation2D,
       };
     },

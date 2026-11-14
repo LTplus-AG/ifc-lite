@@ -521,13 +521,14 @@ Lessons:
 
 ## Load scoreboard verdicts use the frame mark
 
-Browser-lane verdicts in `load-scoreboard.mjs` judge the frame mark: the first frame the
-renderer started at or after the scene finished, never before the settled mark
-(`load-scoreboard-frame-mark.mjs`, `frameMarkOf`). The settled mark stays in the report as
-its own verdict row and as a column in the both-marks table. The baseline table shows the
-verdict mark (browser frame, native batch). A browser sample without frame times leaves its
-frame-mark cell inconclusive (unverifiable); it is never judged on the settled mark
-instead. Native and boot lanes keep `interactiveMs`. A/A runs record `frameMs` floors
+Browser-lane verdicts in `load-scoreboard.mjs` use the frame mark by default: the first frame
+the renderer started at or after the scene finished, never before the settled mark
+(`load-scoreboard-frame-mark.mjs`, `frameMarkOf`). Reopen lanes may opt into the metadata
+mark, the first frame at or after `load.metadataInteractive`, capped at the frame mark. The
+settled mark stays in the report as its own verdict row and as a column in the both-marks
+table. The baseline table labels the selected verdict mark by lane. A browser sample without
+the required frame or metadata mark leaves its cell inconclusive (unverifiable). Native and
+boot lanes keep `interactiveMs`. A/A runs record `frameMs` floors
 beside the settled ones. An A/A reference without them gives "no A/A floor" for the
 frame-mark row, so re-render an older A/A with this report before using it as a
 reference. Its samples already carry frame times since #9857.

@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { extractPropertiesOnDemand, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { propertyKey, quantityKey, type Mutation, type EffectiveChange, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
 
 /** #7251: virtual and edited source sets have effective values that raw
@@ -12,12 +13,29 @@ const MAX_EFFECTIVE_METADATA_WRITES = 10000;
 
 /** Atomic split/copy batches share one draft editor; the budget therefore covers
  * the complete operation, including assembly parts and repeated source copies. */
-export function cloneEffectiveMetadata(view: MutablePropertyView, editor: StoreEditor, source: number, targets: number[]): void {
+export function cloneEffectiveMetadata(view: MutablePropertyView, editor: StoreEditor, source: number, targets: number[], store: IfcDataStore): void {
   if (!view.hasChanges(source)) return;
   // Older structural implementations may ignore the new optional entity ID.
   const changes = view.getEffectiveChanges(source).filter(row => row.entityId === source);
   const propertyNames = new Set(changes.filter(row => row.kind === 'pset-added' || row.kind === 'property').map(row => row.setName));
   const quantityNames = new Set(changes.filter(row => row.kind === 'qset-added' || row.kind === 'quantity').map(row => row.setName));
+  // Whole-set additions group their members in the change list. A prior copy
+  // can still carry DELETE overrides against its saved definitions (#9352).
+  // Read those definitions, then consult current overrides rather than history.
+  for (const set of extractPropertiesOnDemand(store, view.resolveBaseEntityId(source), view, source)) {
+    if (!propertyNames.has(set.name)) continue;
+    for (const member of set.properties) if (view.getPropertyMutation(source, set.name, member.name)?.operation === 'DELETE'
+      && !changes.some(row => row.kind === 'property' && row.setName === set.name && row.name === member.name)) {
+      changes.push({ entityId: source, kind: 'property', setName: set.name, name: member.name, deleted: true });
+    }
+  }
+  for (const set of extractQuantitiesOnDemand(store, view.resolveBaseEntityId(source), view)) {
+    if (!quantityNames.has(set.name)) continue;
+    for (const member of set.quantities) if (view.getQuantityMutation(source, set.name, member.name)?.operation === 'DELETE'
+      && !changes.some(row => row.kind === 'quantity' && row.setName === set.name && row.name === member.name)) {
+      changes.push({ entityId: source, kind: 'quantity', setName: set.name, name: member.name, deleted: true });
+    }
+  }
   const deletedProperties = new Set<string>();
   for (const change of changes) if (change.kind === 'property' && change.deleted && change.setName !== undefined && change.name !== undefined) {
     deletedProperties.add(propertyKey(source, change.setName, change.name));

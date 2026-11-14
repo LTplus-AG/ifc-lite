@@ -27,7 +27,8 @@ describe('primary load reset notifications (#10196)', () => {
       const during = seen.length; // the synchronous part of loadFile has returned
       // ~30 without the hold (one per write); a write made by another subscriber during the flush may add one or two.
       assert.ok(during >= 1 && during <= 3, `the reset reached the subscriber ${during} times`);
-      assert.deepEqual(seen[0], { loading: true, models: 1 }, 'one callback, already showing the new load and its placeholder');
+      // The loader's own write before the reset (the active-load canceller) may notify first; the reset's single callback is the last.
+      assert.deepEqual(seen.at(-1), { loading: true, models: 1 }, 'the reset callback already shows the new load and its placeholder');
     } finally {
       await act(async () => { await pending; });
       off();

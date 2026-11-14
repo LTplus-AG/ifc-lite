@@ -182,7 +182,7 @@ export function thermalDelta(before, after) {
  * LOAD_SCOREBOARD_QUIET_WAIT_MS overrides the wait (0 = none) for runs that measure under load on purpose.
  */
 /** The two boundary reads of a sample: the benchmark cgroup's stall counter (µs) and the clock. Injectable for tests. */
-const BOUNDARY_IO = { now: () => Date.now(), ownStallUs: () => cgroupPressure(ownCgroupPath())?.totalUs };
+const BOUNDARY_IO = { now: () => Date.now(), ownStallUs: () => cgroupPressure(ownCgroupPath())?.totalUs, hostPsi: () => cpuPressure10() };
 
 export async function hostQuiet({ limit = 5, maxWaitMs = quietWaitMs(), io = BOUNDARY_IO } = {}) {
   const started = Date.now();
@@ -214,6 +214,7 @@ export async function hostQuiet({ limit = 5, maxWaitMs = quietWaitMs(), io = BOU
   // The benchmark's stall counter and the sample start are read together, after the diagnostic reads above, so the
   // stall share's numerator and denominator cover the same interval (review #10138).
   host.ownPressureBefore = io.ownStallUs() ?? null;
+  host.hostPressureAvg10 = io.hostPsi(); // host-wide, whatever the wait used: the ordinary rule needs it if the cap turns unknown
   host.startedAt = io.now();
   return host;
 }
@@ -234,7 +235,7 @@ export function outsideOwnCgroup(pids, { own = ownCgroupPath(), cgroupOf = (pid)
   for (const pid of pids) {
     const cg = cgroupOf(pid);
     if (!cg) { if (alive(pid)) unresolved = true; continue; }
-    if (own !== null && cg !== own) scopes.add(cg);
+    if (own !== null && cg !== own && !cg.startsWith(`${own}/`)) scopes.add(cg); // a child of the job is inside it
   }
   if (unresolved) return { cpuMs: null, pressureUs: null, scopes: scopes.size, unresolved: true, hostBusyMs: hostBusyMs(), ownCgroupMs: ownCgroupMs() };
   // The scope's own counters cover only the time after the move: CPU the browser used in the job cgroup before it
@@ -288,7 +289,9 @@ export function settleHostLoad(host, { ownOutside = null, io = BOUNDARY_IO } = {
   const thermal = thermalDelta(host.thermalBefore, thermalAfter);
   const capAfter = readCapState(), window = capWindowOf(host.capBefore, capAfter, host.startedAt, host.startedAt + sampleMs);
   let flag;
-  if (window === 'none' || window === 'unknown') flag = classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs });
+  // Outside a window the pre-sample (host) reading decides as before; an unknown cap state falls back to the host-wide
+  // reading taken at the sample start, never to the benchmark cgroup's own pressure (review #10138).
+  if (window === 'none' || window === 'unknown') flag = classifyHostLoad({ psi: window === 'unknown' ? host.hostPressureAvg10 : host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs });
   else {
     const ownAfter = ownPressureAfter;
     // Job cgroup and browser scope: their union stall lies in [max, sum]; flag on the sum (stallRange, load-scoreboard-cap.mjs).
@@ -303,7 +306,7 @@ export function settleHostLoad(host, { ownOutside = null, io = BOUNDARY_IO } = {
   if (window === 'unknown') host.cap = { window, error: capAfter?.error ?? host.capBefore?.error ?? null };
   host.cap ??= { window: 'none' };
   Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, ownOutsideCgroupCpuMs: Number.isFinite(ownOutsideCpuMs) ? Math.round(ownOutsideCpuMs) : null, sampleMs, overlapsWatchdogPass, thermal, settled: true, ...flag });
-  delete host.capBefore; delete host.ownPressureBefore;
+  delete host.capBefore; delete host.ownPressureBefore; delete host.hostPressureAvg10;
   delete host.groupTicksBefore; delete host.cgroupUsageBefore; delete host.hostBusyBefore; delete host.ownCgroupBefore; delete host.watchdogBefore; delete host.thermalBefore;
   return host;
 }

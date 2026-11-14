@@ -19,7 +19,16 @@ import { TRACE_CATEGORIES, traceCpuTime } from './trace-cpu-time.mjs';
  * of the optional trace into `{ error }` for that measure only.
  */
 export async function startCpuTraceSafe(context, page) {
-  try { return { cdp: await startCpuTrace(context, page) }; } catch (err) { return { error: `trace start failed: ${String(err?.message ?? err).slice(0, 200)}` }; }
+  const startTimeoutMs = 5000;
+  // Bounded like collection: a CDP that never answers Tracing.start must not hold the sample (review #10138).
+  let timer = null;
+  const started = startCpuTrace(context, page);
+  try {
+    return { cdp: await Promise.race([started, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`no answer within ${startTimeoutMs} ms`)), startTimeoutMs); })]) };
+  } catch (err) {
+    started.then((cdp) => cdp.detach().catch(() => {}), () => {}); // a late session is closed when it arrives
+    return { error: `trace start failed: ${String(err?.message ?? err).slice(0, 200)}` };
+  } finally { clearTimeout(timer); }
 }
 
 /** Write the window marks; returns null or the error text (never throws). */

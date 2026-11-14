@@ -179,7 +179,7 @@ test('the stall share uses the interval between its two counter reads (sample st
     const t0 = Date.now();
     const reads = [[1000, t0], [5000, t0 + 100]];
     let i = 0, last = null;
-    const io = { ownStallUs: () => (last = reads[Math.min(i++, 1)])[0], now: () => last[1] };
+    const io = { ownStallUs: () => (last = reads[Math.min(i++, 1)])[0], now: () => last[1], hostPsi: () => 0 };
     const h = await hostQuiet({ maxWaitMs: 0, io });
     settleHostLoad(h, { ownOutside: { cpuMs: 0, pressureUs: 0, scopes: 0 }, io });
     assert.equal(h.cap.window, 'inside');
@@ -212,4 +212,29 @@ test('a boot row is settled with its own browser outside the job cgroup (settleR
   const row = settleRowHost({ host, browserOutside: { cpuMs: 200, pressureUs: 0, scopes: 1, hostBusyMs: host.hostBusyBefore + 1000, ownCgroupMs: host.ownCgroupBefore + 300 } });
   assert.equal(row.host.foreignCpuMs, 500);
   assert.equal('browserOutside' in row, false);
+});
+
+test('a scope under the job cgroup is inside it (counted once); only scopes outside the job path are subtracted', async () => {
+  const { outsideOwnCgroup } = await import('./load-scoreboard-host.mjs');
+  const io = { own: '/app.slice/job.scope', usage: () => 10, pressure: () => ({ avg10: 0, totalUs: 1 }), alive: () => true };
+  assert.equal(outsideOwnCgroup([5], { ...io, cgroupOf: () => '/app.slice/job.scope/chrome.scope' }).scopes, 0);
+  assert.equal(outsideOwnCgroup([5], { ...io, cgroupOf: () => '/app.slice/app-org.chromium.Chromium-5.scope' }).scopes, 1);
+});
+
+test('a sample that starts capped and whose cap state turns unreadable is judged on host-wide pressure', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cap-'));
+  const file = join(dir, 's.json');
+  writeFileSync(file, JSON.stringify({ id: 'w', cores: 2, appliedEpoch: Date.now() / 1000 - 5, entries: [] }));
+  process.env.LOAD_SCOREBOARD_CAP_STATE = file;
+  try {
+    const { hostQuiet, settleHostLoad } = await import('./load-scoreboard-host.mjs');
+    // Benchmark cgroup quiet (the wait read it), host at 40 %: the fallback must see the 40 %.
+    const io = { now: () => Date.now(), ownStallUs: () => 0, hostPsi: () => 40 };
+    const h = await hostQuiet({ maxWaitMs: 0, io });
+    assert.equal(h.pressureSource, 'benchmark cgroup (cap window)');
+    writeFileSync(file, '{ unreadable');
+    settleHostLoad(h, { io });
+    assert.equal(h.cap.window, 'unknown');
+    assert.deepEqual([h.underLoad, h.reason], [true, 'CPU pressure avg10 40 >= 5']);
+  } finally { delete process.env.LOAD_SCOREBOARD_CAP_STATE; }
 });

@@ -7,7 +7,7 @@ import { CompactEntityIndex, IFCX_LENGTH_UNIT_SCALE, createSyntheticDataStore, t
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { parseGLB, parseGLBToMeshData, parseGLBImageResources } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
-import { calculateMeshBounds, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
+import { calculateMeshBounds, createCoordinateInfo, expandBoundsForPointClouds, normalizeColor } from '../../utils/localParsingUtils.js';
 import { buildTabularDataStore } from './tabularDataStore.js';
 
 interface RawIfcxMesh {
@@ -197,18 +197,7 @@ export async function parseIfcxViewerModel(
     bounds.min = { x: 0, y: 0, z: 0 };
     bounds.max = { x: 0, y: 0, z: 0 };
   }
-  // Expand bounds to include point cloud asset extents so fit-to-view, the
-  // section-plane slider, and camera near/far all see the points too.
-  for (const pc of pointClouds) {
-    const { min, max } = pc.chunk.bbox;
-    const [ox, oy, oz] = pc.origin ?? [0, 0, 0]; // bbox is relative to it (#10029)
-    bounds.min.x = Math.min(bounds.min.x, ox + min[0]);
-    bounds.min.y = Math.min(bounds.min.y, oy + min[1]);
-    bounds.min.z = Math.min(bounds.min.z, oz + min[2]);
-    bounds.max.x = Math.max(bounds.max.x, ox + max[0]);
-    bounds.max.y = Math.max(bounds.max.y, oy + max[1]);
-    bounds.max.z = Math.max(bounds.max.z, oz + max[2]);
-  }
+  expandBoundsForPointClouds(bounds, pointClouds);
   return {
     dataStore: buildIfcxDataStore(ifcxResult, buffer),
     geometryResult: {

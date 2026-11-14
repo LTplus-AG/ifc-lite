@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # #9523 browser evidence: Chromium Local Network Access and Firefox, against the built viewer served on a
 # public-looking https origin and the real `ifc-lite-mcp --bridge`. Run from a repository root.
-#   bash scripts/browser-evidence/9523/run.sh [outDir]      (builds the viewer and @ifc-lite/mcp first)
+#   bash tests/e2e/mcp-bridge-browsers/run.sh [outDir]      (builds the viewer and @ifc-lite/mcp first)
 #   SKIP_BUILD=1 REPO_BUILT=/other/built/checkout bash ...   (iterate on an already built checkout)
 # Also runs the socket-only probes (lna-socket-probe.mjs, ff-socket-probe.mjs). Prints every report and the
 # screenshots as base64 so a fleet log carries the full evidence.
 set -euo pipefail
 R=$PWD
-HERE="$R/scripts/browser-evidence/9523"
+HERE="$R/tests/e2e/mcp-bridge-browsers"
 B=${REPO_BUILT:-$R}
 OUT=${1:-$(mktemp -d)}
 mkdir -p "$OUT"

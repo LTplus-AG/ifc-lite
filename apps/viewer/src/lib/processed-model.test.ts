@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyProcessingConfig, getProcessingServerUrl, openProcessedModelFromUrl, processedModelRequested, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } from './processed-model';
+import { applyProcessingConfig, getProcessingServerUrl, openProcessedModelFromUrl, pageUrlModelAllowed, processedModelRequested, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } from './processed-model';
 import { isServerReachable } from '@/hooks/ingest/serverAvailability';
 
 const initial = getProcessingServerUrl();
@@ -38,6 +38,20 @@ describe('applyProcessingConfig', () => {
     applyProcessingConfig(undefined);
     assert.equal(getProcessingServerUrl(), '/ifc');
     assert.equal(takeProcessedModelRequest(), null);
+  });
+
+  it('a start model refuses the page URL, a ?room= link included', () => {
+    const info = console.info;
+    console.info = () => {};
+    try {
+      resetProcessedModelRequestsForTests();
+      assert.equal(pageUrlModelAllowed('room'), true);
+      applyProcessingConfig({ open: { processedModel: { sha256: 'b'.repeat(64), bytes: 0, name: 'host.ifc' } } });
+      assert.equal(pageUrlModelAllowed('room'), false);
+    } finally {
+      console.info = info;
+      resetProcessedModelRequestsForTests();
+    }
   });
 });
 

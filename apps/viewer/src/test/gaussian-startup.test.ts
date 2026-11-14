@@ -53,7 +53,9 @@ it('IFC-only startup has no eager Gaussian backend or decoder dependency (#8565)
         assert.ok(existsSync(source), `No workspace source for ${edge}: ${source}`);
         target = source;
       }
-      if (!target.includes('/node_modules/') && !target.endsWith('.d.ts') && !target.endsWith('.json')) {
+      // A plain .mjs module with a .d.mts beside it resolves to the declaration; walk the .mjs source.
+      if (/\.d\.mts$/.test(target) && existsSync(target.replace(/\.d\.mts$/, '.mjs'))) target = target.replace(/\.d\.mts$/, '.mjs');
+      if (!target.includes('/node_modules/') && !/\.d\.[mc]?ts$/.test(target) && !target.endsWith('.json')) {
         assert.ok(target.startsWith(repo + '/'), `Dependency outside repository: ${edge}`);
         queue.push(target);
       }

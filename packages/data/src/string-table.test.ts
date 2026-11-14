@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { StringTable } from './string-table.js';
 
 describe('StringTable', () => {
@@ -134,4 +134,28 @@ describe('StringTable.fromArray duplicate handling', () => {
     expect(table.indexOf('')).toBe(0);
     expect(table.intern('')).toBe(0);
   });
+});
+
+// #8450: hydration and indexed reads must not hash every string on the main thread.
+it('hydrates indexed data without per-string reverse-index writes (#8450)', () => {
+  const source = ['', 'wall', 'slab', 'wall', ''];
+  const set = vi.spyOn(Map.prototype, 'set');
+  let writes: number;
+  let table: StringTable;
+  try {
+    table = StringTable.fromArray(source);
+    expect(table.get(3)).toBe('wall');
+    writes = set.mock.calls.length;
+  } finally {
+    set.mockRestore();
+  }
+  expect(writes).toBeLessThanOrEqual(1); // the constructor's constant empty sentinel
+  source[1] = 'changed outside the table';
+  expect(table.get(1)).toBe('wall');
+  expect(table.has('wall')).toBe(true);
+  expect(table.has('changed outside the table')).toBe(false);
+  expect(table.indexOf('wall')).toBe(1);
+  expect(table.intern('wall')).toBe(1);
+  expect(table.intern('new')).toBe(5);
+  expect(table.getAll()).toEqual(['', 'wall', 'slab', 'wall', '', 'new']);
 });

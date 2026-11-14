@@ -44,6 +44,8 @@ import { markTouchSelection } from './referenceSelection.js';
 import { withinTapSlop } from './tapSlop.js';
 import { routeToolTap } from './toolTap.js';
 import { viewportHandlerContext } from './touchRouting.js';
+import { isGeometryHeld, isGeometryRestoreHeld } from '@/lib/pick-gating';
+import { useViewerStore } from '@/store';
 
 /** From a tap's lift to the next tap's press, as Android's double-tap timeout and the selection path's 300 ms. */
 const DOUBLE_TAP_MS = 300;
@@ -59,6 +61,8 @@ interface Press {
   /** The press's finger (`Touch.identifier`), and where it last was (canvas CSS px). */
   finger: number;
   at: { x: number; y: number };
+  /** The press began during a reopen's restore hold: its lift places nothing, even after the hold ends. */
+  held: boolean;
 }
 
 type Modifiers = Pick<TouchEvent, 'shiftKey' | 'altKey'>;
@@ -121,8 +125,10 @@ export function createCommandTouchPress(canvas: HTMLCanvasElement, getTool: () =
       press = {
         ctx, runtime, onPress: runtime.command.pointerDownOnPress?.(runtime.gesture) === true,
         pressed: false, dragging: false, finger: touch.identifier, at: { x: landed.x, y: landed.y },
+        held: isGeometryRestoreHeld(useViewerStore.getState()),
       };
       if (!press.onPress) return false;
+      if (isGeometryHeld(useViewerStore.getState())) return false;
       const grabs = routeCommandPressDrag(ctx, landed.x, landed.y, modifiers(e), false);
       marked = ctx; // the marker shows what the press would grab
       if (!grabs) clearMarker();
@@ -131,6 +137,7 @@ export function createCommandTouchPress(canvas: HTMLCanvasElement, getTool: () =
     move(touch, e) {
       const p = press;
       if (!p?.onPress) return false;
+      if (p.held) return false; // a press begun during a restore hold never grabs, even after the hold ends: the finger orbits
       if (!live(p)) return p.dragging; // the command ended under its drag: the rest of the drag moves nothing
       if (!p.pressed) {
         p.pressed = true;
@@ -159,6 +166,9 @@ export function createCommandTouchPress(canvas: HTMLCanvasElement, getTool: () =
         return owned;
       }
       const { ctx } = p;
+      if (tap && (p.held || isGeometryRestoreHeld(useViewerStore.getState()))) return true;
+      // A drag the command took before the hold and released during it: its 'up' is held back, so end the drag here.
+      if (p.dragging && isGeometryRestoreHeld(useViewerStore.getState())) { commandPointerCancel(); clearMarker(); return true; }
       if (p.dragging) {
         // The release lands where the finger lifted, which a last move need not have reported
         const lifted = Array.from(e.changedTouches ?? []).find((t) => t.identifier === p.finger);

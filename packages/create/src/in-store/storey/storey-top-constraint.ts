@@ -104,7 +104,7 @@ export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor
     if (!top) throw new Error(`#${elementId} has a body this editor cannot resize, so its top cannot be fitted`);
     const to = top.from + reach - top.world;
     if (kind !== 'linear' && to < MIN_ATTACHED_EXTENT) throw new Error(`#${elementId} would end ${to.toFixed(3)} m tall: what it is attached to is not above its base`);
-    if (Math.abs(to - top.from) < 1e-9 && constraint.kind !== 'roof') return { remesh: [] };
+    if (Math.abs(to - top.from) < 1e-9 && constraint.kind !== 'roof' && view.getPropertyValue(elementId, ROOF_ATTACHMENT, 'Clipped') !== true) return { remesh: [] };
     const target = { dataStore: store, view, editor: draft };
     const roofQuantities = constraint.kind === 'roof' ? {
       geometry: wallGeometry(store, view, draft, elementId), quantities: snapshotWallQuantities(store, view, elementId),

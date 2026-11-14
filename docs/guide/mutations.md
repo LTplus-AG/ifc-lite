@@ -1342,3 +1342,5 @@ to the parser's property extractor to read raw property-set records in the same
 atomic draft; use the occurrence id when resolving a copied entity's live
 relationships. This keeps raw STEP authoring and high-level property edits
 readable before export.
+
+Retargeting a roof-cut wall to a planar roof or storey restores a planar top and updates its existing prism quantities from their pre-cut baseline. Repeated refits preserve declared quantity units, including a net area in mm² beside a gross area in m².

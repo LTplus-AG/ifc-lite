@@ -115,17 +115,28 @@ fn contact_is_on_within_the_flush_band_and_band_beyond_it() {
     assert!(contact(&frame, facet(0.0, [0.012; 3]), 0.0112) == Contact::Band);
     assert!(contact(&frame, facet(10.0, [0.0112; 3]), 0.0112) == Contact::Clear);
     // The footprint is [1, 2] x [1, 2]. A tilted facet that touches the cap
-    // only at a vertex beside it is 0.4 mm off over the footprint: not on the
-    // cap, whichever vertex comes first (#10318 review).
-    for z in [[0.0112, 0.0118, 0.0118], [0.0118, 0.0112, 0.0118], [0.0118, 0.0118, 0.0112]] {
-        assert!(contact(&frame, facet(0.0, z), 0.0112) == Contact::Band);
+    // only at a vertex beside it is 0.4 mm off or more over the footprint:
+    // not on the cap, whichever vertex is listed first (#10318 review).
+    let [a, b, c] = facet(0.0, [0.0112, 0.0118, 0.0118]);
+    for order in [[a, b, c], [b, c, a], [c, a, b], [a, c, b]] {
+        assert!(contact(&frame, order, 0.0112) == Contact::Band);
     }
     // One that crosses the cap plane over the footprint is on it, though each
     // of its vertices is 0.6 mm off or beside the footprint.
     assert!(contact(&frame, facet(0.0, [0.0106, 0.0112, 0.0112]), 0.0112) == Contact::On);
-    // A facet standing on edge has no depth over the footprint: the pull-in stays.
-    let wall = [Point3::new(1.5, 0.0, 0.0), Point3::new(1.5, 3.0, 0.0), Point3::new(1.5, 0.0, 1.0)];
-    assert!(contact(&frame, wall, 0.0112) == Contact::On);
+    // A small facet 0.4 mm off, tilted, is read over its own extent and not
+    // out to the far corner of the footprint, where its plane would cross.
+    let small = [Point3::new(1.0, 1.0, 0.0116), Point3::new(1.01, 1.0, 0.01159), Point3::new(1.0, 1.01, 0.0116)];
+    assert!(contact(&frame, small, 0.0112) == Contact::Band);
+    // No finite depth, no verdict: a facet on edge, in or at the rim of the
+    // footprint, and a vertex that is not a number all keep the pull-in.
+    for x in [1.5, 1.0] {
+        let wall = [Point3::new(x, 0.0, 0.0), Point3::new(x, 3.0, 0.0), Point3::new(x, 0.0, 1.0)];
+        assert!(contact(&frame, wall, 0.0112) == Contact::On);
+    }
+    let mut broken = facet(0.0, [0.012; 3]);
+    broken[0].z = f64::NAN;
+    assert!(contact(&frame, broken, 0.0112) == Contact::On);
     // 1 km out the f32 floor is 0.4 mm, so 0.3 mm is still on the cap.
     let far_cutter = GeometryRouter::make_box_mesh(Point3::new(999.0, 0.0, 0.0), Point3::new(1004.0, 4.0, 1.0));
     let far_frame = CutterFrame::new(&far_cutter, Vector3::z()).unwrap();

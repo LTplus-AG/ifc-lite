@@ -26,9 +26,10 @@ pub(super) fn flush_band(f: &CutterFrame) -> f64 {
 
 /// The contact of a host facet with the cap at `cap` along the axis. A facet
 /// may tilt up to ten degrees off the cap, so its distance is read where it
-/// matters: the nearest its plane comes to the cap over the cutter's
-/// footprint. A vertex beside the footprint, or the one listed first, decides
-/// nothing. A facet too steep to carry a depth keeps the pull-in.
+/// matters: the nearest its plane comes to the cap over the part of the
+/// cutter's footprint the facet spans. A vertex beside the footprint, or the
+/// one listed first, decides nothing. Where that reading is not a finite
+/// number (a facet on edge, a vertex that is not a number) the pull-in stays.
 pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> Contact {
     if !overlaps(f, triangle) {
         return Contact::Clear;
@@ -37,12 +38,19 @@ pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> 
     let [p, q, r] = triangle.map(|v| axes.map(|axis| v.coords.dot(&axis)));
     let (e, g) = ([0, 1, 2].map(|k| q[k] - p[k]), [0, 1, 2].map(|k| r[k] - p[k]));
     let n = [e[1] * g[2] - e[2] * g[1], e[2] * g[0] - e[0] * g[2], e[0] * g[1] - e[1] * g[0]];
+    // The facet's own extent, pulled into the footprint: the plane is not
+    // read farther out than the facet reaches.
+    let span = |k: usize, lo: f64, hi: f64| {
+        let (a, b) = (p[k].min(q[k]).min(r[k]), p[k].max(q[k]).max(r[k]));
+        [a.max(lo).min(hi), b.max(lo).min(hi)]
+    };
+    let (us, vs) = (span(0, f.lo.x, f.hi.x), span(1, f.lo.y, f.hi.y));
     // Offset from the cap of the facet's plane above footprint point `(u, v)`.
     let off = |u: f64, v: f64| p[2] - (n[0] * (u - p[0]) + n[1] * (v - p[1])) / n[2] - cap;
-    let corners = [off(f.lo.x, f.lo.y), off(f.hi.x, f.lo.y), off(f.hi.x, f.hi.y), off(f.lo.x, f.hi.y)];
-    let (lo, hi) = corners.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &c| (lo.min(c), hi.max(c)));
-    // Not `lo > band`: a plane with no finite depth compares false and stays `On`.
-    if lo > flush_band(f) || hi < -flush_band(f) {
+    let corners = [off(us[0], vs[0]), off(us[1], vs[0]), off(us[1], vs[1]), off(us[0], vs[1])];
+    let band = flush_band(f);
+    let clear = corners.iter().all(|&c| c > band) || corners.iter().all(|&c| c < -band);
+    if clear && corners.iter().all(|c| c.is_finite()) {
         Contact::Band
     } else {
         Contact::On

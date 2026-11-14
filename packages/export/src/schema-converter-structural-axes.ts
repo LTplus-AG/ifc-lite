@@ -6,7 +6,7 @@ import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { decodeRange } from './source-ref-bounds.js';
 const ref = (s: string): number | null => /^#\s*\d+$/.test(s.trim()) ? Number(s.trim().slice(1)) : null;
 
-function listItems(token: string): readonly string[] | null {
+export function listItems(token: string): readonly string[] | null {
   const start = skipStepTrivia(token, 0);
   if (start < 0 || token[start] !== '(') return null;
   // Reuse the shared record frame for a standalone tuple, including trailing

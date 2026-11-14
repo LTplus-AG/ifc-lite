@@ -7,12 +7,13 @@ use crate::schema_convert::{rename_type, schema_attribute_names};
 pub(crate) struct StructuralDiagnostics {
     losses: BTreeMap<String, usize>,
     pub(crate) axes: crate::schema_structural_axes::StructuralAxes,
+    pub(crate) links: crate::schema_structural_links::StructuralLinks,
 }
 
 impl StructuralDiagnostics {
     pub(crate) fn inspect(&mut self, entity: &str, args: &[String], from: &str, to: &str, axis_known: bool) {
         if crate::schema_structural::is_assignment_conversion(entity, from, to) {
-            self.record("IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the original relationship kind cannot round trip".into());
+            self.record("IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the relationship kind is not kept in the target file".into());
             return;
         }
         if !matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3"))
@@ -45,6 +46,13 @@ impl StructuralDiagnostics {
     }
 
     fn record(&mut self, message: String) { *self.losses.entry(message).or_default() += 1; }
+
+    /// IFC4 -> IFC2X3 link restoration (`StructuralLinks`), reported because the relationship class changes.
+    pub(crate) fn restored_link(&mut self, entity: &str, args: &[String]) -> Option<String> {
+        let attrs = self.links.link(entity, args)?;
+        self.record("IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link".into());
+        Some(attrs)
+    }
 
     pub(crate) fn warnings(&self) -> Vec<String> {
         self.losses.iter().map(|(message, count)| format!("{count} structural conversion record(s): {message} (#9668).")).collect()

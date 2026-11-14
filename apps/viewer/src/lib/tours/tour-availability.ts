@@ -18,18 +18,10 @@ import { toolOfAnchor } from './anchors';
 import { getTour } from './registry';
 import type { TourDefinition, TourId } from './types';
 
-/**
- * A tour with prerequisites offers the sample (`demoFulfil`, or the base
- * project) on its interstitial, and a step action or `skipLoadsDemo` loads
- * it from the card. The ribbon tour has none of these and needs no model.
- */
-function loadsSample(tour: TourDefinition): boolean {
-  return tour.prerequisites !== undefined || tour.steps.some((step) => step.action !== undefined || step.skipLoadsDemo);
-}
-
 export function isTourAvailable(tour: TourDefinition): boolean {
   if (!isFeatureEnabled('help.tours')) return false;
-  if (loadsSample(tour) && !isFeatureEnabled('files.samples')) return false;
+  // A tour with prerequisites offers the sample on its interstitial (`demoFulfil`).
+  if ((tour.prerequisites !== undefined || tour.loadsSample) && !isFeatureEnabled('files.samples')) return false;
   const panels = [tour.panel, ...tour.steps.map((step) => step.panel)];
   if (!panels.every((panel) => panel === undefined || isPanelAvailable(panel))) return false;
   return tour.steps.every((step) => {

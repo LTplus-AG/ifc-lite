@@ -14,7 +14,7 @@ Levels:
 
 - **SDK**: a headless script on a blank model through `bim.store` / `@ifc-lite/create`, checked against a geometry or data oracle read back from the exported, meshed IFC (`tests/modelling-parity/probes/sdk/`).
 - **UI**: the same capability in the Model workspace on the real GPU via `ifc-gpu-check` (`tests/modelling-parity/ui/`).
-- **Output**: the SDK probe's IFC4 export, and any IFC a UI result hands over, through `ifc-lite validate`, a reopen round trip and IfcOpenShell validate with express rules (`tests/modelling-parity/output/`). Drawing files a UI result hands over (SVG, PDF, DXF, for the documentation rows) get a **sanity check only**: they parse, are not empty and carry linework or pages. That is not a check that the drawing is correct.
+- **Output**: the SDK probe's IFC4 export, and any IFC a UI result hands over, through `ifc-lite validate`, a reopen round trip and IfcOpenShell validate with express rules (`tests/modelling-parity/output/`). Drawing files a UI result hands over (SVG, PDF, DXF, for the documentation rows) get parse, non-empty and linework/page checks. Sheet DXF additionally gets independent ezdxf checks for closed rectangular wall boundaries, named layers, dimension linework and text, metre units and the known 104 mm span at 1:50. Other drawing checks remain sanity checks, not geometric reference comparisons.
 - **Exercise**: the best result of the F1–F6 exercises that exercise the row (reported, not scored).
 
 ✅ pass · ◐ partial · ❌ fail or error · – skipped, not run, or not applicable. A row is **met** when every applicable level passes, **partial** when any level passes or partly passes, **missing** otherwise; `skip` never counts as a pass.
@@ -45,7 +45,7 @@ Levels:
 | Schedules and quantities (`schedules-quantities`) | Spaces and data | ✅ | ◐ | ✅ | ✅ | ◐ partial | **ui** partial: group and footer totals refresh to 11 m after editing: null; task "edit one wall length to 6 m and read live totals" failed: Wall Length is read-only in Model inspector; cannot edit it to 6 m. |
 | Plans, sections and elevations (`plans-sections-elevations`) | Documentation | – | ✅ | ✅ | – | ✅ met |  |
 | Dimensions and tags (`dimensions-tags`) | Documentation | – | ◐ | ✅ | – | ◐ partial | **ui** partial: a tag tool for elements (door, window, room tags): tag control found, but no entity-bound tag placement/export oracle has passed |
-| Sheets, PDF and DWG/DXF export (`sheets-pdf-dwg`) | Documentation | – | ◐ | ✅ | – | ◐ partial | **ui** partial: drawing exported as DWG: no DWG export exists |
+| Sheets, PDF and DXF export (`sheets-pdf-dwg`) | Documentation | – | ◐ | ✅ | – | ◐ partial | **Historical sheet evidence / oracle version unrecorded**: the selected UI/Output evidence does not record the current PDF/DXF oracle version. Recorded statuses are retained; this baseline does not certify the current sheet target.<br>**ui** partial: drawing exported as DWG: no DWG export exists |
 | Psets, classification and valid IFC4 (`psets-classification-valid-ifc4`) | Spaces and data | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | Large and tall model performance (`large-tall-model-performance`) | Scale | ✅ | ◐ | ✅ | ✅ | ◐ partial | **ui** partial: single-edit median below 100 ms including remesh: {"count":5,"medianMs":145,"p95Ms":360,"maxMs":360}; exclusive benchmark admission: DIAGNOSTIC: PC benchmark admission is disabled; no timing qualification under the shared GPU helper |
 
@@ -62,6 +62,7 @@ Levels:
 | Terrain (`terrain`) | Out of scope for this climb | – | – | – | ❌ missing |
 | MEP systems (`mep`) | Out of scope for this climb | – | – | – | ❌ missing |
 | Multi-user co-editing (`co-editing`) | Out of scope for this climb | – | – | – | ❌ missing |
+| DWG export (`dwg-export`) | Beyond table stakes | – | – | – | – not scored |
 
 ## Regenerating
 

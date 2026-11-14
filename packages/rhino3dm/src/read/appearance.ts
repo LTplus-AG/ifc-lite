@@ -42,30 +42,29 @@ export function readLook(api: ReadApi, attributes: RAttributes, layer: number): 
   };
 }
 
-/** True when a block member's colour depends on the instance placing it: "by parent", or by a material that is "by parent". */
-export function takesParentColor(look: Look): boolean {
-  return look.colorSource === 'parent' || (look.colorSource === 'material' && look.materialSource === 'parent');
-}
-
 /**
- * Resolve an object's colour. `parent` is the block instance placing it, or
- * null at top level, where "from parent" falls back to the layer.
+ * Resolve an object's colour and the material it is drawn with. `parent` is the block instance
+ * placing it, or null at top level, where every "from parent" source falls back to the layer.
  *
- * A material's transparency overrides an opaque colour, because Rhino shows
- * transparency from the material. That applies to a material the object or its
- * layer names, also under a colour taken from the parent, and never to an
- * inherited material: the parent's colour already carries it.
+ * This follows `ON_3dmObjectAttributes::ApplyParentalControl` (openNURBS 8.x): a "by parent"
+ * material is *overwritten* with the instance's, which leaves the member indistinguishable from
+ * one that owned that material. So an inherited material decides the member's colour under
+ * `ColorFromMaterial` and its transparency under every source, exactly as its own would. A "by
+ * parent" colour takes the instance's resolved colour. Every other source reads the member's own
+ * attributes, its own layer included: openNURBS never changes a member's layer index.
+ *
+ * A material's transparency overrides an opaque colour, because Rhino shows transparency from the
+ * material; a colour that already carries alpha keeps it.
  */
 export function resolveAppearance(look: Look, tables: AppearanceTables, parent: Appearance | null): Appearance {
   const layer = tables.layers[look.layer];
-  const inherited = look.materialSource === 'parent' && parent !== null;
-  const material = inherited ? parent.material
+  const material = look.materialSource === 'parent' && parent !== null ? parent.material
     : look.materialSource === 'object' ? look.material : layer?.material ?? -1;
   const shader = tables.materials[material];
-  let color = parent && takesParentColor(look) ? parent.color
+  let color = look.colorSource === 'parent' && parent !== null ? parent.color
     : look.colorSource === 'object' ? rgba(look.color)
     : look.colorSource === 'material' && shader ? rgba(shader.diffuse) : rgba(layer?.color ?? BLACK);
   // A new array: the parent's colour is shared with the parent.
-  if (!inherited && shader && shader.transparency > 0 && color[3] === 1) color = [color[0], color[1], color[2], 1 - shader.transparency];
+  if (shader && shader.transparency > 0 && color[3] === 1) color = [color[0], color[1], color[2], 1 - shader.transparency];
   return { color, material };
 }

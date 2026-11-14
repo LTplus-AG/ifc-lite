@@ -98,23 +98,29 @@ describe('instances', () => {
     expect(baked.meshes[0].color).not.toBe(baked.meshes[3].color);
     expect(instanced.instances[0].color).not.toBe(instanced.instances[1].color);
     for (const result of [instanced, baked]) {
-      expect(result.curves).toEqual([{ entity: 0, origin: [10, 0, 0], positions: new Float32Array([0, 0, 0, 1, 0, 0]), closed: false, color: [200 / 255, 0, 0, 1] }]);
-      expect(result.textDots).toEqual([{ entity: 0, position: [10, 0, 2], text: 'tag', color: [1 / 255, 1 / 255, 1 / 255, 1] }]);
+      expect(result.curves).toEqual([{ entity: 0, origin: [10, 0, 0], positions: new Float32Array([0, 0, 0, 1, 0, 0]), closed: false, color: [200 / 255, 0, 0, 1], hidden: false }]);
+      expect(result.textDots).toEqual([{ entity: 0, position: [10, 0, 2], text: 'tag', color: [1 / 255, 1 / 255, 1 / 255, 1], hidden: false }]);
     }
   });
 });
 
-test('a member whose colour is by a material that is by parent takes the instance colour, mesh and curve alike', async () => {
+test('a member whose colour is by a material that is by parent takes the instance MATERIAL, mesh and curve alike (#9987)', async () => {
+  // The instance's own colour and its material disagree, which is what settles the question:
+  // openNURBS overwrites the member's material with the instance's and leaves its colour source
+  // alone, so the member is blue from that material, not red from the instance's object colour.
   const build = (c: Craft) => {
     const glass = c.material('Glass', [0, 0, 255, 255], 0.5), green = c.layer('Green', { color: [0, 255, 0, 255] });
     const spec = { layer: green, colorSource: 'ColorFromMaterial', materialSource: 'MaterialFromParent' } as const;
     const block = c.block('Pane', [unit(c), new c.rhino.PolylineCurve([[0, 0, 0], [1, 0, 0]])], [spec, spec]);
-    c.addInstance(block, undefined, { layer: green, colorSource: 'ColorFromMaterial', material: glass, materialSource: 'MaterialFromObject' });
+    c.addInstance(block, undefined, { layer: green, color: [255, 0, 0, 255], colorSource: 'ColorFromObject', material: glass, materialSource: 'MaterialFromObject' });
   };
   const bytes = await craft(build), blue = [0, 0, 1, 0.5];
   const instanced = await readRhino3dm(bytes), baked = await readRhino3dm(bytes, { bakeInstances: true });
-  expect(instanced.definitions[0].meshes[0].color).toBeNull();
-  expect([instanced.instances[0].color, instanced.curves[0].color, baked.meshes[0].color, baked.curves[0].color]).toEqual([blue, blue, blue, blue]);
+  // No instance colour can carry a colour the instance's material decides, so the member is baked
+  // per placement: the definition keeps no mesh, and with no definition there is no instance record.
+  expect([instanced.definitions, instanced.instances]).toEqual([[], []]);
+  // Blue from the material, not [1, 0, 0, 0.5], which is the instance's own resolved colour.
+  expect([instanced.meshes[0].color, instanced.curves[0].color, baked.meshes[0].color, baked.curves[0].color]).toEqual([blue, blue, blue, blue]);
 });
 
 test('a "by parent" member with a transparent material of its own takes the instance colour and its own transparency', async () => {
@@ -242,6 +248,44 @@ describe('guards', () => {
     expect(cut.skipped).toEqual({ budget: 6 });
     expect(cut.warnings).toEqual(['Stopped at the budget of 450 triangles: 6 objects not drawn, or drawn in part.']);
     expect((await readRhino3dm(bytes, { maxTriangles: 1000 })).pointClouds).toHaveLength(10);
+  });
+
+  // Issue #10070: memory follows the vertex buffers too, and a mesh's triangles need not reference its vertices.
+  test.each([false, true])('a mesh is charged a third of a triangle per vertex when that is more than its triangles (bakeInstances %s)', async bakeInstances => {
+    // One triangle over 3,000 vertices is charged as 1,000 triangles, at top level and per placement.
+    const sparse = (c: Craft) => c.mesh(Array.from({ length: 3000 }, (_, i) => [i, i % 2, 0]), [[0, 1, 2]]);
+    // With a box beside it a placement costs 1,012, admitted whole in both modes: 3,035 leaves 1,011 for
+    // the third, which then draws neither mesh, though the sparse one alone would fit.
+    const bytes = await craft(c => {
+      const block = c.block('Sparse', [sparse(c), unit(c)]);
+      for (let i = 0; i < 3; i++) c.addInstance(block, translation(0, 0, i), { name: `placement ${i}` });
+      c.addMesh(sparse(c), { name: 'mesh' });
+    });
+    const cut = await readRhino3dm(bytes, { bakeInstances, maxTriangles: 3035 });
+    expect(cut.entities.map(e => e.name)).toEqual(['placement 0', 'placement 1']);
+    expect(drawnTriangles(cut)).toBe(26);
+    expect(cut.skipped).toEqual({ budget: 2 });
+    expect((await readRhino3dm(bytes, { bakeInstances, maxTriangles: 4036 })).entities).toHaveLength(4);
+    // A mesh whose triangles use every vertex is charged its triangles alone, as before.
+    expect(drawnTriangles(await readRhino3dm(await craft(tenBoxes), { bakeInstances, maxTriangles: 120 }))).toBe(120);
+  });
+
+  test('vertex charges add up exactly, so curves that fill the budget are all drawn', async () => {
+    // Issue #10070. Three 5-point curves cost 5/3 triangles each. In doubles 5 - 5/3 - 5/3 is 1.6666666666666663,
+    // below 5/3, so the third did not fit until the budget was counted in whole thirds.
+    const bytes = await craft(c => { for (let i = 0; i < 3; i++) c.addPolyline(Array.from({ length: 5 }, (_, k) => [k, i, 0])); });
+    const result = await readRhino3dm(bytes, { maxTriangles: 5 });
+    expect([result.curves.length, result.skipped]).toEqual([3, {}]);
+  });
+
+  test.each([false, true])('a block admitted whole draws every mesh when its cost fills the budget exactly (bakeInstances %s)', async bakeInstances => {
+    // Issue #10070. Three meshes of 1 triangle over 5 vertices cost 5/3 each: a block of 5, drawn mesh by mesh when baked.
+    const bytes = await craft(c => {
+      const sparse = () => c.mesh(Array.from({ length: 5 }, (_, k) => [k, k % 2, 0]), [[0, 1, 2]]);
+      c.addInstance(c.block('Sparse', [sparse(), sparse(), sparse()]));
+    });
+    const result = await readRhino3dm(bytes, { bakeInstances, maxTriangles: 5 });
+    expect([drawnTriangles(result), result.skipped]).toEqual([3, {}]);
   });
 
   const SCALE = [1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1e15, 0, 0, 0, 0, 1];
@@ -443,6 +487,63 @@ describe('guards', () => {
     expect(result.skipped).toEqual({ budget: 1 });
     expect(result.warnings).toEqual(['Stopped expanding blocks after 500,000 block references.']);
   });
+
+  // Issue #10021: a reference the walk skips took a `continue` above the limit check, so the budget
+  // was spent in the middle of a block's references and the rest of them were walked anyway.
+  test('the walk stops on the reference that spends the placement budget, skipped or drawn', async () => {
+    // 501 placements of 1,000 references to a definition that is not in the file: 501,501
+    // references, every one of them skipped, against a budget of 500,000.
+    const bytes = await craft(c => {
+      const block = c.block('Dangling', Array.from({ length: 1000 }, () => c.reference(PLACEHOLDER)));
+      for (let i = 0; i < 501; i++) c.addInstance(block, translation(i, 0, 0), { name: `holder ${i}` });
+      c.addMesh(unit(c), { name: 'bystander' });
+    });
+    const result = await readRhino3dm(bytes);
+    const walked = result.skipped['InstanceReference:missing-definition'];
+    // Under the limit, not level with it: the walk used to run to the end of the block it was in,
+    // 500 references past the budget, and only the next placement's own reference stopped it.
+    expect(walked).toBeLessThan(MAX_BLOCK_PLACEMENTS);
+    expect(walked).toBeGreaterThan(MAX_BLOCK_PLACEMENTS * 0.9);
+    expect(result.warnings).toEqual(['Stopped expanding blocks after 500,000 block references.']);
+    expect(result.entities.map(e => e.name)).toEqual(['bystander']);
+  });
+
+  // Issue #10021: the budget was charged for a whole block in the instance path but per mesh when
+  // baking, so the option decided whether a file could be read at all.
+  test.each([false, true])('a placement is drawn whole or left out whole, the same in both modes (bakeInstances %s)', async bakeInstances => {
+    const twoBoxes = (c: Craft) => c.block('Two', [unit(c), c.box([5, 0, 0], [6, 1, 1])]);
+    const alone = await craft(c => { c.addInstance(twoBoxes(c), undefined, { name: 'placed' }); });
+    // Twelve triangles a box: below 24 the placement does not fit, and nothing else is drawable.
+    for (const maxTriangles of [12, 23]) {
+      const error = await readRhino3dm(alone, { bakeInstances, maxTriangles }).catch(e => e);
+      expect(error).toBeInstanceOf(RhinoReadError);
+      expect(error.code).toBe('no-renderable-geometry');
+    }
+    const drawn = await readRhino3dm(alone, { bakeInstances, maxTriangles: 24 });
+    expect(drawnTriangles(drawn)).toBe(24);
+    expect([drawn.skipped, drawn.warnings]).toEqual([{}, []]);
+    // With something else to draw, the placement is left out whole and reported as the budget's.
+    const withBystander = await craft(c => {
+      c.addMesh(unit(c), { name: 'bystander' });
+      c.addInstance(twoBoxes(c), undefined, { name: 'placed' });
+    });
+    const partial = await readRhino3dm(withBystander, { bakeInstances, maxTriangles: 23 });
+    expect(partial.entities.map(e => e.name)).toEqual(['bystander']);
+    expect(drawnTriangles(partial)).toBe(12);
+    expect(partial.skipped).toEqual({ budget: 1 });
+    expect(partial.warnings).toEqual(['Stopped at the budget of 23 triangles: 1 object not drawn, or drawn in part.']);
+    // A placement the transform pushes out of range draws nothing and charges nothing, so it does
+    // not spend a budget its block would not have fitted in either.
+    const farAway = await craft(c => {
+      const far = c.block('Two far', [c.box([0, 0, 0], [1e24, 1e24, 1e24]), c.box([0, 0, 0], [1e24, 1e24, 1e24])]);
+      c.addInstance(far, SCALE, { name: 'far' });
+      c.addMesh(unit(c), { name: 'bystander' });
+    });
+    const spared = await readRhino3dm(farAway, { bakeInstances, maxTriangles: 12 });
+    expect(spared.entities.map(e => e.name)).toEqual(['bystander']);
+    expect(spared.skipped).toEqual({ 'transform:invalid': 2 });
+    expect(spared.warnings).toEqual([]);
+  });
 });
 
 describe('frame', () => {
@@ -508,6 +609,24 @@ describe('frame', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  // Issue #10021: the noise a tolerated last row holds grows through composition.
+  test.each([false, true])('a frame with last-row noise still places blocks a survey distance out (bakeInstances %s)', async bakeInstances => {
+    const bytes = await craft(c => {
+      c.string('IFC::Coordinates', 'local');
+      c.string('IFC::WorldFromModel', '1 0 0 0 0 1 0 0 0 0 1 0 0 1e-17 0 1');
+      c.addInstance(c.block('Box', [unit(c)]), translation(0, 1_000_000, 0), { name: 'placed' });
+      c.addMesh(unit(c), { name: 'bystander' });
+    });
+    const result = await readRhino3dm(bytes, { bakeInstances });
+    // 1e-17 against a translation of 1e6 puts the composed last entry 1e-11 from 1, past the
+    // tolerance: the frame was accepted and then every placement under it refused as a projection.
+    expect(result.document.frame).toBe('ifc-world-from-model');
+    expect(result.entities.map(e => e.name)).toEqual(['placed', 'bystander']);
+    expect(result.skipped).toEqual({});
+    close(entityBounds(result, 0).min, [0, 1_000_000, 0], 6);
+    close(entityBounds(result, 0).max, [1, 1_000_001, 1], 6);
+  });
+
   test('a rotating matrix turns positions and normals and keeps the origin in doubles', async () => {
     // A quarter turn about Z, then the survey offset.
     const result = await readRhino3dm(await craft(scene('local', '0 -1 0 2600000 1 0 0 1200000 0 0 1 400 0 0 0 1')));
@@ -525,7 +644,7 @@ describe('frame', () => {
 test('a definition nested by more blocks than a call takes arguments is still marked through all of them', () => {
   // Node 22 throws a RangeError from a spread of 125 000 arguments.
   const PARENTS = 200_000, nest = { part: { kind: 'instance', definition: 'leaf' }, look: {} } as Block['nested'][number];
-  const block = (name: string, nested: Block['nested']): Block => ({ name, linked: false, meshes: [], triangles: 0, reach: [0, 0, 0], others: [], dots: [], nested, drawsDots: false, drawsGeometry: false });
+  const block = (name: string, nested: Block['nested']): Block => ({ name, linked: false, meshes: [], cost: 0, reach: [0, 0, 0], others: [], dots: [], nested, drawsDots: false, drawsGeometry: false });
   const blocks = new Map([['leaf', block('leaf', [])]]);
   blocks.get('leaf')!.dots.push({} as Block['dots'][number]);
   for (let i = 0; i < PARENTS; i++) blocks.set(`parent ${i}`, block(`parent ${i}`, [nest]));

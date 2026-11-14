@@ -5604,6 +5604,8 @@
     "DXFExportOptions: interface",
     "DXFExporter: class",
     "DXFPolylineLayer: interface",
+    "DXFText: interface",
+    "DXFTextLayer: interface",
     "DXFUnderlayOptions: interface",
     "DashPattern: interface",
     "DoorOperationType: type",
@@ -6666,6 +6668,7 @@
     "GEOMETRY_PERF_FLAG_BINDINGS: const",
     "GeometryBatch: interface",
     "GeometryDiagnostics: interface",
+    "GeometryMeshingSettings: interface",
     "GeometryProcessingResult: interface",
     "GeometryProcessor: class",
     "GeometryProcessorOptions: interface",
@@ -6734,6 +6737,7 @@
     "WorkerCountInputs: interface",
     "WorkerCountResult: interface",
     "applySpatialPlacement: function",
+    "compileSharedWasmModule: function",
     "computeWorkerCount: function",
     "createPlatformBridge: function",
     "decodeInstancedShard: function",
@@ -9371,7 +9375,11 @@
   ],
   "@ifc-lite/parser/browser": [
     "WorkerParser: class",
-    "WorkerParserOptions: interface"
+    "WorkerParserOptions: interface",
+    "hasSpareParserWorker: function",
+    "isSpareParserWorkerWarming: function",
+    "prepareSpareParser: function",
+    "releaseSpareParserWorker: function"
   ],
   "@ifc-lite/parser/structural-glyphs": [
     "StructuralGlyph: type",

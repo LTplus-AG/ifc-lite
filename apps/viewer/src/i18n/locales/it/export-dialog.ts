@@ -81,6 +81,8 @@ export const exportDialogIt = {
   'exportDialog.landXml.schemaUnsupported': 'La mappatura LandXML produce solo STEP IFC4X3. Scegli IFC4X3 per convertire questo modello, oppure esporta il file LandXML originale.',
   'exportDialog.landXml.exported': 'Convertito in IFC4X3: {records}.',
   'exportDialog.notReadyError': 'Seleziona un modello e uno schema prima di esportare.',
+  'exportDialog.stepRecords.roomMoved': '“{model}” non può essere esportato come IFC STEP: non corrisponde più al file IFC da cui è stato condiviso, dopo modifiche agli elementi radice nella stanza o modifiche locali a elementi che quel file non contiene. Esportalo da solo come IFC5 (IFCX).',
+  'exportDialog.stepRecords.noRecords': '“{model}” non contiene record IFC STEP da esportare. Esportalo da solo come IFC5 (IFCX).',
   'exportDialog.landXml.imageryExported': 'Le immagini drappeggiate sono applicate come texture sul terreno e vengono fornite accanto all’IFC come {entry} in un .ifcZIP.',
   'exportDialog.landXml.imageryRefused': 'Le immagini drappeggiate non sono state esportate: {reason}',
   'exportDialog.landXml.imageryWillExport': 'Le immagini drappeggiate {name} ({crs}) verranno applicate come texture sul terreno e fornite accanto all’IFC in un .ifcZIP. Il {percent} % dei vertici del terreno si trova sull’immagine; oltre l’immagine, le applicazioni IFC estendono i pixel del bordo dell’immagine invece di mostrare il colore uniforme del terreno.',

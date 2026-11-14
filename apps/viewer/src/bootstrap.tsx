@@ -46,7 +46,7 @@ import './lib/placement-edit.boot';
 import './i18n/locales.boot';
 import { installWasmVersionSkewRecovery } from './lib/wasm-version-skew';
 import { installChunkVersionSkewRecovery } from './lib/chunk-version-skew';
-import { scheduleWasmPrewarm } from './lib/wasm-prewarm';
+import { scheduleWasmPrewarm, scheduleFastPath } from './lib/wasm-prewarm';
 import { initializeUserContent } from './lib/storage/content-boot';
 import type { FileSourceProviderFactory } from './services/sources/source-host';
 
@@ -99,6 +99,9 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // Pull the geometry engine binary down while the user is still deciding which
   // file to open, instead of on the click that opens it. See wasm-prewarm.ts.
   scheduleWasmPrewarm();
+  // Spare parser + small-file geometry workers, prepared at idle (lib/fast-path).
+  // The runtime is its own chunk and applies its own gates.
+  scheduleFastPath();
 
   // Decode the schema tables a first interaction reads once a load has
   // settled and the page is idle (lib/schema-tables/warm-schema-tables.ts).

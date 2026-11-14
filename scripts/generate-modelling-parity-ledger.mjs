@@ -88,6 +88,11 @@ function levelIcon(level) {
 
 function notes(cap, row) {
   const parts = [];
+  if (cap.id === 'sheets-pdf-dwg' && ['ui','output'].some(l =>
+    ['pass','partial','fail','error'].includes(row?.levels?.[l]?.status) && row.levels[l].source?.sheetDxfOracle !== 1)) {
+    parts.push('**Historical sheet evidence / oracle version unrecorded**: the selected UI/Output evidence does not record the current PDF/DXF oracle version. Recorded statuses are retained; this baseline does not certify the current sheet target.');
+  }
+  if (row?.status === 'met') return cell(parts.join('<br>'));
   for (const l of [...LEVELS, 'exercise']) {
     const level = row?.levels?.[l];
     if (l !== 'exercise' && cap.probes?.[l]?.applicable === false) continue;
@@ -121,7 +126,7 @@ function render() {
   lines.push('');
   lines.push('- **SDK**: a headless script on a blank model through `bim.store` / `@ifc-lite/create`, checked against a geometry or data oracle read back from the exported, meshed IFC (`tests/modelling-parity/probes/sdk/`).');
   lines.push('- **UI**: the same capability in the Model workspace on the real GPU via `ifc-gpu-check` (`tests/modelling-parity/ui/`).');
-  lines.push('- **Output**: the SDK probe\'s IFC4 export, and any IFC a UI result hands over, through `ifc-lite validate`, a reopen round trip and IfcOpenShell validate with express rules (`tests/modelling-parity/output/`). Drawing files a UI result hands over (SVG, PDF, DXF, for the documentation rows) get a **sanity check only**: they parse, are not empty and carry linework or pages. That is not a check that the drawing is correct.');
+  lines.push('- **Output**: the SDK probe\'s IFC4 export, and any IFC a UI result hands over, through `ifc-lite validate`, a reopen round trip and IfcOpenShell validate with express rules (`tests/modelling-parity/output/`). Drawing files a UI result hands over (SVG, PDF, DXF, for the documentation rows) get parse, non-empty and linework/page checks. Sheet DXF additionally gets independent ezdxf checks for closed rectangular wall boundaries, named layers, dimension linework and text, metre units and the known 104 mm span at 1:50. Other drawing checks remain sanity checks, not geometric reference comparisons.');
   lines.push('- **Exercise**: the best result of the F1–F6 exercises that exercise the row (reported, not scored).');
   lines.push('');
   lines.push('✅ pass · ◐ partial · ❌ fail or error · – skipped, not run, or not applicable. A row is **met** when every applicable level passes, **partial** when any level passes or partly passes, **missing** otherwise; `skip` never counts as a pass.');
@@ -132,7 +137,7 @@ function render() {
   lines.push('|---|---|---|---|---|---|---|---|');
   for (const cap of stakes) {
     const row = rowById.get(cap.id);
-    lines.push(`| ${cell(cap.title)} (\`${cap.id}\`) | ${cell(cap.group)} | ${LEVELS.map((l) => levelIcon(row.levels[l])).join(' | ')} | ${levelIcon(row.levels.exercise)} | ${ROW_ICON[row.status]} | ${row.status === 'met' ? '' : notes(cap, row)} |`);
+    lines.push(`| ${cell(cap.title)} (\`${cap.id}\`) | ${cell(cap.group)} | ${LEVELS.map((l) => levelIcon(row.levels[l])).join(' | ')} | ${levelIcon(row.levels.exercise)} | ${ROW_ICON[row.status]} | ${notes(cap, row)} |`);
   }
   lines.push('');
   if (extra.length) {

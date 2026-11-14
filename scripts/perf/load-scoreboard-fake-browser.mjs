@@ -18,7 +18,7 @@ import { join } from 'node:path';
 const ALLOWED = new Set(['shellState', 'readBootSignal']);
 
 /** Run `browserSample` against the fake; resolves to { result, hookCalls }. */
-export async function fakeBrowserSample(browserSample, { arm = 'quiet', hook = undefined, side = {}, warmOpens = 0, cpuTrace = false, instructions = false } = {}) {
+export async function fakeBrowserSample(browserSample, { arm = 'quiet', hook = undefined, side = {}, warmOpens = 0, cpuTrace = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'fake-browser-'));
   const saved = { hook: globalThis.__ifc_lite_boot_settled__, store: globalThis.__ifc_lite_viewer_store__, raf: globalThis.requestAnimationFrame, tasks: globalThis.__benchLongTasks };
   let hookCalls = 0;
@@ -42,7 +42,7 @@ export async function fakeBrowserSample(browserSample, { arm = 'quiet', hook = u
   writeFileSync(fixture.path, 'ISO-10303-21;');
   try {
     const result = await browserSample({ chromium: { launchPersistentContext: async () => context }, executablePath: null, baseUrl: 'http://fake',
-      setRoot: () => {}, side: { dist: dir, label: 's', ...side }, fixture, warmOpens, outDir: dir, tag: 't', pass: 'timing', arm, cpuTrace, instructions });
+      setRoot: () => {}, side: { dist: dir, label: 's', ...side }, fixture, warmOpens, outDir: dir, tag: 't', pass: 'timing', arm, cpuTrace });
     return { result, hookCalls };
   } finally {
     if (saved.hook === undefined) delete globalThis.__ifc_lite_boot_settled__; else globalThis.__ifc_lite_boot_settled__ = saved.hook;

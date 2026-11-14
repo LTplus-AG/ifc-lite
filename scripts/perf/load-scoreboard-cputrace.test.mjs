@@ -22,13 +22,43 @@ function fakeSession({ complete = { stream: 's' }, close = false, emit = true } 
 
 test('a trace that never completes, or whose session closes, ends the wait with an error instead of hanging', async () => {
   const never = await stopCpuTrace(fakeSession({ emit: false }), { completeTimeoutMs: 50 });
-  assert.match(never.cpuTime.error, /no Tracing.tracingComplete within 50 ms/);
+  assert.equal(never.cpuTime.error, 'Tracing.end / tracingComplete not settled within 50 ms');
   const closed = await stopCpuTrace(fakeSession({ close: true }), { completeTimeoutMs: 5000 });
-  assert.match(closed.cpuTime.error, /session closed/);
+  assert.equal(closed.cpuTime.error, 'CDP session closed before Tracing.tracingComplete');
 });
 
 test('a trace Chrome reports as lossy gives no CPU figure', async () => {
   const r = await stopCpuTrace(fakeSession({ complete: { stream: 's', dataLossOccurred: true } }), { completeTimeoutMs: 5000 });
   assert.equal(r.cpuTime.dataLoss, true);
   assert.equal(r.cpuTime.cpuMs, undefined);
+});
+
+test('session closes while Tracing.end is pending and that command rejects: cpuTime.error, and no unhandled rejection', async () => {
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const cdp = new EventEmitter();
+    cdp.detach = async () => {};
+    cdp.send = (method) => (method === 'Tracing.end'
+      ? new Promise((_, reject) => setTimeout(() => { cdp.emit('close'); reject(new Error('Target closed')); }, 5))
+      : Promise.resolve({}));
+    const r = await stopCpuTrace(cdp, { completeTimeoutMs: 5000 });
+    assert.equal(typeof r.cpuTime.error, 'string');
+    assert.equal(r.cpuTime.cpuMs, undefined);
+    await new Promise((resolve) => setTimeout(resolve, 50)); // let any stray rejection surface
+    assert.deepEqual(unhandled, []);
+  } finally { process.off('unhandledRejection', onUnhandled); }
+});
+
+test('Tracing.end that never settles: the wait returns after the timeout (fake timers)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const cdp = new EventEmitter();
+  cdp.detach = async () => {};
+  cdp.send = (method) => (method === 'Tracing.end' ? new Promise(() => {}) : Promise.resolve({}));
+  const pending = stopCpuTrace(cdp, { completeTimeoutMs: 120000 });
+  await Promise.resolve();
+  t.mock.timers.tick(120000);
+  const r = await pending;
+  assert.equal(r.cpuTime.error, 'Tracing.end / tracingComplete not settled within 120000 ms');
 });

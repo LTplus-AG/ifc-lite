@@ -42,17 +42,19 @@ const THREADS_KEPT = 12;
 export async function stopCpuTrace(cdp, { spans = null, file = null, completeTimeoutMs = 120000 } = {}) {
   let timer = null, onComplete = null, onClose = null;
   try {
-    // Settles on completion, on the session closing (Chrome gone) or after a bound, so a lost browser can never hang
-    // the sample; both listeners are removed afterwards (review #10138).
+    // ONE settled structure (review #10138): Tracing.end and the completion event are combined (Promise.all subscribes to
+    // both at once, so neither can reject unhandled), and that pair races a timeout, so a Tracing.end that never
+    // settles, a completion that never comes, or a session that closes all end the wait with an error.
     const complete = new Promise((resolve, reject) => {
       onComplete = resolve;
       onClose = () => reject(new Error('CDP session closed before Tracing.tracingComplete'));
       cdp.once('Tracing.tracingComplete', onComplete);
       cdp.once?.('close', onClose);
-      timer = setTimeout(() => reject(new Error(`no Tracing.tracingComplete within ${completeTimeoutMs} ms`)), completeTimeoutMs);
     });
-    await cdp.send('Tracing.end');
-    const { stream, dataLossOccurred } = await complete;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Tracing.end / tracingComplete not settled within ${completeTimeoutMs} ms`)), completeTimeoutMs);
+    });
+    const [, { stream, dataLossOccurred }] = await Promise.race([Promise.all([cdp.send('Tracing.end'), complete]), timeout]);
     const text = await readStream(cdp, stream);
     if (file) writeFileSync(file, gzipSync(text));
     // Chrome dropped events: the retained ones can look complete, so no CPU figure (the raw trace is kept).

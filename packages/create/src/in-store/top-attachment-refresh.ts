@@ -10,9 +10,14 @@ export function refreshTopAttachmentsInStore(target: EditTarget, moved: readonly
   const targets = new Set(moved.filter(id => /^(IFCROOF|IFCSLAB|IFCSLABSTANDARDCASE|IFCSLABELEMENTEDCASE)$/.test(target.editor.getEntityType?.(id)?.toUpperCase() ?? '')));
   if (!targets.size && !refit.length) return [];
   const dependents = new Set(refit);
-  const inventory = readStoreyInventory(target.dataStore, target.view), remesh: number[] = [];
+  const inventory = readStoreyInventory(target.dataStore, target.view, { lazyRelationships: targets.size === 0 }), remesh: number[] = [];
   for (const type of ['IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE', 'IFCCOLUMN', 'IFCBEAM', 'IFCMEMBER', 'IFCCURTAINWALL']) {
-    for (const id of inventory.reader.ids(type)) {
+    // A moved slab/roof can affect any attached product. With no moved
+    // target, only explicitly refit products can have changed their top.
+    // Keep the same effective-class/deletion checks and type ordering.
+    const ids = targets.size ? inventory.reader.ids(type) : [...dependents]
+      .filter(id => target.editor.getEntityType(id)?.toUpperCase() === type);
+    for (const id of ids) {
       const top = readTopAttachment(inventory, id);
       const targetId = top?.targetElementId;
       if (targetId === undefined || !targets.has(targetId) && !dependents.has(id)) continue;

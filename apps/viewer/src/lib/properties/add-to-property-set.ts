@@ -97,3 +97,21 @@ export function addToPropertySet(state: ViewerState, target: AddToSetTarget, pse
   if (ids.length > 1) state.tagMutationBatch(ids, newMutationBatchId());
   return { ok: true };
 }
+
+/**
+ * Override one type-inherited property on a single occurrence (#9296): the
+ * occurrence gets the value in a set of its own. A set it only inherits is
+ * created on it with the type's other properties carried forward, as an add
+ * to that set is; the type's set and its other occurrences are untouched.
+ */
+export function overrideInheritedProperty(
+  state: ViewerState,
+  target: { modelId: string; occurrenceId: number; typeId: number; typeName: string },
+  psetName: string,
+  property: AddedProperty,
+): AddToSetResult {
+  const { modelId, occurrenceId, typeId, typeName } = target;
+  const own = (state.mutationViews.get(modelId)?.getForEntity(occurrenceId) ?? []).map((pset) => pset.name);
+  const inheritedFrom = own.includes(psetName) ? null : { typeId, typeName, psetNames: [psetName] };
+  return addToPropertySet(state, { modelId, entityId: occurrenceId, existingPsets: [...own, psetName], inheritedFrom }, psetName, [property]);
+}

@@ -1,4 +1,8 @@
 {
+  "agentBridge.panel.duration": {
+    "value": "{ms} ms",
+    "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
+  },
   "align.mode.centre": {
     "value": "Centre",
     "reason": "French uses the same spelling « Centre » for this contextual label; reviewed against its feature meaning."
@@ -1863,6 +1867,10 @@
     "value": "Projection",
     "reason": "French uses the same spelling « Projection » for this contextual label; reviewed against its feature meaning."
   },
+  "section2d.snap.intersection": {
+    "value": "Intersection",
+    "reason": "French uses the same word, intersection, for the point where two drawn lines cross; it is the standard drafting term."
+  },
   "section2d.tools.distance": {
     "value": "Distance",
     "reason": "French uses the same spelling « Distance » for this contextual label; reviewed against its feature meaning."
@@ -2194,5 +2202,9 @@
   "zonesPanel.zoneRow.rotationLabel": {
     "value": "Rotation (°)",
     "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "viewportLighting.container.emptyState.formats.rhino": {
+    "value": "Rhino",
+    "reason": "Format family name on the welcome card: Rhino is the product name of the authoring tool behind .3dm and is not localized in any language."
   }
 }

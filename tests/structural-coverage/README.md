@@ -12,10 +12,11 @@ This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
 anything dropped below the baseline. It needs the corpus on disk. Before
 importing packages, the scorer runs
 `pnpm turbo build --filter=@ifc-lite/parser... --filter=@ifc-lite/create... --filter=@ifc-lite/export...`
-so Turbo rebuilds or restores outputs that match the source. A failed build is
-a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
+plus the viewer’s workspace dependencies (`--filter=@ifc-lite/viewer^...`) for the
+state-module probe, so Turbo rebuilds or restores outputs that match the source.
+A failed build is a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
-wasm toolchain. The probes run in about two seconds after building.
+wasm toolchain. The toggle probe also loads the viewer’s Node test adapter.
 
 CI runs the ratchet against the newest frozen `r<N>.json` (now `r5.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in
@@ -40,12 +41,12 @@ model, four checks, the CLI command, the docs page).
 |---|---|---|
 | fixture | `probes/fixture.mjs` | a corpus file declaring the row's schema carries the entity |
 | read | `probes/read.mjs` | `extractStructuralOnDemand` returns every corpus record with each own attribute's value equal to the file's, including member relationship attributes and their nested resources, physical links and reference-id arrays; a value the read model has no field for makes the row partial |
-| card | not written yet | the viewer properties card shows it |
-| render | `probes/render.mjs` (connections, actions); members and reactions not written yet | the support or load glyph list holds a glyph for every record with a restraint or a non-zero load |
+| card | `probes/card.mjs` | `structuralCardSections` (the data the viewer's structural properties card renders) shows every record, on its own card or, for a resource, on the card of a record referencing it, with each own attribute's value equal to the file's |
+| render | `probes/render.mjs` (connections, actions, reactions), `probes/render-members.mjs` (members) | the glyph list holds a glyph for every record with a restraint or a non-zero load or reaction; the geometry module's mesh of every member reaches each vertex of its topology at the file's coordinates (read by `lib/topology.mjs`) |
 | create | `probes/create.mjs` + `create-scene.mjs` | an in-store builder authors it in a blank model of the row's schema, and the STEP export declares that schema, re-parses and carries the given values |
 | edit, remove | `probes/edit.mjs`, `probes/remove.mjs` | edit/export/reparse structural values; remove exclusive subgraphs, preserve shared resources and validate references |
 | convert | `probes/convert.mjs` | it survives IFC4 -> IFC2X3 -> IFC4 (or IFC2X3 -> IFC4 -> IFC2X3) with the same values |
-| capability | `probes/capabilities.mjs` | per capability row; the link read and the docs page have probes, the rest are not written yet |
+| capability | `probes/capabilities.mjs` | per capability row; the link read, derive, analytical/physical toggle and docs page have probes |
 
 Not-applicable cells come only from `notApplicable()` in `catalogue.mjs`, by
 family or schema: only items and activities render, relationships have no card
@@ -65,6 +66,11 @@ outside derived slots, which select member a typed value is, enum values, and
 records of other entities. The registry is
 generated from the same EXPRESS as the product uses, so a codegen error there
 would be shared by the oracle and the converter.
+
+The derive probe compares the AxisVM roof truss against its authored analytical
+model within 1 mm (axis sine tolerance 0.001). Partial credit requires at least
+90% of reference/derived members to match axes, endpoints and physical links;
+below that floor it fails. Missing or extra connection records prevent a pass.
 
 ## Scoring and the ratchet
 

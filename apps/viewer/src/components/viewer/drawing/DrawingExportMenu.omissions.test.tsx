@@ -112,6 +112,33 @@ describe('drawing export notices (#5850)', () => {
     await waitFor(() => exports === 1, 'confirming exports exactly once');
   });
 
+  it('names dimensions drawn on another cut in the PDF and DXF notices', async () => {
+    const { ConfirmDialogHost } = await loadDialogs();
+    render(<>
+      <DrawingExportMenu {...props({ otherCutDimensionCount: 2 })} />
+      <ConfirmDialogHost />
+    </>);
+    openMenu();
+    selectItem('Download PDF');
+    const pdfDialog = document.body.querySelector('[role="dialog"]');
+    assert.ok(pdfDialog);
+    assert.match(pdfDialog.textContent ?? '', /dimensions drawn on another cut/);
+    assert.doesNotMatch(pdfDialog.textContent ?? '', /drawing markups/);
+    cleanup();
+
+    let exports = 0;
+    render(<>
+      <DrawingExportMenu {...props({ otherCutDimensionCount: 1, onExportDxf: () => { exports++; } })} />
+      <ConfirmDialogHost />
+    </>);
+    openMenu();
+    selectItem('Download DXF');
+    const dxfDialog = document.body.querySelector('[role="alertdialog"]');
+    assert.ok(dxfDialog, 'DXF asks before leaving out other-cut dimensions');
+    assert.match(dxfDialog.textContent ?? '', /leave out dimensions drawn on another cut/);
+    assert.equal(exports, 0);
+  });
+
   it('exports immediately when the DXF writer has nothing to omit', () => {
     let exports = 0;
     render(<DrawingExportMenu {...props({ visibleUnderlayCount: 1, onExportDxf: () => { exports++; } })} />);

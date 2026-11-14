@@ -59,7 +59,8 @@ export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 // Cold-start prewarm: start the shared wasm fetch+compile before a file is
 // opened so the download overlaps think time instead of blocking first
 // geometry. The host app decides when (idle / intent) and affordability.
-export { prewarmSharedWasmModule } from './wasm-shared-module.js';
+export { prewarmSharedWasmModule, compileSharedWasmModule } from './wasm-shared-module.js';
+export type { GeometryMeshingSettings } from './meshing-settings.js';
 // `__IFC_LITE_*` flag bindings the host reads; the viewer registry spreads these (#6962).
 export { GEOMETRY_PERF_FLAG_BINDINGS } from './perf-flags.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
@@ -102,6 +103,7 @@ import { CoordinateHandler } from './coordinate-handler.js';
 import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
 import { createLifetime } from '@ifc-lite/wasm-lifecycle';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
+import type { GeometryMeshingSettings } from './meshing-settings.js';
 import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
 import type { HbjsonStats } from './hbjson-stats.js';
 import type { LandXmlTerrainExport, LandXmlTerrainExportOptions } from './landxml-terrain-export.js';
@@ -764,23 +766,8 @@ export class GeometryProcessor {
       signal,
       hungJobTimeoutMs,
       stallPhaseHandle, trace,
-      // Issue #540: forward the merge-layers preference snapshotted
-      // at construction time. processParallel posts `set-merge-layers`
-      // to every spawned worker right after `init`.
-      mergeLayers: this.mergeLayers,
-      // Federated loads disable instancing (primary-only render path).
-      enableInstancing: this.enableInstancing,
-      // Issue #924: forward the geometry-hash tolerance the host enabled via
-      // `enableGeometryHashes()` so the worker pool fingerprints too.
-      geometryHashTolerance: this.bridge?.getComputeGeometryHashes() ?? null,
-      // Issue #976: forward the tessellation level so every pool worker's
-      // IfcAPI tessellates at the same density as the main-thread paths.
-      tessellationQuality: this.tessellationQuality,
-      // Issue #1286: forward the small-cut skip so every pool worker drops the
-      // same tiny detail cuts as the main-thread paths. Forwarded every run, so
-      // an export processor (default false) never inherits a prior load's skip.
-      skipSmallCuts: this.skipSmallCuts,
-      skipVoids: this.skipVoids,
+      // Every pool worker meshes with this processor's settings (#540, #924, #976, #1286; meshing-settings.ts).
+      ...this.meshingSettings(),
       wasmUrls,
       workerCountOverride,
     });
@@ -914,6 +901,18 @@ export class GeometryProcessor {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);
       }
     }
+  }
+
+  /** The settings this processor meshes with; see meshing-settings.ts. */
+  meshingSettings(): GeometryMeshingSettings {
+    return {
+      mergeLayers: this.mergeLayers,
+      enableInstancing: this.enableInstancing,
+      tessellationQuality: this.tessellationQuality,
+      skipSmallCuts: this.skipSmallCuts,
+      skipVoids: this.skipVoids,
+      geometryHashTolerance: this.bridge?.getComputeGeometryHashes() ?? null,
+    };
   }
 
   /**

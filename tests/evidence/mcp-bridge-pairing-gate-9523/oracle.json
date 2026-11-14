@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/mcp/src/bridge/tab-bridge.ts",
+  "mutation": "tests/evidence/mcp-bridge-pairing-gate-9523/behaviour.oracle.patch",
+  "test": "packages/mcp/src/bridge/bridge-robustness.test.ts",
+  "why": "#9523: after a wrong code every comparison must be deferred and hold its slot, bounding the guess rate."
+}

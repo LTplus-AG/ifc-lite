@@ -45,7 +45,7 @@ import { detectFormat, parseIfcx } from '@ifc-lite/ifcx';
 import { IfcParser } from '@ifc-lite/parser';
 
 const format = detectFormat(buffer);
-// 'ifcx' | 'ifc' | 'glb' | 'unknown'
+// 'ifcx' | 'ifc' | 'glb' | '3dm' | 'unknown'
 
 if (format === 'ifcx') {
   await parseIfcx(buffer);

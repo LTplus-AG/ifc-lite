@@ -1,0 +1,14 @@
+diff --git a/apps/viewer/src/lib/drawing2d-markup/drawing-markup-absorbed.ts b/apps/viewer/src/lib/drawing2d-markup/drawing-markup-absorbed.ts
+index 5c313aec9c..8f74aa8673 100644
+--- a/apps/viewer/src/lib/drawing2d-markup/drawing-markup-absorbed.ts
++++ b/apps/viewer/src/lib/drawing2d-markup/drawing-markup-absorbed.ts
+@@ -55,7 +55,7 @@ export function absorbEmbeddedMarkup(modelId: string, ids: Iterable<string>): vo
+     entry = { source: new WeakRef(source), ids: new Set() };
+     absorbed.set(modelId, entry);
+   }
+-  void ids;
++  for (const id of ids) entry.ids.add(id);
+ }
+-
++
+ /** The embedded annotations the session absorbed for `modelId`'s current source; empty when none. */

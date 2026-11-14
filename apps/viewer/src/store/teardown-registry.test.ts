@@ -95,14 +95,16 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',
   'sheetEnabled', 'sheetPanelVisible', // #6232: the Split tool's fields moved into the element.split command gesture
-  'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
-  'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
+  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D', // dimensions die with the session like the other markup
+  'titleBlockEditorVisible', 'typeViewMode',
+  'structuralViewMode', 'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
   'analysisRunGeneration', // A1/A2: a session reset ends every in-flight analysis run
 ];
 
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
+  'structuralViewMode',
   'serverPropertiesRuns', // #9538 model-owned optional property polling
   'pendingPresentationLayerReveal', // #9273 one-shot layer reveal belongs to the outgoing model
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
@@ -176,7 +178,7 @@ const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'polygonArea2DPoints', 'polygonArea2DResults',
   'selectedAnnotation2D', 'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys', 'selectionRevision',
-  'textAnnotation2DEditing', 'textAnnotations2D',
+  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D',
 ];
 
 /**
@@ -303,8 +305,9 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',
   'sheetEnabled', 'sheetPanelVisible', // #6232: the Split tool's fields moved into the element.split command gesture
-  'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
-  'typeVisibility', 'undoStacks', 'visibilityRevision', 'visualEnhancementsEnabled', 'zoneApportionment',
+  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D',
+  'titleBlockEditorVisible', 'typeViewMode',
+  'structuralViewMode', 'typeVisibility', 'undoStacks', 'visibilityRevision', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
   'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 owned by the draft slice
   'analysisRunGeneration', // A1/A2

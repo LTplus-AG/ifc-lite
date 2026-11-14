@@ -15,8 +15,13 @@
  * passed inline before.
  */
 
+import { fastGeometryEvents, type FastGeometryRun } from './fastPath.js';
+// The loader's other pre-geometry seams, re-exported so it imports one module for all of them.
+export { claimFastGeometry } from './fastPath.js';
+export { runPickStart } from './pickStart.js';
+export { ADAPTIVE_SYNC_THRESHOLD_BYTES } from './adaptiveGeometryOptions.js';
 import {
-  assertGeometryMemoryFits, DEFAULT_HUNG_JOB_TIMEOUT_MS, GeometryMemoryBudgetError,
+  assertGeometryMemoryFits, GeometryMemoryBudgetError,
   type GeometryProcessor, type StallPhaseHandle, type StreamingGeometryEvent,
 } from '@ifc-lite/geometry';
 import { WASM_SOURCE_BYTE_LIMIT } from '@ifc-lite/parser';
@@ -26,7 +31,8 @@ import { showLoadError } from '@/lib/analytics';
 import { formatLoadError } from '../../lib/load-error-message.js';
 import { settleUnownedLoadUi } from '../modelLoadCanceller.js';
 import { getGeomWorkerOverrideRequest } from '../../store/constants.js';
-import { getDynamicBatchConfig, USE_SERVER } from '../../utils/ifcConfig.js';
+import { USE_SERVER } from '../../utils/ifcConfig.js';
+import { adaptiveGeometryOptions } from './adaptiveGeometryOptions.js';
 import type { CachePlan } from '../cacheTier.js';
 
 type AdaptiveOptions = NonNullable<Parameters<GeometryProcessor['processAdaptive']>[1]>;
@@ -47,6 +53,8 @@ export interface GeometryEventRequest {
   modelId: string;
   /** The load's activity; a retained run installs `interrupt` so Cancel keeps what it published. */
   activity: { interrupt?: () => void; fail(message: string): string };
+  /** A small-file fast-path run started at the pick (fastPath.ts); its events replace the pool's. */
+  fastRun?: FastGeometryRun | null;
 }
 
 /** The kernel one load runs on, decided before any work. */
@@ -144,13 +152,15 @@ export function beginGeometryKernel(
 
 export function openGeometryEvents(kernel: GeometryKernelLoad, request: GeometryEventRequest): AsyncIterable<StreamingGeometryEvent> {
   if (kernel.events) return kernel.events(request);
-  return request.processor.processAdaptive(request.view, {
+  if (request.fastRun) return fastGeometryEvents(request.fastRun, () => adaptiveEvents(request), request.signal);
+  return adaptiveEvents(request);
+}
+
+function adaptiveEvents(request: GeometryEventRequest): AsyncIterable<StreamingGeometryEvent> {
+  return request.processor.processAdaptive(request.view, adaptiveGeometryOptions({
+    fileSizeMB: request.fileSizeMB,
     signal: request.signal,
-    hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS, // the loader reads skippedHungElements
     stallPhaseHandle: request.stallPhaseHandle,
-    sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
-    // Dynamic batches: small first, then large.
-    batchSize: getDynamicBatchConfig(request.fileSizeMB),
     existingSab: request.existingSab,
     // Federated adds share the anchor's RTC origin so all models sit in
     // one coordinate space (pixel-perfect alignment, no post-shift).
@@ -167,5 +177,5 @@ export function openGeometryEvents(kernel: GeometryKernelLoad, request: Geometry
     // count (disjoint deterministic element slices).
     workerCountOverride: getGeomWorkerOverrideRequest(),
     trace: request.trace,
-  });
+  }));
 }

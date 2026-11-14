@@ -58,6 +58,7 @@ export const viewportLightingEn = {
   // from `DROP_FORMAT_GROUPS` in services/supported-model-files.ts.
   'viewportLighting.container.emptyState.formats.ifc': 'IFC',
   'viewportLighting.container.emptyState.formats.gltf': 'glTF',
+  'viewportLighting.container.emptyState.formats.rhino': 'Rhino',
   'viewportLighting.container.emptyState.formats.pointClouds': 'Point clouds',
   'viewportLighting.container.emptyState.formats.terrain': 'Terrain',
   'viewportLighting.container.emptyState.formats.underlays': 'Underlays',
@@ -83,6 +84,12 @@ export const viewportLightingEn = {
   'viewportLighting.container.loadingCard.title': 'Loading {name}',
   'viewportLighting.container.loadingCard.titleFallback': 'Loading model…',
   'viewportLighting.container.loadingCard.cancel': 'Cancel',
+  'viewportLighting.container.loadingCard.phase.reading': 'Reading',
+  'viewportLighting.container.loadingCard.phase.parsing': 'Parsing',
+  'viewportLighting.container.loadingCard.phase.geometry': 'Geometry',
+  'viewportLighting.container.loadingCard.phase.metadata': 'Metadata',
+  'viewportLighting.container.loadingCard.phase.rendering': 'Rendering',
+
   // ── ViewportLoadErrorCard.tsx — one load-error card for every load
   // path: the picker, drop, ?model= autoload and federated adds (#5851) ──
   'viewportLighting.container.loadErrorCard.invalidInput': 'This file is invalid or is not in the expected format. Check the file type, or export a new copy and open it again.',

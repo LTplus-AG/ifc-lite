@@ -43,23 +43,28 @@
  */
 
 import {
-  SCHEMA_REGISTRY,
   getAllAttributesForEntity,
   getAttributeNamesAcrossSchemas,
   resolveEntityNameAlias,
 } from '@ifc-lite/parser';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { getEntitiesIfc2x3, getEntitiesIfc4Express, getEntitiesIfc4x3, type IfcEntityInfo } from '@ifc-lite/data';
+import { ifc4Registry } from './ifc4-registry.js';
 import { escapeStepString, resolveExpressBase } from './step-serialization.js';
 
 /** Union of every bundled schema, later schemas winning — mirrors the fallback
  *  inside `getAttributeNamesAcrossSchemas` so the two agree on indices. */
-const UNION_BY_UPPER: Map<string, IfcEntityInfo> = (() => {
-  const map = new Map<string, IfcEntityInfo>();
-  for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3]) {
-    for (const entity of list) map.set(entity.name.toUpperCase(), entity);
+//  Built on first use (the tables decode on first use too).
+let unionByUpper: Map<string, IfcEntityInfo> | undefined;
+function getUnionByUpper(): Map<string, IfcEntityInfo> {
+  if (unionByUpper === undefined) {
+    const map = new Map<string, IfcEntityInfo>();
+    for (const list of [getEntitiesIfc2x3(), getEntitiesIfc4Express(), getEntitiesIfc4x3()]) {
+      for (const entity of list) map.set(entity.name.toUpperCase(), entity);
+    }
+    unionByUpper = map;
   }
-  return map;
-})();
+  return unionByUpper;
+}
 
 /** The declared-type classification of one class's positional slots. */
 interface SlotTypes {
@@ -84,7 +89,7 @@ const slotTypeCache = new Map<string, SlotTypes>();
 function pinnedAncestorAttributeTypes(info: IfcEntityInfo): Map<string, string> | null {
   const seen = new Set<string>();
   let cursor: IfcEntityInfo | undefined = info.parent
-    ? UNION_BY_UPPER.get(info.parent.toUpperCase())
+    ? getUnionByUpper().get(info.parent.toUpperCase())
     : undefined;
   while (cursor && !seen.has(cursor.name)) {
     seen.add(cursor.name);
@@ -92,14 +97,14 @@ function pinnedAncestorAttributeTypes(info: IfcEntityInfo): Map<string, string> 
     if (attributes.length > 0) {
       return new Map(attributes.map((a) => [a.name, a.type]));
     }
-    cursor = cursor.parent ? UNION_BY_UPPER.get(cursor.parent.toUpperCase()) : undefined;
+    cursor = cursor.parent ? getUnionByUpper().get(cursor.parent.toUpperCase()) : undefined;
   }
   return null;
 }
 
 /** Classify one slot by its declared EXPRESS type. */
 function classify(declaredType: string, index: number, enums: Set<number>, strings: Set<number>): void {
-  if (SCHEMA_REGISTRY.enums[declaredType]) {
+  if (ifc4Registry().enums[declaredType]) {
     enums.add(index);
   } else if (resolveExpressBase(declaredType) === 'STRING') {
     strings.add(index);
@@ -130,7 +135,7 @@ function getSlotTypes(entityType: string): SlotTypes {
   if (pinned.length > 0) {
     for (let i = 0; i < pinned.length; i++) classify(pinned[i].type, i, enums, strings);
   } else {
-    const info = UNION_BY_UPPER.get(upper);
+    const info = getUnionByUpper().get(upper);
     if (info) {
       // Inherited slots: take the declared type from the nearest pinned
       // ancestor, matched BY NAME against this class's own attribute list.

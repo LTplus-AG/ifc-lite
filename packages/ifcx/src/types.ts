@@ -8,9 +8,10 @@
  */
 
 import {
-  ENTITIES_IFC2X3,
-  ENTITIES_IFC4_EXPRESS,
-  ENTITIES_IFC4X3,
+  eagerSchemaTable,
+  getEntitiesIfc2x3,
+  getEntitiesIfc4Express,
+  getEntitiesIfc4x3,
   IfcTypeEnumToString,
   PropertyValueType,
   SPATIAL_STRUCTURE_TYPE_ENUMS,
@@ -374,8 +375,16 @@ function elementUniverse(entities: readonly IfcEntityInfo[], root: string): Set<
  * (`IfcBuildingElementComponent`, `IfcReinforcingElement`), so keeping the
  * roots is also what makes it a consistent family-membership test.
  */
-export const BUILDING_ELEMENT_TYPES: Set<string> = new Set([
-  ...elementUniverse(ENTITIES_IFC2X3, 'IfcBuildingElement'),
-  ...elementUniverse(ENTITIES_IFC4_EXPRESS, 'IfcBuildingElement'),
-  ...elementUniverse(ENTITIES_IFC4X3, 'IfcBuiltElement'),
-]);
+//
+// Built when its chunk loads only where the constant is referenced
+// (`@__PURE__`; the `eagerSchemaTable` marker lets the viewer's build-tail
+// gate see where it was kept). Same contents, in the same order, as before.
+export const BUILDING_ELEMENT_TYPES: Set<string> = /* @__PURE__ */ eagerSchemaTable('ifc-lite-eager-table:BUILDING_ELEMENT_TYPES', buildBuildingElementTypes);
+
+function buildBuildingElementTypes(): Set<string> {
+  return new Set([
+    ...elementUniverse(getEntitiesIfc2x3(), 'IfcBuildingElement'),
+    ...elementUniverse(getEntitiesIfc4Express(), 'IfcBuildingElement'),
+    ...elementUniverse(getEntitiesIfc4x3(), 'IfcBuiltElement'),
+  ]);
+}

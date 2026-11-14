@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { EncodedRhinoScene, RhinoColor, RhinoObject, Write3dmOptions, Write3dmResult } from './types.js';
+import type { EncodedRhinoScene, RhinoColor, RhinoObject, RhinoSceneManifest, Write3dmOptions, Write3dmResult } from './types.js';
 import { readRhinoScene, RhinoSceneError } from './parse.js';
 import { sectionView } from './buffers.js';
 import { RHINO_3DM_VERSIONS } from './types.js';
-import { dispose, loadRhino, type Rhino } from './runtime.js';
+import { dispose, withCurrentRhino, type Rhino } from './runtime.js';
 
 type Mesh = InstanceType<Rhino['Mesh']>;
 type Attributes = InstanceType<Rhino['ObjectAttributes']>;
@@ -31,7 +31,13 @@ export async function writeRhino3dm(scene: EncodedRhinoScene, opts: Write3dmOpti
   // await, from onProgress, or from another thread. A fresh copy is aligned, so it is the only one.
   const source = scene.blob;
   const { manifest, blob } = readRhinoScene({ manifest: scene.manifest, blob: source instanceof Uint8Array ? new Uint8Array(source) : source });
-  const rhino = await loadRhino(opts.locateFile);
+  // Another caller's abort can discard the module this one was handed while it waited, so the
+  // write runs on one that is current, in the same step as the check: see `withCurrentRhino`.
+  return withCurrentRhino(opts.locateFile, rhino => encode(rhino, manifest, blob, version, opts));
+}
+
+/** Write the validated scene, from the first handle to the last with no await, on `rhino`. */
+function encode(rhino: Rhino, manifest: RhinoSceneManifest, blob: Uint8Array, version: number, opts: Write3dmOptions): Write3dmResult {
   // Upstream omits these two constructor signatures from its declarations.
   const Transform = rhino.Transform as unknown as new (diagonal: number) => InstanceType<Rhino['Transform']>;
   const InstanceReference = rhino.InstanceReference as unknown as new (id: string, transform: InstanceType<Rhino['Transform']>) => InstanceType<Rhino['InstanceReference']>;
@@ -102,6 +108,7 @@ export async function writeRhino3dm(scene: EncodedRhinoScene, opts: Write3dmOpti
       try {
         l.name = src.name; l.color = rgba(src.color); l.visible = src.visible; l.locked = src.locked;
         if (src.parent !== null) l.parentLayerId = layerIds[src.parent];
+        for (const [k, v] of src.userStrings) l.setUserString(k, v);
         const i = layers.add(l);
         layerIds.push(storedId(layers, i, 'layer', src.name));
         layerIndices.push(i);

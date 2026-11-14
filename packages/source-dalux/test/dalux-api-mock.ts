@@ -218,6 +218,8 @@ function findArea(project: DaluxMockProject | undefined, fileAreaId: string): Da
 
 /** The wire shape of one file row, as both the list and the single-file route send it. */
 function fileRow(area: DaluxMockFileArea, file: DaluxMockFile): Record<string, unknown> {
+  // The current file's metadata is its current revision's, as on Dalux.
+  const current = (file.revisions ?? []).find((candidate) => candidate.fileRevisionId === file.fileRevisionId);
   return {
     fileId: file.fileId,
     fileName: file.fileName,
@@ -228,7 +230,8 @@ function fileRow(area: DaluxMockFileArea, file: DaluxMockFile): Record<string, u
     fileType: file.fileType ?? null,
     fileSize: new TextEncoder().encode(file.content).byteLength,
     deleted: file.deleted ?? false,
-    lastModified: '2026-08-06T10:00:00Z',
+    ...(current?.version !== undefined ? { version: current.version } : {}),
+    lastModified: current?.lastModified ?? '2026-08-06T10:00:00Z',
     lastModifiedByUserId: 'user-1',
   };
 }

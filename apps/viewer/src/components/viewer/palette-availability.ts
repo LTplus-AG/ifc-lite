@@ -3,6 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { hasStructuralData, structuralGlyphsVisible } from '@/lib/visibility/structural-view';
+import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
+import { errorReportDestinationBlock } from '@/lib/error-reports/destination';
+import { hasInlineSearchHost } from './inline-search-focus';
 import { blankModelUnavailable } from '@/hooks/startBlankModel';
 import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { hasRetainedReportHost } from './retained-report-destination';
@@ -62,6 +66,11 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     if (!canMutate(s, s.session.modelId)) return blocked('commandPalette.availability.editor');
     if (s.selectedEntityId === null && s.selectedEntityIds.size === 0) return blocked('commandPalette.availability.selection');
   }
+  if (id === 'panel:error-report') {
+    const reason = errorReportDestinationBlock();
+    if (reason) return blocked(reason);
+  }
+  if (id === 'search:inline' && !hasInlineSearchHost()) return blocked('commandPalette.availability.host');
   if (id === 'file:new-blank') {
     if (!context.startBlank || context.fileHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
     const reason = blankModelUnavailable(s);
@@ -107,6 +116,8 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     if (hasRetainedShapeOnlyModel(s.models)) return blocked(RETAINED_SHAPE_ONLY_REASON);
   }
 
+  // A latched mode stays reachable, so the user can cycle back after removing the last analytical product.
+  if (id === 'vis:structural-view' && (s.structuralViewMode ?? 'both') === 'both' && !hasStructuralData(s)) return blocked('commandPalette.availability.structural');
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
   const opener = HOST_OPENERS.get(id);
   if (opener) {
@@ -178,6 +189,9 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     || ['view:stacked', 'view:exploded', 'view:solo'].includes(id)) {
     if (!loaded) return blocked('commandPalette.availability.model');
   }
+  if (id === 'vis:reset-filters' && !activeVisibilityReasons(s).some(reason => reason.resetPolicy === 'cleared')) {
+    return blocked('commandPalette.availability.noVisibilityFilters');
+  }
   if (id.startsWith('view:orientation:')) {
     if (!loaded) return blocked('commandPalette.availability.model');
     if (!s.cameraCallbacks.setPresetDirection) return blocked('commandPalette.availability.camera');
@@ -204,6 +218,8 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
 
 /** Canonical toggles with known state; do not infer state from command wording. */
 export function paletteToggleState(id: string, s: ViewerState): TranslationKey | undefined {
+  if (id === 'vis:structuralGlyphs') return structuralGlyphsVisible(s.typeVisibility,s.structuralViewMode)
+    ? 'commandPalette.state.on' : 'commandPalette.state.off';
   if (id === 'view:projection') return s.projectionMode === 'orthographic'
     ? 'shellChrome.mobileToolbar.orthographic' : 'shellChrome.mobileToolbar.perspective';
   if (id === 'pref:theme' && s.theme !== 'colorful') return s.theme === 'dark'
@@ -212,7 +228,7 @@ export function paletteToggleState(id: string, s: ViewerState): TranslationKey |
     'view:centreline': s.centrelineOverlayEnabled, 'view:follow-work': s.ribbonContextualTabs,
     'view:move-georef': s.cesiumPlacementEditMode,
     'tool:edit-mode': s.editEnabled, 'pref:tooltips': s.hoverTooltipsEnabled,
-    'pref:hover-outline': s.hoverHighlightEnabled,
+    'pref:hover-outline': s.hoverHighlightEnabled, 'pref:colorful': s.theme === 'colorful',
     'view:stacked': s.levelDisplayMode === 'stacked',
     'view:exploded': s.levelDisplayMode === 'exploded', 'view:solo': s.levelDisplayMode === 'solo',
     'schedule:toggle-animation': s.animationEnabled, 'view:world': s.cesiumEnabled,
@@ -232,7 +248,8 @@ export function canRunPaletteCommand(command: Command, onRefused?: (reason: Tran
 
 /** Narrow snapshot: unrelated viewport/store updates do not rebuild the table. */
 export function palettePrerequisites(s: ViewerState) {
-  return { loadError: s.error, loadRetry: s.lastLoadRetry, loadErrorSeq: s.loadErrorSeq,
+  return { hasResettableVisibilityFilters: activeVisibilityReasons(s).some(reason => reason.resetPolicy === 'cleared'),
+    loadError: s.error, loadRetry: s.lastLoadRetry, loadErrorSeq: s.loadErrorSeq,
     loadCanceller: s.activeLoadCanceller, streamCanceller: s.activeStreamCanceller,
     workspaceMode: s.workspaceMode, canCollabEdit: s.canCollabEdit,
     centreline: s.centrelineOverlayEnabled, followWork: s.ribbonContextualTabs,
@@ -245,5 +262,5 @@ export function palettePrerequisites(s: ViewerState) {
     session: s.session, mutationViews: s.mutationViews, schedule: s.scheduleData,
     projection: s.projectionMode, theme: s.theme, levels: s.levelDisplayMode,
     edit: s.editEnabled, tips: s.hoverTooltipsEnabled, animation: s.animationEnabled,
-    cesium: s.cesiumEnabled, visibility: s.typeVisibility };
+    cesium: s.cesiumEnabled, visibility: s.typeVisibility, structuralViewMode: s.structuralViewMode };
 }

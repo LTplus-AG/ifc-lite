@@ -7,6 +7,10 @@
     "value": "{title} ({subject}): {status}",
     "reason": "activityTray.announceSubject: Announcement joins the supplied title, optional subject and already resolved status; punctuation adds no English wording."
   },
+  "agentBridge.panel.duration": {
+    "value": "{ms} ms",
+    "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
+  },
   "alignmentSection.axisFallback": {
     "value": "IfcAlignment #{id}",
     "reason": "alignmentSection.axisFallback: IfcAlignment is the exact IFC entity name; the hash introduces the supplied entity identifier."
@@ -1623,6 +1627,10 @@
     "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 26+",
     "reason": "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers: Browser product names and minimum version numbers identify supported products; no descriptive English text."
   },
+  "viewportLighting.container.loadingCard.phase.rendering": {
+    "value": "Rendering",
+    "reason": "Rendering is the standard Italian technical term for the rendering phase."
+  },
   "viewportLighting.overlays.mobileNav.homeTooltip": {
     "value": "Home (H)",
     "reason": "viewportLighting.overlays.mobileNav.homeTooltip: Home is the established Italian UI navigation label; the H shortcut, when present, remains the physical key."
@@ -1718,5 +1726,9 @@
   "zonesPanel.zoneRow.baseYLabel": {
     "value": "Base (Y)",
     "reason": "zonesPanel.zoneRow.baseYLabel: Base is also the Italian noun for the base position or comparison baseline; any axis notation is unchanged."
+  },
+  "viewportLighting.container.emptyState.formats.rhino": {
+    "value": "Rhino",
+    "reason": "Format family name on the welcome card: Rhino is the product name of the authoring tool behind .3dm and is not localized in any language."
   }
 }

@@ -143,6 +143,8 @@ export const KEY_COMMANDS = [
   { id: 'model.pasteInPlace', labelKey: 'commands.model.pasteInPlace', category: 'editing', when: 'workspace.model', keys: [k('v', { mod: true, shift: true })] },
   { id: 'model.array', labelKey: 'commands.model.array', category: 'tools', when: 'workspace.model', keys: [k('a', { shift: true })] },
   { id: 'model.move', labelKey: 'commands.model.move', category: 'tools', when: 'workspace.model', keys: [k('m', { shift: true })] },
+  { id: 'model.mirror', labelKey: 'commands.model.mirror', category: 'tools', when: 'workspace.model', keys: [k('i', { shift: true })] },
+  { id: 'model.offset', labelKey: 'commands.model.offset', category: 'tools', when: 'workspace.model', keys: [k('f', { shift: true })] },
   { id: 'model.rotate', labelKey: 'commands.model.rotate', category: 'tools', when: 'workspace.model', keys: [k('q', { shift: true })] },
   { id: 'command.element.rotate.pivot', labelKey: 'commands.command.rotatePivot', category: 'tools', when: 'command.element.rotate', keys: [k('p')] },
   { id: 'model.stair', labelKey: 'commands.model.stair', category: 'tools', when: 'workspace.model', keys: [k('t', { shift: true })] },

@@ -23,8 +23,9 @@
  *      and a second export of the reopened model reopens with the same census;
  *   3. IfcOpenShell: `tools/ifcopenshell_reference/validate_export.py <file>`
  *      (express rules) reports no issues.
- * An SVG, PDF or DXF file gets a SANITY check only (output/artifacts.mjs: it
- * parses, is not empty and carries linework or pages), not a validation.
+ * An SVG, PDF or DXF file gets a sanity check (output/artifacts.mjs: it
+ * parses, is not empty and carries linework or pages). Sheet DXF additionally
+ * gets independent ezdxf wall, layer, dimension, unit and scale checks.
  * A row's `requires` lists the kinds it needs (default: an IFC); a missing kind
  * is a failed check. All checks pass -> pass; some -> partial; none -> fail.
  * When IfcOpenShell cannot be imported its check is SKIPPED, capping the row at
@@ -37,6 +38,7 @@
  * PATH defaults to $PARITY_PYTHON, then ~/modelling-parity/venv/bin/python, then python3.
  */
 
+import { checkSheetDxf } from './sheet-dxf.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -153,7 +155,13 @@ function judge(cap, set, work, tag) {
       // actually contains (its own census): a UI storeys export with no walls is not a defect.
       const keyTypes = kind !== 'ifc' ? [] : set.source === 'sdk' ? cap.probes.output.keyTypes : existsSync(file) ? fileClasses(readFileSync(file, 'utf8')) : [];
       if (kind === 'ifc') checks.push(...ifcChecks(file, set.census, keyTypes, work, `${tag}${i ? `-${i}` : ''}`).map((c) => ({ ...c, file: rel(file) })));
-      else checks.push({ ...checkDrawing(kind, file), file: rel(file) });
+      else {
+        checks.push({ ...checkDrawing(kind, file), file: rel(file) });
+        if (cap.id === 'sheets-pdf-dwg' && kind === 'dxf' && existsSync(file)) {
+          const result = checkSheetDxf(readFileSync(file), PYTHON);
+          checks.push(...result.checks.map(c => ({ name: c.name, status: c.ok ? 'pass' : 'fail', detail: JSON.stringify(result), file: rel(file) })));
+        }
+      }
     }
   }
   return checks;
@@ -184,7 +192,7 @@ async function main() {
     const sdkFile = join(OUT, 'sdk', `${cap.id}.json`);
     const sdk = existsSync(sdkFile) ? { ...JSON.parse(readFileSync(sdkFile, 'utf8')), file: rel(sdkFile) } : null;
     const sets = artifactSets([...(sdk ? [sdk] : []), ...uiResults], cap.id, { root: ROOT });
-    const base = { schema: 'ifclite-parity-result/1', capability: cap.id, probe: 'output', source, runner: `node tests/modelling-parity/output/run.mjs --only ${cap.id}` };
+    const base = { schema: 'ifclite-parity-result/1', capability: cap.id, probe: 'output', source: cap.id === 'sheets-pdf-dwg' ? { ...source, sheetDxfOracle: 1 } : source, runner: `node tests/modelling-parity/output/run.mjs --only ${cap.id}` };
     const results = [];
     if (!sets.length) {
       results.push({ ...base, id: `output.${cap.id}`, status: 'skip', reason: skipReason(cap, sdk), metrics: {}, evidence: [] });

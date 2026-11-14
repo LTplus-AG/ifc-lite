@@ -5,7 +5,7 @@
 /** #9013: storey authoring over JSON-RPC, real Bonsai source, refusals and one Undo per write. */
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { readStoreyInventory } from '@ifc-lite/create';
 import { fullScope, readOnlyScope } from '../auth/scope.js';
@@ -81,4 +81,85 @@ describe('#9013 storey tools', () => {
     expect((await call('storey_plan_edit', { storey_express_id: 42, kind: 'elevation', value: 1 })).isError).not.toBe(true);
     expect((await call('storey_add', { Name: 'Nope', Elevation: 3 })).isError).toBe(true);
   });
+});
+
+it('#9352 storey_plan_add is read-only and returns attachment bindings', async () => {
+  const { registry, call } = await session(true);
+  const model = registry.get('alpha')!;
+  const S = model.bim.store;
+  const home = S.listStoreyLevels('alpha')[0].expressId;
+  const upper = S.addStorey('alpha', { Name: 'Upper', Elevation: 6 });
+  const wall = S.addWall('alpha', home, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 6, TopConstraint: { kind: 'storeyAbove' } });
+  const view = model.backend.getMutationView()!;
+  const before = structuredClone({ entities: view.getNewEntities(), mutations: view.getMutations() });
+  const plan = await call('storey_plan_add', { Name: 'Middle', Elevation: 3, reference_storey_express_id: home });
+  expect(plan.isError).not.toBe(true);
+  expect(plan.structuredContent).toMatchObject({ refusal: null, bindings: [expect.objectContaining({ elementId: wall.expressId, previousTargetId: upper.expressId, to: 3 })] });
+  expect({ entities: view.getNewEntities(), mutations: view.getMutations() }).toEqual(before);
+});
+
+it('#9352 set_top_constraint fits a top and get_entity reads its persisted target', async () => {
+  const { registry, call } = await session();
+  const model = registry.get('alpha')!, S = model.bim.store;
+  const home = S.listStoreyLevels('alpha')[0].expressId;
+  const upper = S.addStorey('alpha', { Name: 'Upper', Elevation: 3 });
+  const wall = S.addWall('alpha', home, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 2.5, TopConstraint: { kind: 'fixed' } });
+  expect((await call('set_top_constraint', { express_id: wall.expressId, constraint: { kind: 'storeyAbove' } })).isError).not.toBe(true);
+  const result = await call('get_entity', { express_id: wall.expressId, include: ['properties'] });
+  expect(result.structuredContent!.properties).toEqual(expect.arrayContaining([expect.objectContaining({
+    name: 'IfcLite_StoreyAttachment', properties: expect.arrayContaining([expect.objectContaining({ name: 'TopConstraint', value: model.bim.entity(upper)!.globalId })]),
+  })]));
+  const exported = model.bim.export.ifc();
+  const bytes = typeof exported === 'string' ? new TextEncoder().encode(exported) : exported;
+  const reopened = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(extractPropertiesOnDemand(reopened, wall.expressId).find(p => p.name === 'IfcLite_StoreyAttachment')?.properties
+    .find(p => p.name === 'TopConstraint')?.value).toBe(model.bim.entity(upper)!.globalId);
+});
+
+it('#9352 copy_to_storeys returns each floor and keeps copy containment', async () => {
+  const { registry, call } = await session();
+  const model = registry.get('alpha')!, S = model.bim.store;
+  const home = S.listStoreyLevels('alpha')[0].expressId;
+  const upper = S.addStorey('alpha', { Name: 'Upper', Elevation: 3 });
+  const wall = S.addWall('alpha', home, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 3 });
+  const result = await call('copy_to_storeys', { express_ids: [wall.expressId], storey_express_ids: [upper.expressId] });
+  expect(result.isError).not.toBe(true);
+  const floors = result.structuredContent!.storeys as Array<{ storeyId: number; entities: Array<{ expressId: number }> }>;
+  expect(floors).toHaveLength(1);
+  expect(floors[0].storeyId).toBe(upper.expressId);
+  expect(floors[0].entities).toHaveLength(1);
+  const exported = model.bim.export.ifc();
+  const bytes = typeof exported === 'string' ? new TextEncoder().encode(exported) : exported;
+  const reopened = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(reopened.spatialHierarchy?.elementToStorey.get(floors[0].entities[0].expressId)).toBe(upper.expressId);
+});
+
+it.each([
+  ['set_top_constraint', { express_id: 1222, constraint: { kind: 'fixed' } }],
+  ['copy_to_storeys', { express_ids: [1222], storey_express_ids: [42] }],
+] as const)('#9352 %s refuses a write through a read-only transport', async (name, input) => {
+  const { registry, call } = await session(true);
+  const model = registry.get('alpha')!;
+  model.backend.ensureEditor();
+  const view = model.backend.getMutationView()!;
+  const before = structuredClone({ entities: view.getNewEntities(), mutations: view.getMutations() });
+  const result = await call(name, input);
+  expect(result.isError).toBe(true);
+  expect(result.content).toEqual(expect.arrayContaining([expect.objectContaining({ text: expect.stringMatching(/scope|permission|read.only/i) })]));
+  expect({ entities: view.getNewEntities(), mutations: view.getMutations() }).toEqual(before);
+});
+
+
+it('#9352 the add plan accepts the same relative request as storey_add', async () => {
+  const { registry, call } = await session();
+  const S = registry.get('alpha')!.bim.store;
+  const before = S.listStoreyLevels('alpha');
+  const request = { reference_storey_express_id: 42, side: 'below' };
+  const plan = await call('storey_plan_add', request);
+  expect(plan.isError).not.toBe(true);
+  expect(plan.structuredContent).toMatchObject({ refusal: null });
+  expect(S.listStoreyLevels('alpha')).toEqual(before);
+  const added = await call('storey_add', request);
+  expect(added.isError).not.toBe(true);
+  expect(added.structuredContent).toMatchObject({ Name: 'Level 2', Elevation: -3 });
 });

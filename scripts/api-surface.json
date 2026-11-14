@@ -8117,7 +8117,6 @@
     "DEFAULT_AXIS_DRIFT_TOLERANCE: const",
     "DEFAULT_BLOCK_SIZE: const",
     "DEFAULT_CACHE_BYTES: const",
-    "DEFAULT_STALE_TOLERANCE: const",
     "DERIVATION_AXIS_PROPERTIES: const",
     "DERIVATION_ELEMENT_PROPERTY: const",
     "DivergentAttribute: interface",

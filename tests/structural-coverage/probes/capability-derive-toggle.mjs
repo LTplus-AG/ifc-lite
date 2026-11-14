@@ -115,18 +115,27 @@ export function physicalOnly(file) {
       (record,id)=>removed.has(Number(id)) ? '' : record);
 }
 
-/** Derive an analytical model into the physical-only file and export it as STEP text. */
-export async function deriveInto(ctx,file) {
-    // Apply's normal no-existing-model path.
-    const store = await parseStore(ctx.pkgs, physicalOnly(file));
+/** STEP text parsed into an editable session; `text()` exports it with its edits. */
+export async function editSession(ctx,input,schema) {
+    const store = await parseStore(ctx.pkgs, input);
     const view = new ctx.pkgs.mutations.MutablePropertyView(null,'probe');
     view.setOnDemandExtractor((id)=>ctx.pkgs.parser.extractPropertiesOnDemand(store,id));
     const editor = new ctx.pkgs.mutations.StoreEditor(store,view);
+    const text = () => {
+      const {content} = new ctx.pkgs.exporter.StepExporter(store,view).export({schema,applyMutations:true});
+      return typeof content === 'string' ? content : new TextDecoder().decode(content);
+    };
+    return {store,view,editor,text};
+}
+
+/** Derive an analytical model into the physical-only file and export it as STEP text. */
+export async function deriveInto(ctx,file) {
+    // Apply's normal no-existing-model path.
+    const {store,editor,text} = await editSession(ctx,physicalOnly(file),file.schema);
     const facts = ctx.pkgs.create.readStructuralDerivationFacts(store,editor);
     const plan = ctx.pkgs.create.planStructuralDerivation(facts);
     ctx.pkgs.create.applyStructuralDerivation(editor,store,plan);
-    const {content} = new ctx.pkgs.exporter.StepExporter(store,editor.getMutationView()).export({schema:file.schema,applyMutations:true});
-    return typeof content === 'string' ? content : new TextDecoder().decode(content);
+    return text();
 }
 
 export async function measureDerivation(ctx,file) {

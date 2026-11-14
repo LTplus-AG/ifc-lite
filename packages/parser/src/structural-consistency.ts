@@ -32,8 +32,8 @@
  * - `structural-stale-item`: a derived curve member whose physical element's
  *   line moved more than `staleTolerance` since the derivation wrote it. Derive
  *   records the element's GlobalId and its line, by the same rule as
- *   `physicalAxes`, in the member's `IfcLite_StructuralDerivation` property
- *   set; this rule compares that record with the element's line now. Unlike
+ *   `physicalAxes`, on the member (`derivationRecords`); this rule compares
+ *   that record with the element's line now. Unlike
  *   axis drift, it compares the physical element with itself, so a move along
  *   its own axis is reported and the member's own position is not read. Runs
  *   only when `geometry` is given, for members with a record whose element is
@@ -65,14 +65,6 @@ export interface StructuralDerivationRecord {
   axis: StructuralLine;
 }
 
-/** The property set derive writes on each curve member it creates, and its properties. */
-export const STRUCTURAL_DERIVATION_PSET = 'IfcLite_StructuralDerivation';
-export const DERIVATION_ELEMENT_PROPERTY = 'PhysicalElement';
-/** The element's line in IFC world metres: start x, y, z, then end x, y, z. */
-export const DERIVATION_AXIS_PROPERTIES = [
-  'PhysicalAxisStartX', 'PhysicalAxisStartY', 'PhysicalAxisStartZ',
-  'PhysicalAxisEndX', 'PhysicalAxisEndY', 'PhysicalAxisEndZ',
-] as const;
 
 /** One physical element as the checks see it. */
 export interface PhysicalElementFact {

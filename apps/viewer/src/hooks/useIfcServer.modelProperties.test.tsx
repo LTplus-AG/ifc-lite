@@ -773,7 +773,10 @@ it('clamped hydration loads properties while retained creations stay unpublishab
     useViewerStore.getState().updateModel('server', { maxExpressId: 300, ifcDataStore: serverStoreAt(2_000_000) });
     const view = getOrCreateMutationView(useViewerStore, 'server')!;
     assert.equal(view.createEntity('IfcMaterial', ['Retained']).expressId, 2_000_001);
-    useViewerStore.getState().updateModel('server', { ifcDataStore: null });
+    useViewerStore.getState().clearAllModels();
+    const idOffset = useViewerStore.getState().registerModelOffset('server', 300);
+    useViewerStore.getState().addModel({ ...fixtureModel('server'), sourceFile: file, ifcDataStore: null,
+      maxExpressId: 300, idOffset, loadState: 'complete' });
     federationRegistry.registerModel('later', 10);
     const hydrated = serverStoreAt(2_000_000);
     await act(async () => {

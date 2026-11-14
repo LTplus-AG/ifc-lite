@@ -62,10 +62,14 @@ value members, and a bare value only in a defined-type, enum or primitive slot.
 A file that fails gets no credit for the row. Not checked yet, so a convert pass
 can still overstate (tracked on #9668): aggregate shape and bounds (a
 scalar in a LIST slot), the kind of a bare value (an enum in a REAL slot), `*`
-outside derived slots, which select member a typed value is, enum values, and
-records of other entities. The registry is
+outside derived slots, which select member a typed value is, enum values
+(checked only where the source left a required slot empty), and records of
+other entities. The registry is
 generated from the same EXPRESS as the product uses, so a codegen error there
 would be shared by the oracle and the converter.
+
+Where the IFC schemas force a value or a class on the round trip, the probe
+expects that instead of the source value (cited in `probes/convert.mjs`).
 
 The derive probe compares the AxisVM roof truss against its authored analytical
 model within 1 mm (axis sine tolerance 0.001). Partial credit requires at least

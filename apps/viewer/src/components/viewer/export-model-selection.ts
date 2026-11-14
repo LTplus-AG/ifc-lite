@@ -6,7 +6,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { exportableModels } from '@/lib/export/capture-export';
-import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
+import { stepRecordsUnavailableReason } from '@/lib/export/step-records-reason';
 
 export interface ExportModelListItem {
   id: string;
@@ -100,40 +100,12 @@ export function canWriteIfcFromStores(
 export type StepSkipReason = 'noRecords' | 'noData';
 
 /**
- * The dialog's copy of the "tabular means no STEP records" rule: the merged
- * gate above, the merged export's pre-export note and result message
- * (`export-merge-inputs.ts`), and the single-model hint all derive from it.
- * The export itself refuses through `stepExportSource` in
- * `lib/export/step-records.ts` (#10099), which checks the same rule on its
- * own, so a new non-STEP source kind is an edit in both places.
- *
- * Tabular is the reason to LOOK for records, not the refusal itself. A shared
- * room's store is tabular — the room is reconstructed from IFCX — and yet it
- * can carry a registered portable STEP source holding the very records a STEP
- * export needs; `exportModelStep` and `roomMergeInput` both reach for it
- * through `roomStepExportSource`. Asking for the source kind alone refused
- * every shared room, single and merged, which is what main exported.
- *
- * `roomSymbolicSource` asks whether a portable source is REGISTERED, not
- * whether `canExportRoomAsStep` currently accepts it. That is a choice, not a
- * limitation — `canExportRoomAsStep` answers without a `MutablePropertyView`
- * too. A room whose root set has moved past its source is deliberately let
- * through here and refused further down, where the merged path throws
- * `roomMergeInput`'s named "export it separately" rather than dropping the
- * model from the file without a word.
- *
- * It is also the cheap import: `room-symbolic-source.ts` imports only types,
- * while `room-step-export.ts` pulls `@ifc-lite/export`, `@ifc-lite/mutations`
- * and the placement-edit boot module onto the command-palette path.
- *
- * The single path for that same room is refused by `exportModelStep` when the
- * room has moved past its source (`StepRecordsUnavailableError('roomMoved')`,
- * #10099), so a reconstructed room no longer writes the reader's bytes.
+ * What the dialog and a merged export say about a model with no STEP records.
+ * The rule itself is `stepRecordsUnavailableReason`, shared with the writer.
  */
 export function stepSkipReason(store: IfcDataStore | null | undefined): StepSkipReason | null {
   if (!store) return 'noData';
-  if (store.sourceKind !== 'tabular') return null;
-  return roomSymbolicSource(store) ? null : 'noRecords';
+  return stepRecordsUnavailableReason(store);
 }
 
 export function resolveExportModel(

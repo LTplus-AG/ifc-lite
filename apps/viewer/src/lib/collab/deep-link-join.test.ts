@@ -22,6 +22,7 @@ const link = '?room=r1&t=tok';
 let joins: StartCollabOptions[];
 let infos: string[];
 const realInfo = console.info;
+const realStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
 const start = (opts: StartCollabOptions) => { joins.push(opts); };
 
 beforeEach(() => {
@@ -34,6 +35,8 @@ beforeEach(() => {
 
 afterEach(() => {
   console.info = realInfo;
+  if (realStorage) Object.defineProperty(globalThis, 'localStorage', realStorage);
+  else Reflect.deleteProperty(globalThis, 'localStorage');
   resetProcessedModelRequestsForTests();
 });
 

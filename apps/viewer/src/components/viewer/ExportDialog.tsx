@@ -293,11 +293,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
   // A LandXML source takes its own single-file branch, so nothing is merged.
   const mergeSkipNote = !isIfc5 && !changesOnly && exportScope === 'merged' && !landXmlSource
     ? mergeSkipNotice(statedMergeSkips(models), t) : '';
-  // A single model with no STEP records is still offered, and `exportModelStep`
-  // refuses it by name (#10099); the description says so before the click.
-  const noRecordsNote = !isIfc5 && !changesOnly && exportScope === 'single' && !landXmlSource && selectedModel
-    && stepSkipReason(selectedModel.ifcDataStore) === 'noRecords'
-    ? t('exportDialog.stepRecords.noRecords', { model: selectedModel.name }) : '';
+  // Still offered (`exportModelStep` refuses it by name, #10099); said before the click.
+  const noRecordsNote = !isIfc5 && !changesOnly && exportScope === 'single' && !landXmlSource && selectedModel && stepSkipReason(selectedModel.ifcDataStore) === 'noRecords' ? t('exportDialog.stepRecords.noRecords', { model: selectedModel.name }) : '';
   const stepContainer = landXmlSource ? landXmlExportExtension(landXmlSource.document, landXmlSource.imagery)
     : exportScope === 'single' && modelAppearanceAssets.hasResources(selectedModelId) ? '.ifczip' : '.ifc';
   const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, stepContainer), [isIfc5, changesOnly, stepContainer]);

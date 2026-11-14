@@ -25,7 +25,7 @@ async function fixture() {
 }
 
 for (const reopen of [false, true]) it.each(['flat', 'storey'] as const)(`#9352 pitched-to-%s quantities use their preserved prism baseline (reopen=${reopen})`, async kind => {
-  let { s, home, wall, anchor } = await fixture();
+  let { s, wall, anchor } = await fixture();
   const pitched = addRoofToStore(s.editor, anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 }).roofId;
   const flat = addRoofToStore(s.editor, anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25 }).roofId;
   const above = addStoreyInStore(s.store, s.editor, { Name: 'Above', Elevation: 4 }).storeyId;
@@ -42,7 +42,7 @@ for (const reopen of [false, true]) it.each(['flat', 'storey'] as const)(`#9352 
 });
 
 it.each([false, true])('#9352 insertion rebinds legacy relative walls on all tied lower storeys (reopen=%s)', async reopen => {
-  let { s, home, wall, anchor } = await fixture();
+  let { s, home, wall } = await fixture();
   const tied = addStoreyInStore(s.store, s.editor, { Name: 'Tied', Elevation: 1 }).storeyId;
   const upper = addStoreyInStore(s.store, s.editor, { Name: 'Upper', Elevation: 3 }).storeyId;
   const other = addOrdinaryElementInStore(s.editor, resolveSpatialAnchor(s.store, tied, s.view), { kind: 'wall', params: { Start: [0, 10, 0], End: [4, 10, 0], Height: 2, Thickness: .2 } });

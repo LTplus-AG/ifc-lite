@@ -540,7 +540,7 @@ it('#9389 insertion preserves mixed number widths without merging distinct names
 });
 
 
-it('#9352 inserting below tied storeys chooses a strictly lower floor and survives reopen', async () => {
+it('#9352 inserting below tied storeys chooses a strictly lower floor and commits its reviewed elevation', async () => {
   const tiedResult = commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Tied', Elevation: 4, referenceStoreyId: UPPER_STOREY } });
   assert.equal(tiedResult.ok, true);
   const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;

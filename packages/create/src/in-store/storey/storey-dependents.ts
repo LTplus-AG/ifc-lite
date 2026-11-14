@@ -313,7 +313,8 @@ export function planAttachmentBindings(
   const bindings: StoreyBinding[] = [];
   const unreadable: number[] = [];
   // A read of the storey below; only its relatively attached elements are written.
-  for (const id of storeyContents(inventory, below.expressId, Infinity)) {
+  for (const lower of storeys.filter(storey => storey.elevation === below.elevation)) {
+  for (const id of storeyContents(inventory, lower.expressId, Infinity)) {
     const kind = attachedKind(inventory.reader.entity(id)?.type);
     const attachment = kind ? readTopAttachment(inventory, id) : null;
     if (!kind || !attachment || attachment.kind !== 'storey' || attachment.binding !== 'relative') continue;
@@ -324,12 +325,13 @@ export function planAttachmentBindings(
     // so later edits report it as not resized) but cannot be resized now.
     if (from === null) { unreadable.push(id); continue; }
     if (attachment.targetStoreyId !== null) {
-      bindings.push({ elementId: id, kind, storeyId: below.expressId, previousTargetId: attachment.targetStoreyId, from, to: from + newFloor - storeyFloorWorld(inventory, above!) });
+      bindings.push({ elementId: id, kind, storeyId: lower.expressId, previousTargetId: attachment.targetStoreyId, from, to: from + newFloor - storeyFloorWorld(inventory, above!) });
       continue;
     }
     if (origin === null || !Number.isFinite(origin)) { unreadable.push(id); continue; }
     // The top reaches the new floor: from + (new floor above this storey's) − (where the top is above it now).
-    bindings.push({ elementId: id, kind, storeyId: below.expressId, previousTargetId: null, from, to: newFloor - origin - levelTopFaceAbove(target, id, kind) });
+    bindings.push({ elementId: id, kind, storeyId: lower.expressId, previousTargetId: null, from, to: newFloor - origin - levelTopFaceAbove(target, id, kind) });
+  }
   }
   // targetStoreyId is filled in by the add, which knows the new storey's id.
   const walls = bindings.filter((binding) => binding.kind === 'wall')

@@ -19,7 +19,7 @@ export function reviewStoreyInsertion(modelId: string, referenceId: number, fall
   const home = inventory.storeys.find(storey => storey.expressId === referenceId);
   if (!home) return null;
   const siblings = home.parentId === null ? [home] : inventory.storeys.filter(storey => storey.parentId === home.parentId);
-  const lowerRef = side === 'above' ? referenceId : siblings[siblings.findIndex(storey => storey.expressId === referenceId) - 1]?.expressId;
+  const lowerRef = side === 'above' ? referenceId : siblings.filter(storey => storey.elevation < home.elevation).at(-1)?.expressId;
   const lower = storeyRows(s, modelId).find(row => row.expressId === lowerRef);
   if (!lower?.height) return null;
   const lowerId = lower.expressId;

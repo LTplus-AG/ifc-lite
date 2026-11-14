@@ -34,7 +34,7 @@ import { setWallSectionInStore } from '../wall-section-edit.js';
 import { readWallMetres } from '../wall-size-edit.js';
 import { readPlacementLeaf, worldLiftInParent, writeShiftedPlacement } from './storey-placement.js';
 import { placementWorldZ } from './storey-grid.js';
-import { scaleWallQuantities, snapshotWallQuantities, wallGeometry } from './wall-height-quantities.js';
+import { scaleWallQuantities, snapshotWallQuantities, wallQuantityBaseline, wallGeometry } from './wall-height-quantities.js';
 
 export type AttachedKind = 'wall' | 'column' | 'linear' | 'curtainWall';
 
@@ -168,8 +168,9 @@ export function writeAttachedTop(target: EditTarget, id: number, kind: AttachedK
     if (options?.deferWallQuantities) return setWallSectionInStore(target, id, { height: to });
     const geometry = wallGeometry(target.dataStore, target.view, target.editor, id);
     const quantities = snapshotWallQuantities(target.dataStore, target.view, id);
+    const quantityFrom = wallQuantityBaseline(target.dataStore, target.view, id, from, quantities);
     const outcome = setWallSectionInStore(target, id, { height: to });
-    if (outcome.ok) scaleWallQuantities(target.dataStore, target.view, id, to / from, geometry, quantities);
+    if (outcome.ok) scaleWallQuantities(target.dataStore, target.view, id, to / quantityFrom, geometry, quantities);
     return outcome;
   }
   if (kind === 'curtainWall') return relayoutCurtainWallHeight(target, id, to);

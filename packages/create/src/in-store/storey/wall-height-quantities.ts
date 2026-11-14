@@ -5,7 +5,7 @@
 import { ROOF_ATTACHMENT } from '../edit/wall-base-solid.js';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { extractProjectUnits, extractQuantitiesOnDemand, quantitySiScale, type IfcDataStore, type ProjectUnits } from '@ifc-lite/parser';
-import type { QuantitySet, QuantityType } from '@ifc-lite/data';
+import type { Quantity, QuantitySet, QuantityType } from '@ifc-lite/data';
 import { readWallMetres } from '../wall-size-edit.js';
 
 export const WALL_QTO = 'Qto_WallBaseQuantities';
@@ -14,7 +14,16 @@ export const WALL_QTO = 'Qto_WallBaseQuantities';
 export function snapshotWallQuantities(store: IfcDataStore, view: MutablePropertyView, wallId: number): QuantitySet | null {
   const base = view.hasQuantityBase() ? undefined : (id: number) => extractQuantitiesOnDemand(store, id);
   const qto = view.getQuantitiesForEntity(wallId, base).find(set => set.name === WALL_QTO);
-  return qto ? { ...qto, quantities: qto.quantities.map(quantity => ({ ...quantity })) } : null;
+  // An edited member can carry just its unit name in the overlay. Resolve the
+  // unchanged saved unit through the parser again, never by guessing its label.
+  let saved: ReturnType<typeof extractQuantitiesOnDemand> | undefined;
+  return qto ? { ...qto, quantities: qto.quantities.map(quantity => {
+    if (quantity.unit === undefined || explicitScale(quantity) !== undefined) return { ...quantity };
+    saved ??= extractQuantitiesOnDemand(store, view.resolveBaseEntityId(wallId));
+    const original = saved.find(set => set.name === WALL_QTO)?.quantities.find(q => q.name === quantity.name && q.unit === quantity.unit);
+    return original && explicitScale(original) !== undefined
+      ? { ...quantity, explicitUnitSiScale: explicitScale(original) } : { ...quantity };
+  }) } : null;
 }
 
 /**
@@ -85,4 +94,23 @@ export function wallGeometry(store: IfcDataStore, view: MutablePropertyView, edi
   const length = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1], wall.end[2] - wall.start[2]);
   return [length, wall.thickness, wall.height].every((v) => Number.isFinite(v) && v > 0)
     ? { length, thickness: wall.thickness, height: wall.height } : undefined;
+}
+
+/** The prism quantities precede a roof cut, whose editable envelope has another height. */
+export function wallQuantityBaseline(store: IfcDataStore, view: MutablePropertyView, wallId: number, from: number, before: QuantitySet | null): number {
+  if (view.getPropertyValue(wallId, ROOF_ATTACHMENT, 'Clipped') !== true) return from;
+  const recorded = view.getPropertyValue(wallId, ROOF_ATTACHMENT, 'PrismQuantityHeight');
+  if (typeof recorded === 'number' && Number.isFinite(recorded) && recorded > 0) return recorded;
+  // Saved cuts from before this record was added may still provide their
+  // pre-cut Height, with its own declared unit.
+  const height = before?.quantities.find(q => q.name === 'Height');
+  if (!height) return from;
+  const units = extractProjectUnits(store.source, store.entityIndex);
+  const baseline = height.value * quantitySiScale({ ...height, explicitUnitSiScale: explicitScale(height) }, units);
+  return Number.isFinite(baseline) && baseline > 0 ? baseline : from;
+}
+
+function explicitScale(quantity: Quantity): number | undefined {
+  return 'explicitUnitSiScale' in quantity && typeof quantity.explicitUnitSiScale === 'number'
+    ? quantity.explicitUnitSiScale : undefined;
 }

@@ -21,11 +21,13 @@
  * draws it. Anything else is fixed unless the caller asks.
  */
 
+import { ROOF_ATTACHMENT } from '../edit/wall-base-solid.js';
+import { PropertyValueType } from '@ifc-lite/data';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { placementInAncestor, refId } from '../host-geometry-frame.js';
 import { storeyFloorWorld } from './storey-floor-frame.js';
-import { scaleWallQuantities, snapshotWallQuantities, wallGeometry } from './wall-height-quantities.js';
+import { scaleWallQuantities, snapshotWallQuantities, wallQuantityBaseline, wallGeometry } from './wall-height-quantities.js';
 import { getModelLengthUnitScale } from '../edit/length-unit-scale.js';
 import { AnchorEntityReader } from '../resolve-anchor.js';
 import { effectiveStoreyElevation } from '../room-storey-elevation.js';
@@ -107,11 +109,15 @@ export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor
     const roofQuantities = constraint.kind === 'roof' ? {
       geometry: wallGeometry(store, view, draft, elementId), quantities: snapshotWallQuantities(store, view, elementId),
     } : null;
+    const quantityFrom = roofQuantities ? wallQuantityBaseline(store, view, elementId, top.from, roofQuantities.quantities) : top.from;
     const outcome = writeAttachedTop(target, elementId, kind, top.from, to, roofQuantities ? { deferWallQuantities: true } : undefined);
     if (!outcome.ok) throw new Error(`#${elementId} cannot reach what it is attached to: ${outcome.reason}`);
     if (constraint.kind === 'roof' && roofQuantities) {
       clipWallToRoof(target, elementId, constraint.roofId);
-      scaleWallQuantities(store, view, elementId, to / top.from, roofQuantities.geometry, roofQuantities.quantities);
+      if (view.getPropertyValue(elementId, ROOF_ATTACHMENT, 'Clipped') === true) {
+        view.setProperty(elementId, ROOF_ATTACHMENT, 'PrismQuantityHeight', quantityFrom, PropertyValueType.Real);
+      }
+      scaleWallQuantities(store, view, elementId, to / quantityFrom, roofQuantities.geometry, roofQuantities.quantities);
     }
     return { remesh: constraint.kind === 'roof' ? [...new Set([elementId, ...outcome.remesh])] : outcome.remesh };
   });

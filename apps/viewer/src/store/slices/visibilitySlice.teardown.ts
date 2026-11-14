@@ -20,8 +20,8 @@
  *    `null` outright, NEVER to an empty `Set` — a non-null empty set still
  *    reads as "isolation active, nothing matches" and hides everything;
  *  - `typeVisibility` / `typeViewMode` are RE-READ from localStorage on a
- *    session reset (Trap B), not zeroed, and are absent from the two
- *    federation arms entirely.
+ *    session reset (Trap B), not zeroed, and preserved across model removal. The transient structural view mode
+ *    returns to both when the last model is closed.
  */
 
 import { defineSliceTeardown } from '../teardown.js';
@@ -35,11 +35,13 @@ export const visibilityTeardown = defineSliceTeardown(
     'ghostExceptEntities',
     'visibilityRevision',
     'classFilter',
+    'structuralViewMode',
     'typeVisibility',
     'typeViewMode',
   ],
   {
     'session-reset': () => ({
+      structuralViewMode: 'both',
       hiddenEntities: new Set<number>(),
       isolatedEntities: null,
       ghostExceptEntities: null,
@@ -54,10 +56,10 @@ export const visibilityTeardown = defineSliceTeardown(
     // always-true answer. `isolatedEntities` / `ghostExceptEntities` clear to
     // `null` (not an empty `Set`) for the reason the 'model-removed' arm
     // below spells out — an empty-but-set isolate would hide the very next
-    // model loaded, until it does. `typeVisibility` / `typeViewMode` are NOT
-    // here: they are the user's persisted preferences, not scene state, and
-    // `clearAllModels` has never touched them.
+    // model loaded, until it does. Keep persisted class/overlay preferences;
+    // only the transient product mode returns to both.
     'all-models-cleared': () => ({
+      structuralViewMode: 'both',
       hiddenEntities: new Set<number>(),
       isolatedEntities: null,
       ghostExceptEntities: null,

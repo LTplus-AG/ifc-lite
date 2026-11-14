@@ -111,9 +111,13 @@ for (const failure of [{ kind: 'property', at: 1 }, { kind: 'property', at: 3 },
   assert.ok(spaceMesh.length > 0 && roofMesh.length > 0, 'the real native mesher produced both roof and room');
   assert.ok(spaceQuantities.length > 0, 'the exported room has real quantities');
   const edit = adapter.editRoof; assert.ok(edit);
-  edit(roof, { EdgeSlopes: startsGable ? Array(4).fill(Math.PI / 6) : [Math.PI/6,0,Math.PI/6,0] });
+  edit(roof, { EdgeSlopes: startsGable ? Array(4).fill(Math.PI / 6) : [Math.PI/6,0,Math.PI/6,0], Overhang: .25 });
   await settle();
   const editedProperties = properties(), editedRoofMesh = mesh(roof.expressId);
+  const publishedDefinition = editedProperties.find(set => set.name === 'IfcLite_RoofFootprint'); assert.ok(publishedDefinition);
+  assert.deepEqual(sharedDefinitionValues(publishedDefinition), Object.fromEntries(publishedDefinition.properties.map(p => [p.name, p.value])),
+    'a successful edit publishes the recorded definition with its native body (#9357)');
+  assert.equal(sharedDefinitionValues(publishedDefinition).Overhang, .25);
   const edited = bytes(), peerBefore = session.snapshot().data;
   const historyState = useViewerStore.getState();
   const historyStack = historyState.undoStacks.get(MODEL) ?? [];

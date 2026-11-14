@@ -526,11 +526,13 @@ it('a drag interrupted by a switch away and back (A→B→A) records nothing', (
   const canvas = render(<Harness />).firstElementChild!;
   mouseDown(canvas, { clientX: 200, clientY: -100 });
   mouseMove(canvas, { clientX: 250, clientY: -50 });
+  // Back on A with the very objects the drag last wrote, so only the switch itself can end it.
+  const moved = useViewerStore.getState().dimensions2D;
   act(() => useViewerStore.setState({ activeModelId: 'B', dimensions2D: [], dimension2DUndo: [], dimension2DRedo: [] }));
-  act(() => useViewerStore.setState({ activeModelId: 'A', dimensions2D: [d1], dimension2DUndo: [], dimension2DRedo: [] }));
+  act(() => useViewerStore.setState({ activeModelId: 'A', dimensions2D: moved, dimension2DUndo: [], dimension2DRedo: [] }));
   mouseMove(canvas, { clientX: 300, clientY: 0 });
   act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
-  assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 0, y: 0 }, 'not moved after the round trip');
+  assert.deepEqual(useViewerStore.getState().dimensions2D, moved, 'not moved after the round trip');
   assert.equal(useViewerStore.getState().dimension2DUndo.length, 0, 'and nothing recorded');
 });
 

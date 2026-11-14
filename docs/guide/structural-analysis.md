@@ -121,7 +121,10 @@ the loads without `Locations`. The `IfcShapeAspect` that places them stays on
 the action's representation, so the downgrade writes the varying action back.
 Both directions convert an action only when the other one can convert it back:
 its representation has exactly one `IfcShapeAspect`, and its loads share one
-type the IFC2X3 action admits. Other actions keep their previous handling.
+type the IFC2X3 action admits. An IFC4 action also needs a `PredefinedType` of
+`NOTDEFINED`, `LINEAR` or `POLYGONAL` (curve) or `NOTDEFINED` or `BILINEAR`
+(surface): values linear between their locations. Other actions keep their
+previous handling.
 Both need an unedited full export.
 
 The viewer's read and review surfaces do not provide a structural schema

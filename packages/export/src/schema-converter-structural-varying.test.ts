@@ -76,6 +76,13 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     expect(result.stats.warnings.join('\n')).toContain('1 structural conversion record(s): IFCSTRUCTURALCURVEACTION.DestabilizingLoad is unknown');
   });
 
+  it('takes only distributions linear between the values', async () => {
+    const ifc4 = model('IFC4', `${SHARED}
+#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);
+#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,.GLOBAL_COORDS.,.F.,$,.SINUS.);`);
+    expect(line(exportToStep(await parse(ifc4), { schema: 'IFC2X3' }), 30)).toMatch(/^#30=IFCPROXY\(/);
+  });
+
   it('leaves an IFC4 action with no IfcShapeAspect for its locations as before', async () => {
     const ifc4 = model('IFC4', `${SHARED}
 #25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),((0.),(4.)));

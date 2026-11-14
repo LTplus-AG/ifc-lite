@@ -16,11 +16,14 @@ import { readStepSlots } from './step-argument-parser.js';
  * `first` is what the IFC2X3 supertype's WR61 admits as AppliedLoad
  * (IFC2X3_TC1.exp:7301 and IfcStructuralPlanarAction); both directions take
  * only loads that all share one of those types. `min` is the size of
- * VaryingAppliedLoads (LIST [2:?] linear, [3:?] planar).
+ * VaryingAppliedLoads (LIST [2:?] linear, [3:?] planar). `spread` is the IFC4
+ * PredefinedTypes a downgrade takes: values at locations, linear in between
+ * (IFC4_ADD2_TC1.exp:2308, :2330), which is what the IFC2X3 varying action holds.
+ * SINUS, PARABOLA, DISCRETE, ISOCONTOUR and the rest keep their previous handling.
  */
 const KINDS = [
-  { ifc2x3: 'IFCSTRUCTURALLINEARACTIONVARYING', ifc4: 'IFCSTRUCTURALCURVEACTION', first: ['IFCSTRUCTURALLOADLINEARFORCE', 'IFCSTRUCTURALLOADTEMPERATURE'], min: 2 },
-  { ifc2x3: 'IFCSTRUCTURALPLANARACTIONVARYING', ifc4: 'IFCSTRUCTURALSURFACEACTION', first: ['IFCSTRUCTURALLOADPLANARFORCE', 'IFCSTRUCTURALLOADTEMPERATURE'], min: 3 },
+  { ifc2x3: 'IFCSTRUCTURALLINEARACTIONVARYING', ifc4: 'IFCSTRUCTURALCURVEACTION', first: ['IFCSTRUCTURALLOADLINEARFORCE', 'IFCSTRUCTURALLOADTEMPERATURE'], min: 2, spread: ['.NOTDEFINED.', '.LINEAR.', '.POLYGONAL.'] },
+  { ifc2x3: 'IFCSTRUCTURALPLANARACTIONVARYING', ifc4: 'IFCSTRUCTURALSURFACEACTION', first: ['IFCSTRUCTURALLOADPLANARFORCE', 'IFCSTRUCTURALLOADTEMPERATURE'], min: 3, spread: ['.NOTDEFINED.', '.BILINEAR.'] },
 ] as const;
 
 const FROM_IFC2X3 = 'an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; the IfcShapeAspect of its representation keeps the locations';
@@ -111,7 +114,8 @@ export class StructuralVarying {
 
   private toIfc2x3(entity: string, args: readonly string[]): Rewrite | undefined {
     const kind = KINDS.find((k) => k.ifc4 === entity);
-    if (!kind || args.length !== 12 || args[11].trim().toUpperCase() === '.CONST.') return undefined;
+    const spread: readonly string[] | undefined = kind?.spread;
+    if (!kind || args.length !== 12 || !spread?.includes(args[11].trim().toUpperCase())) return undefined;
     const values = this.configs.get(refId(args[7]) ?? -1);
     if (!values) return undefined;
     const aspect = this.convertible(kind, args[6], values);

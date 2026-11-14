@@ -28,11 +28,15 @@ struct Kind {
     first: [&'static str; 2],
     /// The size of VaryingAppliedLoads: LIST [2:?] linear, [3:?] planar.
     min: usize,
+    /// The IFC4 PredefinedTypes a downgrade takes: values at locations, linear
+    /// in between (IFC4_ADD2_TC1.exp:2308, :2330), which the IFC2X3 varying
+    /// action holds. SINUS, PARABOLA, DISCRETE and the rest keep their handling.
+    spread: &'static [&'static str],
 }
 
 const KINDS: [Kind; 2] = [
-    Kind { ifc2x3: "IFCSTRUCTURALLINEARACTIONVARYING", ifc4: "IFCSTRUCTURALCURVEACTION", first: ["IFCSTRUCTURALLOADLINEARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], min: 2 },
-    Kind { ifc2x3: "IFCSTRUCTURALPLANARACTIONVARYING", ifc4: "IFCSTRUCTURALSURFACEACTION", first: ["IFCSTRUCTURALLOADPLANARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], min: 3 },
+    Kind { ifc2x3: "IFCSTRUCTURALLINEARACTIONVARYING", ifc4: "IFCSTRUCTURALCURVEACTION", first: ["IFCSTRUCTURALLOADLINEARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], min: 2, spread: &[".NOTDEFINED.", ".LINEAR.", ".POLYGONAL."] },
+    Kind { ifc2x3: "IFCSTRUCTURALPLANARACTIONVARYING", ifc4: "IFCSTRUCTURALSURFACEACTION", first: ["IFCSTRUCTURALLOADPLANARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], min: 3, spread: &[".NOTDEFINED.", ".BILINEAR."] },
 ];
 
 const FROM_IFC2X3: &str = "an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; the IfcShapeAspect of its representation keeps the locations";
@@ -42,7 +46,8 @@ const TO_IFC2X3: &str = "an IFC4 curve or surface action with an IfcStructuralLo
 pub(crate) struct StructuralVarying {
     /// IFC2X3 -> IFC4: varying action id -> (kind, loads, the id allocated for its configuration).
     upgrades: HashMap<u32, (&'static Kind, Vec<u32>, u32)>,
-    pending: Vec<String>,
+    /// Configuration records written so far, by id.
+    pending: std::collections::BTreeMap<u32, String>,
     /// IFC4 -> IFC2X3: action id -> (kind, configuration values, shape aspect).
     downgrades: HashMap<u32, (&'static Kind, Vec<u32>, u32)>,
     consumed: HashSet<u32>,
@@ -143,11 +148,11 @@ impl StructuralVarying {
 
     /// IFC4 -> IFC2X3: the actions that become varying actions and the configurations they consume.
     pub(crate) fn scan_ifc4(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
-        let source = Source::scan(content, kept, false);
+        let source = Source::scan(content, &kept, false);
         let names_config = |token: &String| crate::step_text::ref_spans(token.as_bytes()).filter_map(|r| r.id).any(|r| source.configs.contains_key(&r));
         let mut result = Self::default();
         for (id, kind, args) in &source.actions {
-            if args.len() != 12 || args[11].trim().eq_ignore_ascii_case(".CONST.") { continue; }
+            if args.len() != 12 || !kind.spread.iter().any(|s| args[11].trim().eq_ignore_ascii_case(s)) { continue; }
             let Some(values) = ref_id(Some(&args[7])).and_then(|c| source.configs.get(&c)) else { continue };
             // A configuration named outside AppliedLoad would dangle once it is dropped.
             if args.iter().enumerate().any(|(i, a)| i != 7 && names_config(a)) { continue; }
@@ -158,6 +163,16 @@ impl StructuralVarying {
         result.consumed = source.referrers.into_iter()
             .filter(|(config, by)| source.configs.contains_key(config) && by.iter().all(|a| result.downgrades.contains_key(a)))
             .map(|(config, _)| config).collect();
+        if !result.consumed.is_empty() {
+            // Any other record naming a consumed configuration keeps it, so nothing dangles.
+            let mut scanner = ifc_lite_core::EntityScanner::new(content);
+            while let Some((id, _, start, end)) = scanner.next_entity() {
+                if result.downgrades.contains_key(&id) || !kept(id, start) { continue; }
+                for r in crate::step_text::ref_spans(&content[start..end]).filter_map(|r| r.id) {
+                    if r != id { result.consumed.remove(&r); }
+                }
+            }
+        }
         result
     }
 
@@ -165,7 +180,7 @@ impl StructuralVarying {
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<(String, Vec<String>)> {
         if let Some((kind, loads, config)) = self.upgrades.get(&id).filter(|(k, ..)| k.ifc2x3 == entity && args.len() == 14) {
             let values = loads.iter().map(|l| format!("#{l}")).collect::<Vec<_>>().join(",");
-            self.pending.push(format!("#{config}=IFCSTRUCTURALLOADCONFIGURATION($,({values}),$);"));
+            self.pending.insert(*config, format!("#{config}=IFCSTRUCTURALLOADCONFIGURATION($,({values}),$);"));
             let mut losses = vec![FROM_IFC2X3.to_string()];
             if args[10].trim() != "$" { losses.push(format!("{entity}.CausedBy has no slot in IFC4; its value is omitted")); }
             let body = [&args[..7], &[format!("#{config}"), args[8].clone(), args[9].clone(), args[11].clone(), ".NOTDEFINED.".into()]].concat();
@@ -183,8 +198,8 @@ impl StructuralVarying {
     /// Whether the record is a configuration every referrer of which became a varying action.
     pub(crate) fn drops(&self, id: u32) -> bool { self.consumed.contains(&id) }
 
-    /// The configurations written so far, to append after the source records.
-    pub(crate) fn added(&mut self) -> Vec<String> { std::mem::take(&mut self.pending) }
+    /// The configurations written so far, in id order (the TypeScript twin's), to append after the source records.
+    pub(crate) fn added(&mut self) -> Vec<String> { std::mem::take(&mut self.pending).into_values().collect() }
 }
 
 #[cfg(test)]
@@ -288,6 +303,15 @@ mod tests {
         let result = export_step_with_stats(ifc4.as_bytes(), &to("IFC2X3"));
         assert!(result.as_ref().map_or(true, |(out, _)| !record(out, "#30=").starts_with("#30=IFCSTRUCTURALLINEARACTIONVARYING(")));
         assert!(result.is_err(), "the kept configuration has no IFC2X3 form");
+    }
+
+    #[test]
+    fn a_configuration_another_record_names_is_kept_9668() {
+        // #40's illegal ObjectPlacement names #25: dropping #25 would leave #40 dangling.
+        let source = model("IFC4", "#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);\n#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,.GLOBAL_COORDS.,.F.,$,.LINEAR.);\n#40=IFCBUILDINGELEMENTPROXY('2O2Fr$t4X7Zf8NOew3FLOH',$,$,$,$,#25,$,$,$);");
+        assert!(export_step_with_stats(source.as_bytes(), &to("IFC2X3")).is_err(), "the kept configuration has no IFC2X3 form");
+        // A distribution that is not linear between the values is not a varying action either.
+        assert!(export_step_with_stats(source.replace(",#25,$,$,$);", ",$,$,$,$);").replace(".LINEAR.", ".SINUS.").as_bytes(), &to("IFC2X3")).is_err());
     }
 
     #[test]

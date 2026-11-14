@@ -53,9 +53,13 @@ it('IFC-only startup has no eager Gaussian backend or decoder dependency (#8565)
         assert.ok(existsSync(source), `No workspace source for ${edge}: ${source}`);
         target = source;
       }
-      // A plain .mjs module with a .d.mts beside it resolves to the declaration; walk the .mjs source.
-      if (/\.d\.mts$/.test(target) && existsSync(target.replace(/\.d\.mts$/, '.mjs'))) target = target.replace(/\.d\.mts$/, '.mjs');
-      if (!target.includes('/node_modules/') && !/\.d\.[mc]?ts$/.test(target) && !target.endsWith('.json')) {
+      // A workspace .mjs/.cjs module with a .d.mts/.d.cts beside it resolves to the declaration; walk the source.
+      if (!target.includes('/node_modules/') && /\.d\.[mc]ts$/.test(target)) {
+        const js = target.replace(/\.d\.([mc])ts$/, '.$1js');
+        assert.ok(existsSync(js), `No module source beside ${edge}: ${js}`);
+        target = js;
+      }
+      if (!target.includes('/node_modules/') && !target.endsWith('.d.ts') && !target.endsWith('.json')) {
         assert.ok(target.startsWith(repo + '/'), `Dependency outside repository: ${edge}`);
         queue.push(target);
       }
@@ -64,5 +68,6 @@ it('IFC-only startup has no eager Gaussian backend or decoder dependency (#8565)
   assert.ok(visited.has(resolve(viewer, 'src/bootstrap.tsx')), 'walk the real viewer bootstrap');
   assert.ok(visited.has(resolve(viewer, 'src/hooks/useIfcLoader.ts')), 'walk the canonical IFC loader');
   assert.ok(visited.has(resolve(repo, 'packages/renderer/src/index.ts')), 'walk the renderer barrel');
+  assert.ok(visited.has(resolve(viewer, 'src/lib/visibility/analytical-classes.mjs')), 'walk a .mjs module behind its .d.mts');
   assert.deepEqual(violations, [], 'Gaussian code must stay behind dynamic imports:\n' + violations.join('\n'));
 });

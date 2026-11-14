@@ -82,7 +82,7 @@ async function lift(canvas: HTMLCanvasElement) {
 }
 
 describe('a double-tap is a double-click (#9092)', () => {
-  it('replays a held command tap at its canvas-relative point with an offset canvas', async () => {
+  it('#10218 ignores a command tap during restore even with an offset canvas', async () => {
     useViewerStore.getState().startCommand('wall.place');
     const { canvas } = commandRig();
     canvas.getBoundingClientRect = () => DOMRect.fromRect({ x: 300, y: 200, width: 800, height: 600 });
@@ -95,7 +95,9 @@ describe('a double-tap is a double-click (#9092)', () => {
     const [releasedId, releasedModel] = [...released][0]!;
     released.set(releasedId, { ...releasedModel, geometryRestorePending: false });
     act(() => useViewerStore.setState({ models: released }));
-    assert.deepEqual(wallGesture().chain[0]?.map((v) => +v.toFixed(6)), [0.4, -0.4]);
+    assert.equal(wallGesture().chain.length, 0);
+    await tap(canvas, 340, 240);
+    assert.equal(wallGesture().chain.length, 1, 'the same tap works after release');
   });
 
   it('ends a wall chain where its first tap placed the point', async (t) => {

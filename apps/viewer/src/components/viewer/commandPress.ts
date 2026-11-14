@@ -70,7 +70,7 @@ export function createCommandPressController(ctx: MouseHandlerContext) {
       press = null; // Clear before releasePointer emits lostpointercapture.
       const current = sameRuntime(owner);
       cancelCommandPointer(ctx);
-      ctx.mouseState.didDrag = (owner.onPress && !owner.held) || !current;
+      ctx.mouseState.didDrag = owner.held || owner.onPress || !current;
       if (owner.onPress && current && !owner.held) feed('up', event);
       return true;
     },

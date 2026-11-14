@@ -26,7 +26,7 @@ import { openContextMenuAt } from './contextMenuSelection.js';
 import { createTouchLongPress, HOLD_MS } from './touchLongPress.js';
 import { withinTapSlop } from './tapSlop.js';
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
-import { queueHeldTouchTap } from './heldTouchReplay.js';
+import { isGeometryRestoreHeld } from '@/lib/pick-gating';
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
 
@@ -321,7 +321,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           const x = touchState.tapStartPos.x - rect.left;
           const y = touchState.tapStartPos.y - rect.top;
 
-          if (queueHeldTouchTap(canvas, x, y, tool, e)) { /* queued until geometry is ready */ }
+          if (isGeometryRestoreHeld(useViewerStore.getState())) { /* consumed during reopen restore */ }
           else if (refuseCaptureHeldPick(renderer)) markTouchSelection(canvas, x, y); // not through a capture's frame, nor its compatibility click (#9137)
           else if (tool === 'measure') {
             // The measure logic lives with the mouse controls; touchstart's

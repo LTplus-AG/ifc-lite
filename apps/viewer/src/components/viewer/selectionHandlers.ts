@@ -25,9 +25,8 @@ import { rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
-import { isGeometryHeld } from '@/lib/pick-gating';
-import { queueHeldPointerClick } from './heldPointerQueue.js';
-export { setViewportInteractionCursor } from './heldPointerQueue.js';
+import { isGeometryRestoreHeld } from '@/lib/pick-gating';
+export { setViewportInteractionCursor } from './useViewportCursor.js';
 
 /** The click-driven Measure modes' point placement; also a touch tap's (#5856). */
 export function handleMeasureClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
@@ -56,21 +55,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     return;
   }
   const storeState = useViewerStore.getState();
-  if (isGeometryHeld(storeState)) {
-    queueHeldPointerClick({
-      x, y, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey,
-      button: e.button, handler: `selection:${tool}`,
-      replay: () => {
-        if (ctx.activeToolRef.current !== tool) return;
-        const currentRect = canvas.getBoundingClientRect();
-        const clientX = currentRect.left + x, clientY = currentRect.top + y;
-        // handleSelectionClick routes measure clicks itself (handleMeasureClickAt); a drag-measure press is a gesture, not a click, and is not queued.
-        void handleSelectionClick(ctx, new MouseEvent('click', { bubbles: true, clientX, clientY, shiftKey: e.shiftKey,
-          ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, button: e.button, buttons: 0, detail: 1 }));
-      },
-    });
-    return;
-  }
+  if (isGeometryRestoreHeld(storeState)) return;
   // Every tool below picks: not through a capture's frame (#9137).
   if (refuseCaptureHeldPick(renderer)) {
     ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null;

@@ -44,9 +44,8 @@ import { markTouchSelection } from './referenceSelection.js';
 import { withinTapSlop } from './tapSlop.js';
 import { routeToolTap } from './toolTap.js';
 import { viewportHandlerContext } from './touchRouting.js';
-import { isGeometryHeld } from '@/lib/pick-gating';
+import { isGeometryHeld, isGeometryRestoreHeld } from '@/lib/pick-gating';
 import { useViewerStore } from '@/store';
-import { queueHeldPointerClick } from './heldPointerQueue.js';
 
 /** From a tap's lift to the next tap's press, as Android's double-tap timeout and the selection path's 300 ms. */
 const DOUBLE_TAP_MS = 300;
@@ -163,19 +162,7 @@ export function createCommandTouchPress(canvas: HTMLCanvasElement, getTool: () =
         return owned;
       }
       const { ctx } = p;
-      if (tap && isGeometryHeld(useViewerStore.getState())) {
-        const at = { x, y };
-        const detail = p.onPress ? 1 : clickCount(p.runtime);
-        queueHeldPointerClick({ ...at, shiftKey: e.shiftKey === true, ctrlKey: false, metaKey: false,
-          altKey: e.altKey === true, button: 0, handler: 'touch:command', replay: () => {
-            if (!live(p)) return;
-            routeToolTap(ctx, 'command', at.x, at.y, () => {
-              routeCommandPointer(ctx, 'down', at.x, at.y, modifiers(e, detail));
-              if (p.onPress) routeCommandPointer(ctx, 'up', at.x, at.y, modifiers(e));
-            });
-          } });
-        return true;
-      }
+      if (tap && isGeometryRestoreHeld(useViewerStore.getState())) return true;
       if (p.dragging) {
         // The release lands where the finger lifted, which a last move need not have reported
         const lifted = Array.from(e.changedTouches ?? []).find((t) => t.identifier === p.finger);

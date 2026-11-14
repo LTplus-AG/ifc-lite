@@ -12,6 +12,7 @@ import { showAllFromStore } from '@/store/homeView';
 import { orderedSectionPlanes } from '@/lib/section/section-plane-set';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { finishOpenMeasureSequence } from '@/store/finishMeasureSequence';
+import { isGeometryRestoreHeld } from '@/lib/pick-gating';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
@@ -100,6 +101,7 @@ function hideSelected(): boolean {
  * to the next row), a repeat must not finish the open sequence.
  */
 function finishMeasurement(event: KeyboardEvent): boolean {
+  if (isGeometryRestoreHeld(useViewerStore.getState())) return true;
   if (event.repeat) return false;
   return finishOpenMeasureSequence();
 }

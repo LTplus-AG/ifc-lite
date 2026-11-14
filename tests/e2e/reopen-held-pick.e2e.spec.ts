@@ -10,7 +10,7 @@ const FIXTURE = 'tests/models/ara3d/C20-Institute-Var-2.ifc';
 const WARMUP = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 const deadline = 180_000;
 type E2EModel = { id: string; geometryRestorePending?: boolean; geometryResult: { meshes: Array<{ expressId: number }> } };
-type E2EState = { loading: boolean; geometryStreamingActive: boolean; models: Map<string, E2EModel>; selectedEntityIds: Set<number>; toGlobalId(modelId: string, expressId: number): number };
+type E2EState = { loading: boolean; geometryStreamingActive: boolean; models: Map<string, E2EModel>; selectedEntityId: number | null; selectedEntityIds: Set<number>; activeModelId: string | null; setSelectedEntityId(id: number | null): void; toGlobalId(modelId: string, expressId: number): number };
 type E2EWindow = typeof globalThis & {
   __ifc_lite_geometry_restore_test__?: { releaseDelayMs?: number; geometryRestoreBackstopFires?: () => number };
   __ifc_lite_viewer_store__?: { getState(): E2EState };
@@ -18,7 +18,7 @@ type E2EWindow = typeof globalThis & {
   __ifc_lite_scene_owner__?: (id: number) => { screen: { x: number; y: number } | null };
 };
 
-test('reopen queues a viewport click until restored geometry can be picked', async ({ context }) => {
+test('#10218 reopen ignores a viewport click until restored geometry can be picked', async ({ context }) => {
   test.skip(!existsSync(join(process.cwd(), FIXTURE)) || !existsSync(join(process.cwd(), WARMUP)), 'IFC fixtures missing — run `pnpm fixtures`');
   const settled = () => {
     const s = (globalThis as E2EWindow).__ifc_lite_viewer_store__?.getState();
@@ -71,14 +71,31 @@ test('reopen queues a viewport click until restored geometry can be picked', asy
       && names.includes('scene.snapshotAdopted'));
   }, null, { timeout: deadline, polling: 50 });
 
-  // Click DURING the hold: queued, then applied at release with the original position.
+  // Tree-style selection remains usable during restore; the viewport click is ignored.
+  const heldSelection = await page.evaluate(() => {
+    const state = (globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState();
+    const [modelId, model] = [...state.models][0]!;
+    const expressId = model.geometryResult.meshes[0]?.expressId;
+    if (expressId === undefined) throw new Error('restored model has no selectable mesh');
+    state.setSelectedEntityId(state.toGlobalId(modelId, expressId));
+    return { id: state.selectedEntityId, ids: [...state.selectedEntityIds] };
+  });
   expect(await page.evaluate(() => [...(globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState().models.values()].some((m) => m.geometryRestorePending)),
     'the click lands while the geometry restore still holds').toBe(true);
   await page.mouse.click(point.x, point.y);
+  expect(await page.evaluate(() => {
+    const state = (globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState();
+    return { id: state.selectedEntityId, ids: [...state.selectedEntityIds] };
+  })).toEqual(heldSelection);
   await page.waitForFunction(() => {
     const state = (globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState();
     return ![...state.models.values()].some((model: E2EModel) => model.geometryRestorePending);
   }, null, { timeout: deadline, polling: 50 });
-  await expect.poll(() => selectedExpressId(page), { timeout: 10_000, message: 'the queued click selected the element at its original position' }).toBe(expected);
+  expect(await page.evaluate(() => {
+    const state = (globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState();
+    return { id: state.selectedEntityId, ids: [...state.selectedEntityIds] };
+  })).toEqual(heldSelection);
+  await page.mouse.click(point.x, point.y);
+  await expect.poll(() => selectedExpressId(page), { timeout: 10_000, message: 'a post-release click selects the element at the probe point' }).toBe(expected);
   expect(await page.evaluate(() => (globalThis as E2EWindow).__ifc_lite_geometry_restore_test__?.geometryRestoreBackstopFires?.())).toBe(0);
 });

@@ -41,7 +41,7 @@ import { forgetCommandPointer } from '@/lib/commands/modeling/pointer-replay';
 import { routeCommandPointer } from './commandPointer.js';
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import { createCommandPressController } from './commandPress.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, setViewportInteractionCursor } from './selectionHandlers.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js'; import { setViewportInteractionCursor } from './useViewportCursor.js';
 import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
 import { createViewportWheelZoom } from './wheelZoom.js';
 import { cameraPoseKey, createZoomSurfacePicker } from './zoomSurface.js';

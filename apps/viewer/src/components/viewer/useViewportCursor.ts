@@ -5,7 +5,10 @@
 import { useEffect, type RefObject } from 'react';
 import { useViewerStore } from '@/store';
 import { isGeometryHeld } from '@/lib/pick-gating';
-import { observeHeldPointerInput } from './heldPointerQueue.js';
+
+export function setViewportInteractionCursor(canvas: HTMLCanvasElement, cursor: string): void {
+  if (!isGeometryHeld(useViewerStore.getState())) canvas.style.cursor = cursor;
+}
 
 export function useViewportCursor(
   canvasRef: RefObject<HTMLCanvasElement | null>,
@@ -17,7 +20,6 @@ export function useViewportCursor(
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const stopObserving = observeHeldPointerInput(canvas);
     if (activeTool !== 'section' && sectionPickMode) setSectionPickMode(false);
     canvas.style.removeProperty('cursor');
     let frame = 0;
@@ -28,6 +30,6 @@ export function useViewportCursor(
     } else {
       canvas.style.cursor = 'default';
     }
-    return () => { stopObserving(); if (frame) cancelAnimationFrame(frame); };
+    return () => { if (frame) cancelAnimationFrame(frame); };
   }, [canvasRef, activeTool, sectionPickMode, setSectionPickMode, held]);
 }

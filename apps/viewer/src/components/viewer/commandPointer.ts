@@ -213,7 +213,7 @@ export function routeCommandPointer(
     ctx.measureRaycastFrameRef.current = null;
     const at = latest.get(ctx);
     latest.delete(ctx);
-    if (!at) return;
+    if (!at || isGeometryHeld(useViewerStore.getState())) return;
     const current = getCommandRuntime();
     if (current.command !== at.runtime.command || current.ctx !== at.runtime.ctx) return;
     const snap = resolveCommandSnap(ctx, current, at.x, at.y, at.mods);

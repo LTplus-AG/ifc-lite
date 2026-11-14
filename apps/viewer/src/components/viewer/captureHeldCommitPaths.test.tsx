@@ -66,10 +66,13 @@ test('#9232 reposition refuses the capture-phase press before picking or setting
   } finally { h.unregister(); }
 });
 
-test('reposition picks at the click when a held press is released before its click', () => {
+test('#10218 reposition ignores a press held during restore even when its click follows release', () => {
   const h = rig();
   const seeded = fixtureModels(fixtureModel('m', { entities: [{ expressId: 7, type: 'IfcWall' }] }));
-  useViewerStore.setState({ ...seeded, geometryStreamingActive: true });
+  const models = new Map(seeded.models);
+  const [modelId, model] = [...models][0]!;
+  models.set(modelId, { ...model, geometryRestorePending: true });
+  useViewerStore.setState({ ...seeded, models });
   useViewerStore.getState().openReposition(['m']);
   setGlobalRendererRef({ current: h.renderer });
   const finished: unknown[] = [], errors: string[] = [];
@@ -77,12 +80,18 @@ test('reposition picks at the click when a held press is released before its cli
   render(<Probe />);
   try {
     act(() => { h.canvas.dispatchEvent(event('pointerdown')); });
-    useViewerStore.setState({ geometryStreamingActive: false });
+    const released = new Map(useViewerStore.getState().models);
+    const [releasedId, releasedModel] = [...released][0]!;
+    released.set(releasedId, { ...releasedModel, geometryRestorePending: false });
+    useViewerStore.setState({ models: released });
     act(() => { h.canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 20, clientY: 30, bubbles: true })); });
-    assert.equal(h.counts().picks, 1, 'the click point is picked after the hold ends');
-    assert.deepEqual(useViewerStore.getState().modelPlacement.preview?.source?.point, [1, -3, 2]);
-    assert.deepEqual(finished, ['target']);
+    assert.equal(h.counts().picks, 0, 'a held press cannot pick after release');
+    assert.equal(useViewerStore.getState().modelPlacement.preview?.source, null);
+    assert.deepEqual(finished, []);
     assert.deepEqual(errors, []);
+    act(() => { h.canvas.dispatchEvent(event('pointerdown')); h.canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 20, clientY: 30, bubbles: true })); });
+    assert.equal(h.counts().picks, 1, 'a new unheld press works');
+    assert.deepEqual(finished, ['target']);
   } finally { h.unregister(); }
 });
 
@@ -130,6 +139,43 @@ for (const phase of ['begin', 'end'] as const) test(`#9232 command ${phase} refu
     h.live();
     controller.begin(event('pointerdown')); controller.end(event('pointerup'));
     assert.deepEqual(calls.slice(-2), ['down', 'up']);
+  } finally { controller.dispose(); h.unregister(); unregisterCommand(); }
+});
+
+test('#10218 a command press begun during restore cannot place on its later click, and works after release', async () => {
+  await seedModelingSession();
+  const h = rig(), calls: string[] = [];
+  const id = 'test.restore-press' as CommandId;
+  const unregisterCommand = registerModelingCommand({ ...getModelingCommand('column.place')!, id,
+    pointerDownOnPress: () => true,
+    pointerDown: g => { calls.push('down'); return g; },
+    pointerUp: g => { calls.push('up'); return g; },
+  });
+  useViewerStore.getState().startCommand(id);
+  const ctx = { canvas: h.canvas, renderer: h.renderer, mouseState: { didDrag: false, isDragging: false },
+    measureRaycastPendingRef: { current: false }, measureRaycastFrameRef: { current: null },
+    snapEnabledRef: { current: false }, setSnapTarget() {},
+    getPickOptions: () => ({ hiddenIds: new Set(), isolatedIds: null, isStreaming: false }),
+  } as unknown as MouseHandlerContext;
+  const controller = createCommandPressController(ctx);
+  try {
+    const models = new Map(useViewerStore.getState().models);
+    const [modelId, model] = [...models][0]!;
+    models.set(modelId, { ...model, geometryRestorePending: true });
+    useViewerStore.setState({ models });
+    controller.begin(event('pointerdown'));
+    controller.end(event('pointerup'));
+    assert.deepEqual(calls, []);
+    assert.equal(ctx.mouseState.didDrag, true, 'the compatibility click is consumed after the hold');
+
+    const released = new Map(useViewerStore.getState().models);
+    const [releasedId, releasedModel] = [...released][0]!;
+    released.set(releasedId, { ...releasedModel, geometryRestorePending: false });
+    useViewerStore.setState({ models: released });
+    ctx.mouseState.didDrag = false;
+    controller.begin(event('pointerdown'));
+    controller.end(event('pointerup'));
+    assert.deepEqual(calls, ['down', 'up']);
   } finally { controller.dispose(); h.unregister(); unregisterCommand(); }
 });
 

@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
-import { isGeometryHeld } from '@/lib/pick-gating';
-import { queueHeldPointerClick } from '../heldPointerQueue.js';
+import { isGeometryHeld, isGeometryRestoreHeld } from '@/lib/pick-gating';
 import type { EdgeLockInput } from '@ifc-lite/renderer';
 import { EDGE_LOCK_DEFAULTS } from '@/store/constants';
 import { useEffect, useState } from 'react';
@@ -93,13 +92,10 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       }
     };
     let nextRole: PickRole | undefined;
-    let pressBeganHeld = false;
     const down = (event: PointerEvent) => {
       if (event.button !== 0) return;
-      event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined; pressBeganHeld = false;
-      if (isGeometryHeld(useViewerStore.getState())) {
-        pressBeganHeld = true;
-        nextRole = role === 'source' ? 'target' : null;
+      event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined;
+      if (isGeometryRestoreHeld(useViewerStore.getState())) {
         return;
       }
       if (refuseCaptureHeldPick(renderer)) return;
@@ -110,12 +106,6 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
         nextRole = role === 'source' ? 'target' : null;
       } catch (error) { onError(error instanceof Error ? error.message : String(error)); }
     };
-    const pickAndFinish = (event: MouseEvent, queuedRole: PickRole) => {
-      const hit = pick(event as PointerEvent);
-      if (!hit) { onError('No eligible point found. Zoom closer, choose another point, or enter coordinates.'); return; }
-      try { updateAnchor(event as PointerEvent, hit); finish(queuedRole); }
-      catch (error) { onError(error instanceof Error ? error.message : String(error)); }
-    };
     // Finish on click, after consuming the whole gesture. Changing the role on
     // pointerdown removed these listeners before release and also selected the
     // IFC entity through the ordinary viewer click handler.
@@ -123,20 +113,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       if (event.button !== 0) return;
       event.preventDefault(); event.stopImmediatePropagation();
       if (event.type === 'click' && nextRole !== undefined) {
-        const queuedRole = nextRole;
-        if (isGeometryHeld(useViewerStore.getState())) {
-          const rect = canvas.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
-          queueHeldPointerClick({ x, y, shiftKey: event.shiftKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey,
-            altKey: event.altKey, button: event.button, handler: `reposition:${role}`, replay: () => {
-              const currentRect = canvas.getBoundingClientRect();
-              const replayed = new PointerEvent('pointerdown', { clientX: currentRect.left + x, clientY: currentRect.top + y,
-                shiftKey: event.shiftKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, button: 0 });
-              pickAndFinish(replayed, queuedRole);
-            } });
-          return;
-        }
-        if (pressBeganHeld) { pickAndFinish(event, queuedRole); return; }
-        finish(queuedRole);
+        finish(nextRole);
       }
     };
     canvas.addEventListener('pointerup', release, true);

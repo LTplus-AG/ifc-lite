@@ -14,6 +14,12 @@ export interface PickGatingState {
   models?: ReadonlyMap<string, { geometryRestorePending?: boolean }>;
 }
 
+/** True only during reopen geometry restoration; cold streaming keeps its existing interaction path. */
+export function isGeometryRestoreHeld(state: { models?: ReadonlyMap<string, { geometryRestorePending?: boolean }> }): boolean {
+  if (state.models) for (const model of state.models.values()) if (model.geometryRestorePending) return true;
+  return false;
+}
+
 /**
  * Whether geometry is still streaming/loading, so element picking must be
  * suppressed (a mid-stream pick is slow and hits an incomplete scene).

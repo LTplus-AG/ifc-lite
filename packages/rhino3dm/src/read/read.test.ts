@@ -6,7 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { readRhino3dm, RhinoReadError, writeRhino3dm } from '../index.js';
 import { loadRhino } from '../runtime.js';
 import { craft, entityBounds, hollowArchive } from '../../test-support/craft.js';
-import { MAX_3DM_BYTES } from './read.js';
+import { MAX_3DM_BYTES, tooLarge3dmMessage } from './size.js';
 
 const quad = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]];
 const code = (promise: Promise<unknown>) => promise.then(() => 'resolved', error => error instanceof RhinoReadError ? error.code : error);
@@ -316,7 +316,7 @@ describe('errors', () => {
     try {
       const error = await readRhino3dm(huge).catch(e => e);
       expect(error.code).toBe('too-large');
-      expect(error.message).toContain(`${Math.round(huge.length / 1024 / 1024)} MB`);
+      expect(error.message).toBe(tooLarge3dmMessage(huge.length));
       expect(fromByteArray).not.toHaveBeenCalled();
     } finally { fromByteArray.mockRestore(); }
   });

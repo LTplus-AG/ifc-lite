@@ -101,6 +101,7 @@ describe('welcome card actions (#5840)', () => {
     assert.deepEqual(rows, [
       ['IFC', '.ifc .ifcx .ifczip'],
       ['glTF', '.glb .gltf'],
+      ['Rhino', '.3dm'],
       ['Point clouds', '.las .laz .ply .pcd .e57 .pts .xyz'],
       ['Terrain', 'LandXML (.xml)'],
       ['Underlays', '.dxf'],

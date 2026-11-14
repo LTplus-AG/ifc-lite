@@ -195,7 +195,7 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
   it('keeps ifc_model_loaded\'s closed load_path vocabulary, which the `path` word rule used to delete (#6961)', () => {
     // Field verdicts split by load path; before #6961 the property never
     // reached PostHog at all, because `load_path` matches the `path` word.
-    for (const loadPath of ['wasm', 'cache', 'server', 'point-cloud', 'landxml']) {
+    for (const loadPath of ['wasm', 'cache', 'server', 'point-cloud', 'landxml', '3dm']) {
       const out = scrubEvent({ event: 'ifc_model_loaded', properties: { load_path: loadPath } });
       assert.equal(out?.properties?.load_path, loadPath);
     }

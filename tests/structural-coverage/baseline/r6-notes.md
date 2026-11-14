@@ -4,7 +4,7 @@ Freezes the measurement after round 3 of the structural climb. R0 to R5 are reta
 
 Measured on main `efe8d65d3d` (after #9923). Rows: **56/119 -> 92.5/119** (met 1 -> 67, partial 110 -> 51, missing 8 -> 1). Cells: **469.5/774 -> 721/774**. No row or cell dropped. The scorer ran online with the complete corpus.
 
-PRs merged since R5 (`b085c65b50`): #9845, #9860, #9922, #9923, #9930, #9937, #9940, #9954.
+PRs merged since R5 (`b085c65b50`), from the merge commits: #9843 and #9864 (read 84.5 -> 106.5), #9845 (convert), #9860 (create), #9922, #9923, #9930 (capability), #9937 and #9940 (render), #9954 (card). The table below lists cells, not the PR that moved each one; the PR bodies hold that attribution.
 
 | Level | R5 | R6 |
 |---|---|---|
@@ -20,12 +20,16 @@ PRs merged since R5 (`b085c65b50`): #9845, #9860, #9922, #9923, #9930, #9937, #9
 
 Still open after this round:
 
-- `cap/check-stale-after-physical-change` is missing: it needs stored provenance (draft #10173).
+- `cap/check-stale-after-physical-change` is missing: its probe is not written yet. Draft #10173 adds the probe and the check.
 - `cap/derive-analytical-model` is partial: the reference model's two support-only connections are not derived (see #10173's notes).
-- Convert is 53/72: classes IFC2X3 cannot hold are meant to show the loss; draft PRs #10151, #10159 and #10182 raise the rest.
+- Read 106.5/110: `IfcSurfaceReinforcementArea` fails in IFC4 and IFC4X3 (the fixtures hold it unreferenced); IFC2X3 `IfcStructuralLoadLinearForce`, `IfcStructuralPointAction` and IFC4X3 `IfcRelConnectsStructuralActivity` are partial.
+- Card 97.5/100 and render 41.5/43: the same reinforcement records, and reactions that draw no glyph.
+- Convert 53/72: some cells are losses IFC2X3 cannot avoid, but IFC2X3 rows such as `IfcStructuralCurveConnection` and the `*Varying` actions are real round-trip defects. Draft PRs #10151, #10159 and #10182 address part of it.
 - Edit 99/110 and remove 96/110: draft PRs #10152, #10157, #10158 and #10183.
 
 ## Every changed cell since R5
+
+Reasons are the scorer's own text, cut at 160 characters (marked `...`); a cell now passing has none. `r6.json` holds the full text and evidence.
 
 | Row | Level | R5 | R6 | Reason |
 |---|---|---|---|---|
@@ -68,7 +72,7 @@ Still open after this round:
 | IFC2X3/IfcStructuralCurveConnection | card | unwritten | pass |  |
 | IFC2X3/IfcStructuralCurveConnection | render | fail | pass |  |
 | IFC2X3/IfcStructuralCurveMember | card | unwritten | pass |  |
-| IFC2X3/IfcStructuralCurveMember | convert | fail | partial | 1 problem(s) over 14 record(s): ifcopenshell/generated_structural_coverage_ifc2x3.ifc: 1 of 1 IfcStructuralCurveMember record(s) in the IFC4 file do not conform |
+| IFC2X3/IfcStructuralCurveMember | convert | fail | partial | 1 problem(s) over 14 record(s): ifcopenshell/generated_structural_coverage_ifc2x3.ifc: 1 of 1 IfcStructuralCurveMember record(s) in the IFC4 file do not conf... |
 | IFC2X3/IfcStructuralCurveMember | render | unwritten | pass |  |
 | IFC2X3/IfcStructuralCurveMemberVarying | card | unwritten | pass |  |
 | IFC2X3/IfcStructuralCurveMemberVarying | create | fail | pass |  |
@@ -119,7 +123,7 @@ Still open after this round:
 | IFC2X3/IfcStructuralSurfaceMemberVarying | read | partial | pass |  |
 | IFC2X3/IfcStructuralSurfaceMemberVarying | render | unwritten | pass |  |
 | IFC4/IfcBoundaryEdgeCondition | card | unwritten | pass |  |
-| IFC4/IfcBoundaryEdgeCondition | convert | fail | partial | 4 problem(s) over 6 record(s): structural/analysis-models/slab_01.ifc#74: no IfcBoundaryEdgeCondition with its values came back; structural/analysis-models/slab |
+| IFC4/IfcBoundaryEdgeCondition | convert | fail | partial | 4 problem(s) over 6 record(s): structural/analysis-models/slab_01.ifc#74: no IfcBoundaryEdgeCondition with its values came back; structural/analysis-models/s... |
 | IFC4/IfcBoundaryEdgeCondition | read | partial | pass |  |
 | IFC4/IfcBoundaryFaceCondition | card | unwritten | pass |  |
 | IFC4/IfcBoundaryFaceCondition | convert | fail | pass |  |
@@ -157,7 +161,7 @@ Still open after this round:
 | IFC4/IfcStructuralCurveConnection | card | unwritten | pass |  |
 | IFC4/IfcStructuralCurveConnection | render | partial | pass |  |
 | IFC4/IfcStructuralCurveMember | card | unwritten | pass |  |
-| IFC4/IfcStructuralCurveMember | render | unwritten | partial | 1 problem(s) over 708 record(s): 1 of 708 member(s) not drawn at the file's coordinates, e.g. structural/analysis-models/cantilever_01.ifc#133 (the file gives i |
+| IFC4/IfcStructuralCurveMember | render | unwritten | partial | 1 problem(s) over 708 record(s): 1 of 708 member(s) not drawn at the file's coordinates, e.g. structural/analysis-models/cantilever_01.ifc#133 (the file give... |
 | IFC4/IfcStructuralCurveMemberVarying | card | unwritten | pass |  |
 | IFC4/IfcStructuralCurveMemberVarying | create | fail | pass |  |
 | IFC4/IfcStructuralCurveMemberVarying | edit | fail | pass |  |
@@ -166,7 +170,7 @@ Still open after this round:
 | IFC4/IfcStructuralCurveReaction | card | unwritten | pass |  |
 | IFC4/IfcStructuralCurveReaction | render | unwritten | pass |  |
 | IFC4/IfcStructuralLinearAction | card | unwritten | pass |  |
-| IFC4/IfcStructuralLinearAction | convert | fail | partial | 50 problem(s) over 26 record(s): structural/analysis-models/building_02.ifc#8336: DestabilizingLoad false, was null; structural/analysis-models/building_02.ifc# |
+| IFC4/IfcStructuralLinearAction | convert | fail | partial | 50 problem(s) over 26 record(s): structural/analysis-models/building_02.ifc#8336: DestabilizingLoad false, was null; structural/analysis-models/building_02.i... |
 | IFC4/IfcStructuralLinearAction | render | partial | pass |  |
 | IFC4/IfcStructuralLoadCase | card | unwritten | pass |  |
 | IFC4/IfcStructuralLoadCase | read | partial | pass |  |
@@ -187,7 +191,7 @@ Still open after this round:
 | IFC4/IfcStructuralLoadSingleForceWarping | edit | fail | pass |  |
 | IFC4/IfcStructuralLoadTemperature | card | unwritten | pass |  |
 | IFC4/IfcStructuralPlanarAction | card | unwritten | pass |  |
-| IFC4/IfcStructuralPlanarAction | convert | fail | partial | 28 problem(s) over 15 record(s): structural/analysis-models/building_01.ifc#869: DestabilizingLoad false, was null; structural/analysis-models/building_01.ifc#8 |
+| IFC4/IfcStructuralPlanarAction | convert | fail | partial | 28 problem(s) over 15 record(s): structural/analysis-models/building_01.ifc#869: DestabilizingLoad false, was null; structural/analysis-models/building_01.if... |
 | IFC4/IfcStructuralPlanarAction | render | partial | pass |  |
 | IFC4/IfcStructuralPointAction | card | unwritten | pass |  |
 | IFC4/IfcStructuralPointConnection | card | unwritten | pass |  |
@@ -302,5 +306,5 @@ Still open after this round:
 | cap/check-unconnected-member | capability | unwritten | pass |  |
 | cap/check-unlinked-load-bearing | capability | unwritten | pass |  |
 | cap/cli-structural-command | capability | unwritten | pass |  |
-| cap/derive-analytical-model | capability | unwritten | partial | reference connection #481: no derived point with links [] within 0.001 m at [-14.51035417,-6.4521875,0]; reference connection #492: no derived point with links  |
+| cap/derive-analytical-model | capability | unwritten | partial | reference connection #481: no derived point with links [] within 0.001 m at [-14.51035417,-6.4521875,0]; reference connection #492: no derived point with lin... |
 | cap/docs-page | capability | fail | pass |  |

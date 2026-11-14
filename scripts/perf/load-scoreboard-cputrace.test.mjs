@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { stopCpuTrace } from './load-scoreboard-cputrace.mjs';
+import { epochWindow, markTraceWindow, startCpuTraceSafe, stopCpuTrace } from './load-scoreboard-cputrace.mjs';
 
 function fakeSession({ complete = { stream: 's' }, close = false, emit = true } = {}) {
   const cdp = new EventEmitter();
@@ -61,4 +61,19 @@ test('Tracing.end that never settles: the wait returns after the timeout (fake t
   t.mock.timers.tick(120000);
   const r = await pending;
   assert.equal(r.cpuTime.error, 'Tracing.end / tracingComplete not settled within 120000 ms');
+});
+
+test('a failing CPU trace never fails the wall-clock sample: the load gets past a trace start that throws', async () => {
+  const { browserSample } = await import('./load-scoreboard-browser.mjs');
+  const { fakeBrowserSample } = await import('./load-scoreboard-fake-browser.mjs');
+  // The fake context has no CDP: the trace start throws. The sample must still reach its open (the fake fails every
+  // file open, in phase `cold`), never stop in `cold-shell` on the trace.
+  const { result } = await fakeBrowserSample(browserSample, { cpuTrace: true });
+  const error = result.lanes['browser-cold'].error;
+  assert.equal(error.split(':')[0], 'cold');
+  // The guarded steps return the failure for the measure only.
+  const boom = { evaluate: async () => { throw new Error('page gone'); } };
+  assert.equal((await startCpuTraceSafe({ newCDPSession: async () => { throw new Error('no CDP'); } }, boom)).error, 'trace start failed: no CDP');
+  assert.equal(await markTraceWindow(boom, 1, 2, 1), 'trace marks failed: page gone');
+  assert.equal(await epochWindow(boom, 1, 2), null);
 });

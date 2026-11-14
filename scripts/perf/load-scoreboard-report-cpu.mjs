@@ -106,6 +106,13 @@ export function applyArmProtocolGate(cpu, summary) {
     if (!p || p.same || p.declaredAsymmetric) continue;
     const why = `inconclusive: arming protocols differ (base: ${p.base.signals.join('/')}, branch: ${p.branch.signals.join('/')}; declare plan.asymmetricBootSignal to compare them)`;
     for (const v of [c.verdict, c.instructions?.verdict]) if (v) Object.assign(v, { verdict: why, pass: false, regression: false });
+    // An A/A cell has no verdict: withhold its floors, so a mismatched pair never enters a floors reference (review #10138).
+    if (cpu.kind === 'aa') {
+      c.aaFloor = null;
+      c.aaFloorFlagged = null;
+      if (c.instructions) c.instructions.aaFloor = null;
+      c.gated = why;
+    }
   }
   return cpu;
 }

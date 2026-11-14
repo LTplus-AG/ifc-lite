@@ -356,8 +356,11 @@ function report(opt) {
   const floors = aaPath ? JSON.parse(readFileSync(aaPath, 'utf8')).floors : null;
   const host = existsSync(join(out, 'host.json')) ? JSON.parse(readFileSync(join(out, 'host.json'), 'utf8')) : null;
   const summary = summarize(plan, samples, { floors });
-  summary.cpuTime = applyArmProtocolGate(cpuTimeSummary(plan, samples, { floors }), summary);
-  addCpuFloors(summary, summary.cpuTime);
+  // Second and third measures never cost the wall report: their failure only makes them unavailable (review #10138).
+  try {
+    summary.cpuTime = applyArmProtocolGate(cpuTimeSummary(plan, samples, { floors }), summary);
+    addCpuFloors(summary, summary.cpuTime);
+  } catch (err) { summary.cpuTime = { kind: summary.kind, cells: [], error: String(err?.message ?? err).slice(0, 300) }; }
   attachElementDiffs(summary, samples, plan, out);
   summary.aaReference = aaPath;
   summary.host = host;

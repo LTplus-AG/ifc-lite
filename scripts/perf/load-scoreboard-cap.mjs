@@ -39,7 +39,9 @@ export function capActive(st, atMs) {
 /** 'none' | 'inside' | 'partial' for a sample from startMs to endMs, from the state read at its start and at its end. */
 export function capWindowOf(before, after, startMs, endMs) {
   if (!before && !after) return 'none';
-  if (before?.error || after?.error) return 'partial'; // unreadable state is never quiet
+  // An unreadable cap state makes the cap unknown, not the sample: the ordinary host rule judges it (host-wide pressure
+  // counts any capped groups' waiting, so a sample taken under a cap still reads as loaded there) (review #10138).
+  if (before?.error || after?.error) return 'unknown';
   const atStart = capActive(before, startMs), atEnd = capActive(after, endMs);
   // A window that opened or closed during the sample (even both, entirely inside it) overlaps it: partial (review #10138).
   const edgeInside = [before, after].some((st) => st && [st.appliedMs, st.restoredMs].some((t) => Number.isFinite(t) && t > startMs && t < endMs));

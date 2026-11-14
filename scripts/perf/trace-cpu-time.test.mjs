@@ -202,3 +202,17 @@ test('CPU and instruction verdicts follow the wall arm-protocol gate; their medi
   assert.deepEqual(c.medians.total, [150, 150]);
   assert.equal(c.pairs.cpu, 2);
 });
+
+test('A/A floors of a -settled cell with undeclared different arming are withheld; the fallback clock needs the main thread', async () => {
+  const { cpuTimeSummary, applyArmProtocolGate, addCpuFloors } = await import('./load-scoreboard-report-cpu.mjs');
+  const row = (side, n, v) => ({ ok: true, fixture: 'FZK', lane: 'browser-cold-settled', side, round: n, interactiveMs: 500, instructions: { total: v * 1e6 }, cpuTime: { cpuMs: { total: v } } });
+  const rows = [0, 1, 2, 3, 4].flatMap((n) => [row('base', n, 1000 + n), row('branch', n, 1001 + n)]);
+  const cpu = cpuTimeSummary({ kind: 'aa', lanes: ['browser-cold-settled'] }, rows);
+  assert.ok(cpu.cells[0].aaFloor > 0);
+  const summary = { floors: {}, fixtures: [{ name: 'FZK', lanes: { 'browser-cold-settled': { armProtocol: { same: false, declaredAsymmetric: false, base: { signals: ['true'] }, branch: { signals: ['no signal'] } } } } }] };
+  addCpuFloors(summary, applyArmProtocolGate(cpu, summary));
+  assert.deepEqual(summary.floors.FZK['browser-cold-settled'], { cpuTotalMs: null, instructionsM: null });
+  // No scoreboard marks and no CrRendererMain metadata: the page clock cannot be identified, so no window is guessed.
+  const bare = traceEventsOf(trace).filter((e) => e.ph !== 'M' && !String(e.name).includes('scoreboard'));
+  assert.throws(() => traceCpuTime(bare, { window: [200, 250] }), /cannot align the page clock/);
+});

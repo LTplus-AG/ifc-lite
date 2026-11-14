@@ -285,7 +285,7 @@ export function settleHostLoad(host, { ownOutside = null } = {}) {
   const thermal = thermalDelta(host.thermalBefore, thermalAfter);
   const capAfter = readCapState(), window = capWindowOf(host.capBefore, capAfter, host.startedAt, host.startedAt + sampleMs);
   let flag;
-  if (window === 'none') flag = classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs });
+  if (window === 'none' || window === 'unknown') flag = classifyHostLoad({ psi: host.cpuPressureAvg10, limit: host.limit, builders: host.builders, groupCpuMs: builderCpuMs });
   else {
     const ownAfter = ownPressureAfter;
     // Job cgroup and browser scope: their union stall lies in [max, sum]; flag on the sum (stallRange, load-scoreboard-cap.mjs).
@@ -297,6 +297,7 @@ export function settleHostLoad(host, { ownOutside = null } = {}) {
     flag = classifyCappedLoad({ window, ownStallPct, browserStallUnknown: range.browserUnknown, limit: host.limit, builders: host.builders, builderCpuMs, cappedPaths: st?.cappedPaths ?? [] });
     host.cap = { window, id: st?.id ?? null, allowanceCores: st?.allowanceCores ?? null, ownStallPct: ownStallPct === null ? null : Math.round(ownStallPct * 10) / 10, stallWindowMs: sampleMs, ownStallRangePct: range.lowPct === null ? null : [Math.round(range.lowPct * 10) / 10, Math.round(range.highPct * 10) / 10], jobStallUs: jobUs, browserStallUs: ownOutside?.pressureUs ?? null, error: capAfter?.error ?? host.capBefore?.error ?? null };
   }
+  if (window === 'unknown') host.cap = { window, error: capAfter?.error ?? host.capBefore?.error ?? null };
   host.cap ??= { window: 'none' };
   Object.assign(host, { groupCpuMs, builderCpuMs, foreignCpuMs, ownOutsideCgroupCpuMs: Number.isFinite(ownOutsideCpuMs) ? Math.round(ownOutsideCpuMs) : null, sampleMs, overlapsWatchdogPass, thermal, settled: true, ...flag });
   delete host.capBefore; delete host.ownPressureBefore;

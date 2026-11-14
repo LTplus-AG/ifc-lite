@@ -91,8 +91,9 @@ export function resolveWindow(events, { window = null } = {}) {
   const SCOREBOARD = new Set([INPUT_MARK, INTERACTIVE_MARK, ORIGIN_MARK]);
   const mainTid = events.find((e) => e.ph === 'M' && e.name === 'thread_name' && e.pid === pid && e.args?.name === 'CrRendererMain')?.tid;
   const anchors = marks.some((m) => SCOREBOARD.has(m.name) && m.pid === pid) ? marks.filter((m) => SCOREBOARD.has(m.name) && m.pid === pid)
-    : marks.filter((m) => m.pid === pid && (mainTid === undefined || m.tid === mainTid));
-  if (anchors.length === 0) throw new Error('no main-thread User Timing mark: cannot align the page clock');
+    : mainTid === undefined ? [] : marks.filter((m) => m.pid === pid && m.tid === mainTid);
+  // Without the main thread's identity the page clock cannot be told from worker clocks: refuse (review #10138).
+  if (anchors.length === 0) throw new Error('no scoreboard marks and no identifiable main-thread User Timing mark: cannot align the page clock');
   const own = anchors.map((m) => m.tsUs - m.startTimeMs * 1000).sort((a, b) => a - b);
   const offsetUs = own[Math.floor(own.length / 2)];
   let startMs, endMs, source;

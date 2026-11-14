@@ -20,8 +20,8 @@
 import { fileURLToPath } from 'node:url';
 
 export const INSTR_WRAPPER = fileURLToPath(new URL('./instr-chrome.py', import.meta.url));
-/** Smallest share of enabled time the counters must have run in a window (below it the PMU was multiplexed). */
-export const MIN_PMU_COVERAGE = 0.99;
+/** Share of enabled time the counters must have run in a window: complete (below it the PMU was multiplexed; review #10138). */
+export const MIN_PMU_COVERAGE = 0.9999; // complete coverage, allowing ns rounding (measured 1.0000 without contention)
 
 /** Parse the wrapper's NDJSON: { unavailable } or { samples: [{ t, c: { pmu: count } }] } (time-ordered). */
 export function parseInstrSamples(text) {
@@ -73,8 +73,10 @@ export function instructionsIn(parsed, startMs, endMs) {
   let i1 = s.length - 1;
   while (i1 > 0 && s[i1 - 1].t >= endMs) i1--;
   const dE = s[i1].e - s[i0].e, dR = Object.keys(s[i1].r).reduce((acc, k) => acc + (s[i1].r[k] - s[i0].r[k]), 0);
-  const coverage = dE > 0 ? dR / dE : 1;
-  if (coverage < MIN_PMU_COVERAGE) return { total: null, pmu: null, coverage, unavailable: `PMU multiplexed: counters ran ${(coverage * 100).toFixed(1)}% of their enabled time (< ${MIN_PMU_COVERAGE * 100}%)` };
+  // No enabled time between the bracketing samples: the counters did not run, so nothing was measured (review #10138).
+  if (!(dE > 0)) return { total: null, pmu: null, coverage: null, unavailable: 'counters not running in this window (no enabled time)' };
+  const coverage = dR / dE;
+  if (coverage < MIN_PMU_COVERAGE) return { total: null, pmu: null, coverage, unavailable: `PMU multiplexed: counters ran ${(coverage * 100).toFixed(1)}% of their enabled time (complete coverage required)` };
   return { total: Object.values(pmu).reduce((x, y) => x + y, 0), pmu, coverage: Math.round(coverage * 10000) / 10000, edgeGapMs: Math.round(Math.max(gap(startMs), gap(endMs)) * 10) / 10 };
 }
 

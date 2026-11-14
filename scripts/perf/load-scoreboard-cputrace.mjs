@@ -14,6 +14,27 @@ import { writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { TRACE_CATEGORIES, traceCpuTime } from './trace-cpu-time.mjs';
 
+/**
+ * Second measures never change, fail or drop the wall-clock sample (review #10138): these wrappers turn every failure
+ * of the optional trace into `{ error }` for that measure only.
+ */
+export async function startCpuTraceSafe(context, page) {
+  try { return { cdp: await startCpuTrace(context, page) }; } catch (err) { return { error: `trace start failed: ${String(err?.message ?? err).slice(0, 200)}` }; }
+}
+
+/** Write the window marks; returns null or the error text (never throws). */
+export async function markTraceWindow(page, fromAbs, toAbs, originAbs) {
+  try {
+    await page.evaluate(([a, b, o]) => { performance.mark('scoreboard:input', { startTime: a }); performance.mark('scoreboard:interactive', { startTime: b }); performance.mark('scoreboard:origin', { startTime: o }); }, [fromAbs, toAbs, originAbs]);
+    return null;
+  } catch (err) { return `trace marks failed: ${String(err?.message ?? err).slice(0, 200)}`; }
+}
+
+/** Epoch window of an open for the instruction counter, or null when the page cannot be read (never throws). */
+export async function epochWindow(page, fromAbs, toAbs) {
+  try { return await page.evaluate(([a, b]) => [performance.timeOrigin + a, performance.timeOrigin + b], [fromAbs, toAbs]); } catch { return null; }
+}
+
 /** Start tracing through a CDP session on `page` (tracing is browser-wide: renderer, GPU and browser processes). */
 export async function startCpuTrace(context, page) {
   const cdp = await context.newCDPSession(page);

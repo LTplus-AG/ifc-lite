@@ -33,7 +33,7 @@ import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreb
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 import { IDENTITY_QUERY, corruptStoredSnapshots, readSceneIdentity, settleIdentityWrites } from './load-scoreboard-identity.mjs';
-import { startCpuTrace, stopCpuTrace } from './load-scoreboard-cputrace.mjs';
+import { epochWindow, markTraceWindow, startCpuTraceSafe, stopCpuTrace } from './load-scoreboard-cputrace.mjs';
 import { outsideOwnCgroup } from './load-scoreboard-host.mjs';
 import { INSTR_WRAPPER, laneInstructions, parseInstrSamples } from './load-scoreboard-instr.mjs';
 
@@ -157,7 +157,9 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   const measuredOpen = async (label) => {
     phase = `${label}-shell`;
     // Opt-in CPU trace (plan/side `cpuTrace`): started before the quiet-shell wait, so its start-up cost is not in the open.
-    const tracing = cpuTrace && pass === 'timing' ? await startCpuTrace(context, page) : null;
+    // A failed trace start makes CPU time unavailable for this open; it never fails the load (review #10138).
+    const started = cpuTrace && pass === 'timing' ? await startCpuTraceSafe(context, page) : null;
+    const tracing = started?.cdp ?? null;
     const shell = early ? await waitFirstPaint(page)
       : arm === 'boot-settled' ? await armAfterBootSettled(page, { expectSignal: side.bootSignal !== false })
         : await waitShellQuiet(page);
@@ -176,11 +178,13 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     // first paint (rebaseToArm adds that pick delay to the wall time), to the interactive mark (review #10138).
     const fromAbs = early && Number.isFinite(shell?.armedAtMs) && shell.armedAtMs <= open.originAbs ? shell.armedAtMs : open.originAbs;
     const toAbs = open.originAbs + open.interactiveMs;
-    if (instrOut) instrWindows.push({ label, window: await page.evaluate(([a, b]) => [performance.timeOrigin + a, performance.timeOrigin + b], [fromAbs, toAbs]) });
+    if (instrOut) { const w = await epochWindow(page, fromAbs, toAbs); if (w) instrWindows.push({ label, window: w }); }
     // A mark created now with an earlier startTime gets its trace ts from that startTime (Chrome; args.data.callTime holds the creation time).
-    if (tracing) await page.evaluate(([a, b, o]) => { performance.mark('scoreboard:input', { startTime: a }); performance.mark('scoreboard:interactive', { startTime: b }); performance.mark('scoreboard:origin', { startTime: o }); }, [fromAbs, toAbs, open.originAbs]);
+    const markError = tracing ? await markTraceWindow(page, fromAbs, toAbs, open.originAbs) : null;
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
     if (tracing) Object.assign(open, await stopCpuTrace(tracing, { spans: open.trace, file: join(outDir, `${tag}-${label}.cputrace.json.gz`) }));
+    if (started && !tracing) open.cpuTime = { error: started.error };
+    if (markError) open.cpuTime = { error: markError };
     if (early) open = rebaseToArm(open);
     const memory = meta[`${label}Memory`] ?? null;
     // Identity pass (untimed, flag on): what the scene holds after this open, for the reopen verdict.
@@ -277,7 +281,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     for (const [name, lane] of Object.entries(lanes)) if (index[name] >= failedOpen) lanes[name] = { ...lane, ok: false, error };
   } finally {
     // The browser process runs in its own systemd scope: its CPU is this sample's, not foreign (settleHostLoad).
-    meta.browserOutside = outsideOwnCgroup(chromePids(profileDir));
+    try { meta.browserOutside = outsideOwnCgroup(chromePids(profileDir)); } catch (err) { meta.browserOutside = { cpuMs: null, pressureUs: null, error: String(err?.message ?? err).slice(0, 200) }; }
     await context?.close().catch(() => {});
     rmSync(profileDir, { recursive: true, force: true });
     writeFileSync(join(outDir, `${tag}.console.log`), consoleLogs.join('\n'));
@@ -286,7 +290,11 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
       // carries a figure or the reason it has none (non-Linux, permissions, wrapper output).
       const parsed = instrOut ? parseInstrSamples(existsSync(instrOut) ? readFileSync(instrOut, 'utf8') : '') : null;
       const laneOf = { cold: coldLane, warm1: warmOpens > 1 ? warm1Lane : warmLane, [`warm${warmOpens}`]: warmLane };
-      laneInstructions(lanes, { parsed, unavailable: instrOut ? null : meta.instructionsUnavailable, windows: instrWindows.map(({ label, window }) => ({ lane: laneOf[label], window })) });
+      try {
+        laneInstructions(lanes, { parsed, unavailable: instrOut ? null : meta.instructionsUnavailable, windows: instrWindows.map(({ label, window }) => ({ lane: laneOf[label], window })) });
+      } catch (err) {
+        laneInstructions(lanes, { unavailable: `instruction figures failed: ${String(err?.message ?? err).slice(0, 200)}` });
+      }
       if (parsed?.unavailable) meta.instructionsUnavailable = parsed.unavailable;
       if (instrOut) rmSync(instrOut, { force: true });
     }

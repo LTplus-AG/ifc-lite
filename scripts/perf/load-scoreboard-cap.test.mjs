@@ -22,7 +22,8 @@ test('the window of a sample: inside only when open at both ends in the same win
   assert.equal(capWindowOf(st({ appliedMs: 2500 }), st({ appliedMs: 2500 }), 2000, 3000), 'partial'); // opened mid-sample
   assert.equal(capWindowOf(st(), st({ id: 'w2' }), 2000, 3000), 'partial');
   assert.equal(capWindowOf(st({ restoredMs: 1500 }), st({ restoredMs: 1500 }), 2000, 3000), 'none'); // an old, closed window
-  assert.equal(capWindowOf(st(), { error: 'bad json' }, 2000, 3000), 'partial');
+  // Unreadable cap state: the cap is unknown (the host rule judges the sample), never a reason to drop it.
+  assert.equal(capWindowOf(st(), { error: 'bad json' }, 2000, 3000), 'unknown');
   // Applied and restored entirely inside the sample: neither end is capped, but the sample overlaps the window.
   assert.equal(capWindowOf(st({ appliedMs: 2500, restoredMs: 2800 }), st({ appliedMs: 2500, restoredMs: 2800 }), 2000, 3000), 'partial');
 });
@@ -179,5 +180,19 @@ test('the stall share uses the interval between its two counter reads (sample st
     assert.equal(h.cap.window, 'inside');
     assert.equal(h.cap.stallWindowMs, h.sampleMs);
     assert.ok(h.sampleMs >= 20 && h.sampleMs < 1000, `sample ${h.sampleMs} ms excludes the diagnostic reads before and after`);
+  } finally { delete process.env.LOAD_SCOREBOARD_CAP_STATE; }
+});
+
+test('an unreadable cap state leaves the sample to the ordinary host rule and records the error', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cap-'));
+  const file = join(dir, 's.json');
+  writeFileSync(file, '{ not json');
+  process.env.LOAD_SCOREBOARD_CAP_STATE = file;
+  try {
+    const { hostQuiet, settleHostLoad } = await import('./load-scoreboard-host.mjs');
+    const h = settleHostLoad(await hostQuiet({ maxWaitMs: 0 }));
+    assert.equal(h.cap.window, 'unknown');
+    assert.equal(typeof h.cap.error, 'string');
+    assert.notEqual(h.reason, 'sample only partly inside the cap window');
   } finally { delete process.env.LOAD_SCOREBOARD_CAP_STATE; }
 });

@@ -140,3 +140,12 @@ test('a very long sample history does not overflow the argument limit', () => {
   const r = instructionsIn(parseInstrSamples(rows.join('\n')), 1000.5, 200000.5);
   assert.equal(r.total, 1990000);
 });
+
+test('a window where the counters never ran (no enabled time) is unavailable; coverage must be complete', () => {
+  const still = [0, 1, 2].map((i) => ({ t: 1000 + i * 10, c: { cpu: 0 }, e: 0, r: { cpu: 0 } }));
+  const r = instructionsIn(parseInstrSamples(still.map((x) => JSON.stringify(x)).join('\n')), 1005, 1015);
+  assert.deepEqual([r.total, r.unavailable], [null, 'counters not running in this window (no enabled time)']);
+  // 99.5% running: incomplete, rejected (complete coverage required).
+  const part = [0, 1, 2].map((i) => ({ t: 1000 + i * 10, c: { cpu: i * 100 }, e: i * 1000e6, r: { cpu: i * 995e6 } }));
+  assert.equal(instructionsIn(parseInstrSamples(part.map((x) => JSON.stringify(x)).join('\n')), 1005, 1015).total, null);
+});

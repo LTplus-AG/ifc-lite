@@ -122,8 +122,8 @@ export class FederationRegistry {
 
     const offset = this.nextOffset;
     const overlayMaxExpressId = reservedMaxExpressId + OVERLAY_ID_HEADROOM;
-    // A conflicting retained overlay must not prevent source/geometry loading.
-    // The viewer keeps those edits quarantined until the user discards them.
+    // registerModel already dropped a retained ID inside the source; the viewer
+    // discards those edits, so loading never fails on them.
     const ownedEnd = retainedCreationEnd(reservedMaxExpressId, reservedMaxExpressId,
       Math.min(overlayMaxExpressId, MAX_SAFE_OFFSET - offset),
       firstRetainedExpressId);

@@ -28,20 +28,26 @@ function waitForCompletion(modelId: string, signal: AbortSignal): Promise<void> 
   });
 }
 
-/** Publishes the hydrated store's ids and returns the model's ownership bound for the reverse
- *  resolvers: the store's highest id, or the published end when a later model clamps the range. */
-function extendModelIdRange(modelId: string, dataStore: IfcDataStore, firstHydration: boolean, beforeExtend: () => void): { maxExpressId: number } {
-  const registered = useViewerStore.getState().models.get(modelId)?.maxExpressId ?? 0;
-  const maxExpressId = Math.max(registered, getMaxExpressId(dataStore, []));
-  // An unregistered primary keeps the single-model `globalId === expressId` fallback.
-  if (!federationRegistry.hasModel(modelId)) return { maxExpressId };
+interface IdRangeTarget { maxExpressId: number; firstCreated: number | null }
+
+/** Reads what the hydrated store needs; changes no registry ownership. `firstCreated` is
+ *  null for an unregistered primary, which keeps the `globalId === expressId` fallback. */
+function idRangeTarget(modelId: string, dataStore: IfcDataStore, firstHydration: boolean): IdRangeTarget {
+  const state = useViewerStore.getState();
+  const maxExpressId = Math.max(state.models.get(modelId)?.maxExpressId ?? 0, getMaxExpressId(dataStore, []));
+  if (!federationRegistry.hasModel(modelId)) return { maxExpressId, firstCreated: null };
   // A first hydration discards kept creations the source overlaps, like a local reload.
   // A refresh refuses instead, leaving the source and the edits made against it untouched.
-  const state = useViewerStore.getState();
   const firstCreated = firstHydration
     ? discardOverlappingRetainedEdits(state, modelId, maxExpressId)
     : state.mutationViews.get(modelId)?.getCreatedExpressIdBounds().lowest ?? 0;
-  beforeExtend();
+  return { maxExpressId, firstCreated };
+}
+
+/** Publishes the target and returns the model's ownership bound for the reverse resolvers:
+ *  the store's highest id, or the published end when a later model clamps the range. */
+function publishIdRange(modelId: string, { maxExpressId, firstCreated }: IdRangeTarget): { maxExpressId: number } {
+  if (firstCreated === null) return { maxExpressId };
   const published = federationRegistry.extendModel(modelId, maxExpressId, firstCreated);
   if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
   return { maxExpressId: published };
@@ -57,13 +63,15 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
   }
   const previousRun = state.serverPropertiesRuns.get(modelId) ?? IDLE_RUN;
   const owner: ServerPropertiesOwner = { model, isStale };
-  let expectedStore = owner.model.ifcDataStore;
+  const firstHydration = !owner.model.ifcDataStore;
+  // The store this run is committing; the commit's own notification must keep ownership.
+  let committing: IfcDataStore | null = null;
   const ownsModel = () => {
     const current = useViewerStore.getState().models.get(modelId);
     // The finalizer preserves these identities. Another properties/source writer
     // means replacement: its store must not be overwritten by this older poll.
     return !owner.isStale?.() && current !== undefined && current.loadState !== 'error' &&
-      current.sourceFile === owner.model.sourceFile && current.ifcDataStore === expectedStore;
+      current.sourceFile === owner.model.sourceFile && (current.ifcDataStore === owner.model.ifcDataStore || current.ifcDataStore === committing);
   };
   const write = (run: ServerPropertiesRun) => useViewerStore.getState().setServerPropertiesRun(modelId, run);
   const slot = createRunSlot<void, never, ServerPropertiesOwner, string>({
@@ -99,29 +107,22 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
       // transaction: immediately synchronize the ownership bound even if settlement is rejected.
       withDeferredOverlayCapacity(() => {
         if (!lease.isCurrent() || !ownsModel()) return;
+        const target = idRangeTarget(modelId, dataStore, firstHydration);
         let idRange: { maxExpressId: number };
-        try { idRange = extendModelIdRange(modelId, dataStore, !owner.model.ifcDataStore, () => { ownershipMayHaveChanged = true; }); }
+        ownershipMayHaveChanged = true;
+        try { idRange = publishIdRange(modelId, target); }
         catch (error) {
           if (!(error instanceof ModelRangeExtensionRefusedError)) throw error;
           ownershipMayHaveChanged = false;
-          const phase = owner.model.ifcDataStore ? 're-hydration' : 'hydration';
-          throw new Error(`Server properties ${phase} refused: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+          throw new Error(`Server properties ${firstHydration ? 'hydration' : 're-hydration'} refused: ${error.message}`, { cause: error });
         }
         // Ownership is permanent even if extension/warning supersedes the lease.
         // Commit the hydrated store only if settlement still owns this model.
         const accepted = lease.isCurrent() && ownsModel();
-        // Set before the commit so its own notification keeps ownership; undone
-        // if the commit throws before the swap, so the run fails rather than idles.
-        const previousStore = expectedStore;
-        if (accepted) expectedStore = dataStore;
-        try {
-          useViewerStore.getState().updateModel(modelId, accepted
-            ? { ifcDataStore: dataStore, ...idRange }
-            : idRange);
-        } catch (error) {
-          if (useViewerStore.getState().models.get(modelId)?.ifcDataStore !== dataStore) expectedStore = previousStore;
-          throw error;
-        }
+        if (accepted) committing = dataStore;
+        useViewerStore.getState().updateModel(modelId, accepted
+          ? { ifcDataStore: dataStore, ...idRange }
+          : idRange);
         if (accepted && !useViewerStore.getState().models.get(modelId)?.hasOverlayCapacity) {
           console.warn(`[Server properties] Model ${modelId}: no id is left for edits in its safe range`);
         }
@@ -130,7 +131,7 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
       // must fail this run, rather than restore permission against stale data.
       lease.succeed();
     } catch (error) {
-      if (ownershipMayHaveChanged || !owner.model.ifcDataStore || isAbortError(error)) throw error;
+      if (ownershipMayHaveChanged || firstHydration || isAbortError(error)) throw error;
       console.warn('[Server properties] Refresh failed; previous properties remain available', error);
       // A running record cannot be restored: that older lease has been superseded.
       // Idle preserves loaded-store permission without forging a successful run.

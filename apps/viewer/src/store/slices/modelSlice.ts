@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { discardUnchangedMutationViews } from '@/utils/model-mutation-view';
+import { discardOverlappingRetainedEdits, discardUnchangedMutationViews } from '@/utils/model-mutation-view';
 import { refreshModelOverlayCapacity } from '../overlay-capacity.js';
 
 /**
@@ -563,7 +563,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
 
   // Federation Registry helpers
   registerModelOffset: (modelId: string, maxExpressId: number) => {
-    return federationRegistry.registerModel(modelId, maxExpressId, get().mutationViews.get(modelId)?.getCreatedExpressIdBounds().lowest ?? 0);
+    return federationRegistry.registerModel(modelId, maxExpressId, discardOverlappingRetainedEdits(get(), modelId, maxExpressId));
   },
 
   toGlobalId: (modelId: string, expressId: number) => toPublishedGlobalIdFromState(federationRegistry, get(), modelId, expressId),

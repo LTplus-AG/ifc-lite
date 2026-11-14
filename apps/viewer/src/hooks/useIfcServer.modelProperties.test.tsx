@@ -916,30 +916,28 @@ it('a commit that throws before the store swap fails the run even when capacity 
     });
     assert.equal(useViewerStore.getState().models.get('server')!.hasOverlayCapacity, false, 'the deferred refresher committed a capacity change');
     assert.equal(useViewerStore.getState().serverPropertiesRuns.get('server')?.kind, 'failed');
-  } finally { useViewerStore.setState({ updateModel: originalUpdate }); federationRegistry.clear(); }
+  } finally { useViewerStore.setState({ updateModel: originalUpdate }); }
 });
 
 it('a refresh that fails before ownership changes keeps loaded properties editable (#10139)', async () => {
-  try {
-    const { registerModelOffset, updateModel } = useViewerStore.getState();
-    const store = result();
-    const idOffset = registerModelOffset('server', 1);
-    updateModel('server', { idOffset, maxExpressId: 1, ifcDataStore: store });
-    const previous = { kind: 'succeeded' as const, runId: 42, result: undefined };
-    useViewerStore.getState().setServerPropertiesRun('server', previous);
-    const view = new MutablePropertyView(null, 'server');
-    const bounds = view.getCreatedExpressIdBounds.bind(view);
-    let fail = false;
-    mock.method(view, 'getCreatedExpressIdBounds', () => { if (fail) throw new Error('Bounds failed'); return bounds(); });
-    useViewerStore.setState({ mutationViews: new Map([['server', view]]) });
-    fail = true;
-    await act(async () => {
-      useServerModelProperties().start('server', undefined, async () => serverStoreAt(50));
-      await new Promise(resolve => setTimeout(resolve, 30));
-    });
-    fail = false;
-    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, store);
-    assert.deepEqual(useViewerStore.getState().serverPropertiesRuns.get('server'), previous);
-    assert.equal(federationRegistry.getGlobalIdRange('server')!.end - idOffset, 1, 'ownership is untouched');
-  } finally { useViewerStore.getState().clearMutationView('server'); federationRegistry.clear(); }
+  const { registerModelOffset, updateModel } = useViewerStore.getState();
+  const store = result();
+  const idOffset = registerModelOffset('server', 1);
+  updateModel('server', { idOffset, maxExpressId: 1, ifcDataStore: store });
+  const previous = { kind: 'succeeded' as const, runId: 42, result: undefined };
+  useViewerStore.getState().setServerPropertiesRun('server', previous);
+  const view = new MutablePropertyView(null, 'server');
+  const bounds = view.getCreatedExpressIdBounds.bind(view);
+  let fail = false;
+  mock.method(view, 'getCreatedExpressIdBounds', () => { if (fail) throw new Error('Bounds failed'); return bounds(); });
+  useViewerStore.setState({ mutationViews: new Map([['server', view]]) });
+  fail = true;
+  await act(async () => {
+    useServerModelProperties().start('server', undefined, async () => serverStoreAt(50));
+    await new Promise(resolve => setTimeout(resolve, 30));
+  });
+  fail = false;
+  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, store);
+  assert.deepEqual(useViewerStore.getState().serverPropertiesRuns.get('server'), previous);
+  assert.equal(federationRegistry.getGlobalIdRange('server')!.end - idOffset, 1, 'ownership is untouched');
 });

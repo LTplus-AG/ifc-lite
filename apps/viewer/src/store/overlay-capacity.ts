@@ -64,7 +64,7 @@ export function registerOverlayCapacity(store: Pick<StoreApi<ViewerState>, 'getS
           }
           if (!model) continue;
           if (view && (view !== binding?.view || model.ifcDataStore !== binding.source || model.maxExpressId !== binding.maxExpressId)) {
-            // Only a new view or source can create an overlap; allocator ticks skip this scan.
+            // Only a new view, source or source max can create an overlap; allocator ticks skip this scan.
             const watermark = sourceWatermark(model.ifcDataStore);
             discardOverlappingRetainedEdits(state, modelId, Math.max(model.maxExpressId, watermark));
             // A discarded view re-marks this model through the store subscription.

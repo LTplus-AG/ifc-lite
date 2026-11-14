@@ -6,8 +6,9 @@
 export class ModelRangeExtensionRefusedError extends Error {}
 
 /** Reserve unused ownership before retained creations, without refusing a
- * source that loads beyond capacity. Both registration and hydration use this
- * check before changing ownership, so source IDs can never alias creations. */
+ * source that loads beyond capacity. Registration passes no overlapping ID;
+ * hydration refuses overlap here before changing ownership, so source IDs can
+ * never alias creations. */
 export function retainedCreationEnd(sourceMax: number, sourceEnd: number, overlayEnd: number, firstRetained: number): number {
   if (!Number.isSafeInteger(firstRetained) || firstRetained < 0) {
     throw new ModelRangeExtensionRefusedError(`[FederationRegistry] Invalid first retained ID: ${firstRetained}`);

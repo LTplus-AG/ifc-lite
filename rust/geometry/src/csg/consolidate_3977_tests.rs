@@ -209,3 +209,34 @@ fn raw_candidate_requires_exact_closure_3977() {
     assert!(complete_conformed_candidate(candidate.clone(), true, false).is_some());
     assert!(complete_conformed_candidate(candidate, true, true).is_none());
 }
+
+/// #8190: a sliver whose apex is a vertex the neighbouring face ends at. The
+/// candidate is closed with the sliver in it, index-only cleanup opens it
+/// along the sliver's long edge, and the bar must not reject it for that.
+#[test]
+fn a_candidate_torn_only_by_index_only_cleanup_is_repaired_and_accepted_8190() {
+    let (a, b, c, d) = (
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(2.0, 0.0, 0.0),
+        Point3::new(0.0, 2.0, 0.0),
+        Point3::new(0.0, 0.0, 2.0),
+    );
+    // On the rim of the bottom face, 5 um proud of the edge a-b. The side
+    // face ends at it; the bottom face spans a-b and carries the sliver.
+    let m = Point3::new(1.0, -5.0e-6, 0.0);
+    let mut candidate = Mesh::new();
+    for face in [[a, c, b], [a, b, m], [a, m, d], [m, b, d], [a, d, c], [b, c, d]] {
+        add_face(&mut candidate, face);
+    }
+    assert_eq!(count_open_boundary_edges_exact(&candidate), 0, "closed with its sliver");
+    let mut index_only = candidate.clone();
+    index_only.clean_degenerate();
+    assert_eq!(index_only.triangle_count(), 5);
+    assert_eq!(count_open_boundary_edges_exact(&index_only), 3, "a-b against a-m and m-b");
+
+    let accepted = complete_conformed_candidate(candidate, true, true)
+        .expect("the bottom face is split at the sliver's apex instead");
+    assert_eq!(count_open_boundary_edges_at(&accepted, 1.0e4), 0);
+    assert_eq!(count_open_boundary_edges_exact(&accepted), 0);
+    assert_eq!(accepted.triangle_count(), 6, "the sliver goes, the bottom face becomes two");
+}

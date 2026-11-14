@@ -2,42 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import {
-  decodeFile,
-  decodeFileArea,
-  decodeFileResponse,
-  decodeFolder,
-  decodeProject,
-} from './dalux-types.js';
-import type {
-  DaluxFile,
-  DaluxFileArea,
-  DaluxFolder,
-  DaluxProject,
-} from './dalux-types.js';
+import { decodeFile, decodeFileArea, decodeFileResponse, decodeFolder, decodeProject } from './dalux-types.js';
+import type { DaluxFile, DaluxFileArea, DaluxFolder, DaluxProject } from './dalux-types.js';
 
 import { matchesGlob } from '@ifc-lite/plugin-api';
 import type {
-  ConnectionTestResult,
-  DownloadOptions,
-  FileFilter,
-  FileSourceProvider,
-  ListOptions,
-  ListProjectsOptions,
-  Page,
-  PluginContext,
-  RevisionEvent,
-  RevisionWatchResult,
-  SourceContainer,
-  SourceFile,
-  SourceFileRef,
-  SourceProject,
-  SourceRevision,
+  ConnectionTestResult, DownloadOptions, FileFilter, FileSourceProvider, ListOptions, ListProjectsOptions, Page, PluginContext,
+  RevisionEvent, RevisionWatchResult, SourceContainer, SourceFile, SourceFileRef, SourceProject, SourceRevision, UploadOptions, UploadResult, UploadTarget,
 } from '@ifc-lite/plugin-api';
 
 import { DALUX_MANIFEST } from './manifest.js';
 import { parseDaluxNode } from './node-url.js';
-import { BrowserDaluxApiClient, DaluxHttpError, fetchPage, fetchAllPages } from './http-client.js';
+import {
+  BrowserDaluxApiClient,
+  DaluxHttpError,
+  fetchPage,
+  fetchAllPages,
+  type DaluxCredentials,
+} from './http-client.js';
+import { uploadToDalux } from './upload.js';
 import {
   LATEST_REVISION,
   convertListLenient,
@@ -237,6 +220,19 @@ export class DaluxBuildProvider implements FileSourceProvider {
     return client.getBinary(downloadLink, options, metadata.data.fileSize);
   }
 
+  /** Write bytes back to Dalux. The flow and its conflict rules live in `upload.ts`. */
+  async uploadFile(
+    ctx: PluginContext,
+    target: UploadTarget,
+    bytes: ArrayBuffer,
+    options?: UploadOptions,
+  ): Promise<UploadResult> {
+    if (!DALUX_MANIFEST.capabilities?.writeBack?.includes(target.mode)) {
+      throw new Error(`Dalux does not support write-back mode "${target.mode}"`);
+    }
+    return uploadToDalux(ctx, await this.credentials(ctx), target, bytes, options);
+  }
+
   /**
    * The file's revisions, newest first — reconstructed from the project's
    * version sets, the only per-file history Dalux exposes at all. See
@@ -389,12 +385,16 @@ export class DaluxBuildProvider implements FileSourceProvider {
     }
   }
 
-  private async createClient(ctx: PluginContext): Promise<BrowserDaluxApiClient> {
+  private async credentials(ctx: PluginContext): Promise<DaluxCredentials> {
     const apiKey = await ctx.getPreference('apiKey');
     if (!apiKey) throw new Error('Dalux API key not configured');
     const node = parseDaluxNode(await ctx.getPreference('baseUrl'));
-    // Keep the canonical relay origin; the node travels as a parameter (#2792).
-    const credentials = { baseUrl: DEFAULT_BASE_URL, apiKey, node };
+    // Keep the relay origin canonical; the node travels as a parameter (#2792).
+    return { baseUrl: DEFAULT_BASE_URL, apiKey, node };
+  }
+
+  private async createClient(ctx: PluginContext): Promise<BrowserDaluxApiClient> {
+    const credentials = await this.credentials(ctx);
     const cached = this.clients.get(ctx);
     if (cached?.matchesCredentials(credentials)) return cached;
     const client = new BrowserDaluxApiClient(credentials, ctx);

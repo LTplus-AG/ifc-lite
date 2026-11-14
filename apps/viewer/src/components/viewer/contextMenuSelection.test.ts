@@ -32,4 +32,24 @@ describe('context menu during geometry restore', () => {
     assert.equal(picks, 2, 'a cold streaming load keeps the existing path');
     assert.equal(menus, 2);
   });
+
+  it('#10218 ignores a pick that resolves after the geometry restore hold starts', async () => {
+    let resolvePick!: (value: { expressId: number }) => void;
+    let menus = 0;
+    const canvas = { getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 300 }) } as unknown as HTMLCanvasElement;
+    const renderer = { pick: () => new Promise<{ expressId: number }>((resolve) => { resolvePick = resolve; }) };
+    const args = { canvas, renderer, getPickOptions: () => ({}), openContextMenu: () => { menus++; } } as unknown as Parameters<typeof openContextMenuAt>[0];
+    useViewerStore.setState({ selectedEntityId: 7, models: new Map([['restore', { geometryRestorePending: false }]]) as never });
+
+    const opening = openContextMenuAt(args, 50, 60);
+    useViewerStore.setState({ models: new Map([['restore', { geometryRestorePending: true }]]) as never });
+    resolvePick({ expressId: 12 });
+    await opening;
+    assert.equal(menus, 0);
+    assert.equal(useViewerStore.getState().selectedEntityId, 7);
+
+    useViewerStore.setState({ models: new Map([['restore', { geometryRestorePending: false }]]) as never });
+    await openContextMenuAt({ ...args, renderer: { pick: async () => ({ expressId: 12 }) } } as never, 50, 60);
+    assert.equal(menus, 1);
+  });
 });

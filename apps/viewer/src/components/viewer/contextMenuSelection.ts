@@ -19,5 +19,6 @@ export async function openContextMenuAt(
   if (refuseCaptureHeldPick(renderer)) return; // not for an entity a capture's frame shows (#9137)
   const rect = canvas.getBoundingClientRect();
   const picked = await renderer.pick(clientX - rect.left, clientY - rect.top, getPickOptions());
+  if (isGeometryRestoreHeld(useViewerStore.getState())) return;
   openContextMenu(picked?.expressId ?? null, clientX, clientY);
 }

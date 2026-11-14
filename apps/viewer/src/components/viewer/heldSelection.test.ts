@@ -36,4 +36,44 @@ describe('tree selection while geometry restore is held', () => {
     assert.deepEqual(framed, [500]);
     useViewerStore.getState().resetViewerState();
   });
+
+  it('#10218 releases a deferred frame according to its selected model restore', () => {
+    const framed: (number | undefined)[] = [];
+    const reset = () => useViewerStore.getState().resetViewerState();
+    reset();
+    const setModels = (aPending: boolean, aLoad: string, bPending: boolean, bLoad: string) => {
+      useViewerStore.setState({ models: new Map([
+        ['A', { geometryRestorePending: aPending, loadState: aLoad }],
+        ['B', { geometryRestorePending: bPending, loadState: bLoad }],
+      ]) as never });
+    };
+
+    setModels(true, 'pending', true, 'pending');
+    useViewerStore.setState({ selectedEntity: { modelId: 'A', expressId: 42 } as never,
+      cameraCallbacks: { frameSelection: (duration) => { framed.push(duration); } } });
+    assert.equal(deferSelectionFrameWhileHeld(500), true);
+    setModels(false, 'complete', false, 'error');
+    assert.equal(framed.length, 1, 'A completes even if B fails');
+    assert.equal(framed[0], 500);
+
+    reset(); framed.length = 0;
+    setModels(true, 'pending', true, 'pending');
+    useViewerStore.setState({ selectedEntity: { modelId: 'A', expressId: 42 } as never,
+      cameraCallbacks: { frameSelection: (duration) => { framed.push(duration); } } });
+    assert.equal(deferSelectionFrameWhileHeld(600), true);
+    setModels(false, 'error', false, 'complete');
+    assert.equal(framed.length, 0, 'A failure drops its frame');
+
+    reset(); framed.length = 0;
+    setModels(true, 'pending', true, 'pending');
+    useViewerStore.setState({ selectedEntity: { modelId: 'A', expressId: 42 } as never,
+      cameraCallbacks: { frameSelection: (duration) => { framed.push(duration); } } });
+    assert.equal(deferSelectionFrameWhileHeld(700), true);
+    setModels(true, 'pending', false, 'error');
+    assert.equal(framed.length, 0, 'A still restoring keeps the frame queued');
+    setModels(false, 'complete', false, 'error');
+    assert.equal(framed.length, 1, 'A completion releases the queued frame');
+    assert.equal(framed[0], 700);
+    reset();
+  });
 });

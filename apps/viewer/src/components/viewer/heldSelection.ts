@@ -21,17 +21,26 @@ let subscribed = false;
 export function deferSelectionFrameWhileHeld(duration: number | undefined): boolean {
   const state = useViewerStore.getState();
   if (!isGeometryHeld(state)) return false;
+  const selectedModelId = state.selectedEntity?.modelId;
   const heldModels = [...state.models].filter(([, model]) => model.geometryRestorePending || model.loadState === 'streaming-geometry').map(([id]) => id);
-  pendingFrame = { duration, models: heldModels.length ? heldModels : [...state.models.keys()] };
+  pendingFrame = { duration, models: selectedModelId ? [selectedModelId] : (heldModels.length ? heldModels : [...state.models.keys()]) };
+  const releaseIfReady = (next: typeof state) => {
+    if (!pendingFrame) return;
+    const queued = pendingFrame;
+    for (const id of queued.models) {
+      const model = next.models.get(id);
+      if (!model || model.loadState === 'error') { pendingFrame = null; return; }
+      if (model.geometryRestorePending) return;
+    }
+    pendingFrame = null;
+    next.cameraCallbacks.frameSelection?.(queued.duration);
+  };
   if (!subscribed) {
     subscribed = true;
     useViewerStore.subscribe((next) => {
-      if (!pendingFrame || isGeometryHeld(next)) return;
-      const queued = pendingFrame;
-      pendingFrame = null;
-      if (queued.models.some((id) => !next.models.has(id) || next.models.get(id)?.loadState === 'error')) return;
-      next.cameraCallbacks.frameSelection?.(queued.duration);
+      releaseIfReady(next);
     });
   }
+  releaseIfReady(state);
   return true;
 }

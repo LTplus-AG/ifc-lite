@@ -7218,3 +7218,36 @@ itself ran in the same admission.
 streaming window is not a saving. Only work removed from the main thread
 altogether moves interactive: for example, the pool's batch deserialization
 (#10175) and the main-thread merge and quantize (#10164).
+
+## Workers encode streamed meshes' GPU vertex records (M2, #10164, closed)
+
+**Rejected: slower.** The geometry workers encoded each streamed mesh's 12-byte
+quantized vertex records in JavaScript, and the main thread concatenated them
+into fragments instead of merging, quantizing and running the collapse check
+itself. A frame was shared through a SharedArrayBuffer cell. Records covered
+97.3% of Holter's meshes, 93.6% of BWK's, 92.3% of skolebygg's and 76.8% of
+advanced_model's. Identity was exact: per-element output IDENTICAL, corpus
+batch counts equal to the full rebuild, and renderer suite 2,795/0.
+
+The main-thread side worked: `scene.finalize` CPU on Holter fell from 589 to
+222 ms. But the workers paid more than the main thread saved. Worker CPU rose
+1.57 s on Holter (+14%) and 1.25 s on BWK, and the geometry pool is on the
+critical path (stage share ~58%). So interactive got later.
+
+Capped timed unit, Pop, 14 Nov 2026 04:36-05:02 CET, harness #10138 dcbb5ee797,
+one exclusive admission. Interleaved n=10 per side, browser-cold, CPU trace on,
+every sample inside its cap window, none flagged. Base main@65083544b0, branch
+4021111b8d. A/A of main in the same admission.
+
+| fixture | metric | base | branch | gain | own floor | same-admission A/A floor | wall verdict | CPU total |
+|---|---|---:|---:|---:|---:|---:|---|---|
+| Holter | interactive ms | 3,393 | 3,573 | -5.3% | 2.8% | 1.7% | n.s. (2x floor 5.6%) | -16.8%, regression |
+| BWK | interactive ms | 3,272 | 3,392 | -3.7% | 2.1% | 3.5% | n.s. (4.2%) | -15.5%, regression |
+| advanced_model | interactive ms | 1,391 | 1,443 | -3.7% | 4.3% | 4.6% | n.s. (8.7%) | -11.7%, regression |
+
+**Lesson:** moving main-thread work into the workers only pays when the workers
+have slack. In browser cold loads they do not: the geometry pool runs until
+~2.5 s on Holter, on the critical path. A worker-side encoding has to be cheaper
+than the main-thread work it replaces, for example written in Rust inside the
+meshing pass instead of as a second JavaScript pass over every vertex. Removing
+work outright (#10175, batch deserialization) is the better lever.

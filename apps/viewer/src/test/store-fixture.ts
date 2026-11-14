@@ -97,6 +97,8 @@ export function fixtureDataStore(
     entityIndex: { byType, byId: new Map(entities.map(e => [e.expressId, {
       expressId: e.expressId, type: e.type.toUpperCase(), byteOffset: 0, byteLength: 0, lineNumber: 0,
     }])) },
+    // No STEP bytes: native readers fall back to recorded units instead of parsing.
+    source: new Uint8Array(0),
     spatialHierarchy: undefined,
     ...(aggregates
       ? {

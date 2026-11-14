@@ -28,27 +28,29 @@ function waitForCompletion(modelId: string, signal: AbortSignal): Promise<void> 
   });
 }
 
-interface IdRangeTarget { maxExpressId: number; firstCreated: number | null }
+interface IdRangeTarget { maxExpressId: number; firstCreated: number; overlaps: boolean }
 
-/** Reads what the hydrated store needs; changes no registry ownership. `firstCreated` is
- *  null for an unregistered primary, which keeps the `globalId === expressId` fallback. */
-function idRangeTarget(modelId: string, dataStore: IfcDataStore, firstHydration: boolean): IdRangeTarget {
+/** Reads what the hydrated store needs; changes nothing. */
+function idRangeTarget(modelId: string, dataStore: IfcDataStore): IdRangeTarget {
   const state = useViewerStore.getState();
   const maxExpressId = Math.max(state.models.get(modelId)?.maxExpressId ?? 0, getMaxExpressId(dataStore, []));
-  if (!federationRegistry.hasModel(modelId)) return { maxExpressId, firstCreated: null };
-  // A first hydration discards kept creations the source overlaps, like a local reload.
-  // A refresh refuses instead, leaving the source and the edits made against it untouched.
-  const firstCreated = firstHydration
-    ? discardOverlappingRetainedEdits(state, modelId, maxExpressId)
-    : state.mutationViews.get(modelId)?.getCreatedExpressIdBounds().lowest ?? 0;
-  return { maxExpressId, firstCreated };
+  const firstCreated = state.mutationViews.get(modelId)?.getCreatedExpressIdBounds().lowest ?? 0;
+  return { maxExpressId, firstCreated, overlaps: firstCreated > 0 && firstCreated <= maxExpressId };
 }
 
 /** Publishes the target and returns the model's ownership bound for the reverse resolvers:
- *  the store's highest id, or the published end when a later model clamps the range. */
-function publishIdRange(modelId: string, { maxExpressId, firstCreated }: IdRangeTarget): { maxExpressId: number } {
-  if (firstCreated === null) return { maxExpressId };
-  const published = federationRegistry.extendModel(modelId, maxExpressId, firstCreated);
+ *  the store's highest id, or the published end when a later model clamps the range.
+ *  Kept creations the source overlaps are discarded on a first hydration, like a local
+ *  reload, but only once the registry accepted the source. A refresh refuses instead,
+ *  leaving the source and the edits made against it untouched. */
+function publishIdRange(modelId: string, target: IdRangeTarget, firstHydration: boolean): { maxExpressId: number } {
+  const { maxExpressId, firstCreated, overlaps } = target;
+  const discard = overlaps && firstHydration;
+  let published = maxExpressId;
+  // An unregistered primary keeps the single-model `globalId === expressId` fallback.
+  if (federationRegistry.hasModel(modelId)) published = federationRegistry.extendModel(modelId, maxExpressId, discard ? 0 : firstCreated);
+  else if (overlaps && !firstHydration) throw new ModelRangeExtensionRefusedError(`Source of ${modelId} grows across unpublished authored IDs from ${firstCreated}`);
+  if (discard) discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId);
   if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
   return { maxExpressId: published };
 }
@@ -107,10 +109,10 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
       // transaction: immediately synchronize the ownership bound even if settlement is rejected.
       withDeferredOverlayCapacity(() => {
         if (!lease.isCurrent() || !ownsModel()) return;
-        const target = idRangeTarget(modelId, dataStore, firstHydration);
+        const target = idRangeTarget(modelId, dataStore);
         let idRange: { maxExpressId: number };
         ownershipMayHaveChanged = true;
-        try { idRange = publishIdRange(modelId, target); }
+        try { idRange = publishIdRange(modelId, target, firstHydration); }
         catch (error) {
           if (!(error instanceof ModelRangeExtensionRefusedError)) throw error;
           ownershipMayHaveChanged = false;

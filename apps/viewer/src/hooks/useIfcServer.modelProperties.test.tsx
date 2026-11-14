@@ -941,3 +941,37 @@ it('a refresh that fails before ownership changes keeps loaded properties editab
   assert.deepEqual(useViewerStore.getState().serverPropertiesRuns.get('server'), previous);
   assert.equal(federationRegistry.getGlobalIdRange('server')!.end - idOffset, 1, 'ownership is untouched');
 });
+
+it('first hydration keeps kept edits when the registry refuses the source (#10139)', async () => {
+  const idOffset = federationRegistry.registerModel('server', 990, 1001);
+  useViewerStore.getState().updateModel('server', { idOffset, maxExpressId: 1000 });
+  const retained = new MutablePropertyView(null, 'server');
+  retained.setExpressIdWatermark(1000);
+  retained.createEntity('IfcMaterial', ['Retained']);
+  useViewerStore.setState({ mutationViews: new Map([['server', retained]]) });
+  federationRegistry.publishOverlayRange('server', 1001, 1001);
+  await act(async () => {
+    useServerModelProperties().start('server', undefined, async () => serverStoreAt(1003));
+    await new Promise(resolve => setTimeout(resolve, 30));
+  });
+  const run = useViewerStore.getState().serverPropertiesRuns.get('server');
+  assert.match(run?.kind === 'failed' ? run.error : '', /^Server properties hydration refused:/);
+  assert.equal(useViewerStore.getState().mutationViews.get('server'), retained, 'a refused source discards nothing');
+});
+
+it('an unregistered primary refuses a refresh across in-session creations (#10139)', async () => {
+  const store = result();
+  useViewerStore.getState().updateModel('server', { maxExpressId: 1, ifcDataStore: store });
+  const previous = { kind: 'succeeded' as const, runId: 42, result: undefined };
+  useViewerStore.getState().setServerPropertiesRun('server', previous);
+  const view = getOrCreateMutationView(useViewerStore, 'server')!;
+  const created = view.createEntity('IfcMaterial', ['Session']).expressId;
+  await act(async () => {
+    useServerModelProperties().start('server', undefined, async () => serverStoreAt(created + 10));
+    await new Promise(resolve => setTimeout(resolve, 30));
+  });
+  assert.equal(federationRegistry.hasModel('server'), false);
+  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, store);
+  assert.equal(useViewerStore.getState().mutationViews.get('server'), view);
+  assert.deepEqual(useViewerStore.getState().serverPropertiesRuns.get('server'), previous);
+});

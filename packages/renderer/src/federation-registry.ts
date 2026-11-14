@@ -5,6 +5,7 @@
 import { retainedCreationEnd, ModelRangeExtensionRefusedError } from './retained-creation-range.js';
 export { ModelRangeExtensionRefusedError } from './retained-creation-range.js';
 import { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
+import { RangeListeners } from './range-listeners.js';
 
 export interface ModelRange {
   modelId: string;
@@ -42,22 +43,12 @@ export class FederationRegistry {
   private modelRanges: Map<string, RegisteredRange> = new Map();
   private sortedRanges: RegisteredRange[] = []; // Sorted by offset for binary search
   private nextOffset: number = 0;
-  private rangeListeners = new Set<(modelId?: string) => void>();
+  private listeners = new RangeListeners();
 
   /** Observe ownership and reservation changes (including overlay publication). */
-  subscribe(listener: (modelId?: string) => void): () => void {
-    this.rangeListeners.add(listener);
-    return () => { this.rangeListeners.delete(listener); };
-  }
+  subscribe(listener: (modelId?: string) => void): () => void { return this.listeners.add(listener); }
 
-  /** Every listener sees the change; the first failure is rethrown afterwards. */
-  private rangesChanged(modelId?: string): void {
-    let failure: { error: unknown } | undefined;
-    for (const listener of this.rangeListeners) {
-      try { listener(modelId); } catch (error) { failure ??= { error }; }
-    }
-    if (failure) throw failure.error;
-  }
+  private rangesChanged(modelId?: string): void { this.listeners.notify(modelId); }
 
   /** Capacity at an allocator's next ID; earlier authored IDs may await lazy publication. */
   hasOverlayCapacity(modelId: string, nextLocalId: number, count = 1): boolean {
@@ -79,9 +70,8 @@ export class FederationRegistry {
     const retained = firstRetainedExpressId > 0 && firstRetainedExpressId <= maxExpressId ? 0 : firstRetainedExpressId;
     const existing = this.modelRanges.get(modelId);
     if (existing) {
-      // Progressive loaders already reserved and published the source. Only a
-      // fully published, overlay-free range reserves the gap before retained
-      // creations; any other duplicate registration stays a no-op.
+      // Progressive loaders already published the source. Only a fully published, overlay-free
+      // range reserves the gap before retained creations; other duplicates stay a no-op.
       if (retained > existing.ownedEnd + 1 && existing.publishedStart !== null && existing.maxExpressId === existing.ownedEnd) {
         this.extendModel(modelId, existing.reservedMaxExpressId, retained);
       }

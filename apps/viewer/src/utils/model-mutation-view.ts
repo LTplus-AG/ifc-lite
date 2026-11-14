@@ -35,7 +35,8 @@ export function discardOverlappingRetainedEdits(
   state: Pick<import('@/store').ViewerState, 'mutationViews' | 'clearMutationView'>, modelId: string, sourceEnd: number,
 ): number {
   const lowest = state.mutationViews.get(modelId)?.getCreatedExpressIdBounds().lowest ?? 0;
-  if (lowest === 0 || lowest > sourceEnd) return lowest;
+  // Discard only on a proven overlap; an unknown (NaN) source end keeps the edits.
+  if (lowest === 0 || !(lowest <= sourceEnd)) return lowest;
   console.warn(`[Model] Discarded kept edits of model ${modelId}: its new entities from #${lowest} overlap the loaded source, which ends at #${sourceEnd}`);
   state.clearMutationView(modelId);
   return 0;

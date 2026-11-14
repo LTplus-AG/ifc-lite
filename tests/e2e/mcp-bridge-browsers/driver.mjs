@@ -69,7 +69,10 @@ if (existsSync(`${dir}/stop`)) {
     // The paired tab serves read tools only: a write that is not refused fails the run.
     const refused = await call('entity_set_attribute', { global_id: wall.globalId, attribute: 'Name', value: 'x' });
     summary.refusedMutation = { isError: refused?.isError, code: refused?.structuredContent?.code };
-    if (refused?.isError !== true) throw new Error(`entity_set_attribute was not refused: ${JSON.stringify(summary.refusedMutation)}`);
+    // Only the read-only refusal counts: an allowed write that fails validation is also isError, with another code.
+    if (refused?.isError !== true || summary.refusedMutation.code !== 'READ_ONLY') {
+      throw new Error(`entity_set_attribute was not refused as read-only: ${JSON.stringify(summary.refusedMutation)}`);
+    }
   } catch (err) {
     failure = String(err?.message ?? err);
     summary.failure = failure;

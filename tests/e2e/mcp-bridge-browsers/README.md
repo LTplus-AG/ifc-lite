@@ -15,7 +15,7 @@ Scripts that check how browsers treat a public https page (the viewer, as on ifc
   `Browser.setPermission {name: 'loopback-network'}` in the same tab, then *Try again*; Firefox: a profile
   whose `permissions.sqlite` allows `loopback-network`), pair, read calls, a refused mutation, Disconnect.
   The run exits non-zero if the probe bridge does not start, Phase B does not connect after the grant, a read
-  call fails, or the write is not refused.
+  call fails, or the write is not refused with `READ_ONLY`.
 
 How the origin is made public: Chromium `--ip-address-space-overrides=127.0.0.1:<port>=public`; Firefox
 `network.lna.address_space.public.override=127.0.0.1:<port>` with `network.dns.localDomains=ifclite.test`.

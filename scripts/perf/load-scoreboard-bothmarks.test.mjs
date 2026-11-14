@@ -79,3 +79,12 @@ test('the listing rule counts each column: three samples with two known frame ma
   const [md] = bothMarksRows([{ name: 'FZK', lanes: { 'browser-cold': { bothMarks: c } } }]);
   assert.match(md, /^\| FZK \| browser-cold \| 110 \| n=2: 100, 110 \| 0\/2 \(\+1 unknown\) \| 95 \| 95 \| 0\/3 \| \+13\.6% \| — \| — \| — \|$/);
 });
+
+test('warm lane hold values are listed when fewer than three are known (review #10210)', async () => {
+  const { bothMarksCell, bothMarksRows } = await load('./load-scoreboard-report-sections.mjs');
+  const row = (side, frames) => ({ lane: 'browser-warm', side, ok: true, interactiveMs: 400, geometryMs: 300,
+    presentTimesFromChangeMs: frames, milestones: { 'load.metadataInteractive': 200 }, completeFrameMs: 300 });
+  const c = bothMarksCell([row('base', [250, 350]), row('base', [250, 350]), row('branch', [250, 350]), row('branch', [250, 350])]);
+  const [md] = bothMarksRows([{ name: 'FZK', lanes: { 'browser-warm': { bothMarks: c } } }]);
+  assert.match(md, /\| n=2: 50, 50 \| n=2: 50, 50 \|$/);
+});

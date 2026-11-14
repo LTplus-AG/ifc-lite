@@ -149,6 +149,7 @@ export function bothMarksRows(fixtures) {
     const hold = (values, unknown) => {
       const suffix = unknown ? ` (+${unknown} unknown)` : '';
       if (!values.length) return unknown ? `unknown (${unknown})` : '—';
+      if (values.length < MIN_SUMMARY) return `${val(median(values), values)}${suffix}`;
       const each = `samples ${values.map(ms).join(', ')}`;
       const summary = `${ms(median(values))} [${ms(Math.min(...values))}-${ms(Math.max(...values))}] n=${values.length}`;
       return `${each}; median ${summary}${suffix}`;

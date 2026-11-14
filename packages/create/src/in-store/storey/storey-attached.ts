@@ -170,7 +170,10 @@ export function writeAttachedTop(target: EditTarget, id: number, kind: AttachedK
     const quantities = snapshotWallQuantities(target.dataStore, target.view, id);
     const quantityFrom = wallQuantityBaseline(target.dataStore, target.view, id, from, quantities);
     const outcome = setWallSectionInStore(target, id, { height: to });
-    if (outcome.ok) scaleWallQuantities(target.dataStore, target.view, id, to / quantityFrom, geometry, quantities);
+    if (outcome.ok) {
+      const prism = geometry ? { ...geometry, height: quantityFrom } : undefined;
+      scaleWallQuantities(target.dataStore, target.view, id, to / quantityFrom, prism, quantities);
+    }
     return outcome;
   }
   if (kind === 'curtainWall') return relayoutCurtainWallHeight(target, id, to);

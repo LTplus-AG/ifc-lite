@@ -119,7 +119,10 @@ export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor
         view.setProperty(elementId, ROOF_ATTACHMENT, 'PrismQuantityHeight', quantityFrom, PropertyValueType.Real);
       }
     }
-    if (roofQuantities) scaleWallQuantities(store, view, elementId, to / quantityFrom, roofQuantities.geometry, roofQuantities.quantities);
+    if (roofQuantities) {
+      const prism = roofQuantities.geometry ? { ...roofQuantities.geometry, height: quantityFrom } : undefined;
+      scaleWallQuantities(store, view, elementId, to / quantityFrom, prism, roofQuantities.quantities);
+    }
     return { remesh: constraint.kind === 'roof' || wasClipped ? [...new Set([elementId, ...outcome.remesh])] : outcome.remesh };
   });
 }

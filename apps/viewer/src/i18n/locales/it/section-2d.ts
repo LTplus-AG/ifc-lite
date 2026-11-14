@@ -82,6 +82,11 @@ export const section2dIt = {
   "section2d.export.omission.dxfTitle": "Esportare il disegno come DXF?",
   "section2d.export.omission.dxfDescription": "Questo DXF ometterà {items}. Esportare comunque?",
   "section2d.export.omission.continue": "Esporta comunque",
+  "section2d.export.otherCutDimensionsLeftOut": {
+    "one": "{count} quota disegnata su un altro taglio è stata omessa.",
+    "other": "{count} quote disegnate su un altro taglio sono state omesse.",
+    "many": "{count} quote disegnate su un altro taglio sono state omesse."
+  },
   "section2d.regenerate": "Rigenera",
   "section2d.matchView.button": "Allinea al 3D",
   "section2d.matchView.title": "Imposta la vista 3D in modo che corrisponda a questo taglio",

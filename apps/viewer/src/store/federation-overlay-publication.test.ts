@@ -208,15 +208,33 @@ it('rejects a detached batch separated from published ownership as non-contiguou
   assert.throws(() => publishPreparedOverlayRange(registry, models, views, 'editable', created), /contigu/);
 });
 
-it('prepared publication checks contiguity before asking for a registry preview (#10139)', () => {
+it('prepared publication uses registry contiguity validation (#10139)', () => {
   const registry = new FederationRegistry();
   registry.registerModel('editable', 100);
   const created = [{ expressId: 102 }];
   const state = { models: new Map([['editable', { maxExpressId: 100 }]]),
-    mutationViews: new Map([['editable', { getNewEntity: () => created[0] }]]) };
-  // This interface implementation supplies preview IDs; the preparer still owns its contiguity invariant.
+    mutationViews: new Map([['editable', { getNewEntity: (id: number) => id === 102 ? created[0] : null }]]) };
+  assert.throws(() => preparePreparedOverlayPublication(registry, state, 'editable', created), /not published/);
+  // A source-owned prefix resolves, letting the registry reject the skipped overlay ID.
   const previewOnly = { getOffset: registry.getOffset.bind(registry), getGlobalIdRange: registry.getGlobalIdRange.bind(registry),
     toGlobalId: (_model: string, id: number) => id, publishOverlayRange: registry.publishOverlayRange.bind(registry),
-    previewOverlayGlobalId: (_model: string, _start: number, _end: number, id: number) => id };
-  assert.throws(() => preparePreparedOverlayPublication(previewOnly, state, 'editable', created), /contiguous/);
+    previewOverlayGlobalId: registry.previewOverlayGlobalId.bind(registry) };
+  assert.throws(() => preparePreparedOverlayPublication(previewOnly, state, 'editable', created), /contiguously/);
+});
+
+it('uses the registry invalid-range error for creations below the reserved source end (#10139)', () => {
+  const registry = new FederationRegistry();
+  registry.registerModel('m', 100);
+  const state = { models: new Map([['m', { maxExpressId: 50 }]]),
+    mutationViews: new Map([['m', { getNewEntity: (id: number) => ({ expressId: id }) }]]) };
+  let registryMessage = '';
+  assert.throws(() => registry.previewOverlayGlobalId('m', 90, 90, 90), error => {
+    assert.ok(error instanceof Error);
+    registryMessage = error.message;
+    return /Invalid overlay range/.test(registryMessage);
+  });
+  assert.throws(() => preparePreparedOverlayPublication(registry, state, 'm', [{ expressId: 90 }]), error => {
+    assert.ok(error instanceof Error);
+    return error.message === registryMessage;
+  });
 });

@@ -74,3 +74,45 @@ it('notifies createEntity observers after records, history and revision are cohe
   view.createEntity('IfcMaterial', ['Live']);
   expect(observed).toEqual([{ history: 1, revision: before + 1, ids: [1] }]);
 });
+
+it('tracks every claimed ID without mistaking source floors for authorship (#10139)', () => {
+  const view = new MutablePropertyView(null, 'model');
+  view.setExpressIdWatermark(100);
+  expect(view.highestAuthoredExpressId()).toBe(0);
+  const first = view.createEntity('IfcMaterial', ['First']);
+  view.setAttribute(first.expressId, 'Name', 'Edited');
+  view.deleteEntity(first.expressId);
+  view.restoreFromTombstone(first.expressId); // Forgotten/stashed claims survive without a tombstone.
+  expect(view.highestAuthoredExpressId()).toBe(101);
+  view.setExpressIdWatermark(500);
+  const later = view.createEntity('IfcMaterial', ['Later']);
+  expect(view.highestAuthoredExpressId()).toBe(501);
+  expect(view.highestAuthoredExpressId(150)).toBe(101);
+  const prepared = view.prepareAtomic(draft => { draft.deleteEntity(later.expressId); return draft.highestAuthoredExpressId(); });
+  expect(prepared.result).toBe(501);
+  prepared.commit();
+  expect(view.highestAuthoredExpressId()).toBe(501);
+  prepared.rollback();
+  expect(view.highestAuthoredExpressId()).toBe(501);
+  view.clear();
+  expect(view.highestAuthoredExpressId()).toBe(0);
+});
+
+it('restoreNewEntity observers see unstashed edits and attribute indexes (#10139)', () => {
+  // Exercise the high-ID import/restore branch with a lower allocator, retaining undo state.
+  class RestorableView extends MutablePropertyView {
+    resetAllocation() { this.resetExpressIdAllocator(); }
+  }
+  const view = new RestorableView(null, 'model');
+  const entity = view.createEntity('IfcMaterial', ['Original']);
+  view.setAttribute(entity.expressId, 'Name', 'Edited');
+  view.deleteEntity(entity.expressId);
+  view.resetAllocation();
+  const observed: unknown[] = [];
+  view.configureExpressIdAllocator(() => 1, () => observed.push({
+    edits: view.getAttributeMutationsForEntity(entity.expressId),
+    ids: view.getAttributeOverrideEntityIds(),
+  }));
+  view.restoreNewEntity(entity);
+  expect(observed).toEqual([{ edits: [{ name: 'Name', value: 'Edited' }], ids: [entity.expressId] }]);
+});

@@ -26,7 +26,8 @@ export function createModelMutationView(dataStore: IfcDataStore, modelId: string
 
 /** Source-only views carry no work to reload, and must not retain an old allocator floor. */
 export function discardUnchangedMutationViews(state: Partial<Pick<import('@/store').ViewerState, 'mutationViews' | 'clearMutationView'>>): void {
-  for (const [modelId, view] of state.mutationViews ?? []) {
-    if (!view.hasPendingChanges() && view.getMutationCount() === 0) state.clearMutationView?.(modelId);
-  }
+  const modelIds = [...state.mutationViews ?? []]
+    .filter(([, view]) => !view.hasPendingChanges() && view.getMutationCount() === 0)
+    .map(([modelId]) => modelId);
+  if (modelIds.length) state.clearMutationView?.(modelIds);
 }

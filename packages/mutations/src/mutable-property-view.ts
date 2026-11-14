@@ -1254,6 +1254,16 @@ export class MutablePropertyView extends MutableOverlayState {
   *readNewEntityKinds(type?: string): IterableIterator<{ expressId: number; type: string }> {
     for (const row of type === undefined ? this.newEntities.peekValues() : this.newEntities.peekOfType(type)) yield { expressId: row.expressId, type: row.type };
   }
+  /** Highest claimed ID, including deleted and undoable creations, or zero.
+   * An optional ceiling checks a source-growth interval without counting higher IDs.
+   * Unlike the allocator position, source floors alone never constitute a claim. */
+  highestAuthoredExpressId(ceiling = Infinity): number {
+    let max = 0;
+    for (const ids of [this.newEntities.keys(), this.tombstones, this.forgottenCreatedEntities, this.forgottenEntityOverlay.keys()]) {
+      for (const id of ids) if (id <= ceiling && id > max) max = id;
+    }
+    return max;
+  }
   /** Whether the overlay created `id` and still holds it; reads no payload. */
   hasNewEntity(id: number): boolean { return this.newEntities.has(id); }
   /** Number of overlay-created entities; reads no payload. */
@@ -1321,26 +1331,17 @@ export class MutablePropertyView extends MutableOverlayState {
    * restore (the slice's undo stack does this).
    */
   restoreNewEntity(entity: NewEntity): void {
-    this.newEntities.set(entity.expressId, entity);
-    this.markOverlayChanged();
-    // `deleteEntity` both tombstones an overlay-created entity (for the
-    // unified isDeleted() / getEffectiveEntityIndex() answer) and forgets it
-    // (for collectEffectiveChanges()'s row filter), so the inverse has to
-    // clear both — otherwise the restored record is either still "deleted"
-    // per isDeleted() (stale tombstone) or still invisible to the review
-    // diff (stale forgotten-entity mark).
-    this.tombstones.delete(entity.expressId);
-    this.forgottenCreatedEntities.delete(entity.expressId);
-    // Without this the next createEntity() can hand out the same id and
-    // overwrite the restored entity.
-    if (entity.expressId > this.nextAllocatedId) {
-      this.nextAllocatedId = entity.expressId;
-    }
-    // Bring back whatever `deleteEntity` purged (property/quantity/attribute
-    // mutations, newPsets/newQsets, history) — a no-op if this entity was
-    // never forgotten (e.g. a plain create with nothing purged).
-    this.unstashEntityOverlay(entity.expressId);
-    this.indexAttributeOverride(entity.expressId);
+    this.withDeferredAllocatorNotification(() => {
+      this.newEntities.set(entity.expressId, entity);
+      this.markOverlayChanged();
+      // Undo both delete markers so effective reads and the review diff see the row.
+      this.tombstones.delete(entity.expressId);
+      this.forgottenCreatedEntities.delete(entity.expressId);
+      // Imported/restored IDs must not be handed out by the next allocation.
+      if (entity.expressId > this.nextAllocatedId) this.nextAllocatedId = entity.expressId;
+      this.unstashEntityOverlay(entity.expressId);
+      this.indexAttributeOverride(entity.expressId);
+    });
   }
 
   /**

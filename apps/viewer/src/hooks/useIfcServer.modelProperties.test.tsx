@@ -10,6 +10,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
+import { discardUnchangedMutationViews } from '@/utils/model-mutation-view';
 import { dataMutationPermission } from '@/store/mutation-permission';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { useServerModelProperties } from './ingest/useServerModelProperties.js';
@@ -552,4 +553,104 @@ it('re-hydrates a clamped model even when a read view retains the larger source 
     getOrCreateMutationView(useViewerStore, 'server');
   }
   assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
+});
+
+// #10139: forgotten/undoable creations still own their IDs before publication.
+for (const removal of ['delete', 'undo'] as const) for (const higher of [false, true]) {
+  it(`refuses hydration across a created-then-${removal} ID${higher ? ' below another creation' : ''} (#10139)`, async () => {
+    try {
+      federationRegistry.registerModel('server', 100);
+      useViewerStore.getState().updateModel('server', { maxExpressId: 100, ifcDataStore: result() });
+      const view = getOrCreateMutationView(useViewerStore, 'server')!;
+      const entity = view.createEntity('IfcMaterial', ['Authored']);
+      assert.equal(entity.expressId, 101);
+      if (removal === 'undo') {
+        useViewerStore.getState().recordMutationBatch('server', view.getMutationsForEntity(101));
+        useViewerStore.getState().undo('server');
+        assert.equal(useViewerStore.getState().removedNewEntities.get('server:101')?.expressId, 101);
+      } else view.deleteEntity(101);
+      if (higher) {
+        view.setExpressIdWatermark(500);
+        assert.equal(view.createEntity('IfcMaterial', ['Higher']).expressId, 501);
+      }
+      const previous = useViewerStore.getState().models.get('server')!.ifcDataStore;
+      await act(async () => {
+        useServerModelProperties().start('server', undefined, async () => serverStoreAt(150));
+        await new Promise(resolve => setTimeout(resolve, 30));
+      });
+      assert.equal(federationRegistry.getGlobalIdRange('server')!.end, 100, 'source IDs cannot swallow a tombstone or undo record');
+      assert.equal(useViewerStore.getState().models.get('server')!.ifcDataStore, previous);
+      view.restoreNewEntity(entity);
+      assert.equal(useViewerStore.getState().toGlobalId('server', 101), 101);
+    } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
+  });
+}
+
+it('hydrates below retained unpublished creations after clear/reload (#10139)', async () => {
+  try {
+    federationRegistry.registerModel('server', 300);
+    useViewerStore.getState().updateModel('server', { maxExpressId: 300 });
+    const hydrate = async () => {
+      const store = serverStoreAt(500);
+      await act(async () => {
+        useServerModelProperties().start('server', undefined, async () => store);
+        await new Promise(resolve => setTimeout(resolve, 30));
+      });
+      assert.equal(useViewerStore.getState().models.get('server')!.ifcDataStore, store);
+    };
+    await hydrate();
+    const view = getOrCreateMutationView(useViewerStore, 'server')!;
+    assert.equal(view.createEntity('IfcMaterial', ['Retained']).expressId, 501);
+    useViewerStore.getState().clearAllModels();
+    assert.equal(useViewerStore.getState().mutationViews.get('server'), view);
+    useViewerStore.getState().addModel({ ...fixtureModel('server'), sourceFile: file, ifcDataStore: null,
+      maxExpressId: 300, idOffset: federationRegistry.registerModel('server', 300), loadState: 'complete' });
+    await hydrate();
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+    assert.equal(useViewerStore.getState().toGlobalId('server', 501), 501);
+    assert.equal(view.createEntity('IfcMaterial', ['Next']).expressId, 502);
+  } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
+});
+
+it('a refused refresh never revives an ownerless running lease and reports refusal in the tray (#10139)', async () => {
+  try {
+    federationRegistry.registerModel('server', 100);
+    useViewerStore.getState().updateModel('server', { maxExpressId: 100, ifcDataStore: result() });
+    const view = getOrCreateMutationView(useViewerStore, 'server')!;
+    view.createEntity('IfcMaterial', ['Authored']);
+    useViewerStore.getState().setServerPropertiesRun('server', { kind: 'running', runId: 99,
+      owner: { model: useViewerStore.getState().models.get('server')! } });
+    const previous = useViewerStore.getState().models.get('server')!.ifcDataStore;
+    let deliver!: () => void;
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, () => new Promise(resolve => { deliver = () => resolve(serverStoreAt(150)); }));
+    });
+    const job = useActivityJournal.getState().jobs.find(row => row.outcome === 'running' && row.phase?.startsWith('Server properties'))!;
+    assert.ok(job);
+    await act(async () => { deliver(); await new Promise(resolve => setTimeout(resolve, 30)); });
+    assert.equal(useViewerStore.getState().models.get('server')!.ifcDataStore, previous);
+    assert.equal(useViewerStore.getState().serverPropertiesRuns.get('server')?.kind, 'failed');
+    const row = useActivityJournal.getState().jobs.find(row => row.id === job.id)!;
+    assert.equal(row.outcome, 'failed');
+    assert.match(row.detail!, /refused/i);
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'properties-failed' });
+  } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
+});
+
+it('discards unchanged views in one store commit, retaining pending edits (#10139)', () => {
+  const state = useViewerStore.getState();
+  for (const id of ['clean-a', 'clean-b', 'dirty']) {
+    state.addModel({ ...fixtureModel(id), ifcDataStore: result() });
+    getOrCreateMutationView(useViewerStore, id);
+  }
+  const dirty = useViewerStore.getState().mutationViews.get('dirty')!;
+  dirty.createEntity('IfcMaterial', ['Pending']);
+  let commits = 0;
+  const stop = useViewerStore.subscribe((next, prev) => { if (next.mutationViews !== prev.mutationViews) commits++; });
+  try { discardUnchangedMutationViews(useViewerStore.getState()); } finally { stop(); }
+  assert.equal(commits, 1);
+  assert.equal(useViewerStore.getState().mutationViews.has('clean-a'), false);
+  assert.equal(useViewerStore.getState().mutationViews.has('clean-b'), false);
+  assert.equal(useViewerStore.getState().mutationViews.get('dirty'), dirty);
+  dirty.clear();
 });

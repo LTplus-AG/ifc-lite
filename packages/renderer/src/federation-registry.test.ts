@@ -420,3 +420,13 @@ it('invalid overlay bounds and partly published bases are not capacity errors (#
     }
   }
 });
+
+it('extends source ownership below retained unpublished authored IDs (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('retained', 300);
+  assert.equal(reg.extendModel('retained', 500, 501), 500);
+  assert.throws(() => reg.toGlobalId('retained', 501), /not published/);
+  assert.equal(reg.canPublishOverlayFrom('retained', 501), true);
+  reg.publishOverlayRange('retained', 501, 501);
+  assert.equal(reg.toGlobalId('retained', 501), 501);
+});

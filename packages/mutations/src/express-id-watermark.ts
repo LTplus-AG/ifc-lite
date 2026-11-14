@@ -69,7 +69,11 @@ function scanHighestExpressId(store: MutationStoreShape): number {
     }
   }
   const table = store.entities?.expressId;
-  if (table) {
+  // Compact stores derive table rows from the same primary refs (columnar-parser)
+  // or fill table + compact index together (viewer/serverEntityTable). Deferred
+  // property atoms are separate and checked above. Only map/indexless stores
+  // (e.g. IFCX/collab) can have table-only IDs.
+  if (table && typeof compactMax !== 'number') {
     for (let i = 0; i < table.length; i++) {
       const id = table[i];
       if (id !== undefined && id > max) max = id;

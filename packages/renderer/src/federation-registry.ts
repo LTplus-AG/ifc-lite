@@ -140,7 +140,9 @@ export class FederationRegistry {
    * unresolvable. Throws, before anything else, for a range that is only
    * partly published or already carries overlay IDs: extending across
    * authored IDs would give two entities one global ID. Callers pass their
-   * highest authored ID as `allocatedMaxExpressId` to protect unpublished IDs too.
+   * highest claimed ID at or below the requested source maximum as
+   * `allocatedMaxExpressId` to protect live, deleted and undoable unpublished IDs.
+   * Claims above the requested maximum remain unpublished and do not block growth.
    */
   extendModel(modelId: string, maxExpressId: number, allocatedMaxExpressId = 0): number {
     const range = this.modelRanges.get(modelId);
@@ -152,7 +154,7 @@ export class FederationRegistry {
       throw new Error(`[FederationRegistry] Cannot extend ${modelId}: its range is partly published or already carries overlay IDs`);
     }
     if (maxExpressId <= range.maxExpressId) return range.maxExpressId;
-    if (allocatedMaxExpressId > range.reservedMaxExpressId) {
+    if (allocatedMaxExpressId > range.reservedMaxExpressId && allocatedMaxExpressId <= maxExpressId) {
       throw new Error(`[FederationRegistry] Cannot extend ${modelId}: its allocator already carries unpublished overlay IDs`);
     }
     let end = maxExpressId;

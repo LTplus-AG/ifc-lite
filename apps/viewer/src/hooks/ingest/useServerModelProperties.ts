@@ -35,8 +35,7 @@ function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpr
   if (!federationRegistry.hasModel(modelId)) return { maxExpressId };
   // Source-derived allocator floors do not mean any authored IDs exist.
   // Refusal leaves both the existing source and authored overlay untouched.
-  let authoredMax = 0;
-  for (const entity of useViewerStore.getState().mutationViews.get(modelId)?.readNewEntityKinds() ?? []) authoredMax = Math.max(authoredMax, entity.expressId);
+  const authoredMax = useViewerStore.getState().mutationViews.get(modelId)?.highestAuthoredExpressId(maxExpressId) ?? 0;
   const published = federationRegistry.extendModel(modelId, maxExpressId, authoredMax);
   if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
   return { maxExpressId: published };
@@ -100,7 +99,8 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
         // A refused replacement does not invalidate properties and edits we already own.
         if (!owner.model.ifcDataStore) throw error;
         console.warn('[Server properties] Re-hydration refused; previous properties remain available', error);
-        if (lease.succeed()) write(previousRun);
+        const refusal = `Server properties re-hydration refused: ${error instanceof Error ? error.message : String(error)}`;
+        if (lease.fail(refusal) && (previousRun.kind === 'idle' || previousRun.kind === 'succeeded' || previousRun.kind === 'failed')) write(previousRun);
         return;
       }
       // Ownership is permanent even if extension/warning supersedes the lease.

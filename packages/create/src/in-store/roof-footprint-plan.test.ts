@@ -152,7 +152,7 @@ describe('planFootprintRoof (#9296 round 3)', () => {
     ['too steep', RECT, [86 * D, 0, 30 * D, 0], 0, /steeper than 85°/],
     ['one slope short', RECT, [30 * D, 0, 30 * D], 0, /one slope per footprint edge/],
     ['a crossing outline', [[0, 0], [10, 8], [10, 0], [0, 8]] as PlanPoint[], [1, 1, 1, 1], 0, /crosses itself/],
-    ['an inside corner that is not square', [[0, 0], [10, 0], [10, 8], [5, 3], [0, 8]] as PlanPoint[], [0.5, 0.5, 0.5, 0.5, 0.5], 0, /convex and rectilinear/],
+    ['unequal pitches at an inside corner that is not square', [[0, 0], [10, 0], [10, 8], [5, 3], [0, 8]] as PlanPoint[], [0.5, 0.5, 0.3, 0.5, 0.5], 0, /convex and rectilinear/],
     ['an overhang wider than the notch', [[0, 0], [10, 0], [10, 10], [7, 10], [7, 4], [6, 4], [6, 10], [0, 10]] as PlanPoint[], Array(8).fill(0.5), 0.6, /too large/],
     ['unequal slopes at an inside corner under an overhang', [[0, 0], [10, 0], [10, 4], [6, 4], [6, 10], [0, 10]] as PlanPoint[], [0.5, 0.5, 0.3, 0.5, 0.5, 0.5], 0.2, /inside corner need/],
     ['collinear edges with different slopes', [[0, 0], [5, 0], [10, 0], [10, 8], [0, 8]] as PlanPoint[], [0.5, 0.3, 0, 0.5, 0], 0, /in line but have different slopes/],

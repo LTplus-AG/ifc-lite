@@ -105,7 +105,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     let disposed = false;
     const command = createCommandTouchPress(canvas, () => activeToolRef.current); // the command tool's press (#9092)
     let pressGrabs = false; // the current press grabs for the command: it has no long press (#9092)
-    const longPress = createTouchLongPress(canvas, (x, y) => {
+    const longPress = createTouchLongPress(canvas, (x, y) => { if (touchState.tapStartedHeld) return;
       void openContextMenuAt({ canvas, renderer, getPickOptions, openContextMenu }, x, y)
         .catch((error: unknown) => console.warn('[Viewport] Touch context menu pick failed:', error));
     });

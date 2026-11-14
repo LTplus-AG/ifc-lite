@@ -32,6 +32,7 @@ export function deferSelectionFrameWhileHeld(duration: number | undefined): bool
       if (!model || model.loadState === 'error') { pendingFrame = null; return; }
       if (model.geometryRestorePending) return;
     }
+    if (isGeometryHeld(next)) return;
     pendingFrame = null;
     next.cameraCallbacks.frameSelection?.(queued.duration);
   };

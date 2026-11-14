@@ -76,4 +76,28 @@ describe('tree selection while geometry restore is held', () => {
     assert.equal(framed[0], 700);
     reset();
   });
+
+  it('#10218 waits for every restoring model and does not recurse through frameSelection', () => {
+    const reset = () => useViewerStore.getState().resetViewerState();
+    const framed: (number | undefined)[] = [];
+    reset();
+    const setModels = (bPending: boolean) => useViewerStore.setState({ models: new Map([
+      ['A', { geometryRestorePending: false, loadState: 'complete' }],
+      ['B', { geometryRestorePending: bPending, loadState: 'complete' }],
+    ]) as never });
+    const frameSelection = (duration: number | undefined) => {
+      if (deferSelectionFrameWhileHeld(duration)) return;
+      framed.push(duration);
+    };
+    setModels(true);
+    useViewerStore.setState({ selectedEntity: { modelId: 'A', expressId: 42 } as never, cameraCallbacks: { frameSelection } });
+
+    assert.equal(deferSelectionFrameWhileHeld(800), true);
+    assert.deepEqual(framed, [], 'selected A being ready must not frame while B is restoring');
+    useViewerStore.setState({ pointerInput: 'touch' });
+    assert.deepEqual(framed, [], 'an unrelated store update must not release or recurse');
+    setModels(false);
+    assert.deepEqual(framed, [800], 'the production-style callback frames exactly once after B is ready');
+    reset();
+  });
 });

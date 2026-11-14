@@ -100,11 +100,12 @@ export function canWriteIfcFromStores(
 export type StepSkipReason = 'noRecords' | 'noData';
 
 /**
- * The one place the "tabular means no STEP records" rule lives. Every caller
- * that drops a model from a STEP export, and every caller that reports the
- * drop, derives from this: the gate above, the merged export's pre-export
- * note, and its result message (`export-merge-inputs.ts`). A new non-STEP
- * source kind is then one edit, not three.
+ * The dialog's copy of the "tabular means no STEP records" rule: the merged
+ * gate above, the merged export's pre-export note and result message
+ * (`export-merge-inputs.ts`), and the single-model hint all derive from it.
+ * The export itself refuses through `stepExportSource` in
+ * `lib/export/step-records.ts` (#10099), which checks the same rule on its
+ * own, so a new non-STEP source kind is an edit in both places.
  *
  * Tabular is the reason to LOOK for records, not the refusal itself. A shared
  * room's store is tabular — the room is reconstructed from IFCX — and yet it
@@ -125,12 +126,9 @@ export type StepSkipReason = 'noRecords' | 'noData';
  * while `room-step-export.ts` pulls `@ifc-lite/export`, `@ifc-lite/mutations`
  * and the placement-edit boot module onto the command-palette path.
  *
- * The single path for that same room is unchanged from main, and unchanged is
- * all this claims: it falls through to `StepExporter` over the room store. On
- * a reconstructed room that writes the tabular reader's own bytes, which is
- * the bad file this gate exists to prevent — #10085, filed rather than fixed
- * by widening the gate, because refusing the room here would swap a bad file
- * for a silent skip. The fix is a third reason value and a sentence.
+ * The single path for that same room is refused by `exportModelStep` when the
+ * room has moved past its source (`StepRecordsUnavailableError('roomMoved')`,
+ * #10099), so a reconstructed room no longer writes the reader's bytes.
  */
 export function stepSkipReason(store: IfcDataStore | null | undefined): StepSkipReason | null {
   if (!store) return 'noData';

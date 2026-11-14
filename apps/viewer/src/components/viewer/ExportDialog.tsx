@@ -54,7 +54,7 @@ import { preferredExportModelId } from './export-model-default';
 import { canExportRoomAsStep } from '@/lib/collab/room-step-export';
 import { roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
-import { canWriteIfcFromStores, listExportModels, resolveExportModel } from './export-model-selection';
+import { canWriteIfcFromStores, listExportModels, resolveExportModel, stepSkipReason } from './export-model-selection';
 import { buildMergeInputs, emptyMergeRefusal, mergeSkipNotice, statedMergeSkips } from './export-merge-inputs';
 import { exportOutputInfo } from './export-output-format.js';
 import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
@@ -293,6 +293,11 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
   // A LandXML source takes its own single-file branch, so nothing is merged.
   const mergeSkipNote = !isIfc5 && !changesOnly && exportScope === 'merged' && !landXmlSource
     ? mergeSkipNotice(statedMergeSkips(models), t) : '';
+  // A single model with no STEP records is still offered, and `exportModelStep`
+  // refuses it by name (#10099); the description says so before the click.
+  const noRecordsNote = !isIfc5 && !changesOnly && exportScope === 'single' && !landXmlSource && selectedModel
+    && stepSkipReason(selectedModel.ifcDataStore) === 'noRecords'
+    ? t('exportDialog.stepRecords.noRecords', { model: selectedModel.name }) : '';
   const stepContainer = landXmlSource ? landXmlExportExtension(landXmlSource.document, landXmlSource.imagery)
     : exportScope === 'single' && modelAppearanceAssets.hasResources(selectedModelId) ? '.ifczip' : '.ifc';
   const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, stepContainer), [isIfc5, changesOnly, stepContainer]);
@@ -562,7 +567,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
       icon={<Download className="h-5 w-5" />}
       title={t('exportDialog.title')}
-      description={!exportAllowed && canExportIfc && !changesOnly ? t('exportDialog.noStepRecords.error') : mergeSkipNote || (isIfc5 && !changesOnly ? t('exportDialog.description.ifc5') : t('exportDialog.description.default'))}
+      description={!exportAllowed && canExportIfc && !changesOnly ? t('exportDialog.noStepRecords.error') : noRecordsNote || mergeSkipNote || (isIfc5 && !changesOnly ? t('exportDialog.description.ifc5') : t('exportDialog.description.default'))}
       cancelLabel={t('exportDialog.cancelButton')}
       exportLabel={t('exportDialog.exportButton')}
       exportingLabel={t('exportDialog.exportingLabel')}

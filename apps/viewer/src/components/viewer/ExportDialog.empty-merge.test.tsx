@@ -75,3 +75,14 @@ describe('a merged STEP export with nothing writable is refused', () => {
     assert.match(shellText(), /no data available for export: tower\.ifc\./);
   });
 });
+
+describe('a single STEP export of a model with no records', () => {
+  it('stays offered, as #10099 refuses it by name, and says so before the click', () => {
+    useViewerStore.setState({ ...fixtureModels(tabularModel('terrain.3dm')), activeModelId: 'terrain.3dm', dirtyModels: new Set() });
+    const ui = render(<ExportDialog surface="ribbon" />);
+    openExportDialog(ui, 'Export IFC');
+
+    assert.equal(exportButton().disabled, false, 'the export itself refuses, naming the model');
+    assert.match(shellText(), /"terrain\.3dm" has no IFC STEP records to export from/);
+  });
+});

@@ -116,6 +116,7 @@ describe('a loaded .3dm store, and the gates that read it', () => {
     const unmarked = unmarkedModel('unmarked');
     assert.equal(unmarked.ifcDataStore?.sourceKind, undefined);
     assert.equal(canWriteIfcFromStores(new Map([['unmarked', unmarked]]), 'merged', false), true);
+    await exportModelStep({ modelId: 'unmarked', dataStore: unmarked.ifcDataStore!, options: { schema: 'IFC4', applyMutations: true }, scheduleState: null });
   });
 
   it('is left out of a room seed, because neither seed path can carry it', async () => {

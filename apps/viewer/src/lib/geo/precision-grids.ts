@@ -24,6 +24,7 @@
  */
 
 import proj4 from 'proj4';
+import { isFeatureEnabled } from '../features/index.js';
 import { lookupEpsgByCode } from '@ifc-lite/data';
 import { DEPRECATED_SOURCE_DATUMS, GRIDS, type GridMetadata } from './precision-grid-data.js';
 
@@ -312,6 +313,8 @@ export async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolea
     failedGrids.add(spec.key);
     return false;
   }
+  // The grids come from an outside CDN; a host can switch those off (`lib/features`).
+  if (!isFeatureEnabled('privacy.third-party')) return false;
   const pending = inflightGrids.get(spec.key);
   if (pending) return pending;
 

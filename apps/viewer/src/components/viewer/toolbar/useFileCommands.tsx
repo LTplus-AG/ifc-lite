@@ -220,7 +220,7 @@ export function useFileCommands(): FileCommands {
   // Preferred Add-Model path: the picker captures a handle per file so the
   // resulting federation can be refreshed. Falls back to the hidden <input>.
   const handleAddModelClick = useCallback(async () => {
-    if (useViewerStore.getState().loading) return;
+    if (useViewerStore.getState().loading || !isFeatureEnabled('files.local')) return;
     if (!supportsFileSystemAccess()) {
       addModelInputRef.current?.click();
       return;
@@ -238,8 +238,9 @@ export function useFileCommands(): FileCommands {
   // a live FileSystemFileHandle for each file — that handle is what lets the
   // Refresh button re-read the same file from disk later (issue #1345). Browsers
   // without the API fall back to the hidden <input type="file">.
+  // Every picker opens through these two; a host can switch local files off (`lib/features`).
   const handleOpenClick = useCallback(async () => {
-    if (useViewerStore.getState().loading) return;
+    if (useViewerStore.getState().loading || !isFeatureEnabled('files.local')) return;
     if (!supportsFileSystemAccess()) {
       fileInputRef.current?.click();
       return;

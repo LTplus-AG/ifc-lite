@@ -44,9 +44,11 @@ export function GeoreferenceTab(props: GeoreferenceTabProps) {
 
       {!c.canEdit && (
         <output className="text-2xs leading-snug text-muted-foreground">
-          {c.readOnlyCoordinateOperation
-            ? t('properties.georef.coordinateOperationReadOnlyNotice')
-            : t('cesiumGeo.placement.requiresProjectedCrs')}
+          {c.switchedOff
+            ? t('mutationPermission.switchedOff')
+            : c.readOnlyCoordinateOperation
+              ? t('properties.georef.coordinateOperationReadOnlyNotice')
+              : t('cesiumGeo.placement.requiresProjectedCrs')}
         </output>
       )}
 

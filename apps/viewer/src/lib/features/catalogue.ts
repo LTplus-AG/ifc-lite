@@ -63,7 +63,7 @@ export const FEATURE_CATALOGUE = [
   { id: 'files.sources', group: 'files', label: 'Cloud sources',
     description: 'The Cloud sources panel, which connects to common data environments and file services to open models from them.' },
   { id: 'files.samples', group: 'files', label: 'Sample models',
-    description: 'The sample project and the layers demo on the start screen.' },
+    description: 'The sample project and the layers demo on the start screen and in empty panels. Guided tours load the sample project, so they go too.' },
 
   { id: 'tools.measure', group: 'tools', label: 'Measure',
     description: 'The Measure tool and the Measurements panel.' },
@@ -141,7 +141,7 @@ export const FEATURE_CATALOGUE = [
     description: 'Sharing a model in a live session with other people. Also needs a collaboration server configured in the build.' },
 
   { id: 'export.files', group: 'export', label: 'Export',
-    description: 'The export commands in the File tab, the command palette and the element menu, including export of a changed model.' },
+    description: 'Saving the model as a file: the export commands in the File tab, the command palette and the element menu, export of a changed model, positioned point cloud and splat downloads, and downloads from scripts and extensions.' },
 
   { id: 'privacy.analytics', group: 'privacy', label: 'Product analytics',
     description: 'Anonymous usage analytics sent to the analytics service configured in the build, and the setting that lets a user opt out.' },

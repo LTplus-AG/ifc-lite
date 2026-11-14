@@ -10,6 +10,7 @@
  * before the split — this is a pure extraction.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Package, ShieldCheck, ExternalLink } from 'lucide-react';
 import { useTranslation } from '@/i18n';
@@ -97,42 +98,45 @@ export function AboutTab() {
 
       {/* Links */}
       <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-1.5 text-xs">
-        <a
-          href="https://ifclite.dev"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t('keyboardShortcuts.about.homepageLink')}
-          <ExternalLink className="h-3 w-3" />
-        </a>
-        <a
-          href="https://ifclite.dev/docs/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t('keyboardShortcuts.about.docsLink')}
-          <ExternalLink className="h-3 w-3" />
-        </a>
-        <a
-          href={GITHUB_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <GithubIcon className="h-3.5 w-3.5" />
-          {t('keyboardShortcuts.about.githubLink')}
-        </a>
-        <a
-          href={`${GITHUB_URL}/issues`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t('keyboardShortcuts.about.reportIssueLink')}
-          <ExternalLink className="h-3 w-3" />
-        </a>
+        {/* A host can switch links out of the viewer off (`lib/features`). */}
+        {isFeatureEnabled('help.product-links') && <>
+          <a
+            href="https://ifclite.dev"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {t('keyboardShortcuts.about.homepageLink')}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+          <a
+            href="https://ifclite.dev/docs/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {t('keyboardShortcuts.about.docsLink')}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <GithubIcon className="h-3.5 w-3.5" />
+            {t('keyboardShortcuts.about.githubLink')}
+          </a>
+          <a
+            href={`${GITHUB_URL}/issues`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {t('keyboardShortcuts.about.reportIssueLink')}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </>}
         <span className="text-muted-foreground">{t('keyboardShortcuts.about.license')}</span>
       </div>
 

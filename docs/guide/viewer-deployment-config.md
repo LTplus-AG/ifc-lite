@@ -92,5 +92,8 @@ The embed viewer (`apps/viewer-embed`) does not take a configuration yet: it sta
 - `automate.extensions` off does not start installed extensions.
 - `ai.assistant` off hides every AI surface, and Flow runs get no model, so AI nodes are refused.
 - `collab.sessions` also needs a collaboration server configured in the build (`VITE_COLLAB_ENABLED`).
-- `privacy.third-party` off stops the hosted icon font (the model tree then shows one generic icon per class), map tiles, the bSDD tab and the 3D world context.
+- `edit.placement` moves whole models and edits their georeferencing. Georeferencing is model data, so its editing also needs `edit.model`; repositioning a model does not.
+- `privacy.third-party` off stops the hosted icon font (the model tree then shows one generic icon per class), map tiles, bSDD (the Properties tab, the semantic profile search and the AI agent's bSDD tools), the 3D world context, and the projection and terrain lookups that ask epsg.io, cdn.proj.org and Open-Meteo.
+- `export.files` covers saving the model as a file, including script and extension downloads. Reports and other files that panels save (lists, BCF, IDS reports, drawings) are not covered yet.
+- `files.samples` off also removes the guided tours, since they load the sample project when no model is open.
 - `files.local` off leaves models to arrive through the host: the `?model=` URL parameter keeps working, since the host controls the URL it links to. With Cloud sources off too, the start screen says the model comes from the page that linked here.

@@ -260,7 +260,7 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
   }),
   setCesiumEnabled: (enabled) => set({ cesiumEnabled: enabled && isFeatureEnabled('privacy.third-party') }),
   toggleCesium: () => set((s) => ({
-    cesiumEnabled: !s.cesiumEnabled,
+    cesiumEnabled: !s.cesiumEnabled && isFeatureEnabled('privacy.third-party'),
     ...(s.cesiumEnabled
       ? {
           cesiumPlacementEditMode: false,

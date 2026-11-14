@@ -18,8 +18,7 @@
  * separate components landing later.
  */
 
-import { isSurfaceCommandAvailable } from '@/components/viewer/surface-command-features';
-import { surfaceCommand } from '@/components/viewer/surface-command-registry';
+import { isAiChatAvailable } from '@/components/viewer/surface-command-features';
 import { useBundleReview } from './useBundleReview';
 import { useEffect, useRef, useState } from 'react';
 import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
@@ -67,8 +66,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const { pending, setPending, handleFiles, handleApprove, busy } = useBundleReview(host);
   const [dragOver, setDragOver] = useState(false);
   const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair'>('installed');
-  // Ideas and chat authoring land in the AI chat; a host can switch it off (`lib/features`).
-  const ai = isSurfaceCommandAvailable(surfaceCommand('panel:chat', 'palette'));
+  // Ideas, chat authoring and forks land in the AI chat; a host can switch it off (`lib/features`).
+  const ai = isAiChatAvailable();
   /** Deep-link entry point (Command Palette "Author an extension…"). */
   const extensionsRequestedView = useViewerStore((s) => s.extensionsRequestedView);
   const setExtensionsRequestedView = useViewerStore((s) => s.setExtensionsRequestedView);
@@ -264,13 +263,13 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <IconButton
+                    {ai && <IconButton
                       label={t('extensionsFlavors.extensionsPanel.row.forkAriaLabel', { id: record.id })}
                       tooltip={t('extensionsFlavors.extensionsPanel.row.forkTitle')}
                       onClick={() => handleFork(record.id)}
                     >
                       <GitFork className="h-3.5 w-3.5" />
-                    </IconButton>
+                    </IconButton>}
                     <IconButton
                       label={t('extensionsFlavors.extensionsPanel.row.runTestsAriaLabel', { id: record.id })}
                       disabled={isRunning(record.id)}

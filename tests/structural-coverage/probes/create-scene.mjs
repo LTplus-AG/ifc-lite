@@ -258,7 +258,7 @@ export const SCENE = [
   ...['IfcStructuralLoadSingleForceWarping', 'IfcStructuralLoadSingleDisplacementDistortion'].map((Type, i) => ({
     id: Type, builder: 'addStructuralPointReactionToStore',
     emits: { [Type]: i ? { Name: Type, DisplacementZ: 0.02, Distortion: 0.03 } : { Name: Type, ForceZ: 10, WarpingMoment: 20 } },
-    build: ({ create, editor, anchor }) => create.addStructuralPointReactionToStore(editor, anchor, { AppliedLoad: { Type, Name: Type, ...(i ? { DisplacementZ: 0.02, Distortion: 0.03 } : { ForceZ: 10, WarpingMoment: 20 }) } }).loadId,
+    build: ({ create, editor, anchor }) => create.addStructuralPointReactionToStore(editor, anchor, { AppliedLoad: { Type, Name: Type, ...(i ? { DisplacementZ: 0.02, Distortion: 0.03 } : { ForceZ: 10, WarpingMoment: 20 }) } }).activityId,
   })),
   {
     id: 'reinforcement', builder: 'addStructuralLoadToStore', schemas: ['IFC4','IFC4X3'],
@@ -279,15 +279,21 @@ export const SCENE = [
     emits: { IfcStructuralCurveAction: { Name: 'Configured curve', PredefinedType: 'LINEAR' } },
     build: ({ create, editor, anchor, done }) => create.addStructuralCurveActionToStore(editor, anchor, { Name: 'Configured curve', AppliedLoad: done.get('load-configuration'), PredefinedType: 'LINEAR' }),
   },
-  ...['Linear', 'Planar'].map(kind => ({
-    id: `varying-${kind}`, builder: `addStructural${kind}ActionToStore`, schemas: ['IFC2X3'], needs: ['stations', 'linear-stations'],
-    emits: { [`IfcStructural${kind}ActionVarying`]: { Name: `Varying ${kind}` } },
-    build: ({ create, editor, anchor, done }) => {
-      const planar = kind === 'Planar';
-      const base = planar ? create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -3 } }) : create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -3 });
-      return create[`addStructural${kind}ActionToStore`](editor, anchor, { Name: `Varying ${kind}`, VaryingAppliedLoadLocation: done.get(planar ? 'stations' : 'linear-stations'), SubsequentAppliedLoads: planar ? [base.loadId, create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -4 } }).loadId] : [base.loadId], ...(planar ? { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -2 } } : { LinearForceZ: -2 }) }).activityId;
-    },
-  })),
+  ...['Linear', 'Planar'].flatMap(kind => {
+    const planar = kind === 'Planar';
+    return [{
+      // Varying actions borrow their subsequent loads, so the actions owning
+      // those loads are prerequisites, not part of the varying occurrence.
+      id: `varying-${kind}-loads`, builder: `addStructural${kind}ActionToStore`, schemas: ['IFC2X3'], emits: {},
+      build: ({ create, editor, anchor }) => planar
+        ? [-3, -4].map(PlanarForceZ => create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ } }).loadId)
+        : [create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -3 }).loadId],
+    }, {
+      id: `varying-${kind}`, builder: `addStructural${kind}ActionToStore`, schemas: ['IFC2X3'], needs: ['stations', 'linear-stations', `varying-${kind}-loads`],
+      emits: { [`IfcStructural${kind}ActionVarying`]: { Name: `Varying ${kind}` } },
+      build: ({ create, editor, anchor, done }) => create[`addStructural${kind}ActionToStore`](editor, anchor, { Name: `Varying ${kind}`, VaryingAppliedLoadLocation: done.get(planar ? 'stations' : 'linear-stations'), SubsequentAppliedLoads: done.get(`varying-${kind}-loads`), ...(planar ? { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -2 } } : { LinearForceZ: -2 }) }).activityId,
+    }];
+  }),
   {
     id: 'physical-element', builder: 'addBeamToStore', schemas: ['IFC2X3'], emits: {},
     build: ({ create, editor, anchor }) => create.addBeamToStore(editor, anchor, { Start: [0,0,0], End: [5,0,0], Width: 0.2, Height: 0.3 }).beamId,

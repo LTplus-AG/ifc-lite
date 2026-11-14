@@ -5,10 +5,11 @@
 //! The prism cut: subtract a stepped solid from the host triangle list, or
 //! return the defer reason that sends the opening to the exact kernel.
 
-use super::caps::{build_face_cap, cap_plane_breakpoints};
+use super::caps::{build_face_cap, cap_plane_breakpoints, CapHost};
 use super::checks::{has_measurable_region, partition_consistent};
 use super::decompose::decompose_tri;
 use super::face::{cached_crossing, face_plane, CrossCache, Seam};
+use super::flush_cap::FlushSeats;
 use super::frame::{cap_xor, stack_faces, Face, PrismFrame};
 use super::kit::{add, dot, lerp, scale, V2, V3};
 use super::plane2::seg_cross_param;
@@ -17,7 +18,7 @@ use super::ptri::PTri;
 /// Subtract the stepped solid `pf` from the host triangle list. `Err(defer
 /// index)` ⇒ a gate or self-check failed ⇒ the caller must leave the host
 /// untouched and route this opening to the exact kernel.
-pub(super) fn cut_prism(tris: &[PTri], pf: &PrismFrame) -> Result<Vec<PTri>, usize> {
+pub(super) fn cut_prism(tris: &[PTri], pf: &PrismFrame, seats: &FlushSeats) -> Result<Vec<PTri>, usize> {
     let faces = stack_faces(pf);
     if faces.len() > u16::MAX as usize {
         return Err(7);
@@ -40,7 +41,7 @@ pub(super) fn cut_prism(tris: &[PTri], pf: &PrismFrame) -> Result<Vec<PTri>, usi
         let w0 = dot(t.p[0], pf.d);
         let w1 = dot(t.p[1], pf.d);
         let w2 = dot(t.p[2], pf.d);
-        if w0.max(w1).max(w2) < pf.d0() || w0.min(w1).min(w2) > pf.d1() {
+        if seats.beyond_caps(pf, t, [w0, w1, w2]) {
             out.push(t.clone());
             continue;
         }
@@ -231,7 +232,7 @@ pub(super) fn cut_prism(tris: &[PTri], pf: &PrismFrame) -> Result<Vec<PTri>, usi
     // ray parity against the PRE-CUT host.
     let mut caps: Vec<PTri> = Vec::new();
     for (fi, &face) in faces.iter().enumerate() {
-        if !build_face_cap(pf, face, &seams[fi], &plane_pts, tris, &aabbs, &mut caps) {
+        if !build_face_cap(pf, face, &seams[fi], &plane_pts, &CapHost { tris, aabbs: &aabbs, seats }, &mut caps) {
             return Err(7);
         }
     }

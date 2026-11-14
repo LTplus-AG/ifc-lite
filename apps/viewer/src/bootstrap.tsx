@@ -136,7 +136,8 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   else render();
 
   // Spare parser + small-file geometry workers, prepared at idle (lib/fast-path).
-  // The runtime is its own chunk and applies its own gates, so it runs after the
-  // host's configuration is applied; the wasm prewarm already ran in prepareViewer.
+  // The runtime is its own chunk and applies its own gates (build env, URL kill
+  // switch). It stays here, not in prepareViewer, so a hosted start whose
+  // configuration fails never spawns workers.
   scheduleFastPath();
 }

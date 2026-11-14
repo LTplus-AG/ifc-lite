@@ -26,7 +26,7 @@ import { openContextMenuAt } from './contextMenuSelection.js';
 import { createTouchLongPress, HOLD_MS } from './touchLongPress.js';
 import { withinTapSlop } from './tapSlop.js';
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
-
+import { isGeometryRestoreHeld } from '@/lib/pick-gating';
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
 
@@ -36,7 +36,7 @@ export interface TouchState {
   lastDistance: number;
   lastCenter: { x: number; y: number };
   tapStartTime: number;
-  tapStartPos: { x: number; y: number };
+  tapStartPos: { x: number; y: number }; tapStartedHeld?: boolean; // began during a reopen restore hold: the tap does nothing (#10218)
   didMove: boolean;
   multiTouch: boolean;
   /** Locked 2-finger gesture mode (reset on finger lift) */
@@ -169,7 +169,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         };
         // Record tap start for tap-to-select detection
         touchState.tapStartTime = Date.now();
-        touchState.tapStartPos = { ...touchState.lastCenter };
+        touchState.tapStartPos = { ...touchState.lastCenter }; touchState.tapStartedHeld = isGeometryRestoreHeld(useViewerStore.getState());
         touchState.didMove = false;
         beginMeasurePress(touchState);
         // A press that grabs for the command has no long press: its drag is the command's (#9092).
@@ -308,9 +308,8 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         camera.stopInertia();
         pivotGesture++; // the gesture ended: a probe still in flight is moot
 
-        // A tap: one finger (not after a multi-touch gesture), short of a long press, that didn't move,
-        // and quick (< 300ms), unless the tool places a point, as a click does: then anything short of
-        // the long press, also when a busy main thread runs the long-press timer late (#9092, #9228).
+        // One-finger taps that didn't move and are short of a long press,
+        // Either <300ms or a point-placement press before long-press (#9092, #9228).
         // A grab has no long press, so it is a press and a release in place however long it rested.
         const tapDuration = Date.now() - touchState.tapStartTime;
         const tool = activeToolRef.current;
@@ -322,7 +321,8 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           const x = touchState.tapStartPos.x - rect.left;
           const y = touchState.tapStartPos.y - rect.top;
 
-          if (refuseCaptureHeldPick(renderer)) markTouchSelection(canvas, x, y); // not through a capture's frame, nor its compatibility click (#9137)
+          if (touchState.tapStartedHeld || isGeometryRestoreHeld(useViewerStore.getState())) { /* consumed: begun or ended during a reopen restore */ }
+          else if (refuseCaptureHeldPick(renderer)) markTouchSelection(canvas, x, y); // not through a capture's frame, nor its compatibility click (#9137)
           else if (tool === 'measure') {
             // The measure logic lives with the mouse controls; touchstart's
             // preventDefault suppresses the compatibility click, so hand the tap over (#5856).

@@ -54,7 +54,8 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
     // The finalizer preserves these identities. Another properties/source writer
     // means replacement: its store must not be overwritten by this older poll.
     return !owner.isStale?.() && current !== undefined && current.loadState !== 'error' &&
-      current.sourceFile === owner.model.sourceFile && current.ifcDataStore === owner.model.ifcDataStore;
+      current.sourceFile === owner.model.sourceFile && current.ifcDataStore === owner.model.ifcDataStore &&
+      current.processedModel?.sha256 === owner.model.processedModel?.sha256; // a processed model has no sourceFile
   };
   const write = (run: ServerPropertiesRun) => useViewerStore.getState().setServerPropertiesRun(modelId, run);
   const slot = createRunSlot<void, never, ServerPropertiesOwner, string>({

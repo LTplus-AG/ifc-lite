@@ -365,3 +365,18 @@ describe('FederationRegistry - overlay allocation query', () => {
     assert.equal(reg.canPublishOverlayFrom('a', 2_000_001), false, 'the grown envelope was fully consumed');
   });
 });
+
+describe('overlay allocation capacity with lazy publication', () => {
+  it('allows unpublished allocations without weakening publication contiguity', () => {
+    const registry = new FederationRegistry();
+    registry.registerModel('a', 10);
+    assert.equal(registry.hasOverlayCapacity('a', 12), true);
+    assert.equal(registry.canPublishOverlayFrom('a', 12), false);
+    assert.throws(() => registry.publishOverlayRange('a', 12, 12), /contigu/);
+    registry.registerModel('later', 10);
+    assert.equal(registry.hasOverlayCapacity('a', 1_000_010), true);
+    assert.equal(registry.hasOverlayCapacity('a', 1_000_011), false);
+    registry.publishOverlayRange('a', 11, 1_000_010);
+    assert.equal(registry.hasOverlayCapacity('a', 1_000_011), false);
+  });
+});

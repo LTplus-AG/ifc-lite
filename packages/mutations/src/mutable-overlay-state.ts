@@ -92,11 +92,33 @@ export class MutableOverlayState {
    * the caller chose to add.
    */
   protected entityAliases: Map<number, number> = new Map();
-  protected nextAllocatedId: number = 0;
+  private allocatedId = 0;
+  protected sourceWatermark = 0;
+  protected minNextExpressId: () => number = () => 1;
+  private onNextExpressIdChange?: () => void;
+  protected get nextAllocatedId(): number { return this.allocatedId; }
+  protected set nextAllocatedId(id: number) {
+    if (id === this.allocatedId) return;
+    this.allocatedId = id;
+    this.onNextExpressIdChange?.();
+  }
+
+  /** Supply an external ownership floor without coupling mutations to a registry.
+   * The floor is read again on clear, because published ownership is permanent. */
+  configureExpressIdAllocator(minNextExpressId: () => number, onChange?: () => void): void {
+    this.minNextExpressId = minNextExpressId;
+    this.onNextExpressIdChange = onChange;
+    this.nextAllocatedId = Math.max(this.nextAllocatedId, this.sourceWatermark, minNextExpressId() - 1);
+  }
+
+  protected resetExpressIdAllocator(): void {
+    this.nextAllocatedId = Math.max(this.sourceWatermark, this.minNextExpressId() - 1);
+  }
 
   /** Seed the express-ID allocator above the parsed source. This changes no
    * IFC content; transactions validate the allocator separately from revision. */
   setExpressIdWatermark(maxExistingId: number): void {
+    this.sourceWatermark = Math.max(this.sourceWatermark, maxExistingId);
     if (maxExistingId > this.nextAllocatedId) {
       this.nextAllocatedId = maxExistingId;
     }

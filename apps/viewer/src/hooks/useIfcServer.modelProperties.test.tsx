@@ -9,6 +9,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import { federationRegistry } from '@ifc-lite/renderer';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { dataMutationPermission } from '@/store/mutation-permission';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { useServerModelProperties } from './ingest/useServerModelProperties.js';
@@ -173,9 +174,11 @@ it('a hydration whose next allocator id is publishable permits edits', async () 
   } finally { federationRegistry.clear(); }
 });
 
-it('newest reservation refuses reuse after big then small hydration', async () => {
+it('newest reservation allocates above a larger prior hydration without a false warning', async () => {
   const { registerModelOffset, updateModel } = useViewerStore.getState();
   updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
+  const warnings: unknown[][] = [];
+  mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
   try {
     for (const id of [2_000_000, 5]) {
       const store = serverStoreAt(id);
@@ -186,7 +189,10 @@ it('newest reservation refuses reuse after big then small hydration', async () =
       assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, store);
     }
     assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 2_000_000);
-    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+    const view = getOrCreateMutationView(useViewerStore, 'server')!;
+    assert.equal(view.peekNextExpressId(), 2_000_001);
+    assert.equal(warnings.length, 0);
   } finally { federationRegistry.clear(); }
 });
 
@@ -444,4 +450,27 @@ it('#9601 same-model retry aborts the old poll before the new attempt can hydrat
     assert.equal(useViewerStore.getState().models.get('server')?.sourceFile === file, true);
     assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore === null, true);
   } finally { resume(); await pending; }
+});
+
+it('hydration commits the ownership bound and store together once', async () => {
+  const { registerModelOffset, updateModel } = useViewerStore.getState();
+  updateModel('server', { idOffset: registerModelOffset('server', 1), maxExpressId: 1 });
+  const writes: unknown[] = [];
+  const original = useViewerStore.getState().updateModel;
+  mock.method(useViewerStore.getState(), 'updateModel', (...args: Parameters<typeof original>) => {
+    writes.push(args[1]);
+    original(...args);
+  });
+  let commits = 0;
+  const stop = useViewerStore.subscribe((state, prev) => { if (state.models !== prev.models) commits++; });
+  try {
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => serverStoreAt(100));
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    assert.equal(writes.length, 1);
+    assert.equal(commits, 1);
+    assert.equal(useViewerStore.getState().models.get('server')?.maxExpressId, 100);
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+  } finally { stop(); federationRegistry.clear(); }
 });

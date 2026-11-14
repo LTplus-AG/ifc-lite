@@ -146,7 +146,7 @@
    498 apps/viewer/src/store/slices/sectionSlice.ts
    571 apps/viewer/src/store/slices/sheetSlice.ts
    415 apps/viewer/src/store/teardown.ts
-   686 apps/viewer/src/store/types.ts
+   675 apps/viewer/src/store/types.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
    788 packages/bcf/src/ids-reporter.ts
@@ -227,7 +227,7 @@
    465 packages/merge/src/component-state.ts
    530 packages/merge/src/three-way.ts
    558 packages/mutations/src/csv-connector.ts
-  1879 packages/mutations/src/mutable-property-view.ts
+  1869 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
    856 packages/parser/src/columnar-parser.ts
    467 packages/parser/src/compact-entity-index.ts

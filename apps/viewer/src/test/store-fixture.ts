@@ -94,7 +94,9 @@ export function fixtureDataStore(
   // it belongs in this fixture — add it here and the cast stays honest.
   const { aggregates } = options;
   return {
-    entityIndex: { byType },
+    entityIndex: { byType, byId: new Map(entities.map(e => [e.expressId, {
+      expressId: e.expressId, type: e.type.toUpperCase(), byteOffset: 0, byteLength: 0, lineNumber: 0,
+    }])) },
     spatialHierarchy: undefined,
     ...(aggregates
       ? {

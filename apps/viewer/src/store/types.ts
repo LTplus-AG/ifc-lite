@@ -530,9 +530,9 @@ export interface PreAlignmentSnapshot {
   instancedGeometryAabbs: Map<number, EntityWorldAabb> | undefined;
 }
 export interface FederatedModel extends ModelLoadReportFields {
+  hasOverlayCapacity?: boolean; // Reactive authoring capacity, maintained at ownership/allocator changes.
   id: string; // UUID generated on load.
-  /** Display name (filename by default, user can rename) */
-  name: string;
+  name: string; // Display name (filename by default, user can rename)
   sourceFingerprint?: string; // Durable identity for persisted model filters.
   sourceContentHash?: string; // Full-content identity for workspace placements.
   /** Parsed IFC data model */

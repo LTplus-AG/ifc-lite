@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { federationRegistry } from '@ifc-lite/renderer';
-import { highestExistingExpressId } from '@ifc-lite/mutations';
 import { areWorkflowModelsReadLocked } from '../lib/flow/run-session.js';
 import type { ViewerState } from './index.js';
 import { getModelForRef } from '../sdk/adapters/model-compat.js';
@@ -46,14 +44,9 @@ export function dataMutationPermission(state: MutationPermissionState, modelId?:
   if (properties === 'running') return { allowed: false, reason: 'properties-loading' };
   if (properties === 'failed') return { allowed: false, reason: 'properties-failed' };
   if (modelId !== undefined) {
-    const store = getModelForRef(state, modelId)?.ifcDataStore;
-    if (!store) return { allowed: false, reason: 'model-unavailable' };
-    // StoreEditor seeds the view from the source watermark; authored (even
-    // deleted) IDs keep the view's allocator above that floor.
-    if (!federationRegistry.hasModel(modelId)) return { allowed: true };
-    const firstLocalId = Math.max(highestExistingExpressId(store) + 1,
-      state.mutationViews?.get(modelId)?.peekNextExpressId() ?? 1);
-    if (!federationRegistry.canPublishOverlayFrom(modelId, firstLocalId)) {
+    const model = getModelForRef(state, modelId);
+    if (!model?.ifcDataStore) return { allowed: false, reason: 'model-unavailable' };
+    if (state.models.get(modelId)?.hasOverlayCapacity === false) {
       return { allowed: false, reason: 'id-space-exhausted' };
     }
   }

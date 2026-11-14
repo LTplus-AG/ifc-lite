@@ -2,15 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Mutable property view - overlay pattern for property mutations
- *
- * This class provides a mutable view over an immutable PropertyTable.
- * Changes are tracked separately and applied on-the-fly during reads.
- *
- * Supports both pre-built property tables and on-demand property extraction
- * for optimal performance with large models.
- */
+/** Mutable overlay over immutable or on-demand properties; changes apply on reads. */
 
 import { runSparseAtomic } from './sparse-atomic.js';
 import { readEntitySnapshot } from './entity-read-barrier.js';
@@ -64,6 +56,7 @@ export class MutablePropertyView extends MutableOverlayState {
       capture: () => this.overlayState(),
       rebuild: snapshot => {
         const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        draft.configureExpressIdAllocator(() => Math.max(this.sourceWatermark + 1, this.minNextExpressId()));
         draft.restoreOverlayState(snapshot);
         for (const id of draft.getAttributeOverrideEntityIds()) draft.indexAttributeOverride(id);
         return draft.overlayState();
@@ -72,6 +65,7 @@ export class MutablePropertyView extends MutableOverlayState {
       publish: snapshot => this.restoreOverlayState(snapshot),
       draft: snapshot => {
         const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        draft.configureExpressIdAllocator(() => Math.max(this.sourceWatermark + 1, this.minNextExpressId()));
         draft.onDemandExtractor = this.onDemandExtractor;
         draft.quantityExtractor = this.quantityExtractor;
         draft.quantityBaseRevisions = this.quantityBaseRevisions;
@@ -103,6 +97,7 @@ export class MutablePropertyView extends MutableOverlayState {
   prepareAtomic<T>(edit: (draft: MutablePropertyView) => T): { result: T; validate(): void; commit(): void; rollback(): void } {
     const original = this.copyOverlayState();
     const draft = new MutablePropertyView(this.baseTable, this.modelId);
+    draft.configureExpressIdAllocator(() => Math.max(this.sourceWatermark + 1, this.minNextExpressId()));
     draft.onDemandExtractor = this.onDemandExtractor;
     draft.quantityExtractor = this.quantityExtractor;
     draft.quantityBaseRevisions = this.quantityBaseRevisions;
@@ -1780,9 +1775,7 @@ export class MutablePropertyView extends MutableOverlayState {
     });
   }
 
-  /**
-   * Clear all mutations (reset to base state)
-   */
+  /** Clear mutations while preserving the source and externally owned ID floor. */
   clear(): void {
     this.markOverlayChanged();
     this.propertyTargets.clear();
@@ -1806,7 +1799,7 @@ export class MutablePropertyView extends MutableOverlayState {
     this.forgottenCreatedEntities.clear();
     this.forgottenEntityOverlay.clear();
     this.entityAliases.clear();
-    this.nextAllocatedId = 0;
+    this.resetExpressIdAllocator();
     this.mutationHistory = [];
   }
 

@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { highestExistingExpressId } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { createRunSlot, IDLE_RUN } from '@/lib/runs/run-slot';
 import type { ServerPropertiesOwner, ServerPropertiesRun } from '@/store/slices/serverPropertiesSlice';
 import { watchLoadSupersession } from '../modelLoadCanceller.js';
 import { federationRegistry } from '@ifc-lite/renderer';
+import { minNextOverlayExpressId, overlayCapacity, withDeferredOverlayCapacity } from '@/store/overlay-capacity';
 import { getMaxExpressId } from './viewerModelIngest.js';
 
 /** The geometry finalizer may still overwrite its placeholder with null. */
@@ -28,22 +28,19 @@ function waitForCompletion(modelId: string, signal: AbortSignal): Promise<void> 
 
 /** Publishes the hydrated store's ids and returns the model's ownership bound for the reverse
  *  resolvers: the store's highest id, or the published end when a later model clamps the range. */
-function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpressId: number } {
+function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpressId: number; hasOverlayCapacity: boolean } {
   const registered = useViewerStore.getState().models.get(modelId)?.maxExpressId ?? 0;
   const maxExpressId = Math.max(registered, getMaxExpressId(dataStore, []));
   // An unregistered primary keeps the single-model `globalId === expressId` fallback.
-  if (!federationRegistry.hasModel(modelId)) return { maxExpressId };
+  if (!federationRegistry.hasModel(modelId)) return { maxExpressId, hasOverlayCapacity: true };
   // Throws only for a range carrying authored ids, which `dataMutationPermission` rules out while
   // properties load; the run then fails like any optional hydration and nothing is aliased.
   const published = federationRegistry.extendModel(modelId, maxExpressId);
-  // The registry has no rollback. Synchronize ownership even if a synchronous
-  // subscriber or warning supersedes the lease before it accepts the store.
-  useViewerStore.getState().updateModel(modelId, { maxExpressId: published });
+  const hasOverlayCapacity = overlayCapacity(modelId, minNextOverlayExpressId(modelId, dataStore));
   if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
-  else if (!federationRegistry.canPublishOverlayFrom(modelId, highestExistingExpressId(dataStore) + 1)) {
-    console.warn(`[Server properties] Model ${modelId} fits its published range, but no id is left for edits`);
-  }
-  return { maxExpressId: published };
+  else if (!hasOverlayCapacity) console.warn(`[Server properties] Model ${modelId} fits its published range, but no id is left for edits`);
+  return { maxExpressId: published, hasOverlayCapacity };
+
 }
 
 function start(modelId: string | null, isStale: (() => boolean) | undefined,
@@ -94,11 +91,16 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
     // without geometry (storeys, spaces, types) whose ids can lie above every meshed one, so
     // the model's id range grows with the store that brings them. The registry has no
     // transaction: immediately synchronize the ownership bound even if settlement is rejected.
-    const idRange = lease.isCurrent() && ownsModel() ? extendModelIdRange(modelId, dataStore) : undefined;
-    // A rejected settlement must never publish, including after cancellation.
-    if (lease.succeed()) {
-      useViewerStore.getState().updateModel(modelId, { ifcDataStore: dataStore, ...idRange });
-    }
+    withDeferredOverlayCapacity(() => {
+      if (!lease.isCurrent() || !ownsModel()) return;
+      const idRange = extendModelIdRange(modelId, dataStore);
+      // Ownership is permanent even if extension/warning supersedes the lease.
+      // Commit the hydrated store only if settlement still owns this model.
+      const accepted = lease.succeed();
+      useViewerStore.getState().updateModel(modelId, accepted
+        ? { ifcDataStore: dataStore, ...idRange }
+        : { ...idRange, hasOverlayCapacity: overlayCapacity(modelId, minNextOverlayExpressId(modelId, useViewerStore.getState().models.get(modelId)?.ifcDataStore ?? null)) });
+    });
   }, { scopeIsCurrent: ownsModel, toError: error => {
     console.warn('[Server properties] Optional hydration failed; geometry remains available', error);
     return error instanceof Error ? error.message : String(error);

@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { highestExistingExpressId } from '@ifc-lite/mutations';
 import type { parseIfcx as ParseIfcx } from '@ifc-lite/ifcx';
-import { CompactEntityIndex, IFCX_LENGTH_UNIT_SCALE, createSyntheticDataStore, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
+import { IFCX_LENGTH_UNIT_SCALE, createSyntheticDataStore, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { parseGLB, parseGLBToMeshData, parseGLBImageResources } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
@@ -89,27 +90,7 @@ export function getMaxExpressId(
   pointClouds: readonly Pick<PointCloudAsset, 'expressId'>[] = [],
 ): number {
   const maxExpressIdFromMeshes = meshes.reduce((max, mesh) => Math.max(max, mesh.expressId), 0);
-  let maxExpressIdFromEntities = 0;
-  // @raw-entity-enumeration-ok load-time watermark scans parsed source ids before any live overlay is installed
-  const entityIndex = dataStore?.entityIndex?.byId;
-  if (entityIndex instanceof CompactEntityIndex) {
-    maxExpressIdFromEntities = entityIndex.maxExpressId;
-  } else if (entityIndex) {
-    for (const key of entityIndex.keys()) {
-      if (key > maxExpressIdFromEntities) {
-        maxExpressIdFromEntities = key;
-      }
-    }
-  }
-  // A tabular store (IFCX is one) has no STEP byte-offset index. Its entity
-  // table owns spatial and other unmeshed rows too; reserving only rendered IDs
-  // strands those rows outside the strict federation range (#6564).
-  if (dataStore?.sourceKind === 'tabular') {
-    // @raw-entity-enumeration-ok load-time tabular ownership watermark precedes installation of live overlays
-    for (const id of dataStore.entities.expressId) {
-      maxExpressIdFromEntities = Math.max(maxExpressIdFromEntities, id);
-    }
-  }
+  const maxExpressIdFromEntities = dataStore ? highestExistingExpressId(dataStore) : 0;
   const maxExpressIdFromPoints = pointClouds.reduce((max, asset) => Math.max(max, asset.expressId), 0);
   return Math.max(maxExpressIdFromMeshes, maxExpressIdFromEntities, maxExpressIdFromPoints);
 }

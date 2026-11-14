@@ -197,3 +197,13 @@ it('a two-id action with one id left reports id-space-exhausted on every authori
     assert.equal(registry.getGlobalIdRange('editable')?.end, 1_000_099, 'failed batches publish no prefix');
   }
 });
+
+it('rejects a detached batch separated from published ownership as non-contiguous', () => {
+  const registry = new FederationRegistry();
+  registry.registerModel('editable', 100);
+  const models = new Map([['editable', { maxExpressId: 100 }]]);
+  const created = [{ expressId: 102 }];
+  const views = new Map([['editable', { getNewEntity: () => created[0] }]]);
+  assert.throws(() => previewPreparedOverlayGlobalId(registry, models, 'editable', created, 102), /contigu/);
+  assert.throws(() => publishPreparedOverlayRange(registry, models, views, 'editable', created), /contigu/);
+});

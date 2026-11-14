@@ -207,7 +207,13 @@ function preparedOverlayRange(
 
 /** All authoring previews and publications report the same capacity refusal. */
 function assertOverlayCapacity(registry: OverlayPublicationRegistry, modelId: string, start: number, end: number): void {
-  if (registry.getOffset(modelId) !== null && !registry.canPublishOverlayFrom(modelId, start, end - start + 1)) {
+  const offset = registry.getOffset(modelId);
+  if (offset === null) return;
+  const range = registry.getGlobalIdRange(modelId);
+  if (range !== null && start !== range.end - offset + 1) {
+    throw new Error('Overlay IDs must extend federation ownership contiguously.');
+  }
+  if (!registry.canPublishOverlayFrom(modelId, start, end - start + 1)) {
     throw new MutationPermissionError('id-space-exhausted');
   }
 }

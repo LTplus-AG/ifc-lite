@@ -179,7 +179,7 @@ describe('StoreEditor', () => {
     expect(() => view.setPositionalAttribute(1, 1.5, 0)).toThrow();
   });
 
-  it('clear() resets the entity overlay and the id allocator', () => {
+  it('clear() resets the entity overlay and preserves the source allocator floor', () => {
     const store = makeStore(4);
     const view = new MutablePropertyView(null, 'm1');
     const editor = new StoreEditor(store, view);
@@ -190,8 +190,7 @@ describe('StoreEditor', () => {
 
     expect(view.getNewEntities()).toEqual([]);
     expect(view.isDeleted(1)).toBe(false);
-    // Watermark is reset; first add starts back at 1 unless re-seeded.
-    expect(view.peekNextExpressId()).toBe(1);
+    expect(view.peekNextExpressId()).toBe(5);
   });
 
   // Regression: previously the editor latched `seeded=true` once, so after

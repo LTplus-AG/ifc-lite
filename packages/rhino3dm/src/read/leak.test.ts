@@ -34,16 +34,24 @@ function everything(c: Craft) {
   }
 }
 
-test('three imports in one runtime leave the wasm heap where the first left it', async () => {
+test('repeated imports stop growing the wasm heap after warmup', async () => {
   const { readRhino3dm } = await import('../index.js');
   const bytes = await craft(everything);
   expect(memory).toBeInstanceOf(WebAssembly.Memory);
-  // The first import grows the heap to its working size; a leak would keep growing it.
+  // Rhino and the reader make lazy one-time allocations, so the first parse is not a
+  // reliable baseline. The heap has to hold one size for eight reads in a row; a leak
+  // keeps growing it and never gets there.
   const first = await readRhino3dm(bytes);
   expect(first.entities).toHaveLength(1600);
-  const settled = memory!.buffer.byteLength;
-  for (let i = 0; i < 3; i++) await readRhino3dm(bytes, { bakeInstances: i === 1 });
-  expect(memory!.buffer.byteLength).toBe(settled);
+  let stableReads = 0;
+  let settled = memory!.buffer.byteLength;
+  for (let i = 0; i < 16 && stableReads < 8; i++) {
+    await readRhino3dm(bytes, { bakeInstances: i % 2 === 1 });
+    const current = memory!.buffer.byteLength;
+    stableReads = current === settled ? stableReads + 1 : 0;
+    settled = current;
+  }
+  expect(stableReads).toBe(8);
   // A failed import releases the file too.
   for (let i = 0; i < 3; i++) await expect(readRhino3dm(bytes, { onProgress: done => { if (done === 800) throw new Error('stop'); } })).rejects.toThrow('stop');
   expect(memory!.buffer.byteLength).toBe(settled);

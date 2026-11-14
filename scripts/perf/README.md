@@ -10,12 +10,14 @@ bundles left the tree in #9054.
 
 ## Load scoreboard verdicts use the frame mark
 
-Browser-lane verdicts in `load-scoreboard.mjs` judge the frame mark: the first frame the
-renderer started at or after the scene finished, never before the settled mark
-(`load-scoreboard-frame-mark.mjs`, `frameMarkOf`). The settled mark stays in the report as
-its own verdict row and table column. A browser sample without frame times leaves its
-frame-mark cell inconclusive (unverifiable); it is never judged on the settled mark
-instead. Native and boot lanes keep `interactiveMs`. A/A runs record `frameMs` floors
+Browser-lane verdicts in `load-scoreboard.mjs` use the frame mark by default: the first frame
+the renderer started at or after the scene finished, never before the settled mark
+(`load-scoreboard-frame-mark.mjs`, `frameMarkOf`). Reopen lanes may opt into the metadata
+mark, the first frame at or after `load.metadataInteractive`, capped at the frame mark. The
+settled mark stays in the report as its own verdict row and as a column in the both-marks
+table. The baseline table labels the selected verdict mark by lane. A browser sample without
+the required frame or metadata mark leaves its cell inconclusive (unverifiable). Native and
+boot lanes keep `interactiveMs`. A/A runs record `frameMs` floors
 beside the settled ones. An A/A reference without them gives "no A/A floor" for the
 frame-mark row, so re-render an older A/A with this report before using it as a
 reference. Its samples already carry frame times since #9857.
@@ -57,6 +59,76 @@ Uniform blocks share arena pages. Synthetic Metal checks preserve the glass
 and cutout picture; tinting the original textured draw was rejected because
 it moves selection before glass and retains texture cutouts. Keep stride
 variants on shared shaders and invalidate borrowed records with scene revisions.
+
+## The rooted data model is narrowed before it is built (#9582)
+
+**Shipped: the rows are never materialised, not dropped after the fact.**
+`extract_data_model` built an `EntityMetadata` row -- six owned `String`s -- for
+every STEP instance, and `DataModelEntities::Rooted` then threw about five in six
+away. The narrowing now runs before the metadata pass.
+
+Two harnesses, because the lever and what a caller sees are different questions
+and a win on the first is not a win on the second.
+
+`rust/processing/examples/dm_peak.rs` isolates **the extraction**: one
+`extract_data_model_with` per process, so `/usr/bin/time` attributes the peak to
+it alone. `--entities rooted-postfilter` runs the pre-#9582 path -- full table,
+then narrowed -- in the SAME binary, so the comparison holds codegen, allocator
+and host fixed; the two agree digest-for-digest, which is the correctness half of
+the same run. Five interleaved repetitions each, median: `schependomlaan` 959 ->
+273 MiB peak (-72%) and 379 -> 141 ms (-63%); `AC20-FZK-Haus` 59 -> 15 MiB (-74%)
+and 22 -> 9 ms (-59%). **Extraction only** -- no end-to-end or geometry claim
+follows from it.
+
+`scripts/perf/dm-e2e-ab.mjs` answers the second question: it builds the server
+from both sides and runs a real `POST /api/v1/parse/parquet`, one fresh server
+process and one fresh cache per measurement, and hashes both the geometry Parquet
+body and the data-model Parquet the route cached. Seven interleaved rounds on
+`schependomlaan`, median: `rooted` peak 1203 -> 556 MiB (-54%), total 185 -> 141
+ms (-24%); `all` peak -0.2% and total -1.1%, both inside the base side's own
+spread. Every digest byte-identical across sides in both variants.
+
+The gap between the two is the point. The extraction's -72% becomes -54% of the
+server process, because a parse also holds the upload, the geometry pass and two
+Parquet buffers, and that fixed floor is most of what is left. A harness that only
+reported the first number would have claimed a win a caller never sees.
+
+The `rooted` run's **geometry** phase also drops, 112 -> 67 ms, which is not a
+geometry change: the geometry pass runs in a `rayon::join` beside the extraction,
+so a cheaper sibling returns cores to it. The byte-identical geometry Parquet is
+what makes that reading safe rather than a guess.
+
+Peak RSS and wall time are not equally trustworthy on a desktop. Across four
+sweeps of this fixture the `rooted` peak reproduced within a point (-53.8% to
+-55.1%) while its total ranged -24% to -34%, because the geometry phase it shares
+cores with swings with whatever else the host is doing -- here macOS re-indexing
+the build trees between sweeps. The quiet sweep is the one reported, the -24% end,
+and the harness refuses a timing verdict outright when the base side's own total
+spread passes 15%. Report the spread beside the median, or the reader cannot tell
+which of the two numbers to believe.
+
+The catch was ordering, not the filter. Deciding before the entities table exists
+means deciding from the type name plus the ids the OTHER tables name, so every
+other table has to be built first. The association pass was not: a materials row
+names an `IfcMaterial` and an `IfcMaterialLayerSet` that carry no GlobalId and
+that nothing else references, so they were dropped before anything recorded that
+they were referenced. Moving that pass ahead of the filter fixes it.
+
+Lessons. A filter applied to a finished result and the same filter applied to the
+work that produces it are not the same filter; the difference is everything the
+result knows that the work does not. Here that included the spatial hierarchy,
+which is BUILT from the entities table and so can never be consulted by a
+pre-filter -- safe only because every id it can reach is a spatial-typed row or a
+relationship endpoint, which is an argument, so it is also a test.
+
+And report peak RSS as a median with its spread, because the spread is what tells
+you whether the machine was fit to measure on. An early sweep here put the 327 MB
+model's `All` peak 43% apart between repetitions of the SAME binary, which read as
+an unmeasurable model; it was this agent's own `cargo test` running beside it. Idle,
+the same pair repeats to 4% and resolves to +1.0%. The existing rule about an
+otherwise-idle machine already covered it -- the lesson is that a wide spread
+should be read as a question about the harness before it is reported as a property
+of the model, and that a min-of-N hides exactly that question.
 
 ## Single-edit IFC derivations (#9296, R7 P3)
 
@@ -1730,6 +1802,22 @@ same-length timestamp swap alone is enough to jump it by ~0.5% (bimodal over
 only make one tree repeat; every other edit perturbs the compressor the same
 way. **Lesson:** gate the JS on raw bytes, report brotli, and don't try to
 make a brotli number on a multi-megabyte JS chunk stable to better than ~0.5%.
+
+## The engine WASM is gated on raw bytes too (2026-11-13)
+
+The engine WASM embeds no timestamp, so it stayed on brotli after #7007. Its
+brotli-11 size is just as unsteady. CI's own measurements on `main` (the
+`Build packages + WASM` log of every PR and merge-queue run, base by base):
+#9756 changed the binary by -9 raw bytes and its brotli size by +1,547; #9883
+left the raw size identical (10,383,854 bytes on both bases) and moved brotli
+by -1,074. One window shrank raw by 12,762 bytes while brotli grew 1,156.
+With `main` 661 bytes under the brotli allowance at the time, those swings
+decided which Rust PRs passed. The raw size of one commit's WASM repeats
+exactly (every run on one base measured the same number) once it is built at
+CI's paths. **Lesson:** gate the WASM on raw bytes at 0.1%, as the viewer
+JS is, and keep its brotli size in the report as information. A change that
+trades raw for transfer size (the `wasm-opt` entry below) shows there, for a
+reviewer to read.
 
 ## Instruction counts track kernel and parse work, not scheduling (#6958)
 
@@ -3647,6 +3735,7 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   as each ships. The CI tripwire (`.github/workflows/wide-arithmetic.yml`) probes the
   engine every week and turns red when this changes. See
   `docs/architecture/wasm-wide-arithmetic.md` (delivery status verified 2026-07-31).
+  Correction (2026-11-14): `--wasm-wide-arithmetic` exists (Node 27 alpha and Chrome 156 accept it; `--wasm-staging` implies it). The `BUILD_WIDE` build path and weekly `wide-arithmetic.yml` tripwire were removed on this date, so the command and workflow described above no longer exist. See `docs/architecture/wasm-wide-arithmetic.md`.
 
 - **Content-dedup signature walk on large single BREPs** (~2.00x traversal, SHIPPED #1909):
   `item_dedup_key` walked every face/bound/loop/point of an `IfcFacetedBrep` to build a

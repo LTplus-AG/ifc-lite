@@ -4,6 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createAfterSettledFrame } from '@/lib/settled-frame';
 
 /** Loaded at runtime so a build without the module fails these assertions instead of failing to load (revert oracle). */
 async function load(): Promise<{ createLoadWindow: typeof import('./loadWindow.js').createLoadWindow; MAX_TAIL_WAIT_MS: number; MAX_STORE_BUSY_MS: number }> {
@@ -21,7 +22,10 @@ async function harness() {
   const storeListeners = new Set<() => void>();
   const endedListeners = new Set<(id: string) => void>();
   let frames: Array<() => void> = [];
-  let timers: Array<() => void> = [];
+  let timers: Array<{ fn: () => void; ms: number }> = [];
+  let submitted = 0, renderPending = false;
+  const requestFrame = (fn: () => void) => { frames.push(fn); };
+  const setTimer = (fn: () => void, ms: number) => { timers.push({ fn, ms }); };
   const win = createLoadWindow({
     storeBusy: () => storeBusy,
     modelStates: () => models.entries(),
@@ -29,14 +33,20 @@ async function harness() {
     subscribeLoadEnded: (l) => { endedListeners.add(l); return () => endedListeners.delete(l); },
     tailBusy: () => tailBusy,
     now: () => t,
-    requestFrame: (fn) => { frames.push(fn); },
-    setTimer: (fn) => { timers.push(fn); },
+    requestFrame,
+    setTimer,
+    afterSettledFrame: createAfterSettledFrame({ frameCount: () => submitted, drawPending: () => renderPending, requestFrame,
+      setTimer: (fn, ms) => { const x = { fn, ms }; timers.push(x); return () => { timers = timers.filter((y) => y !== x); }; } }),
   });
   const changes: boolean[] = [];
   win.subscribe(() => changes.push(win.isOpen()));
   const store = (busy: boolean) => { storeBusy = busy; for (const l of [...storeListeners]) l(); };
   const frame = () => { const fns = frames; frames = []; for (const fn of fns) fn(); };
-  const timer = () => { const fns = timers; timers = []; for (const fn of fns) fn(); };
+  /** Run the queued timers up to `maxMs` (all by default, backstops included); later ones stay queued. */
+  const timer = (maxMs = Infinity) => {
+    const due = timers.filter((x) => x.ms <= maxMs); timers = timers.filter((x) => x.ms > maxMs);
+    for (const x of due) x.fn();
+  };
   /** Set (or with `undefined` as `remove`, delete) a model's load state and notify like a store publish. */
   const model = (id: string, state: string | undefined, remove = false) => {
     if (remove) models.delete(id); else models.set(id, state);
@@ -46,8 +56,11 @@ async function harness() {
   const ended = (id: string) => { for (const l of [...endedListeners]) l(id); };
   return {
     win, changes, store, frame, timer, model, ended, MAX_TAIL_WAIT_MS, MAX_STORE_BUSY_MS,
-    /** One painted frame, then the tasks queued behind it. */
-    settle: () => { frame(); timer(); },
+    /** Two idle frames (nothing to draw), then the zero-delay tasks queued behind them; backstops stay queued. */
+    settle: () => { frame(); frame(); timer(0); },
+    /** The animation loop submits a live frame in the next animation frame. */
+    draw: () => { submitted++; },
+    setRenderPending: (pending: boolean) => { renderPending = pending; },
     setTail: (busy: boolean) => { tailBusy = busy; },
     advance: (ms: number) => { t += ms; },
     pendingChecks: () => frames.length + timers.length,
@@ -132,7 +145,7 @@ describe('load window', () => {
     const { createLoadWindow } = await load();
     const win = createLoadWindow({
       storeBusy: () => true, modelStates: () => [], subscribeLoadEnded: () => () => {}, subscribeStore: () => () => {}, tailBusy: () => false,
-      now: () => 0, requestFrame: () => {}, setTimer: () => {},
+      now: () => 0, requestFrame: () => {}, setTimer: () => {}, afterSettledFrame: () => () => {},
     });
     assert.equal(win.isOpen(), true);
   });
@@ -320,5 +333,73 @@ describe('load window', () => {
     h.store(true);
     h.model('legacy', 'pending');
     assert.equal(h.win.isHeld('legacy'), true);
+  });
+
+  it('a pending draw holds the release until the viewport has submitted a frame, not one animation frame (post-finalize render race)', async () => {
+    const h = await harness();
+    h.store(true); h.store(false); // tail idle: the close waits for the settled frame
+    h.setRenderPending(true); // the renderer has queued its draw of the finalized scene for a later frame
+    h.frame(); h.timer(0);
+    assert.equal(h.win.isOpen(), true, 'one animation frame passed, but the finalized scene is not drawn yet');
+    h.frame(); h.frame(); h.timer(0);
+    assert.equal(h.win.isOpen(), true, 'still nothing drawn: the release must not run in front of that frame');
+    h.draw(); h.setRenderPending(false);
+    h.frame();
+    assert.equal(h.win.isOpen(), true, 'the frame is submitted; the release runs in a task behind it');
+    h.timer(0);
+    assert.equal(h.win.isOpen(), false);
+  });
+
+  it('with nothing to draw for two frames in a row the screen is already final and the release proceeds', async () => {
+    const h = await harness();
+    h.store(true); h.store(false);
+    h.frame(); h.timer(0);
+    assert.equal(h.win.isOpen(), true, 'one idle frame is not enough: a draw may still be requested inside it');
+    h.frame(); h.timer(0);
+    assert.equal(h.win.isOpen(), false);
+  });
+
+  it('a model\'s own release waits for the submitted frame the same way', async () => {
+    const h = await harness();
+    h.store(true);
+    h.model('A', 'complete'); h.ended('A');
+    h.setRenderPending(true);
+    h.frame(); h.frame(); h.frame(); h.timer(0);
+    assert.equal(h.win.isHeld('A'), true, 'A\'s finalized scene is not drawn yet');
+    h.draw(); h.frame(); h.timer(0);
+    assert.equal(h.win.isHeld('A'), false);
+  });
+
+  it('a reload cancels the release wait it supersedes: the old wait cannot publish the new load before its frame', async () => {
+    const h = await harness();
+    h.store(true);
+    h.model('A', 'complete'); h.ended('A'); // release wait 1 starts
+    h.setRenderPending(true);
+    h.draw(); // a frame is submitted after wait 1 began (it would end wait 1)
+    h.model('A', 'pending'); h.model('A', 'complete'); h.ended('A'); // reload ends: release wait 2 starts
+    h.frame(); h.timer(0);
+    assert.equal(h.win.isHeld('A'), true, 'the reloaded scene is not drawn yet; only the superseded wait saw a frame');
+    h.draw(); h.frame(); h.timer(0);
+    assert.equal(h.win.isHeld('A'), false);
+  });
+
+  it('a load that starts and ends while the close waits gets a wait of its own: an earlier frame does not close its window', async () => {
+    const h = await harness();
+    h.store(true); h.store(false); // load A ends: the close waits for A's frame
+    h.store(true); h.store(false); // load B starts and ends before that wait ends
+    h.setRenderPending(true); // B's draw is pending
+    h.draw(); // a frame submitted after A's wait began
+    h.frame(); h.timer(0);
+    assert.equal(h.win.isOpen(), true, 'B\'s scene is not drawn yet');
+    h.draw(); h.setRenderPending(false); h.frame(); h.timer(0);
+    assert.equal(h.win.isOpen(), false);
+  });
+
+  it('frames that never come (hidden tab) still close the window from the backstop', async () => {
+    const h = await harness();
+    h.store(true); h.store(false);
+    h.setRenderPending(true);
+    h.timer();
+    assert.equal(h.win.isOpen(), false);
   });
 });

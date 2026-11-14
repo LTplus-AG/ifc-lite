@@ -2202,5 +2202,9 @@
   "zonesPanel.zoneRow.rotationLabel": {
     "value": "Rotation (°)",
     "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
+  },
+  "viewportLighting.container.emptyState.formats.rhino": {
+    "value": "Rhino",
+    "reason": "Format family name on the welcome card: Rhino is the product name of the authoring tool behind .3dm and is not localized in any language."
   }
 }

@@ -95,6 +95,11 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
   const unavailableReason = useMemo(() => roomId ? translatedMessage('appearance.controller.leaveRoom')
     : !target?.ifcDataStore ? translatedMessage('appearance.controller.openIfc')
     : target.schemaVersion === 'IFC2X3' || target.schemaVersion === 'IFC5' ? translatedMessage('appearance.controller.requiresIfc4')
+    // After the schema branch, so IFCX keeps its own message. Authoring
+    // serializes IfcSurfaceStyle records into the store's STEP source, which a
+    // tabular store (a reader's finished tables) has not got; its own sentence,
+    // because the schema message would name the schema this store is labelled.
+    : target.ifcDataStore.sourceKind === 'tabular' ? translatedMessage('appearance.controller.requiresStepRecords')
     : target.loadState && target.loadState !== 'complete' ? translatedMessage('appearance.controller.waitForModel') : undefined,
   [roomId, target?.ifcDataStore, target?.schemaVersion, target?.loadState]);
 

@@ -33,7 +33,10 @@
 
 import { useViewerStore } from '@/store';
 
-const absorbed = new Map<string, { source: WeakRef<object> | null; ids: Set<string> }>();
+/** Derives identities once the model is readable; `null` while it is not (see {@link absorbEmbeddedMarkupOnceReadable}). */
+type Derive = () => string[] | null;
+
+const absorbed = new Map<string, { source: WeakRef<object> | null; ids: Set<string>; pending?: Derive[] }>();
 
 function sourceOf(modelId: string): object | null {
   const state = useViewerStore.getState();
@@ -60,9 +63,41 @@ export function absorbEmbeddedMarkup(modelId: string, ids: Iterable<string>): vo
 
 /** The embedded annotations the session absorbed for `modelId`'s current source; empty when none. */
 export function absorbedEmbeddedMarkupFor(modelId: string): ReadonlySet<string> {
+  return settledEntryFor(modelId)?.ids ?? new Set();
+}
+
+/** The entry for `modelId`'s current source, every derivation that can run now applied; `null` when none. */
+function settledEntryFor(modelId: string) {
   const entry = absorbed.get(modelId);
   const source = sourceOf(modelId);
-  return entry && source && entry.source?.deref() === source ? entry.ids : new Set();
+  if (!entry || !source || entry.source?.deref() !== source) return null;
+  entry.pending = entry.pending?.filter((derive) => {
+    const ids = derive();
+    for (const id of ids ?? []) entry.ids.add(id);
+    return ids === null;
+  });
+  return entry;
+}
+
+/**
+ * Record what `derive` returns as absorbed, now or, while it returns `null`
+ * (the model's store is not readable yet: a restore can run while the file is
+ * still loading), the next time the set is read. Until then the set is
+ * undecided ({@link isAbsorbedEmbeddedMarkupDecided}), so a save to
+ * localStorage leaves the entry's field absent instead of recording an empty
+ * set that would stop a later restore from deriving it.
+ */
+export function absorbEmbeddedMarkupOnceReadable(modelId: string, derive: Derive): void {
+  absorbEmbeddedMarkup(modelId, []);
+  const entry = absorbed.get(modelId);
+  if (!entry || entry.source?.deref() !== sourceOf(modelId)) return;
+  entry.pending = [...entry.pending ?? [], derive];
+  settledEntryFor(modelId);
+}
+
+/** Whether every derivation for `modelId`'s current source has run. */
+export function isAbsorbedEmbeddedMarkupDecided(modelId: string): boolean {
+  return (settledEntryFor(modelId)?.pending?.length ?? 0) === 0;
 }
 
 /**

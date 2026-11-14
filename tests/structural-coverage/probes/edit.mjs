@@ -16,6 +16,38 @@ function findRecord(value, id) {
   return null;
 }
 
+const EDIT_NAME = () => ({
+  patch: { Name: 'Edited structural value' },
+  returned: (extracted, rec) => findRecord(extracted, rec.id)?.name === 'Edited structural value',
+});
+
+/** Rows whose read record has no Name: relationship records, and the
+ * eccentricity, which has no Name attribute. Each edits what it exposes. */
+const EDITS = {
+  IfcRelConnectsStructuralMember: () => ({
+    patch: { SupportedLength: 0.25 },
+    returned: (extracted, rec) => findRecord(extracted, rec.id)?.SupportedLength === 0.25,
+  }),
+  IfcConnectionGeometry: () => ({
+    patch: { EccentricityInX: 0.15 },
+    returned: (extracted, rec) => findRecord(extracted, rec.id)?.EccentricityInX === 0.15,
+  }),
+  IfcRelConnectsStructuralActivity: (create, scene) => {
+    const member = create.addStructuralCurveMemberToStore(scene.editor, scene.anchor, { Start:[0,0,0], End:[3,0,0] }).memberId;
+    return {
+      patch: { RelatingElement: member },
+      returned: (extracted, rec, intact) => extracted.activities.find(a => a.expressId === rec.args[5].ref)?.appliesToGlobalId === intact.entities.get(member).args[0],
+    };
+  },
+  IfcRelConnectsStructuralElement: (create, scene) => {
+    const beam = create.addBeamToStore(scene.editor, scene.anchor, { Start:[0,0,0], End:[3,0,0], Width:0.2, Height:0.3 }).beamId;
+    return {
+      patch: { RelatingElement: beam },
+      returned: (extracted, rec) => String(extracted.members.find(m => m.expressId === rec.args[5].ref)?.physicalElementIds) === String([beam]),
+    };
+  },
+};
+
 export default {
   name: 'edit:in-store-update', level: 'edit',
   async run(rows, ctx) {
@@ -29,22 +61,14 @@ export default {
           const before = readStep(scene.exportText());
           const rec = before.of(row.entity).find(r => !scene.before.entities.has(r.id));
           if (!rec) throw new Error('builder did not emit the entity');
-          const memberRelation = row.entity === 'IfcRelConnectsStructuralMember';
-          const activityRelation = row.entity === 'IfcRelConnectsStructuralActivity';
-          let destination;
-          if (activityRelation) destination = ctx.pkgs.create.addStructuralCurveMemberToStore(scene.editor, scene.anchor, { Start:[0,0,0], End:[3,0,0] }).memberId;
+          const edit = (EDITS[row.root] ?? EDIT_NAME)(ctx.pkgs.create, scene);
           const intact = readStep(scene.exportText());
-          const patch = activityRelation ? { RelatingElement: destination } : memberRelation ? { SupportedLength: 0.25 } : { Name: 'Edited structural value' };
-          ctx.pkgs.create.editStructuralEntityInStore(scene.store, scene.editor, rec.id, patch);
+          ctx.pkgs.create.editStructuralEntityInStore(scene.store, scene.editor, rec.id, edit.patch);
           const text = scene.exportText();
           saveProof(text, row.schema, step.id, `edited-${row.entity}`);
           const parsed = await parseStore(ctx.pkgs, text);
           const extracted = ctx.pkgs.parser.extractStructuralOnDemand(parsed);
-          const result = activityRelation ? extracted.activities.find(a => a.expressId === rec.args[5].ref) : findRecord(extracted, rec.id);
-          const destinationGlobalId = destination ? intact.entities.get(destination).args[0] : undefined;
-          if (!result || (activityRelation ? result.appliesToGlobalId !== destinationGlobalId : memberRelation ? result.SupportedLength !== 0.25 : result.name !== patch.Name)) {
-            throw new Error('new value not returned by the structural extractor');
-          }
+          if (!edit.returned(extracted, rec, intact)) throw new Error('new value not returned by the structural extractor');
           const after = readStep(text);
           if (after.entities.size !== intact.entities.size || [...intact.entities.keys()].some(id => !after.entities.has(id))) {
             throw new Error('edit changed the owned subgraph');

@@ -6,7 +6,7 @@
  * spread, verdicts, noise floors, stage ranking and the markdown tables. Failed samples stay in the counts. */
 
 import { identityLaneFor, laneIdentityVerdict, reopenOutputVerdict } from './load-scoreboard-identity.mjs';
-import { armProtocolOf, bothMarksCell, bothMarksSection, thermalSection, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
+import { armProtocolOf, bothMarksCell, bothMarksSection, cpuTimeSection, thermalSection, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 export { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 import { aaNoiseFloor, expectedCacheTier, laneSummary, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 import { FRAME_KEY, METADATA_FRAME_KEY, frameMarkVerdict, isReopenLane, metadataMarkVerdict, primaryKey, withFrameMarks, withMetadataMarks } from './load-scoreboard-frame-mark.mjs';
@@ -43,7 +43,7 @@ export const METRICS = [
   ['firstGeometryMs', 'first geometry ms', 1],
   [FRAME_KEY, 'interactive ms (frame mark)', 1],
   [METADATA_FRAME_KEY, 'interactive ms (metadata mark)', 1],
-  ['interactiveMs', 'interactive ms (settled mark)', 1],
+  ['interactiveMs', 'interactive ms', 1],
   ['peakMemoryMiB', 'peak memory MiB', 1],
   ['uiQuietMs', 'UI quiet ms', 1],
   // `boot` lane only (absent elsewhere, so no verdict there).
@@ -258,7 +258,9 @@ function tierCell(f, lane) {
 /** Baseline table (one set). For an A/A run the base and branch sides are the same build, so values are pooled. */
 function baselineTable(summary, set, lanes) {
   const selectedKey = (lane) => primaryKey(lane, summary.reopenVerdictMark);
-  const selectedLabel = summary.reopenVerdictMark === 'metadata' ? 'interactive ms (verdict mark: metadata on reopens)' : 'interactive ms (verdict mark)';
+  const selectedLabel = summary.reopenVerdictMark === 'metadata'
+    ? 'interactive ms (verdict mark: metadata on reopens, frame on cold browser lanes, native batch)'
+    : 'interactive ms (verdict mark: browser frame, native batch)';
   const lines = [`| fixture | MB | expected tier | lane | first geometry ms | ${selectedLabel} | interactive ms (frame mark) | interactive ms (metadata mark) | UI quiet ms | peak memory MiB | ok/failed | flagged (load / input delay) | observed tier, path | output |`,
     '|---|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|---|---|'];
   for (const f of summary.fixtures.filter((x) => x.set === set)) {
@@ -306,9 +308,11 @@ function verdictTable(summary, set, lanes) {
     for (const lane of lanes) {
       const l = f.lanes[lane];
       if (!l) continue;
-      for (const [key, label] of METRICS) {
+      for (const [key, defaultLabel] of METRICS) {
         const v = l.verdicts[key];
         if (!v) continue;
+        const label = key === 'interactiveMs' && lane.startsWith('browser')
+          ? 'interactive ms (settled mark)' : defaultLabel;
         const mark = v.pass ? 'PASS gain' : v.regression ? `FLAG ${v.verdict}` : v.verdict;
         const med = (side) => (v.samples[side] >= 3 ? n0(side === 'base' ? v.baseMedian : v.branchMedian) : `n=${v.samples[side]} (no median)`);
         lines.push(`| ${f.name} | ${lane} | ${label} | ${med('base')} | ${med('branch')} | ${signed(v.gain)} | ${pct(v.ownFloor)} | ${pct(v.aaFloor)} | ${pct(v.noiseFloor === null ? null : v.noiseFloor * 2)} | ${mark} | ${l.output} |`);
@@ -378,7 +382,7 @@ export function renderMarkdown(summary, plan, host, samples = []) {
     out.push('', '## Host watchdog overlap (samples during a periodic host job pass; measurement only, cells not voided)', '',
       '| fixture | lane | side | samples | overlapping a pass | unknown | median foreign CPU ms of overlapping samples |', '|---|---|---|---:|---:|---:|---:|', ...wdRows);
   }
-  out.push(...thermalSection(samples));
+  out.push(...thermalSection(samples), ...cpuTimeSection(samples, summary));
   const glRows = webglPickRows(samples);
   if (glRows.length) {
     out.push('', '## WebGL at the pick (start-screen mark drawing in the 1 s before the pick or during the open) and canvas frames to interactive', '',

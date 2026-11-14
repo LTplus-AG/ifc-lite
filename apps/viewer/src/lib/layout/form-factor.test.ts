@@ -9,7 +9,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyFormFactor, mobileCommandPlacement, type FormFactorInput, type SegmentRect } from './form-factor.js';
+import { classifyFormFactor, mobileCommandPlacement, mobilePanelHost, type FormFactorInput, type SegmentRect } from './form-factor.js';
 
 const touch = (width: number, height: number, segments?: SegmentRect[]): FormFactorInput =>
   ({ width, height, coarsePointer: true, segments });
@@ -115,4 +115,23 @@ describe('mobileCommandPlacement', () => {
     // A store seeded with `isMobile` alone still holds the desktop form factor.
     assert.equal(mobileCommandPlacement(classifyFormFactor(mouse(1600, 1000))), 'bottom-bar');
   });
+});
+
+describe('mobilePanelHost: where an open panel lives (#9718 DoD 3-5)', () => {
+  const rows: Array<[string, FormFactorInput, string]> = [
+    ['Flip 8 main, portrait: a modal sheet', touch(412, 960), 'sheet'],
+    ['iPhone Pro: a modal sheet', touch(402, 874), 'sheet'],
+    ['iPhone Duo outer: a modal sheet', touch(466, 678), 'sheet'],
+    ['Flip FlexWindow cover: a modal sheet', touch(360, 400), 'sheet'],
+    ['Flip 8 landscape: a side pane, never a full-width sheet', touch(960, 412), 'side-pane'],
+    ['iPhone Pro Max landscape: a side pane', touch(956, 440), 'side-pane'],
+    ['Z Fold inner: a side pane', touch(830, 750), 'side-pane'],
+    ['iPhone Duo inner: a side pane', touch(626, 890), 'side-pane'],
+    ['Flip 8 Flex Mode (tabletop): the other segment', touch(412, 960, tabletop(412, 960)), 'segment'],
+    ['Z Fold half open (book): the other segment', touch(830, 750, book(830, 750)), 'segment'],
+    ['a narrow mouse window: a sheet', mouse(600, 800), 'sheet'],
+  ];
+  for (const [label, input, host] of rows) {
+    it(label, () => assert.equal(mobilePanelHost(classifyFormFactor(input)), host));
+  }
 });

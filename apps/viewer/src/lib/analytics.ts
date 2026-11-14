@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { offerErrorReport } from './error-reports/context';
+import { isFeatureEnabled } from './features/index.js';
 import posthogClient from 'posthog-js';
 import { isAnalyticsOptedOut, persistAnalyticsOptOut } from './analytics-consent.js';
 import { scrubEvent } from './analytics-scrub.js';
@@ -172,7 +173,18 @@ const recordViewerSessionStart = createViewerSessionStartRecorder(
 );
 
 let client: AnalyticsClient | null = null;
-if (enabled) {
+let started = false;
+
+/**
+ * Initialise PostHog, once. An entry calls this after the host's feature
+ * configuration is applied, so a deployment that switches product analytics
+ * off never contacts the analytics host at all. Importing this module no
+ * longer starts anything.
+ */
+export function startAnalytics(): void {
+  if (started || !isFeatureEnabled('privacy.analytics')) return;
+  started = true;
+  if (!enabled) return;
   try {
     posthogClient.init(key as string, {
       api_host: host,
@@ -229,7 +241,10 @@ export function consentAwareAnalyticsClient(target: AnalyticsClient): AnalyticsC
   };
 }
 
-export const posthog: AnalyticsClient = consentAwareAnalyticsClient(client ?? noopAnalytics);
+export const posthog: AnalyticsClient = consentAwareAnalyticsClient({
+  capture: (...args) => (client ?? noopAnalytics).capture(...args),
+  captureException: (...args) => (client ?? noopAnalytics).captureException(...args),
+});
 
 /**
  * A PostHog feature flag's value for a perf-flag ramp (#6962), or `undefined`

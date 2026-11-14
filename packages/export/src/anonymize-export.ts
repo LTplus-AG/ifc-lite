@@ -49,7 +49,7 @@ import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
-import { getSubsetEntityIds, IFC_ROOT_TYPES, identifyingTypesFor } from './subset-roots.js';
+import { getSubsetEntityIds, getIfcRootTypes, identifyingTypesFor } from './subset-roots.js';
 import { attrIndex, readEntityArgs, stepSourceSchema } from './subset-entity-reader.js';
 import {
   collectReferencedEntityIds,
@@ -310,7 +310,7 @@ export function exportAnonymizedSubset(
   });
 
   const includedRootEntityCount = [...finalIncludedIds]
-    .filter((id) => IFC_ROOT_TYPES.has(index.typeOf(id) ?? '')).length;
+    .filter((id) => getIfcRootTypes().has(index.typeOf(id) ?? '')).length;
 
   return {
     content: exportResult.content,

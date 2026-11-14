@@ -36,8 +36,6 @@ export function unwritten(level, name, plan, covers) {
   };
 }
 
-const cap = (id) => (row) => row.id === id;
-
 export const PROBES = [
   fixture,
   read,
@@ -49,7 +47,4 @@ export const PROBES = [
   edit,
   remove,
   ...capabilities,
-  unwritten('capability', 'capability:analytical-physical-toggle', 'switch the viewer between the analytical and physical model and assert which products are visible', cap('cap/analytical-physical-toggle')),
-  unwritten('capability', 'capability:derive-analytical-model', 'derive members and connections from a physical frame and compare axes, ends and links to the reference analytical model', cap('cap/derive-analytical-model')),
-  unwritten('capability', 'capability:check-stale-after-physical-change', 'move a physical element and assert its linked item is reported stale', cap('cap/check-stale-after-physical-change')),
 ];

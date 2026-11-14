@@ -1,0 +1,12 @@
+diff --git a/scripts/perf/dm-e2e-report.mjs b/scripts/perf/dm-e2e-report.mjs
+--- a/scripts/perf/dm-e2e-report.mjs
++++ b/scripts/perf/dm-e2e-report.mjs
+@@ -186,7 +186,7 @@ export function summarize(rows, { minRounds = 5 } = {}) {
+   // A failed invariant has to reach the VERDICT, not just a warning line:
+   // `dm-e2e-ab.mjs` takes its exit code from here, so a count that moved while
+   // the digests matched would otherwise exit 0 under "output identical".
+-  const identityBroken = variants.some((v) => v.identity.some((d) => !d.agrees));
++  const identityBroken = variants.some((v) => v.identity.some((d) => !d.agrees)) || entityCountBroken;
+   const unstable = variants.some((v) => v.identity.some((d) => d.unstable));
+   const tooNoisy = variants.some((v) => {
+     const total = v.metrics.find((m) => m.key === 'totalMs');

@@ -30,6 +30,7 @@
 import type { Drawing2D, DrawingLine, DrawingPolygon, LineCategory, Point2D } from './types.js';
 import { getLineStyle, getHatchPattern } from './styles.js';
 import { applyDxfPlacement } from './dxf/convert.js';
+import { dxfTextLineOffset } from './dxf/text-layout.js';
 import { DEFAULT_DXF_PLACEMENT, type DxfPlacement, type DxfUnderlay } from './dxf/types.js';
 import { DxfWriter, type DxfLinetype } from './dxf/writer.js';
 
@@ -66,6 +67,24 @@ export interface DXFExportOptions {
    * through `coordinateTransform`; see {@link DXFText} for the angle.
    */
   textLayers?: DXFTextLayer[];
+  /** Shared dimension graphics in drawing metres; invalid graphics are omitted. */
+  dimensions?: readonly {
+    lines: readonly (readonly [Point2D, Point2D])[];
+    ticks: readonly (readonly [Point2D, Point2D])[];
+    text: { at: Point2D; angle: number; heightM: number; value: string };
+  }[];
+}
+
+/** Shared by every dimension writer and omission preflight. */
+export function isDxfDimensionExportable(dimension: NonNullable<DXFExportOptions['dimensions']>[number]): boolean {
+  const baseline = dimension.lines[0];
+  if (!baseline) return false;
+  const length = Math.hypot(baseline[1].x - baseline[0].x, baseline[1].y - baseline[0].y);
+  return Number.isFinite(length) && length > 0
+    && Number.isFinite(dimension.text.heightM) && dimension.text.heightM > 0
+    && Number.isFinite(dimension.text.angle)
+    && [dimension.text.at, ...dimension.lines.flat(), ...dimension.ticks.flat()]
+      .every(p => Number.isFinite(p.x) && Number.isFinite(p.y));
 }
 
 /** One single-line TEXT entity of a {@link DXFTextLayer}. */
@@ -138,6 +157,7 @@ export class DXFExporter {
       metadataComment,
       polylineLayers = [],
       textLayers = [],
+      dimensions = [],
     } = options;
 
     const writer = new DxfWriter({ headerComment: metadataComment });
@@ -181,12 +201,20 @@ export class DXFExporter {
     for (const extra of textLayers) {
       const layer = writer.layer(extra.name, extra.color);
       for (const text of extra.texts) {
-        writer.addText(map(text.position), text.text, text.height, layer, {
-          rotationDeg: outputTextAngle(text, map),
-          hAlign: text.hAlign,
-          vAlign: text.vAlign,
-        });
+        writeText(writer, text, layer, map);
       }
+    }
+
+    for (const dimension of dimensions) {
+      if (!isDxfDimensionExportable(dimension)) continue;
+      const layer = writer.layer('IFC-DIMENSIONS', '#000000');
+      for (const [a, b] of [...dimension.lines, ...dimension.ticks]) writer.addLine(map(a), map(b), layer);
+      const text = dimension.text;
+      writeText(writer, {
+        position: text.at, text: text.value, height: text.heightM,
+        direction: { x: Math.cos(text.angle), y: Math.sin(text.angle) },
+        keepUpright: true, hAlign: 'center', vAlign: 'middle',
+      }, layer, map);
     }
 
     return writer.toString();
@@ -285,6 +313,7 @@ export class DXFExporter {
         // SVGExporter's underlay text).
         const height = text.height * placement.scale;
         const lines = text.text.split('\n');
+        const dirLength = Math.hypot(text.dirX, text.dirY) || 1;
         for (let i = 0; i < lines.length; i++) {
           // Stack subsequent lines by offsetting in LOCAL space, then map:
           // the stacking direction must rotate with the text when
@@ -293,10 +322,14 @@ export class DXFExporter {
           // SVGExporter's rotate() wrapper around its tspan stack. An
           // output-space `anchor.y - offset` would shift lines straight
           // down regardless of the text's actual direction (PR #1871
-          // review).
-          const lineAnchor = i === 0
+          // review). "Down" across the baseline is the text direction turned
+          // clockwise (local Y up), and the block offset honours the
+          // vertical attachment like every other renderer.
+          const offset = dxfTextLineOffset(i, lines.length, text.valign, text.height);
+          const lineAnchor = offset === 0
             ? anchor
-            : mapPoint({ x: text.position.x, y: text.position.y - i * text.height * 1.3 });
+            : mapPoint({ x: text.position.x + (text.dirY / dirLength) * offset,
+              y: text.position.y - (text.dirX / dirLength) * offset });
           writer.addText(
             lineAnchor,
             lines[i],
@@ -308,6 +341,12 @@ export class DXFExporter {
       }
     }
   }
+}
+
+function writeText(writer: DxfWriter, text: DXFText, layer: ReturnType<DxfWriter['layer']>, map: (p: Point2D) => Point2D): void {
+  writer.addText(map(text.position), text.text, text.height, layer, {
+    rotationDeg: outputTextAngle(text, map), hAlign: text.hAlign, vAlign: text.vAlign,
+  });
 }
 
 /** The TEXT rotation in degrees for `text` once its baseline has gone through `map`. */

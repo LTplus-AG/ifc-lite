@@ -1,6 +1,23 @@
 # WASM wide-arithmetic: measured win + delivery plan
 
-Status: measurement + design (2026-06-27)
+## Status: retired (2026-11-14)
+
+The weekly tripwire and the optional wide build path were removed on
+2026-11-14 by maintainer decision. Chrome users gain nothing while the feature
+is off by default; Firefox's gain on the current kernel is unknown and would
+require a second bundle, toolchain, output-identity qualification and a
+determinism ratchet extension; and kernel arithmetic no longer bounds load
+time. Revisit only if Chrome ships the feature on by default **and** a
+measurement shows a gain on the current FixedInt kernel.
+
+To recover the removed files, use the PR's parent on `main`:
+`f64111d981faa9b928b3f66c37be88c1ae16f0f9`.
+
+Flag correction: `--wasm-wide-arithmetic` exists. Node 27 alpha and Chrome 156
+accept it, and `--wasm-staging` implies it. Earlier statements below that V8
+had no dedicated flag describe the older state and are no longer current.
+
+Historical status before retirement: measurement + design (2026-06-27)
 Goal: close the in-browser WASM-vs-native gap on exact-CSG/brep-heavy models
 **without an install or an upload** (the hard client-side constraint), by building
 the geometry kernel with the WASM wide-arithmetic proposal.
@@ -64,15 +81,17 @@ ThatOpen wins today.
 - At the kernel level there is no blocker: the win is real today on a plain
   `cdylib` (the benches above).
 
-## Delivery status: blocker 1 CLEARED, blocker 2 staged in V8, blocker 3 worked around (updated 2026-11-09)
+## Historical delivery status before retirement (updated 2026-11-09)
 
 **Update 2026-11-09.** The weekly tripwire went red on 2026-11-04 for two
 reasons at once. Neither is a kernel bug.
 
 - **Blocker 2 moved: V8 15.6 has it staged.** Node 27.0.0-alpha (V8
   15.6.75.25) and the Node 28 nightly of 2026-11-09 (V8 15.6.75.33) accept all
-  four opcodes under `--wasm-staging`, and still reject them without it. There
-  is no dedicated flag. A 200k-case fuzz of `i64.add128`, `i64.sub128`,
+  four opcodes under `--wasm-staging`, and still reject them without it. A
+  dedicated `--wasm-wide-arithmetic` flag exists; Node 27 alpha and Chrome 156
+  accept it, and `--wasm-staging` implies it. A 200k-case fuzz of
+  `i64.add128`, `i64.sub128`,
   `i64.mul_wide_s` and `i64.mul_wide_u` against a BigInt reference matched
   exactly in both Liftoff (`--liftoff-only`) and TurboFan (`--no-liftoff`).
   Staged features are not on in any browser by default, so this is still a

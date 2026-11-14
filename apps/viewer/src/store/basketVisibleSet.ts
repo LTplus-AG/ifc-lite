@@ -15,9 +15,11 @@ import type { EntityRef } from './types.js';
 import { entityRefToString, stringToEntityRef } from './types.js';
 import { useViewerStore } from './index.js';
 import { toGlobalIdFromModels } from './globalId.js';
-import { isTypeVisible } from './typeVisibilityFilter.js';
+import { resolveViewHiddenEntities, retypedClasses } from '../lib/visibility/structural-view';
+import { isMeshTypeVisible } from './typeVisibilityFilter.js';
 import { collectAggregatedDescendants, type AggregationRelationships } from '../utils/aggregation.js';
 import { effectiveSpatialMembers } from '../lib/effective-spatial-members.js';
+import { objectIdentity } from '../utils/objectIdentity.js';
 
 type ViewerStateSnapshot = ReturnType<typeof useViewerStore.getState>;
 
@@ -54,13 +56,11 @@ function digestNumberSet(values: Iterable<number>): string {
 }
 
 export function visibilityFingerprint(state: ViewerStateSnapshot): string {
-  const tv = state.typeVisibility;
-
-  // Include per-model visible flag and geometry mesh count so the cache
-  // invalidates when model visibility is toggled or geometry finishes loading.
+  // Per model: visible flag, mesh count (streaming growth), and geometry and
+  // store identity (both are replaced, e.g. by a collab reconstruct).
   const modelParts: string[] = [];
   for (const [modelId, model] of state.models) {
-    modelParts.push(`${modelId}:${model.visible ? 1 : 0}:${model.geometryResult?.meshes?.length ?? 0}`);
+    modelParts.push(`${modelId}:${model.visible ? 1 : 0}:${model.geometryResult?.meshes?.length ?? 0}:${objectIdentity(model.geometryResult)}:${objectIdentity(model.ifcDataStore)}`);
   }
   modelParts.sort();
 
@@ -70,12 +70,13 @@ export function visibilityFingerprint(state: ViewerStateSnapshot): string {
     state.classFilter ? digestNumberSet(state.classFilter.ids) : 'none',
     digestNumberSet(state.lensHiddenIds),
     digestNumberSet(state.selectedStoreys),
-    tv.spaces ? 1 : 0,
-    tv.spatialZones ? 1 : 0,
-    tv.openings ? 1 : 0,
-    tv.virtualElements ? 1 : 0,
-    tv.site ? 1 : 0,
-    tv.ifcAnnotations ? 1 : 0,
+    JSON.stringify(state.typeVisibility), state.structuralViewMode,
+    state.mutationVersion,
+    // The structural mask, storey isolation and candidates read these objects
+    // themselves; a collab reconstruct replaces them without a version bump.
+    // The top-level store and geometry are read only in single-model mode.
+    objectIdentity(state.mutationViews),
+    state.models.size === 0 ? `${objectIdentity(state.ifcDataStore)}.${objectIdentity(state.geometryResult)}` : '-',
     state.models.size,
     modelParts.join(';'),
     state.geometryResult?.meshes?.length ?? 0,
@@ -97,13 +98,6 @@ function dedupeRefs(refs: EntityRef[]): EntityRef[] {
     out.push(ref);
   }
   return out;
-}
-
-function matchesTypeVisibility(ifcType: string | undefined, typeVisibility: ViewerStateSnapshot['typeVisibility']): boolean {
-  // Shared mapping (`typeVisibilityFilter.ts`) so the basket's visible set,
-  // the viewport mesh filter and the GLB export never drift. `site` also hides
-  // `IfcGeographicElement` terrain (issue #1480).
-  return isTypeVisible(ifcType, typeVisibility);
 }
 
 function getDataStoreForModel(state: ViewerStateSnapshot, modelId: string): IfcDataStore | null {
@@ -350,6 +344,9 @@ function computeStoreyIsolation(state: ViewerStateSnapshot): Set<number> | null 
 
 function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[] {
   const candidates: VisibleCandidate[] = [];
+  // Shared mapping (`typeVisibilityFilter.ts`) so the basket's visible set and
+  // the viewport mesh filter never drift (#1480, #10119).
+  const retyped = retypedClasses(state);
 
   if (state.models.size > 0) {
     for (const [modelId, model] of state.models) {
@@ -359,7 +356,7 @@ function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[
       if (!model.geometryResult) continue;
       const offset = model.idOffset ?? 0;
       for (const mesh of model.geometryResult.meshes) {
-        if (!matchesTypeVisibility(mesh.ifcType, state.typeVisibility)) continue;
+        if (!isMeshTypeVisible(mesh, state.typeVisibility, state.structuralViewMode, retyped)) continue;
         const globalId = mesh.expressId;
         candidates.push({
           globalId,
@@ -371,7 +368,7 @@ function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[
     }
   } else if (state.geometryResult) {
     for (const mesh of state.geometryResult.meshes) {
-      if (!matchesTypeVisibility(mesh.ifcType, state.typeVisibility)) continue;
+      if (!isMeshTypeVisible(mesh, state.typeVisibility, state.structuralViewMode, retyped)) continue;
       candidates.push({
         globalId: mesh.expressId,
         modelId: 'legacy',
@@ -423,7 +420,7 @@ export function computeIsolationFilterSet(state: ViewerStateSnapshot): Set<numbe
 function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
   const candidates = collectVisibleCandidates(state);
 
-  const globalHidden = new Set<number>(state.hiddenEntities);
+  const globalHidden = new Set<number>(resolveViewHiddenEntities(state));
   for (const id of state.lensHiddenIds) {
     globalHidden.add(id);
   }

@@ -77,3 +77,57 @@ describe.each(['IFC4', 'IFC4X3'] as const)('%s nested geometry references', sche
     save(result.text, `${schema}-resource-grid-removed`);
   });
 });
+
+// #9668: shape aspects follow the product shape they describe.
+async function removeAndParse(scene: Awaited<ReturnType<typeof lifecycleScene>>, schema: 'IFC2X3' | 'IFC4' | 'IFC4X3', storage: 'overlay' | 'source') {
+  if (storage === 'source') return (await removeSource(scene, schema, scene.id)).after;
+  create.removeStructuralEntityInStore(scene.store, scene.editor, scene.id);
+  return parse(scene.exportText());
+}
+
+describe('IFC2X3 varying surface member', () => {
+
+  it.each(['overlay', 'source'] as const)('keeps an aspect of another product that it only references (%s)', async storage => {
+    const scene = await lifecycleScene(pkgs, 'IFC2X3', 'varying-surface-member');
+    // The template aspect from the prerequisite step belongs to another member's shape.
+    const template = scene.editor.getNewEntities().find(e => e.type === 'IfcShapeAspect' && scene.before.entities.has(e.expressId));
+    expect(template).toBeDefined();
+    scene.editor.setPositionalAttribute(scene.id, 10, `#${template!.expressId}`);
+    const after = await removeAndParse(scene, 'IFC2X3', storage);
+    expect(new Set(after.entityIndex.byId.keys())).toEqual(new Set(scene.before.entities.keys()));
+  });
+
+  it.each(['overlay', 'source'] as const)('reclaims its own thickness ShapeAspect; the template keeps the station points (%s)', async storage => {
+    const scene = await lifecycleScene(pkgs, 'IFC2X3', 'varying-surface-member');
+    const after = await removeAndParse(scene, 'IFC2X3', storage);
+    expect(new Set(after.entityIndex.byId.keys())).toEqual(new Set(scene.before.entities.keys()));
+  });
+});
+
+describe.each(['IFC4', 'IFC4X3'] as const)('%s shape aspect of a member shape', schema => {
+  const withAspect = async (shared: boolean) => {
+    const scene = await lifecycleScene(pkgs, schema, 'surface-member');
+    const member = scene.editor.getNewEntity(scene.id)!;
+    const shape = member.attributes[6];
+    const survivor = shared
+      ? scene.editor.addEntity(member.type, ['0SharedShapeMember00000', ...member.attributes.slice(1, 6), shape, ...member.attributes.slice(7)]).expressId
+      : undefined;
+    const point = scene.editor.addEntity('IfcCartesianPoint', [[1, 1, 0]]).expressId;
+    const representation = scene.editor.addEntity('IfcShapeRepresentation', [`#${scene.anchor.axisContextId}`, 'Reference', 'Point', [`#${point}`]]).expressId;
+    const aspect = scene.editor.addEntity('IfcShapeAspect', [[`#${representation}`], 'Aspect', null, true, shape]).expressId;
+    return { scene, survivor, owned: [aspect, representation, point] };
+  };
+
+  it.each(['overlay', 'source'] as const)('removes the aspect with the member\'s own shape (%s)', async storage => {
+    const { scene } = await withAspect(false);
+    const after = await removeAndParse(scene, schema, storage);
+    expect(new Set(after.entityIndex.byId.keys())).toEqual(new Set(scene.before.entities.keys()));
+  });
+
+  it.each(['overlay', 'source'] as const)('keeps the aspect while a surviving product uses the shape (%s)', async storage => {
+    const { scene, survivor, owned } = await withAspect(true);
+    const ids = new Set((await removeAndParse(scene, schema, storage)).entityIndex.byId.keys());
+    expect(ids.has(scene.id)).toBe(false);
+    for (const id of [survivor!, ...owned]) expect(ids.has(id)).toBe(true);
+  });
+});

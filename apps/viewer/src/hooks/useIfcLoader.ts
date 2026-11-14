@@ -1036,6 +1036,7 @@ export function useIfcLoader() {
           return;
         }
       }
+      if (format === '3dm') { await (await import('./ingest/rhinoLoad.js')).loadRhino3dmModel({ buffer, modelId, fileName: file.name, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(), trace, signal: metadataAbort.signal, isStale, setProgress, settleLoadUi, onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel, onError: (code, message) => { updateModel(modelId, { loadState: 'error', loadError: message }); showLoadError(message, `rhino3dm_${code.replace(/-/g, '_')}`); } }); return; }  // awaited, never returned as a promise: the `finally` below aborts `metadataAbort`, which would cancel the read mid-flight.
 
       // The sampled cache key is a lookup hint, validated by the mtime/full
       // hash gates below. Placement matching uses its separate full identity.

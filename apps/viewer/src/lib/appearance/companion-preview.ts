@@ -8,13 +8,17 @@ import type { AppearancePlan } from './planner-types';
 import type { AppearancePreviewParts } from './preview';
 import { occurrenceSourceMesh } from './occurrence-source-mesh';
 import { isTypeVisible } from '@/store/typeVisibilityFilter';
+import { entityClass } from '@/lib/visibility/structural-view';
 
 export function companionHiddenNow(globalId: number, state = useViewerStore.getState()): boolean {
   const ref = state.resolveGlobalIdFromModels(globalId);
   if (!ref) return false;
   const model = state.models.get(ref.modelId);
   if (!model?.ifcDataStore) return false;
-  return model.visible === false || !isTypeVisible(model.ifcDataStore.entities.getTypeName(ref.expressId), state.typeVisibility);
+  // Class after a retype, by the structural mask's rule (#10119); a deleted row keeps its parsed class.
+  const type = entityClass(model.ifcDataStore, state.mutationViews.get(ref.modelId), ref.expressId)
+    ?? model.ifcDataStore.entities.getTypeName(ref.expressId);
+  return model.visible === false || !isTypeVisible(type, state.typeVisibility, state.structuralViewMode);
 }
 
 /** Original native item identity proves precisely which companion is removed.
@@ -28,7 +32,7 @@ export function bindCompanionPreview(state: ViewerState, renderer: Renderer, mod
   const validate = () => {
     const current = useViewerStore.getState();
     if (current.models.get(modelId) !== model || current.modelPlacement !== state.modelPlacement
-      || current.levelDisplayMode !== state.levelDisplayMode || current.typeVisibility !== state.typeVisibility || placementFrameKey(current) !== frame) {
+      || current.levelDisplayMode !== state.levelDisplayMode || current.typeVisibility !== state.typeVisibility || current.structuralViewMode !== state.structuralViewMode || placementFrameKey(current) !== frame) {
       throw new Error('The opening companion placement changed. Refresh the preview.');
     }
   };

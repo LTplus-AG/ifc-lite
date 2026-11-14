@@ -21,6 +21,12 @@
 //! only here: the consolidated cut is open, the raw one was not, and the
 //! retry is kept only if it comes back strictly closed with the raw cut's
 //! volume.
+//!
+//! When the retry is not kept either, the cut is kept as it was made, provided
+//! it still finishes closed. Consolidation saves triangles; it is not allowed
+//! to cost a closed cut. Without that the opening went on to the exact kernel
+//! with the uncut host, which on a host of hundreds of thin facets
+//! (`ISSUE_129` #61300 with its site at the origin) left it torn.
 
 use super::checks::result_volume_within_bounds;
 use super::dedup_cut_vertices;
@@ -37,7 +43,8 @@ fn open_edges(mesh: &Mesh) -> usize {
 
 /// Consolidate `cut`, the raw analytic cut of `host`, and audit the result.
 /// `raw` rebuilds the cut as it was handed in; it is called only when the
-/// consolidated mesh is open.
+/// consolidated mesh is open, and is the result when no consolidation of it
+/// stays closed.
 pub(super) fn consolidate(
     cut: Mesh,
     host: &Mesh,
@@ -60,10 +67,20 @@ pub(super) fn consolidate(
     // with no cutter volume to spend, the bound allows quantization only.
     let retried = ClosureVerdict::for_mesh(&retry.mesh);
     if retried.is_directed_closed() && result_volume_within_bounds(&raw, &retry.mesh, 0.0) {
-        (retry, retried)
-    } else {
-        (first, verdict)
+        return (retry, retried);
     }
+    // Neither consolidation kept the cut closed and whole. Consolidating is a
+    // saving in triangles, not a correction: the cut as it was made stands,
+    // provided it is still closed once finished, on the 1 mm grid and on the
+    // kernel's.
+    // Otherwise the opening goes to the exact kernel, as it did.
+    let finishes_closed = super::finish_cut_verdict(raw.clone(), host, first.boundary)
+        .is_some_and(|(finished, directed)| directed && open_edges(&finished) == 0);
+    if !finishes_closed {
+        return (first, verdict);
+    }
+    let raw_verdict = ClosureVerdict::for_mesh(&raw);
+    (ConsolidationOutcome { mesh: raw, boundary: first.boundary }, raw_verdict)
 }
 
 #[cfg(test)]

@@ -14,6 +14,11 @@ import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
  */
 export type StepRecordsRefusal = 'roomMoved' | 'noRecords';
 
+/** The shared check used by the dialog and STEP writer for absent STEP records. */
+export function stepRecordsUnavailableReason(store: IfcDataStore): 'noRecords' | null {
+  return store.sourceKind === 'tabular' && !roomSymbolicSource(store) ? 'noRecords' : null;
+}
+
 /** A refusal, not a crash. User-facing wording lives in the `exportDialog.stepRecords.*` catalogue keys. */
 export class StepRecordsUnavailableError extends Error {
   constructor(readonly reason: StepRecordsRefusal, readonly modelName?: string) {
@@ -52,6 +57,7 @@ export function stepExportSource(
   const portable = roomStepExportSource(store, view, modelId);
   if (portable) return portable;
   if (roomSymbolicSource(store)) throw new StepRecordsUnavailableError('roomMoved', modelName);
-  if (store.sourceKind === 'tabular') throw new StepRecordsUnavailableError('noRecords', modelName);
+  const reason = stepRecordsUnavailableReason(store);
+  if (reason) throw new StepRecordsUnavailableError(reason, modelName);
   return null;
 }

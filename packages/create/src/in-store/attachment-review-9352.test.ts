@@ -24,7 +24,7 @@ async function fixture() {
   return { s, home, wall, anchor };
 }
 
-for (const reopen of [false, true]) it.each(['flat', 'storey'] as const)(`#9352 pitched-to-%s quantities use their preserved prism baseline (reopen=${reopen})`, async kind => {
+for (const reopen of [false, true]) it.each(['flat', 'storey', 'storey-envelope'] as const)(`#9352 pitched-to-%s quantities use their preserved prism baseline (reopen=${reopen})`, async kind => {
   let { s, wall, anchor } = await fixture();
   const pitched = addRoofToStore(s.editor, anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 }).roofId;
   const flat = addRoofToStore(s.editor, anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25 }).roofId;
@@ -32,13 +32,16 @@ for (const reopen of [false, true]) it.each(['flat', 'storey'] as const)(`#9352 
   s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);
   s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'GrossVolume', 4.8, QuantityType.Volume);
   setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: pitched });
+  const expectedHeight = kind === 'storey-envelope'
+    ? readWallMetres({ dataStore: s.store, view: s.view, editor: s.editor }, wall)!.height : 4;
+  const envelopeStorey = kind === 'storey-envelope' ? addStoreyInStore(s.store, s.editor, { Name: 'Envelope', Elevation: expectedHeight }).storeyId : above;
   if (reopen) s = session(await parse(s.text()));
-  setTopConstraintInStore(s.store, s.editor, wall, kind === 'flat' ? { kind: 'roof', roofId: flat } : { kind: 'storey', storeyId: above });
-  expect(readWallMetres({ dataStore: s.store, view: s.view, editor: s.editor }, wall)!.height).toBeCloseTo(4, 8);
+  setTopConstraintInStore(s.store, s.editor, wall, kind === 'flat' ? { kind: 'roof', roofId: flat } : { kind: 'storey', storeyId: envelopeStorey });
+  expect(readWallMetres({ dataStore: s.store, view: s.view, editor: s.editor }, wall)!.height).toBeCloseTo(expectedHeight, 8);
   const saved = await parse(s.text());
   const quantities = extractQuantitiesOnDemand(saved, wall).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities;
-  expect(quantities.find(q => q.name === 'Height')?.value).toBeCloseTo(4, 8);
-  expect(quantities.find(q => q.name === 'GrossVolume')?.value).toBeCloseTo(6.4, 8);
+  expect(quantities.find(q => q.name === 'Height')?.value).toBeCloseTo(expectedHeight, 8);
+  expect(quantities.find(q => q.name === 'GrossVolume')?.value).toBeCloseTo(1.6 * expectedHeight, 8);
 });
 
 it.each([false, true])('#9352 insertion rebinds legacy relative walls on all tied lower storeys (reopen=%s)', async reopen => {

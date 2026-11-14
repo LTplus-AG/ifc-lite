@@ -426,6 +426,36 @@ describe('fast path runtime', () => {
     rt.stop();
   });
 
+  it('a pick at or above the fast-path bound terminates the geometry spare before the load (the worker budget does not count it), then refills after the load', async () => {
+    const h = host();
+    const rt = createFastPathRuntime(h.deps)!;
+    await ready(h);
+    const big = ifc('big.ifc', 1);
+    Object.defineProperty(big, 'size', { value: FAST_PATH_MAX_BYTES });
+    h.pick({ file: big });
+    assert.equal(h.workers[0].terminated, true, 'spare terminated at the pick');
+    assert.equal(rt.state().geometrySpare, 'none');
+    assert.equal(h.claim(big), null);
+    h.setLoading(true);
+    h.setLoading(false);
+    await ready(h);
+    assert.equal(h.workers.length, 2, 'refilled once after the load');
+    assert.equal(rt.state().geometrySpare, 'ready');
+    // A federated add of a large file releases the idle spare too (it never touches a pending primary run).
+    const bigAdd = ifc('add.ifc', 1);
+    Object.defineProperty(bigAdd, 'size', { value: FAST_PATH_MAX_BYTES + 1 });
+    h.pick({ file: bigAdd, target: { kind: 'federated' } as PickStartContext['target'] });
+    assert.equal(h.workers[1].terminated, true);
+    // Just below the bound the spare is kept for an ineligible pick (unchanged).
+    h.setLoading(true); h.setLoading(false);
+    await ready(h);
+    const below = ifc('below.ifcx', 1);
+    Object.defineProperty(below, 'size', { value: FAST_PATH_MAX_BYTES - 1 });
+    h.pick({ file: below });
+    assert.equal(rt.state().geometrySpare, 'ready');
+    rt.stop();
+  });
+
   it('drops a run the load never claimed when the load ends, then refills at idle', async () => {
     const h = host();
     const rt = createFastPathRuntime(h.deps)!;

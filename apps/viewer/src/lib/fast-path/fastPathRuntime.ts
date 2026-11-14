@@ -253,6 +253,13 @@ export function createFastPathRuntime(deps: FastPathDeps): FastPathRuntime | nul
   };
 
   const starter: PickStarter = (ctx) => {
+    // A file at or above the fast-path bound can never use the geometry spare, and the
+    // geometry worker budget (`computeWorkerCount`, whole-tab memory) does not count it:
+    // terminate it before the load starts its workers. It is refilled at idle after the load.
+    if (ctx.file.size >= FAST_PATH_MAX_BYTES && geometry) {
+      releaseGeometry();
+      deps.log?.('[fast-path] geometry spare released for a large load');
+    }
     // Only a new primary load supersedes a pending run; a federated add never touches it.
     if (ctx.target.kind !== 'primary') return;
     pending?.cancel();

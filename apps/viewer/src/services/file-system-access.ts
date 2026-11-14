@@ -54,9 +54,10 @@ export function supportsFileSystemAccess(): boolean {
  * `<input type="file">`.
  */
 export async function openIfcFilesWithHandles(): Promise<OpenedFile[] | null> {
-  markLoadIntent(); // the picker may stay open for seconds (load-intent.ts)
   // Every File System Access picker opens here; a host can switch local files off (`lib/features`).
-  if (!supportsFileSystemAccess() || !isFeatureEnabled('files.local')) return null;
+  if (!isFeatureEnabled('files.local')) return null;
+  markLoadIntent(); // the picker may stay open for seconds (load-intent.ts)
+  if (!supportsFileSystemAccess()) return null;
 
   let handles: FileSystemFileHandle[];
   try {

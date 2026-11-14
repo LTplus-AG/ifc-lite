@@ -530,7 +530,7 @@ export interface PreAlignmentSnapshot {
   instancedGeometryAabbs: Map<number, EntityWorldAabb> | undefined;
 }
 export interface FederatedModel extends ModelLoadReportFields {
-  hasOverlayCapacity?: boolean; // false once the overlay range is exhausted; unset means capacity.
+  hasOverlayCapacity?: boolean; // false when the overlay range is exhausted; unset counts as capacity.
   id: string; // UUID generated on load.
   name: string; // Display name (filename by default, user can rename)
   sourceFingerprint?: string; // Durable identity for persisted model filters.

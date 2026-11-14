@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { highestExistingExpressId } from '@ifc-lite/mutations';
+import { sourceWatermark } from '../../utils/model-mutation-view.js';
 import type { parseIfcx as ParseIfcx } from '@ifc-lite/ifcx';
 import { IFCX_LENGTH_UNIT_SCALE, createSyntheticDataStore, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
@@ -90,8 +90,8 @@ export function getMaxExpressId(
   pointClouds: readonly Pick<PointCloudAsset, 'expressId'>[] = [],
 ): number {
   const maxExpressIdFromMeshes = meshes.reduce((max, mesh) => Math.max(max, mesh.expressId), 0);
-  // Indexless stores (test doubles, partial loads) carry no source ids yet, as before the shared scan.
-  const maxExpressIdFromEntities = dataStore?.entityIndex?.byId ? highestExistingExpressId(dataStore) : 0;
+  // Same rule as the allocator floor, so the ownership bound and the floor cannot diverge.
+  const maxExpressIdFromEntities = sourceWatermark(dataStore);
   const maxExpressIdFromPoints = pointClouds.reduce((max, asset) => Math.max(max, asset.expressId), 0);
   return Math.max(maxExpressIdFromMeshes, maxExpressIdFromEntities, maxExpressIdFromPoints);
 }

@@ -909,6 +909,7 @@ it('a commit that throws before the store swap fails the run even when capacity 
     registerModelOffset('later', 10);
     useViewerStore.getState().setServerPropertiesRun('server', { kind: 'succeeded', runId: 42, result: undefined });
     assert.notEqual(useViewerStore.getState().models.get('server')!.hasOverlayCapacity, false);
+    assert.equal(federationRegistry.hasOverlayCapacity('server', 2), true, 'the range starts with room for edits');
     useViewerStore.setState({ updateModel: () => { throw new Error('Update failed'); } });
     await act(async () => {
       useServerModelProperties().start('server', undefined, async () => serverStoreAt(1_000_001));
@@ -957,6 +958,51 @@ it('first hydration keeps kept edits when the registry refuses the source (#1013
   const run = useViewerStore.getState().serverPropertiesRuns.get('server');
   assert.match(run?.kind === 'failed' ? run.error : '', /^Server properties hydration refused:/);
   assert.equal(useViewerStore.getState().mutationViews.get('server'), retained, 'a refused source discards nothing');
+});
+
+it('first hydration discards overlapped kept edits when a range listener fails after ownership grew (#10139)', async () => {
+  mock.method(console, 'warn', () => {});
+  const idOffset = federationRegistry.registerModel('server', 100);
+  useViewerStore.getState().updateModel('server', { idOffset, maxExpressId: 100 });
+  const retained = new MutablePropertyView(null, 'server');
+  retained.setExpressIdWatermark(100);
+  retained.createEntity('IfcMaterial', ['Retained']);
+  useViewerStore.setState({ mutationViews: new Map([['server', retained]]) });
+  let thrown = false;
+  const stop = federationRegistry.subscribe(() => {
+    if (!thrown) { thrown = true; throw new Error('Range notification failed after ownership changed'); }
+  });
+  try {
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => serverStoreAt(150));
+      await new Promise(resolve => setTimeout(resolve, 30));
+    });
+  } finally { stop(); }
+  assert.equal(thrown, true);
+  assert.equal(federationRegistry.getGlobalIdRange('server')!.end, idOffset + 150, 'setup: the source owns the overlapped ids');
+  assert.equal(useViewerStore.getState().serverPropertiesRuns.get('server')?.kind, 'failed');
+  assert.equal(useViewerStore.getState().mutationViews.has('server'), false, 'no kept creation aliases a source id');
+});
+
+it('an unregistered primary drops kept edits only together with a committed source (#10139)', async () => {
+  mock.method(console, 'warn', () => {});
+  const retained = new MutablePropertyView(null, 'server');
+  retained.createEntity('IfcMaterial', ['Retained']);
+  useViewerStore.setState({ mutationViews: new Map([['server', retained]]) });
+  // Supersession lands on the first view change, as a store reaction to a discard could.
+  let stale = false;
+  const stop = useViewerStore.subscribe((state, previous) => { if (state.mutationViews !== previous.mutationViews) stale = true; });
+  const source = serverStoreAt(150);
+  try {
+    await act(async () => {
+      useServerModelProperties().start('server', () => stale, async () => source);
+      await new Promise(resolve => setTimeout(resolve, 30));
+    });
+  } finally { stop(); }
+  assert.equal(federationRegistry.hasModel('server'), false);
+  const state = useViewerStore.getState();
+  assert.ok(state.mutationViews.get('server') === retained || state.models.get('server')?.ifcDataStore === source,
+    'kept edits are dropped only when the overlapping source loads');
 });
 
 it('an unregistered primary refuses a refresh across in-session creations (#10139)', async () => {

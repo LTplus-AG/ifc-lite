@@ -48,9 +48,20 @@ function publishIdRange(modelId: string, target: IdRangeTarget, firstHydration: 
   const discard = overlaps && firstHydration;
   let published = maxExpressId;
   // An unregistered primary keeps the single-model `globalId === expressId` fallback.
-  if (federationRegistry.hasModel(modelId)) published = federationRegistry.extendModel(modelId, maxExpressId, discard ? 0 : firstCreated);
-  else if (overlaps && !firstHydration) throw new ModelRangeExtensionRefusedError(`Source of ${modelId} grows across unpublished authored IDs from ${firstCreated}`);
-  if (discard) discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId);
+  if (federationRegistry.hasModel(modelId)) {
+    try {
+      published = federationRegistry.extendModel(modelId, maxExpressId, discard ? 0 : firstCreated);
+    } catch (error) {
+      // A refusal changes no ownership; any later failure may already have handed the source those IDs.
+      if (discard && !(error instanceof ModelRangeExtensionRefusedError)) discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId);
+      throw error;
+    }
+    // The registry now owns the overlapped IDs whether or not this run commits its store.
+    if (discard) discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId);
+  } else if (overlaps && !firstHydration) {
+    throw new ModelRangeExtensionRefusedError(`Source of ${modelId} grows across unpublished authored IDs from ${firstCreated}`);
+  }
+  // An unregistered primary owns no range: the capacity refresher discards once the store commits.
   if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
   return { maxExpressId: published };
 }

@@ -24,7 +24,7 @@ const DESCENT_EM = 0.207;
 // Drawing metres → page mm / screen px (×10), y up in the drawing and down on the page.
 const mapPoint = (x: number, y: number) => ({ x: 50 + x * 10, y: 50 - y * 10 });
 const SIZE = 5; // 0.5 m text → 5 mm / 5 px
-const GAP = SIZE * 1.3;
+const GAP = SIZE * 5 / 3; // AutoCAD MTEXT pitch at spacing factor 1
 
 type Valign = 'top' | 'middle' | 'bottom';
 type Text = DxfUnderlayRenderData['texts'][number];

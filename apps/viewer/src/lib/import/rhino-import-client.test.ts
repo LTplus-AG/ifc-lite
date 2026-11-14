@@ -45,10 +45,10 @@ function readerResult(): RhinoImport {
     layers: [{ name: 'Default', fullPath: 'Default', parent: null, color: [0, 0, 0, 255], visible: true, userStrings: [], spatial: null }],
     entities: [{
       globalId: '2XPyKWY018sA1ygZKgQPtU', ifcClass: 'IfcWall', name: '', description: '', objectType: '',
-      layer: 0, hidden: false, objectIds: [], geometryType: 'Mesh', userStrings: [], propertySets: [],
+      layer: 0, hidden: false, hiddenByObject: false, hiddenByLayer: false, objectIds: [], geometryType: 'Mesh', userStrings: [], propertySets: [],
     }],
     meshes: [{
-      entity: 0, color: [1, 1, 1, 1], origin: [1, 2, 3], hidden: true,
+      entity: 0, color: [1, 1, 1, 1], origin: [1, 2, 3], hidden: true, hiddenByObject: true, hiddenByLayer: false,
       positions: new Float32Array([0, 0, 0, 1, 2, 3]),
       normals: new Float32Array([0, 0, 1, 0, 0, 1]),
       indices: new Uint32Array([0, 0, 0]),

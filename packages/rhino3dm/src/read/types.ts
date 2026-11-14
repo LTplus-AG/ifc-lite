@@ -67,7 +67,21 @@ export interface RhinoImportLayer {
 
 export interface RhinoImportPropertySet { name: string; properties: [string, string][] }
 
-export interface RhinoImportEntity {
+/**
+ * Why Rhino hides an object. On an entity each flag is true only when it holds
+ * for every object merged into it; each geometry record carries its own
+ * object's flags, which differ from the entity's only in a merged entity.
+ */
+export interface RhinoImportVisibility {
+  /** Hidden by either cause. On a record, `hiddenByObject || hiddenByLayer`; a merged entity can be hidden with neither set, when its parts differ in why. */
+  hidden: boolean;
+  /** The object's own flag: `visible` false or mode Hidden. */
+  hiddenByObject: boolean;
+  /** Its layer or any layer above it is off. */
+  hiddenByLayer: boolean;
+}
+
+export interface RhinoImportEntity extends RhinoImportVisibility {
   /** Always a valid 22-character IFC GUID, unique within the file. */
   globalId: string;
   /** `IFC::Class` when it names an instantiable IFC product class, else `IfcBuildingElementProxy`. */
@@ -76,8 +90,6 @@ export interface RhinoImportEntity {
   description: string;
   objectType: string;
   layer: number;
-  /** Object hidden, or any layer on its path off; for merged objects, true only when every one is. Each geometry record carries its own. */
-  hidden: boolean;
   /** Rhino object UUIDs merged into this entity. */
   objectIds: string[];
   /** Rhino geometry class of the first object: "Mesh", "Brep", "InstanceReference", "NurbsCurve", ... */
@@ -97,11 +109,9 @@ export interface RhinoImportGeometry {
   indices: Uint32Array;
 }
 
-export interface RhinoImportMesh extends RhinoImportGeometry {
+export interface RhinoImportMesh extends RhinoImportGeometry, RhinoImportVisibility {
   entity: number;
   color: RhinoRgba;
-  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
-  hidden: boolean;
 }
 
 /** One block's own meshes, in block space. Nested blocks are flattened into `instances`. */
@@ -111,45 +121,37 @@ export interface RhinoImportDefinition {
   meshes: (RhinoImportGeometry & { color: RhinoRgba | null })[];
 }
 
-export interface RhinoImportInstance {
+export interface RhinoImportInstance extends RhinoImportVisibility {
   entity: number;
   definition: number;
   /** 16 row-major numbers, metres: world = transform · (origin + position). */
   transform: number[];
   color: RhinoRgba;
-  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
-  hidden: boolean;
 }
 
-export interface RhinoImportPointCloud {
+export interface RhinoImportPointCloud extends RhinoImportVisibility {
   entity: number;
   origin: RhinoVector3;
   positions: Float32Array;
   /** RGBA bytes per point, or null when the cloud has no colours. */
   colors: Uint8Array | null;
   color: RhinoRgba;
-  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
-  hidden: boolean;
 }
 
 /** A polyline. Curves that are not polylines are sampled. A closed curve ends on its first point. */
-export interface RhinoImportCurve {
+export interface RhinoImportCurve extends RhinoImportVisibility {
   entity: number;
   origin: RhinoVector3;
   positions: Float32Array;
   closed: boolean;
   color: RhinoRgba;
-  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
-  hidden: boolean;
 }
 
-export interface RhinoImportTextDot {
+export interface RhinoImportTextDot extends RhinoImportVisibility {
   entity: number;
   position: RhinoVector3;
   text: string;
   color: RhinoRgba;
-  /** Its own object's flag, as `RhinoImportEntity.hidden`; differs from the entity's only in a merged entity. */
-  hidden: boolean;
 }
 
 /**

@@ -14,7 +14,7 @@ import { buildEntities, type ObjectFacts } from './identity.js';
 import { plural, Report } from './report.js';
 import { readApi, type ReadApi, type RFile } from './rhino-api.js';
 import { MAX_3DM_BYTES, megabytes, tooLarge3dmMessage } from './size.js';
-import { RhinoReadError, type ReadRhino3dmOptions, type RhinoImport } from './types.js';
+import { RhinoReadError, type ReadRhino3dmOptions, type RhinoImport, type RhinoImportVisibility } from './types.js';
 import { multiply } from './xform.js';
 
 /** Below this no file can exhaust the heap, so a null read means damage. */
@@ -45,9 +45,11 @@ function readObjects(api: ReadApi, file: RFile, tables: DocumentTables, opts: Se
           // A file without layers, or an index outside the table, falls back to the first layer.
           const layer = Math.max(tables.layerIndex[attributes.layerIndex] ?? 0, 0);
           const look = readLook(api, attributes, layer), appearance = resolveAppearance(look, tables, null);
+          const hiddenByObject = !attributes.visible || attributes.mode.value === api.ObjectMode.Hidden.value;
+          const hiddenByLayer = tables.layers[layer].hidden;
           rows.set(attributes.id, {
             id: attributes.id, name: attributes.name, type, layer, layerPath: tables.layers[layer].fullPath,
-            hidden: !attributes.visible || attributes.mode.value === api.ObjectMode.Hidden.value || tables.layers[layer].hidden,
+            hidden: hiddenByObject || hiddenByLayer, hiddenByObject, hiddenByLayer,
             // No value here is ever empty: openNURBS removes a key whose value is set to the empty
             // string, so every reader of this user text sees a key as stated or absent, never blank.
             groups: attributes.getGroupList(), userStrings: attributes.getUserStrings(),
@@ -120,8 +122,12 @@ function build(api: ReadApi, file: RFile, archiveVersion: number, classes: IfcCl
   const { entities, entityOf } = buildEntities(drawn, tables.groupNames, classes, report);
   // Merging can put a later object into an earlier entity, so restore entity order. Each record keeps
   // its own object's visibility, which a merged entity's flag cannot carry for every part.
-  const byEntity = <T extends { entity: number; hidden: boolean }>(items: T[]): T[] => {
-    for (const item of items) { item.hidden = drawn[item.entity].hidden; item.entity = entityOf[item.entity]; }
+  const byEntity = <T extends { entity: number } & RhinoImportVisibility>(items: T[]): T[] => {
+    for (const item of items) {
+      const row = drawn[item.entity];
+      item.hidden = row.hidden; item.hiddenByObject = row.hiddenByObject; item.hiddenByLayer = row.hiddenByLayer;
+      item.entity = entityOf[item.entity];
+    }
     return items.sort((a, b) => a.entity - b.entity);
   };
   return {

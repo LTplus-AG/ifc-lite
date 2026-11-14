@@ -18,6 +18,7 @@ import rhino3dm from 'rhino3dm';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { PropertyValueType, type SpatialNode } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { RhinoImport } from '@ifc-lite/rhino3dm';
 
 import { RhinoImportError } from '@/lib/import/rhino-import-client';
 import {
@@ -29,6 +30,7 @@ import {
   CRAFTED_VERTEX_VIEWER,
   craftRhino3dm,
   craftRhinoLayerTree,
+  craftRhinoMergedParts,
   craftRhinoPartlyHidden,
   craftRhinoSpatialLayers,
   craftRhinoStampCollision,
@@ -36,6 +38,7 @@ import {
   rhinoPayloadOf as payloadOf,
 } from '@/test/rhino-3dm-fixture.js';
 import { rhinoViewerModel } from './rhinoViewerModel.js';
+import type { ViewerModelPayload } from './viewerModelIngest.js';
 
 const samples = new URL('../../../../../tests/models/rhino/mcneel-rhino3dm/', import.meta.url);
 const sample = (name: string) => new Uint8Array(readFileSync(new URL(name, samples)));
@@ -255,6 +258,54 @@ describe('rhinoViewerModel, visibility per part', () => {
     assert.equal(geometryResult.pointClouds, undefined);
     // The hidden entity starts hidden through the tree; the shown one does not.
     assert.deepEqual(hiddenExpressIds, [2]);
+  });
+
+  // #10214: a wholly hidden entity keeps what the one Rhino state that shows
+  // its least hidden parts would show, so showing it from the tree draws a
+  // state Rhino can be in.
+  const drawnNames = (payload: ViewerModelPayload, result: RhinoImport) =>
+    payload.geometryResult.meshes.map((m) => result.entities[m.expressId - 1].objectIds.length === 1
+      ? payload.dataStore.entities.getName(m.expressId) : `part@${(m.origin?.[0] ?? 0) + m.positions[0]}`);
+
+  it('leaves out a part hidden on its own inside an entity its layer hides (#10214)', async () => {
+    const result = await importOf(await craftRhinoMergedParts([
+      { name: 'Shown', kind: 'mesh', layerOff: true },
+      { name: 'Hidden', kind: 'mesh', layerOff: true, hidden: true },
+      { name: 'Hidden cloud', kind: 'cloud', layerOff: true, hidden: true },
+    ], { name: 'Alone', kind: 'mesh', layerOff: true, hidden: true }));
+    const payload = rhinoViewerModel(result, new ArrayBuffer(0), 0, 'parts.3dm');
+    // The merged entity keeps only the part its layer alone hides; the entity
+    // that needs both actions in every part keeps its triangle.
+    assert.deepEqual(drawnNames(payload, result), ['part@0', 'Alone']);
+    assert.equal(payload.geometryResult.pointClouds, undefined);
+    // Both entities and the layer that is off start hidden, nothing else.
+    assert.deepEqual((payload.hiddenExpressIds ?? []).map((id) => payload.dataStore.entities.getName(id)).sort(),
+      ['Alone', 'Off', 'Shown']);
+  });
+
+  it('leaves out a part on an off layer inside an entity hidden on its own (#10214)', async () => {
+    const result = await importOf(await craftRhinoMergedParts([
+      { name: 'Hidden', kind: 'mesh', hidden: true },
+      { name: 'Hidden and off', kind: 'mesh', layerOff: true, hidden: true },
+    ]));
+    assert.deepEqual(drawnNames(rhinoViewerModel(result, new ArrayBuffer(0), 0, 'parts.3dm'), result), ['part@0']);
+  });
+
+  it('keeps every part when the parts need different actions, since only both actions show them together', async () => {
+    const result = await importOf(await craftRhinoMergedParts([
+      { name: 'Hidden', kind: 'mesh', hidden: true },
+      { name: 'Off', kind: 'mesh', layerOff: true },
+      { name: 'Hidden and off', kind: 'mesh', layerOff: true, hidden: true },
+    ]));
+    assert.deepEqual(drawnNames(rhinoViewerModel(result, new ArrayBuffer(0), 0, 'parts.3dm'), result), ['part@0', 'part@2', 'part@4']);
+  });
+
+  it('counts only drawn parts, so a curve the viewer does not draw cannot leave a hidden entity without geometry', async () => {
+    const result = await importOf(await craftRhinoMergedParts([
+      { name: 'Hidden', kind: 'mesh', layerOff: true, hidden: true },
+      { name: 'Curve', kind: 'curve', layerOff: true },
+    ]));
+    assert.deepEqual(drawnNames(rhinoViewerModel(result, new ArrayBuffer(0), 0, 'parts.3dm'), result), ['part@0']);
   });
 
   it('says the surfaces are hidden when every drawn part is a hidden part of a shown entity', async () => {

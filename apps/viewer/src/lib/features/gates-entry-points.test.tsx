@@ -8,6 +8,7 @@
  * extensions, product links or outside services (review of the third gating PR).
  */
 
+import { loadDemoLayerStack } from '@/lib/layers/demo-stack';
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -149,6 +150,11 @@ describe('files and samples off have no other door', () => {
     resetFeaturesForTest({ default: 'all', disable: ['files.samples'] });
     assert.equal(isTourAvailable(WELCOME_TOUR), false);
     await assert.rejects(loadDemoProject(), /Sample models are switched off/);
+  });
+
+  it('the Layers demo stack does not load either (#10176)', async () => {
+    resetFeaturesForTest({ default: 'all', disable: ['files.samples'] });
+    await assert.rejects(loadDemoLayerStack(), /Sample models are switched off/);
   });
 
   it('only the tours that load sample content go with samples off', () => {

@@ -11,6 +11,7 @@ import { resolveHostAnchor } from './resolve-host.js';
 import { addRoofToStore } from './roof.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { addStoreyInStore } from './storey/storey-add.js';
+import { ROOF_ATTACHMENT } from './edit/wall-base-solid.js';
 import { setTopConstraintInStore } from './storey/storey-top-constraint.js';
 import { readStoreyInventory } from './storey/storey-model.js';
 import { readTopAttachment, writeTopAttachment } from './storey/storey-attachment.js';
@@ -84,4 +85,25 @@ for (const reopen of [false, true]) it.each(['flat', 'storey'] as const)(`#9352 
   check();
   s = session(await parse(s.text()));
   check();
+});
+
+
+it.each([false, true])('#9352 a roof-to-pending transition clears the old cut before the first storey binds (reopen=%s)', async reopen => {
+  let { s, wall, anchor } = await fixture();
+  const roof = addRoofToStore(s.editor, anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 }).roofId;
+  addHostedDoorToStore(s.editor, resolveHostAnchor(s.store, wall, s.view), { Offset: 3, Width: 2, Height: 2 });
+  s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'NetSideArea', 20, QuantityType.Area);
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof });
+  const pending = setTopConstraintInStore(s.store, s.editor, wall, { kind: 'storeyAbove' });
+  expect(pending.remesh).toContain(wall);
+  expect(s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Clipped')).toBe(false);
+  expect(readTopAttachment(readStoreyInventory(s.store, s.view), wall)).toMatchObject({ binding: 'relative', targetStoreyId: null });
+  if (reopen) s = session(await parse(s.text()));
+  const above = addStoreyInStore(s.store, s.editor, { Name: 'First above', Elevation: 8 }).storeyId;
+  s = session(await parse(s.text()));
+  expect(s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Clipped')).toBe(false);
+  expect(readWallMetres({ dataStore: s.store, view: s.view, editor: s.editor }, wall)!.height).toBeCloseTo(8, 8);
+  expect(readTopAttachment(readStoreyInventory(s.store, s.view), wall)?.targetStoreyId).toBe(above);
+  const values = extractQuantitiesOnDemand(s.store, wall).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities;
+  expect(values.find(q => q.name === 'NetSideArea')?.value).toBeCloseTo(60, 7); // 8×8 prism minus the unchanged 2×2 opening.
 });

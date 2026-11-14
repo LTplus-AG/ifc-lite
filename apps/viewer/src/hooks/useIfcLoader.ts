@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
-import { type FederatedModel, useViewerStore } from '@/store';
+import { type FederatedModel, useViewerStore, holdViewerStoreNotifications } from '@/store';
 import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
@@ -426,14 +426,14 @@ export function useIfcLoader() {
     const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
     const showLoadError = loadFailureReporter(file, activity, retryThisLoad, options?.onLoadError);
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
+    const releaseNotifications = target.kind === 'primary' ? holdViewerStoreNotifications() : () => {}; // the synchronous primary reset below runs each subscriber once (notification-batch.ts)
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
       // federated add must never wipe model #1; it joins the existing map.
       if (target.kind === 'primary') {
         resetViewerState();
         clearAllModels();
-        // A non-federated load has no layer stack behind it (#1717).
-        useViewerStore.getState().clearLayerStack();
+        useViewerStore.getState().clearLayerStack(); // a non-federated load has no layer stack behind it (#1717)
       }
       const shardGeneration = instancedShardGeneration(); // after our own reset: a later one supersedes our shards
 
@@ -497,6 +497,7 @@ export function useIfcLoader() {
           interactiveReady: false,
         });
       }
+      releaseNotifications(); // before the first await: a hold must never span one
 
       // The ONE finalizer for every format/platform/role. Primary keeps the
       // historical updateModel-only behaviour; federated runs the georef-align
@@ -2117,7 +2118,7 @@ export function useIfcLoader() {
       // reports isStreaming=true forever, disabling ALL element picking once a
       // second model is loaded (#1570).
       settleLoadUi(LOAD_COMPLETE);
-    } catch (err) {
+    } catch (err) { releaseNotifications(); // idempotent: an error in the held reset must not keep subscribers waiting
       console.error(`[useIfc] loadFile THREW (session=${currentSession}, current=${loadSessionRef.current}):`, err);
       if (isStale()) return;
       const kind = classifyLoadError(err, 'ifc_model_load');
@@ -2147,7 +2148,7 @@ export function useIfcLoader() {
       }));
       settleLoadUi();
     } finally {
-      settleResumable();
+      settleResumable(); releaseNotifications();
       metadataAbort.abort();
       // #1959: every exit releases its ownership; actual freeing still waits
       // for the parser to stop using the raw handle (geometryHandleDisposal).

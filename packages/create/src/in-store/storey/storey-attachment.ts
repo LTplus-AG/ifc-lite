@@ -44,6 +44,7 @@
 
 import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { RelationshipType } from '@ifc-lite/data';
 import { storeyNeighbour, type StoreyInventory } from './storey-model.js';
 
 export const STOREY_ATTACHMENT_PSET = 'IfcLite_StoreyAttachment';
@@ -82,11 +83,28 @@ function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-/** The storey that contains `elementId` (through IfcRelContainedInSpatialStructure), or null. */
+/** The current spatial ancestry, then source hierarchy where no relationship was supplied. */
 export function homeStoreyOf(inventory: StoreyInventory, elementId: number): number | null {
-  const storeyIds = new Set(inventory.storeys.map((storey) => storey.expressId));
-  const rel = (inventory.incomingOf?.(elementId) ?? inventory.incoming.get(elementId) ?? []).find((candidate) => candidate.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
-  return rel && storeyIds.has(rel.parent) ? rel.parent : null;
+  const storeyIds = new Set(inventory.storeys.map(storey => storey.expressId));
+  const direct = (inventory.incomingOf?.(elementId) ?? inventory.incoming.get(elementId) ?? [])
+    .find(relation => relation.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
+  const queue = direct ? [direct.parent] : [elementId], visited = new Set(queue);
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    const id = queue[cursor];
+    if (storeyIds.has(id)) return id;
+    for (const relation of inventory.incomingOf?.(id) ?? inventory.incoming.get(id) ?? []) {
+      if (!visited.has(relation.parent)) { visited.add(relation.parent); queue.push(relation.parent); }
+    }
+  }
+  // Never revive an authored product or a source relationship removed by an
+  // edit. The fallback is for a file whose parsed tree supplies the home alone.
+  // @raw-entity-enumeration-ok Source membership distinguishes parsed products from authored products before using the parsed-only fallback.
+  const source = inventory.store.entityIndex.byId.has(elementId);
+  const originalParents = [RelationshipType.ContainsElements, RelationshipType.Aggregates, RelationshipType.Nests]
+    .some(type => inventory.store.relationships.inverse.getEdges(elementId, type).length > 0);
+  // @raw-entity-enumeration-ok Parsed-only home is used only without original spatial edges; live ancestry and removed-edge refusal are handled above.
+  const home = inventory.store.spatialHierarchy?.elementToStorey.get(elementId);
+  return source && !originalParents && home !== undefined && storeyIds.has(home) ? home : null;
 }
 
 /** Live slabs and pending targets by GlobalId, read once per inventory. */

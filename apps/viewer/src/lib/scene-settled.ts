@@ -56,10 +56,8 @@ export function isSceneSettled(state: ViewerState = useViewerStore.getState()): 
  * cache write's encode, 80-200 ms on Holter) then ran in front of that frame.
  * Superseded while waiting for the frame: `done(false)`, so the caller runs nothing.
  *
- * `firstCheckMs` defers the first check (the location map's first check is
- * 100 ms after its effect, never in the same task); 0 checks at once.
  */
-export function afterSceneSettled(done: (settled: boolean) => void, isCurrent: () => boolean = () => true, timeoutMs = 120_000, firstCheckMs = 0): () => void {
+export function afterSceneSettled(done: (settled: boolean) => void, isCurrent: () => boolean = () => true, timeoutMs = 120_000): () => void {
   const start = Date.now();
   let polls = 0;
   let cancelled = false;
@@ -95,10 +93,7 @@ export function afterSceneSettled(done: (settled: boolean) => void, isCurrent: (
     if (isCurrent() && isSceneSettled()) finish(true);
     else check(); // superseded (false), or the scene changed again: wait for it again
   };
-  if (firstCheckMs > 0) {
-    const timer = setTimeout(check, firstCheckMs);
-    cancelWait = () => clearTimeout(timer);
-  } else check();
+  check();
   return () => { cancelled = true; clearTimeout(deadline); cancelWait(); };
 }
 

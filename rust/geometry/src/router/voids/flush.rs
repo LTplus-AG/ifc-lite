@@ -9,8 +9,8 @@
 //! paths. Each used to allow about a millimetre, so a recess ending within a
 //! millimetre of the far face was read as reaching it and pushed through.
 //!
-//! The two bounds here are steps of the kernel grid: what rounding to the
-//! grid can move a face, and no more. The extension and the probe use
+//! The two bounds here are steps of the kernel grid, floored at f32 noise:
+//! what rounding can move a face, and no more. The extension and the probe use
 //! [`flush_band_at`], the widest gap that is still flush; wider, and they take
 //! a skin the author left. The recess test uses the smaller
 //! [`recess_face_tol`], because the same tolerance decides that an opening

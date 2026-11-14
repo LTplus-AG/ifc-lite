@@ -6,7 +6,8 @@
 //!
 //! Exit clearance retains the established global parallel-plane qualification.
 //! A jamb pull-in additionally needs a finite host facet in the cutter's
-//! footprint: an unrelated recess floor must not shorten a new blind recess.
+//! footprint, ON the cap where only a thin skin lies beyond it: an unrelated
+//! recess floor or the far face of a skin must not shorten a blind recess.
 //! Occupancy beyond a cap still separates an exit from a jamb, independent of
 //! host winding. Uncertain finite-contact arithmetic retains the old verdict.
 
@@ -357,11 +358,11 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
     let probe = (qualified && !far_field)
         .then(|| f.probe_uv(host))
         .flatten();
-    // `(deep, any)`: host material at the depths main samples, and at any depth.
-    let occupied_along = |from: f64, dir: f64| -> (bool, bool) {
-        let Some((cu, cv)) = probe else {
-            return (false, false);
-        };
+    // The weakest contact that makes a cap a jamb: any overlap where the deep
+    // samples see host, a facet ON the cap where only the skin sample does.
+    // `None`: nothing behind the cap, so it is an exit.
+    let jamb_needs = |from: f64, dir: f64| -> Option<local::Contact> {
+        let (cu, cv) = probe?;
         // Sample ACROSS the swept interval, not at one offset. A pier thinner
         // than a single probe offset reads empty at that one depth and then
         // takes the full 30%-of-span push straight through it.
@@ -370,25 +371,26 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
         // evidence and is skipped rather than counted either way: the surface
         // there is not closed to a ray, and a coin flip must not remove a push.
         let at = |t: f64| point_inside_mesh_agreed(host, f.point_at(cu, cv, from + dir * t)).unwrap_or(false);
-        let deep = [f.probe_offset(), pad * 0.5, pad].into_iter().any(at);
+        if [f.probe_offset(), pad * 0.5, pad].into_iter().any(at) {
+            return Some(local::Contact::Band);
+        }
         // Then just past the flush band: a skin thinner than `probe_offset`
         // (4 mm or more) behind the cap is host all the same.
-        (deep, deep || at(flush_band_at(f.point_at(cu, cv, from).coords.amax())))
+        at(flush_band_at(f.point_at(cu, cv, from).coords.amax())).then_some(local::Contact::On)
     };
-    // Probe ONLY a cap that qualified: `occupied_along` casts up to four points
+    // Probe ONLY a cap that qualified: `jamb_needs` casts up to four points
     // and two rays each, and for a cap that is already `Free` every one of
     // those traversals is discarded.
-    // Behind a skin only, the cap is a jamb where it rests ON a host facet (a
-    // void the host already carries); with the facet farther off it is a blind
-    // end, and pulling it in would cut the recess a millimetre short.
+    // A cap behind a skin, with no facet on its plane, is a blind end: pulling
+    // it in would cut the recess a millimetre short.
     let classify = |has_surface: bool, local: local::Contact, from: f64, dir: f64, host_at: f64| {
         if !has_surface {
             return Cap::Free;
         }
-        match occupied_along(from, dir) {
-            (_, false) => Cap::Exit(host_at),
-            (deep, true) if local == local::Contact::On || (deep && local == local::Contact::Band) => Cap::Jamb,
-            _ => Cap::Free,
+        match jamb_needs(from, dir) {
+            None => Cap::Exit(host_at),
+            Some(need) if local >= need => Cap::Jamb,
+            Some(_) => Cap::Free,
         }
     };
     ExitCaps {

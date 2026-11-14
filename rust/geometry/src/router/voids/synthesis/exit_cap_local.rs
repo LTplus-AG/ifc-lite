@@ -12,7 +12,7 @@ use super::{CutterFrame, Point3, BAND_FRACTION};
 pub(super) enum Contact {
     /// Not over the cutter's footprint.
     None,
-    /// Over the footprint, within the cap band (a millimetre) of its plane.
+    /// Over the footprint, within the cap band (a millimetre or more) of its plane.
     Band,
     /// Over the footprint and within the flush band: the cap rests on it.
     On,
@@ -33,7 +33,7 @@ pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], off: f64) -> 
 /// The frame box contains the whole cutter profile; admitting extra contact
 /// preserves the established pull-in. Reuse its existing footprint band and
 /// retain that pull-in when arithmetic cannot establish finite separation.
-pub(super) fn overlaps(f: &CutterFrame, triangle: [Point3<f64>; 3]) -> bool {
+fn overlaps(f: &CutterFrame, triangle: [Point3<f64>; 3]) -> bool {
     let projected = triangle.map(|p| {
         [
             p.coords.dot(&f.frame.cross_a),

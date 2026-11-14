@@ -4,13 +4,13 @@
 
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { Slot } from '@radix-ui/react-slot';
+import { Slot, Slottable } from '@radix-ui/react-slot';
 import { X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { usePortalContainer } from './portal-container';
 import { Dialog, useToastDialog } from './dialog-root';
-import { DialogFrame } from './dialog-frame';
+import { moveNoticeFocus } from './dialog-notice-interactions';
 import { useDialogNoticeLayout } from './dialog-notice-layout';
 import { ToastMessages, useToastItems } from './toast';
 import { refreshToastDialogs, registerToastDialog } from './toast-store';
@@ -52,7 +52,7 @@ const DialogContent = React.forwardRef<
     /** Keep scroll-dialog content within the viewport without changing its max-width. */
     viewportBounds?: 'height' | 'both';
   }
->(({ className, children, hideCloseButton, overlayClassName, scrollBody, viewportBounds, ...props }, ref) => {
+>(({ className, children, hideCloseButton, overlayClassName, scrollBody, viewportBounds, asChild, onPointerDownOutside, onInteractOutside, onFocusOutside, onKeyDownCapture, onFocusCapture, onBlurCapture, ...props }, ref) => {
   const { t } = useTranslation();
   const owner = useToastDialog();
   // Only mounted panels own notices. Register before descendant layout effects;
@@ -67,15 +67,44 @@ const DialogContent = React.forwardRef<
   }, [owner.id, owner.ancestors, owner.open, owner.modal]);
   const notices = useToastItems().filter(item => owner.modal && owner.open && item.dialogId === owner.id);
   const noticeShelf = React.useRef<HTMLDivElement>(null);
-  useDialogNoticeLayout(noticeShelf, notices.length > 0);
+  const panel = React.useRef<HTMLDivElement>(null);
+  const shelfFocused = React.useRef(false);
+  const noticePointers = React.useRef(new WeakSet<Event>());
+  const contentRef = React.useCallback((node: HTMLDivElement | null) => {
+    panel.current = node;
+    if (typeof ref === 'function') return ref(node);
+    if (ref) ref.current = node;
+  }, [ref]);
+  useDialogNoticeLayout(panel, noticeShelf, notices.length > 0);
+  React.useLayoutEffect(() => {
+    if (!owner.open) shelfFocused.current = false;
+    else if (!notices.length && shelfFocused.current) {
+      shelfFocused.current = false;
+      panel.current?.focus({ preventScroll: true });
+    }
+  }, [notices.length, owner.open]);
+  const isNoticeTarget = (target: EventTarget | null) => target instanceof Node && noticeShelf.current?.contains(target);
+  const isNoticeInteraction = (event: { target: EventTarget | null; detail: { originalEvent: Event } }) =>
+    isNoticeTarget(event.target) || noticePointers.current.has(event.detail.originalEvent);
+  const shelfId = `dialog-notices-${owner.id}`;
   return (
   <DialogPortal container={usePortalContainer()}>
     <DialogOverlay className={overlayClassName} />
     <DialogPrimitive.Content
       {...props}
-      asChild
-    >
-    <DialogFrame panelRef={ref}
+      ref={contentRef}
+      asChild={asChild}
+      data-dialog-panel={owner.id}
+      aria-owns={[props['aria-owns'], notices.length ? shelfId : undefined].filter(Boolean).join(' ') || undefined}
+      onPointerDownOutside={event => { if (isNoticeInteraction(event)) event.preventDefault(); else onPointerDownOutside?.(event); }}
+      onInteractOutside={event => { if (isNoticeInteraction(event)) event.preventDefault(); else onInteractOutside?.(event); }}
+      onFocusOutside={event => { if (isNoticeInteraction(event)) event.preventDefault(); else onFocusOutside?.(event); }}
+      onFocusCapture={event => { shelfFocused.current = false; onFocusCapture?.(event); }}
+      onBlurCapture={event => {
+        onBlurCapture?.(event);
+        if (isNoticeTarget(event.relatedTarget)) event.stopPropagation();
+      }}
+      onKeyDownCapture={event => { onKeyDownCapture?.(event); moveNoticeFocus(event, panel.current, noticeShelf.current); }}
       className={cn(
         'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
         // Apply the default cap before any notice arrives, so it cannot recenter the panel.
@@ -84,23 +113,37 @@ const DialogContent = React.forwardRef<
         viewportBounds === 'both' && 'w-[calc(100%-2rem)]',
         className
       )}
-      notices={owner.modal && (
-        <div ref={noticeShelf} data-notice-shelf data-dialog-notices={notices.length > 0 ? '' : undefined} className={cn(
-          notices.length > 0 ? 'fixed z-50 pointer-events-auto min-w-0 max-h-[30dvh] overflow-y-auto' : 'sr-only pointer-events-none',
-        )}>
-          <ToastMessages items={notices} insideDialog />
-        </div>
-      )}
     >
-      {children}
+      {asChild ? <Slottable>{children}</Slottable> : children}
       {!hideCloseButton && (
         <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
           <X className="h-4 w-4" />
           <span className="sr-only">{t('viewerShell.dialog.close')}</span>
         </DialogPrimitive.Close>
       )}
-    </DialogFrame>
     </DialogPrimitive.Content>
+    {owner.modal && (
+      // This overlay supplies scroll allowance for the sibling shelf as well as Content.
+      <DialogPrimitive.Overlay asChild>
+        <div ref={noticeShelf} id={shelfId} data-notice-shelf data-notice-panel={owner.id}
+          data-dialog-notices={notices.length ? '' : undefined}
+          className={notices.length ? 'fixed z-50 min-w-0 max-h-[30dvh] overflow-y-auto' : 'sr-only pointer-events-none'}
+          style={{ pointerEvents: notices.length ? 'auto' : 'none' }}
+          onPointerDownCapture={event => {
+            // Outside dispatch is deferred; dismiss can remove the target before pointerup.
+            noticePointers.current.add(event.nativeEvent);
+          }}
+          onFocusCapture={event => {
+            shelfFocused.current = true;
+            // Radix's panel focus trap must not recapture focus from this allowed sibling.
+            event.stopPropagation();
+          }}
+          onBlurCapture={event => { if (isNoticeTarget(event.relatedTarget)) event.stopPropagation(); }}
+          onKeyDownCapture={event => moveNoticeFocus(event, panel.current, noticeShelf.current)}>
+          <ToastMessages items={notices} insideDialog />
+        </div>
+      </DialogPrimitive.Overlay>
+    )}
   </DialogPortal>
   );
 });

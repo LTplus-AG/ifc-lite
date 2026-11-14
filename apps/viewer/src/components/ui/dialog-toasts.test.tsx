@@ -5,10 +5,15 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, useLayoutEffect, useState } from 'react';
+import { act, createRef, useLayoutEffect, useState } from 'react';
 import { cleanup, render } from '@/test/render.js';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './dialog';
 import { Toaster, toast } from './toast';
+
+function activeShelf(panel: Element | undefined): HTMLElement | null {
+  return [...document.querySelectorAll<HTMLElement>('[data-dialog-notices]')]
+    .find(shelf => shelf.dataset.noticePanel === panel?.getAttribute('data-dialog-panel')) ?? null;
+}
 
 afterEach(() => {
   for (const button of document.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss notification"]')) act(() => button.click());
@@ -22,7 +27,7 @@ it('#9875 a notice from a child layout effect belongs to the opening modal', () 
   }
   render(<Toaster />);
   render(<Dialog open><DialogContent><DialogTitle>Preview</DialogTitle><DialogDescription>Review</DialogDescription><Failure /></DialogContent></Dialog>);
-  assert.ok(document.querySelector('[data-dialog-scope] [data-dialog-notices]')?.textContent?.includes('Preview refused'));
+  assert.ok(document.querySelector('[data-dialog-notices]')?.textContent?.includes('Preview refused'));
 });
 
 it('#9875 the deepest modal owns a notice, and closing it preserves that notice at the app anchor', () => {
@@ -33,8 +38,8 @@ it('#9875 the deepest modal owns a notice, and closing it preserves that notice 
   act(() => toast.error('Child operation failed'));
   const dialogs = [...document.querySelectorAll('[role="dialog"]')];
   assert.equal(dialogs.length, 2);
-  assert.ok(dialogs[1]?.parentElement?.querySelector('[data-dialog-notices]')?.textContent?.includes('Child operation failed'));
-  assert.equal(dialogs[0]?.parentElement?.querySelector('[data-dialog-notices]'), null);
+  assert.ok(activeShelf(dialogs[1])?.textContent?.includes('Child operation failed'));
+  assert.equal(activeShelf(dialogs[0]), null);
   assert.ok(!anchor.textContent?.includes('Child operation failed'));
   cleanup();
   const nextAnchor = render(<Toaster />);
@@ -53,12 +58,12 @@ it('#9875 modal success notices remain visible for their existing lifetime', t =
   t.mock.timers.enable({ apis: ['setTimeout'] });
   render(<Toaster />);
   render(<Dialog open><DialogContent><DialogTitle>Settings</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
-  const liveRegion = document.querySelector('[data-dialog-scope] [aria-live="polite"]');
+  const liveRegion = document.querySelector('[data-notice-shelf] [aria-live="polite"]');
   assert.ok(liveRegion, 'the polite live region exists before the first notice');
   assert.equal(document.querySelector('[role="dialog"] [role="alert"]'), null, 'an empty notice shelf is not a dialog validation alert');
   assert.equal(document.querySelector('[role="dialog"] [role="status"]'), null, 'the shelf does not impersonate the dialog progress status');
   act(() => toast.success('Settings saved'));
-  assert.equal(document.querySelector('[data-dialog-scope] [aria-live="polite"]'), liveRegion, 'first notice updates the existing live region');
+  assert.equal(document.querySelector('[data-notice-shelf] [aria-live="polite"]'), liveRegion, 'first notice updates the existing live region');
   assert.ok(document.querySelector('[data-dialog-notices]')?.textContent?.includes('Settings saved'));
   act(() => t.mock.timers.tick(3000));
   assert.equal(document.querySelector('[data-dialog-notices]'), null);
@@ -73,8 +78,8 @@ it('#9875 a newly opened independent modal owns notices above an older nested mo
   act(() => toast.error('Newest modal failure'));
   const dialogs = [...document.querySelectorAll('[role="dialog"]')];
   assert.equal(dialogs.length, 3);
-  assert.ok(dialogs[2]?.parentElement?.querySelector('[data-dialog-notices]')?.textContent?.includes('Newest modal failure'));
-  assert.equal(dialogs[1]?.parentElement?.querySelector('[data-dialog-notices]'), null);
+  assert.ok(activeShelf(dialogs[2])?.textContent?.includes('Newest modal failure'));
+  assert.equal(activeShelf(dialogs[1]), null);
 });
 
 it('#9875 reopening a dialog does not re-adopt notices from its previous opening', () => {
@@ -91,7 +96,7 @@ it('#9875 reopening a dialog does not re-adopt notices from its previous opening
   assert.ok(anchor.textContent?.includes('Previous save failed'));
   act(() => changeOpen(true));
   assert.ok(anchor.textContent?.includes('Previous save failed'));
-  assert.equal(document.querySelector('[data-dialog-scope] [data-dialog-notices]'), null);
+  assert.equal(document.querySelector('[data-dialog-notices]'), null);
   act(() => toast.error('Current save failed'));
   assert.ok(document.querySelector('[data-dialog-notices]')?.textContent?.includes('Current save failed'));
 });
@@ -117,7 +122,7 @@ it('#9875 closing a nested modal keeps its success notice readable in the still-
   render(<Nested />);
   act(() => toast.success('Flavor merged'));
   act(closeChild);
-  assert.ok(document.querySelector('[data-dialog-scope] [data-dialog-notices]')?.textContent?.includes('Flavor merged'));
+  assert.ok(document.querySelector('[data-dialog-notices]')?.textContent?.includes('Flavor merged'));
   assert.ok(!anchor.textContent?.includes('Flavor merged'));
 });
 
@@ -139,7 +144,7 @@ it('#9875 closing an older modal cannot promote its notice over a later-opened m
   act(() => toast.error('Earlier failure'));
   act(() => changeSecond(true));
   act(() => changeFirst(false));
-  assert.equal(document.querySelector('[data-dialog-scope] [data-dialog-notices]'), null);
+  assert.equal(document.querySelector('[data-dialog-notices]'), null);
   assert.ok(anchor.textContent?.includes('Earlier failure'));
 });
 
@@ -149,11 +154,11 @@ it('#9875 repeated errors in different surfaces preserve independent dismissal',
   act(() => toast.error('Export failed'));
   render(<Dialog open><DialogContent><DialogTitle>Export</DialogTitle><DialogDescription>Review</DialogDescription></DialogContent></Dialog>);
   act(() => toast.error('Export failed'));
-  const shelf = document.querySelector('[data-dialog-scope] [data-dialog-notices]');
+  const shelf = document.querySelector('[data-dialog-notices]');
   assert.ok(shelf?.textContent?.includes('Export failed'));
   assert.ok(anchor.textContent?.includes('Export failed'), 'the earlier app error retains its anchor');
   act(() => shelf?.querySelector<HTMLButtonElement>('button[aria-label="Dismiss notification"]')?.click());
-  assert.equal(document.querySelector('[data-dialog-scope] [data-dialog-notices]'), null);
+  assert.equal(document.querySelector('[data-dialog-notices]'), null);
   assert.ok(anchor.textContent?.includes('Export failed'), 'dismissing the modal error preserves the app failure');
 });
 
@@ -212,11 +217,11 @@ it('#9875 an ineligible later modal cannot hide the eligible parent fallback', (
   const dialogs = [...document.querySelectorAll('[role="dialog"]')];
   const parent = dialogs.find(dialog => dialog.textContent?.includes('Parent A'));
   const later = dialogs.find(dialog => dialog.textContent?.includes('Later C'));
-  assert.ok(parent?.parentElement?.querySelector('[data-dialog-notices]')?.textContent?.includes('Child save failed'));
-  assert.ok(!later?.parentElement?.querySelector('[data-dialog-notices]')?.textContent?.includes('Child save failed'));
+  assert.ok(activeShelf(parent)?.textContent?.includes('Child save failed'));
+  assert.ok(!activeShelf(later)?.textContent?.includes('Child save failed'));
   assert.ok(!app.textContent?.includes('Child save failed'), 'the app anchor is not the fallback while an eligible parent survives');
   act(closeLater);
-  assert.ok(document.querySelector('[data-dialog-scope] [data-dialog-notices]')?.textContent?.includes('Child save failed'), 'the error is still readable in A after C closes');
+  assert.ok(document.querySelector('[data-dialog-notices]')?.textContent?.includes('Child save failed'), 'the error is still readable in A after C closes');
 });
 
 
@@ -331,7 +336,7 @@ it('#9879 sibling shelf participates in the modal focus and dismiss scope', () =
   </DialogContent></Dialog>);
   act(() => toast.info('Changes ready', { label: 'Apply', onClick: () => { invoked++; } }));
   const panel = document.querySelector<HTMLElement>('[role="dialog"]')!;
-  const shelf = panel.parentElement!.querySelector<HTMLElement>('[data-dialog-notices]')!;
+  const shelf = activeShelf(panel)!;
   assert.equal(panel.contains(shelf), false, 'the shelf escapes the visual panel and its transform');
   const apply = [...shelf.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Apply')!;
   act(() => apply.focus());
@@ -344,3 +349,23 @@ it('#9879 sibling shelf participates in the modal focus and dismiss scope', () =
   assert.equal(closed, false);
   assert.ok(document.querySelector('[role="dialog"]'));
 });
+
+
+for (const hideCloseButton of [true, false]) {
+it(`#9879 asChild keeps the caller form as the dialog element (hideCloseButton=${hideCloseButton})`, () => {
+  const ref = createRef<HTMLDivElement>();
+  let submitted = 0;
+  render(<Dialog open><DialogContent asChild hideCloseButton={hideCloseButton} ref={ref} data-form-dialog="caller"
+    onSubmit={event => { event.preventDefault(); submitted++; }}>
+    <form><DialogTitle>Form dialog</DialogTitle><DialogDescription>Edit form</DialogDescription>
+      <input aria-label="Form name" /><button type="submit">Save form</button>
+    </form>
+  </DialogContent></Dialog>);
+  const form = document.querySelector<HTMLFormElement>('form')!;
+  assert.equal(document.querySelector('[role="dialog"]')?.tagName, 'FORM');
+  assert.equal(Object.is(ref.current, form), true, 'the forwarded ref must point at the caller form');
+  assert.equal(form.getAttribute('data-form-dialog'), 'caller');
+  act(() => { form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
+  assert.equal(submitted, 1);
+});
+}

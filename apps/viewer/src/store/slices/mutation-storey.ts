@@ -105,9 +105,9 @@ function write(dataStore: IfcDataStore, editor: StoreEditor, op: StoreyOp): Writ
     }
     case 'delete': {
       const plan = applyStoreyDelete(dataStore, editor, op.storeyId, op.mode, op.expected);
-      // Moved contents keep their world position, so nothing re-meshes.
+      // Contents keep their world positions; relatively attached tops may change shape.
       const removed = op.mode.kind === 'deleteContents' ? [...plan.contents, op.storeyId] : [op.storeyId];
-      return { storeyId: null, remesh: [], removed };
+      return { storeyId: null, remesh: [...(plan.reshaped ?? [])], removed };
     }
   }
 }

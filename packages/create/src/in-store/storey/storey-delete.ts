@@ -13,6 +13,7 @@
  * those that only exist for it are removed.
  */
 
+import { applyDeletionBindings, deletionBindingRefusals, planDeletionBindings, type DeletionBinding } from './storey-delete-bindings.js';
 import { effectiveReferencers } from '@ifc-lite/export';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -41,6 +42,11 @@ export interface StoreyDeletePlan {
   /** The reviewed state of the storey and its contents (records and placement chains); a later edit to any of them makes the plan stale. */
   readonly fingerprint: string;
   readonly refusals: readonly StoreyRefusal[];
+  /** Relative tops that follow a different floor after deletion. */
+  readonly bindings?: readonly DeletionBinding[];
+  /** Products whose shapes changed while rebinding, filled by applyStoreyDelete. */
+  readonly reshaped?: readonly number[];
+  readonly unresizedAttachments?: readonly number[];
 }
 
 /** reassignElementsToStoreyInStore takes at most this many roots per call. */
@@ -120,10 +126,13 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
     }
   }
   // A move also pins its destination (with its placement chain) and the relationships it re-points.
+  const bindings = planDeletionBindings(inventory, storeyId, mode);
+  refusals.push(...deletionBindingRefusals(inventory, bindings));
   const pinned = mode.kind === 'move' ? [storeyId, ...contents, mode.targetStoreyId] : [storeyId, ...contents];
+  pinned.push(...bindings.flatMap(binding => [binding.elementId, ...(binding.targetStoreyId === null ? [] : [binding.targetStoreyId])]));
   const others = mode.kind === 'move' ? (inventory.outgoing.get(storeyId) ?? []).map((rel) => rel.id) : [];
   const fingerprint = storeyStateFingerprint(inventory.reader, lazyReferencers, pinned, [], others);
-  return { ...base, contents: [...contents], roots, elementCount, fingerprint, refusals };
+  return { ...base, contents: [...contents], roots, elementCount, fingerprint, refusals, bindings };
 }
 
 /**
@@ -139,6 +148,7 @@ export function storeyDeletePlanSignature(plan: StoreyDeletePlan): string {
     contents: [...plan.contents].sort((x, y) => x - y),
     roots: [...plan.roots].sort((x, y) => x - y),
     fingerprint: plan.fingerprint,
+    bindings: plan.bindings ?? [],
     refusals: refusalSignature(plan.refusals),
   });
 }
@@ -171,7 +181,8 @@ export function applyStoreyDelete(
     if (mode.kind === 'deleteContents') for (const id of plan.contents) removed.add(id);
     detachRelationships(store, draft, removed);
     for (const id of removed) draft.removeEntity(id);
-    return plan;
+    const rebound = applyDeletionBindings({ dataStore: store, view: draft.getMutationView(), editor: draft }, plan.bindings ?? []);
+    return { ...plan, reshaped: rebound.remesh, unresizedAttachments: rebound.unreadable };
   });
 }
 

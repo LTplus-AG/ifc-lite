@@ -20,6 +20,7 @@
  * generic so file size + cognitive scope stay manageable.
  */
 
+import { attachedKind } from '../storey/storey-attached.js';
 import { refreshTopAttachmentsInStore } from '../top-attachment-refresh.js';
 import { EntityExtractor, resolveEffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -262,7 +263,8 @@ export function translateProduct(
   }
   const next = translatedCoordinates(chain.coordinates, delta);
   if (!next) return { ok: false, reason: 'Placement translation overflow: derived coordinates must be finite' };
-  const follows = /^(IFCROOF|IFCSLAB|IFCSLABSTANDARDCASE|IFCSLABELEMENTEDCASE|IFCWALL|IFCWALLSTANDARDCASE|IFCWALLELEMENTEDCASE)$/.test(editor.getEntityType?.(expressId)?.toUpperCase() ?? '');
+  const type = editor.getEntityType?.(expressId)?.toUpperCase() ?? '';
+  const follows = /^(IFCROOF|IFCSLAB|IFCSLABSTANDARDCASE|IFCSLABELEMENTEDCASE)$/.test(type) || attachedKind(type) !== null;
   // A transform batch refits once after every root has its final placement.
   if (!follows || options.refreshAttachedTops === false) {
     editor.setPositionalAttribute(chain.cartesianPointId, 0, next);

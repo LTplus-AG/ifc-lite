@@ -89,13 +89,13 @@ export function endGeometryRestore(modelId: string): void {
 export function publishMetadataAtMark(
   modelId: string,
   dataStore: IfcDataStore,
-  sceneShown: Promise<void> | undefined,
+  sceneShown: Promise<void>, // the adopted snapshot's first-visible promise: the mark waits for a real scene-show event
   trace: LoadTrace,
   isStale?: () => boolean,
 ): true {
   beginGeometryRestore(modelId);
   trace.span('cache.publishStore', () => useViewerStore.getState().setIfcDataStore(dataStore));
   // A load cancelled or superseded before its scene is shown reports no interactive reopen.
-  void Promise.resolve(sceneShown).then(() => { if (!isStale?.()) trace.milestone('load.metadataInteractive'); });
+  void sceneShown.then(() => { if (!isStale?.()) trace.milestone('load.metadataInteractive'); });
   return true;
 }

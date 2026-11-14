@@ -230,7 +230,7 @@ export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: 
     if (ctx.read(original)?.type.toUpperCase() !== 'IFCROOF') continue;
     copyRoofPlaneParts(ctx.store, ctx.editor, original, target, acc.copiedFrom, ctx.guidRandom);
   }
-  for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId]);
+  for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId], ctx.store);
   return {
     copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
     meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom, carriedBy: acc.carriedBy,

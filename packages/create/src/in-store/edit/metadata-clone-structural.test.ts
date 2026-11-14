@@ -24,7 +24,7 @@ DATA;#1=IFCWALL('0000000000000000000001',$,'Source',$,$,$,$,$,$);
     const value: unknown = Reflect.get(target, key, target);
     return typeof value === 'function' ? value.bind(target) : value;
   } });
-  cloneEffectiveMetadata(legacy, editor, 1, [3]);
+  cloneEffectiveMetadata(legacy, editor, 1, [3], store);
   expect(view.getForEntity(3).map(set => set.name)).toEqual(['Pset_Edited']);
   expect(view.getPropertyValue(3, 'Pset_Edited', 'Flag')).toBe(true);
 });

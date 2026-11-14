@@ -271,7 +271,7 @@ it('#9352 attached copies retain user quantity deletions through repeated copy a
   s = session(await parse(s.text()));
   for (const id of [wall, first.copyId, second.copyId]) {
     const quantities = extractQuantitiesOnDemand(s.store, id).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities;
-    expect(quantities.find(quantity => quantity.name === 'GrossVolume')).toBeUndefined();
+    expect(quantities.find(quantity => quantity.name === 'GrossVolume'), id === wall ? 'source' : id === first.copyId ? 'first copy' : 'second copy').toBeUndefined();
     expect(quantities.find(quantity => quantity.name === 'Height')?.value).toBeCloseTo(3, 8);
   }
 });

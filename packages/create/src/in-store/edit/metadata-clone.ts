@@ -141,6 +141,6 @@ export function cloneElementMetadata(
       touched++;
     }
   }
-  cloneEffectiveMetadata(view, editor, sourceExpressId, uniqueTargets);
+  cloneEffectiveMetadata(view, editor, sourceExpressId, uniqueTargets, dataStore);
   return { relationshipsTouched: touched };
 }

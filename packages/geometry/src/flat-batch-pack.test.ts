@@ -15,7 +15,7 @@ function mesh(id: number, verts: number, tris: number, extra: Partial<MeshData> 
     expressId: id, ifcType: 'IfcWall', positions, normals, indices, color: [0.1, 0.2, 0.3, 1],
     origin: [10, 20, 30], localToWorld: Array.from({ length: 16 }, (_, i) => i), geometryClass: 0, geometryItemId: id + 1, ...extra,
   };
-  attachCanonicalMeshMetadata(m, { hash: BigInt(id) * 3n, aabb: [0, 0, 0, 1, 1, 1], volume: 2 });
+  attachCanonicalMeshMetadata(m, { hash: BigInt(id) * 3n, aabb: { min: [0, 0, 0], max: [1, 1, 1] }, volume: 2 });
   return m;
 }
 

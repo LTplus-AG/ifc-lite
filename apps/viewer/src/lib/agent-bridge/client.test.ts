@@ -28,12 +28,16 @@ class FakeSocket implements WebSocketLike {
   onclose: WebSocketLike['onclose'] = null;
   onerror: WebSocketLike['onerror'] = null;
   readonly sent: string[] = [];
+  failSend = false;
   closedWith: { code?: number; reason?: string } | null = null;
   constructor(readonly url: string) {
     FakeSocket.last = this;
     FakeSocket.count++;
   }
-  send(data: string): void { this.sent.push(data); }
+  send(data: string): void {
+    if (this.failSend) throw new Error('socket send failed');
+    this.sent.push(data);
+  }
   close(code?: number, reason?: string): void {
     this.closedWith = { code, reason };
     this.readyState = 3;
@@ -611,6 +615,24 @@ describe('local agent bridge client: allowing edits (#9523)', () => {
     assert.deepEqual(sent.map((u) => [u.sessionId, u.permission]), [['session-1', 'read-write'], ['session-1', 'read-only']]);
     const hello = h.socket().hello();
     for (const update of sent) assert.deepEqual(update.tools, hello.tools, 'the update carries the tool list');
+  });
+
+  it('#9966 a failed permission send cannot grant edits, but revocation still takes effect', () => {
+    const h = paired();
+    h.socket().failSend = true;
+    assert.equal(h.client.setPermission('read-write'), false);
+    assert.equal(h.client.canEditNow(), false);
+    assert.equal(h.client.status.kind === 'connected' && h.client.status.permission, 'read-only');
+    assert.equal(updates(h.socket()).length, 0);
+    assert.equal(h.statuses.some((status) => status.kind === 'connected' && status.permission === 'read-write'), false);
+
+    h.socket().failSend = false;
+    assert.equal(h.client.setPermission('read-write'), true);
+    h.socket().failSend = true;
+    assert.equal(h.client.setPermission('read-only'), true);
+    assert.equal(h.client.canEditNow(), false);
+    assert.equal(h.client.status.kind === 'connected' && h.client.status.permission, 'read-only');
+    assert.deepEqual(updates(h.socket()).map((update) => update.permission), ['read-write']);
   });
 
   it('a grant whose update the bridge would refuse grants nothing; an error frame alone changes no grant', () => {

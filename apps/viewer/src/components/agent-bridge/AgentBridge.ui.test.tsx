@@ -451,7 +451,8 @@ describe('allowing the agent to edit (#9523)', () => {
     const ui = render(<AgentBridgeConnectionPanel />);
     const toggle = () => ui.querySelector('[data-agent-bridge-allow-edits]') as HTMLButtonElement;
     assert.equal(toggle().getAttribute('aria-checked'), 'false', 'off by default');
-    assert.match(ui.textContent ?? '', /Allow the agent to edit this model/);
+    assert.match(ui.textContent ?? '', /Allow the agent to edit models in this tab/);
+    assert.match(ui.textContent ?? '', /any editable model loaded in this tab/);
     click(toggle());
     assert.deepEqual(asked, ['read-write']);
 
@@ -470,11 +471,13 @@ describe('allowing the agent to edit (#9523)', () => {
     assert.match(ui.textContent ?? '', /started with --read-only/);
   });
 
-  it('marks edit rows in the activity log and says what an applied edit changed', async () => {
+  it('#9966 marks only changed edit rows as applied and describes no-op edits', async () => {
     const { AgentBridgeActivityLog } = await import('./AgentBridgeConnectionPanel');
     updateAgentBridgeState({
       status: { ...CONNECTED, permission: 'read-write' },
       activity: [
+        { seq: 4, tool: 'entity_set_property', modelId: 'm', startedAt: 0, durationMs: 2, outcome: 'ok', mutating: true,
+          edit: { modelId: 'm', expressId: 7, globalId: '2JUHrTM_j3UxZiBnyBfByx', entityType: 'IfcWall', field: 'Pset_WallCommon.FireRating', before: 'EI60', after: 'EI60', changed: false } },
         { seq: 3, tool: 'entity_set_property', modelId: 'm', startedAt: 0, durationMs: 2, outcome: 'error', errorCode: 'READ_ONLY', mutating: true },
         { seq: 2, tool: 'entity_set_property', modelId: 'm', startedAt: 0, durationMs: 2, outcome: 'ok', mutating: true,
           edit: { modelId: 'm', expressId: 7, globalId: '2JUHrTM_j3UxZiBnyBfByx', entityType: 'IfcWall', field: 'Pset_WallCommon.FireRating', before: null, after: 'EI60', changed: true } },
@@ -483,8 +486,9 @@ describe('allowing the agent to edit (#9523)', () => {
     });
     const ui = render(<AgentBridgeActivityLog />);
     const rows = [...ui.querySelectorAll('[data-agent-bridge-activity]')];
-    assert.deepEqual(rows.map((row) => row.getAttribute('data-agent-bridge-edit')), ['not-applied', 'applied', null]);
-    assert.match(rows[1].textContent ?? '', /IfcWall #7 · Pset_WallCommon\.FireRating: — → “EI60”/);
-    assert.doesNotMatch(rows[2].textContent ?? '', /→/);
+    assert.deepEqual(rows.map((row) => row.getAttribute('data-agent-bridge-edit')), ['not-applied', 'not-applied', 'applied', null]);
+    assert.match(rows[0].textContent ?? '', /was already “EI60”; nothing changed/);
+    assert.match(rows[2].textContent ?? '', /IfcWall #7 · Pset_WallCommon\.FireRating: — → “EI60”/);
+    assert.doesNotMatch(rows[3].textContent ?? '', /→/);
   });
 });

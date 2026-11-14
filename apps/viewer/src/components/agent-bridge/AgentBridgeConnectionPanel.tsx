@@ -48,7 +48,7 @@ function ActivityRow({ entry }: { entry: AgentBridgeActivity }) {
       : t('agentBridge.panel.error', { code: entry.errorCode ?? '' });
   return (
     <li className={cn('py-0.5 text-xs', entry.mutating && 'rounded bg-status-warn/10 px-1')}
-      data-agent-bridge-activity={entry.outcome} data-agent-bridge-edit={entry.mutating ? (entry.edit ? 'applied' : 'not-applied') : undefined}>
+      data-agent-bridge-activity={entry.outcome} data-agent-bridge-edit={entry.mutating ? (entry.edit?.changed ? 'applied' : 'not-applied') : undefined}>
       <span className="flex items-baseline gap-2">
         {entry.mutating
           ? <Pencil className="h-3 w-3 shrink-0 self-center text-status-warn" aria-label={t('agentBridge.panel.edit')} />

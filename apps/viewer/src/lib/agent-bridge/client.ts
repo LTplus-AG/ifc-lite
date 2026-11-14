@@ -147,7 +147,7 @@ export class BridgeClient {
   /**
    * Grant (`read-write`) or revoke (`read-only`) edits on the live session,
    * and tell the bridge with an `update` carrying the permission and the tool
-   * list. The tab's own grant changes first and synchronously, so a revoke
+   * list. The tab's revoke changes first and synchronously, so a revoke
    * refuses every edit not yet written even if the update is lost. Returns
    * false when nothing changed (not paired, already so, or a grant the
    * bridge's `--read-only` ceiling forbids).
@@ -169,14 +169,15 @@ export class BridgeClient {
       warn(`the permission update would be refused by the bridge: ${valid.error}`);
       if (permission === 'read-write') return false;
     }
-    // The tab's grant changes first: canEditNow() follows the status.
-    this.setStatus({ ...status, permission });
+    // Revoke before sending; grant only after the update was sent successfully.
+    if (permission === 'read-only') this.setStatus({ ...status, permission });
     try {
       if (valid.ok) ws.send(json);
     } catch (err) {
-      // Read-only still holds in the tab; a lost grant only means the bridge keeps refusing edits.
       warn('could not tell the bridge about the permission change', err);
+      if (permission === 'read-write') return false;
     }
+    if (permission === 'read-write') this.setStatus({ ...status, permission });
     return true;
   }
 

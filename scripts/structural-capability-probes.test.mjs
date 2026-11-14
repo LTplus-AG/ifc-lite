@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCorpus } from '../tests/structural-coverage/lib/corpus.mjs';
 import { loadPackages } from '../tests/structural-coverage/lib/packages.mjs';
-import { compareDerived, measureDerivation, FRAME } from '../tests/structural-coverage/probes/capability-derive-toggle.mjs';
+import { compareDerived, measureDerivation, FRAME, mergeSupportOnlyNodes, isRestraintValue } from '../tests/structural-coverage/probes/capability-derive-toggle.mjs';
 
 test('#9668: perturbing real derived axes, endpoints, links or connections cannot pass', async (t) => {
   const root = new URL('../', import.meta.url).pathname;
@@ -60,12 +60,54 @@ test('#9668: coincident support-only reference points merge into their joint', (
   const support = { id:481, position:[0.0002,0,0], links:[], support:true, memberConnected:false };
   const member = { id:7, ends:[[0,0,0],[1,0,0]], links:[10] };
   const actual = { members:[member], nodes:[{id:900,position:[0,0,0],links:[10],support:true}] };
-  const expected = { members:[member], nodes:[joint,support] };
+  const expected = { members:[member], nodes:mergeSupportOnlyNodes([joint,support]) };
   const result = compareDerived(actual,expected);
   assert.equal(result.status,'pass');
   assert.equal(result.counts.referenceNodes,1);
   assert.equal(result.counts.supportReferenceNodes,1);
   assert.equal(result.mismatches.length,0);
+});
+
+test('#9668: an unconnected derived support beside a joint remains an extra connection', () => {
+  const member = { id:7, ends:[[0,0,0],[1,0,0]], links:[10] };
+  const referenceJoint = { id:204, position:[0,0,0], links:[10], support:true, memberConnected:true };
+  const derived = { members:[member], nodes:[
+    {id:900,position:[0,0,0],links:[10],support:false,memberConnected:true},
+    {id:901,position:[0,0,0],links:[],support:true,memberConnected:false},
+  ] };
+  const result = compareDerived(derived,{members:[member],nodes:[referenceJoint]});
+  assert.notEqual(result.status,'pass');
+  assert.ok(result.mismatches.some((problem)=>problem.includes('extra derived connection #901')));
+});
+
+test('#9668: coincident orphan reference points stay separate', () => {
+  const member = { id:7, ends:[[0,0,0],[1,0,0]], links:[] };
+  const orphans = [
+    {id:20,position:[0,0,0],links:[],support:true,memberConnected:false},
+    {id:21,position:[0,0,0],links:[],support:false,memberConnected:false},
+  ];
+  assert.equal(mergeSupportOnlyNodes(orphans).length,2);
+  const result = compareDerived({members:[member],nodes:[orphans[0]]},{members:[member],nodes:orphans});
+  assert.notEqual(result.status,'pass');
+  assert.ok(result.mismatches.some((problem)=>problem.includes('reference connection #21')));
+});
+
+test('#9668: IFC4 typed restraint values count as supports', () => {
+  assert.equal(isRestraintValue({type:'IFCBOOLEAN',value:'.T.'}),true);
+  assert.equal(isRestraintValue({type:'IFCLINEARSTIFFNESSMEASURE',value:12}),true);
+  assert.equal(isRestraintValue({type:'IFCBOOLEAN',value:'.F.'}),false);
+  assert.equal(isRestraintValue(0),false);
+  assert.equal(isRestraintValue('$'),false);
+});
+
+test('#9668: a merged reference support is still required on the derived side', () => {
+  const member = { id:7, ends:[[0,0,0],[1,0,0]], links:[10] };
+  const joint = {id:20,position:[0,0,0],links:[10],support:false,memberConnected:true};
+  const support = {id:21,position:[0,0,0],links:[],support:true,memberConnected:false};
+  const reference = mergeSupportOnlyNodes([joint,support]);
+  const result = compareDerived({members:[member],nodes:[{...joint}]},{members:[member],nodes:reference});
+  assert.equal(result.status,'partial');
+  assert.ok(result.mismatches.some((problem)=>problem.includes('reference support')));
 });
 
 test('#9668: support mismatch keeps the derive row partial and names its position', () => {

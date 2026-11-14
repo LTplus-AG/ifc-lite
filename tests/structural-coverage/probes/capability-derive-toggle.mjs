@@ -19,7 +19,7 @@ const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1
 const unit = (v) => v.map((x) => x / Math.hypot(...v));
 
 /** Independent STEP geometry oracle. Refuse unsupported topology and cyclic placements. */
-function referenceGeometry(step) {
+function referenceGeometry(step, { mergeSupports = false } = {}) {
   const get = (ref) => { const e = step.get(ref); if (!e) throw new Error(`missing reference ${JSON.stringify(ref)}`); return e; };
   const point = (ref) => get(ref).args[0];
   const transform = (p, placement, seen = new Set()) => {
@@ -62,22 +62,28 @@ function referenceGeometry(step) {
       return transform(p,e.args[5]);
     })();
     const condition = e.args[7]?.ref ? step.get(e.args[7].ref) : undefined;
-    const support = Boolean(condition?.args.slice(1).some((value) => typeof value === 'number' && value !== 0));
+    const support = Boolean(condition?.args.slice(1).some(isRestraintValue));
     return { id:e.id, position, support };
   });
   // A reference node's physical counterparts are the physical products of
   // its incident authored members, even when the file omits direct node links.
+  const memberRelations = [...step.of('IFCRELCONNECTSSTRUCTURALMEMBER'), ...step.of('IFCRELCONNECTSWITHECCENTRICITY')];
+  const relationsByNode = new Map();
+  for (const relation of memberRelations) {
+    const nodeId = relation.args[5]?.ref;
+    if (!relationsByNode.has(nodeId)) relationsByNode.set(nodeId, []);
+    relationsByNode.get(nodeId).push(relation);
+  }
   for (const node of nodes) {
     const physical = new Set(links.get(node.id) ?? []);
-    for (const r of [...step.of('IFCRELCONNECTSSTRUCTURALMEMBER'), ...step.of('IFCRELCONNECTSWITHECCENTRICITY')]) {
-      if (r.args[5]?.ref !== node.id) continue;
+    const incident = relationsByNode.get(node.id) ?? [];
+    node.memberConnected = incident.length > 0;
+    for (const r of incident) {
       for (const id of links.get(r.args[4]?.ref) ?? []) physical.add(id);
     }
     node.links = [...physical].sort((a,b)=>a-b);
-    node.memberConnected = [...step.of('IFCRELCONNECTSSTRUCTURALMEMBER'), ...step.of('IFCRELCONNECTSWITHECCENTRICITY')]
-      .some((r) => r.args[5]?.ref === node.id);
   }
-  return { members, nodes:mergeSupportOnlyNodes(nodes) };
+  return { members, nodes:mergeSupports ? mergeSupportOnlyNodes(nodes) : nodes };
 }
 
 /** AxisVM exports some conditioned support points separately from their member joint. */
@@ -86,7 +92,7 @@ export function mergeSupportOnlyNodes(nodes) {
   return kept.filter((node) => {
     const supportOnly = node.support && !node.memberConnected && !(node.links?.length);
     const joint = supportOnly && kept.find((other) => other !== node &&
-      (other.memberConnected || other.links?.length || !other.support) &&
+      (other.memberConnected || other.links?.length) &&
       distance(other.position,node.position) <= TOLERANCE);
     if (!joint) return true;
     joint.support = true;
@@ -94,10 +100,14 @@ export function mergeSupportOnlyNodes(nodes) {
   });
 }
 
+export function isRestraintValue(value) {
+  const actual = value && typeof value === 'object' && 'value' in value ? value.value : value;
+  return actual === true || actual === '.T.' || (typeof actual === 'number' && actual !== 0);
+}
+
 /** Both directions matter: missing or extra members/nodes must fail too. */
 export function compareDerived(actual, expected) {
   const problems = [];
-  expected = { ...expected, nodes:mergeSupportOnlyNodes(expected.nodes) };
   if (!expected.members.length || !expected.nodes.length) problems.push('reference has no members or connections');
   const matches = (a,b) => {
     const endError = Math.min(Math.max(distance(a.ends[0],b.ends[0]),distance(a.ends[1],b.ends[1])), Math.max(distance(a.ends[0],b.ends[1]),distance(a.ends[1],b.ends[0])));

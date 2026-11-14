@@ -76,6 +76,16 @@ it('#9352 duplicate refuses an incomplete external association before writing', 
   expect(s.snapshot()).toEqual(before);
 });
 
+it('#9352 duplicate still replays a material association that carries only relId', async () => {
+  const { s, wall } = await setup();
+  const source = resolveDuplicateSource(s.store, wall, s.editor);
+  const material = s.editor.addEntity('IfcMaterial', ['Concrete', null, null]);
+  const rel = s.editor.addEntity('IfcRelAssociatesMaterial', ['0000000000000000000003', null, null, null, [`#${wall}`], `#${material.expressId}`]);
+  source.associations = [{ relType: 'IfcRelAssociatesMaterial', relId: rel.expressId, relatingExpressId: material.expressId,
+    ownerHistoryId: null, name: null, description: null }];
+  expect(() => duplicateInStore(s.editor, source)).not.toThrow();
+});
+
 it('#9352 a source nested part follows its host through a new containment', async () => {
   let { s, home, wall } = await setup();
   const placement = new AnchorEntityReader(s.store, s.view).entity(wall)!.attributes[5];

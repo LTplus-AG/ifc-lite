@@ -140,7 +140,7 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
 
   // Spare parser + small-file geometry workers, prepared at idle (lib/fast-path).
   // The runtime is its own chunk and applies its own gates (build env, URL kill
-  // switch). It stays here, not in prepareViewer, so a hosted start whose
+  // switch, a host that leaves no way to open a model). It stays here, not in prepareViewer, so a hosted start whose
   // configuration fails never spawns workers.
   scheduleFastPath();
 }

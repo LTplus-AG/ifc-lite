@@ -117,15 +117,18 @@ def main():
 
     def sample():
         while not done.is_set():
-            counts, r0 = {}, time.perf_counter()
+            counts, run, enabled, r0 = {}, {}, 0, time.perf_counter()
             for name, fd in fds.items():
                 try:
-                    counts[name] = struct.unpack('QQQ', os.read(fd, 24))[0]
+                    v, en, ru = struct.unpack('QQQ', os.read(fd, 24))
                 except (OSError, struct.error):
                     counts = None  # a sample missing a PMU would read as "no change" there: write none (review #10138)
                     break
+                counts[name], run[name], enabled = v, ru, max(enabled, en)
             if out and counts:
-                out.write(json.dumps({'t': round(time.time() * 1000, 2), 'c': counts, 'readUs': round((time.perf_counter() - r0) * 1e6)}) + '\n')
+                # e/r: time enabled and running (ns). Each task runs on one core type at a time, so the PMUs' running
+                # times sum to the enabled time unless the PMU is multiplexed; the harness rejects windows below 99 %.
+                out.write(json.dumps({'t': round(time.time() * 1000, 2), 'c': counts, 'e': enabled, 'r': run, 'readUs': round((time.perf_counter() - r0) * 1e6)}) + '\n')
             done.wait(PERIOD_S)
 
     th = threading.Thread(target=sample, daemon=True)

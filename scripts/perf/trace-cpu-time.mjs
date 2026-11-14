@@ -69,7 +69,7 @@ export function userTimingMarks(events) {
   for (const e of events) {
     const st = e.args?.data?.startTime;
     if (typeof e.cat === 'string' && e.cat.split(',').includes('blink.user_timing') && Number.isFinite(st) && Number.isFinite(e.ts)) {
-      out.push({ name: e.name, pid: e.pid, tsUs: e.ts, startTimeMs: st });
+      out.push({ name: e.name, pid: e.pid, tid: e.tid, tsUs: e.ts, startTimeMs: st });
     }
   }
   return out;
@@ -85,7 +85,15 @@ export function resolveWindow(events, { window = null } = {}) {
   const done = marks.find((m) => m.name === INTERACTIVE_MARK);
   const pid = input?.pid ?? done?.pid ?? marks[0]?.pid ?? null;
   if (pid === null) throw new Error('no User Timing mark in the trace: cannot align the page clock (record blink.user_timing)');
-  const own = marks.filter((m) => m.pid === pid).map((m) => m.tsUs - m.startTimeMs * 1000).sort((a, b) => a - b);
+  // Page clock = the main thread's: a worker has its own time origin, so worker marks of the same process must not
+  // enter the offset (review #10138). The scoreboard marks (written by the harness on the page) are used when present;
+  // otherwise only marks on the renderer's main thread.
+  const SCOREBOARD = new Set([INPUT_MARK, INTERACTIVE_MARK, ORIGIN_MARK]);
+  const mainTid = events.find((e) => e.ph === 'M' && e.name === 'thread_name' && e.pid === pid && e.args?.name === 'CrRendererMain')?.tid;
+  const anchors = marks.some((m) => SCOREBOARD.has(m.name) && m.pid === pid) ? marks.filter((m) => SCOREBOARD.has(m.name) && m.pid === pid)
+    : marks.filter((m) => m.pid === pid && (mainTid === undefined || m.tid === mainTid));
+  if (anchors.length === 0) throw new Error('no main-thread User Timing mark: cannot align the page clock');
+  const own = anchors.map((m) => m.tsUs - m.startTimeMs * 1000).sort((a, b) => a - b);
   const offsetUs = own[Math.floor(own.length / 2)];
   let startMs, endMs, source;
   if (window) {

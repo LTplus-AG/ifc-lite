@@ -67,6 +67,7 @@ test('a sample settled inside an open window records the window and allowance an
     assert.ok(host.cap.ownStallPct === null || host.cap.ownStallPct >= 0);
     // The flag uses the upper bound of the union (job + browser scope, capped at 100 %); the range is recorded.
     const h3 = await hostQuiet({ maxWaitMs: 0 });
+    const t3 = Date.now(); while (Date.now() - t3 < 5) { /* a non-empty sample */ }
     settleHostLoad(h3, { ownOutside: { cpuMs: 0, pressureUs: 5 } });
     if (h3.cap.jobStallUs !== null) {
       assert.equal(h3.cap.ownStallPct, Math.round(Math.min(100, ((h3.cap.jobStallUs + 5) / (h3.sampleMs * 1000)) * 100) * 10) / 10);
@@ -152,5 +153,31 @@ test('the pre-sample wait re-reads the cap state: a wait that crosses the end of
     assert.equal(h.pressureSource, 'host');
     assert.ok(h.capBoundariesInWait >= 1);
     assert.ok(h.capBefore.restoredMs !== null);
+  } finally { delete process.env.LOAD_SCOREBOARD_CAP_STATE; }
+});
+
+test('cgroup membership that cannot be resolved is unknown: unreadable own cgroup or a live process with no readable cgroup', async () => {
+  const { outsideOwnCgroup } = await import('./load-scoreboard-host.mjs');
+  const io = { usage: () => 10, pressure: () => ({ avg10: 0, totalUs: 1 }) };
+  assert.deepEqual([outsideOwnCgroup([5], { ...io, own: null, cgroupOf: () => '/x.scope' })].map((o) => [o.cpuMs, o.pressureUs]), [[null, null]]);
+  const live = outsideOwnCgroup([5], { ...io, own: '/job.scope', cgroupOf: () => null, alive: () => true });
+  assert.deepEqual([live.cpuMs, live.pressureUs, live.unresolved], [null, null, true]);
+  const gone = outsideOwnCgroup([5], { ...io, own: '/job.scope', cgroupOf: () => null, alive: () => false });
+  assert.deepEqual([gone.cpuMs, gone.pressureUs], [0, 0]); // exited in between: nothing left to attribute
+});
+
+test('the stall share uses the interval between its two counter reads (sample start and end), not one widened by diagnostics', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cap-'));
+  const file = join(dir, 's.json');
+  writeFileSync(file, JSON.stringify({ id: 'w', cores: 2, appliedEpoch: Date.now() / 1000 - 5, entries: [] }));
+  process.env.LOAD_SCOREBOARD_CAP_STATE = file;
+  try {
+    const { hostQuiet, settleHostLoad } = await import('./load-scoreboard-host.mjs');
+    const h = await hostQuiet({ maxWaitMs: 0 });
+    const t0 = Date.now(); while (Date.now() - t0 < 20) { /* the sample */ }
+    settleHostLoad(h, { ownOutside: { cpuMs: 0, pressureUs: 0, scopes: 0 } });
+    assert.equal(h.cap.window, 'inside');
+    assert.equal(h.cap.stallWindowMs, h.sampleMs);
+    assert.ok(h.sampleMs >= 20 && h.sampleMs < 1000, `sample ${h.sampleMs} ms excludes the diagnostic reads before and after`);
   } finally { delete process.env.LOAD_SCOREBOARD_CAP_STATE; }
 });

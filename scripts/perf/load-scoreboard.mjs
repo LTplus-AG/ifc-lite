@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { hostQuiet, settleHostLoad } from './load-scoreboard-host.mjs';
-import { addCpuFloors, cpuTimeSummary } from './load-scoreboard-report-cpu.mjs';
+import { addCpuFloors, applyArmProtocolGate, cpuTimeSummary } from './load-scoreboard-report-cpu.mjs';
 export { classifyHostLoad, hostQuiet, settleHostLoad } from './load-scoreboard-host.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
 import { BOOT_FIXTURE, BROWSER_LANES, DEFAULT_LANES, LANES, elementDiffVerdict, elementsFileFor, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
@@ -356,7 +356,7 @@ function report(opt) {
   const floors = aaPath ? JSON.parse(readFileSync(aaPath, 'utf8')).floors : null;
   const host = existsSync(join(out, 'host.json')) ? JSON.parse(readFileSync(join(out, 'host.json'), 'utf8')) : null;
   const summary = summarize(plan, samples, { floors });
-  summary.cpuTime = cpuTimeSummary(plan, samples, { floors });
+  summary.cpuTime = applyArmProtocolGate(cpuTimeSummary(plan, samples, { floors }), summary);
   addCpuFloors(summary, summary.cpuTime);
   attachElementDiffs(summary, samples, plan, out);
   summary.aaReference = aaPath;

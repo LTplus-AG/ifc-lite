@@ -56,17 +56,20 @@ export function cpuTimeSummary(plan, samples, { floors = null } = {}) {
         [label, ['base', 'branch'].map((s) => median(side(s).filter((r) => r.ok).map(get).filter(Number.isFinite)))]));
       // Second measures compare the rounds where both sides have the value (unavailable is not a failed load; review #10138).
       const complete = (ps) => ps.filter(([a, b]) => a !== null && b !== null);
-      const pairs = complete(pairsOf(CPU_COLUMNS[0][1]));
+      const pairs = complete(pairsOf(CPU_COLUMNS[0][1])), ipairs = complete(pairsOf(INSTR_COLUMN[1]));
       const underLoad = { base: side('base').filter((r) => r.host?.underLoad).length, branch: side('branch').filter((r) => r.host?.underLoad).length };
       const failures = { base: side('base').filter((r) => !r.ok).length, branch: side('branch').filter((r) => !r.ok).length };
+      // The verdict figures' medians come from the same complete rounds the verdicts compare (review #10138).
+      const pairMedians = (ps) => [median(ps.map((p) => p[0])), median(ps.map((p) => p[1]))];
+      medians[CPU_COLUMNS[0][0]] = pairMedians(pairs);
+      medians[INSTR_COLUMN[0]] = pairMedians(ipairs);
       const okRows = rows.filter((r) => r.ok);
       const unavailable = (has, value, why) => { const u = okRows.filter((r) => has(r) && !Number.isFinite(value(r))); return u.length ? { n: u.length, reason: why(u[0]) } : null; };
-      const cell = { fixture, lane, n: [side('base').length, side('branch').length], medians,
+      const cell = { fixture, lane, n: [side('base').length, side('branch').length], pairs: { cpu: pairs.length, instructions: ipairs.length }, medians,
         cpuUnavailable: unavailable((r) => r.cpuTime, (r) => r.cpuTime?.cpuMs?.total, (r) => r.cpuTime?.coverage ?? r.cpuTime?.error ?? 'no CPU figure'),
         instructionsUnavailable: unavailable((r) => r.instructions, (r) => r.instructions?.total, (r) => r.instructions?.unavailable ?? 'no count') };
       // Instructions: the THIRD verdict column, by the same rule against the recorded instruction A/A floor (promoted by the
       // capped A/A of 2026-11-14: floors 1.00% FZK, 1.20% Holter, under the < 2% bar fixed before the run). Wall stays primary.
-      const ipairs = complete(pairsOf(INSTR_COLUMN[1]));
       if (ipairs.some(([a, b]) => a !== null && b !== null)) {
         cell.instructions = { aaFloor: kind === 'aa' && underLoad.base + underLoad.branch === 0 ? aaNoiseFloor(ipairs, { seed: 0x5eed }) : null, ownFloor: ownNoiseFloor(ipairs) };
         if (kind !== 'aa') cell.instructions.verdict = verdictWithFloor(ipairs, { failures, underLoad, floors, fixture, lane, key: INSTR_FLOOR_KEY, label: 'instruction' });
@@ -91,6 +94,20 @@ function verdictWithFloor(pairs, { failures, underLoad, floors, fixture, lane, k
     return { ...v, verdict: `inconclusive: no ${label} A/A floor for this cell (own floor alone: ${v.verdict})`, pass: false, regression: false };
   }
   return v;
+}
+
+/**
+ * The wall verdict's arm-protocol gate applies to CPU and instruction verdicts too: on a `-settled` lane whose sides
+ * armed differently (not declared asymmetric) they are inconclusive, like the wall verdict (review #10138).
+ */
+export function applyArmProtocolGate(cpu, summary) {
+  for (const c of cpu.cells) {
+    const p = summary.fixtures?.find((f) => f.name === c.fixture)?.lanes?.[c.lane]?.armProtocol;
+    if (!p || p.same || p.declaredAsymmetric) continue;
+    const why = `inconclusive: arming protocols differ (base: ${p.base.signals.join('/')}, branch: ${p.branch.signals.join('/')}; declare plan.asymmetricBootSignal to compare them)`;
+    for (const v of [c.verdict, c.instructions?.verdict]) if (v) Object.assign(v, { verdict: why, pass: false, regression: false });
+  }
+  return cpu;
 }
 
 /** Add CPU A/A floors to a summary's floors (A/A runs), so merged floors files carry them. */
@@ -118,7 +135,7 @@ export function cpuTimeSection(samples, summary) {
     const tail = aa ? `${pct(c.aaFloor)} (${pct(c.aaFloorFlagged)}) | ${pct(c.instructions?.aaFloor)}`
       : `${floors3(c.verdict)} | ${mark(c.verdict)} | ${floors3(c.instructions?.verdict)} | ${mark(c.instructions?.verdict)}`;
     const gaps = [c.cpuUnavailable && `CPU unavailable ${c.cpuUnavailable.n}: ${c.cpuUnavailable.reason}`, c.instructionsUnavailable && `instructions unavailable ${c.instructionsUnavailable.n}: ${c.instructionsUnavailable.reason}`].filter(Boolean);
-    lines.push(`| ${c.fixture} | ${c.lane} | ${c.n.join('/')}${gaps.length ? ` (${gaps.join('; ')})` : ''} | ${med} | ${tail} |`);
+    lines.push(`| ${c.fixture} | ${c.lane} | ${c.n.join('/')}; pairs CPU ${c.pairs.cpu}, instr ${c.pairs.instructions}${gaps.length ? ` (${gaps.join('; ')})` : ''} | ${med} | ${tail} |`);
   }
   return lines;
 }

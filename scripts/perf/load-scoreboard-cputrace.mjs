@@ -39,18 +39,32 @@ const THREADS_KEPT = 12;
  * Stop tracing, keep the trace gzipped at `file`, and summarize it. Never throws: a trace that cannot be read
  * or summarized is recorded as `cpuTime: { error }`, and the timing row stays valid.
  */
-export async function stopCpuTrace(cdp, { spans = null, file = null } = {}) {
+export async function stopCpuTrace(cdp, { spans = null, file = null, completeTimeoutMs = 120000 } = {}) {
+  let timer = null, onComplete = null, onClose = null;
   try {
-    const complete = new Promise((resolve) => cdp.once('Tracing.tracingComplete', resolve));
+    // Settles on completion, on the session closing (Chrome gone) or after a bound, so a lost browser can never hang
+    // the sample; both listeners are removed afterwards (review #10138).
+    const complete = new Promise((resolve, reject) => {
+      onComplete = resolve;
+      onClose = () => reject(new Error('CDP session closed before Tracing.tracingComplete'));
+      cdp.once('Tracing.tracingComplete', onComplete);
+      cdp.once?.('close', onClose);
+      timer = setTimeout(() => reject(new Error(`no Tracing.tracingComplete within ${completeTimeoutMs} ms`)), completeTimeoutMs);
+    });
     await cdp.send('Tracing.end');
-    const { stream } = await complete;
+    const { stream, dataLossOccurred } = await complete;
     const text = await readStream(cdp, stream);
     if (file) writeFileSync(file, gzipSync(text));
+    // Chrome dropped events: the retained ones can look complete, so no CPU figure (the raw trace is kept).
+    if (dataLossOccurred) return { cpuTraceFile: file, cpuTime: { error: 'Chrome reported trace data loss (dataLossOccurred)', dataLoss: true } };
     const r = traceCpuTime(JSON.parse(text), { spans });
     return { cpuTraceFile: file, cpuTime: { ...r, threads: r.threads.slice(0, THREADS_KEPT) } };
   } catch (err) {
     return { cpuTraceFile: file, cpuTime: { error: String(err?.message ?? err).slice(0, 300) } };
   } finally {
+    clearTimeout(timer);
+    cdp.off?.('Tracing.tracingComplete', onComplete);
+    cdp.off?.('close', onClose);
     await cdp.detach().catch(() => {});
   }
 }

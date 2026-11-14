@@ -7,14 +7,16 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { traceCpuTime, resolveWindow, traceEventsOf } from './trace-cpu-time.mjs';
 
 const here = (f) => fileURLToPath(new URL(f, import.meta.url));
-const trace = JSON.parse(readFileSync(here('./trace-cpu-time.fixture.json'), 'utf8'));
-const spans = JSON.parse(readFileSync(here('./trace-cpu-time.spans.fixture.json'), 'utf8'));
+// Fixtures are loaded as modules (data, not source text to assert on).
+const load = createRequire(import.meta.url);
+const trace = load('./trace-cpu-time.fixture.json');
+const spans = load('./trace-cpu-time.spans.fixture.json');
 
 test('the window comes from the scoreboard marks and aligns the page clock with the trace clock', () => {
   const w = resolveWindow(traceEventsOf(trace));
@@ -76,7 +78,7 @@ test('CPU time is a second measure: per-side medians, A/A floor (none with a bus
   const summary = { floors: {}, cpuTime: aa };
   addCpuFloors(summary, aa);
   assert.equal(summary.floors.FZK['browser-cold'].cpuTotalMs, aa.cells[0].aaFloor);
-  assert.match(cpuTimeSection(aaRows, summary).find((l) => l.startsWith('| FZK |')), /\| 6\/6 \| 503 \/ 508 \| 1,003 \/ 1,004 \|/);
+  assert.match(cpuTimeSection(aaRows, summary).find((l) => l.startsWith('| FZK |')), /\| 6\/6; pairs CPU 6, instr 0 \| 503 \/ 508 \| 1,003 \/ 1,004 \|/);
   const busy = cpuTimeSummary(plan, aaRows.map((r, i) => (i === 0 ? { ...r, host: { underLoad: true } } : r)));
   assert.equal(busy.cells[0].aaFloor, null);
   // Compare: a 20% CPU gain with a 1% CPU A/A floor passes; without a CPU floor in the reference it is inconclusive.
@@ -169,4 +171,34 @@ test('a requested second measure that was unavailable is shown with its count an
     { ok: true, fixture: 'FZK', lane: 'browser-cold', side: 'branch', round: n, interactiveMs: 500, instructions: r === null ? { total: null, unavailable: 'x' } : { total: r * 1e6 } }]);
   const v = cpuTimeSummary({ kind: 'compare', lanes: ['browser-cold'] }, instr).cells[0].instructions.verdict;
   assert.equal(v.gain, 0);
+});
+
+test('worker marks of the renderer process (their own time origin) do not shift the page-clock offset', () => {
+  const skew = [0, 1, 2].map((i) => ({ ph: 'I', cat: 'blink.user_timing', name: `w${i}`, pid: 10, tid: 2, ts: 1300000 + i, args: { data: { startTime: 100 + i / 1000 } } }));
+  const r = traceCpuTime([...traceEventsOf(trace), ...skew]);
+  assert.equal(r.window.startMs, 100);
+  assert.equal(r.cpuMs.rendererMain, 90); // unchanged: offset from the scoreboard marks
+  // Fallback (no scoreboard marks): only main-thread marks align the clock.
+  const plain = traceEventsOf(trace).filter((e) => !String(e.name).includes('scoreboard')).concat(skew);
+  assert.equal(traceCpuTime(plain, { window: [200, 250] }).cpuMs.rendererMain, 50);
+});
+
+test('CPU and instruction verdicts follow the wall arm-protocol gate; their medians come from the compared rounds', async () => {
+  const { cpuTimeSummary, applyArmProtocolGate } = await import('./load-scoreboard-report-cpu.mjs');
+  const row = (side, n, v) => ({ ok: true, fixture: 'FZK', lane: 'browser-cold-settled', side, round: n, interactiveMs: 500, instructions: { total: v * 1e6 }, cpuTime: { cpuMs: { total: v } } });
+  const rows = [0, 1, 2, 3, 4].flatMap((n) => [row('base', n, 1000 + n), row('branch', n, 800 + n)]);
+  const floors = { FZK: { 'browser-cold-settled': { cpuTotalMs: 0.01, instructionsM: 0.01 } } };
+  const cpu = cpuTimeSummary({ kind: 'compare', lanes: ['browser-cold-settled'] }, rows, { floors });
+  assert.equal(cpu.cells[0].instructions.verdict.verdict, 'gain');
+  const summary = { fixtures: [{ name: 'FZK', lanes: { 'browser-cold-settled': { armProtocol: { same: false, declaredAsymmetric: false, base: { signals: ['true'] }, branch: { signals: ['no signal'] } } } } }] };
+  applyArmProtocolGate(cpu, summary);
+  assert.match(cpu.cells[0].verdict.verdict, /^inconclusive: arming protocols differ/);
+  assert.match(cpu.cells[0].instructions.verdict.verdict, /^inconclusive: arming protocols differ/);
+  // Medians from complete rounds: base 100, 200, 10000 vs branch 100, 200, unavailable -> 150 / 150.
+  const mixed = [[100, 100], [200, 200], [10000, null]].flatMap(([b, r], n) => [
+    { ok: true, fixture: 'FZK', lane: 'browser-cold', side: 'base', round: n, interactiveMs: 1, cpuTime: { cpuMs: { total: b } } },
+    { ok: true, fixture: 'FZK', lane: 'browser-cold', side: 'branch', round: n, interactiveMs: 1, cpuTime: { cpuMs: { total: r } } }]);
+  const c = cpuTimeSummary({ kind: 'compare', lanes: ['browser-cold'] }, mixed).cells[0];
+  assert.deepEqual(c.medians.total, [150, 150]);
+  assert.equal(c.pairs.cpu, 2);
 });

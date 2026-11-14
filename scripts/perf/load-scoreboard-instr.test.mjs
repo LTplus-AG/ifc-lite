@@ -15,8 +15,10 @@ import { INSTR_WRAPPER, instructionsIn, parseInstrSamples } from './load-scorebo
 
 const ndjson = (rows) => rows.map((r) => JSON.stringify(r)).join('\n');
 const samples = ndjson([
-  { t: 1000, c: { cpu_core: 0, cpu_atom: 0 } }, { t: 1010, c: { cpu_core: 100, cpu_atom: 50 } },
-  { t: 1020, c: { cpu_core: 300, cpu_atom: 150 } }, { t: 1030, c: { cpu_core: 300, cpu_atom: 450 } },
+  { t: 1000, c: { cpu_core: 0, cpu_atom: 0 }, e: 0, r: { cpu_core: 0, cpu_atom: 0 } },
+  { t: 1010, c: { cpu_core: 100, cpu_atom: 50 }, e: 10e6, r: { cpu_core: 6e6, cpu_atom: 4e6 } },
+  { t: 1020, c: { cpu_core: 300, cpu_atom: 150 }, e: 20e6, r: { cpu_core: 12e6, cpu_atom: 8e6 } },
+  { t: 1030, c: { cpu_core: 300, cpu_atom: 450 }, e: 30e6, r: { cpu_core: 14e6, cpu_atom: 16e6 } },
   { t: 1100, c: { cpu_core: 999, cpu_atom: 999 }, final: true },
 ]);
 
@@ -120,4 +122,21 @@ test('a periodic read includes LIVE inherited children (kernel __perf_event_read
   const childTotal = sum(final) - sum(before);
   assert.ok(childTotal > 3e6, `the child's loop retired instructions (${childTotal})`);
   assert.ok(sum(live) - sum(before) >= 0.9 * childTotal, `live read ${sum(live) - sum(before)} vs total after exit ${childTotal}`);
+});
+
+test('a window where the counters ran under 99% of their enabled time (PMU multiplexed) is unavailable, not a short count', () => {
+  const rows = [0, 1, 2, 3].map((i) => ({ t: 1000 + i * 10, c: { cpu_core: i * 100, cpu_atom: i * 50 }, e: i * 10e6, r: { cpu_core: i * 3e6, cpu_atom: i * 2e6 } }));
+  const r = instructionsIn(parseInstrSamples(rows.map((x) => JSON.stringify(x)).join('\n')), 1005, 1025);
+  assert.equal(r.total, null);
+  assert.match(r.unavailable, /PMU multiplexed: counters ran 50.0%/);
+  assert.equal(instructionsIn(parseInstrSamples(samples), 1005, 1025).coverage, 1);
+  // Samples without scheduling coverage cannot rule multiplexing out.
+  assert.match(parseInstrSamples(rows.map(({ e: _e, ...x }) => JSON.stringify(x)).join('\n')).unavailable, /scheduling coverage/);
+});
+
+test('a very long sample history does not overflow the argument limit', () => {
+  const n = 250000, rows = [];
+  for (let i = 0; i < n; i++) rows.push(JSON.stringify({ t: i, c: { cpu: i * 10 }, e: i * 1e6, r: { cpu: i * 1e6 } }));
+  const r = instructionsIn(parseInstrSamples(rows.join('\n')), 1000.5, 200000.5);
+  assert.equal(r.total, 1990000);
 });

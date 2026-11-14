@@ -20,6 +20,8 @@
 import { fileURLToPath } from 'node:url';
 
 export const INSTR_WRAPPER = fileURLToPath(new URL('./instr-chrome.py', import.meta.url));
+/** Smallest share of enabled time the counters must have run in a window (below it the PMU was multiplexed). */
+export const MIN_PMU_COVERAGE = 0.99;
 
 /** Parse the wrapper's NDJSON: { unavailable } or { samples: [{ t, c: { pmu: count } }] } (time-ordered). */
 export function parseInstrSamples(text) {
@@ -35,6 +37,8 @@ export function parseInstrSamples(text) {
   // Every sample must carry the same PMUs: a missing one would read as "no change" there (review #10138).
   const keys = (r) => Object.keys(r.c).sort().join(',');
   if (rows.some((r) => keys(r) !== keys(rows[0]) || Object.values(r.c).some((v) => !Number.isFinite(v)))) return { unavailable: 'counter samples with differing or non-numeric PMU sets' };
+  // Scheduling coverage (time enabled / running) is required: without it multiplexing cannot be ruled out (review #10138).
+  if (rows.some((r) => !Number.isFinite(r.e) || !r.r || keys({ c: r.r }) !== keys(rows[0]) || Object.values(r.r).some((v) => !Number.isFinite(v)))) return { unavailable: 'counter samples without PMU scheduling coverage (time enabled/running)' };
   rows.sort((a, b) => a.t - b.t);
   return { samples: rows };
 }
@@ -60,8 +64,18 @@ export function instructionsIn(parsed, startMs, endMs) {
   }
   const a = at(s, startMs), b = at(s, endMs);
   const pmu = Object.fromEntries(Object.keys(b).map((k) => [k, Math.max(0, Math.round(b[k] - (a[k] ?? 0)))]));
-  const gap = (t) => Math.min(...s.map((r) => Math.abs(r.t - t)));
-  return { total: Object.values(pmu).reduce((x, y) => x + y, 0), pmu, edgeGapMs: Math.round(Math.max(gap(startMs), gap(endMs)) * 10) / 10 };
+  // A loop, not Math.min(...spread): a long run can hold more samples than a call takes arguments (review #10138).
+  const gap = (t) => { let m = Infinity; for (const r of s) m = Math.min(m, Math.abs(r.t - t)); return m; };
+  // Coverage over the samples bracketing the window: the PMUs' running time over the enabled time. Each task runs on one
+  // core type at a time, so without multiplexing the running times sum to the enabled time (1.0000 measured on Pop).
+  let i0 = 0;
+  while (i0 < s.length - 1 && s[i0 + 1].t <= startMs) i0++;
+  let i1 = s.length - 1;
+  while (i1 > 0 && s[i1 - 1].t >= endMs) i1--;
+  const dE = s[i1].e - s[i0].e, dR = Object.keys(s[i1].r).reduce((acc, k) => acc + (s[i1].r[k] - s[i0].r[k]), 0);
+  const coverage = dE > 0 ? dR / dE : 1;
+  if (coverage < MIN_PMU_COVERAGE) return { total: null, pmu: null, coverage, unavailable: `PMU multiplexed: counters ran ${(coverage * 100).toFixed(1)}% of their enabled time (< ${MIN_PMU_COVERAGE * 100}%)` };
+  return { total: Object.values(pmu).reduce((x, y) => x + y, 0), pmu, coverage: Math.round(coverage * 10000) / 10000, edgeGapMs: Math.round(Math.max(gap(startMs), gap(endMs)) * 10) / 10 };
 }
 
 /**

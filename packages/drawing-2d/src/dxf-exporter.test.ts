@@ -215,6 +215,12 @@ describe('DXFExporter', () => {
       underlays: [{ underlay: plain, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
     })).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
     expect(wide.widthScale).toBeCloseTo(0.5, 6);
+    // A uniformly scaling transform scales the glyph height with the geometry.
+    const [big] = parseDxf(exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: 2 * p.x, y: 2 * p.y }),
+      underlays: [{ underlay: plain, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
+    })).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    expect(big.height).toBeCloseTo(2, 6);
   });
 
   it('re-emits aligned/fit text as Fit (72=5) so CAD spans the exact fitWidth', () => {

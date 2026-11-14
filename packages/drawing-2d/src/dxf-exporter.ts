@@ -345,7 +345,7 @@ export class DXFExporter {
           writer.addText(
             lineAnchor,
             lines[i],
-            keepsAspect ? height : text.height * area / along, // stretched axis: mapped glyph height
+            along > 1e-12 ? text.height * area / along : height, // mapped glyph height (placement and output scale)
             layer,
             { rotationDeg: angle, hAlign: text.align, vAlign: text.valign, colorOverride: text.color,
               widthScale: keepsAspect || area <= 0 ? text.widthScale : (text.widthScale ?? 1) * along * along / area,

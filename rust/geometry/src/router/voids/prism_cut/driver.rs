@@ -11,7 +11,8 @@ use super::super::{CutterKind, VoidContext};
 use super::checks::{consolidated_change_is_measurable, result_volume_within_bounds};
 use super::cut::cut_prism;
 use super::detect::{opening_aabb_obb, try_merge_prisms};
-use super::extension::{extend_prism_caps, extend_profile_edges};
+use super::extension::extend_profile_edges;
+use super::flush_cap::extend_and_seat_caps;
 use super::frame::{obb_overlaps, PrismFrame};
 use super::kit::{dot, V3};
 use super::opening_prism::prepare_prism;
@@ -165,7 +166,7 @@ impl Execution {
                     defer(4);
                 } else {
                     let aabbs: Vec<(V3, V3)> = tris.iter().map(PTri::aabb).collect();
-                    extend_prism_caps(&mut pf, &tris, &aabbs);
+                    let seats = extend_and_seat_caps(&mut pf, &tris, &aabbs);
                     extend_profile_edges(&mut pf, &tris, &aabbs);
                     let plo = [pf.bb.0[0], pf.bb.0[1], pf.d0()];
                     let phi = [pf.bb.1[0], pf.bb.1[1], pf.d1()];
@@ -173,7 +174,7 @@ impl Execution {
                     if engulfs {
                         defer(5);
                     } else {
-                        match cut_prism(&tris, &pf) {
+                        match cut_prism(&tris, &pf, &seats) {
                             Ok(outcome) => {
                                 committed_cutter_volume += pf.volume();
                                 tris = outcome;

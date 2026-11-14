@@ -79,8 +79,8 @@ export const section2dRu = {
   "section2d.export.omission.rasterReferences": "видимые подложки PDF/изображений",
   "section2d.export.omission.requestedScale": "запрашиваемый масштаб (масштаб PDF задаётся активным листом)",
   "section2d.export.omission.pdfTitle": "Из этого PDF будет исключено:",
-  "section2d.export.omission.dxfTitle": "Экспортировать чертёж в DXF?",
-  "section2d.export.omission.dxfDescription": "В этом DXF-файле будет отсутствовать {items}. Можно ли всё равно экспортировать?",
+  "section2d.export.omission.drawingTitle": "Вывести чертёж с пропусками?",
+  "section2d.export.omission.drawingDescription": "В этом результате будет отсутствовать {items}. Продолжить?",
   "section2d.export.omission.continue": "Экспортировать в любом случае",
   "section2d.export.otherCutDimensionsLeftOut": {
     one: "{count} размер, нанесённый на другом разрезе, не включён.",

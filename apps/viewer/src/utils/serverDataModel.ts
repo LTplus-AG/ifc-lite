@@ -16,7 +16,6 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { EMPTY_SOURCE_BYTES, type ClassificationInfo } from '@ifc-lite/parser';
 import {
   comparePropertyValues,
-  IfcTypeEnumToString,
   PropertyValueType,
   QuantityType,
   type PropertyTable,
@@ -101,16 +100,10 @@ export function convertServerDataModel(
   const { relationships, entityToPsets, entityToQsets } = buildRelationships(dataModel);
 
   // Build entity table
-  const { entities, entityById, typeGroups } = buildEntityTable(dataModel, strings);
-
-  // Convert typeGroups (IfcTypeEnum keyed, contains indices) to string-keyed Map with express IDs
-  const byType = new Map<string, number[]>();
-  for (const [typeEnum, indices] of typeGroups) {
-    const typeName = IfcTypeEnumToString(typeEnum);
-    // Map indices to actual express IDs using the entities.expressId array
-    const expressIds = indices.map(idx => entities.expressId[idx]);
-    byType.set(typeName, expressIds);
-  }
+  // `byType` keys each declared class by its uppercase STEP name, like a parsed store. Keyed by
+  // `IfcTypeEnum` member names (`IfcBuildingStorey`) it answered none of the uppercase lookups the
+  // rest of the viewer makes, and filed every class the enum lacks under 'Unknown'.
+  const { entities, entityById, byType } = buildEntityTable(dataModel, strings);
 
   // Build spatial hierarchy (needs entityToPsets for storey heights)
   const spatialHierarchy = buildSpatialHierarchy(dataModel, entityToPsets);

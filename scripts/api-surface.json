@@ -483,6 +483,7 @@
   ],
   "@ifc-lite/codegen/ifc2x3": [
     "AttributeMetadata: interface",
+    "CONCRETE_RELATIONSHIP_TYPES: const",
     "EntityMetadata: interface",
     "EntityRef: interface",
     "EnumValue: interface",
@@ -1494,6 +1495,7 @@
   ],
   "@ifc-lite/codegen/ifc4": [
     "AttributeMetadata: interface",
+    "CONCRETE_RELATIONSHIP_TYPES: const",
     "EntityMetadata: interface",
     "EntityRef: interface",
     "EnumValue: interface",
@@ -2698,6 +2700,7 @@
   ],
   "@ifc-lite/codegen/ifc4x3": [
     "AttributeMetadata: interface",
+    "CONCRETE_RELATIONSHIP_TYPES: const",
     "EntityMetadata: interface",
     "EntityRef: interface",
     "EnumValue: interface",
@@ -5612,6 +5615,7 @@
     "DXFText: interface",
     "DXFTextLayer: interface",
     "DXFUnderlayOptions: interface",
+    "DXF_TEXT_LINE_HEIGHT_FACTOR: const",
     "DashPattern: interface",
     "DoorOperationType: type",
     "DoorSwingParameters: interface",
@@ -5799,6 +5803,7 @@
     "currentFloorBands: function",
     "cutMeshesStreaming: function",
     "deduplicateLines: function",
+    "dxfTextLineOffset: function",
     "encodeDxfCp1252: function",
     "ensureCCW: function",
     "ensureCW: function",
@@ -5833,6 +5838,7 @@
     "importDxf: function",
     "isCounterClockwise: function",
     "isDoorOrWindow: function",
+    "isDxfDimensionExportable: function",
     "isFeatureElementType: function",
     "isGPUComputeAvailable: function",
     "isIfcTypeVisible: function",

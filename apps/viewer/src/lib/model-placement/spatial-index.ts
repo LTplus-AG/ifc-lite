@@ -10,7 +10,7 @@ import { modelIndices } from './model-indices';
 import { displayedTranslation } from './state';
 import { equalTranslation } from './translation';
 import { modelLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
-import { isSceneSettled } from '@/lib/scene-settled';
+import { afterSceneSettled } from '@/lib/scene-settled';
 
 /** Build (or rebuild) `modelId`'s spatial index from its PLACED geometry — flat
  * meshes plus GPU-instanced occurrences materialized at their current heading
@@ -43,6 +43,14 @@ export function buildPlacedSpatialIndex(state: ViewerState, modelId: string): Pr
  * the canonical builder prevent a late load or older move from publishing it. */
 export function createPlacementIndexSync() {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  /** Cancels the wait for the settled, drawn scene, between the debounce and the build. */
+  let cancelSettleWait: (() => void) | undefined;
+  const cancelPending = () => {
+    if (timer) clearTimeout(timer);
+    timer = undefined;
+    cancelSettleWait?.();
+    cancelSettleWait = undefined;
+  };
   const pending = new Set<string>();
   const ready = (state: ViewerState, id: string): boolean => {
     const model = state.models.get(id);
@@ -67,33 +75,39 @@ export function createPlacementIndexSync() {
     && equalTranslation(a.translation, b.translation);
   const schedule = (reset = false) => {
     if (!pending.size) return;
-    if (timer) {
+    if (timer || cancelSettleWait) {
       if (!reset) return;
-      clearTimeout(timer);
+      cancelPending();
     }
     timer = setTimeout(() => {
-      const latest = useViewerStore.getState();
       timer = undefined;
       // A query index is not a load step: building it (instanced
       // materialisation plus the BVH) during the drain and finalize delays
-      // the load. Keep the models pending and look again until it settles.
-      if (!isSceneSettled(latest)) { schedule(); return; }
-      pending.clear();
-      for (const [id] of latest.models) {
-        if (!ready(latest, id)) continue;
-        const next = signature(latest, id);
-        if (same(indexed.get(id), next)) continue;
-        indexed.set(id, next);
-        void Promise.resolve().then(() => buildPlacedSpatialIndex(latest, id)).then(published => {
-          // Keep the in-flight signature to avoid repeated builds on ordinary
-          // store updates. A failed/stale build must be retryable on refresh.
-          if (!published && indexed.get(id) === next) indexed.delete(id);
-        }).catch(err => {
-          if (indexed.get(id) === next) indexed.delete(id);
-          console.warn('[spatial-index] Failed to start placed index build:', err);
-        });
-      }
+      // the load. Keep the models pending until the scene has settled and
+      // the viewport has drawn it: the build (~300 ms on large models) must
+      // not run in front of that frame.
+      const cancel = afterSceneSettled(build, () => true, Infinity);
+      if (pending.size) cancelSettleWait = cancel; // build clears pending: a wait that already ended keeps no cancel
     }, 200);
+  };
+  const build = () => {
+    cancelSettleWait = undefined;
+    const latest = useViewerStore.getState();
+    pending.clear();
+    for (const [id] of latest.models) {
+      if (!ready(latest, id)) continue;
+      const next = signature(latest, id);
+      if (same(indexed.get(id), next)) continue;
+      indexed.set(id, next);
+      void Promise.resolve().then(() => buildPlacedSpatialIndex(latest, id)).then(published => {
+        // Keep the in-flight signature to avoid repeated builds on ordinary
+        // store updates. A failed/stale build must be retryable on refresh.
+        if (!published && indexed.get(id) === next) indexed.delete(id);
+      }).catch(err => {
+        if (indexed.get(id) === next) indexed.delete(id);
+        console.warn('[spatial-index] Failed to start placed index build:', err);
+      });
+    }
   };
   const refresh = (state: ViewerState, reset = false) => {
     for (const [id, model] of state.models) {
@@ -136,6 +150,6 @@ export function createPlacementIndexSync() {
       }
       refresh(state);
     },
-    dispose() { if (timer) clearTimeout(timer); timer = undefined; pending.clear(); },
+    dispose() { cancelPending(); pending.clear(); },
   };
 }

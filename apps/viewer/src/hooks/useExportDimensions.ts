@@ -5,6 +5,7 @@
 /** Store reads for the dimension exports (`lib/export/dimension-export.ts`) and their omission warning. */
 
 import { useMemo } from 'react';
+import { formatDistance } from '@/components/viewer/tools/formatDistance';
 import { useViewerStore } from '@/store';
 import { exportableDimensions } from '@/store/slices/drawing2DDimensions';
 import { formatDimensionValue, type DimensionGraphics } from '@/lib/drawing2d-markup/dimension-graphics';
@@ -21,19 +22,25 @@ export type ExportDimensionGraphics = (paperScale: number, flip: SectionAxis | {
  * now drawn (`exportableDimensions`), formatted with the viewer's length unit.
  * Dimensions drawn on another cut are left out of every export.
  */
-export function useExportDimensionGraphics(): ExportDimensionGraphics {
+export function useExportDimensionGraphics(measurements: readonly {
+  id: string; start: { x: number; y: number }; end: { x: number; y: number }; distance: number;
+}[]): ExportDimensionGraphics {
   const dimensions2D = useViewerStore((s) => s.dimensions2D);
   const plane = useViewerStore((s) => s.drawing2DPlane);
   const overrides = useViewerStore((s) => s.unitDisplayOverrides);
   return useMemo(() => {
     const dimensions = exportableDimensions(dimensions2D, plane);
     const format = (metres: number) => formatDimensionValue(metres, overrides);
-    return (paperScale, flip) => dimensionGraphicsList(dimensions, {
+    return (paperScale, flip) => dimensionGraphicsList([
+      ...dimensions,
+      ...measurements.map(m => ({ id: `distance:${m.id}`, a: m.start, b: m.end,
+        offset: 0, orientation: 'aligned' as const, text: formatDistance(m.distance) })),
+    ], {
       paperScale,
       format,
       flip: typeof flip === 'string' ? axisFlipForSection(flip) : flip,
     });
-  }, [dimensions2D, plane, overrides]);
+  }, [dimensions2D, plane, overrides, measurements]);
 }
 
 /** How many dimensions every export leaves out because they were drawn on another cut. */

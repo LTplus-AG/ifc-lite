@@ -201,9 +201,14 @@ function moveLegacyMarkup(key: string, legacy: string, modelId: string, unionByI
   } : later;
   if (earlier) {
     const absorbed = mergeAbsorbed(modelId, earlier, later);
-    // Not derivable now: keep both entries and retry on the next activation;
-    // show the merged markup meanwhile, with the set left for the restore to derive.
-    if (absorbed === null) return { complete: false, fallback: merged };
+    // Not derivable now: keep both entries and retry on the next activation.
+    if (absorbed === null) {
+      // Keep the sets already recorded (a deliberate deletion must survive);
+      // the unreadable entry's items stay unabsorbed until the retry, which can
+      // only duplicate, never delete.
+      const recorded = [earlier, later].flatMap((entry) => entry.absorbedEmbeddedMarkup ?? []);
+      return { complete: false, fallback: { ...merged, absorbedEmbeddedMarkup: [...new Set(recorded)] } };
+    }
     merged.absorbedEmbeddedMarkup = absorbed;
   }
   saveDrawing2DEntry(key, merged);

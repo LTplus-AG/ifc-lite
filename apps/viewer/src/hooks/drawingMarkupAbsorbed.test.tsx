@@ -462,6 +462,24 @@ describe('reopening a file whose localStorage entry was seeded from its own embe
     assert.deepEqual(danglingRefs(saved), []);
   });
 
+  // PR #10149 bot review: the merged markup shown while the move waits must keep recorded sets.
+  it('a waiting pre-#7035 merge keeps the identity entry\'s recorded absorbed set in effect', async () => {
+    const file = fileWithBytes(69, 'old-key-recorded.ifc');
+    const legacyKey = createHash('sha256').update(new Uint8Array(await file.arrayBuffer())).digest('hex');
+    writeOldEntry(legacyKey, [embeddedOriginMeasure(ANNOTATION_ID)]);
+    // A deliberate deletion: the identity entry absorbed the embedded measurement and holds no copy of it.
+    writeOldEntry((await placementSourceIdentity(file))!, [USER_MEASURE], [], [EMBEDDED_GUID]);
+
+    heldWasmReply();
+    await mount();
+    const store = await parseFixture();
+    useViewerStore.setState({ editEnabled: true, models: new Map([['old-key-recorded', { ...modelFor('old-key-recorded', file, store), ifcDataStore: null } as FederatedModel]]) } as never);
+    await act(async () => { useViewerStore.getState().setActiveModel('old-key-recorded'); });
+    await decided('old-key-recorded');
+    await waitFor(() => useViewerStore.getState().measure2DResults.length >= 1, 'the merged markup is shown');
+    assert.ok(absorbedEmbeddedMarkupFor('old-key-recorded').has(EMBEDDED_GUID), 'the recorded deletion stays in effect while the move waits');
+  });
+
   // PR #10149 review: a restore can run before the parsed store is attached.
   it('an entry from before the absorbed set restored before the store is attached stays undecided, then absorbs once it is', async () => {
     const file = fileWithBytes(67, 'still-loading.ifc');

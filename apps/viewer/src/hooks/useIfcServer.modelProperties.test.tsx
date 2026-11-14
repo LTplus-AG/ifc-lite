@@ -801,14 +801,19 @@ it('first hydration refusal is labelled hydration, not re-hydration (#10139)', a
   } finally { useViewerStore.getState().clearMutationView('server'); federationRegistry.clear(); }
 });
 
-for (const failure of ['update', 'refresher', 'listener'] as const) it(`a throwing ${failure} after ownership growth cannot restore the previous editable run (#10139)`, async () => {
-  federationRegistry.registerModel('server', 100, failure === 'listener' ? 501 : 0);
+for (const failure of ['update', 'refresher', 'listener', 'listener-refusal'] as const) it(`a throwing ${failure} after ownership growth cannot restore the previous editable run (#10139)`, async () => {
+  federationRegistry.registerModel('server', 100, failure.startsWith('listener') ? 501 : 0);
   useViewerStore.getState().updateModel('server', { maxExpressId: 100, ifcDataStore: result() });
   useViewerStore.getState().setServerPropertiesRun('server', { kind: 'succeeded', runId: 42, result: undefined });
   const originalUpdate = useViewerStore.getState().updateModel;
   if (failure === 'update') useViewerStore.setState({ updateModel: () => { throw new Error('Update failed'); } });
-  else if (failure === 'listener') {
-    const stop = federationRegistry.subscribe(() => { stop(); throw new Error('Range listener failed'); });
+  else if (failure.startsWith('listener')) {
+    const stop = federationRegistry.subscribe(() => {
+      stop();
+      // A reentrant validation refusal still happens AFTER the outer growth.
+      if (failure === 'listener-refusal') federationRegistry.extendModel('unknown', 1);
+      throw new Error('Range listener failed');
+    });
   } else {
     // A separately registered capacity observer throws in the deferred finally.
     // Its model has no source swap, so hydration still owns the main model.

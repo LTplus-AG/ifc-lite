@@ -166,7 +166,14 @@ export class FederationRegistry {
     range.ownedEnd = Math.max(range.ownedEnd, gapEnd);
     range.maxExpressId = range.ownedEnd;
     if (range.reservedMaxExpressId !== previous.reservedMaxExpressId || range.ownedEnd !== previous.ownedEnd
-      || range.overlayMaxExpressId !== previous.overlayMaxExpressId) this.rangesChanged(modelId);
+      || range.overlayMaxExpressId !== previous.overlayMaxExpressId) {
+      try { this.rangesChanged(modelId); }
+      catch (cause) {
+        // A listener may itself refuse a reentrant extension. The outer
+        // extension has committed, so its error must never look pre-change.
+        throw new Error('[FederationRegistry] Range notification failed after ownership changed', { cause });
+      }
+    }
     return range.maxExpressId;
   }
 
@@ -390,5 +397,4 @@ export class FederationRegistry {
 }
 
 // Singleton instance for the application
-// Export both the class (for testing) and a singleton instance
 export const federationRegistry = new FederationRegistry();

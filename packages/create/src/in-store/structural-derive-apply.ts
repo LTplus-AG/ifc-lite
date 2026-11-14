@@ -10,7 +10,7 @@
 
 import type { RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
+import { DERIVATION_AXIS_PROPERTIES, DERIVATION_ELEMENT_PROPERTY, STRUCTURAL_DERIVATION_PSET, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
 import type { SpatialAnchor } from './anchor.js';
 import { prepareStructuralFace } from './_structural-face.js';
 import { applyFrame, inverseFrame, placementInAncestor } from './host-geometry-frame.js';
@@ -82,7 +82,14 @@ export function applyStructuralDerivation(
   // Resolve every anchor and run every builder check before the first write.
   const [first] = [...plan.curveMembers, ...plan.surfaceMembers, ...plan.nodes].map((item) => placementOf(item.storeyId).anchor);
   checkPlan(plan, (storeyId, p) => placementOf(storeyId).toLocal(p));
-  return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, random));
+  // Each curve member records its element's GlobalId; read them all before the first write.
+  const globalIds = new Map<number, string>();
+  for (const { elementId } of plan.curveMembers) {
+    const globalId = reader.entity(elementId)?.attributes[0];
+    if (typeof globalId !== 'string' || !globalId) throw new Error(`Structural derivation: element #${elementId} has no GlobalId to record; plan again`);
+    globalIds.set(elementId, globalId);
+  }
+  return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, globalIds, random));
 }
 
 /** Same point; NaN matches NaN, since a non-finite point is the builder's refusal, not the plan check's. */
@@ -100,6 +107,7 @@ function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | 
     if (!plan.nodes[member.startNode] || !plan.nodes[member.endNode]) refuse(what, 'names a node the plan does not have');
     if (member.startNode === member.endNode) refuse(what, 'starts and ends on one node');
     if (member.start.every((v, k) => v === member.end[k])) refuse(what, 'has no length');
+    if (member.physicalAxis?.length !== 2 || !member.physicalAxis.flat().every(Number.isFinite)) refuse(what, 'has no finite physical axis to record');
     // The planner copies node positions onto member ends; a plan changed since must keep them together.
     if (!samePoint(member.start, plan.nodes[member.startNode].position) || !samePoint(member.end, plan.nodes[member.endNode].position)) {
       refuse(what, 'has ends that differ from its nodes');
@@ -120,6 +128,7 @@ function writePlan(
   plan: StructuralDerivationPlan,
   first: SpatialAnchor,
   placementOf: (storeyId: number | null) => StoreyPlacement,
+  globalIds: ReadonlyMap<number, string>,
   random?: RandomSource,
 ): StructuralDerivationApplied {
   const ownerHistoryId = first.ownerHistoryId;
@@ -154,6 +163,10 @@ function writePlan(
     });
     connectStructuralMemberToConnectionInStore(editor, ownerHistoryId, memberId, connectionIds[member.startNode], random);
     connectStructuralMemberToConnectionInStore(editor, ownerHistoryId, memberId, connectionIds[member.endNode], random);
+    editor.addPropertySet(memberId, STRUCTURAL_DERIVATION_PSET, [
+      { name: DERIVATION_ELEMENT_PROPERTY, value: globalIds.get(member.elementId)!, type: 'LABEL' },
+      ...member.physicalAxis.flat().map((value, i) => ({ name: DERIVATION_AXIS_PROPERTIES[i], value, type: 'REAL' as const })),
+    ]);
     memberIds.push(memberId);
     link(member.elementId, memberId);
   }

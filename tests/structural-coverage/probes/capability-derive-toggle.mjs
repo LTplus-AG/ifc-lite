@@ -103,19 +103,22 @@ export function compareDerived(actual, expected) {
   return { status, reason: problems.join('; '), mismatches: problems, toleranceMetres: TOLERANCE, axisSineTolerance: TOLERANCE, counts: { matchedMembers, memberMatchRatio, referenceMembers: expected.members.length, derivedMembers: actual.members.length, referenceNodes: expected.nodes.length, derivedNodes: actual.nodes.length } };
 }
 
-export async function measureDerivation(ctx,file) {
-    const expected = referenceGeometry(file.step);
-    // Remove the authored analytical graph, retaining the original physical geometry,
-    // ids and properties. This exercises apply's normal no-existing-model path.
+/** The file without its authored analytical graph: physical geometry, ids and properties kept. */
+export function physicalOnly(file) {
     const removed = new Set([...file.step.entities.values()].filter((e) => e.type.startsWith('IFCSTRUCTURAL')).map((e)=>e.id));
     const referencesRemoved = (value) => Array.isArray(value) ? value.some(referencesRemoved)
       : value !== null && typeof value === 'object' && 'ref' in value && removed.has(value.ref);
     for (const e of file.step.entities.values()) {
       if (e.type.startsWith('IFCREL') && e.args.some(referencesRemoved)) removed.add(e.id);
     }
-    const physicalText = file.bytes.toString('latin1').replace(/#(\d+)\s*=\s*[^;]*;/g,
+    return file.bytes.toString('latin1').replace(/#(\d+)\s*=\s*[^;]*;/g,
       (record,id)=>removed.has(Number(id)) ? '' : record);
-    const store = await parseStore(ctx.pkgs, physicalText);
+}
+
+/** Derive an analytical model into the physical-only file and export it as STEP text. */
+export async function deriveInto(ctx,file) {
+    // Apply's normal no-existing-model path.
+    const store = await parseStore(ctx.pkgs, physicalOnly(file));
     const view = new ctx.pkgs.mutations.MutablePropertyView(null,'probe');
     view.setOnDemandExtractor((id)=>ctx.pkgs.parser.extractPropertiesOnDemand(store,id));
     const editor = new ctx.pkgs.mutations.StoreEditor(store,view);
@@ -123,9 +126,12 @@ export async function measureDerivation(ctx,file) {
     const plan = ctx.pkgs.create.planStructuralDerivation(facts);
     ctx.pkgs.create.applyStructuralDerivation(editor,store,plan);
     const {content} = new ctx.pkgs.exporter.StepExporter(store,editor.getMutationView()).export({schema:file.schema,applyMutations:true});
-    const text = typeof content === 'string' ? content : new TextDecoder().decode(content);
-    return {actual:referenceGeometry(readStep(text)),expected};
+    return typeof content === 'string' ? content : new TextDecoder().decode(content);
+}
 
+export async function measureDerivation(ctx,file) {
+    const expected = referenceGeometry(file.step);
+    return {actual:referenceGeometry(readStep(await deriveInto(ctx,file))),expected};
 }
 
 export const derive = {

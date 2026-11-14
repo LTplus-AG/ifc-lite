@@ -8,7 +8,7 @@
  * physical elements), issues out, in the shape `ifc-lite validate` reports.
  * `structuralConsistencyIssues` runs it on a parsed store; tests feed facts directly.
  *
- * Five rules, all warnings:
+ * Six rules, all warnings:
  * - `structural-unlinked-element`: a load-bearing beam, column, member, slab,
  *   wall, footing or pile with no structural item assigned. Runs only when the
  *   file has an analytical model (an IfcStructuralAnalysisModel or any
@@ -29,6 +29,16 @@
  *   drift. Where along the axis a member lies is not checked. Runs only when
  *   `geometry` is given, for members and elements with a line there; surface
  *   members are not checked.
+ * - `structural-stale-item`: a derived curve member whose physical element's
+ *   line moved more than `staleTolerance` since the derivation wrote it. Derive
+ *   records the element's GlobalId and its line, by the same rule as
+ *   `physicalAxes`, in the member's `IfcLite_StructuralDerivation` property
+ *   set; this rule compares that record with the element's line now. Unlike
+ *   axis drift, it compares the physical element with itself, so a move along
+ *   its own axis is reported and the member's own position is not read. Runs
+ *   only when `geometry` is given, for members with a record whose element is
+ *   still linked and has a line. Members without a record (authored, or derived
+ *   before the record existed) are not checked.
  */
 
 import { getInheritanceChain } from './ifc-schema.js';
@@ -45,7 +55,24 @@ export interface StructuralGeometryFacts {
   physicalAxes: ReadonlyMap<number, StructuralLine>;
   /** Each curve member's edge. */
   memberLines: ReadonlyMap<number, StructuralLine>;
+  /** What derive recorded on each derived curve member, by the member's express id. */
+  derivationRecords?: ReadonlyMap<number, StructuralDerivationRecord>;
 }
+
+/** The physical element a curve member was derived from, and that element's line at the time. */
+export interface StructuralDerivationRecord {
+  elementGlobalId: string;
+  axis: StructuralLine;
+}
+
+/** The property set derive writes on each curve member it creates, and its properties. */
+export const STRUCTURAL_DERIVATION_PSET = 'IfcLite_StructuralDerivation';
+export const DERIVATION_ELEMENT_PROPERTY = 'PhysicalElement';
+/** The element's line in IFC world metres: start x, y, z, then end x, y, z. */
+export const DERIVATION_AXIS_PROPERTIES = [
+  'PhysicalAxisStartX', 'PhysicalAxisStartY', 'PhysicalAxisStartZ',
+  'PhysicalAxisEndX', 'PhysicalAxisEndY', 'PhysicalAxisEndZ',
+] as const;
 
 /** One physical element as the checks see it. */
 export interface PhysicalElementFact {
@@ -82,9 +109,17 @@ export interface StructuralConsistencyOptions {
    * place of the coordinates are allowed above it, for rounding.
    */
   axisDriftTolerance?: number;
+  /**
+   * Metres either end of a physical element's line may move from where derive
+   * recorded it before `structural-stale-item` reports its member. Default
+   * `DEFAULT_STALE_TOLERANCE` (0.001): the record and the export keep full
+   * precision, so only a real move exceeds it.
+   */
+  staleTolerance?: number;
 }
 
 export const DEFAULT_AXIS_DRIFT_TOLERANCE = 0.05;
+export const DEFAULT_STALE_TOLERANCE = 0.001;
 /** Metres: the most rounding the axis-drift rule allows above its tolerance. */
 const DRIFT_ROUNDING_CAP = 1e-6;
 
@@ -93,7 +128,8 @@ export type StructuralConsistencyRule =
   | 'structural-unlinked-item'
   | 'structural-class-mismatch'
   | 'structural-unconnected-member'
-  | 'structural-axis-drift';
+  | 'structural-axis-drift'
+  | 'structural-stale-item';
 
 /** One finding, in the `ValidationIssue` shape of `ifc-lite validate`. */
 export interface StructuralConsistencyIssue {
@@ -106,7 +142,10 @@ export interface StructuralConsistencyIssue {
   /** The entity on the other side of the link, when the finding has one. */
   target?: number;
   targetGlobalId?: string;
-  /** `structural-axis-drift`: metres from the member's farther end to the physical element's line. */
+  /**
+   * `structural-axis-drift`: metres from the member's farther end to the physical element's line.
+   * `structural-stale-item`: metres the farther end of the element's line moved since derive.
+   */
   distance?: number;
 }
 
@@ -187,6 +226,40 @@ function axisDrift(
   return issues;
 }
 
+/** How far the farther end of `now` lies from where it was in `then`, matching ends either way round. */
+function moved(now: StructuralLine, then: StructuralLine): number {
+  const gap = (p: Point, q: Point) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  return Math.min(Math.max(gap(now[0], then[0]), gap(now[1], then[1])), Math.max(gap(now[0], then[1]), gap(now[1], then[0])));
+}
+
+/** The stale rule: each derived member whose recorded element is still linked, against that element's line now. */
+function staleItems(
+  structural: StructuralExtraction,
+  factById: ReadonlyMap<number, PhysicalElementFact>,
+  { physicalAxes, derivationRecords }: StructuralGeometryFacts,
+  tolerance: number,
+): StructuralConsistencyIssue[] {
+  const issues: StructuralConsistencyIssue[] = [];
+  if (!derivationRecords) return issues;
+  for (const member of structural.members) {
+    const record = derivationRecords.get(member.expressId);
+    if (!record) continue;
+    const fact = (structuralCounterparts(structural, member.expressId)?.expressIds ?? [])
+      .map((id) => factById.get(id)).find((candidate) => candidate?.globalId === record.elementGlobalId);
+    const axis = fact && physicalAxes.get(fact.expressId);
+    if (!fact || !axis) continue;
+    const distance = moved(axis, record.axis);
+    // Not greater also skips NaN, from a non-finite coordinate.
+    if (!(distance > tolerance)) continue;
+    issues.push({
+      severity: 'warning', rule: 'structural-stale-item', entityId: member.expressId, globalId: member.globalId,
+      target: fact.expressId, targetGlobalId: fact.globalId, distance,
+      message: `${label(member.expressId, member.type, member.globalId)} is stale: ${label(fact.expressId, fact.type, fact.globalId)} moved ${distance.toFixed(3)} m since it was derived (tolerance ${tolerance} m)`,
+    });
+  }
+  return issues;
+}
+
 const label = (expressId: number, type: string, globalId: string) => `#${expressId} ${type}${globalId ? ` (${globalId})` : ''}`;
 
 export function checkStructuralConsistency(
@@ -252,6 +325,9 @@ export function checkStructuralConsistency(
     const tolerance = options.axisDriftTolerance ?? DEFAULT_AXIS_DRIFT_TOLERANCE;
     if (!(tolerance >= 0)) throw new Error(`axisDriftTolerance must be a number of metres >= 0, got ${tolerance}`);
     issues.push(...axisDrift(structural, factById, geometry, tolerance));
+    const staleTolerance = options.staleTolerance ?? DEFAULT_STALE_TOLERANCE;
+    if (!(staleTolerance >= 0)) throw new Error(`staleTolerance must be a number of metres >= 0, got ${staleTolerance}`);
+    issues.push(...staleItems(structural, factById, geometry, staleTolerance));
   }
 
   return issues;

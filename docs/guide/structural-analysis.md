@@ -89,6 +89,14 @@ The default refuses a file that already has an analysis model. Use
 `--analysis-model-exists add` only when you intend to add missing counterparts.
 Run `ifc-lite derive-structural --help` for tolerance and support options.
 
+Each derived curve member carries an `IfcLite_StructuralDerivation` property
+set with its element's GlobalId and that element's analytical line at derive
+time, in world metres. `structuralConsistencyIssues(store, { physicalAxes })`
+compares it with the element's line now and reports `structural-stale-item`
+when the element moved more than `staleTolerance` (default 1 mm), including a
+move along its own axis. Members derived before this record existed, and
+surface members and nodes, are not checked.
+
 ## Convert and known limits
 
 Start with an IFC2X3 file, here named `model-2x3.ifc`. Read its structural

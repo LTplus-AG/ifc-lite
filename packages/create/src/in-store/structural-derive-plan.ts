@@ -74,7 +74,7 @@ function resolveDerivationOptions(options: StructuralDerivationOptions = {}): Re
   return resolved;
 }
 
-interface Line { element: PhysicalElementFact; start: Vec3; end: Vec3; section: number | null; source: PlannedCurveMember['axisSource']; loadBearing: MemberLoadBearing }
+interface Line { element: PhysicalElementFact; start: Vec3; end: Vec3; axis: [Vec3, Vec3]; section: number | null; source: PlannedCurveMember['axisSource']; loadBearing: MemberLoadBearing }
 
 /** Point inside a planar polygon, in the plane's dominant projection. */
 function insidePolygon(p: Vec3, polygon: Vec3[], normal: Vec3): boolean {
@@ -95,7 +95,7 @@ function checkFace(boundary: Vec3[]): { normal: Vec3 } | { issue: string } {
 /** A curve element's axis line, or why it has none. */
 function lineOf(element: PhysicalElementFact): Omit<Line, 'element' | 'loadBearing'> | { issue: string } {
   const line = curveElementLine(element);
-  return 'issue' in line ? line : { start: line.start, end: line.end, section: element.prism ? prismSection(element.prism) : null, source: line.source };
+  return 'issue' in line ? line : { start: line.start, end: line.end, axis: [line.start, line.end], section: element.prism ? prismSection(element.prism) : null, source: line.source };
 }
 
 export function planStructuralDerivation(facts: StructuralDerivationFacts, options: StructuralDerivationOptions = {}): StructuralDerivationPlan {
@@ -195,7 +195,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     return {
       elementId: piece.element.expressId, storeyId: piece.element.storeyId,
       start: [...nodes[startNode].position], end: [...nodes[endNode].position],
-      axisSource: piece.source, startNode, endNode, loadBearing: piece.loadBearing,
+      axisSource: piece.source, physicalAxis: piece.axis, startNode, endNode, loadBearing: piece.loadBearing,
     };
   });
 

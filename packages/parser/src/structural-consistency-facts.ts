@@ -15,10 +15,14 @@ import { mergeInheritedPropertySets } from './property-set-merge.js';
 import { expandTypes } from './query-backend-maps.js';
 import {
   checkStructuralConsistency,
+  DERIVATION_AXIS_PROPERTIES,
+  DERIVATION_ELEMENT_PROPERTY,
   hasAnalyticalModel,
   isA,
   LOAD_BEARING_CLASSES,
+  STRUCTURAL_DERIVATION_PSET,
   type PhysicalElementFact,
+  type StructuralDerivationRecord,
   type StructuralConsistencyIssue,
   type StructuralConsistencyOptions,
   type StructuralLine,
@@ -96,11 +100,30 @@ function curveMemberLines(store: IfcDataStore, structural: StructuralExtraction,
   return lines;
 }
 
+/** The derivation record on each of `memberIds`, when it is complete: a GlobalId and six finite coordinates. */
+function derivationRecords(store: IfcDataStore, memberIds: Iterable<number>): Map<number, StructuralDerivationRecord> {
+  const records = new Map<number, StructuralDerivationRecord>();
+  for (const memberId of memberIds) {
+    const set = store.getProperties(memberId).find((pset) => pset.name === STRUCTURAL_DERIVATION_PSET);
+    if (!set) continue;
+    const value = (name: string) => set.properties.find((property) => property.name === name)?.value;
+    const elementGlobalId = value(DERIVATION_ELEMENT_PROPERTY);
+    const c = DERIVATION_AXIS_PROPERTIES.map(value);
+    if (typeof elementGlobalId !== 'string' || !c.every((v): v is number => typeof v === 'number' && Number.isFinite(v))) continue;
+    records.set(memberId, { elementGlobalId, axis: [[c[0], c[1], c[2]], [c[3], c[4], c[5]]] });
+  }
+  return records;
+}
+
 /** The consistency issues of a parsed file. Physical elements are read only when a rule can use them. */
 export function structuralConsistencyIssues(store: IfcDataStore, options: StructuralConsistencyIssuesOptions = {}): StructuralConsistencyIssue[] {
   const { physicalAxes, ...settings } = options;
   const structural = extractStructuralOnDemand(store);
   const facts = hasAnalyticalModel(structural) ? structuralConsistencyFacts(store, structural) : [];
-  const geometry = physicalAxes && { physicalAxes, memberLines: curveMemberLines(store, structural, physicalAxes) };
+  const geometry = physicalAxes && {
+    physicalAxes,
+    memberLines: curveMemberLines(store, structural, physicalAxes),
+    derivationRecords: derivationRecords(store, structural.members.map((member) => member.expressId)),
+  };
   return checkStructuralConsistency(structural, facts, settings, geometry);
 }

@@ -9,10 +9,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { generateIfcGuid } from '@ifc-lite/encoding';
-import { IfcParser, extractPropertiesOnDemand, extractStructuralOnDemand, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, STRUCTURAL_DERIVATION_PSET, extractPropertiesOnDemand, extractStructuralOnDemand, structuralConsistencyIssues, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { addColumnToStore, applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts, resolveSpatialAnchor } from '../index.js';
+import { addColumnToStore, applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts, resolveSpatialAnchor, structuralPhysicalAxes, transformElementsInStore } from '../index.js';
 import { liveStructuralExtraction } from './structural-derive-facts.js';
 
 type Schema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
@@ -349,5 +349,74 @@ describe('derive structural analysis model: reading shapes and containment (#966
     expect(fact(102).shapeIssue).toMatch(/arc segments/);
     expect(fact(columnId).storeyId).toBe(32);
     expect(facts.defaultStoreyId).toBe(30);
+  });
+});
+
+describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('derive provenance and the stale check, %s (#9668)', (schema) => {
+  /** The model derived and written to STEP text. */
+  async function derived(): Promise<string> {
+    const store = await parse(model(schema));
+    const editor = session(store);
+    applyStructuralDerivation(editor, store, planStructuralDerivation(readStructuralDerivationFacts(store, editor)), seeded());
+    const { content } = new StepExporter(store, editor.getMutationView()).export({ schema, applyMutations: true });
+    return typeof content === 'string' ? content : new TextDecoder().decode(content);
+  }
+  /** Open the derived text, edit it, write and reparse it, and return its stale findings. */
+  async function staleAfter(text: string, edit: (store: IfcDataStore, editor: StoreEditor) => void) {
+    const store = await parse(text);
+    const editor = session(store);
+    edit(store, editor);
+    const { content } = new StepExporter(store, editor.getMutationView()).export({ schema, applyMutations: true });
+    const edited = await parse(typeof content === 'string' ? content : new TextDecoder().decode(content));
+    return structuralConsistencyIssues(edited, { physicalAxes: structuralPhysicalAxes(edited) }).filter((issue) => issue.rule === 'structural-stale-item');
+  }
+  const move = (delta: [number, number]) => (store: IfcDataStore, editor: StoreEditor) =>
+    transformElementsInStore({ dataStore: store, view: editor.getMutationView(), editor, selected: [byName(store, 'B1')], op: { kind: 'move', delta } });
+
+  it("records each curve member's element and its line in metres, and reports nothing stale until the element moves", async () => {
+    const text = await derived();
+    const store = await parse(text);
+    const data = extractStructuralOnDemand(store);
+    const beam = byName(store, 'B1');
+    const [member] = data.members.filter((m) => m.physicalElementIds?.includes(beam));
+    const record = store.getProperties(member.expressId).find((set) => set.name === STRUCTURAL_DERIVATION_PSET)!;
+    // The Axis representation's line, before joints moved the member's ends.
+    expect(Object.fromEntries(record.properties.map((p) => [p.name, p.value]))).toEqual({
+      PhysicalElement: store.entities.getGlobalId(beam),
+      PhysicalAxisStartX: 0, PhysicalAxisStartY: 0, PhysicalAxisStartZ: 3,
+      PhysicalAxisEndX: 6, PhysicalAxisEndY: 0, PhysicalAxisEndZ: 3,
+    });
+    const curve = data.members.filter((m) => m.type === 'IfcStructuralCurveMember');
+    expect(curve.filter((m) => store.getProperties(m.expressId).some((set) => set.name === STRUCTURAL_DERIVATION_PSET))).toHaveLength(curve.length);
+    expect(await staleAfter(text, () => {})).toEqual([]);
+    expect(await staleAfter(text, (s, editor) => {
+      editor.setAttribute(byName(s, 'B1'), 'Name', 'B1 renamed');
+      editor.addPropertySet(byName(s, 'B1'), 'Test_Unrelated', [{ name: 'Note', value: 'x', type: 'LABEL' }]);
+    })).toEqual([]);
+  });
+
+  it('reports the member of a beam moved along its own axis or across it, and only that member, by the distance moved', async () => {
+    const text = await derived();
+    const store = await parse(text);
+    const beam = byName(store, 'B1');
+    const members = extractStructuralOnDemand(store).members.filter((m) => m.physicalElementIds?.includes(beam)).map((m) => m.expressId);
+    for (const delta of [[0.4, 0], [0, 0.4]] as Array<[number, number]>) {
+      const stale = await staleAfter(text, move(delta));
+      expect(stale.map((issue) => [issue.entityId, issue.target])).toEqual(members.map((id) => [id, beam]));
+      for (const issue of stale) expect(issue.distance).toBeCloseTo(0.4, 6);
+    }
+    expect(await staleAfter(text, move([0.0005, 0]))).toEqual([]);
+  });
+});
+
+describe('derive provenance: apply checks the recorded axis (#9668)', () => {
+  it('refuses a plan whose curve member has no finite physical axis, writing nothing', async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    const bad = structuredClone(planStructuralDerivation(readStructuralDerivationFacts(store, editor)));
+    bad.curveMembers[0].physicalAxis = [[0, 0, Number.NaN], [1, 0, 0]];
+    const before = editor.getNewEntities().length;
+    expect(() => applyStructuralDerivation(editor, store, bad)).toThrow(/no finite physical axis/);
+    expect(editor.getNewEntities().length).toBe(before);
   });
 });

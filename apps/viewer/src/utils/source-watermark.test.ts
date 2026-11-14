@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { sourceWatermark } from './source-watermark.js';
-import { discardUnchangedMutationViews } from './model-mutation-view.js';
+import { useViewerStore } from '@/store';
 
 it('an indexless table store still owns its table-only rows (#10139)', () => {
   const tabular = { entityIndex: {}, entities: { expressId: new Uint32Array([3, 900, 12]) } } as unknown as IfcDataStore;
@@ -16,14 +16,19 @@ it('an indexless table store still owns its table-only rows (#10139)', () => {
   assert.equal(sourceWatermark(null), 0);
 });
 
-it('clearing all models keeps a view whose model has georeference edits (#10139)', () => {
-  const georef = new MutablePropertyView(null, 'georef');
-  const plain = new MutablePropertyView(null, 'plain');
-  const cleared: string[][] = [];
-  discardUnchangedMutationViews({
-    mutationViews: new Map([['georef', georef], ['plain', plain]]),
-    georefMutations: new Map([['georef', {}]]) as never,
-    clearMutationView: ((ids: string | string[]) => { cleared.push([ids].flat()); }) as never,
+it('clearing all models keeps the unsaved state of a model with only georeference edits (#10139)', () => {
+  const store = useViewerStore;
+  const view = new MutablePropertyView(null, 'georef');
+  store.setState({
+    mutationViews: new Map([['georef', view]]),
+    georefMutations: new Map([['georef', { eastings: 1 }]]) as never,
+    dirtyModels: new Set(['georef']),
   });
-  assert.deepEqual(cleared, [['plain']]);
+  try {
+    store.getState().clearAllModels();
+    assert.equal(store.getState().mutationViews.get('georef'), view, 'the view is kept');
+    assert.equal(store.getState().dirtyModels.has('georef'), true, 'the georeference edit is still unsaved');
+  } finally {
+    store.setState({ mutationViews: new Map(), georefMutations: new Map(), dirtyModels: new Set() });
+  }
 });

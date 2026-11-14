@@ -1,0 +1,12 @@
+diff --git a/apps/viewer/src/lib/settled-frame.ts b/apps/viewer/src/lib/settled-frame.ts
+--- a/apps/viewer/src/lib/settled-frame.ts
++++ b/apps/viewer/src/lib/settled-frame.ts
+@@ -78,7 +78,7 @@
+       if (done) return;
+       idleFrames = deps.drawPending() ? 0 : idleFrames + 1;
+       // A task of its own: not inside the animation frame that drew the scene.
+-      if (true || deps.frameCount() > start) deps.setTimer(run, 0);
++      if (deps.frameCount() > start) deps.setTimer(run, 0);
+       else if (idleFrames >= IDLE_FRAMES) deps.setTimer(runIfDrawn, 0);
+       else deps.requestFrame(check);
+     };

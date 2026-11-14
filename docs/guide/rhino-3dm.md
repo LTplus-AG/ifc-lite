@@ -24,7 +24,7 @@ Archives up to and including Rhino 8 are read. A file saved by a newer Rhino is 
 with a message saying to save it as Rhino 8 or older. Rhino 9 has not been tested.
 
 Parsing runs in a worker, so the viewport stays responsive, and the 2.7 MB Rhino runtime
-is fetched only when you open your first `.3dm`.
+is fetched only when you first open a `.3dm` or export one.
 
 ## What comes across
 

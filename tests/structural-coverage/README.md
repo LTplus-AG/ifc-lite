@@ -70,7 +70,10 @@ would be shared by the oracle and the converter.
 The derive probe compares the AxisVM roof truss against its authored analytical
 model within 1 mm (axis sine tolerance 0.001). Partial credit requires at least
 90% of reference/derived members to match axes, endpoints and physical links;
-below that floor it fails. Missing or extra connection records prevent a pass.
+below that floor it fails. On the reference side, AxisVM support-only points
+merge into member joints; support positions are compared in both directions,
+without comparing which degrees of freedom are restrained. Missing or extra
+connection records prevent a pass.
 
 ## Scoring and the ratchet
 
@@ -116,6 +119,8 @@ baseline files. `r1` here is a measurement revision, not a product climb round.
 
 A new in-store builder needs no new probe: add a step to `SCENE` in
 `probes/create-scene.mjs` naming the entities it emits and the values to expect.
+A builder that authors a load alone also names `appliedBy`, the activity the
+edit probe applies it from, since the extractor reads loads only through one.
 
 [R2 activity/result notes](baseline/r2-notes.md): 24 new create cells, 297.5/774 cells total; rows remain 56/119.
 

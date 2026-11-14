@@ -156,6 +156,7 @@ nav:
     - Exporting Data: guide/exporting.md
     - Multi-Model Federation: guide/federation.md
     - LandXML: guide/landxml.md
+    - Rhino .3dm: guide/rhino-3dm.md
     - Gaussian Splat Captures: guide/gaussian-captures.md
     - BCF Collaboration: guide/bcf.md
     - IDS Validation: guide/ids.md

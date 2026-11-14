@@ -14,11 +14,20 @@ export interface PickGatingState {
   models?: ReadonlyMap<string, { geometryRestorePending?: boolean }>;
 }
 
-/** True only during reopen geometry restoration; cold streaming keeps its existing interaction path. */
-export function isGeometryRestoreHeld(state: { models?: ReadonlyMap<string, { geometryRestorePending?: boolean }> }): boolean {
+/**
+ * The reopen gate (user decision 2026-11-14): true while a reopened model's geometry restore is pending
+ * (`geometryRestorePending`, lib/geometry-restore-gate.ts). The gated paths this PR added read it (selection
+ * highlight, hover outline, measure/snap, command presses, section caps, the progress cursor) and input there is
+ * ignored. Cold streaming is NOT covered: it keeps main's own gate (`isGeometryLoadStreaming` above, which the
+ * picker reads) and main's behaviour.
+ */
+export function isGeometryHeld(state: { models?: ReadonlyMap<string, { geometryRestorePending?: boolean }> }): boolean {
   if (state.models) for (const model of state.models.values()) if (model.geometryRestorePending) return true;
   return false;
 }
+
+/** The same predicate, named for the input-ignoring branches. */
+export const isGeometryRestoreHeld = isGeometryHeld;
 
 /**
  * Whether geometry is still streaming/loading, so element picking must be
@@ -38,9 +47,4 @@ export function isGeometryLoadStreaming(state: PickGatingState): boolean {
   return state.loading && state.progress !== null && state.progress.percent < 100;
 }
 
-/**
- * The one gate for geometry-dependent interaction (pick, selection highlight,
- * measure/snap, section caps): geometry still streaming, or a reopened model's
- * geometry restore still pending (user decision 2026-11-14).
- */
-export const isGeometryHeld = isGeometryLoadStreaming;
+

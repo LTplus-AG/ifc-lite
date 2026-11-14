@@ -12,14 +12,7 @@
  * - Scale and paper size handling
  */
 
-import type {
-  Drawing2D,
-  DrawingLine,
-  DrawingPolygon,
-  Point2D,
-  Bounds2D,
-  LineCategory,
-} from './types.js';
+import type { Drawing2D, DrawingLine, DrawingPolygon, Point2D, Bounds2D } from './types.js';
 import type { HatchLine } from './hatch-generator.js';
 import { HatchGenerator } from './hatch-generator.js';
 import {

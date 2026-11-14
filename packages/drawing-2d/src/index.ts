@@ -469,9 +469,7 @@ export {
   convertDxfToUnderlay,
   applyDxfPlacement,
   aciToCss,
-  DEFAULT_DXF_PLACEMENT,
-  DXF_TEXT_LINE_HEIGHT_FACTOR,
-  dxfTextLineOffset,
+  DEFAULT_DXF_PLACEMENT, DXF_TEXT_LINE_HEIGHT_FACTOR, dxfTextLineOffset,
 } from './dxf/index.js';
 
 export type {

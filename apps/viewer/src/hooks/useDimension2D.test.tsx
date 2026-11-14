@@ -534,6 +534,20 @@ it('a drag interrupted by a switch away and back (A→B→A) records nothing', (
   assert.equal(useViewerStore.getState().dimension2DUndo.length, 0, 'and nothing recorded');
 });
 
+it('a drag whose dimension is replaced by a same-id one mid-drag stops and records nothing', () => {
+  const d1 = { id: 'd1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned' as const, plane: PLANE };
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none', activeModelId: 'A', dimensions2D: [d1] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 250, clientY: -50 });
+  const replaced = { ...d1, a: { x: 5, y: 5 }, b: { x: 8, y: 5 } };
+  act(() => useViewerStore.setState({ dimensions2D: [replaced], dimension2DUndo: [], dimension2DRedo: [] }));
+  mouseMove(canvas, { clientX: 300, clientY: 0 });
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 5, y: 5 }, 'the replacement is not dragged');
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 0, 'and no stale before-state is recorded');
+});
+
 it('placing a dimension with the tool is undoable from the keyboard', () => {
   useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension' });
   const canvas = render(<Harness />).firstElementChild!;

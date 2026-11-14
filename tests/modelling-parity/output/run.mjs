@@ -192,7 +192,7 @@ async function main() {
     const sdkFile = join(OUT, 'sdk', `${cap.id}.json`);
     const sdk = existsSync(sdkFile) ? { ...JSON.parse(readFileSync(sdkFile, 'utf8')), file: rel(sdkFile) } : null;
     const sets = artifactSets([...(sdk ? [sdk] : []), ...uiResults], cap.id, { root: ROOT });
-    const base = { schema: 'ifclite-parity-result/1', capability: cap.id, probe: 'output', source, runner: `node tests/modelling-parity/output/run.mjs --only ${cap.id}` };
+    const base = { schema: 'ifclite-parity-result/1', capability: cap.id, probe: 'output', source: cap.id === 'sheets-pdf-dwg' ? { ...source, sheetDxfOracle: 1 } : source, runner: `node tests/modelling-parity/output/run.mjs --only ${cap.id}` };
     const results = [];
     if (!sets.length) {
       results.push({ ...base, id: `output.${cap.id}`, status: 'skip', reason: skipReason(cap, sdk), metrics: {}, evidence: [] });

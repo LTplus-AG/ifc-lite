@@ -121,13 +121,21 @@ describe('rhinoViewerModel, a point cloud far from the origin', () => {
 
     const asset = geometryResult.pointClouds?.[0];
     assert.ok(asset?.origin, 'the cloud carries an f64 origin');
+    const origin = asset.origin;
     // Viewer Y-up is `x, z, -y` of the file's Z-up point.
-    const world = [0, 1, 2].map((axis) => asset.origin![axis] + asset.chunk.positions[axis]);
-    const expected = [2_600_000.123, 400.789, -1_200_000.456];
-    world.forEach((value, axis) => assert.ok(Math.abs(value - expected[axis]) < 1e-3, `axis ${axis}: ${value}`));
-    // Scene bounds read the bbox relative to that origin.
-    const { min } = geometryResult.coordinateInfo.originalBounds;
-    assert.ok(Math.abs(min.x - 2_600_000.123) < 1e-3, `bounds min.x ${min.x}`);
+    const expected = [
+      [2_600_000.123, 400.789, -1_200_000.456],
+      [2_600_001.123, 400.789, -1_200_000.456],
+    ];
+    expected.forEach((point, i) => point.forEach((value, axis) => {
+      const world = origin[axis] + asset.chunk.positions[i * 3 + axis];
+      assert.ok(Math.abs(world - value) < 1e-3, `point ${i} axis ${axis}: ${world}`);
+    }));
+    // Scene bounds are absolute: origin plus the cloud's relative bbox.
+    const { min, max } = geometryResult.coordinateInfo.originalBounds;
+    const close = (actual: number, want: number) => assert.ok(Math.abs(actual - want) < 1e-3, `${actual} vs ${want}`);
+    [[min.x, 2_600_000.123], [min.y, 400.789], [min.z, -1_200_000.456],
+      [max.x, 2_600_001.123], [max.y, 400.789], [max.z, -1_200_000.456]].forEach(([a, w]) => close(a, w));
   });
 });
 

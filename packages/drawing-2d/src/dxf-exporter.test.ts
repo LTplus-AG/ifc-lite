@@ -219,6 +219,29 @@ describe('DXFExporter', () => {
     expect(texts[1].height).toBeCloseTo(4);
   });
 
+  it('anchors a multi-line underlay text block by its vertical attachment, along rotated text', () => {
+    // DXF anchors the whole block: bottom grows up from the point (last line
+    // on it), middle centres on it, top grows down. Lines stack across the
+    // text's own direction, so a 90° label stacks along world X.
+    const at = (valign: 'top' | 'middle' | 'bottom', dirX: number, dirY: number) => {
+      const multi = underlay();
+      multi.layers[0].texts = [
+        { position: { x: 10, y: 20 }, text: 'A\nB\nC', height: 1, dirX, dirY, align: 'left', valign },
+      ];
+      return parseDxf(exportToDXF(emptyDrawing(), { underlays: [{ underlay: multi }] })).entities
+        .filter((e): e is DxfTextEntity => e.kind === 'text');
+    };
+    const bottom = at('bottom', 1, 0);
+    expect(bottom.map((t) => t.text)).toEqual(['A', 'B', 'C']);
+    expect(bottom.map((t) => t.y)).toEqual([22.6, 21.3, 20].map((y) => expect.closeTo(y, 9)));
+    expect(at('middle', 1, 0).map((t) => t.y)).toEqual([21.3, 20, 18.7].map((y) => expect.closeTo(y, 9)));
+    expect(at('top', 1, 0).map((t) => t.y)).toEqual([20, 18.7, 17.4].map((y) => expect.closeTo(y, 9)));
+    // Rotated 90° (reading up): "down" across the baseline is world +X.
+    const rotated = at('bottom', 0, 1);
+    expect(rotated.map((t) => t.x)).toEqual([7.4, 8.7, 10].map((x) => expect.closeTo(x, 9)));
+    expect(rotated.map((t) => t.y)).toEqual([20, 20, 20].map((y) => expect.closeTo(y, 9)));
+  });
+
   it('applies underlay placement offset/rotation in the same sense as every other DxfPlacement consumer (world Y-up, not mirrored)', () => {
     // `DxfPlacement` is documented as drawing space (+Y down): "Offset in
     // metres (drawing space)" / "counter-clockwise as seen on a plan view".

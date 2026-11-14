@@ -6,7 +6,7 @@ import { isValidIfcGuid, isValidUuid, uuidToIfcGuid, uuidV5 } from '@ifc-lite/en
 import type { RhinoUserStrings } from '../types.js';
 import type { IfcClasses } from './ifc-classes.js';
 import { plural, type Report } from './report.js';
-import type { RhinoImportEntity, RhinoImportPropertySet } from './types.js';
+import type { RhinoImportEntity, RhinoImportPropertySet, RhinoImportVisibility } from './types.js';
 
 export const FALLBACK_CLASS = 'IfcBuildingElementProxy';
 /** Namespace for the GlobalId of an object whose own UUID cannot supply one. */
@@ -15,8 +15,8 @@ const FALLBACK_NAMESPACE = '6f1e2b0a-7c1d-4f7e-9d59-3c0f4a1d2b77';
 const COLUMN_KEYS = new Set(['description', 'objecttype']);
 
 /** What identity needs to know about one drawn top-level object. */
-export interface ObjectFacts {
-  id: string; name: string; type: string; layer: number; layerPath: string; hidden: boolean;
+export interface ObjectFacts extends RhinoImportVisibility {
+  id: string; name: string; type: string; layer: number; layerPath: string;
   groups: number[]; userStrings: RhinoUserStrings; material: string;
 }
 
@@ -165,7 +165,8 @@ export function buildEntities(objects: ObjectFacts[], groupNames: string[], clas
       name: columnString(parts, 'Name') || first.name || first.type,
       description: columnString(parts, 'Description'),
       objectType: columnString(parts, 'ObjectType'),
-      layer: first.layer, hidden: parts.every(part => part.hidden), objectIds: parts.map(part => part.id), geometryType: first.type,
+      layer: first.layer, hidden: parts.every(part => part.hidden), hiddenByObject: parts.every(part => part.hiddenByObject),
+      hiddenByLayer: parts.every(part => part.hiddenByLayer), objectIds: parts.map(part => part.id), geometryType: first.type,
       userStrings, propertySets: propertySets(first, userStrings),
     };
   });

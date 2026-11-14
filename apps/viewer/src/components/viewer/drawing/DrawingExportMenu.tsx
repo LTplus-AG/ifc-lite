@@ -33,6 +33,8 @@ export interface DrawingExportMenuProps {
   sheetEnabled: boolean;
   activeSheet: DrawingSheet | null;
   markupCounts: DrawingExportContent['markupCounts'];
+  dimensionGraphicsAt?: (paperScale: number) => DrawingExportContent['dimensionGraphics'];
+  drawingScale?: number;
   /** Dimensions drawn on another cut, left out of every export. */
   otherCutDimensionCount?: number;
   visibleUnderlayCount: number;
@@ -41,7 +43,7 @@ export interface DrawingExportMenuProps {
 
 export function DrawingExportMenu({
   hasDrawing, compact, onExportSvg, onExportDxf, onExportPdf, onPrint,
-  displayedScale, sheetEnabled, activeSheet, markupCounts, otherCutDimensionCount = 0, visibleUnderlayCount, visibleRasterReferenceCount = 0,
+  displayedScale, sheetEnabled, activeSheet, markupCounts, dimensionGraphicsAt, drawingScale = displayedScale, otherCutDimensionCount = 0, visibleUnderlayCount, visibleRasterReferenceCount = 0,
 }: DrawingExportMenuProps) {
   const { t } = useTranslation();
   const { confirmDialog } = useDialogs();
@@ -49,6 +51,7 @@ export function DrawingExportMenu({
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const content: DrawingExportContent = {
     markupCounts,
+    dimensionGraphics: dimensionGraphicsAt?.(sheetEnabled && activeSheet ? activeSheet.scale.factor : displayedScale),
     otherCutDimensionCount,
     visibleUnderlayCount,
     visibleRasterReferenceCount,
@@ -56,19 +59,20 @@ export function DrawingExportMenu({
   };
   const pdfOmissions = drawingExportOmissions(content, 'pdf');
 
-  const handleDxfExport = async () => {
-    const omissions = drawingExportOmissions(content, 'dxf');
+  const handleVectorExport = async (format: 'svg' | 'dxf' | 'print', action: () => void) => {
+    const graphics = format === 'dxf' ? dimensionGraphicsAt?.(drawingScale) : content.dimensionGraphics;
+    const omissions = drawingExportOmissions({ ...content, dimensionGraphics: graphics }, format);
     if (omissions.length > 0) {
       const confirmed = await confirmDialog({
-        title: t('section2d.export.omission.dxfTitle'),
-        description: t('section2d.export.omission.dxfDescription', {
+        title: t('section2d.export.omission.drawingTitle'),
+        description: t('section2d.export.omission.drawingDescription', {
           items: omissions.map((omission) => t(DRAWING_OMISSION_LABEL_KEYS[omission])).join(', '),
         }),
         confirmLabel: t('section2d.export.omission.continue'),
       });
       if (!confirmed) return;
     }
-    onExportDxf();
+    action();
   };
   return (
     <>
@@ -92,16 +96,16 @@ export function DrawingExportMenu({
           <TooltipContent>{label}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuItem onClick={onExportSvg} disabled={!hasDrawing}>
+          <DropdownMenuItem onClick={() => { void handleVectorExport('svg', onExportSvg); }} disabled={!hasDrawing}>
             <Download className="mr-2 h-4 w-4" />{t('section2d.export.svg')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => { void handleDxfExport(); }} disabled={!hasDrawing}>
+          <DropdownMenuItem onClick={() => { void handleVectorExport('dxf', onExportDxf); }} disabled={!hasDrawing}>
             <FileDown className="mr-2 h-4 w-4" />{t('section2d.export.dxf')}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setPdfDialogOpen(true)} disabled={!hasDrawing}>
             <FileText className="mr-2 h-4 w-4" />{t('section2d.export.pdf')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={onPrint} disabled={!hasDrawing}>
+          <DropdownMenuItem onClick={() => { void handleVectorExport('print', onPrint); }} disabled={!hasDrawing}>
             <Printer className="mr-2 h-4 w-4" />{t('section2d.export.print')}
           </DropdownMenuItem>
           <DropdownMenuSeparator />

@@ -167,6 +167,7 @@ export function DrawingPanel(): React.ReactElement {
         // Live tags and current-cut dimensions export in every format; only ordinary text and other-cut dimensions can be omitted.
         markupCounts={{ ...vm.markupCounts, texts: vm.textAnnotations2D.length }}
         otherCutDimensionCount={otherCutDimensionCount}
+        dimensionGraphicsAt={layers.getExportDimensionGraphics} drawingScale={displayOptions.scale}
         visibleRasterReferenceCount={vm.visibleRasterReferenceCount}
         visibleUnderlayCount={layers.dxfUnderlayData.filter((underlay) => underlay.opacity > 0).length}
       />

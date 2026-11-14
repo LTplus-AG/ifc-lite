@@ -163,3 +163,18 @@ fn tracked_weld_reports_only_merges_from_beyond_the_conform_tolerance() {
         ]
     );
 }
+
+/// #8190 review: the closing merge takes the last kept vertex, and what was
+/// merged onto it goes with it: `d1` and `d2` then hang off the first vertex,
+/// ahead of it. The restore puts all three back in ring order.
+#[test]
+fn tracked_weld_re_anchors_what_was_merged_onto_a_last_vertex_the_closing_merge_takes() {
+    let p = nalgebra::Point2::new;
+    let corners = [p(0.0, 0.0), p(4.0, 0.0), p(4.0, 4.0), p(0.0, 4.0)];
+    let (last, d1, d2) = (p(-2.0e-4, 0.0), p(-2.0e-4, 1.5e-4), p(-3.5e-4, 1.5e-4));
+    let ring = [corners[0], corners[1], corners[2], corners[3], last, d1, d2];
+    let (kept, welded) = weld_near_coincident_2d_tracked(&ring);
+    assert_eq!(kept, corners);
+    let ahead = |dropped| Welded { kept: corners[0], dropped, before: true };
+    assert_eq!(welded, [ahead(d2), ahead(d1), ahead(last)]);
+}

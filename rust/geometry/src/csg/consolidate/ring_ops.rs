@@ -43,8 +43,9 @@ pub(super) fn within_conform_tol(p: nalgebra::Point2<f64>, q: nalgebra::Point2<f
 pub(super) struct Welded {
     pub(super) kept: nalgebra::Point2<f64>,
     pub(super) dropped: nalgebra::Point2<f64>,
-    /// `dropped` came before `kept` in ring order (the last vertex merged
-    /// onto the first); otherwise it came after it.
+    /// `dropped` came before `kept` in ring order: the last vertex, merged
+    /// onto the first by the closing merge, and whatever had been merged onto
+    /// that last vertex. Otherwise it came after `kept`.
     pub(super) before: bool,
 }
 
@@ -75,7 +76,7 @@ pub(super) struct Welded {
 /// interner/predicates (no float weld in the determinism path).
 ///
 /// Also returns each vertex merged away from more than `CONFORM_TOL` off its
-/// kept neighbour, in ring order, for `conform::restore` to put back.
+/// kept neighbour, in the order `conform::restore` reads it back.
 pub(super) fn weld_near_coincident_2d_tracked(
     ring: &[nalgebra::Point2<f64>],
 ) -> (Vec<nalgebra::Point2<f64>>, Vec<Welded>) {
@@ -98,7 +99,8 @@ pub(super) fn weld_near_coincident_2d_tracked(
     // 2⁻¹² m so big rings can't swallow mm-scale features ⇒ exact, deterministic.
     let eps = (floor_pow2(extent) * RIM_NOISE_OF_SIZE).min(RIM_NOISE_CAP);
     let eps2 = eps * eps;
-    let mut welded: Vec<Welded> = Vec::new();
+    // `welded[tail..]` is what was merged onto the last vertex of `kept`.
+    let (mut welded, mut tail): (Vec<Welded>, usize) = (Vec::new(), 0);
     let mut kept: Vec<nalgebra::Point2<f64>> = Vec::with_capacity(n);
     for &p in ring {
         let dup = kept.last().is_some_and(|q| {
@@ -108,6 +110,7 @@ pub(super) fn weld_near_coincident_2d_tracked(
         });
         if !dup {
             kept.push(p);
+            tail = welded.len();
         } else if let Some(&q) = kept.last().filter(|&&q| !within_conform_tol(p, q)) {
             welded.push(Welded { kept: q, dropped: p, before: false });
         }
@@ -119,6 +122,13 @@ pub(super) fn weld_near_coincident_2d_tracked(
         let dy = last.y - first.y;
         if dx * dx + dy * dy < eps2 {
             kept.pop();
+            // What was merged onto `last` now sits ahead of `first`. Reversed,
+            // because the restore walks the record backwards and inserts each
+            // one directly before `first`.
+            welded[tail..].reverse();
+            for w in &mut welded[tail..] {
+                *w = Welded { kept: first, before: true, ..*w };
+            }
             if !within_conform_tol(last, first) {
                 welded.push(Welded { kept: first, dropped: last, before: true });
             }

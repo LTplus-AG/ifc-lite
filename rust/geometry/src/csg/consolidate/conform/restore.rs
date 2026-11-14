@@ -15,6 +15,7 @@
 //! `conform_ring` cannot insert it and `snap_near_duplicates` cannot reach it,
 //! and the cap stays open across a triangle 218 um wide.
 
+use super::conform_ring;
 use crate::csg::consolidate::ring_ops::{within_conform_tol as near, Welded};
 use nalgebra::Point2;
 
@@ -23,8 +24,10 @@ use nalgebra::Point2;
 /// candidate's position. Returns whether anything was inserted.
 ///
 /// A vertex is left out when its kept neighbour is no longer in `ring` (the
-/// collinear simplify removed it), or when the ring already has a vertex within
-/// `CONFORM_TOL` of the candidate.
+/// collinear simplify removed it) or is there twice (a ring pinched at it),
+/// when the ring already has a vertex within `CONFORM_TOL` of the candidate,
+/// or when the candidate lies on one of the ring's edges, where `conform_ring`
+/// inserts it afterwards: put back here as well it would be in the ring twice.
 pub(super) fn restore_welded(
     ring: &mut Vec<Point2<f64>>,
     welded: &[Welded],
@@ -40,7 +43,11 @@ pub(super) fn restore_welded(
         if ring.iter().any(|&p| near(p, q)) {
             continue;
         }
-        let Some(at) = ring.iter().position(|&p| p == gone.kept) else { continue };
+        let mut anchors = ring.iter().enumerate().filter(|&(_, &p)| p == gone.kept);
+        let (Some((at, _)), None) = (anchors.next(), anchors.next()) else { continue };
+        if conform_ring(&mut ring.clone(), &[q]) {
+            continue;
+        }
         ring.insert(if gone.before { at } else { at + 1 }, q);
     }
     ring.len() != len
@@ -69,14 +76,14 @@ mod tests {
     #[test]
     fn keeps_ring_order_for_two_vertices_merged_onto_one_and_for_the_closing_merge() {
         let (k, d1, d2, last) = (p(0.0, 0.0), p(1.5e-4, 0.0), p(1.5e-4, 1.5e-4), p(-1.5e-4, 0.0));
-        let mut ring = vec![k, p(1.0, 1.0), p(-1.0, 1.0)];
+        let mut ring = vec![k, p(1.0, -1.0), p(1.0, 1.0), p(-1.0, 1.0)];
         let welded = [
             Welded { kept: k, dropped: d1, before: false },
             Welded { kept: k, dropped: d2, before: false },
             Welded { kept: k, dropped: last, before: true },
         ];
         assert!(restore_welded(&mut ring, &welded, &[d1, d2, last]));
-        assert_eq!(ring, vec![last, k, d1, d2, p(1.0, 1.0), p(-1.0, 1.0)]);
+        assert_eq!(ring, vec![last, k, d1, d2, p(1.0, -1.0), p(1.0, 1.0), p(-1.0, 1.0)]);
     }
 
     #[test]
@@ -89,5 +96,23 @@ mod tests {
         let mut ring: Vec<_> = square[1..].to_vec();
         assert!(!restore_welded(&mut ring, &welded, &[d]), "its neighbour was simplified away");
         assert_eq!(ring, square[1..]);
+        let mut ring = vec![k, p(1.0, 0.0), p(1.0, 1.0), k, p(0.0, 1.0), p(-1.0, 1.0)];
+        let off = p(1.5e-4, -1.5e-4);
+        let welded = [Welded { kept: k, dropped: off, before: false }];
+        assert!(!restore_welded(&mut ring, &welded, &[off]), "pinched at its neighbour");
+        assert!(restore_welded(&mut square.clone(), &welded, &[off]), "and restored when it is not");
+    }
+
+    /// #8190 review: a vertex that folds back onto the edge leading to its kept
+    /// neighbour is `conform_ring`'s to insert. Restored as well, it would be
+    /// in the ring twice and the region would fail to triangulate.
+    #[test]
+    fn leaves_a_vertex_on_a_ring_edge_to_conform_ring() {
+        let (k, d) = (p(1.0, 0.0), p(1.0 - 2.0e-4, 0.0));
+        let welded = [Welded { kept: k, dropped: d, before: false }];
+        let mut ring = vec![p(0.0, 0.0), k, p(1.0, 1.0), p(0.0, 1.0)];
+        assert!(!restore_welded(&mut ring, &welded, &[d]));
+        assert!(conform_ring(&mut ring, &[d]));
+        assert_eq!(ring, vec![p(0.0, 0.0), d, k, p(1.0, 1.0), p(0.0, 1.0)]);
     }
 }

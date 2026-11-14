@@ -70,11 +70,11 @@ fn record(content: &[u8], start: usize, end: usize) -> Option<Vec<String>> {
 }
 
 /// AppliedLoad then SubsequentAppliedLoads of an IFC2X3 varying action, or None.
-fn varying_loads(kind: &Kind, args: &[String]) -> Option<Vec<u32>> {
+fn varying_loads(args: &[String]) -> Option<Vec<u32>> {
     if args.len() != 14 { return None; }
     let mut loads = vec![ref_id(Some(&args[7]))?];
     loads.extend(refs(&args[13])?);
-    (loads.len() >= kind.min).then_some(loads)
+    Some(loads)
 }
 
 /// A list of references, or None when any item is not one.
@@ -115,7 +115,7 @@ impl Source {
     /// one aspect of its representation (and `location`, when IFC2X3 names
     /// one), enough loads, all of one type that the IFC2X3 WR61 admits.
     fn convertible(&self, kind: &Kind, representation: &str, loads: &[u32], location: Option<u32>) -> Option<u32> {
-        let aspect = match ref_id(Some(representation)).and_then(|r| self.aspects.get(&r)).map(Vec::as_slice) { Some([only]) => *only, _ => return None };
+        let Some(&[aspect]) = ref_id(Some(representation)).and_then(|r| self.aspects.get(&r)).map(Vec::as_slice) else { return None };
         if location.is_some_and(|l| l != aspect) || loads.len() < kind.min { return None; }
         let first = self.loads.get(&loads[0]).filter(|t| kind.first.contains(&t.as_str()))?;
         loads.iter().all(|l| self.loads.get(l) == Some(first)).then_some(aspect)
@@ -128,7 +128,7 @@ impl StructuralVarying {
     pub(crate) fn scan_ifc2x3(content: &[u8], kept: impl Fn(u32, usize) -> bool, mut allocate: impl FnMut() -> Option<u32>) -> Self {
         let source = Source::scan(content, kept, true);
         let mut convertible: Vec<_> = source.actions.iter().filter_map(|(id, kind, args)| {
-            let loads = varying_loads(kind, args)?;
+            let loads = varying_loads(args)?;
             source.convertible(kind, &args[6], &loads, Some(ref_id(Some(&args[12]))?))?;
             Some((*id, *kind, loads))
         }).collect();
@@ -144,11 +144,7 @@ impl StructuralVarying {
     /// IFC4 -> IFC2X3: the actions that become varying actions and the configurations they consume.
     pub(crate) fn scan_ifc4(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
         let source = Source::scan(content, kept, false);
-        let names_config = |token: &String| {
-            let mut found = Vec::new();
-            crate::step_text::refs_in_line(token.as_bytes(), &mut found);
-            found.iter().any(|r| source.configs.contains_key(r))
-        };
+        let names_config = |token: &String| crate::step_text::ref_spans(token.as_bytes()).filter_map(|r| r.id).any(|r| source.configs.contains_key(&r));
         let mut result = Self::default();
         for (id, kind, args) in &source.actions {
             if args.len() != 12 || args[11].trim().eq_ignore_ascii_case(".CONST.") { continue; }

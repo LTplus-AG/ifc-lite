@@ -41,7 +41,7 @@ export class StructuralVarying {
   ids: (() => number) | null = null;
   private readonly pending: string[] = [];
   private mode: 'upgrade' | 'downgrade' | null = null;
-  private typeOf: (id: number) => string = () => '';
+  private byId: IfcDataStore['entityIndex']['byId'] = new Map();
   /** IFC4 IfcStructuralLoadConfiguration id -> its values. */
   private readonly configs = new Map<number, number[]>();
   /** IfcProductDefinitionShape id -> the IfcShapeAspects naming it as PartOfProductDefinitionShape. */
@@ -51,8 +51,10 @@ export class StructuralVarying {
     const mode = from === 'IFC2X3' && to === 'IFC4' ? 'upgrade' : from === 'IFC4' && to === 'IFC2X3' ? 'downgrade' : null;
     // @raw-entity-enumeration-ok conversion prepass is enabled only for an unedited full-source export
     const { byId, byType } = store.entityIndex;
-    const sources = mode === 'upgrade' ? KINDS.map((k) => k.ifc2x3) : ['IFCSTRUCTURALLOADCONFIGURATION'];
-    if (!mode || !sources.some((type) => byType.get(type)?.length)) return;
+    const present = (types: readonly string[]) => types.some((type) => byType.get(type)?.length);
+    const work = mode === 'upgrade' ? present(KINDS.map((k) => k.ifc2x3))
+      : mode === 'downgrade' && present(['IFCSTRUCTURALLOADCONFIGURATION']) && present(KINDS.map((k) => k.ifc4));
+    if (!work) return;
     const slots = (id: number) => {
       const entry = byId.get(id);
       return entry ? readStepSlots(decodeRange(store.source, entry.byteOffset, entry.byteOffset + entry.byteLength))?.slots : undefined;
@@ -69,8 +71,10 @@ export class StructuralVarying {
       if (values?.length && values.every((v) => v !== null)) this.configs.set(id, values as number[]);
     }
     this.mode = mode;
-    this.typeOf = (id) => byId.get(id)?.type.toUpperCase() ?? '';
+    this.byId = byId;
   }
+
+  private typeOf(id: number): string { return this.byId.get(id)?.type.toUpperCase() ?? ''; }
 
   /** The target record body for a varying action of either schema, or undefined. */
   rewrite(entity: string, args: readonly string[]): Rewrite | undefined {
@@ -109,8 +113,9 @@ export class StructuralVarying {
     const kind = KINDS.find((k) => k.ifc4 === entity);
     if (!kind || args.length !== 12 || args[11].trim().toUpperCase() === '.CONST.') return undefined;
     const values = this.configs.get(refId(args[7]) ?? -1);
-    const aspect = values && this.convertible(kind, args[6], values);
-    if (!values || aspect === undefined) return undefined;
+    if (!values) return undefined;
+    const aspect = this.convertible(kind, args[6], values);
+    if (aspect === undefined) return undefined;
     const [first, ...rest] = values.map((v) => `#${v}`);
     // `inspect` reports this for the records it sees; a rewritten one skips it.
     const losses = [TO_IFC2X3, ...(args[9].trim() === '$' ? [destabilizingUnknown(entity)] : [])];

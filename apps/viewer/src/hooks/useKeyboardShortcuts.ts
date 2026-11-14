@@ -4,6 +4,7 @@
 
 /** Live global and tool actions for the canonical keyboard table (#5841). */
 import { useEffect } from 'react';
+import { isPanelAvailable } from '@/lib/panels/availability';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { registerKeyboardCommand, type CommandRun } from '@/lib/commands/dispatcher';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
@@ -120,7 +121,8 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
   ['tool.annotate', () => { useViewerStore.getState().setActiveTool('annotate'); }],
   ['ui.openPanel', (event) => {
     const panel = workspacePanelForShortcutCode(event.code);
-    if (!panel) return false;
+    // A panel the host switched off leaves its Alt+digit to the browser.
+    if (!panel || !isPanelAvailable(panel)) return false;
     useViewerStore.getState().openPanelInHome(panel, 'shortcut');
   }],
   ['ui.toggleSidebar', () => { useViewerStore.getState().cycleSidebarMode(); }],

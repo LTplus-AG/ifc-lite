@@ -15,7 +15,7 @@
 
 import { useMemo } from 'react';
 import { useViewerStore } from '@/store';
-import { isCollabEnabled } from '@/lib/collab/config';
+import { isPanelOffered } from '@/lib/panels/availability';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 
 export function useRailPanelIds(): WorkspacePanelId[] {
@@ -26,7 +26,7 @@ export function useRailPanelIds(): WorkspacePanelId[] {
     return order.filter(
       (id) =>
         (!hidden.has(id) || id === 'properties') &&
-        (id !== 'collab' || isCollabEnabled()),
+        isPanelOffered(id),
     );
   }, [order, hiddenIds]);
 }

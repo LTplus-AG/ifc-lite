@@ -8,8 +8,10 @@ import { Play, GraduationCap } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { TOUR_REGISTRY } from '@/lib/tours/registry';
+import { isTourAvailable } from '@/lib/tours/tour-availability';
 import { startTour } from '@/lib/tours/controller';
 import { buildExportCommands } from './commandPaletteExports';
+import { isPanelAvailable } from '@/lib/panels/availability';
 import { buildPaletteExtensionCommands } from './palette-extension-commands';
 import type { Command } from './commandPaletteSearch';
 import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
@@ -23,7 +25,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   c.push(...buildExportCommands(p.runExport, p.extensionExporters));
 
   // ── Automation (scripts — last, power-user feature) ──
-  for (const t of SCRIPT_TEMPLATES) {
+  for (const t of isPanelAvailable('script') ? SCRIPT_TEMPLATES : []) {
     c.push({
       id: `auto:${t.name}`, label: t.name, keywords: `script run ${t.description}`,
       runtimeSource: 'script-template',
@@ -33,7 +35,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   }
 
   // ── Learn (tours) ──
-  for (const tour of TOUR_REGISTRY) {
+  for (const tour of TOUR_REGISTRY.filter(isTourAvailable)) {
     c.push({
       id: `tour:${tour.id}`,
       runtimeSource: 'tour',

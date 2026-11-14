@@ -10,7 +10,8 @@
  */
 
 import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
-import { ALT_SHORTCUT_PANELS } from '@/lib/panels/registry';
+import { ALT_SHORTCUT_PANELS, altShortcutDigit } from '@/lib/panels/registry';
+import { isPanelAvailable } from '@/lib/panels/availability';
 import { isApplePlatform } from '@/lib/commands/chord';
 import {
   KEY_COMMANDS,
@@ -19,6 +20,7 @@ import {
   type KeyCommandCategory,
 } from '@/lib/commands/keyboard-commands';
 import { formatCommandKeys } from '@/lib/commands/shortcut-label';
+import { isKeyCommandAvailable } from '@/lib/commands/keyboard-command-features';
 
 interface ShortcutRow {
   readonly id: string;
@@ -36,10 +38,12 @@ function rowsByCategory(apple: boolean, gestureKeys: (row: (typeof POINTER_GESTU
     rows.set(category, list);
   };
   for (const command of KEY_COMMANDS) {
+    if (!isKeyCommandAvailable(command)) continue;
     push(command.category, {
       id: command.id,
       keys: formatCommandKeys(command, apple),
-      labelKey: command.labelKey,
+      // A host can switch off every bottom panel; the row then has no bottom clause.
+      labelKey: command.id === 'ui.openPanel' && !panelTitles.bottomPanels ? 'commands.ui.openPanelSideOnly' : command.labelKey,
       params: command.id === 'ui.openPanel' ? panelTitles : undefined,
     });
   }
@@ -55,9 +59,12 @@ function rowsByCategory(apple: boolean, gestureKeys: (row: (typeof POINTER_GESTU
 export function ShortcutsTab() {
   const { t } = useTranslation();
   const apple = isApplePlatform();
+  // Each panel keeps its digit when one before it is switched off, so the list
+  // names the digit instead of relying on position.
   const altPanelTitles = (bottom: boolean) => ALT_SHORTCUT_PANELS
-    .filter((panel) => (panel.region === 'bottom') === bottom)
-    .map((panel) => t(panel.titleKey)).join(', ');
+    .map((panel, position) => ({ panel, digit: altShortcutDigit(position) }))
+    .filter(({ panel }) => (panel.region === 'bottom') === bottom && isPanelAvailable(panel.id))
+    .map(({ panel, digit }) => t('commands.ui.openPanelEntry', { digit, panel: t(panel.titleKey) })).join(', ');
   const groups = rowsByCategory(apple, (gesture) => t(gesture.gestureKey, { mod: apple ? '⌘' : 'Ctrl' }),
     { sidePanels: altPanelTitles(false), bottomPanels: altPanelTitles(true) });
 

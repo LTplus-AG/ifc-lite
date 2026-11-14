@@ -18,6 +18,7 @@ import {
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
 import type { FederatedModel, PointerInput } from '../types.js';
 import { hasRetainedShapeOnlyModel } from '../retainedGeometry.js';
+import { isToolAvailable } from '@/lib/features/tools.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 import { applyThemeClasses, hasLoadedModel, initialPointerInput, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
@@ -261,13 +262,12 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // is the one place a stray drag/polyline sequence could be left stranded.
     // Entering it resets too, so a press begun in another tool places no
     // Measure point on release (#8786).
-    // Routed through measurementSlice's resetMeasureGesture instead of
-    // duplicating the clear here, keeping one place that knows what
-    // "in-progress gesture" means (see measurementSlice.ts's measureMode doc).
+    // Routed through measurementSlice's resetMeasureGesture, the one place that knows
+    // what "in-progress gesture" means (see measurementSlice.ts's measureMode doc).
     const crossingMeasure = (get().activeTool === 'measure') !== (activeTool === 'measure');
-    // Measuring snaps to meshes; a retained model's are shape-only (#7955 M2), so no entry point may open the tool.
+    // A host may switch a tool off (lib/features). Measuring snaps to meshes; a retained model's are shape-only (#7955 M2).
     const { models } = get() as unknown as { models?: Map<string, FederatedModel> };
-    if (activeTool === 'measure' && models && hasRetainedShapeOnlyModel(models)) return;
+    if (!isToolAvailable(activeTool) || (activeTool === 'measure' && models && hasRetainedShapeOnlyModel(models))) return;
     if (AUTHORING_TOOLS.has(activeTool)) {
       // Collab role gate: in a shared session only editor/admin may
       // unlock authoring. Viewers/commenters can still pick read-only

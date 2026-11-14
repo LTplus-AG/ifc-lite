@@ -4,6 +4,7 @@
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { TypeVisibility, StructuralViewMode } from '@/store/types';
+import type { RetypedClasses } from '@/store/typeVisibilityFilter';
 import type { FederatedModel, ViewerState } from '@/store';
 import { isAnalyticalProduct } from './analytical-classes.mjs';
 import { isProductClass } from '../compare/compareScope';
@@ -58,6 +59,30 @@ export function hasStructuralData(state: { models: ReadonlyMap<string, Federated
     for (const e of view?.readNewEntityKinds() ?? []) if (analytical(effectiveTreeType(view, e.expressId, e.type))) return true;
     return false;
   });
+}
+
+/** An entity's class after the view's edits, stored or created this session; null when deleted or unknown. */
+export function entityClass(store: IfcDataStore | null | undefined, view: MutablePropertyView | undefined, id: number): string | null {
+  const created = view?.getNewEntity(id);
+  if (created) return effectiveTreeType(view, id, created.type);
+  return store ? storedClass(store, view, id) : null;
+}
+
+/** Global id to class after edits, for each id an edit retyped. A mesh keeps the
+ *  class it was built with, so mesh filters read this to classify a mesh the
+ *  way the mask classifies its entity (#10119). Visits only edited ids. */
+export function retypedClasses(state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews' | 'toGlobalId'>): RetypedClasses {
+  const out = new Map<number, string>();
+  for (const { store, view, modelId } of sources(state.models, state.ifcDataStore, state.mutationViews)) {
+    if (!view) continue;
+    const global = (id: number) => modelId === null ? id : state.toGlobalId(modelId, id);
+    // Deleted ids stay out, so their meshes keep the class they were built with.
+    for (const id of view.getTypeMutations().keys()) {
+      const type = entityClass(store, view, id);
+      if (type !== null) out.set(global(id), type);
+    }
+  }
+  return out;
 }
 
 /** A separate mask, so switching modes never overwrites manual hides/isolation.

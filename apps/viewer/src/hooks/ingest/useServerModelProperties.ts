@@ -50,18 +50,19 @@ function publishIdRange(modelId: string, target: IdRangeTarget, firstHydration: 
   let published = maxExpressId;
   // An unregistered primary keeps the single-model `globalId === expressId` fallback.
   if (federationRegistry.hasModel(modelId)) {
+    const discardKept = () => discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId);
     try {
       published = federationRegistry.extendModel(modelId, maxExpressId, discard ? 0 : firstCreated);
     } catch (error) {
       // A refusal changes no ownership; a later failure (a listener) may already have granted the IDs.
       if (discard && !(error instanceof ModelRangeExtensionRefusedError)) {
-        try { discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId); }
+        try { discardKept(); }
         catch (discardError) { console.error(`[Server properties] Discarding kept edits of ${modelId} failed`, discardError); }
       }
       throw error;
     }
     // The registry owns the overlapped IDs now, whether or not this run commits its store.
-    if (discard) discardOverlappingRetainedEdits(useViewerStore.getState(), modelId, maxExpressId);
+    if (discard) discardKept();
   } else if (overlaps && !firstHydration) {
     throw new ModelRangeExtensionRefusedError(`Source of ${modelId} grows across unpublished authored IDs from ${firstCreated}`);
   }
@@ -135,16 +136,16 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
         // Ownership is permanent even if extension/warning supersedes the lease.
         // Commit the hydrated store only if settlement still owns this model.
         const accepted = lease.isCurrent() && ownsModel();
-        // Only a registered model's bound moves without a commit (else branch). An unregistered
+        // Only a registered model's bound moves without a commit (the `else if`). An unregistered
         // primary owns no range; the refresher discards against its committed source and bound.
         if (accepted) {
           committing = dataStore;
           useViewerStore.getState().updateModel(modelId, { ifcDataStore: dataStore, ...idRange });
+          if (useViewerStore.getState().models.get(modelId)?.hasOverlayCapacity === false) {
+            console.warn(`[Server properties] Model ${modelId}: no id is left for edits in its safe range`);
+          }
         } else if (federationRegistry.hasModel(modelId)) {
           useViewerStore.getState().updateModel(modelId, idRange);
-        }
-        if (accepted && useViewerStore.getState().models.get(modelId)?.hasOverlayCapacity === false) {
-          console.warn(`[Server properties] Model ${modelId}: no id is left for edits in its safe range`);
         }
       });
       // Settlement follows deferred refreshers too: any post-extension error

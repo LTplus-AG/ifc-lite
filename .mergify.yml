@@ -44,6 +44,13 @@ queue_rules:
       - check-success=Rust tests (feature builds)
     batch_size: 1
     merge_method: squash
+    # #10273: do not inherit agent trailers from individual commit messages.
+    # Credit actual commit authors; PR descriptions should omit agent credits.
+    commit_message_format:
+      title: pr-title
+      body: pr-body
+      trailers:
+        - co-authored-by
 
   - name: default
     # TRIAL: only labelled PRs. GitHub's own queue stays on until this is proven.
@@ -63,6 +70,13 @@ queue_rules:
     batch_max_wait_time: 10 min
     batch_max_failure_resolution_attempts: 3
     merge_method: squash
+    # #10273: do not inherit agent trailers from individual commit messages.
+    # Credit actual commit authors; PR descriptions should omit agent credits.
+    commit_message_format:
+      title: pr-title
+      body: pr-body
+      trailers:
+        - co-authored-by
 
   # Ceiling edits, one at a time (see the header). Same gate as `default`.
   - name: ceilings
@@ -78,6 +92,13 @@ queue_rules:
       - check-success=Rust tests (feature builds)
     batch_size: 1
     merge_method: squash
+    # #10273: do not inherit agent trailers from individual commit messages.
+    # Credit actual commit authors; PR descriptions should omit agent credits.
+    commit_message_format:
+      title: pr-title
+      body: pr-body
+      trailers:
+        - co-authored-by
 
 pull_request_rules:
   - name: queue PRs labelled for the Mergify trial

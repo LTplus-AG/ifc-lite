@@ -45,7 +45,6 @@ const body = (roofId: number) => {
 };
 
 function assertRoofRemesh(outcome: RoofEditOutcome, id: number): void {
-  assert.equal(outcome.ok, true);
   if (!outcome.ok) throw new Error(outcome.reason);
   const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
   assert.deepEqual(outcome.remesh, [id, ...getFootprintRoofPlaneParts(target.dataStore, target.view, id)]);

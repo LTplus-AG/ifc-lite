@@ -23,6 +23,7 @@ const ROWS = [
   { id: 200, raw: 'IFCSTRUCTURALANALYSISMODEL' },
   { id: 201, raw: 'IFCSTRUCTURALCURVEMEMBER' },
   { id: 202, raw: 'IFCSTRUCTURALCURVEMEMBER' },
+  { id: 204, raw: 'IfcStructuralCurveMember' },
   { id: 203, raw: 'IFCSTRUCTURALPOINTCONNECTION' },
 ];
 
@@ -36,6 +37,7 @@ DATA;
 #200=IFCSTRUCTURALANALYSISMODEL('Sam000000000000000001A',$,'M',$,$,.LOADING_3D.,$,$,$,$);
 #201=IFCSTRUCTURALCURVEMEMBER('Scm000000000000000001A',$,'C1',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
 #202=IFCSTRUCTURALCURVEMEMBER('Scm000000000000000002A',$,'C2',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
+#204=IfcStructuralCurveMember('Scm000000000000000004A',$,'C4',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
 #203=IFCSTRUCTURALPOINTCONNECTION('Spc000000000000000001A',$,'N',$,$,$,$,$,$);
 ENDSEC;
 END-ISO-10303-21;
@@ -81,7 +83,7 @@ describe('server-hydrated entityIndex.byType', () => {
   it('keys every class by its UPPERCASE STEP name, with no Unknown bucket', () => {
     const { byType } = serverStore().entityIndex;
     assert.equal(byType.has('Unknown'), false, 'classes outside IfcTypeEnum collapsed into Unknown');
-    assert.deepEqual(byType.get('IFCSTRUCTURALCURVEMEMBER'), [201, 202]);
+    assert.deepEqual(byType.get('IFCSTRUCTURALCURVEMEMBER'), [201, 202, 204]);
     assert.deepEqual(byType.get('IFCSTRUCTURALPOINTCONNECTION'), [203]);
     assert.deepEqual(byType.get('IFCWALL'), [100]);
   });
@@ -94,7 +96,7 @@ describe('server-hydrated entityIndex.byType', () => {
   it('has the same keys and members as the client parser on the same model', async () => {
     const bytes = new TextEncoder().encode(STEP);
     const client = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
-    const wanted = new Set(ROWS.map(r => r.raw));
+    const wanted = new Set(ROWS.map(r => r.raw.toUpperCase()));
     const clientSubset = new Map([...client.entityIndex.byType].filter(([k]) => wanted.has(k)));
     assert.equal(clientSubset.size, wanted.size, 'client parse did not index every fixture class');
     assert.deepEqual(sorted(serverStore().entityIndex.byType), sorted(clientSubset));

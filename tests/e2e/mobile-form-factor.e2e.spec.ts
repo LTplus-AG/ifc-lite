@@ -351,7 +351,7 @@ for (const fold of [
       await openViewer(page);
       const segments = await page.evaluate(() => (window as unknown as { viewport?: { segments?: DOMRect[] } }).viewport?.segments?.length ?? 0);
       expect(segments, 'CDP display features produce window.viewport.segments').toBe(2);
-      const viewport = page.locator('[data-mobile-viewport]');
+      const viewport = page.locator('[data-mobile-viewport] > div > [data-viewport]');
       await expect(page.locator('[data-mobile-shell][data-mobile-panel-host="segment"]')).toBeVisible({ timeout: 60_000 });
       const view = await boxOf(page, '[data-mobile-viewport]');
       expect(view, 'the viewport is exactly the first segment').toEqual(fold.view);
@@ -374,7 +374,7 @@ for (const fold of [
       await offHinge();
       await attachShot(page, testInfo, `fold-${fold.feature.orientation}-${fold.width}x${fold.height}-panel`);
 
-      // Keep the actual DOM node: a locator would also match a replacement after a remount.
+      // Keep ViewportContainer's own root, not the shell's permanent wrapper.
       const mountedViewport = await viewport.elementHandle();
       expect(mountedViewport, 'the folded viewport is mounted').not.toBeNull();
 
@@ -384,7 +384,7 @@ for (const fold of [
       await expect(page.locator('[data-mobile-shell]')).not.toHaveAttribute('data-mobile-panel-host', 'segment');
       expect(await withStore(page, (store) => store.getState().leftPanelCollapsed), 'unfolding kept the panel open').toBe(false);
       expect(await mountedViewport!.evaluate((node) =>
-        node.isConnected && node === document.querySelector('[data-mobile-viewport]')),
+        node.isConnected && node === document.querySelector('[data-mobile-viewport] > div > [data-viewport]')),
       '#9718 unfolding preserves the original viewport DOM node').toBe(true);
       await mountedViewport!.dispose();
     });

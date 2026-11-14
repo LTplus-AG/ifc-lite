@@ -218,7 +218,8 @@ describe('ViewerLayout panel placement per form factor (#9718 DoD 3-5)', () => {
       useViewerStore.getState().setRightPanelCollapsed(false);
       useViewerStore.setState({ selectedEntityId: 4242 });
     });
-    const viewport = ui.querySelector('[data-mobile-viewport] > div');
+    const viewport = ui.querySelector('[data-mobile-viewport] > div > [data-viewport]');
+    assert.ok(viewport, 'ViewportContainer has mounted its own root');
     assert.equal(panels(ui).sheet, true);
 
     setSegments(TABLETOP);
@@ -226,7 +227,7 @@ describe('ViewerLayout panel placement per form factor (#9718 DoD 3-5)', () => {
     assert.equal(panels(ui).pane, 'segment', 'folding moved the panel into the bottom segment');
     assert.equal(useViewerStore.getState().rightPanelCollapsed, false);
     assert.equal(useViewerStore.getState().selectedEntityId, 4242);
-    assert.equal(ui.querySelector('[data-mobile-viewport] > div') === viewport, true, 'folding remounted the viewport');
+    assert.equal(ui.querySelector('[data-mobile-viewport] > div > [data-viewport]') === viewport, true, 'folding remounted the viewport');
 
     setSegments(null);
     resizeTo(960, 412);
@@ -235,6 +236,6 @@ describe('ViewerLayout panel placement per form factor (#9718 DoD 3-5)', () => {
     assert.deepEqual({ sheet: panels(ui).sheet, pane: panels(ui).pane }, { sheet: true, pane: null });
     assert.equal(useViewerStore.getState().rightPanelCollapsed, false, 'unfolding closed the panel');
     assert.equal(useViewerStore.getState().selectedEntityId, 4242);
-    assert.equal(ui.querySelector('[data-mobile-viewport] > div') === viewport, true, 'unfolding remounted the viewport');
+    assert.equal(ui.querySelector('[data-mobile-viewport] > div > [data-viewport]') === viewport, true, 'unfolding remounted the viewport');
   });
 });

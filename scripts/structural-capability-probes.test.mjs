@@ -117,7 +117,7 @@ test('#9668: a merged reference support is still required on the derived side', 
   const reference = mergeSupportOnlyNodes([joint,support]);
   const result = compareDerived({members:[member],nodes:[{...joint}]},{members:[member],nodes:reference});
   assert.equal(result.status,'partial');
-  assert.ok(result.mismatches.some((problem)=>problem.includes('reference support')));
+  assert.ok(result.mismatches.some((problem)=>problem.includes('reference has support, derived #20 has no support')));
 });
 
 test('#9668: support mismatch keeps the derive row partial and names its position', () => {
@@ -154,4 +154,19 @@ test('#9923: plain Node loads the class-toggle table without the viewer loader',
     assert.equal(isTypeVisible('IfcBeam',flags,'physical'),true);
   `],{encoding:'utf8',timeout:10000,env:{...process.env,NODE_OPTIONS:''}});
   assert.equal(result.status,0,result.stderr || result.error?.message);
+});
+
+test('#9668: a support on a derived orphan cannot stand in for one the matched joint lost', () => {
+  const member = { id:7, ends:[[0,0,0],[1,0,0]], links:[10] };
+  const reference = [
+    {id:20,position:[0,0,0],links:[10],support:true,memberConnected:true},
+    {id:21,position:[0,0,0],links:[],support:false,memberConnected:false},
+  ];
+  const derived = [
+    {id:40,position:[0,0,0],links:[10],support:false,memberConnected:true},
+    {id:41,position:[0,0,0],links:[],support:true,memberConnected:false},
+  ];
+  const result = compareDerived({members:[member],nodes:derived},{members:[member],nodes:reference});
+  assert.notEqual(result.status,'pass');
+  assert.ok(result.mismatches.some((problem)=>problem.includes('connection #20')));
 });

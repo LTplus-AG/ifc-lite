@@ -129,21 +129,16 @@ export function compareDerived(actual, expected) {
   const nodes = new Set(actual.nodes);
   for (const ref of expected.nodes) {
     const hit = [...nodes].find((a) => distance(a.position,ref.position) <= TOLERANCE && JSON.stringify(a.links) === JSON.stringify(ref.links));
-    if (hit) nodes.delete(hit); else problems.push(`reference connection #${ref.id}: no derived point with links ${JSON.stringify(ref.links)} within ${TOLERANCE} m at ${JSON.stringify(ref.position)}`);
+    if (!hit) { problems.push(`reference connection #${ref.id}: no derived point with links ${JSON.stringify(ref.links)} within ${TOLERANCE} m at ${JSON.stringify(ref.position)}`); continue; }
+    nodes.delete(hit);
+    // Support is compared on the matched pair, so a support elsewhere cannot stand in for it.
+    if (Boolean(hit.support) !== Boolean(ref.support)) {
+      problems.push(`connection #${ref.id} at ${JSON.stringify(ref.position)}: reference ${ref.support ? 'has' : 'has no'} support, derived #${hit.id} ${hit.support ? 'has' : 'has no'} support`);
+    }
   }
   for (const extra of nodes) problems.push(`extra derived connection #${extra.id} at ${JSON.stringify(extra.position)}`);
   const referenceSupports = expected.nodes.filter((node) => node.support);
   const derivedSupports = actual.nodes.filter((node) => node.support);
-  for (const ref of referenceSupports) {
-    if (!derivedSupports.some((node) => distance(node.position,ref.position) <= TOLERANCE)) {
-      problems.push(`reference support at ${JSON.stringify(ref.position)}: no derived support within ${TOLERANCE} m`);
-    }
-  }
-  for (const node of derivedSupports) {
-    if (!referenceSupports.some((ref) => distance(ref.position,node.position) <= TOLERANCE)) {
-      problems.push(`extra derived support at ${JSON.stringify(node.position)}: no reference joint support within ${TOLERANCE} m`);
-    }
-  }
   if (derivedSupports.length !== referenceSupports.length) {
     problems.push(`support count mismatch: derived has ${derivedSupports.length} at ${JSON.stringify(derivedSupports.map((node) => node.position))}; reference has ${referenceSupports.length} at ${JSON.stringify(referenceSupports.map((node) => node.position))}`);
   }

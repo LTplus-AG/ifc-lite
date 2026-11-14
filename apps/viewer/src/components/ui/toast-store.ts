@@ -143,7 +143,9 @@ export const toast = {
    */
   transientError: (message: string, durationMs: number): (() => void) => {
     const id = addToast('error', message, durationMs);
-    return () => dismiss(id);
+    // Deduplication can promote this ID to persistent, including after a
+    // surface handoff. Gesture cleanup owns only a still-transient lifetime.
+    return () => { if (timers.has(id)) dismiss(id); };
   },
 };
 

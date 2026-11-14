@@ -483,6 +483,7 @@
   ],
   "@ifc-lite/codegen/ifc2x3": [
     "AttributeMetadata: interface",
+    "CONCRETE_RELATIONSHIP_TYPES: const",
     "EntityMetadata: interface",
     "EntityRef: interface",
     "EnumValue: interface",
@@ -1494,6 +1495,7 @@
   ],
   "@ifc-lite/codegen/ifc4": [
     "AttributeMetadata: interface",
+    "CONCRETE_RELATIONSHIP_TYPES: const",
     "EntityMetadata: interface",
     "EntityRef: interface",
     "EnumValue: interface",
@@ -2698,6 +2700,7 @@
   ],
   "@ifc-lite/codegen/ifc4x3": [
     "AttributeMetadata: interface",
+    "CONCRETE_RELATIONSHIP_TYPES: const",
     "EntityMetadata: interface",
     "EntityRef: interface",
     "EnumValue: interface",

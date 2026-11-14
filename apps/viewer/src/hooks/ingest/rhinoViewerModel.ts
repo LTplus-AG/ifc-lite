@@ -53,11 +53,20 @@ const expressIdOf = (entityIndex: number): number => entityIndex + 1;
  */
 const UNSCALED_UNIT_SYSTEMS = new Set(['None', 'CustomUnits', 'Unset']);
 
+/**
+ * Whether the viewer draws a geometry record. A part Rhino hides inside an
+ * entity it shows is left out, as Rhino leaves it out; a wholly hidden entity
+ * keeps all its parts, so it loads hidden and the tree can show it again
+ * (spec, "Layers, visibility, hierarchy").
+ */
+function drawsPart(result: RhinoImport, part: { entity: number; hidden: boolean }): boolean {
+  return !part.hidden || result.entities[part.entity].hidden;
+}
+
 /** Entity indices the viewer has geometry for in this payload. */
 function drawnEntities(result: RhinoImport): Set<number> {
   const drawn = new Set<number>();
-  for (const mesh of result.meshes) drawn.add(mesh.entity);
-  for (const cloud of result.pointClouds) drawn.add(cloud.entity);
+  for (const part of [...result.meshes, ...result.pointClouds]) if (drawsPart(result, part)) drawn.add(part.entity);
   return drawn;
 }
 
@@ -207,7 +216,7 @@ function buildRhinoDataStore(result: RhinoImport, tree: RhinoTreePlan, buffer: A
  * rewritten per vertex on the main thread.
  */
 function convertRhinoMeshes(result: RhinoImport): MeshData[] {
-  return result.meshes.map((mesh) => ({
+  return result.meshes.filter((mesh) => drawsPart(result, mesh)).map((mesh) => ({
     expressId: expressIdOf(mesh.entity),
     ifcType: result.entities[mesh.entity].ifcClass,
     positions: mesh.positions,
@@ -227,7 +236,7 @@ function convertRhinoMeshes(result: RhinoImport): MeshData[] {
  * colours change: the renderer takes 0..1 floats per point.
  */
 function convertRhinoPointClouds(result: RhinoImport): PointCloudAsset[] {
-  return result.pointClouds.map((cloud) => {
+  return result.pointClouds.filter((cloud) => drawsPart(result, cloud)).map((cloud) => {
     const pointCount = Math.floor(cloud.positions.length / 3);
     const bytes = cloud.colors;
     // A cloud with no per-point colours still has the colour its object or

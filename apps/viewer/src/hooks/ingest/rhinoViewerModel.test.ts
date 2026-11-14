@@ -29,6 +29,7 @@ import {
   CRAFTED_VERTEX_VIEWER,
   craftRhino3dm,
   craftRhinoLayerTree,
+  craftRhinoPartlyHidden,
   craftRhinoSpatialLayers,
   craftRhinoStampCollision,
   rhinoImportOf as importOf,
@@ -235,6 +236,25 @@ describe('rhinoViewerModel, the layer tree of a Rhino-authored file', () => {
     // Nothing else is hidden, so a file Rhino shows in full opens in full.
     const visible = await payloadOf(await craftRhino3dm());
     assert.deepEqual(visible.hiddenExpressIds, []);
+  });
+});
+
+describe('rhinoViewerModel, visibility per part', () => {
+  it('leaves out a part Rhino hides inside a shown entity, and keeps a hidden entity\'s parts', async () => {
+    const result = await importOf(await craftRhinoPartlyHidden());
+    // The reader's side of the contract this relies on: one shown entity with
+    // two hidden parts, and one hidden entity.
+    assert.deepEqual(result.entities.map((e) => e.hidden), [false, true]);
+    assert.deepEqual(result.meshes.map((m) => [m.entity, m.hidden]), [[0, false], [0, true], [1, true]]);
+    assert.deepEqual(result.pointClouds.map((c) => [c.entity, c.hidden]), [[0, true]]);
+
+    const { geometryResult, hiddenExpressIds } = rhinoViewerModel(result, new ArrayBuffer(0), 0, 'parts.3dm');
+    // The shown part and the hidden entity's triangle are drawn; the hidden
+    // part and the hidden cloud of the shown entity are not.
+    assert.deepEqual(geometryResult.meshes.map((m) => m.expressId), [1, 2]);
+    assert.equal(geometryResult.pointClouds, undefined);
+    // The hidden entity starts hidden through the tree; the shown one does not.
+    assert.deepEqual(hiddenExpressIds, [2]);
   });
 });
 

@@ -212,6 +212,51 @@ export function craftRhinoStampCollision(): Promise<Uint8Array> {
 }
 
 /**
+ * One element whose parts Rhino shows differently: a shown triangle, a hidden
+ * triangle and a hidden point cloud that share a GlobalId and a group, so the
+ * reader merges them into one visible entity (D8). Plus an object hidden on
+ * its own, with a triangle only, which is a hidden entity.
+ */
+export async function craftRhinoPartlyHidden(): Promise<Uint8Array> {
+  const rhino = await rhino3dm();
+  const file = new rhino.File3dm();
+  file.settings().modelUnitSystem = rhino.UnitSystem.Meters;
+  const layer = new rhino.Layer();
+  layer.name = 'Model';
+  file.layers().add(layer);
+  const group = new rhino.Group();
+  group.name = CRAFTED_GLOBAL_ID;
+  file.groups().add(group);
+
+  const attributes = (name: string, hidden: boolean, part: boolean) => {
+    const a = new rhino.ObjectAttributes();
+    a.layerIndex = 0;
+    a.name = name;
+    a.visible = !hidden;
+    if (part) {
+      a.addToGroup(0);
+      a.setUserString('IFC::GlobalId', CRAFTED_GLOBAL_ID);
+    }
+    return a;
+  };
+  const triangle = (x: number) => {
+    const mesh = new rhino.Mesh();
+    mesh.vertices().addPoint3d(x, 0, 0);
+    mesh.vertices().addPoint3d(x + 1, 0, 0);
+    mesh.vertices().addPoint3d(x + 1, 1, 0);
+    mesh.faces().addTriFace(0, 1, 2);
+    return mesh;
+  };
+  file.objects().addMesh(triangle(0), attributes('Shown part', false, true));
+  file.objects().addMesh(triangle(2), attributes('Hidden part', true, true));
+  const cloud = new rhino.PointCloud();
+  cloud.add([5, 0, 0]);
+  file.objects().addPointCloud(cloud, attributes('Hidden cloud', true, true));
+  file.objects().addMesh(triangle(8), attributes('Hidden alone', true, false));
+  return file.toByteArray();
+}
+
+/**
  * What the worker hands the adapter: a real read, baked and axis-swapped by
  * the real worker job. One copy, because every Rhino adapter test needs it.
  */

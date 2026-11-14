@@ -250,7 +250,7 @@ impl Execution {
         // one side of an overlapping chain pair and amplify the sub-grid
         // mismatch, and the split slivers can fall below the clean-degenerate
         // grid — so accept the refined mesh only when it is STRICTLY closed
-        // and a cleaned probe stays at least hairline-closed.
+        // and stays so once cleaned (`finish::can_adopt_refinement`).
         if residual_idx.is_empty() && consolidated_closure.is_directed_closed() {
             // SCOPED to the committed cutters' padded AABBs: #1007's target is
             // the high-aspect corner sliver the CUT emits at an opening rim, and
@@ -282,9 +282,7 @@ impl Execution {
                     }
                     refined = next;
                 }
-                let mut probe = refined.clone();
-                probe.clean_degenerate();
-                if finish::can_adopt_refinement(boundary, &refined, &probe) {
+                if finish::can_adopt_refinement(boundary, &refined) {
                     out = refined;
                 }
             }

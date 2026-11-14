@@ -35,8 +35,12 @@ export const SERVER_URL = import.meta.env?.VITE_IFC_SERVER_URL || import.meta.en
  * Example .env:
  *   VITE_IFC_SERVER_URL=https://ifc-server.example.com
  *   VITE_USE_SERVER=true
+ *
+ * This is the flag alone. Uploads go to the server only while a server URL is
+ * also set, and that URL is read per load (`serverUploadsEnabled` in
+ * `lib/processed-model.ts`) because a host may set it at runtime.
  */
-export const USE_SERVER = SERVER_URL !== '' && import.meta.env?.VITE_USE_SERVER === 'true';
+export const USE_SERVER = import.meta.env?.VITE_USE_SERVER === 'true';
 
 // ============================================================================
 // File Size Thresholds (in bytes unless noted)

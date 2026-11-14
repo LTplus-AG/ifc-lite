@@ -487,6 +487,24 @@ it('a drag whose markup is replaced mid-drag records nothing on release', () => 
   assert.deepEqual(liveIds(), ['r1']);
 });
 
+it('a drag across a reconcile that keeps the dragged dimension is still one undo step', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none',
+    dimensions2D: [{ id: 'd1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned', plane: PLANE }] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 250, clientY: -50 });
+  // A restore unites a stored dimension with the live list and rebases (here: replaces) the stacks.
+  const saved = { id: 's1', a: { x: 9, y: 9 }, b: { x: 12, y: 9 }, offset: 1, orientation: 'aligned' as const, plane: PLANE };
+  act(() => useViewerStore.setState((st) => ({ dimensions2D: [saved, ...st.dimensions2D], dimension2DUndo: [], dimension2DRedo: [] })));
+  mouseMove(canvas, { clientX: 300, clientY: 0 });
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 1, 'the drag is recorded');
+  act(() => useViewerStore.getState().undoDimension2D());
+  const live = useViewerStore.getState().dimensions2D;
+  assert.deepEqual(live.map((d) => d.id), ['s1', 'd1'], 'undo keeps the reconciled dimension');
+  assert.deepEqual(live[1].a, { x: 0, y: 0 }, 'and puts the dragged one back where it started');
+});
+
 it('placing a dimension with the tool is undoable from the keyboard', () => {
   useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension' });
   const canvas = render(<Harness />).firstElementChild!;

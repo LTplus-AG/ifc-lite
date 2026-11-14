@@ -100,7 +100,7 @@ export function useDimension2D(p: UseDimension2DParams) {
   const [markers, setMarkers] = useState<Point2D[]>([]);
   const [hover, setHover] = useState<DimensionHover | null>(null);
   const refs = useRef<(Dimension2DElementRef | undefined)[]>([]);
-  const dragging = useRef<{ id: string; grab: Point2D; before: Dimension2D[]; history: readonly unknown[] } | null>(null);
+  const dragging = useRef<{ id: string; grab: Point2D; from: Dimension2D } | null>(null);
 
   const mapping = useMapping(p);
   const paperScale = p.sheet ? p.sheet.sheet.scale.factor : p.displayScale;
@@ -167,10 +167,13 @@ export function useDimension2D(p: UseDimension2DParams) {
     const release = () => {
       const drag = dragging.current;
       dragging.current = null;
-      // The whole drag is one history entry, unless the markup was replaced mid-drag:
-      // every replacement (restore, model switch, reset) swaps the undo stack.
+      // The whole drag is one history entry, taken against the list as it is now with only the
+      // dragged dimension back at its start: markup reconciled mid-drag is kept, and a dimension
+      // that is gone (restore, model switch, reset) records nothing.
       const state = useViewerStore.getState();
-      if (drag && state.dimension2DUndo === drag.history) state.commitDimension2DMove(drag.before);
+      if (drag && state.dimensions2D.some((d) => d.id === drag.id)) {
+        state.commitDimension2DMove(state.dimensions2D.map((d) => (d.id === drag.id ? drag.from : d)));
+      }
     };
     window.addEventListener('mouseup', release);
     return () => window.removeEventListener('mouseup', release);
@@ -245,7 +248,7 @@ export function useDimension2D(p: UseDimension2DParams) {
     if (!hitDim) return false;
     state.setSelectedAnnotation2D({ type: 'dimension', id: hitDim.id });
     const at = mapping.toDrawing(screen);
-    dragging.current = { id: hitDim.id, grab: { x: at.x - hitDim.a.x, y: at.y - hitDim.a.y }, before: state.dimensions2D, history: state.dimension2DUndo };
+    dragging.current = { id: hitDim.id, grab: { x: at.x - hitDim.a.x, y: at.y - hitDim.a.y }, from: hitDim };
     return true;
   }
 

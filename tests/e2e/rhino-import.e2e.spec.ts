@@ -32,7 +32,7 @@ import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import {
   FOREIGN_3DM, FZK_WALL, IFC_MODEL, SMALL_IFC,
-  addModel, entityByGlobalId, exportTo3dm, hidden, loadPaths, modelCount, modelSnapshots,
+  STEP_TIMEOUT_MS, addModel, entityByGlobalId, exportTo3dm, hidden, loadPaths, modelCount, modelSnapshots,
   openViewerWith, overlayOf, propertySets, waitForModels,
   type Journey, type ModelSnapshot,
 } from './rhino-3dm.helpers';
@@ -208,7 +208,9 @@ test.describe('Rhino .3dm import in the built viewer', () => {
     /** Add `buffer` as `name`, expect the reader's sentence, dismiss it. */
     const refuse = async (name: string, buffer: Buffer, shot?: string) => {
       await page.locator('#file-input-add').setInputFiles({ name, mimeType: 'application/octet-stream', buffer });
-      await expect(errorCard).toBeVisible();
+      // The refusal comes from the reader's worker, which has to start and
+      // parse first: over the 5 s default on a loaded CI runner.
+      await expect(errorCard).toBeVisible({ timeout: STEP_TIMEOUT_MS });
       await expect(errorCard).toContainText(NOT_A_3DM);
       if (shot) {
         const path = test.info().outputPath(shot);

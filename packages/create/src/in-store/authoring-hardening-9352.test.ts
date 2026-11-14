@@ -117,3 +117,21 @@ it('#9352 a level X-aligned beam without RefDirection uses the IFC default proje
   s.editor.setPositionalAttribute(axis, 2, null);
   expect(levelTopFaceAbove({ dataStore: s.store, view: s.view, editor: s.editor }, beam, 'linear')).toBeCloseTo(.2, 8);
 });
+
+it('#9352 duplicate refuses empty relatedIds on a parsed type relationship before writing', async () => {
+  let { s, wall, home } = await setup();
+  const other = addOrdinaryElementInStore(s.editor, d => resolveSpatialAnchor(s.store, home, d.getMutationView()),
+    { kind: 'wall', params: { Start: [0, 2, 0], End: [12, 2, 0], Thickness: .2, Height: 3 } });
+  const type = s.editor.addEntity('IfcWallType', ['0000000000000000000001', null, 'Type', null, null, null, null, null, null, '.STANDARD.']);
+  const rel = s.editor.addEntity('IfcRelDefinesByType', ['0000000000000000000002', null, null, null, [`#${wall}`, `#${other}`], `#${type.expressId}`]);
+  s = session(await parse(s.text()));
+  expect(s.editor.getNewEntity(rel.expressId)).toBeNull();
+  const source = resolveDuplicateSource(s.store, wall, s.editor);
+  const association = source.associations!.find(a => a.relId === rel.expressId)!;
+  expect(association.relatedIds).toEqual([wall, other]);
+  association.relatedIds = [];
+  const before = s.snapshot(), text = s.text();
+  expect(() => duplicateInStore(s.editor, source)).toThrow(/relatedIds/);
+  expect(s.snapshot()).toEqual(before);
+  expect(s.text()).toBe(text);
+});

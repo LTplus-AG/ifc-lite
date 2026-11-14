@@ -176,8 +176,6 @@ test('EVERY wasm-pack out-dir under a scan root is excluded, not just the defaul
   // bites a developer who ran the build: `--check` lists generated files as
   // missing a header, and write mode stamps MPL notices into wasm-pack output.
   // Each path is the `--out-dir` its build script passes.
-  // scripts/build-wasm.sh:208, behind BUILD_WIDE=1.
-  assert.equal(licenseHeaderFor('packages/wasm/pkg-wide/ifc-lite.d.ts'), null);
   assert.equal(licenseHeaderFor('packages/wasm/pkg-retained/ifc-lite.d.ts'), null);
   assert.equal(licenseHeaderFor('packages/wasm/pkg-core/ifc-lite.js'), null);
   assert.equal(licenseHeaderFor('packages/wasm/pkg-diff/ifc-lite-diff.d.ts'), null);

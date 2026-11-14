@@ -3651,6 +3651,7 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   as each ships. The CI tripwire (`.github/workflows/wide-arithmetic.yml`) probes the
   engine every week and turns red when this changes. See
   `docs/architecture/wasm-wide-arithmetic.md` (delivery status verified 2026-07-31).
+  Correction (2026-11-14): `--wasm-wide-arithmetic` exists (Node 27 alpha and Chrome 156 accept it; `--wasm-staging` implies it); retired 2026-11-14, see `docs/architecture/wasm-wide-arithmetic.md`.
 
 - **Content-dedup signature walk on large single BREPs** (~2.00x traversal, SHIPPED #1909):
   `item_dedup_key` walked every face/bound/loop/point of an `IfcFacetedBrep` to build a

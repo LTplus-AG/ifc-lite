@@ -16,13 +16,22 @@
 use std::collections::{HashMap, HashSet};
 use crate::schema_ifc2x3_records::ref_id;
 use crate::schema_structural_axes::list_items;
+use crate::step_record_frame::record_frame;
 use crate::step_slot::split_top_level_args;
 
-/// (IFC2X3 varying action, IFC4 action, AppliedLoad types the IFC2X3 WR61
-/// admits, minimum size of VaryingAppliedLoads).
-const KINDS: [(&str, &str, [&str; 2], usize); 2] = [
-    ("IFCSTRUCTURALLINEARACTIONVARYING", "IFCSTRUCTURALCURVEACTION", ["IFCSTRUCTURALLOADLINEARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], 2),
-    ("IFCSTRUCTURALPLANARACTIONVARYING", "IFCSTRUCTURALSURFACEACTION", ["IFCSTRUCTURALLOADPLANARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], 3),
+/// One IFC2X3 varying action and the IFC4 action it becomes.
+struct Kind {
+    ifc2x3: &'static str,
+    ifc4: &'static str,
+    /// What the IFC2X3 supertype's WR61 admits as AppliedLoad.
+    first: [&'static str; 2],
+    /// The size of VaryingAppliedLoads: LIST [2:?] linear, [3:?] planar.
+    min: usize,
+}
+
+const KINDS: [Kind; 2] = [
+    Kind { ifc2x3: "IFCSTRUCTURALLINEARACTIONVARYING", ifc4: "IFCSTRUCTURALCURVEACTION", first: ["IFCSTRUCTURALLOADLINEARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], min: 2 },
+    Kind { ifc2x3: "IFCSTRUCTURALPLANARACTIONVARYING", ifc4: "IFCSTRUCTURALSURFACEACTION", first: ["IFCSTRUCTURALLOADPLANARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], min: 3 },
 ];
 
 const FROM_IFC2X3: &str = "an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; its VaryingAppliedLoadLocation remains an IfcShapeAspect of the action representation";
@@ -33,22 +42,20 @@ pub(crate) struct StructuralVarying {
     /// IFC2X3 -> IFC4: varying action id -> the id allocated for its configuration.
     config_ids: HashMap<u32, u32>,
     pending: Vec<String>,
-    /// IFC4 -> IFC2X3: action id -> (load values, shape aspect).
-    actions: HashMap<u32, (Vec<u32>, u32)>,
+    /// IFC4 -> IFC2X3: action id -> (kind, load values, shape aspect).
+    actions: HashMap<u32, (&'static Kind, Vec<u32>, u32)>,
     consumed: HashSet<u32>,
 }
 
-/// The record's type and top-level arguments.
+/// The record's top-level arguments, framed by the shared record reader.
 fn record(content: &[u8], start: usize, end: usize) -> Option<Vec<String>> {
     let text = String::from_utf8_lossy(&content[start..end]);
-    let (open, close) = (text.find('(')?, text.rfind(')')?);
-    if close <= open { return None; }
-    split_top_level_args(&text[open + 1..close])
+    split_top_level_args(record_frame(&text)?.args(&text))
 }
 
-/// Whether IFC4 `entity` is an IfcStructuralLoad that IFC2X3 also has.
-fn ifc2x3_load(entity: &str) -> bool {
-    ifc_lite_core::SchemaVersion::Ifc2x3.is_subtype_of(entity, "IfcStructuralLoad")
+/// A list of references, or None when any item is not one.
+fn refs(token: &str) -> Option<Vec<u32>> {
+    list_items(token)?.iter().map(|item| ref_id(Some(item))).collect()
 }
 
 impl StructuralVarying {
@@ -57,7 +64,7 @@ impl StructuralVarying {
         let mut result = Self::default();
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, ty, start, _)) = scanner.next_entity() {
-            if !KINDS.iter().any(|k| ty.eq_ignore_ascii_case(k.0)) || !kept(id, start) { continue; }
+            if !KINDS.iter().any(|k| ty.eq_ignore_ascii_case(k.ifc2x3)) || !kept(id, start) { continue; }
             let Some(config) = allocate() else { break };
             result.config_ids.insert(id, config);
         }
@@ -68,44 +75,43 @@ impl StructuralVarying {
     pub(crate) fn scan_ifc4(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
         let mut aspects: HashMap<u32, Vec<u32>> = HashMap::new();
         let mut configs: HashMap<u32, Vec<u32>> = HashMap::new();
+        // Types of the loads IFC2X3 also has, the only values a varying action can hold.
+        let mut loads: HashMap<u32, String> = HashMap::new();
         // (action id, kind, representation, applied load), and every activity's applied load.
         let mut candidates = Vec::new();
         let mut referrers: HashMap<u32, Vec<u32>> = HashMap::new();
+        let mut activity: HashMap<String, bool> = HashMap::new();
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, ty, start, end)) = scanner.next_entity() {
+            // Every structural record but the shape aspect starts so; the prefix keeps the rest of the file cheap.
+            let shape = ty.eq_ignore_ascii_case("IFCSHAPEASPECT");
+            if !shape && !ty.get(..13).is_some_and(|p| p.eq_ignore_ascii_case("IFCSTRUCTURAL")) { continue; }
+            if !kept(id, start) { continue; }
             let ty = ty.to_ascii_uppercase();
-            let shape = ty == "IFCSHAPEASPECT";
+            if ifc_lite_core::SchemaVersion::Ifc2x3.is_subtype_of(&ty, "IfcStructuralLoad") { loads.insert(id, ty); continue; }
+            let is_activity = *activity.entry(ty.clone()).or_insert_with_key(|t| ifc_lite_core::SchemaVersion::Ifc4.is_subtype_of(t, "IfcStructuralActivity"));
             let config = ty == "IFCSTRUCTURALLOADCONFIGURATION";
-            let activity = ifc_lite_core::SchemaVersion::Ifc4.is_subtype_of(&ty, "IfcStructuralActivity");
-            if !(shape || config || activity) || !kept(id, start) { continue; }
+            if !(shape || config || is_activity) { continue; }
             let Some(args) = record(content, start, end) else { continue };
             if shape {
                 if let Some(of) = ref_id(args.get(4).map(String::as_str)) { aspects.entry(of).or_default().push(id); }
             } else if config {
-                let values = args.get(1).and_then(|v| list_items(v)).map(|items| items.iter().map(|i| ref_id(Some(i))).collect::<Option<Vec<u32>>>());
-                if let Some(Some(values)) = values.filter(|v| v.as_ref().is_some_and(|v| !v.is_empty())) { configs.insert(id, values); }
+                if let Some(values) = args.get(1).and_then(|v| refs(v)).filter(|v| !v.is_empty()) { configs.insert(id, values); }
             } else if let Some(load) = ref_id(args.get(7).map(String::as_str)) {
                 referrers.entry(load).or_default().push(id);
-                let kind = KINDS.iter().position(|k| k.1 == ty);
+                let kind = KINDS.iter().find(|k| k.ifc4 == ty);
                 if let Some(kind) = kind.filter(|_| args.len() == 12 && !args[11].trim().eq_ignore_ascii_case(".CONST.")) {
                     candidates.push((id, kind, ref_id(Some(&args[6])), load));
                 }
             }
         }
-        let wanted: HashSet<u32> = configs.values().flatten().copied().collect();
-        let mut types = HashMap::new();
-        let mut scanner = ifc_lite_core::EntityScanner::new(content);
-        while let Some((id, ty, start, _)) = scanner.next_entity() {
-            if wanted.contains(&id) && kept(id, start) { types.insert(id, ty.to_ascii_uppercase()); }
-        }
         let mut result = Self::default();
         for (id, kind, representation, load) in candidates {
-            let (_, _, first, min) = KINDS[kind];
             let Some(values) = configs.get(&load) else { continue };
             let aspect = match representation.and_then(|r| aspects.get(&r)).map(Vec::as_slice) { Some([only]) => *only, _ => continue };
-            let type_of = |v: &u32| types.get(v).map_or("", String::as_str);
-            if values.len() >= min && first.contains(&type_of(&values[0])) && values.iter().all(|v| ifc2x3_load(type_of(v))) {
-                result.actions.insert(id, (values.clone(), aspect));
+            let first = loads.get(&values[0]).is_some_and(|t| kind.first.contains(&t.as_str()));
+            if values.len() >= kind.min && first && values.iter().all(|v| loads.contains_key(v)) {
+                result.actions.insert(id, (kind, values.clone(), aspect));
             }
         }
         result.consumed = referrers.into_iter()
@@ -117,22 +123,21 @@ impl StructuralVarying {
     /// The target record body for a varying action of either schema, and what the change loses.
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<(String, Vec<String>)> {
         if let Some(&config) = self.config_ids.get(&id) {
-            let kind = KINDS.iter().find(|k| k.0 == entity)?;
-            let mut loads = vec![ref_id(args.get(7).map(String::as_str))?];
-            for item in list_items(args.get(13)?)? { loads.push(ref_id(Some(&item))?); }
-            if args.len() != 14 || loads.len() < kind.3 { return None; }
+            let kind = KINDS.iter().find(|k| k.ifc2x3 == entity).filter(|_| args.len() == 14)?;
+            let mut loads = vec![ref_id(Some(&args[7]))?];
+            loads.extend(refs(&args[13])?);
+            if loads.len() < kind.min { return None; }
             let values = loads.iter().map(|l| format!("#{l}")).collect::<Vec<_>>().join(",");
             self.pending.push(format!("#{config}=IFCSTRUCTURALLOADCONFIGURATION($,({values}),$);"));
             let mut losses = vec![FROM_IFC2X3.to_string()];
             if args[10].trim() != "$" { losses.push(format!("{entity}.CausedBy has no slot in IFC4; its value is omitted")); }
             let body = [&args[..7], &[format!("#{config}"), args[8].clone(), args[9].clone(), args[11].clone(), ".NOTDEFINED.".into()]].concat();
-            return Some((format!("{}({})", kind.1, body.join(",")), losses));
+            return Some((format!("{}({})", kind.ifc4, body.join(",")), losses));
         }
-        let (values, aspect) = self.actions.get(&id).filter(|_| args.len() == 12)?;
-        let kind = KINDS.iter().find(|k| k.1 == entity)?;
+        let (kind, values, aspect) = self.actions.get(&id).filter(|(k, ..)| k.ifc4 == entity && args.len() == 12)?;
         let rest = values[1..].iter().map(|v| format!("#{v}")).collect::<Vec<_>>().join(",");
         let tail = [format!("#{}", values[0]), args[8].clone(), args[9].clone(), "$".into(), args[10].clone(), format!("#{aspect}"), format!("({rest})")];
-        Some((format!("{}({})", kind.0, [&args[..7], &tail].concat().join(",")), vec![TO_IFC2X3.to_string()]))
+        Some((format!("{}({})", kind.ifc2x3, [&args[..7], &tail].concat().join(",")), vec![TO_IFC2X3.to_string()]))
     }
 
     /// Whether the record is a configuration every referrer of which became a varying action.

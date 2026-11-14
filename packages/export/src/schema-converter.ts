@@ -323,9 +323,10 @@ function convertRecord(
 
   const newType = convertEntityType(entityType, fromSchema, toSchema);
 
-  // A structural rewrite replaces any withheld reference (an IFC4 load configuration).
+  // A structural rewrite replaces the withheld reference it was written for (an IFC4
+  // load configuration); one still naming a withheld id falls to the check below.
   const rewritten = structuralDiagnostics?.rewrite(entityType, args);
-  if (rewritten) return `${prefix}${rewritten};`;
+  if (rewritten && !(withheldRefIds && referencesAnyExpressId(rewritten, withheldRefIds))) return `${prefix}${rewritten};`;
   // A record whose attribute list references an id this export is OMITTING
   // (`withheldRefIds`, #4206) cannot carry that reference forward, no matter
   // how cleanly this record's OWN type would otherwise convert — a renamed

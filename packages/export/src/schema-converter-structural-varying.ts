@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Matches rust/export/src/schema_structural_varying.rs (#9668). */
-import { getCanonicalEntityName, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
+import { becomes } from './schema-converter-structural-links.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
@@ -54,14 +55,17 @@ export class StructuralVarying {
     const typeOf = (id: number) => byId.get(id)?.type.toUpperCase() ?? '';
     for (const id of byType.get('IFCSHAPEASPECT') ?? []) {
       const shape = refId(slots(id)?.[4]);
-      if (shape !== null) this.aspects.set(shape, [...(this.aspects.get(shape) ?? []), id]);
+      if (shape === null) continue;
+      const list = this.aspects.get(shape) ?? [];
+      list.push(id);
+      this.aspects.set(shape, list);
     }
     this.configs = new Map();
     for (const id of byType.get('IFCSTRUCTURALLOADCONFIGURATION') ?? []) {
       const values = listItems(slots(id)?.[1] ?? '')?.map(refId);
       if (!values?.length || values.some((v) => v === null)) continue;
       const refs = values as number[];
-      this.configs.set(id, { values: refs, first: typeOf(refs[0]), loads: refs.every((v) => isIfc2x3Load(typeOf(v))) });
+      this.configs.set(id, { values: refs, first: typeOf(refs[0]), loads: refs.every((v) => becomes(typeOf(v), 'IfcStructuralLoad')) });
     }
   }
 
@@ -75,8 +79,9 @@ export class StructuralVarying {
 
   private toIfc4(entity: string, args: readonly string[]): Rewrite | undefined {
     const kind = KINDS.find((k) => k.ifc2x3 === entity);
-    const loads = [args[7], ...(listItems(args[13] ?? '') ?? [])].map(refId);
-    if (!kind || !this.ids || args.length !== 14 || loads.length < kind.min || loads.some((l) => l === null)) return undefined;
+    if (!kind || !this.ids || args.length !== 14) return undefined;
+    const loads = [args[7], ...(listItems(args[13]) ?? [])].map(refId);
+    if (loads.length < kind.min || loads.some((l) => l === null)) return undefined;
     const id = this.ids();
     this.pending.push(`#${id}=IFCSTRUCTURALLOADCONFIGURATION($,(${loads.map((l) => `#${l}`).join(',')}),$);`);
     const losses = [FROM_IFC2X3];
@@ -93,11 +98,4 @@ export class StructuralVarying {
     const [first, ...rest] = config.values.map((v) => `#${v}`);
     return { body: `${kind.ifc2x3}(${[...args.slice(0, 7), first, args[8], args[9], '$', args[10], `#${aspects[0]}`, `(${rest.join(',')})`].join(',')})`, losses: [TO_IFC2X3] };
   }
-}
-
-/** Whether IFC4 `keyword` is an IfcStructuralLoad that IFC2X3 also has. */
-function isIfc2x3Load(keyword: string): boolean {
-  const registry = getSchemaRegistryForVersion('IFC2X3');
-  const name = getCanonicalEntityName(registry, keyword);
-  return !!name && registry.entities[name]?.inheritanceChain?.includes('IfcStructuralLoad') === true;
 }

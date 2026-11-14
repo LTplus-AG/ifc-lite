@@ -21,15 +21,9 @@ impl<'w> Body<'w> {
         Body { out, held: ifc2x3.then(Vec::new) }
     }
 
-    /// Append `added` (records a conversion created), then write the held
-    /// section, adapted; the change in record count, `added` included.
-    pub(crate) fn finish(mut self, added: Vec<String>) -> io::Result<isize> {
-        for record in &added {
-            self.write_all(record.as_bytes())?;
-            self.write_all(b"\n")?;
-        }
-        let extra = added.len() as isize;
-        let Some(held) = self.held else { return Ok(extra) };
+    /// Write the held section, adapted; the change in record count.
+    pub(crate) fn finish(self) -> io::Result<isize> {
+        let Some(held) = self.held else { return Ok(0) };
         let placed = match std::str::from_utf8(&held) {
             Ok(text) => place_each_object_once(text).map(|p| (p.body.into_bytes(), p.added, p.removed)),
             // Bytes that are not UTF-8 (a source's Latin-1 name, say) are read
@@ -46,9 +40,9 @@ impl<'w> Body<'w> {
         match placed {
             Some((bytes, added, removed)) => {
                 self.out.write_all(&bytes)?;
-                Ok(extra + added as isize - removed as isize)
+                Ok(added as isize - removed as isize)
             }
-            None => self.out.write_all(&held).map(|()| extra),
+            None => self.out.write_all(&held).map(|()| 0),
         }
     }
 }

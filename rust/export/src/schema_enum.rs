@@ -195,6 +195,17 @@ impl ConversionChecks {
         checks
     }
 
+    /// Whether the writer leaves out this source record: a conversion consumed it.
+    pub(crate) fn drops(&self, id: u32) -> bool { self.structural.varying.drops(id) }
+
+    /// Append the records a conversion created, then finish `body`; the change in record count.
+    pub(crate) fn finish(&mut self, mut body: crate::schema_ifc2x3_body::Body<'_>) -> std::io::Result<isize> {
+        use std::io::Write as _;
+        let added = self.structural.varying.added();
+        for record in &added { writeln!(body, "{record}")?; }
+        Ok(added.len() as isize + body.finish()?)
+    }
+
     /// Both checks' warnings, IFC4 slots first.
     pub(crate) fn warnings(&self) -> Vec<String> {
         let mut out = self.ifc4_slots.warnings();

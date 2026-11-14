@@ -70,6 +70,14 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     expect(line(out, 30)).toMatch(/^#30=IFCPROXY\(/);
   });
 
+  it('does not write a varying action that still names a withheld configuration', async () => {
+    // An illegal ObjectPlacement naming the configuration: the rewrite copies it, so the record stays a proxy.
+    const ifc4 = exportToStep(await parse(IFC2X3), { schema: 'IFC4' }).replace(/(#30=IFCSTRUCTURALCURVEACTION\('[^']*',\$,'Line',\$,\$,)\$/, '$1#32');
+    const out = exportToStep(await parse(ifc4), { schema: 'IFC2X3' });
+    expect(line(out, 30)).toMatch(/^#30=IFCPROXY\(/);
+    expect(line(out, 31)).toMatch(/^#31=IFCSTRUCTURALPLANARACTIONVARYING\(/);
+  });
+
   it('needs the source store, so a subset export keeps the varying action unconverted', async () => {
     const result = new StepExporter(await parse(IFC2X3)).export({ schema: 'IFC4', subsetEntityIds: new Set([1, 10, 11, 20, 21, 30]) });
     expect(line(new TextDecoder().decode(result.content), 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);

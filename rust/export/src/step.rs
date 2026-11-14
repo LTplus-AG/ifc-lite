@@ -245,7 +245,7 @@ fn emit<W: std::io::Write>(
 
     let mut written = 0usize;
     for id in order {
-        if included.contains(id) && !flatten.drops(*id) && !checks.structural.varying.drops(*id) {
+        if included.contains(id) && !flatten.drops(*id) && !checks.drops(*id) {
             if let Some(&(s, e)) = line_of.get(id) {
                 let raw = String::from_utf8_lossy(&content[s..e]);
                 // Apply root-attribute edits first (original-schema positions), then convert.
@@ -345,7 +345,7 @@ fn emit<W: std::io::Write>(
         written += 2;
     }
 
-    written = written.checked_add_signed(body.finish(checks.structural.varying.added())?).unwrap_or(written);
+    written = written.checked_add_signed(checks.finish(body)?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     Ok((StepStats {

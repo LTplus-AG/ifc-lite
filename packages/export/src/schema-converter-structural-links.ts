@@ -7,7 +7,7 @@ import { refId } from './schema-ifc2x3-records.js';
 
 const BECOMES = new Map<string, boolean>();
 /** Whether IFC4 `keyword` converts to an IFC2X3 subtype of `parent`, memoized per pair. */
-function becomes(keyword: string | undefined, parent: string): boolean {
+export function becomes(keyword: string | undefined, parent: string): boolean {
   if (!keyword) return false;
   const key = `${keyword} ${parent}`;
   let known = BECOMES.get(key);

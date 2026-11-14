@@ -140,7 +140,7 @@ export function writeSourceEntityLines(
   if (!options.deltaOnly && ctx.dataStore.source) {
     const source = ctx.dataStore.source;
     // A converted IFC2X3 varying action needs a new load configuration record.
-    pass.enums.structural.varying.ids = ctx.propertySetContext().allocateExpressId;
+    if (pass.converting) pass.enums.structural.varying.ids = ctx.propertySetContext().allocateExpressId;
 
     // Extract existing entities from source. The effective index has already
     // dropped everything the overlay tombstoned, so there is no separate

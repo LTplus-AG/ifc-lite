@@ -50,13 +50,13 @@ fn the_held_body_passes_other_schemas_straight_through() {
     let mut out = Vec::new();
     let mut body = Body::new(&mut out, false);
     body.write_all(GRID.as_bytes()).unwrap();
-    assert_eq!(body.finish(Vec::new()).unwrap(), 0);
+    assert_eq!(body.finish().unwrap(), 0);
     assert_eq!(out, GRID.as_bytes());
 
     let mut out = Vec::new();
     let mut body = Body::new(&mut out, true);
     body.write_all(GRID.as_bytes()).unwrap();
-    assert_eq!(body.finish(Vec::new()).unwrap(), -2);
+    assert_eq!(body.finish().unwrap(), -2);
     assert!(!String::from_utf8(out).unwrap().contains("IFCGRIDPLACEMENT"));
 }
 
@@ -78,7 +78,7 @@ fn a_section_that_is_not_utf8_is_adapted_byte_for_byte() {
     let mut out = Vec::new();
     let mut body = Body::new(&mut out, true);
     body.write_all(&data).unwrap();
-    assert_eq!(body.finish(Vec::new()).unwrap(), 1);
+    assert_eq!(body.finish().unwrap(), 1);
     assert!(out.windows(5).any(|w| w == b"Caf\xE9'"), "{:?}", String::from_utf8_lossy(&out));
     assert!(out.ends_with(b"#3=IFCBUILDING('b',$,$,$,$,#4,$,$,.ELEMENT.,$,$,$);\n#4=IFCLOCALPLACEMENT($,$);\n"), "{:?}", String::from_utf8_lossy(&out));
 }

@@ -264,7 +264,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));
     let mut written = 0usize;
     for &id in &src.order {
-        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) || flatten.drops(id) || checks.structural.varying.drops(id) {
+        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) || flatten.drops(id) || checks.drops(id) {
             continue;
         }
         let owned;
@@ -314,7 +314,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
         written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    written = written.checked_add_signed(body.finish(checks.structural.varying.added())?).unwrap_or(written);
+    written = written.checked_add_signed(checks.finish(body)?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     let mut warnings = std::mem::take(&mut pass.warnings);

@@ -113,7 +113,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
 | Native Room | `query_rooms`, `room_command` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
-| Storeys | `storey_list`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete` |
+| Storeys | `storey_list`, `storey_plan_add`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete`, `set_top_constraint`, `copy_to_storeys` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
@@ -624,6 +624,10 @@ takes `mode`:
 - `empty`, refused while the storey holds elements;
 - `move` with `target_storey_express_id`;
 - `delete_contents`.
+
+`storey_plan_add` accepts `Name`, `Elevation`, optional `reference_storey_express_id` and `building_express_id`, and returns the SDK plan's `refusal`, `bindings` and `unresized` elements without writing. `set_top_constraint` takes an `express_id` and the SDK `constraint` shape: `{kind: "fixed"}`, `{kind: "storeyAbove"}`, `{kind: "storey", storeyId}`, `{kind: "slab", slabId}` or `{kind: "roof", roofId}`. Roof constraints apply to walls.
+
+`copy_to_storeys` takes `express_ids` and `storey_express_ids`. It returns selected copies and `unattachedTops` notices per storey, carrying hosted children through the shared copy operation. Copied constraints and containment survive export and reopen.
 
 Lengths are metres. Each write is one `mutation_undo` batch. The dry runs work
 in read-only scope.

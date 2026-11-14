@@ -6,9 +6,10 @@
  * spread, verdicts, noise floors, stage ranking and the markdown tables. Failed samples stay in the counts. */
 
 import { identityLaneFor, laneIdentityVerdict, reopenOutputVerdict } from './load-scoreboard-identity.mjs';
-import { bothMarksCell, bothMarksSection, cpuTimeSection, thermalSection, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
+import { armProtocolOf, bothMarksCell, bothMarksSection, cpuTimeSection, thermalSection, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 export { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
+import { FRAME_KEY, frameMarkVerdict, primaryKey, withFrameMarks } from './load-scoreboard-frame-mark.mjs';
 
 /** The lanes a plan without a `lanes` key runs: exactly the set main had before the opt-in arms. */
 export const DEFAULT_LANES = ['native-cold', 'browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm', 'boot'];
@@ -35,16 +36,12 @@ export function clockOrigins(lanes) {
   return `Clock origins differ by lane: ${parts.join('; ')}.`;
 }
 
-/** One side's arming protocol on a `-settled` lane: the distinct boot-signal outcomes and the median signal wait. */
-function armProtocolOf(ok) {
-  const signals = [...new Set(ok.map((r) => String(r.shell?.bootSettled ?? 'not recorded')))].sort();
-  return { signals, waitMedianMs: median(ok.map((r) => r.shell?.bootSettledWaitMs).filter(Number.isFinite)) };
-}
 /** The `boot` lane opens no file; its rows carry this pseudo-fixture. */
 export const BOOT_FIXTURE = '(app shell)';
 export const METRICS = [
   // [key, label, smallest countable absolute difference]
   ['firstGeometryMs', 'first geometry ms', 1],
+  [FRAME_KEY, 'interactive ms (frame mark, verdict)', 1],
   ['interactiveMs', 'interactive ms', 1],
   ['peakMemoryMiB', 'peak memory MiB', 1],
   ['uiQuietMs', 'UI quiet ms', 1],
@@ -147,7 +144,8 @@ function pairsFor(rows, metric) {
 }
 
 /** Summarize all samples. `floors`: an A/A report's `floors` (omit for an A/A run). */
-export function summarize(plan, samples, { floors = null } = {}) {
+export function summarize(plan, rawSamples, { floors = null } = {}) {
+  const samples = withFrameMarks(rawSamples);
   const fixtures = [];
   const planFixtures = [...plan.fixtures, ...(plan.lanes.includes('boot') ? [{ name: BOOT_FIXTURE, set: 'boot' }] : [])];
   for (const fx of planFixtures) {
@@ -195,12 +193,11 @@ export function summarize(plan, samples, { floors = null } = {}) {
       const verdicts = {}, laneFloors = {};
       for (const [key, , minAbs] of METRICS) {
         const pairs = pairsFor(rows, key);
-        // A metric this lane never records has no verdict; interactive time always gets one, so a lane
-        // whose every sample lacks it reads as inconclusive instead of dropping out of the summary.
+        // A metric a lane never records has no verdict; interactive and the lane's verdict mark always get one.
         const unmeasured = pairs.every(([a, b]) => a === null && b === null);
-        if (unmeasured && key !== 'interactiveMs' && !(EXPECTED_METRICS[lane] ?? []).includes(key)) continue;
-        const v = withAaFloor(verdictFor(pairs, { failures, underLoad: { base: sides.base.underLoad, branch: sides.branch.underLoad }, aaFloor: floors?.[fx.name]?.[lane]?.[key] ?? null, minAbs, seed: 0x5eed }), floors);
-        verdicts[key] = unmeasured && !v.regression ? { ...v, verdict: 'inconclusive: not measured on any sample (see measurement errors)' } : v;
+        if (unmeasured && key !== 'interactiveMs' && key !== primaryKey(lane) && !(EXPECTED_METRICS[lane] ?? []).includes(key)) continue;
+        const v0 = withAaFloor(verdictFor(pairs, { failures, underLoad: { base: sides.base.underLoad, branch: sides.branch.underLoad }, aaFloor: floors?.[fx.name]?.[lane]?.[key] ?? null, minAbs, seed: 0x5eed }), floors);
+        verdicts[key] = key === FRAME_KEY ? frameMarkVerdict(v0, rows) : unmeasured && !v0.regression ? { ...v0, verdict: 'inconclusive: not measured on any sample (see measurement errors)' } : v0;
         // An A/A cell with a busy sample gives no floor: an inflated floor would hide later regressions.
         laneFloors[key] = sides.base.underLoad + sides.branch.underLoad > 0 ? null : aaNoiseFloor(pairs, { seed: 0x5eed });
       }
@@ -220,7 +217,7 @@ export function summarize(plan, samples, { floors = null } = {}) {
           for (const key of Object.keys(verdicts)) verdicts[key] = { ...verdicts[key], verdict: why, pass: false, regression: false };
         }
       }
-      lanes[lane] = { sides, verdicts, floors: laneFloors, output, outputSource: identity !== null && output !== timed ? 'identity pass' : 'timed samples', armProtocol, primary: verdicts.interactiveMs ?? null, bothMarks: lane.startsWith('browser') ? bothMarksCell(rows) : null };
+      lanes[lane] = { sides, verdicts, floors: laneFloors, output, outputSource: identity !== null && output !== timed ? 'identity pass' : 'timed samples', armProtocol, primary: verdicts[primaryKey(lane)] ?? null, bothMarks: lane.startsWith('browser') ? bothMarksCell(rows) : null };
     }
     fixtures.push({ name: fx.name, set: fx.set ?? 'tuning', bytes: fx.bytes, expectedTier: Number.isFinite(fx.bytes) ? expectedCacheTier(fx.bytes) : null, lanes });
   }
@@ -266,7 +263,7 @@ function tierCell(f, lane) {
 
 /** Baseline table (one set). For an A/A run the base and branch sides are the same build, so values are pooled. */
 function baselineTable(summary, set, lanes) {
-  const lines = ['| fixture | MB | expected tier | lane | first geometry ms | interactive ms | UI quiet ms | peak memory MiB | ok/failed | flagged (load / input delay) | observed tier, path | output |',
+  const lines = ['| fixture | MB | expected tier | lane | first geometry ms | interactive ms (verdict mark: browser frame, native batch) | UI quiet ms | peak memory MiB | ok/failed | flagged (load / input delay) | observed tier, path | output |',
     '|---|---:|---|---|---:|---:|---:|---:|---|---|---|---|'];
   for (const f of summary.fixtures.filter((x) => x.set === set)) {
     for (const lane of lanes) {
@@ -281,7 +278,7 @@ function baselineTable(summary, set, lanes) {
       const warmNote = lane.startsWith('browser-warm') && /^none/.test(f.expectedTier ?? '') ? ' (no cache tier: warm = uncached reopen)' : '';
       const flags = summary.kind === 'aa' ? [l.sides.base, l.sides.branch] : [l.sides.base];
       const flagged = `${flags.reduce((a, x) => a + x.underLoad, 0)} / ${flags.reduce((a, x) => a + x.inputDelayed, 0)}`;
-      lines.push(`| ${f.name} | ${f.bytes ? (f.bytes / 2 ** 20).toFixed(1) : '—'} | ${f.expectedTier ?? '—'} | ${lane}${warmNote} | ${lane === 'native-cold' ? 'n/a (batch)' : cell(pooled('firstGeometryMs'))} | ${cell(pooled('interactiveMs'))} | ${lane === 'native-cold' ? 'n/a' : cell(pooled('uiQuietMs'))} | ${cell(pooled('peakMemoryMiB'))} | ${okFailed} | ${flagged} | ${tierCell(f, lane)} | ${l.output === 'match' ? (l.outputSource === 'identity pass' ? 'match (identity pass: reopen = own cold, both sides)' : (l.sides.base.fingerprints[0] ?? '').slice(0, 60)) : l.output} |`);
+      lines.push(`| ${f.name} | ${f.bytes ? (f.bytes / 2 ** 20).toFixed(1) : '—'} | ${f.expectedTier ?? '—'} | ${lane}${warmNote} | ${lane === 'native-cold' ? 'n/a (batch)' : cell(pooled('firstGeometryMs'))} | ${cell(pooled(primaryKey(lane)))} | ${lane === 'native-cold' ? 'n/a' : cell(pooled('uiQuietMs'))} | ${cell(pooled('peakMemoryMiB'))} | ${okFailed} | ${flagged} | ${tierCell(f, lane)} | ${l.output === 'match' ? (l.outputSource === 'identity pass' ? 'match (identity pass: reopen = own cold, both sides)' : (l.sides.base.fingerprints[0] ?? '').slice(0, 60)) : l.output} |`);
     }
   }
   return lines.join('\n');
@@ -313,9 +310,11 @@ function verdictTable(summary, set, lanes) {
     for (const lane of lanes) {
       const l = f.lanes[lane];
       if (!l) continue;
-      for (const [key, label] of METRICS) {
+      for (const [key, defaultLabel] of METRICS) {
         const v = l.verdicts[key];
         if (!v) continue;
+        const label = key === 'interactiveMs' && lane.startsWith('browser')
+          ? 'interactive ms (settled mark)' : defaultLabel;
         const mark = v.pass ? 'PASS gain' : v.regression ? `FLAG ${v.verdict}` : v.verdict;
         const med = (side) => (v.samples[side] >= 3 ? n0(side === 'base' ? v.baseMedian : v.branchMedian) : `n=${v.samples[side]} (no median)`);
         lines.push(`| ${f.name} | ${lane} | ${label} | ${med('base')} | ${med('branch')} | ${signed(v.gain)} | ${pct(v.ownFloor)} | ${pct(v.aaFloor)} | ${pct(v.noiseFloor === null ? null : v.noiseFloor * 2)} | ${mark} | ${l.output} |`);
@@ -338,7 +337,7 @@ export function renderMarkdown(summary, plan, host, samples = []) {
     out.push(`- Segment (${seg.fixtures}): host ${seg.start?.hostname}; ${seg.workerKind ?? 'no'} admission, job ${seg.workerJobId ?? 'none'}; power ${seg.start?.powerProfile ?? '?'} -> ${seg.end?.powerProfile ?? '?'}; max freq ${seg.start?.scalingMaxFreqKHz ?? '?'} -> ${seg.end?.scalingMaxFreqKHz ?? '?'} kHz; ${seg.start?.at} .. ${seg.end?.at ?? 'unfinished'}`);
   }
   out.push(`Sides: base = ${plan.sides.base.label}; branch = ${plan.sides.branch.label}. Rounds ${plan.rounds}, warm opens ${plan.warmOpens ?? 0}, order seed ${plan.seed}.`, '');
-  out.push(`Interactive = geometry streamed, drained and finalized, metadata ready, and the first frame after the store settled (README cold-load notes). UI quiet = end of the last main-thread long task before 500 ms without one. Native has no first-geometry event (batch call); native interactive = file read + full \`process_geometry\`. ${clockOrigins(plan.lanes)} Cells: median [min-max] n; fewer than 3 values are listed, never summarized.`, '');
+  out.push(`Verdict mark (browser lanes) = frame mark: the first frame started at or after the scene finished, never before the settled mark; a sample without frame times leaves its cell unverifiable. Settled mark (its own row) = geometry streamed, drained and finalized, metadata ready, and the first frame after the store settled (README cold-load notes). UI quiet = end of the last main-thread long task before 500 ms without one. Native has no first-geometry event (batch call); native interactive = file read + full \`process_geometry\`. ${clockOrigins(plan.lanes)} Cells: median [min-max] n; fewer than 3 values are listed, never summarized.`, '');
   for (const set of ['tuning', 'holdout', 'boot']) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Baseline (${set})`, '', baselineTable(summary, set, plan.lanes), '');

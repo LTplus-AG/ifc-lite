@@ -14,7 +14,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IfcParser } from './index.js';
 import { extractStructuralOnDemand } from './structural-extractor.js';
-import { checkStructuralConsistency, DEFAULT_AXIS_DRIFT_TOLERANCE, type PhysicalElementFact, type StructuralConsistencyIssue, type StructuralLine } from './structural-consistency.js';
+import { checkStructuralConsistency, DEFAULT_AXIS_DRIFT_TOLERANCE, DEFAULT_STALE_TOLERANCE, type PhysicalElementFact, type StructuralConsistencyIssue, type StructuralLine } from './structural-consistency.js';
 import { structuralConsistencyFacts, structuralConsistencyIssues } from './structural-consistency-facts.js';
 import type { StructuralConnectionInfo, StructuralExtraction, StructuralMemberInfo } from './structural-types.js';
 
@@ -236,6 +236,53 @@ describe('structural-axis-drift', () => {
     expect(drift(checkStructuralConsistency(linked, [], {}, lines(off)))).toEqual([]);
     expect(drift(checkStructuralConsistency(linked, elements, {}, lines(off, [[1, 1, 1], [1, 1, 1]])))).toEqual([]);
     expect(drift(checkStructuralConsistency(linked, elements, {}, lines([[0, Number.NaN, 3], [6, 1, 3]])))).toEqual([]);
+  });
+});
+
+describe('structural-stale-item', () => {
+  const elements = [fact(1, 'IfcBeam', true), fact(2, 'IfcBeam', true)];
+  const then: StructuralLine = [[0, 0, 3], [6, 0, 3]];
+  const linked = model([member(10, 'IfcStructuralCurveMember', [1]), member(11, 'IfcStructuralCurveMember', [2])]);
+  /** Element 1's line now; member 10 recorded `then` for P1, member 11 recorded element 2's unchanged line. */
+  const geometry = (now: StructuralLine | null, record: { elementGlobalId: string; axis: StructuralLine } = { elementGlobalId: 'P1', axis: then }) => ({
+    memberLines: new Map<number, StructuralLine>(),
+    physicalAxes: new Map<number, StructuralLine>([...(now ? [[1, now] as const] : []), [2, [[0, 5, 3], [6, 5, 3]]]]),
+    derivationRecords: new Map([[10, record], [11, { elementGlobalId: 'P2', axis: [[0, 5, 3], [6, 5, 3]] as StructuralLine }]]),
+  });
+  const stale = (issues: StructuralConsistencyIssue[]) => issues.filter((issue) => issue.rule === 'structural-stale-item');
+
+  it('reports a member whose element moved along its own axis, which axis drift cannot see', () => {
+    const issues = checkStructuralConsistency(linked, elements, {}, geometry([[0.3, 0, 3], [6.3, 0, 3]]));
+    expect(stale(issues)).toHaveLength(1);
+    expect(stale(issues)[0]).toMatchObject({ entityId: 10, globalId: 'M10', target: 1, targetGlobalId: 'P1' });
+    expect(stale(issues)[0].distance).toBeCloseTo(0.3, 9);
+    expect(stale(issues)[0].message).toContain('0.300 m');
+  });
+
+  it('reports a sideways move by its farther end, and a line reversed in place', () => {
+    const [issue] = stale(checkStructuralConsistency(linked, elements, {}, geometry([[0, 0.1, 3], [6, 0.4, 3]])));
+    expect(issue.distance).toBeCloseTo(0.4, 9);
+    const [reversed] = stale(checkStructuralConsistency(linked, elements, {}, geometry([[6, 0, 3], [0, 0, 3]])));
+    expect(reversed.distance).toBeCloseTo(6, 9);
+  });
+
+  it('reports only past the tolerance, default 1 mm', () => {
+    expect(DEFAULT_STALE_TOLERANCE).toBe(0.001);
+    const within = geometry([[0.0009, 0, 3], [6.0009, 0, 3]]);
+    expect(stale(checkStructuralConsistency(linked, elements, {}, within))).toEqual([]);
+    expect(stale(checkStructuralConsistency(linked, elements, {}, geometry([[0.0011, 0, 3], [6, 0, 3]])))).toHaveLength(1);
+    expect(stale(checkStructuralConsistency(linked, elements, { staleTolerance: 0.0005 }, within))).toHaveLength(1);
+    expect(() => checkStructuralConsistency(linked, elements, { staleTolerance: -1 }, within)).toThrow(/staleTolerance/);
+  });
+
+  it('needs a record, the recorded element still linked, and its line now', () => {
+    const moved: StructuralLine = [[0, 1, 3], [6, 1, 3]];
+    expect(stale(checkStructuralConsistency(linked, elements, {}, { ...geometry(moved), derivationRecords: undefined }))).toEqual([]);
+    expect(stale(checkStructuralConsistency(linked, elements, {}, geometry(moved, { elementGlobalId: 'P9', axis: then })))).toEqual([]);
+    expect(stale(checkStructuralConsistency(model([member(10, 'IfcStructuralCurveMember')]), elements, {}, geometry(moved)))).toEqual([]);
+    expect(stale(checkStructuralConsistency(linked, elements, {}, geometry(null)))).toEqual([]);
+    expect(stale(checkStructuralConsistency(linked, elements))).toEqual([]);
+    expect(stale(checkStructuralConsistency(linked, elements, {}, geometry([[0, Number.NaN, 3], [6, 1, 3]])))).toEqual([]);
   });
 });
 

@@ -292,16 +292,6 @@ if [ "${BUILD_THREADED:-}" = "1" ]; then
   ls -lh "$THREADED_WASM" | awk '{print "   Threaded WASM: " $5 " (no budget — not the default bundle)"}'
 fi
 
-# --- Optional third bundle: wide-arithmetic ---------------------------------
-# Off by default. Enable with `BUILD_WIDE=1 ./scripts/build-wasm.sh`. Builds on
-# its own LLVM >= 23 toolchain (WIDE_TOOLCHAIN); the why, and the refusal rules,
-# live with the function in scripts/lib/build-wasm-wide.sh.
-if [ "${BUILD_WIDE:-}" = "1" ]; then
-  # shellcheck source=lib/build-wasm-wide.sh
-  . "$SCRIPT_DIR/lib/build-wasm-wide.sh"
-  build_wide_bundle || exit 1
-fi
-
 # --- Optional bundle: retained browser executor ------------------------------
 # Off by default. Enable with `BUILD_RETAINED=1 ./scripts/build-wasm.sh`.
 # The same single-thread engine plus the opt-in `retained-browser` feature

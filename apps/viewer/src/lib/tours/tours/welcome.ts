@@ -66,6 +66,7 @@ export const WELCOME_TOUR: TourDefinition = {
   // by `clearAutoSelection`, which runs before the restore. Abort restores
   // everything, as for every tour.
   keepOnFinish: ['selection'],
+  loadsSample: true,
   steps: [
     {
       id: 'load',

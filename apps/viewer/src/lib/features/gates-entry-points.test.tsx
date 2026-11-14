@@ -44,6 +44,7 @@ import { DEFAULT_PROFILE } from '@ifc-lite/semantic';
 import { RIBBON_TOUR } from '@/lib/tours/tours/ribbon';
 import { FederationSetupControls } from '@/components/viewer/FederationSetupControls';
 import { Toaster } from '@/components/ui/toast';
+import { latestToast } from '@/test/toasts';
 import { PrivacyBanner } from '@/components/viewer/KeyboardShortcutsDialogTabs';
 import { SettingsDialog } from '@/components/viewer/settings/SettingsDialog';
 import { ScriptPanel } from '@/components/viewer/ScriptPanel';
@@ -171,19 +172,18 @@ describe('files and samples off have no other door', () => {
   });
 
   it('the save-federation-setup event does nothing with federation setups off', async () => {
+    // With no model loaded, a save that runs answers with a toast.
     const saveAsked = async () => {
       render(<><FederationSetupControls /><Toaster /></>);
-      act(() => { window.dispatchEvent(new CustomEvent('ifc-lite:save-federation-setup')); });
-      // With no model loaded, a save that runs answers with a toast.
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const asked = document.querySelector('[data-toast-seq]') !== null;
-      for (const button of document.querySelectorAll('[data-toast-seq] button')) click(button);
+      await act(async () => { window.dispatchEvent(new CustomEvent('ifc-lite:save-federation-setup')); });
+      const asked = /nothing to save/.test(latestToast());
       cleanup();
       return asked;
     };
-    assert.equal(await saveAsked(), true, 'handled by default');
     resetFeaturesForTest({ default: 'all', disable: ['files.federation-setup'] });
     assert.equal(await saveAsked(), false);
+    resetFeaturesForTest();
+    assert.equal(await saveAsked(), true, 'handled by default');
   });
 
   it('no File System Access picker opens with local files off, whoever asks', async () => {

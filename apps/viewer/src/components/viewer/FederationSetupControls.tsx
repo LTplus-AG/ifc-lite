@@ -58,6 +58,7 @@ function confidenceBadge(match: FederationSetupSlotMatch): { labelKey: Translati
 
 export function FederationSetupControls() {
   const { t } = useTranslation();
+  const enabled = isFeatureEnabled('files.federation-setup');
   const { exportFederationSetup, matchFederationSetup, applyFederationSetup } = useFederationSetup();
 
   const setupFileInputRef = useRef<HTMLInputElement>(null);
@@ -75,7 +76,7 @@ export function FederationSetupControls() {
 
   useEffect(() => {
     // The palette and ribbon rows are gated; the events they dispatch are too.
-    if (!isFeatureEnabled('files.federation-setup')) return;
+    if (!enabled) return;
     const onSave = () => handleSave();
     const onOpen = () => setupFileInputRef.current?.click();
     window.addEventListener(EVENT_SAVE, onSave);
@@ -84,7 +85,7 @@ export function FederationSetupControls() {
       window.removeEventListener(EVENT_SAVE, onSave);
       window.removeEventListener(EVENT_OPEN, onOpen);
     };
-  }, [handleSave]);
+  }, [enabled, handleSave]);
 
   const handleSetupFileSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -143,7 +144,7 @@ export function FederationSetupControls() {
   return (
     <>
       <ModelTagsCommand />
-      {isFeatureEnabled('files.federation-setup') && <><input
+      {enabled && <><input
         ref={setupFileInputRef}
         type="file"
         accept=".json,application/json"

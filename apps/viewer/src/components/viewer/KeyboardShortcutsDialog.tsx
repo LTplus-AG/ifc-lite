@@ -59,6 +59,9 @@ interface InfoDialogProps {
 export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialogProps) {
   const { t } = useTranslation();
   const learn = isSurfaceCommandAvailable({ id: 'learn:hub' });
+  const tabs = TABS.filter(({ value }) => value !== 'learn' || learn);
+  // A deep link to a tab that is not offered opens on About.
+  const firstTab = tabs.find(({ value }) => value === initialTab)?.value ?? 'about';
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
@@ -100,12 +103,12 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
         {/* Tabbed Content */}
         {/* The dialog unmounts when closed, so defaultValue re-applies on
             every open - enough for deep-linking without controlled tabs. */}
-        <Tabs defaultValue={initialTab === 'learn' && !learn ? 'about' : initialTab ?? 'about'} className="flex min-h-0 flex-1 flex-col">
+        <Tabs defaultValue={firstTab} className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 px-4 pt-4">
             {/* Wider than a phone: the strip scrolls sideways, and the
                 selected tab stays in view. */}
             <TabsList scrollable className="w-full justify-start max-sm:h-auto">
-              {TABS.filter(({ value }) => value !== 'learn' || learn).map(({ value, Icon, label }) => (
+              {tabs.map(({ value, Icon, label }) => (
                 <TabsTrigger key={value} value={value} className={TAB_TRIGGER_CLASS}>
                   <Icon className="h-3.5 w-3.5" />
                   {t(label)}

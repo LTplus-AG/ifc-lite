@@ -39,7 +39,8 @@ const listeners = new Set<() => void>();
 let hostRequested = false;
 /** Any processed model was requested (host, configuration or page URL); the browser-side fast path then stays off. */
 let anyRequested = false;
-const ignoredLogged = new Set<'processed' | 'model'>();
+type PageUrlParameter = 'processed' | 'model' | 'room';
+const ignoredLogged = new Set<PageUrlParameter>();
 
 /** The processing server the viewer asks: the runtime value, else the build's `VITE_IFC_SERVER_URL`. */
 export function getProcessingServerUrl(): string {
@@ -83,13 +84,14 @@ export function openProcessedModelFromUrl(model: ProcessedModelRequest): void {
 }
 
 /**
- * Whether a model named in the page URL (`?processed=`, `?model=`) may load.
- * Not once a host has asked for one, through `openProcessedModel` or the
- * configuration's start model (`applyProcessingConfig`): the host's model
- * wins, also when it was asked for before the viewer mounted and is still
- * waiting. The rule holds for the page; each ignored parameter is logged once.
+ * Whether a model named in the page URL (`?processed=`, `?model=`, or the
+ * collaboration room of `?room=`) may load. Not once a host has asked for one,
+ * through `openProcessedModel` or the configuration's start model
+ * (`applyProcessingConfig`): the host's model wins, also when it was asked for
+ * before the viewer mounted and is still waiting. The rule holds for the page;
+ * each ignored parameter is logged once.
  */
-export function pageUrlModelAllowed(parameter: 'processed' | 'model'): boolean {
+export function pageUrlModelAllowed(parameter: PageUrlParameter): boolean {
   if (!hostRequested) return true;
   if (!ignoredLogged.has(parameter)) {
     ignoredLogged.add(parameter);

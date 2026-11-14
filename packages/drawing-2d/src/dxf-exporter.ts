@@ -314,6 +314,12 @@ export class DXFExporter {
         const height = text.height * placement.scale;
         const lines = text.text.split('\n');
         const dirLength = Math.hypot(text.dirX, text.dirY) || 1;
+        // Aligned/fit text: re-emit as Fit (72=5) with its second point so the CAD
+        // reader (which measures real glyphs) spans the two points exactly.
+        const fitTo = lines.length === 1 && text.align === 'left' && text.valign === 'baseline'
+          && text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0
+          ? mapPoint({ x: text.position.x + (text.dirX / dirLength) * text.fitWidth,
+            y: text.position.y + (text.dirY / dirLength) * text.fitWidth }) : undefined;
         for (let i = 0; i < lines.length; i++) {
           // Stack subsequent lines by offsetting in LOCAL space, then map:
           // the stacking direction must rotate with the text when
@@ -325,7 +331,7 @@ export class DXFExporter {
           // review). "Down" across the baseline is the text direction turned
           // clockwise (local Y up), and the block offset honours the
           // vertical attachment like every other renderer.
-          const offset = dxfTextLineOffset(i, lines.length, text.valign, text.height);
+          const offset = dxfTextLineOffset(i, lines.length, text.valign, text.height, text.lineSpacingFactor);
           const lineAnchor = offset === 0
             ? anchor
             : mapPoint({ x: text.position.x + (text.dirY / dirLength) * offset,
@@ -335,7 +341,8 @@ export class DXFExporter {
             lines[i],
             height,
             layer,
-            { rotationDeg: angle, hAlign: text.align, vAlign: text.valign, colorOverride: text.color },
+            { rotationDeg: angle, hAlign: text.align, vAlign: text.valign, colorOverride: text.color,
+              widthScale: text.widthScale, fitTo, fitUniform: text.fitUniform },
           );
         }
       }

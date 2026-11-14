@@ -159,7 +159,7 @@ function convertRhinoPointClouds(result: RhinoImport): PointCloudAsset[] {
     return {
       expressId: expressIdOf(cloud.entity),
       ifcType: result.entities[cloud.entity].ifcClass,
-      origin: [cloud.origin[0], cloud.origin[1], cloud.origin[2]],
+      origin: cloud.origin,
       chunk: { positions: cloud.positions, colors, pointCount, bbox: { min, max } },
     };
   });

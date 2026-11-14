@@ -6,6 +6,7 @@
 //! the host surface when the swept region is provably empty of host
 //! material, with the ray-parity point-in-solid test it relies on.
 
+use super::super::flush::FLUSH_BAND;
 use super::super::geom::parity::PARITY_RAY_DIR as RAY_DIR;
 use super::frame::PrismFrame;
 use super::kit::{dot, lerp, V2, V3};
@@ -50,14 +51,13 @@ pub(super) fn extend_prism_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[(V3
     let span = pf.d1() - pf.d0();
     let delta = (span * 0.1).clamp(0.005, 0.5);
     let mag = pf.corner_mag();
-    // Flush-exclusion band: a host FACE lying (near-)flush ON the cap plane —
-    // the flush window/sleeve case, or a cutter authored a hair SHORT of the
-    // surface (the #1112 roof skylights) — is not material BEYOND the plane
-    // and must not block the extension; only geometry clearly past the band
-    // does. Matches the exact kernel's flush-cap detection band
-    // (`extend_opening_mesh_through_host`: `open_span.max(1.0) * 1e-3`), so
-    // the analytic path pushes through exactly where the exact path would.
-    let band = (span.max(1.0) * 1.0e-3).max(mag * 4.0e-7);
+    // Flush-exclusion band: a host FACE lying flush ON the cap plane (the
+    // flush window/sleeve case) is not material BEYOND the plane and must not
+    // block the extension; geometry past the band does. The band is grid
+    // rounding, not a millimetre: at 1 mm the skin behind an 11 mm recess in a
+    // 12 mm sheet sat inside it, unseen, and the cap went through it. The
+    // exact path draws the same line (`exit_cap`'s shallow probe).
+    let band = FLUSH_BAND.max(mag * 4.0e-7);
     let pad = 1.0e-6 * (1.0 + mag);
     for hi_side in [false, true] {
         let (slab_lo, slab_hi) = if hi_side {

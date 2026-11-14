@@ -10,6 +10,7 @@
 //! Occupancy beyond a cap still separates an exit from a jamb, independent of
 //! host winding. Uncertain finite-contact arithmetic retains the old verdict.
 
+use super::super::flush::FLUSH_BAND;
 use super::super::geom::{mesh_point, point_inside_mesh_agreed, project_aabb_in_frame};
 use super::super::{OpeningFrame, NORMALIZE_EPSILON};
 // Re-exported (not just imported) so `exit_cap::any_vertex_is_large` and
@@ -367,11 +368,14 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
         // A depth whose parity does not AGREE between two ray directions is not
         // evidence and is skipped rather than counted either way: the surface
         // there is not closed to a ray, and a coin flip must not remove a push.
-        [f.probe_offset(), pad * 0.5, pad].into_iter().any(|t| {
+        // The first sample sits just past the flush band: a skin thinner than
+        // `probe_offset` behind the cap is host all the same (the 1 mm left by
+        // an 11 mm recess in a 12 mm sheet read empty at 4 mm and was pushed).
+        [FLUSH_BAND, f.probe_offset(), pad * 0.5, pad].into_iter().any(|t| {
             point_inside_mesh_agreed(host, f.point_at(cu, cv, from + dir * t)).unwrap_or(false)
         })
     };
-    // Probe ONLY a cap that qualified: `occupied_along` casts up to three points
+    // Probe ONLY a cap that qualified: `occupied_along` casts up to four points
     // and two rays each, and for a cap that is already `Free` every one of
     // those traversals is discarded.
     let classify = |has_surface: bool, local: bool, from: f64, dir: f64, host_at: f64| {

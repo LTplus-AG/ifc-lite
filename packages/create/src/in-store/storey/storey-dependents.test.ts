@@ -226,6 +226,12 @@ END-ISO`);
     expect(qto.quantities.find((q) => q.name === 'GrossSideArea')?.value).toBeCloseTo(16, 9);
     // 10 m² net + 4 m² of gross change, in mm².
     expect(qto.quantities.find((q) => q.name === 'NetSideArea')?.value).toBeCloseTo(14_000_000, 3);
+    // #9352: a second live refit must retain the explicit mm² scale too.
+    api('applyStoreyLevelEdit')(r.store, r.editor, { kind: 'floorHeight', storeyId: inventory.storeys[0].expressId, Height: 6 });
+    const twice = r.view.getQuantitiesForEntity(Number(wallRef), id => extractQuantitiesOnDemand(r.store, id)).find(set => set.name === 'Qto_WallBaseQuantities')!;
+    expect(twice.quantities.find(q => q.name === 'NetSideArea')?.value).toBeCloseTo(22_000_000, 3);
+    const saved = await parse(r.text());
+    expect(extractQuantitiesOnDemand(saved, Number(wallRef)).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities.find(q => q.name === 'NetSideArea')?.value).toBeCloseTo(22_000_000, 3);
   });
 
   it('a wall drawn attached whose body cannot be read is still bound by the storey above, and reported', async () => {

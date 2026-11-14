@@ -11,7 +11,7 @@ import { readWallMetres } from './wall-size-edit.js';
 import { copyBatchInStore } from './copy-batch.js';
 import { addSlabToStore } from './slab.js';
 import { setTopConstraintInStore } from './storey/storey-top-constraint.js';
-import { attachedTopWorldOrigin, levelTopFaceAbove, readAttachedTop, writeAttachedTop } from './storey/storey-attached.js';
+import { attachedTopWorldOrigin, readAttachedTop, writeAttachedTop } from './storey/storey-attached.js';
 import { addStoreyInStore, planStoreyAdd } from './storey/storey-add.js';
 import { readStoreyInventory } from './storey/storey-model.js';
 import { homeStoreyOf, readTopAttachment, writeTopAttachment } from './storey/storey-attachment.js';
@@ -107,8 +107,10 @@ it('#9352 a hierarchy-only home identifies a legacy relative binding without res
   expect(height(reopened, wall)).toBeCloseTo(1.5, 8);
   // An ordinary source containment explicitly removed in the overlay must stay absent.
   const ordinary = await setup();
-  for (const rel of readStoreyInventory(ordinary.s.store, ordinary.s.view).incoming.get(ordinary.wall) ?? []) ordinary.s.editor.removeEntity(rel.id);
-  expect(homeStoreyOf(readStoreyInventory(ordinary.s.store, ordinary.s.view), ordinary.wall)).toBeNull();
+  const parsedOrdinary = session(await parse(ordinary.s.text()));
+  expect(homeStoreyOf(readStoreyInventory(parsedOrdinary.store, parsedOrdinary.view), ordinary.wall)).toBe(ordinary.home);
+  for (const rel of readStoreyInventory(parsedOrdinary.store, parsedOrdinary.view).incoming.get(ordinary.wall) ?? []) parsedOrdinary.editor.removeEntity(rel.id);
+  expect(homeStoreyOf(readStoreyInventory(parsedOrdinary.store, parsedOrdinary.view), ordinary.wall)).toBeNull();
   expect(new AnchorEntityReader(saved.store, saved.view).entity(wall)).not.toBeNull();
 });
 
@@ -168,7 +170,7 @@ it.each(['beam', 'member'] as const)('#9352 a pending level %s binds its top fac
   const added = addStoreyInStore(s.store, s.editor, { Name: 'First above', Elevation: 3 });
   const check = () => {
     const t = { dataStore: s.store, editor: s.editor, view: s.view };
-    expect(attachedTopWorldOrigin(t, id, 'linear')! + readAttachedTop(t, id, 'linear')! + levelTopFaceAbove(t, id, 'linear')).toBeCloseTo(s.worldZ(added.storeyId), 8);
+    expect(attachedTopWorldOrigin(t, id, 'linear')! + readAttachedTop(t, id, 'linear')! + .2).toBeCloseTo(s.worldZ(added.storeyId), 8);
   };
   check();
   s = session(await parse(s.text()));
@@ -183,7 +185,7 @@ it.each(['beam', 'member'] as const)('#9352 a pending level %s copied below a fl
   const [copy] = copyBatchInStore(s.store, s.editor, [source], [{ targetStoreyId: home }]);
   const check = () => {
     const t = { dataStore: s.store, editor: s.editor, view: s.view };
-    expect(attachedTopWorldOrigin(t, copy.copyId, 'linear')! + readAttachedTop(t, copy.copyId, 'linear')! + levelTopFaceAbove(t, copy.copyId, 'linear')).toBeCloseTo(s.worldZ(middle), 8);
+    expect(attachedTopWorldOrigin(t, copy.copyId, 'linear')! + readAttachedTop(t, copy.copyId, 'linear')! + .2).toBeCloseTo(s.worldZ(middle), 8);
   };
   check();
   s = session(await parse(s.text()));

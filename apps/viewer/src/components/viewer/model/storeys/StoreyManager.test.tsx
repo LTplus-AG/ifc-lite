@@ -27,7 +27,9 @@ import { Toaster } from '@/components/ui/toast';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
 import { reviewStoreyInsertion, commitStoreyInsertion } from './insert-storey';
 import { PropertyValueType } from '@ifc-lite/data';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { readStoreyInventory } from '@ifc-lite/create';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { toGlobalIdFromModels } from '@/store/globalId';
 
 let restore: () => void = () => {};
@@ -535,4 +537,22 @@ it('#9389 insertion preserves mixed number widths without merging distinct names
   assert.equal(new Set(names).size, names.length);
   act(() => useViewerStore.getState().undo(MODEL_ID));
   assert.deepEqual(modelStoreys(useViewerStore.getState(), MODEL_ID).map(level => level.name), ['L0', 'L1', 'L01']);
+});
+
+
+it('#9352 inserting below tied storeys chooses a strictly lower floor and survives reopen', async () => {
+  const tiedResult = commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Tied', Elevation: 4, referenceStoreyId: UPPER_STOREY } });
+  assert.equal(tiedResult.ok, true);
+  const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+  const tied = readStoreyInventory(target.dataStore, target.view).storeys.find(row => row.Name === 'Tied')!.expressId;
+  const editor = new StoreEditor(target.dataStore, target.view);
+  const upperPlacement = readStoreyInventory(target.dataStore, target.view).reader.entity(UPPER_STOREY)!.attributes[5];
+  assert.ok(typeof upperPlacement === 'string' || typeof upperPlacement === 'number');
+  editor.setPositionalAttribute(tied, 5, upperPlacement);
+  editor.setPositionalAttribute(tied, 9, { real: 3 });
+  const review = reviewStoreyInsertion(MODEL_ID, tied, n => `Level ${n}`, 'below')!;
+  assert.equal(review.params.referenceStoreyId, STOREY);
+  assert.equal(review.params.Elevation, 3);
+  assert.equal(commitStoreyInsertion(MODEL_ID, review).ok, true);
+  assert.deepEqual(elevations(), [0, 3, 6, 6]);
 });

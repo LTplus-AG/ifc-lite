@@ -82,6 +82,12 @@ export const section2dRu = {
   "section2d.export.omission.dxfTitle": "Экспортировать чертёж в DXF?",
   "section2d.export.omission.dxfDescription": "В этом DXF-файле будет отсутствовать {items}. Можно ли всё равно экспортировать?",
   "section2d.export.omission.continue": "Экспортировать в любом случае",
+  "section2d.export.otherCutDimensionsLeftOut": {
+    one: "{count} размер, нанесённый на другом разрезе, не включён.",
+    few: "{count} размера, нанесённых на другом разрезе, не включены.",
+    many: "{count} размеров, нанесённых на другом разрезе, не включено.",
+    other: "{count} размера, нанесённого на другом разрезе, не включено.",
+  },
   "section2d.regenerate": "Регенерировать",
   "section2d.matchView.button": "Совместить с 3D",
   "section2d.matchView.title": "Настроить 3D-вид по этому сечению",

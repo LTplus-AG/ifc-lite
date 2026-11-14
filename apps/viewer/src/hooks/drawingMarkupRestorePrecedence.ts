@@ -96,7 +96,7 @@ export function hasPersistedMarkupEntryFor(modelId: string): 'pending' | boolean
 
 /**
  * Whether a saved entry takes precedence over the file's embedded markup. An
- * entry whose four markup lists are empty and that was not seeded from (or
+ * entry whose markup lists are empty and that was not seeded from (or
  * saved after) an embedded restore holds no markup decision: it is what a
  * display-option change or a 2D section generation persists while the
  * embedded restore is still waiting for its parse. Letting it win would hide
@@ -107,7 +107,8 @@ function outranksEmbeddedMarkup(entry: PersistedDrawing2DEntry | null): boolean 
   if (!entry) return false;
   return (entry.absorbedEmbeddedMarkup?.length ?? 0) > 0
     || entry.measure2DResults.length > 0 || entry.polygonArea2DResults.length > 0
-    || entry.textAnnotations2D.length > 0 || entry.cloudAnnotations2D.length > 0;
+    || entry.textAnnotations2D.length > 0 || entry.cloudAnnotations2D.length > 0
+    || (entry.dimensions2D?.length ?? 0) > 0;
 }
 
 /**

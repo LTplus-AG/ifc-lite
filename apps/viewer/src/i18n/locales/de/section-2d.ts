@@ -75,12 +75,17 @@ export const section2dDe = {
   "section2d.export.invalidScale": "PDF konnte nicht exportiert werden: ungültiger Maßstab.",
   "section2d.export.allowPopups": "Erlauben Sie Pop-ups zum Drucken.",
   "section2d.export.omission.markups": "Zeichnungsmarkierungen (Messungen, Flächen, Text und Revisionswolken)",
+  "section2d.export.omission.otherCutDimensions": "Maße, die auf einem anderen Schnitt gezeichnet wurden",
   "section2d.export.omission.rasterReferences": "sichtbare PDF-/Bildreferenzunterlagen",
   "section2d.export.omission.requestedScale": "den angeforderten Maßstab (das aktive Blatt legt den PDF-Maßstab fest)",
   "section2d.export.omission.pdfTitle": "Dieses PDF lässt Folgendes aus:",
   "section2d.export.omission.dxfTitle": "Zeichnung als DXF exportieren?",
   "section2d.export.omission.dxfDescription": "Diese DXF lässt {items} aus. Trotzdem exportieren?",
   "section2d.export.omission.continue": "Trotzdem exportieren",
+  "section2d.export.otherCutDimensionsLeftOut": {
+    "one": "{count} Maß, das auf einem anderen Schnitt gezeichnet wurde, wurde weggelassen.",
+    "other": "{count} Maße, die auf einem anderen Schnitt gezeichnet wurden, wurden weggelassen."
+  },
   "section2d.regenerate": "Neu berechnen",
   "section2d.matchView.button": "3D angleichen",
   "section2d.matchView.title": "3D-Ansicht an diesen Schnitt angleichen",

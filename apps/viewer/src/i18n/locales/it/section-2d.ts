@@ -75,12 +75,18 @@ export const section2dIt = {
   "section2d.export.invalidScale": "Impossibile esportare PDF: scala non valida.",
   "section2d.export.allowPopups": "Consenti le finestre popup per stampare.",
   "section2d.export.omission.markups": "annotazioni del disegno (misure, aree, testo e nuvole)",
+  "section2d.export.omission.otherCutDimensions": "le quote disegnate su un altro taglio",
   "section2d.export.omission.rasterReferences": "sfondi di riferimento PDF/immagine visibili",
   "section2d.export.omission.requestedScale": "la scala richiesta (la tavola attiva imposta la scala PDF)",
   "section2d.export.omission.pdfTitle": "Questo PDF ometterà:",
   "section2d.export.omission.dxfTitle": "Esportare il disegno come DXF?",
   "section2d.export.omission.dxfDescription": "Questo DXF ometterà {items}. Esportare comunque?",
   "section2d.export.omission.continue": "Esporta comunque",
+  "section2d.export.otherCutDimensionsLeftOut": {
+    "one": "{count} quota disegnata su un altro taglio è stata omessa.",
+    "other": "{count} quote disegnate su un altro taglio sono state omesse.",
+    "many": "{count} quote disegnate su un altro taglio sono state omesse."
+  },
   "section2d.regenerate": "Rigenera",
   "section2d.matchView.button": "Allinea al 3D",
   "section2d.matchView.title": "Imposta la vista 3D in modo che corrisponda a questo taglio",

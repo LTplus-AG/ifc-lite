@@ -8,6 +8,9 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from './index.js';
 import type { GeorefMutationData } from './slices/mutationSlice.js';
 
+// Pins the georef guard in discardUnchangedMutationViews (utils/model-mutation-view.ts),
+// which clearAllModels calls: georeference edits live outside the view.
+
 it('clearing all models keeps a model with only georeference edits and drops unchanged views (#10139)', () => {
   const store = useViewerStore;
   const before = store.getState();
@@ -27,6 +30,6 @@ it('clearing all models keeps a model with only georeference edits and drops unc
     assert.equal(after.georefMutations.get('georef'), edit, 'and still there to save');
     assert.equal(after.mutationViews.has('plain'), false, 'an unchanged view is dropped');
   } finally {
-    store.setState({ mutationViews: before.mutationViews, georefMutations: before.georefMutations, dirtyModels: before.dirtyModels });
+    store.setState(before, true);
   }
 });

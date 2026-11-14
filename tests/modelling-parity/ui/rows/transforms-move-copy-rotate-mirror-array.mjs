@@ -1,8 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
-
+import { rotatedWall, arrayWalls } from '../lib/measured-oracles.mjs';
 import { editCommand } from '../lib/command-ui.mjs';
 import { meshIfc, bboxOfParts } from '../../probes/sdk/lib/parity.mjs';
 import { task } from '../lib/driver.mjs';
@@ -35,6 +34,10 @@ export default {
         await typeFields(s, [2]);
         await escape(s);
       }));
+      const beforeRotate = (await oracleModel(s)).step;
+      const rotationSource = beforeRotate.wallAxes().find(w => near(w.start[1],5,.03) && near(w.end[1],5,.03));
+      const rotationPivot = rotationSource && rotationSource.start.map((v,i) => (v+rotationSource.end[i])/2);
+      const rotationGuid = rotationSource && beforeRotate.get(rotationSource.id).args[0];
       tasks.push(await task(s, 'rotate: select the y=5 wall, Shift+Q, type 90', async () => {
         await selectAt(s, [[2, 5, 1.5]]);
         await s.ui.key('Shift+Q', { settle: 300 });
@@ -77,17 +80,19 @@ export default {
         await escape(s);
       }));
       const shot = await s.shot('transforms');
-      const axes = (await oracleModel(s)).step.wallAxes();
+      const finalStep = (await oracleModel(s)).step;
+      const axes = finalStep.wallAxes();
+      const rotatedEntity = finalStep.of('IFCWALL').find(w => w.args[0] === rotationGuid);
       // Clicked wall origins carry the click's few-mm error, so the move is judged to 30 mm.
       const moved = axes.some((a) => nearPt(a.start, [0, 2], 0.03) && nearPt(a.end, [4, 2], 0.03));
-      const rotated = axes.some((a) => near(a.end[0] - a.start[0], 0, 1e-3) && near(a.length, 4, 1e-3));
+      const rotated = rotatedWall(rotationSource, axes.find(w => w.id === rotatedEntity?.id), rotationPivot);
       const arrayed = axes.filter((a) => near(a.length, 4, 1e-3) && a.start[1] > 9).length;
       return {
         tasks, notes, evidence: [shot], artifacts: { mirrorIfc: mirroredFile },
         checks: [
           { name: 'move by a typed 2 m', ok: moved, detail: axes.map((a) => `${fmt(a.start)}->${fmt(a.end)}`).join(' ') },
-          { name: 'rotate by a typed 90 degrees', ok: rotated, detail: rotated ? 'a vertical 4 m wall exists' : 'no vertical wall' },
-          { name: 'array makes 3 walls from one', ok: arrayed >= 3, detail: `${arrayed} walls in the array region` },
+          { name: 'rotate by a typed 90 degrees', ok: rotated, detail: rotated ? 'selected wall turned +90 degrees about its original centre' : 'selected wall has wrong signed rotation' },
+          { name: 'array makes 3 walls from one', ok: arrayWalls(axes,2), detail: `${arrayed} walls in the array region` },
           { name: 'Mirror reflects the selected wall about y=12', ok: !!reflectedBounds && near(reflectedBounds.centre[1],14,.01) && near(reflectedBounds.min[0],0,.01) && near(reflectedBounds.max[0],4,.01) && near(reflectedBounds.size[1],.2,.005) && mirrored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(reflectedBounds) ?? 'Mirror gesture did not produce an exported wall' },
           { name: 'Undo restores the mirrored wall to y=10', ok: !!undone && near(undone.start[1],10,.01) && near(undone.end[1],10,.01) && restored.count('IFCWALL') === beforeMirror.count('IFCWALL'), detail: JSON.stringify(undone) ?? 'No completed Mirror to undo' },
         ],

@@ -107,6 +107,7 @@ try {
   state.complete = state.reached === target && OPERATIONS.every(op => state.operations[op]?.count === samples);
   if (!state.complete) state.reason = `Fill allowance exhausted at ${state.reached}/${target} elements`;
 } catch (error) {
+  if (state.phase === 'fill') state.reached = state.after;
   state.reason = error.message ?? String(error);
   state.complete = false;
 } finally {

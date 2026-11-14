@@ -4,8 +4,8 @@
 
 /** Export-level oracles for #9296 round 5; every relation is checked against the target. */
 export const typeOf = (step, id) => step.of('IFCRELDEFINESBYTYPE').find(r => r.args[4]?.some(v => v.ref === id))?.args[5]?.ref;
-export function classificationOf(step, id) {
-  return step.of('IFCRELASSOCIATESCLASSIFICATION').some(r => r.args[4]?.some(v => v.ref === id) && step.get(r.args[5])?.type === 'IFCCLASSIFICATIONREFERENCE');
+export function classificationOf(step, id, expectedCode) {
+  return step.of('IFCRELASSOCIATESCLASSIFICATION').some(r => r.args[4]?.some(v => v.ref === id) && step.get(r.args[5])?.type === 'IFCCLASSIFICATIONREFERENCE' && (expectedCode === undefined || step.get(r.args[5])?.args[1] === expectedCode));
 }
 export function inheritedFireRating(step, walls) {
   const types = new Set(walls.map(w => typeOf(step, w.id)));
@@ -15,7 +15,7 @@ export function inheritedFireRating(step, walls) {
   return walls.length === 2 && types.size === 1 && !types.has(undefined) && sets.length === 1 &&
     step.get([...types][0])?.args[5]?.some(r => r.ref === sets[0].id) &&
     !step.of('IFCRELDEFINESBYPROPERTIES').some(r => r.args[4]?.some(v => walls.some(w => w.id === v.ref)) &&
-      step.get(r.args[5])?.args[2] === 'Pset_WallCommon' &&
+      step.get(r.args[5])?.type === 'IFCPROPERTYSET' &&
       step.get(r.args[5])?.args[4]?.some(ref => step.get(ref)?.args[0] === 'FireRating'));
 }
 export function layerUsage(step, wall, thicknesses) {
@@ -63,4 +63,37 @@ export function assignedLayerMaterials(step, wallId) {
 export function plainLanguageReview(text) {
   return typeof text === 'string' && /\bNew\s+IfcWall\s+#\d+\b/i.test(text) &&
     /\bEntity created\b/i.test(text) && !/#\d+\s*=\s*IFC/i.test(text);
+}
+
+const near = (a,b,t=.03) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a-b)<=t;
+const point = (a,b) => Array.isArray(a) && Array.isArray(b) && a.length===2 && b.length===2 && a.every((v,i)=>near(v,b[i]));
+export function alignedWalls(axes) {
+  return axes.length===2 && [3,6].every(y => axes.filter(w => near(w.start[1],y) && near(w.end[1],y) && near(w.start[0],0) && near(w.end[0],5)).length===1);
+}
+export function trimmedWalls(axes) {
+  const walls=axes.filter(w => near(w.start[1],3) && near(w.end[1],3));
+  return walls.length===1 && walls.every(w => Math.max(w.start[0],w.end[0])<=3.03) &&
+    walls.some(w => point(w.start,[0,3]) && point(w.end,[3,3]));
+}
+export function wallsAtElevation(walls,elevation) {
+  return walls.length>0 && walls.every(w=>near(w.z,elevation,.001));
+}
+export function rotatedWall(before,after,pivot) {
+  const turn = p => [pivot[0]-(p[1]-pivot[1]),pivot[1]+(p[0]-pivot[0])];
+  return !!before && !!after && point(after.start,turn(before.start)) && point(after.end,turn(before.end)) && near(after.z,before.z,.001);
+}
+export function arrayWalls(axes, unrelatedWalls=0) {
+  const walls=axes.filter(w=>w.start[1]>9);
+  return axes.length === 3+unrelatedWalls && walls.length===3 && [10,11.5,13].every(y=>walls.filter(w=>point(w.start,[0,y]) && point(w.end,[4,y]) && near(w.z,0,.001)).length===1);
+}
+export function typedRoomAxes(axes) {
+  const corners=[[0,0],[5,0],[5,4],[0,4],[0,0]];
+  return axes.length===4 && axes.every((w,i)=>point(w.start,corners[i]) && point(w.end,corners[i+1]));
+}
+export function typedSlab(q) {
+  return near(q.Length,5,.001) && near(q.Depth,4,.001) && near(q.GrossArea,20,.001);
+}
+
+export function copyLevelElevations(elevations,walls) {
+  return elevations.length===2 && walls.length===2 && elevations.every((z,i)=>near(z,3*(i+1),.001) && wallsAtElevation(walls[i],z));
 }

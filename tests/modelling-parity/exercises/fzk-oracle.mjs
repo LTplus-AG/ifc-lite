@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { opposingRoofPlans } from './gable-plan.mjs';
 import { target } from './fzk.mjs';
 // This parses exported STEP data, never implementation source text.
 export function fields(record) {
@@ -85,7 +86,7 @@ export function compareFzk({text,find,levels,emit}) {
       if(horizontal>0) directions.push([n[0]/horizontal,n[2]/horizontal]);
     }
   }
-  check('gable-roof','roof-by-footprint',total>0&&inclined>total*0.9&&(directions.some(a=>directions.some(b=>a[0]*b[0]+a[1]*b[1]<-0.99))),'Expected two opposing roof planes at 30° within tolerance',{upwardArea:total,areaAt30Deg:inclined});
+  check('gable-roof','roof-by-footprint',opposingRoofPlans(roofMeshes.flatMap(mesh=>mesh.triangles))&&total>0&&inclined>total*0.9&&(directions.some(a=>directions.some(b=>a[0]*b[0]+a[1]*b[1]<-0.99))),'Expected two opposing roof planes at 30° within tolerance',{upwardArea:total,areaAt30Deg:inclined});
   check('roof-area','roof-by-footprint',Math.abs(total-target.roof.totalUpwardArea)<=target.roof.totalUpwardArea*target.tolerances.roofSlopeAreaShare.value,`Reference upward roof area ${target.roof.totalUpwardArea}m² ±10%; got ${total}`,{area:total});
 }
 

@@ -381,3 +381,15 @@ export function expectedCacheTier(bytes) {
   if (bytes <= 400 * MB) return 'mesh-only (150-400 MB)';
   return 'none (>400 MB, uncached)';
 }
+
+/** Aggregate fixture verdicts by lane for the report summary. */
+export function laneSummary(fixtures, lanes) {
+  const out = {};
+  for (const lane of lanes) {
+    const rows = fixtures.filter((f) => f.lanes[lane]?.primary).map((f) => ({ fixture: f.name, set: f.set, ...f.lanes[lane].primary, output: f.lanes[lane].output }));
+    const by = (pred) => rows.filter(pred).map((r) => r.fixture);
+    out[lane] = { gains: by((r) => r.pass), regressions: by((r) => r.regression), noDifference: by((r) => r.verdict === 'no significant difference'),
+      inconclusive: by((r) => r.verdict.startsWith('inconclusive')), outputChanged: by((r) => r.output !== 'match') };
+  }
+  return out;
+}

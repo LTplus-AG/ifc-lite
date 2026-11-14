@@ -94,6 +94,18 @@ beforeEach(async () => {
 });
 
 describe('caps of the inactive cutting planes (#7545)', () => {
+  it('does not cut while geometry is held and cuts again when the hold releases', async () => {
+    const b = twoPlanes();
+    await act(async () => useViewerStore.setState({ models: new Map([['restore', { geometryRestorePending: true }]]) as never }));
+    await mount();
+    await settle();
+    assert.equal(state().sectionExtraCaps[b], undefined);
+
+    await act(async () => useViewerStore.setState({ models: new Map([['restore', { geometryRestorePending: false }]]) as never }));
+    await settle();
+    assert.ok(state().sectionExtraCaps[b]?.cutPolygons.length);
+  });
+
   it('cuts the wall for a plane that is not the active one', async () => {
     const b = twoPlanes();
     await mount();

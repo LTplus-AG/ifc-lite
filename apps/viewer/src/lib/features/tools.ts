@@ -20,7 +20,7 @@ export const TOOL_FEATURE: Readonly<Record<string, FeatureId>> = {
 };
 
 /** The Model workspace's authoring tools: they go with editing. */
-const AUTHORING_TOOLS = [
+const MODEL_AUTHORING_TOOLS = [
   'wall', 'slab', 'roof', 'column', 'beam', 'room', 'space-envelope', 'curtain-wall', 'grid',
   'opening', 'door', 'window', 'split', 'stair', 'railing', 'split-multi', 'push-pull', 'align',
   'trim-extend', 'array', 'move', 'rotate',
@@ -30,7 +30,7 @@ const AUTHORING_TOOLS = [
 export function toolFeatureRows(prefix: string): Record<string, FeatureId> {
   return Object.fromEntries([
     ...Object.entries(TOOL_FEATURE),
-    ...AUTHORING_TOOLS.map((tool): [string, FeatureId] => [tool, 'edit.model']),
+    ...MODEL_AUTHORING_TOOLS.map((tool): [string, FeatureId] => [tool, 'edit.model']),
   ].map(([tool, feature]) => [`${prefix}${tool}`, feature]));
 }
 

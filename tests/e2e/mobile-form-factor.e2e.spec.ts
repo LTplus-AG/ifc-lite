@@ -292,7 +292,7 @@ test.describe('Z Fold inner 830x750 (near-tablet) with a panel open', () => {
   test.use({ viewport: { width: 830, height: 750 }, isMobile: true, hasTouch: true });
 
   test('#9718 Hierarchy docks as a pane right of the model, the bar under both', async ({ page }, testInfo) => {
-    await openViewer(page);
+    await openViewer(page, true);
     await expect(page.locator('[data-command-placement="bottom-bar"]')).toBeVisible({ timeout: 60_000 });
     await withStore(page, (store) => store.getState().setLeftPanelCollapsed(false));
     await expect(page.locator('[data-mobile-pane="side-pane"]')).toBeVisible();
@@ -306,6 +306,29 @@ test.describe('Z Fold inner 830x750 (near-tablet) with a panel open', () => {
     expect(paneBox.y + paneBox.height, 'above the bar').toBeLessThanOrEqual(bar.y + 1);
     expect(bar.width, 'the bar spans both').toBeGreaterThanOrEqual(829);
     await attachShot(page, testInfo, 'zfold-inner-830x750-pane');
+    // #9718: moving the panel must preserve native editing, not only React state.
+    const field = page.locator('[data-mobile-pane] input').first();
+    await expect(field).toBeVisible();
+    await field.fill('wall');
+    const editing = await field.elementHandle();
+    expect(editing).not.toBeNull();
+    await editing!.evaluate((input) => {
+      if (!(input instanceof HTMLInputElement)) throw new Error('Hierarchy search is an input');
+      input.focus();
+      input.setSelectionRange(1, 3, 'backward');
+    });
+    for (const size of [{ width: 412, height: 960 }, { width: 830, height: 750 }]) {
+      await page.setViewportSize(size);
+      await expect(page.locator('[data-mobile-shell]')).toHaveAttribute('data-mobile-panel-host', size.width === 412 ? 'sheet' : 'side-pane');
+      expect(await editing!.evaluate((input) => {
+        if (!(input instanceof HTMLInputElement)) throw new Error('Hierarchy search is an input');
+        return {
+        connected: input.isConnected, focused: document.activeElement === input, value: input.value,
+        start: input.selectionStart, end: input.selectionEnd, direction: input.selectionDirection,
+        };
+      })).toEqual({ connected: true, focused: true, value: 'wall', start: 1, end: 3, direction: 'backward' });
+    }
+    await editing!.dispose();
   });
 });
 

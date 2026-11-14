@@ -86,6 +86,10 @@ export const section2dEn = {
   'section2d.export.omission.dxfTitle': 'Export drawing as DXF?',
   'section2d.export.omission.dxfDescription': 'This DXF will leave out {items}. Export anyway?',
   'section2d.export.omission.continue': 'Export anyway',
+  'section2d.export.otherCutDimensionsLeftOut': {
+    one: '{count} dimension drawn on another cut was left out.',
+    other: '{count} dimensions drawn on another cut were left out.',
+  },
   'section2d.regenerate': 'Regenerate',
   'section2d.matchView.button': 'Match 3D',
   'section2d.matchView.title': 'Set the 3D view to match this cut',

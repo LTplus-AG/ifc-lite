@@ -64,10 +64,11 @@ export function cgroupPressure(cgroup, root = '/sys/fs/cgroup') {
  * overlap errs toward rerunning a round, never toward calling a starved sample quiet (review #10138, both directions).
  */
 export function stallRange(jobUs, browserUs, sampleMs) {
-  if (!Number.isFinite(jobUs) || !(sampleMs > 0)) return { lowPct: null, highPct: null };
-  const b = Number.isFinite(browserUs) ? browserUs : 0;
+  // browserUs: 0 when there is no browser scope; null/undefined when a scope exists but its stall is unreadable (unknown).
+  const browserUnknown = !Number.isFinite(browserUs);
+  if (!Number.isFinite(jobUs) || !(sampleMs > 0) || browserUnknown) return { lowPct: null, highPct: null, browserUnknown };
   const pct = (us) => Math.min(100, (us / (sampleMs * 1000)) * 100);
-  return { lowPct: pct(Math.max(jobUs, b)), highPct: pct(jobUs + b) };
+  return { lowPct: pct(Math.max(jobUs, browserUs)), highPct: pct(jobUs + browserUs), browserUnknown };
 }
 
 /** Whether `cgroup` is one of the capped cgroups or inside one. */
@@ -80,15 +81,16 @@ export function isCapped(cgroup, cappedPaths) {
  * waited for a CPU (null = unreadable, never quiet). `builderCpuMs`: CPU per builder cgroup during the sample; only
  * cgroups the cap did not cap count (a capped builder is bounded by the allowance). `window` 'partial' always flags.
  */
-export function classifyCappedLoad({ window, ownStallPct, limit = 5, builders = [], builderCpuMs = {}, cappedPaths = [], cpuMsLimit = 100 }) {
+export function classifyCappedLoad({ window, ownStallPct, browserStallUnknown = false, limit = 5, builders = [], builderCpuMs = {}, cappedPaths = [], cpuMsLimit = 100 }) {
   const uncapped = Object.entries(builderCpuMs).filter(([c]) => !isCapped(c, cappedPaths));
   const busyGroups = uncapped.filter(([, ms]) => ms === null || ms > cpuMsLimit).map(([c]) => c);
   const starved = !Number.isFinite(ownStallPct) || !(ownStallPct < limit); // null is unreadable, never quiet
   const partial = window !== 'inside';
-  const underLoad = partial || starved || busyGroups.length > 0;
+  const underLoad = partial || browserStallUnknown || starved || busyGroups.length > 0;
   const builderState = builders.length === 0 ? 'none' : busyGroups.length ? 'busy' : uncapped.length ? 'seen, idle' : 'capped';
   return { underLoad, builderState, busyGroups,
     reason: partial ? 'sample only partly inside the cap window'
+      : browserStallUnknown ? 'browser stall unreadable in the cap window'
       : starved ? (ownStallPct === null ? 'benchmark CPU pressure unreadable in the cap window' : `benchmark tasks waited for a CPU ${ownStallPct.toFixed(1)}% of the sample (>= ${limit}) in the cap window`)
         : busyGroups.length ? `uncapped builder cgroup(s) ${busyGroups.join(',')} used > ${cpuMsLimit} ms CPU during the sample` : null };
 }

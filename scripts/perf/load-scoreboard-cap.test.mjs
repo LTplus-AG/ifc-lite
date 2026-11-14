@@ -103,11 +103,11 @@ test('an arm-lane sample gets the plan or side cpuTrace option and settles its h
 test('benchmark stall in a cap window: the range [max, min(sum, 100%)] is reported and the flag uses the sum', async () => {
   const { stallRange } = await import('./load-scoreboard-cap.mjs');
   // 4 ms in the job cgroup + 4 ms in the browser scope in a 100 ms sample: 4-8 %; the sum (8 %) flags at the 5 % limit.
-  assert.deepEqual(stallRange(4000, 4000, 100), { lowPct: 4, highPct: 8 });
+  assert.deepEqual(stallRange(4000, 4000, 100), { lowPct: 4, highPct: 8, browserUnknown: false });
   assert.equal(classifyCappedLoad({ window: 'inside', ownStallPct: stallRange(4000, 4000, 100).highPct, limit: 5 }).underLoad, true);
-  assert.deepEqual(stallRange(90000, 50000, 100), { lowPct: 90, highPct: 100 }); // capped at 100 %
-  assert.deepEqual(stallRange(1000, undefined, 100), { lowPct: 1, highPct: 1 });
-  assert.deepEqual(stallRange(null, 5, 100), { lowPct: null, highPct: null });
+  assert.deepEqual(stallRange(90000, 50000, 100), { lowPct: 90, highPct: 100, browserUnknown: false }); // capped at 100 %
+  assert.deepEqual(stallRange(1000, 0, 100), { lowPct: 1, highPct: 1, browserUnknown: false }); // no browser scope: 0
+  assert.deepEqual(stallRange(null, 5, 100), { lowPct: null, highPct: null, browserUnknown: false });
 });
 
 test('the foreign-CPU interval ends at the cut taken before Chrome closes, so its shutdown CPU is not foreign', async () => {
@@ -119,4 +119,38 @@ test('the foreign-CPU interval ends at the cut taken before Chrome closes, so it
   const t = Date.now(); while (Date.now() - t < 50) { /* busy */ }
   settleHostLoad(host, { ownOutside: cut });
   assert.equal(host.foreignCpuMs, 500); // 1000 host busy - 300 job - 200 browser scope, all at the cut
+});
+
+test('an unreadable browser-scope reading is unknown, never zero: no foreign figure, and a capped sample is flagged', async () => {
+  const { stallRange: sr } = await import('./load-scoreboard-cap.mjs');
+  const { outsideOwnCgroup } = await import('./load-scoreboard-host.mjs');
+  // A scope outside the job cgroup whose cpu.stat and cpu.pressure cannot be read.
+  const o = outsideOwnCgroup([1], { cgroupOf: () => '/elsewhere.scope', usage: () => null, pressure: () => null });
+  assert.deepEqual([o.cpuMs, o.pressureUs, o.scopes], [null, null, 1]);
+  const ok = outsideOwnCgroup([1], { cgroupOf: () => '/elsewhere.scope', usage: () => 12, pressure: () => ({ avg10: 0, totalUs: 34 }) });
+  assert.deepEqual([ok.cpuMs, ok.pressureUs], [12, 34]);
+  assert.equal(sr(1000, null, 100).browserUnknown, true);
+  assert.equal(sr(1000, null, 100).highPct, null);
+  const c = classifyCappedLoad({ window: 'inside', ownStallPct: null, browserStallUnknown: true, limit: 5 });
+  assert.deepEqual([c.underLoad, c.reason], [true, 'browser stall unreadable in the cap window']);
+  // settleHostLoad: unknown browser CPU makes foreignCpuMs unknown, not "host minus job".
+  const { hostQuiet, settleHostLoad } = await import('./load-scoreboard-host.mjs');
+  const h = settleHostLoad(await hostQuiet({ maxWaitMs: 0 }), { ownOutside: { cpuMs: null, pressureUs: null, scopes: 1 } });
+  assert.equal(h.foreignCpuMs, null);
+});
+
+test('the pre-sample wait re-reads the cap state: a wait that crosses the end of a window restarts under the host rule', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cap-'));
+  const file = join(dir, 's.json');
+  const open = { id: 'w', cores: 2, appliedEpoch: Date.now() / 1000 - 5, entries: [] };
+  writeFileSync(file, JSON.stringify(open));
+  process.env.LOAD_SCOREBOARD_CAP_STATE = file;
+  try {
+    const { hostQuiet } = await import('./load-scoreboard-host.mjs');
+    setTimeout(() => writeFileSync(file, JSON.stringify({ ...open, restoredEpoch: Date.now() / 1000 })), 1200);
+    const h = await hostQuiet({ limit: 0, maxWaitMs: 1500 }); // limit 0: never quiet, so the wait runs its course
+    assert.equal(h.pressureSource, 'host');
+    assert.ok(h.capBoundariesInWait >= 1);
+    assert.ok(h.capBefore.restoredMs !== null);
+  } finally { delete process.env.LOAD_SCOREBOARD_CAP_STATE; }
 });

@@ -184,20 +184,27 @@ export function thermalDelta(before, after) {
 export async function hostQuiet({ limit = 5, maxWaitMs = quietWaitMs() } = {}) {
   const started = Date.now();
   // In a cap window host-wide pressure counts the capped groups' waiting: wait on the benchmark's own pressure instead.
-  const capBefore = readCapState(), own = ownCgroupPath();
-  const capped = capActive(capBefore, started);
+  // The cap state is re-read on every poll; a wait that crosses a cap boundary restarts under the rule of the new state,
+  // and the state at the end of the wait is the sample's start state (review #10138).
+  const own = ownCgroupPath();
+  let capBefore = readCapState(), capped = capActive(capBefore, Date.now()), waitFrom = started, boundaries = 0;
   const pressure = () => (capped ? (cgroupPressure(own)?.avg10 ?? NaN) : cpuPressure10());
   let psi = pressure();
-  while (!(psi < limit) && Date.now() - started < maxWaitMs) {
+  while (!(psi < limit) && Date.now() - waitFrom < maxWaitMs) {
     await new Promise((r) => setTimeout(r, 1000));
+    capBefore = readCapState();
+    const now = capActive(capBefore, Date.now());
+    if (now !== capped) { capped = now; waitFrom = Date.now(); boundaries++; }
     psi = pressure();
   }
+  capBefore = readCapState(); // the sample starts now
+  if (capActive(capBefore, Date.now()) !== capped) { capped = !capped; boundaries++; psi = pressure(); }
   const pgid = ownPgid();
   // Builders in our own cgroup or process group are our children, not foreign load (review #9857).
   const procs = foreignBuilders().filter((p) => p.pgid !== pgid && (p.cgroup ?? '').slice(3) !== own);
   const pgids = [...new Set(procs.map((p) => p.pgid))];
   const cgroups = [...new Set(procs.map((p) => (p.cgroup ?? '').slice(3)).filter(Boolean))];
-  return { cpuPressureAvg10: psi, pressureSource: capped ? 'benchmark cgroup (cap window)' : 'host', capBefore, ownPressureBefore: cgroupPressure(own)?.totalUs ?? null, limit, waitedMs: Date.now() - started, builders: procs.map((p) => p.name), builderProcs: procs,
+  return { cpuPressureAvg10: psi, pressureSource: capped ? 'benchmark cgroup (cap window)' : 'host', capBefore, capBoundariesInWait: boundaries, ownPressureBefore: cgroupPressure(own)?.totalUs ?? null, limit, waitedMs: Date.now() - started, builders: procs.map((p) => p.name), builderProcs: procs,
     groupTicksBefore: groupTicks(pgids), cgroupUsageBefore: { ...Object.fromEntries(cgroups.map((c) => [c, cgroupUsageMs(c)])), ...(procs.some((p) => !p.cgroup) ? { '(no cgroup)': null } : {}) }, hostBusyBefore: hostBusyMs(), ownCgroupBefore: ownCgroupMs(), watchdogBefore: watchdogState(), thermalBefore: thermalState(), settledAt: null, startedAt: Date.now(), settled: false,
     // Provisional until the sample ends (settleHostLoad): pressure alone decides now.
     ...classifyHostLoad({ psi, limit, builders: procs.map((p) => p.name) }) };
@@ -210,19 +217,22 @@ export async function hostQuiet({ limit = 5, maxWaitMs = quietWaitMs() } = {}) {
  * as foreign (quiet lane, 2026-11-13). Read just before the browser closes; a fresh browser per sample makes its
  * lifetime (and its scope's) this sample.
  */
-export function outsideOwnCgroup(pids) {
+export function outsideOwnCgroup(pids, { cgroupOf = (pid) => procInfo(pid)?.cgroup?.slice(3), usage = cgroupUsageMs, pressure = cgroupPressure } = {}) {
   const own = ownCgroupPath();
   let cpuMs = 0, pressureUs = 0;
   const scopes = new Set();
   for (const pid of pids) {
-    const cg = procInfo(pid)?.cgroup?.slice(3);
+    const cg = cgroupOf(pid);
     if (own !== null && cg && cg !== own) scopes.add(cg);
   }
   // The scope's own counters cover only the time after the move: CPU the browser used in the job cgroup before it
   // moved is already outside host-minus-job and must not be subtracted again (review #10138).
+  // An unreadable scope counter is unknown (null), never 0: unknown CPU makes foreignCpuMs unknown, unknown stall flags a
+  // capped sample (review #10138). No outside scope at all is a real 0.
   for (const cg of scopes) {
-    cpuMs += cgroupUsageMs(cg) ?? 0;
-    pressureUs += cgroupPressure(cg)?.totalUs ?? 0;
+    const use = usage(cg), pr = pressure(cg)?.totalUs;
+    cpuMs = cpuMs === null || !Number.isFinite(use) ? null : cpuMs + use;
+    pressureUs = pressureUs === null || !Number.isFinite(pr) ? null : pressureUs + pr;
   }
   // Read at the same moment as the scope counters: settleHostLoad ends the foreign-CPU interval here.
   return { cpuMs, pressureUs, scopes: scopes.size, hostBusyMs: hostBusyMs(), ownCgroupMs: ownCgroupMs() };
@@ -248,8 +258,9 @@ export function settleHostLoad(host, { ownOutside = null } = {}) {
   // there too, so Chrome's shutdown CPU never lands in foreignCpuMs (review #10138).
   const cut = Number.isFinite(ownOutside?.hostBusyMs) && Number.isFinite(ownOutside?.ownCgroupMs);
   const busy = cut ? ownOutside.hostBusyMs : hostBusyMs(), own = cut ? ownOutside.ownCgroupMs : ownCgroupMs();
-  const ownOutsideMs = Number.isFinite(ownOutsideCpuMs) ? ownOutsideCpuMs : 0;
-  const foreignCpuMs = [busy, own, host.hostBusyBefore, host.ownCgroupBefore].every(Number.isFinite)
+  // No browser reading at all (native, a failed launch) subtracts nothing; a reading whose CPU is unknown makes the figure unknown.
+  const ownOutsideMs = ownOutside ? ownOutsideCpuMs : 0;
+  const foreignCpuMs = [busy, own, host.hostBusyBefore, host.ownCgroupBefore, ownOutsideMs].every(Number.isFinite)
     ? Math.max(0, Math.round((busy - host.hostBusyBefore) - (own - host.ownCgroupBefore) - ownOutsideMs)) : null;
   const sampleMs = Date.now() - host.startedAt;
   // Measurement only: affected cells are visible, nothing is voided by it.
@@ -268,10 +279,11 @@ export function settleHostLoad(host, { ownOutside = null } = {}) {
     const ownAfter = cgroupPressure(ownCgroupPath())?.totalUs;
     // Job cgroup and browser scope: their union stall lies in [max, sum]; flag on the sum (stallRange, load-scoreboard-cap.mjs).
     const jobUs = Number.isFinite(ownAfter) && Number.isFinite(host.ownPressureBefore) ? ownAfter - host.ownPressureBefore : null;
-    const range = stallRange(jobUs, ownOutside?.pressureUs, sampleMs);
+    // No browser reading = no browser scope stall (0); a reading with unknown stall stays unknown (null) and flags.
+    const range = stallRange(jobUs, ownOutside ? ownOutside.pressureUs : 0, sampleMs);
     const ownStallPct = range.highPct;
     const st = capAfter?.error ? host.capBefore : capAfter;
-    flag = classifyCappedLoad({ window, ownStallPct, limit: host.limit, builders: host.builders, builderCpuMs, cappedPaths: st?.cappedPaths ?? [] });
+    flag = classifyCappedLoad({ window, ownStallPct, browserStallUnknown: range.browserUnknown, limit: host.limit, builders: host.builders, builderCpuMs, cappedPaths: st?.cappedPaths ?? [] });
     host.cap = { window, id: st?.id ?? null, allowanceCores: st?.allowanceCores ?? null, ownStallPct: ownStallPct === null ? null : Math.round(ownStallPct * 10) / 10, ownStallRangePct: range.lowPct === null ? null : [Math.round(range.lowPct * 10) / 10, Math.round(range.highPct * 10) / 10], jobStallUs: jobUs, browserStallUs: ownOutside?.pressureUs ?? null, error: capAfter?.error ?? host.capBefore?.error ?? null };
   }
   host.cap ??= { window: 'none' };

@@ -53,6 +53,12 @@ export function watchdogRows(samples) {
   });
 }
 
+/** One side's arming protocol on a `-settled` lane: the distinct boot-signal outcomes and the median signal wait. */
+export function armProtocolOf(ok) {
+  const signals = [...new Set(ok.map((r) => String(r.shell?.bootSettled ?? 'not recorded')))].sort();
+  return { signals, waitMedianMs: median(ok.map((r) => r.shell?.bootSettledWaitMs).filter(Number.isFinite)) };
+}
+
 /** A sample "hits the post-finalize stall" when its first frame after the scene finished comes more than this long after the mark. */
 export const STALL_MS = 50;
 

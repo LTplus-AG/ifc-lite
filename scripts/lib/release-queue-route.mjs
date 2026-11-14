@@ -99,7 +99,7 @@ function readRules(text, topKey) {
     // else.
     // An item belongs to the empty key right above it, so one with no such
     // key open is unread too (`.list` marks that a key is open).
-    if (section.startsWith('commit_message_format')) {
+    if (section === 'commit_message_format' || section === 'commit_message_format.list') {
       const key = /^ {6}[\w-]+:(\s+[\w-]+)?\s*(#.*)?$/.exec(line);
       if (key) section = key[1] ? 'commit_message_format' : 'commit_message_format.list';
       else if (!(section.endsWith('.list') && /^ {8}- [\w-]+\s*(#.*)?$/.test(line))) unread(line);

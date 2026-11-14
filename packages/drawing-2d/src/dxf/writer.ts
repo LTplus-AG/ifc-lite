@@ -47,6 +47,7 @@
  */
 
 import { cssToAci } from './aci-colors.js';
+import { dxfWidthFactor } from './text-layout.js';
 import type { Point2D } from '../types.js';
 
 /** Line style resolved to a DXF linetype. `dashed` maps to the `DASHED` LTYPE. */
@@ -283,6 +284,7 @@ export class DxfWriter {
       hAlign?: DxfTextHAlign;
       vAlign?: DxfTextVAlign;
       colorOverride?: string;
+      widthScale?: number; fitTo?: Point2D; fitUniform?: boolean; // group 41 (omitted at 1); Fit (72=5), or Aligned (72=3) when uniform, replaces it
     } = {},
   ): void {
     const clean = sanitizeDxfText(text);
@@ -293,22 +295,20 @@ export class DxfWriter {
     if (!clean.trim() || !Number.isFinite(height) || height <= 0) return;
     this.extend(position);
     const rotationDeg = options.rotationDeg ?? 0;
-    const hAlign = options.hAlign ?? 'left';
-    const vAlign = options.vAlign ?? 'baseline';
-    const hCode = H_ALIGN_CODE[hAlign];
-    const vCode = V_ALIGN_CODE[vAlign];
+    const [hCode, vCode] = options.fitTo ? [options.fitUniform ? 3 : 5, 0] : [H_ALIGN_CODE[options.hAlign ?? 'left'], V_ALIGN_CODE[options.vAlign ?? 'baseline']];
     const needsAlignPoint = hCode !== 0 || vCode !== 0;
     const colorGroup = this.colorOverrideGroup(options.colorOverride);
+    const widthScale = options.fitTo ? undefined : dxfWidthFactor(options.widthScale);
     this.entities.push(() => {
       let s =
         '0\nTEXT\n8\n' + layer + '\n' + colorGroup +
         '10\n' + fmt(position.x) + '\n20\n' + fmt(position.y) + '\n30\n0.0\n' +
-        '40\n' + fmt(height) + '\n1\n' + clean + '\n' +
+        '40\n' + fmt(height) + '\n1\n' + clean + '\n' + (widthScale ? '41\n' + fmt(widthScale) + '\n' : '') +
         '50\n' + fmt(rotationDeg) + '\n' +
         '72\n' + hCode + '\n' +
         '73\n' + vCode + '\n';
       if (needsAlignPoint) {
-        s += '11\n' + fmt(position.x) + '\n21\n' + fmt(position.y) + '\n31\n0.0\n';
+        s += '11\n' + fmt((options.fitTo ?? position).x) + '\n21\n' + fmt((options.fitTo ?? position).y) + '\n31\n0.0\n';
       }
       return s;
     });

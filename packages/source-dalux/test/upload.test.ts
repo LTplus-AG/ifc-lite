@@ -143,7 +143,9 @@ describe('Dalux write-back', () => {
     expect(new Uint8Array(await provider.download(ctx, { ...FILE_A, revisionId: result.revision.id }))).toEqual(bytes);
     expect(new Uint8Array(await provider.download(ctx, { ...FILE_A, revisionId: undefined }))).toEqual(bytes);
     expect(await textOf(provider, ctx, { ...FILE_A, revisionId: 'rev-1' })).toBe('A-ONE');
-    await provider.uploadFile(ctx, { mode: 'new-version', ref: FILE_A }, bytesOf('THIRD'));
+    const third = ok(await provider.uploadFile(ctx, { mode: 'new-version', ref: FILE_A }, bytesOf('THIRD')));
+    expect(third.revision.id).not.toBe(result.revision.id);
+    expect(await textOf(provider, ctx, { ...FILE_A, revisionId: undefined })).toBe('THIRD');
     expect(new Uint8Array(await provider.download(ctx, { ...FILE_A, revisionId: result.revision.id }))).toEqual(bytes);
   });
 

@@ -14,7 +14,7 @@ export function companionHiddenNow(globalId: number, state = useViewerStore.getS
   if (!ref) return false;
   const model = state.models.get(ref.modelId);
   if (!model?.ifcDataStore) return false;
-  return model.visible === false || !isTypeVisible(model.ifcDataStore.entities.getTypeName(ref.expressId), state.typeVisibility);
+  return model.visible === false || !isTypeVisible(model.ifcDataStore.entities.getTypeName(ref.expressId), state.typeVisibility, state.structuralViewMode);
 }
 
 /** Original native item identity proves precisely which companion is removed.
@@ -28,7 +28,7 @@ export function bindCompanionPreview(state: ViewerState, renderer: Renderer, mod
   const validate = () => {
     const current = useViewerStore.getState();
     if (current.models.get(modelId) !== model || current.modelPlacement !== state.modelPlacement
-      || current.levelDisplayMode !== state.levelDisplayMode || current.typeVisibility !== state.typeVisibility || placementFrameKey(current) !== frame) {
+      || current.levelDisplayMode !== state.levelDisplayMode || current.typeVisibility !== state.typeVisibility || current.structuralViewMode !== state.structuralViewMode || placementFrameKey(current) !== frame) {
       throw new Error('The opening companion placement changed. Refresh the preview.');
     }
   };

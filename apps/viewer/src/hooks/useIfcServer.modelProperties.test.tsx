@@ -62,9 +62,6 @@ beforeEach(async () => {
     stats: { total_meshes: 0, total_vertices: 0, total_triangles: 0, parse_time_ms: 1, geometry_time_ms: 1, total_time_ms: 2, from_cache: false },
   }));
   useViewerStore.getState().clearAllModels();
-  // #10139: all-models-cleared deliberately retains mutation state for reloads.
-  // Each test starts a new model lifetime, not the previous test's retained allocator.
-  useViewerStore.setState({ mutationViews: new Map(), storeEditors: new Map() });
   const model = { ...fixtureModel('server'), ifcDataStore: null, sourceFile: file, loadState: 'complete' as const };
   useViewerStore.getState().addModel(model);
   container = document.createElement('div'); document.body.append(container);
@@ -492,7 +489,8 @@ it('re-hydration refuses source growth across unpublished authored IDs (#10139)'
     assert.equal(useViewerStore.getState().models.get('server')!.ifcDataStore, previous);
     assert.equal(federationRegistry.getGlobalIdRange('server')!.end, 100);
     assert.ok(view.getNewEntity(101));
-  } finally { federationRegistry.clear(); }
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true }, 'refused re-hydration preserves editing on the previous store');
+  } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
 });
 
 it('hydration never briefly republishes capacity computed without the allocator (#10139)', async () => {
@@ -518,4 +516,40 @@ it('hydration never briefly republishes capacity computed without the allocator 
     assert.ok(capacities.length > 0);
     assert.equal(capacities.includes(true), false);
   } finally { federationRegistry.clear(); }
+});
+
+// #10139: source-derived allocator floors are not authored IDs.
+it('re-hydrates after clearAllModels and reuse of a model with an untouched read view', async () => {
+  const hydrate = async (max: number) => {
+    const store = serverStoreAt(max);
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => store);
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, store);
+  };
+  useViewerStore.getState().updateModel('server', { maxExpressId: 300, idOffset: federationRegistry.registerModel('server', 300) });
+  await hydrate(500);
+  const view = getOrCreateMutationView(useViewerStore, 'server')!;
+  assert.equal(view.peekNextExpressId(), 501);
+  useViewerStore.getState().clearAllModels();
+  useViewerStore.getState().addModel({ ...fixtureModel('server'), sourceFile: file, ifcDataStore: null,
+    maxExpressId: 300, idOffset: federationRegistry.registerModel('server', 300), loadState: 'complete' });
+  await hydrate(500);
+  assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: true });
+});
+
+it('re-hydrates a clamped model even when a read view retains the larger source floor (#10139)', async () => {
+  useViewerStore.getState().updateModel('server', { maxExpressId: 1, idOffset: federationRegistry.registerModel('server', 1) });
+  federationRegistry.registerModel('later', 10);
+  for (const max of [2_000_000, 1_500_000]) {
+    const store = serverStoreAt(max);
+    await act(async () => {
+      useServerModelProperties().start('server', undefined, async () => store);
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, store);
+    getOrCreateMutationView(useViewerStore, 'server');
+  }
+  assert.deepEqual(dataMutationPermission(useViewerStore.getState(), 'server'), { allowed: false, reason: 'id-space-exhausted' });
 });

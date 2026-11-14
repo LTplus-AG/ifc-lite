@@ -7,7 +7,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { configureMutationView } from './configureMutationView.js';
 
-/** Same ownership floor for live overlays, cold planners and detached read facades. */
+/** Same ownership floor for live overlays and allocating cold planners. */
 export function modelExpressIdFloor(modelId: string, source: IfcDataStore | null): () => number {
   const watermark = source?.entityIndex?.byId ? highestExistingExpressId(source) : 0;
   return () => {
@@ -22,4 +22,11 @@ export function createModelMutationView(dataStore: IfcDataStore, modelId: string
   view.configureExpressIdAllocator(modelExpressIdFloor(modelId, dataStore));
   configureMutationView(view, dataStore);
   return view;
+}
+
+/** Source-only views carry no work to reload, and must not retain an old allocator floor. */
+export function discardUnchangedMutationViews(state: Partial<Pick<import('@/store').ViewerState, 'mutationViews' | 'clearMutationView'>>): void {
+  for (const [modelId, view] of state.mutationViews ?? []) {
+    if (!view.hasPendingChanges() && view.getMutationCount() === 0) state.clearMutationView?.(modelId);
+  }
 }

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { discardUnchangedMutationViews } from '@/utils/model-mutation-view';
 import { refreshModelOverlayCapacity } from '../overlay-capacity.js';
 
 /**
@@ -384,9 +385,8 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
   },
 
   clearAllModels: () => {
-    // Full federation teardown: any IDS report now references an unloaded
-    // model, so drop it too (removeModel's per-model cleanup never runs here).
-    // Same for the cloud-source provenance tags — every tagged model is gone.
+    discardUnchangedMutationViews(get());
+    // Drop IDS reports and source tags: every referenced model is unloaded.
     const crossClear = get() as unknown as {
       clearIdsValidationReport?: () => void;
       clearSourceTags?: () => void;

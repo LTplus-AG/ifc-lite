@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import { IfcParser } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -82,4 +82,18 @@ describe('#5898 Bulk Rule targets over parsed IFC', () => {
     view.setProperty(1, 'Pset_Test', 'Rating', 'Low', PropertyValueType.String);
     assert.deepEqual(await resolveBulkQueryIds(useViewerStore.getState(), 'a', groups), []);
   });
+});
+
+it('read-only Bulk targets and modelReader never configure an allocator (#10139)', async () => {
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer);
+  useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('read'), ifcDataStore: store }), mutationViews: new Map() });
+  const allocator = mock.method(MutablePropertyView.prototype, 'configureExpressIdAllocator');
+  try {
+    const { modelReader } = await import('@/lib/actions/model-change-values');
+    const reader = modelReader(useViewerStore.getState(), 'read');
+    assert.ok(reader);
+    assert.equal(reader.view.getMutationCount(), 0);
+    assert.ok((await resolveBulkQueryIds(useViewerStore.getState(), 'read', [emptyFilterGroup()])).includes(1));
+    assert.equal(allocator.mock.callCount(), 0, 'read facades need no ownership floor or allocation configuration');
+  } finally { allocator.mock.restore(); }
 });

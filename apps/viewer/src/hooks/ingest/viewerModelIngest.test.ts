@@ -11,9 +11,11 @@ import {
   QuantityTableBuilder,
   RelationshipGraphBuilder,
 } from '@ifc-lite/data';
+import { highestExistingExpressId, MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { fixtureDataStore } from '@/test/store-fixture';
 import { isSourceBytes } from '@ifc-lite/parser';
 
-import { buildIfcxDataStore, convertIfcxMeshes } from './viewerModelIngest.js';
+import { buildIfcxDataStore, convertIfcxMeshes, getMaxExpressId } from './viewerModelIngest.js';
 
 /**
  * Build a minimal IFCX parse-result shape: a populated entity table (so the
@@ -154,4 +156,17 @@ it('carries projected IFCX placement into the canonical store georeference consu
   assert.equal(placement?.projectedCRS?.name, 'EPSG:32632');
   assert.equal(placement?.mapConversion?.eastings, 500000);
   assert.equal(placement?.mapConversion?.orthogonalHeight, 0);
+});
+
+it('shared compact watermark skips key walks and includes entity table and deferred IDs (#10139)', () => {
+  const store = fixtureDataStore([{ expressId: 900, type: 'IfcWall' }]);
+  const index = Object.assign(new Map(), { maxExpressId: 300 });
+  index.keys = () => { throw new Error('compact keys must not be scanned'); };
+  store.entityIndex.byId = index;
+  store.deferredEntityIndex = new Map([[700, { expressId: 700, type: 'IFCMATERIAL', byteOffset: 0, byteLength: 0, lineNumber: 0 }]]);
+  assert.equal(highestExistingExpressId(store), 900, 'the shared allocator watermark uses the compact maximum without scanning keys');
+  assert.equal(getMaxExpressId(store, []), 900, 'ingest includes the entity table even on compact stores');
+  assert.equal(highestExistingExpressId(store), 900);
+  const view = new MutablePropertyView(null, 'compact');
+  assert.equal(new StoreEditor(store, view).addEntity('IfcMaterial', ['Authored']).expressId, 901);
 });

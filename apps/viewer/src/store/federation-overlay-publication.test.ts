@@ -207,3 +207,16 @@ it('rejects a detached batch separated from published ownership as non-contiguou
   assert.throws(() => previewPreparedOverlayGlobalId(registry, models, 'editable', created, 102), /contigu/);
   assert.throws(() => publishPreparedOverlayRange(registry, models, views, 'editable', created), /contigu/);
 });
+
+it('prepared publication checks contiguity before asking for a registry preview (#10139)', () => {
+  const registry = new FederationRegistry();
+  registry.registerModel('editable', 100);
+  const created = [{ expressId: 102 }];
+  const state = { models: new Map([['editable', { maxExpressId: 100 }]]),
+    mutationViews: new Map([['editable', { getNewEntity: () => created[0] }]]) };
+  // This interface implementation supplies preview IDs; the preparer still owns its contiguity invariant.
+  const previewOnly = { getOffset: registry.getOffset.bind(registry), getGlobalIdRange: registry.getGlobalIdRange.bind(registry),
+    toGlobalId: (_model: string, id: number) => id, publishOverlayRange: registry.publishOverlayRange.bind(registry),
+    previewOverlayGlobalId: (_model: string, _start: number, _end: number, id: number) => id };
+  assert.throws(() => preparePreparedOverlayPublication(previewOnly, state, 'editable', created), /contiguous/);
+});

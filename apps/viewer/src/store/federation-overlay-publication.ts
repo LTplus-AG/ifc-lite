@@ -165,6 +165,10 @@ export function preparePreparedOverlayPublication(
   // This can only publish an older, already-live prefix. The new range stays
   // unowned until its GPU ownership transaction has completed.
   toPublishedGlobalId(registry, state.models, state.mutationViews, modelId, start - 1);
+  const range = registry.getGlobalIdRange(modelId);
+  if (range === null || range.end - offset + 1 !== start) {
+    throw new Error('Committed overlay IDs must extend federation ownership contiguously.');
+  }
   // Validate the exact headroom reservation now. `publishOverlayRange` would
   // reject it too, but only after GPU tokens have been consumed.
   registry.previewOverlayGlobalId(modelId, start, end, start);

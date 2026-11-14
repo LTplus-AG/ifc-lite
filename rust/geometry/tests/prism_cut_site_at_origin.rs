@@ -87,3 +87,21 @@ fn flush_opening_faces_leave_axis_aligned_walls_closed() {
         );
     }
 }
+
+/// A covering with a 1 mm lip that its opening trims off. The host reaches
+/// the cut with a 6 um sliver already cleaned out of one side face, so the
+/// cut leaves two copies of one crossing 5.7 um apart, and consolidation
+/// kept one in each of two regions: six open edges on a 14-triangle box.
+/// The volume range is the one `census_rebases_real_covering_3925` holds the
+/// same covering to under its authored site.
+#[test]
+fn a_cut_with_two_copies_of_a_crossing_consolidates_closed() {
+    let Some(content) = site_at_origin() else {
+        eprintln!("Skipping: run pnpm fixtures");
+        return;
+    };
+    let mesh = cut(&content, 11232);
+    assert_eq!(open_edges(&mesh), 0, "#11232 must stay closed");
+    let volume_cm3 = (mesh_volume(&mesh) * 1.0e6).round() as i64;
+    assert!((39_200..=39_500).contains(&volume_cm3), "#11232 volume {volume_cm3} cm3");
+}

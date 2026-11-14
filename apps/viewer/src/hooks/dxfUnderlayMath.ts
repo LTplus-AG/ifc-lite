@@ -247,12 +247,19 @@ export function dxfUnderlayToDrawing(
         { x: text.position.x + text.dirX, y: text.position.y + text.dirY },
         t,
       );
+      // A map that changes the text's aspect (non-uniform scale) keeps the glyph height at the
+      // mapped area over the baseline scale and fits aligned text horizontally, like convert.ts.
+      const d2 = text.dirX ** 2 + text.dirY ** 2 || 1;
+      const normal = worldToDrawing({ x: text.position.x - text.dirY, y: text.position.y + text.dirX }, t);
+      const along = Math.hypot(tip.x - anchor.x, tip.y - anchor.y) / Math.sqrt(d2);
+      const area = Math.abs((tip.x - anchor.x) * (normal.y - anchor.y) - (tip.y - anchor.y) * (normal.x - anchor.x)) / d2;
+      const keepsAspect = along <= 1e-12 || Math.abs(along * along - area) <= 1e-9 * Math.max(1, area);
       texts.push({
         x: anchor.x,
         y: anchor.y,
         dirX: tip.x - anchor.x,
         dirY: tip.y - anchor.y,
-        height: text.height * entry.placement.scale * textMapScale,
+        height: keepsAspect ? text.height * entry.placement.scale * textMapScale : text.height * area / along,
         text: text.text,
         color: text.color ?? layer.color,
         align: text.align,
@@ -262,7 +269,7 @@ export function dxfUnderlayToDrawing(
         // The span follows the same mapped baseline as dirX/dirY (exact under any linear map).
         fitWidth: text.fitWidth === undefined ? undefined
           : text.fitWidth * Math.hypot(tip.x - anchor.x, tip.y - anchor.y) / (Math.hypot(text.dirX, text.dirY) || 1),
-        fitUniform: text.fitUniform,
+        fitUniform: text.fitUniform && keepsAspect,
       });
     }
   }

@@ -16,7 +16,7 @@ import type {
   SelectDefinition,
   TypeDefinition,
 } from './express-parser.js';
-import { buildSchemaRegistry, encodeSchemaRegistry, SCHEMA_REGISTRY_DECODER_SOURCE } from './schema-registry-codec.js';
+import { buildSchemaRegistry, concreteRelationshipTypes, encodeSchemaRegistry, SCHEMA_REGISTRY_DECODER_SOURCE } from './schema-registry-codec.js';
 
 export interface GeneratedCode {
   entities: string;       // Entity interfaces
@@ -445,7 +445,25 @@ export function getSchemaRegistry(): SchemaRegistry {
   return decodedSchemaRegistry;
 }
 
-export const SCHEMA_REGISTRY: SchemaRegistry = /* @__PURE__ */ getSchemaRegistry();
+const eagerRegistriesEvaluated: string[] = [];
+
+/** The exported-constant form: returns \`get()\`, and records a marker that
+ * survives in a built bundle exactly where this constant does
+ * (\`apps/viewer/scripts/check-schema-tables-lazy.mjs\` keeps it off the
+ * viewer's startup chunks). */
+function eagerSchemaRegistry(marker: string, get: () => SchemaRegistry): SchemaRegistry {
+  eagerRegistriesEvaluated.push(marker);
+  return get();
+}
+
+export const SCHEMA_REGISTRY: SchemaRegistry = /* @__PURE__ */ eagerSchemaRegistry('ifc-lite-eager-table:SCHEMA_REGISTRY:${schema.name}', getSchemaRegistry);
+
+/**
+ * Every concrete (non-abstract) \`IfcRelationship\` subtype of this schema, as
+ * an upper-cased STEP keyword, in registry order. Generated from the registry,
+ * so a relationship gate can be built without decoding it.
+ */
+export const CONCRETE_RELATIONSHIP_TYPES: readonly string[] = ${JSON.stringify(concreteRelationshipTypes(buildSchemaRegistry(schema)))};
 
 /**
  * Get entity metadata by name (case-insensitive)

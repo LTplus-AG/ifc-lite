@@ -6,6 +6,7 @@ import { DXF_TEXT_LINE_HEIGHT_FACTOR } from '@/lib/drawing/dxf-text-layout';
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { DXFUnderlayOptions } from '@ifc-lite/drawing-2d';
 import type { jsPDF } from 'jspdf';
+import { pdfRotatedTextStart } from './pdf-text-placement';
 
 /** Map a DXF vertical justification onto an SVG dominant-baseline. */
 function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): string {
@@ -81,10 +82,17 @@ export function drawDxfUnderlaysPdf(doc: jsPDF, underlays: readonly DxfUnderlayR
       for (const text of data.texts) {
         if (!Number.isFinite(text.height) || text.height <= 0 || !text.text.trim()) continue;
         const anchor = mapPoint(text.x, text.y), tip = mapPoint(text.x + text.dirX, text.y + text.dirY);
-        const angle = -Math.atan2(tip.y - anchor.y, tip.x - anchor.x) * 180 / Math.PI;
-        doc.setTextColor(text.color); doc.setFontSize(text.height * metresToMm * 72 / 25.4);
-        doc.text(text.text, anchor.x, anchor.y, { angle, align: text.align, lineHeightFactor: DXF_TEXT_LINE_HEIGHT_FACTOR,
-          baseline: text.valign === 'middle' ? 'middle' : text.valign === 'top' ? 'top' : text.valign === 'bottom' ? 'bottom' : 'alphabetic' });
+        const rad = Math.atan2(tip.y - anchor.y, tip.x - anchor.x), sizeMm = text.height * metresToMm;
+        doc.setTextColor(text.color); doc.setFontSize(sizeMm * 72 / 25.4);
+        // jsPDF's align/baseline shift along the page axes, so each line's
+        // baseline start is placed along/across the rotated baseline here,
+        // stacking lines like the canvas renderer.
+        text.text.split('\n').forEach((line, i) => {
+          if (!line) return;
+          const start = pdfRotatedTextStart(anchor, rad, doc.getTextWidth(line), sizeMm, text.align, text.valign,
+            i * sizeMm * DXF_TEXT_LINE_HEIGHT_FACTOR);
+          doc.text(line, start.x, start.y, { angle: -rad * 180 / Math.PI });
+        });
       }
     } finally { doc.restoreGraphicsState(); }
   }

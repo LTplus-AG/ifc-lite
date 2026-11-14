@@ -30,7 +30,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic, type FlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
-import { __resetSymbolicAnnotationsCacheForTests } from './symbolic-parse-cache.js';
+import { __resetSymbolicAnnotationsCacheForTests, getParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
 import {
   useSymbolicAnnotationsRichData,
   type AnnotationText3D,
@@ -210,9 +210,26 @@ async function sample(
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => { root!.render(<Probe />); });
-  // The parse is async: the worker replies on a macrotask, the cache notifies,
-  // the hook re-renders. Drain that before reading.
-  await act(async () => { await new Promise((r) => setTimeout(r, 5)); });
+  // #9929 merge-queue shard 4: elapsed time does not establish that THIS
+  // source has parsed. Subscribe without starting a parse ourselves, so a
+  // broken hook subscription still fails instead of being repaired by the test.
+  const currentStore = useViewerStore.getState().ifcDataStore;
+  await act(async () => {
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        unsubscribe();
+        reject(new Error('the current fixture parse did not finish'));
+      }, 2_000);
+      const check = () => {
+        if (!getParseFor(currentStore)) return;
+        clearTimeout(timeout);
+        unsubscribe();
+        resolve();
+      };
+      const unsubscribe = subscribeToParseCache(check);
+      check(); // The parse may already have completed before subscribing.
+    });
+  });
 
   assert.ok(latest, 'the probe never rendered');
   return latest;

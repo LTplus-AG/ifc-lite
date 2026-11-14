@@ -78,6 +78,7 @@ function hydrateCacheStore(
     entityCount: cacheStore.entityCount,
     fileSize: extras.fileSize,
     parseTime: 0,
+    selectionRelationshipIndex: cacheStore.selectionRelationshipIndex,
     // Seeded with the key stored at write: the lazy fallback FNV-hashes the
     // whole source on the main thread (~0.6 s at 343 MB) the first time a
     // symbolic-annotation lookup asks for it.
@@ -274,7 +275,7 @@ export async function decodeCachedModel(
   const decoded = await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace);
   const { geometrySection, headerInfo, cacheBuffer } = decoded;
   if (!geometrySection || !headerInfo.hasGeometry || isStale()) return null;
-  const open = openGeometryChunksV13(cacheBuffer, geometrySection.offset, headerInfo.version);
+  const open = openGeometryChunksV13(cacheBuffer, geometrySection.offset, headerInfo.version, { sharedArena: true });
   const meshes: MeshData[] = [];
   await trace.span('cache.geometry', async () => {
     // Chunks decompress independently; overlap them instead of one at a time.

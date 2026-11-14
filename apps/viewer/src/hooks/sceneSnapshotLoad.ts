@@ -18,6 +18,7 @@ import { noteInstancedShardModel } from '../store/instancedShardModels.js';
 import { enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingColdCapture, setPendingSceneSnapshot, withdrawPendingColdCapture, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
+import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { clearSceneSnapshot, type CacheResult } from '../services/cacheService.js';
 import { isQuantizedEnabled } from '../utils/quantizedConfig.js';
@@ -44,8 +45,8 @@ function snapshotsEnabled(): boolean {
 }
 
 function snapshotKey(scene: SceneContents): string {
-  const { typeVisibility, typeViewMode } = useViewerStore.getState();
-  return sceneSnapshotKey(scene.sceneSnapshotPolicy(), typeViewMode, typeVisibility);
+  const { typeVisibility, typeViewMode, structuralViewMode } = useViewerStore.getState();
+  return sceneSnapshotKey(scene.sceneSnapshotPolicy(), typeViewMode, typeVisibility, structuralViewMode);
 }
 
 /** Level display moves pieces at arrival, so the batches would not be the cached geometry. */
@@ -109,6 +110,7 @@ export async function adoptCachedSceneSnapshot(
   const adoption = trace.span('scene.snapshotAdopt', () => scene.adoptSceneSnapshot(snapshot, device, pipeline), { batches: snapshot.batches.length });
   if (!adoption) return null;
   trace.milestone('scene.snapshotAdopted');
+  tapSceneSnapshot('adopted', snapshot);
   uploadSnapshotShards(scene, device, modelId, shards);
   const camera = renderer.getCamera();
   camera.reset();

@@ -656,6 +656,38 @@ selectedIds = new Set([id1, id2, id3]);
 renderer.render({ selectedIds });
 ```
 
+The renderer keeps the highlight of an unchanged selection between frames, and
+past 500 highlight copies it merges them in retained hydration order. Draw
+cost follows compatible model/origin runs rather than a copy per piece. A large
+selection draws a few merged meshes on top of the model (one per run of
+selected pieces that share a model and frame origin, more for a selection that
+spans models, origins, 2^24 id pages or more than one GPU buffer, and for
+entities merged on their own), and those meshes hold a second copy of the selected
+geometry in GPU memory, about 28 bytes per vertex and 4 per index. The pool retains
+per-piece hydration insertion order when selections grow, shrink, hide or
+isolate elements. It never regroups non-adjacent frame runs to save draws:
+that changes the last highlighted surface through glazing. Model boundaries
+retain their own mesh ownership. A selection alternating
+between origins or models can require one draw per piece, the same cost as
+highlighting every piece with its own mesh; there is no hard 500-run draw cap.
+Textured pieces reuse their existing vertex and index buffers for selection.
+They still need one highlight draw per selected piece, plus the outline-mask
+draws, but selection creates no copied textured geometry. Their uniform blocks
+share pooled buffers. The untextured highlight remains after transparent
+geometry, so glass and transparent texture texels keep the same selection
+appearance. Visibility changes filter borrowed draws while retaining selected
+GPU resources. Removal, replacement and GPU-resource retirement invalidate
+borrowed draws before the next frame uses them. Releasing CPU geometry preserves
+existing highlights while their GPU sources remain live. Mixed flat and textured
+selections retain hydration order; a flat pool never crosses a textured draw.
+
+The Set is compared by content on every frame, with one lookup per id and no
+allocation, so a new Set, a Set that grew or shrank and any edit made in place
+are seen on the next frame. The exception is a frame rendered with
+`isInteracting`: it re-reads up to 32,768 ids and continues on the next one,
+so swapping ids in place at the same count in a larger Set is seen within a
+few interactive frames. Passing a new Set avoids that.
+
 ### Raycasting
 
 Scene raycasts and magnetic snapping include regular, batched, textured and

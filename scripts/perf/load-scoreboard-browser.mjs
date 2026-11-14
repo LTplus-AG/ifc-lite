@@ -26,12 +26,15 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
-import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots, webglAroundPick, framesBetween } from './viewer-load-probe.mjs';
+import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots, webglAroundPick, framesBetween, presentTimes } from './viewer-load-probe.mjs';
 import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, openIdentity, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, armAfterBootSettled, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
+import { IDENTITY_QUERY, corruptStoredSnapshots, readSceneIdentity, settleIdentityWrites } from './load-scoreboard-identity.mjs';
+import { markTraceWindow, startCpuTraceSafe, stopCpuTrace } from './load-scoreboard-cputrace.mjs';
+import { outsideOwnCgroup } from './load-scoreboard-host.mjs';
 
 /** Lane-name suffix of each arm; the default arm keeps the default lane names. */
 export const ARM_LANE_SUFFIX = { quiet: '', 'first-paint': '-early', 'boot-settled': '-settled' };
@@ -92,10 +95,15 @@ function summarizeOpen(open, memory) {
     uiQuietMs: uiQuietValue(open), uiQuietTimedOut: Boolean(open.uiQuietTimedOut), uiQuietRawMs: open.uiQuietMs ?? null,
     longTasksAfterReady: open.longTasksAfterReady ?? null, shell: open.shell ?? null,
     framesToInteractive: open.framesToInteractive ?? null, ...(open.webgl ?? {}),
+    // The mark's settled gate (viewer-load-probe interactiveProbe): the old span rule's value, whether the viewer's
+    // settled check held the mark and for how long, and the presented frames from the change event to 3 s past it.
+    interactiveMsOldGate: open.interactiveMsOldGate ?? null, sceneSettledCheck: open.sceneSettledCheck ?? null, sceneSettleHeldMs: open.sceneSettleHeldMs ?? null,
+    presentTimesFromChangeMs: open.presentTimesFromChangeMs ?? null,
     peakMemoryMiB: memory ? memory.peakPssMiB : null,
     peakMemoryMetric: memory ? 'peak sampled PSS sum over Chrome processes (250 ms), incl. browser baseline' : 'not sampled (timing pass)', memory,
     loadPaths: open.loadPaths, cacheTiers: open.cacheTiers, cacheHit: open.cacheHit, snapshotAdopted: open.snapshotAdopted,
     stageShares: shares, stageGroupShares: stageShares(byGroup, open.interactiveMs), milestones,
+    cpuTime: open.cpuTime ?? null, cpuTraceFile: open.cpuTraceFile ?? null,
     trace: open.trace,
   };
 }
@@ -115,7 +123,7 @@ function summarizeOpen(open, memory) {
  * quiet shell alone and is reported as a different protocol.
  * Returns { lanes: { 'browser-cold<suffix>', 'browser-warm1<suffix>', 'browser-warm<suffix>' }, warmOpens, meta }.
  */
-export async function browserSample({ chromium, executablePath, baseUrl, setRoot, side, fixture, warmOpens, outDir, tag, log, pass = 'timing', arm = 'quiet' }) {
+export async function browserSample({ chromium, executablePath, baseUrl, setRoot, side, fixture, warmOpens, outDir, tag, log, pass = 'timing', arm = 'quiet', cpuTrace = false }) {
   const suffix = ARM_LANE_SUFFIX[arm];
   if (suffix === undefined) throw new Error(`unknown arm ${arm}`);
   const early = arm === 'first-paint';
@@ -123,12 +131,12 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   setRoot(side.dist);
   const profileDir = mkdtempSync(join(tmpdir(), 'load-scoreboard-'));
   const env = { ...process.env, VK_ICD_FILENAMES: NVIDIA_ICD, VK_DRIVER_FILES: NVIDIA_ICD };
-  const query = `?perfTrace=1${side.query ? `&${side.query}` : ''}`;
+  const query = `?perfTrace=1${side.query ? `&${side.query}` : ''}${pass === 'identity' ? `&${IDENTITY_QUERY}` : ''}`;
   const sizeMB = statSync(fixture.path).size / 2 ** 20;
   const uncached = expectedCacheTier(statSync(fixture.path).size).startsWith('none');
   const timeoutMs = Math.max(15 * 60 * 1000, sizeMB * 12 * 1000);
   const consoleLogs = [];
-  const meta = { pass, query, executablePath, chromeArgs: CHROME_ARGS, pageErrors: [], crashed: false };
+  const meta = { pass, query, executablePath, chromeArgs: CHROME_ARGS, pageErrors: [], crashed: false, identityOpens: [] };
   const lanes = { [coldLane]: { lane: coldLane, ok: false } };
   if (warmOpens > 1) lanes[warm1Lane] = { lane: warm1Lane, ok: false };
   if (warmOpens > 0) lanes[warmLane] = { lane: warmLane, ok: false };
@@ -141,6 +149,10 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   };
   const measuredOpen = async (label) => {
     phase = `${label}-shell`;
+    // Opt-in CPU trace (plan/side `cpuTrace`): started before the quiet-shell wait, so its start-up cost is not in the open.
+    // A failed trace start makes CPU time unavailable for this open; it never fails the load (review #10138).
+    const started = cpuTrace && pass === 'timing' ? await startCpuTraceSafe(context, page) : null;
+    const tracing = started?.cdp ?? null;
     const shell = early ? await waitFirstPaint(page)
       : arm === 'boot-settled' ? await armAfterBootSettled(page, { expectSignal: side.bootSignal !== false })
         : await waitShellQuiet(page);
@@ -152,10 +164,22 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     // rendered, and whether WebGL (the start screen's mark) drew around the pick. A counter that was never installed is null.
     const counters = await page.evaluate(() => ({ frames: globalThis.__benchFrameTimes ?? null, gl: globalThis.__benchGl ?? null }));
     open.framesToInteractive = framesBetween(counters.frames, open.originAbs, open.originAbs + open.interactiveMs);
+    open.presentTimesFromChangeMs = presentTimes(counters.frames, open.originAbs, open.originAbs + open.interactiveMs + 3000);
     open.webgl = webglAroundPick(counters.gl, open.originAbs, open.originAbs + open.interactiveMs);
+    // The measured interval of this open (page clock): from the input event, or for the first-paint arm from the
+    // first paint (rebaseToArm adds that pick delay to the wall time), to the interactive mark (review #10138).
+    const fromAbs = early && Number.isFinite(shell?.armedAtMs) && shell.armedAtMs <= open.originAbs ? shell.armedAtMs : open.originAbs;
+    const toAbs = open.originAbs + open.interactiveMs;
+    // A mark created now with an earlier startTime gets its trace ts from that startTime (Chrome; args.data.callTime holds the creation time).
+    const markError = tracing ? await markTraceWindow(page, fromAbs, toAbs, open.originAbs) : null;
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
+    if (tracing) Object.assign(open, await stopCpuTrace(tracing, { spans: open.trace, file: join(outDir, `${tag}-${label}.cputrace.json.gz`) }));
+    if (started && !tracing) open.cpuTime = { error: started.error };
+    if (markError) open.cpuTime = { error: markError };
     if (early) open = rebaseToArm(open);
     const memory = meta[`${label}Memory`] ?? null;
+    // Identity pass (untimed, flag on): what the scene holds after this open, for the reopen verdict.
+    if (pass === 'identity') meta.identityOpens.push({ label, identity: await readSceneIdentity(page) });
     const fingerprint = await readOutputFingerprint(page);
     const f0 = (v) => (Number.isFinite(v) ? v.toFixed(0) : 'n/a');
     log?.(`  ${tag} ${pass} ${label}: first ${f0(open.firstFrameMs)} ms, interactive ${f0(open.interactiveMs)} ms, ui quiet ${open.uiQuietTimedOut ? 'capped' : `${f0(open.uiQuietMs)} ms`}, input delay ${f0(open.inputDelayMs)} ms${memory ? `, peak PSS ${f0(memory.peakPssMiB)} MiB` : ''}, path ${open.loadPaths.join(',')}`);
@@ -200,6 +224,22 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
         if (i === 1) meta.entryBeforeWarm1 = prep.entry ?? null;
         if (prep.snapshotWritten !== undefined) meta.snapshotWritten = prep.snapshotWritten;
         if (prep.failure) throw new Error(prep.failure);
+        // Harness proof only: an altered stored snapshot must read RESTORE MISMATCH in the identity pass.
+        if (pass === 'identity') {
+          // The viewer writes its snapshot in an idle period after interactive, often after the identity read
+          // above: wait for every cache write to close, then take the written signatures into this open's record.
+          // Only then may the control alter the stored snapshot (a pending write would overwrite the alteration).
+          meta.identityWritesSettled = await waitCacheWrites(page);
+          // A write still pending could overwrite the control's alteration or miss its signature: no verdict from this reopen on.
+          if (meta.identityWritesSettled !== true) throw new Error('identity pass: cache writes did not settle before the reopen');
+          await settleIdentityWrites(page, meta.identityOpens.at(-1));
+          if (process.env.LOAD_SCOREBOARD_CORRUPT_SNAPSHOT === '1') {
+            const corrupted = { open: i, ...(await corruptStoredSnapshots(page, i)) };
+            (meta.corrupted ??= []).push(corrupted);
+            // A control that altered nothing where a snapshot is stored proves nothing: fail the reopen (review #9863).
+            if (!uncached && !(corrupted.altered > 0)) throw new Error(`identity control altered no stored snapshot (${corrupted.error ?? 'none found'})`);
+          }
+        }
         await replacePage(context, page);
         page = context.pages().at(-1);
         watch(page);
@@ -231,6 +271,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     const index = { [coldLane]: 0, [warm1Lane]: 1, [warmLane]: warmOpens };
     for (const [name, lane] of Object.entries(lanes)) if (index[name] >= failedOpen) lanes[name] = { ...lane, ok: false, error };
   } finally {
+    // The browser process runs in its own systemd scope: its CPU is this sample's, not foreign (settleHostLoad).
+    try { meta.browserOutside = outsideOwnCgroup(chromePids(profileDir)); } catch (err) { meta.browserOutside = { cpuMs: null, pressureUs: null, error: String(err?.message ?? err).slice(0, 200) }; }
     await context?.close().catch(() => {});
     rmSync(profileDir, { recursive: true, force: true });
     writeFileSync(join(outDir, `${tag}.console.log`), consoleLogs.join('\n'));

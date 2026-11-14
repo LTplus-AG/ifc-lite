@@ -1935,6 +1935,10 @@
     "value": "{ms} ms",
     "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
   },
+  "viewportLighting.container.emptyState.formats.rhino": {
+    "value": "Rhino",
+    "reason": "Format family name on the welcome card: Rhino is the product name of the authoring tool behind .3dm and is not localized in any language."
+  },
   "agentBridge.panel.editChange": {
     "value": "{entity} · {field}: {before} → {after}",
     "reason": "Placeholders and symbols only (middle dot, colon, arrow); no English prose."

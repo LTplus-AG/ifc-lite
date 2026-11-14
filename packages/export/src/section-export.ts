@@ -9,7 +9,8 @@ import { StepExporter } from './step-exporter.js';
 import { pruneReplacedSubgraphs } from './demesh-prune.js';
 import type { DemeshApplyReport } from './demesh-writer.js';
 import { stepReal } from './step-serialization.js';
-import { collectReferencedEntityIds, PRODUCT_TYPES } from './reference-collector.js';
+import { collectReferencedEntityIds } from './reference-collector.js';
+import { getProductTypes } from './entity-type-sets.js';
 
 /** Kept half-space `normal · world <= offset`, IFC Z-up, metres. */
 export interface SectionExportPlane { normal: readonly [number, number, number]; offset: number }
@@ -172,7 +173,7 @@ function pruneUnusedTypeMaps(
   // @raw-entity-enumeration-ok retained original representations only; detached and tombstoned products are excluded below
   for (const [id, ref] of store.entityIndex.byId) {
     if (view.isDeleted(id)) continue;
-    if (PRODUCT_TYPES.has(ref.type.toUpperCase()) && !detachedIds.has(id)) {
+    if (getProductTypes().has(ref.type.toUpperCase()) && !detachedIds.has(id)) {
       const representation = entity(id)?.attributes[6];
       if (typeof representation === 'number') roots.add(representation);
     }

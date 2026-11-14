@@ -6,10 +6,11 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { RelationshipType } from '@ifc-lite/data';
 import {
-  ASSOCIATION_REL_TYPES, HIERARCHY_REL_TYPES, PROPERTY_REL_TYPES, REL_TYPE_MAP,
+  ASSOCIATION_REL_TYPES, getHierarchyRelTypes, PROPERTY_REL_TYPES, REL_TYPE_MAP,
 } from './columnar-parser-indexes.js';
 import { prepareColumnarEntities } from './columnar-entity-preparation.js';
 import { getRelationshipSlotPlan, getAllConcreteRelationshipTypes, getConcreteRelationshipTypes } from './relationship-schema-slots.js';
+import { getSchemaRegistryForVersion, type SchemaRegistry } from './generated/schema-registry-by-version.js';
 
 describe('relationship-schema-slots (#4205)', () => {
   it('resolves a plain default-shaped subtype (relating then related list)', () => {
@@ -102,7 +103,7 @@ describe('relationship-schema-slots (#4205)', () => {
       const hierarchy = !property && !association;
       expect(union.has(type), type).toBe(true);
       expect([
-        PROPERTY_REL_TYPES.has(type), ASSOCIATION_REL_TYPES.has(type), HIERARCHY_REL_TYPES.has(type),
+        PROPERTY_REL_TYPES.has(type), ASSOCIATION_REL_TYPES.has(type), getHierarchyRelTypes().has(type),
       ], type).toEqual([property, association, hierarchy]);
       expect([
         prepared.propertyRelRefs.some(ref => ref.type === type),
@@ -177,5 +178,58 @@ describe('relationship slot vector shared with the Rust server (C6-4)', () => {
   it('the vector is the whole gate: every concrete relationship with a plan is a row', () => {
     const withPlan = [...getAllConcreteRelationshipTypes()].filter((t) => getRelationshipSlotPlan(t) !== undefined);
     expect(withPlan.sort()).toEqual(Object.keys(vector.slots).sort());
+  });
+});
+
+// The relationship gate reads generated lists (one per schema, emitted by
+// `@ifc-lite/codegen` with the registry) instead of walking the decoded
+// registries when the parser loads. This is that walk, kept as the oracle: the
+// lists must be exactly what it finds, in the same order.
+describe('generated concrete relationship types', () => {
+  function walkConcreteRelationshipTypes(registry: SchemaRegistry): string[] {
+    const isRelationship = (name: string): boolean => {
+      let cursor: SchemaRegistry['entities'][string] | undefined = registry.entities[name];
+      const seen = new Set<string>();
+      while (cursor && !seen.has(cursor.name)) {
+        if (cursor.name === 'IfcRelationship') return true;
+        seen.add(cursor.name);
+        cursor = cursor.parent ? registry.entities[cursor.parent] : undefined;
+      }
+      return false;
+    };
+    return Object.entries(registry.entities)
+      .filter(([name, meta]) => !meta.isAbstract && isRelationship(name))
+      .map(([name]) => name.toUpperCase());
+  }
+
+  for (const version of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
+    it(`${version}: the generated list is the walk over the decoded registry, in order`, () => {
+      const walked = walkConcreteRelationshipTypes(getSchemaRegistryForVersion(version));
+      expect(walked.length).toBeGreaterThan(40);
+      expect([...getConcreteRelationshipTypes(version)]).toEqual(walked);
+    });
+
+    // Checks that do not share the walk: a dangling or cyclic `parent` would
+    // stop the climb early on both sides above, so every chain must resolve to
+    // a root here, and every listed type must carry the IfcRel prefix.
+    it(`${version}: every parent chain resolves to a root and every listed type is an IfcRel*`, () => {
+      const registry = getSchemaRegistryForVersion(version);
+      for (const [name, meta] of Object.entries(registry.entities)) {
+        const seen = new Set<string>([name]);
+        let parent = meta.parent;
+        while (parent) {
+          const next = registry.entities[parent];
+          expect(next, `${name}: parent ${parent} is not in the registry`).toBeDefined();
+          expect(seen.has(parent), `${name}: parent cycle at ${parent}`).toBe(false);
+          seen.add(parent);
+          parent = next!.parent;
+        }
+      }
+      for (const type of getConcreteRelationshipTypes(version)) expect(type.startsWith('IFCREL'), type).toBe(true);
+    });
+  }
+
+  it('an unknown version still fails the way the registry lookup does', () => {
+    expect(() => getConcreteRelationshipTypes('IFC9' as never)).toThrow(/no codegen-generated registry exists/);
   });
 });

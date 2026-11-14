@@ -109,35 +109,8 @@ pub(crate) fn cap_half_space_clip(
     // real wall feature) snaps the ULP-twins into one bucket so the loop closes.
     // Single-plane callers (opening cuts) have no such twins, so genuinely
     // distinct corners stay in distinct buckets.
-    let weld_eps = on_plane_eps;
-    let quant = |c: f32| -> i64 { (c as f64 / weld_eps).round() as i64 };
-    let mut weld: HashMap<(i64, i64, i64), u32> = HashMap::new();
-    let mut pos: Vec<Point3<f64>> = Vec::new();
-    let mut on_plane: Vec<bool> = Vec::new();
-    let mut welded: Vec<u32> = Vec::with_capacity(vcount);
-    for i in 0..vcount {
-        let key = (
-            quant(mesh.positions[i * 3]),
-            quant(mesh.positions[i * 3 + 1]),
-            quant(mesh.positions[i * 3 + 2]),
-        );
-        let id = match weld.get(&key) {
-            Some(&id) => id,
-            None => {
-                let p = Point3::new(
-                    mesh.positions[i * 3] as f64,
-                    mesh.positions[i * 3 + 1] as f64,
-                    mesh.positions[i * 3 + 2] as f64,
-                );
-                let id = pos.len() as u32;
-                on_plane.push((p - plane_point).dot(&n).abs() <= on_plane_eps);
-                pos.push(p);
-                weld.insert(key, id);
-                id
-            }
-        };
-        welded.push(id);
-    }
+    // The cut section itself takes the same weld (`weld_section`).
+    let (pos, on_plane, welded) = weld_section(mesh, plane_point, n, on_plane_eps);
 
     // Directed half-edges; an undirected edge with no twin is on the open
     // boundary. Restrict to edges whose endpoints both lie on the cut plane so
@@ -341,4 +314,55 @@ pub(crate) fn cap_half_space_clip(
     }
 
     outer_count > 0 && outer_filled == outer_count && !boundary_incomplete
+}
+
+/// Weld the mesh's vertices on a grid of `weld_eps`, as (position, on the cut
+/// plane, per mesh vertex id), and move every vertex that welds to a section
+/// vertex onto it.
+///
+/// The cap is triangulated over the welded section. Left where they were,
+/// two section vertices in one cell stay two vertices of the cut wall and one
+/// of the cap: a T-junction along the section, or a hole the width of the
+/// cell where the two are not in line. A plane 1.6 mm above the base of a
+/// finely faceted arc wall leaves such pairs 0.11 mm apart, one where each
+/// quad's diagonal crosses the plane (ISSUE_129 #61300, 0.17 mm cells).
+fn weld_section(
+    mesh: &mut Mesh,
+    plane_point: Point3<f64>,
+    n: Vector3<f64>,
+    weld_eps: f64,
+) -> (Vec<Point3<f64>>, Vec<bool>, Vec<u32>) {
+    let vcount = mesh.positions.len() / 3;
+    let quant = |c: f32| -> i64 { (c as f64 / weld_eps).round() as i64 };
+    let mut weld: std::collections::HashMap<(i64, i64, i64), u32> = std::collections::HashMap::new();
+    let mut pos: Vec<Point3<f64>> = Vec::new();
+    let mut on_plane: Vec<bool> = Vec::new();
+    let mut welded: Vec<u32> = Vec::with_capacity(vcount);
+    for i in 0..vcount {
+        let at = i * 3;
+        let key = (quant(mesh.positions[at]), quant(mesh.positions[at + 1]), quant(mesh.positions[at + 2]));
+        let id = match weld.get(&key) {
+            Some(&id) => {
+                if on_plane[id as usize] {
+                    let p = pos[id as usize];
+                    mesh.positions[at..at + 3].copy_from_slice(&[p.x as f32, p.y as f32, p.z as f32]);
+                }
+                id
+            }
+            None => {
+                let p = Point3::new(
+                    mesh.positions[at] as f64,
+                    mesh.positions[at + 1] as f64,
+                    mesh.positions[at + 2] as f64,
+                );
+                let id = pos.len() as u32;
+                on_plane.push((p - plane_point).dot(&n).abs() <= weld_eps);
+                pos.push(p);
+                weld.insert(key, id);
+                id
+            }
+        };
+        welded.push(id);
+    }
+    (pos, on_plane, welded)
 }

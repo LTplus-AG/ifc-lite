@@ -622,3 +622,50 @@ fn issue_5314_weld_collapsed_slivers_do_not_mask_section_edges() {
         }
     }
 }
+
+/// A plane a hair above the base of a finely faceted wall. Each side quad is
+/// two triangles, and the plane crosses the quad's diagonal a fraction of a
+/// millimetre from the quad's corner: two section vertices 0.1 mm apart on
+/// every facet. The cap welds its section on a grid of 1e-5 of the mesh
+/// diagonal, 0.35 mm here, so most pairs became one cap vertex while the cut
+/// wall kept both, and the cap no longer met the wall (ISSUE_129 #61300, a
+/// curved wall clipped 1.6 mm above its base: 18 open edges before any
+/// opening is cut).
+#[test]
+fn a_section_with_vertices_inside_one_weld_cell_is_capped_closed() {
+    const FACETS: usize = 400;
+    const RADIUS: f64 = 12.5;
+    const HEIGHT: f32 = 3.2;
+    let ring: Vec<[f32; 2]> = (0..FACETS)
+        .map(|i| {
+            let a = std::f64::consts::TAU * i as f64 / FACETS as f64;
+            [(RADIUS * a.cos()) as f32, (RADIUS * a.sin()) as f32]
+        })
+        .collect();
+    let mut prism = Mesh::new();
+    let mut tri = |a: [f32; 3], b: [f32; 3], c: [f32; 3]| {
+        let base = (prism.positions.len() / 3) as u32;
+        for p in [a, b, c] {
+            prism.positions.extend_from_slice(&p);
+            prism.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+        }
+        prism.indices.extend_from_slice(&[base, base + 1, base + 2]);
+    };
+    for i in 0..FACETS {
+        let (p, q) = (ring[i], ring[(i + 1) % FACETS]);
+        let (b0, b1) = ([p[0], p[1], 0.0], [q[0], q[1], 0.0]);
+        let (t0, t1) = ([p[0], p[1], HEIGHT], [q[0], q[1], HEIGHT]);
+        tri(b0, b1, t1);
+        tri(b0, t1, t0);
+        tri([0.0, 0.0, 0.0], b1, b0);
+        tri([0.0, 0.0, HEIGHT], t0, t1);
+    }
+    assert_eq!(open_edges(&prism), 0, "the faceted prism is watertight");
+
+    let clip_normal = Vector3::new(0.0, 0.0, 1.0);
+    let plane_point = Point3::new(0.0, 0.0, 0.0016);
+    let mut clipped =
+        ClippingProcessor::new().clip_mesh(&prism, &Plane::new(plane_point, clip_normal)).unwrap();
+    assert!(cap_half_space_clip(&mut clipped, plane_point, clip_normal));
+    assert_eq!(open_edges(&clipped), 0, "the cap must meet the cut wall at every section vertex");
+}

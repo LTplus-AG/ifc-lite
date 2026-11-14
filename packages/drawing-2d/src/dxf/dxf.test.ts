@@ -495,6 +495,39 @@ describe('consolidated additions (SPLINE, SOLID, lineweight, valign, unit heuris
     expect(t2.valign).toBe('bottom');
   });
 
+  it('parses MTEXT line spacing factor (44), clamped, defaulting to 1', () => {
+    const mtext = (...extra: Array<[number, number | string]>) =>
+      [[0, 'MTEXT'], [8, 'n'], [10, 0], [20, 0], [40, 1], [1, 'a\\Pb'], ...extra] as Array<[number | string, number | string]>;
+    const underlay = importDxf(entitiesSection(
+      ...mtext([44, 2]), ...mtext(), ...mtext([44, 10]), ...mtext([44, 0.01]), ...mtext([44, 'x']),
+    ));
+    expect(layerByName(underlay, 'n').texts.map((t) => t.lineSpacingFactor)).toEqual([2, 1, 4, 0.25, 1]);
+  });
+
+  it('stretches aligned (72=3) and fit (72=5) TEXT between points 10 and 11', () => {
+    const text = (hJust: number) => [
+      [0, 'TEXT'], [8, 't'], [10, 0], [20, 0], [11, 0], [21, 6], [40, 1], [1, 'abcd'], [72, hJust], [73, 0],
+    ] as Array<[number | string, number | string]>;
+    const [aligned, fit] = layerByName(importDxf(entitiesSection(...text(3), ...text(5))), 't').texts;
+    // Natural width: 4 glyphs * 0.6 em * height = 2.4; span = 6, rotated 90°.
+    expect(aligned.dirX).toBeCloseTo(0, 9);
+    expect(aligned.dirY).toBeCloseTo(1, 9);
+    expect(aligned.height).toBeCloseTo(2.5, 9);
+    expect(aligned.widthScale).toBeUndefined();
+    expect(fit.height).toBe(1);
+    expect(fit.widthScale).toBeCloseTo(2.5, 9);
+    expect(aligned.position).toEqual({ x: 0, y: 0 });
+    expect(fit.position).toEqual({ x: 0, y: 0 });
+  });
+
+  it('honours the relative X scale (41) on plain TEXT', () => {
+    const underlay = importDxf(entitiesSection(
+      [0, 'TEXT'], [8, 'w'], [10, 0], [20, 0], [40, 1], [1, 'ab'], [41, 0.5],
+      [0, 'TEXT'], [8, 'w'], [10, 0], [20, 0], [40, 1], [1, 'ab'],
+    ));
+    expect(layerByName(underlay, 'w').texts.map((t) => t.widthScale)).toEqual([0.5, undefined]);
+  });
+
   it('prefers a layer true colour (420) over its ACI colour for BYLAYER entities', () => {
     const text =
       pairsToText(

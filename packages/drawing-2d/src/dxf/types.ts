@@ -113,6 +113,10 @@ export interface DxfTextEntity extends DxfEntityCommon {
   text: string;
   hAlign: 'left' | 'center' | 'right';
   vAlign: 'baseline' | 'bottom' | 'middle' | 'top';
+  /** MTEXT group 44 (clamped 0.25–4); absent means 1. */
+  lineSpacingFactor?: number;
+  /** Horizontal glyph stretch (aligned/fit span, or group 41); absent means 1. */
+  widthScale?: number;
 }
 
 /** SPLINE entity: clamped B-spline control net (or fit points). */
@@ -249,6 +253,10 @@ export interface DxfUnderlayText {
   dirY: number;
   align: 'left' | 'center' | 'right';
   valign: 'baseline' | 'bottom' | 'middle' | 'top';
+  /** MTEXT group 44; default 1. */
+  lineSpacingFactor?: number;
+  /** Horizontal scale for aligned/fit or width-factor TEXT. */
+  widthScale?: number;
   color?: string;
 }
 

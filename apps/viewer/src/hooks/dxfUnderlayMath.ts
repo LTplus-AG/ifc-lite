@@ -43,6 +43,8 @@ export interface DxfUnderlayRenderText {
   color: string;
   align: 'left' | 'center' | 'right';
   valign: 'baseline' | 'bottom' | 'middle' | 'top';
+  lineSpacingFactor?: number;
+  widthScale?: number;
 }
 
 /** One underlay pre-mapped to drawing space, ready for canvas/SVG. */
@@ -251,6 +253,8 @@ export function dxfUnderlayToDrawing(
         color: text.color ?? layer.color,
         align: text.align,
         valign: text.valign,
+        lineSpacingFactor: text.lineSpacingFactor,
+        widthScale: text.widthScale,
       });
     }
   }

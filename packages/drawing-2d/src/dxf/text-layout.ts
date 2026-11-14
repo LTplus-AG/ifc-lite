@@ -4,8 +4,21 @@
 
 import type { DxfUnderlayText } from './types.js';
 
-/** Multiline DXF text line spacing, in text heights. */
-export const DXF_TEXT_LINE_HEIGHT_FACTOR = 1.3;
+/** AutoCAD MTEXT line pitch at spacing factor 1, in text heights (5/3). */
+export const DXF_TEXT_LINE_HEIGHT_FACTOR = 5 / 3;
+
+/** Average glyph advance in ems; renderers cannot measure exact font widths here. */
+export const DXF_TEXT_GLYPH_WIDTH_EM = 0.6;
+
+/** Estimated width of a single text line at `height`, for aligned/fit stretching. */
+export function dxfEstimatedTextWidth(text: string, height: number): number {
+  return text.length * height * DXF_TEXT_GLYPH_WIDTH_EM;
+}
+
+/** A group-41 width factor worth writing: finite, positive and not 1. */
+export function dxfWidthFactor(scale: number | undefined): number | undefined {
+  return scale !== undefined && Number.isFinite(scale) && scale > 0 && scale !== 1 ? scale : undefined;
+}
 
 /**
  * Offset of line `index` of a `lineCount`-line DXF text block from its
@@ -17,7 +30,7 @@ export const DXF_TEXT_LINE_HEIGHT_FACTOR = 1.3;
  * line on the point. Single-line text is never offset.
  */
 export function dxfTextLineOffset(index: number, lineCount: number,
-  valign: DxfUnderlayText['valign'], height: number): number {
+  valign: DxfUnderlayText['valign'], height: number, lineSpacingFactor: number | undefined = 1): number {
   const first = valign === 'bottom' ? 1 - lineCount : valign === 'middle' ? (1 - lineCount) / 2 : 0;
-  return (first + index) * height * DXF_TEXT_LINE_HEIGHT_FACTOR;
+  return (first + index) * height * DXF_TEXT_LINE_HEIGHT_FACTOR * (lineSpacingFactor ?? 1);
 }

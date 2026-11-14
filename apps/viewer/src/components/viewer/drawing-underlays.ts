@@ -88,9 +88,10 @@ export function drawDxfUnderlaysScreenSpace(
       ctx.textBaseline = dxfValignToBaseline(text.valign);
       ctx.translate(anchor.x, anchor.y);
       ctx.rotate(angle);
+      if (text.widthScale && text.widthScale > 0 && text.widthScale !== 1) ctx.scale(text.widthScale, 1);
       const lines = text.text.split('\n');
       for (let i = 0; i < lines.length; i++) {
-        ctx.fillText(lines[i], 0, dxfTextLineOffset(i, lines.length, text.valign, fontPx));
+        ctx.fillText(lines[i], 0, dxfTextLineOffset(i, lines.length, text.valign, fontPx, text.lineSpacingFactor));
       }
       ctx.restore();
     }

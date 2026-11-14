@@ -367,11 +367,9 @@ function emitEntities(entities: DxfEntity[], ctx: RenderCtx, state: ConvertState
         let dirY = tip.y - anchor.y;
         const len = Math.hypot(dirX, dirY);
         if (len > 1e-12) {
-          dirX /= len;
-          dirY /= len;
+          dirX /= len; dirY /= len;
         } else {
-          dirX = 1;
-          dirY = 0;
+          dirX = 1; dirY = 0;
         }
         const scaleEstimate = Math.sqrt(Math.abs(ctx.m[0] * ctx.m[3] - ctx.m[1] * ctx.m[2]));
         const text: DxfUnderlayText = {
@@ -382,6 +380,7 @@ function emitEntities(entities: DxfEntity[], ctx: RenderCtx, state: ConvertState
           dirY,
           align: entity.hAlign,
           valign: entity.vAlign,
+          lineSpacingFactor: entity.lineSpacingFactor, widthScale: entity.widthScale,
           color: colorOverride,
         };
         bucket.texts.push(text);

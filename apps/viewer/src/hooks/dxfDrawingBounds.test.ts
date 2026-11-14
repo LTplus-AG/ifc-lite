@@ -45,7 +45,7 @@ test('multiline DXF fit encloses every rotated glyph row and alignment (#6615)',
         for (const [row,line] of text.text.split('\n').entries()) {
           const left = align === 'right' ? -line.length : align === 'center' ? -line.length / 2 : 0;
           for (const x of [left,left+line.length]) for (const glyphY of [-1,1]) {
-            const y = direction*row*1.3+glyphY;
+            const y = direction*row*(5/3)+glyphY;
             const point = {x:text.x+ux*x-uy*y,y:text.y+uy*x+ux*y};
             assert.ok(point.x >= result.bounds.min.x-1e-10 && point.x <= result.bounds.max.x+1e-10);
             assert.ok(point.y >= result.bounds.min.y-1e-10 && point.y <= result.bounds.max.y+1e-10);

@@ -208,11 +208,11 @@ describe('DXFExporter', () => {
     // (svg-exporter.ts's underlay mapping, dxfUnderlayMath.ts's
     // worldToDrawing) applies by negating Y, calling `applyDxfPlacement`,
     // then negating back for a world-space (+Y up) output. Local
-    // second-line anchor (0, -2.6): negate Y -> (0, 2.6), scale by 2 ->
-    // (0, 5.2), rotate 90 deg CCW-as-seen-on-plan (applyDxfPlacement:
-    // x' = x c + y s, y' = -x s + y c) -> (5.2, 0), negate Y back -> (5.2, 0).
+    // second-line anchor (0, -10/3): negate Y -> (0, 10/3), scale by 2 ->
+    // (0, 20/3), rotate 90 deg CCW-as-seen-on-plan (applyDxfPlacement:
+    // x' = x c + y s, y' = -x s + y c) -> (20/3, 0), negate Y back -> (20/3, 0).
     expect(texts[1].text).toBe('B');
-    expect(texts[1].x).toBeCloseTo(5.2);
+    expect(texts[1].x).toBeCloseTo(20 / 3);
     expect(texts[1].y).toBeCloseTo(0);
     // Glyph height follows the placement scale, like the SVG exporter.
     expect(texts[0].height).toBeCloseTo(4);
@@ -222,7 +222,7 @@ describe('DXFExporter', () => {
   it('anchors a multi-line underlay text block by its vertical attachment, along rotated text', () => {
     // DXF anchors the whole block: bottom grows up from the point (last line
     // on it), middle centres on it, top grows down. Lines stack across the
-    // text's own direction, so a 90° label stacks along world X.
+    // text's own direction (AutoCAD pitch: 5/3 of the height at factor 1), so a 90° label stacks along world X.
     const at = (valign: 'top' | 'middle' | 'bottom', dirX: number, dirY: number) => {
       const multi = underlay();
       multi.layers[0].texts = [
@@ -233,13 +233,13 @@ describe('DXFExporter', () => {
     };
     const bottom = at('bottom', 1, 0);
     expect(bottom.map((t) => t.text)).toEqual(['A', 'B', 'C']);
-    expect(bottom.map((t) => t.y)).toEqual([22.6, 21.3, 20].map((y) => expect.closeTo(y, 9)));
-    expect(at('middle', 1, 0).map((t) => t.y)).toEqual([21.3, 20, 18.7].map((y) => expect.closeTo(y, 9)));
-    expect(at('top', 1, 0).map((t) => t.y)).toEqual([20, 18.7, 17.4].map((y) => expect.closeTo(y, 9)));
+    expect(bottom.map((t) => t.y)).toEqual([20 + 10 / 3, 20 + 5 / 3, 20].map((y) => expect.closeTo(y, 5)));
+    expect(at('middle', 1, 0).map((t) => t.y)).toEqual([20 + 5 / 3, 20, 20 - 5 / 3].map((y) => expect.closeTo(y, 5)));
+    expect(at('top', 1, 0).map((t) => t.y)).toEqual([20, 20 - 5 / 3, 20 - 10 / 3].map((y) => expect.closeTo(y, 5)));
     // Rotated 90° (reading up): "down" across the baseline is world +X.
     const rotated = at('bottom', 0, 1);
-    expect(rotated.map((t) => t.x)).toEqual([7.4, 8.7, 10].map((x) => expect.closeTo(x, 9)));
-    expect(rotated.map((t) => t.y)).toEqual([20, 20, 20].map((y) => expect.closeTo(y, 9)));
+    expect(rotated.map((t) => t.x)).toEqual([10 - 10 / 3, 10 - 5 / 3, 10].map((x) => expect.closeTo(x, 5)));
+    expect(rotated.map((t) => t.y)).toEqual([20, 20, 20].map((y) => expect.closeTo(y, 5)));
   });
 
   it('applies underlay placement offset/rotation in the same sense as every other DxfPlacement consumer (world Y-up, not mirrored)', () => {

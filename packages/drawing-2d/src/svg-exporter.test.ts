@@ -86,18 +86,26 @@ describe('SVGExporter underlays', () => {
     return exportToSVG(emptyDrawing(), { underlays: [{ underlay: u }] });
   };
 
+  it('stretches aligned/fit text about its anchor and honours per-entity line spacing', () => {
+    const u = underlay();
+    u.layers[0].texts[0] = { ...u.layers[0].texts[0], text: 'A\nB', valign: 'middle', widthScale: 2, lineSpacingFactor: 2 };
+    const svg = exportToSVG(emptyDrawing(), { underlays: [{ underlay: u }] });
+    expect(svg).toMatch(/scale\(2\.0000 1\)/);
+    expect(lineOffsets(svg).map((v) => Math.round(v * 1000) / 1000)).toEqual([-33.333, 33.333]);
+  });
+
   it('lifts a bottom-attached multi-line block so its last line sits on the point', () => {
-    // 1:100 → 2 m height is a 20 mm font, 26 mm line spacing.
-    expect(lineOffsets(withText('A\nB\nC', 'bottom'))).toEqual([-52, -26, 0]);
-    expect(lineOffsets(withText('A\nB\nC', 'middle'))).toEqual([-26, 0, 26]);
+    // 1:100 → 2 m height is a 20 mm font, 33.333 mm line spacing (5/3 of the font).
+    expect(lineOffsets(withText('A\nB\nC', 'bottom'))).toEqual([-66.667, -33.333, 0]);
+    expect(lineOffsets(withText('A\nB\nC', 'middle')).map((v) => Math.round(v * 1000) / 1000)).toEqual([-33.333, 0, 33.333]);
   });
 
   it('places every line absolutely, so empty lines keep the block offset (PR #10195 review)', () => {
     // A leading empty tspan has no glyph to carry a dy; "B" must still land on the point.
     const leading = withText('\nB', 'bottom');
-    expect(lineOffsets(leading)).toEqual([-26, 0]);
+    expect(lineOffsets(leading)).toEqual([-33.333, 0]);
     expect(leading).toMatch(/<tspan x="[-\d.]+" y="[-\d.]+"><\/tspan><tspan x="[-\d.]+" y="([-\d.]+)">B</);
-    expect(lineOffsets(withText('A\n\nC', 'bottom'))).toEqual([-52, -26, 0]);
+    expect(lineOffsets(withText('A\n\nC', 'bottom'))).toEqual([-66.667, -33.333, 0]);
   });
 
   it('honours per-layer visibility overrides', () => {

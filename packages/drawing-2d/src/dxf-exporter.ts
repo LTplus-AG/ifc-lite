@@ -325,7 +325,7 @@ export class DXFExporter {
           // review). "Down" across the baseline is the text direction turned
           // clockwise (local Y up), and the block offset honours the
           // vertical attachment like every other renderer.
-          const offset = dxfTextLineOffset(i, lines.length, text.valign, text.height);
+          const offset = dxfTextLineOffset(i, lines.length, text.valign, text.height, text.lineSpacingFactor);
           const lineAnchor = offset === 0
             ? anchor
             : mapPoint({ x: text.position.x + (text.dirY / dirLength) * offset,
@@ -335,7 +335,8 @@ export class DXFExporter {
             lines[i],
             height,
             layer,
-            { rotationDeg: angle, hAlign: text.align, vAlign: text.valign, colorOverride: text.color },
+            { rotationDeg: angle, hAlign: text.align, vAlign: text.valign, colorOverride: text.color,
+              widthScale: text.widthScale },
           );
         }
       }

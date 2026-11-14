@@ -13,6 +13,8 @@
  *
  * - none: nothing is stale.
  * - an unrelated edit (rename one beam, add a property set to it): nothing is stale.
+ * - the site placement moved and turned 90 degrees, carrying every element and
+ *   member with it: the beam's world line changes, and nothing is stale.
  * - move a horizontal beam 0.3 m along its own axis: exactly its members are
  *   stale, at 0.3 m, and `structural-axis-drift` reports none of them. Drift
  *   measures square to the axis, so this is the case only stored provenance
@@ -21,9 +23,27 @@
  */
 
 import { parseStore } from '../lib/packages.mjs';
+import { readStep } from '../lib/step.mjs';
 import { deriveInto, editSession, FRAME } from './capability-derive-toggle.mjs';
 
 const MOVE = 0.3;
+
+/** `text` with its IfcSite placed 1, 2, 0.5 file units away and turned 90 degrees about Z, in new records. */
+function moveSite(text) {
+  const step = readStep(text);
+  const placement = step.of('IFCSITE')[0]?.args[5]?.ref;
+  if (placement === undefined) throw new Error('the derived file has no placed IfcSite');
+  const next = Math.max(...step.entities.keys()) + 1;
+  const record = new RegExp(`#${placement}\\s*=\\s*IFCLOCALPLACEMENT\\s*\\(([^,]*),[^)]*\\);`);
+  if (!record.test(text)) throw new Error(`IfcSite placement #${placement} is not an IfcLocalPlacement record`);
+  return text.replace(record, (_, parent) => [
+    `#${placement}=IFCLOCALPLACEMENT(${parent.trim()},#${next});`,
+    `#${next}=IFCAXIS2PLACEMENT3D(#${next + 1},#${next + 2},#${next + 3});`,
+    `#${next + 1}=IFCCARTESIANPOINT((1.,2.,0.5));`,
+    `#${next + 2}=IFCDIRECTION((0.,0.,1.));`,
+    `#${next + 3}=IFCDIRECTION((0.,1.,0.));`,
+  ].join('\n'));
+}
 const sorted = (ids) => [...ids].sort((a, b) => a - b).join();
 
 /** Every rule, axes included, on a parsed store. */
@@ -62,6 +82,12 @@ async function measure(ctx, file) {
   unrelated.editor.addPropertySet(beamId, 'Probe_Unrelated', [{ name: 'Note', value: 'not geometry', type: 'LABEL' }]);
   const afterUnrelated = stale(await unrelated.check());
   if (afterUnrelated.length) throw new Error(`renaming #${beamId} and adding a property set reported ${JSON.stringify(afterUnrelated.map((i) => i.entityId))} stale`);
+
+  const sited = await parseStore(ctx.pkgs, moveSite(text));
+  const sitedAxis = ctx.pkgs.create.structuralPhysicalAxes(sited).get(beamId);
+  if (!sitedAxis || Math.hypot(...sitedAxis[0].map((v, i) => v - a[i])) < MOVE) throw new Error(`moving the site left #${beamId} at ${JSON.stringify(sitedAxis)}`);
+  const afterSite = stale(checks(ctx.pkgs, sited));
+  if (afterSite.length) throw new Error(`moving and turning the site reported ${JSON.stringify(afterSite.map((i) => i.entityId))} stale`);
 
   const results = {};
   const issuesAfter = {};

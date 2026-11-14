@@ -97,7 +97,8 @@
  *
  * Provenance. Every curve member carries an `IfcLite_StructuralDerivation`
  * property set naming its element's GlobalId and the element's line (the
- * rule above, before joints moved its ends) in IFC world metres. The
+ * rule above, before joints moved its ends) in metres in its storey's axes,
+ * where the member is placed. The
  * `structural-stale-item` check in `@ifc-lite/parser` compares it with the
  * element's line now, to report members whose element moved since. Surface
  * members and nodes get no record.

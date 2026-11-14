@@ -65,7 +65,6 @@ export interface StructuralDerivationRecord {
   axis: StructuralLine;
 }
 
-
 /** One physical element as the checks see it. */
 export interface PhysicalElementFact {
   expressId: number;

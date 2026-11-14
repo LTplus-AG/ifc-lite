@@ -408,6 +408,25 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('derive provenance and the 
     }
     expect(await staleAfter(move([0.0005, 0]))).toEqual([]);
   });
+
+  it('reports nothing when the storey moves and turns, carrying elements and members with it', async () => {
+    const storeyPlacement = '#20=IFCLOCALPLACEMENT($,#6);';
+    expect(text.split(storeyPlacement)).toHaveLength(2);
+    const turned = text.replace(storeyPlacement, `#20=IFCLOCALPLACEMENT($,#99001);
+#99001=IFCAXIS2PLACEMENT3D(#99002,#99003,#99004);
+#99002=IFCCARTESIANPOINT((1000.,2000.,500.));
+#99003=IFCDIRECTION((0.,0.,1.));
+#99004=IFCDIRECTION((0.,1.,0.));`);
+    const before = await parse(text);
+    const after = await parse(turned);
+    const beam = byName(after, 'B1');
+    // The beam really moved in world coordinates: (0,0,3)-(6,0,3) becomes (1,2,3.5)-(1,8,3.5).
+    const [a, b] = structuralPhysicalAxes(after).get(beam)!;
+    expect([...a, ...b].map((v) => +v.toFixed(6) + 0)).toEqual([1, 2, 3.5, 1, 8, 3.5]);
+    expect(structuralPhysicalAxes(before).get(beam)).not.toEqual(structuralPhysicalAxes(after).get(beam));
+    const issues = structuralConsistencyIssues(after, { physicalAxes: structuralPhysicalAxes(after) });
+    expect(issues.filter((issue) => issue.rule === 'structural-stale-item' || issue.rule === 'structural-axis-drift')).toEqual([]);
+  });
 });
 
 describe('derive provenance: apply checks the recorded axis (#9668)', () => {

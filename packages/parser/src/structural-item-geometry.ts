@@ -187,6 +187,23 @@ export class ItemGeometryReader {
   }
 
   /**
+   * Maps a point in metres, given in the axes of the frame the product's own
+   * `IfcLocalPlacement` is relative to (`PlacementRelTo`), to IFC world
+   * metres. A product with no placement, or one relative to nothing, maps
+   * from world. Null when the placement chain is unreadable or not local.
+   */
+  fromPlacementParent(productId: number): ((p: Vec3) => Vec3) | null {
+    const product = this.entity(productId);
+    if (!product) return null;
+    const placementId = asRef(product.attributes[OBJECT_PLACEMENT]);
+    const placement = placementId === undefined ? null : this.entity(placementId);
+    if (placementId !== undefined && placement?.type !== 'IFCLOCALPLACEMENT') return null;
+    const parentId = placement ? asRef(placement.attributes[0]) : undefined;
+    const frame = parentId === undefined ? IDENTITY : this.placement(parentId);
+    return frame && ((p) => add(scale(frame.origin, this.unitScale), rotate(frame, p)));
+  }
+
+  /**
    * An `IfcStructuralAnalysisModel`'s `SharedPlacement` in world axes:
    * undefined when it has none (IFC2X3 has no such attribute), null when it
    * is set but cannot be read.

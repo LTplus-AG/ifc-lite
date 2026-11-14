@@ -33,7 +33,12 @@ import type { StructuralExtraction } from './structural-types.js';
 /** The property set derive writes on each curve member it creates, and its properties. */
 export const STRUCTURAL_DERIVATION_PSET = 'IfcLite_StructuralDerivation';
 export const DERIVATION_ELEMENT_PROPERTY = 'PhysicalElement';
-/** The element's line in IFC world metres: start x, y, z, then end x, y, z. */
+/**
+ * The element's line in metres, in the axes of the frame the member's own
+ * placement is relative to (the storey derive placed it on): start x, y, z,
+ * then end x, y, z. A move of that frame, or of anything above it, moves the
+ * record with the member, so it is not a physical change.
+ */
 export const DERIVATION_AXIS_PROPERTIES = [
   'PhysicalAxisStartX', 'PhysicalAxisStartY', 'PhysicalAxisStartZ',
   'PhysicalAxisEndX', 'PhysicalAxisEndY', 'PhysicalAxisEndZ',
@@ -105,21 +110,22 @@ function curveMemberGeometry(store: IfcDataStore, structural: StructuralExtracti
     if (!isA(member.type, ['IfcStructuralCurveMember']) || !structuralCounterparts(structural, member.expressId)?.expressIds.some((id) => physicalAxes.has(id))) continue;
     const shape = reader.shape(member.expressId);
     if (shape?.kind === 'edge') memberLines.set(member.expressId, [shape.start, shape.end]);
-    const record = derivationRecord(store, member.expressId);
+    const record = derivationRecord(store, reader, member.expressId);
     if (record) derivationRecords.set(member.expressId, record);
   }
   return { physicalAxes, memberLines, derivationRecords };
 }
 
-/** The member's derivation record, when it is complete: a GlobalId and six finite coordinates. */
-function derivationRecord(store: IfcDataStore, memberId: number): StructuralDerivationRecord | null {
+/** The member's derivation record in IFC world metres, when it is complete (a GlobalId and six finite coordinates) and its placement readable. */
+function derivationRecord(store: IfcDataStore, reader: ItemGeometryReader, memberId: number): StructuralDerivationRecord | null {
   const set = store.getProperties(memberId).find((pset) => pset.name === STRUCTURAL_DERIVATION_PSET);
   if (!set) return null;
   const value = (name: string) => set.properties.find((property) => property.name === name)?.value;
   const elementGlobalId = value(DERIVATION_ELEMENT_PROPERTY);
   const c = DERIVATION_AXIS_PROPERTIES.map(value);
   if (typeof elementGlobalId !== 'string' || !c.every((v): v is number => typeof v === 'number' && Number.isFinite(v))) return null;
-  return { elementGlobalId, axis: [[c[0], c[1], c[2]], [c[3], c[4], c[5]]] };
+  const toWorld = reader.fromPlacementParent(memberId);
+  return toWorld && { elementGlobalId, axis: [toWorld([c[0], c[1], c[2]]), toWorld([c[3], c[4], c[5]])] };
 }
 
 /** The consistency issues of a parsed file. Physical elements are read only when a rule can use them. */

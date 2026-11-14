@@ -23,6 +23,7 @@
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { subscribeModelLoadEnded } from '@/hooks/modelLoadEnd.js';
 
 export const RESTORE_BACKSTOP_MS = 60_000;
 
@@ -79,6 +80,11 @@ export function endGeometryRestore(modelId: string): void {
   if (delayed !== undefined) { clearTimeout(delayed); delayedReleases.delete(modelId); }
   setPending(modelId, false);
 }
+
+// Every load end releases its model's hold (settleOwnedLoadUi -> markModelLoadEnded: completed, failed or
+// cancelled). Subscribed here rather than called from modelLoadCanceller, which the store's loading slice imports:
+// importing this module (and so '@/store') from there formed an import cycle that broke store initialisation.
+subscribeModelLoadEnded((modelId) => endGeometryRestore(modelId));
 
 /**
  * The early publication of a cache hit that adopted its stored scene: the

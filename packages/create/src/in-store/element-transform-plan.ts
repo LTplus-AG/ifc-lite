@@ -27,7 +27,6 @@ import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { expandAffectedSet, gridPlacementDependents } from '@ifc-lite/export';
-import { getFootprintRoofPlaneParts } from './roof-plane-parts.js';
 import {
   IDENTITY_FRAME, applyFrame, frameInStorey, objectPlacementOf, placementAncestors, placementOrigin, uprightFrame,
   type PlacementReader, type PlanFrame,
@@ -90,10 +89,7 @@ function movedSet(input: TransformPlanInput, gridCarried: ReadonlySet<number>): 
     // A bare opening moves on its own: expanding it would take its host along.
     const type = typeOf(input, id);
     if (isOpening(type)) continue;
-    // A footprint roof carries its geometric slab parts through the same
-    // root/carried placement planner as hosted elements (#9357).
-    const members = [id, ...getFootprintRoofPlaneParts(input.dataStore, input.view, id)];
-    const affected = expandAffectedSet(input.dataStore, input.view, members, 'hostsChanged');
+    const affected = expandAffectedSet(input.dataStore, input.view, [id], 'hostsChanged');
     // A grid's placement closure also contains hosts. Expand those hosts in
     // one batch so independently placed openings/fillings become move roots.
     const bound = type === 'IFCGRID' ? [...affected].filter(dependent => gridCarried.has(dependent)) : [];

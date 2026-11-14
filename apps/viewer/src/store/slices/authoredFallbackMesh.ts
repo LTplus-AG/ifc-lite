@@ -85,7 +85,7 @@ function isLiveWithoutMesh(state: ViewerState, modelId: string, entityId: number
   if (store && view) {
     const planes = getFootprintRoofPlaneParts(store, view, entityId);
     const planeIds = new Set(planes.map(id => toGlobalIdFromModels(state.models, modelId, id)));
-    if (meshes.some(mesh => planeIds.has(mesh.expressId))) return false;
+    if (planeIds.size > 0 && [...planeIds].every(id => meshes.some(mesh => mesh.expressId === id))) return false;
   }
   return !meshes.some((mesh) => mesh.expressId === globalId);
 }

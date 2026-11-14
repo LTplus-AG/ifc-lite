@@ -259,7 +259,9 @@ export function dxfUnderlayToDrawing(
         valign: text.valign,
         lineSpacingFactor: text.lineSpacingFactor,
         widthScale: text.widthScale,
-        fitWidth: text.fitWidth === undefined ? undefined : text.fitWidth * entry.placement.scale * textMapScale,
+        // The span follows the same mapped baseline as dirX/dirY (exact under any linear map).
+        fitWidth: text.fitWidth === undefined ? undefined
+          : text.fitWidth * Math.hypot(tip.x - anchor.x, tip.y - anchor.y) / (Math.hypot(text.dirX, text.dirY) || 1),
         fitUniform: text.fitUniform,
       });
     }

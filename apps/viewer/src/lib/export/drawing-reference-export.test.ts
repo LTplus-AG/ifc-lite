@@ -128,10 +128,13 @@ describe('section reference export composition (#6615)', () => {
     const multiline = [{...vectors[0],texts:[{...vectors[0].texts[0],text:'Upper\nLower'}]}];
     drawDxfUnderlaysPdf(doc,multiline,(x,y)=>({x:x*10,y:y*10}),10);
     const pdf = doc.output();
-    const leadings = [...pdf.matchAll(/([\d.]+) TL/g)].map(match=>Number(match[1]));
+    // Each line is placed on its own baseline (jsPDF's own stacking ignores rotation).
+    const starts = [...pdf.matchAll(/([-\d.]+) ([-\d.]+) (?:Tm|Td)\n\((Upper|Lower)\) Tj/g)]
+      .map(match=>({x:Number(match[1]),y:Number(match[2])}));
+    assert.equal(starts.length,2);
     const expected = vectors[0].texts[0].height * 10 * 72 / 25.4 * 1.3;
-    assert.ok(leadings.some(value=>Math.abs(value-expected)<0.01),'PDF text advances by 1.3 times its physical font height');
-    assert.match(pdf,/\(Upper\) Tj/); assert.match(pdf,/\(Lower\) Tj/); assert.match(pdf,/T\*/);
+    assert.ok(Math.abs(Math.hypot(starts[1].x-starts[0].x,starts[1].y-starts[0].y)-expected)<0.01,
+      'PDF text advances by 1.3 times its physical font height');
   });
 
   it('keeps multiline DXF spacing at 1.3 text heights after placement/georeference scale (#6615)', () => {

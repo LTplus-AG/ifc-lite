@@ -123,3 +123,14 @@ test('#9919 wall quantities with MethodOfMeasurement do not override inherited F
   const s=readStep(fixture.replace('ENDSEC;', "#20=IFCELEMENTQUANTITY('q',$,$,$,'measured',()); #21=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#1),#20); ENDSEC;"));
   assert.equal(inheritedFireRating(s,s.of('IFCWALL')),true);
 });
+
+test('#9328 area matching rejects missing or non-finite reference and export values', async () => {
+  const { matchAreas } = await import('./oracles.mjs');
+  assert.equal(matchAreas([10],[10.1],.05),true);
+  for (const invalid of [undefined,NaN,Infinity,-Infinity,null,'10']) {
+    assert.equal(matchAreas([invalid],[999],.05),false,`reference ${invalid}`);
+    assert.equal(matchAreas([10],[invalid],.05),false,`export ${invalid}`);
+  }
+  assert.equal(matchAreas(new Array(1),[999],.05),false,'missing reference entry');
+  assert.equal(matchAreas([10],new Array(1),.05),false,'missing export entry');
+});

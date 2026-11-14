@@ -111,7 +111,7 @@ export function roofGeometry(step, meshes, expected) {
 
 /** Complete bipartite assignment: export ordering must not change the verdict. */
 export function matchAreas(expected, actual, tolerance) {
-  if (expected.length !== actual.length || !actual.every(Number.isFinite)) return false;
+  if (expected.length !== actual.length || ![...expected,...actual].every(Number.isFinite)) return false;
   const owner = new Map();
   const assign = (i, visited) => {
     for (let j = 0; j < actual.length; j++) {

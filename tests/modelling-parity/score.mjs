@@ -107,7 +107,7 @@ export function score(catalogue, results, meta = {}) {
   const sources = [...new Map(results.filter(r => r.source?.commit).map(r => {
     const source = { ...r.source, dirty: !!(r.source.dirty || r.source.probes?.dirty ||
       (r.source.probes && r.source.probes.commit !== r.source.commit)) };
-    return [JSON.stringify([source.commit,source.dirty,source.probes?.commit ?? null,source.probes?.dirty ?? null]), source];
+    return [JSON.stringify([source.commit,source.dirty,source.probes?.commit ?? null,source.probes?.dirty ?? null,source.sheetDxfOracle ?? null]), source];
   })).values()];
   return {
     schema: SUMMARY_SCHEMA,

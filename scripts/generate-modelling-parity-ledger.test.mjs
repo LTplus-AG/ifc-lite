@@ -728,3 +728,13 @@ assert.equal(closed,2);
   const r=spawnSync(process.execPath,['--import','data:text/javascript,'+encodeURIComponent(hook),'--input-type=module','-e',script],{encoding:'utf8',timeout:10000});
   assert.equal(r.status,0,r.stderr);
 });
+
+test('#9328 summary preserves fresh and historical sheet oracle provenance', () => {
+  const historical={commit:'same-build',dirty:false,probes:{commit:'same-build',dirty:false}};
+  const fresh={...historical,sheetDxfOracle:1};
+  for (const sources of [[historical,fresh,historical],[fresh,historical,fresh]]) {
+    const summary=score(CATALOGUE,sources.map((source,i)=>result(`row-${i}`,'ui','pass',{source})));
+    assert.equal(summary.sources.length,2);
+    assert.deepEqual(summary.sources.map(s=>s.sheetDxfOracle ?? null).sort(),[1,null]);
+  }
+});

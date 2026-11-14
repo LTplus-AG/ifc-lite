@@ -13,7 +13,9 @@ export async function runProbe(probe, openFresh, base, { saveArtifact } = {}) {
   let error = null;
   try {
     const { startBlank } = await import('./lib/model-ui.mjs');
-    await task(s, 'setup: Start blank', () => startBlank(s)).then(t => Object.assign(t, { setup: true }));
+    const setup = await task(s, 'setup: Start blank', () => startBlank(s));
+    setup.setup = true;
+    if (!setup.ok) throw new Error(`Start blank failed: ${setup.error}`);
     await s.harness.aim(PLAN_CAM.pos, PLAN_CAM.target);
     out = await probe.run(s);
   } catch (e) {

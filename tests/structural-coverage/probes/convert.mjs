@@ -234,7 +234,7 @@ export function compareFile(row, file, { there, step: back }, schemas) {
       const constant = CONSTANT_SUBTYPE.get(rec.type) === got.type && constEnum(got) && (constEnum(rec) || want[predefined] === null);
       if (got.type !== rec.type && !constant) { problems.push(`${where}: came back as ${got.type}`); continue; }
       // IFC4's constant subtypes pin PredefinedType to CONST (ConstPredefinedType), so any other value is schema-invalid.
-      if ([...CONSTANT_SUBTYPE.values()].includes(got.type) && !constEnum(got)) {
+      if (predefined !== -1 && [...CONSTANT_SUBTYPE.values()].includes(got.type) && !constEnum(got)) {
         problems.push(`${where}: came back as ${got.type} with PredefinedType ${show(have[predefined])}, which ConstPredefinedType requires to be CONST`);
         continue;
       }

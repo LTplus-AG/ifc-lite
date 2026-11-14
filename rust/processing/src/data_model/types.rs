@@ -11,6 +11,24 @@ use serde::{Deserialize, Serialize};
 pub struct DataModel {
     /// Entity metadata for all entities.
     pub entities: Vec<EntityMetadata>,
+    /// STEP instances the scan saw, which is NOT `entities.len()` whenever
+    /// the table was narrowed (`DataModelEntities::Rooted`): over
+    /// `various/O-S1-BWK-BIM architectural` a rooted table holds 211,716 rows
+    /// for 4,411,807 instances. A consumer reporting the model's SIZE wants
+    /// this; one iterating the table wants the rows.
+    ///
+    /// It exists because the parse routes' `DataModelStats.entity_count`
+    /// describes the model, not the variant served, so the one metadata
+    /// header both variants share can never disagree with either (#6034).
+    /// They used to read `entities.len()` before applying the variant; with
+    /// the narrowing moved ahead of extraction (#9582) there is no "before".
+    ///
+    /// Not part of any payload: `DataModel` is not `Serialize`, and
+    /// `serialize_data_model_to_parquet` names its columns explicitly, so the
+    /// data-model bytes on the wire and in the cache are unchanged. The one
+    /// compatibility cost is construction: a struct literal of `DataModel`
+    /// must now set it.
+    pub total_entities: usize,
     /// Property sets (pset_id -> PropertySet).
     pub property_sets: Vec<PropertySet>,
     /// Quantity sets (qset_id -> QuantitySet).

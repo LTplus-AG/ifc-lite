@@ -58,8 +58,7 @@ pub(crate) fn is_assignment_conversion(entity: &str, from: &str, to: &str) -> bo
 pub(crate) fn attributes(entity: &str, args: &[String], from: &str, to: &str) -> Option<String> {
     if is_assignment_conversion(entity, from, to) && args.len() == 6 {
         // IFC4 expresses the physical product's analytical assignment as an
-        // IfcRelAssignsToProduct. The relationship's original kind cannot be
-        // recovered on downgrade without out-of-schema metadata.
+        // IfcRelAssignsToProduct. The inverse is `schema_structural_links`.
         return Some(format!("{},({}),$,{}", args[..4].join(","), args[5], args[4]));
     }
     if !matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3")) { return None; }
@@ -155,7 +154,7 @@ mod diagnostic_tests {
             let mut checks = ConversionChecks::new();
             let out = convert_step_line(source, "IFC2X3", target, 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
             assert_eq!(out, "#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
-            assert!(checks.warnings().iter().any(|w| w.contains("original relationship kind cannot round trip")));
+            assert!(checks.warnings().iter().any(|w| w.contains("the relationship kind is not kept in the target file")));
         }
     }
 }

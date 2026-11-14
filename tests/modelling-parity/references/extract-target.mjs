@@ -544,6 +544,16 @@ export function countRoofParts(model, roots) {
   return new Set(roots.flatMap((id) => model.partsOf.get(id) ?? [])).size;
 }
 
+/** Keep triangle evidence for every transitive aggregate member, once per product. */
+export function roofTriangleIds(model, roots) {
+  const seen=new Set(), pending=[...roots];
+  while(pending.length) {
+    const id=pending.pop(); if(seen.has(id)) continue;
+    seen.add(id); pending.push(...(model.partsOf.get(id) ?? []));
+  }
+  return seen;
+}
+
 export async function extract(refId_, entry, file) {
   const verification = await verifyPath(file, entry);
   if (verification.state !== 'ok') throw new Error(`Reference pin ${verification.state}: ${verification.detail ?? file}`);
@@ -562,8 +572,7 @@ export async function extract(refId_, entry, file) {
     .sort((x, y) => x.elevation - y.elevation);
 
   const roofRoots = [...model.all('IFCROOF'), ...model.all('IFCSLAB').filter((id) => enumVal(model.get(id).args[8]) === 'ROOF')];
-  const roofParts = new Set();
-  for (const r of roofRoots) { roofParts.add(r); for (const p of model.partsOf.get(r) ?? []) roofParts.add(p); }
+  const roofParts = roofTriangleIds(model, roofRoots);
   const spaceIds = model.all('IFCSPACE');
   const slabIds = model.all('IFCSLAB').filter((id) => enumVal(model.get(id).args[8]) !== 'ROOF');
   const wantedForTris = new Set([...roofParts, ...spaceIds, ...slabIds]);

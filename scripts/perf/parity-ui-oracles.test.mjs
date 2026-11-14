@@ -78,13 +78,25 @@ test('#9324 malformed products cannot contribute counts or relationships', () =>
 });
 
 test('#9324 repeated pairs cannot stand in for all four joined corners', () => {
-  const walls = "#1=IFCWALL('a');#2=IFCWALL('b');#3=IFCWALL('c');#4=IFCWALL('d');";
+  // #9919: the positive loop needs real exported axes, not just endpoint labels.
+  const corners = [[0,0],[5,0],[5,4],[0,4],[0,0]];
+  const walls = [1,2,3,4].map((id,i) => {
+    const n = 100+i*10, [x,y] = corners[i], [ex,ey] = corners[i+1];
+    return `#${id}=IFCWALL('w${id}',$,$,$,$,$,#${n},$,$);
+#${n}=IFCPRODUCTDEFINITIONSHAPE($,$,(#${n+1}));
+#${n+1}=IFCSHAPEREPRESENTATION($,'Axis','Curve2D',(#${n+2}));
+#${n+2}=IFCPOLYLINE((#${n+3},#${n+4}));
+#${n+3}=IFCCARTESIANPOINT((${x},${y}));
+#${n+4}=IFCCARTESIANPOINT((${ex},${ey}));`;
+  }).join('\n');
   const link = (id,a,b,start,end) => `#${id}=IFCRELCONNECTSPATHELEMENTS('r',$,$,$,$,#${a},#${b},(),(),.${end}.,.${start}.);`;
   const repeated = readStep('DATA;'+walls+link(5,1,2,'ATSTART','ATSTART')+link(6,1,2,'ATSTART','ATEND')+link(7,1,2,'ATEND','ATSTART')+link(8,1,2,'ATEND','ATEND')+'ENDSEC;');
   assert.equal(uniqueWallJoins(repeated),4);
   assert.equal(wallEndpointsJoined(repeated),false);
   const ring = readStep('DATA;'+walls+[1,2,3,4].map((id,i)=>link(5+i,id,id%4+1,'ATEND','ATSTART')).join('')+'ENDSEC;');
   assert.equal(wallEndpointsJoined(ring),true);
+  const labelsOnly = readStep('DATA;'+[1,2,3,4].map(id=>`#${id}=IFCWALL('w${id}');`).join('')+[1,2,3,4].map((id,i)=>link(5+i,id,id%4+1,'ATEND','ATSTART')).join('')+'ENDSEC;');
+  assert.equal(wallEndpointsJoined(labelsOnly),false,'endpoint labels cannot replace missing axes');
 });
 
 test('#9324 containment in a building, not a storey, counts as uncontained',()=>{

@@ -535,6 +535,17 @@ describe('consolidated additions (SPLINE, SOLID, lineweight, valign, unit heuris
     expect(fit.fitWidth).toBeCloseTo(0.006, 12);
   });
 
+  it('measures fitWidth along the transformed baseline under non-uniform INSERT scale', () => {
+    const text = pairsToText(
+      [0, 'SECTION'], [2, 'BLOCKS'], [0, 'BLOCK'], [2, 'label'], [10, 0], [20, 0],
+      [0, 'TEXT'], [8, 't'], [10, 0], [20, 0], [11, 1], [21, 0], [40, 1], [1, 'ab'], [72, 5], [73, 0],
+      [0, 'ENDBLK'], [0, 'ENDSEC'],
+    ) + entitiesSection([0, 'INSERT'], [8, 't'], [2, 'label'], [10, 0], [20, 0], [41, 2], [42, 1]);
+    const [fit] = layerByName(importDxf(text), 't').texts;
+    // (0,0)→(1,0) scaled 2× in X lands on x=2; the determinant estimate would give √2.
+    expect(fit.fitWidth).toBeCloseTo(2, 9);
+  });
+
   it('honours the relative X scale (41) on plain TEXT', () => {
     const underlay = importDxf(entitiesSection(
       [0, 'TEXT'], [8, 'w'], [10, 0], [20, 0], [40, 1], [1, 'ab'], [41, 0.5],

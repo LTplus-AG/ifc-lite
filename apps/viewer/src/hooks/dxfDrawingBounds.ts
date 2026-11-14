@@ -24,8 +24,11 @@ export function drawingWithDxfBounds(drawing: Drawing2D | null, references: read
       // varies by font. Include baseline and height in the mapped direction.
       const length=Math.hypot(text.dirX,text.dirY)||1, ux=text.dirX/length,uy=text.dirY/length;
       const lines = text.text.split('\n');
-      const width = text.height * (text.widthScale && text.widthScale > 0 ? text.widthScale : 1)
-        * lines.reduce((longest, line) => Math.max(longest, line.length), 0);
+      // Aligned/fit text spans exactly its fitWidth in every renderer.
+      const width = lines.length === 1 && text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0
+        ? text.fitWidth
+        : text.height * (text.widthScale && text.widthScale > 0 ? text.widthScale : 1)
+          * lines.reduce((longest, line) => Math.max(longest, line.length), 0);
       const left = text.align === 'right' ? -width : text.align === 'center' ? -width / 2 : 0;
       // Cardinal display/export mappings may reverse the stacking perpendicular.
       // Cover both directions and one glyph height beyond the farthest line of

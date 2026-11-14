@@ -56,3 +56,12 @@ test('multiline DXF fit encloses every rotated glyph row and alignment (#6615)',
     }
   }
 });
+
+test('aligned/fit DXF text bounds use the exact fitWidth span', async () => {
+  const { drawingWithDxfBounds } = await loadDrawingBounds();
+  const text = { x: 0, y: 0, dirX: 1, dirY: 0, height: 2.5, text: 'abcd', color: '#000', align: 'left' as const,
+    valign: 'baseline' as const, fitWidth: 6 };
+  const result = drawingWithDxfBounds(drawing, [{ id: 'cad', opacity: 1, lines: [], fills: [], texts: [text] }])!;
+  assert.equal(result.bounds.max.x, 6);
+  assert.equal(result.bounds.min.x, 0);
+});

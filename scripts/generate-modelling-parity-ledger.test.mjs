@@ -13,6 +13,7 @@
  */
 
 import { test } from 'node:test';
+import * as nodeModule from 'node:module';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -354,7 +355,7 @@ test('round 3: annotations count, bad --jobs exits 2, SVG ends after its root, -
   for (const [label, text] of [['trailing <', '<svg><line/></svg><'], ['element after root', '<svg><line/></svg><g/>'], ['text after root', '<svg><line/></svg>junk'], ['text before root', 'x<svg><line/></svg>'], ['truncated tag', '<svg><line/><path d="M0 0"</svg>']]) {
     assert.equal(ART.checkSvg(Buffer.from(text)).status, 'fail', label);
   }
-  assert.equal(ART.checkSvg(Buffer.from('<svg><line/></svg>\n<!-- end -->\n  ')).status, 'pass', 'trailing whitespace and comments are fine');
+  assert.equal(ART.checkSvg(Buffer.from('<svg><line x2="1"/></svg>\n<!-- end -->\n  ')).status, 'pass', 'trailing whitespace and comments are fine');
 
   const good = summaryOf([result('storeys', 'sdk', 'pass')], '2026-01-01T00:00:00.000Z');
   const dir = tree({});
@@ -452,5 +453,288 @@ test('#10030 sheet provenance follows selected row evidence, including met rows'
       assert.ok(ledger.split('\n').find(line=>line.includes('(`layered-walls`)')).endsWith('|  |'),'unrelated met rows keep an empty Why not met cell'); // @source-text-assertion-ok executed generator output, not source text
       assert.equal(JSON.parse(readFileSync(join(dir,'tests/modelling-parity/baseline/r.json'),'utf8')).score,s.score);
     } finally {rmSync(dir,{recursive:true,force:true});}
+  }
+});
+test('#9328 SVG empty geometry cannot certify a drawing', () => {
+  for (const shape of ['<path/>', '<path d=""/>', '<path d="M0 0"/>', '<path d="M0 0 Z"/>', '<path d="M0 0 L"/>', '<line/>', '<line x1="2" y1="3" x2="2" y2="3"/>', '<polyline/>', '<polyline points="0,0"/>', '<polygon points=""/>', '<polygon points="0,0"/>']) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg>${shape}</svg>`)).status, 'fail', shape);
+  }
+  for (const shape of ['<path d="M0 0 L1 1"/>', '<line x2="1"/>', '<polyline points="0,0 1,1"/>', '<polygon points="0,0 1,1"/>']) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg>${shape}</svg>`)).status, 'pass', shape);
+  }
+  for (const wrapper of ['defs', 'symbol', 'clipPath', 'mask', 'marker', 'pattern']) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg><${wrapper}><g><line x2="1"/></g></${wrapper}></svg>`)).status, 'fail', `${wrapper} geometry is never drawn`);
+  }
+  assert.equal(ART.checkSvg(Buffer.from('<svg><defs><line x2="1"/></defs><g><line x2="1"/></g></svg>')).status, 'pass', 'drawn geometry beside defs still counts');
+});
+
+test('#9328 per-row IFC classes apply to UI files and survive reopen', () => {
+  const cap = { probes: { output: { requiredClasses: ['IfcAnnotation'] } } };
+  assert.deepEqual(ART.requiredIfcClasses(cap, 'ui', '#1=IFCBUILDINGSTOREY();'), ['IfcAnnotation', 'IfcBuildingStorey']);
+  assert.deepEqual(ART.missingIfcClasses({ IfcBuildingStorey: 1, IfcAnnotation: 0 }, ['IfcAnnotation']), ['IfcAnnotation']);
+  assert.deepEqual(ART.missingIfcClasses({ IfcAnnotation: 1 }, ['IfcAnnotation']), []);
+  assert.deepEqual(realCatalogue.capabilities.find(c => c.id === 'dimensions-tags').probes.output.requiredClasses, ['IfcAnnotation']);
+  assert.deepEqual(realCatalogue.capabilities.find(c => c.id === 'storeys').probes.output.requiredClasses, ['IfcBuildingStorey']);
+});
+
+test('#9328 camera aiming waits for registration before using callbacks', async () => {
+  const { applyView } = await import('../tests/modelling-parity/ui/lib/driver.mjs');
+  const previous = globalThis.__ifc_lite_viewer_store__;
+  let applied;
+  globalThis.__ifc_lite_viewer_store__ = { getState: () => ({ cameraCallbacks: {} }) };
+  const page = {
+    async waitForFunction(predicate, _, options) {
+      assert.equal(predicate(), false);
+      assert.ok(options.timeout > 0 && options.timeout <= 30000);
+      globalThis.__ifc_lite_viewer_store__ = { getState: () => ({ cameraCallbacks: { getViewpoint: () => ({}), applyViewpoint: v => { applied = v; } } }) };
+      assert.equal(predicate(), true);
+    },
+    evaluate(fn, args) { return fn(args); },
+  };
+  try {
+    await applyView(page, [1,2,3], [4,5,6]);
+    assert.deepEqual(applied.position, {x:1,y:3,z:-2});
+    await assert.rejects(applyView({ ...page, waitForFunction: async () => { throw new Error('timeout'); } }, [], []), /camera callbacks.*ready/i);
+  } finally { globalThis.__ifc_lite_viewer_store__ = previous; }
+});
+
+
+test('#9328 copied standard-case walls cannot retain an old storey constraint', async () => {
+  const { copiedWallAttachments } = await import('../tests/modelling-parity/exercises/copy-rebinding.mjs');
+  const meta = {expected:[{expressId:1,kind:'copied',level:0}],levels:[{}, {GlobalId:'next'}]};
+  const records = new Map([[1,"IFCWALLSTANDARDCASE('w')"], [2,"IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#1),#3)"], [3,"IFCPROPERTYSET('p',$,'IfcLite_StoreyAttachment',$,(#4))"], [4,"IFCPROPERTYSINGLEVALUE('TopConstraint',$,IFCLABEL('old'),$)"]]);
+  assert.equal(copiedWallAttachments(meta,records).wrong,1);
+});
+
+test('#9328 room areas use complete one-to-one matching', async () => {
+  const { matchAreas } = await import('../tests/modelling-parity/ui/lib/oracles.mjs');
+  assert.equal(matchAreas([100,104], [101,96], .05), true);
+  assert.equal(matchAreas([100,104], [96,101], .05), true);
+  assert.equal(matchAreas([100,104], [100,1000], .05), false);
+  assert.equal(matchAreas([100,104], [100], .05), false);
+});
+
+test('#9328 rerunning without probes or frames clears only generated outputs', async () => {
+  const { resetRunOutputs } = await import('../tests/modelling-parity/ui/lib/run-output.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'parity-reset-'));
+  try {
+    for (const name of ['probes.json','exercises.json','notes.txt']) writeFileSync(join(dir,name),'old');
+    for (const name of ['frames','shots','artifacts']) { mkdirSync(join(dir,name)); writeFileSync(join(dir,name,'old'),'old'); }
+    await resetRunOutputs(dir);
+    assert.equal(readFileSync(join(dir,'notes.txt'),'utf8'),'old');
+    for (const name of ['probes.json','exercises.json','frames','shots','artifacts']) assert.equal(existsSync(join(dir,name)),false);
+  } finally { rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('#9328 mismatched build and probe revisions are marked dirty in score provenance', () => {
+  const s = score(CATALOGUE,[result('a','sdk','pass',{source:{commit:'build',dirty:false,probes:{commit:'probe',dirty:false}}})]);
+  assert.equal(s.sources[0].dirty,true);
+});
+
+test('#9328 required classes must exist in the original IFC before reopen', () => {
+  const cap={probes:{output:{requiredClasses:['IfcAnnotation']}}};
+  assert.equal(ART.checkRequiredIfcClasses(cap,'#1=IFCBUILDINGSTOREY();').status,'fail');
+  assert.equal(ART.checkRequiredIfcClasses(cap,'#1=IFCANNOTATION();').status,'pass');
+});
+
+test('#9328 malformed STEP records are rejected instead of silently omitted', async () => {
+  const { readStep } = await import('../tests/modelling-parity/ui/lib/step.mjs');
+  assert.throws(()=>readStep("DATA; #1=IFCWALL('w') ENDSEC;"),/malformed/i);
+  assert.throws(()=>readStep("DATA; #1=IFCWALL('w') #2=IFCWALL('x'); ENDSEC;"),/malformed|trailing/i);
+  assert.equal(readStep("DATA; #1=IFCWALL('w'); ENDSEC;").count('IFCWALL'),1);
+});
+
+test('#9328 failed exports cannot leave a successful expected state or stale exercise outputs', async () => {
+  const { resetExerciseOutputs, publishExpectedState } = await import('../tests/modelling-parity/exercises/output.mjs');
+  const dir=mkdtempSync(join(tmpdir(),'parity-exercise-output-'));
+  try {
+    writeFileSync(join(dir,'notes.txt'),'keep');
+    writeFileSync(join(dir,'notes.json'),'{"userNote":true}');
+    for(const name of ['expected.state','IFC4.ifc','model.glb','results.json']) writeFileSync(join(dir,name),'old');
+    resetExerciseOutputs(dir);
+    assert.equal(readFileSync(join(dir,'notes.txt'),'utf8'),'keep');
+    assert.deepEqual(JSON.parse(readFileSync(join(dir,'notes.json'),'utf8')),{userNote:true});
+    for(const name of ['expected.state','IFC4.ifc','model.glb','results.json']) assert.equal(existsSync(join(dir,name)),false);
+    publishExpectedState(dir,{elements:2},[true,true]);
+    assert.equal(JSON.parse(readFileSync(join(dir,'expected.state'),'utf8')).elements,2);
+    publishExpectedState(dir,{elements:3},[true,false]);
+    assert.equal(existsSync(join(dir,'expected.state')),false);
+  } finally { rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('#9328 modelling council scenes retain the model visibility veto', async () => {
+  const { vetoes } = await import('../tests/ui-scenes/tally.mjs');
+  const metrics={a:{modelVisibleFraction:.4,minFontPx:null,smallTextShare:0},b:{modelVisibleFraction:.8,minFontPx:null,smallTextShare:0}};
+  assert.equal(vetoes({items:{'F1-room.light':{metrics}}}).length,1);
+  assert.equal(vetoes({items:{'F2-DG-done.dark':{metrics}}}).length,1);
+  assert.equal(vetoes({items:{'settings.light':{metrics}}}).length,0);
+});
+
+test('#9328 summary cannot report completion after the exercise deadline', async () => {
+  const { run } = await import('../tests/modelling-parity/exercises/run.mjs');
+  const dir=mkdtempSync(join(tmpdir(),'parity-deadline-')), previous=process.env.PARITY_OUT;
+  process.env.PARITY_OUT=dir;
+  try {
+    const results=await run('F3',['--budget-s','0.000000001']);
+    assert.equal(results.find(r=>r.id.endsWith('.summary')).status,'fail'); // @source-text-assertion-ok asserts on the executed exercise result, not source text
+    assert.match(results.find(r=>r.id.endsWith('.execution')).reason,/budget/i); // @source-text-assertion-ok asserts on the executed exercise result, not source text
+  } finally { if(previous===undefined) delete process.env.PARITY_OUT; else process.env.PARITY_OUT=previous; rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('#9328 F2 accepts a measured gable and rejects a flat roof regardless of representation label', async () => {
+  const { EXERCISES } = await import('../tests/modelling-parity/ui/exercises.mjs');
+  const { readStep } = await import('../tests/modelling-parity/ui/lib/step.mjs');
+  const cross=height=>[[0,5.4],[10,5.4],[10,5.7],[5,5.7+height],[0,5.7]];
+  const solid=height=>{
+    const profile=cross(height), vertices=[0,12].flatMap(x=>profile.flatMap(([y,z])=>[x,y,z]));
+    const indices=[];
+    for(let j=1;j<4;j++) indices.push(0,j+1,j,5,5+j,5+j+1);
+    for(let i=0;i<5;i++) { const j=(i+1)%5; indices.push(i,j,j+5,i,j+5,i+5); }
+    return {parts:[{pts:new Float32Array(vertices),idx:new Uint32Array(indices)}]};
+  };
+  const step=readStep("DATA; #1=IFCROOF('r',$,$,$,$,$,$,$,.GABLE_ROOF.); ENDSEC;");
+  for(const [height,expected] of [[5*Math.tan(Math.PI/6),true],[0,false]]) {
+    const judged=await EXERCISES.F2.oracle(step,new Map([[1,solid(height)]]));
+    assert.equal(judged.checks.find(c=>c.name==='gable roof at 30 degrees').ok,expected);
+  }
+});
+
+test('#9328 failed fill checkpoints report the reached population without certifying completion', { skip: typeof nodeModule.registerHooks !== 'function' && 'requires node:module registerHooks (Node 22.15+)' }, () => {
+  const dir=mkdtempSync(join(tmpdir(),'parity-worker-failure-'));
+  try {
+    const create=join(dir,'create.mjs'),loader=join(dir,'loader.mjs'),hook=join(dir,'hook.mjs'),checkpoint=join(dir,'checkpoint.json');
+    writeFileSync(create,"export class IfcCreator { addIfcBuildingStorey() {} toIfc(){return {content:''};} }");
+    writeFileSync(loader,`let id=0, columns=0; const ref=()=>({expressId:++id});
+export async function createHeadlessContext(){ return {bim:{model:{activeId:()=> 'm'},store:{
+listStoreyLevels:()=>[{expressId:1}],addStorey:ref,addWall:ref,addSlab:ref,
+addColumn:()=>{if(++columns===45)throw new Error('fixture fill exception');return ref();}
+}}};}`);
+    writeFileSync(hook,`import {registerHooks} from 'node:module';registerHooks({resolve(specifier,context,next){
+if(specifier==='@ifc-lite/create')return {url:${JSON.stringify(pathToFileURL(create).href)},shortCircuit:true};
+if(specifier.endsWith('/packages/cli/dist/loader.js'))return {url:${JSON.stringify(pathToFileURL(loader).href)},shortCircuit:true};
+return next(specifier,context);}});`);
+    const r=spawnSync(process.execPath,['--import',hook,join(ROOT,'scripts/perf/modelling-session-worker.mjs'),checkpoint,'1000','10000','1'],{encoding:'utf8',timeout:10000});
+    assert.equal(r.status,0,r.stderr);
+    const state=JSON.parse(readFileSync(checkpoint,'utf8'));
+    assert.match(state.reason,/fixture fill exception/); // @source-text-assertion-ok asserts on the worker subprocess checkpoint JSON, not source text
+    assert.ok(state.after>0);
+    assert.equal(state.reached,state.after);
+    assert.equal(state.complete,false);
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+test('#9328 UI command starts and reports invalid arguments before browser work', () => {
+  const r=spawnSync(process.execPath,[join(ROOT,'tests/modelling-parity/ui/run.mjs'),'--unknown'],{encoding:'utf8',timeout:10000});
+  assert.equal(r.status,1);
+  assert.match(r.stderr,/unknown argument --unknown/); // @source-text-assertion-ok asserts on the CLI's executed diagnostic, not unexecuted source
+});
+
+test('#9328 historical and themed exercise IDs keep the same logical catalogue mapping', () => {
+  const catalogue={capabilities:[{...CATALOGUE.capabilities[0],exercises:{refs:['F1']}}]};
+  const old=result(null,'exercise','pass',{id:'F1.ui',exercise:'F1'});
+  const themed={...old,id:'F1.ui.dark',theme:'dark'};
+  for(const record of [old,themed]) assert.equal(score(catalogue,[record]).rows[0].levels.exercise.status,'pass');
+});
+
+test('#9328 fillers require distinct opening entities', async () => {
+  const { ownOpenings } = await import('../tests/modelling-parity/ui/lib/oracles.mjs');
+  const { readStep } = await import('../tests/modelling-parity/ui/lib/step.mjs');
+  const model=second=>readStep(`DATA; #1=IFCDOOR('d'); #2=IFCWINDOW('w'); #3=IFCOPENINGELEMENT('o'); #4=IFCOPENINGELEMENT('p'); #5=IFCRELFILLSELEMENT('r',$,$,$,#3,#1); #6=IFCRELFILLSELEMENT('s',$,$,$,#${second},#2); ENDSEC;`);
+  const valid=model(4),shared=model(3);
+  assert.equal(ownOpenings(valid,[...valid.of('IFCDOOR'),...valid.of('IFCWINDOW')]),true);
+  assert.equal(ownOpenings(shared,[...shared.of('IFCDOOR'),...shared.of('IFCWINDOW')]),false);
+});
+
+test('#9328 one runtime build retains every distinct probe revision in summary provenance', () => {
+  const source=probe=>({commit:'build',dirty:false,probes:{commit:probe,dirty:false}});
+  const summary=score(CATALOGUE,[result('a','sdk','pass',{source:source('probe-a')}),result('b','ui','pass',{source:source('probe-b')}),result('d','sdk','pass',{source:source('probe-a')})]);
+  assert.deepEqual(summary.sources.map(s=>s.probes.commit).sort(),['probe-a','probe-b']);
+  assert.ok(summary.sources.every(s=>s.dirty));
+});
+
+test('#9328 incomplete SVG drawing commands cannot certify linework', () => {
+  for(const d of ['M0 0 L1','M0 0 C1 2 3 4 5','M0 0 Q1 2 3','M0 0 A1 1 0 0 0 1','M0 0 T1']) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg><path d="${d}"/></svg>`)).status,'fail',d);
+  }
+  for(const d of ['M0 0 L1 1','M0 0 H1','M0 0 V1','M0 0 C1 2 3 4 5 6','M0 0 Q1 2 3 4','M0 0 A1 1 0 0 0 1 2','M0 0 1 1']) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg><path d="${d}"/></svg>`)).status,'pass',d);
+  }
+});
+
+test('#9328 coincident SVG geometry and quoted attribute text are not linework', () => {
+  for(const element of ['<path d="M0 0 L0 0"/>','<path d="M0 0 H0 V0"/>','<path d="M0 0 C0 0 0 0 0 0"/>','<polyline points="0,0 0,0"/>','<polygon points="1,1 1,1 1,1"/>',`<path aria-label=" d='M0 0 L1 1'"/>`]) {
+    assert.equal(ART.checkSvg(Buffer.from(`<svg>${element}</svg>`)).status,'fail',element);
+  }
+  assert.equal(ART.checkSvg(Buffer.from('<svg><path d="M0 0 C1 1 -1 1 0 0"/></svg>')).status,'pass');
+});
+
+test('#9328 UI runtime attribution uses the dist revision and records the probe separately', async () => {
+  const { combineSourceInfo } = await import('../tests/modelling-parity/probes/sdk/run.mjs');
+  const source=combineSourceInfo({commit:'runtime',dirty:false},{commit:'harness',dirty:false});
+  assert.equal(source.commit,'runtime');
+  assert.equal(source.probes.commit,'harness');
+  assert.equal(source.dirty,true);
+});
+
+test('#9328 unpinned UI dist provenance is discovered from the runtime repository', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { sourceProvenance } = await import('../tests/modelling-parity/probes/sdk/run.mjs');
+  const dir=mkdtempSync(join(tmpdir(),'parity-runtime-git-'));
+  try {
+    const repos=['probe','runtime'].map(name=>{
+      const root=join(dir,name);mkdirSync(root);
+      const git=args=>execFileSync('git',args,{cwd:root,encoding:'utf8'});
+      git(['init','--quiet']);writeFileSync(join(root,'revision.txt'),name);git(['add','revision.txt']);
+      git(['-c','user.name=Parity','-c','user.email=parity@example.invalid','-c','commit.gpgsign=false','commit','--quiet','-m','fixture']);
+      const dist=join(root,'dist');mkdirSync(dist);
+      return {root,dist,commit:git(['rev-parse','HEAD']).trim()};
+    });
+    const source=sourceProvenance(repos[1].dist,repos[0].root);
+    assert.equal(source.commit,repos[1].commit);
+    assert.equal(source.probes.commit,repos[0].commit);
+    assert.equal(source.dirty,true);
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+test('#9328 SVG arc flags may be adjacent to flags and coordinates', () => {
+  assert.equal(ART.checkSvg(Buffer.from('<svg><path d="M0 0 A1 1 0 011 2"/></svg>')).status,'pass');
+});
+test('#9328 SVG commas require numeric parameters on both sides', () => {
+  for (const d of ['M,0 0 L1 1','M0,,0 L1 1','M0 0, L1 1','M0 0 L1 1,'])
+    assert.equal(ART.checkSvg(Buffer.from(`<svg><path d="${d}"/></svg>`)).status,'fail',d);
+  assert.equal(ART.checkSvg(Buffer.from('<svg><path d="M0,0 L1,1"/></svg>')).status,'pass');
+});
+
+test('#9328 F2 mesh failures retain other checks and always close the session', { skip: typeof nodeModule.registerHooks !== 'function' && 'requires node:module registerHooks (Node 22.15+)' }, () => {
+  const hook=`import {registerHooks} from 'node:module';
+registerHooks({resolve(specifier,context,next){
+  if(specifier==='../probes/sdk/lib/parity.mjs') return {url:'data:text/javascript,'+encodeURIComponent("export async function meshIfc(){throw new Error('fixture extraction failure');}"),shortCircuit:true};
+  return next(specifier,context);
+}});`;
+  const script=`
+import assert from 'node:assert/strict';
+import {runExercise} from ${JSON.stringify(pathToFileURL(join(ROOT,'tests/modelling-parity/ui/exercises.mjs')).href)};
+let closed=0, judged=0;
+const s={download:{text:'DATA; ENDSEC;'},findings:[],counters:{cameraJumps:0},scriptedSteps:[],pageErrors:[],state:async()=>null,close:async()=>{closed++;}};
+const ex={id:'F2',steps:[],oracle:(_step,meshes)=>{judged++;assert.equal(meshes,undefined);return [{name:'remaining check',ok:true}];}};
+const options={openFresh:async()=>s,theme:'light',base:{}};
+const {result}=await runExercise(ex,options);
+assert.equal(judged,1);assert.equal(closed,1);assert.equal(result.status,'partial');
+assert.equal(result.checks.find(c=>c.name==='remaining check').ok,true);
+assert.match(result.checks.find(c=>c.name==='exported mesh extraction').detail,/fixture extraction failure/);
+await assert.rejects(runExercise({...ex,oracle:()=>{throw new Error('fixture oracle failure');}},options),/fixture oracle failure/);
+assert.equal(closed,2);
+`;
+  const r=spawnSync(process.execPath,['--import','data:text/javascript,'+encodeURIComponent(hook),'--input-type=module','-e',script],{encoding:'utf8',timeout:10000});
+  assert.equal(r.status,0,r.stderr);
+});
+
+test('#9328 summary preserves fresh and historical sheet oracle provenance', () => {
+  const historical={commit:'same-build',dirty:false,probes:{commit:'same-build',dirty:false}};
+  const fresh={...historical,sheetDxfOracle:1};
+  for (const sources of [[historical,fresh,historical],[fresh,historical,fresh]]) {
+    const summary=score(CATALOGUE,sources.map((source,i)=>result(`row-${i}`,'ui','pass',{source})));
+    assert.equal(summary.sources.length,2);
+    assert.deepEqual(summary.sources.map(s=>s.sheetDxfOracle ?? null).sort(),[1,null]);
   }
 });

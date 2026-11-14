@@ -17,6 +17,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { contiguousSourceBytes } from '@ifc-lite/parser';
 import { fixtureDataStore } from '@/test/store-fixture';
+import { settleLoadWindow } from '@/test/load-window';
 import { useViewerStore } from '@/store';
 import { createEmptyFlatSymbolic } from '@/lib/overlay-parse/symbolic-flat';
 import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse';
@@ -85,7 +86,9 @@ it('parses the overlay of a store published mid-load only after the load settles
     assert.equal(posts, 0, 'no parse while the load streams');
 
     await act(async () => { useViewerStore.setState({ geometryStreamingActive: false } as never); });
-    await tick();
+    // #9352: main waits until the settled scene is drawn before queuing idle work.
+    await settleLoadWindow(() => idle.length > 0);
+    assert.ok(idle.length > 0, 'the settled frame scheduled an idle parse');
     assert.equal(posts, 0, 'settled: the parse waits for an idle period');
 
     await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); });

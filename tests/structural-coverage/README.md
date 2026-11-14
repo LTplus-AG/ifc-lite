@@ -68,13 +68,13 @@ other entities. The registry is
 generated from the same EXPRESS as the product uses, so a codegen error there
 would be shared by the oracle and the converter.
 
+Where the IFC schemas force a value or a class on the round trip, the probe
+expects that instead of the source value (cited in `probes/convert.mjs`).
+
 The derive probe compares the AxisVM roof truss against its authored analytical
 model within 1 mm (axis sine tolerance 0.001). Partial credit requires at least
 90% of reference/derived members to match axes, endpoints and physical links;
 below that floor it fails. Missing or extra connection records prevent a pass.
-
-Where the IFC schemas force a value or a class on the round trip, the probe
-expects that instead of the source value (cited in `probes/convert.mjs`).
 
 ## Scoring and the ratchet
 

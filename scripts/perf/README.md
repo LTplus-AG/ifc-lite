@@ -8,6 +8,19 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## One store notification for a primary load's reset (#10196, closed)
+
+**Rejected before timing: holding store notifications through the synchronous reset at a primary load's pick saves about 5 ms, not the 25-35 ms the profile suggested.**
+- The reset is 32 store writes in one task, 14 of which change nothing. A hold that runs each subscriber once did cut them to one notification per subscriber.
+- In a traced Holter reopen, the "store / zustand" share of the pick task fell only 38-41 -> 28-33 ms, and zustand's listener-loop self time 15-16 -> 12-15.
+- Untraced, the pick task ended (`file.read` start) at:
+  - cold 111/113/114 -> 110/114/121;
+  - first reopen 104/105/138 -> 100/102/119;
+  - snapshot reopen 110/119/192 -> 98/99/118.
+- That is roughly 0-10 ms, below every capped 2x floor (FZK cold 6.6%, about 33 ms), so no timed slot was spent.
+
+Lesson: a profile category matched by stack ("anything with zustand in the stack") counts selector evaluation inside React's render and mount together with notification fan-out. Here the selectors run by the shell's own mount were most of it. Separate the two before sizing a change: count the store writes and their subscriber callbacks (a store-update log), and read the listener loop's self time, not the category total.
+
 ## After-load jobs wait for the load window (#9915, closed)
 
 **Rejected: gating the after-load queue (snapshot write, overlay parse, source compaction, tier-1 search) on #9855's load window does not move a Holter reopen.**

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 // MCP client over `ifc-lite-mcp --bridge` stdio for the #9523 browser evidence. Every JSON-RPC line goes to
 // <dir>/transcript.jsonl (pairing codes redacted). Writes <dir>/pairing-url.txt, waits until a tab pairs,
-// runs the read calls, writes <dir>/driver-summary.json and <dir>/calls-done, then waits for <dir>/stop.
+// runs the read calls (exit 1 if the write is not refused), writes <dir>/driver-summary.json and <dir>/calls-done, then waits for <dir>/stop.
 // Usage: node driver.mjs <cli.js> <viewerUrl> <dir>
 import { spawn } from 'node:child_process';
 import { appendFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -58,7 +58,12 @@ if (existsSync(`${dir}/stop`)) {
   const refused = await call('entity_set_attribute', { global_id: wall.globalId, attribute: 'Name', value: 'x' });
   summary.refusedMutation = { isError: refused.isError, code: refused.structuredContent?.code };
 }
+// The paired tab serves read tools only: a write that is not refused fails the run.
+const failure = summary.paired && summary.refusedMutation.isError !== true
+  ? `entity_set_attribute was not refused: ${JSON.stringify(summary.refusedMutation)}` : null;
+if (failure) summary.failure = failure;
 writeFileSync(`${dir}/driver-summary.json`, JSON.stringify(summary, null, 2));
 writeFileSync(`${dir}/calls-done`, '1');
 await until(() => existsSync(`${dir}/stop`), 'the browser finishes');
 child.stdin.end(); await sleep(500); child.kill();
+if (failure) { console.error(failure); process.exit(1); }

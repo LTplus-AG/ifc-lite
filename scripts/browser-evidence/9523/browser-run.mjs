@@ -95,6 +95,11 @@ async function servePairedCalls(page, phase, shot) {
   phase.chipAfterDisconnect = await page.locator('[data-agent-bridge-chip]').count();
 }
 
+// Phase B is the granted case: anything but a connection fails the run instead of skipping the paired calls.
+async function expectConnected(winner, phase) {
+  if (winner !== 'connected') throw new Error(`Phase B did not connect after the grant: ${phase.outcome ?? winner}`);
+}
+
 function ffGrantedProfile(types) {
   const profile = mkdtempSync(join(tmpdir(), 'ff-lna-'));
   const rows = types.map((t, i) => `(${i + 1}, '${origin}', '${t}', 1, 0, 0, ${Date.now()})`).join(',');
@@ -127,7 +132,8 @@ try {
     await cdp.send('Browser.setPermission', { origin, permission: { name: 'loopback-network' }, setting: 'granted', browserContextId: targetInfo.browserContextId });
     B.granted = 'CDP Browser.setPermission {name: loopback-network} granted, same tab, then Try again';
     B.buttonLabel = await page.locator('[data-agent-bridge-connect]').innerText();
-    if (await connect(page, B) === 'connected') await servePairedCalls(page, B, 'chromium-3-connected');
+    await expectConnected(await connect(page, B), B);
+    await servePairedCalls(page, B, 'chromium-3-connected');
   } else {
     const prefs = { 'network.dns.localDomains': host, 'network.lna.address_space.public.override': `127.0.0.1:${frontPort}` };
     const A = (report.phases.A = {}); const B = (report.phases.B = {});
@@ -151,7 +157,8 @@ try {
       const page = context.pages()[0] ?? await context.newPage();
       await openViewer(page, B);
       await openLinkAndDialog(page, B, 'firefox-4-dialog-granted');
-      if (await connect(page, B) === 'connected') await servePairedCalls(page, B, 'firefox-5-connected');
+      await expectConnected(await connect(page, B), B);
+      await servePairedCalls(page, B, 'firefox-5-connected');
     }
   }
 } catch (err) {

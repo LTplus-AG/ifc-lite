@@ -46,6 +46,8 @@ for browser in chromium firefox; do
   node "$HERE/driver.mjs" "$CLI" "https://$HOST:$HPORT" "$D" > "$D/driver.log" 2>&1 & DP=$!; PIDS+=($DP)
   timeout 900 node "$HERE/browser-run.mjs" "$B" "$browser" "$HOST" "$HPORT" "$FIXTURE" "$D" || rc=$?
   for i in $(seq 50); do kill -0 "$DP" 2>/dev/null || break; sleep 0.2; done
+  if kill -0 "$DP" 2>/dev/null; then kill "$DP"; echo "driver for $browser did not exit" >&2; rc=1; fi
+  wait "$DP" || rc=1
 done
 
 for f in "$OUT"/lna-socket-probe.json "$OUT"/ff-socket-probe.json "$OUT"/*/*-report.json "$OUT"/*/driver-summary.json; do

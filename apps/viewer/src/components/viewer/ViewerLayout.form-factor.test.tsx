@@ -162,7 +162,7 @@ describe('ViewerLayout panel placement per form factor (#9718 DoD 3-5)', () => {
   it('a portrait phone keeps the modal bottom sheet with its scrim', () => {
     setViewport(412, 960);
     const ui = renderViewerLayout();
-    act(() => useViewerStore.getState().setRightPanelCollapsed(false));
+    act(() => useViewerStore.setState({ sidebarActivePanel: 'properties', rightPanelCollapsed: false }));
     assert.deepEqual(panels(ui), { host: 'sheet', sheet: true, pane: null, paneTitle: null, scrim: true, order: 'view pane bar' });
   });
 
@@ -177,10 +177,10 @@ describe('ViewerLayout panel placement per form factor (#9718 DoD 3-5)', () => {
   it('a near-tablet (Z Fold inner 830x750) docks the pane right of the viewport, the bar under both', () => {
     setViewport(830, 750);
     const ui = renderViewerLayout();
-    act(() => useViewerStore.getState().setRightPanelCollapsed(false));
+    act(() => useViewerStore.setState({ sidebarActivePanel: 'properties', rightPanelCollapsed: false }));
     const shell = ui.querySelector<HTMLElement>('[data-mobile-shell]')!;
     assert.equal(shell.style.gridTemplateAreas, '"view pane" "bar bar"');
-    assert.deepEqual({ ...panels(ui), paneTitle: null }, { host: 'side-pane', sheet: false, pane: 'side-pane', paneTitle: null, scrim: false, order: 'view pane bar' });
+    assert.deepEqual(panels(ui), { host: 'side-pane', sheet: false, pane: 'side-pane', paneTitle: 'Properties', scrim: false, order: 'view pane bar' });
   });
 
   it('Flex Mode puts the viewport on the top segment and the Panels list inline in the bottom one, with no floating button', () => {

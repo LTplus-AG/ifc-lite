@@ -351,12 +351,19 @@ for (const fold of [
       await offHinge();
       await attachShot(page, testInfo, `fold-${fold.feature.orientation}-${fold.width}x${fold.height}-panel`);
 
+      // Keep the actual DOM node: a locator would also match a replacement after a remount.
+      const mountedViewport = await viewport.elementHandle();
+      expect(mountedViewport, 'the folded viewport is mounted').not.toBeNull();
+
       // Unfold live: the panel stays open, now in the unfolded host.
       await cdp.send('Emulation.setDeviceMetricsOverride', metrics);
       await page.evaluate(() => window.dispatchEvent(new Event('resize')));
       await expect(page.locator('[data-mobile-shell]')).not.toHaveAttribute('data-mobile-panel-host', 'segment');
       expect(await withStore(page, (store) => store.getState().leftPanelCollapsed), 'unfolding kept the panel open').toBe(false);
-      await expect(viewport).toHaveCount(1);
+      expect(await mountedViewport!.evaluate((node) =>
+        node.isConnected && node === document.querySelector('[data-mobile-viewport]')),
+      '#9718 unfolding preserves the original viewport DOM node').toBe(true);
+      await mountedViewport!.dispose();
     });
   });
 }

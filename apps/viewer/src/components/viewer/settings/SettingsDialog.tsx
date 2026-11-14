@@ -82,6 +82,7 @@ export function SettingsDialog({ open, section, onSectionChange, onOpenChange }:
   const wide = useSyncExternalStore(subscribeSm, isSmViewport, () => true);
   // A host that switched live sessions off has no collaboration settings to offer.
   const sections = SETTINGS_SECTIONS.filter((id) => id !== 'collaboration' || isFeatureEnabled('collab.sessions'));
+  const active = sections.includes(section) ? section : sections[0];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent scrollBody className={DIALOG_CLASS} data-settings-dialog>
@@ -91,7 +92,7 @@ export function SettingsDialog({ open, section, onSectionChange, onOpenChange }:
         </div>
         <Tabs
           orientation={wide ? 'vertical' : 'horizontal'}
-          value={section}
+          value={active}
           onValueChange={(value) => { const next = SETTINGS_SECTIONS.find((id) => id === value); if (next) onSectionChange(next); }}
           className="flex min-h-0 flex-1 flex-col sm:flex-row sm:gap-4 sm:px-5 sm:pb-5 sm:pt-3"
         >

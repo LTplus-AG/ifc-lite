@@ -45,8 +45,8 @@ export const COMMAND_FEATURE: Readonly<Partial<Record<SurfaceCommandId, FeatureI
   'tool:edit-mode': 'edit.model',
   'context:delete': 'edit.model',
 
-  // Authoring an extension is done by the AI in chat.
-  'extensions:author': ['automate.extensions', 'ai.assistant'],
+  // Authoring an extension is done by the AI in chat, a pane of the Script panel.
+  'extensions:author': ['automate.extensions', 'ai.assistant', 'automate.scripting'],
   'extensions:flavors': 'automate.extensions',
   // The AI chat is a pane of the Script panel, so it needs scripting too.
   'panel:chat': 'ai.assistant',
@@ -57,8 +57,8 @@ export const COMMAND_FEATURE: Readonly<Partial<Record<SurfaceCommandId, FeatureI
   'context:export-anonymized': 'export.files',
   // 3D world context streams imagery and terrain from an outside service.
   'view:world': 'privacy.third-party',
-  // Tours load the sample project (`isTourAvailable`).
-  'learn:hub': ['help.tours', 'files.samples'],
+  // The hub lists the available tours (`isTourAvailable`); the ribbon tour needs no sample.
+  'learn:hub': 'help.tours',
 };
 
 /** Families of command ids (`measure:<mode>`, every `model:` command) belong to one feature; an exact row above wins. */

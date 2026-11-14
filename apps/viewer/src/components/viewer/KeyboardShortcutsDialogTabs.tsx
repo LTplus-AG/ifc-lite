@@ -65,14 +65,14 @@ export function PrivacyBanner() { // exported for ViewportWelcomeCard.privacy.te
         <div className="mt-1.5 ml-1 space-y-1 text-xs text-muted-foreground">
           <p>
             {t('keyboardShortcuts.privacy.intro')}{' '}
-            <a
+            {isFeatureEnabled('help.product-links') ? <a
               href="https://webassembly.org/"
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-foreground transition-colors"
             >
               {t('keyboardShortcuts.privacy.wasmLink')}
-            </a>
+            </a> : t('keyboardShortcuts.privacy.wasmLink')}
             {' '}{t('keyboardShortcuts.privacy.outro')}
           </p>
           <p className="text-2xs italic">

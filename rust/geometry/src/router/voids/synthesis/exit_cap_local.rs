@@ -26,31 +26,36 @@ pub(super) fn flush_band(f: &CutterFrame) -> f64 {
 
 /// The contact of a host facet with the cap at `cap` along the axis. A facet
 /// may tilt up to ten degrees off the cap, so its distance is read where it
-/// matters: the nearest its plane comes to the cap over the part of the
-/// cutter's footprint the facet spans. A vertex beside the footprint, or the
-/// one listed first, decides nothing. Where that reading is not a finite
-/// number (a facet on edge, a vertex that is not a number) the pull-in stays.
+/// matters: over the part of the facet that lies inside the cutter's
+/// footprint. A vertex beside the footprint, or the one listed first, decides
+/// nothing. Where that part is empty or its depth is not a finite number, the
+/// pull-in stays.
 pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> Contact {
     if !overlaps(f, triangle) {
         return Contact::Clear;
     }
     let axes = [f.frame.cross_a, f.frame.cross_b, f.depth()];
-    let [p, q, r] = triangle.map(|v| axes.map(|axis| v.coords.dot(&axis)));
-    let (e, g) = ([0, 1, 2].map(|k| q[k] - p[k]), [0, 1, 2].map(|k| r[k] - p[k]));
-    let n = [e[1] * g[2] - e[2] * g[1], e[2] * g[0] - e[0] * g[2], e[0] * g[1] - e[1] * g[0]];
-    // The facet's own extent, pulled into the footprint: the plane is not
-    // read farther out than the facet reaches.
-    let span = |k: usize, lo: f64, hi: f64| {
-        let (a, b) = (p[k].min(q[k]).min(r[k]), p[k].max(q[k]).max(r[k]));
-        [a.max(lo).min(hi), b.max(lo).min(hi)]
-    };
-    let (us, vs) = (span(0, f.lo.x, f.hi.x), span(1, f.lo.y, f.hi.y));
-    // Offset from the cap of the facet's plane above footprint point `(u, v)`.
-    let off = |u: f64, v: f64| p[2] - (n[0] * (u - p[0]) + n[1] * (v - p[1])) / n[2] - cap;
-    let corners = [off(us[0], vs[0]), off(us[1], vs[0]), off(us[1], vs[1]), off(us[0], vs[1])];
+    // The facet in frame coordinates, clipped to the footprint one side at a
+    // time. Every point kept is a point of the facet: nothing is extrapolated.
+    let mut part: Vec<[f64; 3]> = triangle.iter().map(|v| axes.map(|axis| v.coords.dot(&axis))).collect();
+    for (k, bound, above) in [(0, f.lo.x, true), (0, f.hi.x, false), (1, f.lo.y, true), (1, f.hi.y, false)] {
+        let inside = |p: &[f64; 3]| if above { p[k] >= bound } else { p[k] <= bound };
+        let mut kept = Vec::with_capacity(part.len() + 1);
+        for (i, a) in part.iter().enumerate() {
+            let b = &part[(i + 1) % part.len()];
+            if inside(a) {
+                kept.push(*a);
+            }
+            if inside(a) != inside(b) {
+                let t = (bound - a[k]) / (b[k] - a[k]);
+                kept.push([0, 1, 2].map(|j| a[j] + t * (b[j] - a[j])));
+            }
+        }
+        part = kept;
+    }
     let band = flush_band(f);
-    let clear = corners.iter().all(|&c| c > band) || corners.iter().all(|&c| c < -band);
-    if clear && corners.iter().all(|c| c.is_finite()) {
+    let finite = !part.is_empty() && part.iter().all(|p| p[2].is_finite());
+    if finite && (part.iter().all(|p| p[2] - cap > band) || part.iter().all(|p| cap - p[2] > band)) {
         Contact::Band
     } else {
         Contact::On

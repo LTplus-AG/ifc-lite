@@ -124,9 +124,9 @@ fn contact_is_on_within_the_flush_band_and_band_beyond_it() {
     // One that crosses the cap plane over the footprint is on it, though each
     // of its vertices is 0.6 mm off or beside the footprint.
     assert!(contact(&frame, facet(0.0, [0.0106, 0.0112, 0.0112]), 0.0112) == Contact::On);
-    // A small facet 0.4 mm off, tilted, is read over its own extent and not
-    // out to the far corner of the footprint, where its plane would cross.
-    let small = [Point3::new(1.0, 1.0, 0.0116), Point3::new(1.01, 1.0, 0.01159), Point3::new(1.0, 1.01, 0.0116)];
+    // A small tilted facet 0.4 mm off or more is read on its own points, not
+    // where its plane would reach the cap beyond its third edge.
+    let small = [Point3::new(1.0, 1.0, 0.012), Point3::new(1.01, 1.0, 0.0116), Point3::new(1.0, 1.01, 0.0116)];
     assert!(contact(&frame, small, 0.0112) == Contact::Band);
     // No finite depth, no verdict: a facet on edge, in or at the rim of the
     // footprint, and a vertex that is not a number all keep the pull-in.

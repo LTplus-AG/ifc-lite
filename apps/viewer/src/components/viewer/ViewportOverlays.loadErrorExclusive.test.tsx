@@ -25,20 +25,22 @@ describe('ViewportOverlays — load error visibility (#10251)', () => {
     act(() => useViewerStore.setState({ loading: true, error: 'boom', loadingFileName: 'broken.ifc' }));
     const container = renderOverlays();
     assert.ok(container.querySelector('[data-viewport-load-error-card]'), 'the error card renders');
-    assert.equal(container.querySelector('[data-viewport-loading-card]'), null, 'the loading card does not');
+    assert.ok(!container.querySelector('[data-viewport-loading-card]'), 'the loading card does not');
   });
 
   it('shows no loading popup while loading', () => {
     act(() => useViewerStore.setState({ loading: true, error: null, loadingFileName: 'model.ifc' }));
     const container = renderOverlays();
-    assert.equal(container.querySelector('[data-viewport-loading-card]'), null, 'loading adds no popup');
-    assert.equal(container.querySelector('[data-viewport-load-error-card]'), null);
+    // Keep failures scalar: inspecting a happy-dom element can overwhelm the
+    // reverted-code oracle when the old popup is deliberately restored.
+    assert.ok(!container.querySelector('[data-viewport-loading-card]'), 'loading adds no popup');
+    assert.ok(!container.querySelector('[data-viewport-load-error-card]'));
   });
 
   it('shows neither when idle', () => {
     act(() => useViewerStore.setState({ loading: false, error: null }));
     const container = renderOverlays();
-    assert.equal(container.querySelector('[data-viewport-loading-card]'), null);
-    assert.equal(container.querySelector('[data-viewport-load-error-card]'), null);
+    assert.ok(!container.querySelector('[data-viewport-loading-card]'));
+    assert.ok(!container.querySelector('[data-viewport-load-error-card]'));
   });
 });

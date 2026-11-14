@@ -7251,3 +7251,36 @@ have slack. In browser cold loads they do not: the geometry pool runs until
 than the main-thread work it replaces, for example written in Rust inside the
 meshing pass instead of as a second JavaScript pass over every vertex. Removing
 work outright (#10175, batch deserialization) is the better lever.
+
+## Flat-batch metadata in typed columns (#10199, on #10175; closed untimed)
+
+**Rejected before a timed slot: the main thread did more work, not less.** The
+follow-up to #10175 sent each mesh's usual metadata (colour, origin, local bounds,
+transform, ids, hash, box, volume) as slots in typed columns and rebuilt
+identical objects on the main thread. Keys, key order and values were the same;
+the browser identity check was IDENTICAL on all 7 corpus fixtures. It looked like
+the best ratio of main-thread ms removed per worker ms added (synthetic
+microbenchmark: 76 -> 45 ms).
+
+Untimed traces on Pop (sourcemapped, cold, 3 each; r0 ran under load 6-10, so the
+medians of r1/r2 are compared against #10175's traces at the same load):
+
+| ms, median of r1/r2 | Holter #10175 | Holter + columns | BWK #10175 | BWK + columns |
+|---|---:|---:|---:|---:|
+| `geometry-parallel.ts` self (pool `onmessage`) | 168 | 240 | 97 | 139 |
+| pool `onmessage` inclusive | 241 | 317 | 186 | 223 |
+| `scene-precision.ts` self | | +15 | | +25 |
+| rebuild (`flat-batch-meta.ts`) self | | 8-58 | | 5 |
+
+The rebuilt objects get their vertex fields as `undefined` first and typed
+arrays later, and their shape differs from the deserialized objects. Both the
+rebuild and every later property access in the renderer (`topologySafeBatchOrigin`,
+`preserves`) got slower, and the column decode did not win back the
+deserialization it saved. Slot 90 was withdrawn before submission.
+
+**Lesson:** a synthetic benchmark that measures only receive cost misses what the
+rebuilt objects cost the consumers. On V8, structured-clone deserialization
+produces objects the renderer's hot paths already handle well; a JS rebuild has
+to match their shape (one literal with every field set) before it can save
+anything. Measure the consumers in a real trace before trusting a receive-side
+microbenchmark.

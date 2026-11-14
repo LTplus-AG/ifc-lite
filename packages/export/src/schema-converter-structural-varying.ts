@@ -2,7 +2,6 @@
 /** Matches rust/export/src/schema_structural_varying.rs (#9668). */
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
-import { becomes } from './schema-converter-structural-links.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
@@ -14,7 +13,8 @@ import { readStepSlots } from './step-argument-parser.js';
  * IfcStructuralCurveAction or IfcStructuralSurfaceAction whose AppliedLoad is an
  * IfcStructuralLoadConfiguration (IFC4_ADD2_TC1.exp:9399, :9625, :9470).
  * `first` is what the IFC2X3 supertype's WR61 admits as AppliedLoad
- * (IFC2X3_TC1.exp:7301 and IfcStructuralPlanarAction). `min` is the size of
+ * (IFC2X3_TC1.exp:7301 and IfcStructuralPlanarAction); a downgrade takes only
+ * a configuration whose values all share one of those types. `min` is the size of
  * VaryingAppliedLoads (LIST [2:?] linear, [3:?] planar).
  */
 const KINDS = [
@@ -22,11 +22,12 @@ const KINDS = [
   { ifc2x3: 'IFCSTRUCTURALPLANARACTIONVARYING', ifc4: 'IFCSTRUCTURALSURFACEACTION', first: ['IFCSTRUCTURALLOADPLANARFORCE', 'IFCSTRUCTURALLOADTEMPERATURE'], min: 3 },
 ] as const;
 
-const FROM_IFC2X3 = 'an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; its VaryingAppliedLoadLocation remains an IfcShapeAspect of the action representation';
+const FROM_IFC2X3 = 'an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; the IfcShapeAspect named by VaryingAppliedLoadLocation stays in the file, and a downgrade finds it again only as the one aspect of the action representation';
 const TO_IFC2X3 = 'an IFC4 curve or surface action with an IfcStructuralLoadConfiguration is written as an IFC2X3 varying action, its locations taken from the one IfcShapeAspect of its representation; the configuration Name, Locations and the action PredefinedType have no slot in IFC2X3';
 
 export interface Rewrite { readonly body: string; readonly losses: readonly string[] }
-interface Configuration { readonly values: readonly number[]; readonly first: string; readonly loads: boolean }
+/** A configuration's values and the one type they share, or null when they differ. */
+interface Configuration { readonly values: readonly number[]; readonly type: string | null }
 
 /**
  * Converts varying actions in both directions. Both directions need the source
@@ -65,7 +66,8 @@ export class StructuralVarying {
       const values = listItems(slots(id)?.[1] ?? '')?.map(refId);
       if (!values?.length || values.some((v) => v === null)) continue;
       const refs = values as number[];
-      this.configs.set(id, { values: refs, first: typeOf(refs[0]), loads: refs.every((v) => becomes(typeOf(v), 'IfcStructuralLoad')) });
+      const type = typeOf(refs[0]);
+      this.configs.set(id, { values: refs, type: refs.every((v) => typeOf(v) === type) ? type : null });
     }
   }
 
@@ -94,8 +96,10 @@ export class StructuralVarying {
     if (!kind || !this.configs || args.length !== 12 || args[11].trim().toUpperCase() === '.CONST.') return undefined;
     const config = this.configs.get(refId(args[7]) ?? -1);
     const aspects = this.aspects.get(refId(args[6]) ?? -1);
-    if (!config?.loads || config.values.length < kind.min || !(kind.first as readonly string[]).includes(config.first) || aspects?.length !== 1) return undefined;
+    if (!config?.type || config.values.length < kind.min || !(kind.first as readonly string[]).includes(config.type) || aspects?.length !== 1) return undefined;
     const [first, ...rest] = config.values.map((v) => `#${v}`);
-    return { body: `${kind.ifc2x3}(${[...args.slice(0, 7), first, args[8], args[9], '$', args[10], `#${aspects[0]}`, `(${rest.join(',')})`].join(',')})`, losses: [TO_IFC2X3] };
+    // `inspect` reports this for the records it sees; a rewritten one skips it.
+    const losses = args[9].trim() === '$' ? [TO_IFC2X3, `${entity}.DestabilizingLoad is unknown; IFC2X3 requires a boolean, so the writer substitutes .F.`] : [TO_IFC2X3];
+    return { body: `${kind.ifc2x3}(${[...args.slice(0, 7), first, args[8], args[9], '$', args[10], `#${aspects[0]}`, `(${rest.join(',')})`].join(',')})`, losses };
   }
 }

@@ -23,7 +23,8 @@ use crate::step_slot::split_top_level_args;
 struct Kind {
     ifc2x3: &'static str,
     ifc4: &'static str,
-    /// What the IFC2X3 supertype's WR61 admits as AppliedLoad.
+    /// What the IFC2X3 supertype's WR61 admits as AppliedLoad; a downgrade
+    /// takes only a configuration whose values all share one of these types.
     first: [&'static str; 2],
     /// The size of VaryingAppliedLoads: LIST [2:?] linear, [3:?] planar.
     min: usize,
@@ -34,7 +35,7 @@ const KINDS: [Kind; 2] = [
     Kind { ifc2x3: "IFCSTRUCTURALPLANARACTIONVARYING", ifc4: "IFCSTRUCTURALSURFACEACTION", first: ["IFCSTRUCTURALLOADPLANARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], min: 3 },
 ];
 
-const FROM_IFC2X3: &str = "an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; its VaryingAppliedLoadLocation remains an IfcShapeAspect of the action representation";
+const FROM_IFC2X3: &str = "an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; the IfcShapeAspect named by VaryingAppliedLoadLocation stays in the file, and a downgrade finds it again only as the one aspect of the action representation";
 const TO_IFC2X3: &str = "an IFC4 curve or surface action with an IfcStructuralLoadConfiguration is written as an IFC2X3 varying action, its locations taken from the one IfcShapeAspect of its representation; the configuration Name, Locations and the action PredefinedType have no slot in IFC2X3";
 
 #[derive(Default)]
@@ -53,6 +54,14 @@ fn record(content: &[u8], start: usize, end: usize) -> Option<Vec<String>> {
     split_top_level_args(record_frame(&text)?.args(&text))
 }
 
+/// AppliedLoad then SubsequentAppliedLoads of an IFC2X3 varying action, or None.
+fn varying_loads(kind: &Kind, args: &[String]) -> Option<Vec<u32>> {
+    if args.len() != 14 { return None; }
+    let mut loads = vec![ref_id(Some(&args[7]))?];
+    loads.extend(refs(&args[13])?);
+    (loads.len() >= kind.min).then_some(loads)
+}
+
 /// A list of references, or None when any item is not one.
 fn refs(token: &str) -> Option<Vec<u32>> {
     list_items(token)?.iter().map(|item| ref_id(Some(item))).collect()
@@ -63,8 +72,10 @@ impl StructuralVarying {
     pub(crate) fn scan_ifc2x3(content: &[u8], kept: impl Fn(u32, usize) -> bool, mut allocate: impl FnMut() -> Option<u32>) -> Self {
         let mut result = Self::default();
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
-        while let Some((id, ty, start, _)) = scanner.next_entity() {
-            if !KINDS.iter().any(|k| ty.eq_ignore_ascii_case(k.ifc2x3)) || !kept(id, start) { continue; }
+        while let Some((id, ty, start, end)) = scanner.next_entity() {
+            let Some(kind) = KINDS.iter().find(|k| ty.eq_ignore_ascii_case(k.ifc2x3)) else { continue };
+            // Only a record `rewrite` will convert takes an id, as the TypeScript twin allocates.
+            if !kept(id, start) || record(content, start, end).and_then(|args| varying_loads(kind, &args)).is_none() { continue; }
             let Some(config) = allocate() else { break };
             result.config_ids.insert(id, config);
         }
@@ -109,8 +120,8 @@ impl StructuralVarying {
         for (id, kind, representation, load) in candidates {
             let Some(values) = configs.get(&load) else { continue };
             let aspect = match representation.and_then(|r| aspects.get(&r)).map(Vec::as_slice) { Some([only]) => *only, _ => continue };
-            let first = loads.get(&values[0]).is_some_and(|t| kind.first.contains(&t.as_str()));
-            if values.len() >= kind.min && first && values.iter().all(|v| loads.contains_key(v)) {
+            let Some(first) = loads.get(&values[0]).filter(|t| kind.first.contains(&t.as_str())) else { continue };
+            if values.len() >= kind.min && values.iter().all(|v| loads.get(v) == Some(first)) {
                 result.actions.insert(id, (kind, values.clone(), aspect));
             }
         }
@@ -123,10 +134,8 @@ impl StructuralVarying {
     /// The target record body for a varying action of either schema, and what the change loses.
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<(String, Vec<String>)> {
         if let Some(&config) = self.config_ids.get(&id) {
-            let kind = KINDS.iter().find(|k| k.ifc2x3 == entity).filter(|_| args.len() == 14)?;
-            let mut loads = vec![ref_id(Some(&args[7]))?];
-            loads.extend(refs(&args[13])?);
-            if loads.len() < kind.min { return None; }
+            let kind = KINDS.iter().find(|k| k.ifc2x3 == entity)?;
+            let loads = varying_loads(kind, args)?;
             let values = loads.iter().map(|l| format!("#{l}")).collect::<Vec<_>>().join(",");
             self.pending.push(format!("#{config}=IFCSTRUCTURALLOADCONFIGURATION($,({values}),$);"));
             let mut losses = vec![FROM_IFC2X3.to_string()];
@@ -137,7 +146,10 @@ impl StructuralVarying {
         let (kind, values, aspect) = self.actions.get(&id).filter(|(k, ..)| k.ifc4 == entity && args.len() == 12)?;
         let rest = values[1..].iter().map(|v| format!("#{v}")).collect::<Vec<_>>().join(",");
         let tail = [format!("#{}", values[0]), args[8].clone(), args[9].clone(), "$".into(), args[10].clone(), format!("#{aspect}"), format!("({rest})")];
-        Some((format!("{}({})", kind.ifc2x3, [&args[..7], &tail].concat().join(",")), vec![TO_IFC2X3.to_string()]))
+        let mut losses = vec![TO_IFC2X3.to_string()];
+        // `inspect` reports this for the records it sees; a rewritten one skips it.
+        if args[9].trim() == "$" { losses.push(format!("{entity}.DestabilizingLoad is unknown; IFC2X3 requires a boolean, so the writer substitutes .F.")); }
+        Some((format!("{}({})", kind.ifc2x3, [&args[..7], &tail].concat().join(",")), losses))
     }
 
     /// Whether the record is a configuration every referrer of which became a varying action.
@@ -215,6 +227,19 @@ mod tests {
         let (out, _) = export_step_with_stats(source.as_bytes(), &StepOptions { included: Some(vec![1, 10, 11, 20, 21, 30]), ..to("IFC4") }).unwrap();
         assert!(record(&out, "#30=").starts_with("#30=IFCSTRUCTURALLINEARACTIONVARYING("), "{out}");
         assert!(configs(&out).is_empty(), "{out}");
+    }
+
+    #[test]
+    fn unknown_destabilizing_load_is_reported_and_mixed_loads_refused_9668() {
+        // ProjectedOrTrue has no IFC2X3 default, so it stays `$` and the slot fill reports it.
+        let line = "#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,.GLOBAL_COORDS.,$,$,.LINEAR.);";
+        let source = model("IFC4", &format!("#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);\n{line}"));
+        let (out, _, warnings) = export_step_with_diagnostics(source.as_bytes(), &to("IFC2X3")).unwrap();
+        assert_eq!(record(&out, "#30="), "#30=IFCSTRUCTURALLINEARACTIONVARYING('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#20,.GLOBAL_COORDS.,.F.,$,$,#11,(#21));");
+        assert!(warnings.iter().any(|w| w.contains("IFCSTRUCTURALCURVEACTION.DestabilizingLoad is unknown")), "{warnings:?}");
+        // A planar load among the values: not a varying linear action, so the configuration stays and has no IFC2X3 form.
+        let mixed = source.replace("(#20,#21)", "(#20,#22)");
+        assert!(export_step_with_stats(mixed.as_bytes(), &to("IFC2X3")).is_err());
     }
 
     #[test]

@@ -62,6 +62,20 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     expect(result.stats.warnings.join('\n')).toContain('IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4');
   });
 
+  it('reports an unknown DestabilizingLoad and refuses loads of mixed types', async () => {
+    // ProjectedOrTrue has no IFC2X3 default, so it stays `$` and the slot fill reports it, as for a constant action.
+    const ifc4 = model('IFC4', `${SHARED}
+#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);
+#26=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#22),$);
+#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,.GLOBAL_COORDS.,$,$,.LINEAR.);
+#31=IFCSTRUCTURALCURVEACTION('1d2HL$ILbNDhwyUI0qw12$',$,'Mixed',$,$,$,#12,#26,.GLOBAL_COORDS.,.F.,$,.LINEAR.);`);
+    const result = new StepExporter(await parse(ifc4)).export({ schema: 'IFC2X3' });
+    const out = new TextDecoder().decode(result.content);
+    expect(line(out, 30)).toBe("#30=IFCSTRUCTURALLINEARACTIONVARYING('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#20,.GLOBAL_COORDS.,.F.,$,$,#11,(#21));");
+    expect(line(out, 31)).toMatch(/^#31=IFCPROXY\(/);
+    expect(result.stats.warnings.join('\n')).toContain('1 structural conversion record(s): IFCSTRUCTURALCURVEACTION.DestabilizingLoad is unknown');
+  });
+
   it('leaves an IFC4 action with no IfcShapeAspect for its locations as before', async () => {
     const ifc4 = model('IFC4', `${SHARED}
 #25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),((0.),(4.)));
@@ -73,9 +87,11 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
   it('does not write a varying action that still names a withheld configuration', async () => {
     // An illegal ObjectPlacement naming the configuration: the rewrite copies it, so the record stays a proxy.
     const ifc4 = exportToStep(await parse(IFC2X3), { schema: 'IFC4' }).replace(/(#30=IFCSTRUCTURALCURVEACTION\('[^']*',\$,'Line',\$,\$,)\$/, '$1#32');
-    const out = exportToStep(await parse(ifc4), { schema: 'IFC2X3' });
+    const result = new StepExporter(await parse(ifc4)).export({ schema: 'IFC2X3' });
+    const out = new TextDecoder().decode(result.content);
     expect(line(out, 30)).toMatch(/^#30=IFCPROXY\(/);
     expect(line(out, 31)).toMatch(/^#31=IFCSTRUCTURALPLANARACTIONVARYING\(/);
+    expect(result.stats.warnings.join('\n')).toContain('1 structural conversion record(s): an IFC4 curve or surface action');
   });
 
   it('needs the source store, so a subset export keeps the varying action unconverted', async () => {

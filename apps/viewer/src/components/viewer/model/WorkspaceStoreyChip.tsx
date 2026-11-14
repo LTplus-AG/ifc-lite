@@ -19,7 +19,7 @@
  * and raises a notice: nothing can be drawn until it has one.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Eye, EyeOff, Layers, TriangleAlert } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
@@ -57,6 +57,7 @@ export function useWorkspaceStoreyGroups(): StoreyPickerGroup[] {
 
 export function WorkspaceStoreyControl() {
   const { t } = useTranslation();
+  const pickedStorey = useRef(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const [open, setOpen] = useState(false);
   const session = useViewerStore((s) => s.session);
@@ -64,7 +65,7 @@ export function WorkspaceStoreyControl() {
   const groups = useWorkspaceStoreyGroups();
   const copyDenial = useViewerStore((s) => s.session ? mutationDenial(s, s.session.modelId) : null);
   useEffect(() => {
-    const show = () => { setCopyOpen(true); setOpen(true); };
+    const show = () => { pickedStorey.current = false; setCopyOpen(true); setOpen(true); };
     window.addEventListener(COPY_TO_STOREYS_EVENT, show);
     return () => window.removeEventListener(COPY_TO_STOREYS_EVENT, show);
   }, []);
@@ -121,8 +122,13 @@ export function WorkspaceStoreyControl() {
               {current && <StoreyContextControl />}
             </span>
           </HudChip>
-          <HudPopoverContent onCloseAutoFocus={(event) => { event.preventDefault(); document.querySelector<HTMLElement>('[data-testid="model-3d-panel"] canvas')?.focus(); }} align="start" className="p-1">
-            {copyOpen ? <Suspense fallback={<div className="flex h-64 w-64 items-center justify-center p-2"><Spinner label={t('storeyManager.copy.title')} /></div>}><CopyToStoreys onDone={() => { setOpen(false); setCopyOpen(false); }} /></Suspense> : <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={pickWorkspaceStorey} />}
+          <HudPopoverContent onCloseAutoFocus={(event) => { if (pickedStorey.current) {
+            pickedStorey.current = false;
+            const planOnly = document.querySelector('[data-model-layout="plan"]') !== null;
+            const canvas = document.querySelector<HTMLElement>(planOnly ? '[data-plan-focus-target]' : '[data-testid="model-3d-panel"] canvas') ?? document.querySelector<HTMLElement>('[data-plan-focus-target]');
+            if (canvas) { event.preventDefault(); canvas.focus(); }
+          } }} align="start" className="p-1">
+            {copyOpen ? <Suspense fallback={<div className="flex h-64 w-64 items-center justify-center p-2"><Spinner label={t('storeyManager.copy.title')} /></div>}><CopyToStoreys onBack={() => setCopyOpen(false)} onDone={() => { setOpen(false); setCopyOpen(false); }} /></Suspense> : <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={storey => { pickedStorey.current = true; pickWorkspaceStorey(storey); }} />}
             {!copyOpen && <Button size="sm" variant="ghost" disabled={copyDenial !== null} title={copyDenial ? t('storeyManager.copy.readOnly', { reason: copyDenial }) : undefined} onClick={() => setCopyOpen(!copyOpen)}>{t('storeyManager.copy.title')}</Button>}
             {!copyOpen && <StoreyPickerActions />}
           </HudPopoverContent>

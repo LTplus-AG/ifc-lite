@@ -194,6 +194,35 @@ describe('panels, commands, shortcuts and tools switched off', () => {
     }
   });
 
+  it('opening a panel that is off leaves the open panel where it was', () => {
+    const store = useViewerStore;
+    resetFeaturesForTest({ default: 'none', enable: ['check.clash'] });
+    const stop = enforcePanelAvailability(store);
+    try {
+      store.getState().openWorkspacePanel('clash');
+      store.getState().setBcfPanelVisible(true); // e.g. a toast's Open link in the Clash panel
+      assert.equal(store.getState().bcfPanelVisible, false);
+      assert.equal(store.getState().clashPanelVisible, true, 'the Clash panel stays open');
+      assert.equal(store.getState().sidebarActivePanel, 'clash');
+    } finally {
+      stop();
+      store.getState().setClashPanelVisible(false);
+    }
+  });
+
+  it('closing a switched-off primary never leaves Information in both split halves', () => {
+    const store = useViewerStore;
+    resetFeaturesForTest({ default: 'none', enable: ['check.clash'] });
+    store.setState({ sidebarActivePanel: 'lens', sidebarSecondaryPanel: 'properties' });
+    const stop = enforcePanelAvailability(store);
+    try {
+      assert.equal(store.getState().sidebarActivePanel, 'properties');
+      assert.equal(store.getState().sidebarSecondaryPanel, null);
+    } finally {
+      stop();
+    }
+  });
+
   it('a tool that is off cannot be activated', () => {
     const store = useViewerStore;
     store.getState().setActiveTool('select');

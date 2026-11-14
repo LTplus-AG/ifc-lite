@@ -253,17 +253,20 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
           {menuItem('ui:commands')}
           {menuItem('pref:settings')}
           <DropdownMenuSeparator />
-          {/* Walk Mode */}
-          {isSurfaceCommandAvailable(walk) && <DropdownMenuCheckboxItem
-            data-command-id={walk.id}
-            checked={activeTool === 'walk'}
-            onCheckedChange={() => runMobile(walk)}
-          >
-            <WalkIcon className="h-4 w-4 mr-2" />
-            {mobileLabel(walk)}
-          </DropdownMenuCheckboxItem>}
-
-          <DropdownMenuSeparator />
+          {/* Walk Mode, with its own separator so a switched-off Walk leaves no empty band */}
+          {isSurfaceCommandAvailable(walk) && (
+            <>
+              <DropdownMenuCheckboxItem
+                data-command-id={walk.id}
+                checked={activeTool === 'walk'}
+                onCheckedChange={() => runMobile(walk)}
+              >
+                <WalkIcon className="h-4 w-4 mr-2" />
+                {mobileLabel(walk)}
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
 
           {/* Visibility */}
           {menuItem('vis:isolate')}

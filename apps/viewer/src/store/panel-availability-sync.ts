@@ -29,7 +29,9 @@ function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Parti
     if (state[BOTTOM_PANEL_FLAG[id]] && off.has(id)) patch[BOTTOM_PANEL_FLAG[id]] = false;
   }
   if (off.has(state.sidebarActivePanel)) patch.sidebarActivePanel = 'properties';
-  if (state.sidebarSecondaryPanel && off.has(state.sidebarSecondaryPanel)) patch.sidebarSecondaryPanel = null;
+  // The top half cannot also be the bottom half (setSidebarActivePanel's rule).
+  const secondary = state.sidebarSecondaryPanel;
+  if (secondary && (off.has(secondary) || (patch.sidebarActivePanel === 'properties' && secondary === 'properties'))) patch.sidebarSecondaryPanel = null;
   if (state.floatingPanels.some((panel) => off.has(panel.id))) {
     patch.floatingPanels = state.floatingPanels.filter((panel) => !off.has(panel.id));
   }

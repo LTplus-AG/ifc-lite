@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isPanelAvailable } from '@/lib/panels/availability';
 import type { StoreApi } from 'zustand';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 import type { ViewerState } from './index.js';
@@ -27,6 +28,8 @@ export function registerSidebarExclusivity(store: StoreApi<ViewerState>): void {
       if (state[flag] && !prev[flag]) { opened = id; break; }
     }
 
+    // A switched-off panel never takes the sidebar: the availability rule turns its flag back off.
+    if (opened && !isPanelAvailable(opened)) return;
     if (opened) {
       const patch: Record<string, boolean> = {};
       for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {

@@ -14,7 +14,8 @@ import assert from 'node:assert/strict';
 import { createStore } from 'zustand/vanilla';
 import { createDrawing2DSlice, type Drawing2DSlice } from './drawing2DSlice.js';
 import type { Dimension2D } from './drawing2DDimensions.js';
-import { canRedoDimension2D, canUndoDimension2D, MAX_DIMENSION_2D_HISTORY } from './drawing2DDimensionHistory.js';
+import { canRedoDimension2D, canUndoDimension2D, MAX_DIMENSION_2D_HISTORY, rebaseDimensionHistory } from './drawing2DDimensionHistory.js';
+import { unionById } from '../../hooks/drawingPersistenceKey.js';
 import { __resetLiveMarkupCacheForTests } from './drawing2DSlice.markupTransition.js';
 import { useViewerStore } from '../index.js';
 import type { FederatedModel } from '../types.js';
@@ -266,5 +267,26 @@ describe('dimension history scope', () => {
     useViewerStore.getState().removeModel('B');
     assert.equal(useViewerStore.getState().dimension2DUndo.length, 1);
     assert.equal(useViewerStore.getState().dimension2DRedo.length, 1);
+  });
+});
+
+describe('dimension history across a restore', () => {
+  it('keeps undo for markup drawn while the restore resolved, without dropping restored entries', () => {
+    const s = makeStore();
+    s.getState().addDimension2D(dim('meanwhile'));
+    // The restore unites the stored entry with the live list and rebases history the same way.
+    const stored = [dim('saved-1'), dim('saved-2')];
+    const live = s.getState();
+    s.setState({
+      dimensions2D: unionById(stored, live.dimensions2D),
+      dimension2DUndo: rebaseDimensionHistory(live.dimension2DUndo, (snap) => unionById(stored, snap)),
+      dimension2DRedo: rebaseDimensionHistory(live.dimension2DRedo, (snap) => unionById(stored, snap)),
+    });
+    assert.deepEqual(ids(s.getState().dimensions2D), ['saved-1', 'saved-2', 'meanwhile']);
+    assert.equal(canUndoDimension2D(s.getState()), true);
+    s.getState().undoDimension2D();
+    assert.deepEqual(ids(s.getState().dimensions2D), ['saved-1', 'saved-2']);
+    s.getState().redoDimension2D();
+    assert.deepEqual(ids(s.getState().dimensions2D), ['saved-1', 'saved-2', 'meanwhile']);
   });
 });

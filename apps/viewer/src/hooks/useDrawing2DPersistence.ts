@@ -36,6 +36,7 @@ import type { DrawingSheet } from '@ifc-lite/drawing-2d';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useViewerStore } from '@/store';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
+import { rebaseDimensionHistory } from '@/store/slices/drawing2DDimensionHistory.js';
 import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
@@ -222,9 +223,9 @@ export function useDrawing2DPersistence(): void {
         tagAnnotations2D: drawnMeanwhile(restoreElementTags(entry.tagAnnotations2D, entry.ownerModelId, activeModelId), live.tagAnnotations2D),
         cloudAnnotations2D: drawnMeanwhile(entry.cloudAnnotations2D, live.cloudAnnotations2D),
         dimensions2D: drawnMeanwhile(entry.dimensions2D ?? [], live.dimensions2D),
-        // Restored markup replaces what history would revert to.
-        dimension2DUndo: [],
-        dimension2DRedo: [],
+        // History of what was drawn meanwhile now sits on top of the restored entries.
+        dimension2DUndo: rebaseDimensionHistory(live.dimension2DUndo, (s) => drawnMeanwhile(entry.dimensions2D ?? [], s)),
+        dimension2DRedo: rebaseDimensionHistory(live.dimension2DRedo, (s) => drawnMeanwhile(entry.dimensions2D ?? [], s)),
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });
     };

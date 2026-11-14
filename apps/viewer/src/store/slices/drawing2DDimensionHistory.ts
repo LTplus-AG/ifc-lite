@@ -74,3 +74,12 @@ export function replayDimensionChange(state: Dimension2DHistoryState, direction:
     ? { dimensions2D, selectedAnnotation2D, dimension2DUndo: source.slice(0, -1), dimension2DRedo: [...state.dimension2DRedo, command] }
     : { dimensions2D, selectedAnnotation2D, dimension2DRedo: source.slice(0, -1), dimension2DUndo: [...state.dimension2DUndo, command].slice(-MAX_DIMENSION_2D_HISTORY) };
 }
+
+/**
+ * History rebased onto restored markup: every snapshot gains the stored
+ * dimensions it lacks, so undoing what was drawn while a restore resolved
+ * removes only that, never the restored entries.
+ */
+export function rebaseDimensionHistory(commands: Dimension2DCommand[], rebase: (snapshot: Dimension2D[]) => Dimension2D[]): Dimension2DCommand[] {
+  return commands.map((c) => ({ ...c, before: rebase(c.before), after: rebase(c.after) }));
+}

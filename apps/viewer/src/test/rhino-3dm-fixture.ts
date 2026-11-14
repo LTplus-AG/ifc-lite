@@ -78,6 +78,139 @@ export async function craftRhino3dm(): Promise<Uint8Array> {
   return file.toByteArray();
 }
 
+/** The storey GlobalId and elevation the stamped crafted file states. */
+export const CRAFTED_STOREY = { globalId: '2O2Fr$t4X7Zf8NOew3FLOH', elevation: 2.7, name: 'Level 1' };
+/** The project, site and building GlobalIds of the same file. */
+export const CRAFTED_PROJECT_GLOBAL_ID = '0B$fPbwmL4vfKHsnJjuCmp';
+export const CRAFTED_SITE_GLOBAL_ID = '3cUkl32yn9qRSPvBJVyWYp';
+export const CRAFTED_BUILDING_GLOBAL_ID = '1hqpQexVf9HOCOS7PEqmcw';
+
+/** A layer, its parent and whether Rhino shows it. */
+interface CraftedLayer {
+  name: string;
+  parent?: string;
+  visible?: boolean;
+  userStrings?: [string, string][];
+}
+
+/**
+ * One `.3dm` with the layers and objects a tree test needs.
+ *
+ * `objects` places one triangle per entry on the named layer, hidden when the
+ * entry says so. Layers are written in the given order, so a parent is always
+ * written before its children, which is what the reader's layer table needs.
+ */
+async function craftLayeredRhino3dm(
+  layers: CraftedLayer[],
+  objects: { layer: string; name: string; hidden?: boolean; userStrings?: [string, string][] }[],
+): Promise<Uint8Array> {
+  const rhino = await rhino3dm();
+  const file = new rhino.File3dm();
+  file.settings().modelUnitSystem = rhino.UnitSystem.Meters;
+
+  const indexOf = new Map<string, number>();
+  const idOf = new Map<string, string>();
+  for (const spec of layers) {
+    const layer = new rhino.Layer();
+    layer.name = spec.name;
+    layer.color = { r: 0, g: 0, b: 0, a: 255 };
+    layer.visible = spec.visible ?? true;
+    if (spec.parent !== undefined) layer.parentLayerId = idOf.get(spec.parent)!;
+    for (const [key, value] of spec.userStrings ?? []) layer.setUserString(key, value);
+    const index = file.layers().add(layer);
+    indexOf.set(spec.name, index);
+    idOf.set(spec.name, file.layers().get(index).id);
+  }
+
+  for (const [at, spec] of objects.entries()) {
+    const mesh = new rhino.Mesh();
+    const vertices = mesh.vertices();
+    vertices.addPoint3d(at, 0, 0);
+    vertices.addPoint3d(at + 1, 0, 0);
+    vertices.addPoint3d(at + 1, 1, 0);
+    mesh.faces().addTriFace(0, 1, 2);
+    const attributes = new rhino.ObjectAttributes();
+    attributes.layerIndex = indexOf.get(spec.layer)!;
+    attributes.name = spec.name;
+    if (spec.hidden) attributes.visible = false;
+    for (const [key, value] of spec.userStrings ?? []) attributes.setUserString(key, value);
+    file.objects().addMesh(mesh, attributes);
+  }
+
+  return file.toByteArray();
+}
+
+/**
+ * A Rhino-authored file: nested layers, one layer switched off, one hidden
+ * object on a visible layer. No `IFC::*` user text anywhere, so the import has
+ * only the layers to go on.
+ */
+export function craftRhinoLayerTree(): Promise<Uint8Array> {
+  return craftLayeredRhino3dm(
+    [{ name: 'Shell' }, { name: 'Glazing', parent: 'Shell' }, { name: 'Scaffold', visible: false }],
+    [
+      { layer: 'Shell', name: 'Wall' },
+      { layer: 'Glazing', name: 'Window' },
+      { layer: 'Shell', name: 'Offcut', hidden: true },
+      { layer: 'Scaffold', name: 'Tower' },
+    ],
+  );
+}
+
+/**
+ * The shape ifc-lite's own exporter writes: spatial layers carrying
+ * `IFC::GlobalId` / `IFC::Class` / `IFC::Elevation`, a class sublayer under the
+ * storey that carries no stamp, and one object on it.
+ */
+export function craftRhinoSpatialLayers(): Promise<Uint8Array> {
+  const stamp = (globalId: string, ifcClass: string, elevation?: string): [string, string][] => [
+    ['IFC::GlobalId', globalId], ['IFC::Class', ifcClass],
+    ...(elevation === undefined ? [] : [['IFC::Elevation', elevation] as [string, string]]),
+  ];
+  return craftLayeredRhino3dm(
+    [
+      { name: 'Crafted project', userStrings: stamp(CRAFTED_PROJECT_GLOBAL_ID, 'IfcProject') },
+      { name: 'Site', parent: 'Crafted project', userStrings: stamp(CRAFTED_SITE_GLOBAL_ID, 'IfcSite') },
+      { name: 'House', parent: 'Site', userStrings: stamp(CRAFTED_BUILDING_GLOBAL_ID, 'IfcBuilding') },
+      {
+        name: CRAFTED_STOREY.name, parent: 'House',
+        userStrings: stamp(CRAFTED_STOREY.globalId, 'IfcBuildingStorey', String(CRAFTED_STOREY.elevation)),
+      },
+      { name: 'IfcWall', parent: CRAFTED_STOREY.name },
+      // A layer the Rhino user added to the export, outside its structure.
+      { name: 'Rhino additions' },
+    ],
+    [
+      { layer: 'IfcWall', name: 'South wall', userStrings: [['IFC::GlobalId', CRAFTED_GLOBAL_ID], ['IFC::Class', 'IfcWall']] },
+      { layer: 'Site', name: 'Terrain' },
+      { layer: 'Rhino additions', name: 'Sketch' },
+    ],
+  );
+}
+
+/**
+ * A file whose storey layer states the GlobalId of an object that is not that
+ * storey: the same identity on two things of different classes.
+ */
+export function craftRhinoStampCollision(): Promise<Uint8Array> {
+  return craftLayeredRhino3dm(
+    [
+      {
+        name: 'Project', userStrings: [['IFC::GlobalId', CRAFTED_PROJECT_GLOBAL_ID], ['IFC::Class', 'IfcProject']],
+      },
+      {
+        name: CRAFTED_STOREY.name, parent: 'Project',
+        userStrings: [['IFC::GlobalId', CRAFTED_STOREY.globalId], ['IFC::Class', 'IfcBuildingStorey']],
+      },
+    ],
+    [
+      // The project's own GlobalId on a wall, and the storey's on another.
+      { layer: CRAFTED_STOREY.name, name: 'Impostor project', userStrings: [['IFC::GlobalId', CRAFTED_PROJECT_GLOBAL_ID], ['IFC::Class', 'IfcWall']] },
+      { layer: CRAFTED_STOREY.name, name: 'Impostor storey', userStrings: [['IFC::GlobalId', CRAFTED_STOREY.globalId], ['IFC::Class', 'IfcWall']] },
+    ],
+  );
+}
+
 /**
  * What the worker hands the adapter: a real read, baked and axis-swapped by
  * the real worker job. One copy, because every Rhino adapter test needs it.
@@ -89,6 +222,6 @@ export async function rhinoImportOf(bytes: Uint8Array): Promise<RhinoImport> {
 }
 
 /** The viewer payload for `bytes`, as `prepareRhinoViewerModel` builds it. */
-export async function rhinoPayloadOf(bytes: Uint8Array): Promise<ViewerModelPayload> {
-  return rhinoViewerModel(await rhinoImportOf(bytes), bytes.buffer.slice(0) as ArrayBuffer, 7);
+export async function rhinoPayloadOf(bytes: Uint8Array, fileName = 'crafted.3dm'): Promise<ViewerModelPayload> {
+  return rhinoViewerModel(await rhinoImportOf(bytes), bytes.buffer.slice(0) as ArrayBuffer, 7, fileName);
 }

@@ -16,13 +16,21 @@ import { describe, it, mock, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import rhino3dm from 'rhino3dm';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
-import { PropertyValueType } from '@ifc-lite/data';
+import { PropertyValueType, type SpatialNode } from '@ifc-lite/data';
+import type { IfcDataStore } from '@ifc-lite/parser';
 
 import { RhinoImportError } from '@/lib/import/rhino-import-client';
 import {
+  CRAFTED_BUILDING_GLOBAL_ID,
+  CRAFTED_PROJECT_GLOBAL_ID,
   CRAFTED_GLOBAL_ID,
+  CRAFTED_SITE_GLOBAL_ID,
+  CRAFTED_STOREY,
   CRAFTED_VERTEX_VIEWER,
   craftRhino3dm,
+  craftRhinoLayerTree,
+  craftRhinoSpatialLayers,
+  craftRhinoStampCollision,
   rhinoImportOf as importOf,
   rhinoPayloadOf as payloadOf,
 } from '@/test/rhino-3dm-fixture.js';
@@ -41,7 +49,9 @@ describe('rhinoViewerModel, crafted .3dm', () => {
   it('builds one entity per Rhino object, with the class and GlobalId the user text states', async () => {
     const { dataStore, schemaVersion } = await payloadOf(await craftRhino3dm());
 
-    assert.equal(dataStore.entityCount, 2);
+    // Two objects, plus the root standing for the file and its one layer: a
+    // container is an entity of the store too (see rhinoLayerTree.ts).
+    assert.equal(dataStore.entityCount, 4);
     assert.deepEqual(dataStore.getEntity(1), { expressId: 1, type: 'IfcWall', attributes: [] });
     assert.deepEqual(dataStore.getEntitiesByType('IfcWall').map((e) => e.expressId), [1]);
     assert.equal(dataStore.entities.getGlobalId(1), CRAFTED_GLOBAL_ID);
@@ -143,7 +153,9 @@ describe(`rhinoViewerModel, Rhino 8 authored fixture${samplesAbsent ? ' (skipped
   it('loads file3dm_stuff.3dm: five entities, the one drawable mesh, and its point cloud', async () => {
     const { dataStore, geometryResult } = await payloadOf(sample('file3dm_stuff.3dm'));
 
-    assert.equal(dataStore.entityCount, 5);
+    // Five objects, plus the file's root and the two of its six layers that
+    // hold any: an empty layer gets no row.
+    assert.equal(dataStore.entityCount, 8);
     for (let expressId = 1; expressId <= 5; expressId++) {
       assert.equal(dataStore.getEntity(expressId)?.type, 'IfcBuildingElementProxy', `entity ${expressId}`);
       assert.equal(isValidIfcGuid(dataStore.entities.getGlobalId(expressId)), true, `entity ${expressId} GlobalId`);
@@ -169,7 +181,7 @@ describe(`rhinoViewerModel, Rhino 8 authored fixture${samplesAbsent ? ' (skipped
     const result = await importOf(sample('blocks.3dm'));
     assert.deepEqual([result.meshes.length, result.pointClouds.length, result.curves.length], [0, 0, 2]);
     assert.throws(
-      () => rhinoViewerModel(result, new ArrayBuffer(0), 1),
+      () => rhinoViewerModel(result, new ArrayBuffer(0), 1, 'blocks.3dm'),
       (error: unknown) => error instanceof RhinoImportError && error.code === 'no-renderable-geometry',
     );
   });
@@ -177,10 +189,121 @@ describe(`rhinoViewerModel, Rhino 8 authored fixture${samplesAbsent ? ' (skipped
   it('reads mesh.3dm, a millimetre Rhino mesh, into one proxy with 276 triangles', async () => {
     const { dataStore, geometryResult } = await payloadOf(sample('mesh.3dm'));
 
-    assert.equal(dataStore.entityCount, 1);
+    assert.equal(dataStore.entityCount, 3, 'the mesh, the file root and its layer');
     assert.equal(dataStore.lengthUnitSource, 'declared');
     assert.equal(geometryResult.totalTriangles, 276);
     assert.equal(geometryResult.totalVertices, 420);
     assert.equal(geometryResult.meshes[0].expressId, 1);
+  });
+});
+
+/** A node's row as the hierarchy panel reads it: class, name, direct objects. */
+function row(dataStore: IfcDataStore, node: SpatialNode): [string, string, string[]] {
+  return [
+    dataStore.entities.getTypeName(node.expressId),
+    node.name,
+    node.elements.map((id) => dataStore.entities.getName(id)),
+  ];
+}
+
+describe('rhinoViewerModel, the layer tree of a Rhino-authored file', () => {
+  it('shows Rhino\'s layer hierarchy, with the objects under their own layer', async () => {
+    const { dataStore } = await payloadOf(await craftRhinoLayerTree(), 'layers.3dm');
+
+    const hierarchy = dataStore.spatialHierarchy;
+    assert.ok(hierarchy, 'the panel reads the tree off the store, as it does for IFC and IFCX');
+    // The root stands for the file: a .3dm states no project name.
+    assert.deepEqual(row(dataStore, hierarchy.project), ['IfcProject', 'layers.3dm', []]);
+    assert.deepEqual(hierarchy.project.children.map((node) => row(dataStore, node)), [
+      ['IfcSpatialZone', 'Shell', ['Wall', 'Offcut']],
+      ['IfcSpatialZone', 'Scaffold', ['Tower']],
+    ]);
+    // A child layer is a child node, not a second root.
+    assert.deepEqual(hierarchy.project.children[0].children.map((node) => row(dataStore, node)), [
+      ['IfcSpatialZone', 'Glazing', ['Window']],
+    ]);
+    // A layer is not a storey: a file with no stamps joins no storey list.
+    assert.equal(hierarchy.byStorey.size, 0);
+    assert.equal(hierarchy.storeyElevations.size, 0);
+  });
+
+  it('starts the hidden object, the layer that is off, and that layer\'s objects hidden', async () => {
+    const { dataStore, hiddenExpressIds } = await payloadOf(await craftRhinoLayerTree(), 'layers.3dm');
+
+    assert.deepEqual((hiddenExpressIds ?? []).map((id) => dataStore.entities.getName(id)).sort(),
+      ['Offcut', 'Scaffold', 'Tower']);
+    // Nothing else is hidden, so a file Rhino shows in full opens in full.
+    const visible = await payloadOf(await craftRhino3dm());
+    assert.deepEqual(visible.hiddenExpressIds, []);
+  });
+});
+
+describe('rhinoViewerModel, the spatial tree of a stamped file', () => {
+  it('rebuilds project, site, building and storey from the layer stamps, with the storey elevation', async () => {
+    const { dataStore } = await payloadOf(await craftRhinoSpatialLayers(), 'stamped.3dm');
+
+    const hierarchy = dataStore.spatialHierarchy;
+    assert.ok(hierarchy);
+    // The stamped project is the root, under the name and identity the source
+    // IFC gave it, not a root standing for the file.
+    assert.deepEqual(row(dataStore, hierarchy.project), ['IfcProject', 'Crafted project', []]);
+    const site = hierarchy.project.children[0];
+    const building = site.children[0];
+    const storey = building.children[0];
+    assert.deepEqual(row(dataStore, site), ['IfcSite', 'Site', ['Terrain']]);
+    // A layer the user added outside the stamped structure keeps its own row,
+    // rather than having its objects roll up to the project.
+    assert.deepEqual(hierarchy.project.children.map((node) => row(dataStore, node)), [
+      ['IfcSite', 'Site', ['Terrain']],
+      ['IfcSpatialZone', 'Rhino additions', ['Sketch']],
+    ]);
+    assert.deepEqual(row(dataStore, building), ['IfcBuilding', 'House', []]);
+    // The class sublayer under the storey carries no stamp, so it is
+    // transparent and its wall sits on the storey, as it does in the IFC.
+    assert.deepEqual(row(dataStore, storey), ['IfcBuildingStorey', CRAFTED_STOREY.name, ['South wall']]);
+    assert.equal(dataStore.entities.getGlobalId(site.expressId), CRAFTED_SITE_GLOBAL_ID);
+    assert.equal(dataStore.entities.getGlobalId(building.expressId), CRAFTED_BUILDING_GLOBAL_ID);
+    assert.equal(dataStore.entities.getGlobalId(storey.expressId), CRAFTED_STOREY.globalId);
+
+    // What the storey tools read.
+    assert.equal(storey.elevation, CRAFTED_STOREY.elevation);
+    assert.equal(hierarchy.storeyElevations.get(storey.expressId), CRAFTED_STOREY.elevation);
+    assert.equal(hierarchy.getStoreyByElevation(CRAFTED_STOREY.elevation), storey.expressId);
+    assert.deepEqual(hierarchy.byStorey.get(storey.expressId)?.map((id) => dataStore.entities.getName(id)),
+      ['South wall']);
+    assert.equal(hierarchy.elementToStorey.get(1), storey.expressId);
+    assert.deepEqual(hierarchy.bySite.get(site.expressId)?.map((id) => dataStore.entities.getName(id)), ['Terrain']);
+  });
+
+  it('keeps the stamped node when an object of another class states its GlobalId', async () => {
+    const { dataStore } = await payloadOf(await craftRhinoStampCollision(), 'collision.3dm');
+
+    const hierarchy = dataStore.spatialHierarchy;
+    // Without the class test the project row would be the wall that states the
+    // project's GlobalId, leaving no IfcProject and so no hierarchy at all.
+    assert.ok(hierarchy, 'the file still has a tree');
+    assert.deepEqual(row(dataStore, hierarchy.project), ['IfcProject', 'Project', []]);
+    const storey = hierarchy.project.children[0];
+    assert.deepEqual(row(dataStore, storey), ['IfcBuildingStorey', CRAFTED_STOREY.name, ['Impostor project', 'Impostor storey']]);
+    // The identity stays with the object that states it; the node loses it
+    // rather than the store holding two rows under one GlobalId.
+    assert.equal(dataStore.entities.getGlobalId(hierarchy.project.expressId), '');
+    assert.equal(dataStore.entities.getGlobalId(storey.expressId), '');
+    assert.equal(dataStore.entities.getGlobalId(1), CRAFTED_PROJECT_GLOBAL_ID);
+    assert.equal(dataStore.entities.getGlobalId(2), CRAFTED_STOREY.globalId);
+  });
+
+  it('puts what the file says about itself on the root, for the model metadata panel', async () => {
+    const { dataStore } = await payloadOf(await craftRhinoSpatialLayers(), 'stamped.3dm');
+
+    const root = dataStore.spatialHierarchy!.project.expressId;
+    const sets = dataStore.getProperties(root);
+    assert.deepEqual(sets.map((set) => set.name), ['Rhino Document']);
+    const facts = new Map(sets[0].properties.map((property) => [property.name, property.value]));
+    assert.equal(facts.get('Unit system'), 'Meters');
+    assert.equal(facts.get('Metres per unit'), '1');
+    assert.equal(facts.get('Provenance'), 'rhino');
+    assert.equal(facts.get('Coordinate frame'), 'file');
+    assert.equal(facts.get('Layers'), '6');
   });
 });

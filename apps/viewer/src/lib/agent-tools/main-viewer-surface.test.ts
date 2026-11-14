@@ -23,7 +23,7 @@ import { configureMutationView } from '@/utils/configureMutationView';
 import { CATALOG } from '@/components/mcp/data';
 import { dispatch, parsePlaygroundModel, supportedToolNames } from '@/components/mcp/playground-dispatcher';
 import { createMainViewerToolHost } from './main-viewer-host.js';
-import { MAIN_VIEWER_TOOL_ALLOWLIST, dispatchMainViewerTool, mainViewerTool } from './main-viewer-dispatch.js';
+import { MAIN_VIEWER_EDIT_TOOLS, MAIN_VIEWER_TOOL_ALLOWLIST, dispatchMainViewerTool, mainViewerTool } from './main-viewer-dispatch.js';
 import { mainViewerToolDefinitions } from './main-viewer-tool-definitions.js';
 
 const HELLO_WALL = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
@@ -65,9 +65,10 @@ describe('main viewer tool allowlist (#9523)', () => {
 
   it('refuses every other tool the playground implements, before it runs', async () => {
     const host = await seedMainViewer(new Uint8Array(await readFile(HELLO_WALL)));
-    const allowed = new Set<string>(MAIN_VIEWER_TOOL_ALLOWLIST);
+    // The edit tools are served, but only with a grant: main-viewer-edits.test.ts covers them.
+    const allowed = new Set<string>([...MAIN_VIEWER_TOOL_ALLOWLIST, ...MAIN_VIEWER_EDIT_TOOLS]);
     const refused = supportedToolNames().filter((name) => !allowed.has(name));
-    assert.ok(refused.includes('entity_set_property') && refused.includes('clash_check') && refused.includes('viewer_open'));
+    assert.ok(refused.includes('entity_delete') && refused.includes('clash_check') && refused.includes('viewer_open'));
     for (const name of refused) {
       assert.equal(mainViewerTool(name), undefined, name);
       const args = { express_id: WALL_ID, pset: 'Pset_WallCommon', name: 'IsExternal', value: false, attribute: 'Name', type: 'IfcWall', title: 't' };
@@ -80,11 +81,12 @@ describe('main viewer tool allowlist (#9523)', () => {
     assert.equal((await dispatchMainViewerTool(host, 'no_such_tool', {})).errorCode, 'INVALID_INPUT');
   });
 
-  it('advertises exactly the allowlist, read-only, with model_id on model tools and inline IDS', () => {
+  it('advertises exactly the allowlist (read-only) and the edit tools, with model_id on model tools and inline IDS', () => {
     const definitions = mainViewerToolDefinitions();
-    assert.deepEqual(new Set(definitions.map((d) => d.name)), new Set(MAIN_VIEWER_TOOL_ALLOWLIST));
+    assert.deepEqual(new Set(definitions.map((d) => d.name)), new Set([...MAIN_VIEWER_TOOL_ALLOWLIST, ...MAIN_VIEWER_EDIT_TOOLS]));
+    const edits = new Set<string>(MAIN_VIEWER_EDIT_TOOLS);
     for (const definition of definitions) {
-      assert.equal(definition.readOnly, true, definition.name);
+      assert.equal(definition.readOnly, !edits.has(definition.name), definition.name);
       assert.equal(definition.inputSchema.type, 'object', definition.name);
       if (mainViewerTool(definition.name)?.needs !== 'none') assert.ok(definition.inputSchema.properties.model_id, `${definition.name} takes model_id`);
     }

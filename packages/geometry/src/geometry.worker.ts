@@ -4,7 +4,7 @@
 
 import { applySkipVoids } from './skip-voids.js';
 import { attachCanonicalMeshMetadata } from './canonical-mesh-metadata.js';
-import { ownedWasmBuffer } from './wasm-owned-buffer.js';
+import { ownedWasmBuffer } from './wasm-owned-buffer.js'; import { packFlatBatch } from './flat-batch-pack.js'; // one vertex buffer per stream per batch
 import { readSpecularMaterial } from './mesh-specular.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
@@ -936,7 +936,7 @@ function flushPending(session: ProcessingSession): void {
   (self as unknown as Worker).postMessage(
     {
       type: 'batch',
-      meshes,
+      ...packFlatBatch(meshes, transfers),
       ...(instancedShards.length > 0 ? { instancedShards } : {}),
       ...(instancedOccurrences > 0 ? { instancedOccurrences } : {}),
       ...(instancedGeometryHashIds ? { instancedGeometryHashIds } : {}),

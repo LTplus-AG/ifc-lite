@@ -1163,12 +1163,7 @@ export class MutablePropertyView extends MutableOverlayState {
       // at write time, and callers may still supply UPPERCASE STEP tokens.
       const expressId = ++this.nextAllocatedId;
       const creationId = generateMutationId();
-      const entity: NewEntity = {
-        expressId,
-        type: type.trim(),
-        attributes: attributes.slice(),
-        creationId,
-      };
+      const entity: NewEntity = { expressId, type: type.trim(), attributes: attributes.slice(), creationId };
       this.newEntities.set(expressId, entity);
       this.indexAttributeOverride(expressId);
       this.markOverlayChanged();
@@ -1264,12 +1259,8 @@ export class MutablePropertyView extends MutableOverlayState {
     }
     return { lowest: lowest === Infinity ? 0 : lowest, highest };
   }
-  /** A replacement source re-seeds the allocator: the previous source's watermark no
-   *  longer applies. Created IDs (including forgotten ones) and the ownership floor still bound it. */
-  rebaseExpressIdWatermark(maxExistingId: number): void {
-    this.sourceWatermark = maxExistingId;
-    this.nextAllocatedId = Math.max(maxExistingId, this.getCreatedExpressIdBounds().highest, this.minNextExpressId() - 1);
-  }
+  /** A replacement source drops the old watermark; created (also forgotten) IDs and the ownership floor still bound the allocator. */
+  rebaseExpressIdWatermark(maxExistingId: number): void { this.sourceWatermark = maxExistingId; this.nextAllocatedId = Math.max(maxExistingId, this.getCreatedExpressIdBounds().highest, this.minNextExpressId() - 1); }
   /** Whether the overlay created `id` and still holds it; reads no payload. */
   hasNewEntity(id: number): boolean { return this.newEntities.has(id); }
   /** Number of overlay-created entities; reads no payload. */
@@ -1806,8 +1797,7 @@ export class MutablePropertyView extends MutableOverlayState {
     this.forgottenEntityOverlay.clear();
     this.entityAliases.clear();
     this.mutationHistory = [];
-    // Last, so an allocator observer sees the cleared history and records.
-    this.resetExpressIdAllocator();
+    this.resetExpressIdAllocator(); // last: observers see the cleared history
   }
 
   /**

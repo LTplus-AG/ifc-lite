@@ -104,7 +104,11 @@ export function score(catalogue, results, meta = {}) {
   const stakes = rows.filter((r) => r.tableStakes);
   const counts = { met: 0, partial: 0, missing: 0 };
   for (const r of stakes) counts[r.status]++;
-  const sources = [...new Map(results.filter((r) => r.source?.commit).map((r) => [`${r.source.commit}${r.source.dirty ? '+dirty' : ''}`, r.source])).values()];
+  const sources = [...new Map(results.filter(r => r.source?.commit).map(r => {
+    const source = { ...r.source, dirty: !!(r.source.dirty || r.source.probes?.dirty ||
+      (r.source.probes && r.source.probes.commit !== r.source.commit)) };
+    return [JSON.stringify([source.commit,source.dirty,source.probes?.commit ?? null,source.probes?.dirty ?? null,source.sheetDxfOracle ?? null]), source];
+  })).values()];
   return {
     schema: SUMMARY_SCHEMA,
     generatedAt: meta.generatedAt ?? new Date().toISOString(),

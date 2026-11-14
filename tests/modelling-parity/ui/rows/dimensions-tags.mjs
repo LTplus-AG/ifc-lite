@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 
+import { dxfTagTextsMatch } from '../lib/dxf-tags.mjs';
 import { task } from '../lib/driver.mjs';
 import { escape, oracleModel, tool } from '../lib/model-ui.mjs';
 import { field } from '../lib/authoring-helpers.mjs';
@@ -42,24 +43,6 @@ async function drawingPoints(s, entityId = null) {
     const y = (Math.min(...ys)+Math.max(...ys))/2;
     return [screen(centers[0],y), screen(centers.at(-1),y)];
   }, entityId);
-}
-
-function dxfLabels(download) {
-  if (!download) return [];
-  // The real R12 download declares ANSI_1252. Walk group-code/value pairs;
-  // a numeric value of zero is not an entity boundary.
-  const lines = new TextDecoder('windows-1252').decode(download.bytes).replace(/^\uFEFF/,'').trimEnd().split(/\r?\n/);
-  const labels = []; let current = null;
-  for (let i=0; i+1<lines.length; i+=2) {
-    const code = Number(lines[i].trim()), value = lines[i+1];
-    if (!Number.isInteger(code)) return [];
-    if (code === 0) {
-      if (current) labels.push(current.text);
-      current = value === 'TEXT' || value === 'MTEXT' ? { text: '' } : null;
-    } else if (current && (code === 1 || code === 3)) current.text += value;
-  }
-  if (current) labels.push(current.text);
-  return labels;
 }
 
 export default {
@@ -155,7 +138,6 @@ export default {
       const areaLabel = typeof expectedArea === 'number' ? `≈ ${Number(expectedArea.toFixed(2))} m²` : null;
       const xmlText = text => String(text ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
       const tagged = tags.length === 2 && [door?.id,space?.id].every(id => tags.some(tag => tag.entityId === id && tag.modelId === expectedModelId));
-      const dxfTexts = dxfLabels(dxf);
       return {
         tasks, notes: [], evidence: [shot, await s.shot('tags')], artifacts: { svg: renamedSvg ?? taggedSvg ?? svg, dxf },
         checks: [
@@ -166,7 +148,7 @@ export default {
           { name: 'two tags bind the door and space', ok: tagged, detail: JSON.stringify(tags) },
           { name: 'SVG carries the live door label and exact room quantity', ok: !!taggedSvg && !!expectedDoor && !!expectedSpace && areaLabel !== null && taggedSvg.text.includes('id="element-tags"') && taggedSvg.text.includes(xmlText(expectedDoor)) && taggedSvg.text.includes(xmlText(expectedSpace)) && taggedSvg.text.includes(areaLabel), detail: `${expectedDoor}; ${expectedSpace}; ${areaLabel}` },
           { name: 'Properties rename updates the exported tag', ok: !!renamedSvg && renamedSvg.text.includes('Parity renamed door'), detail: renamedSvg?.name ?? 'no re-export' },
-          { name: 'DXF contains both tags as TEXT', ok: dxfTexts.length === 2 && dxfTexts.includes(expectedDoor) && dxfTexts.some(text => text.startsWith(`${expectedSpace} · `) && text.endsWith(`${Number(expectedArea?.toFixed(2))} m²`)), detail: `${dxfTexts.length} TEXT entities` },
+          { name: 'DXF contains both tags as TEXT', ok: dxfTagTextsMatch(dxf, expectedDoor, expectedSpace, expectedArea), detail: 'expected door and room labels on the tag layer; dimension text belongs to IFC-DIMENSIONS' },
         ],
       };
     },

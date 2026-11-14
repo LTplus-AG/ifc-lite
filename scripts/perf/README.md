@@ -6972,7 +6972,14 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 `metrics.ms` is strictly below 60 seconds. The F5 time comes from the exercise
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
-or a speedup claim.
+or a speedup claim. Historical round-zero evidence completed the 1K
+population; the larger populations were censored at their reached counts, and
+F5 was unmeasured. Diagnostic samples at those reached counts cannot establish
+growth at the requested populations. A complete checkpoint and separate passing
+F5 evidence remain necessary; this clarification changes no acceptance limit. Export is output-proportional work, and a storey edit in this historical
+protocol affects that storey's growing contents. Their retained totals are not
+fixed-work timings and do not establish normalized growth; the ratchet remains
+unchanged.
 
 ### Load hillclimb stage instrumentation (#9605)
 
@@ -7422,6 +7429,28 @@ produces objects the renderer's hot paths already handle well; a JS rebuild has
 to match their shape (one literal with every field set) before it can save
 anything. Measure the consumers in a real trace before trusting a receive-side
 microbenchmark.
+
+### Lazy hydration indexes and CSR target reads (#8450, #9467)
+
+Defer StringTable lookup-map construction until lookup or interning is needed,
+keep only two full-key maps while building relationship CSR, and read target
+columns directly instead of materializing Edge objects. Hydrated string indices,
+first-occurrence lookup, relationship ordering and shadowed-edge semantics stay
+unchanged. Credit to @ionuting for the original report and profiling.
+
+Verdict: the exclusive cold browser comparison on the public FZK, Holter and
+O-S1 models found no end-to-end gain or regression beyond the measured noise
+floor. Paired A/A calibration passed first under the same bounded CPU-cap
+conditions, then complete interleaved base/branch units passed the original
+noise, output-identity, GPU-health and process-retirement gates. Limits were
+restored and verified between every short unit. The earlier uncapped/noisy and
+thermally refused attempts remain unqualified; their successful subsets were
+not promoted into a verdict.
+
+Lesson: removing eager indexing work need not move whole-load readiness when
+other metadata and renderer stages dominate. Keep the mechanism claim separate
+from a speedup claim, and qualify browser hydration with complete worker-pool
+loads and reconstructed output, rather than a native kernel microbenchmark.
 
 ## Streaming entity scan while the file arrives (spike, branch spike/streaming-scan; no PR, not built)
 

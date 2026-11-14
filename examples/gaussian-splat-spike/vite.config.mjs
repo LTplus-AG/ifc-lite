@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { defaultAssets } from './prepare.mjs';
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 export default defineConfig({
-  resolve: { alias: { '@ifc-lite/spatial': resolve(repo, 'packages/spatial/src/index.ts'), '@ifc-lite/load-trace': resolve(repo, 'packages/load-trace/src/index.ts') } },
+  resolve: { alias: { '@ifc-lite/spatial': resolve(repo, 'packages/spatial/src/index.ts'), '@ifc-lite/load-trace': resolve(repo, 'packages/load-trace/src/index.ts'), '@ifc-lite/geometry/gpu-records': resolve(repo, 'packages/geometry/src/gpu-records.ts') } },
   server: { host: '127.0.0.1', fs: { allow: [repo] } },
   plugins: [{ name: 'local-spike-fixtures', configureServer(server) {
     const root = resolve(process.env.SPLAT_SPIKE_ASSETS ?? defaultAssets);

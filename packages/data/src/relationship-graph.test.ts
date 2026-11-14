@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   RelationshipGraphBuilder,
+  buildCSR,
   relationshipGraphFromColumns,
   relationshipGraphToColumns,
 } from './relationship-graph.js';
@@ -429,4 +430,27 @@ describe('multiple shadowed groups on one RelationshipGraph', () => {
     const inverseIds = flattenRelationshipEdges(g.inverse).map((r) => r.relationshipId).sort((a, b) => a - b);
     expect(inverseIds).toEqual([1, 2, 10, 11, 12, 20, 21]);
   });
+});
+
+// #8450: CSR scratch maps must not duplicate the two maps published to consumers.
+it('builds ordered CSR using only its published key maps (#8450)', () => {
+  const shadowed = new Map([[1, [91, 92]]]);
+  const set = vi.spyOn(Map.prototype, 'set');
+  let graph: ReturnType<typeof buildCSR>;
+  let maps: number;
+  try {
+    graph = buildCSR(4, [30, 10, 30, 10], [3, 1, 4, 2], [2, 3, 2, 3], [80, 81, 82, 83], shadowed);
+    maps = new Set(set.mock.contexts).size;
+  } finally {
+    set.mockRestore();
+  }
+  expect(maps).toBeLessThanOrEqual(2);
+  expect([...graph.offsets]).toEqual([[10, 0], [30, 2]]);
+  expect([...graph.counts]).toEqual([[10, 2], [30, 2]]);
+  expect([...graph.edgeTargets]).toEqual([1, 2, 3, 4]);
+  expect([...graph.edgeRelIds]).toEqual([81, 83, 80, 82]);
+  expect(graph.getEdges(10)[0].shadowedRelationshipIds).toEqual([91, 92]);
+  expect(graph.getTargets(30)).toEqual([3, 4]);
+  expect(graph.getTargets(10, 2)).toEqual([]);
+  expect(graph.getTargets(999)).toEqual([]);
 });

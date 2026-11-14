@@ -19,4 +19,5 @@ export const changesPanelDe = {
   'changesPanel.revertPermission': 'Aktivieren Sie den Bearbeitungsmodus oder fordern Sie Bearbeitungszugriff an, bevor Sie Änderungen rückgängig machen.',
   'changesPanel.revertSharedRoom': 'Verlassen Sie den geteilten Raum, bevor Sie eine Bearbeitung rückgängig machen. Der Raum kann diese Umkehrung noch nicht synchronisieren.',
   'changesPanel.revertUnsupported': 'Diese Bearbeitung kann in dieser Leiste nicht rückgängig gemacht werden. Verwenden Sie Rückgängig, wenn sie der neueste Schritt ist.',
+  'changesPanel.byAgent': 'Lokaler Agent · {field}',
 } satisfies Catalogue;

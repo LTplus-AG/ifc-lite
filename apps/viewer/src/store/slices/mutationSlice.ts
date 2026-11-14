@@ -63,6 +63,7 @@ import { completeEntityRemoval, pruneStashByModel, type RemovedMeshStash } from 
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import { isGeorefMutation, pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
+import { countGeneratedTasks } from './schedule-edit-helpers.js';
 import {
   resolvePlacementChain,
   resolveRotationState,
@@ -1062,10 +1063,13 @@ export const createMutationSlice: StateCreator<
       for (const modelId of typeof modelIds === 'string' ? [modelIds] : modelIds) {
         const undo = history.undoStacks.get(modelId) ?? [], redo = history.redoStacks.get(modelId) ?? [];
         const keepGeoref = options?.keepGeoref === true && [...undo, ...redo].some(isGeorefMutation);
-        const editedSchedule = options?.keepGeoref === true && initial.scheduleIsEdited && initial.scheduleSourceModelId === modelId;
+        // What still makes the model unsaved without its view: a pending georeference
+        // value, or the schedule it owns (generated tasks or edits).
+        const stillUnsaved = options?.keepGeoref === true && (initial.georefMutations.has(modelId)
+          || (initial.scheduleSourceModelId === modelId && (initial.scheduleIsEdited || countGeneratedTasks(initial.scheduleData) > 0)));
         mutationViews.delete(modelId);
         storeEditors.delete(modelId);
-        if (!keepGeoref && !editedSchedule) dirtyModels.delete(modelId);
+        if (!stillUnsaved) dirtyModels.delete(modelId);
         removedNewEntities = pruneStashByModel(removedNewEntities, modelId);
         removedMeshes = pruneStashByModel(removedMeshes, modelId);
         for (const mutation of undo) if (!(keepGeoref && isGeorefMutation(mutation))) discarded.push(mutation);

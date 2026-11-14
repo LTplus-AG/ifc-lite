@@ -47,8 +47,9 @@ it('discarding overlapping kept creations keeps georeference history, its batch 
   const restore = () => store.setState({ mutationViews: before.mutationViews, georefMutations: before.georefMutations, dirtyModels: before.dirtyModels,
     undoStacks: before.undoStacks, redoStacks: before.redoStacks, mutationBatchTags: before.mutationBatchTags, storeEditors: before.storeEditors,
     scheduleIsEdited: before.scheduleIsEdited, scheduleSourceModelId: before.scheduleSourceModelId });
+  const edit: GeorefMutationData = { mapConversion: { eastings: 1 } };
   const seed = () => store.setState({
-    mutationViews: new Map([['m', view]]), dirtyModels: new Set(['m']),
+    mutationViews: new Map([['m', view]]), dirtyModels: new Set(['m']), georefMutations: new Map([['m', edit]]),
     undoStacks: new Map([['m', [east, north, created]]]), redoStacks: new Map([['m', [redone]]]),
     mutationBatchTags: new Map([['g1', 'b'], ['g2', 'b'], ['c1', 'x']]),
   });
@@ -58,11 +59,24 @@ it('discarding overlapping kept creations keeps georeference history, its batch 
     let after = store.getState();
     assert.equal(after.mutationViews.has('m'), false, 'the overlapping creations are gone');
     assert.equal(after.dirtyModels.has('m'), true, 'the georeference edit is still unsaved');
+    assert.equal(after.georefMutations.get('m'), edit, 'and still there to save');
     assert.deepEqual(after.undoStacks.get('m'), [east, north], 'and still undoable');
     assert.deepEqual(after.redoStacks.get('m'), [redone], 'an undone georef edit stays redoable');
     assert.deepEqual([after.mutationBatchTags.get('g1'), after.mutationBatchTags.get('g2'), after.mutationBatchTags.has('c1')], ['b', 'b', false], 'the georef batch keeps its tag');
 
-    // Without georef history, only an edited schedule keeps the model dirty.
+    // A pending georeference value keeps the model unsaved even when its history was cleared.
+    store.setState({ mutationViews: new Map([['m', view]]), dirtyModels: new Set(['m']), undoStacks: new Map([['m', [created]]]), redoStacks: new Map() });
+    discardOverlappingRetainedEdits(store.getState(), 'm', 200);
+    assert.equal(store.getState().dirtyModels.has('m'), true, 'the pending georeference value is still unsaved');
+
+    // An undone georef edit (redo only, no pending value) does not: nothing is left to save.
+    store.setState({ mutationViews: new Map([['m', view]]), dirtyModels: new Set(['m']), georefMutations: new Map(),
+      undoStacks: new Map([['m', [created]]]), redoStacks: new Map([['m', [redone]]]) });
+    discardOverlappingRetainedEdits(store.getState(), 'm', 200);
+    assert.equal(store.getState().dirtyModels.has('m'), false, 'an undone georef edit leaves nothing to save');
+    assert.deepEqual(store.getState().redoStacks.get('m'), [redone], 'but stays redoable');
+
+    // Without georef, only the schedule the model owns keeps it dirty.
     store.setState({ mutationViews: new Map([['m', view]]), dirtyModels: new Set(['m']), undoStacks: new Map([['m', [created]]]), redoStacks: new Map(),
       scheduleIsEdited: true, scheduleSourceModelId: 'm' });
     discardOverlappingRetainedEdits(store.getState(), 'm', 200);

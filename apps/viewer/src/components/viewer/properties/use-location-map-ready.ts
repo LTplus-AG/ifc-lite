@@ -12,7 +12,8 @@ export function useLocationMapReady(hasLocation: boolean): boolean {
   const [ready, setReady] = useState(false);
   useEffect(() => {
     if (ready || loading || error || !hasLocation) return;
-    // Ten constant-time checks/sec initially, one/sec after five seconds, until
+    // First check 100 ms after the effect (no work in the task that ran it),
+    // then ten constant-time checks/sec, one/sec after five seconds, until
     // the scene has settled and been drawn. Failed finalisation may retain
     // fragments until device recovery; keep waiting without starting WebGL or
     // spinning at the display frame rate. A new load, an error or another
@@ -20,7 +21,7 @@ export function useLocationMapReady(hasLocation: boolean): boolean {
     return afterSceneSettled((settled) => { if (settled) setReady(true); }, () => {
       const state = useViewerStore.getState();
       return !state.loading && !state.error && state.activeModelId === modelId;
-    }, Infinity);
+    }, Infinity, 100);
   }, [ready, loading, error, modelId, hasLocation]);
   return ready;
 }

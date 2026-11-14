@@ -95,7 +95,9 @@ elevations, so the storey filter, the exploded view and storey-based sections wo
 re-imported model.
 
 You can stamp layers yourself in Rhino, under **Layer Properties > User Text**, with the
-same keys. A layer with no stamp is still shown as a tree row.
+same keys. An unstamped layer inside a stamped structure gets no row of its own: its
+objects appear under the nearest stamped layer above it. An unstamped layer outside every
+stamped structure keeps its own row, unless it holds no object anywhere under it.
 
 A file with no stamps at all gets a tree of its Rhino layers instead, each one an
 `IfcSpatialZone`, which keeps them out of the storey tools a file without storeys has no

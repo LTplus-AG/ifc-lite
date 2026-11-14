@@ -363,11 +363,12 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('derive provenance and the 
     const { content } = new StepExporter(store, editor.getMutationView()).export({ schema, applyMutations: true });
     return typeof content === 'string' ? content : new TextDecoder().decode(content);
   }
+  const derive: Edit = (store, editor) =>
+    applyStructuralDerivation(editor, store, planStructuralDerivation(readStructuralDerivationFacts(store, editor)), seeded());
   /** The derived model, written once per schema. */
   let text: string;
   beforeAll(async () => {
-    text = await exportAfter(model(schema), (store, editor) =>
-      applyStructuralDerivation(editor, store, planStructuralDerivation(readStructuralDerivationFacts(store, editor)), seeded()));
+    text = await exportAfter(model(schema), derive);
   });
   /** The stale findings on the derived model after `edit`, written and parsed again. */
   async function staleAfter(edit: Edit) {
@@ -438,9 +439,10 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('derive provenance and the 
     // Placed after derive: the record was written under an identity storey and is read through this one.
     expect(driftOrStale(await parse(placeStorey(text, ...skew)))).toEqual([]);
     // Derived under it: the record is written through derive's frame and read through the parser's.
-    const derivedSkewed = await parse(await exportAfter(placeStorey(model(schema), ...skew), (store, editor) =>
-      applyStructuralDerivation(editor, store, planStructuralDerivation(readStructuralDerivationFacts(store, editor)), seeded())));
-    expect(extractStructuralOnDemand(derivedSkewed).members.length).toBeGreaterThan(0);
+    const derivedSkewed = await parse(await exportAfter(placeStorey(model(schema), ...skew), derive));
+    const curve = extractStructuralOnDemand(derivedSkewed).members.filter((m) => m.type === 'IfcStructuralCurveMember');
+    expect(curve.length).toBeGreaterThan(0);
+    expect(curve.filter((m) => !derivedSkewed.getProperties(m.expressId).some((set) => set.name === STRUCTURAL_DERIVATION_PSET))).toEqual([]);
     expect(driftOrStale(derivedSkewed)).toEqual([]);
   });
 });

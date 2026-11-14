@@ -163,7 +163,7 @@ function writePlan(
     connectStructuralMemberToConnectionInStore(editor, ownerHistoryId, memberId, connectionIds[member.startNode], random);
     connectStructuralMemberToConnectionInStore(editor, ownerHistoryId, memberId, connectionIds[member.endNode], random);
     // A member records its element's line only with the element's GlobalId to name it by.
-    const globalId = member.physicalAxis ? globalIdOf(member.elementId) : null;
+    const globalId = globalIdOf(member.elementId);
     if (member.physicalAxis && globalId) {
       editor.addPropertySet(memberId, STRUCTURAL_DERIVATION_PSET, [
         { name: DERIVATION_ELEMENT_PROPERTY, value: globalId, type: 'LABEL' },

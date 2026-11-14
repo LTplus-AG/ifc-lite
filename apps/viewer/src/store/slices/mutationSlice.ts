@@ -1060,19 +1060,23 @@ export const createMutationSlice: StateCreator<
         mutationBatchTags: initial.mutationBatchTags, mutationMeshTranslations: initial.mutationMeshTranslations };
       const discarded: Mutation[] = [];
       for (const modelId of typeof modelIds === 'string' ? [modelIds] : modelIds) {
-        const keepGeoref = options?.keepGeoref === true && initial.georefMutations.has(modelId);
         const undo = history.undoStacks.get(modelId) ?? [], redo = history.redoStacks.get(modelId) ?? [];
+        const keepGeoref = options?.keepGeoref === true && [...undo, ...redo].some(isGeorefMutation);
+        const editedSchedule = options?.keepGeoref === true && initial.scheduleIsEdited && initial.scheduleSourceModelId === modelId;
         mutationViews.delete(modelId);
         storeEditors.delete(modelId);
-        if (!keepGeoref) dirtyModels.delete(modelId);
+        if (!keepGeoref && !editedSchedule) dirtyModels.delete(modelId);
         removedNewEntities = pruneStashByModel(removedNewEntities, modelId);
         removedMeshes = pruneStashByModel(removedMeshes, modelId);
         for (const mutation of undo) if (!(keepGeoref && isGeorefMutation(mutation))) discarded.push(mutation);
-        history = pruneMutationHistory(modelId, history.undoStacks, history.redoStacks,
-          history.mutationBatchTags, history.mutationMeshTranslations);
         if (keepGeoref) {
-          history.undoStacks.set(modelId, undo.filter(isGeorefMutation));
-          history.redoStacks.set(modelId, redo.filter(isGeorefMutation));
+          // Drops only the view's entries and their tags; georef entries keep theirs.
+          const { collabGeometryNotice: _notice, ...kept } = invalidateHistoryPatch(history.undoStacks, history.redoStacks,
+            history.mutationBatchTags, history.mutationMeshTranslations, modelId, (m) => !isGeorefMutation(m));
+          history = { ...history, ...kept };
+        } else {
+          history = pruneMutationHistory(modelId, history.undoStacks, history.redoStacks,
+            history.mutationBatchTags, history.mutationMeshTranslations);
         }
       }
       return { mutationViews, storeEditors, dirtyModels, removedNewEntities, removedMeshes, ...history,

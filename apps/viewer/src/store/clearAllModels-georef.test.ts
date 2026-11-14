@@ -35,29 +35,43 @@ it('clearing all models keeps a model with only georeference edits and drops unc
   }
 });
 
-it('discarding overlapping kept creations keeps the georeference edit unsaved and undoable (#10139)', () => {
+it('discarding overlapping kept creations keeps georeference history, its batch tags and a schedule edit (#10139)', () => {
   const store = useViewerStore;
   const before = store.getState();
   const view = new MutablePropertyView(null, 'm');
   view.setExpressIdWatermark(100);
   view.createEntity('IfcMaterial', ['Kept']); // #101, which the reloaded source overlaps
+  const geo = (id: string, field: string) => ({ id, type: 'UPDATE_ATTRIBUTE', modelId: 'm', entityId: 0, attributeName: `georef.mapConversion.${field}`, oldValue: 0, newValue: 1, timestamp: 1 }) as Mutation;
   const created = { id: 'c1', type: 'CREATE_ENTITY', modelId: 'm', entityId: 101, attributeName: 'IfcMaterial', timestamp: 2 } as Mutation;
-  const georef = { id: 'g1', type: 'UPDATE_ATTRIBUTE', modelId: 'm', entityId: 0, attributeName: 'georef.mapConversion.eastings', oldValue: 0, newValue: 1, timestamp: 1 } as Mutation;
-  const edit: GeorefMutationData = { mapConversion: { eastings: 1 } };
-  store.setState({
-    mutationViews: new Map([['m', view]]),
-    georefMutations: new Map([['m', edit]]),
-    dirtyModels: new Set(['m']),
-    undoStacks: new Map([['m', [georef, created]]]),
+  const [east, north, redone] = [geo('g1', 'eastings'), geo('g2', 'northings'), geo('g3', 'scale')];
+  const restore = () => store.setState({ mutationViews: before.mutationViews, georefMutations: before.georefMutations, dirtyModels: before.dirtyModels,
+    undoStacks: before.undoStacks, redoStacks: before.redoStacks, mutationBatchTags: before.mutationBatchTags, storeEditors: before.storeEditors,
+    scheduleIsEdited: before.scheduleIsEdited, scheduleSourceModelId: before.scheduleSourceModelId });
+  const seed = () => store.setState({
+    mutationViews: new Map([['m', view]]), dirtyModels: new Set(['m']),
+    undoStacks: new Map([['m', [east, north, created]]]), redoStacks: new Map([['m', [redone]]]),
+    mutationBatchTags: new Map([['g1', 'b'], ['g2', 'b'], ['c1', 'x']]),
   });
   try {
+    seed();
     assert.equal(discardOverlappingRetainedEdits(store.getState(), 'm', 200), 0);
-    const after = store.getState();
+    let after = store.getState();
     assert.equal(after.mutationViews.has('m'), false, 'the overlapping creations are gone');
     assert.equal(after.dirtyModels.has('m'), true, 'the georeference edit is still unsaved');
-    assert.deepEqual(after.undoStacks.get('m'), [georef], 'and still undoable');
-    assert.equal(after.georefMutations.get('m'), edit);
+    assert.deepEqual(after.undoStacks.get('m'), [east, north], 'and still undoable');
+    assert.deepEqual(after.redoStacks.get('m'), [redone], 'an undone georef edit stays redoable');
+    assert.deepEqual([after.mutationBatchTags.get('g1'), after.mutationBatchTags.get('g2'), after.mutationBatchTags.has('c1')], ['b', 'b', false], 'the georef batch keeps its tag');
+
+    // Without georef history, only an edited schedule keeps the model dirty.
+    store.setState({ mutationViews: new Map([['m', view]]), dirtyModels: new Set(['m']), undoStacks: new Map([['m', [created]]]), redoStacks: new Map(),
+      scheduleIsEdited: true, scheduleSourceModelId: 'm' });
+    discardOverlappingRetainedEdits(store.getState(), 'm', 200);
+    after = store.getState();
+    assert.equal(after.dirtyModels.has('m'), true, 'the schedule edit is still unsaved');
+    store.setState({ mutationViews: new Map([['m', view]]), dirtyModels: new Set(['m']), undoStacks: new Map([['m', [created]]]), scheduleIsEdited: false });
+    discardOverlappingRetainedEdits(store.getState(), 'm', 200);
+    assert.equal(store.getState().dirtyModels.has('m'), false, 'nothing left to save');
   } finally {
-    store.setState({ mutationViews: before.mutationViews, georefMutations: before.georefMutations, dirtyModels: before.dirtyModels, undoStacks: before.undoStacks });
+    restore();
   }
 });

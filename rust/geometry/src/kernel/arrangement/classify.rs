@@ -16,6 +16,8 @@ mod closed_source;
 use closed_source::strict_closed;
 #[path = "finite_patch.rs"]
 mod finite_patch;
+#[path = "classify_ray_bvh.rs"]
+mod ray_bvh;
 use finite_patch::AdjacentFaces;
 
 // --- winding classification + boolean extraction --------------------------
@@ -191,6 +193,9 @@ pub(super) struct BComponents<'a> {
     exts: Vec<f64>,
     closed: std::cell::OnceCell<bool>,
     adjacency: Vec<std::cell::OnceCell<AdjacentFaces>>,
+    /// Per-component ray BVH for [`Self::inside`], built on first use, with the
+    /// largest coordinate magnitude its pad covers (see [`Self::inside`]).
+    ray_bvhs: Vec<std::cell::OnceCell<(super::super::broadphase::Bvh, f64)>>,
 }
 
 impl<'a> BComponents<'a> {
@@ -228,7 +233,8 @@ impl<'a> BComponents<'a> {
                 (lo, hi)
             })
             .collect();
-        Self { comps, aabbs, exts, closed: std::cell::OnceCell::new(), adjacency: (0..comps.len()).map(|_| std::cell::OnceCell::new()).collect() }
+        Self { comps, aabbs, exts, closed: std::cell::OnceCell::new(), adjacency: (0..comps.len()).map(|_| std::cell::OnceCell::new()).collect(),
+            ray_bvhs: (0..comps.len()).map(|_| std::cell::OnceCell::new()).collect() }
     }
 
     /// Conservative "could the parity segment from `p` hit component `k`?" —
@@ -284,7 +290,7 @@ impl<'a> BComponents<'a> {
     /// faster: escalation counts and the boolean manifest are unaffected.
     fn inside(&self, p: [f64; 3]) -> bool {
         self.comps.iter().enumerate().any(|(k, comp)| {
-            self.ray_may_hit(k, p) && point_inside(p, comp, self.exts[k], self.aabbs[k])
+            self.ray_may_hit(k, p) && self.component_inside(k, comp, p)
         })
     }
 
@@ -602,6 +608,9 @@ pub(super) fn rotate_min_first(t: [Vid; 3]) -> [Vid; 3] {
 #[cfg(test)]
 #[path = "classify_tests.rs"]
 mod classify_tests;
+#[cfg(test)]
+#[path = "classify_bvh_tests.rs"]
+mod classify_bvh_tests;
 
 #[cfg(test)]
 #[path = "issue_3353_vid_census_tests.rs"]

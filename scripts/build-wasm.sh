@@ -24,6 +24,15 @@ echo "🦀 Building IFC-Lite WASM..."
 # `unstable.build-std`, so host builds (`cargo test --release`, etc.) never
 # see it.
 export CARGO_UNSTABLE_BUILD_STD="std,panic_abort"
+# Path-independent bytes: panic locations would otherwise embed the checkout,
+# cargo registry and toolchain paths of whatever machine built the wasm, so the
+# raw size the `engine-wasm-bytes` ratchet gates would differ between hosted
+# and self-hosted runners (different checkout paths) and from a local build.
+# Cargo's trim-paths (the env equivalent of `-Z trim-paths` plus the profile's
+# `trim-paths = "all"`) rewrites them to package-relative and `/rustc/<hash>`
+# forms, as for `std` itself; it also keeps local paths out of published wasm.
+export CARGO_UNSTABLE_TRIM_PATHS=true
+export CARGO_PROFILE_RELEASE_TRIM_PATHS=all
 
 # Build with wasm-pack
 echo "📦 Running wasm-pack..."

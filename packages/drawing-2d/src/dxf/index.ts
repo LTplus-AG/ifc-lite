@@ -19,6 +19,7 @@ import type { DxfUnderlay } from './types.js';
 export { parseDxf, readDxfPairs, decodeDxfText, stripMtextFormatting } from './parser.js';
 export { convertDxfToUnderlay, applyDxfPlacement, type DxfConvertOptions } from './convert.js';
 export { aciToCss } from './aci-colors.js';
+export { DXF_TEXT_LINE_HEIGHT_FACTOR, dxfTextLineOffset } from './text-layout.js';
 export { DEFAULT_DXF_PLACEMENT } from './types.js';
 export type {
   DxfDocument,

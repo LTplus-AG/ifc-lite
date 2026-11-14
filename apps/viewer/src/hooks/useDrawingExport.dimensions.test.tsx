@@ -8,7 +8,7 @@
  * sheet PDF and print render), DXF and the vector PDF. The observation is the
  * file each handler hands to the download.
  *
- * MUTATION TARGETS: drop the `dimensionsToSvg`/`dimensionsToDxfLayers`/
+ * MUTATION TARGETS: drop the `dimensionsToSvg`/DXF dimensions/
  * `drawDimensionsPdf` call from one writer in `useDrawingExport.ts`, or drop
  * `exportableDimensions` from `useExportDimensionGraphics`.
  */
@@ -148,7 +148,7 @@ describe('drawing exports carry current-cut dimensions only', () => {
     const texts = entities.filter((e): e is Extract<DxfEntity, { kind: 'text' }> => e.kind === 'text');
     assert.deepEqual(texts.map((t) => t.text), ['4000']);
     assert.ok(Math.abs(texts[0].height - 0.125) < 1e-9, '2.5 mm at 1:50');
-    assert.equal(entities.filter((e) => e.kind === 'polyline').length, 5);
+    assert.equal(entities.filter((e) => e.kind === 'line').length, 5);
   });
 
   it('direct SVG and vector PDF size their page to hold a dimension placed far beyond the geometry', async () => {

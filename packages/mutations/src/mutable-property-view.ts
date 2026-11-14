@@ -34,7 +34,7 @@ export type { AttributeExtractor } from './effective-changes.js';
  * Function type for on-demand property extraction
  * Allows globalId to be optional to match extractPropertiesOnDemand return type
  */
-export type PropertyExtractor = (entityId: number) => Array<{
+export type PropertyExtractor = (entityId: number, view?: MutablePropertyView, occurrenceId?: number) => Array<{
   name: string;
   globalId?: string;
   properties: Array<{ name: string; type: number; value: unknown; values?: string[]; unit?: string; unitSiScale?: number; unitSiOffset?: number; dataType?: string; structure?: Property['structure'] }>;
@@ -206,7 +206,7 @@ export class MutablePropertyView extends MutableOverlayState {
     // Prefer on-demand extraction if available (client-side WASM parsing)
     if (this.onDemandExtractor) {
       // Normalize the result to PropertySet[] (globalId defaults to empty string)
-      return this.onDemandExtractor(baseId).map(pset => ({
+      return this.onDemandExtractor(baseId, this, entityId).map(pset => ({
         name: pset.name,
         globalId: pset.globalId || '',
         properties: pset.properties.map(prop => ({

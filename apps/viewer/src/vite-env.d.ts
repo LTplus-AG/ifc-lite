@@ -6,6 +6,12 @@
 /// <reference types="unplugin-icons/types/react" />
 
 interface ImportMetaEnv {
+  /**
+   * Same-origin URL of this deployment's `ViewerRuntimeConfig`. Set = the
+   * build loads `main-hosted.tsx`, which fetches it before mounting and
+   * refuses to start without it.
+   */
+  readonly VITE_VIEWER_CONFIG_URL?: string;
   /** Local OCI registry demo, using the development server's same-origin proxy. */
   readonly VITE_REGISTRY_ENABLED?: string;
   readonly VITE_REGISTRY_ADDRESS?: string;

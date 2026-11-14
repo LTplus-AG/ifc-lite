@@ -14,6 +14,8 @@ use super::Tri;
 /// line passes the same side of all three edges. A grazing hit (`orient3d == 0`)
 /// is rejected — the fixed generic ray direction makes those vanishingly rare.
 pub(super) fn exact_seg_hits_tri(q1: [f64; 3], q2: [f64; 3], t: &Tri) -> bool {
+    #[cfg(test)]
+    SEG_TESTS.with(|c| c.set(c.get() + 1));
     let s1 = orient3d_explicit(t[0], t[1], t[2], q1);
     let s2 = orient3d_explicit(t[0], t[1], t[2], q2);
     if s1 == Sign::Zero || s2 == Sign::Zero || s1 == s2 {
@@ -23,6 +25,12 @@ pub(super) fn exact_seg_hits_tri(q1: [f64; 3], q2: [f64; 3], t: &Tri) -> bool {
     let eb = orient3d_explicit(q1, q2, t[1], t[2]);
     let ec = orient3d_explicit(q1, q2, t[2], t[0]);
     ea != Sign::Zero && ea == eb && eb == ec
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Exact segment-triangle tests run on this thread (work measure for tests).
+    pub(super) static SEG_TESTS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// Ray-cast "far" distance: just past the operand's actual extent. Critically NOT

@@ -11,6 +11,7 @@
  */
 
 import type { StoreyLevelPlan, StoreySummary } from '@ifc-lite/create';
+import { StoreyInsertionDiagram } from './StoreyInsertionDiagram';
 import { useTranslation } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -22,6 +23,8 @@ interface StoreySectionStripProps {
   activeId: number | null;
   plan: StoreyLevelPlan | null;
   onActivate: (storeyId: number) => void;
+  renames?: readonly { id: number; Name: string }[];
+  inserted?: { Name: string; Elevation: number };
 }
 
 /** Strip height per metre, clamped so a tall tower still fits and a basement still reads. */
@@ -29,9 +32,13 @@ const PX_PER_M = 14;
 const MIN_GAP_PX = 18;
 const TOP_PX = 22;
 
-export function StoreySectionStrip({ rows, activeId, plan, onActivate }: StoreySectionStripProps) {
+export function StoreySectionStrip({ rows, activeId, plan, onActivate, inserted, renames = [] }: StoreySectionStripProps) {
   const { t } = useTranslation();
   if (rows.length === 0) return null;
+  if (inserted && plan) return <StoreyInsertionDiagram rows={rows} plan={plan} inserted={inserted} renames={renames} />;
+  // An insertion plan is not yet applied; a level preview already is.
+  const projected = rows.map(row => ({ ...row, elevation: plan?.storeys.find(move => move.expressId === row.expressId)?.to ?? row.elevation }));
+  rows = projected;
   const top = rows[0];
   const ys = new Map<number, number>();
   let y = TOP_PX;
@@ -39,7 +46,7 @@ export function StoreySectionStrip({ rows, activeId, plan, onActivate }: StoreyS
     if (index > 0) y += Math.max(MIN_GAP_PX, (rows[index - 1].elevation - row.elevation) * PX_PER_M);
     ys.set(row.expressId, y);
   });
-  const height = y + 12;
+  const height = y + 32;
   const moved = new Map((plan?.storeys ?? []).map((move) => [move.expressId, move]));
   const ghostY = (storeyId: number) => {
     const move = moved.get(storeyId);

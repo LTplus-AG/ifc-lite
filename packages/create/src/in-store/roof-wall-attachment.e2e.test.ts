@@ -4,7 +4,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { afterAll, beforeAll, it, expect, describe } from 'vitest';
 import { QuantityType } from '@ifc-lite/data';
-import { scaleWallQuantities, wallQuantitySetCount } from './storey/storey-level-write.js';
+import { extractQuantitiesOnDemand, parseModel } from '@ifc-lite/parser';
+import { wallQuantitySetCount } from './storey/storey-level-write.js';
+import { scaleWallQuantities } from './storey/wall-height-quantities.js';
 import { recordCompoundMutation, StoreEditor, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { addWallToStore } from './wall.js';
@@ -184,6 +186,23 @@ it('a resize the roof cannot cover is refused without writing, and the four-writ
   expect(s.view.getMutationCount()).toBe(count);
 });
 
+
+it.each([false, true])('#9352 roof quantity upkeep waits for clipping (pitched=%s)', async pitched => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, pitched ? GABLE
+    : { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25 }).roofId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [5, 0, 0], End: [5, 8, 0], Height: 3, Thickness: .2 }).wallId;
+  s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);
+  s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'GrossVolume', 4.8, QuantityType.Volume);
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof });
+  const quantities = s.view.getQuantitiesForEntity(wall).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities;
+  expect(quantities.find(q => q.name === 'Height')?.value).toBeCloseTo(pitched ? 3 : 4, 8);
+  expect(quantities.find(q => q.name === 'GrossVolume')?.value).toBeCloseTo(pitched ? 4.8 : 6.4, 8);
+  const { store } = await parseModel(new TextEncoder().encode(exportText(s)), { disableWorkerScan: true });
+  const saved = extractQuantitiesOnDemand(store, wall).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities;
+  expect(saved.find(q => q.name === 'Height')?.value).toBeCloseTo(pitched ? 3 : 4, 8);
+  expect(saved.find(q => q.name === 'GrossVolume')?.value).toBeCloseTo(pitched ? 4.8 : 6.4, 8);
+});
 
 it('a carried roof plane does not permit moving an unrelated occurrence sharing the roof placement (#9357)', async () => {
   const s = await newStorey();

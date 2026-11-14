@@ -71,7 +71,9 @@ by structured clone. A typed array is not itself transferable, so transfer
 - **Visibility:** `entities[i].hidden` is true when the object is hidden or a
   layer on its path is off; for a merged entity, when every part is. Each
   mesh, instance, point cloud, curve and text dot carries `hidden` for its own
-  object, so a consumer can hide exactly what Rhino hides.
+  object, so a consumer can hide exactly what Rhino hides. Entities and
+  records also carry the two causes apart: `hiddenByObject`, the object's own
+  flag, and `hiddenByLayer`, a layer on its path off.
 - **Layers** come parent first with colour, visibility, user text and, when a
   layer carries `IFC::GlobalId` and `IFC::Class` stamps, its `spatial` element.
 

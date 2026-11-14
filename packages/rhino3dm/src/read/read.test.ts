@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test, vi } from 'vitest';
-import { readRhino3dm, RhinoReadError, writeRhino3dm } from '../index.js';
+import { readRhino3dm, RhinoReadError, writeRhino3dm, type RhinoImportVisibility } from '../index.js';
 import { loadRhino } from '../runtime.js';
 import { craft, entityBounds, hollowArchive } from '../../test-support/craft.js';
 import { MAX_3DM_BYTES, tooLarge3dmMessage } from './size.js';
@@ -102,7 +102,7 @@ describe('geometry', () => {
     expect(Array.from(cloud.positions)).toEqual([0, 0, 0, 1.5, 0, 0]);
     expect(Array.from(cloud.colors!)).toEqual([255, 0, 0, 255, 0, 128, 0, 64]);
     expect(plain.colors).toBeNull();
-    expect(result.textDots).toEqual([{ entity: 4, position: [4, 5, 6], text: 'Hello', color: [10 / 255, 20 / 255, 30 / 255, 1], hidden: false }]);
+    expect(result.textDots).toEqual([{ entity: 4, position: [4, 5, 6], text: 'Hello', color: [10 / 255, 20 / 255, 30 / 255, 1], hidden: false, hiddenByObject: false, hiddenByLayer: false }]);
     expect(result.skipped).toEqual({ Point: 1 });
     expect(result.meshes).toEqual([]);
   });
@@ -202,8 +202,9 @@ describe('layers', () => {
       c.addMesh(box(), { name: 'on an off layer', layer: off });
       c.addMesh(box(), { name: 'under an off layer', layer: child });
     }));
-    expect(result.entities.map(e => [e.name, e.hidden])).toEqual([
-      ['visible', false], ['hidden object', true], ['on an off layer', true], ['under an off layer', true],
+    expect(result.entities.map(e => [e.name, e.hidden, e.hiddenByObject, e.hiddenByLayer])).toEqual([
+      ['visible', false, false, false], ['hidden object', true, true, false],
+      ['on an off layer', true, false, true], ['under an off layer', true, false, true],
     ]);
     // The child layer keeps its own flag; only the entity folds the ancestors in.
     expect(result.layers.map(l => l.visible)).toEqual([false, true, true]);
@@ -231,6 +232,28 @@ describe('layers', () => {
     expect(flags(result.pointClouds)).toEqual([[0, true]]);
     expect(flags(result.textDots)).toEqual([[0, false]]);
     expect(flags(result.instances)).toEqual(bakeInstances ? [] : [[0, true]]);
+  });
+
+  // Issue #10214: with the layer folded into `hidden`, a part hidden on its own cannot be told from
+  // one hidden only by its layer once the whole entity is hidden, nor the other way round.
+  test.each([false, true])('each record states its own object flag and its layer apart, for a group on an off layer (bakeInstances %s)', async bakeInstances => {
+    const id = '2O2Fr$t4X7Zf8NOew3FLOH';
+    const result = await readRhino3dm(await craft(c => {
+      const on = c.layer('On'), off = c.layer('Off', { visible: false });
+      const group = c.group(id), userStrings: [string, string][] = [['IFC::GlobalId', id]];
+      c.addMesh(c.box([0, 0, 0], [1, 1, 1]), { name: 'visible box', layer: off, groups: [group], userStrings });
+      c.addMesh(c.box([2, 0, 0], [3, 1, 1]), { name: 'hidden box', layer: off, groups: [group], userStrings, hidden: true });
+      c.addInstance(c.block('Box', [c.box([0, 0, 0], [1, 1, 1])]), undefined, { name: 'hidden instance', layer: off, groups: [group], userStrings, hidden: true });
+      c.addMesh(c.box([4, 0, 0], [5, 1, 1]), { name: 'hidden alone', layer: on, hidden: true });
+    }), { bakeInstances });
+    const flags = (records: ({ entity: number } & RhinoImportVisibility)[]) =>
+      records.map(r => [r.entity, r.hidden, r.hiddenByObject, r.hiddenByLayer]);
+    // The merged entity is hidden by its layer in every part, by its own flag in only some.
+    expect(result.entities.map(e => [e.objectIds.length, e.hidden, e.hiddenByObject, e.hiddenByLayer])).toEqual([[3, true, false, true], [1, true, true, false]]);
+    expect(flags(result.meshes)).toEqual(bakeInstances
+      ? [[0, true, false, true], [0, true, true, true], [0, true, true, true], [1, true, true, false]]
+      : [[0, true, false, true], [0, true, true, true], [1, true, true, false]]);
+    expect(flags(result.instances)).toEqual(bakeInstances ? [] : [[0, true, true, true]]);
   });
 
   test('an object whose layer index is outside the table lands on the first layer', async () => {

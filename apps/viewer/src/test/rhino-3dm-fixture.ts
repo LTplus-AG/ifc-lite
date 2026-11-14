@@ -245,6 +245,50 @@ export async function craftRhinoPartlyHidden(): Promise<Uint8Array> {
   return file.toByteArray();
 }
 
+/** One part of `craftRhinoMergedParts`: what it is, whether its layer is off, whether it is hidden on its own. */
+export interface CraftedPart { name: string; kind: 'mesh' | 'curve' | 'cloud'; layerOff?: boolean; hidden?: boolean }
+
+/**
+ * One element merged from `parts` (D8): every part shares a GlobalId and a
+ * group, on a layer that is on or a layer that is off, hidden on its own or
+ * not. Part i sits at x = 2i. Then `alone`, when given, as an entity of its own.
+ */
+export async function craftRhinoMergedParts(parts: CraftedPart[], alone?: CraftedPart): Promise<Uint8Array> {
+  const rhino = await rhino3dm();
+  const file = new rhino.File3dm();
+  file.settings().modelUnitSystem = rhino.UnitSystem.Meters;
+  for (const [name, visible] of [['On', true], ['Off', false]] as const) {
+    const layer = new rhino.Layer();
+    layer.name = name;
+    layer.visible = visible;
+    file.layers().add(layer);
+  }
+  const group = new rhino.Group();
+  group.name = CRAFTED_GLOBAL_ID;
+  file.groups().add(group);
+
+  const add = (part: CraftedPart, x: number, merged: boolean) => {
+    const a = new rhino.ObjectAttributes();
+    a.layerIndex = part.layerOff ? 1 : 0;
+    a.name = part.name;
+    a.visible = !part.hidden;
+    if (merged) {
+      a.addToGroup(0);
+      a.setUserString('IFC::GlobalId', CRAFTED_GLOBAL_ID);
+    }
+    if (part.kind === 'mesh') file.objects().addMesh(triangle(rhino, [x, 0, 0], 1), a);
+    else if (part.kind === 'curve') file.objects().addPolyline([[x, 0, 0], [x + 1, 0, 0]], a);
+    else {
+      const cloud = new rhino.PointCloud();
+      cloud.add([x, 0, 0]);
+      file.objects().addPointCloud(cloud, a);
+    }
+  };
+  parts.forEach((part, i) => add(part, 2 * i, true));
+  if (alone) add(alone, 2 * parts.length, false);
+  return file.toByteArray();
+}
+
 /**
  * What the worker hands the adapter: a real read, baked and axis-swapped by
  * the real worker job. One copy, because every Rhino adapter test needs it.

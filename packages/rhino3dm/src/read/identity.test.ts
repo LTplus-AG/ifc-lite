@@ -103,7 +103,7 @@ test('a part states a column key or does not: an empty value never reaches the r
 test('an empty value counts as unset for an entity column, so the first part with a value fills it', () => {
   // Both parts sit in the group named their GlobalId, so they merge. The Rhino object name is empty too.
   const part = (userStrings: [string, string][]): ObjectFacts => ({
-    id: 'c0ffee', name: '', type: 'Mesh', layer: 0, layerPath: 'Default', hidden: false, groups: [0], userStrings, material: '',
+    id: 'c0ffee', name: '', type: 'Mesh', layer: 0, layerPath: 'Default', hidden: false, hiddenByObject: false, hiddenByLayer: false, groups: [0], userStrings, material: '',
   });
   const classes: IfcClasses = { product: () => null, spatial: () => null };
   const { entities } = buildEntities([

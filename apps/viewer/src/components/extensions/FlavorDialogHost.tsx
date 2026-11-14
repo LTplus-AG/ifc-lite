@@ -4,6 +4,7 @@
 
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { isFeatureEnabled } from '@/lib/features';
 
 // The dialog (and the flavor storage, import and diff code under it) loads on
 // first open, not with the page (#9296 eager-JS headroom).
@@ -17,11 +18,13 @@ export function FlavorDialogHost() {
   if (open && !mounted) setMounted(true);
   const requested = useViewerStore(state => state.flavorDialogRequested);
   const setRequested = useViewerStore(state => state.setFlavorDialogRequested);
+  // Profiles are part of extensions; a host can switch them off (`lib/features`), and then no request opens the dialog.
+  const offered = isFeatureEnabled('automate.extensions');
   useEffect(() => {
-    if (!requested) return;
+    if (!requested || !offered) return;
     setOpen(true);
     setRequested(false);
-  }, [requested, setRequested]);
-  if (!mounted) return null;
+  }, [requested, setRequested, offered]);
+  if (!mounted || !offered) return null;
   return <Suspense fallback={null}><FlavorDialog open={open} onClose={() => setOpen(false)} /></Suspense>;
 }

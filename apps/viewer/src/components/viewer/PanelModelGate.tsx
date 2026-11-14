@@ -26,6 +26,7 @@
  * (the #4243 class).
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Building2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -116,13 +117,14 @@ function useNoModelActions(id: WorkspacePanelId) {
     trackUiEvent('onboarding_surface', { surface: 'panel_empty_state', action: 'open_file', panel_id: id });
     window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
   };
-  return { loading, loadSample, openFile };
+  // A host can switch sample models and local files off (`lib/features`).
+  return { loading, loadSample, openFile, samples: isFeatureEnabled('files.samples'), local: isFeatureEnabled('files.local') };
 }
 
 function NoModelPanelState({ id, onClose }: { id: WorkspacePanelId; onClose: () => void }) {
   const { t } = useTranslation();
   const isMobile = useViewerStore((s) => s.isMobile);
-  const { loading, loadSample, openFile } = useNoModelActions(id);
+  const { loading, loadSample, openFile, samples, local } = useNoModelActions(id);
   const def = getPanelDef(id);
   const Icon = def?.Icon ?? Building2;
   return (
@@ -146,14 +148,15 @@ function NoModelPanelState({ id, onClose }: { id: WorkspacePanelId; onClose: () 
         description={t(TAKEOVER_LINES[id] ?? 'panelNoModel.description')}
         action={
           <div className="flex flex-col items-center gap-2">
-            <Button size="sm" className="gap-1.5" disabled={loading} onClick={() => { void loadSample(); }}>
+            {samples && <Button size="sm" className="gap-1.5" disabled={loading} onClick={() => { void loadSample(); }}>
               {loading ? <Spinner size="sm" /> : <Building2 className="h-3.5 w-3.5" aria-hidden="true" />}
               {t('tours.tourHost.loadDemoProject')}
-            </Button>
-            <Button variant="outline" size="sm" onClick={openFile}>
+            </Button>}
+            {local && <Button variant="outline" size="sm" onClick={openFile}>
               {t('viewportLighting.container.emptyState.openButton.open')}
-            </Button>
-            <p className="max-w-[240px] text-2xs text-muted-foreground">{t('panelNoModel.dropHint')}</p>
+            </Button>}
+            {local && <p className="max-w-[240px] text-2xs text-muted-foreground">{t('panelNoModel.dropHint')}</p>}
+            {!samples && !local && <p className="max-w-[240px] text-2xs text-muted-foreground">{t('viewportLighting.container.emptyState.hostOpens.lead')}</p>}
           </div>
         }
       />
@@ -164,18 +167,19 @@ function NoModelPanelState({ id, onClose }: { id: WorkspacePanelId; onClose: () 
 /** One muted line with two text links: the panel's own work stays primary. */
 function NoModelBanner({ id }: { id: WorkspacePanelId }) {
   const { t } = useTranslation();
-  const { loading, loadSample, openFile } = useNoModelActions(id);
+  const { loading, loadSample, openFile, samples, local } = useNoModelActions(id);
   const link = 'font-medium text-foreground underline underline-offset-2 hover:text-primary disabled:opacity-60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
   return (
     <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
       {t(BANNER_LINES[id] ?? 'panelNoModel.description')}{' '}
-      <button type="button" className={link} disabled={loading} onClick={() => { void loadSample(); }}>
+      {samples && <button type="button" className={link} disabled={loading} onClick={() => { void loadSample(); }}>
         {t('tours.tourHost.loadDemoProject')}
-      </button>
-      <span aria-hidden="true"> · </span>
-      <button type="button" className={link} onClick={openFile}>
+      </button>}
+      {samples && local && <span aria-hidden="true"> · </span>}
+      {local && <button type="button" className={link} onClick={openFile}>
         {t('viewportLighting.container.emptyState.openButton.open')}
-      </button>
+      </button>}
+      {!samples && !local && t('viewportLighting.container.emptyState.hostOpens.lead')}
     </p>
   );
 }

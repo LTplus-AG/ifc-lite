@@ -16,6 +16,7 @@
  */
 
 import proj4 from 'proj4';
+import { isFeatureEnabled } from '../features/index.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { lookupEpsgByCode } from '@ifc-lite/data';
@@ -192,6 +193,8 @@ export function sanitizeProj4(def: string, code?: string | null, datumName?: str
  * Fetch a proj4 definition string from epsg.io (last-resort fallback).
  */
 async function fetchProj4Def(epsgCode: string): Promise<string | null> {
+  // An outside service; a host can switch those off (`lib/features`).
+  if (!isFeatureEnabled('privacy.third-party')) return null;
   try {
     const resp = await fetch(`https://epsg.io/${epsgCode}.proj4`);
     if (!resp.ok) return null;
@@ -633,6 +636,8 @@ export async function computeFootprintGeoJSON(
  * Returns height in metres above sea level, or null on failure.
  */
 export async function queryTerrainElevation(latLon: LatLon): Promise<number | null> {
+  // An outside service; a host can switch those off (`lib/features`).
+  if (!isFeatureEnabled('privacy.third-party')) return null;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {

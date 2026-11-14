@@ -14,13 +14,14 @@
  */
 
 import type { StoreApi } from 'zustand';
+import { isFeatureEnabled } from '../lib/features/index.js';
 import { isPanelAvailable } from '../lib/panels/availability.js';
 import { BOTTOM_PANEL_FLAG, BOTTOM_PANEL_IDS } from '../lib/panels/bottom-panels.js';
 import { WORKSPACE_PANELS, type WorkspacePanelId } from '../lib/panels/registry.js';
 import type { ViewerState } from './index.js';
 import { SIDEBAR_PANEL_FLAGS } from './store-sync.js';
 
-function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Partial<ViewerState> | null {
+function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>, chatOff: boolean): Partial<ViewerState> | null {
   const patch: Record<string, unknown> = {};
   for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
     if (state[flag] && off.has(id)) patch[flag] = false;
@@ -38,6 +39,7 @@ function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Parti
     // its open windows against `poppedOutIds`.
     patch.poppedOutIds = state.poppedOutIds.filter((id) => !off.has(id));
   }
+  if (chatOff && state.chatPanelVisible) patch.chatPanelVisible = false;
   return Object.keys(patch).length > 0 ? patch as Partial<ViewerState> : null;
 }
 
@@ -49,9 +51,11 @@ function patchFor(state: ViewerState, off: ReadonlySet<WorkspacePanelId>): Parti
  */
 export function enforcePanelAvailability(store: StoreApi<ViewerState>): () => void {
   const off: ReadonlySet<WorkspacePanelId> = new Set(WORKSPACE_PANELS.map((panel) => panel.id).filter((id) => !isPanelAvailable(id)));
-  if (off.size === 0) return () => {};
+  // The AI chat is a pane inside the Script panel, not a panel of its own.
+  const chatOff = !isFeatureEnabled('ai.assistant');
+  if (off.size === 0 && !chatOff) return () => {};
   const enforce = (state: ViewerState) => {
-    const patch = patchFor(state, off);
+    const patch = patchFor(state, off, chatOff);
     if (patch) store.setState(patch);
   };
   enforce(store.getState());

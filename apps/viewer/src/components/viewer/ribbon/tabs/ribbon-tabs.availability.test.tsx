@@ -14,9 +14,13 @@ import assert from 'node:assert/strict';
 import type { ComponentType } from 'react';
 import { cleanup, render } from '@/test/render.js';
 import { resetFeaturesForTest } from '@/lib/features';
+import type { RibbonTabId } from '@/store';
+import type { FileCommands } from '../../toolbar/useFileCommands';
+import { availableRibbonTabs } from '../ribbon-tabs';
 import { AnalyzeTab } from './AnalyzeTab';
 import { AuthorTab } from './AuthorTab';
 import { ElementsTab } from './ElementsTab';
+import { FileTab } from './FileTab';
 import { HomeTab } from './HomeTab';
 import { ViewTab } from './ViewTab';
 
@@ -35,18 +39,36 @@ function bandShape(root: Element): string {
     .join('');
 }
 
-const TABS: ReadonlyArray<[string, ComponentType]> = [
-  ['Home', HomeTab],
-  ['View', ViewTab],
-  ['Elements', ElementsTab],
-  ['Author', AuthorTab],
-  ['Analyze', AnalyzeTab],
+const FILE_COMMANDS: FileCommands = {
+  fileInputs: null, openShareDialog: () => {},
+  handleOpenClick: async () => {}, handleAddModelClick: async () => {},
+  handleRefresh: async () => {}, canRefresh: false, hasModelsLoaded: true,
+};
+
+function FileTabWithCommands() {
+  return <FileTab fileCommands={FILE_COMMANDS} />;
+}
+
+const TABS: ReadonlyArray<[RibbonTabId, ComponentType]> = [
+  ['file', FileTabWithCommands],
+  ['home', HomeTab],
+  ['view', ViewTab],
+  ['elements', ElementsTab],
+  ['author', AuthorTab],
+  ['analyze', AnalyzeTab],
 ];
 
-for (const [name, Tab] of TABS) {
-  it(`${name} tab shows no empty group and no stray divider with every feature off`, () => {
+for (const [id, Tab] of TABS) {
+  it(`${id} tab shows no empty group and no stray divider with every feature off`, () => {
     resetFeaturesForTest({ default: 'none' });
     const shape = bandShape(render(<Tab />));
-    assert.match(shape, /^G(\|G)*$/, `${name} band: ${shape}`);
+    // A tab holding nothing but switched-off features is not offered at all.
+    const offered = availableRibbonTabs().some((tab) => tab.id === id);
+    assert.match(shape, offered ? /^G(\|G)*$/ : /^$/, `${id} band: ${shape}`);
   });
 }
+
+it('author tab opens on its first shown group when editing is off', () => {
+  resetFeaturesForTest({ default: 'none', enable: ['view.appearance', 'automate.extensions'] });
+  assert.equal(bandShape(render(<AuthorTab />)), 'G|G');
+});

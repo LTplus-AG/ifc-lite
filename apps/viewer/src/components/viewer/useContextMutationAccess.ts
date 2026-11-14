@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { useViewerStore } from '@/store';
+import { isFeatureEnabled } from '@/lib/features';
 import type { ViewerState } from '@/store';
 import type { EntityRef } from '@/store/types';
 import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
@@ -50,6 +51,6 @@ export function useContextMutationAccess(ref: EntityRef | null, isOpen: boolean)
   return {
     canEdit: access?.canEdit === true,
     editReasonKey: access?.editReasonKey,
-    showMutationActions: !!ref && (access?.hasView === true || !!access?.editReasonKey),
+    showMutationActions: isFeatureEnabled('edit.model') && !!ref && (access?.hasView === true || !!access?.editReasonKey),
   };
 }

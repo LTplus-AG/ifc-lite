@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useEffect, useRef, useState } from 'react';
 import { BsddNamespace, type BsddSearchResult } from '@ifc-lite/sdk';
 import { assertProfile, DEFAULT_PROFILE, generateArtifacts, dictionaryToProfile, profileFromBsdd, type ProfileDefinition } from '@ifc-lite/semantic';
@@ -17,6 +18,9 @@ const control = 'w-full rounded border border-border bg-background p-2 text-sm';
 const button = 'rounded border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50';
 /** Profiles contain data definitions only. Imported JSON never supplies executable contexts or shapes. */
 export function SemanticProfileControls({ profile, onProfile, onError }: SemanticProfileControlsProps) {
+  // bSDD is an outside service and the two exports save files; a host can switch either off (`lib/features`).
+  const bsdd = isFeatureEnabled('privacy.third-party');
+  const exportOn = isFeatureEnabled('export.files');
   const { t } = useTranslation();
   const [definition, setDefinition] = useState('');
   const [query, setQuery] = useState('');
@@ -71,16 +75,18 @@ export function SemanticProfileControls({ profile, onProfile, onError }: Semanti
     <div className="my-2 flex flex-wrap gap-2">
       <button className={button} disabled={!definition || busy} onClick={importDefinition}>{t('semantic.importProfile')}</button>
       <button className={button} disabled={!definition || busy} onClick={importDictionary}>{t('semantic.importDictionary')}</button>
-      <button className={button} disabled={!definition || busy} onClick={() => downloadFile(definition, 'semantic-source-definition.json', 'application/json')}>{t('semantic.exportSourceDefinition')}</button>
+      {exportOn && <button className={button} disabled={!definition || busy} onClick={() => downloadFile(definition, 'semantic-source-definition.json', 'application/json')}>{t('semantic.exportSourceDefinition')}</button>}
       <button className={button} disabled={busy} onClick={() => { onProfile(DEFAULT_PROFILE); setDefinition(''); setDiagnostics([]); }}>{t('semantic.referenceProfile')}</button>
-      <button className={button} disabled={busy} onClick={() => void exportProfile()}>{t('semantic.exportProfile')}</button>
+      {exportOn && <button className={button} disabled={busy} onClick={() => void exportProfile()}>{t('semantic.exportProfile')}</button>}
     </div>
     <p className="my-2 text-xs text-muted-foreground">{t('semantic.dictionaryRetention')}</p>
-    <label className="block text-sm">{t('semantic.bsddSearch')}<input className={control} value={query} onChange={event => setQuery(event.target.value)} /></label>
-    <button className={`${button} my-2`} disabled={busy || !query.trim()} onClick={() => void search()}>{t('semantic.searchBsdd')}</button>
-    <ul className="space-y-1">{results.map(result => <li key={result.uri}>
-      <button className={`${button} w-full text-left`} disabled={busy} onClick={() => void choose(result)}>{result.name} · {result.dictionaryUri}</button>
-    </li>)}</ul>
+    {bsdd && <>
+      <label className="block text-sm">{t('semantic.bsddSearch')}<input className={control} value={query} onChange={event => setQuery(event.target.value)} /></label>
+      <button className={`${button} my-2`} disabled={busy || !query.trim()} onClick={() => void search()}>{t('semantic.searchBsdd')}</button>
+      <ul className="space-y-1">{results.map(result => <li key={result.uri}>
+        <button className={`${button} w-full text-left`} disabled={busy} onClick={() => void choose(result)}>{result.name} · {result.dictionaryUri}</button>
+      </li>)}</ul>
+    </>}
     {diagnostics.length > 0 && <ul className="my-2 text-sm text-muted-foreground">{diagnostics.map(message => <li key={message}>{message}</li>)}</ul>}
   </details>;
 }

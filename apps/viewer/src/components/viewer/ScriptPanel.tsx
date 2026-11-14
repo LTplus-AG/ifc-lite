@@ -10,6 +10,7 @@
  * in a log console. AI chat is integrated as a collapsible side panel.
  */
 
+import { isAiChatAvailable } from './surface-command-features';
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useTranslation } from '@/i18n';
 import { ScriptFileControls } from './ScriptFileControls';
@@ -98,6 +99,8 @@ export function ScriptPanel() {
   const extensionHost = useOptionalExtensionHost();
   const [outputCollapsed, setOutputCollapsed] = useState(false);
   const chatPanelVisible = useViewerStore((s) => s.chatPanelVisible);
+  // The chat pane and "Fix with LLM" are AI; a host can switch it off (`lib/features`).
+  const ai = isAiChatAvailable();
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
 
   // Chat panel width (px) — resizable via drag handle
@@ -259,7 +262,7 @@ export function ScriptPanel() {
           )}
 
           {/* AI Chat toggle */}
-          <IconButton
+          {ai && <IconButton
             label={chatPanelVisible ? t('scriptPanel.header.hideAiChat') : t('scriptPanel.header.showAiChat')}
             variant="toggle"
             size="icon-xs"
@@ -268,7 +271,7 @@ export function ScriptPanel() {
             {...tourAnchor(TOUR_ANCHORS.scriptChatToggle)}
           >
             <Bot className="h-3.5 w-3.5" />
-          </IconButton>
+          </IconButton>}
         </div>
 
         <ScriptFileControls />
@@ -488,7 +491,7 @@ export function ScriptPanel() {
                           {t('scriptPanel.output.sandboxHintSuffix')}
                         </div>
                       )}
-                      <div className="mt-1">
+                      {ai && <div className="mt-1">
                         <Button
                           variant="outline"
                           size="sm"
@@ -497,7 +500,7 @@ export function ScriptPanel() {
                         >
                           {t('scriptPanel.output.fixWithLlmButton')}
                         </Button>
-                      </div>
+                      </div>}
                     </div>
                   </div>
                 )}

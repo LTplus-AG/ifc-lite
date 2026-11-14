@@ -3,15 +3,23 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { areWorkflowModelsReadLocked } from '../lib/flow/run-session.js';
+import { isFeatureEnabled } from '../lib/features/index.js';
 import type { ViewerState } from './index.js';
 import { getModelForRef } from '../sdk/adapters/model-compat.js';
 
 type MutationPermissionState = Pick<ViewerState, 'editEnabled' | 'canCollabEdit' | 'models' | 'ifcDataStore'>;
 
-export type MutationDenialReason = 'edit-mode' | 'collab-role' | 'model-unavailable' | 'workflow-running';
+/** `switched-off`: the deploying host switched editing off (`edit.model`, see `lib/features`). */
+const MUTATION_DENIAL_REASONS = ['switched-off', 'edit-mode', 'collab-role', 'model-unavailable', 'workflow-running'] as const;
+export type MutationDenialReason = typeof MUTATION_DENIAL_REASONS[number];
+
+export function isMutationDenialReason(value: string): value is MutationDenialReason {
+  return (MUTATION_DENIAL_REASONS as readonly string[]).includes(value);
+}
 
 export function mutationDenialKey(reason: MutationDenialReason) {
   switch (reason) {
+    case 'switched-off': return 'mutationPermission.switchedOff' as const;
     case 'workflow-running': return 'mutationPermission.workflowRunning' as const;
     case 'edit-mode': return 'mutationPermission.editModeRequired' as const;
     case 'collab-role': return 'mutationPermission.roleRequired' as const;
@@ -24,7 +32,9 @@ export function mutationPermission(
   state: MutationPermissionState,
   modelId?: string,
 ): { allowed: true } | { allowed: false; reason: MutationDenialReason } {
-  // A running workflow is named first: turning on Edit mode would not unblock it.
+  // Nothing unblocks a host's switch, so it is named first; a running workflow
+  // next, since turning on Edit mode would not unblock it either.
+  if (!isFeatureEnabled('edit.model')) return { allowed: false, reason: 'switched-off' };
   if (areWorkflowModelsReadLocked()) return { allowed: false, reason: 'workflow-running' };
   if (!state.editEnabled) return { allowed: false, reason: 'edit-mode' };
   return dataMutationPermission(state, modelId);
@@ -32,6 +42,8 @@ export function mutationPermission(
 
 /** In-place data edits keep the current workspace; all write locks still apply. */
 export function dataMutationPermission(state: MutationPermissionState, modelId?: string): ReturnType<typeof mutationPermission> {
+  // A host can switch editing off; then no path may write, in place or in the Model workspace.
+  if (!isFeatureEnabled('edit.model')) return { allowed: false, reason: 'switched-off' };
   if (areWorkflowModelsReadLocked()) return { allowed: false, reason: 'workflow-running' };
   if (!state.canCollabEdit()) return { allowed: false, reason: 'collab-role' };
   if (modelId !== undefined && !getModelForRef(state, modelId)?.ifcDataStore) {
@@ -73,6 +85,7 @@ export function dataMutationPermissionForModels(state: MutationPermissionState, 
 
 export function mutationDenialMessage(reason: MutationDenialReason): string {
   switch (reason) {
+    case 'switched-off': return 'Editing is not available in this viewer';
     case 'workflow-running': return 'Wait for the workflow check or PDF capture to finish, or cancel the workflow';
     case 'edit-mode': return 'Turn on Edit mode before changing a model';
     case 'collab-role': return 'Editing is disabled for your role in this shared session';

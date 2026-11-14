@@ -41,6 +41,8 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.heading': 'Open a model',
   'viewportLighting.container.emptyState.lead.returning': 'Pick a file from your computer, or continue where you left off.',
   'viewportLighting.container.emptyState.lead.firstVisit': 'Pick a file from your computer, or start from one of the samples below.',
+  'viewportLighting.container.emptyState.hostOpens.heading': 'No model open',
+  'viewportLighting.container.emptyState.hostOpens.lead': 'Open a model from the page that brought you here.',
   'viewportLighting.container.emptyState.recentFiles.reopen': 'Reopen',
   'viewportLighting.container.emptyState.recentFiles.locate': 'Locate…',
   'viewportLighting.container.emptyState.recentFiles.locateHint': 'Too large to keep in this browser. Choose the file again to open it.',

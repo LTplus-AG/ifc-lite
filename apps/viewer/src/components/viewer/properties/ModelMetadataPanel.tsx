@@ -7,6 +7,7 @@
  * coordinate system info, and project information.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useMemo } from 'react';
 import { FileBox, BookMarked } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -142,6 +143,8 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   const entityCount = useMemo(() => effectiveEntityCount(dataStore, mutationView), [dataStore, mutationView, mutationVersion]);
   const maxExpressId = useMemo(() => effectiveMaxExpressId(model.maxExpressId, mutationView), [model.maxExpressId, mutationView, mutationVersion]);
 
+  // Georeferencing is model data placed by the Placement feature; a host can switch either off (`lib/features`).
+  const georefEditable = isFeatureEnabled('edit.placement') && isFeatureEnabled('edit.model');
   // Extract georeferencing info
   const georef = useMemo(() => {
     if (!dataStore) return null;
@@ -315,7 +318,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
         {/* Georeferencing — kept at the bottom because it embeds a
             tall location map; placing it earlier would push the
             statistics + project metadata below the fold. */}
-        <GeoreferencingPanel georef={georef} modelId={model.id} enableEditing schemaVersion={model.schemaVersion} coordinateInfo={model.geometryResult?.coordinateInfo} geometryResult={model.geometryResult} lengthUnitScale={unitInfo?.scale} />
+        <GeoreferencingPanel georef={georef} modelId={model.id} enableEditing={georefEditable} schemaVersion={model.schemaVersion} coordinateInfo={model.geometryResult?.coordinateInfo} geometryResult={model.geometryResult} lengthUnitScale={unitInfo?.scale} />
       </ScrollArea>
     </div>
   );

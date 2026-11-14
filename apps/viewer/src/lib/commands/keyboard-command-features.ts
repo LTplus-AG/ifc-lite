@@ -21,6 +21,9 @@ const TOOL_ROWS = toolFeatureRows('tool.');
 export const KEY_COMMAND_FEATURE: Readonly<Partial<Record<KeyCommandId, FeatureId>>> = {
   // `tool.<name>` rows come from TOOL_FEATURE, the one tool table.
   ...TOOL_ROWS,
+  'edit.toggleEditMode': 'edit.model',
+  'edit.rotate': 'edit.model',
+  'edit.duplicate': 'edit.model',
   'basket.toggleDock': 'view.presentation',
   'basket.saveView': 'view.presentation',
 };
@@ -29,9 +32,13 @@ export const KEY_COMMAND_FEATURE: Readonly<Partial<Record<KeyCommandId, FeatureI
 export const KEY_CONTEXT_FEATURE: Readonly<Partial<Record<KeyContext, FeatureId>>> = {
   // A tool's own key context belongs to the tool (TOOL_FEATURE).
   ...TOOL_ROWS,
+  command: 'edit.model',
+  'workspace.model': 'edit.model',
+  'panel.reposition': 'edit.placement',
   'panel.schedule': 'data.schedule',
   'schedule.drag': 'data.schedule',
   'panel.script': 'automate.scripting',
+  'panel.chat': 'ai.assistant',
   drawing2d: 'view.drawings',
 };
 

@@ -18,6 +18,7 @@
 
 import { PICKER_FILE_EXTENSIONS } from './supported-model-files.js';
 import { markLoadIntent } from '../lib/load-intent.js';
+import { isFeatureEnabled } from '../lib/features/index.js';
 
 /**
  * Accept filter for the picker. Derived from the same list the
@@ -53,6 +54,8 @@ export function supportsFileSystemAccess(): boolean {
  * `<input type="file">`.
  */
 export async function openIfcFilesWithHandles(): Promise<OpenedFile[] | null> {
+  // Every File System Access picker opens here; a host can switch local files off (`lib/features`).
+  if (!isFeatureEnabled('files.local')) return null;
   markLoadIntent(); // the picker may stay open for seconds (load-intent.ts)
   if (!supportsFileSystemAccess()) return null;
 

@@ -8,5 +8,6 @@ export const mutationPermissionDe = {
   'mutationPermission.workflowRunning': 'Warten Sie, bis die Workflow-Prüfung oder die PDF-Erfassung abgeschlossen ist, oder brechen Sie den Workflow ab',
   'mutationPermission.editModeRequired': 'Aktivieren Sie den Bearbeitungsmodus, um dieses Modell zu ändern',
   'mutationPermission.roleRequired': 'Zum Bearbeiten ist in dieser geteilten Sitzung Bearbeiterzugriff erforderlich',
+  'mutationPermission.switchedOff': 'Bearbeiten ist in diesem Viewer nicht verfügbar',
   'mutationPermission.modelUnavailable': 'Dieses Modell enthält keine bearbeitbaren IFC-Daten',
 } satisfies Catalogue;

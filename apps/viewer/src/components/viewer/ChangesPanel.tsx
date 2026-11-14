@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
+import { isFeatureEnabled } from '@/lib/features';
 import { selectChangedEntity } from '@/lib/changes/select-changed-entity';
 import { useModelChangeReceipts } from '@/lib/actions/receipts';
 import { ReceiptList } from './actions/ReceiptList';
@@ -24,6 +25,7 @@ function refusalKey(reason: RevertRefusal): TranslationKey {
   switch (reason) {
     case 'stale': return 'changesPanel.revertStale';
     case 'workflow-running': return 'mutationPermission.workflowRunning';
+    case 'switched-off': return 'mutationPermission.switchedOff';
     case 'edit-mode':
     case 'collab-role':
     case 'model-unavailable': return 'changesPanel.revertPermission';
@@ -102,9 +104,9 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
         </li>)}</ol>}
     </div>
     <ReceiptList />
-    <div className="flex flex-wrap gap-2 border-t p-3">
+    {isFeatureEnabled('export.files') && <div className="flex flex-wrap gap-2 border-t p-3">
       <ExportChangesButton surface="changes_panel" trigger={<Button type="button" size="sm" disabled={!hasExportableChanges}>{t('exportChangesButton.buttonLabel')}</Button>} />
       <ExportDialog surface="changes_panel" initialChangesOnly trigger={<Button type="button" variant="outline" size="sm" disabled={rows.length === 0}>{deltaLabel}</Button>} />
-    </div>
+    </div>}
   </div>;
 }

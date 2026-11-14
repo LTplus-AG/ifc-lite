@@ -15,6 +15,7 @@ import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './
 import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from './export-schedule-splice.js';
 import { downloadFile, sanitizeFilename, buildExportFilename } from '../../lib/export/download.js';
+import { isFeatureEnabled } from '../../lib/features/index.js';
 import { resolveExportVisibility } from '../../store/exportVisibility.js';
 import { stripScheduleEntities } from './export-schedule-strip.js';
 
@@ -586,6 +587,8 @@ function triggerDownload(content: string | Uint8Array, filename: string, mimeTyp
   if (typeof document === 'undefined') {
     throw new Error('download() requires a browser environment (document is unavailable)');
   }
+  // Scripts and extensions save files through here; a host can switch export off (`lib/features`).
+  if (!isFeatureEnabled('export.files')) throw new Error('Export is switched off in this viewer');
   downloadFile(content, filename, mimeType);
   trackExportCompleted({ format: 'other', surface: 'script' });
 }

@@ -8,5 +8,6 @@ export const mutationPermissionFr = {
   "mutationPermission.workflowRunning": "Attendez la fin du contrôle du workflow ou de la capture PDF, ou annulez le workflow",
   "mutationPermission.editModeRequired": "Activez le mode Édition pour modifier ce modèle",
   "mutationPermission.roleRequired": "La modification nécessite un accès éditeur dans cette session partagée",
+  "mutationPermission.switchedOff": "La modification n'est pas disponible dans cette visionneuse",
   "mutationPermission.modelUnavailable": "Ce modèle ne contient aucune donnée IFC modifiable",
 } satisfies Catalogue;

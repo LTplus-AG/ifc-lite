@@ -31,7 +31,14 @@ import { WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { HomeTab } from '@/components/viewer/ribbon/tabs/HomeTab';
 import { COMMAND_FEATURE, COMMAND_PREFIX_FEATURE } from '@/components/viewer/surface-command-features';
 import { paletteSurfaceCommands } from '@/components/viewer/surface-commands';
+import { dataMutationPermission, mutationPermission } from '@/store/mutation-permission';
+import { isCollabEnabled } from '@/lib/collab/config';
+import { ViewportWelcomeCard } from '@/components/viewer/ViewportWelcomeCard';
+import { WelcomeFooterChips } from '@/components/viewer/WelcomeFooterChips';
+import { buildExportCommands } from '@/components/viewer/commandPaletteExports';
+import { availableRibbonTabs } from '@/components/viewer/ribbon/ribbon-tabs';
 import { FEATURE_CATALOGUE, type FeatureId } from './catalogue';
+import { linkIconFont } from './icon-font';
 import { featuresAskedForTest, resetFeaturesForTest } from './index';
 import { TOOL_FEATURE, isToolAvailable } from './tools';
 import { KEY_COMMANDS } from '@/lib/commands/keyboard-commands';
@@ -56,7 +63,8 @@ function PrivacyNoticeHost() {
   return null;
 }
 
-const named = (table: Partial<Record<string, FeatureId>>) => Object.values(table).filter((id) => id !== undefined);
+const named = (table: Partial<Record<string, FeatureId | readonly FeatureId[]>>) =>
+  Object.values(table).flatMap((value) => (value === undefined ? [] : typeof value === 'string' ? [value] : [...value]));
 
 /** Ids named by a registry gate table; each table's projection is driven below. */
 const GATE_TABLES: readonly FeatureId[] = [
@@ -67,6 +75,13 @@ const GATE_TABLES: readonly FeatureId[] = [
   ...named(KEY_CONTEXT_FEATURE),
   ...named(TOOL_FEATURE),
 ];
+
+function welcomeCard() {
+  return render(
+    <ViewportWelcomeCard webgpu={{ supported: true, checking: false }} onOpenClick={() => {}} onStartBlank={() => {}}
+      recentFiles={[]} loadFile={async () => {}} />,
+  );
+}
 
 const NOTHING = { default: 'none' } as const;
 const PALETTE_STATE = { canEditInSession: true, cesiumAvailable: true, collabEnabled: true };
@@ -81,6 +96,9 @@ function runGatedSurfaces(): void {
   render(<HostingAnalytics />);
   render(<PrivacyNoticeHost />);
   render(<AnalyticsConsentSection />);
+  welcomeCard();
+  render(<WelcomeFooterChips tourAvailable />);
+  linkIconFont(document.implementation.createHTMLDocument('font'));
 }
 
 afterEach(() => {
@@ -293,5 +311,81 @@ describe('one tool table, and what follows from it', () => {
     const first = menu.firstElementChild;
     assert.equal(first?.querySelector('[role="separator"]'), null, 'no separator before the first group');
     assert.equal(menu.querySelectorAll('[role="separator"]').length, menu.querySelectorAll('[data-panel-group]').length - 1);
+  });
+});
+
+describe('files, editing, AI, collaboration, export and help switched off', () => {
+  it('the start screen offers only what is on, and says where a model comes from', () => {
+    resetFeaturesForTest(NOTHING);
+    const card = welcomeCard();
+    assert.equal(card.querySelectorAll('button').length, 0, 'no open, cloud, blank or sample actions, and no local-files footnote');
+    assert.match(card.textContent ?? '', /No model open/);
+    cleanup();
+    const footer = render(<WelcomeFooterChips tourAvailable />);
+    assert.equal(footer.querySelector('a[href="/mcp"]'), null);
+    assert.equal(footer.querySelector('a[href^="https://"]'), null);
+  });
+
+  it('the palette loses file, editing, AI, export and tour commands, and the Author tab goes', () => {
+    const all = paletteIds();
+    resetFeaturesForTest(NOTHING);
+    const none = paletteIds();
+    for (const id of ['file:open', 'file:new-blank', 'tool:wall', 'tool:edit-mode', 'panel:assistant', 'panel:chat', 'panel:agentBridge', 'panel:extensions', 'learn:hub', 'model:reposition']) {
+      assert.equal(all.has(id), true, `${id} is offered by default`);
+      assert.equal(none.has(id), false, `${id} must go with its feature`);
+    }
+    assert.equal(buildExportCommands(() => {}).length, 0, 'no export rows');
+    assert.equal(availableRibbonTabs().some((tab) => tab.id === 'author'), false);
+    resetFeaturesForTest({ default: 'none', enable: ['automate.extensions'] });
+    assert.equal(availableRibbonTabs().some((tab) => tab.id === 'author'), true, 'one remaining group keeps the tab');
+  });
+
+  it('editing is refused where edit mode is entered and where a change is committed', () => {
+    const state = { editEnabled: true, canCollabEdit: () => true, models: new Map(), ifcDataStore: null };
+    assert.equal(mutationPermission(state).allowed, true);
+    assert.equal(dataMutationPermission(state).allowed, true, 'in-place data edits need no edit mode');
+    resetFeaturesForTest(NOTHING);
+    assert.deepEqual(mutationPermission(state), { allowed: false, reason: 'switched-off' });
+    assert.deepEqual(dataMutationPermission(state), { allowed: false, reason: 'switched-off' }, 'in-place data edits are refused too');
+    assert.equal(useViewerStore.getState().enterModelWorkspace(), false);
+    assert.equal(useViewerStore.getState().editEnabled, false);
+  });
+
+  it('the AI chat pane cannot stay open', () => {
+    resetFeaturesForTest({ default: 'all', disable: ['ai.assistant'] });
+    const stop = enforcePanelAvailability(useViewerStore);
+    try {
+      useViewerStore.getState().setChatPanelVisible(true);
+      assert.equal(useViewerStore.getState().chatPanelVisible, false);
+    } finally {
+      stop();
+    }
+  });
+
+  it('collaboration is off whatever the build flag or a local override says', () => {
+    const storage = globalThis.localStorage;
+    storage.setItem('ifc-lite:collab:enabled', 'true');
+    try {
+      assert.equal(isCollabEnabled(), true);
+      resetFeaturesForTest(NOTHING);
+      assert.equal(isCollabEnabled(), false);
+      assert.equal(isPanelAvailable('collab'), false);
+    } finally {
+      storage.removeItem('ifc-lite:collab:enabled');
+    }
+  });
+
+  it('the hosted icon font is not linked and the world context never becomes available', () => {
+    // A detached document, so the test never asks the font host.
+    const page = document.implementation.createHTMLDocument('font');
+    resetFeaturesForTest({ default: 'all', disable: ['privacy.third-party'] });
+    linkIconFont(page);
+    assert.equal(page.head.querySelector('link[href*="fonts.googleapis"]'), null);
+    useViewerStore.getState().setCesiumAvailable(true);
+    assert.equal(useViewerStore.getState().cesiumAvailable, false);
+    resetFeaturesForTest();
+    linkIconFont(page);
+    assert.ok(page.head.querySelector('link[href*="fonts.googleapis"]'), 'linked when the host allows it');
+    useViewerStore.getState().setCesiumAvailable(false);
   });
 });

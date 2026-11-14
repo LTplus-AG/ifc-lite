@@ -22,6 +22,7 @@ import type { TranslatableMessage, TranslationKey } from '@/i18n';
 
 /** Viewer refusals are catalogued; native `preflightWorkflow` errors are shown verbatim through `preflightNative`. */
 const DENIAL_KEY: Record<MutationDenialReason, TranslationKey> = {
+  'switched-off': 'mutationPermission.switchedOff',
   'workflow-running': 'flowAssistant.preflightDeniedWorkflow', 'edit-mode': 'flowAssistant.preflightDeniedEditMode',
   'collab-role': 'flowAssistant.preflightDeniedRole', 'model-unavailable': 'flowAssistant.preflightDeniedModel',
 };

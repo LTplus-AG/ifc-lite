@@ -20,10 +20,12 @@
  * clickable and did nothing.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { ArrowUpRight, Command, Sparkles } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { TourInvite } from '@/components/tours/TourInvite';
+import { isTourIdAvailable } from '@/lib/tours/tour-availability';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded';
 const LINK = `inline-flex min-h-6 items-center gap-1.5 hover:text-primary transition-colors ${FOCUS}`;
@@ -33,23 +35,26 @@ export function WelcomeFooterChips({ tourAvailable }: {
   tourAvailable: boolean;
 }) {
   const { t } = useTranslation();
+  // A host can switch the product links and the tours off (`lib/features`).
+  const links = isFeatureEnabled('help.product-links');
+  const tour = tourAvailable && isTourIdAvailable('welcome');
   return (
     <div className="mt-12 flex w-full flex-wrap items-center justify-between gap-x-6 gap-y-2 text-xs text-muted-foreground">
-      <p data-welcome-learn-line="" className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+      {links || tour ? <p data-welcome-learn-line="" className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
         <span>{t('viewportLighting.container.emptyState.footer.discoverPrompt')}</span>
-        <a href="https://ifclite.dev" target="_blank" rel="noopener noreferrer" className={`font-medium text-primary hover:underline underline-offset-2 ${FOCUS}`}>
+        {links && <a href="https://ifclite.dev" target="_blank" rel="noopener noreferrer" className={`font-medium text-primary hover:underline underline-offset-2 ${FOCUS}`}>
           {t('viewportLighting.container.emptyState.footer.discoverLink')}
-        </a>
+        </a>}
         {/* Last, so its dismiss X ends the line and plainly belongs to it. */}
-        {tourAvailable && <TourInvite leading={<span aria-hidden="true">·</span>} />}
-      </p>
+        {tour && <TourInvite leading={links ? <span aria-hidden="true">·</span> : undefined} />}
+      </p> : <span />}
       <div className="flex items-center gap-5">
         {/* Works without WebGPU: the MCP route drives the toolkit headless. */}
-        <a href="/mcp" title={t('viewportLighting.container.emptyState.noModel.llmHint')} className={LINK}>
+        {links && <a href="/mcp" title={t('viewportLighting.container.emptyState.noModel.llmHint')} className={LINK}>
           <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
           <span>{t('viewportLighting.container.emptyState.driveWithLlm')}</span>
           <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
-        </a>
+        </a>}
         <button
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'shortcuts' } }))}

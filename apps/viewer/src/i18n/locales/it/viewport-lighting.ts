@@ -15,6 +15,8 @@ export const viewportLightingIt = {
   "viewportLighting.container.emptyState.heading": "Apri un modello",
   "viewportLighting.container.emptyState.lead.returning": "Scegli un file dal tuo computer, oppure riprendi da dove avevi lasciato.",
   "viewportLighting.container.emptyState.lead.firstVisit": "Scegli un file dal tuo computer, oppure inizia da uno degli esempi qui sotto.",
+  "viewportLighting.container.emptyState.hostOpens.heading": "Nessun modello aperto",
+  "viewportLighting.container.emptyState.hostOpens.lead": "Apri un modello dalla pagina da cui sei arrivato qui.",
   "viewportLighting.container.emptyState.recentFiles.reopen": "Riapri",
   "viewportLighting.container.emptyState.recentFiles.locate": "Individua…",
   "viewportLighting.container.emptyState.recentFiles.locateHint": "Troppo grande per essere conservato in questo browser. Scegli di nuovo il file per aprirlo.",

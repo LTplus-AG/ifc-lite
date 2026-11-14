@@ -132,6 +132,12 @@ export interface TourDefinition {
    */
   demoFulfil?: () => Promise<void>;
   /**
+   * A step loads the sample project itself (a card action, or `ensureTourModel`)
+   * when no model is open, so the tour needs `files.samples`. A tour with
+   * `prerequisites` needs it anyway: its interstitial offers the sample.
+   */
+  loadsSample?: boolean;
+  /**
    * Snapshot fields NOT restored on finish, so the tour's visible outcome
    * survives (abort always restores everything). Example: the lens tour
    * keeps `activeLensId` applied.

@@ -73,6 +73,7 @@ import { type IfcDataStore } from '@ifc-lite/parser';
 import { getEffectiveGeoreference, hasDeclaredCrs, offersCesium } from '@/lib/geo/effective-georef';
 import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
 import { markLoadIntent } from '@/lib/load-intent';
+import { isFeatureEnabled } from '@/lib/features';
 
 /**
  * The primary container for the 3D viewport, managing IFC model loading,
@@ -632,14 +633,14 @@ export function ViewportContainer() {
         data-viewport
       >
 
-        <input
+        {isFeatureEnabled('files.local') && <input
           ref={fileInputRef}
           type="file"
           accept={FILE_ACCEPT}
           multiple
           onChange={handleFileSelect}
           className="hidden"
-        />
+        />}
 
         {/* Drop overlay — full window, since the whole window is the drop target (#5845) */}
         {isDragging && createPortal(

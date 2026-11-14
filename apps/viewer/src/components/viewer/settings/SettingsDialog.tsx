@@ -23,6 +23,7 @@ import { DisplaySection } from './DisplaySection';
 import { PerformanceSection } from './PerformanceSection';
 import { PrivacyPanel } from '@/components/extensions/PrivacyPanel';
 import { CollaborationSection } from './CollaborationSection';
+import { isFeatureEnabled } from '@/lib/features';
 
 const SECTIONS: Record<SettingsSection, { label: TranslationKey; Body: ComponentType }> = {
   general: { label: 'settings.sections.general', Body: GeneralSection },
@@ -79,6 +80,9 @@ const DIALOG_CLASS = 'max-w-2xl gap-0 p-0 sm:min-h-[min(calc(20rem+69px),calc(10
 export function SettingsDialog({ open, section, onSectionChange, onOpenChange }: SettingsDialogProps) {
   const { t } = useTranslation();
   const wide = useSyncExternalStore(subscribeSm, isSmViewport, () => true);
+  // A host that switched live sessions off has no collaboration settings to offer.
+  const sections = SETTINGS_SECTIONS.filter((id) => id !== 'collaboration' || isFeatureEnabled('collab.sessions'));
+  const active = sections.includes(section) ? section : sections[0];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent scrollBody className={DIALOG_CLASS} data-settings-dialog>
@@ -88,18 +92,18 @@ export function SettingsDialog({ open, section, onSectionChange, onOpenChange }:
         </div>
         <Tabs
           orientation={wide ? 'vertical' : 'horizontal'}
-          value={section}
+          value={active}
           onValueChange={(value) => { const next = SETTINGS_SECTIONS.find((id) => id === value); if (next) onSectionChange(next); }}
           className="flex min-h-0 flex-1 flex-col sm:flex-row sm:gap-4 sm:px-5 sm:pb-5 sm:pt-3"
         >
           <TabsList scrollable className={TAB_LIST_CLASS}>
-            {SETTINGS_SECTIONS.map((id) => (
+            {sections.map((id) => (
               <TabsTrigger key={id} value={id} className={TAB_TRIGGER_CLASS}>
                 {t(SECTIONS[id].label)}
               </TabsTrigger>
             ))}
           </TabsList>
-          {SETTINGS_SECTIONS.map((id) => {
+          {sections.map((id) => {
             const { Body } = SECTIONS[id];
             return (
               <DialogBody key={id} asChild>

@@ -14,18 +14,32 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
 import { mayWarmUp } from '@/lib/warm-runtime-gate';
+import { resetFeaturesForTest } from '@/lib/features';
+import { fastPathSwitch, MODEL_SOURCES, pageCanOpenModels, startFastPath } from './startFastPath';
 
 const desktop = { deviceMemory: 8, connection: { saveData: false } } as unknown as Navigator;
 const setSearch = (search: string) => window.history.replaceState(null, '', `/${search}`);
-afterEach(() => setSearch(''));
+afterEach(() => { setSearch(''); resetFeaturesForTest(); });
+
+/** `startFastPath()` declines and no worker is constructed. */
+function assertStartsNothing(): void {
+  let spawned = 0;
+  const priorWorker = globalThis.Worker;
+  globalThis.Worker = class { constructor() { spawned++; } } as unknown as typeof Worker;
+  try {
+    assert.equal(startFastPath(), false);
+    assert.equal(spawned, 0);
+  } finally {
+    globalThis.Worker = priorWorker;
+  }
+}
 
 describe('fast path kill switch', () => {
-  it('is a registered kill switch, on by default; flipping the registry default is the one-line off switch', async () => {
+  it('is a registered kill switch, on by default; flipping the registry default is the one-line off switch', () => {
     const flag = getPerfFlagDefinition('fastPath');
     assert.equal(flag.kind, 'kill-switch');
     assert.equal(flag.bindings.urlParam, 'perf.fastPath');
     assert.equal(flag.default, true);
-    const { fastPathSwitch } = await import('./startFastPath');
     setSearch('');
     assert.equal(mayWarmUp(fastPathSwitch(), desktop), true, 'unset: the registry default (on)');
     const def = flag as { default: unknown };
@@ -37,8 +51,7 @@ describe('fast path kill switch', () => {
     }
   });
 
-  it('?perf.fastPath=0 and ?perf.fastPath=false turn it off for the session', async () => {
-    const { fastPathSwitch } = await import('./startFastPath');
+  it('?perf.fastPath=0 and ?perf.fastPath=false turn it off for the session', () => {
     setSearch('?perf.fastPath=0');
     assert.equal(mayWarmUp(fastPathSwitch(), desktop), false);
     setSearch('?perf.fastPath=false');
@@ -46,17 +59,26 @@ describe('fast path kill switch', () => {
     assert.equal(readPerfFlag('fastPath'), 'false');
   });
 
-  it('with ?perf.fastPath=0 the runtime starts nothing and spawns no worker', async () => {
+  it('with ?perf.fastPath=0 the runtime starts nothing and spawns no worker', () => {
     setSearch('?perf.fastPath=0');
-    let spawned = 0;
-    const priorWorker = globalThis.Worker;
-    globalThis.Worker = class { constructor() { spawned++; } } as unknown as typeof Worker;
-    try {
-      const { startFastPath } = await import('./startFastPath');
-      assert.equal(startFastPath(), false);
-      assert.equal(spawned, 0);
-    } finally {
-      globalThis.Worker = priorWorker;
+    assertStartsNothing();
+  });
+
+  it('a page that can open no model warms nothing: no sample fetch, no worker', () => {
+    resetFeaturesForTest({ default: 'all', disable: [...MODEL_SOURCES] });
+    assertStartsNothing();
+  });
+
+  it('any one model source left on keeps the warm-up: local files, samples, cloud sources, federation setup or ?model=', () => {
+    assert.equal(pageCanOpenModels(), true, 'no host configuration');
+    for (const kept of MODEL_SOURCES) {
+      resetFeaturesForTest({ default: 'all', disable: MODEL_SOURCES.filter((id) => id !== kept) });
+      assert.equal(pageCanOpenModels(), true, `${kept} on`);
     }
+    resetFeaturesForTest({ default: 'all', disable: [...MODEL_SOURCES] });
+    setSearch('?model=');
+    assert.equal(pageCanOpenModels(), false, 'an empty ?model= loads nothing');
+    setSearch('?model=samples/hello-wall.ifc');
+    assert.equal(pageCanOpenModels(), true, '?model= autoloads a model with every picker off');
   });
 });

@@ -72,9 +72,11 @@ if (existsSync(`${dir}/stop`)) {
     // The paired tab serves read tools only: a write that is not refused fails the run.
     const refused = await call('entity_set_attribute', { global_id: wall.globalId, attribute: 'Name', value: 'x' });
     summary.refusedMutation = { isError: refused?.isError, code: refused?.structuredContent?.code };
-    // Only the read-only refusal counts: an allowed write that fails validation is also isError, with another code.
-    if (refused?.isError !== true || summary.refusedMutation.code !== 'READ_ONLY') {
-      throw new Error(`entity_set_attribute was not refused as read-only: ${JSON.stringify(summary.refusedMutation)}`);
+    // Only a refusal counts: an allowed write that fails validation is also isError, with another code. The
+    // viewer announces read tools only, so the server answers UNSUPPORTED_OPERATION (unknown tool); READ_ONLY
+    // is TabBridge's refusal for a mutating tool a tab did announce.
+    if (refused?.isError !== true || !['UNSUPPORTED_OPERATION', 'READ_ONLY'].includes(summary.refusedMutation.code)) {
+      throw new Error(`entity_set_attribute was not refused: ${JSON.stringify(summary.refusedMutation)}`);
     }
   } catch (err) {
     failure = String(err?.message ?? err);

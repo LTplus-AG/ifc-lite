@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/lib/drawing2d-markup/drawing-markup-embedded-sweep.ts",
+  "mutation": "tests/evidence/markup-resave-embedded-sweep-10083/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/drawing2d-markup/drawing-markup-resave.test.ts",
+  "why": "#10083: reverse application keeps every export but makes the embedded sweep remove nothing, so a reopened, restored model saved again carries a second copy of every embedded markup annotation and the re-save tests fail."
+}

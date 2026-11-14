@@ -417,8 +417,9 @@ test('#9906 every tree build of a federated session reads each model once', asyn
   let decoded = 0;
   for (const model of [a, b]) {
     const store = model.ifcDataStore!;
-    const getEntity = store.getEntity.bind(store);
-    store.getEntity = (expressId: number) => { decoded++; return getEntity(expressId); };
+    // #9928 counts selective reads as well as full-record decoding.
+    const decode = store.source.decodeUtf8.bind(store.source);
+    store.source.decodeUtf8 = (start, end) => { decoded++; return decode(start, end); };
   }
   const geometry = new Set([a.idOffset + 2, a.idOffset + 3, b.idOffset + 2, b.idOffset + 3]);
   const ready = new Set([a.id, b.id]);

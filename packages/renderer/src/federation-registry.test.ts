@@ -515,3 +515,27 @@ it('registration listeners see the final retained-gap ownership once (#10139)', 
   reg.registerModel('x', 990, 1001);
   assert.deepEqual(observed, [{ start: 0, end: 1000 }]);
 });
+
+it('duplicate registration with a retained view stays a no-op outside a published, overlay-free range (#10139)', () => {
+  const reg = new FederationRegistry();
+  const empty = reg.reserveModel('empty', 0);
+  assert.equal(reg.registerModel('empty', 0, 1001), empty, 'an unpublished reservation is not extended');
+  const published = reg.registerModel('published', 300);
+  reg.publishOverlayRange('published', 301, 301);
+  assert.equal(reg.registerModel('published', 300, 1001), published, 'an overlay-published range is not extended');
+  assert.equal(reg.getGlobalIdRange('published')!.end, published + 301);
+  const progressive = reg.reserveModel('progressive', 300);
+  reg.publishRange('progressive', 0, 300);
+  reg.registerModel('progressive', 300, 1001);
+  assert.equal(reg.getGlobalIdRange('progressive')!.end, progressive + 1000, 'the gap before retained creations is reserved');
+});
+
+it('a throwing range listener does not hide the change from later listeners (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('x', 300);
+  const seen: string[] = [];
+  reg.subscribe(() => { throw new Error('first listener failed'); });
+  reg.subscribe(id => { if (id) seen.push(id); });
+  assert.throws(() => reg.extendModel('x', 400), /notification failed/);
+  assert.deepEqual(seen, ['x']);
+});

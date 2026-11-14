@@ -29,7 +29,7 @@ function waitForCompletion(modelId: string, signal: AbortSignal): Promise<void> 
 
 /** Publishes the hydrated store's ids and returns the model's ownership bound for the reverse
  *  resolvers: the store's highest id, or the published end when a later model clamps the range. */
-function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpressId: number } {
+function extendModelIdRange(modelId: string, dataStore: IfcDataStore, beforeExtend: () => void): { maxExpressId: number } {
   const registered = useViewerStore.getState().models.get(modelId)?.maxExpressId ?? 0;
   const maxExpressId = Math.max(registered, getMaxExpressId(dataStore, []));
   // An unregistered primary keeps the single-model `globalId === expressId` fallback.
@@ -37,11 +37,11 @@ function extendModelIdRange(modelId: string, dataStore: IfcDataStore): { maxExpr
   // Source-derived allocator floors do not mean any authored IDs exist.
   // Refusal leaves both the existing source and authored overlay untouched.
   const view = useViewerStore.getState().mutationViews.get(modelId);
-  const created = view?.getCreatedExpressIdBounds();
-  const published = federationRegistry.extendModel(modelId, maxExpressId, created?.lowest ?? 0);
+  const firstCreated = view?.getCreatedExpressIdBounds().lowest ?? 0;
+  beforeExtend();
+  const published = federationRegistry.extendModel(modelId, maxExpressId, firstCreated);
   if (published < maxExpressId) console.warn(`[Server properties] Ids ${published + 1}..${maxExpressId} of model ${modelId} lie past the ids a later model owns; those entities cannot be selected or resolved, and the model cannot be edited`);
   return { maxExpressId: published };
-
 }
 
 function start(modelId: string | null, isStale: (() => boolean) | undefined,
@@ -97,8 +97,7 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
       withDeferredOverlayCapacity(() => {
         if (!lease.isCurrent() || !ownsModel()) return;
         let idRange: { maxExpressId: number };
-        ownershipMayHaveChanged = true;
-        try { idRange = extendModelIdRange(modelId, dataStore); }
+        try { idRange = extendModelIdRange(modelId, dataStore, () => { ownershipMayHaveChanged = true; }); }
         catch (error) {
           if (!(error instanceof ModelRangeExtensionRefusedError)) throw error;
           ownershipMayHaveChanged = false;
@@ -108,10 +107,18 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
         // Ownership is permanent even if extension/warning supersedes the lease.
         // Commit the hydrated store only if settlement still owns this model.
         const accepted = lease.isCurrent() && ownsModel();
+        // Set before the commit so its own notification keeps ownership; undone
+        // if the commit throws before the swap, so the run fails rather than idles.
+        const previousStore = expectedStore;
         if (accepted) expectedStore = dataStore;
-        useViewerStore.getState().updateModel(modelId, accepted
-          ? { ifcDataStore: dataStore, ...idRange }
-          : idRange);
+        try {
+          useViewerStore.getState().updateModel(modelId, accepted
+            ? { ifcDataStore: dataStore, ...idRange }
+            : idRange);
+        } catch (error) {
+          if (useViewerStore.getState().models.get(modelId)?.ifcDataStore !== dataStore) expectedStore = previousStore;
+          throw error;
+        }
         if (accepted && !useViewerStore.getState().models.get(modelId)?.hasOverlayCapacity) {
           console.warn(`[Server properties] Model ${modelId}: no id is left for edits in its safe range`);
         }

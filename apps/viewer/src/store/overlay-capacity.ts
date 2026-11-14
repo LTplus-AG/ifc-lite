@@ -44,7 +44,7 @@ export function refreshModelOverlayCapacity(model: FederatedModel, view?: Mutabl
 }
 
 /** Keep selectors on reactive model data, including lazy and direct overlay clients. */
-export function registerOverlayCapacity(store: Pick<StoreApi<ViewerState>, 'getState' | 'setState' | 'subscribe'>): void {
+export function registerOverlayCapacity(store: Pick<StoreApi<ViewerState>, 'getState' | 'setState' | 'subscribe'>): () => void {
   let refreshing = false;
   const dirty = new Set<string>();
   const bound = new Map<string, { view: MutablePropertyView; source: IfcDataStore | null; floor: () => number }>();
@@ -90,8 +90,8 @@ export function registerOverlayCapacity(store: Pick<StoreApi<ViewerState>, 'getS
     refresh();
   };
   refreshers.add(refresh);
-  federationRegistry.subscribe(mark);
-  store.subscribe((state, previous) => {
+  const stopRegistry = federationRegistry.subscribe(mark);
+  const stopStore = store.subscribe((state, previous) => {
     if (state.models === previous.models && state.mutationViews === previous.mutationViews) return;
     for (const [id, model] of state.models) {
       if (model !== previous.models.get(id) || state.mutationViews.get(id) !== previous.mutationViews.get(id)) dirty.add(id);
@@ -100,4 +100,5 @@ export function registerOverlayCapacity(store: Pick<StoreApi<ViewerState>, 'getS
     refresh();
   });
   mark();
+  return () => { refreshers.delete(refresh); stopRegistry(); stopStore(); };
 }

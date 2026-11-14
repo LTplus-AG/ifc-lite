@@ -50,7 +50,14 @@ export class FederationRegistry {
     return () => { this.rangeListeners.delete(listener); };
   }
 
-  private rangesChanged(modelId?: string): void { for (const listener of this.rangeListeners) listener(modelId); }
+  /** Every listener sees the change; the first failure is rethrown afterwards. */
+  private rangesChanged(modelId?: string): void {
+    let failure: { error: unknown } | undefined;
+    for (const listener of this.rangeListeners) {
+      try { listener(modelId); } catch (error) { failure ??= { error }; }
+    }
+    if (failure) throw failure.error;
+  }
 
   /** Capacity at an allocator's next ID; earlier authored IDs may await lazy publication. */
   hasOverlayCapacity(modelId: string, nextLocalId: number, count = 1): boolean {
@@ -72,9 +79,12 @@ export class FederationRegistry {
     const retained = firstRetainedExpressId > 0 && firstRetainedExpressId <= maxExpressId ? 0 : firstRetainedExpressId;
     const existing = this.modelRanges.get(modelId);
     if (existing) {
-      // Progressive loaders already reserved and published the source. Finalize
-      // retained ownership through the same check as a fresh registration.
-      if (firstRetainedExpressId > 0) this.extendModel(modelId, maxExpressId, retained);
+      // Progressive loaders already reserved and published the source. Only a
+      // fully published, overlay-free range reserves the gap before retained
+      // creations; any other duplicate registration stays a no-op.
+      if (retained > existing.ownedEnd + 1 && existing.publishedStart !== null && existing.maxExpressId === existing.ownedEnd) {
+        this.extendModel(modelId, existing.reservedMaxExpressId, retained);
+      }
       return existing.offset;
     }
     return this.createRange(modelId, maxExpressId, retained, true);

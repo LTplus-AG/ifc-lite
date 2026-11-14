@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { it } from 'node:test';
+import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from 'zustand/vanilla';
 import { federationRegistry } from '@ifc-lite/renderer';
@@ -12,6 +12,9 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { readModelEditTarget } from './slices/mutation-modelling-records.js';
 import { readOnlyModelEditLease } from '@/lib/actions/model-authoring-read-target';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
+
+const observers: (() => void)[] = [];
+afterEach(() => { for (const stop of observers.splice(0)) stop(); });
 
 it('drains a reentrant view replacement before returning (#10139)', () => {
   federationRegistry.clear();
@@ -27,7 +30,7 @@ it('drains a reentrant view replacement before returning (#10139)', () => {
         store.setState({ mutationViews: new Map([['A', replacement]]) });
       }
     });
-    registerOverlayCapacity(store);
+    observers.push(registerOverlayCapacity(store));
     assert.equal(replaced, true);
     assert.equal(replacement.peekNextExpressId(), 101);
   } finally { federationRegistry.clear(); }
@@ -41,7 +44,7 @@ it('allocator ticks do not reconfigure other models (#10139)', () => {
     const a = new MutablePropertyView(null, 'A'), b = new MutablePropertyView(null, 'B');
     const store = createStore<ViewerState>(() => ({ ...useViewerStore.getState(),
       ...fixtureModels(fixtureModel('A'), fixtureModel('B')), mutationViews: new Map([['A', a], ['B', b]]) }));
-    registerOverlayCapacity(store);
+    observers.push(registerOverlayCapacity(store));
     let work = 0;
     const original = b.configureExpressIdAllocator.bind(b);
     b.configureExpressIdAllocator = (...args) => { work++; original(...args); };

@@ -24,14 +24,22 @@ export function drawingWithDxfBounds(drawing: Drawing2D | null, references: read
       // varies by font. Include baseline and height in the mapped direction.
       const length=Math.hypot(text.dirX,text.dirY)||1, ux=text.dirX/length,uy=text.dirY/length;
       const lines = text.text.split('\n');
-      const width = text.height * lines.reduce((longest, line) => Math.max(longest, line.length), 0);
+      // Aligned/fit text spans exactly its fitWidth in every renderer.
+      const width = lines.length === 1 && text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0
+        ? text.fitWidth
+        : text.height * (text.widthScale && text.widthScale > 0 ? text.widthScale : 1)
+          * lines.reduce((longest, line) => Math.max(longest, line.length), 0);
       const left = text.align === 'right' ? -width : text.align === 'center' ? -width / 2 : 0;
       // Cardinal display/export mappings may reverse the stacking perpendicular.
       // Cover both directions and one glyph height beyond the farthest line of
       // the attached block (bottom grows up, middle centres, top grows down).
-      const extent = text.height + Math.max(
-        Math.abs(dxfTextLineOffset(0, lines.length, text.valign, text.height)),
-        Math.abs(dxfTextLineOffset(lines.length - 1, lines.length, text.valign, text.height)));
+      // Aligned text grows with the measured glyphs, which bounds cannot measure;
+      // allow for glyphs as narrow as 0.2 em (e.g. "iiii") so they stay inside.
+      const glyphHeight = text.fitUniform && width === text.fitWidth
+        ? Math.max(text.height, width / (Math.max(1, lines[0].length) * 0.2)) : text.height;
+      const extent = glyphHeight + Math.max(
+        Math.abs(dxfTextLineOffset(0, lines.length, text.valign, text.height, text.lineSpacingFactor)),
+        Math.abs(dxfTextLineOffset(lines.length - 1, lines.length, text.valign, text.height, text.lineSpacingFactor)));
       for (const x of [left,left+width]) for (const y of [-extent,extent]) include({x:text.x+ux*x-uy*y,y:text.y+uy*x+ux*y});
     }
   }

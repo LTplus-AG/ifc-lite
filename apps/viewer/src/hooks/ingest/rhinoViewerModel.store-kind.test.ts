@@ -22,6 +22,7 @@ import { createSyntheticDataStore, IfcParser, type IfcDataStore } from '@ifc-lit
 
 import { canWriteIfcFromStores } from '@/components/viewer/export-model-selection';
 import { exportModelStep } from '@/lib/export/model-step-export';
+import { StepRecordsUnavailableError } from '@/lib/export/step-records';
 import { buildShareSeed, isSeedableModel } from '@/lib/collab/share-scope';
 import { isIfcxDataStore, type FederatedModel } from '@/store/types';
 import { craftRhino3dm, rhinoPayloadOf } from '@/test/rhino-3dm-fixture.js';
@@ -102,7 +103,7 @@ describe('a loaded .3dm store, and the gates that read it', () => {
     assert.equal(canWriteIfcFromStores(alone, 'single', false), true);
     await assert.rejects(
       exportModelStep({ modelId: 'rhino', dataStore, options: { schema: 'IFC4', applyMutations: true }, scheduleState: null }),
-      (error: unknown) => (error as { reason?: string }).reason === 'noRecords',
+      (error: unknown) => error instanceof StepRecordsUnavailableError && error.reason === 'noRecords',
     );
     // Nothing writable in the federation at all: the merged export refuses.
     assert.equal(canWriteIfcFromStores(alone, 'merged', false), false);

@@ -182,6 +182,18 @@ describe('DXFExporter', () => {
     expect(polylines[0].vertices[1].x).toBeCloseTo(10);
   });
 
+  it('re-emits uniform (aligned) text as Aligned (72=3)', () => {
+    const aligned = underlay();
+    aligned.layers[0].texts = [
+      { position: { x: 1, y: 2 }, text: 'Al', height: 1, dirX: 1, dirY: 0, align: 'left', valign: 'baseline', fitWidth: 4, fitUniform: true },
+    ];
+    const dxf = exportToDXF(emptyDrawing(), {
+      underlays: [{ underlay: aligned, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
+    });
+    expect(dxf).toContain('72\n3\n');
+    expect(dxf).not.toContain('72\n5\n');
+  });
+
   it('re-emits aligned/fit text as Fit (72=5) so CAD spans the exact fitWidth', () => {
     const fit = underlay();
     fit.layers[0].texts = [

@@ -519,6 +519,9 @@ describe('consolidated additions (SPLINE, SOLID, lineweight, valign, unit heuris
     // Both carry the exact span so measuring renderers need not trust the estimate.
     expect(aligned.fitWidth).toBeCloseTo(6, 9);
     expect(fit.fitWidth).toBeCloseTo(6, 9);
+    // Aligned reaches the span by scaling height with width; fit stretches width only.
+    expect(aligned.fitUniform).toBe(true);
+    expect(fit.fitUniform).toBeUndefined();
     expect(aligned.position).toEqual({ x: 0, y: 0 });
     expect(fit.position).toEqual({ x: 0, y: 0 });
   });

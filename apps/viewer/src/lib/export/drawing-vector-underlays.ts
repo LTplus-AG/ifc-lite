@@ -46,7 +46,7 @@ export function mappedDxfUnderlayOptions(data: readonly DxfUnderlayRenderData[],
           text: line, height: text.height, dirX, dirY,
           color: text.color, align: text.align, valign: text.valign, widthScale: text.widthScale,
           // Only single-line text carries a span; the line keeps the same mapped length.
-          fitWidth: lines.length === 1 ? text.fitWidth : undefined };
+          fitWidth: lines.length === 1 ? text.fitWidth : undefined, fitUniform: text.fitUniform };
         });
       }),
     }],
@@ -101,8 +101,11 @@ export function drawDxfUnderlaysPdf(doc: jsPDF, underlays: readonly DxfUnderlayR
           const measured = doc.getTextWidth(line);
           const fitMm = text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0 && Number.isFinite(measured) && measured > 0
             ? text.fitWidth * metresToMm : 0;
-          const stretch = fitMm ? fitMm / measured : text.widthScale && text.widthScale > 0 ? text.widthScale : 1;
-          const start = pdfRotatedTextStart(anchor, rad, fitMm || measured * stretch, sizeMm, text.align, text.valign,
+          const fit = fitMm ? fitMm / measured : text.widthScale && text.widthScale > 0 ? text.widthScale : 1;
+          // Aligned text reaches the span by font size (height and width together), not Tz.
+          const uniform = fitMm && text.fitUniform ? fit : 1, stretch = uniform !== 1 ? 1 : fit;
+          if (uniform !== 1) doc.setFontSize(sizeMm * uniform * 72 / 25.4);
+          const start = pdfRotatedTextStart(anchor, rad, fitMm || measured * stretch, sizeMm * uniform, text.align, text.valign,
             dxfTextLineOffset(i, lines.length, text.valign, sizeMm, text.lineSpacingFactor));
           doc.text(line, start.x, start.y, { angle: -rad * 180 / Math.PI, ...(stretch !== tz && { horizontalScale: stretch }) });
           tz = stretch;

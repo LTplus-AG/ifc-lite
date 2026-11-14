@@ -47,6 +47,8 @@ export interface DxfUnderlayRenderText {
   widthScale?: number;
   /** Aligned/fit span length in metres; measuring renderers stretch to exactly this. */
   fitWidth?: number;
+  /** Aligned text: scale height with width to reach fitWidth. */
+  fitUniform?: boolean;
 }
 
 /** One underlay pre-mapped to drawing space, ready for canvas/SVG. */
@@ -258,6 +260,7 @@ export function dxfUnderlayToDrawing(
         lineSpacingFactor: text.lineSpacingFactor,
         widthScale: text.widthScale,
         fitWidth: text.fitWidth === undefined ? undefined : text.fitWidth * entry.placement.scale * textMapScale,
+        fitUniform: text.fitUniform,
       });
     }
   }

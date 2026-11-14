@@ -69,6 +69,29 @@ describe('stretched DXF text', () => {
       assert.deepEqual(calls, [`scale ${36 / 15} 1`]);
     });
 
+    it('canvas scales aligned (uniform) text in both axes to the measured span', () => {
+      const calls: string[] = [];
+      const ctx = {
+        save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {},
+        setLineDash() {}, translate() {}, rotate() {}, scale(x: number, y: number) { calls.push(`scale ${x} ${y}`); },
+        measureText: () => ({ width: 15 }), fillText() {}, textBaseline: 'alphabetic',
+      } as unknown as CanvasRenderingContext2D;
+      drawDxfUnderlaysScreenSpace(ctx, wrap({ ...fit, widthScale: undefined, fitUniform: true }), mapPoint, w => w, h => h * 10);
+      assert.deepEqual(calls, ['scale 2 2']);
+    });
+
+    it('PDF reaches an aligned span by font size, not Tz', () => {
+      const doc = new jsPDF({ unit: 'mm', format: [100, 100] });
+      doc.getTextWidth = () => 24;
+      const sizes: number[] = [];
+      const setFontSize = doc.setFontSize.bind(doc);
+      doc.setFontSize = (size: number) => { sizes.push(size); return setFontSize(size); };
+      drawDxfUnderlaysPdf(doc, wrap({ ...fit, widthScale: undefined, fitUniform: true }), mapPoint, 10);
+      assert.doesNotMatch(doc.output(), / Tz/);
+      // 0.5 m × 10 mm/m = 5 mm text, scaled by 30 / 24 = 1.25.
+      assert.ok(Math.abs(sizes.at(-1)! - 5 * 1.25 * 72 / 25.4) < 1e-9);
+    });
+
     it('canvas falls back to widthScale for a zero or non-finite measured width', () => {
       for (const width of [0, NaN, Infinity]) {
         const calls: string[] = [];

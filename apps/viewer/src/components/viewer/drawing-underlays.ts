@@ -99,7 +99,8 @@ export function drawDxfUnderlaysScreenSpace(
           if (Number.isFinite(measured) && measured > 0) stretch = fitPx / measured;
         }
         ctx.save();
-        if (stretch !== 1) ctx.scale(stretch, 1);
+        // Aligned text scales height with width (uniform); fit/width-factor text stretches width only.
+        if (stretch !== 1) ctx.scale(stretch, fitPx && text.fitUniform ? stretch : 1);
         ctx.fillText(lines[i], 0, dxfTextLineOffset(i, lines.length, text.valign, fontPx, text.lineSpacingFactor));
         ctx.restore();
       }

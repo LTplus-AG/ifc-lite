@@ -342,7 +342,7 @@ export class DXFExporter {
             height,
             layer,
             { rotationDeg: angle, hAlign: text.align, vAlign: text.valign, colorOverride: text.color,
-              widthScale: text.widthScale, fitTo },
+              widthScale: text.widthScale, fitTo, fitUniform: text.fitUniform },
           );
         }
       }

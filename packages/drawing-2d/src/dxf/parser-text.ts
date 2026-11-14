@@ -100,7 +100,7 @@ export function parseText(body: DxfPair[]): DxfTextEntity {
       const fit = span / naturalWidth;
       // Aligned scales height and width together; fit keeps the height and
       // stretches only along the baseline. Both start at point 10.
-      if (hJust === 3) e.height *= fit;
+      if (hJust === 3) { e.height *= fit; e.fitUniform = true; }
       else e.widthScale = fit;
     }
   } else if (Number.isFinite(widthFactor) && widthFactor > 0 && widthFactor !== 1) e.widthScale = widthFactor;

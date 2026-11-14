@@ -119,6 +119,8 @@ export interface DxfTextEntity extends DxfEntityCommon {
   widthScale?: number;
   /** Aligned/fit span length (points 10→11); renderers that can measure stretch to exactly this. */
   fitWidth?: number;
+  /** Aligned (72=3): reaching `fitWidth` scales height with width, not width alone. */
+  fitUniform?: boolean;
 }
 
 /** SPLINE entity: clamped B-spline control net (or fit points). */
@@ -261,6 +263,8 @@ export interface DxfUnderlayText {
   widthScale?: number;
   /** Aligned/fit span length in underlay units; measuring renderers stretch the line to exactly this. */
   fitWidth?: number;
+  /** Aligned text: measuring renderers scale height and width together to reach `fitWidth`. */
+  fitUniform?: boolean;
   color?: string;
 }
 

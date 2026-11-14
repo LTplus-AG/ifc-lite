@@ -284,7 +284,7 @@ export class DxfWriter {
       hAlign?: DxfTextHAlign;
       vAlign?: DxfTextVAlign;
       colorOverride?: string;
-      widthScale?: number; fitTo?: Point2D; // group 41 (omitted at 1); Fit (72=5) second point replaces it
+      widthScale?: number; fitTo?: Point2D; fitUniform?: boolean; // group 41 (omitted at 1); Fit (72=5), or Aligned (72=3) when uniform, replaces it
     } = {},
   ): void {
     const clean = sanitizeDxfText(text);
@@ -295,7 +295,7 @@ export class DxfWriter {
     if (!clean.trim() || !Number.isFinite(height) || height <= 0) return;
     this.extend(position);
     const rotationDeg = options.rotationDeg ?? 0;
-    const [hCode, vCode] = options.fitTo ? [5, 0] : [H_ALIGN_CODE[options.hAlign ?? 'left'], V_ALIGN_CODE[options.vAlign ?? 'baseline']];
+    const [hCode, vCode] = options.fitTo ? [options.fitUniform ? 3 : 5, 0] : [H_ALIGN_CODE[options.hAlign ?? 'left'], V_ALIGN_CODE[options.vAlign ?? 'baseline']];
     const needsAlignPoint = hCode !== 0 || vCode !== 0;
     const colorGroup = this.colorOverrideGroup(options.colorOverride);
     const widthScale = options.fitTo ? undefined : dxfWidthFactor(options.widthScale);

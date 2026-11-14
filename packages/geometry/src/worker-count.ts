@@ -316,16 +316,21 @@ export function planLoadWorkerCount(fileSizeMB: number, workerCountOverride?: Wo
 /**
  * Refuse a load of `byteLength` source bytes up front by throwing
  * `GeometryMemoryBudgetError` when even the source copies of the path that will
- * run (`parallelPoolAvailable()`: 3 × source for the worker pool, 2 × for the
- * serial fallback) exceed the most memory the browser's `deviceMemory` reading
- * allows. A strict lower bound against a reported ceiling: never decided by the
- * planning estimate, never by the memory simulation. Opt-in for the host,
- * called before reading the file; the pool itself never refuses.
+ * run (3 × source for the worker pool, 2 × for the serial fallback) exceed the
+ * most memory the browser's `deviceMemory` reading allows. A strict lower bound
+ * against a reported ceiling: never decided by the planning estimate, never by
+ * the memory simulation. Opt-in for the host, called before reading the file;
+ * the pool itself never refuses.
+ *
+ * `path` is the path the caller will run. By default it is the one
+ * `processAdaptive` picks (`parallelPoolAvailable()`); a caller that invokes
+ * `processParallel` directly passes `'parallel'`, because that pool runs even
+ * where `processAdaptive` would stream serially (one core).
  */
-export function assertGeometryMemoryFits(byteLength: number): void {
+export function assertGeometryMemoryFits(byteLength: number, path?: 'parallel' | 'serial'): void {
   const fileSizeMB = Number.isFinite(byteLength) ? Math.max(0, byteLength) / (1024 * 1024) : 0;
   const ceilingMiB = deviceMemoryCeilingGB(browserDeviceMemoryGB()) * 1024;
-  const floorMiB = sourceCopiesFloorMiB(fileSizeMB, parallelPoolAvailable() ? 'parallel' : 'serial');
+  const floorMiB = sourceCopiesFloorMiB(fileSizeMB, path ?? (parallelPoolAvailable() ? 'parallel' : 'serial'));
   if (floorMiB > ceilingMiB) throw new GeometryMemoryBudgetError(floorMiB, ceilingMiB);
 }
 

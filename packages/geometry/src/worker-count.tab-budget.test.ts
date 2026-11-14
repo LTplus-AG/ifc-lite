@@ -268,7 +268,11 @@ describe('refusal: only on the strict floor of the path that will run (review fi
     browser({ hardwareConcurrency: 8, deviceMemory: 1 }, false);
     expect(() => assertGeometryMemoryFits(600 * 1024 ** 2)).not.toThrow();
     browser({ hardwareConcurrency: 1, deviceMemory: 1 }, true); // one core: processAdaptive streams serially
-    expect(() => assertGeometryMemoryFits(600 * 1024 ** 2)).not.toThrow();
+    expect(() => assertGeometryMemoryFits(600 * 1024 ** 2)).not.toThrow();    // A caller that runs processParallel directly states its path: the pool's 3 × floor applies even on one core.
+    expect(() => assertGeometryMemoryFits(600 * 1024 ** 2, 'parallel')).toThrow(GeometryMemoryBudgetError);
+    // And an explicit serial path uses the 2 × floor even where the pool is available.
+    browser({ hardwareConcurrency: 8, deviceMemory: 1 }, true);
+    expect(() => assertGeometryMemoryFits(600 * 1024 ** 2, 'serial')).not.toThrow();
   });
 
   it('does not refuse where the old 1-worker estimate did (929 MiB on a 4 GB reading)', () => {

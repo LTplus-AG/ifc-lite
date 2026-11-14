@@ -15,6 +15,7 @@
 import { createSchemaEntityNameSnapshot, EntityExtractor, getSchemaRegistryForVersion, resolveEffectiveEntityRecord, type EffectiveEntityRecord, type IfcDataStore, type SchemaEntityNameSnapshot } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { SpatialAnchor, SpatialAnchorSchema } from './anchor.js';
+import { projectMeasureScales } from './project-measure-scales.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
 
 export function resolveSpatialAnchor(
@@ -69,7 +70,7 @@ export function resolveSpatialAnchor(
     ? safeLengthUnitScale(store.source, store.entityIndex, 'resolveSpatialAnchor') ?? 1.0
     : 1.0;
 
-  return { ownerHistoryId, bodyContextId, axisContextId, rootContextId, storeyId: storeyExpressId, storeyPlacementId, schema, lengthUnitScale };
+  return { ownerHistoryId, bodyContextId, axisContextId, rootContextId, storeyId: storeyExpressId, storeyPlacementId, schema, lengthUnitScale, getMeasureUnitScales: () => projectMeasureScales(store) };
 }
 
 /**

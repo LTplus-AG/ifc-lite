@@ -562,7 +562,6 @@
    "FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');",
    "FILE_NAME('src.ifc','2024-05-01T10:00:00',('Author'),('Org'),'Tool 1.0','Tool','');",
    "FILE_SCHEMA(('IFC4'));",
-   "#99=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',3,1.E-05,#11,$);",
    "ENDSEC;",
    "DATA;",
    "#1=IFCPERSON($,'Doe','Jane',$,$,$,$,$);",
@@ -612,6 +611,7 @@
    "#45=IFCPROPERTYSINGLEVALUE('Status',$,IFCLABEL('New'),$);",
    "#46=IFCPROPERTYSET('0Qq1Rr2Ss3Tt4Uu5Vv6Ww7',#5,'Pset_SlabCommon',$,(#45));",
    "#47=IFCRELDEFINESBYPROPERTIES('2Aa3Bb4Cc5Dd6Ee7Ff8Gg9',#5,$,$,(#23),#46);",
+   "#99=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',3,1.E-05,#11,$);",
    "ENDSEC;",
    "END-ISO-10303-21;"
   ]

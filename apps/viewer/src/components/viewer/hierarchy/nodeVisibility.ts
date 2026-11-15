@@ -33,8 +33,9 @@ export function hierarchyNodeVisibility(
   };
 }
 
-/** Global targets per plan for its current own-state revision, by model, action and row. */
-const planTargetCache = new WeakMap<ContainerVisibilityPlan, { revision: number; targets: Map<string, number[]> }>();
+/** Global targets per plan, by model, action and row. Show targets depend on
+ *  own states, so they reset with the plan's revision; hide targets do not. */
+const planTargetCache = new WeakMap<ContainerVisibilityPlan, { revision: number; show: Map<string, number[]>; hide: Map<string, number[]> }>();
 
 /** The plan of a single model's spatial or element row, when its model has
  *  one. The spatial rows are the `Ifc*` node types; grouping rows never follow a plan. */
@@ -52,17 +53,18 @@ function planRowTargets(node: TreeNode, models: Map<string, FederatedModel>, act
   const modelId = node.modelIds[0];
   const revision = ownStateRevision(plan);
   let cache = planTargetCache.get(plan);
-  if (cache?.revision !== revision) planTargetCache.set(plan, cache = { revision, targets: new Map() });
-  const key = `${modelId}\u0000${action}\u0000${row}`;
-  let targets = cache.targets.get(key);
+  if (!cache) planTargetCache.set(plan, cache = { revision, show: new Map(), hide: new Map() });
+  if (cache.revision !== revision) { cache.revision = revision; cache.show = new Map(); }
+  const key = `${modelId}\u0000${row}`;
+  let targets = cache[action].get(key);
   if (!targets) {
     // A whole subtree at once: map through the models map, not resolveTreeGlobalId's store lookup per id.
     targets = containerVisibilityTargets(plan, row, action).map((id) => toGlobalIdFromModels(models, modelId, id));
-    cache.targets.set(key, targets);
+    cache[action].set(key, targets);
   }
   // Nothing to bring back (a row that is an object hidden on its own, holding
-  // nothing else that is on): the row acts on what it holds directly.
-  return targets.length > 0 ? targets : null;
+  // nothing else that is on): the row's eye acts on that row alone.
+  return targets.length > 0 ? targets : [toGlobalIdFromModels(models, modelId, row)];
 }
 
 /** The global ids a row's eye acts on. A row of a model that states how its

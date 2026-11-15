@@ -293,7 +293,7 @@ export function planRhinoContainerVisibility(
     const entity = result.entities[index];
     const id = entityExpressId(index);
     rows.get(row)?.members.push(id);
-    if (entity.hiddenByObject || mixedCauses(entity) || !layersOn(entity.layer, layerOfRow.get(row) ?? null)) ownOff.add(id);
+    if (hiddenOnItsOwn.has(id) || !layersOn(entity.layer, layerOfRow.get(row) ?? null)) ownOff.add(id);
   });
   return { rows, ownOff, selfOff };
 }

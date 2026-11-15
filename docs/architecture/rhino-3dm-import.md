@@ -753,7 +753,8 @@ transparency rule [test].
   that object, and its own eye, being the layer's, does not show it either.
   Not covered: a storey row merged across models, which acts on direct
   members; a merged object whose parts sit on different layers, whose own
-  state follows its first part's layer; Isolate, which still takes a row's direct members; the
+  state follows its first part's layer; a stamped project layer nested under
+  a layer that is off, whose root row does not see that layer; Isolate, which still takes a row's direct members; the
   file root and stamped site and building rows, which have no eye once a
   second model is loaded; and hiding from anywhere but the layer tree's own
   rows (the viewport, a class or group row), which does not change an own

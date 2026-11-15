@@ -32,6 +32,7 @@
   "packages/extensions": 4,
   "packages/flow": 0,
   "packages/flow-nodes": 0,
+  "packages/geo": 0,
   "packages/geometry": 2,
   "packages/ids": 7,
   "packages/ids-agent": 0,

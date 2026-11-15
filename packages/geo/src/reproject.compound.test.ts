@@ -4,7 +4,11 @@
 
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { reprojectPointToLatLon } from './reproject.js';
+import { configureCrsLoaders, epsgIoDefinitionLoader } from './loaders.js';
+import { reprojectPointToLatLon } from './reproject-point.js';
+
+// With the epsg.io loader installed, "no request" is a statement about resolution.
+configureCrsLoaders({ epsgDefinition: epsgIoDefinitionLoader() });
 
 // Regression for the missing deprecated compounds in #7658. PROJ 9.8.1
 // (pyproj 3.8.0): Transformer.from_crs(code, 4326, always_xy=True).transform(x, y).
@@ -20,7 +24,7 @@ for (const { code, x, y, lat, lon } of CASES) {
     const fetch = t.mock.method(globalThis, 'fetch', async () => {
       throw new Error('Compound CRS resolution must work offline');
     });
-    const result = await reprojectPointToLatLon(x, y, { id: 1, name: `EPSG:${code}`, mapUnitScale: 1 });
+    const result = await reprojectPointToLatLon(x, y, { name: `EPSG:${code}`, mapUnitScale: 1 });
     assert.equal(fetch.mock.callCount(), 0, 'Must not consult epsg.io for a bundled horizontal component');
     assert.ok(result, `EPSG:${code} did not resolve`);
     const dy = (result.lat - lat) * 111_320;

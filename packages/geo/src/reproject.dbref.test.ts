@@ -4,7 +4,7 @@
 
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { reprojectPointToLatLon, type LatLon } from './reproject.js';
+import { reprojectPointToLatLon, type LatLon } from './reproject-point.js';
 
 /** Metres per degree of latitude; longitude is scaled by cos(lat). */
 const M_PER_DEG = 111_320;
@@ -30,7 +30,7 @@ const CASES = [
 
 for (const { code, x, y, expected } of CASES) {
   it(`EPSG:${code} applies the DB_REF to ETRS89 datum shift (#7658)`, async () => {
-    const result = await reprojectPointToLatLon(x, y, { id: 1, name: `EPSG:${code}`, mapUnitScale: 1 });
+    const result = await reprojectPointToLatLon(x, y, { name: `EPSG:${code}`, mapUnitScale: 1 });
     assert.ok(result, `EPSG:${code} did not resolve`);
     const offset = offsetMetres(result, expected);
     assert.ok(offset < 0.5, `EPSG:${code} lands ${offset.toFixed(2)} m off (${result.lat}, ${result.lon})`);

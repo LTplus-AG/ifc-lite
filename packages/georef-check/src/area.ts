@@ -19,5 +19,8 @@ export const AREA_OF_USE_MARGIN_DEGREES = 0.5;
 
 export function insideAreaOfUse(area: NonNullable<CrsCatalogEntry['areaOfUse']>, latitude: number, longitude: number): boolean {
   const m = AREA_OF_USE_MARGIN_DEGREES;
-  return longitude >= area.west - m && longitude <= area.east + m && latitude >= area.south - m && latitude <= area.north + m;
+  if (!(latitude >= area.south - m && latitude <= area.north + m)) return false;
+  // An area crossing the antimeridian is written west > east (west 170, east -170): inside is east of west OR west of east.
+  if (area.west > area.east) return longitude >= area.west - m || longitude <= area.east + m;
+  return longitude >= area.west - m && longitude <= area.east + m;
 }

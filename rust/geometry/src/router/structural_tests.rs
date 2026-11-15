@@ -803,7 +803,10 @@ fn an_opening_that_touches_the_outer_loop_is_still_an_opening_issue_9945() {
         "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#31,#32,#33));#21=IFCFACEOUTERBOUND(#20,.T.);\
          #31=IFCCARTESIANPOINT((5.,0.,0.));#32=IFCCARTESIANPOINT((7.,3.,0.));#33=IFCCARTESIANPOINT((3.,3.,0.));",
     ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
-    assert!((signed_xy_area(&meshed(&proxy_with(&source), 18)) - 94.0).abs() < 1e-5);
+    let mesh = meshed(&proxy_with(&source), 18);
+    assert!((signed_xy_area(&mesh) - 94.0).abs() < 1e-5);
+    assert!(!covers(&mesh, 5.0, 2.0), "the triangle's interior is the opening, empty");
+    assert!(covers(&mesh, 1.0, 5.0), "the square around it is meshed");
 }
 
 #[test]
@@ -813,8 +816,13 @@ fn an_opening_tagged_as_an_outer_bound_is_an_opening_on_every_product_issue_9945
     // meshed only the small square on a proxy (4), and the member counted the
     // overlap twice (104).
     let face = surface_member(true, true).replace("#12=IFCFACEBOUND(#11,.T.);", "#12=IFCFACEOUTERBOUND(#11,.T.);");
-    assert!((signed_xy_area(&meshed(&proxy_with(&face), 18)) - 96.0).abs() < 1e-5);
-    assert!((signed_xy_area(&meshed(&face, 18)) - 96.0).abs() < 1e-5);
+    for mesh in [meshed(&proxy_with(&face), 18), meshed(&face, 18)] {
+        assert!((signed_xy_area(&mesh) - 96.0).abs() < 1e-5);
+        // Area alone cannot tell an opening from a filled hole (a covering square plus a reverse-wound inner one also sums
+        // to 96): the opening's centre (5, 5) must be empty while the ring around it is meshed.
+        assert!(!covers(&mesh, 5.0, 5.0), "the opening is empty");
+        assert!(covers(&mesh, 2.0, 2.0) && covers(&mesh, 8.0, 8.0), "the ring around it is meshed");
+    }
 }
 
 #[test]

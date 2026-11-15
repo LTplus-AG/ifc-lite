@@ -12,12 +12,16 @@ import { readSync } from 'node:fs';
 export function readStdinUtf8() {
   const chunks = [];
   const chunk = Buffer.allocUnsafe(16 * 1024);
+  const retryWait = new Int32Array(new SharedArrayBuffer(4));
   while (true) {
     let bytesRead;
     try {
       bytesRead = readSync(0, chunk, 0, chunk.length, null);
     } catch (error) {
-      if (error?.code === 'EAGAIN') continue;
+      if (error?.code === 'EAGAIN') {
+        Atomics.wait(retryWait, 0, 0, 2);
+        continue;
+      }
       throw error;
     }
     if (bytesRead === 0) break;

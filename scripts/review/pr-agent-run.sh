@@ -54,13 +54,15 @@ git -C "$candidate" diff --name-only --no-renames -z "$base...$head" \
       } catch (error) {
         if (error?.code !== 'ERR_MODULE_NOT_FOUND') throw error;
         const { readSync } = await import('node:fs');
+        // Delete this fallback once read-stdin.mjs is on main.
         readStdinUtf8 = () => {
           const chunks = [];
           const chunk = Buffer.allocUnsafe(16 * 1024);
+          const retryWait = new Int32Array(new SharedArrayBuffer(4));
           while (true) {
             let size;
             try { size = readSync(0, chunk, 0, chunk.length, null); }
-            catch (readError) { if (readError?.code === 'EAGAIN') continue; throw readError; }
+            catch (readError) { if (readError?.code === 'EAGAIN') { Atomics.wait(retryWait, 0, 0, 2); continue; } throw readError; }
             if (size === 0) break;
             chunks.push(Buffer.from(chunk.subarray(0, size)));
           }

@@ -9,11 +9,10 @@ import { test } from 'node:test';
 const READER = new URL('./read-stdin.mjs', import.meta.url);
 
 test('readStdinUtf8 preserves UTF-8 across the nodejs/node#66341 short-read trigger', async () => {
-  const boundary = 16 * 1024;
-  const input = Buffer.concat([
-    Buffer.from('a'.repeat(boundary - 2) + '🧱'),
-    Buffer.from('b'.repeat(150_000)),
-  ]);
+  const burstStart = 72_000;
+  const input = Buffer.alloc(166_386, 0x61);
+  input.write('🧱', 3_998);
+  input.write('🧱', burstStart + 16 * 1024 - 2);
   const child = spawn(process.execPath, ['--input-type=module', '-e', `
     import { readStdinUtf8 } from ${JSON.stringify(READER.href)};
     process.stdout.write(readStdinUtf8());
@@ -36,5 +35,7 @@ test('readStdinUtf8 preserves UTF-8 across the nodejs/node#66341 short-read trig
 
   const result = await exit;
   assert.deepEqual(result, { code: 0, signal: null }, Buffer.concat(errors).toString());
-  assert.deepEqual(Buffer.concat(output), input);
+  const outputBytes = Buffer.concat(output);
+  assert.deepEqual(outputBytes, input);
+  assert.equal(outputBytes.toString('utf8'), input.toString('utf8'));
 });

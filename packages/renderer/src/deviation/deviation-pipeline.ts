@@ -25,7 +25,7 @@ const TRIANGLE_BYTES = 48;
 /**
  * Uniform block size for `DeviationParams`: a 64-byte column-major
  * mat4x4 model matrix (issue #1804 — transforms chunk-space points to
- * world space before the BVH query, mirroring the splat shader) followed
+ * the shared anchor-relative frame before the BVH query) followed
  * by pointCount/pointStrideF32/positionOffsetF32 (u32) and maxRange
  * (f32) — 80 bytes, already 16-byte aligned.
  */
@@ -53,10 +53,10 @@ export interface DeviationDispatchInput {
   maxRange: number;
   /**
    * Optional per-asset model matrix (column-major, 16 floats) — the
-   * point cloud node's `model` (issue #1804 IfcMapConversion alignment).
-   * Points are transformed by it BEFORE the closest-triangle query so
-   * deviations are measured in world space, where the BVH triangles
-   * live. Omitted/malformed → identity (chunk space IS world space).
+   * exact cloud placement rebased to the BVH's shared anchor before f32
+   * narrowing (#10094 item 1). Includes #1804 IfcMapConversion alignment.
+   * Omitted/malformed → identity, which is right only when the BVH was built
+   * with no anchor; callers with an anchored BVH must pass the rebased model.
    */
   model?: Float32Array;
 }

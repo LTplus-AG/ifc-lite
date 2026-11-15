@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { TriangleCounts } from './triangle-counts';
+import { Scene } from './scene.js';
+import type { MeshData } from '@ifc-lite/geometry';
+import { TriangleCounts } from './triangle-counts.js';
 
 it('counts split and merged indexed faces under their original objects (#10370)', () => {
   const counts = new TriangleCounts();
@@ -29,4 +31,27 @@ it('counts each template occurrence and combines flat and instanced pieces (#103
   assert.equal(counts.byEntity.get(7), 2);
   assert.equal(counts.byEntity.get(8), 2);
   assert.equal(counts.total, 4, 'one template used three times contributes three faces');
+});
+
+function sourceTriangle(expressId: number): MeshData {
+  return { expressId, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1] };
+}
+
+it('keeps source counts across CPU release, deletion and a new scene (#10370)', () => {
+  const scene = new Scene();
+  const mesh = sourceTriangle(7);
+  scene.queueMeshes([mesh, sourceTriangle(8)]);
+  scene.addMeshData(mesh);
+  assert.equal(scene.getTriangleCounts()?.get(7), 1);
+  scene.releaseGeometryData();
+  assert.equal(scene.getTriangleCounts()?.get(7), 1, 'releasing vertices does not erase compact source metadata');
+  scene.removeMeshesForEntity(7);
+  assert.equal(scene.getTriangleCounts()?.has(7), false);
+  assert.equal(scene.getTriangleCounts()?.get(8), 1);
+  scene.clearFlatGeometry();
+  assert.equal(scene.getTriangleCounts()?.size, 0, 'a reset cannot reuse the previous model counts');
+  scene.queueMeshes([sourceTriangle(7), sourceTriangle(7)]);
+  assert.equal(scene.getTriangleCounts()?.get(7), 2, 'new geometry under a reused ID has its own count');
 });

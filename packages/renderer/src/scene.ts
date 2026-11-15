@@ -6,6 +6,7 @@
  * Scene graph and mesh management
  */
 
+import { SceneTriangleCounts } from './triangle-counts.js';
 import { destroyInstancedTemplateGpu, type InstancedTemplateGPU, type InstancedOccurrence, type InstancedTemplateCpu } from './scene-instance-types.js';
 import { createInstancedRteDeltaStream, invalidateInstancedRteDeltas, type InstancedRteDeltaStream } from './instanced-rte.js';
 import { materializeInstances } from './scene-instance-materialization.js';
@@ -151,6 +152,9 @@ export class Scene {
   private authoredGeneration = 0;
   // Bumped wherever what a CPU pick can hit changes: see getPickGeometryRevision() (#8998).
   private pickGeometryRevision = 0;
+  private triangleCounts = new SceneTriangleCounts();
+  private triangleCountHost() { return { instances: this.instancedEntityMap, templates: this.instancedTemplates }; }
+  getTriangleCounts(): ReadonlyMap<number, number> | null { return this.triangleCounts.read(this.triangleCountHost(), this.pickGeometryRevision, this.snapshots.hydrating); }
   private authoredPreparations = new AuthoredPreparationRegistry();
   private appearanceAccess(device: GPUDevice, pipeline: RenderPipeline): SceneAppearanceAccess {
     return {
@@ -1235,6 +1239,7 @@ export class Scene {
    *     the IFC tombstone just means we ignore it for queries.
    */
   removeMeshesForEntity(expressId: number): boolean {
+    this.triangleCounts.remove(expressId);
     this.appearanceController?.forget(expressId);
     this.modelTranslations.forgetEntityBounds(expressId);
     const meshDataList = this.meshDataMap.get(expressId);
@@ -1745,6 +1750,7 @@ export class Scene {
    * The animation loop calls flushPending() each frame to drain the queue.
    */
   queueMeshes(meshes: MeshData[]): void {
+    this.triangleCounts.noteSources(meshes);
     for (let i = 0; i < meshes.length; i++) {
       const fragments = this.splitMeshForStreaming(meshes[i]);
       for (let j = 0; j < fragments.length; j++) {
@@ -2608,7 +2614,11 @@ export class Scene {
   isSceneSnapshotHydrating(): boolean { return this.snapshots.hydrating; }
   captureNextFinalize(onCaptured: SceneCaptureCallback, onDropped?: (reason: SceneCaptureDrop) => void): void { this.snapshots.captureNextFinalize(onCaptured, onDropped); }
   adoptSceneSnapshot(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline): object | null { return this.snapshots.adopt(snapshot, device, pipeline); }
-  hydrateSceneSnapshot(adoption: object, meshes: readonly MeshData[]): boolean { return this.snapshots.hydrate(adoption, meshes); }
+  hydrateSceneSnapshot(adoption: object, meshes: readonly MeshData[]): boolean {
+    if (!this.snapshots.hydrate(adoption, meshes)) return false;
+    this.triangleCounts.noteSources(meshes);
+    return true;
+  }
   abandonSceneSnapshot(adoption: object): void { this.snapshots.abandon(adoption); }
 
   // ─── Colour overrides (#6076) ────────────────────────────────────────
@@ -3614,6 +3624,7 @@ export class Scene {
   }
 
   private clearFlatBuffers(): void {
+    this.triangleCounts.clear();
     this.streamWork.clear();
     for (const mesh of this.meshes) destroyGpuResources(mesh);
     for (const batch of this.batchedMeshes) destroyGpuResources(batch);

@@ -10,7 +10,7 @@ export class TriangleCounts {
   readonly byEntity = new Map<number, number>();
   total = 0;
 
-  private add(entityId: number, triangles: number): void {
+  add(entityId: number, triangles: number): void {
     this.byEntity.set(entityId, (this.byEntity.get(entityId) ?? 0) + triangles);
     this.total += triangles;
   }
@@ -33,4 +33,39 @@ export class TriangleCounts {
       this.add(instance.entityId, shard.templates[instance.templateIndex].indices.length / 3);
     }
   }
+}
+
+interface TriangleCountHost {
+  instances: ReadonlyMap<number, readonly { templateIndex: number }[]>;
+  templates: readonly ({ indexCount: number } | null | undefined)[];
+}
+
+/** Source counts survive chunk eviction and CPU geometry release. Re-uploading
+ * a cold chunk does not register a new source; a rebuild clears and queues it.
+ * Instance counts come from live slots without materializing vertices. */
+export class SceneTriangleCounts {
+  private flat = new TriangleCounts();
+  private revision = -1;
+  private cached: ReadonlyMap<number, number> | undefined;
+
+  noteSources(meshes: readonly MeshData[]): void {
+    for (const mesh of meshes) this.flat.addMesh(mesh);
+    this.cached = undefined;
+  }
+
+  read(host: TriangleCountHost, revision: number, hydrating: boolean): ReadonlyMap<number, number> | null {
+    if (hydrating) return null;
+    if (this.revision === revision && this.cached) return this.cached;
+    const counts = new TriangleCounts();
+    for (const [id, count] of this.flat.byEntity) counts.add(id, count);
+    for (const [id, occurrences] of host.instances) for (const occurrence of occurrences) {
+      const template = host.templates[occurrence.templateIndex];
+      if (template) counts.add(id, template.indexCount / 3);
+    }
+    this.revision = revision;
+    return this.cached = counts.byEntity;
+  }
+
+  remove(id: number): void { this.flat.byEntity.delete(id); this.cached = undefined; }
+  clear(): void { this.flat = new TriangleCounts(); this.cached = undefined; this.revision = -1; }
 }

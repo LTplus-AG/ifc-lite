@@ -30,8 +30,8 @@ pub(super) fn flush_band(f: &CutterFrame) -> f64 {
 /// footprint. A vertex beside the footprint, or the one listed first, decides
 /// nothing here; whether a facet is asked at all is still `detect`'s test on
 /// its first vertex. A facet that only reaches the pad around the footprint
-/// has no such part: it is in the band, as before, and never on the cap. Where
-/// a depth is not a finite number, the pull-in stays.
+/// has no such part: it is in the band, as before, and never on the cap. A
+/// facet with a coordinate that is not a finite number keeps the pull-in.
 pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> Contact {
     if !overlaps(f, triangle) {
         return Contact::Clear;
@@ -40,6 +40,9 @@ pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> 
     // The facet in frame coordinates, clipped to the footprint one side at a
     // time. Every point kept is a point of the facet: nothing is extrapolated.
     let mut part: Vec<[f64; 3]> = triangle.iter().map(|v| axes.map(|axis| v.coords.dot(&axis))).collect();
+    if part.iter().flatten().any(|x| !x.is_finite()) {
+        return Contact::On;
+    }
     for (k, bound, above) in [(0, f.lo.x, true), (0, f.hi.x, false), (1, f.lo.y, true), (1, f.hi.y, false)] {
         let inside = |p: &[f64; 3]| if above { p[k] >= bound } else { p[k] <= bound };
         let mut kept = Vec::with_capacity(part.len() + 1);
@@ -59,8 +62,7 @@ pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> 
         return Contact::Band;
     }
     let band = flush_band(f);
-    let finite = part.iter().all(|p| p[2].is_finite());
-    if finite && (part.iter().all(|p| p[2] - cap > band) || part.iter().all(|p| cap - p[2] > band)) {
+    if part.iter().all(|p| p[2] - cap > band) || part.iter().all(|p| cap - p[2] > band) {
         Contact::Band
     } else {
         Contact::On

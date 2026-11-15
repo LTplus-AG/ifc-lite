@@ -142,6 +142,10 @@ fn contact_is_on_within_the_flush_band_and_band_beyond_it() {
     let mut broken = facet(0.0, [0.012; 3]);
     broken[0].z = f64::NAN;
     assert!(contact(&frame, broken, 0.0112) == Contact::On);
+    // Also where the rest of the facet lies beside the footprint.
+    let mut beside_broken = rim(0.012);
+    beside_broken[1].x = f64::NAN;
+    assert!(contact(&frame, beside_broken, 0.0112) == Contact::On);
     // 1 km out the f32 floor is 0.4 mm, so 0.3 mm is still on the cap.
     let far_cutter = GeometryRouter::make_box_mesh(Point3::new(999.0, 0.0, 0.0), Point3::new(1004.0, 4.0, 1.0));
     let far_frame = CutterFrame::new(&far_cutter, Vector3::z()).unwrap();

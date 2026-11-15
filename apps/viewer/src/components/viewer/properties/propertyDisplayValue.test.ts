@@ -6,23 +6,25 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ProjectUnits } from '@ifc-lite/parser';
 import { QuantityType } from '@ifc-lite/data';
-import { formatMeasureNumber } from '@/lib/units/display';
 import { propertyDisplayValue, quantityDisplayValue } from './propertyDisplayValue';
 
 // #9950: the property, quantity and structural cards print a number by one rule: the app locale,
 // six significant digits or three decimals, whichever keeps more.
-describe('formatMeasureNumber', () => {
+describe('the one measure number format', () => {
+  const units = ProjectUnits.empty();
+  const length = (value: number) => ({ name: 'L', type: QuantityType.Length, value }) as Parameters<typeof quantityDisplayValue>[0];
+
   it('keeps a small stated value whole and a large one to its three decimals', () => {
-    assert.equal(formatMeasureNumber('en', 0.0125), '0.0125');
-    assert.equal(formatMeasureNumber('en', 1234567.891), '1,234,567.891');
-    assert.equal(formatMeasureNumber('en', 1234.56789), '1,234.568');
-    assert.equal(formatMeasureNumber('en', 0.000123456789), '0.000123457');
+    assert.equal(quantityDisplayValue(length(0.0125), units, {}, 'en'), '0.0125 m');
+    assert.equal(quantityDisplayValue(length(1234567.891), units, {}, 'en'), '1,234,567.891 m');
+    assert.equal(quantityDisplayValue(length(1234.56789), units, {}, 'en'), '1,234.568 m');
+    assert.equal(quantityDisplayValue(length(0.000123456789), units, {}, 'en'), '0.000123457 m');
   });
 
   it('uses the separators of the app locale', () => {
-    assert.equal(formatMeasureNumber('de', 1234.5), '1.234,5');
-    assert.equal(formatMeasureNumber('en', 1234.5), '1,234.5');
-    assert.equal(formatMeasureNumber('not a locale', 1234.5), '1,234.5');
+    assert.equal(quantityDisplayValue(length(1234.5), units, {}, 'de'), '1.234,5 m');
+    assert.equal(quantityDisplayValue(length(1234.5), units, {}, 'en'), '1,234.5 m');
+    assert.equal(quantityDisplayValue(length(1234.5), units, {}, 'not a locale'), '1,234.5 m');
   });
 });
 

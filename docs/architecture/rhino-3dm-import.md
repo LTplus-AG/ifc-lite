@@ -754,7 +754,10 @@ transparency rule [test].
   the row's layer and those above it, hides it. That object is a member of no
   row, so turning such a layer's row on does not show it, nor does the row's
   own eye, being the layer's, unless nothing else comes back; then the eye
-  acts on that row alone, so it is never a Hide that does nothing. Showing a
+  acts on that row alone, so it is never a Hide that does nothing. An object
+  shown that way does not change its own state (it may be off for its own flag
+  or for an off sublayer, which the tree cannot tell apart), so once it is
+  hidden again a later Show of its parent does not bring it back. Showing a
   row whose parent row is off still draws it, since no row's eye in the
   viewer waits for its parent.
   Not covered: a storey row merged across models, which acts on direct

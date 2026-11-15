@@ -53,7 +53,7 @@ function BoundWriteBackDialog({ binding, provider, onClose }: { binding: WriteBa
         <DialogDescription>{t('sources.writeBack.description', { name: binding.name, provider: provider.manifest.title })}</DialogDescription>
       </DialogHeader>
       {saved ? <>
-        <p role="status">{t('sources.writeBack.saved')}</p>
+        <output className="block">{t('sources.writeBack.saved')}</output>
         {!saved.linked && <p role="alert">{t('sources.writeBack.savedUnlinked')}</p>}
         <SourceWriteBackHistory provider={provider} ctx={ctx} projectId={binding.tag.projectId} file={saved.result.file} created={saved.result.revision} />
       </> : <form onSubmit={event => { event.preventDefault(); void submit(); }} className="space-y-3">

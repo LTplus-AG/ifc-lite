@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { parseE57FileHeader, physicalToLogical } from '../formats/e57-page.js';
-import { extractWktCrsIdentifiers } from '../spatial-wkt.js';
+import { extractWktCrsIdentifiers } from '@ifc-lite/geo/wkt';
 import { BlobByteSource } from './blob-source.js';
 import { readE57LogicalRange, throwIfAborted } from './e57-logical-range.js';
 import type { PointSourceSpatialMetadata } from './types.js';

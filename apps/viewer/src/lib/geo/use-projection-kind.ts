@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import type { ProjectedCRS } from '@ifc-lite/parser';
 import { resolveProjection } from './reproject';
-import { isGeographicProj4 } from './proj4-utils';
+import { isGeographicProj4 } from '@ifc-lite/geo/proj4';
 
 export type ProjectionKind = 'projected' | 'geographic' | 'unresolved';
 

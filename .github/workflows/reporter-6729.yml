@@ -100,7 +100,10 @@ jobs:
                   '../../tests/e2e/reporter-6729.browser.ts',
                   '../../apps/viewer/src/vite-env.d.ts',
                   '../../apps/viewer/src/webhid-types.d.ts',
-                  '../../apps/viewer/src/wkt-parser.d.ts',
+                  # The viewer reaches @ifc-lite/server-client source (#10140), which imports
+                  # apache-arrow; its browser export has no .d.ts. These are the package's typed
+                  # declarations, the ones its own typecheck uses.
+                  '../../packages/server-client/src/vendor-types.d.ts',
               ],
               'include': [], 'exclude': [],
           }

@@ -158,11 +158,8 @@ pub(super) fn extend_and_seat_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[
             }
             reach = if high { reach.max(hi) } else { reach.min(lo) };
         }
-        // A cap with only its floor in its plane removes nothing there: an
-        // opening the host already has. A host face through the cap plane
-        // over the footprint means material runs on past the cap where no
-        // floor face covers it: a moved cap would cut into it and leave the
-        // step to the floored part open. Both keep the plain cut.
+        // Only a floor in the plane, or a face through it: the plain cut
+        // (module doc).
         if !removes || crossed {
             continue;
         }

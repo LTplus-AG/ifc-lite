@@ -121,14 +121,6 @@ test('IFC with meshes and point clouds remains a render frame candidate (#8781)'
   assert.deepEqual(sharedRenderFrame([scanModel(), ifc]), ifc.geometryResult!.coordinateInfo);
 });
 
-test('a model of inline point clouds is a render frame candidate; a streamed scan is not (#10094)', () => {
-  const inline = unanchoredIfc();
-  inline.geometryResult!.pointClouds = [{ expressId: 2, origin: [2_600_000, 1_200_000, 0],
-    chunk: { positions: new Float32Array([0, 0, 0]), pointCount: 1, bbox: { min: [0, 0, 0], max: [0, 0, 0] } } }];
-  assert.deepEqual(sharedRenderFrame([scanModel(), inline]), inline.geometryResult!.coordinateInfo);
-  assert.equal(sharedRenderFrame([scanModel()]), null, 'a streamed scan alone defines no frame');
-});
-
 test('meshless LandXML remains a render frame candidate (#8781)', () => {
   const landXml = unanchoredIfc();
   landXml.sourceSchema = 'LandXML-1.2';

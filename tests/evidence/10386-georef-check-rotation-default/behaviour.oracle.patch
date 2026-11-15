@@ -1,0 +1,11 @@
+diff --git a/packages/georef-check/src/detectors/rotation.ts b/packages/georef-check/src/detectors/rotation.ts
+--- a/packages/georef-check/src/detectors/rotation.ts
++++ b/packages/georef-check/src/detectors/rotation.ts
+@@ -38,6 +38,7 @@
+     // ordinate 0). When that gives a unit vector, (1, unset) or (unset, 0),
+     // every reader agrees on "no turn" and nothing is ambiguous.
+     const filled = Math.hypot(a ?? 1, b ?? 0);
++    if (Math.abs(filled - 1) <= UNIT_LENGTH_TOLERANCE) return findings;
+     findings.push({
+       code: 'ROTATION_INVALID',
+       severity: 'warning',

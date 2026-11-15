@@ -25,10 +25,12 @@ export const KNOWN_SITE_DEFAULTS: readonly KnownSiteDefault[] = [
     evidence: 'Autodesk Revit templates set the project location to Boston, MA until it is changed.',
   },
   {
-    label: '42°24\'53"N 71°15\'29"W (near Boston, MA)',
+    label: '42°24\'53"N 71°15\'29"W (near Boston, MA; a Revit export default)',
     latitude: 42.414864,
     longitude: -71.258072,
-    evidence: 'Found in a 2026 student bridge model of a site in Germany (IFC4X3_ADD2, no IfcMapConversion); the originating tool is not identified.',
+    evidence: 'Written as (42,24,53,508911) / (-71,-15,-29,-58837) on an IfcSite named "Default" by two Revit exports in this '
+      + "repository's fixtures: tests/models/various/rvt01.ifc (Autodesk Revit 24.0.5.432, IFC exporter 24.2.0.49) and "
+      + 'rust/geometry/tests/fixtures/issue_098_wall_W.ifc (Revit IFC exporter 22.0.2.392).',
   },
 ];
 

@@ -16,6 +16,13 @@ import type { CrsFact, GeorefFinding, OperationFact } from '../types.js';
 export const SOURCE_OFFSET_TOLERANCE_METRES = 1;
 /** Turns further apart than this are different orientations. */
 export const SOURCE_ROTATION_TOLERANCE_DEGREES = 0.01;
+/**
+ * Scales whose ratio differs from 1 by more than this are different. 1e-6 is
+ * 1 mm per kilometre: below any survey tolerance, so rounding in a writer's
+ * float formatting (0.001 vs 0.0010000000000000002) never trips it, while a
+ * real difference (a grid factor 0.9996 against 1, or a unit) is far above it.
+ */
+export const SOURCE_SCALE_RELATIVE_TOLERANCE = 1e-6;
 
 interface Difference {
   field: string;
@@ -44,7 +51,7 @@ function compare(
   }
   const sa = a.scale ?? 1;
   const sb = b.scale ?? 1;
-  if (a.source !== 'IfcRigidOperation' && b.source !== 'IfcRigidOperation' && Math.abs(sa / sb - 1) > 1e-6) {
+  if (a.source !== 'IfcRigidOperation' && b.source !== 'IfcRigidOperation' && Math.abs(sa / sb - 1) > SOURCE_SCALE_RELATIVE_TOLERANCE) {
     diffs.push({ field: 'Scale', a: sa, b: sb });
   }
   const codeA = resolveCrs(aCrs, ctx.options.crsCatalog)?.code;
@@ -83,11 +90,13 @@ export function detectConsistency(ctx: DiagnosisContext): GeorefFinding[] {
   const extra = ctx.facts.additionalMapConversions ?? [];
   const first = entity?.operation?.source === 'IfcMapConversion' ? entity.operation : undefined;
   if (first) {
+    // Each conversion in its own TargetCRS: the same offsets in EPSG:2056 and
+    // EPSG:21781 are two different places (bot review on PR #10386).
     for (const other of extra) {
-      if (other.entityId === first.entityId) continue;
-      const diffs = compare(ctx, first, entity?.crs, other, entity?.crs);
+      if (!other.operation || other.operation.entityId === first.entityId) continue;
+      const diffs = compare(ctx, first, entity?.crs, other.operation, other.crs);
       if (diffs.length > 0) {
-        findings.push(finding(`IfcMapConversion #${first.entityId} and #${other.entityId}`, `#${first.entityId}`, diffs));
+        findings.push(finding(`IfcMapConversion #${first.entityId} and #${other.operation.entityId}`, `#${first.entityId}`, diffs));
         break;
       }
     }

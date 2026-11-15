@@ -9,7 +9,7 @@
  * the definition of each number.
  */
 
-import type { CoordinateMagnitudes, Vec2, Vec3 } from './types.js';
+import type { CoordinateMagnitudes, PointFamilyStats, RootSpatialPlacementFact, Vec2, Vec3 } from './types.js';
 
 /** The minimum a fact collector needs from a parsed file. */
 export interface EntityReader {
@@ -17,18 +17,40 @@ export interface EntityReader {
   get(id: number): { type: string; attributes: unknown[] } | undefined;
   /** Ids of one upper-case STEP type, in file order. */
   idsOfType(type: string): readonly number[];
-  /** Byte length of an entity's record, when known (used to skip huge point lists). */
-  sizeOf?(id: number): number | undefined;
+  /**
+   * The first `maxBytes` of an entity's STEP record as text, when the reader
+   * can slice the source. Point lists are read through this, so a mesh of any
+   * size costs at most `maxBytes`; without it they are decoded whole.
+   */
+  recordPrefix?(id: number, maxBytes: number): string | undefined;
+  /**
+   * The first entity reference of a record's attribute list (`#11` in
+   * `#12=IFCAXIS2PLACEMENT3D(#11,...)`), read from the raw bytes. Lets the
+   * probe find every axis placement's Location without decoding 100k records.
+   */
+  firstReference?(id: number): number | undefined;
 }
 
 /** PlacementRelTo chains longer than this are treated as cycles or abuse and not composed. */
 export const MAX_PLACEMENT_DEPTH = 32;
-/** Coordinate tuples sampled at most. */
+/** Coordinate tuples sampled at most, per family. */
 export const DEFAULT_MAX_SAMPLED_POINTS = 2048;
-/** Point lists larger than this are skipped by the sampler, so one huge mesh cannot make the scan expensive. */
-export const MAX_POINT_LIST_BYTES = 2 * 1024 * 1024;
+/**
+ * Point lists read at most (evenly strided over all of them). Each costs one
+ * bounded read, so 64 caps the probe at about 64 x {@link POINT_LIST_PREFIX_BYTES}
+ * of text while still reaching meshes spread across the whole file.
+ */
+export const MAX_SAMPLED_POINT_LISTS = 64;
+/**
+ * Bytes read from the start of each point list. 8 KiB holds about 200
+ * coordinate tuples at survey precision, plenty to tell map magnitude from
+ * local, and is the same for a 1 kB list and a 200 MB one.
+ */
+export const POINT_LIST_PREFIX_BYTES = 8 * 1024;
+/** Root spatial placements reported at most. */
+export const MAX_ROOT_SPATIAL_PLACEMENTS = 16;
 
-interface Frame {
+export interface Frame {
   x: Vec3;
   y: Vec3;
   z: Vec3;
@@ -112,12 +134,12 @@ function compose(parent: Frame, child: Frame): Frame {
 }
 
 /**
- * Origin of an IfcLocalPlacement in the world frame, composed through
+ * Frame of an IfcLocalPlacement in the world, composed through
  * PlacementRelTo. Undefined for other placement kinds (IfcLinearPlacement,
  * IfcGridPlacement), unreadable entries, and chains beyond
  * {@link MAX_PLACEMENT_DEPTH}.
  */
-export function placementOrigin(reader: EntityReader, placementId: number | undefined): Vec3 | undefined {
+export function placementFrame(reader: EntityReader, placementId: number | undefined): Frame | undefined {
   let frame: Frame | undefined;
   let id = placementId;
   for (let depth = 0; id !== undefined; depth++) {
@@ -129,7 +151,12 @@ export function placementOrigin(reader: EntityReader, placementId: number | unde
     frame = frame ? compose(local, frame) : local;
     id = ref(entity.attributes[0]);
   }
-  return frame?.t;
+  return frame;
+}
+
+/** Origin of an IfcLocalPlacement in the world frame; see {@link placementFrame}. */
+export function placementOrigin(reader: EntityReader, placementId: number | undefined): Vec3 | undefined {
+  return placementFrame(reader, placementId)?.t;
 }
 
 function median(values: number[]): number {
@@ -146,28 +173,127 @@ function stride<T>(items: readonly T[], max: number): T[] {
   return out;
 }
 
-/** Strided sample of coordinate tuples from IfcCartesianPoint and IfcCartesianPointList2D/3D. */
-export function samplePoints(reader: EntityReader, maxPoints = DEFAULT_MAX_SAMPLED_POINTS): Vec3[] {
-  const listIds = [...reader.idsOfType('IFCCARTESIANPOINTLIST3D'), ...reader.idsOfType('IFCCARTESIANPOINTLIST2D')];
-  const pointIds = reader.idsOfType('IFCCARTESIANPOINT');
-  const listBudget = listIds.length === 0 ? 0 : pointIds.length === 0 ? maxPoints : maxPoints >> 1;
+const AXIS_PLACEMENT_TYPES = ['IFCAXIS2PLACEMENT3D', 'IFCAXIS2PLACEMENT2D', 'IFCAXIS1PLACEMENT'] as const;
+
+/**
+ * How many axis placements use each IfcCartesianPoint as their Location. A
+ * large model has as many axis placements as elements, so only the first
+ * reference of each record is read when the reader offers it.
+ */
+export function placementLocationUses(reader: EntityReader): Map<number, number> {
+  const uses = new Map<number, number>();
+  for (const type of AXIS_PLACEMENT_TYPES) {
+    for (const id of reader.idsOfType(type)) {
+      const point = reader.firstReference ? reader.firstReference(id) : ref(reader.get(id)?.attributes[0]);
+      if (point !== undefined) uses.set(point, (uses.get(point) ?? 0) + 1);
+    }
+  }
+  return uses;
+}
+
+// One coordinate tuple in STEP text: "(x,y)" or "(x,y,z)".
+const TUPLE = /\(\s*([-+]?[0-9.]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9.]+(?:[eE][-+]?[0-9]+)?)\s*(?:,\s*([-+]?[0-9.]+(?:[eE][-+]?[0-9]+)?)\s*)?\)/g;
+
+/** The complete coordinate tuples in the first bytes of a point list record. */
+export function tuplesFromRecordPrefix(text: string): Vec3[] {
+  // CoordList is the first attribute: everything after the record's "((".
+  const start = text.indexOf('((');
+  if (start < 0) return [];
   const out: Vec3[] = [];
-  for (const id of stride(pointIds, maxPoints - listBudget)) {
-    const p = readPoint(reader, id);
+  for (const m of text.slice(start + 1).matchAll(TUPLE)) {
+    const v = [Number(m[1]), Number(m[2]), m[3] === undefined ? 0 : Number(m[3])];
+    if (v.every(Number.isFinite)) out.push({ x: v[0], y: v[1], z: v[2] });
+  }
+  return out;
+}
+
+function pointListTuples(reader: EntityReader, id: number): Vec3[] {
+  const prefix = reader.recordPrefix?.(id, POINT_LIST_PREFIX_BYTES);
+  if (prefix !== undefined) return tuplesFromRecordPrefix(prefix);
+  const tuples = reader.get(id)?.attributes[0];
+  if (!Array.isArray(tuples)) return [];
+  const out: Vec3[] = [];
+  for (const tuple of tuples) {
+    const p = vec(numbers(tuple));
     if (p) out.push(p);
   }
-  if (listBudget > 0) {
-    const lists = stride(listIds, Math.min(64, listBudget));
-    const perList = Math.max(1, Math.floor(listBudget / lists.length));
-    for (const id of lists) {
-      const size = reader.sizeOf?.(id);
-      if (size !== undefined && size > MAX_POINT_LIST_BYTES) continue;
-      const tuples = reader.get(id)?.attributes[0];
-      if (!Array.isArray(tuples)) continue;
-      for (const tuple of stride(tuples, perList)) {
-        const p = vec(numbers(tuple));
-        if (p) out.push(p);
-      }
+  return out;
+}
+
+function stats(points: Vec3[]): PointFamilyStats | undefined {
+  if (points.length === 0) return undefined;
+  const horizontal = points.map((p) => Math.hypot(p.x, p.y)).sort((a, b) => a - b);
+  return {
+    median: { x: median(points.map((p) => p.x)), y: median(points.map((p) => p.y)), z: median(points.map((p) => p.z)) },
+    p90Horizontal: horizontal[Math.min(horizontal.length - 1, Math.floor(horizontal.length * 0.9))],
+    sampled: points.length,
+  };
+}
+
+/**
+ * Strided samples of the two coordinate families, kept apart: IfcCartesianPoint
+ * that is no axis placement's Location, and IfcCartesianPointList2D/3D.
+ */
+export function samplePointFamilies(
+  reader: EntityReader,
+  maxPoints = DEFAULT_MAX_SAMPLED_POINTS,
+  placementPoints: ReadonlyMap<number, number> = placementLocationUses(reader),
+): { cartesianPoints: Vec3[]; pointLists: Vec3[] } {
+  // Stride first (twice the budget, so the placement points left out rarely
+  // starve the sample), then drop placement Locations: filtering every id of
+  // a 500k-point model first would cost more than the sample itself.
+  const geometryPointIds = stride(reader.idsOfType('IFCCARTESIANPOINT'), maxPoints * 2).filter((id) => !placementPoints.has(id));
+  const cartesianPoints: Vec3[] = [];
+  for (const id of stride(geometryPointIds, maxPoints)) {
+    const p = readPoint(reader, id);
+    if (p) cartesianPoints.push(p);
+  }
+  const listIds = [...reader.idsOfType('IFCCARTESIANPOINTLIST3D'), ...reader.idsOfType('IFCCARTESIANPOINTLIST2D')];
+  const lists = stride(listIds, MAX_SAMPLED_POINT_LISTS);
+  const perList = Math.max(1, Math.floor(maxPoints / Math.max(1, lists.length)));
+  const pointLists: Vec3[] = [];
+  for (const id of lists) pointLists.push(...stride(pointListTuples(reader, id), perList));
+  return { cartesianPoints, pointLists };
+}
+
+function isDefaultAxes(frame: Frame): boolean {
+  const eps = 1e-9;
+  return Math.abs(frame.x.x - 1) < eps && Math.abs(frame.x.y) < eps && Math.abs(frame.x.z) < eps
+    && Math.abs(frame.z.z - 1) < eps && Math.abs(frame.z.x) < eps && Math.abs(frame.z.y) < eps;
+}
+
+/** IFC4X3 spatial structure elements beside the IFC2X3/IFC4 four. */
+const SPATIAL_STRUCTURE_TYPES = [
+  'IFCSITE', 'IFCBUILDING', 'IFCBUILDINGSTOREY', 'IFCSPACE',
+  'IFCFACILITY', 'IFCFACILITYPART', 'IFCBRIDGE', 'IFCBRIDGEPART', 'IFCROAD', 'IFCROADPART',
+  'IFCRAILWAY', 'IFCRAILWAYPART', 'IFCMARINEFACILITY', 'IFCMARINEPART',
+] as const;
+
+function pascal(type: string): string {
+  const known: Record<string, string> = {
+    IFCSITE: 'IfcSite', IFCBUILDING: 'IfcBuilding', IFCBUILDINGSTOREY: 'IfcBuildingStorey', IFCSPACE: 'IfcSpace',
+    IFCFACILITY: 'IfcFacility', IFCFACILITYPART: 'IfcFacilityPart', IFCBRIDGE: 'IfcBridge', IFCBRIDGEPART: 'IfcBridgePart',
+    IFCROAD: 'IfcRoad', IFCROADPART: 'IfcRoadPart', IFCRAILWAY: 'IfcRailway', IFCRAILWAYPART: 'IfcRailwayPart',
+    IFCMARINEFACILITY: 'IfcMarineFacility', IFCMARINEPART: 'IfcMarinePart',
+  };
+  return known[type] ?? type;
+}
+
+/**
+ * Spatial structure elements whose IfcLocalPlacement has no PlacementRelTo,
+ * with that placement's own Location and whether it turns the axes: the
+ * placement LoGeoRef 30 stores the location in.
+ */
+export function rootSpatialPlacements(reader: EntityReader): RootSpatialPlacementFact[] {
+  const out: RootSpatialPlacementFact[] = [];
+  for (const type of SPATIAL_STRUCTURE_TYPES) {
+    for (const id of reader.idsOfType(type)) {
+      if (out.length >= MAX_ROOT_SPATIAL_PLACEMENTS) return out;
+      const placement = reader.get(ref(reader.get(id)?.attributes[5]) ?? -1);
+      if (placement?.type !== 'IFCLOCALPLACEMENT' || ref(placement.attributes[0]) !== undefined) continue;
+      const frame = readAxisPlacement(reader, ref(placement.attributes[1]));
+      if (!frame) continue;
+      out.push({ elementId: id, elementType: pascal(type), location: frame.t, rotated: !isDefaultAxes(frame) });
     }
   }
   return out;
@@ -177,18 +303,31 @@ export function coordinateMagnitudes(reader: EntityReader, siteId: number | unde
   const site = siteId === undefined ? undefined : reader.get(siteId);
   const sitePlacementId = site ? ref(site.attributes[5]) : undefined;
   const siteOrigin = placementOrigin(reader, sitePlacementId);
-  const points = samplePoints(reader, maxPoints);
-  const result: CoordinateMagnitudes = { sampledPoints: points.length };
+  const placementPoints = placementLocationUses(reader);
+  const families = samplePointFamilies(reader, maxPoints, placementPoints);
+  const result: CoordinateMagnitudes = { sampledPoints: families.cartesianPoints.length + families.pointLists.length };
   if (siteOrigin) result.siteOrigin = siteOrigin;
-  if (sitePlacementId !== undefined) result.sitePlacementId = sitePlacementId;
-  if (points.length > 0) {
-    result.pointMedian = { x: median(points.map((p) => p.x)), y: median(points.map((p) => p.y)), z: median(points.map((p) => p.z)) };
-    const horizontal = points.map((p) => Math.hypot(p.x, p.y)).sort((a, b) => a - b);
-    result.pointP90Horizontal = horizontal[Math.min(horizontal.length - 1, Math.floor(horizontal.length * 0.9))];
+  if (sitePlacementId !== undefined) {
+    result.sitePlacementId = sitePlacementId;
+    const placement = reader.get(sitePlacementId);
+    const axis = placement?.type === 'IFCLOCALPLACEMENT' ? reader.get(ref(placement.attributes[1]) ?? -1) : undefined;
+    const pointId = axis ? ref(axis.attributes[0]) : undefined;
+    const coordinates = readPoint(reader, pointId);
+    if (pointId !== undefined && coordinates) {
+      result.siteLocationPoint = { id: pointId, coordinates, sharedBy: placementPoints.get(pointId) ?? 1 };
+    }
+    const parent = placement?.type === 'IFCLOCALPLACEMENT' ? placementFrame(reader, ref(placement.attributes[0])) : undefined;
+    if (parent) result.siteParentAxes = { x: parent.x, y: parent.y, z: parent.z };
+  }
+  const cartesianPoints = stats(families.cartesianPoints);
+  const pointLists = stats(families.pointLists);
+  if (cartesianPoints || pointLists) {
+    result.geometry = {};
+    if (cartesianPoints) result.geometry.cartesianPoints = cartesianPoints;
+    if (pointLists) result.geometry.pointLists = pointLists;
   }
   return result;
 }
-
 /** The 3D model context: WorldCoordinateSystem origin when off 0,0,0, and TrueNorth when authored. */
 export function modelContextFacts(reader: EntityReader): { contextOrigin?: Vec3; trueNorth?: Vec2 } {
   const ids = reader.idsOfType('IFCGEOMETRICREPRESENTATIONCONTEXT');

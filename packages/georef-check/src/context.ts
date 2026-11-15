@@ -47,9 +47,48 @@ export interface DiagnosisContext {
   mapScales: number[];
   /** True when MapUnit is set. */
   mapUnitKnown: boolean;
-  /** Site origin and point median, metres (horizontal only). */
+  /** Site origin, metres (horizontal only). */
   siteOriginMetres?: Vec2;
-  pointMedianMetres?: Vec2;
+  /** Each sampled coordinate family's median, metres (horizontal only), never pooled. */
+  geometryMedians: GeometryMedian[];
+}
+
+export interface GeometryMedian {
+  family: 'cartesianPoints' | 'pointLists';
+  metres: Vec2;
+}
+
+/** At least {@link MAP_MAGNITUDE_METRES} from the local origin. */
+export function atMapMagnitude(v: Vec2 | undefined): v is Vec2 {
+  return !!v && Math.hypot(v.x, v.y) >= MAP_MAGNITUDE_METRES;
+}
+
+/** The coordinate families whose own median is at map magnitude. */
+export function farGeometry(ctx: Pick<DiagnosisContext, 'geometryMedians'>): GeometryMedian[] {
+  return ctx.geometryMedians.filter((g) => atMapMagnitude(g.metres));
+}
+
+/**
+ * Reproject map metres (easting first) to WGS84 through the injected
+ * reprojector. Undefined when none is injected, the CRS is unknown to it, it
+ * returns a non-finite value, or it throws (the reason is kept for `skipped`).
+ */
+export function toWgs84(
+  ctx: DiagnosisContext,
+  code: number,
+  e: number,
+  n: number,
+): { latitude: number; longitude: number } | { error: string } | undefined {
+  const reprojector = ctx.options.reprojector;
+  if (!reprojector) return undefined;
+  let lonLat: readonly number[] | undefined;
+  try {
+    lonLat = reprojector.toWgs84(code, [e, n]);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+  if (!lonLat || !Number.isFinite(lonLat[0]) || !Number.isFinite(lonLat[1])) return undefined;
+  return { longitude: lonLat[0], latitude: lonLat[1] };
 }
 
 /** The parser's winner rule: IFC4 entities that claim georeferencing, else the ePSet. */
@@ -84,6 +123,11 @@ export function buildContext(facts: GeorefFacts, options: DiagnoseOptions): Diag
   }
   const horizontal = (v: Vec3 | undefined): Vec2 | undefined =>
     v ? { x: v.x * lengthScale, y: v.y * lengthScale } : undefined;
+  const geometryMedians: GeometryMedian[] = [];
+  for (const family of ['cartesianPoints', 'pointLists'] as const) {
+    const metres = horizontal(facts.coordinates?.geometry?.[family]?.median);
+    if (metres) geometryMedians.push({ family, metres });
+  }
   return {
     facts,
     options,
@@ -95,7 +139,7 @@ export function buildContext(facts: GeorefFacts, options: DiagnoseOptions): Diag
     mapScales,
     mapUnitKnown,
     siteOriginMetres: horizontal(facts.coordinates?.siteOrigin),
-    pointMedianMetres: horizontal(facts.coordinates?.pointMedian),
+    geometryMedians,
   };
 }
 
@@ -111,9 +155,14 @@ export function operationAttribute(op: OperationFact, field: 'eastings' | 'north
   return { eastings: 'Eastings', northings: 'Northings', orthogonalHeight: 'OrthogonalHeight' }[field];
 }
 
-/** A change to the operation entity (or ePSet). */
+/** True for an IFC4X3 IfcMapConversionScaled (the only reading that carries FactorX/Y/Z, all mandatory there). */
+export function isScaledConversion(op: OperationFact): boolean {
+  return op.source === 'IfcMapConversion' && (op.factorX !== undefined || op.factorY !== undefined || op.factorZ !== undefined);
+}
+
+/** A change to the operation entity (or ePSet), named by its concrete EXPRESS type. */
 export function operationChange(op: OperationFact, attribute: string, value: FieldChange['value']): FieldChange {
-  const entity = op.source === 'ePSet_MapConversion' ? 'ePSet_MapConversion' : op.source;
+  const entity = isScaledConversion(op) ? 'IfcMapConversionScaled' : op.source;
   return { entity, entityId: op.entityId, attribute, value };
 }
 

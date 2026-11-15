@@ -21,6 +21,7 @@
  * have no source record and read as `null`: no glyph, rather than a guess.
  */
 
+import { faceRegionsOfOuterBounds, ringArea, type FaceRegion } from './structural-face-regions.js';
 import { firstProjAxis, walkPlacementChain } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { getEntityRefFromStore } from './columnar-parser-root-attributes.js';
@@ -46,7 +47,7 @@ export type ItemShape =
    * `IfcPlane`, z along its normal and flipped when `SameSense` is false),
    * which sets the local axes of a surface item; absent for a bare `IfcFace`.
    */
-  | { kind: 'face'; polygon: Vec3[]; innerBounds?: Vec3[][]; surface?: Frame };
+  | { kind: 'face'; polygon: Vec3[]; innerBounds?: Vec3[][]; regions?: FaceRegion[]; surface?: Frame };
 
 export const IDENTITY: Frame = { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
@@ -251,7 +252,8 @@ export class ItemGeometryReader {
         if (local.kind === 'vertex') return { kind: 'vertex', point: toWorld(local.point) };
         if (local.kind === 'edge') return { kind: 'edge', start: toWorld(local.start), end: toWorld(local.end) };
         const surface = local.surface && { ...compose(frame, local.surface), origin: toWorld(local.surface.origin) };
-        return { kind: 'face', polygon: local.polygon.map(toWorld), innerBounds: local.innerBounds?.map((loop) => loop.map(toWorld)), ...(surface ? { surface } : {}) };
+        const regions = local.regions?.map((region) => ({ polygon: region.polygon.map(toWorld), innerBounds: region.innerBounds.map((loop) => loop.map(toWorld)) }));
+        return { kind: 'face', polygon: local.polygon.map(toWorld), innerBounds: local.innerBounds?.map((loop) => loop.map(toWorld)), ...(regions ? { regions } : {}), ...(surface ? { surface } : {}) };
       }
     }
     return null;
@@ -305,8 +307,22 @@ export class ItemGeometryReader {
   }
 
   /** All face bounds: outer (else first) polygon and the remaining openings. */
-  private face(e: Entity): Pick<Extract<ItemShape, { kind: 'face' }>, 'polygon' | 'innerBounds'> | null {
+  private face(e: Entity): Pick<Extract<ItemShape, { kind: 'face' }>, 'polygon' | 'innerBounds' | 'regions'> | null {
     const bounds = asRefList(e.attributes[0]).map((id) => this.entity(id));
+    // Several outer bounds and nothing else: each is a region of the face (#9945).
+    if (bounds.length > 1 && bounds.every((b) => b?.type === 'IFCFACEOUTERBOUND')) {
+      const rings = bounds.map((b) => this.boundPolygon(b));
+      // An unreadable bound must not silently drop its region.
+      if (rings.some((ring) => !ring)) return null;
+      const found = faceRegionsOfOuterBounds(rings as Vec3[][]);
+      if (found) {
+        // The face's frame comes from its main region, so that is the largest one; a sliver first in the file would give none.
+        const areas = found.map((region) => ringArea(region.polygon));
+        const [first] = found.splice(areas.indexOf(Math.max(...areas)), 1);
+        return { polygon: first.polygon, innerBounds: first.innerBounds, ...(found.length ? { regions: found } : {}) };
+      }
+      // Loops that do not share a plane are no regions of one face: read it as before, the first outer bound and openings.
+    }
     const outer = bounds.find((b) => b?.type === 'IFCFACEOUTERBOUND') ?? bounds.find((b) => b?.type === 'IFCFACEBOUND');
     const polygon = this.boundPolygon(outer);
     const innerBounds = bounds.filter((b) => b !== outer).map((b) => this.boundPolygon(b));

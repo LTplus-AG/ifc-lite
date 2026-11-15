@@ -107,6 +107,10 @@ fn covers(mesh: &crate::Mesh, x: f64, y: f64) -> bool {
             [mesh.positions[base] as f64, mesh.positions[base + 1] as f64]
         };
         let [a, b, c] = [point(triangle[0]), point(triangle[1]), point(triangle[2])];
+        // A collapsed triangle covers nothing (all three side values would be zero for every point).
+        if ((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])).abs() < 1e-12 {
+            return false;
+        }
         let side = |p: [f64; 2], q: [f64; 2]| (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]);
         let (s1, s2, s3) = (side(a, b), side(b, c), side(c, a));
         (s1 >= -1e-9 && s2 >= -1e-9 && s3 >= -1e-9) || (s1 <= 1e-9 && s2 <= 1e-9 && s3 <= 1e-9)

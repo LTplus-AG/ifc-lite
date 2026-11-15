@@ -199,15 +199,15 @@ fn segments_cross(a: &Point2<f64>, b: &Point2<f64>, c: &Point2<f64>, d: &Point2<
 }
 
 /// Whether every edge of `ring` stays in `outer`: its midpoint is in or on `outer`
-/// and it crosses no edge of `outer` (a chord between two points of a concave
-/// loop can leave it).
+/// it crosses no edge of `outer`, and no vertex of `outer` lies strictly inside `ring` (a chord between
+/// two points of a concave loop can leave it, even through two of its vertices exactly).
 fn ring_stays_in(ring: &[Point2<f64>], outer: &[Point2<f64>], tolerance: f64) -> bool {
     (0..ring.len()).all(|k| {
         let (p, q) = (ring[k], ring[(k + 1) % ring.len()]);
         let mid = Point2::new((p.x + q.x) / 2.0, (p.y + q.y) / 2.0);
         (inside_2d(&mid, outer) || edge_distance_2d(&mid, outer) <= tolerance)
             && (0..outer.len()).all(|m| !segments_cross(&p, &q, &outer[m], &outer[(m + 1) % outer.len()]))
-    })
+    }) && outer.iter().all(|v| !inside_2d(v, ring) || edge_distance_2d(v, ring) <= tolerance)
 }
 
 /// A point inside a simple polygon: the midpoint of the first span of a
@@ -380,6 +380,20 @@ mod region_tests {
         assert_eq!(regions.len(), 2, "a 0.5 micrometre loop in metres is a region of its own");
         let line = vec![Point3::new(0., 0., 0.), Point3::new(1., 0., 0.), Point3::new(2., 0., 0.)];
         assert_eq!(outer_bound_regions(&[&big, &line]).unwrap().len(), 1, "a collinear loop bounds nothing");
+    }
+
+    #[test]
+    fn a_rectangle_over_a_v_dip_is_a_region_even_when_its_edge_runs_through_the_slot_vertices_issue_9945() {
+        // A 10 x 10 square with a slot cut in from the top (x 3 to 3.2, down to y 2) that ends in a V-dip to (3.1, 1).
+        // The rectangle (1,0.5)-(9,2) has every vertex and edge midpoint in the square and only touches the slot's
+        // lower vertices (3,2) and (3.2,2) with its top edge, so neither the crossing nor the midpoint test sees
+        // the dip. The dip's apex (3.1, 1) lies strictly inside the rectangle, so the rectangle is not inside the square.
+        let p3 = |x: f64, y: f64| Point3::new(x, y, 0.);
+        let outer = vec![p3(0., 0.), p3(10., 0.), p3(10., 10.), p3(3.2, 10.), p3(3.2, 2.), p3(3.1, 1.), p3(3., 2.), p3(3., 10.), p3(0., 10.)];
+        let rectangle = vec![p3(1., 0.5), p3(9., 0.5), p3(9., 2.), p3(1., 2.)];
+        let regions = outer_bound_regions(&[&outer, &rectangle]).unwrap();
+        assert_eq!(regions.len(), 2, "the rectangle is a region of its own, not the square's opening");
+        assert!(regions.iter().all(|region| region.holes.is_empty()));
     }
 
     #[test]

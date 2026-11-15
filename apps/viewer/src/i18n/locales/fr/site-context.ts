@@ -1,0 +1,47 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const siteContextFr = {
+  "siteContext.section.title": "Contexte du site",
+  "siteContext.section.intro": "Le terrain réel et la parcelle cadastrale de swisstopo, placés autour de ce modèle dans son propre repère.",
+  "siteContext.section.radius": "Rayon",
+  "siteContext.section.radiusValue": "{radius} m",
+  "siteContext.section.categories": "Inclure",
+  "siteContext.category.terrain": "Terrain",
+  "siteContext.category.parcel": "Parcelle",
+  "siteContext.category.buildings": "Bâtiments",
+  "siteContext.section.imagery": "Draper l’orthophoto",
+  "siteContext.section.load": "Charger le contexte du site",
+  "siteContext.section.cancel": "Annuler",
+  "siteContext.section.privacy": "Les requêtes partent directement de votre navigateur vers geo.admin.ch, uniquement quand vous cliquez.",
+  "siteContext.section.crsAssumed": "Le SCR a été déduit de son nom ({crs}).",
+  "siteContext.section.heightAssumed": "Ce modèle n’indique aucun système altimétrique ; ses altitudes seront considérées comme LN02.",
+  "siteContext.section.stats": "{requests} requêtes, {size}, {seconds} s ({cacheHits} depuis le cache)",
+  "siteContext.status.idle": "Non chargé",
+  "siteContext.status.fetching": "Chargement…",
+  "siteContext.status.partial": "Chargé, incomplet",
+  "siteContext.status.done": "Chargé",
+  "siteContext.status.error": "Non chargé",
+  "siteContext.refusal.notGeoreferenced": "Ce modèle n’est pas géoréférencé : il n’y a donc aucun lieu autour duquel charger le contexte du site.",
+  "siteContext.refusal.unknownCrs": "Le SCR du modèle ({crs}) n’a pas pu être résolu en LV95.",
+  "siteContext.refusal.outsideSwitzerland": "Le contexte du site est disponible pour les sites en Suisse ; ce modèle est situé ailleurs.",
+  "siteContext.refusal.heightDatum": "Les altitudes du contexte sont en LN02 ; ce modèle déclare {datum}. Les systèmes altimétriques ne sont pas mélangés.",
+  "siteContext.refusal.openEditor": "Ajouter un géoréférencement",
+  "siteContext.card.title": "Contexte du site",
+  "siteContext.card.category": "Catégorie",
+  "siteContext.card.complete": "Complet",
+  "siteContext.card.incomplete": "Incomplet",
+  "siteContext.card.origin": "Origine du repère (LV95 / LN02)",
+  "siteContext.card.attribution": "Données",
+  "siteContext.card.terms": "Conditions",
+  "siteContext.card.imagery": "Orthophoto",
+  "siteContext.card.imageryGsd": "{gsd} m par pixel",
+  "siteContext.card.drape": "Draper l’orthophoto",
+  "siteContext.card.issues": "Problèmes",
+  "siteContext.card.heightAssumed": "Le modèle d’ancrage n’indique aucun système altimétrique ; ses altitudes ont été considérées comme LN02 (EPSG:5728) pour placer ce contexte.",
+  "siteContext.attribution.label": "Données du contexte du site",
+  "siteContext.palette.label": "Charger le contexte du site",
+} satisfies Catalogue;

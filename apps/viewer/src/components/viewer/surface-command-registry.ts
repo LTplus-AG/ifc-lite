@@ -7,7 +7,7 @@
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, ChevronsUpDown,
   Crosshair, FolderOpen, Home, Layers3, Maximize2, Orbit, Save,
-  SquareStack, Sun, Tag,
+  SquareStack, Sun, Tag, Mountain,
 } from 'lucide-react';
 import { resolve as t, resolveEnglish } from '@/i18n/registry';
 import { panelTitleKey } from '@/lib/panels/registry';
@@ -185,6 +185,12 @@ const FILE_AND_VIEW_SURFACE_COMMANDS = [
     keywords: '3dconnexion space mouse navigator webhid 3d input device controller preferences settings',
     category: 'View', icon: Orbit, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => { openSettings('display'); },
+  },
+  {
+    id: 'view:site-context', labelKey: 'siteContext.palette.label',
+    keywords: 'site context terrain parcel cadastre swisstopo swiss gis surroundings', category: 'View', icon: Mountain,
+    surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { void import('@/lib/site-context/site-context-command').then(({ openSiteContext }) => openSiteContext()); },
   },
 ] as const satisfies readonly SurfaceCommandDefinition[];
 type SurfaceCommandEntry =

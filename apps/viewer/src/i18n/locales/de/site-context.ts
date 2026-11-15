@@ -1,0 +1,47 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const siteContextDe = {
+  "siteContext.section.title": "Umgebung",
+  "siteContext.section.intro": "Echtes Gelände und die Katasterparzelle von swisstopo, im eigenen Bezugsrahmen dieses Modells um es herum platziert.",
+  "siteContext.section.radius": "Radius",
+  "siteContext.section.radiusValue": "{radius} m",
+  "siteContext.section.categories": "Einbeziehen",
+  "siteContext.category.terrain": "Gelände",
+  "siteContext.category.parcel": "Parzelle",
+  "siteContext.category.buildings": "Gebäude",
+  "siteContext.section.imagery": "Luftbild auflegen",
+  "siteContext.section.load": "Umgebung laden",
+  "siteContext.section.cancel": "Abbrechen",
+  "siteContext.section.privacy": "Anfragen gehen direkt aus Ihrem Browser an geo.admin.ch, und nur, wenn Sie klicken.",
+  "siteContext.section.crsAssumed": "Das KBS wurde aus seinem Namen angenommen ({crs}).",
+  "siteContext.section.heightAssumed": "Dieses Modell gibt kein Höhensystem an; seine Höhen werden als LN02 angenommen.",
+  "siteContext.section.stats": "{requests} Anfragen, {size}, {seconds} s ({cacheHits} aus dem Cache)",
+  "siteContext.status.idle": "Nicht geladen",
+  "siteContext.status.fetching": "Wird geladen …",
+  "siteContext.status.partial": "Geladen, unvollständig",
+  "siteContext.status.done": "Geladen",
+  "siteContext.status.error": "Nicht geladen",
+  "siteContext.refusal.notGeoreferenced": "Dieses Modell ist nicht georeferenziert, daher gibt es keinen Ort, um den die Umgebung geladen werden könnte.",
+  "siteContext.refusal.unknownCrs": "Das KBS des Modells ({crs}) konnte nicht nach LV95 aufgelöst werden.",
+  "siteContext.refusal.outsideSwitzerland": "Die Umgebung ist für Standorte in der Schweiz verfügbar; dieses Modell liegt anderswo.",
+  "siteContext.refusal.heightDatum": "Die Höhen der Umgebung sind LN02; dieses Modell gibt {datum} an. Die Höhensysteme werden nicht vermischt.",
+  "siteContext.refusal.openEditor": "Georeferenzierung hinzufügen",
+  "siteContext.card.title": "Umgebung",
+  "siteContext.card.category": "Kategorie",
+  "siteContext.card.complete": "Vollständig",
+  "siteContext.card.incomplete": "Unvollständig",
+  "siteContext.card.origin": "Ursprung des Bezugsrahmens (LV95 / LN02)",
+  "siteContext.card.attribution": "Daten",
+  "siteContext.card.terms": "Nutzungsbedingungen",
+  "siteContext.card.imagery": "Luftbild",
+  "siteContext.card.imageryGsd": "{gsd} m pro Pixel",
+  "siteContext.card.drape": "Luftbild auflegen",
+  "siteContext.card.issues": "Hinweise",
+  "siteContext.card.heightAssumed": "Das Ankermodell gibt kein Höhensystem an; seine Höhen wurden als LN02 (EPSG:5728) angenommen, um diese Umgebung zu platzieren.",
+  "siteContext.attribution.label": "Daten der Umgebung",
+  "siteContext.palette.label": "Umgebung laden",
+} satisfies Catalogue;

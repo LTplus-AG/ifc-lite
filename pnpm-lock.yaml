@@ -296,6 +296,9 @@ importers:
       '@ifc-lite/geo':
         specifier: workspace:^
         version: link:../../packages/geo
+      '@ifc-lite/geodata-ch':
+        specifier: workspace:^
+        version: link:../../packages/geodata-ch
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -368,6 +371,9 @@ importers:
       '@ifc-lite/server-client':
         specifier: workspace:^
         version: link:../../packages/server-client
+      '@ifc-lite/site-context':
+        specifier: workspace:^
+        version: link:../../packages/site-context
       '@ifc-lite/solar':
         specifier: workspace:^
         version: link:../../packages/solar

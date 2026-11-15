@@ -25,7 +25,7 @@ afterEach(() => {
   host?.remove();
   root = null;
   host = null;
-  useViewerStore.setState({ models: new Map(), pointCloudAssetCount: 0 });
+  useViewerStore.setState({ models: new Map(), pointCloudAssetCount: 0, pointCloudClassCounts: {} });
 });
 
 it('keeps rebuilt IFCx count when stale streamed handles are cleaned after recovery (#4885)', () => {
@@ -130,4 +130,28 @@ it('does not unmount the app when the renderer is torn down by a device loss (#5
   } finally {
     console.warn = originalWarn;
   }
+});
+
+it('#10094 3a omits skipped clouds from the inline class histogram', () => {
+  const asset = (id: number, classification: number, origin?: [number, number, number]): PointCloudAsset => ({
+    expressId: id, origin,
+    chunk: { pointCount: 1, positions: new Float32Array([0, 0, 0]), classifications: new Uint8Array([classification]),
+      bbox: { min: [0, 0, 0], max: [0, 0, 0] } },
+  });
+  let pointClouds = [asset(1, 2), asset(2, 5, [NaN, 0, 0]), asset(3, 6, [1e39, 0, 0]), asset(4, 7, [Infinity, 0, 0])];
+  const rendererRef = { current: {
+    setPointClouds() {}, getPointCloudAssetCount: () => 1, setPointCloudOptions() {}, setEdlOptions() {}, requestRender() {},
+  } as unknown as Renderer };
+  function Probe() {
+    usePointCloudSync({ rendererRef, isInitialized: true, pointClouds, hasMeshes: true });
+    return null;
+  }
+  host = document.createElement('div');
+  document.body.appendChild(host);
+  root = createRoot(host);
+  act(() => root?.render(<Probe />));
+  assert.deepEqual(useViewerStore.getState().pointCloudClassCounts.ifcx, { 2: 1 });
+  pointClouds = [asset(2, 5, [NaN, 0, 0])];
+  act(() => root?.render(<Probe />));
+  assert.equal(useViewerStore.getState().pointCloudClassCounts.ifcx, undefined, 'skipped classifications leave no histogram');
 });

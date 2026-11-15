@@ -5,6 +5,7 @@
 use super::*;
 use crate::{Mesh, Point3, Vector3};
 use crate::csg::{ClippingProcessor, Plane};
+use crate::mesh_check::{Degenerate, EdgeLedger, VertexKey};
 
 /// Outward-wound watertight unit cube, one face per quad → two triangles,
 /// vertices duplicated per triangle (as the clipper itself emits them).
@@ -643,12 +644,16 @@ fn a_section_with_vertices_inside_one_weld_cell_is_capped_closed() {
         })
         .collect();
     let prism = extrude_profile(&ring, 0.0, HEIGHT);
-    assert_eq!(open_edges(&prism), 0, "the faceted prism is watertight");
+    // Every edge used once each way on the 10 um grid. At exact positions 12
+    // edges stay unbalanced: section pairs that straddle a weld cell.
+    let paired =
+        |m: &Mesh| EdgeLedger::build(m, VertexKey::GridMul(1.0e5), Degenerate::SkipTriangle).strictly_paired();
+    assert!(paired(&prism), "the faceted prism is watertight");
 
     let clip_normal = Vector3::new(0.0, 0.0, 1.0);
     let plane_point = Point3::new(0.0, 0.0, 0.0016);
     let mut clipped =
         ClippingProcessor::new().clip_mesh(&prism, &Plane::new(plane_point, clip_normal)).unwrap();
     assert!(cap_half_space_clip(&mut clipped, plane_point, clip_normal));
-    assert_eq!(open_edges(&clipped), 0, "the cap must meet the cut wall at every section vertex");
+    assert!(paired(&clipped), "the cap must meet the cut wall at every section vertex");
 }

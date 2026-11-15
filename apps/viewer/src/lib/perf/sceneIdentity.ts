@@ -25,11 +25,14 @@ const PRIME = 0x01000193;
 function mixBytes(h: number, view: ArrayBufferView | undefined | null): number {
   if (!view) return Math.imul(h ^ 0xfeedface, PRIME) >>> 0;
   const { buffer, byteOffset, byteLength } = view;
-  const words = byteOffset % 4 === 0 ? new Uint32Array(buffer, byteOffset, byteLength >>> 2) : null;
-  let i = 0;
-  if (words) for (; i < words.length; i++) h = Math.imul(h ^ words[i], PRIME);
-  const bytes = new Uint8Array(buffer, byteOffset, byteLength);
-  for (let b = words ? words.length * 4 : 0; b < byteLength; b++) h = Math.imul(h ^ bytes[b], PRIME);
+  // A codec may return the same bytes at an unaligned offset (#9990).
+  // Always mix little-endian words, then the remaining bytes: alignment must
+  // not select a different hash algorithm, and no geometry copy is needed.
+  const data = new DataView(buffer, byteOffset, byteLength);
+  const wordEnd = byteLength - byteLength % 4;
+  let offset = 0;
+  for (; offset < wordEnd; offset += 4) h = Math.imul(h ^ data.getUint32(offset, true), PRIME);
+  for (; offset < byteLength; offset++) h = Math.imul(h ^ data.getUint8(offset), PRIME);
   return Math.imul(h ^ byteLength, PRIME) >>> 0;
 }
 

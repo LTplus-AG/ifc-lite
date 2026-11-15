@@ -33,6 +33,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/pointcloud`](#ifc-litepointcloud) | Point cloud decoders and types for IFC-Lite |
 | [`@ifc-lite/geo`](#ifc-litegeo) | Headless CRS engine for IFC-Lite: resolve a CRS, reproject to and from WGS84, grid convergence and scale factors, EGM96 undulation |
 | [`@ifc-lite/solar`](#ifc-litesolar) | Solar position, sunrise/sunset and 3D sun-path geometry for IFC-Lite |
+| [`@ifc-lite/tiles3d`](#ifc-litetiles3d) | Headless OGC 3D Tiles reader: region queries over tilesets, b3dm/glb decoding (incl. Draco) into per-feature ECEF meshes with attributes |
 | [`@ifc-lite/sdk`](#ifc-litesdk) | Scripting SDK for ifc-lite — the bim.* API for BIM automation |
 | [`@ifc-lite/sandbox`](#ifc-litesandbox) | QuickJS-in-WASM sandboxed script execution for ifc-lite |
 | [`@ifc-lite/extensions`](#ifc-liteextensions) | Extension manifest, capability grammar, and slot registry for ifc-lite user customization |
@@ -1115,6 +1116,10 @@ Headless CRS engine: `resolveCrs({ epsg, name, wkt })` returns a transformer wit
 ## @ifc-lite/solar
 
 Solar position, sunrise/sunset, and 3D sun-path geometry: `sunPosition`, `sunTimes`, and the sun-path dome builders (day paths, hourly analemmas). Renderer-agnostic.
+
+## @ifc-lite/tiles3d
+
+Headless OGC 3D Tiles reader: `readTilesetRegion` returns the features of a tileset inside a WGS84 region as float64 meshes (tileset frame / ECEF) with batch table attributes, primitive groups and tile provenance. It handles b3dm and glb content (with Draco), budgets and explicit truncation, and has a `readSwisstopoBuildings` preset. `ecefToGeodetic` / `geodeticToEcef` convert positions.
 
 ## @ifc-lite/sdk
 

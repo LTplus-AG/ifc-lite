@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/export/src/cityjson/georef.rs",
+  "mutation": "tests/evidence/10388-cityjson-output-units/behaviour.oracle.patch",
+  "test": "rust/export/src/cityjson_tests.rs",
+  "why": "Reverse application writes the storey Elevation in metres whatever the output unit, so with a foot map unit it reads 1.5 instead of 4.92 ft and lengths_are_all_in_the_output_unit_when_the_map_unit_is_a_foot goes red."
+}

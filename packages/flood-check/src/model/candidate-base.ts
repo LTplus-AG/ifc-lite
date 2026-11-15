@@ -8,7 +8,7 @@
  */
 
 import { RelationshipType } from '@ifc-lite/data';
-import { hasRings, signedDistance, type PreparedFootprint } from '../region.js';
+import { signedDistance, type PreparedFootprint } from '../region.js';
 import type { MapPoint } from '../types.js';
 import type { CandidateCategory, CandidateFact, LevelBasis } from './facts.js';
 import type { ModelGeoreference } from './georef.js';
@@ -165,6 +165,22 @@ export function hostOf(ctx: CandidateContext, entity: DecodedEntity): DecodedEnt
   return r.entity(parent);
 }
 
+/**
+ * The one eligibility rule for an exclusion: why the element may NOT be
+ * excluded on this evidence, or null when it may. An uncertain position never
+ * supports an exclusion, whatever rests on it; an exclusion by distance also
+ * needs a footprint (none: inside and outside are unknown) that is complete
+ * enough (`footprintDoubt`).
+ */
+export function exclusionDoubt(ctx: CandidateContext, positionCertain: boolean, d?: number | null): string | null {
+  // The footprint first (when the exclusion rests on a distance), then the position.
+  if (d === null) return 'there is no footprint to test against';
+  const footprint = d === undefined ? null : footprintDoubt(ctx, d);
+  if (footprint) return footprint;
+  if (!positionCertain) return 'its position is uncertain (a body that places it cannot be fully read, or a clipped body), so it proves nothing';
+  return null;
+}
+
 /** Why the element is in the façade, or `{ not }` with why it is taken not to be. */
 export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host: DecodedEntity | null, at: MapPoint, positionCertain = true): string | { not: string } {
   const ownRead = externalOf(ctx.reader, entity);
@@ -176,22 +192,21 @@ export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host:
   if (hostExternal === true) {
     return `host IsExternal (${hostRead.pset})${own === false ? '; the element itself states IsExternal = false' : ''}`;
   }
+  const statedInternal = own === false || hostExternal === false;
+  const stated = statedInternal ? `${own === false ? 'it' : 'its host'} states IsExternal = false` : 'IsExternal not stated';
+  const d = signedDistance(ctx.footprint, at);
   // More than the tolerance OUTSIDE the footprint, an element cannot be interior, whatever it states (the footprint is then
   // marked partial by the extraction).
-  if (hasRings(ctx.footprint)) {
-    const out = signedDistance(ctx.footprint, at);
-    if (Number.isFinite(out) && out > ctx.boundaryTolerance) {
-      return `${out.toFixed(2)} m outside the footprint, so it cannot be interior (kept${own === false || hostExternal === false ? ' despite IsExternal = false' : ''}, and the footprint is partial: it misses this part of the building)`;
-    }
+  if (d !== null && d > ctx.boundaryTolerance) {
+    return `${d.toFixed(2)} m outside the footprint, so it cannot be interior (kept${statedInternal ? ' despite IsExternal = false' : ''}, and the footprint is partial: it misses this part of the building)`;
   }
-  if (own === false || hostExternal === false) return { not: `not in the façade: ${own === false ? 'it' : 'its host'} states IsExternal = false` };
-  // No outline to test against (no slab, no external wall): keep it rather than lose every façade element.
-  if (!hasRings(ctx.footprint)) return 'IsExternal not stated and no footprint to test against (kept conservatively)';
-  const d = signedDistance(ctx.footprint, at);
-  if (Number.isFinite(d) && Math.abs(d) <= ctx.boundaryTolerance) return `within ${ctx.boundaryTolerance} m of the footprint outline (IsExternal not stated)`;
-  const doubt = footprintDoubt(ctx, d);
-  if (doubt) return `IsExternal not stated, ${doubt}`;
-  // A position read from part of a body, or standing in for a hole that may lie elsewhere, proves no distance.
-  if (!positionCertain) return 'IsExternal not stated, and its position is uncertain (a body that places it cannot be fully read), so its distance to the outline proves nothing (kept conservatively)';
-  return { not: `not in the façade: IsExternal not stated and ${Math.abs(d).toFixed(2)} m from the footprint outline (more than ${ctx.boundaryTolerance} m)` };
+  // A stated IsExternal = false excludes, but not on an uncertain position: kept, the statement noted.
+  if (statedInternal) {
+    const doubt = exclusionDoubt(ctx, positionCertain);
+    return doubt ? `${stated}, but ${doubt} (kept conservatively)` : { not: `not in the façade: ${stated}` };
+  }
+  if (d !== null && Math.abs(d) <= ctx.boundaryTolerance) return `within ${ctx.boundaryTolerance} m of the footprint outline (IsExternal not stated)`;
+  const doubt = exclusionDoubt(ctx, positionCertain, d);
+  if (doubt) return `IsExternal not stated, ${doubt} (kept conservatively)`;
+  return { not: `not in the façade: IsExternal not stated and ${Math.abs(d!).toFixed(2)} m from the footprint outline (more than ${ctx.boundaryTolerance} m)` };
 }

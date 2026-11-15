@@ -118,7 +118,8 @@ export function planSamples(candidate: CandidateFact, fp: PreparedFootprint, s: 
   let anchor = candidate.position;
   let anchorBasis: SamplePlan['anchorBasis'] = 'element';
   let anchorOffset = 0;
-  if (d <= 0) {
+  // No footprint (null): nothing to move to; the element is its own anchor.
+  if (d !== null && d <= 0) {
     const nearest = closestOutlinePoint(fp, candidate.position);
     if (nearest) {
       anchor = nearest.point;

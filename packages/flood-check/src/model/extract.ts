@@ -296,7 +296,7 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
   const outside = derived
     ? candidates
         .filter((c) => ['door', 'window', 'basement-window', 'wall-opening'].includes(c.category))
-        .map((c) => ({ expressId: c.expressId, ifcClass: c.ifcClass, distance: signedDistance(region, c.position) }))
+        .map((c) => ({ expressId: c.expressId, ifcClass: c.ifcClass, distance: signedDistance(region, c.position) ?? 0 }))
         .filter((o) => o.distance > tolerance)
     : [];
   const footprint = resolution.finish(candidates.map((c) => c.position), outside);

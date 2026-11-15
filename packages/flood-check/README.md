@@ -682,6 +682,13 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
 - In a given footprint, a ring entirely covered by the others is taken for a
   courtyard (a redundant ring cannot be told from one); in slab outlines it
   never is.
+- One eligibility rule for every exclusion (`exclusionDoubt`): an uncertain
+  position never supports one, even with a stated `IsExternal = false` (the
+  element is kept and the statement noted); an exclusion by distance also
+  needs a footprint, and with none inside and outside are unknown (the
+  signed distance is `null`, never "infinitely far outside").
+- A CRS whose Name and WKT identifier name different EPSG codes is refused
+  (`crs-mismatch`, naming both).
 - A position read from a clipped body's outer operand is marked uncertain
   (`positionIsUncertain`), as are positions read from part of a body, and a
   level read from it is a lower bound (`levelIsLowerBound`: the cut may have

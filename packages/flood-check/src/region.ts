@@ -196,11 +196,12 @@ export function closestOutlinePoint(fp: PreparedFootprint, p: MapPoint): { point
 /**
  * Signed distance to the true outline, metres: negative inside the building
  * ({@link insideFootprint}), the distance to the closest outline point; positive
- * outside, the distance to the closest boundary. Infinity with no rings.
+ * outside, the distance to the closest boundary. `null` with no rings: inside
+ * and outside are then unknown, never "infinitely far outside".
  */
-export function signedDistance(fp: PreparedFootprint, p: MapPoint): number {
+export function signedDistance(fp: PreparedFootprint, p: MapPoint): number | null {
   const c = closestBoundaryPoint(p, fp.rings);
-  if (!c) return Infinity;
+  if (!c) return null;
   if (!insideFootprint(fp, p)) return c.distance;
   return -(closestOutlinePoint(fp, p)?.distance ?? c.distance);
 }

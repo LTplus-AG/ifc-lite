@@ -26,7 +26,7 @@ import {
   type MapConversion,
 } from '@ifc-lite/parser';
 import { FloodCheckRefusal } from '../errors.js';
-import { projectedCrsIdentifier, sameCrs } from '../crs.js';
+import { projectedCrsConflict, projectedCrsIdentifier, sameCrs } from '../crs.js';
 import type { Vec3 } from './placement.js';
 
 export interface GeoreferenceOptions {
@@ -80,6 +80,13 @@ export function resolveModelGeoreference(store: IfcDataStore, options: Georefere
   if (!crsInfo) throw new FloodCheckRefusal('crs-unrecognised', 'the map conversion names no target CRS');
   if (crsInfo.kind === 'geographic') {
     throw new FloodCheckRefusal('geographic-crs', `the target CRS ${crsInfo.name || '(unnamed)'} is geographic, not projected`);
+  }
+  const conflict = projectedCrsConflict(crsInfo);
+  if (conflict) {
+    throw new FloodCheckRefusal(
+      'crs-mismatch',
+      `the target CRS is named ${conflict.name} but its WKT identifies ${conflict.wkt}; which one the coordinates are in cannot be told, so the model is not checked`,
+    );
   }
   const crs = projectedCrsIdentifier(crsInfo);
   if (!crs) {

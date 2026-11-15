@@ -157,7 +157,8 @@ function checkAgainstWalls(rings: MapPoint[][], source: FootprintFact['source'],
         return line.length === 1 ? line : out;
       });
       if (points.length === 0) continue;
-      const d = points.map((p) => signedDistance(region, p));
+      // The rings are non-empty here, so every distance is known.
+      const d = points.map((p) => signedDistance(region, p) ?? 0);
       const out = Math.max(...d);
       if (out > FIT_TOLERANCE) log.note('partial', `external wall ${reader.className(wall)} #${id} reaches ${out.toFixed(2)} m outside the footprint`);
       else if (Math.min(...d) < -FIT_TOLERANCE) {

@@ -261,6 +261,9 @@ fn a_placement_cycle_is_refused_counted_and_not_memoised() {
     let before = decoder.refused_records();
     let node = decoder.decode_by_id(10).unwrap();
     assert!(resolve_chain(&node, &mut decoder).is_err());
+    // Relative to itself a cyclic placement is refused too, not the identity.
+    let own = decoder.decode_by_id(12).unwrap();
+    assert!(super::resolve_chain_relative(&own, &own, &mut decoder).is_err());
     assert_eq!(
         decoder.refused_records(),
         before,

@@ -93,10 +93,11 @@ pub fn resolve_chain_relative(
     base: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> PlacementResult<Matrix4<f64>> {
+    // Climbed first, so a cyclic placement is refused even as its own base.
+    let target = full_climb(placement, decoder)?;
     if placement.id == base.id {
         return Ok(Matrix4::identity());
     }
-    let target = full_climb(placement, decoder)?;
     let origin = full_climb(base, decoder)?;
     let shared = target.frames.iter().enumerate().find_map(|(i, frame)| {
         origin.frames.iter().position(|b| b.entity.id == frame.entity.id).map(|j| (i, j))

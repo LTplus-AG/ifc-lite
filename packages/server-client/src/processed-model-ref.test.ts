@@ -53,7 +53,7 @@ describe('isProcessedModelRef', () => {
     expect(isProcessedModelRef(ref)).toBe(true);
     expect(isProcessedModelRef(new ArrayBuffer(4))).toBe(false);
     expect(isProcessedModelRef(new File([new Uint8Array(4)], 'x.ifc'))).toBe(false);
-    expect(isProcessedModelRef({ sha256 })).toBe(false);
+    expect(isProcessedModelRef({ sha256 })).toBe(true);
   });
 });
 

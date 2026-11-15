@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { IfcServerClient, IfcServerError, type HealthResponse, type ParquetParseResponse } from '@ifc-lite/server-client';
+import { IfcServerClient, IfcServerError, type HealthResponse, type ParquetParseResponse, type ProcessedModelRef } from '@ifc-lite/server-client';
 import { useViewerStore } from '@/store';
 import { waitFor } from '@/test/render.js';
 import { propertyModelBuffer } from '../../../../packages/server-client/test/fixtures/property-model.js';
@@ -164,7 +164,7 @@ it('a browser without Parquet support is told so instead of falling back to an u
   assert.equal(useViewerStore.getState().lastLoadRetry, null);
 });
 
-it('a model of unknown size streams, since the streamed route works at any size', async () => {
+for (const bytes of [0, undefined, Number.NaN, '12'] as const) it(`a model of unknown size (${String(bytes)}) streams, since the streamed route works at any size`, async () => {
   let streamed: unknown;
   mock.method(IfcServerClient.prototype, 'parseParquetStream', async (source: unknown, onBatch: (batch: { meshes: ParquetParseResponse['meshes'] }) => void) => {
     streamed = source;
@@ -173,7 +173,7 @@ it('a model of unknown size streams, since the streamed route works at any size'
     return rest;
   });
   await act(async () => { root.render(<Probe />); });
-  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel: { sha256, bytes: 0 } }); });
+  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel: { sha256, bytes } as unknown as ProcessedModelRef }); }); // a host calling from JS
   assert.deepEqual(streamed, { sha256, bytes: 0 });
   assert.deepEqual(asked, [], 'the one-shot route is not taken for an unknown size');
   assert.equal(model()?.loadState, 'complete');

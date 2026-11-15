@@ -38,6 +38,5 @@ export function assertProcessedModelHash(sha256: unknown): string {
 /** Tells a reference from the sources that carry bytes (`File`, `ArrayBuffer`). */
 export function isProcessedModelRef(source: unknown): source is ProcessedModelRef {
   return typeof source === 'object' && source !== null
-    && typeof (source as { sha256?: unknown }).sha256 === 'string'
-    && typeof (source as { bytes?: unknown }).bytes === 'number';
+    && typeof (source as { sha256?: unknown }).sha256 === 'string'; // `bytes` is not sent, so a ref without it is still a ref
 }

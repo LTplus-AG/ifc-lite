@@ -44,7 +44,8 @@ export function useProcessedModelAutoload(): void {
   const { t } = useTranslation();
   const doneRef = useRef(false);
   // Navigation may change the query while the adapter probe is pending. Keep what this mount asked for.
-  const requestRef = useRef(processedModelFromQuery(window.location.search));
+  const requestRef = useRef<ReturnType<typeof processedModelFromQuery> | undefined>(undefined);
+  if (requestRef.current === undefined) requestRef.current = processedModelFromQuery(window.location.search); // parse once, not per render
 
   useEffect(() => {
     // Wait for the async adapter probe, as `?model=` does, so the guard gets a definitive answer.

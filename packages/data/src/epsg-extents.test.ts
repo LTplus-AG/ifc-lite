@@ -20,6 +20,7 @@ import {
   isLonLatInEpsgAreaOfUse,
   loadEpsgExtentsDatasetVersion,
 } from './epsg-extents.js';
+import { EPSG_EXTENTS_DATASET_VERSION } from './generated/epsg-extents.generated.js';
 
 /**
  * Expected values were read from the EPSG Registry API on 2026-11-15, each
@@ -342,27 +343,12 @@ describe('createEpsgCrsCatalog', () => {
   });
 });
 
-describe('dataset version and notice', () => {
-  const generated = fs.readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), 'generated/epsg-extents.generated.ts'),
-    'utf8',
-  );
-
+describe('dataset version', () => {
   it('records the registry dataset version next to the main index version', async () => {
     const version = await loadEpsgExtentsDatasetVersion();
     expect(version).toMatch(/^\d+\.\d+$/);
-    expect(generated).toContain(`EPSG_EXTENTS_DATASET_VERSION = '${version}'`);
-    expect(generated).toContain(`EPSG Dataset version: ${version}`);
+    expect(EPSG_EXTENTS_DATASET_VERSION).toBe(version);
     expect(await loadEpsgIndexDatasetVersion()).toMatch(/^\d+\.\d+$/);
-  });
-
-  it('carries the ownership acknowledgement, terms URL, as-is statement and transformations', () => {
-    expect(generated).toContain('International Association of Oil');
-    expect(generated).toContain('https://epsg.org/terms-of-use.html');
-    expect(generated).toContain('"AS IS"');
-    expect(generated).toContain('Derived subset');
-    expect(generated).toContain('rounded to 6 decimal places');
-    expect(generated).toContain('dropped');
   });
 });
 
@@ -372,9 +358,9 @@ describe('generator safety', () => {
   const tsx = path.join(root, 'node_modules/.bin/tsx');
 
   const run = (args: string[], env: Record<string, string> = {}, cwd = path.join(root, 'packages/data')) =>
-    new Promise<{ code: number; stderr: string }>(resolve => {
-      execFile(tsx, [script, ...args], { cwd, env: { ...process.env, ...env } }, (error, _out, stderr) => {
-        resolve({ code: error ? ((error as { code?: number }).code ?? 1) : 0, stderr });
+    new Promise<{ code: number; stdout: string; stderr: string }>(resolve => {
+      execFile(tsx, [script, ...args], { cwd, env: { ...process.env, ...env } }, (error, stdout, stderr) => {
+        resolve({ code: error ? ((error as { code?: number }).code ?? 1) : 0, stdout, stderr });
       });
     });
 
@@ -431,6 +417,27 @@ describe('generator safety', () => {
     } finally {
       server.close();
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  it('emits the ownership acknowledgement, terms URL, as-is statement and transformations', async () => {
+    const { server, base } = await serve(new Set(['2000', '2001', '2002']));
+    try {
+      const result = await run(['--limit=3', '--stdout', '--dataset-version=1.0', '--delay-ms=0'], { EPSG_API_BASE: base });
+      expect(result.code, result.stderr).toBe(0);
+      for (const notice of [
+        'EPSG Dataset version: 1.0',
+        'International Association of Oil',
+        'https://epsg.org/terms-of-use.html',
+        '"AS IS"',
+        'Derived subset',
+        'rounded to 6 decimal places',
+        'dropped',
+      ]) {
+        expect(result.stdout).toContain(notice);
+      }
+    } finally {
+      server.close();
     }
   }, 60000);
 });

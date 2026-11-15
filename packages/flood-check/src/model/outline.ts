@@ -258,8 +258,13 @@ export function readSlabOutline(reader: ModelReader, slabId: number): OutlineRea
     fromFootprint.rings.push(pts.map(([x, y]) => [x, y, 0]));
     fromFootprint.readable++;
   }
-  if (footprint.length > 0 && completeness(fromFootprint) === 'complete') return fromFootprint;
   const body = representationItems(reader, slabId, 'Body');
+  if (footprint.length > 0 && completeness(fromFootprint) === 'complete') {
+    // The FootPrint gives the outer curves only; a Body with voids (a profile with inner curves, or a Boolean cut) still has
+    // holes the outline fills: voids-filled, never a complete outline with a filled courtyard.
+    if (body.some((item) => bodyItemHasVoids(reader, item))) fromFootprint.voids = true;
+    return fromFootprint;
+  }
   const fromBody: OutlineReading = { rings: [], items: body.length, readable: 0, voids: false };
   for (const item of body) {
     const unwrapped = unwrapClipping(reader, item);
@@ -284,6 +289,17 @@ export function readSlabOutline(reader: ModelReader, slabId: number): OutlineRea
   // The body when it was read in full, or when the footprint gave nothing better; else the partly read footprint.
   if (completeness(fromBody) === 'complete' || footprint.length === 0 || fromBody.readable > fromFootprint.readable) return fromBody;
   return fromFootprint;
+}
+
+/** A Body item that has holes the plan outline does not keep: a profile with inner curves, or a Boolean or clipping cut. */
+function bodyItemHasVoids(reader: ModelReader, item: number): boolean {
+  const unwrapped = unwrapClipping(reader, item);
+  if (!unwrapped) return false;
+  if (unwrapped.subtracted) return true;
+  const solid = reader.entity(unwrapped.solid);
+  const profile = solid ? reader.entity(asRef(reader.attr(solid, 'SweptArea'))) : null;
+  const inner = profile?.type === 'IFCARBITRARYPROFILEDEFWITHVOIDS' ? reader.attr(profile, 'InnerCurves') : null;
+  return Array.isArray(inner) && inner.length > 0;
 }
 
 /** A wall's `Axis`: one polyline per readable curve, in object coordinates (raw file units). */

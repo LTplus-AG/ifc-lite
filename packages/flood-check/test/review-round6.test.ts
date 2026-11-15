@@ -77,3 +77,24 @@ describe('finding 3: a CRS name contradicted by its own WKT identifier is refuse
     expect((err as Error).message).toMatch(/EPSG:2056.*EPSG:21781/);
   });
 });
+
+describe('the automated review of 14fabe313: a FootPrint curve does not hide the Body\'s voids', () => {
+  it('a slab with one outer FootPrint curve and a Body profile with a courtyard void is voids-filled, so the courtyard door is kept', async () => {
+    const facts = await extract((b) => {
+      const eg = b.storeys.eg;
+      const pt = (x: number, y: number) => b.add(`IFCCARTESIANPOINT((${x}.,${y}.))`);
+      const loop = (pts: Array<[number, number]>) => b.add(`IFCPOLYLINE((${[...pts, pts[0]].map(([x, y]) => `#${pt(x, y)}`).join(',')}))`);
+      const outer = [[0, 0], [30, 0], [30, 30], [0, 30]] as Array<[number, number]>;
+      const court = [[10, 10], [20, 10], [20, 20], [10, 20]] as Array<[number, number]>;
+      const profile = b.add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#${loop(outer)},(#${loop(court)}))`);
+      const solid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 0)},#${b.dir(0, 0, -1)},0.3)`);
+      const body = b.add(`IFCSHAPEREPRESENTATION(#${b.add(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#${b.add("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$)")},$,.MODEL_VIEW.,$)`)},'Body','SweptSolid',(#${solid}))`);
+      const fp = b.add(`IFCSHAPEREPRESENTATION(#${b.add(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('FootPrint','Model',*,*,*,*,#${b.add("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-05,$,$)")},$,.PLAN_VIEW.,$)`)},'FootPrint','Curve2D',(#${loop(outer)}))`);
+      b.contain(eg.id, b.add(`IFCSLAB(${b.guid()},$,'Platte Hof',$,$,#${b.place(eg.pl, 0, 0, 0)},#${b.add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${fp},#${body}))`)},$,.FLOOR.)`));
+      const leaf = b.shape([b.rectExtrusion(0, 0, 1, 0.1, 2.1, b.axis(0, 0, 0), b.dir(0, 0, 1))]);
+      b.contain(eg.id, b.add(`IFCDOOR(${b.guid()},$,'Hoftür',$,$,#${b.place(eg.pl, 15, 10, 0)},#${leaf},$,2.1,1.,.DOOR.,$,$)`));
+    }, false);
+    expect(facts.footprint.source).toBe('slab-outline-voids-filled');
+    expect(facts.candidates.map((c) => c.name)).toContain('Hoftür');
+  });
+});

@@ -101,6 +101,11 @@ function codeKey(code: string | number): string {
   return String(code).trim();
 }
 
+/** Row of a code; only own keys count, so `toString`/`constructor` are unknown codes rather than inherited functions. */
+function rowOf(data: ExtentsData, key: string): ExtentsData['rows'][string] | undefined {
+  return Object.prototype.hasOwnProperty.call(data.rows, key) ? data.rows[key] : undefined;
+}
+
 /**
  * Whether a WGS84 longitude/latitude lies in an area of use, widened by
  * `marginDegrees` on every side. Antimeridian-aware: longitudes are compared
@@ -127,7 +132,10 @@ export function isLonLatInAreaOfUse(
   // so no arithmetic touches values that are already exact in the data.
   const hi = (area.east >= area.west ? area.east : area.east + 360) + margin;
   if (hi - lo >= 360) return true;
-  return [longitude, longitude + 360, longitude - 360].some(lon => lon >= lo && lon <= hi);
+  // `%` is exact in floating point, so a longitude within one revolution is compared untouched
+  // (box edges stay exact) and one beyond it is first reduced to the equivalent in (-360, 360).
+  const lon = Math.abs(longitude) >= 360 ? longitude % 360 : longitude;
+  return [lon, lon + 360, lon - 360].some(l => l >= lo && l <= hi);
 }
 
 /** Primary area of use (the first current usage in the registry) of an EPSG code. */
@@ -138,7 +146,7 @@ export async function getEpsgAreaOfUse(code: string | number): Promise<EpsgAreaO
 /** Every distinct current area-of-use box of an EPSG code (usages with identical boxes are stored once); most CRSs have one. */
 export async function getEpsgAreasOfUse(code: string | number): Promise<EpsgAreaOfUse[] | undefined> {
   const data = await loadExtentsData();
-  const row = data.rows[codeKey(code)];
+  const row = rowOf(data, codeKey(code));
   if (!row || row[1].length === 0) return undefined;
   return row[1].map(index => toAreaOfUse(data.boxes[index]));
 }
@@ -164,7 +172,7 @@ function unitsOf(
   byCode: ReadonlyMap<string, EpsgIndexEntry>,
   key: string,
 ): EpsgUnits | undefined {
-  const row = data.rows[key];
+  const row = rowOf(data, key);
   if (!row) return undefined;
   const result: EpsgUnits = {};
   if (byCode.get(key)?.kind === 'Vertical') {
@@ -186,7 +194,7 @@ export async function getEpsgCompoundComponents(
   code: string | number,
 ): Promise<EpsgCompoundComponents | undefined> {
   const data = await loadExtentsData();
-  const row = data.rows[codeKey(code)];
+  const row = rowOf(data, codeKey(code));
   const horizontal = row?.[2];
   const vertical = row?.[3];
   if (horizontal == null || vertical == null) return undefined;

@@ -64,8 +64,8 @@ const delayMs = intOpt('delay-ms', 50, 0, 60_000);
 const limit = opt('limit') !== undefined ? intOpt('limit', 0, 1, Number.MAX_SAFE_INTEGER) : null;
 const stdout = args.includes('--stdout');
 const out = opt('out') ? path.resolve(opt('out')!) : DEFAULT_OUT;
-if (limit !== null && !stdout && !opt('out')) {
-  console.error('--limit writes a partial file: pass --out=PATH or --stdout so the committed file is not overwritten.');
+if (limit !== null && !stdout && (!opt('out') || out === path.resolve(DEFAULT_OUT))) {
+  console.error('--limit writes a partial file: pass --out=PATH (not the committed file) or --stdout so the committed file is not overwritten.');
   process.exit(2);
 }
 
@@ -210,7 +210,8 @@ async function main(): Promise<void> {
     if (row && row[0] === -1 && typeof h === 'number' && rows[String(h)]) row[0] = rows[String(h)][0];
   }
   const missingUnit = Object.entries(rows).filter(([, r]) => r[0] === -1).map(([c]) => c);
-  console.log(`rows without a unit: ${missingUnit.length}`, missingUnit.slice(0, 12).join(','));
+  // stderr: with --stdout the generated module owns stdout.
+  console.error(`rows without a unit: ${missingUnit.length}`, missingUnit.slice(0, 12).join(','));
 
   const body = JSON.stringify({ units: unitList, boxes: boxList, rows });
   const fetched = new Date().toISOString().slice(0, 10);

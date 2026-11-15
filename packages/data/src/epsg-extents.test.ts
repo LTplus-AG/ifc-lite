@@ -141,6 +141,18 @@ describe('isLonLatInAreaOfUse', () => {
     expect(isLonLatInAreaOfUse(fiji, -177.5, -17, 0.5)).toBe(false);
   });
 
+  it('reduces a longitude beyond one revolution, keeping box edges exact', () => {
+    const lv95 = { west: 5.95, south: 45.81, east: 10.5, north: 47.81 };
+    expect(isLonLatInAreaOfUse(lv95, 727.44, 46.95)).toBe(true);
+    expect(isLonLatInAreaOfUse(lv95, -712.56, 46.95)).toBe(true);
+    expect(isLonLatInAreaOfUse(lv95, 7.44 + 3600, 46.95)).toBe(true);
+    expect(isLonLatInAreaOfUse(lv95, 2.3 + 720, 46.95)).toBe(false);
+    expect(isLonLatInAreaOfUse(lv95, 10.5, 46.95)).toBe(true);
+    expect(isLonLatInAreaOfUse(lv95, 10.51, 46.95)).toBe(false);
+    expect(isLonLatInAreaOfUse(fiji, -179 + 720, -16.5)).toBe(true);
+    expect(isLonLatInAreaOfUse(fiji, 0 - 720, -16.5)).toBe(false);
+  });
+
   it('treats a world box as everywhere and rejects non-finite input', () => {
     const world = { west: -180, south: -90, east: 180, north: 90 };
     expect(isLonLatInAreaOfUse(world, 123, -45)).toBe(true);
@@ -153,6 +165,18 @@ describe('isLonLatInAreaOfUse', () => {
     expect(await isLonLatInEpsgAreaOfUse(3460, -179, -16.5)).toBe(true);
     expect(await isLonLatInEpsgAreaOfUse(3460, 0, -16.5)).toBe(false);
     expect(await isLonLatInEpsgAreaOfUse(2056, 10.9, 46.5, 0.5)).toBe(true);
+  });
+});
+
+describe('inherited property names are not codes', () => {
+  it('returns undefined instead of throwing for Object.prototype keys', async () => {
+    for (const name of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      expect(await getEpsgAreasOfUse(name), name).toBeUndefined();
+      expect(await getEpsgAreaOfUse(name), name).toBeUndefined();
+      expect(await getEpsgUnits(name), name).toBeUndefined();
+      expect(await getEpsgCompoundComponents(name), name).toBeUndefined();
+      expect(await isLonLatInEpsgAreaOfUse(name, 7.44, 46.95), name).toBeUndefined();
+    }
   });
 });
 
@@ -391,6 +415,21 @@ describe('generator safety', () => {
     expect(fs.statSync(committed).mtimeMs).toBe(before);
   }, 30000);
 
+  it('refuses a partial run aimed at the committed file by an explicit --out, from any cwd', async () => {
+    const committed = path.join(root, 'packages/data/src/generated/epsg-extents.generated.ts');
+    const before = fs.statSync(committed).mtimeMs;
+    for (const [cwd, target] of [
+      [root, 'packages/data/src/generated/epsg-extents.generated.ts'],
+      [path.join(root, 'packages/data'), 'src/generated/epsg-extents.generated.ts'],
+      [root, committed],
+    ] as const) {
+      const result = await run(['--limit=3', `--out=${target}`, '--dataset-version=1.0'], { EPSG_API_BASE: 'http://127.0.0.1:9' }, cwd);
+      expect(result.code, target).toBe(2);
+      expect(result.stderr).toContain('committed file');
+    }
+    expect(fs.statSync(committed).mtimeMs).toBe(before);
+  }, 60000);
+
   it('rejects non-numeric or out-of-range options and writes nothing', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'epsg-gen-'));
     try {
@@ -443,6 +482,10 @@ describe('generator safety', () => {
     try {
       const result = await run(['--limit=3', '--stdout', '--dataset-version=1.0', '--delay-ms=0'], { EPSG_API_BASE: base });
       expect(result.code, result.stderr).toBe(0);
+      // stdout is the generated module and nothing else, so redirecting it yields valid TypeScript.
+      expect(result.stdout.startsWith('/* This Source Code Form')).toBe(true);
+      expect(result.stdout).not.toContain('rows without a unit');
+      expect(result.stderr).toContain('rows without a unit');
       for (const notice of [
         'EPSG Dataset version: 1.0',
         'International Association of Oil',

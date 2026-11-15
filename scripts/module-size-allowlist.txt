@@ -129,7 +129,7 @@
    812 apps/viewer/src/sdk/adapters/export-adapter.ts
    638 apps/viewer/src/services/extensions/host.ts
    561 apps/viewer/src/services/ifc-cache.ts
-   556 apps/viewer/src/store/basketVisibleSet.ts
+   559 apps/viewer/src/store/basketVisibleSet.ts
    444 apps/viewer/src/store/constants.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts

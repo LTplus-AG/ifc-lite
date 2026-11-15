@@ -5,7 +5,7 @@
 //! The prism cut: subtract a stepped solid from the host triangle list, or
 //! return the defer reason that sends the opening to the exact kernel.
 
-use super::caps::{build_face_cap, cap_plane_breakpoints, CapHost};
+use super::caps::{build_caps, cap_plane_breakpoints, CapHost};
 use super::checks::{has_measurable_region, partition_consistent};
 use super::decompose::decompose_tri;
 use super::face::{cached_crossing, face_plane, CrossCache, Seam};
@@ -232,13 +232,8 @@ pub(super) fn cut_prism(tris: &[PTri], pf: &PrismFrame, seats: &FlushSeats) -> R
 
     // Caps: one CDT per face, constrained by that face's seams, classified by
     // ray parity against the PRE-CUT host.
-    let mut caps: Vec<PTri> = Vec::new();
     let cap_host = CapHost { tris, aabbs: &aabbs, seats };
-    for (fi, &face) in faces.iter().enumerate() {
-        if !build_face_cap(pf, face, &seams[fi], &plane_pts, &cap_host, &mut caps) {
-            return Err(7);
-        }
-    }
+    let mut caps = build_caps(pf, &faces, &seams, &plane_pts, &cap_host).ok_or(7_usize)?;
 
     if !partition_consistent(tris, &out, &inside, &aabbs) {
         return Err(8);

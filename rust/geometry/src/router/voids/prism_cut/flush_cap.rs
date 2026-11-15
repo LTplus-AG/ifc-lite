@@ -194,6 +194,13 @@ impl FlushSeats {
         self.0[usize::from(high)].as_ref().is_some_and(|seat| seat.floor.iter().any(|tri| pip(q, tri)))
     }
 
+    /// Whether cap plane `j` of a prism whose last plane is `last` is floored
+    /// at `q`. Only end caps are seated, so an end cap is not built where a
+    /// flush host face floors it.
+    pub(super) fn floors_cap(&self, j: usize, last: usize, q: V2) -> bool {
+        (j == 0 && self.floored(false, q)) || (j == last && self.floored(true, q))
+    }
+
     /// Whether a side strip is emitted at depth `w`: not in the allowance
     /// between a moved cap and its authored plane.
     pub(super) fn strip_reaches(&self, w: f64) -> bool {

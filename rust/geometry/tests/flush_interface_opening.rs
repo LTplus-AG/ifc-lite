@@ -18,7 +18,8 @@
 //! or a torn mesh.
 //!
 //! Every placement here must give the same solid: closed, the analytic
-//! volume, the analytic surface area.
+//! volume, the analytic surface area. The split host of the kilometre test
+//! is held more loosely; see there.
 
 mod voids_common;
 
@@ -234,9 +235,13 @@ fn a_recess_ending_on_a_body_interface_cuts_the_same_wherever_the_wall_sits() {
 /// cap there cut into that material and left the step to the floored part
 /// open: 18 of these placements came back with 4 to 6 open edges (#10346
 /// review). Such a cap keeps the plain cut; the plain two-body wall is still
-/// seated.
+/// seated. Every placement must be closed. `Host::CoreAndFinish` must also
+/// have the analytic volume and surface. `Host::SplitUnderRecess` must land
+/// between 0.5 litres short and 2 litres over the analytic volume: the kernel
+/// gives it up to 1.4 litres too much at some offsets, on main too. No
+/// analytic surface is worked out for it.
 #[test]
-fn a_recess_ending_on_an_interface_a_kilometre_out_stays_closed() {
+fn a_recess_ending_on_an_interface_a_kilometre_out_cuts_a_closed_solid() {
     let mut failures = Vec::new();
     for host in [Host::CoreAndFinish, Host::SplitUnderRecess] {
         for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
@@ -247,16 +252,20 @@ fn a_recess_ending_on_an_interface_a_kilometre_out_stays_closed() {
                     let voids = build_void_index_like_production(&content);
                     let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
                     let (open, volume, surface) = (open_edges(&mesh), mesh_volume(&mesh), area(&mesh));
-                    // main already gives the split host up to 1.4 litres
-                    // too much at some offsets: only closure is held there.
-                    let solid_ok = matches!(host, Host::SplitUnderRecess)
-                        || ((volume - analytic_volume()).abs() <= 5.0e-4
-                            && (surface - analytic_area(recess)).abs() <= 5.0e-3);
+                    let excess = volume - analytic_volume();
+                    let solid_ok = match host {
+                        Host::CoreAndFinish => {
+                            excess.abs() <= 5.0e-4 && (surface - analytic_area(recess)).abs() <= 5.0e-3
+                        }
+                        Host::SplitUnderRecess => (-5.0e-4..=2.0e-3).contains(&excess),
+                    };
                     if open != 0 || !solid_ok {
                         failures.push(format!(
                             "{host:?} {recess:?} wall turn {wall_turn} y {wall_y:.3}: \
-                             {open} open edges, volume {volume:.6} m3 (analytic {:.6}), surface {surface:.4} m2",
+                             {open} open edges, volume {volume:.6} m3 (analytic {:.6}), \
+                             surface {surface:.4} m2 (analytic for CoreAndFinish {:.4})",
                             analytic_volume(),
+                            analytic_area(recess),
                         ));
                     }
                 }

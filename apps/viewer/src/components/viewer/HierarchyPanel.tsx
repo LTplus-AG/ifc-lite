@@ -44,7 +44,7 @@ import { ModelsSectionHeader } from './hierarchy/ModelsSectionHeader';
 import { StoreyDisplayControls, StoreyFloorplanButton } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { hierarchyRowSelection } from './hierarchy/rowSelection';
-import { createSpatialSubtreeResolver, hierarchyNodeAppearance, hierarchyNodeVisibility } from './hierarchy/nodeVisibility';
+import { createSpatialSubtreeResolver, hierarchyNodeAppearance, hierarchyNodeVisibility, hierarchyToggleTargets, recordHierarchyOwnState } from './hierarchy/nodeVisibility';
 import { hierarchyRowActions, type HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
@@ -203,21 +203,30 @@ export function HierarchyPanel() {
     isMultiModel: isMultiModel && groupingMode === 'spatial', storeysVirtualizer, modelsVirtualizer, virtualizer, container: parentRef, setSearchQuery, searchQuery, groupingReady,
   });
 
+  // A source's container plan (a Rhino layer, #10214) is the layer tree's: only
+  // the spatial grouping's rows follow it, and only they record own states.
+  const planModels = groupingMode === 'spatial' ? models : undefined;
+
   // Toggle visibility for a node
   const handleVisibilityToggle = useCallback((node: TreeNode) => {
     const elements = getNodeElements(node);
-    if (elements.length === 0) return;
+    const { visibilityAction } = hierarchyNodeVisibility(node, elements, hiddenEntities, planModels);
+    const targets = planModels ? hierarchyToggleTargets(node, elements, visibilityAction, planModels) : [...elements];
+    if (targets.length === 0) return;
 
-    const { visibilityAction } = hierarchyNodeVisibility(node, elements, hiddenEntities);
     if (visibilityAction === 'hide') {
-      hideEntities(elements);
-      if (selectedEntityId !== null && elements.includes(selectedEntityId)) {
+      hideEntities(targets);
+      // Read at click time: a layer row's hide reaches sub-layers whose rows may not have re-rendered.
+      const selection = useViewerStore.getState();
+      if ((selection.selectedEntityId !== null && targets.includes(selection.selectedEntityId))
+        || targets.some((id) => selection.selectedEntityIds.has(id))) {
         clearSelection();
       }
     } else {
-      showEntities(elements);
+      showEntities(targets);
     }
-  }, [getNodeElements, hiddenEntities, hideEntities, showEntities, selectedEntityId, clearSelection]);
+    if (planModels) recordHierarchyOwnState(node, visibilityAction, planModels);
+  }, [getNodeElements, hiddenEntities, hideEntities, showEntities, clearSelection, planModels]);
 
   // Handle model visibility toggle
   const handleModelVisibilityToggle = useCallback((modelId: string, e: React.MouseEvent) => {
@@ -379,7 +388,7 @@ export function HierarchyPanel() {
     const isSelected = rows.length > 0 && rows.every(({ globalId }) =>
       selectedEntityId === globalId || selectedEntityIds.has(globalId));
 
-    const appearance = hierarchyNodeAppearance(node, getNodeElements(node), hiddenEntities, viewportIsolation, spatialSubtreeOf);
+    const appearance = hierarchyNodeAppearance(node, getNodeElements(node), hiddenEntities, viewportIsolation, spatialSubtreeOf, planModels);
 
     // Model visibility for model-header nodes
     let modelVisible: boolean | undefined;
@@ -389,7 +398,7 @@ export function HierarchyPanel() {
     }
 
     return { isSelected, ...appearance, modelVisible };
-  }, [selectedEntityId, selectedEntityIds, hiddenEntities, viewportIsolation, getNodeElements, models, spatialSubtreeOf]);
+  }, [selectedEntityId, selectedEntityIds, hiddenEntities, viewportIsolation, getNodeElements, models, planModels, spatialSubtreeOf]);
 
   // Every branch carries the tour anchor: the welcome tour's "Browse the
   // structure" step must find the panel while a model is absent or loading.

@@ -117,7 +117,9 @@ const moveContext = (modelId: string, file: File, host: DrawingKeyHost): LegacyM
  * under.
  */
 async function identityOf(modelId: string, file: File, host: DrawingKeyHost): Promise<string | null> {
-  const known = await whenModel(modelId, file, (model) => model.sourceContentHash ?? (loading(model) ? undefined : ''));
+  // A refused/failed load never admitted its bytes. Do not start a background
+  // identity read merely because that provisional model stopped loading (#10264).
+  const known = await whenModel(modelId, file, (model) => model.sourceContentHash ?? (model.loadState === 'error' ? null : loading(model) ? undefined : ''));
   if (known) return known;
   if (!globalThis.crypto?.subtle) return null; // no digest in this context, so nothing was ever keyed either
   if (known === null) return host.hasUnsavedSheetEdit(modelId, file) ? await host.placementSourceIdentity(file) ?? null : null;

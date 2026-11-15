@@ -29,8 +29,9 @@ pub(super) fn flush_band(f: &CutterFrame) -> f64 {
 /// matters: over the part of the facet that lies inside the cutter's
 /// footprint. A vertex beside the footprint, or the one listed first, decides
 /// nothing here; whether a facet is asked at all is still `detect`'s test on
-/// its first vertex. Where that part is empty or its depth is not a finite
-/// number, the pull-in stays.
+/// its first vertex. A facet that only reaches the pad around the footprint
+/// has no such part: it is in the band, as before, and never on the cap. Where
+/// a depth is not a finite number, the pull-in stays.
 pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> Contact {
     if !overlaps(f, triangle) {
         return Contact::Clear;
@@ -54,8 +55,11 @@ pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> 
         }
         part = kept;
     }
+    if part.is_empty() {
+        return Contact::Band;
+    }
     let band = flush_band(f);
-    let finite = !part.is_empty() && part.iter().all(|p| p[2].is_finite());
+    let finite = part.iter().all(|p| p[2].is_finite());
     if finite && (part.iter().all(|p| p[2] - cap > band) || part.iter().all(|p| cap - p[2] > band)) {
         Contact::Band
     } else {

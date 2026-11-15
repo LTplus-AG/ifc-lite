@@ -128,6 +128,11 @@ fn contact_is_on_within_the_flush_band_and_band_beyond_it() {
     // where its plane would reach the cap beyond its third edge.
     let small = [Point3::new(1.0, 1.0, 0.012), Point3::new(1.01, 1.0, 0.0116), Point3::new(1.0, 1.01, 0.0116)];
     assert!(contact(&frame, small, 0.0112) == Contact::Band);
+    // A facet that only reaches the 1 mm pad around the footprint is counted
+    // as before, in the band, but is never on the cap: not even at its depth.
+    let rim = |z: f64| [Point3::new(2.0005, 1.0, z), Point3::new(3.0, 1.0, z), Point3::new(2.0005, 2.0, z)];
+    assert!(contact(&frame, rim(0.0112), 0.0112) == Contact::Band);
+    assert!(contact(&frame, rim(0.012), 0.0112) == Contact::Band);
     // A wall through the footprint, or along its rim, crosses the cap plane
     // there, so it is on it. A vertex that is not a number keeps the pull-in.
     for x in [1.5, 1.0] {

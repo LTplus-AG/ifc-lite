@@ -236,6 +236,6 @@ it('#10264 ZIP extraction cannot exceed its admitted model size when the directo
     await api!.loadFile(new File([bytes as BlobPart], 'forged-size.ifcZIP'), undefined, { onLoadError: message => errors.push(message) });
   });
   assert.equal(errors.length, 1);
-  assert.match(errors[0], /extracted entry.*exceeds.*limit/);
+  assert.match(errors[0], /extraction size limit/);
   assert.equal(engineInits, 0, 'bounded archive extraction stops before WASM');
 });

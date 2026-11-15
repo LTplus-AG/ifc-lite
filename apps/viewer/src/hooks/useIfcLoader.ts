@@ -290,12 +290,15 @@ export function useIfcLoader() {
       onFailure: error => {
         const message = formatLoadError(error, file.name, 'ifc_model_load');
         if (initialized) updateModel(modelId, { loadState: 'error', loadError: message });
-        showLoadError(message, classifyLoadError(error, 'ifc_model_load')); settleLoadUi();
+        if (surfaceStaleDeployment(error)) noteStaleDeploymentLoadFailure(file);
+        else showLoadError(message, classifyLoadError(error, 'ifc_model_load'));
+        settleLoadUi();
       },
       finish: () => { metadataAbort.abort(); releaseCanceller(); } });
 
     setLoading(true);
     useViewerStore.getState().setLoadingFileName(file.name);
+    setError(null);
 
     // Capture visibility before admission and the federated cold-tier drain.
     // The drain remains outside total_elapsed_ms (#2385).

@@ -33,6 +33,7 @@ import {
   craftRhinoHiddenStoreyObject,
   craftRhinoMergedParts,
   craftRhinoNestedOffLayers,
+  craftRhinoStoreyObjectOnOffLayer,
   craftRhinoOffClassLayer,
   craftRhinoPartlyHidden,
   craftRhinoSpatialLayers,
@@ -292,6 +293,12 @@ describe('rhinoViewerModel, a layer row hides and shows its sub-layers as Rhino 
     const plan = planRhinoContainerVisibility(result, tree, (index) => index + 1);
     assert.deepEqual(plan.rows.get(3)?.members, [1, 2]);
     assert.deepEqual([...plan.ownOff], []);
+  });
+
+  it('keeps the object a layer row stands for hidden when its own sublayer is off', async () => {
+    const shown = await eye(await craftRhinoStoreyObjectOnOffLayer(), 'Project', 'show');
+    assert.ok(shown.includes('Wall'), 'the wall under the storey comes back');
+    assert.ok(!shown.includes('Storey object'), 'the storey object behind its off sublayer stays hidden');
   });
 
   it('keeps a merged object hidden whose parts Rhino hides for different causes', async () => {

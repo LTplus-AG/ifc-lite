@@ -282,8 +282,13 @@ export function planRhinoContainerVisibility(
   const mixedCauses = (entity: RhinoImport['entities'][number]) => entity.hidden && !entity.hiddenByObject && !entity.hiddenByLayer;
   const hiddenOnItsOwn = new Set(result.entities.flatMap((entity, index) =>
     (entity.hiddenByObject || mixedCauses(entity) ? [entityExpressId(index)] : [])));
+  // A row that stands for an object: that object's own layer may be a sublayer of the row's.
+  const objectOfRow = new Map<number, RhinoImport['entities'][number]>();
+  const objectRows = new Set(tree.containers.filter((container) => container.fromEntity).map((container) => container.expressId));
+  result.entities.forEach((entity, index) => { if (objectRows.has(entityExpressId(index))) objectOfRow.set(entityExpressId(index), entity); });
   for (const container of tree.containers) {
-    if (container.fromEntity && hiddenOnItsOwn.has(container.expressId)) selfOff.add(container.expressId);
+    const object = objectOfRow.get(container.expressId);
+    if (object && (hiddenOnItsOwn.has(container.expressId) || !layersOn(object.layer, container.layer))) selfOff.add(container.expressId);
     if (container.parent === null) continue;
     rows.get(container.parent)?.children.push(container.expressId);
     if (container.layer !== null && !layersOn(container.layer, layerOfRow.get(container.parent) ?? null)) ownOff.add(container.expressId);

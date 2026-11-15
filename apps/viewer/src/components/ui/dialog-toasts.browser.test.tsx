@@ -12,6 +12,7 @@ import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withT
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './dialog';
 import { Toaster, toast } from './toast';
 import { positionDialogNotices } from './dialog-notice-layout';
+import { liveDialogBundle, paintDialog, type FixtureWindow } from '@/test/dialog-toast-live';
 
 before(warmContrastBrowser);
 after(closeContrastBrowser);
@@ -112,80 +113,95 @@ it('#9875 C: a pre-existing persistent storey notice stays beneath a newly opene
   });
 });
 
-// #9879: apply the DOM update produced by the real mounted components to the
-// browser harness, which measures actual Tailwind layout rather than Happy DOM.
+// #9879: mount React in Chromium so dismissal executes the product's effects.
 for (const layout of ['grid', 'below', 'gridTall', 'scrollBody', 'viewportBounds', 'phoneCap'] as const) {
-  it(`#9879 arriving notices preserve ${layout} dialog control coordinates`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
-    render(<Toaster />);
-    render(<Dialog open><DialogContent scrollBody={layout === 'scrollBody' || layout === 'viewportBounds' || layout === 'phoneCap'}
-      viewportBounds={layout === 'viewportBounds' ? 'height' : undefined}>
-      <DialogHeader><DialogTitle>Settings</DialogTitle><DialogDescription>Preferences</DialogDescription></DialogHeader>
-      <label>File name<input aria-label="File name" defaultValue="Model.ifc" /></label>
-      <div style={{ height: layout === 'grid' || layout === 'below' ? 100 : 1000 }}>Performance</div>
-      <DialogFooter><button>Reset Geometry workers</button></DialogFooter>
-    </DialogContent></Dialog>);
-    const before = document.body.innerHTML;
-    act(() => {
-      toast.error('Unable to save preferences.');
-      toast.info('IFClite stores an action log in this browser.');
-    });
-    const panel = document.querySelector<HTMLElement>('[role="dialog"]')!;
-    const shelf = document.querySelector<HTMLElement>('[data-notice-shelf]');
-    assert.ok(shelf, 'the mounted modal owns a notice shelf');
-    const update = { className: panel.className, shelf: shelf.outerHTML };
-    const dismissButtons = shelf.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss notification"]');
-    assert.equal(dismissButtons.length, 2, 'both notice dismiss buttons must exist before clicking');
-    act(() => {
-      for (const button of dismissButtons) button.click();
-    });
-    assert.equal(shelf.querySelectorAll('[data-toast-seq]').length, 0, 'both notices must actually be dismissed');
-    assert.equal(shelf.textContent, '', 'the live shelf must be empty after dismissal');
-    const dismissed = { shelf: shelf.outerHTML, paddingTop: panel.style.paddingTop, scrollPaddingTop: panel.style.scrollPaddingTop };
-    await withThemedPage('light', before, async page => {
+  it(`#9879 live ${layout} notices restore padding and coordinates when dismissed`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
+    const bundle = await liveDialogBundle();
+    await withThemedPage('light', '<div id="live-dialog-fixture"></div>', async page => {
       const height = layout === 'phoneCap' ? 640 : 900;
       await settle(page, layout === 'phoneCap' ? 320 : 1600, height);
-      const dialog = page.getByRole('dialog');
-      if (layout === 'below') await dialog.evaluate(element => {
-        Object.assign((element as HTMLElement).style, { top: '32px', translate: '-50% 0', transform: 'none' });
-      });
+      await page.addScriptTag({ content: bundle });
+      await page.evaluate(layout => (window as FixtureWindow).DialogToastFixture.mountDialog(layout), layout);
+      await paintDialog(page);
+      const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
       const field = dialog.getByRole('textbox', { name: 'File name' });
-      const fieldBounds = await field.boundingBox();
       const button = dialog.getByRole('button', { name: 'Reset Geometry workers' });
-      const bounds = await button.boundingBox();
+      const fieldBounds = await field.boundingBox();
+      const buttonBounds = await button.boundingBox();
       const panelBounds = await dialog.boundingBox();
-      assert.ok(bounds && panelBounds);
-      await dialog.evaluate((element, next) => {
-        element.setAttribute('class', next.className);
-        document.querySelector('[data-notice-shelf]')!.outerHTML = next.shelf;
-      }, update);
-      assert.deepEqual(await field.boundingBox(), fieldBounds, 'inserting the shelf must not move the input');
-      assert.equal(await receivesPointer(field), true, 'the initial shelf must not cover the input');
-      await page.locator('[data-dialog-notices]').evaluate(positionDialogNotices);
-      const placement = await page.locator('[data-dialog-notices]').getAttribute('data-notice-placement');
+      const padding = await dialog.evaluate(element => ({
+        inline: (element as HTMLElement).style.paddingTop, computed: getComputedStyle(element).paddingTop,
+      }));
+      assert.ok(fieldBounds && buttonBounds && panelBounds);
+      await page.evaluate(() => (window as FixtureWindow).DialogToastFixture.raiseNotices());
+      await paintDialog(page);
+      const shelf = page.locator('[data-notice-shelf]');
+      const dismiss = shelf.getByRole('button', { name: 'Dismiss notification', exact: true });
+      assert.equal(await dismiss.count(), 2, 'both real dismiss controls must exist');
+      const placement = await shelf.getAttribute('data-notice-placement');
       if (layout === 'below') assert.equal(placement, 'below');
       if (layout === 'phoneCap') assert.equal(placement, 'flow');
       if (placement !== 'flow') {
-        assert.deepEqual(await button.boundingBox(), bounds, 'an arriving notice must not move a control');
-        assert.deepEqual(await field.boundingBox(), fieldBounds, 'an arriving notice must not move the input');
+        assert.deepEqual(await field.boundingBox(), fieldBounds, 'new notices must not move the input');
+        assert.deepEqual(await button.boundingBox(), buttonBounds, 'new notices must not move actions');
       } else {
-        assert.ok(panelBounds.height >= (layout === 'viewportBounds' ? height * 0.85 : height - 32) - 1);
+        assert.ok(await dialog.evaluate(element => Number.parseFloat(getComputedStyle(element).paddingTop))
+          > Number.parseFloat(padding.computed), 'the fallback must actually apply the product inset');
       }
-      assert.equal(await receivesPointer(field), true, 'notices must not intercept the input');
-      assert.deepEqual(await dialog.boundingBox(), panelBounds, 'an arriving notice must not resize or recenter the dialog');
+      assert.equal(await receivesPointer(field), true, 'notices must not cover the input');
+      assert.deepEqual(await dialog.boundingBox(), panelBounds, 'notices must not resize the panel');
       assert.ok(panelBounds.height <= (layout === 'viewportBounds' ? height * 0.85 : height - 32) + 1);
-      assert.equal(await receivesPointer(page.locator('[data-dialog-notices] button').first()), true);
-      await dialog.evaluate((element, cleared) => {
-        document.querySelector('[data-notice-shelf]')!.outerHTML = cleared.shelf;
-        Object.assign((element as HTMLElement).style, { paddingTop: cleared.paddingTop, scrollPaddingTop: cleared.scrollPaddingTop });
-        delete (element as HTMLElement).dataset.noticeInset;
-      }, dismissed);
-      assert.equal(await page.locator('[data-notice-shelf] [data-toast-seq]').count(), 0,
-        'the dismissal snapshot must contain no notices');
-      assert.deepEqual(await field.boundingBox(), fieldBounds, 'dismissal restores the original content layout');
+      for (let remaining = 2; remaining > 0; remaining--) {
+        await dismiss.first().click();
+        assert.equal(await dismiss.count(), remaining - 1, 'each real click dismisses one notice');
+      }
+      await paintDialog(page);
+      assert.equal(await shelf.locator('[data-toast-seq]').count(), 0);
+      assert.deepEqual(await dialog.evaluate(element => ({
+        inline: (element as HTMLElement).style.paddingTop, computed: getComputedStyle(element).paddingTop,
+      })), padding, 'the product must restore its own padding after dismissal');
+      assert.deepEqual(await field.boundingBox(), fieldBounds, 'the product must restore the input coordinates');
+      assert.deepEqual(await button.boundingBox(), buttonBounds, 'the product must restore action coordinates');
       assert.equal(await receivesPointer(field), true);
     });
   });
 }
+
+it('#9879 portal selects and popovers escape a capped dialog', { skip: CONTRAST_BROWSER_SKIP }, async () => {
+  const bundle = await liveDialogBundle();
+  await withThemedPage('light', '<div id="live-dialog-fixture"></div>', async page => {
+    await settle(page);
+    await page.addScriptTag({ content: bundle });
+    await page.evaluate(() => (window as FixtureWindow).DialogToastFixture.mountDialog('portalControls'));
+    await paintDialog(page);
+    // Radix temporarily aria-hides the parent while a select popup owns focus.
+    const dialog = page.locator('[data-dialog-panel]');
+    const select = dialog.getByRole('combobox', { name: 'Portal select' });
+    await select.scrollIntoViewIfNeeded();
+    await select.click();
+    const list = page.getByRole('listbox');
+    assert.equal(await list.evaluate(element => element.closest('[data-dialog-panel]') === null), true);
+    const listBounds = await list.boundingBox();
+    const dialogBounds = await dialog.boundingBox();
+    assert.ok(listBounds && dialogBounds && listBounds.y + listBounds.height > dialogBounds.y + dialogBounds.height);
+    const option = list.getByRole('option', { name: 'Portal option B' });
+    assert.equal(await receivesPointer(option), true);
+    await option.click();
+    assert.match(await select.innerText(), /Portal option B/);
+    const trigger = dialog.getByRole('button', { name: 'Portal popover', exact: true });
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click();
+    const popover = page.locator('[data-portal-popover]');
+    assert.equal(await popover.evaluate(element => element.closest('[data-dialog-panel]') === null), true);
+    const popupBounds = await popover.boundingBox();
+    const panelBounds = await dialog.boundingBox();
+    assert.ok(popupBounds && panelBounds && popupBounds.y + popupBounds.height > panelBounds.y + panelBounds.height);
+    const action = popover.getByRole('button', { name: 'Popover action' });
+    assert.equal(await receivesPointer(action), true);
+    await action.click();
+    assert.equal(await dialog.isVisible(), true);
+  });
+});
 
 it('#9879 an overflowing non-scrollBody dialog retains clipping and scrolling when a notice fits above', { skip: CONTRAST_BROWSER_SKIP }, async () => {
   render(<Toaster />);

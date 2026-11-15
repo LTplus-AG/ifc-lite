@@ -310,8 +310,9 @@ export interface HungJobPool {
   ledger: WorkerJobLedger;
   makeWorker: () => Worker;
   installHandlers: (worker: Worker, index: number) => void;
-  /** Every per-load state message, in order, as recorded by the pool. */
-  setup: ReadonlyArray<(worker: Worker) => void>;
+  /** Bring a replacement up to date: every per-load state message the pool
+   *  has delivered, in order (`PoolSetupBroadcast.replayTo`). */
+  replaySetup: (worker: Worker) => void;
   postChunk: (index: number, jobs: Uint32Array, maxBatchJobs?: number) => void;
   streamEndSent: () => boolean;
   terminate: (worker: Worker, label: string) => void;
@@ -344,7 +345,7 @@ export function startHungJobMonitor(pool: HungJobPool, timeoutMs: number): () =>
     pool.workers[i] = replacement;
     pool.terminate(hung, 'hung process worker');
     pool.installHandlers(replacement, i);
-    for (const setup of pool.setup) setup(replacement);
+    pool.replaySetup(replacement);
     if (plan.skippedJob) pool.skipped.add(pool.source, plan.skippedJob);
     for (const slice of plan.slices) pool.postChunk(i, slice.jobs, slice.maxBatchJobs);
     if (pool.streamEndSent()) replacement.postMessage({ type: 'stream-end' });

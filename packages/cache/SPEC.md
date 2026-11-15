@@ -374,8 +374,10 @@ Mesh-metadata trailer (`src/sections/mesh-metadata.ts:25-79`), payloads in flag 
 
 Head pool (`src/sections/appearance-provenance.ts:78-92`), after CoordinateInfo: `u32 poolCount`, then per
 entry `u32 length`, `u32[length]`. Read rules: `poolCount <= meshCount`; each `length` non-zero, a multiple
-of 3, `<= 300,000,000`, and within the declared head. The pool holds each distinct `sourceIndices` array
-**by object identity**, in first-appearance order over the surviving meshes in input order (`:69-77`).
+of 3, `<= 300,000,000`, and within the declared head. Meshes whose mode would be 0 or 1 (no provenance, or
+canonical identity) are skipped before pooling, so a model of only such meshes writes `poolCount = 0`. Over the
+rest, the pool holds each distinct `sourceIndices` array **by object identity**, in first-appearance order over
+the surviving meshes in input order (`:69-77`).
 
 Per-mesh record (`:40-67`): `u8 mode`, then:
 

@@ -227,6 +227,7 @@ it('#10264 a server stream owns replacement only when geometry arrives and a lat
 });
 
 it('#10264 ZIP extraction cannot exceed its admitted model size when the directory lies', async () => {
+  const failureLog = mock.method(console, 'error');
   const bytes = zipSync({ 'model.ifc': strToU8('ISO-10303-21;'.repeat(20000)) });
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const directory = view.getUint32(bytes.length - 22 + 16, true);
@@ -237,5 +238,8 @@ it('#10264 ZIP extraction cannot exceed its admitted model size when the directo
   });
   assert.equal(errors.length, 1);
   assert.match(errors[0], /extraction size limit/);
+  assert.ok(failureLog.mock.calls.some(call => call.arguments.some(value =>
+    value instanceof Error && /extracted entry.*exceeds.*limit/.test(value.message))),
+  'the bounded extractor aborts while streaming, rather than after a full size-mismatch result');
   assert.equal(engineInits, 0, 'bounded archive extraction stops before WASM');
 });

@@ -237,7 +237,18 @@ export function sparseOverlay(original: OverlaySnapshot) {
     }
     const publication = { ...original, nextAllocatedId: after.nextAllocatedId };
     const replacements = changes.filter(c => after[c.key] !== state[c.key]).map(c => [c.key, structuredClone(after[c.key])] as const);
-    return { inverse, written, changed: after.nextAllocatedId !== original.nextAllocatedId || changes.some(c => !sameOverlayValue(c.before, c.after)) || (journal ? journal.changed : true),
+    // The same sparse differences used for publication invalidate ID-only
+    // read inventories, including edits through a draft's mutable arrays.
+    const changedIds = replacements.length ? null : new Set<number>();
+    if (changedIds) for (const change of changes) {
+      for (const rows of [change.before, change.after]) if (rows instanceof Map || rows instanceof Set) {
+        for (const key of rows.keys()) {
+          const id = typeof key === 'number' ? key : typeof key === 'string' ? Number(/^[0-9]+(?=:)/.exec(key)?.[0]) : NaN;
+          if (Number.isSafeInteger(id) && id > 0) changedIds.add(id);
+        }
+      }
+    }
+    return { inverse, written, changedIds, changed: after.nextAllocatedId !== original.nextAllocatedId || changes.some(c => !sameOverlayValue(c.before, c.after)) || (journal ? journal.changed : true),
       publish() {
         for (const change of changes) if (after[change.key] === state[change.key]) change.apply();
         for (const [key, value] of replacements) Object.assign(publication, { [key]: value });

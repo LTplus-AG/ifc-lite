@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-/** #8452 preparation only. The planner adapter will supply effective records
- * after #10132 merges. No planner reads this prototype yet. */
+import { storeyDeltasDiffer } from './storey-validation.js';
+/** Compact effective product inventory for storey planning (#8452). */
 export interface PlannerProduct {
   readonly id: number;
   readonly storey: number;
@@ -20,6 +20,8 @@ export class StoreyPlannerIndex {
   private readonly parents: Buckets = new Map();
   private readonly unresolved = new Set<number>();
   private revision = 0;
+  get(id: number): PlannerProduct | undefined { return this.products.get(id); }
+  exceptional(storey: number): Iterable<number> { return this.exceptions.get(storey) ?? []; }
   private update(bucket: Buckets, key: number, id: number, add: boolean): void {
     if (add) { let ids = bucket.get(key); if (!ids) bucket.set(key, ids = new Set()); ids.add(id); }
     else { const ids = bucket.get(key); ids?.delete(id); if (!ids?.size) bucket.delete(key); }
@@ -66,7 +68,7 @@ export class StoreyPlannerIndex {
   heightCandidates(deltas: ReadonlyMap<number, number>): Set<number> {
     const ids = new Set(this.unresolved);
     for (const [target, owners] of this.attachmentPairs) for (const [owner, products] of owners) {
-      if ((deltas.get(target) ?? 0) !== (deltas.get(owner) ?? 0)) for (const id of products) ids.add(id);
+      if (storeyDeltasDiffer(deltas.get(owner) ?? 0, deltas.get(target) ?? 0)) for (const id of products) ids.add(id);
     }
     return ids;
   }

@@ -4,6 +4,7 @@
 
 /** Mutable overlay over immutable or on-demand properties; changes apply on reads. */
 
+import { registerOverlayOrigin } from './overlay-change-tracker.js';
 import { historyForEntity, purgeEntityHistory } from './indexed-mutation-history.js';
 import { runSparseAtomic } from './sparse-atomic.js';
 import { readEntitySnapshot } from './entity-read-barrier.js';
@@ -64,7 +65,7 @@ export class MutablePropertyView extends MutableOverlayState {
         return draft.overlayState();
       },
       matches: snapshot => this.matchesOverlayState(snapshot),
-      publish: snapshot => this.restoreOverlayState(snapshot),
+      publish: (snapshot, changedIds) => this.restoreOverlayState(snapshot, undefined, changedIds),
       draft: snapshot => {
         const draft = new MutablePropertyView(this.baseTable, this.modelId);
         draft.configureExpressIdAllocator(() => this.expressIdFloor());
@@ -73,6 +74,7 @@ export class MutablePropertyView extends MutableOverlayState {
         draft.quantityBaseRevisions = this.quantityBaseRevisions;
         draft.attributeExtractor = this.attributeExtractor;
         draft.restoreOverlayState(snapshot, this.getMutationRevision());
+        registerOverlayOrigin(draft, this);
         return draft;
       },
     });
@@ -1000,7 +1002,7 @@ export class MutablePropertyView extends MutableOverlayState {
     const oldValue = entityMap.has(index) ? entityMap.get(index)! : null;
     entityMap.set(index, value);
     this.indexAttributeOverride(entityId);
-    this.markOverlayChanged();
+    this.markOverlayChanged(entityId);
 
     const mutation: Mutation = {
       id: generateMutationId(),
@@ -1032,7 +1034,7 @@ export class MutablePropertyView extends MutableOverlayState {
   removePositionalMutation(entityId: number, index: number): void {
     const entityMap = this.positionalAttrMutations.get(entityId);
     if (!entityMap) return;
-    if (entityMap.delete(index)) this.markOverlayChanged();
+    if (entityMap.delete(index)) this.markOverlayChanged(entityId);
     if (entityMap.size === 0) {
       this.positionalAttrMutations.delete(entityId);
     }
@@ -1099,7 +1101,7 @@ export class MutablePropertyView extends MutableOverlayState {
     const baseType = existing?.oldType ?? oldType ?? newEntity?.type;
     const prevEffective = existing?.newType ?? baseType;
 
-    this.markOverlayChanged();
+    this.markOverlayChanged(entityId);
     this.typeMutations.set(entityId, {
       newType: trimmed,
       oldType: baseType,
@@ -1142,7 +1144,7 @@ export class MutablePropertyView extends MutableOverlayState {
    * to roll back.
    */
   removeTypeMutation(entityId: number): void {
-    if (this.typeMutations.delete(entityId)) this.markOverlayChanged();
+    if (this.typeMutations.delete(entityId)) this.markOverlayChanged(entityId);
     this.indexAttributeOverride(entityId);
   }
 
@@ -1172,7 +1174,7 @@ export class MutablePropertyView extends MutableOverlayState {
       };
       this.newEntities.set(expressId, entity);
       this.indexAttributeOverride(expressId);
-      this.markOverlayChanged();
+      this.markOverlayChanged(expressId);
       this.mutationHistory.push({
         id: creationId,
         type: 'CREATE_ENTITY',
@@ -1196,7 +1198,7 @@ export class MutablePropertyView extends MutableOverlayState {
   deleteEntity(expressId: number): boolean {
     if (this.newEntities.has(expressId)) {
       this.newEntities.delete(expressId);
-      this.markOverlayChanged();
+      this.markOverlayChanged(expressId);
       // Both sets are needed: `tombstones` is what the unified isDeleted() /
       // getEffectiveEntityIndex() answer from (#2036), while
       // `forgottenCreatedEntities` is what collectEffectiveChanges()'s row
@@ -1223,7 +1225,7 @@ export class MutablePropertyView extends MutableOverlayState {
     }
     if (this.tombstones.has(expressId)) return false;
     this.tombstones.add(expressId);
-    this.markOverlayChanged();
+    this.markOverlayChanged(expressId);
     this.mutationHistory.push({
       id: generateMutationId(),
       type: 'DELETE_ENTITY',
@@ -1248,6 +1250,8 @@ export class MutablePropertyView extends MutableOverlayState {
    * rows without copying them into the draft, so a scan of the session adds
    * nothing to the commit's comparison (#8452). */
   readNewEntity(id: number): NewEntity | null { const row = this.newEntities.peek(id); return row ? readEntitySnapshot(row) : null; }
+  /** Authored creation class at one ID; no attribute borrow or draft copy. */
+  getNewEntityType(id: number): string | null { return this.newEntities.peek(id)?.type ?? null; }
   readNewEntities(): NewEntity[] { return Array.from(this.newEntities.peekValues(), readEntitySnapshot); }
   *readNewEntitiesOfType(type: string): IterableIterator<NewEntity> { for (const row of this.newEntities.peekOfType(type)) yield readEntitySnapshot(row); }
   /** Ids and authored classes of created entities (of `type`, when given), in creation order; reads no payload, copies no row. */
@@ -1294,7 +1298,7 @@ export class MutablePropertyView extends MutableOverlayState {
    */
   restoreFromTombstone(expressId: number): boolean {
     const removed = this.tombstones.delete(expressId);
-    if (removed) this.markOverlayChanged();
+    if (removed) this.markOverlayChanged(expressId);
     return removed;
   }
 
@@ -1310,12 +1314,12 @@ export class MutablePropertyView extends MutableOverlayState {
    */
   setEntityAlias(overlayId: number, sourceId: number | null): void {
     if (sourceId === null) {
-      if (this.entityAliases.delete(overlayId)) this.markOverlayChanged();
+      if (this.entityAliases.delete(overlayId)) this.markOverlayChanged(overlayId);
       return;
     }
     if (sourceId === overlayId) return;
     this.entityAliases.set(overlayId, sourceId);
-    this.markOverlayChanged();
+    this.markOverlayChanged(overlayId);
   }
 
   /** Read the alias for a given overlay id, or null if none. */
@@ -1342,7 +1346,7 @@ export class MutablePropertyView extends MutableOverlayState {
   restoreNewEntity(entity: NewEntity): void {
     this.withDeferredAllocatorNotification(() => {
       this.newEntities.set(entity.expressId, entity);
-      this.markOverlayChanged();
+      this.markOverlayChanged(entity.expressId);
       // Undo both delete markers so effective reads and the review diff see the row.
       this.tombstones.delete(entity.expressId);
       this.forgottenCreatedEntities.delete(entity.expressId);
@@ -1534,7 +1538,7 @@ export class MutablePropertyView extends MutableOverlayState {
    * Remove a quantity mutation (used by undo for newly created quantities)
    */
   removeQuantityMutation(entityId: number, qsetName: string, quantName?: string): void {
-    this.markOverlayChanged();
+    this.markOverlayChanged(entityId);
     if (quantName) {
       const key = quantityKey(entityId, qsetName, quantName);
       this.deleteQuantityMutation(entityId, key);
@@ -1811,7 +1815,7 @@ export class MutablePropertyView extends MutableOverlayState {
    * without exposing them publicly.
    */
   applyMutations(mutations: Mutation[]): void {
-    if (mutations.length) this.markOverlayChanged();
+    for (const mutation of mutations) this.markOverlayChanged(mutation.entityId);
     applyMutationsBatch(
       this,
       mutations,

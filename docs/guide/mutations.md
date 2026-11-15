@@ -1379,3 +1379,16 @@ preserved.
 `view.getNewEntityCreationOrder(expressId)` reads a live creation's relative insertion order without enumerating the session. It returns `null` for an ID that is not a live creation. Compare these numbers only within the current view order; atomic publication, undo and snapshot restoration may renumber them. Nested atomic drafts include their own new records.
 
 `view.getNewEntityReferenceSlotIds(type, slot, target)` projects a raw authored positional scalar reference. A `null` target includes absent and malformed values. First use indexes that class; later writes maintain the projection, including nested drafts and exposed-array edits. Combine candidates with attribute overrides and verify effective values before using them. This is a raw creation index, not an effective-record reader.
+
+`trackEntityChanges(view)` supplies a disposable invalidation cursor for derived
+inventories. `take()` returns changed entity IDs since the previous call, or
+`null` after a full restoration or more than 65,536 distinct changes. It includes
+skip-history writes, atomic publication and undo. Escaped mutable creation arrays
+remain conservative candidates on every call. Read effective records after the
+write completes, rebuild on `null`, and call `dispose()` when the inventory is
+retired. An unchanged detached draft can borrow the inventory identified by the
+cursor's `origin` view and revision; changes inside that draft remain separate.
+
+`view.getNewEntityType(id)` reads one live creation's authored class without
+borrowing its attributes or copying it into a draft. It returns `null` for an
+absent creation; consult `getEntityTypeMutation(id)` for an effective retype.

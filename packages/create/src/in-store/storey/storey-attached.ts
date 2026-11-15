@@ -35,6 +35,8 @@ import { setWallSectionInStore } from '../wall-section-edit.js';
 import { readWallMetres } from '../wall-size-edit.js';
 import { readPlacementLeaf, worldLiftInParent, writeShiftedPlacement, type PlacementLeaf } from './storey-placement.js';
 import { placementWorldZ } from './storey-grid.js';
+import { readTopAttachment, topAttachmentProblem } from './storey-attachment.js';
+import type { StoreyInventory } from './storey-model.js';
 import { scaleWallQuantities, snapshotWallQuantities, wallQuantityBaseline, wallGeometry } from './wall-height-quantities.js';
 
 export type AttachedKind = 'wall' | 'column' | 'linear' | 'curtainWall';
@@ -51,6 +53,13 @@ export const MIN_ATTACHED_EXTENT = 0.01;
 
 export function attachedKind(type: string | undefined): AttachedKind | null {
   return type ? KINDS[type.toUpperCase()] ?? null : null;
+}
+
+/** Classify a top dependency without reading its geometry. The inventory and
+ * detailed planner share the same binding and unresolved-record semantics. */
+export function attachedTopDependency(inventory: StoreyInventory, id: number) {
+  const attachment = readTopAttachment(inventory, id);
+  return { attachment, problem: attachment ? null : topAttachmentProblem(inventory, id) };
 }
 
 export type AttachedOutcome = { readonly ok: true; readonly remesh: number[] } | { readonly ok: false; readonly reason: string };

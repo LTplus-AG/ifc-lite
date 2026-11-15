@@ -8181,6 +8181,7 @@
     "EffectiveChange: interface",
     "EffectiveChangeKind: type",
     "EffectiveEntityId: interface",
+    "EntityChangeTracker: interface",
     "EntityEnumerationSource: interface",
     "EntityIdentityResolver: interface",
     "EntityOperation: type",
@@ -8240,6 +8241,7 @@
     "setEntityTypeNormalizer: function",
     "snapshotOverlay: function",
     "storeHasSourceEntity: function",
+    "trackEntityChanges: function",
     "undoRecordedMutationOperations: function"
   ],
   "@ifc-lite/oauth-pkce": [

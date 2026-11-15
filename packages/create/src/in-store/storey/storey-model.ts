@@ -12,6 +12,7 @@
  * re-read inside their atomic draft and refuse a stale plan.
  */
 
+import { storeyInventoryCache, validateStoreyInventoryCache } from './storey-inventory-cache.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { createSchemaEntityNameSnapshot, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { effectiveReferencers } from '@ifc-lite/export';
@@ -168,8 +169,10 @@ export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyVi
     ? safeLengthUnitScale(store.source, store.entityIndex, 'readStoreyInventory') ?? 1
     : store.lengthUnitScale ?? 1;
   const deleted = view.getTombstones();
-  let graph = options.lazyRelationships ? undefined : relationshipMaps(relationshipsOf(reader, deleted));
-  const full = () => graph ??= relationshipMaps(relationshipsOf(reader, deleted));
+  const cache = storeyInventoryCache(store, view, reader, parent => { readStoreyInventory(store, parent, { lazyRelationships: true }); });
+  let graph = cache.graph ?? (options.lazyRelationships ? undefined : relationshipMaps(relationshipsOf(reader, deleted)));
+  const full = () => cache.graph = graph ??= relationshipMaps(relationshipsOf(reader, deleted));
+  if (graph) cache.graph = graph;
   // Aggregates are few (the spatial tree and assemblies); read them whole.
   const aggregates = graph ? undefined : relationshipMaps(relationshipsOf(reader, deleted, ['IFCRELAGGREGATES']));
   let referencers: ((id: number) => readonly number[]) | undefined;
@@ -200,13 +203,15 @@ export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyVi
     });
   }
   storeys.sort((a, b) => a.elevation - b.elevation || a.expressId - b.expressId);
-  return {
+  const inventory: StoreyInventory = {
     store, view, reader, scale, schema: String(store.schemaVersion ?? 'IFC4').toUpperCase(), storeys,
     get relationships() { return full().relationships; },
     get outgoing() { return full().outgoing; },
     get incoming() { return full().incoming; },
     incomingOf,
   };
+  validateStoreyInventoryCache(cache, inventory);
+  return inventory;
 }
 
 export function storeyRecord(inventory: StoreyInventory, storeyId: number): StoreyRecord {

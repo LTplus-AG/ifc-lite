@@ -27,7 +27,7 @@ export function runSparseAtomic<T>(view: MutablePropertyView, edit: (draft: Muta
     if (record && prepared.changed && !prepared.written.length) throw new Error('A compound edit must record its mutations');
     if (view.getMutationRevision() !== revision || view.peekNextExpressId() !== nextExpressId) throw new Error('The IFC overlay changed during a prepared transaction.');
     guard.validate();
-    access.publish(prepared.publish());
+    access.publish(prepared.publish(), prepared.changedIds);
     return { result, inverse: prepared.inverse, written: prepared.written };
   } finally { guard.dispose(); }
 }

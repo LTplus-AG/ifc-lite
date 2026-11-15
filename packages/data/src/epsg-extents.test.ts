@@ -373,7 +373,9 @@ describe('createEpsgCrsCatalog', () => {
 describe('dataset version', () => {
   it('records the registry dataset version next to the main index version', async () => {
     const version = await loadEpsgExtentsDatasetVersion();
-    expect(version).toMatch(/^\d+\.\d+$/);
+    // Pinned to the dataset the expected values above were read from (and the README names), not to
+    // the generated constant itself: regenerating against another dataset must update this on purpose.
+    expect(version).toBe('13.106');
     expect(EPSG_EXTENTS_DATASET_VERSION).toBe(version);
     expect(await loadEpsgIndexDatasetVersion()).toMatch(/^\d+\.\d+$/);
   });

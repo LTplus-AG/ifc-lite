@@ -46,18 +46,13 @@ pub(crate) fn directrix_is_sweepable(points: &[Point3<f64>]) -> Result<bool> {
 pub(crate) fn build_tube_rmf(
     curve_points: &[Point3<f64>],
 ) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
-    if curve_points.len() < 2 {
-        return (Vec::new(), Vec::new(), Vec::new());
-    }
-    let tangents = chord_tangents(curve_points);
-    let (perp1s, perp2s) = rmf_frames(&tangents);
-    (tangents, perp1s, perp2s)
-}
-
-/// Unit chord tangents, one per sample (precondition: at least two samples).
-fn chord_tangents(curve_points: &[Point3<f64>]) -> Vec<Vector3<f64>> {
     let n = curve_points.len();
     let mut tangents = Vec::with_capacity(n);
+    let mut perp1s = Vec::with_capacity(n);
+    let mut perp2s = Vec::with_capacity(n);
+    if n < 2 {
+        return (tangents, perp1s, perp2s);
+    }
 
     // #5191: a duplicate consecutive directrix point (e.g. two composite-curve
     // segments sharing an endpoint) makes the finite difference a zero vector,
@@ -101,37 +96,7 @@ fn chord_tangents(curve_points: &[Point3<f64>]) -> Vec<Vector3<f64>> {
     for &o in &owner {
         tangents.push(kept_tangents[o]);
     }
-    tangents
-}
 
-/// Section frames along a curve's own evaluated unit tangents (an
-/// alignment): Axis1 is the horizontal normal to the left of the tangent and
-/// Axis2 = tangent x Axis1, so a station's frame depends on that station
-/// alone. Two sweeps trimmed at the same station then place the same ring,
-/// vertex for vertex, wherever each one starts. A vertical tangent has no
-/// horizontal normal; the whole curve then keeps the rotation-minimising
-/// frame along its tangents.
-pub(crate) fn curve_frames(tangents: &[Vector3<f64>]) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
-    let mut perp1s = Vec::with_capacity(tangents.len());
-    let mut perp2s = Vec::with_capacity(tangents.len());
-    for t in tangents {
-        let Some(left) = Vector3::new(-t.y, t.x, 0.0).try_normalize(1e-9) else {
-            return rmf_frames(tangents);
-        };
-        perp1s.push(left);
-        perp2s.push(t.cross(&left).normalize());
-    }
-    (perp1s, perp2s)
-}
-
-/// Rotation-minimising `(perp1s, perp2s)` along the given unit `tangents`.
-fn rmf_frames(tangents: &[Vector3<f64>]) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
-    let n = tangents.len();
-    let mut perp1s = Vec::with_capacity(n);
-    let mut perp2s = Vec::with_capacity(n);
-    if n == 0 {
-        return (perp1s, perp2s);
-    }
     let up0 = if tangents[0].x.abs() < 0.9 {
         Vector3::new(1.0, 0.0, 0.0)
     } else {
@@ -169,6 +134,26 @@ fn rmf_frames(tangents: &[Vector3<f64>]) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>
         }
         perp1s.push(perp1);
         perp2s.push(perp2);
+    }
+
+    (tangents, perp1s, perp2s)
+}
+
+/// Section frames along a curve's own evaluated unit tangents (an
+/// alignment): Axis1 is the horizontal normal to the left of the tangent and
+/// Axis2 = tangent x Axis1, so a station's frame depends on that station
+/// alone. Two sweeps trimmed at the same station then place the same ring,
+/// vertex for vertex, wherever each one starts. A vertical tangent has no
+/// horizontal normal and takes +Y as Axis1, still fixed by the station.
+pub(crate) fn curve_frames(tangents: &[Vector3<f64>]) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
+    let mut perp1s = Vec::with_capacity(tangents.len());
+    let mut perp2s = Vec::with_capacity(tangents.len());
+    for t in tangents {
+        let left = Vector3::new(-t.y, t.x, 0.0)
+            .try_normalize(1e-9)
+            .unwrap_or_else(Vector3::y);
+        perp1s.push(left);
+        perp2s.push(t.cross(&left).normalize());
     }
     (perp1s, perp2s)
 }

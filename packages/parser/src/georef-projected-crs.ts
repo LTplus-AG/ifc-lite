@@ -43,7 +43,10 @@ function resolveMeasureWithUnit(
   const componentRef = getReference(measure.attributes?.[1]);
   if (componentRef !== undefined) {
     const component = resolveEntity(componentRef);
-    if (component && (component.type ?? '').toUpperCase() === 'IFCSIUNIT') {
+    // The factor is a multiple of its component unit. Only an SI unit's own prefix is known here: a component that is
+    // itself conversion-based (a chain of 66 FEET) would need its own factor, so the factor cannot be stated.
+    if (component && (component.type ?? '').toUpperCase() !== 'IFCSIUNIT') return undefined;
+    if (component) {
       const prefix = component.attributes?.[2];
       if (typeof prefix === 'string' && prefix !== '$') {
         const prefixScale = SI_PREFIX_MULTIPLIERS[prefix.replace(/\./g, '').toUpperCase()];

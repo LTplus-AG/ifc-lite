@@ -84,24 +84,41 @@ export interface ConventionSets {
   projectedCRS: EPSetLocation | null;
   /** Names with several copies where the session edited or created one: the reader's choice is not known. */
   ambiguous: string[];
+  /** The session changed something the sets are read from (a property, a whole set, or a set's own name). */
+  touched: boolean;
 }
 
 export function locateConventionSets(store: IfcDataStore, view: MutablePropertyView, effective: EffectiveEntities, managedHosts: ReadonlySet<number>): ConventionSets {
   const sets = sourceSets(store);
-  const changes = view.getEffectiveChanges().filter((c) => isConvention(c.setName));
+  const allChanges = view.getEffectiveChanges();
+  const changes = allChanges.filter((c) => isConvention(c.setName));
   const edited = new Set(changes.map((c) => `${c.entityId}|${c.setName!.toLowerCase()}`));
+
+  // A set's name is its record's: read it from the effective record, so a rename out (`Pset_Other`) removes the copy
+  // and a rename in (an unrelated set becomes `ePSet_MapConversion`) adds one, by name or by position alike.
+  const isPset = (id: number) => (sourceRef(store, id)?.type ?? view.getNewEntity(id)?.type ?? '').toUpperCase() === 'IFCPROPERTYSET';
+  const renamed = new Set(allChanges.filter((c) => c.kind === 'attribute' && (c.name === 'Name' || c.name === '@2') && isPset(c.entityId)).map((c) => c.entityId));
+  const effectiveName = (id: number) => { const read = effective.attributesOf(id); return 'attributes' in read && typeof read.attributes[2] === 'string' ? read.attributes[2] : undefined; };
+  const renamedOut = new Set<number>();
+  const renamedIn = new Map<number, string>();
+  for (const id of renamed) {
+    if (view.isDeleted(id)) continue;
+    const name = effectiveName(id);
+    if (sets.named.has(id) && !isConvention(name)) renamedOut.add(id);
+    else if (!sets.named.has(id) && isConvention(name)) renamedIn.set(id, name!);
+  }
 
   // Source and created property sets by id, and the objects each hangs off.
   const named = new Map<number, string>();
-  for (const [id, name] of sets.named) if (!view.isDeleted(id)) named.set(id, name);
+  for (const [id, name] of sets.named) if (!view.isDeleted(id) && !renamedOut.has(id)) named.set(id, name);
+  for (const [id, name] of renamedIn) named.set(id, name);
   for (const id of effective.idsOf('IFCPROPERTYSET')) {
-    if (named.has(id) || sets.named.has(id)) continue;
-    const read = effective.attributesOf(id);
-    const name = 'attributes' in read ? read.attributes[2] : undefined;
+    if (named.has(id) || sets.named.has(id) || renamedIn.has(id)) continue;
+    const name = effectiveName(id);
     if (typeof name === 'string' && isConvention(name)) named.set(id, name);
   }
   const rels: Array<{ hosts: number[]; set: number }> = [];
-  if (named.size > 0) {
+  if (named.size > 0 || renamedOut.size > 0) {
     for (const r of sourceRels(store, sets)) if (!view.isDeleted(r.id)) rels.push(r);
     for (const id of effective.idsOf('IFCRELDEFINESBYPROPERTIES')) {
       const read = effective.attributesOf(id);
@@ -114,7 +131,10 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
   const hosts = new Set<number>([...managedHosts, ...changes.map((c) => c.entityId)]);
   const sourceIdsOn = new Map<string, number[]>();
   const attached = new Set<number>();
-  for (const [id, name] of [...named].sort((a, b) => a[0] - b[0])) {
+  // The view lists a host's source sets under the names the file gave them, in source order: a set renamed out is still
+  // in that list, and its slot is skipped below so that the copies line up with the records the file will contain.
+  for (const [id, name] of [...sets.named, ...renamedIn].sort((a, b) => a[0] - b[0])) {
+    if (view.isDeleted(id)) continue;
     for (const host of new Set(rels.filter((r) => r.set === id).flatMap((r) => r.hosts))) {
       hosts.add(host);
       attached.add(id);
@@ -133,13 +153,22 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
       seen.set(key, n + 1);
       const values: Record<string, unknown> = {};
       for (const prop of pset.properties) values[prop.name] = prop.value;
+      const backing = sourceIdsOn.get(key)?.[n];
+      if (backing !== undefined && renamedOut.has(backing)) continue;
       const wasEdited = edited.has(key);
-      copies.push({ hostId: host, name: pset.name, values, managed: managedHosts.has(host), edited: wasEdited, order: wasEdited ? Infinity : (sourceIdsOn.get(key)?.[n] ?? Infinity) });
+      copies.push({ hostId: host, name: pset.name, values, managed: managedHosts.has(host), edited: wasEdited, order: wasEdited ? Infinity : (backing ?? Infinity) });
+    }
+  }
+  // A set renamed into a convention name: the view still lists it under its old name, so it is read from its record.
+  for (const [id, name] of renamedIn) {
+    const on = [...new Set(rels.filter((r) => r.set === id).flatMap((r) => r.hosts))];
+    for (const host of on.length > 0 ? on : [0]) {
+      copies.push({ hostId: host, ...(on.length === 0 ? { orphan: id } : {}), name, values: sourceValues(store, id), managed: managedHosts.has(host), edited: true, order: Infinity });
     }
   }
   // A set no relationship attaches to anything: the reader still takes it.
   for (const [id, name] of named) {
-    if (!attached.has(id)) copies.push({ hostId: 0, orphan: id, name, values: sourceValues(store, id), managed: false, edited: false, order: id });
+    if (!attached.has(id) && !renamedIn.has(id)) copies.push({ hostId: 0, orphan: id, name, values: sourceValues(store, id), managed: false, edited: false, order: id });
   }
 
   const ambiguous: string[] = [];
@@ -152,7 +181,7 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
   };
   const mapConversion = pick(NAMES[0]);
   const projectedCRS = pick(NAMES[1]);
-  return { copies, mapConversion, projectedCRS, ambiguous };
+  return { copies, mapConversion, projectedCRS, ambiguous, touched: changes.length > 0 || renamedOut.size > 0 || renamedIn.size > 0 };
 }
 
 /** `ePSet_MapConversion on #8` / `ePSet_MapConversion #103 (not attached to any object)`. */
@@ -160,11 +189,11 @@ export function describeSet(p: EPSetLocation): string {
   return p.orphan === undefined ? `${p.name} on #${p.hostId}` : `${p.name} #${p.orphan} (not attached to any object)`;
 }
 
-const NONE: ConventionSets = { copies: [], mapConversion: null, projectedCRS: null, ambiguous: [] };
+const NONE: ConventionSets = { copies: [], mapConversion: null, projectedCRS: null, ambiguous: [], touched: false };
 
 /** `locateConventionSets` for a caller without facts; instant when the file has no convention set and the session touched none. */
 export function conventionSetsOf(store: IfcDataStore, view: MutablePropertyView): ConventionSets {
-  if (sourceSets(store).named.size === 0 && !(view.hasPendingChanges() && view.getEffectiveChanges().some((c) => isConvention(c.setName)))) return NONE;
+  if (sourceSets(store).named.size === 0 && !view.hasPendingChanges()) return NONE;
   const effective = effectiveEntities(store, view);
   return locateConventionSets(store, view, effective, new Set(['IFCSITE', 'IFCPROJECT', 'IFCBUILDING'].flatMap((t) => effective.idsOf(t))));
 }

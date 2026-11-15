@@ -244,3 +244,57 @@ describe('review follow-ups that are small and real', () => {
     expect(m.bim.georef.get().MapConversion?.Eastings).toBe(2600000);
   });
 });
+
+describe('the convention name is written as the convention spells it', () => {
+  it('a replace over two copies on the anchor writes `ePSet_` (exact), never a variant a strict reader would miss', async () => {
+    const m = await open('IFC2X3', `${BASE}\n${sets(100, 1000000)}\n${attach(100, 6)}\n${sets(200, 2000000)}\n${attach(200, 6)}`);
+    m.bim.georef.set({ ...SET, replace: true });
+    const text = String(m.bim.export.ifc());
+    expect(text).toMatch(/IFCPROPERTYSET\([^;]*'ePSet_MapConversion'/);
+    expect(text).toMatch(/IFCPROPERTYSET\([^;]*'ePSet_ProjectedCRS'/);
+    expect(text).not.toMatch(/'ePset_/);
+    expect((await reparsed(m.bim)).MapConversion?.Eastings).toBe(2600000);
+  });
+  it('a second replace keeps the exact spelling too', async () => {
+    const m = await open('IFC2X3', `${BASE}\n${sets(100, 1000000)}\n${attach(100, 6)}\n${sets(200, 2000000)}\n${attach(200, 6)}`);
+    m.bim.georef.set({ ...SET, replace: true });
+    m.bim.georef.set({ ...SET, MapConversion: { ...SET.MapConversion, Eastings: 2700000 }, replace: true });
+    const text = String(m.bim.export.ifc());
+    expect(text).not.toMatch(/'ePset_/);
+    expect((await reparsed(m.bim)).MapConversion?.Eastings).toBe(2700000);
+  });
+});
+
+describe('a set\'s name is its record\'s: renames through the generic API', () => {
+  const OTHER = (b: number) => sets(b, 5).replace("'ePSet_MapConversion'", "'Pset_Other'").replace("'ePSet_ProjectedCRS'", "'Pset_Other2'");
+  it('a convention set renamed out: the copy is gone, get() agrees and update has nothing to edit', async () => {
+    const m = await open('IFC2X3', `${BASE}\n${sets(100, 1000000)}\n${attach(100, 6)}`);
+    m.bim.mutate.setAttribute({ modelId: 'model', expressId: 103 }, 'Name', 'Pset_Other');
+    await trueOrUntrusted(m.bim);
+    expect(m.bim.georef.get().untrusted).toBeUndefined();
+    expect(refusal(() => m.bim.georef.update({ MapConversion: { OrthogonalHeight: 1 } })).code).toBe('NOT_GEOREFERENCED');
+  });
+  it('an unrelated set renamed into ePSet_MapConversion by name: the copy is there, get() agrees', async () => {
+    const m = await open('IFC2X3', `${BASE}\n${OTHER(200)}\n${attach(200, 6)}`);
+    expect(m.bim.georef.get().hasGeoreference).toBe(false);
+    m.bim.mutate.setAttribute({ modelId: 'model', expressId: 203 }, 'Name', 'ePSet_MapConversion');
+    await trueOrUntrusted(m.bim);
+    expect((await reparsed(m.bim)).hasGeoreference).toBe(true);
+    expect(refusal(() => m.bim.georef.set(SET)).code).toBe('ALREADY_GEOREFERENCED');
+  });
+  it('the same by position', async () => {
+    const m = await open('IFC2X3', `${BASE}\n${OTHER(200)}\n${attach(200, 6)}`);
+    m.view().setPositionalAttribute(203, 2, 'ePSet_MapConversion' as never);
+    await trueOrUntrusted(m.bim);
+    expect(refusal(() => m.bim.georef.set(SET)).code).toBe('ALREADY_GEOREFERENCED');
+  });
+  it('sets created on another host after an empty remove() are read back', async () => {
+    const m = await open('IFC2X3', `${BASE}\n${sets(100, 1000000)}\n${attach(100, 6)}`);
+    m.bim.georef.remove();
+    for (const [p, v] of [['Eastings', 5], ['Northings', 6], ['OrthogonalHeight', 7]] as const) {
+      m.view().setProperty(1, 'ePSet_MapConversion', p, v, PropertyValueType.Real, undefined, false, 'IfcReal');
+    }
+    await trueOrUntrusted(m.bim);
+    expect((await reparsed(m.bim)).MapConversion?.Eastings).toBe(5);
+  });
+});

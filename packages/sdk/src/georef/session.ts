@@ -19,7 +19,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { isExpressibleMapUnit } from '@ifc-lite/export';
 import { PropertyValueType } from '@ifc-lite/data';
 import { recordCompoundMutation, recordSessionMutation, StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
-import { collectGeorefModelFacts, storageForSchema, EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS, type GeorefModelFacts } from './model-facts.js';
+import { collectGeorefModelFacts, storageForSchema, type GeorefModelFacts } from './model-facts.js';
 import { conventionSetsOf } from './epset-locator.js';
 import { CRS_FIELDS, MC_FIELDS, planRemove, planSet, stateAfter, type GeorefWritePlan, type PropertySetOp, type StepGeorefMutations } from './plan.js';
 import { withAttributeEdits } from './attribute-overlay.js';
@@ -88,7 +88,9 @@ export class GeoreferencingSession {
     const top = this.current();
     const view = this.deps.view();
     if (top) {
-      if (top.state.storage === 'propertySets' && top.state.hasGeoreference) return this.liveEPSetState();
+      // IFC2X3 keeps its georeferencing in ordinary property sets, which any later edit can create or change: read them
+      // back whenever there are any, also after a remove() that left the cached state empty.
+      if (top.state.storage === 'propertySets' && view && (top.state.hasGeoreference || conventionSetsOf(this.deps.store, view).copies.length > 0)) return this.liveEPSetState();
       // A record the cached state names was deleted outside bim.georef (generic store API): the
       // cache describes a file the export will not write, so report the source minus deletions.
       // The pending edit still stands (the exporter refuses to create from it), hence `pending`.
@@ -100,7 +102,7 @@ export class GeoreferencingSession {
     const source = readSourceGeoreferencing(this.deps.store, this.deps.modelId, view ? (id) => view.isDeleted(id) : undefined);
     // No georeferencing write, but an ordinary property edit of an IFC2X3 convention set
     // changes what the export says: read the sets back from the overlay, as after a write.
-    return view && source.storage === 'propertySets' && conventionSetsEdited(view)
+    return view && source.storage === 'propertySets' && conventionSetsOf(this.deps.store, view).touched
       ? this.liveEPSetState()
       : view ? withAttributeEdits(source, view) : source;
   }
@@ -210,12 +212,6 @@ export function assertGeorefWritten(warnings: readonly string[] | undefined, sch
   throw new Error(`export.ifc: this session's georeferencing write cannot be written to this ${schema} file as given, so no file was produced:\n- ${warnings.join('\n- ')}`);
 }
 
-/** Whether any ordinary mutation in the view touched one of the two IFC2X3 convention sets (any casing). */
-function conventionSetsEdited(view: MutablePropertyView): boolean {
-  const names = [EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS].map((n) => n.toLowerCase());
-  return view.getMutations().some((m) => m.psetName !== undefined && names.includes(m.psetName.toLowerCase()));
-}
-
 /** A positive entity for the history marker: the anchor the write concerns. */
 function historyEntity(facts: GeorefModelFacts, plan: GeorefWritePlan): number {
   const id = plan.storage === 'propertySets'
@@ -226,7 +222,9 @@ function historyEntity(facts: GeorefModelFacts, plan: GeorefWritePlan): number {
 }
 
 function applyPropertySetOp(view: MutablePropertyView, op: PropertySetOp): void {
-  if (op.op === 'deleteSet') {
+  if (op.op === 'createSet') {
+    view.createPropertySet(op.hostId, op.pset, []);
+  } else if (op.op === 'deleteSet') {
     view.deletePropertySet(op.hostId, op.pset);
   } else if (op.op === 'deleteProperty') {
     view.deleteProperty(op.hostId, op.pset, op.prop);

@@ -319,14 +319,13 @@ fn resolve_measure_with_unit(
     let mut component_scale = 1.0_f64;
     if let Some(component_ref) = measure.ref_at(slot::IfcMeasureWithUnit::UNIT_COMPONENT) {
         if let Ok(component) = decoder.decode_by_id(component_ref) {
-            if component.ifc_type == IfcType::IfcSIUnit {
-                if let Some(prefix_attr) = component.attr(slot::IfcSIUnit::PREFIX) {
-                    if !prefix_attr.is_null() {
-                        if let Some(prefix) = prefix_attr.as_enum() {
-                            component_scale = crate::units::get_si_prefix_multiplier(prefix);
-                        }
-                    }
-                }
+            // The factor is a multiple of its component unit; only an SI unit's own prefix is known here, so a
+            // conversion-based component (a chain of 66 feet) leaves the factor unstated.
+            if component.ifc_type != IfcType::IfcSIUnit {
+                return None;
+            }
+            if let Some(prefix) = component.attr(slot::IfcSIUnit::PREFIX).filter(|a| !a.is_null()).and_then(|a| a.as_enum()) {
+                component_scale = crate::units::get_si_prefix_multiplier(prefix);
             }
         }
     }

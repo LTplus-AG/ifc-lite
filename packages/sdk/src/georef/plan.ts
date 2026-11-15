@@ -47,6 +47,8 @@ export type EPSetDataType = 'IfcLengthMeasure' | 'IfcReal' | 'IfcLabel' | 'IfcTe
 /** One IFC2X3 convention-set edit, applied through the mutation view. */
 export type PropertySetOp =
   | { op: 'deleteSet'; hostId: number; pset: string }
+  /** An empty set under a (host, name) this plan deleted: the view keeps a deleted set's name masked, a created one shows. */
+  | { op: 'createSet'; hostId: number; pset: string }
   | { op: 'set'; hostId: number; pset: string; prop: string; value: string | number; dataType: EPSetDataType }
   | { op: 'deleteProperty'; hostId: number; pset: string; prop: string };
 
@@ -322,10 +324,9 @@ export function planSet(input: GeoreferencingSetInput, ctx: PlanContext): Georef
     next: stateAfter(ctx, storage, crs, mc),
     removed: [...records.map((r) => r.label), ...epsets],
   };
-  // A replace removes every copy of the convention sets (any host, or none). IFC2X3 then has one pair: a lone copy on
-  // the anchor is rewritten in place; otherwise a fresh pair is written. The mutation view keeps a deleted (host, set
-  // name) deleted whatever is written under it later, and the reader matches the name without case, so a pair
-  // deleted on the anchor is rewritten under the other common spelling (`ePset_`).
+  // A replace removes every copy of the convention sets (any host, or none). IFC2X3 then has one pair under the
+  // convention's own spelling: a lone copy on the anchor is rewritten in place, otherwise a fresh pair is written
+  // (an explicit `createSet` after the delete: the view keeps a deleted set's name masked otherwise).
   const lone = (canonical: string) => {
     const here = ctx.facts.ePSets.filter((p) => p.orphan === undefined && p.hostId === anchor && p.name.toLowerCase() === canonical.toLowerCase());
     return here.length === 1 ? here[0] : null;
@@ -337,9 +338,10 @@ export function planSet(input: GeoreferencingSetInput, ctx: PlanContext): Georef
   }
   const deletedHere = new Set(gone.ops.filter((o) => o.hostId === anchor).map((o) => o.pset));
   const write = (canonical: string, kept: EPSetLocation | null, values: Array<[string, string | number, EPSetDataType]>): PropertySetOp[] => {
-    const pset = kept?.name ?? (deletedHere.has(canonical) ? canonical.replace('ePSet', 'ePset') : canonical);
+    const pset = kept?.name ?? canonical;
     const wanted = new Set(values.map(([prop]) => prop));
     return [
+      ...(!kept && deletedHere.has(pset) ? [{ op: 'createSet' as const, hostId: anchor, pset }] : []),
       ...Object.keys(kept?.values ?? {}).filter((prop) => !wanted.has(prop)).map((prop) => ({ op: 'deleteProperty' as const, hostId: anchor, pset, prop })),
       ...values.map(([prop, value, dataType]) => ({ op: 'set' as const, hostId: anchor, pset, prop, value, dataType })),
     ];

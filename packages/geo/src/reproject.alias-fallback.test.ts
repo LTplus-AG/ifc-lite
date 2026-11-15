@@ -5,7 +5,11 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { lookupEpsgByCode } from '@ifc-lite/data';
-import { reprojectPointToLatLon } from './reproject.js';
+import { configureCrsLoaders, epsgIoDefinitionLoader } from './loaders.js';
+import { reprojectPointToLatLon } from './reproject-point.js';
+
+// The host's choice in the viewer; here it routes the lookup to the stub below.
+configureCrsLoaders({ epsgDefinition: epsgIoDefinitionLoader() });
 
 it('NAD83 UTM fallback cannot cache projected metadata as its geographic datum (#7063)', async () => {
   // Exercise the real resolver with an incomplete bundled entry, then a real
@@ -23,7 +27,7 @@ it('NAD83 UTM fallback cannot cache projected metadata as its geographic datum (
   };
   try {
     const projected = await reprojectPointToLatLon(500000, 4500000, {
-      id: 1, name: 'NAD83', mapZone: '18N', description: 'UTM zone 18N', mapProjection: 'UTM zone 18N',
+      name: 'NAD83', mapZone: '18N', description: 'UTM zone 18N', mapProjection: 'UTM zone 18N',
     });
     assert.ok(projected);
     // Independent pyproj 3.8 / PROJ 9.8 always_xy control.
@@ -31,7 +35,7 @@ it('NAD83 UTM fallback cannot cache projected metadata as its geographic datum (
     assert.ok(Math.abs(projected.lat - 40.65085651660554) < 1e-8);
     assert.equal(requests, 1, 'the canonical geographic lookup must reach its network fallback');
     globalThis.fetch = async () => { throw new Error('network unavailable after first resolution'); };
-    const geographic = await reprojectPointToLatLon(5, 52, { id: 1, name: 'EPSG:4269' });
+    const geographic = await reprojectPointToLatLon(5, 52, { name: 'EPSG:4269' });
     assert.ok(geographic);
     assert.ok(Math.abs(geographic.lon - 5) < 1e-8);
     assert.ok(Math.abs(geographic.lat - 52) < 1e-8);

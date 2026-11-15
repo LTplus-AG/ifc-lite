@@ -5,22 +5,26 @@
 /**
  * Projection definitions from an `IfcWellKnownText` CRS definition (IFC4X3).
  *
- * The WKT itself is read by proj4's own parser (`wkt-parser`, patched in
- * patches/wkt-parser@1.6.0.patch for WKT1-style parameter names inside WKT2)
- * — this module only selects the horizontal CRS of a compound one, prefers a
- * registered EPSG identifier when the WKT names one, and registers the parsed
- * definition with proj4 under a content-addressed name. Every proj4 call in
- * the viewer then takes that name exactly like a proj4 string.
+ * The WKT itself is read by proj4's own parser (`wkt-parser`, 1.7 or later,
+ * which also maps WKT1-style parameter names such as `central_meridian`
+ * inside WKT2). This module selects the horizontal CRS of a compound one,
+ * prefers a registered EPSG identifier when the WKT names one, gives WKT2
+ * angular parameters without a unit their standard degree, refuses a parse
+ * that lacks a parameter its projection needs, and registers the parsed
+ * definition with proj4 under a content-addressed name. Every proj4 call
+ * then takes that name exactly like a proj4 string.
  */
 
 import proj4 from 'proj4';
 import parseWkt from 'wkt-parser';
+import { reportCrsDiagnostic } from './diagnostics.js';
 import {
   extractWktBoundingBox,
   extractWktHorizontalCrs,
   extractWktSpatialMetadata,
   type WktBoundingBox,
-} from '@ifc-lite/pointcloud';
+} from './spatial-wkt.js';
+import { missingProjectionParameters, withImpliedParameterUnits } from './wkt-parameters.js';
 
 /** Prefix of the proj4 definition names registered for WKT CRSs. */
 const WKT_DEFINITION_PREFIX = 'IFC-WKT:';
@@ -44,7 +48,12 @@ interface ParsedWktDefinition {
 export type WktProjection =
   /** `towgs84`: a datum shift the WKT states itself, to replace the EPSG default. */
   | { kind: 'epsg'; code: string; towgs84?: string }
-  | { kind: 'definition'; definition: string };
+  | { kind: 'definition'; definition: string }
+  /**
+   * Read, but without a parameter its projection needs: the WKT says where
+   * the CRS is and the reader lost it, so nothing else may stand in for it.
+   */
+  | { kind: 'refused' };
 
 const resolved = new Map<string, WktProjection | null>();
 const registered = new Map<string, { parsed: ParsedWktDefinition; extent?: WktBoundingBox }>();
@@ -101,7 +110,7 @@ export function resolveWktProjection(wkt: string): WktProjection | null {
 function resolveUncached(wkt: string): WktProjection | null {
   const horizontal = extractWktHorizontalCrs(wkt);
   if (!horizontal) {
-    console.warn('[reproject] IfcWellKnownText has no horizontal CRS (PROJCRS/GEOGCRS); it cannot place the model.');
+    reportCrsDiagnostic('[reproject] IfcWellKnownText has no horizontal CRS (PROJCRS/GEOGCRS); it cannot place the model.');
     return null;
   }
   const epsg = extractWktSpatialMetadata(horizontal).horizontalId?.match(/^EPSG:(\d+)$/)?.[1];
@@ -117,10 +126,18 @@ function resolveUncached(wkt: string): WktProjection | null {
 
   let parsed: ParsedWktDefinition;
   try {
-    parsed = parseWkt(horizontal) as ParsedWktDefinition;
+    parsed = parseWkt(withImpliedParameterUnits(horizontal)) as ParsedWktDefinition;
   } catch (error) {
-    console.warn('[reproject] IfcWellKnownText could not be parsed; it cannot place the model.', error);
+    reportCrsDiagnostic('[reproject] IfcWellKnownText could not be parsed; it cannot place the model.', error);
     return null;
+  }
+  const missing = missingProjectionParameters(parsed);
+  if (missing.length > 0) {
+    reportCrsDiagnostic(
+      `[reproject] IfcWellKnownText ${parsed.projName} was read without ${missing.join(', ')} `
+      + '(a parameter name the WKT reader does not recognise); it cannot place the model.',
+    );
+    return { kind: 'refused' };
   }
   // Keyed by the whole WKT: its extent (below) belongs to the registration.
   const name = `${WKT_DEFINITION_PREFIX}${hash(wkt)}`;
@@ -132,14 +149,14 @@ function resolveUncached(wkt: string): WktProjection | null {
     // proj4 resolves the projection lazily; make an unsupported method fail here.
     proj4(name, 'WGS84');
   } catch (error) {
-    console.warn('[reproject] IfcWellKnownText uses a projection proj4 does not support; it cannot place the model.', error);
+    reportCrsDiagnostic('[reproject] IfcWellKnownText uses a projection proj4 does not support; it cannot place the model.', error);
     return null;
   }
   registered.set(name, { parsed, extent: extractWktBoundingBox(wkt) });
 
   const datum = (proj4.Proj(name) as { datum?: { datum_type?: number }; a?: number }).datum;
   if (datum?.datum_type === PJD_NODATUM && Math.abs((parsed.a ?? WGS84_SEMI_MAJOR) - WGS84_SEMI_MAJOR) > 1) {
-    console.warn(
+    reportCrsDiagnostic(
       '[reproject] IfcWellKnownText declares a non-WGS84 datum without a datum shift (TOWGS84/BOUNDCRS) '
       + 'that proj4 knows; positions may be off by tens to hundreds of metres.',
     );
@@ -187,7 +204,7 @@ export function isWithinWktDefinitionExtent(definition: string, lon: number, lat
   const key = wktDefinitionInMetres(definition);
   if (!warnedExtents.has(key)) {
     warnedExtents.add(key);
-    console.warn(
+    reportCrsDiagnostic(
       `[reproject] IfcWellKnownText places the model at ${lat.toFixed(5)}, ${lon.toFixed(5)}, outside the `
       + `extent its WKT declares (BBOX ${box.south}, ${box.west}, ${box.north}, ${box.east}); refusing the position.`,
     );

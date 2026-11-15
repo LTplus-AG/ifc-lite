@@ -46,7 +46,7 @@ export function installSourceTracker(env) {
     // Uncapped counters, incremented for every event.
     counts: { sourceReads: 0, sourceReadBytes: 0, largeSourceReads: 0, unattributedReads: 0, unattributedBytes: 0, sourcePosts: 0, otherPosts: 0 },
     // Facts the verdicts depend on, kept regardless of the log.
-    facts: { firstSourceRead: null, firstLargeSourceRead: null, largestSourceRead: null, firstUnattributedRead: null, firstSourcePost: null },
+    facts: { firstSourceRead: null, firstLargeSourceRead: null, largestSourceRead: null, firstUnattributedRead: null, firstSourcePost: null, firstOtherPost: null },
     logs: { sourceReads: log(), unattributedReads: log(), workerPosts: log() },
   };
   const isSource = (b) => b != null && (sources.has(b) || derived.has(b));
@@ -111,7 +111,7 @@ export function installSourceTracker(env) {
         const source = isSource(b);
         if (!source && b.size < minBytes) continue;
         const e = { t: env.now(), worker: workerUrls.get(this) ?? 'unknown worker', bytes: b.size, source };
-        if (source) { state.counts.sourcePosts++; state.facts.firstSourcePost ??= e; } else state.counts.otherPosts++;
+        if (source) { state.counts.sourcePosts++; state.facts.firstSourcePost ??= e; } else { state.counts.otherPosts++; state.facts.firstOtherPost ??= e; }
         add(state.logs.workerPosts, e);
       }
       return post.call(this, msg, ...rest);
@@ -156,6 +156,7 @@ export function trackerSummary(report, pickAt) {
       largestSourceRead: at(f.largestSourceRead, { whole: f.largestSourceRead?.whole }),
       firstUnattributedRead: at(f.firstUnattributedRead),
       firstSourcePost: at(f.firstSourcePost, { worker: f.firstSourcePost?.worker }),
+      firstOtherPost: at(f.firstOtherPost, { worker: f.firstOtherPost?.worker }),
     },
     truncated: dropped > 0,
     dropped,

@@ -113,4 +113,5 @@ test('#10353 worker-post overflow keeps the first source post and exact counts',
   assert.equal(s.sourcePosts, 1);
   assert.equal(s.truncated, true);
   assert.deepEqual(s.facts.firstSourcePost, { ms: 301, bytes: 64, worker: '/identity.js' });
+  assert.deepEqual(s.facts.firstOtherPost, { ms: 1, bytes: 16, worker: '/other.js' });
 });

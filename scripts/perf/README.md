@@ -76,7 +76,11 @@ flag (`attemptBeforeDecision`, `readBeforeDecision`, `unattributedReadBeforeDeci
 `sourcePostBeforeDecision`) is `true`, `false` only when the instrument that would have seen the
 event was installed and reported, or `null`. `--expect-server-first` additionally requires a
 server attempt before the warning or refusal and no large source read or source post before it;
-a `null` fails it.
+a `null` fails it. Only requests at or after the file pick count as this load's attempt;
+earlier ones are reported as `startupRequests`. If the picked file was never marked (it arrived
+without a file-input `change` event), or an unattributed read or worker post of at least 1 MiB
+happened before the decision, the identity-dependent flags are `null` with the reason in
+`unknownBecause`.
 
 ```bash
 pnpm install && pnpm build:wasm && pnpm turbo build --filter=@ifc-lite/viewer   # or any built apps/viewer/dist

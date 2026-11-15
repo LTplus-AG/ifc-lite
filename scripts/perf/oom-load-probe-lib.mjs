@@ -231,22 +231,42 @@ export function serverAttemptSummary(timeline, { watching, tracker }) {
   };
   const trackerReported = tracker?.reported === true;
   const facts = trackerReported ? tracker.facts : null;
-  const firstAttemptMs = watching ? (first((e) => e.event === 'request')?.ms ?? null) : null;
-  return {
+  // Only requests at or after the file pick belong to this load; earlier ones are viewer startup.
+  const loadRequests = watching ? timeline.filter((e) => e.event === 'request' && e.ms >= 0) : [];
+  const startup = watching ? timeline.filter((e) => e.event === 'request' && e.ms < 0).map((e) => e.ms) : null;
+  const firstAttemptMs = watching ? (loadRequests.map((e) => e.ms).sort((a, b) => a - b)[0] ?? null) : null;
+  const unknown = {};
+  /** Identity-dependent flag: null when the source was never marked, or when an unattributed
+   *  event of at least the threshold size happened before the decision (it might be the source). */
+  const identity = (name, ms, other, otherWhat) => {
+    const v = before(ms, trackerReported);
+    if (v === null || v === true) return v;
+    if (!tracker.sourceMarked) { unknown[name] = 'the picked file was never marked (no file-input change event)'; return null; }
+    if (before(other?.ms ?? null, true) !== false) {
+      unknown[name] = `${otherWhat} of ${other.bytes} bytes at ${Math.round(other.ms)} ms before the decision may be the source`;
+      return null;
+    }
+    return false;
+  };
+  const result = {
     watched: Boolean(watching),
     trackerReported,
-    attempts: watching ? timeline.filter((e) => e.event === 'request').length : null,
-    failures: watching ? timeline.filter((e) => e.event === 'requestfailed').length : null,
+    sourceMarked: trackerReported ? tracker.sourceMarked : null,
+    attempts: watching ? loadRequests.length : null,
+    failures: watching ? timeline.filter((e) => e.event === 'requestfailed' && e.ms >= 0).length : null,
+    startupRequests: watching ? { count: startup.length, ms: startup } : null,
     firstAttemptMs,
     firstDecisionMs,
     decisionWindowMs: decision ? windowMs : null,
     attemptBeforeDecision: before(firstAttemptMs, watching),
     // From the tracker's kept facts (uncapped), never from its possibly truncated event log.
-    readBeforeDecision: before(facts?.firstLargeSourceRead?.ms ?? null, trackerReported),
+    readBeforeDecision: identity('readBeforeDecision', facts?.firstLargeSourceRead?.ms ?? null, facts?.firstUnattributedRead, 'an unattributed read'),
     unattributedReadBeforeDecision: before(facts?.firstUnattributedRead?.ms ?? null, trackerReported),
-    sourcePostBeforeDecision: before(facts?.firstSourcePost?.ms ?? null, trackerReported),
+    sourcePostBeforeDecision: identity('sourcePostBeforeDecision', facts?.firstSourcePost?.ms ?? null, facts?.firstOtherPost, 'a worker post of another Blob'),
     logTruncated: trackerReported ? tracker.truncated : null,
   };
+  if (Object.keys(unknown).length) result.unknownBecause = unknown;
+  return result;
 }
 
 /**

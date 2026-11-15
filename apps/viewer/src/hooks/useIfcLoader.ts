@@ -22,7 +22,7 @@ import { planCacheWrite, decideCacheHit, decideCacheLoadOutcome } from './cacheT
 import { createStreamWatchdogState, geometryFailureCaptureProps, pullWithStallWatchdog } from './ingest/geometryStreamWatchdog.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource, startLoadSourceIdentity } from '@/lib/model-placement/loaded-source-identity';
-import { assertWasmSourceSize, IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
 import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureResources.js';
 import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
@@ -76,6 +76,7 @@ import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from '.
 import { isLandXmlFileName } from './ingest/landXmlSniff.js';
 import { loadLandXmlModel } from './ingest/landXmlLoad.js';
 import { drapeIfGeoRaster } from './ingest/drapeIfGeoRaster.js';
+import { assertLocalIfcAdmission } from './ingest/localIfcAdmission.js';
 import { clearLandXmlRefusalPrompts, publishLandXmlRefusalPrompts } from './ingest/landXmlRefusalPrompts.js';
 import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
@@ -668,7 +669,7 @@ export function useIfcLoader() {
         activity.published = true;
         modelCompletion?.settleModel();
       };
-      if (!USE_SERVER && /\.ifc$/i.test(file.name)) assertWasmSourceSize(file.size);
+      if (!USE_SERVER && /\.ifc$/i.test(file.name)) assertLocalIfcAdmission(file.size);
       const headBuf = await file.slice(0, 4096).arrayBuffer();
       if (isStale()) return;
       const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);
@@ -706,7 +707,7 @@ export function useIfcLoader() {
         return;
       }
 
-      if (!pointCloudFormat && !USE_SERVER && detectFormat(headBuf) === 'ifc') assertWasmSourceSize(file.size);
+      if (!pointCloudFormat && !USE_SERVER && detectFormat(headBuf) === 'ifc') assertLocalIfcAdmission(file.size);
       const fileReadStart = performance.now();
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
@@ -742,7 +743,7 @@ export function useIfcLoader() {
       // A SAB here is the un-unwrapped file, so `headBuf` is its head.
       format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : headBuf);
 
-      if (!USE_SERVER && format === 'ifc') assertWasmSourceSize(buffer.byteLength);
+      if (!USE_SERVER && format === 'ifc') assertLocalIfcAdmission(buffer.byteLength);
       if (geometryKernel.refuseSource(format, buffer.byteLength, { modelId, activity })) { settleLoadUi(); return; }
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
@@ -1265,8 +1266,7 @@ export function useIfcLoader() {
         // Server not available - continue with local WASM (no error logging needed)
       } else if (format === 'unknown') {
       }
-
-      // Using local WASM parsing
+      if (format === 'ifc') assertLocalIfcAdmission(buffer.byteLength); // server fallback must pass local admission too (#10264)
       setProgress({ phase: 'Starting geometry streaming', percent: 10 });
       // Global streaming flag is a PRIMARY (active-model) concern; a federated
       // add must not toggle it (the former federated path never did).

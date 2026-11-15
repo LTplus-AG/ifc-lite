@@ -80,9 +80,9 @@ interface FileProbe {
  * on purpose: the loader's 4 KiB head slice for point-cloud detection is a
  * separate `Blob`, so it never lands in these counters.
  */
-function probedStepFile(probe: FileProbe): File {
-  const file = new File([STEP_BYTES], 'sab-streaming.ifc');
-  Object.defineProperty(file, 'size', { value: ABOVE_SAB_THRESHOLD });
+function probedStepFile(probe: FileProbe, size = ABOVE_SAB_THRESHOLD, name = 'sab-streaming.ifc'): File {
+  const file = new File([STEP_BYTES], name);
+  Object.defineProperty(file, 'size', { value: size });
 
   const realArrayBuffer = file.arrayBuffer.bind(file);
   Object.defineProperty(file, 'arrayBuffer', {
@@ -199,3 +199,39 @@ describe('useIfcLoader - the IFC/STEP path keeps SAB streaming (#600)', () => {
     );
   });
 });
+
+// #10264: exercise the real loader, including header detection for renamed IFC
+// files and the federation entry. No giant fixture is allocated by this test.
+for (const name of ['large.ifc', 'renamed.bin']) {
+  for (const kind of ['primary', 'federated'] as const) {
+    it(`#10264 refuses a 1 GB+ ${kind} IFC (${name}) before reading or allocating its source`, async () => {
+      const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+      const cores = Object.getOwnPropertyDescriptor(navigator, 'hardwareConcurrency');
+      Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 8 });
+      Object.defineProperty(navigator, 'hardwareConcurrency', { configurable: true, value: 32 });
+      const probe: FileProbe = { arrayBuffer: 0, stream: 0 };
+      const sizes: number[] = [];
+      const errors: string[] = [];
+      try {
+        await withRecordedSharedArrayBuffer(sizes, async () => {
+          await act(async () => {
+            await hookApi!.loadFile(probedStepFile(probe, 1.26e9, name),
+              { kind, modelId: 'memory-refusal' }, { onLoadError: (message) => errors.push(message) });
+          });
+        });
+        assert.equal(errors.length, 1, 'the caller receives the refusal, not an engine/network failure');
+        assert.match(errors[0], /local processing memory budget/);
+        assert.match(errors[0], /smaller model|native CLI\/server/);
+        assert.deepEqual(probe, { arrayBuffer: 0, stream: 0 }, 'no whole-source read started');
+        assert.deepEqual(fileSized(sizes), [], 'no file-sized shared source was allocated');
+        assert.equal(useViewerStore.getState().loading, false, 'the refusal settles the load UI');
+        if (kind === 'federated') assert.equal(useViewerStore.getState().models.size, 0);
+      } finally {
+        if (memory) Object.defineProperty(navigator, 'deviceMemory', memory);
+        else Reflect.deleteProperty(navigator, 'deviceMemory');
+        if (cores) Object.defineProperty(navigator, 'hardwareConcurrency', cores);
+        else Reflect.deleteProperty(navigator, 'hardwareConcurrency');
+      }
+    });
+  }
+}

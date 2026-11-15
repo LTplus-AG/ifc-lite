@@ -34,6 +34,12 @@ struct Kind {
     spread: &'static [&'static str],
 }
 
+// Slot positions in the STEP records this module reads as text (attribute order of the IFC4 entities).
+/// `IfcShapeAspect.PartOfProductDefinitionShape`.
+const ASPECT_OF_SHAPE: usize = 4;
+/// `IfcStructuralLoadConfiguration.Values`.
+const CONFIGURATION_VALUES: usize = 1;
+
 const KINDS: [Kind; 2] = [
     Kind { ifc2x3: "IFCSTRUCTURALLINEARACTIONVARYING", ifc4: "IFCSTRUCTURALCURVEACTION", first: ["IFCSTRUCTURALLOADLINEARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], min: 2, spread: &[".NOTDEFINED.", ".LINEAR.", ".POLYGONAL."] },
     Kind { ifc2x3: "IFCSTRUCTURALPLANARACTIONVARYING", ifc4: "IFCSTRUCTURALSURFACEACTION", first: ["IFCSTRUCTURALLOADPLANARFORCE", "IFCSTRUCTURALLOADTEMPERATURE"], min: 3, spread: &[".NOTDEFINED.", ".BILINEAR."] },
@@ -101,9 +107,9 @@ impl Source {
             if !(shape || kind.is_some() || config) { continue; }
             let Some(args) = record(content, start, end) else { continue };
             if shape {
-                if let Some(of) = ref_id(args.get(4).map(String::as_str)) { source.aspects.entry(of).or_default().push((id, args.first().and_then(|a| list_items(a)).map(|r| r.len()))); }
+                if let Some(of) = ref_id(args.get(ASPECT_OF_SHAPE).map(String::as_str)) { source.aspects.entry(of).or_default().push((id, args.first().and_then(|a| list_items(a)).map(|r| r.len()))); }
             } else if config {
-                if let Some(values) = args.get(1).and_then(|v| refs(v)).filter(|v| !v.is_empty()) { source.configs.insert(id, values); }
+                if let Some(values) = args.get(CONFIGURATION_VALUES).and_then(|v| refs(v)).filter(|v| !v.is_empty()) { source.configs.insert(id, values); }
             } else if let Some(kind) = kind {
                 source.actions.push((id, kind, args));
             }

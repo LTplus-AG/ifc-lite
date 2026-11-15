@@ -10,6 +10,7 @@
 //! argument ([`Key`]).
 
 use ifc_lite_geometry::mesh::Mesh;
+pub use ifc_lite_geometry::mesh_check::TriangleShape;
 use ifc_lite_geometry::mesh_check::{self, Degenerate, EdgeLedger, VertexKey};
 
 /// How vertices are identified when counting shared edges.
@@ -70,6 +71,16 @@ pub fn signed_volume(positions: &[f32], indices: &[u32]) -> f64 {
     mesh.positions = positions.to_vec();
     mesh.indices = indices.to_vec();
     mesh_check::signed_volume(&mesh)
+}
+
+/// Triangle shape as the mesh census reads it
+/// ([`mesh_check::triangle_shape`]): the triangles past 50:1 by longest edge
+/// over altitude, and the worst such aspect.
+pub fn triangle_shape(positions: &[f32], indices: &[u32]) -> TriangleShape {
+    let mut mesh = Mesh::new();
+    mesh.positions = positions.to_vec();
+    mesh.indices = indices.to_vec();
+    mesh_check::triangle_shape(&mesh)
 }
 
 /// Number of undirected edges whose incidence count is not exactly 2

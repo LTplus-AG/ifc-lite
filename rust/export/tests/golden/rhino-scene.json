@@ -19,12 +19,12 @@
       "bytes": 4872
     },
     "duplex/blob": {
-      "fnv1a64": "001db0078ff655bb",
-      "bytes": 1524888
+      "fnv1a64": "aba1b0b414d4ad51",
+      "bytes": 1441056
     },
     "duplex/manifest": {
-      "fnv1a64": "2c004105ef086f0f",
-      "bytes": 1104157
+      "fnv1a64": "fbafa05b398bfef1",
+      "bytes": 1104051
     },
     "mapped_instances_multi_item/blob": {
       "fnv1a64": "1431123ada97c451",
@@ -67,11 +67,11 @@
       "bytes": 1934
     },
     "wall_two_openings/blob": {
-      "fnv1a64": "664d47eb5c006168",
-      "bytes": 8224
+      "fnv1a64": "e35497260405135c",
+      "bytes": 4384
     },
     "wall_two_openings/manifest": {
-      "fnv1a64": "11262723b456f69c",
+      "fnv1a64": "ad1321ccd4c0f98a",
       "bytes": 1182
     }
   }

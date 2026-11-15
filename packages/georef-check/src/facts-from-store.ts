@@ -19,11 +19,11 @@ import {
   type MapConversion,
   type ProjectedCRS,
 } from '@ifc-lite/parser';
-import { coordinateMagnitudes, hasPostalAddress, modelContextFacts, type EntityReader } from './coordinates.js';
+import { coordinateMagnitudes, hasPostalAddress, modelContextFacts, rootSpatialPlacements, type EntityReader } from './coordinates.js';
 import type { CrsFact, GeorefFacts, GeoreferenceSourceFact, OperationFact } from './types.js';
 
 export interface CollectGeorefFactsOptions {
-  /** Coordinate tuples to sample for {@link CoordinateMagnitudes.pointMedian}; default 2048. */
+  /** Coordinate tuples to sample per family for {@link CoordinateMagnitudes.geometry}; default 2048. */
   maxSampledPoints?: number;
 }
 
@@ -71,11 +71,32 @@ function ePSetSource(info: GeoreferenceInfo | null): GeoreferenceSourceFact | un
   return out.operation || out.crs ? out : undefined;
 }
 
+/** Bytes scanned for a record's first reference: "#1234567=IFCAXIS2PLACEMENT3D(#1234566," fits easily. */
+const FIRST_REFERENCE_SCAN_BYTES = 64;
+const OPEN = 0x28; // (
+const HASH = 0x23; // #
+const SPACE = 0x20;
+
+/** The `#n` right after a record's opening parenthesis, from raw bytes; undefined when the first attribute is not a reference. */
+export function firstReferenceIn(bytes: Uint8Array): number | undefined {
+  let i = bytes.indexOf(OPEN);
+  if (i < 0) return undefined;
+  i++;
+  while (i < bytes.length && bytes[i] <= SPACE) i++;
+  if (bytes[i] !== HASH) return undefined;
+  let n = 0;
+  let digits = 0;
+  for (i++; i < bytes.length && bytes[i] >= 0x30 && bytes[i] <= 0x39; i++, digits++) n = n * 10 + (bytes[i] - 0x30);
+  // A reference cut by the scan window is not trusted.
+  return digits > 0 && i < bytes.length && n > 0 ? n : undefined;
+}
+
 /** A cached {@link EntityReader} over the store's STEP source. */
 export function storeEntityReader(store: IfcDataStore): EntityReader | null {
   const index = store.entityIndex;
-  if (!store.source?.length || !index) return null;
-  const extractor = new EntityExtractor(store.source);
+  const source = store.source;
+  if (!source?.length || !index) return null;
+  const extractor = new EntityExtractor(source);
   const cache = new Map<number, { type: string; attributes: unknown[] } | null>();
   // @raw-entity-enumeration-ok diagnoses the file as authored; a caller with georeference edits patches the facts instead
   const refOf = (id: number) => index.byId.get(id) ?? store.deferredEntityIndex?.get(id);
@@ -91,7 +112,16 @@ export function storeEntityReader(store: IfcDataStore): EntityReader | null {
     },
     // @raw-entity-enumeration-ok reads the authored STEP records the georeference lives in, not the live (edited) table
     idsOfType: (type) => index.byType.get(type) ?? [],
-    sizeOf: (id) => refOf(id)?.byteLength,
+    firstReference(id) {
+      const ref = refOf(id);
+      if (!ref) return undefined;
+      return firstReferenceIn(source.slice(ref.byteOffset, ref.byteOffset + Math.min(ref.byteLength, FIRST_REFERENCE_SCAN_BYTES)));
+    },
+    recordPrefix(id, maxBytes) {
+      const ref = refOf(id);
+      if (!ref) return undefined;
+      return source.decodeUtf8(ref.byteOffset, ref.byteOffset + Math.min(ref.byteLength, maxBytes));
+    },
   };
 }
 
@@ -114,7 +144,11 @@ export function collectGeorefFacts(store: IfcDataStore, options: CollectGeorefFa
   const ePSet = ePSetSource(candidates.ePSetMapConversion);
   if (ePSet) facts.ePSet = ePSet;
   if (candidates.mapConversions.length > 1) {
-    facts.additionalMapConversions = candidates.mapConversions.map((c) => operationFact(c, 'IfcMapConversion'));
+    facts.additionalMapConversions = candidates.mapConversions.map(({ conversion, targetCRS }) => {
+      const source: GeoreferenceSourceFact = { operation: operationFact(conversion, 'IfcMapConversion') };
+      if (targetCRS) source.crs = crsFact(targetCRS, targetCRS.kind === 'geographic' ? 'IfcGeographicCRS' : 'IfcProjectedCRS');
+      return source;
+    });
   }
   const site = candidates.siteLocation?.mapConversion;
   if (site) {
@@ -125,5 +159,7 @@ export function collectGeorefFacts(store: IfcDataStore, options: CollectGeorefFa
   Object.assign(facts, modelContextFacts(reader));
   const siteId = site?.id ?? reader.idsOfType('IFCSITE')[0];
   facts.coordinates = coordinateMagnitudes(reader, siteId, options.maxSampledPoints);
+  const roots = rootSpatialPlacements(reader);
+  if (roots.length > 0) facts.rootSpatialPlacements = roots;
   return facts;
 }

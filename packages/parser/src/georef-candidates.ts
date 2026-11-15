@@ -24,8 +24,11 @@ import {
   MAP_CONVERSION_TYPE_NAMES,
   type GeoreferenceInfo,
   type MapConversion,
+  type ProjectedCRS,
 } from './georef-extractor.js';
 import { extractMapConversion } from './georef-map-conversion.js';
+import { extractProjectedCRS } from './georef-projected-crs.js';
+import { extractGeographicCRS, wellKnownTextFor } from './georef-coordinate-operation.js';
 import { extractEPSetMapConversion } from './georef-epset.js';
 
 export interface GeoreferenceCandidates {
@@ -36,8 +39,12 @@ export interface GeoreferenceCandidates {
    * `hasGeoreference: false` means the file carries none of these.
    */
   entities: GeoreferenceInfo;
-  /** Every IfcMapConversion / IfcMapConversionScaled the file carries, in file order. Only the first is applied. */
-  mapConversions: MapConversion[];
+  /**
+   * Every IfcMapConversion / IfcMapConversionScaled the file carries, in file
+   * order, each with its own TargetCRS (read the way the winner's is). Only
+   * the first is applied.
+   */
+  mapConversions: Array<{ conversion: MapConversion; targetCRS?: ProjectedCRS }>;
   /** The IFC2x3 `ePSet_MapConversion` / `ePSet_ProjectedCRS` reading, even when the IFC4 entities win. */
   ePSetMapConversion: GeoreferenceInfo | null;
   /** The first IfcSite with RefLatitude and RefLongitude (`source: 'siteLocation'`), even when another source wins. */
@@ -67,11 +74,21 @@ export function extractGeoreferenceCandidates(
   const site = extractLegacySiteGeoreference(entities, entitiesByType);
 
   const mapConversionIds = MAP_CONVERSION_TYPE_NAMES.flatMap((typeName) => entitiesByType.get(typeName) ?? []);
-  const mapConversions: MapConversion[] = [];
+  const resolve = (id: number) => entities.get(id);
+  const mapConversions: GeoreferenceCandidates['mapConversions'] = [];
   for (const id of mapConversionIds) {
     const entity = entities.get(id);
     const conversion = entity ? extractMapConversion(entity) : null;
-    if (conversion) mapConversions.push(conversion);
+    if (!conversion) continue;
+    const target = entities.get(conversion.targetCRS);
+    const type = (target?.type ?? '').toUpperCase();
+    let targetCRS: ProjectedCRS | undefined;
+    if (target && (type === 'IFCPROJECTEDCRS' || type === 'IFCGEOGRAPHICCRS')) {
+      targetCRS = type === 'IFCGEOGRAPHICCRS' ? extractGeographicCRS(target) : extractProjectedCRS(target, resolve);
+      const wellKnownText = wellKnownTextFor(target.expressId, entitiesByType.get('IfcWellKnownText') ?? [], resolve);
+      if (wellKnownText) targetCRS.wellKnownText = wellKnownText;
+    }
+    mapConversions.push(targetCRS ? { conversion, targetCRS } : { conversion });
   }
 
   // The winner rule of `extractGeoreferencing` / `withGeoreferenceFallbacks`.

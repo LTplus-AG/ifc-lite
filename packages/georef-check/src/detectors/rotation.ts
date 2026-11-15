@@ -8,6 +8,7 @@
  */
 
 import { operationChange, rotationDegrees, round, type DiagnosisContext } from '../context.js';
+import { makeFix } from '../fixes.js';
 import type { GeorefFinding } from '../types.js';
 
 /** 1 mm per metre: below that a non-unit vector is rounding, above it a cos/sin reader visibly scales the model. */
@@ -33,6 +34,11 @@ export function detectRotation(ctx: DiagnosisContext): GeorefFinding[] {
   const b = op.xAxisOrdinate;
 
   if ((a === undefined) !== (b === undefined)) {
+    // Readers fill the missing component with the default (abscissa 1,
+    // ordinate 0). When that gives a unit vector, (1, unset) or (unset, 0),
+    // every reader agrees on "no turn" and nothing is ambiguous.
+    const filled = Math.hypot(a ?? 1, b ?? 0);
+    if (Math.abs(filled - 1) <= UNIT_LENGTH_TOLERANCE) return findings;
     findings.push({
       code: 'ROTATION_INVALID',
       severity: 'warning',
@@ -50,7 +56,7 @@ export function detectRotation(ctx: DiagnosisContext): GeorefFinding[] {
       severity: 'error',
       message: 'XAxisAbscissa and XAxisOrdinate are both zero, which is no direction at all, so tools refuse the turn or the whole map conversion: write the cosine and sine of the turn (1 and 0 for none).',
       evidence: { xAxisAbscissa: a, xAxisOrdinate: b },
-      fixes: [{ summary: 'Write the no-turn direction (1, 0), or the real turn.', changes: [operationChange(op, 'XAxisAbscissa', 1), operationChange(op, 'XAxisOrdinate', 0)] }],
+      fixes: [makeFix(ctx, 'Write the no-turn direction (1, 0), or the real turn.', [operationChange(op, 'XAxisAbscissa', 1), operationChange(op, 'XAxisOrdinate', 0)])],
     });
     return findings;
   }
@@ -60,10 +66,7 @@ export function detectRotation(ctx: DiagnosisContext): GeorefFinding[] {
       severity: 'warning',
       message: `XAxisAbscissa/XAxisOrdinate (${a}, ${b}) has length ${round(length, 6)} instead of 1, so tools that use them as cosine and sine also scale the model by ${round(length, 6)}: write the normalised values.`,
       evidence: { xAxisAbscissa: a, xAxisOrdinate: b, length: round(length, 9), tolerance: UNIT_LENGTH_TOLERANCE },
-      fixes: [{
-        summary: 'Write the normalised direction.',
-        changes: [operationChange(op, 'XAxisAbscissa', round(a / length, 12)), operationChange(op, 'XAxisOrdinate', round(b / length, 12))],
-      }],
+      fixes: [makeFix(ctx, 'Write the normalised direction.', [operationChange(op, 'XAxisAbscissa', round(a / length, 12)), operationChange(op, 'XAxisOrdinate', round(b / length, 12))])],
     });
   }
 

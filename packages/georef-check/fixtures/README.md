@@ -7,8 +7,17 @@ reproduced from scratch.
 
 - `clean-*`: correct models (LV95 in millimetres, LV95 turned 30°, the
   zone-prefixed EPSG:4647, IFC2X3 with the ePSet convention).
+- `clean-rotation-filled-default`: XAxisAbscissa 1 with XAxisOrdinate unset,
+  which every reader fills to (1, 0).
+- `mixed-families-*`: 200 small local IfcCartesianPoint beside three
+  IfcCartesianPointList3D tiles in LV95 (a scaled-down copy of a review
+  reproduction with 1,500 points and 3 x 400). `-zero-offset` is correct
+  (zero-offset conversion over absolute tessellated geometry); `-double` adds
+  the anchor in the conversion as well.
+- `site-vs-false-origin-3857`: the shape of `ISSUE_159` in the fixture corpus,
+  an EPSG:3857 map conversion at E 0 / N 0 beside a site in Vienna.
 - every other file: the defect its name says, departing from `clean-lv95-mm`
-  in one field.
+  (or `no-georef`) in one field.
 
 ## Third-party file
 

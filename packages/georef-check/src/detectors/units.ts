@@ -9,7 +9,8 @@
  */
 
 import { crsChange, crsUnitScale, operationChange, round, type DiagnosisContext } from '../context.js';
-import type { GeorefFinding } from '../types.js';
+import { makeFix } from '../fixes.js';
+import type { FieldChange, GeorefFinding, SuggestedFix } from '../types.js';
 
 /** Grid scale factors (UTM 0.9996, combined factors) stay within 5% of 1; anything inside is not a unit slip. */
 export const SCALE_GRID_FACTOR_BAND = 0.05;
@@ -41,6 +42,24 @@ function unitName(scale: number): string {
   return names[String(round(scale, 9))] ?? `units of ${round(scale, 6)} m`;
 }
 
+/**
+ * One fix per invalid attribute, on that attribute: Scale gets the unit
+ * conversion (when the map unit is known), a FactorX/Y/Z gets 1, the factor
+ * that adds no distortion. Fixing Scale for a bad FactorY would leave the
+ * error in place (bot review on PR #10386).
+ */
+function invalidFixes(ctx: DiagnosisContext, names: string[]): SuggestedFix[] {
+  const op = ctx.operation as NonNullable<DiagnosisContext['operation']>;
+  const changes: FieldChange[] = [];
+  for (const name of names) {
+    if (name !== 'Scale') changes.push(operationChange(op, name, 1));
+    else if (ctx.mapUnitKnown) changes.push(operationChange(op, 'Scale', round(ctx.lengthScale / ctx.mapScales[0], 9)));
+  }
+  if (changes.length === 0) return [];
+  const what = changes.map((c) => `${c.attribute} ${c.value}`).join(', ');
+  return [makeFix(ctx, `Write ${what}.`, changes, names.includes('Scale') && !ctx.mapUnitKnown ? 'Scale is not set here: the MapUnit is unknown, so set Scale to the project-to-map unit factor yourself.' : undefined)];
+}
+
 export function detectUnits(ctx: DiagnosisContext): GeorefFinding[] {
   const findings: GeorefFinding[] = [];
   const op = ctx.operation;
@@ -57,10 +76,7 @@ export function detectUnits(ctx: DiagnosisContext): GeorefFinding[] {
         ? `The CRS has no MapUnit, and readers disagree whether the Eastings are then in the project's ${unitName(L)} or in the CRS's unit, which here differ: set MapUnit explicitly.`
         : 'The CRS has no MapUnit; readers fall back to the project unit or the CRS unit, which agree here, but setting MapUnit removes the guess.',
       evidence: { lengthUnitMetres: L, readingsMetres: ctx.mapScales.join(' | ') },
-      fixes: [{
-        summary: metreCrs ? 'Set MapUnit to metre, the unit of this CRS.' : 'Set MapUnit to the unit of the CRS.',
-        changes: [crsChange(crs, 'MapUnit', metreCrs ? 'METRE' : null)],
-      }],
+      fixes: [makeFix(ctx, metreCrs ? 'Set MapUnit to metre, the unit of this CRS.' : 'Set MapUnit to the unit of the CRS.', [crsChange(crs, 'MapUnit', metreCrs ? 'METRE' : null)])],
     });
   }
 
@@ -76,9 +92,7 @@ export function detectUnits(ctx: DiagnosisContext): GeorefFinding[] {
       severity: 'error',
       message: `${invalid.map(([name]) => name).join(', ')} must be a positive number, so tools either refuse the map conversion or collapse the model: write the unit conversion factor instead.`,
       evidence: Object.fromEntries(invalid.map(([name, v]) => [name, v ?? null])),
-      fixes: ctx.mapUnitKnown
-        ? [{ summary: 'Set Scale to the project-to-map unit factor.', changes: [operationChange(op, 'Scale', round(L / ctx.mapScales[0], 9))] }]
-        : [],
+      fixes: invalidFixes(ctx, invalid.map(([name]) => name)),
     });
     return findings;
   }
@@ -100,7 +114,8 @@ export function detectUnits(ctx: DiagnosisContext): GeorefFinding[] {
     expectedScale: round(expected, 9),
     ratio: round(ratio, 6),
   };
-  const fix = { summary: `Set Scale to ${round(expected, 9)} (${unitName(L)} to ${unitName(M)}).`, changes: [operationChange(op, 'Scale', round(expected, 9))] };
+  const summary = `Set Scale to ${round(expected, 9)} (${unitName(L)} to ${unitName(M)}).`;
+  const scaleChange = [operationChange(op, 'Scale', round(expected, 9))];
 
   if (scale === 1 && factorsUnit) {
     findings.push({
@@ -108,7 +123,7 @@ export function detectUnits(ctx: DiagnosisContext): GeorefFinding[] {
       severity: 'warning',
       message: `The project is in ${unitName(L)} and the map in ${unitName(M)}, but Scale is ${op.scale === undefined ? 'unset (meaning 1)' : '1'}, so tools that follow IFC to the letter place the model ${round(1 / expected, 6)}× too big and far away (lenient tools guess right): set Scale to ${round(expected, 9)}.`,
       evidence,
-      fixes: [fix],
+      fixes: [makeFix(ctx, summary, scaleChange)],
     });
     return findings;
   }
@@ -123,7 +138,7 @@ export function detectUnits(ctx: DiagnosisContext): GeorefFinding[] {
       ? `Scale ${round(effective, 9)} is off by ${explanation} from what converts the project's ${unitName(L)} into the map's ${unitName(M)} (${round(expected, 9)}), so the model is placed at the wrong size and distance: set Scale to ${round(expected, 9)}.`
       : `Scale ${round(effective, 9)} differs from the unit conversion ${round(expected, 9)} by a factor of ${round(ratio, 4)}, which no unit explains, so the model is placed at the wrong size: check the Scale.`,
     evidence: { ...evidence, explanation: explanation ?? null },
-    fixes: factorsUnit ? [fix] : [{ ...fix, caveat: 'The file also authors IfcMapConversionScaled factors; check whether they, not Scale, carry the unit.' }],
+    fixes: [makeFix(ctx, summary, scaleChange, factorsUnit ? undefined : 'The file also authors IfcMapConversionScaled factors; check whether they, not Scale, carry the unit.')],
   });
   return findings;
 }

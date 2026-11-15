@@ -59,7 +59,7 @@ describe('extractGeoreferenceCandidatesOnDemand', () => {
     expect(candidates).not.toBeNull();
     expect(candidates?.winner).toBe('mapConversion');
     expect(candidates?.entities.mapConversion?.eastings).toBe(2600000);
-    expect(candidates?.mapConversions.map((c) => c.eastings)).toEqual([2600000, 2600500]);
+    expect(candidates?.mapConversions.map((c) => c.conversion.eastings)).toEqual([2600000, 2600500]);
     expect(candidates?.counts).toEqual({ mapConversion: 2, rigidOperation: 0, projectedCRS: 1, geographicCRS: 0 });
     expect(candidates?.ePSetMapConversion?.mapConversion?.eastings).toBe(2601000);
     expect(candidates?.ePSetMapConversion?.projectedCRS?.name).toBe('EPSG:2056');
@@ -71,6 +71,21 @@ describe('extractGeoreferenceCandidatesOnDemand', () => {
     const winner = extractGeoreferencingOnDemand(store);
     expect(winner?.source).toBe('mapConversion');
     expect(winner?.mapConversion?.eastings).toBe(2600000);
+  });
+
+  // PR #10386 review: each conversion is compared in its own CRS, so each must carry it.
+  it('reads every IfcMapConversion with its own TargetCRS', async () => {
+    const store = await new IfcParser().parseColumnar(stepFile([
+      ...HEAD,
+      "#11=IFCPROJECTEDCRS('EPSG:21781',$,$,$,$,$,#4);",
+      '#12=IFCMAPCONVERSION(#3,#11,600000.,200000.,540.,1.,0.,1.);',
+    ]));
+    const candidates = extractGeoreferenceCandidatesOnDemand(store);
+    expect(candidates?.mapConversions.map((c) => [c.conversion.id, c.targetCRS?.id, c.targetCRS?.name])).toEqual([
+      [10, 9, 'EPSG:2056'],
+      [12, 11, 'EPSG:21781'],
+    ]);
+    expect(candidates?.mapConversions[1].targetCRS?.mapUnitScale).toBe(1);
   });
 
   it('reports no winner and no sources for a file without georeferencing', async () => {

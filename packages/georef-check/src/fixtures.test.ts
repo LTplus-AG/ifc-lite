@@ -18,12 +18,20 @@ import type { CrsCatalog, DiagnoseOptions, GeorefFacts, GeorefReport, Reprojecto
 
 const FIXTURES = new URL('../fixtures/', import.meta.url);
 
-/** LV95 → WGS84 within a few hundred metres near Bern; undefined for any other CRS. */
+/**
+ * Metres → WGS84 [lon, lat]: LV95 linearised around Bern (a few hundred
+ * metres off), EPSG:3857 exactly (spherical Mercator has a closed form);
+ * undefined for any other CRS.
+ */
 const lv95Stub: Reprojector = {
-  toGeographic(code, easting, northing) {
+  toWgs84(code, [easting, northing]) {
+    if (code === 3857) {
+      const R = 6_378_137;
+      return [(easting / R) * (180 / Math.PI), (2 * Math.atan(Math.exp(northing / R)) - Math.PI / 2) * (180 / Math.PI)];
+    }
     if (code !== 2056) return undefined;
     const latitude = 46.9524056 + (northing - 1_200_000) / 111_195;
-    return { latitude, longitude: 7.4395833 + (easting - 2_600_000) / (111_195 * Math.cos((latitude * Math.PI) / 180)) };
+    return [7.4395833 + (easting - 2_600_000) / (111_195 * Math.cos((latitude * Math.PI) / 180)), latitude];
   },
 };
 
@@ -89,6 +97,24 @@ const EXPECTED: Record<string, string[]> = {
   'sources-disagree': ['warning:SOURCES_DISAGREE'],
   'two-map-conversions': ['warning:SOURCES_DISAGREE'],
   'ifc2x3-site-only': ['info:IFC2X3_NO_EPSET'],
+  // PR #10386 review, finding 1: 200 local IfcCartesianPoint beside 3 point
+  // lists in LV95. Pooled, the local points outvoted the lists: a false
+  // OUTSIDE_CRS_AREA on the correct file, nothing on the doubled one.
+  'mixed-families-zero-offset': [],
+  'mixed-families-double': ['error:MAP_POSITION_APPLIED_TWICE'],
+  // Finding 5a: a CRS alone places nothing.
+  'crs-only': ['warning:CRS_WITHOUT_OPERATION'],
+  // Finding 5b: same offsets, different TargetCRS.
+  'two-map-conversions-crs': ['warning:SOURCES_DISAGREE'],
+  // Finding 5d: a negative FactorY on an IfcMapConversionScaled (the parser
+  // reads a FactorY of exactly 0 as unset, so 0 is pinned on facts instead).
+  'scaled-factor-y-negative': ['error:SCALE_INVALID'],
+  // Finding 8: (1, unset) fills to (1, 0) in every reader.
+  'clean-rotation-filled-default': [],
+  // Finding 2: ISSUE_159's shape, a map conversion at E 0 / N 0 beside a real site.
+  'site-vs-false-origin-3857': ['warning:SITE_LOCATION_CONTRADICTS_OPERATION'],
+  // Finding 9: an address is not nothing.
+  'no-georef-address': ['warning:NO_GEOREFERENCE'],
 };
 
 describe('fixtures through the real parser', () => {
@@ -133,17 +159,20 @@ describe('fixtures through the real parser', () => {
     expect(double.lengthUnitScale).toBe(0.001);
     const geometry = await factsOf('double-geometry');
     expect(geometry.coordinates?.siteOrigin).toEqual({ x: 0, y: 0, z: 0 });
-    expect(geometry.coordinates?.pointMedian?.x).toBeGreaterThan(2_000_000_000);
+    expect(geometry.coordinates?.geometry?.cartesianPoints?.median.x).toBeGreaterThan(2_000_000_000);
     const terrain = await factsOf('control-terrain-epsg3006');
-    // The CC0 terrain is an IfcCartesianPointList3D, sampled too.
-    expect(terrain.coordinates?.sampledPoints).toBe(6);
+    // The CC0 terrain is an IfcCartesianPointList3D, sampled too (its only
+    // IfcCartesianPoint is a placement Location and is left out).
+    expect(terrain.coordinates?.geometry?.pointLists?.sampled).toBe(5);
+    expect(terrain.coordinates?.geometry?.cartesianPoints).toBeUndefined();
   });
 });
 
 describe('suggested fixes are applicable values', () => {
   it('double map position: move the site back by the anchor, in project units', async () => {
     const [finding] = (await diagnose('double-site-placement')).findings;
-    expect(finding.fixes[0].changes).toEqual([{ entity: 'IfcLocalPlacement', entityId: 12, attribute: 'Location', value: [0, 0, 0] }]);
+    expect(finding.fixes[0].changes).toEqual([{ entity: 'IfcCartesianPoint', entityId: 10, attribute: 'Coordinates', value: [0, 0, 0] }]);
+    expect(finding.fixes[0].apply.via).toBe('manual');
     expect(finding.evidence.signature).toBe('anchor');
   });
 

@@ -8,11 +8,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { diagnoseGeoreference } from './diagnose.js';
-import { DOUBLE_GEOREF_RADIUS_METRES } from './position.js';
-import { SITE_CONTRADICTION_KM } from './detectors/site.js';
+import { crsRequirements, diagnoseGeoreference } from './diagnose.js';
+import { AREA_OF_USE_MARGIN_DEGREES } from './area.js';
+import { DOUBLE_GEOREF_RADIUS_METRES, UNIT_MISMATCH_MIN_UNIT_RATIO } from './position.js';
+import { FALSE_ORIGIN_RADIUS_METRES, SITE_CONTRADICTION_KM } from './detectors/site.js';
+import { SOURCE_SCALE_RELATIVE_TOLERANCE } from './detectors/consistency.js';
+import { UNEXPLAINED_SCALE_BAND } from './detectors/units.js';
+import { UNDECLARED_UNIT_SMALLEST_READING } from './detectors/presence.js';
 import { TRUE_NORTH_TOLERANCE_DEGREES, UNIT_LENGTH_TOLERANCE } from './detectors/rotation.js';
-import type { DiagnoseOptions, GeorefFacts, GeorefFindingCode, OperationFact } from './types.js';
+import type { CrsFact, DiagnoseOptions, GeorefFacts, GeorefFindingCode, OperationFact, Reprojector } from './types.js';
 
 function facts(overrides: Partial<GeorefFacts> = {}, op: Partial<OperationFact> = {}): GeorefFacts {
   return {
@@ -23,7 +27,7 @@ function facts(overrides: Partial<GeorefFacts> = {}, op: Partial<OperationFact> 
       operation: { source: 'IfcMapConversion', entityId: 20, eastings: 2_600_000, northings: 1_200_000, orthogonalHeight: 540, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 0.001, ...op },
       crs: { source: 'IfcProjectedCRS', entityId: 21, name: 'EPSG:2056', verticalDatum: 'EPSG:5728', mapUnit: 'METRE', mapUnitScale: 1 },
     },
-    coordinates: { siteOrigin: { x: 0, y: 0, z: 0 }, sitePlacementId: 5, sampledPoints: 4, pointMedian: { x: 5000, y: 4000, z: 0 } },
+    coordinates: { siteOrigin: { x: 0, y: 0, z: 0 }, sitePlacementId: 5, sampledPoints: 4, geometry: { cartesianPoints: { median: { x: 5000, y: 4000, z: 0 }, p90Horizontal: 7000, sampled: 4 } } },
     ...overrides,
   };
 }
@@ -117,7 +121,7 @@ describe('zone prefix', () => {
 describe('SITE_LOCATION_CONTRADICTS_OPERATION', () => {
   const kmNorth = (km: number) => 46.9524056 + km / 111.195;
   const flat: DiagnoseOptions = {
-    reprojector: { toGeographic: (code, e, n) => (code === 2056 ? { latitude: 46.9524056 + (n - 1_200_000) / 111_195, longitude: 7.4395833 + (e - 2_600_000) / 75_900 } : undefined) },
+    reprojector: { toWgs84: (code, [e, n]) => (code === 2056 ? [7.4395833 + (e - 2_600_000) / 75_900, 46.9524056 + (n - 1_200_000) / 111_195] : undefined) },
   };
   const site = (lat: number) => facts({ siteLocation: { siteId: 3, latitude: lat, longitude: 7.4395833 } });
   it(`fires beyond ${SITE_CONTRADICTION_KM} km, not inside`, () => {
@@ -130,7 +134,7 @@ describe('SITE_LOCATION_CONTRADICTS_OPERATION', () => {
     expect(has(site(47.0), 'SITE_LOCATION_CONTRADICTS_OPERATION', options)).toBe(false);
   });
   it('a reprojector that does not know the CRS skips the check instead of guessing', () => {
-    const report = run(site(10), { reprojector: { toGeographic: () => undefined } });
+    const report = run(site(10), { reprojector: { toWgs84: () => undefined } });
     expect(report.findings).toEqual([]);
     expect(report.skipped.map((s) => s.code)).toEqual(['SITE_LOCATION_CONTRADICTS_OPERATION']);
   });
@@ -190,5 +194,191 @@ describe('presence', () => {
     const at = (lat: number) => facts({ entities: undefined, siteLocation: { siteId: 1, latitude: lat, longitude: -71.0598 } });
     expect(has(at(42.3584 + 0.009), 'SITE_LOCATION_DEFAULT')).toBe(true);
     expect(has(at(42.3584 + 0.02), 'SITE_LOCATION_DEFAULT')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PR #10386 review follow-ups. Each threshold is pinned just inside and just
+// outside its documented limit.
+// ---------------------------------------------------------------------------
+
+describe('named thresholds, both sides (finding 13)', () => {
+  it(`site area-of-use margin ${AREA_OF_USE_MARGIN_DEGREES}°`, () => {
+    const options: DiagnoseOptions = { crsCatalog: { lookup: (code) => ({ code, areaOfUse: { west: 5.96, south: 45.82, east: 10.49, north: 47.81 } }) } };
+    const site = (lat: number) => facts({ siteLocation: { siteId: 3, latitude: lat, longitude: 7.44 } });
+    expect(has(site(47.81 + AREA_OF_USE_MARGIN_DEGREES - 0.01), 'SITE_LOCATION_CONTRADICTS_OPERATION', options)).toBe(false);
+    expect(has(site(47.81 + AREA_OF_USE_MARGIN_DEGREES + 0.01), 'SITE_LOCATION_CONTRADICTS_OPERATION', options)).toBe(true);
+  });
+
+  it(`map position area-of-use margin ${AREA_OF_USE_MARGIN_DEGREES}° (same constant)`, () => {
+    // EPSG:3006 has no built-in extent: catalogue area + reprojector decide.
+    const reprojector: Reprojector = { toWgs84: (_code, [e, n]) => [e / 100_000, n / 100_000] };
+    const at = (lon: number) => {
+      const f = facts({ lengthUnitScale: 1 }, { eastings: lon * 100_000, northings: 60 * 100_000, scale: 1 });
+      if (f.entities?.crs) f.entities.crs = { ...f.entities.crs, name: 'EPSG:3006' };
+      return f;
+    };
+    const options: DiagnoseOptions = { reprojector, crsCatalog: { lookup: (code) => ({ code, unitScale: 1, areaOfUse: { west: 10.03, south: 54.96, east: 24.17, north: 69.07 } }) } };
+    expect(has(at(24.17 + AREA_OF_USE_MARGIN_DEGREES - 0.01), 'OUTSIDE_CRS_AREA', options)).toBe(false);
+    expect(has(at(24.17 + AREA_OF_USE_MARGIN_DEGREES + 0.01), 'OUTSIDE_CRS_AREA', options)).toBe(true);
+  });
+
+  it(`SOURCES_DISAGREE Scale ratio ${SOURCE_SCALE_RELATIVE_TOLERANCE}`, () => {
+    const withEPSet = (ePSetScale: number) => {
+      const f = facts();
+      const op = f.entities?.operation;
+      if (op) f.ePSet = { operation: { ...op, source: 'ePSet_MapConversion', entityId: 30, scale: ePSetScale }, crs: { ...(f.entities?.crs as CrsFact), source: 'ePSet_ProjectedCRS', entityId: 31 } };
+      return f;
+    };
+    expect(has(withEPSet(0.001 * (1 + SOURCE_SCALE_RELATIVE_TOLERANCE / 2)), 'SOURCES_DISAGREE')).toBe(false);
+    expect(has(withEPSet(0.001 * (1 + SOURCE_SCALE_RELATIVE_TOLERANCE * 2)), 'SOURCES_DISAGREE')).toBe(true);
+  });
+
+  it(`unexplained Scale band [${UNEXPLAINED_SCALE_BAND.join(', ')}] on both edges`, () => {
+    const [lo, hi] = UNEXPLAINED_SCALE_BAND;
+    const at = (ratio: number) => has(facts({}, { scale: 0.001 * ratio }), 'SCALE_UNIT_MISMATCH');
+    expect([at(lo + 0.05), at(lo - 0.05), at(hi - 0.05), at(hi + 0.05)]).toEqual([false, true, false, true]);
+  });
+
+  it(`unit-slipped anchor needs units at least ${UNIT_MISMATCH_MIN_UNIT_RATIO}x apart`, () => {
+    // The site repeats the Eastings/Northings numbers in project units; map unit metre.
+    const slipped = (lengthUnitScale: number) => facts(
+      { lengthUnitScale, coordinates: { siteOrigin: { x: 2_600_000, y: 1_200_000, z: 0 }, sampledPoints: 0 } },
+      { scale: lengthUnitScale },
+    );
+    const signature = (f: GeorefFacts) => run(f).findings.find((x) => x.code === 'MAP_POSITION_APPLIED_TWICE')?.evidence.signature;
+    expect(signature(slipped(UNIT_MISMATCH_MIN_UNIT_RATIO * 0.95))).toBeUndefined();
+    expect(signature(slipped(UNIT_MISMATCH_MIN_UNIT_RATIO))).toBe('unitMismatchedAnchor');
+  });
+
+  it('a site within the false-origin radius makes the conversion the suspect, beyond it not', () => {
+    const reprojector: Reprojector = { toWgs84: (_code, [e, n]) => [e / 100_000, n / 100_000] };
+    const f = (e: number) => {
+      const x = facts({ lengthUnitScale: 1, siteLocation: { siteId: 3, latitude: 48.2, longitude: 16.37 } }, { eastings: e, northings: 0, scale: 1 });
+      if (x.entities?.crs) x.entities.crs = { ...x.entities.crs, name: 'EPSG:3857' };
+      return x;
+    };
+    const suspect = (e: number) => run(f(e), { reprojector }).findings.find((x) => x.code === 'SITE_LOCATION_CONTRADICTS_OPERATION')?.evidence.suspect;
+    expect(suspect(FALSE_ORIGIN_RADIUS_METRES - 1)).toBe('mapConversion');
+    expect(suspect(FALSE_ORIGIN_RADIUS_METRES + 200)).toBeNull();
+  });
+});
+
+describe('site contradiction suspects (finding 2)', () => {
+  const reprojector: Reprojector = { toWgs84: (code, [e, n]) => (code === 2056 ? [7.4395833 + (e - 2_600_000) / 75_900, 46.9524056 + (n - 1_200_000) / 111_195] : undefined) };
+  it('a site at a tool default beside a plausible conversion: the site is the suspect, fixed toward the conversion', () => {
+    const [f] = run(facts({ siteLocation: { siteId: 3, latitude: 42.3584, longitude: -71.0598 } }), { reprojector }).findings.filter((x) => x.code === 'SITE_LOCATION_CONTRADICTS_OPERATION');
+    expect(f.evidence.suspect).toBe('siteLocation');
+    expect(f.fixes[0].changes[0]).toMatchObject({ entity: 'IfcSite', attribute: 'RefLatitude' });
+  });
+  it('both suspect: no fix in either direction', () => {
+    const both = facts({ siteLocation: { siteId: 3, latitude: 42.3584, longitude: -71.0598 } }, { eastings: 0, northings: 0 });
+    if (both.entities?.crs) both.entities.crs = { ...both.entities.crs, name: 'EPSG:3857' };
+    const nullIsland: Reprojector = { toWgs84: () => [0, 0] };
+    const [f] = run(both, { reprojector: nullIsland }).findings.filter((x) => x.code === 'SITE_LOCATION_CONTRADICTS_OPERATION');
+    expect(f.evidence.suspect).toBe('both');
+    expect(f.fixes).toEqual([]);
+  });
+  it('a reprojector that throws is reported as skipped, with its message', () => {
+    const report = run(facts({ siteLocation: { siteId: 3, latitude: 10, longitude: 7 } }), { reprojector: { toWgs84: () => { throw new Error('grid file missing'); } } });
+    expect(report.skipped).toEqual([{ code: 'SITE_LOCATION_CONTRADICTS_OPERATION', reason: 'The reprojector failed for EPSG:2056: grid file missing' }]);
+  });
+  it('the reprojector receives metres, easting first (finding 14)', () => {
+    const calls: Array<readonly [number, number]> = [];
+    // MapUnit millimetre: the authored numbers are 1000x the metres.
+    const f = facts({ siteLocation: { siteId: 3, latitude: 46.95, longitude: 7.44 } }, { eastings: 2_600_000_000, northings: 1_200_000_000, scale: 1 });
+    if (f.entities?.crs) f.entities.crs = { ...f.entities.crs, mapUnit: 'MILLIMETRE', mapUnitScale: 0.001 };
+    run(f, { reprojector: { toWgs84: (_c, en) => { calls.push(en); return [7.44, 46.95]; } } });
+    expect(calls[0]).toEqual([2_600_000, 1_200_000]);
+  });
+});
+
+describe('ROTATION_INVALID only when a filled-in default is still ambiguous (finding 8)', () => {
+  it.each([
+    [1, undefined, false],
+    [undefined, 0, false],
+    [0.6, undefined, true],
+    [undefined, 1, true],
+  ] as const)('(%s, %s) → %s', (a, b, fires) => {
+    expect(has(facts({}, { xAxisAbscissa: a, xAxisOrdinate: b }), 'ROTATION_INVALID')).toBe(fires);
+  });
+});
+
+describe('VERTICAL_DATUM_MISSING examples follow the CRS (finding 10)', () => {
+  const message = (name: string, e: number, n: number) => {
+    const f = facts({ lengthUnitScale: 1 }, { eastings: e, northings: n, scale: 1 });
+    if (f.entities?.crs) f.entities.crs = { ...f.entities.crs, name, verticalDatum: undefined };
+    return run(f).findings.find((x) => x.code === 'VERTICAL_DATUM_MISSING')?.message ?? '';
+  };
+  it('Swiss grid: the Swiss height systems', () => {
+    expect(message('EPSG:2056', 2_600_000, 1_200_000)).toMatch(/LN02/);
+  });
+  it('New Zealand and a multi-country UTM zone: no example', () => {
+    for (const m of [message('EPSG:2193', 1_750_000, 5_920_000), message('EPSG:25832', 461_000, 5_481_000)]) {
+      expect(m).not.toMatch(/LN02|DHHN|NAP/);
+      expect(m).toMatch(/EPSG code of the height system/);
+    }
+  });
+});
+
+describe('levels per the published definition (finding 7)', () => {
+  it('LoGeoRef 30 is any location in a root spatial placement, no distance rule', () => {
+    const near = facts({ rootSpatialPlacements: [{ elementId: 3, elementType: 'IfcSite', location: { x: 500, y: 0, z: 0 }, rotated: false }] });
+    expect(run(near).levels).toContain(30);
+    expect(run(near).indicators.placementAtMapMagnitude).toBe(false);
+    const turned = facts({ rootSpatialPlacements: [{ elementId: 3, elementType: 'IfcSite', location: { x: 0, y: 0, z: 0 }, rotated: true }] });
+    expect(run(turned).levels).toContain(30);
+    const atOrigin = facts({ rootSpatialPlacements: [{ elementId: 3, elementType: 'IfcSite', location: { x: 0, y: 0, z: 0 }, rotated: false }] });
+    expect(run(atOrigin).levels).not.toContain(30);
+  });
+  it('an IFC2X3 ePSet is not LoGeoRef 50, and is reported as the convention', () => {
+    const f = facts({ schemaVersion: 'IFC2X3', entities: undefined, ePSet: facts().entities });
+    if (f.ePSet?.operation) f.ePSet.operation = { ...f.ePSet.operation, source: 'ePSet_MapConversion' };
+    const report = run(f);
+    expect(report.levels).not.toContain(50);
+    expect(report.indicators.ePSetConvention).toBe(true);
+  });
+  it('an IfcRigidOperation is not an IfcMapConversion: no 50, indicator set', () => {
+    const report = run(facts({ schemaVersion: 'IFC4X3_ADD2' }, { source: 'IfcRigidOperation', scale: undefined }));
+    expect(report.levels).not.toContain(50);
+    expect(report.indicators.rigidOperation).toBe(true);
+  });
+  it('an IFC4 IfcMapConversion onto a CRS is 50', () => {
+    expect(run(facts()).levels).toContain(50);
+  });
+});
+
+describe('crsRequirements (finding 14)', () => {
+  it('lists the EPSG code, name and WKT the diagnosis will reproject from', () => {
+    const f = facts();
+    if (f.entities?.crs) f.entities.crs = { ...f.entities.crs, wellKnownText: 'PROJCS["CH1903+ / LV95",AUTHORITY["EPSG","2056"]]' };
+    expect(crsRequirements(f)).toEqual([{ epsg: 2056, name: 'EPSG:2056', wkt: 'PROJCS["CH1903+ / LV95",AUTHORITY["EPSG","2056"]]' }]);
+  });
+  it('resolves a CRS written by name through the same catalogue, and is empty without an operation', () => {
+    const f = facts();
+    if (f.entities?.crs) f.entities.crs = { ...f.entities.crs, name: 'CH1903+ / LV95' };
+    expect(crsRequirements(f)).toEqual([]);
+    expect(crsRequirements(f, { crsCatalog: { lookup: () => undefined, resolveName: () => 2056 } })).toEqual([{ epsg: 2056, name: 'CH1903+ / LV95' }]);
+    expect(crsRequirements(facts({ entities: undefined }))).toEqual([]);
+  });
+});
+
+describe('CRS_WITHOUT_OPERATION (bot review a)', () => {
+  it('a CRS alone is a finding, not silence', () => {
+    const f = facts({ entities: { crs: facts().entities?.crs } });
+    expect(run(f).findings.map((x) => x.code)).toEqual(['CRS_WITHOUT_OPERATION']);
+    expect(run(f).level).toBe(0);
+  });
+});
+
+describe('an undeclared length unit (sweep: a MagiCAD fragment with no IfcUnitAssignment)', () => {
+  const placed = (x: number, lengthUnitDeclared: boolean) => facts({
+    entities: undefined, lengthUnitScale: 1, lengthUnitDeclared,
+    coordinates: { siteOrigin: { x: 0, y: 0, z: 0 }, sampledPoints: 2, geometry: { cartesianPoints: { median: { x, y: 0, z: 0 }, p90Horizontal: x, sampled: 2 } } },
+  });
+  it(`map magnitude must hold under the ${UNDECLARED_UNIT_SMALLEST_READING} m reading too`, () => {
+    expect(has(placed(150_000, true), 'MAP_COORDINATES_IN_PLACEMENTS')).toBe(true);
+    expect(has(placed(150_000, false), 'MAP_COORDINATES_IN_PLACEMENTS')).toBe(false);
+    expect(has(placed(150_000_000, false), 'MAP_COORDINATES_IN_PLACEMENTS')).toBe(true);
   });
 });

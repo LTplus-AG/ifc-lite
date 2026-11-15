@@ -9,23 +9,29 @@
  * `collectGeorefFacts` reads those facts from a parsed `IfcDataStore`.
  */
 
-export { diagnoseGeoreference, georeferencingLevels } from './diagnose.js';
+export { crsRequirements, diagnoseGeoreference, georeferencingLevels } from './diagnose.js';
 export { collectGeorefFacts, type CollectGeorefFactsOptions } from './facts-from-store.js';
 export type {
   CoordinateMagnitudes,
   CrsCatalog,
   CrsCatalogEntry,
   CrsFact,
+  CrsRequirement,
   DiagnoseOptions,
   FieldChange,
+  FixApplication,
   GeorefFacts,
   GeorefFinding,
   GeorefFindingCode,
+  GeorefIndicators,
   GeorefLevel,
   GeorefReport,
   GeoreferenceSourceFact,
+  GeorefWriteInput,
   OperationFact,
+  PointFamilyStats,
   Reprojector,
+  RootSpatialPlacementFact,
   Severity,
   SiteLocationFact,
   SkippedCheck,

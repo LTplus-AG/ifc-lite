@@ -69,6 +69,16 @@ export interface SiteLocationFact {
   elevation?: number;
 }
 
+/** Summary of one family of coordinate tuples. */
+export interface PointFamilyStats {
+  /** Per-axis median, project units. */
+  median: Vec3;
+  /** 90th percentile of the horizontal distance from the local origin, project units. */
+  p90Horizontal: number;
+  /** Tuples the sample read. */
+  sampled: number;
+}
+
 /**
  * Where the model's coordinates actually are, measured without meshing.
  *
@@ -76,12 +86,13 @@ export interface SiteLocationFact {
  *   its `PlacementRelTo` chain (IfcLocalPlacement / IfcAxis2Placement3D|2D,
  *   at most 32 hops). This is where tools that put the map position into the
  *   placements write it.
- * - `pointMedian` / `pointP90Horizontal`: the per-axis median and the 90th
- *   percentile of the horizontal distance from the local origin over an evenly
- *   strided sample of IfcCartesianPoint and IfcCartesianPointList2D/3D
- *   coordinates, as written (each in its own placement, not composed). This
- *   catches geometry authored directly in map coordinates while the site sits
- *   at 0,0. A median is used so a few stray far points cannot move it.
+ * - `geometry`: one summary per coordinate family, never pooled. IfcCartesianPoint
+ *   (excluding the points that are an axis placement's Location, which are
+ *   placement offsets, not geometry) and IfcCartesianPointList2D/3D are sampled
+ *   separately, because a file can hold thousands of small local points beside
+ *   a few large meshes in map coordinates: pooled, the two populations meet in
+ *   a meaningless middle. A family is at map magnitude when its own median is.
+ *   Coordinates are as written, each in its own placement (not composed).
  *
  * All values are in project length units.
  */
@@ -89,10 +100,32 @@ export interface CoordinateMagnitudes {
   siteOrigin?: Vec3;
   /** Express id of the first IfcSite's IfcLocalPlacement. */
   sitePlacementId?: number;
-  pointMedian?: Vec3;
-  pointP90Horizontal?: number;
-  /** How many coordinate tuples the sample read. 0 when none. */
+  /**
+   * The IfcCartesianPoint that is the site placement's own Location
+   * (`IfcLocalPlacement.RelativePlacement` → `IfcAxis2Placement3D.Location`):
+   * what a fix that moves the site edits. `sharedBy` counts the axis
+   * placements whose Location is this same point.
+   */
+  siteLocationPoint?: { id: number; coordinates: Vec3; sharedBy: number };
+  /** Axes of the site placement's parent frame, when it has a `PlacementRelTo`. */
+  siteParentAxes?: { x: Vec3; y: Vec3; z: Vec3 };
+  geometry?: { cartesianPoints?: PointFamilyStats; pointLists?: PointFamilyStats };
+  /** How many coordinate tuples the sample read over all families. 0 when none. */
   sampledPoints: number;
+}
+
+/**
+ * A spatial structure element whose IfcLocalPlacement has no `PlacementRelTo`
+ * (the placement LoGeoRef 30 is about).
+ */
+export interface RootSpatialPlacementFact {
+  elementId: number;
+  /** IfcPascalCase type name. */
+  elementType: string;
+  /** The placement's Location, project units. */
+  location: Vec3;
+  /** True when its Axis or RefDirection is not the default. */
+  rotated: boolean;
 }
 
 /** Everything {@link diagnoseGeoreference} reads about a model. */
@@ -107,8 +140,11 @@ export interface GeorefFacts {
   entities?: GeoreferenceSourceFact;
   /** `ePSet_MapConversion` / `ePSet_ProjectedCRS`. */
   ePSet?: GeoreferenceSourceFact;
-  /** Every IfcMapConversion in the file when there is more than one (only the first is applied). */
-  additionalMapConversions?: OperationFact[];
+  /**
+   * Every IfcMapConversion in the file, each with its own TargetCRS, when
+   * there is more than one (only the first is applied).
+   */
+  additionalMapConversions?: GeoreferenceSourceFact[];
   siteLocation?: SiteLocationFact;
   /** True when an IfcSite or IfcBuilding carries a postal address (LoGeoRef 10). */
   hasPostalAddress?: boolean;
@@ -117,18 +153,31 @@ export interface GeorefFacts {
   /** The 3D model context's TrueNorth, as authored; undefined when unset. */
   trueNorth?: Vec2;
   coordinates?: CoordinateMagnitudes;
+  /** Spatial structure elements placed with no `PlacementRelTo` (at most 16), for LoGeoRef 30. */
+  rootSpatialPlacements?: RootSpatialPlacementFact[];
 }
 
 /**
- * Converts projected coordinates to WGS84 latitude/longitude. Lane A's
- * `@ifc-lite/geo` provides the real one; tests use a stub.
- *
- * `easting`/`northing` are in the CRS's own linear unit, easting first
- * whatever axis order the EPSG definition declares. Return undefined for a
- * CRS you cannot handle; never throw for one.
+ * Converts projected coordinates to WGS84. The checker calls it synchronously
+ * with METRES, easting first, whatever unit and axis order the EPSG
+ * definition declares; it returns `[longitude, latitude]` in degrees, the
+ * shape of `@ifc-lite/geo`'s `transformer.toWgs84`. Resolve the transformers
+ * before diagnosing ({@link crsRequirements} lists the codes) and hand in a
+ * lookup over them. Return undefined for a CRS you cannot handle; a throw is
+ * caught and the check reported as skipped.
  */
 export interface Reprojector {
-  toGeographic(epsgCode: number, easting: number, northing: number): { latitude: number; longitude: number } | undefined;
+  toWgs84(epsgCode: number, eastingNorthingMetres: readonly [number, number]): readonly number[] | undefined;
+}
+
+/** A CRS the diagnosis will reproject from: resolve it before calling {@link diagnoseGeoreference}. */
+export interface CrsRequirement {
+  /** The EPSG code the checker will pass to {@link Reprojector.toWgs84}. */
+  epsg: number;
+  /** The CRS Name as authored, for resolvers that key on it. */
+  name?: string;
+  /** The IfcWellKnownText definition, when the file carries one. */
+  wkt?: string;
 }
 
 /** What a CRS catalogue knows about one EPSG code. */
@@ -160,23 +209,49 @@ export type Severity = 'error' | 'warning' | 'info';
 export interface FieldChange {
   entity:
     | 'IfcMapConversion'
+    | 'IfcMapConversionScaled'
     | 'IfcRigidOperation'
     | 'IfcProjectedCRS'
     | 'IfcGeographicCRS'
     | 'IfcSite'
-    | 'IfcLocalPlacement'
+    | 'IfcCartesianPoint'
     | 'ePSet_MapConversion'
     | 'ePSet_ProjectedCRS';
-  /** Express id of the entity to change, when it exists. */
+  /** Express id of the instance to change (for an ePSet, the IfcPropertySet); absent when the fix creates it. */
   entityId?: number;
+  /** An EXPRESS attribute of `entity` (for an ePSet, the property name). */
   attribute: string;
   /**
    * The value to write; `null` when only the user can supply it (an EPSG code
    * for a model that has none, say). RefLatitude/RefLongitude are decimal
-   * degrees; Location is `[x, y, z]` in project units.
+   * degrees; IfcCartesianPoint Coordinates are `[x, y, z]` in project units.
    */
   value: number | string | readonly number[] | null;
 }
+
+/** The fields a georeferencing write takes, keyed by EXPRESS attribute name (`bim.georef` input shape). */
+export interface GeorefWriteInput {
+  ProjectedCRS?: Record<string, string | null>;
+  MapConversion?: Record<string, number | null>;
+}
+
+/**
+ * How a fix can be applied.
+ * - `georef.update`: one `bim.georef.update(input)` call on the model's
+ *   georeferencing (the write API addresses it, not entity ids).
+ * - `georef.set`: one grouped `bim.georef.set(input)`, for a model with no
+ *   map conversion and no CRS yet.
+ * - `manual`: the georeferencing write API cannot do it (IfcSite latitude and
+ *   longitude, IfcRigidOperation, placements, a non-winning record), or it
+ *   would refuse it; `reason` says which.
+ *
+ * `userSupplied` lists `ProjectedCRS.Name`-style paths whose value is `null`
+ * in `input`: only the user can supply them, and the write fails until they do.
+ */
+export type FixApplication =
+  | { via: 'georef.update'; input: GeorefWriteInput; userSupplied: string[] }
+  | { via: 'georef.set'; input: GeorefWriteInput; userSupplied: string[] }
+  | { via: 'manual'; reason: string };
 
 export interface SuggestedFix {
   /** One sentence: what applying this does. */
@@ -184,6 +259,8 @@ export interface SuggestedFix {
   changes: FieldChange[];
   /** What to check after applying it, when the fix cannot be certain. */
   caveat?: string;
+  /** How {@link changes} can be applied. */
+  apply: FixApplication;
 }
 
 export interface GeorefFinding {
@@ -197,12 +274,29 @@ export interface GeorefFinding {
   fixes: SuggestedFix[];
 }
 
-/** buildingSMART Levels of Georeferencing present in the file. */
+/** Levels of Georeferencing (Clemen & Görne 2019, IFCGeoRefChecker) present in the file. */
 export type GeorefLevel = 0 | 10 | 20 | 30 | 40 | 50;
 
 export interface SkippedCheck {
   code: GeorefFindingCode;
   reason: string;
+}
+
+/**
+ * Stricter or neighbouring notions the published levels do not capture, kept
+ * as their own facts so nothing is lost by following the definition.
+ */
+export interface GeorefIndicators {
+  /** The first IfcSite's composed placement origin is at least 100 km from the local origin. */
+  placementAtMapMagnitude: boolean;
+  /** At least one coordinate family's median is at least 100 km from the local origin. */
+  geometryAtMapMagnitude: boolean;
+  /** `ePSet_MapConversion` is present (the IFC2X3 convention; not LoGeoRef 50 by definition). */
+  ePSetConvention: boolean;
+  /** An IfcRigidOperation places the model (IFC4X3; not an IfcMapConversion, so not LoGeoRef 50 by definition). */
+  rigidOperation: boolean;
+  /** A CRS is declared (IfcProjectedCRS, IfcGeographicCRS or ePSet_ProjectedCRS). */
+  crsDeclared: boolean;
 }
 
 export interface GeorefReport {
@@ -215,6 +309,7 @@ export interface GeorefReport {
   findings: GeorefFinding[];
   /** Checks that could not run, and why (a capability was not injected, say). */
   skipped: SkippedCheck[];
+  indicators: GeorefIndicators;
 }
 
 export type GeorefFindingCode =
@@ -233,6 +328,7 @@ export type GeorefFindingCode =
   | 'OUTSIDE_CRS_AREA'
   | 'CRS_NOT_RESOLVABLE'
   | 'OPERATION_WITHOUT_CRS'
+  | 'CRS_WITHOUT_OPERATION'
   | 'MAP_UNIT_MISSING'
   | 'VERTICAL_DATUM_MISSING'
   | 'ROTATION_INVALID'

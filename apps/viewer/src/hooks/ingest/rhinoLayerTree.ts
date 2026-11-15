@@ -274,16 +274,20 @@ export function planRhinoContainerVisibility(
   const hiddenOnItsOwn = new Map<number, boolean>();
   result.entities.forEach((entity, index) => hiddenOnItsOwn.set(entityExpressId(index), entity.hiddenByObject));
 
-  const rows: ContainerVisibilityPlan['rows'] = new Map(tree.containers.map((container) => [container.expressId, {
-    parent: container.parent,
-    showsWithParent: container.parent === null || container.layer === null
-      || (!hiddenOnItsOwn.get(container.expressId) && layersOn(container.layer, layerOfRow.get(container.parent) ?? null)),
-  }]));
-  const members = new Map<number, { row: number; showsWithRow: boolean }>();
+  const rows = new Map<number, { children: { id: number; showsWithParent: boolean }[]; members: { id: number; showsWithRow: boolean }[] }>(
+    tree.containers.map((container) => [container.expressId, { children: [], members: [] }]));
+  for (const container of tree.containers) {
+    if (container.parent === null) continue;
+    rows.get(container.parent)?.children.push({
+      id: container.expressId,
+      showsWithParent: container.layer === null
+        || (!hiddenOnItsOwn.get(container.expressId) && layersOn(container.layer, layerOfRow.get(container.parent) ?? null)),
+    });
+  }
   tree.containerOfEntity.forEach((row, index) => {
     if (row === null) return;
     const entity = result.entities[index];
-    members.set(entityExpressId(index), { row, showsWithRow: !entity.hiddenByObject && layersOn(entity.layer, layerOfRow.get(row) ?? null) });
+    rows.get(row)?.members.push({ id: entityExpressId(index), showsWithRow: !entity.hiddenByObject && layersOn(entity.layer, layerOfRow.get(row) ?? null) });
   });
-  return { rows, members };
+  return { rows };
 }

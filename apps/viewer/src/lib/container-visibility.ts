@@ -12,10 +12,13 @@
  * lets it come back with its parent. Ids are model-local express ids.
  */
 export interface ContainerVisibilityPlan {
-  /** Every row by express id: its parent row, and whether showing that parent brings it back. */
-  readonly rows: ReadonlyMap<number, { readonly parent: number | null; readonly showsWithParent: boolean }>;
-  /** Every member by express id: its row, and whether showing that row brings it back. */
-  readonly members: ReadonlyMap<number, { readonly row: number; readonly showsWithRow: boolean }>;
+  /** Every row by express id: its child rows and members, and whether each comes back when this row is shown. */
+  readonly rows: ReadonlyMap<number, ContainerVisibilityRow>;
+}
+
+export interface ContainerVisibilityRow {
+  readonly children: readonly { readonly id: number; readonly showsWithParent: boolean }[];
+  readonly members: readonly { readonly id: number; readonly showsWithRow: boolean }[];
 }
 
 /**
@@ -25,22 +28,14 @@ export interface ContainerVisibilityPlan {
  */
 export function containerVisibilityTargets(plan: ContainerVisibilityPlan, row: number, action: 'show' | 'hide'): number[] {
   if (!plan.rows.has(row)) return [];
-  const childRows = new Map<number, number[]>();
-  for (const [id, { parent }] of plan.rows) {
-    if (parent !== null) (childRows.get(parent) ?? childRows.set(parent, []).get(parent)!).push(id);
-  }
-  const included = new Set<number>();
+  const targets: number[] = [];
   const pending = [row];
   while (pending.length > 0) {
     const id = pending.pop()!;
-    included.add(id);
-    for (const child of childRows.get(id) ?? []) {
-      if (action === 'hide' || plan.rows.get(child)!.showsWithParent) pending.push(child);
-    }
-  }
-  const targets = [...included];
-  for (const [id, member] of plan.members) {
-    if (included.has(member.row) && (action === 'hide' || member.showsWithRow)) targets.push(id);
+    targets.push(id);
+    const { children, members } = plan.rows.get(id)!;
+    for (const child of children) if (action === 'hide' || child.showsWithParent) pending.push(child.id);
+    for (const member of members) if (action === 'hide' || member.showsWithRow) targets.push(member.id);
   }
   return targets;
 }

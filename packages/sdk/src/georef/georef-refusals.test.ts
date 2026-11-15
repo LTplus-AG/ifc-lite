@@ -207,6 +207,18 @@ describe('bim.georef refusals', () => {
     } finally { model.close(); }
   });
 
+  it('fails an export the exporter could only write without part of the georeferencing', async () => {
+    // IFC4X3 -> IFC4: the target does not declare IfcMapConversionScaled, so
+    // the exporter writes the conversion without its factors and warns. The
+    // SDK must not hand that file back as if it carried the write.
+    const model = await open('IFC4X3_ADD2', WITH_CONTEXT);
+    try {
+      model.bim.georef.set({ ...VALID, MapConversion: { ...VALID.MapConversion, FactorX: 0.9, FactorY: 0.9, FactorZ: 1 } });
+      expect(() => model.bim.export.ifc(undefined, { schema: 'IFC4' })).toThrow(/georeferencing.*IfcMapConversionScaled/s);
+      expect(String(model.bim.export.ifc())).toMatch(/=IFCMAPCONVERSIONSCALED\(/);
+    } finally { model.close(); }
+  });
+
   it('is not available on a backend without store access', async () => {
     const bim = new BimContext({ backend: {} as never });
     expect(() => bim.georef.get()).toThrow(/not available on this backend/);

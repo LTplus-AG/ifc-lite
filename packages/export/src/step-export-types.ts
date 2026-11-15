@@ -190,6 +190,13 @@ export interface StepExportResult {
      * Same `string[]` shape as `MergeExportResult.stats.warnings`.
      */
     warnings: string[];
+    /**
+     * The members of {@link warnings} the `georefMutations` phase raised: a
+     * requested georeferencing edit it refused or wrote only in part. A
+     * caller that requested the edit (the SDK's `bim.georef`) fails on these
+     * rather than handing back a file without what it asked for.
+     */
+    georeferencingWarnings?: string[];
   };
 }
 
@@ -372,6 +379,8 @@ export interface ExportPass {
   readonly detachedRelatedObjects: Map<number, Set<number>>; // shared rel → elements copied on write off it (#5794)
   readonly newGeorefLines: string[];
   readonly warnings: string[];
+  /** The `warnings` the georeferencing phase added (`stats.georeferencingWarnings`). */
+  readonly georeferencingWarnings: string[];
   /** The slots an IFC2X3 downgrade must settle: `OwnerHistory` by reuse
    *  (#4686), every other required slot from the generated table (#4714). The
    *  owner history is settled by `export()` once `willBeEmitted` can answer,

@@ -172,3 +172,27 @@ describe('bim.georef IFC2X3 convention property sets', () => {
     } finally { model.close(); }
   });
 });
+
+describe('bim.georef replace across several representation contexts', () => {
+  it('says that the replacement is written for one context only', async () => {
+    const model = await open(`${BASE.replace("(#5),#91", "(#5,#7),#91")}
+#7=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-5,#3,$);
+#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#90);
+#21=IFCMAPCONVERSION(#5,#20,1.,2.,3.,$,$,$);
+#22=IFCMAPCONVERSION(#7,#20,1.,2.,3.,$,$,$);`);
+    try {
+      const result = model.bim.georef.set({
+        ProjectedCRS: { Name: 'EPSG:2056', MapUnit: 'METRE' },
+        MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 },
+        replace: true,
+      });
+      expect(result.removed).toEqual(expect.arrayContaining(['IfcMapConversion #21', 'IfcMapConversion #22']));
+      const note = result.notes.find((n) => n.includes('representation contexts'));
+      expect(note).toMatch(/#5 'Model'.*#7 'Plan'/);
+      expect(note).toMatch(/#7 'Plan'[^.]*no longer georeferenced/);
+      const text = String(model.bim.export.ifc());
+      expect(text.match(/=IFCMAPCONVERSION\(/g)).toHaveLength(1);
+      expect(text).toMatch(/=IFCMAPCONVERSION\(#5,/);
+    } finally { model.close(); }
+  });
+});

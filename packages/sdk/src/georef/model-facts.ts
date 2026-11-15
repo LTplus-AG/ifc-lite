@@ -39,8 +39,17 @@ export interface GeorefModelFacts {
    */
   supportsScaled: boolean;
   contexts: number[];
+  /** ContextType of each context in `contexts` ('' when unset), for messages. */
+  contextTypes: Map<number, string>;
+  /**
+   * The context a new IfcMapConversion is written for: the exporter's own
+   * choice (`findPreferredGeometricRepresentationContextId`): the 3D 'Model'
+   * context, else the first 3D one, else the first.
+   */
+  preferredContext: number | null;
   sites: number[];
-  mapConversions: Array<{ id: number; scaled: boolean }>;
+  /** `sourceCrs`: the conversion's SourceCRS reference (a representation context). */
+  mapConversions: Array<{ id: number; scaled: boolean; sourceCrs: number | null }>;
   rigidOperations: number[];
   projectedCRS: number[];
   geographicCRS: number[];
@@ -79,6 +88,23 @@ export function collectGeorefModelFacts(store: IfcDataStore, overlay: GeorefOver
   };
 
   const sites = live('IFCSITE');
+  const contexts = live('IFCGEOMETRICREPRESENTATIONCONTEXT');
+  const contextTypes = new Map<number, string>();
+  let model3d: number | null = null;
+  let first3d: number | null = null;
+  for (const id of contexts) {
+    const attrs = attributes(id);
+    const type = typeof attrs[1] === 'string' ? attrs[1] : '';
+    contextTypes.set(id, type);
+    if (attrs[2] === 3) {
+      first3d ??= id;
+      if (model3d === null && type.trim().toUpperCase() === 'MODEL') model3d = id;
+    }
+  }
+  const sourceCrsOf = (id: number): number | null => {
+    const ref = attributes(id)[0];
+    return typeof ref === 'number' ? ref : null;
+  };
   const header = store.sourceHeader ?? (store.source?.length ? parseSourceHeader(store.source) : undefined);
   const fileSchema = header?.schemaIdentifiers?.[0] || schema;
   const facts: GeorefModelFacts = {
@@ -86,11 +112,13 @@ export function collectGeorefModelFacts(store: IfcDataStore, overlay: GeorefOver
     fileSchema,
     storage: storageForSchema(schema),
     supportsScaled: schema === 'IFC4X3' && declaresMapConversionScaled(fileSchema),
-    contexts: live('IFCGEOMETRICREPRESENTATIONCONTEXT'),
+    contexts,
+    contextTypes,
+    preferredContext: model3d ?? first3d ?? contexts[0] ?? null,
     sites,
     mapConversions: [
-      ...live('IFCMAPCONVERSION').map((id) => ({ id, scaled: false })),
-      ...live('IFCMAPCONVERSIONSCALED').map((id) => ({ id, scaled: true })),
+      ...live('IFCMAPCONVERSION').map((id) => ({ id, scaled: false, sourceCrs: sourceCrsOf(id) })),
+      ...live('IFCMAPCONVERSIONSCALED').map((id) => ({ id, scaled: true, sourceCrs: sourceCrsOf(id) })),
     ],
     rigidOperations: live('IFCRIGIDOPERATION'),
     projectedCRS: live('IFCPROJECTEDCRS'),

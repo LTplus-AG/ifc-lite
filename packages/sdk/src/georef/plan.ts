@@ -146,6 +146,22 @@ function existingEPSets(facts: GeorefModelFacts): string[] {
     .map((p) => `${p!.name} on #${p!.hostId}`);
 }
 
+/**
+ * A replace removes every map conversion but writes one, against the
+ * exporter's preferred context. When the old ones covered several contexts
+ * (Model and Plan, say), the others are left without one: say which.
+ */
+function contextNotes(facts: GeorefModelFacts): string[] {
+  const covered = [...new Set(facts.mapConversions.map((m) => m.sourceCrs).filter((id): id is number => id !== null))];
+  if (covered.length < 2) return [];
+  const label = (id: number) => `#${id} '${facts.contextTypes.get(id) ?? ''}'`;
+  const kept = facts.preferredContext;
+  const lost = covered.filter((id) => id !== kept);
+  return [
+    `The replaced map conversions covered ${covered.length} representation contexts (${covered.map(label).join(', ')}). The new IfcMapConversion is written for ${kept === null ? 'one context' : label(kept)} only, so ${lost.map(label).join(', ')} ${lost.length === 1 ? 'is' : 'are'} no longer georeferenced; ifc-lite does not write one conversion per context yet.`,
+  ];
+}
+
 export function siteNotes(facts: GeorefModelFacts): string[] {
   return facts.sitesWithLatLong.length === 0 ? [] : [
     `IfcSite ${idList(facts.sitesWithLatLong)} also carries RefLatitude/RefLongitude. They were left as they are, and ifc-lite does not check them against the map position (no reprojection here).`,
@@ -305,6 +321,7 @@ export function planSet(input: GeoreferencingSetInput, ctx: PlanContext): Georef
   }
   const { crs, mc, mapUnit, notes } = resolveFullInput(input, ctx);
   if (existing.length > 0) notes.push(`Replaced: ${existing.join(', ')}.`);
+  if (storage === 'entities') notes.push(...contextNotes(ctx.facts));
   notes.push(...siteNotes(ctx.facts));
   const base = {
     action: 'set' as const, storage, mapUnit, notes,

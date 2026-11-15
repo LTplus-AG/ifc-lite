@@ -40,6 +40,7 @@
     "test:diff-decode-leaks": "bash scripts/test-diff-decode-leaks.sh",
     "test:snap-edges": "node scripts/test-snap-edges.mjs",
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
+    "check:store-import-cycles": "node scripts/check-store-import-cycles.mjs",
     "check:ci-path-coverage": "node scripts/check-ci-path-coverage.mjs",
     "check:ci-aggregate-coverage": "node scripts/check-ci-aggregate-coverage.mjs",
     "check:workflow-report-paths": "node scripts/check-workflow-report-paths.mjs",

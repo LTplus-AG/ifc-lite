@@ -166,7 +166,7 @@ export function createCommandTouchPress(canvas: HTMLCanvasElement, getTool: () =
         return owned;
       }
       const { ctx } = p;
-      if (tap && (p.held || isGeometryRestoreHeld(useViewerStore.getState()))) return true;
+      if (tap && (p.held || isGeometryRestoreHeld(useViewerStore.getState()))) { lastTap = null; return true; }
       // A drag the command took before the hold and released during it: its 'up' is held back, so end the drag here.
       if (p.dragging && isGeometryRestoreHeld(useViewerStore.getState())) { commandPointerCancel(); clearMarker(); return true; }
       if (p.dragging) {

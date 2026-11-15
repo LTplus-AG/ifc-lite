@@ -82,6 +82,24 @@ async function lift(canvas: HTMLCanvasElement) {
 }
 
 describe('a double-tap is a double-click (#9092)', () => {
+  it('#10218 an ignored restore tap breaks the previous tap pair', async (t) => {
+    clock(t);
+    useViewerStore.getState().startCommand('wall.place');
+    const { canvas } = commandRig();
+    await tap(canvas, ...at(10, 10));
+    const models = new Map(useViewerStore.getState().models);
+    const [id, model] = [...models][0]!;
+    models.set(id, { ...model, geometryRestorePending: true });
+    act(() => useViewerStore.setState({ models }));
+    await tap(canvas, ...at(10.05, 10)); // within tap slop, ignored during the restore hold
+    const released = new Map(useViewerStore.getState().models);
+    const [releasedId, releasedModel] = [...released][0]!;
+    released.set(releasedId, { ...releasedModel, geometryRestorePending: false });
+    act(() => useViewerStore.setState({ models: released }));
+    await tap(canvas, ...at(10.05, 10));
+    assert.equal(wallGesture().chain.length, 2, 'the post-hold tap must act as a single click');
+  });
+
   it('#10218 ignores a command tap during restore even with an offset canvas', async () => {
     useViewerStore.getState().startCommand('wall.place');
     const { canvas } = commandRig();

@@ -51,6 +51,7 @@ for (const kind of ['beam', 'member'] as const) {
     setTopConstraintInStore(s.store, s.editor, id, { kind: 'slab', slabId: slab });
     if (reopen) s = session(await parse(s.text()));
     const before = resolvePlacementChain(s.store, s.view, s.editor, id)!.coordinates;
+    const originalTop = s.worldZ(id) + .15;
     const result = translateProduct(s.store, s.view, s.editor, id, [1, 0, 1]);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.reason);
@@ -59,9 +60,9 @@ for (const kind of ['beam', 'member'] as const) {
     expect(result.newCoordinates).toEqual(resolvePlacementChain(s.store, s.view, s.editor, id)!.coordinates);
     expect(result.newCoordinates[0]).toBeCloseTo(before[0] + 1, 8);
     expect(result.newCoordinates[2]).toBeCloseTo(before[2], 8);
-    expect(s.worldZ(id) + .15).toBeCloseTo(3.7, 8);
+    expect(s.worldZ(id) + .15).toBeCloseTo(originalTop, 8);
     s = session(await parse(s.text()));
     expect(resolvePlacementChain(s.store, s.view, s.editor, id)!.coordinates).toEqual(result.newCoordinates);
-    expect(s.worldZ(id) + .15).toBeCloseTo(3.7, 8);
+    expect(s.worldZ(id) + .15).toBeCloseTo(originalTop, 8);
   });
 }

@@ -61,6 +61,7 @@ for (const together of [false, true]) {
     const offset: [number, number, number] = together ? [20, 0, 0] : [0, 1, 0];
     const results = copyBatchInStore(s.store, s.editor, together ? [wall, roof] : [wall], [{ offset }], { shape: 'own' });
     const copy = results[0].copyId, targetRoof = together ? results[1].copyId : roof;
+    expect(readTopAttachment(readStoreyInventory(s.store, s.view), copy)?.targetElementId, JSON.stringify({ notices: results[0].unattachedTops, source: s.view.getPropertyValue(wall, 'IfcLite_StoreyAttachment', 'TopConstraint'), copied: s.view.getPropertyValue(copy, 'IfcLite_StoreyAttachment', 'TopConstraint'), clipped: s.view.getPropertyValue(copy, 'IfcLite_RoofAttachment', 'Clipped') })).toBe(targetRoof);
     const text = new TextDecoder().decode(new StepExporter(s.store, s.view).export({ applyMutations: true }).content);
     s = session(await parse(text));
     expect(readTopAttachment(readStoreyInventory(s.store, s.view), copy)?.targetElementId).toBe(targetRoof);

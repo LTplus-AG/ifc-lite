@@ -66,7 +66,7 @@ fn mesh_volume(mesh: &Mesh) -> f64 {
 /// exact kernel (`IFC_LITE_PRISM_CUT=0`) tessellate the same cut with the same
 /// density class but different triangle counts, so the count pins below select
 /// per path — the feature-off build must still reproduce the old exact-kernel
-/// counts byte-for-byte. The bbox + oracle volume are the path-independent
+/// counts byte-for-byte. The bbox + reference volume are the path-independent
 /// load-bearing invariants and are asserted unconditionally.
 fn prism_cut_enabled() -> bool {
     std::env::var("IFC_LITE_PRISM_CUT").as_deref() != Ok("0")
@@ -127,7 +127,7 @@ fn fixture_present() -> bool {
 ///
 /// The model's site is 12 km from the origin, so the router carries the RTC
 /// offset the loader would pick ([`ModelFrame`]). Without it positions are f32
-/// at 12 km, a millimetre apart, and the volumes read here were a litre off.
+/// at 12 km, a millimetre apart, and the volumes read here were up to a litre off.
 fn process(host_id: u32) -> Option<Mesh> {
     let content = ifc_lite_testkit::fixture_text(FIXTURE)?;
     let frame = ModelFrame::new(&content);
@@ -176,7 +176,7 @@ fn wall_552611_2_openings_matches_ios() {
     assert!((ext.2 - 10.506).abs() < tol, "ext.2 = {}", ext.2);
     // VOLUME is the cut-sensitive invariant: 16.941742 by IfcOpenShell 0.8.2 and
     // by Manifold over IfcOpenShell's uncut host and opening solids, both in f64
-    // (uncut host 17.658, openings 0.353 + 0.363). The pre-fix kernel lost the
+    // (rounded: uncut host 17.658, openings 0.353 + 0.363). The pre-fix kernel lost the
     // opening corner (5.142, 3.800) in `recover_subsegment` (its whole fan sat
     // inside a constraint channel) and over-cut this wall to 15.872.
     let vol = mesh_volume(&mesh);
@@ -186,7 +186,7 @@ fn wall_552611_2_openings_matches_ios() {
     // deterministic. Re-pinned 180 -> 188 when `consolidate_coplanar` switched
     // its plane buckets to a BTreeMap (target-independent emit order for the
     // mesh-determinism manifest): the refinement's first-seen canonical ids
-    // follow mesh order, so its bisection cascade re-baselined; bbox + oracle
+    // follow mesh order, so its bisection cascade re-baselined; bbox + reference
     // volume above are the load-bearing invariants and are unchanged.
     // Re-pinned 188 -> 204 for the analytic-prism void path (perf/beat-webifc):
     // the conforming per-triangle CDT + the same consolidate_coplanar +
@@ -194,7 +194,7 @@ fn wall_552611_2_openings_matches_ios() {
     // from the exact arrangement but with the same density class. The count is
     // platform-stable for the same reason the exact pin was: FMA-free f64,
     // deterministic CDT / i_overlay, BTreeMap bucket order. Load-bearing
-    // invariants remain the bbox + oracle volume above. Feature-off
+    // invariants remain the bbox + reference volume above. Feature-off
     // (IFC_LITE_PRISM_CUT=0) routes back through the exact kernel: 188.
     // Re-pinned 204 -> 158 when the prism path's post-cut sliver refinement
     // became REGION-SCOPED to the committed cutter boxes: it no longer bisects
@@ -223,7 +223,7 @@ fn wall_552761_2_openings_matches_ios() {
     assert!((vol - 16.3969).abs() < 1e-3, "cut volume = {vol}, expected 16.3969");
     // Kernel re-baseline (was IOS 60): ~3x from `refine_high_aspect_slivers`.
     // Re-pinned 188 -> 196 for the analytic-prism void path (see wall_552611's
-    // pin note); bbox + oracle volume are the load-bearing invariants.
+    // pin note); bbox + reference volume are the load-bearing invariants.
     // Feature-off (IFC_LITE_PRISM_CUT=0) routes back through the exact kernel: 188.
     // Re-pinned 196 -> 168 for the region-scoped sliver refinement (see
     // wall_552611's pin note); feature-off unchanged at 188.
@@ -241,7 +241,7 @@ fn wall_555082_1_opening_matches_ios() {
     assert!((vol - 11.0652).abs() < 1e-3, "cut volume = {vol}, expected 11.0652");
     // Kernel re-baseline (IOS: v=20 t=36): ~3x from `refine_high_aspect_slivers`.
     // Re-pinned 114 -> 138 with the consolidate_coplanar BTreeMap bucket order
-    // (see wall_552611 above); oracle volume is the load-bearing invariant.
+    // (see wall_552611 above); reference volume is the load-bearing invariant.
     // Re-pinned 138 -> 130 for the analytic-prism void path (see wall_552611's
     // pin note) — the analytic cut consolidates BELOW the exact kernel here.
     // Feature-off (IFC_LITE_PRISM_CUT=0) routes back through the exact kernel: 138.

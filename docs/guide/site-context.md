@@ -70,6 +70,15 @@ ifc-lite site-context --egrid CH294676423526 --radius 150 --out context.glb
 
 Network access is on by default, at the geodata client's rate limit, and
 every response is cached, so a second run of the same site sends nothing.
+Every request goes through a swisstopo host allowlist (`api3`, `data`, `wms`,
+`wmts` and `3d.geo.admin.ch`, https only): no option names a URL, a URL taken
+from a response (a STAC page link, a tileset's content URI) on any other host
+is refused before it is sent, and redirects are not followed.
+
+The map conversion's unit comes from `IfcProjectedCRS.MapUnit`, else the
+project length unit. When the map unit reads as metres the summary warns that
+metres are assumed: the reader also reports an unreadable `MapUnit` as
+metres, so a declared metre and an unreadable unit look the same.
 
 A run of `--centre 2600423,1199521 --radius 100` against the live services
 (Bundesplatz, Bern) sent 19 requests, downloaded 1.3 MB and took about 4 s.

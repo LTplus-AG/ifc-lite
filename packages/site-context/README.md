@@ -62,6 +62,14 @@ triangles per part), the constants `BUILDING_SET` and
 `SUBJECT_MIN_OVERLAP`, and the error classes
 `SiteContextCoverageError` and `SiteContextFormatError`.
 
+### `swisstopoOnlyFetch(inner?)`, `isAllowedSwisstopoUrl(url)`, `SWISSTOPO_HOSTS`
+
+The host allowlist the CLI and the viewer fetch through. `swisstopoOnlyFetch`
+wraps a `fetch` so that any URL off `SWISSTOPO_HOSTS` (https, default port)
+throws `SiteContextHostRefused` before it is sent, redirects are refused
+(`redirect: 'error'`), and no credentials or referrer go out. Its result fits
+both `@ifc-lite/geodata-ch`'s and `@ifc-lite/tiles3d`'s `fetch` option.
+
 ### The document
 
 ```text

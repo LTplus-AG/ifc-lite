@@ -12,12 +12,13 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createSwissGeodata } from '@ifc-lite/geodata-ch';
+import { createSwissGeodata, type FetchLike } from '@ifc-lite/geodata-ch';
 import {
   buildSiteContext,
   encodeSiteContextGlb,
   SiteContextCoverageError,
   summarizeSiteContext,
+  swisstopoOnlyFetch,
   type BuildingsReader,
   type MapPoint,
   type SiteContextGeodata,
@@ -119,6 +120,13 @@ export interface SiteContextDeps {
   geodata?: SiteContextGeodata;
   /** Injected for tests; default: the swisstopo 3D Tiles reader with the disk cache. */
   buildingsReader?: BuildingsReader;
+  /**
+   * The network fetch underneath, injected for tests; default `globalThis.fetch`. It is
+   * always wrapped in the swisstopo host allowlist (no other host, no redirects).
+   */
+  fetch?: FetchLike;
+  /** The geodata client's retry backoff, injected for tests; default a real timer. */
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 export async function siteContextCommand(args: string[], deps: SiteContextDeps = {}): Promise<void> {
@@ -153,10 +161,14 @@ async function run(args: string[], deps: SiteContextDeps): Promise<void> {
   const offline = p.booleans.has('--offline');
   const cacheDir = p.values.get('--cache-dir') ?? defaultCacheDir();
   const cache = diskCache(cacheDir);
+  // Every request goes through the swisstopo allowlist: no CLI argument names a URL, and a
+  // URL from a response (a STAC asset, a tileset's content URI, a redirect) cannot leave it.
+  const network = swisstopoOnlyFetch(deps.fetch);
   const geodata = deps.geodata ?? createSwissGeodata({
     cache,
     requestsPerSecond: number('--rate', p.values.get('--rate'), 5),
-    ...(offline ? { fetch: offlineFetch, maxRetries: 0 } : {}),
+    ...(offline ? { fetch: offlineFetch, maxRetries: 0 } : { fetch: network }),
+    ...(deps.sleep ? { sleep: deps.sleep } : {}),
   });
   const requestsBefore = geodata.requestCount ?? 0;
   const started = Date.now();
@@ -202,7 +214,7 @@ async function run(args: string[], deps: SiteContextDeps): Promise<void> {
     buildings: {
       reader: deps.buildingsReader,
       cache: tilesCache,
-      fetch: offline ? offlineTilesFetch : undefined,
+      fetch: offline ? offlineTilesFetch : network,
       maxRequests: tileRequests,
     },
     onProgress: p.booleans.has('--json') ? undefined : (e) => process.stderr.write(`  ${e.message}\n`),

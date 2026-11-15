@@ -11102,12 +11102,14 @@
     "JsonValue: type",
     "MapPoint: interface",
     "SUBJECT_MIN_OVERLAP: const",
+    "SWISSTOPO_HOSTS: const",
     "SiteContextBuildingsSummary: interface",
     "SiteContextCoverageError: class",
     "SiteContextDocument: interface",
     "SiteContextFeature: interface",
     "SiteContextFormatError: class",
     "SiteContextGeodata: type",
+    "SiteContextHostRefused: class",
     "SiteContextIssue: interface",
     "SiteContextIssueSeverity: type",
     "SiteContextLayer: interface",
@@ -11121,7 +11123,9 @@
     "buildSiteContext: function",
     "decodeSiteContextGlb: function",
     "encodeSiteContextGlb: function",
-    "summarizeSiteContext: function"
+    "isAllowedSwisstopoUrl: function",
+    "summarizeSiteContext: function",
+    "swisstopoOnlyFetch: function"
   ],
   "@ifc-lite/solar": [
     "AnalemmaOptions: interface",

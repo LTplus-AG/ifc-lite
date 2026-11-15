@@ -21,6 +21,7 @@ import { decodeSiteContextGlb, type BuildingsReader, type SiteContextGeodata } f
 import { geodeticToEcef, type SwissBuildingFeature } from '@ifc-lite/tiles3d';
 import { siteContextCommand } from './site-context.js';
 import { diskCache } from './site-context-cache.js';
+import { METRE_MAP_UNIT_WARNING } from './site-context-model.js';
 
 const ROTATED_MM_SAMPLE = new URL('../../../../apps/viewer/public/samples/building-architecture.ifc', import.meta.url);
 
@@ -180,6 +181,8 @@ beforeAll(async () => {
   await writeFile(p('lv95-name.ifc'), model(`'CH1903+ / LV95',$,'CH1903+','LN02',$,$`, '2600000.,1200000.,500.,$,$,$'));
   await writeFile(p('lv03.ifc'), model(`'EPSG:21781',$,'CH1903','LN02',$,$`, '600000.,200000.,500.,$,$,$'));
   await writeFile(p('lhn95.ifc'), model(`'EPSG:2056',$,'CH1903+','LHN95',$,$`, '2600000.,1200000.,500.,$,$,$'));
+  // MapUnit points at a record that is not a unit: the reader falls back to METRE.
+  await writeFile(p('lv95-badunit.ifc'), model(`'EPSG:2056',$,'CH1903+','LN02',$,$`, '2600000.,1200000.,500.,$,$,$').replace("'LN02',$,$,#31);", "'LN02',$,$,#22);"));
   await writeFile(p('nogeoref.ifc'), model(`'EPSG:2056',$,$,$,$,$`, '0.,0.,0.,$,$,$').replace(/#5[01]=.*\n/g, ''));
   // The committed sample: millimetres (its MapUnit is the project's MILLI METRE unit #15),
   // rotated 60°, in UTM 60S. Re-georeference it to EPSG:2056 at the same centre as
@@ -227,10 +230,20 @@ describe('ifc-lite site-context from a model', () => {
     expect(Buffer.compare(await readFile(p('rotated.glb')), await readFile(p('plain.glb')))).toBe(0);
   });
 
+  it('warns that an unreadable MapUnit is assumed to be metres, and not for a resolved millimetre unit', async () => {
+    const bad = await siteContext([p('lv95-badunit.ifc'), '--radius', '20', '--layers', 'terrain', '--out', p('badunit.glb')]);
+    expect(bad.model).toMatchObject({ mapUnitToMetres: 1, mapUnitSource: 'MapUnit' });
+    expect(bad.warnings).toContain(METRE_MAP_UNIT_WARNING);
+    const mm = await siteContext([p('rotated-mm.ifc'), '--radius', '20', '--layers', 'terrain', '--out', p('mm-unit.glb')]);
+    expect(mm.model).toMatchObject({ mapUnitToMetres: 0.001 });
+    expect(mm.warnings).not.toContain(METRE_MAP_UNIT_WARNING);
+  });
+
   it('accepts a CRS name that resolves to EPSG:2056 and says which form matched', async () => {
     const r = await siteContext([p('lv95-name.ifc'), '--radius', '20', '--layers', 'terrain', '--out', p('name.glb')]);
     expect(r.model?.crs).toMatchObject({ name: 'CH1903+ / LV95', matched: 'name', epsg: 2056 });
-    expect(r.warnings).toEqual([]);
+    // Vertical datum stated, MapUnit a declared METRE: only the metre-assumption warning remains.
+    expect(r.warnings).toEqual([METRE_MAP_UNIT_WARNING]);
   });
 
   it('reprojects only the centre of an LV03 model and says so', async () => {
@@ -332,5 +345,62 @@ describe('response cache', () => {
     const hit = await cache.get('https://x.test/a|bytes=0-3');
     expect(hit?.status).toBe(206);
     expect([...new Uint8Array(hit!.body)]).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe('ifc-lite site-context only contacts swisstopo', () => {
+  /** A network fetch that records what reached it and answers with `respond`. */
+  function recordingFetch(respond: (url: string) => Response) {
+    const sent: Array<{ url: string; redirect: RequestInit['redirect'] }> = [];
+    const fetch = async (url: string, init?: RequestInit) => { sent.push({ url, redirect: init?.redirect }); return respond(url); };
+    return { sent, fetch };
+  }
+  const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  const onSwisstopo = (url: string) => /^https:\/\/(api3|data|wms|wmts|3d)\.geo\.admin\.ch\//.test(url);
+
+  it('has no argument that names a URL: a tileset or endpoint override is an unknown option', async () => {
+    for (const flag of ['--tileset', '--url', '--endpoint', '--base-url']) {
+      expect(await refusal(['--centre', '2600000,1200000', flag, 'https://evil.test/tileset.json', '--out', p('x.glb')])).toMatch(new RegExp(`unknown option ${flag}`));
+    }
+  });
+
+  it('does not follow a STAC page link to another host, and asks fetch not to follow redirects', async () => {
+    const net = recordingFetch((url) => url.includes('/api/stac/v1/')
+      ? json({ features: [], links: [{ rel: 'next', href: 'https://evil.test/stac/page2' }] })
+      : new Response('{}', { status: 404 }));
+    capture();
+    // The real geodata client, not the stub: its URLs come from its fixed endpoints and from responses.
+    await siteContextCommand(['--centre', `${CENTRE.x},${CENTRE.y}`, '--radius', '20', '--layers', 'terrain', '--rate', '1000',
+      '--json', '--cache-dir', p('net-stac-cache'), '--out', p('net-stac.glb')], { fetch: net.fetch, sleep: async () => {} }).catch((err) => {
+      if (!(err instanceof Exit)) throw err;
+    });
+    // The first STAC page was asked for; the off-host page it linked to never was.
+    expect(net.sent.some((s) => s.url.startsWith('https://data.geo.admin.ch/api/stac/v1/'))).toBe(true);
+    expect(net.sent.filter((s) => !onSwisstopo(s.url))).toEqual([]);
+    expect(net.sent.every((s) => s.redirect === 'error')).toBe(true);
+  });
+
+  it('does not fetch a tileset content URI on another host', async () => {
+    const lv95 = (await resolveCrs({ epsg: 2056 }))!;
+    const [lon, lat] = lv95.toWgs84([CENTRE.x, CENTRE.y])!.map((d) => d * Math.PI / 180);
+    const d = 0.0005;
+    const net = recordingFetch((url) => url.endsWith('/tileset.json')
+      ? json({
+        asset: { version: '1.0' }, geometricError: 100,
+        root: { boundingVolume: { region: [lon - d, lat - d, lon + d, lat + d, 0, 1000] }, geometricError: 0, refine: 'ADD', content: { uri: 'https://evil.test/stolen.b3dm' } },
+      })
+      : new Response('', { status: 404 }));
+    const r = await (async () => {
+      capture();
+      await siteContextCommand(['--centre', `${CENTRE.x},${CENTRE.y}`, '--radius', '20', '--layers', 'buildings',
+        '--json', '--cache-dir', p('net-tiles-cache'), '--out', p('net-tiles.glb')], { geodata: stub(), fetch: net.fetch });
+      return JSON.parse(stdout) as Report;
+    })();
+    // Only the root tileset on 3d.geo.admin.ch was sent; its off-host content URI never was.
+    expect(net.sent).toHaveLength(1);
+    expect(net.sent[0].url).toMatch(/^https:\/\/3d\.geo\.admin\.ch\/.*tileset\.json$/);
+    expect(net.sent.every((s) => onSwisstopo(s.url) && s.redirect === 'error')).toBe(true);
+    expect(r.layers[0].complete).toBe(false);
+    expect(JSON.stringify(r.buildings?.issues ?? r.layers[0].issues)).toMatch(/evil\.test/);
   });
 });

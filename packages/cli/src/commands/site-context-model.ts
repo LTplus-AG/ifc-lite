@@ -55,6 +55,20 @@ function mapUnitScale(info: GeoreferenceInfo, store: IfcDataStore): { scale: num
   return { scale: store.lengthUnitScale ?? 1, source: 'project length unit' };
 }
 
+/**
+ * `@ifc-lite/parser` reads an IfcProjectedCRS.MapUnit it cannot resolve as
+ * METRE with scale 1, the same answer as a declared metre, so the two cannot
+ * be told apart here. Whenever the map unit reads as metres the run says the
+ * unit is assumed, rather than silently trusting a possibly unreadable unit.
+ */
+export const METRE_MAP_UNIT_WARNING =
+  'IfcProjectedCRS.MapUnit reads as METRE; an unreadable MapUnit also reads as METRE, so the map conversion is assumed to be in metres: check the model\'s map unit';
+
+function metreFallbackPossible(info: GeoreferenceInfo): boolean {
+  const crs = info.projectedCRS;
+  return crs?.mapUnit === 'METRE' && crs.mapUnitScale === 1;
+}
+
 async function lv95(): Promise<CrsTransformer> {
   const t = await resolveCrs({ epsg: 2056 });
   if (!t) throw new Error('@ifc-lite/geo could not resolve EPSG:2056');
@@ -85,6 +99,7 @@ export async function siteCentreFromModel(store: IfcDataStore): Promise<ModelCen
   if (!vertical) warnings.push('the model states no vertical datum; the site context is in LN02 (EPSG:5728) heights, check the model uses the same');
 
   const unit = mapUnitScale(info, store);
+  if (metreFallbackPossible(info)) warnings.push(METRE_MAP_UNIT_WARNING);
   if (unit.source === 'project length unit') warnings.push(`IfcProjectedCRS has no MapUnit; the project length unit (${unit.scale} m) was applied to Eastings/Northings`);
   const e = mc.eastings * unit.scale;
   const n = mc.northings * unit.scale;

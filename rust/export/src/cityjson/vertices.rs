@@ -67,6 +67,22 @@ impl VertexPool {
         remap
     }
 
+    /// Twice the signed planimetric area of a ring of pool indices on the
+    /// grid, in grid cells² (exact). Zero means the ring as written is
+    /// collinear, however much area its unsnapped positions enclosed.
+    pub(super) fn grid_area2(&self, ring: &[u32]) -> i128 {
+        let Some(&first) = ring.first() else { return 0 };
+        let o = self.grid[first as usize];
+        let xy = |i: u32| {
+            let c = self.grid[i as usize];
+            (i128::from(c[0] - o[0]), i128::from(c[1] - o[1]))
+        };
+        (0..ring.len()).map(|k| {
+            let ((ax, ay), (bx, by)) = (xy(ring[k]), xy(ring[(k + 1) % ring.len()]));
+            ax * by - bx * ay
+        }).sum()
+    }
+
     pub(super) fn len(&self) -> usize {
         self.grid.len()
     }

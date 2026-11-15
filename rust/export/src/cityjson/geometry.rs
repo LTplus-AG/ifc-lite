@@ -76,8 +76,9 @@ fn inside(p: [f64; 2], ring: &PlacedRing) -> bool {
 /// polygon whose exterior contains it. A loop of the wrong orientation for
 /// its role that encloses area (an island inside a hole) cannot be written
 /// in the polygon and is counted in `dropped`, like a hole outside every
-/// exterior; loops without area (spikes, rings collapsed by snapping) are
-/// not.
+/// exterior, and like a loop with area that snaps to a collinear ring on
+/// the output grid; loops without area (spikes, rings collapsed by
+/// snapping) are not.
 fn polygons_at(
     shape: &[Vec<[f64; 2]>],
     z: f64,
@@ -98,8 +99,18 @@ fn polygons_at(
             if a.abs() <= min_area2 {
                 continue;
             }
+            // Validity and orientation are judged on the snapped grid the
+            // ring is written on: a sliver with area in IFC coordinates can
+            // snap to a collinear ring, which is no valid surface. Such a
+            // ring is dropped, and counted because it had area.
+            let ixs: Vec<u32> = lp.iter().map(|(ix, _)| *ix).collect();
+            let g = pool.grid_area2(&ixs);
+            if g == 0 {
+                *dropped += 1;
+                continue;
+            }
             // Exteriors are counter-clockwise, holes clockwise (footprint.rs).
-            match (i == 0, a > 0.0) {
+            match (i == 0, g > 0) {
                 (true, true) => exteriors.push(lp),
                 (_, false) => holes.push(lp),
                 (false, true) => *dropped += 1,

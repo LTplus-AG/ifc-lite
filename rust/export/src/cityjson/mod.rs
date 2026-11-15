@@ -156,7 +156,7 @@ pub fn try_export_cityjson(content: &[u8], opts: &CityJsonOptions) -> Result<Cit
                     }
                     if dropped > 0 {
                         warnings.push(format!(
-                            "{name}: {dropped} footprint rings could not be written as valid polygon rings (an island inside a hole, or a hole outside every exterior) and are missing from LoD0 and LoD1"
+                            "{name}: {dropped} footprint rings could not be written as valid polygon rings (an island inside a hole, a hole outside every exterior, or a sliver that is collinear on the export grid) and are missing from LoD0 and LoD1"
                         ));
                     }
                 }

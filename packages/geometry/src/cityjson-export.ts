@@ -11,6 +11,7 @@
  */
 
 import { loadExportPayload } from './export-payload.js';
+import { CITYJSON_REFUSED } from './export-errors.js';
 
 export { CITYJSON_REFUSED, cityJsonRefusalReason } from './export-errors.js';
 
@@ -45,6 +46,12 @@ export interface CityJsonExport {
  * document is built in memory.
  */
 export async function exportCityJson(content: Uint8Array, options: CityJsonExportOptions = {}): Promise<CityJsonExport> {
+  // JSON has no NaN or Infinity: they would cross as `null`, which the
+  // writer reads as "use the default", so refuse them here like Rust
+  // refuses any other scale outside (0, 1].
+  if (options.scale !== undefined && !Number.isFinite(options.scale)) {
+    throw new Error(`${CITYJSON_REFUSED}: scale ${options.scale} is not in (0, 1]`);
+  }
   const engine = await loadExportPayload();
   return engine.exportCityJson(content, JSON.stringify({
     scale: options.scale,

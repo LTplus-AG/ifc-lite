@@ -448,3 +448,21 @@ fn an_island_inside_a_hole_is_counted_as_dropped() {
     assert_eq!(surfaces(&g0.value).len(), 1);
     assert_eq!(dropped, 1, "the island");
 }
+
+/// A sliver with area in IFC coordinates whose vertices snap to one grid
+/// line is no valid surface: it is not written, and it is counted so the
+/// caller warns (found by review: the area check read unsnapped positions).
+#[test]
+fn a_sliver_collinear_on_the_grid_is_dropped_and_counted() {
+    let sliver = vec![[0.0, 0.00049], [0.0015, -0.00049], [0.003, 0.00049]];
+    let square = vec![[1.0, 0.0], [2.0, 0.0], [2.0, 1.0], [1.0, 1.0]];
+    let fp = footprint::Footprint { shapes: vec![vec![sliver], vec![square]], z_min: 0.0, z_max: 3.0, approximated: 0 };
+    let mut pool = vertices::VertexPool::new(0.001);
+    let mut dropped = 0;
+    let g0 = geometry::lod0(&fp, &mut pool, &|p: [f64; 3]| p, 1e-6, &mut dropped).unwrap();
+    assert_eq!(surfaces(&g0.value).len(), 1, "only the square is written");
+    assert_eq!(dropped, 1, "the sliver is reported");
+    let mut dropped1 = 0;
+    let g1 = geometry::lod1(&fp, &mut pool, &|p: [f64; 3]| p, 1e-6, &mut dropped1).unwrap();
+    assert_eq!(g1.value["type"], "Solid", "one prism, no zero-volume block");
+}

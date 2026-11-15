@@ -37,3 +37,17 @@ it('#8452 compound undo restores removed journal rows in exact order with detach
   const state = cooperativeOverlay(view).capture();
   expect(JSON.parse(view.exportMutations()).mutations).toEqual(state.mutationHistory);
 });
+
+it('#8452 restores an edited journal row whose original successor was removed by the same compound operation', () => {
+  const view = new MutablePropertyView(null, 'journal-successor');
+  const a = view.createEntity('IfcCartesianPoint', [[1, 0, 0]]).expressId;
+  const b = view.createEntity('IfcCartesianPoint', [[2, 0, 0]]).expressId;
+  const before = structuredClone(view.getMutations());
+  recordCompoundMutation(view, draft => {
+    draft.getMutations()[0]!.attributeName = 'changed in draft';
+    draft.deleteEntity(b);
+  });
+  undoRecordedMutationOperations(view, 1, () => { throw Error('Expected compound undo'); });
+  expect(view.getMutations()).toEqual(before);
+  expect(view.getNewEntities().map(row => row.expressId)).toEqual([a, b]);
+});

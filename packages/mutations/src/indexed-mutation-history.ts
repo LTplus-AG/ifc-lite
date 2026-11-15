@@ -85,6 +85,19 @@ class History {
     } else return;
     this.length--; this.order = undefined;
   }
+  replaceRow(id: string, row: Mutation): void {
+    const own = this.nodes.get(id);
+    if (own) {
+      if (own.row.entityId !== row.entityId) {
+        const bucket = this.entities.get(own.row.entityId);
+        bucket?.delete(id); if (!bucket?.size) this.entities.delete(own.row.entityId);
+      }
+      own.row = row;
+    } else this.reads.set(id, row);
+    let bucket = this.entities.get(row.entityId);
+    if (!bucket) this.entities.set(row.entityId, bucket = new Set());
+    bucket.add(id);
+  }
   entityIds(id: number): string[] {
     const ids = new Set(this.base?.entityIds(id));
     for (const key of this.entities.get(id) ?? []) ids.add(key);
@@ -192,17 +205,14 @@ export function finishHistory(original: Mutation[], next: Mutation[]) {
   const updates = changed.map(([id, row]) => [id, structuredClone(row)] as const);
   const history: CompoundInverse['history'] = [
     ...deleted.map(([, row]) => ({ index: 0, mutation: row.mutation, beforeId: row.beforeId })),
-    ...changed.map(([id]) => ({ index: 0, mutation: structuredClone(base.get(id)), beforeId: base.next(id) })),
+    ...changed.map(([id]) => ({ index: 0, mutation: structuredClone(base.get(id)), update: true as const })),
   ];
   return {
     history, written: added.filter(row => !base.has(row.id)).map(row => row.id),
     changed: deleted.length > 0 || updates.length > 0 || added.length > 0,
     publish() {
       for (const [id] of deleted) base.erase(id);
-      for (const [id, row] of updates) {
-        if (base.nodes.has(id)) base.nodes.get(id)!.row = row;
-        else base.reads.set(id, row);
-      }
+      for (const [id, row] of updates) base.replaceRow(id, row);
       for (const row of added) base.append(row);
       return original;
     },

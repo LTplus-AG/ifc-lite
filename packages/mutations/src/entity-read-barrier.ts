@@ -14,12 +14,17 @@ interface AttributeBarrier {
 const barriers = new WeakMap<object, AttributeBarrier>();
 /** Rows whose mutable attribute arrays reached a caller; their borrows are never reused. */
 const escaped = new WeakSet<NewEntity>();
-const borrows = new WeakMap<NewEntity, NewEntity>();
+const borrows = new WeakMap<NewEntity, { row: NewEntity; slot: number }>();
+// A session owns its live rows, so weak keys alone do not bound the retained
+// frozen copies. A finite FIFO keeps hot reads cheap without a second model.
+const BORROW_CACHE_LIMIT = 65_536;
+const borrowSlots: Array<WeakRef<NewEntity>> = [];
+let nextBorrowSlot = 0;
 
 /** Cooperative cloning may unwrap our own data barrier, never a caller getter. */
 export function entityAttributeData(object: object, key: PropertyKey, descriptor: PropertyDescriptor | undefined): PropertyDescriptor | undefined {
   const barrier = key === 'attributes' ? barriers.get(object) : undefined;
-  return barrier && !barrier.descriptor?.get && descriptor?.get === readAttributes ? { value: barrier.value } : undefined;
+  return barrier && !barrier.descriptor && descriptor?.get === readAttributes ? { value: barrier.value } : undefined;
 }
 
 /** Internal snapshots/readers do not hand mutable arrays to a caller. */
@@ -92,15 +97,22 @@ function frozenCopy(value: unknown, copies: Map<object, unknown>): unknown {
  * The borrow is a frozen copy, so a write through it throws instead of
  * silently editing a record that no index or transaction guard is watching.
  * Borrowing marks nothing as exposed, and an unexposed row reuses its copy
- * until the row escapes, so repeated scans cost no later transaction (#8452). */
+ * while cached, so repeated scans cost no later transaction (#8452). Cold
+ * copies can be evicted; held borrows stay frozen and detached. */
 export function readEntitySnapshot(entity: NewEntity): NewEntity {
   const cached = borrows.get(entity);
-  if (cached) return cached;
+  if (cached) return cached.row;
   const row = withoutEntityExposure(() => {
     const copy = { ...entity };
     copy.attributes = frozenCopy(copy.attributes, new Map()) as NewEntity['attributes'];
     return Object.freeze(copy);
   });
-  if (barriers.has(entity) && !escaped.has(entity)) borrows.set(entity, row);
+  if (barriers.has(entity) && !escaped.has(entity)) {
+    const previous = borrowSlots[nextBorrowSlot]?.deref();
+    if (previous && borrows.get(previous)?.slot === nextBorrowSlot) borrows.delete(previous);
+    borrows.set(entity, { row, slot: nextBorrowSlot });
+    borrowSlots[nextBorrowSlot] = new WeakRef(entity);
+    nextBorrowSlot = (nextBorrowSlot + 1) % BORROW_CACHE_LIMIT;
+  }
   return row;
 }

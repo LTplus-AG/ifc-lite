@@ -49,3 +49,21 @@ it('#8452 preserves caller accessor descriptors and nonwritable data while obser
   expect(() => { fixed.attributes = []; }).toThrow(TypeError);
   expect(structuredClone(fixed).attributes).toEqual([[7, 8, 9]]);
 });
+
+it('#8452 evicts cold borrowed copies without changing a held snapshot or a mutable source alias', () => {
+  const first: NewEntity = { expressId: 1, type: 'IfcCartesianPoint', attributes: [[1, 2, 3]] };
+  const notify = () => {};
+  observeEntityAttributes(first, notify);
+  const held = readEntitySnapshot(first);
+  // The memo has a finite 64K-row budget, independent of session size.
+  for (let i = 0; i < 65_536; i++) {
+    const row: NewEntity = { expressId: i + 2, type: 'IfcCartesianPoint', attributes: [[i, 0, 0]] };
+    observeEntityAttributes(row, notify); readEntitySnapshot(row);
+  }
+  const again = readEntitySnapshot(first);
+  expect(again).not.toBe(held);
+  expect(again).toEqual(held);
+  first.attributes[0] = [4, 5, 6];
+  expect(held.attributes).toEqual([[1, 2, 3]]);
+  expect(readEntitySnapshot(first).attributes).toEqual([[4, 5, 6]]);
+});

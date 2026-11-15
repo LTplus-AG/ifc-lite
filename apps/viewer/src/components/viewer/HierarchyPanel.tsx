@@ -44,7 +44,7 @@ import { ModelsSectionHeader } from './hierarchy/ModelsSectionHeader';
 import { StoreyDisplayControls, StoreyFloorplanButton } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { hierarchyRowSelection } from './hierarchy/rowSelection';
-import { createSpatialSubtreeResolver, hierarchyNodeAppearance, hierarchyNodeVisibility, hierarchyToggleTargets } from './hierarchy/nodeVisibility';
+import { createSpatialSubtreeResolver, hierarchyNodeAppearance, hierarchyNodeVisibility, hierarchyOwnStateAfterToggle, hierarchyToggleTargets } from './hierarchy/nodeVisibility';
 import { hierarchyRowActions, type HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
@@ -206,18 +206,20 @@ export function HierarchyPanel() {
   // Toggle visibility for a node
   const handleVisibilityToggle = useCallback((node: TreeNode) => {
     const elements = getNodeElements(node);
-    if (elements.length === 0) return;
-
     const { visibilityAction } = hierarchyNodeVisibility(node, elements, hiddenEntities, models);
     const targets = hierarchyToggleTargets(node, elements, visibilityAction, models);
+    if (targets.length === 0) return;
+
     if (visibilityAction === 'hide') {
-      hideEntities([...targets]);
+      hideEntities(targets);
       if (selectedEntityId !== null && targets.includes(selectedEntityId)) {
         clearSelection();
       }
     } else {
-      showEntities([...targets]);
+      showEntities(targets);
     }
+    const ownState = hierarchyOwnStateAfterToggle(node, visibilityAction, models);
+    if (ownState) useViewerStore.getState().updateModel(ownState.modelId, { containerVisibility: ownState.plan });
   }, [getNodeElements, hiddenEntities, hideEntities, showEntities, selectedEntityId, clearSelection, models]);
 
   // Handle model visibility toggle

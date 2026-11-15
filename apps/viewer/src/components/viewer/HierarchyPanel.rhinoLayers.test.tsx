@@ -55,4 +55,26 @@ describe('HierarchyPanel: a .3dm layer row hides and shows its sub-layers (#1021
     click(eye(container, 'Hide', 'Frame'));
     assert.deepEqual(hiddenNames(), ['Beam', 'Bolt', 'Bolts', 'Brace', 'Bracing', 'Column', 'Columns', 'Frame', 'Spare beam']);
   });
+
+  it('keeps what the user turned on or off in a sub-layer when the parent is toggled, as Rhino does', () => {
+    const container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+    click(eye(container, 'Show', 'Frame'));
+    // Turn the sub-layer that was off on, and the one that was on off.
+    click(eye(container, 'Show', 'Bracing'));
+    click(eye(container, 'Hide', 'Columns'));
+    assert.deepEqual(hiddenNames(), ['Bolt', 'Bolts', 'Column', 'Columns', 'Spare beam']);
+
+    click(eye(container, 'Hide', 'Frame'));
+    click(eye(container, 'Show', 'Frame'));
+    assert.deepEqual(hiddenNames(), ['Bolt', 'Bolts', 'Column', 'Columns', 'Spare beam']);
+  });
+
+  it('hides and shows the whole file from the root row', () => {
+    const container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+    click(eye(container, 'Hide', 'layers.3dm'));
+    assert.ok(hiddenNames().includes('Terrain'), 'the root row stands for the file');
+    click(eye(container, 'Show', 'layers.3dm'));
+    // Site is on; Frame is off itself, so its subtree stays as Rhino had it.
+    assert.deepEqual(hiddenNames(), ['Beam', 'Bolt', 'Bolts', 'Brace', 'Bracing', 'Column', 'Columns', 'Frame', 'Spare beam']);
+  });
 });

@@ -251,10 +251,10 @@ export function planRhinoTree(
 /**
  * How the tree's layer rows hide and show their subtree, as Rhino does
  * (#10214): turning a layer off hides everything under it, and turning it on
- * brings back each sub-layer and object whose own state shows it. A sub-layer
- * comes back when its own layer, and every layer between it and its parent row
- * (a transparent layer has no row), is on. An object comes back when it is
- * not hidden on its own and every layer between it and its row is on.
+ * brings back each sub-layer and object whose own state is on. A sub-layer's
+ * own state starts off when its own layer, or a transparent layer between it
+ * and its parent row (a transparent layer has no row), is off. An object's
+ * starts off when it is hidden on its own or such a layer is off.
  */
 export function planRhinoContainerVisibility(
   result: RhinoImport,
@@ -271,23 +271,21 @@ export function planRhinoContainerVisibility(
     }
     return true;
   };
-  const hiddenOnItsOwn = new Map<number, boolean>();
-  result.entities.forEach((entity, index) => hiddenOnItsOwn.set(entityExpressId(index), entity.hiddenByObject));
 
-  const rows = new Map<number, { children: { id: number; showsWithParent: boolean }[]; members: { id: number; showsWithRow: boolean }[] }>(
+  const rows = new Map<number, { children: number[]; members: number[] }>(
     tree.containers.map((container) => [container.expressId, { children: [], members: [] }]));
+  const ownOff = new Set<number>();
   for (const container of tree.containers) {
     if (container.parent === null) continue;
-    rows.get(container.parent)?.children.push({
-      id: container.expressId,
-      showsWithParent: container.layer === null
-        || (!hiddenOnItsOwn.get(container.expressId) && layersOn(container.layer, layerOfRow.get(container.parent) ?? null)),
-    });
+    rows.get(container.parent)?.children.push(container.expressId);
+    if (container.layer !== null && !layersOn(container.layer, layerOfRow.get(container.parent) ?? null)) ownOff.add(container.expressId);
   }
   tree.containerOfEntity.forEach((row, index) => {
     if (row === null) return;
     const entity = result.entities[index];
-    rows.get(row)?.members.push({ id: entityExpressId(index), showsWithRow: !entity.hiddenByObject && layersOn(entity.layer, layerOfRow.get(row) ?? null) });
+    const id = entityExpressId(index);
+    rows.get(row)?.members.push(id);
+    if (entity.hiddenByObject || !layersOn(entity.layer, layerOfRow.get(row) ?? null)) ownOff.add(id);
   });
-  return { rows };
+  return { rows, ownOff };
 }

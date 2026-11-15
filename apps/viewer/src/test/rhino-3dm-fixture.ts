@@ -255,6 +255,25 @@ export function craftRhinoOffClassLayer(): Promise<Uint8Array> {
 }
 
 /**
+ * A stamped storey whose own object, which the storey row stands for, is
+ * hidden on its own, with a wall on a class sublayer under it (#10214).
+ */
+export function craftRhinoHiddenStoreyObject(): Promise<Uint8Array> {
+  const storey: [string, string][] = [['IFC::GlobalId', CRAFTED_STOREY.globalId], ['IFC::Class', 'IfcBuildingStorey']];
+  return craftLayeredRhino3dm(
+    [
+      { name: 'Project', userStrings: [['IFC::GlobalId', CRAFTED_PROJECT_GLOBAL_ID], ['IFC::Class', 'IfcProject']] },
+      { name: CRAFTED_STOREY.name, parent: 'Project', userStrings: storey },
+      { name: 'IfcWall', parent: CRAFTED_STOREY.name },
+    ],
+    [
+      { layer: CRAFTED_STOREY.name, name: 'Storey object', hidden: true, userStrings: storey },
+      { layer: 'IfcWall', name: 'Wall' },
+    ],
+  );
+}
+
+/**
  * One element whose parts Rhino shows differently: a shown triangle, a hidden
  * triangle and a hidden point cloud that share a GlobalId and a group, so the
  * reader merges them into one visible entity (D8). Plus an object hidden on

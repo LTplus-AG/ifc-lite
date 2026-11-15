@@ -6,7 +6,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { EntityRef, FederatedModel, ViewerState } from '@/store';
 import { collectIfcBuildingStoreyElementsWithIfcSpace, collectSpatialSubtreeElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import { ownedAggregationRelationships } from '@/utils/entity-ownership';
-import { containerVisibilityTargets } from '@/lib/container-visibility';
+import { containerVisibilityTargets, withOwnState, type ContainerVisibilityPlan } from '@/lib/container-visibility';
 import { resolveTreeGlobalId } from './productTree';
 import { effectiveRowType, overlayViewFor, type TreeOverlay } from './treeOverlay';
 import type { TreeNode } from './types';
@@ -31,13 +31,23 @@ export function hierarchyNodeVisibility(
   };
 }
 
+/** Global targets per plan, row and action; a new plan (an own state changed) starts afresh. */
+const planTargetCache = new WeakMap<ContainerVisibilityPlan, Map<string, number[]>>();
+
 /** A row's subtree as global ids, when its model states how its containers
  *  hide and show (a Rhino layer, #10214); null for any other row. */
 function planRowTargets(node: TreeNode, models: Map<string, FederatedModel>, action: HierarchyVisibilityAction): number[] | null {
   const modelId = node.modelIds[0];
   const plan = node.expressIds.length === 1 ? models.get(modelId)?.containerVisibility : undefined;
-  const local = plan ? containerVisibilityTargets(plan, node.expressIds[0], action) : [];
-  return local.length > 0 ? local.map((id) => resolveTreeGlobalId(modelId, id, models)) : null;
+  if (!plan?.rows.has(node.expressIds[0])) return null;
+  const cache = planTargetCache.get(plan) ?? planTargetCache.set(plan, new Map()).get(plan)!;
+  const key = `${node.expressIds[0]}:${action}`;
+  let targets = cache.get(key);
+  if (!targets) {
+    targets = containerVisibilityTargets(plan, node.expressIds[0], action).map((id) => resolveTreeGlobalId(modelId, id, models));
+    cache.set(key, targets);
+  }
+  return targets;
 }
 
 /** The global ids a row's eye acts on. A row of a model that states how its
@@ -49,10 +59,25 @@ export function hierarchyToggleTargets(
   elements: readonly number[],
   action: HierarchyVisibilityAction,
   models: Map<string, FederatedModel>,
-): readonly number[] {
+): number[] {
   const targets = planRowTargets(node, models, action);
-  if (!targets) return elements;
-  return action === 'hide' ? [...new Set([...elements, ...targets])] : targets;
+  if (!targets) return [...elements];
+  return action === 'hide' ? [...new Set([...elements, ...targets])] : [...targets];
+}
+
+/** The plan after a row's eye: the toggled row or object keeps that as its own
+ *  state, so a later toggle of its parent respects it, as in Rhino. Null when
+ *  the row's model has no plan or nothing changed. */
+export function hierarchyOwnStateAfterToggle(
+  node: TreeNode,
+  action: HierarchyVisibilityAction,
+  models: Map<string, FederatedModel>,
+): { modelId: string; plan: ContainerVisibilityPlan } | null {
+  const modelId = node.modelIds[0];
+  const plan = node.expressIds.length === 1 ? models.get(modelId)?.containerVisibility : undefined;
+  if (!plan) return null;
+  const next = withOwnState(plan, node.expressIds[0], action === 'show');
+  return next === plan ? null : { modelId, plan: next };
 }
 
 /** Storey rows: a single storey, a unified storey across models, and one

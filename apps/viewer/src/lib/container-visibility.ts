@@ -7,35 +7,44 @@
  * when the source says so (a Rhino layer, #10214). Without a plan, a row's eye
  * acts on what the row holds directly, as for IFC.
  *
- * Hiding a row hides its whole subtree. Showing it brings back what the source
- * would show once that row is on: each nested row and member whose own state
- * lets it come back with its parent. Ids are model-local express ids.
+ * Each row and member has an own state, as a Rhino layer and object do.
+ * Hiding a row hides its whole subtree. Showing it brings back each nested row
+ * and member whose own state is on, under rows that come back. Toggling a row
+ * or member from the tree sets its own state, so a later toggle of its parent
+ * respects it. Ids are model-local express ids.
  */
 export interface ContainerVisibilityPlan {
-  /** Every row by express id: its child rows and members, and whether each comes back when this row is shown. */
-  readonly rows: ReadonlyMap<number, ContainerVisibilityRow>;
-}
-
-export interface ContainerVisibilityRow {
-  readonly children: readonly { readonly id: number; readonly showsWithParent: boolean }[];
-  readonly members: readonly { readonly id: number; readonly showsWithRow: boolean }[];
+  /** Every row by express id: the rows and members it holds directly. */
+  readonly rows: ReadonlyMap<number, { readonly children: readonly number[]; readonly members: readonly number[] }>;
+  /** Rows and members whose own state is off, so a parent's Show leaves them hidden. */
+  readonly ownOff: ReadonlySet<number>;
 }
 
 /**
  * The express ids a row's eye hides or shows: the row itself, then its subtree
- * (`hide`) or the part of it that comes back with the row (`show`). Empty for
- * an id the plan has no row for.
+ * (`hide`) or the part of it whose own state is on (`show`). Empty for an id
+ * the plan has no row for.
  */
 export function containerVisibilityTargets(plan: ContainerVisibilityPlan, row: number, action: 'show' | 'hide'): number[] {
   if (!plan.rows.has(row)) return [];
+  const comesBack = (id: number) => action === 'hide' || !plan.ownOff.has(id);
   const targets: number[] = [];
   const pending = [row];
   while (pending.length > 0) {
     const id = pending.pop()!;
     targets.push(id);
     const { children, members } = plan.rows.get(id)!;
-    for (const child of children) if (action === 'hide' || child.showsWithParent) pending.push(child.id);
-    for (const member of members) if (action === 'hide' || member.showsWithRow) targets.push(member.id);
+    for (const child of children) if (comesBack(child)) pending.push(child);
+    for (const member of members) if (comesBack(member)) targets.push(member);
   }
   return targets;
+}
+
+/** The plan after the user turned `id`'s own state on or off from the tree; the same plan when it already was. */
+export function withOwnState(plan: ContainerVisibilityPlan, id: number, on: boolean): ContainerVisibilityPlan {
+  if (plan.ownOff.has(id) === !on) return plan;
+  const ownOff = new Set(plan.ownOff);
+  if (on) ownOff.delete(id);
+  else ownOff.add(id);
+  return { rows: plan.rows, ownOff };
 }

@@ -736,19 +736,23 @@ transparency rule [test].
   and one box hidden on its own; a group hidden on its own with one part also
   on an off layer; parts that need different actions plus one that needs
   both; a hidden mesh next to a curve] (#10214).
-- A layer row's eye acts on its subtree as Rhino does. Hiding it hides every
-  row and object under it. Showing it brings back each child row whose own
-  layer, and every transparent layer between it and the row, is on, and in
-  every row that comes back each object that is not hidden on its own
-  (`hiddenByObject`) and has no off layer between it and its row. A row that
-  is off itself, and an object hidden on its own, stay hidden until their own
-  row shows them. The adapter states this per row and per object in the
-  payload's `containerVisibility`, which the load puts on the model; the tree
-  reads it for a model that has one, and every other model's rows act on what
-  they hold directly, as for IFC. A row offers Show while anything that comes
-  back with it is hidden [crafted test: an off layer with a sub-layer that is
-  on, one that is off and an object hidden on its own; a stamped storey whose
-  class sublayer is off] (#10214).
+- A layer row's eye acts on its subtree as Rhino does. Every row and object
+  has an own state, as a Rhino layer and object do. Hiding a row hides every
+  row and object under it. Showing it brings back each child row and object
+  whose own state is on, under rows that come back. A row's own state starts
+  off when its own layer, or a transparent layer between it and its parent
+  row, is off; an object's starts off when it is hidden on its own
+  (`hiddenByObject`) or such a layer is off. Toggling a row or object from the
+  tree sets its own state, so a later toggle of its parent respects it. The
+  adapter states the rows and starting states in the payload's
+  `containerVisibility`, which the load puts on the model; the tree reads it
+  for a model that has one, and every other model's rows act on what they
+  hold directly, as for IFC. A row offers Show while anything that comes back
+  with it is hidden. Not covered: a storey row merged across models, which
+  acts on direct members, and hiding from the viewport, which does not change
+  an own state [crafted test: an off layer with a sub-layer that is on, one
+  that is off and an object hidden on its own; a stamped storey whose class
+  sublayer is off; a stamped storey whose own object is hidden] (#10214).
 - Layers are reordered parent first, keeping file order among siblings. A
   layer whose parent is missing becomes a root; so does a layer in a parent
   cycle, with a warning. An object whose layer index is outside the table

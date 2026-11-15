@@ -30,6 +30,7 @@ import {
   CRAFTED_VERTEX_VIEWER,
   craftRhino3dm,
   craftRhinoLayerTree,
+  craftRhinoHiddenStoreyObject,
   craftRhinoMergedParts,
   craftRhinoNestedOffLayers,
   craftRhinoOffClassLayer,
@@ -268,6 +269,10 @@ describe('rhinoViewerModel, a layer row hides and shows its sub-layers as Rhino 
 
   it('shows a sub-layer that is off when its own row is shown', async () => {
     assert.deepEqual(await eye(await craftRhinoNestedOffLayers(), 'Bracing', 'show'), ['Brace', 'Bracing']);
+  });
+
+  it('brings a layer row back with its parent when only the object it stands for is hidden on its own', async () => {
+    assert.ok((await eye(await craftRhinoHiddenStoreyObject(), 'Project', 'show')).includes('Wall'), 'the wall under the storey comes back');
   });
 
   it('keeps an object hidden when a layer between it and its row is off, though that layer has no row', async () => {

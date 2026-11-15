@@ -116,6 +116,13 @@ export interface ClassifiedHazardRaster {
   classes: readonly HazardClassDefinition[];
   counts: HazardCellCounts;
   provenance: HazardProvenance;
+  /**
+   * Where the map has data: a sample outside it (or too near its perimeter)
+   * reads `outside-coverage`, never "no runoff". Required, so a raster cannot
+   * reach the check without it: providers attach their perimeter test, and a
+   * raster known to lie wholly within the mapped area states `'everywhere'`.
+   */
+  covers: CoverageTest | 'everywhere';
 }
 
 export interface HazardRasterRequest {
@@ -161,7 +168,7 @@ export interface HazardProvider {
   readonly extent: MapBBox;
   /** Resolution of the underlying model raster, metres. */
   readonly modelCellSize: number;
-  /** The coverage perimeter, when the provider knows it. Without it, every sample on the raster counts as covered. */
+  /** The coverage perimeter, for information; the check reads the one each raster carries (`ClassifiedHazardRaster.covers`). */
   readonly covers?: CoverageTest;
   fetchRaster(request: HazardRasterRequest): Promise<ClassifiedHazardRaster>;
   /**
@@ -199,6 +206,30 @@ export interface TerrainGrid {
   values: ArrayLike<number>;
   /** `false` when the grid carries no heights (for example a box outside coverage). Treated as all NaN. */
   hasData?: boolean;
+}
+
+/**
+ * Other buildings' footprints around the checked one. The hazard model raised
+ * EVERY building, so a transparent pixel inside another building (an
+ * attached garage, a neighbour not in the model) means "not modelled", not
+ * "no runoff". A transparent sample is open ground with no runoff mapped only
+ * when such footprints are supplied, `complete` for the area, and the sample
+ * lies outside every one of them.
+ */
+export interface OtherBuildingFootprints {
+  /** Must equal the hazard map's CRS. */
+  crs: string;
+  /** Footprint rings in `crs`; a point inside any ring is inside another building. */
+  rings: MapPoint[][];
+  /** The source lists every building in the area asked for. Without that, transparency outside its rings proves nothing. */
+  complete: boolean;
+  provenance: { source: string; date?: string; detail?: string };
+}
+
+/** A source of {@link OtherBuildingFootprints} for an area, in the style of {@link TerrainSource}. */
+export interface BuildingFootprintSource {
+  readonly crs: string;
+  footprints(bbox: MapBBox, signal?: AbortSignal): OtherBuildingFootprints | Promise<OtherBuildingFootprints>;
 }
 
 /**

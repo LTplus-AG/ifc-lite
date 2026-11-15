@@ -19,13 +19,12 @@
  * would start reading flow paths that do not touch the façade.
  */
 
-import { closestBoundaryPoint, nestedRings, signedDistance } from '../geom.js';
+import { closestBoundaryPoint, closestOutlinePoint, nestedRings, signedDistance } from '../geom.js';
 import type { CandidateFact, ModelFacts } from '../model/facts.js';
 import {
   CELL_NO_RUNOFF,
   CELL_UNCLASSIFIED,
   type ClassifiedHazardRaster,
-  type CoverageTest,
   type MapPoint,
   type TerrainGrid,
   type TerrainSampler,
@@ -119,7 +118,8 @@ export function planSamples(candidate: CandidateFact, footprint: ModelFacts['foo
   let anchorBasis: SamplePlan['anchorBasis'] = 'element';
   let anchorOffset = 0;
   if (d <= 0) {
-    const nearest = closestBoundaryPoint(candidate.position, rings);
+    // The true outline: a seam between adjacent rings is interior, so an element on it is moved to the real façade.
+    const nearest = closestOutlinePoint(candidate.position, rings, nested);
     if (nearest) {
       anchor = nearest.point;
       anchorBasis = 'nearest-outline-point';
@@ -147,8 +147,9 @@ export type CellReading =
   | { kind: 'outside' }
   | { kind: 'outside-coverage' };
 
-export function readCell(raster: ClassifiedHazardRaster, p: MapPoint, covers?: CoverageTest): CellReading {
-  if (covers && covers(p) !== true) return { kind: 'outside-coverage' };
+export function readCell(raster: ClassifiedHazardRaster, p: MapPoint): CellReading {
+  // The raster carries its own coverage (required): outside it, or too near its perimeter, transparent means no data.
+  if (raster.covers !== 'everywhere' && raster.covers(p) !== true) return { kind: 'outside-coverage' };
   // Cell (col, row) covers [x0 + col*c, x0 + (col+1)*c) in x and (y0 - (row+1)*c, y0 - row*c] in y (types.ts):
   // each cell is closed at its north edge, so a point on a row boundary is the north edge of the row SOUTH of it,
   // and floor((y0 - y) / c) is that row.

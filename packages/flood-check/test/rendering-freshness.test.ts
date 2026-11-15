@@ -16,7 +16,7 @@ import { runFloodCheck } from '../src/check/run.js';
 import { toPropertySets } from '../src/psets.js';
 import { BAFU_CLASSES } from '../src/bafu/dataset.js';
 import { extractModelFacts } from '../src/model/extract.js';
-import { boxFacts, candidate, CONFIRMED, E0, fixture, flatTerrain, N0, rgbaPng, syntheticRaster } from './helpers.js';
+import { boxFacts, candidate, CONFIRMED, E0, fixture, flatTerrain, N0, rgbaPng, syntheticRaster, NO_OTHER_BUILDINGS } from './helpers.js';
 import { parseStep, syntheticHouse } from './synthetic-model.js';
 
 const REFERENCE_BBOX = '2599560,1199720,2599569,1199729';
@@ -49,13 +49,13 @@ describe('a rendering confirmation and the rasters it vouches for', () => {
     let t = Date.UTC(2026, 10, 15, 10, 0);
     const provider = createBafuRunoffProvider({ fetch: wms.fetchImpl, now: () => new Date(t) });
     const f = await facts();
-    const first = await runFloodCheck(f, provider, flatTerrain(499.95));
+    const first = await runFloodCheck(f, provider, flatTerrain(499.95), { otherBuildings: NO_OTHER_BUILDINGS });
     expect(door(first).outcome).toBe('no-runoff-mapped');
     expect(first.provenance.renderingCheckedAt).toBe('2026-11-15T10:00:00.000Z');
 
     state.up = false;
     t += 60 * 60 * 1000; // an hour later, same provider
-    const second = await runFloodCheck(f, provider, flatTerrain(499.95));
+    const second = await runFloodCheck(f, provider, flatTerrain(499.95), { otherBuildings: NO_OTHER_BUILDINGS });
     expect(wms.references()).toBe(2);
     expect(door(second)).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'layer-not-confirmed' });
     expect(second.results.map((r) => r.outcome)).not.toContain('no-runoff-mapped');
@@ -88,14 +88,14 @@ describe('a rendering confirmation and the rasters it vouches for', () => {
     let t = Date.UTC(2026, 10, 15, 10, 0);
     const f = await facts();
     const day1 = createBafuRunoffProvider({ fetch: wms.fetchImpl, cache, now: () => new Date(t) });
-    expect(door(await runFloodCheck(f, day1, flatTerrain(499.95))).outcome).toBe('no-runoff-mapped');
+    expect(door(await runFloodCheck(f, day1, flatTerrain(499.95), { otherBuildings: NO_OTHER_BUILDINGS })).outcome).toBe('no-runoff-mapped');
     // The transparent building raster was not cached; the classified reference was.
     expect([...store.keys()].map((k) => new URL(k).searchParams.get('BBOX'))).toEqual([REFERENCE_BBOX]);
 
     state.up = false;
     t += 24 * 60 * 60 * 1000;
     const day2 = createBafuRunoffProvider({ fetch: wms.fetchImpl, cache, now: () => new Date(t) });
-    const r = await runFloodCheck(f, day2, flatTerrain(499.95));
+    const r = await runFloodCheck(f, day2, flatTerrain(499.95), { otherBuildings: NO_OTHER_BUILDINGS });
     expect(wms.references()).toBe(2);
     expect(door(r)).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'layer-not-confirmed' });
   });
@@ -124,6 +124,7 @@ describe('a rendering confirmation and the rasters it vouches for', () => {
       const confirmation = { ...CONFIRMED, retrievedAt: new Date(Date.parse(CONFIRMED.retrievedAt) - gapMs).toISOString() };
       const r = checkFloodExposure(boxFacts([candidate({ position: { x: E0 + 10, y: N0 }, level: 500 })]), raster, flatTerrain(499.95), {
         renderingConfirmation: confirmation,
+        otherBuildings: NO_OTHER_BUILDINGS,
       });
       expect(r.layerCheck.confirmationApplies).toBe(vouches);
       expect(r.results[0]).toMatchObject(vouches ? { outcome: 'no-runoff-mapped' } : { outcome: 'unclassified', unclassifiedReason: 'layer-not-confirmed' });

@@ -57,8 +57,6 @@ export interface LocationSources {
   groundLevel?: number;
   /** Doors and windows: `OverallHeight` in metres, when stated (IFC2X3, IFC4, IFC4X3 all carry it). */
   overallHeight?: number | null;
-  /** Openings: the proven lowest level of the door or window filling it (its placement minus its `OverallHeight`), when known. */
-  fillingLowest?: number | null;
 }
 
 export interface Location {
@@ -78,9 +76,9 @@ export interface Location {
    * The lowest level the element can reach, proven from readable data; null
    * when nothing bounds it. `exact`: the level itself. An upper estimate: for
    * a door or window, its placement minus its `OverallHeight` (which covers a
-   * placement at the head); for an opening, that bound of the door or window
-   * filling it; otherwise none. Only this may prove an element out of scope;
-   * a storey never stands in for it.
+   * placement at the head); otherwise none (an opening is bounded only by its
+   * own readable body: it may be taller than its door or window). Only this
+   * may prove an element out of scope; a storey never stands in for it.
    */
   lowest: number | null;
   notes: string[];
@@ -153,7 +151,8 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
       level = bottom(s.own);
       basis = 'opening-body-bottom';
     }
-    if (kind === 'slab-opening' && typeof s.hostLevel === 'number') {
+    // A slab opening: the lower of the slab's placement and its own readable body's bottom.
+    if (kind === 'slab-opening' && typeof s.hostLevel === 'number' && (!ownRead || s.hostLevel < level)) {
       level = s.hostLevel;
       basis = 'host-slab-top';
     }
@@ -188,7 +187,6 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
   let lowest: number | null = null;
   if (quality === 'exact') lowest = level;
   else if (filling && typeof s.overallHeight === 'number') lowest = Math.min(level, at.level - s.overallHeight);
-  else if ((kind === 'opening' || kind === 'slab-opening') && typeof s.fillingLowest === 'number') lowest = Math.min(level, s.fillingLowest);
   return { position, level, basis, quality, positionCertain, lowest, notes };
 }
 
@@ -200,7 +198,10 @@ function mapBody(ctx: CandidateContext, id: number): MapBody {
   return { items: body.items, readable: body.readable, corners: toWorld(frame, body.corners).map((p) => ctx.georef.toMap(p) as [number, number, number]) };
 }
 
-/** A door's or window's `OverallHeight` in metres (map vertical units), or null when it states none. */
+/** The `OverallHeight` a door or window may plausibly have, metres; outside it the attribute bounds nothing. */
+export const OVERALL_HEIGHT_RANGE: readonly [number, number] = [0.1, 10];
+
+/** A door's or window's `OverallHeight` in metres (map vertical units), or null when it states none or an implausible one. */
 function overallHeight(ctx: CandidateContext, id: number): number | null {
   const e = ctx.reader.entity(id);
   const raw = e ? asNumber(ctx.reader.attr(e, 'OverallHeight')) : null;
@@ -210,7 +211,9 @@ function overallHeight(ctx: CandidateContext, id: number): number | null {
   if (!frame) return null;
   const top = ctx.georef.toMap(frame.origin)[2];
   const below = ctx.georef.toMap([frame.origin[0], frame.origin[1], frame.origin[2] - raw])[2];
-  return top - below;
+  const h = top - below;
+  // Only a plausible door or window height bounds anything; a wrong unit or a typo gives no bound.
+  return h >= OVERALL_HEIGHT_RANGE[0] && h <= OVERALL_HEIGHT_RANGE[1] ? h : null;
 }
 
 /** What candidate selection can read about an element (and the opening it fills, or the slab it cuts). */
@@ -225,15 +228,6 @@ export function readSources(ctx: CandidateContext, entity: DecodedEntity, kind: 
     const opening = ctx.reader.related(entity.expressId, RelationshipType.FillsElement, 'inverse')[0];
     s.filled = opening === undefined ? null : mapBody(ctx, opening);
     s.overallHeight = overallHeight(ctx, entity.expressId);
-  }
-  if (kind === 'opening' || kind === 'slab-opening') {
-    // Every filling (a door with a sidelight fills one opening twice): the lowest of their bounds, none if any has none.
-    const bounds = ctx.reader.related(entity.expressId, RelationshipType.FillsElement, 'forward').map((filling) => {
-      const frame = ctx.placements.ofProduct(filling);
-      const h = overallHeight(ctx, filling);
-      return frame && h !== null ? ctx.georef.toMap(frame.origin)[2] - h : null;
-    });
-    s.fillingLowest = bounds.length > 0 && bounds.every((b) => b !== null) ? Math.min(...(bounds as number[])) : null;
   }
   if (kind === 'slab-opening' && host) {
     const hostFrame = ctx.placements.ofProduct(host.expressId);

@@ -169,9 +169,10 @@ export interface HeightReference {
   entryAbove: number;
   entries: EntryCheck[];
   /**
-   * Extra clearance every favourable outcome needs: the height of the lowest
-   * ground-storey door above its adjacent terrain (0 when it is at or below).
-   * Null when unconfirmed.
+   * Extra clearance every favourable outcome needs: the height of the HIGHEST
+   * ground-storey door above its adjacent terrain (0 when every one is at or
+   * below), so a model placed too high by more than this would put every
+   * ground-storey door below its terrain. Null when unconfirmed.
    */
   allowance: number | null;
   unconfirmedBecause: string[];
@@ -198,6 +199,8 @@ export function confirmEntries(
   band: HeightPlausibility,
   options: PlausibilityOptions = {},
   extraReasons: readonly string[] = [],
+  /** The clearance margin; ground-storey doors further apart than this about where terrain is leave the reference unconfirmed. Null: 0.5 m. */
+  margin: number | null = null,
 ): HeightReference {
   const entryAbove = nonNegative('entryAbove', options.entryAbove ?? PLAUSIBILITY_DEFAULTS.entryAbove);
   if (entryAbove > PLAUSIBILITY_DEFAULTS.entryAbove) {
@@ -213,6 +216,10 @@ export function confirmEntries(
   }
   const entries: EntryCheck[] = [];
   const g = facts.groundStorey.expressId;
+  // A guessed ground storey (the lowest storey, or none) may be the basement, whose doors really lie below terrain.
+  if (facts.groundStorey.basis === 'lowest-storey' || facts.groundStorey.basis === 'none') {
+    reasons.push(`the ground storey was guessed (${facts.groundStorey.basis}), so its doors cannot confirm the height reference; pass groundStorey`);
+  }
   if (g === null) {
     reasons.push('no ground storey is identified, so no ground-storey door can be checked against the terrain');
   } else {
@@ -228,6 +235,16 @@ export function confirmEntries(
       entries.push({ expressId: c.expressId, level: c.level, adjacentTerrain: t, heightAboveTerrain: t === null ? null : c.level - t });
     });
     if (entries.length === 0) reasons.push('the ground storey has no door on the footprint outline to check the height reference against');
+    // Doors of one storey should agree about their height above terrain; a sunken or raised one makes the reference ambiguous.
+    const heights = entries.map((e) => e.heightAboveTerrain).filter((h): h is number => h !== null);
+    const spread = heights.length > 1 ? Math.max(...heights) - Math.min(...heights) : 0;
+    const limit = margin ?? 0.5;
+    if (spread > limit) {
+      reasons.push(
+        `the ground-storey doors disagree about their height above the terrain next to them by ${f(spread)} m (more than the ${f(limit)} m margin), ` +
+          'so no one height reference fits them all',
+      );
+    }
     for (const e of entries) {
       if (e.heightAboveTerrain === null) reasons.push(`ground-storey door #${e.expressId} has no terrain height next to it`);
       else if (e.heightAboveTerrain > entryAbove) {
@@ -261,8 +278,8 @@ export function confirmEntries(
       },
     };
   }
-  const lowest = Math.min(...entries.map((e) => e.heightAboveTerrain!));
-  const allowance = Math.max(0, lowest);
+  const highest = Math.max(...entries.map((e) => e.heightAboveTerrain!));
+  const allowance = Math.max(0, highest);
   return {
     status: 'confirmed',
     entryAbove,
@@ -273,15 +290,15 @@ export function confirmEntries(
       en:
         `The height reference of the model cannot be verified from the hazard map. It was cross-checked only against the terrain next to ` +
         `${entries.length} ground-storey door(s): a height error of up to ${entryAbove} m relative to that terrain is not detectable. ` +
-        `Every favourable outcome therefore needs ${f(allowance)} m more clearance (the height of the lowest ground-storey door above its ` +
-        `adjacent terrain); it is still wrong if the model is placed too high by more than that, which requires every ground-storey door ` +
-        `to really lie below the terrain next to it.`,
+        `Every favourable outcome therefore needs ${f(allowance)} m more clearance (the height of the highest ground-storey door above its ` +
+        `adjacent terrain); it is still wrong only if the model is placed too high by more than that, which would put every ground-storey ` +
+        `door below the terrain next to it.`,
       de:
         `Der Höhenbezug des Modells lässt sich aus der Gefährdungskarte nicht prüfen. Er wurde nur am Gelände neben ${entries.length} ` +
         `Tür(en) des Erdgeschosses plausibilisiert: ein Höhenfehler bis ${entryAbove} m gegenüber diesem Gelände ist nicht erkennbar. ` +
-        `Jedes günstige Ergebnis verlangt deshalb ${f(allowance)} m zusätzlichen Abstand (die Höhe der tiefsten Erdgeschosstür über dem ` +
-        `Gelände daneben); es ist dennoch falsch, wenn das Modell um mehr als das zu hoch liegt, was voraussetzt, dass jede ` +
-        `Erdgeschosstür tatsächlich unter dem Gelände daneben liegt.`,
+        `Jedes günstige Ergebnis verlangt deshalb ${f(allowance)} m zusätzlichen Abstand (die Höhe der höchsten Erdgeschosstür über dem ` +
+        `Gelände daneben); es ist nur dann falsch, wenn das Modell um mehr als das zu hoch liegt, womit jede Erdgeschosstür unter dem ` +
+        `Gelände daneben läge.`,
     },
   };
 }

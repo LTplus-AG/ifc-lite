@@ -15,7 +15,7 @@ import { checkBBox, runFloodCheck } from '../src/check/run.js';
 import { outlineTerrainPoints, planSamples, pointKey, resolveSampling, terrainSamplerFromGrid } from '../src/check/sampling.js';
 import { ELEMENT_PSET, SITE_PSET, toPropertySets } from '../src/psets.js';
 import type { HazardProvider, MapPoint, TerrainSource } from '../src/types.js';
-import { boxFacts, candidate, CODE, E0, flatTerrain, N0, PROVENANCE, syntheticRaster, TEST_ACCURACY } from './helpers.js';
+import { boxFacts, candidate, CODE, E0, flatTerrain, N0, PROVENANCE, syntheticRaster, TEST_ACCURACY, NO_OTHER_BUILDINGS } from './helpers.js';
 
 const pointTerrain = (heightAt: (p: MapPoint) => number | null): TerrainSource => ({
   crs: 'EPSG:2056',
@@ -47,7 +47,8 @@ function stubProvider(): HazardProvider & { requests: unknown[] } {
 describe('runFloodCheck', () => {
   it('fetches heights only for the distinct sample points when the terrain offers points', async () => {
     const asked: MapPoint[] = [];
-    const facts = boxFacts([door(500), candidate({ expressId: 2, position: { x: E0 + 10, y: N0 }, level: 502 })]);
+    // The raised element is on the upper storey, so the ground-storey door at grade alone confirms the height reference.
+    const facts = boxFacts([door(500), candidate({ expressId: 2, position: { x: E0 + 10, y: N0 }, level: 502, storeyId: 11 })]);
     const result = await runFloodCheck(
       facts,
       stubProvider(),
@@ -132,7 +133,7 @@ describe('runFloodCheck', () => {
         return { confirmed: true, requestUrl: 'ref', detail: '81 of 81', retrievedAt: PROVENANCE.retrievedAt };
       },
     };
-    const result = await runFloodCheck(boxFacts([door(500)]), empty, pointTerrain(() => 500));
+    const result = await runFloodCheck(boxFacts([door(500)]), empty, pointTerrain(() => 500), { otherBuildings: NO_OTHER_BUILDINGS });
     expect(asked).toBe(1);
     expect(result.results[0].outcome).toBe('no-runoff-mapped');
     expect(result.layerCheck).toMatchObject({ rasterEmpty: true, confirmation: { confirmed: true } });

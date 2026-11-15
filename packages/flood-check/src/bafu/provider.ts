@@ -272,6 +272,8 @@ export function createBafuRunoffProvider(options: BafuProviderOptions = {}): Haz
       cells: decoded.cells,
       classes: BAFU_CLASSES,
       counts: decoded.counts,
+      // The map's perimeter travels with the raster, so the check cannot read it as covered everywhere by omission.
+      covers: bafuCovers,
       provenance: {
         providerId: 'bafu-surface-runoff',
         datasetId: BAFU_LAYER,

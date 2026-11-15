@@ -15,7 +15,7 @@ import { checkFloodExposure } from '../src/check/check.js';
 import { nestedRings } from '../src/geom.js';
 import type { FootprintSource } from '../src/model/facts.js';
 import { CELL_NO_RUNOFF, type MapPoint } from '../src/types.js';
-import { boxFacts, candidate, CODE, CONFIRMED, E0, flatTerrain, N0, syntheticRaster } from './helpers.js';
+import { boxFacts, candidate, CODE, CONFIRMED, E0, flatTerrain, N0, syntheticRaster, NO_OTHER_BUILDINGS } from './helpers.js';
 
 const sq = (x0: number, y0: number, x1: number, y1: number): MapPoint[] => [
   { x: E0 + x0, y: N0 + y0 }, { x: E0 + x1, y: N0 + y0 }, { x: E0 + x1, y: N0 + y1 }, { x: E0 + x0, y: N0 + y1 },
@@ -27,7 +27,7 @@ function run(wing: number, source: FootprintSource, paint: (p: MapPoint) => numb
   const door = candidate({ name: 'courtyard door', position: { x: E0 + 15, y: N0 + wing }, level: 500 });
   const street = candidate({ expressId: 2, name: 'street door', position: { x: E0 + 15, y: N0 }, level: 500 });
   const facts = boxFacts([door, street], { footprint: { rings, source, fromElements: [] } });
-  return checkFloodExposure(facts, syntheticRaster(E0 - 10, N0 - 10, 100, 100, 0.5, paint), flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
+  return checkFloodExposure(facts, syntheticRaster(E0 - 10, N0 - 10, 100, 100, 0.5, paint), flatTerrain(499.95), { renderingConfirmation: CONFIRMED, otherBuildings: NO_OTHER_BUILDINGS });
 }
 
 describe('a given footprint with a courtyard ring', () => {

@@ -9,6 +9,7 @@ import { normalizeCrs, sameCrs } from '../crs.js';
 import { bboxOf, expandBBox } from '../geom.js';
 import type { ModelFacts } from '../model/facts.js';
 import {
+  type BuildingFootprintSource,
   type HazardProvider,
   type MapBBox,
   type MapPoint,
@@ -26,7 +27,7 @@ import {
   terrainSamplerFromPoints,
 } from './sampling.js';
 
-export interface RunOptions extends Omit<CheckOptions, 'coverage' | 'renderingConfirmation'> {
+export interface RunOptions extends Omit<CheckOptions, 'renderingConfirmation'> {
   /**
    * Hazard raster cell size, metres. The provider's default when omitted. May
    * not exceed half the provider's model cell: coarser cells can drop a thin
@@ -44,6 +45,8 @@ export interface RunOptions extends Omit<CheckOptions, 'coverage' | 'renderingCo
    */
   maxPlanExtent?: number;
   signal?: AbortSignal;
+  /** Other buildings' footprints, fetched for the check's box (`CheckOptions.otherBuildings` when already resolved). */
+  buildings?: BuildingFootprintSource;
 }
 
 /** The box covering the footprint, every candidate and every ring, plus two raster cells. */
@@ -119,7 +122,7 @@ async function terrainFor(
  * Refuse early on CRS / vertical CRS mismatch or an implausible plan extent,
  * fetch one hazard raster over the building and the terrain under it, confirm
  * the layer renders when that raster is wholly transparent, and run
- * {@link checkFloodExposure} with the provider's coverage perimeter.
+ * {@link checkFloodExposure} (the raster carries the provider's coverage perimeter).
  */
 export async function runFloodCheck(
   facts: ModelFacts,
@@ -147,11 +150,21 @@ export async function runFloodCheck(
     );
   }
   const extentReason = assertPlausibleExtent(bbox, options);
-  const raster = await provider.fetchRaster({ bbox, crs: provider.crs, cellSize: options.cellSize, signal: options.signal });
+  const fetched = await provider.fetchRaster({ bbox, crs: provider.crs, cellSize: options.cellSize, signal: options.signal });
+  // A sample counts as covered only when the raster's own coverage and the provider's (when it states one) both say so.
+  const own = fetched.covers;
+  const perimeter = provider.covers;
+  const raster: typeof fetched = perimeter
+    ? { ...fetched, covers: (p) => (own === 'everywhere' || own(p) === true ? perimeter(p) : own(p)) }
+    : fetched;
   let renderingConfirmation: RenderingConfirmation | undefined;
   if (provider.confirmRendering && rasterShowsNoClass(raster)) {
     renderingConfirmation = await provider.confirmRendering(options.signal);
   }
   const sampler = await terrainFor(facts, terrain, bbox, options);
-  return checkWith(facts, raster, sampler, { ...options, coverage: provider.covers, renderingConfirmation }, extentReason ? [extentReason] : []);
+  if (options.buildings && !sameCrs(options.buildings.crs, provider.crs)) {
+    throw new FloodCheckRefusal('crs-mismatch', `the buildings source is in ${options.buildings.crs}; the hazard map is in ${provider.crs}`);
+  }
+  const otherBuildings = options.buildings ? await options.buildings.footprints(bbox, options.signal) : options.otherBuildings;
+  return checkWith(facts, raster, sampler, { ...options, otherBuildings, renderingConfirmation }, extentReason ? [extentReason] : []);
 }

@@ -10,7 +10,6 @@
  * these verdicts.
  */
 
-import { RelationshipType } from '@ifc-lite/data';
 import { signedDistance } from '../geom.js';
 import type { CandidateCategory, CandidateFact, LevelBasis } from './facts.js';
 import { asString, type DecodedEntity } from './reader.js';
@@ -20,6 +19,7 @@ import {
   facadeReason,
   footprintDoubt,
   groundDoubt,
+  hostOf,
   hostOfOpening,
   isExternal,
   NO_PLACEMENT,
@@ -65,8 +65,8 @@ export function fillingVerdict(ctx: CandidateContext, entity: DecodedEntity): Ve
   if (!loc) return skip(NO_PLACEMENT);
   const outOfScope = scopeExclusion(ctx, loc.lowest);
   if (outOfScope) return skip(outOfScope);
-  const opening = r.related(entity.expressId, RelationshipType.FillsElement, 'inverse')[0];
-  const host = opening === undefined ? null : hostOfOpening(ctx, opening);
+  // The opening's host, else the decomposition parent (a door in a curtain wall has no opening).
+  const host = hostOf(ctx, entity);
   const reason = facadeReason(ctx, entity, host, loc.position, loc.positionCertain);
   if (typeof reason !== 'string') return skip(reason.not);
   const category: CandidateCategory = isWindow ? belowGround(ctx, entity.expressId, loc.level) ? 'basement-window' : 'window' : 'door';
@@ -87,9 +87,14 @@ export function openingVerdict(ctx: CandidateContext, entity: DecodedEntity, fil
   const loc = where(ctx, entity, inSlab ? 'slab-opening' : 'opening', host);
   if (!loc) return skip(NO_PLACEMENT);
   if (inSlab) {
-    // An unplaced host slab may be at or below the ground storey: kept, as an upper estimate (`locate`).
-    if (loc.basis === 'host-slab-top' && loc.level > ctx.groundLevel + 0.01 && !groundDoubt(ctx)) return skip(`in a slab above the ground storey (${loc.level.toFixed(3)} m)`);
-    const because = loc.basis === 'host-slab-top' ? 'unfilled opening in a slab at or below the ground storey' : 'unfilled opening in a slab whose placement cannot be read (kept conservatively)';
+    // Above the ground storey only on a bound proven from geometry read (`locate`'s `lowest`); an unplaced host slab or an
+    // unreadable opening body is kept, as an upper estimate.
+    if (loc.lowest !== null && loc.lowest > ctx.groundLevel + 0.01 && !groundDoubt(ctx)) return skip(`in a slab above the ground storey (lowest possible level ${loc.lowest.toFixed(3)} m)`);
+    const because = loc.basis === 'host-slab-top'
+      ? 'unfilled opening in a slab at or below the ground storey'
+      : loc.basis === 'opening-body-bottom'
+        ? 'unfilled opening in a slab, its body reaching below the slab\'s placement'
+        : 'unfilled opening in a slab whose placement cannot be read (kept conservatively)';
     const fact = at(ctx, entity, 'slab-opening', loc, because);
     fact.host = { expressId: host!.expressId, ifcClass: r.className(host!) };
     return candidate(fact);

@@ -99,12 +99,15 @@ export function fillsCourtyards(source: FootprintSource): boolean {
 
 /**
  * How far the footprint can be trusted, worst last. `voids-filled` and `hull`
- * fill courtyards or notches; `partial` misses part of the building;
+ * fill courtyards or notches, `oversized` reaches beyond the building's
+ * external walls (a podium slab): all three are hull-like; `partial` misses
+ * part of the building (an unreadable source, a wall or façade element
+ * outside it);
  * `courtyard-ring` has a courtyard drawn as its own ring, which the footprint
  * fills (elements facing it are withheld individually).
  */
-export type FootprintQuality = 'complete' | 'voids-filled' | 'courtyard-ring' | 'partial' | 'hull';
-export const FOOTPRINT_QUALITY_ORDER: readonly FootprintQuality[] = ['complete', 'voids-filled', 'courtyard-ring', 'partial', 'hull'];
+export type FootprintQuality = 'complete' | 'voids-filled' | 'oversized' | 'courtyard-ring' | 'partial' | 'hull';
+export const FOOTPRINT_QUALITY_ORDER: readonly FootprintQuality[] = ['complete', 'voids-filled', 'oversized', 'courtyard-ring', 'partial', 'hull'];
 
 /**
  * The footprint's quality as accumulated through every source tried
@@ -118,6 +121,8 @@ export interface FootprintQualityRecord {
   readonly conditions: readonly Exclude<FootprintQuality, 'complete'>[];
   /** Every source tried that could not be read, or only in part. */
   readonly unreadable: ReadonlyArray<{ expressId: number; ifcClass: string; reason: string }>;
+  /** What checking the footprint against the building found (walls or façade elements outside it, walls well inside it). */
+  readonly notes: readonly string[];
 }
 
 /**
@@ -130,7 +135,7 @@ export function footprintConcerns(fp: FootprintFact): { hullLike: boolean; parti
   if (fillsCourtyards(fp.source)) conditions.add(fp.source === 'slab-outline-voids-filled' ? 'voids-filled' : 'hull');
   if (fp.partial || fp.rings.length === 0) conditions.add('partial');
   const worst = FOOTPRINT_QUALITY_ORDER.reduce<FootprintQuality>((w, q) => (conditions.has(q) ? q : w), 'complete');
-  return { hullLike: conditions.has('hull') || conditions.has('voids-filled'), partial: conditions.has('partial'), worst };
+  return { hullLike: conditions.has('hull') || conditions.has('voids-filled') || conditions.has('oversized'), partial: conditions.has('partial'), worst };
 }
 
 export interface FootprintFact {

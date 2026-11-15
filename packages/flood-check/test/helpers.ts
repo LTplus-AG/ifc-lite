@@ -12,6 +12,7 @@ import type { CandidateFact, ModelFacts } from '../src/model/facts.js';
 import {
   CELL_NO_RUNOFF,
   type ClassifiedHazardRaster,
+  type OtherBuildingFootprints,
   type HazardProvenance,
   type MapPoint,
   type TerrainSampler,
@@ -137,6 +138,8 @@ export function syntheticRaster(
   cell: number,
   paint: (p: MapPoint) => number = () => CELL_NO_RUNOFF,
   crs = 'EPSG:2056',
+  /** Synthetic rasters state their coverage explicitly; the default says the whole raster lies within the mapped area. */
+  covers: ClassifiedHazardRaster['covers'] = 'everywhere',
 ): ClassifiedHazardRaster {
   const cells = new Uint8Array(w * h);
   for (let row = 0; row < h; row++) {
@@ -154,6 +157,7 @@ export function syntheticRaster(
     classes: BAFU_CLASSES,
     counts: { total: w * h, classified: 0, noRunoff: 0, unclassifiedOpaque: 0, unclassifiedTranslucent: 0, byClass: {} },
     provenance: PROVENANCE,
+    covers,
   };
 }
 
@@ -230,3 +234,9 @@ export function boxFacts(candidates: CandidateFact[], over: Partial<ModelFacts> 
     ...over,
   };
 }
+
+/**
+ * A complete source stating there are no other buildings near the test
+ * building: transparent samples are then open ground (`CheckOptions.otherBuildings`).
+ */
+export const NO_OTHER_BUILDINGS: OtherBuildingFootprints = { crs: 'EPSG:2056', rings: [], complete: true, provenance: { source: 'test: no other buildings' } };

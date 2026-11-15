@@ -55,7 +55,8 @@ export type RefusalCode =
   | 'ambiguous-map-scale'
   | 'outside-provider-extent'
   | 'no-candidates'
-  | 'ambiguous-building';
+  | 'ambiguous-building'
+  | 'world-coordinate-system';
 
 /** The model and the data sources do not fit together; the check refuses instead of guessing. */
 export class FloodCheckRefusal extends FloodCheckError {

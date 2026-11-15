@@ -55,6 +55,10 @@ export type UnclassifiedReason =
   | 'courtyard-ring'
   /** Every sample is transparent, but the footprint may miss part of the building (a source that cannot be read, or no rings at all). */
   | 'partial-footprint'
+  /** A ground sample lies inside another building, which the hazard model raised: not modelled there. */
+  | 'other-building'
+  /** Transparent samples, but no complete source of other buildings' footprints was supplied: they may lie inside one. */
+  | 'other-buildings-unknown'
   /** Every sample is transparent, but the model's height reference (and so its georeference) could not be confirmed. */
   | 'height-reference-unconfirmed'
   /** Every sample is transparent, but the element's level is only an upper estimate. */

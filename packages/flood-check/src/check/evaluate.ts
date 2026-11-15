@@ -36,13 +36,18 @@
  *   a sample is outside the map's coverage      -> within-class-range      -> unclassified (outside-coverage)
  *   a sample is in an area the map excluded     -> within-class-range      -> unclassified (excluded-area)
  *   anchor moved > anchorTolerance              -> within-class-range      -> unclassified (anchor-moved)
- *   footprint fills courtyards (hull, voids)    -> within-class-range      -> unclassified (hull-footprint)
+ *   footprint fills courtyards (hull, voids,    -> within-class-range      -> unclassified (hull-footprint)
+ *     or oversized: beyond the external walls)
  *   nearest boundary is a nested (courtyard) ring -> within-class-range    -> unclassified (courtyard-ring)
- *   footprint partial (a source unreadable)    -> within-class-range      -> unclassified (partial-footprint)
+ *   footprint partial (a source unreadable, a   -> within-class-range      -> unclassified (partial-footprint)
+ *     wall or façade element outside it)
  *   height reference unconfirmed                -> within-class-range      -> unclassified (height-reference-unconfirmed)
  *   raster shows no class, layer unconfirmed    (no class to compare)      -> unclassified (layer-not-confirmed)
  *   a classified sample has no terrain          -> within-class-range      (no classified sample)
  *   clearance short of m + a, not of m          -> within-class-range      (no comparison)
+ *   a sample lies inside another building       -> within-class-range      -> unclassified (other-building)
+ *   a transparent sample, and no complete       -> within-class-range      -> unclassified (other-buildings-unknown)
+ *     source of other buildings' footprints
  *
  * "Layer unconfirmed": no rendering confirmation, a negative one, or a
  * positive one whose reference was fetched more than 5 minutes apart from the
@@ -50,9 +55,10 @@
  */
 
 import { fillsCourtyards, type CandidateFact, type ModelFacts } from '../model/facts.js';
-import type { ClassifiedHazardRaster, CoverageTest, HazardClassDefinition, MapPoint } from '../types.js';
+import type { ClassifiedHazardRaster, HazardClassDefinition, MapPoint } from '../types.js';
 import { compareLevel, type LevelComparison, type Outcome, type UnclassifiedReason } from './outcome.js';
 import { readCell, type SamplePlan } from './sampling.js';
+import { insideAny } from '../geom.js';
 
 export interface SampleCounts {
   /** Ring points considered. */
@@ -90,7 +96,6 @@ export interface Evaluation {
 export interface EvaluationContext {
   raster: ClassifiedHazardRaster;
   heightAt(point: MapPoint): number | null;
-  covers?: CoverageTest;
   /** Null when the margin cannot be sized. */
   margin: number | null;
   /** Height-reference allowance added to the margin for the favourable outcome; null when the reference is unconfirmed. */
@@ -103,6 +108,8 @@ export interface EvaluationContext {
   footprintPartial?: boolean;
   /** No cell of the raster shows a mapped class and no positive confirmation fetched within 5 min of the raster vouches for it (`layer.ts`). */
   emptyRasterUnconfirmed: boolean;
+  /** Other buildings' footprints (`CheckOptions.otherBuildings`); absent: transparent samples are unknown. */
+  otherBuildings?: { rings: readonly (readonly MapPoint[])[]; complete: boolean };
 }
 
 const fmt = (v: number) => v.toFixed(3);
@@ -122,12 +129,17 @@ function pickDriver(evaluated: DrivingSample[]): DrivingSample {
 
 export function evaluateCandidate(candidate: CandidateFact, plan: SamplePlan, ctx: EvaluationContext): Evaluation {
   const { raster } = ctx;
-  const byReading: Record<string, number> = { 'no-runoff': 0, unclassified: 0, outside: 0, 'outside-coverage': 0 };
+  const byReading: Record<string, number> = { 'no-runoff': 0, unclassified: 0, outside: 0, 'outside-coverage': 0, 'other-building': 0 };
   for (const c of raster.classes) byReading[c.id] = 0;
   const classified: Array<{ point: MapPoint; cls: HazardClassDefinition; terrain: number | null }> = [];
   let excluded = false;
   for (const { point } of plan.points) {
-    const reading = readCell(raster, point, ctx.covers);
+    const reading = readCell(raster, point);
+    // Transparent inside another building is "raised, not modelled" (the hazard model raised every building).
+    if (reading.kind === 'no-runoff' && ctx.otherBuildings && insideAny(point, ctx.otherBuildings.rings)) {
+      byReading['other-building']++;
+      continue;
+    }
     if (reading.kind !== 'class') {
       byReading[reading.kind]++;
       continue;
@@ -293,6 +305,18 @@ function conditionsWithholding(
   }
   if (ctx.margin === null) {
     out.push({ reason: 'margin-not-sized', text: 'the terrain source states no vertical accuracy, so the clearance margin cannot be sized' });
+  }
+  if (byReading['other-building'] > 0) {
+    out.push({ reason: 'other-building', text: `${byReading['other-building']} ground sample(s) lie inside another building, which the hazard model raised (not modelled there)` });
+  }
+  // Transparency is "open ground, no runoff mapped" only with proof the sample is not inside a building the model omits.
+  if (byReading['no-runoff'] > 0 && ctx.otherBuildings?.complete !== true) {
+    out.push({
+      reason: 'other-buildings-unknown',
+      text:
+        `${byReading['no-runoff']} transparent ground sample(s) may lie inside another building (an attached garage, a neighbour not in the model), ` +
+        'which the hazard model raised; no complete source of other buildings\' footprints was supplied, so transparency there does not show open ground',
+    });
   }
   return out;
 }

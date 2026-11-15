@@ -55,7 +55,10 @@ no I/O. `runFloodCheck` refuses a plan extent no building has, fetches one
 raster over the building and the terrain under it, asks the provider to
 confirm the layer renders when no cell of that raster shows a mapped class
 (only transparent or unreadable edge pixels), and calls it
-with the provider's coverage perimeter.
+with the raster's coverage combined with the provider's perimeter. With a
+`buildings` source (`BuildingFootprintSource`: `footprints(bbox)` returns
+other buildings' rings in the provider CRS, with provenance and a
+`complete` flag) it also fetches the footprints of the buildings around.
 
 ## Interfaces
 
@@ -66,7 +69,9 @@ with the provider's coverage perimeter.
   (dataset, dataset date, retrieval time, request URL, attribution, licence,
   return-period wording, limits, disclaimer). It declares its `crs`, `extent`
   and `modelCellSize`, and optionally `covers(point)` (its coverage
-  perimeter: `true`, `false`, or `null` when too close to tell) and
+  perimeter: `true`, `false`, or `null` when too close to tell). Every raster
+  carries its own **required** `covers`: a `CoverageTest` or the explicit
+  value `'everywhere'` and
   `confirmRendering()` (a small request where the map is known to show
   runoff).
 - **`TerrainSource`** — `heightAt(point)` and/or `grid(bbox, { resolution })`,
@@ -232,9 +237,18 @@ entities, properties and containment from the parsed store. No meshing.
   or axis), and every condition met (filled voids, a courtyard ring, a
   partial outline, a hull) stays recorded through every later fallback, and
   the worst of them is `quality.worst` (`complete` < `voids-filled` <
-  `courtyard-ring` < `partial` < `hull`; site set `FootprintQuality`). A
+  `oversized` < `courtyard-ring` < `partial` < `hull`; site set
+  `FootprintQuality`; each condition's evidence in `quality.notes`). A
   fallback supplies geometry but cannot upgrade the quality: a wall loop
-  round part of a building whose slab cannot be read is still `partial`. A given
+  round part of a building whose slab cannot be read is still `partial`.
+  The finished footprint is checked against the building: an external
+  ground-storey wall whose axis runs more than 1 m outside it, or a door,
+  window or opening placed more than 1 m outside it, makes it `partial` (that
+  element is kept, never interior); an external wall axis more than 1 m
+  inside it makes it `oversized` (a podium or forecourt slab), which counts
+  as a hull. Ground-storey floor slabs that meet at a seam are separate
+  rings; an anchor is taken only on the outline of their union, never on the
+  shared seam. A given
   `footprint` must have at least one ring of 3 or more points enclosing at
   least 1 m² (`RangeError` otherwise).
 - **Building**: the footprint is one building's outline, so only the
@@ -347,7 +361,7 @@ open-ended class and watercourses):
 | `above-mapped-class-range` | every sample has `z > Ti + Ui + m + a` (`a`: the height-reference allowance), and no condition below withholds it |
 | `within-class-range` | otherwise: the class ranges cannot decide it |
 | `no-runoff-mapped` | every ground sample is transparent, and no condition below withholds it. **Not "safe"**: the publisher states areas shown unaffected may still be affected |
-| `unclassified` | `map-edge-blend`, `outside-raster`, `outside-coverage`, `layer-not-confirmed`, `no-ground-sample`, `excluded-area`, `no-terrain`, or a withheld `no-runoff-mapped`: `anchor-moved`, `hull-footprint`, `courtyard-ring`, `partial-footprint`, `height-reference-unconfirmed`, `level-upper-estimate`, `margin-not-sized` |
+| `unclassified` | `map-edge-blend`, `outside-raster`, `outside-coverage`, `layer-not-confirmed`, `no-ground-sample`, `excluded-area`, `no-terrain`, or a withheld `no-runoff-mapped`: `anchor-moved`, `hull-footprint`, `courtyard-ring`, `partial-footprint`, `height-reference-unconfirmed`, `level-upper-estimate`, `margin-not-sized`, `other-building`, `other-buildings-unknown` |
 
 `above-mapped-class-range` states only that: the element level is above the
 range of every class the map shows next to it, with the margin to spare. It
@@ -371,13 +385,24 @@ and `open-ended-class` are never withheld (they are the conservative side);
 | a ground sample is outside (or too near) the coverage perimeter | `within-class-range` | `unclassified` (`outside-coverage`) |
 | a ground sample lies in an area the map did not model (glacier) | `within-class-range` | `unclassified` (`excluded-area`) |
 | the element was moved more than `anchorTolerance` (1 m) to reach the outline | `within-class-range` | `unclassified` (`anchor-moved`) |
-| the footprint fills courtyards (`external-wall-hull`, `candidate-hull`, `slab-outline-voids-filled`) | `within-class-range` | `unclassified` (`hull-footprint`) |
-| the footprint is partial: a footprint source tried could not be read (a ground-storey floor slab's outline, an external wall's placement or axis), even when a fallback supplied the outline, or (hand-built facts) the footprint has no rings, so an element in the missing area reads as outside and is sampled inside the building | `within-class-range` | `unclassified` (`partial-footprint`) |
+| the footprint fills courtyards (`external-wall-hull`, `candidate-hull`, `slab-outline-voids-filled`) or reaches beyond the building's external walls (`oversized`: a podium or forecourt slab) | `within-class-range` | `unclassified` (`hull-footprint`) |
+| the footprint is partial: a footprint source tried could not be read (a ground-storey floor slab's outline, an external wall's placement or axis), even when a fallback supplied the outline, or an external wall or a façade element stands more than 1 m outside it, or (hand-built facts) the footprint has no rings, so an element in the missing area reads as outside and is sampled inside the building | `within-class-range` | `unclassified` (`partial-footprint`) |
 | the element's nearest footprint boundary is a ring lying inside the other rings (every vertex inside one of them, also when two overlapping rings cover it only together; a courtyard drawn as its own ring, for example in a given footprint): a point inside any ring counts as inside, so the courtyard is filled and its ground is not sampled | `within-class-range` | `unclassified` (`courtyard-ring`) |
 | height reference unconfirmed (see below) | `within-class-range` | `unclassified` (`height-reference-unconfirmed`) |
 | no cell of the raster shows a mapped class and the layer is not confirmed to render (no positive confirmation fetched within 5 minutes of the raster) | (no class to compare) | `unclassified` (`layer-not-confirmed`) |
 | a classified sample has no terrain height | `within-class-range` | (no classified sample) |
 | clearance exceeds `m` but not `m + a` | `within-class-range` | (no comparison) |
+| a ground sample lies inside another building (`otherBuildings`), which the hazard model raised | `within-class-range` | `unclassified` (`other-building`) |
+| a transparent ground sample, and no complete source of other buildings' footprints was supplied | `within-class-range` | `unclassified` (`other-buildings-unknown`) |
+
+**Transparent counts as "no runoff" only with proof that it is open
+ground.** The hazard model raised every building, so a transparent pixel inside
+another building (an attached garage, a neighbour not in the model) means "not
+modelled". Without a complete source of other buildings' footprints
+(`otherBuildings`, or `runFloodCheck`'s `buildings` source) **the check can
+flag exposure, and can say "above the mapped class range" only where every
+ground sample shows a class; it never says "no runoff mapped".** `exposed` and
+`open-ended-class` are unaffected.
 
 **Every decision and the completeness it consults.** Each place where an
 element is excluded, classed as interior or out of scope, or given a
@@ -390,7 +415,7 @@ whose input is incomplete is withheld with the reason.
 | --- | --- | --- |
 | not placed (skipped, named in a warning) | `locate` | the element's placement |
 | out of scope (`aboveGroundScope` above the ground storey) | `scopeExclusion` | the proven lower bound (`locate`'s `lowest`: the exact level, placement minus `OverallHeight` for a door or window, the filling's bound for an opening; none: kept), the ground storey's basis (a guessed one excludes nothing); never the storey |
-| not in the façade (no `IsExternal`, beyond 1 m of the outline) | `facadeReason` | `IsExternal` of element and host, the position's certainty (`locate`: read from part of a body, a placement standing in for a hole, or a door or window placement with no readable geometry: kept), the footprint's quality (hull, filled voids: kept; partial: kept outside the readable rings), no footprint at all (kept) |
+| not in the façade (no `IsExternal`, beyond 1 m of the outline) | `facadeReason` | never when more than 1 m OUTSIDE the footprint (kept, footprint marked partial); otherwise `IsExternal` of element and host (the host: the opening's, else the decomposition parent; Common set by supertype), the position's certainty (`locate`: read from part of a body, a placement standing in for a hole, or a door or window placement with no readable geometry: kept), the footprint's quality (hull, filled voids: kept; partial: kept outside the readable rings), no footprint at all (kept) |
 | interior stair or ramp | `descentVerdict` | `IsExternal`, placement and every body corner, body completeness, the footprint's quality (hull, filled voids: kept; partial: outside counts as outside) |
 | a stair or ramp leads up (skipped) | `descentEvidence` | body completeness (a complete body only), the ground storey's basis (a guessed one excludes nothing) |
 | a slab opening above the ground storey | `openingVerdict` | the host slab's placement (unplaced: kept, upper estimate), the ground storey's basis |
@@ -399,7 +424,7 @@ whose input is incomplete is withheld with the reason.
 | RECESS opening | `openingVerdict` | its stated predefined type |
 | reported through its door, window or stair | `selectCandidates` | that element's verdict (only a candidate reports for another) |
 | in a building that is not checked | `selectCandidates`, `scopeToBuilding` | the ground storey's building (several buildings and none placed: refused); named and counted in the result |
-| `above-mapped-class-range`, `no-runoff-mapped` | `evaluateCandidate` | every condition of the withhold table above: terrain accuracy, level quality, edge / off-raster / out-of-coverage / excluded samples, anchor offset, the footprint's quality record (hull, filled voids, partial) and courtyard rings, the height reference, the layer confirmation and its age, terrain at classified samples, the clearance allowance |
+| `above-mapped-class-range`, `no-runoff-mapped` | `evaluateCandidate` | every condition of the withhold table above: terrain accuracy, level quality, edge / off-raster / out-of-coverage (the raster's own `covers`, required) / excluded samples, other buildings' footprints (supplied and complete), anchor offset, the footprint's quality record (hull, filled voids, partial) and courtyard rings, the height reference (a known, not guessed, ground storey; doors agreeing within the margin), the layer confirmation and its age, terrain at classified samples, the clearance allowance (the highest ground-storey door) |
 
 
 The sample that decides the outcome is reported with its numbers
@@ -468,26 +493,30 @@ errors: on a 10 m slope, a model up to about 12 m too high passes it.
 ground-storey door on the outline must sit at most `entryAbove` (2.5 m; may
 only be lowered) above the terrain next to it (the median of its own ground
 samples). If one does not, there is no such door, the ground storey is not
-identified, no terrain was found, or a refusal band or `maxPlanExtent` was
-widened, the height reference is **unconfirmed**: no element anywhere is
+identified or was **guessed** (the lowest storey, or none: it may be the
+basement, whose doors really lie below terrain), the ground-storey doors
+**disagree** about their height above the terrain next to them by more than
+the margin (a sunken patio door next to a front door), no terrain was found,
+or a refusal band or `maxPlanExtent` was widened, the height reference is
+**unconfirmed**: no element anywhere is
 reported `above-mapped-class-range` or `no-runoff-mapped`
 (`result.heightReference.unconfirmedBecause` says why). Elements on upper
 storeys are always far above the terrain, so they never confirm the
 reference; they depend on the ground-storey doors like every other element.
 
-If every door passes, the height of the lowest ground-storey door above its
-adjacent terrain is the **allowance** `a`: a raised threshold and a model
-placed that much too high look the same, so every favourable outcome needs `a`
-more clearance than the margin. A door at grade gives `a ≈ 0`; a model placed
+If every door passes, the height of the **highest** ground-storey door above
+its adjacent terrain, `a = max(0, max hᵢ)`, is the **allowance**: a raised
+threshold and a model placed that much too high look the same, so every
+favourable outcome needs `a` more clearance than the margin. A door at grade gives `a ≈ 0`; a model placed
 2.4 m too high on flat ground gives `a = 2.4 m`.
 
 **Residual risk**, stated in words with this run's numbers in every result
 (`residualRisk`), in `result.heightReference.residualRisk`, in the warnings
 and in the site set (`ResidualRiskEN/DE`): a height error of up to `entryAbove`
 relative to the terrain next to the ground-storey doors is not detectable; the
-allowance covers a model placed too high by up to `a`; a larger error goes
-undetected only if every ground-storey door really lies below the terrain next
-to it. When the reference is unconfirmed, the statement says so and gives the
+allowance covers a model placed too high by up to `a`; a larger error would
+put every ground-storey door below the terrain next to it, which is the only
+case it goes undetected. When the reference is unconfirmed, the statement says so and gives the
 building-level band that was applied.
 
 `runFloodCheck` also refuses (`georeference-implausible`) when candidates,
@@ -530,7 +559,9 @@ supplying information the check cannot get itself. Checked:
 | `clearanceMargin` | smaller: thinner margin | raise only (unchanged) |
 | `classResolution` | smaller: thinner margin | raise only (≥ 0.25 m) |
 | `georeferenceVerticalUncertainty` | smaller: thinner margin | allowed: it is the caller's statement about the model (default 0.5 m, basis recorded) |
-| `coverage`, `renderingConfirmation` (check) | add information | allowed; without them nothing is assumed beyond the default |
+| `renderingConfirmation` (check) | adds information | allowed; without it an empty raster is unconfirmed |
+| `otherBuildings` (check), `buildings` (run) | add information | allowed; without a complete source transparent samples are unknown (`other-buildings-unknown`) |
+| raster `covers` | the map's coverage perimeter | **required** field of `ClassifiedHazardRaster` (`'everywhere'` stated explicitly); the former `coverage` option is removed, so leaving it out cannot read as covered |
 | `cellSize` (run, provider) | coarser cells can drop a thin flow path | ≤ 0.5 m (half the model raster) |
 | `terrainResolution` (run) | coarser grid smooths the terrain | ≤ 0.5 m |
 | `maxPlanExtent` (run) | larger: a scale error becomes results | larger allowed, but then unconfirmed |
@@ -555,7 +586,9 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
   `TerrainVerticalCrs`, `VerticalDatumBasis`, `FootprintSource`,
   `FootprintPartial`, `FootprintQuality`,
   `CheckedBuilding`, `BuildingsNotChecked` (each with its count of candidate
-  elements), `CountElementsNotChecked`,
+  elements), `CountElementsNotChecked`, `CountElementsWalked`,
+  `CountElementsSkipped`, `ElementsSkippedByReason` (each reason with its
+  count), `OtherBuildingsSource`, `OtherBuildingsComplete`,
   `GroundStoreyBasis`, `GroundStoreyLevel`, `HeightPlausibilityStatus`,
   `HeightPlausibilityBasis`, `TerrainMinNearBuilding`,
   `TerrainMaxNearBuilding`, `HeightPlausibilityBelow/Above`,
@@ -584,6 +617,23 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
   `FavourableWithheldBecause`, `ResidualRiskEN/DE`, `Notes`, `Dataset`, `DatasetDate`,
   `RetrievedAt`, `Attribution`, `SitePropertySet`. A payload read on its own
   therefore still carries the caveat, the source and the dataset date.
+
+## Limits
+
+- A building raster that shows a single classified pixel is not "empty", so it
+  skips the rendering confirmation; a partly rendered building raster is not
+  detected as such.
+- A style change that swaps the colours of two known legend classes cannot be
+  detected: both still decode.
+- The other buildings' footprints are only as good as their source: a
+  `complete` flag is the source's statement.
+- A non-boolean `IsExternal` (for example the text `'true'`) reads as
+  unstated.
+- `OverallHeight` bounds a door or window only between 0.1 m and 10 m after
+  unit conversion; outside that range it bounds nothing.
+- A representation context whose `WorldCoordinateSystem` is not the identity
+  is refused (`world-coordinate-system`): placements are read from the world
+  origin.
 
 ## Source and terms
 

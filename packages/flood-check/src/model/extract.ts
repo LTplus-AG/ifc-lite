@@ -12,6 +12,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
+import { signedDistance } from '../geom.js';
 import type { MapPoint } from '../types.js';
 import { selectCandidates } from './candidates.js';
 import { NO_PLACEMENT } from './candidate-base.js';
@@ -19,7 +20,7 @@ import { FloodCheckRefusal } from '../errors.js';
 import { buildingLabel, footprintConcerns, type BuildingRef, type BuildingScope, type ModelFacts, type SpaceFact, type StoreyFact } from './facts.js';
 import { resolveFootprint } from './footprint.js';
 import { georeferenceData, resolveModelGeoreference, type GeoreferenceOptions, type ModelGeoreference } from './georef.js';
-import { PlacementResolver } from './placement.js';
+import { axisPlacementFrame, PlacementResolver } from './placement.js';
 import { asString, ModelReader } from './reader.js';
 
 export interface ExtractOptions extends GeoreferenceOptions {
@@ -160,10 +161,31 @@ function atLeast(name: string, value: number | undefined, fallback: number): num
   return value;
 }
 
+/**
+ * Placements are read relative to the world origin; a representation context
+ * whose `WorldCoordinateSystem` moves or turns that origin would shift every
+ * position and level, so it is refused rather than ignored.
+ */
+function refuseShiftedWorldCoordinateSystem(reader: ModelReader): void {
+  for (const id of reader.idsOfType('IFCGEOMETRICREPRESENTATIONCONTEXT')) {
+    const wcs = reader.attr(reader.entity(id), 'WorldCoordinateSystem');
+    if (wcs === null || wcs === undefined) continue;
+    const f = axisPlacementFrame(reader, wcs);
+    const near = (a: readonly number[], b: readonly number[]) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+    if (!f || !near(f.origin, [0, 0, 0]) || !near(f.x, [1, 0, 0]) || !near(f.y, [0, 1, 0]) || !near(f.z, [0, 0, 1])) {
+      throw new FloodCheckRefusal(
+        'world-coordinate-system',
+        `representation context #${id} has a WorldCoordinateSystem that is not the identity (or cannot be read); positions and levels would shift, so the model is not checked`,
+      );
+    }
+  }
+}
+
 /** Read the model facts the flood check needs. Throws {@link FloodCheckRefusal} when georeferencing does not allow it. */
 export function extractModelFacts(store: IfcDataStore, options: ExtractOptions = {}): ModelFacts {
   const georef = resolveModelGeoreference(store, options);
   const reader = new ModelReader(store);
+  refuseShiftedWorldCoordinateSystem(reader);
   const nameOf = (id: number) => {
     const name = asString(reader.attr(reader.entity(id), 'Name'));
     return name ? ` "${name}"` : '';
@@ -242,12 +264,21 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
     warnings.push(
       `the file contains ${buildingScope.notChecked.length + 1} buildings; only ${buildingScope.checked ? buildingLabel(buildingScope.checked) : 'the ground storey\'s'} ` +
         `(the ground storey's) was checked. Not checked: ${buildingScope.notChecked.map((b) => `${buildingLabel(b)} (${b.candidatesNotChecked} candidate element(s))`).join(', ')}; ` +
-        `those ${n} element(s) have no result, and façade elements there that do not state IsExternal are not counted. ` +
+        `those ${n} element(s) have no result. ` +
         'Run the check again with groundStorey set to a storey of each other building',
     );
   }
 
-  const footprint = resolution.finish(candidates.map((c) => c.position));
+  // A façade element of the checked building standing more than the tolerance outside the footprint shows the footprint
+  // misses part of the building: it is marked partial (the element itself was kept, `facadeReason`).
+  const tolerance = atLeast('boundaryTolerance', options.boundaryTolerance, 1);
+  const outside = derived
+    ? candidates
+        .filter((c) => ['door', 'window', 'basement-window', 'wall-opening'].includes(c.category))
+        .map((c) => ({ expressId: c.expressId, ifcClass: c.ifcClass, distance: signedDistance(c.position, derived.rings) }))
+        .filter((o) => o.distance > tolerance)
+    : [];
+  const footprint = resolution.finish(candidates.map((c) => c.position), outside);
 
 
   const spaces: SpaceFact[] = [];

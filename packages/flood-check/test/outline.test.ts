@@ -25,8 +25,13 @@ describe('IfcIndexedPolyCurve outline', () => {
     expect(curvePoints(curve(segments), 1)).toEqual([[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]);
   });
 
-  it('takes an arc segment through its stored points', () => {
-    expect(curvePoints(curve([['IFCLINEINDEX', [1, 2]], ['IFCARCINDEX', [2, 3, 5]]]), 1)).toEqual([[0, 0], [10, 0], [10, 10], [0, 10]]);
+  it('an arc segment adds its circle\'s axis-aligned extremes on the arc, so its extent is exact (audit finding 9)', () => {
+    // The arc through (10, 0), (10, 10), (0, 10): centre (5, 5), radius 5√2; its rightmost (east) and topmost (north) points lie on it.
+    const r = 5 * Math.SQRT2;
+    const pts = curvePoints(curve([['IFCLINEINDEX', [1, 2]], ['IFCARCINDEX', [2, 3, 5]]]), 1)!;
+    expect(pts.map(([x, y]) => [Number(x.toFixed(9)), Number(y.toFixed(9))])).toEqual([
+      [0, 0], [10, 0], [Number((5 + r).toFixed(9)), 5], [10, 10], [5, Number((5 + r).toFixed(9))], [0, 10],
+    ]);
   });
 
   it('an out-of-range or malformed segment makes the outline unreadable, never a guess', () => {

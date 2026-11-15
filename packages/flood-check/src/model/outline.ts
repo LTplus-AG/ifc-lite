@@ -62,24 +62,55 @@ export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | nul
     if (!pts || pts.length < 2) return null;
     const segments = e.attributes[1];
     if (segments === null || segments === undefined) return pts; // no Segments: the points in list order
-    // Segments name the points of the curve and their order (1-based; a line or an arc through three points, taken as
-    // chords). A point the segments omit is not on the curve, and a malformed segment makes the whole outline unreadable.
+    // Segments name the points of the curve and their order (1-based; a line, or an arc through three points, which adds
+    // the circle's axis-aligned extremes lying on it so the curve's extent is exact). A point the segments omit is not on
+    // the curve, and a malformed segment makes the whole outline unreadable.
     if (!Array.isArray(segments) || segments.length === 0) return null;
     const out: Pt2[] = [];
     let last = -1;
     for (const seg of segments) {
       const indices = Array.isArray(seg) && typeof seg[0] === 'string' && Array.isArray(seg[1]) ? seg[1] : null;
       if (!indices || indices.length < 2) return null;
-      for (const i of indices) {
-        if (typeof i !== 'number' || !Number.isInteger(i) || i < 1 || i > pts.length) return null;
-        if (i === last) continue;
-        out.push(pts[i - 1]);
-        last = i;
+      if (indices.some((i) => typeof i !== 'number' || !Number.isInteger(i) || i < 1 || i > pts.length)) return null;
+      const arc = seg[0] === 'IFCARCINDEX';
+      if (arc && indices.length !== 3) return null;
+      if (last !== indices[0]) out.push(pts[indices[0] - 1]);
+      const rest = arc ? arcPoints(pts[indices[0] - 1], pts[indices[1] - 1], pts[indices[2] - 1]) : indices.slice(1).map((i: number) => pts[i - 1]);
+      for (const p of rest) {
+        const prev = out[out.length - 1];
+        if (!prev || prev[0] !== p[0] || prev[1] !== p[1]) out.push(p);
       }
+      last = indices[indices.length - 1];
     }
     return out.length >= 2 ? out : null;
   }
   return null;
+}
+
+/**
+ * The points of an arc from `a` through `b` to `c`, after `a`: `b`, `c`, and
+ * every axis-aligned extreme of their circle that lies on the arc, in order
+ * along it. Three collinear points are a straight line (`b`, `c`).
+ */
+function arcPoints(a: Pt2, b: Pt2, c: Pt2): Pt2[] {
+  const d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
+  if (Math.abs(d) < 1e-12) return [b, c];
+  const sq = (p: Pt2) => p[0] * p[0] + p[1] * p[1];
+  const ux = (sq(a) * (b[1] - c[1]) + sq(b) * (c[1] - a[1]) + sq(c) * (a[1] - b[1])) / d;
+  const uy = (sq(a) * (c[0] - b[0]) + sq(b) * (a[0] - c[0]) + sq(c) * (b[0] - a[0])) / d;
+  const r = Math.hypot(a[0] - ux, a[1] - uy);
+  const ang = (p: Pt2) => Math.atan2(p[1] - uy, p[0] - ux);
+  const norm = (t: number) => ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  const ta = ang(a);
+  const ccw = norm(ang(b) - ta) < norm(ang(c) - ta);
+  const along = (t: number) => (ccw ? norm(t - ta) : norm(ta - t));
+  const sweep = along(ang(c));
+  const out: Array<[number, Pt2]> = [[along(ang(b)), b], [sweep, c]];
+  for (const e of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
+    const off = along(e);
+    if (off > 1e-9 && off < sweep - 1e-9) out.push([off, [ux + r * Math.cos(e), uy + r * Math.sin(e)]]);
+  }
+  return out.sort((x, y) => x[0] - y[0]).map(([, p]) => p);
 }
 
 /** Outer boundary of a profile definition, in the profile's own 2D coordinates. */

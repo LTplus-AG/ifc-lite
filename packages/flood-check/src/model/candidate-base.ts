@@ -13,24 +13,43 @@ import type { MapPoint } from '../types.js';
 import type { CandidateCategory, CandidateFact, LevelBasis } from './facts.js';
 import type { ModelGeoreference } from './georef.js';
 import type { PlacementResolver } from './placement.js';
+import { getInheritanceChainAcrossSchemas, normalizeIfcTypeName } from '@ifc-lite/parser';
 import { asEnum, asString, type DecodedEntity, type ModelReader } from './reader.js';
 
-export const COMMON_PSET: Record<string, string> = {
-  IFCDOOR: 'Pset_DoorCommon',
-  IFCDOORSTANDARDCASE: 'Pset_DoorCommon',
-  IFCWINDOW: 'Pset_WindowCommon',
-  IFCWINDOWSTANDARDCASE: 'Pset_WindowCommon',
-  IFCWALL: 'Pset_WallCommon',
-  IFCWALLSTANDARDCASE: 'Pset_WallCommon',
-  IFCCURTAINWALL: 'Pset_CurtainWallCommon',
-  IFCSTAIR: 'Pset_StairCommon',
-  IFCSTAIRFLIGHT: 'Pset_StairFlightCommon',
-  IFCRAMP: 'Pset_RampCommon',
-  IFCRAMPFLIGHT: 'Pset_RampFlightCommon',
-  IFCSLAB: 'Pset_SlabCommon',
-  IFCSLABSTANDARDCASE: 'Pset_SlabCommon',
-  IFCSLABELEMENTEDCASE: 'Pset_SlabCommon',
+/**
+ * The Common property set carrying `IsExternal`, by supertype: any subtype of
+ * these classes (`IfcWallElementedCase`, `IfcPlateStandardCase`, …) uses its
+ * supertype's set. Checked against the repo's property-set data for IFC2X3,
+ * IFC4 and IFC4X3 (`IsExternal` is in each of these sets in all three, except
+ * `Pset_CoveringCommon` in IFC2X3 and the flight sets, where it reads as
+ * unstated).
+ */
+const COMMON_BY_SUPERTYPE: Readonly<Record<string, string>> = {
+  IfcWall: 'Pset_WallCommon',
+  IfcPlate: 'Pset_PlateCommon',
+  IfcRoof: 'Pset_RoofCommon',
+  IfcCovering: 'Pset_CoveringCommon',
+  IfcCurtainWall: 'Pset_CurtainWallCommon',
+  IfcSlab: 'Pset_SlabCommon',
+  IfcDoor: 'Pset_DoorCommon',
+  IfcWindow: 'Pset_WindowCommon',
+  IfcStair: 'Pset_StairCommon',
+  IfcStairFlight: 'Pset_StairFlightCommon',
+  IfcRamp: 'Pset_RampCommon',
+  IfcRampFlight: 'Pset_RampFlightCommon',
 };
+const commonCache = new Map<string, string | null>();
+
+/** The Common property set of an element's class or the nearest supertype that has one; null when none does. */
+export function commonPset(entity: DecodedEntity): string | null {
+  let hit = commonCache.get(entity.type);
+  if (hit === undefined) {
+    const chain = getInheritanceChainAcrossSchemas(normalizeIfcTypeName(entity.type));
+    hit = chain.map((c) => COMMON_BY_SUPERTYPE[c]).find((p) => p !== undefined) ?? null;
+    commonCache.set(entity.type, hit);
+  }
+  return hit;
+}
 
 export interface CandidateContext {
   reader: ModelReader;
@@ -70,7 +89,7 @@ export function groundDoubt(ctx: CandidateContext): string | null {
 export const NO_PLACEMENT = 'no readable IfcLocalPlacement chain';
 
 export function isExternal(reader: ModelReader, entity: DecodedEntity): boolean | null {
-  const pset = COMMON_PSET[entity.type];
+  const pset = commonPset(entity);
   if (!pset) return null;
   // Several same-named sets may disagree: any `true` keeps the element in the façade (an exclusion needs every set to say false).
   const values = reader.propertyValues(entity.expressId, pset, 'IsExternal').filter((v): v is boolean => typeof v === 'boolean');
@@ -134,20 +153,43 @@ export function belowGround(ctx: CandidateContext, id: number, level: number): b
   return storeyLevel !== undefined ? storeyLevel < ctx.groundLevel - 0.01 : level < ctx.groundLevel - 0.3;
 }
 
-/** The host a filling element or opening voids: opening → host element. */
+/** The element an opening voids (an opening voids exactly one element). */
 export function hostOfOpening(ctx: CandidateContext, openingId: number): DecodedEntity | null {
   const hosts = ctx.reader.related(openingId, RelationshipType.VoidsElement, 'inverse');
   return ctx.reader.entity(hosts[0]);
 }
 
+/**
+ * The one place a door's or window's host is resolved: the element voided by
+ * the opening it fills, else its decomposition parent (a door aggregated or
+ * nested into a curtain wall has no opening). Each relation has at most one
+ * target by the schema.
+ */
+export function hostOf(ctx: CandidateContext, entity: DecodedEntity): DecodedEntity | null {
+  const r = ctx.reader;
+  const opening = r.related(entity.expressId, RelationshipType.FillsElement, 'inverse')[0];
+  const voided = opening === undefined ? null : hostOfOpening(ctx, opening);
+  if (voided) return voided;
+  const parent = r.related(entity.expressId, RelationshipType.Aggregates, 'inverse')[0] ?? r.related(entity.expressId, RelationshipType.Nests, 'inverse')[0];
+  return r.entity(parent);
+}
+
 /** Why the element is in the façade, or `{ not }` with why it is taken not to be. */
 export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host: DecodedEntity | null, at: MapPoint, positionCertain = true): string | { not: string } {
   const own = isExternal(ctx.reader, entity);
-  if (own === true) return `IsExternal (${COMMON_PSET[entity.type]})`;
+  if (own === true) return `IsExternal (${commonPset(entity)})`;
   const hostExternal = host ? isExternal(ctx.reader, host) : null;
   // An external host wins over the element's own `false`: authoring tools often default it.
   if (hostExternal === true) {
-    return `host IsExternal (${COMMON_PSET[host!.type]})${own === false ? '; the element itself states IsExternal = false' : ''}`;
+    return `host IsExternal (${commonPset(host!)})${own === false ? '; the element itself states IsExternal = false' : ''}`;
+  }
+  // More than the tolerance OUTSIDE the footprint, an element cannot be interior, whatever it states (the footprint is then
+  // marked partial by the extraction).
+  if (ctx.footprint.length > 0) {
+    const out = signedDistance(at, ctx.footprint);
+    if (Number.isFinite(out) && out > ctx.boundaryTolerance) {
+      return `${out.toFixed(2)} m outside the footprint, so it cannot be interior (kept${own === false || hostExternal === false ? ' despite IsExternal = false' : ''}, and the footprint is partial: it misses this part of the building)`;
+    }
   }
   if (own === false || hostExternal === false) return { not: `not in the façade: ${own === false ? 'it' : 'its host'} states IsExternal = false` };
   // No outline to test against (no slab, no external wall): keep it rather than lose every façade element.

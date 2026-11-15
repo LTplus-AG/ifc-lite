@@ -23,15 +23,16 @@
 
 import { FloodCheckRefusal } from '../errors.js';
 import { normalizeCrs, sameCrs, verticalCrsIdentifier } from '../crs.js';
+import { assertCompatible } from './compat.js';
 import { footprintConcerns, type FootprintQuality, type BuildingScope, type CandidateFact, type ModelFacts } from '../model/facts.js';
 import { reachableSpaces, type ReachableSpace } from './reachable.js';
 import {
   type ClassifiedHazardRaster,
-  type CoverageTest,
   type HazardClassDefinition,
   type HazardProvenance,
   type LocalizedText,
   type MapPoint,
+  type OtherBuildingFootprints,
   type RenderingConfirmation,
   type TerrainSampler,
 } from '../types.js';
@@ -61,8 +62,6 @@ export interface CheckOptions extends MarginOptions {
   anchorTolerance?: number;
   /** The band the ground storey must lie in, and the entry tolerance; see `plausibility.ts`. */
   heightPlausibility?: PlausibilityOptions;
-  /** The provider's coverage perimeter; samples outside it are no data. Without it every sample on the raster counts as covered. */
-  coverage?: CoverageTest;
   /**
    * The provider's answer to a rendering check. Required for a
    * `no-runoff-mapped` outcome when the whole raster is transparent; without
@@ -71,6 +70,13 @@ export interface CheckOptions extends MarginOptions {
    * from the raster (`layer.ts`).
    */
   renderingConfirmation?: RenderingConfirmation;
+  /**
+   * Other buildings' footprints around the checked one, in the map's CRS.
+   * Without them (or when they are not complete) transparent samples are
+   * unknown: no element is `no-runoff-mapped`, and `above-mapped-class-range`
+   * needs every sample to show a class (`other-buildings-unknown`).
+   */
+  otherBuildings?: OtherBuildingFootprints;
 }
 
 export interface CandidateResult {
@@ -145,6 +151,12 @@ export interface FloodCheckResult {
   /** The entry-level check of the height reference and the residual risk it leaves. */
   heightReference: HeightReference;
   layerCheck: LayerCheck;
+  /** Every element the extraction skipped, with its reason (covered classes, and slabs or walls the footprint could not read). */
+  skipped: ModelFacts['skipped'];
+  /** Covered elements walked and how many were skipped: `walked === results.length + coverage.skipped`. Null for hand-built facts. */
+  coverage: { walked: number; skipped: number } | null;
+  /** What was known about other buildings' footprints: without a complete source, transparent samples are unknown. */
+  otherBuildings: { supplied: boolean; complete: boolean; count: number; provenance: OtherBuildingFootprints['provenance'] | null };
   footprintSource: ModelFacts['footprint']['source'];
   footprintPartial: boolean; // see FootprintFact.partial
   footprintQuality: FootprintQuality; // the worst condition of the footprint's quality record
@@ -158,39 +170,7 @@ export interface FloodCheckResult {
   warnings: string[];
 }
 
-/** Refuse when the facts, raster and terrain do not share a CRS and (where the model states one) a vertical CRS. */
-export function assertCompatible(facts: ModelFacts, rasterCrs: string, terrain: { crs: string; verticalCrs: string }): void {
-  const crs = facts.georeference.crs;
-  if (!sameCrs(crs, rasterCrs)) {
-    throw new FloodCheckRefusal('crs-mismatch', `the model is in ${crs}; the hazard map is in ${rasterCrs}`);
-  }
-  if (!sameCrs(crs, terrain.crs)) {
-    throw new FloodCheckRefusal('crs-mismatch', `the model is in ${crs}; the terrain is in ${terrain.crs}`);
-  }
-  const terrainVertical = normalizeCrs(terrain.verticalCrs);
-  if (!terrainVertical) {
-    throw new FloodCheckRefusal(
-      'vertical-datum-unrecognised',
-      `the terrain's verticalCrs "${terrain.verticalCrs}" is not an EPSG identifier (for example EPSG:5728 for LN02)`,
-    );
-  }
-  const stated = facts.georeference.verticalDatum;
-  if (!stated) return;
-  const modelVertical = verticalCrsIdentifier(stated);
-  if (!modelVertical) {
-    throw new FloodCheckRefusal(
-      'vertical-datum-unrecognised',
-      `the model states vertical datum "${stated}", which names no known vertical CRS; it cannot be compared with the terrain's ${terrainVertical}`,
-    );
-  }
-  if (modelVertical !== terrainVertical) {
-    throw new FloodCheckRefusal(
-      'vertical-datum-mismatch',
-      `the model states vertical datum "${stated}" (${modelVertical}); the terrain is in ${terrainVertical}`,
-    );
-  }
-}
-
+export { assertCompatible } from './compat.js';
 export { rasterShowsNoClass } from './layer.js';
 
 /**
@@ -220,6 +200,9 @@ export function checkWith(
   unconfirmedBecause: readonly string[],
 ): FloodCheckResult {
   assertCompatible(facts, raster.crs, terrain);
+  if (options.otherBuildings && !sameCrs(options.otherBuildings.crs, raster.crs)) {
+    throw new FloodCheckRefusal('crs-mismatch', `the other buildings' footprints are in ${options.otherBuildings.crs}; the hazard map is in ${raster.crs}`);
+  }
   // Every covered element extraction walked is a candidate or skipped; fewer candidates now means one went missing.
   if (facts.coverage && facts.coverage.walked !== facts.candidates.length + facts.coverage.skipped) {
     throw new Error(`candidate selection walked ${facts.coverage.walked} elements; ${facts.candidates.length} candidates + ${facts.coverage.skipped} skipped do not add up`);
@@ -260,6 +243,7 @@ export function checkWith(
   // One record decides what the footprint can support (`footprintConcerns`, from `footprint.ts`).
   const footprint = footprintConcerns(facts.footprint);
   const hull = footprint.hullLike || footprint.partial;
+  const margin = deriveClearanceMargin(terrain.verticalAccuracy, options);
   const heightReference = confirmEntries(
     facts,
     (i) => plans[i].points.map(({ point }) => heightAt(point)).filter((h): h is number => h !== null),
@@ -267,8 +251,8 @@ export function checkWith(
     heightPlausibility,
     options.heightPlausibility,
     unconfirmedBecause,
+    margin.margin,
   );
-  const margin = deriveClearanceMargin(terrain.verticalAccuracy, options);
   const rasterEmpty = rasterShowsNoClass(raster);
   const confirmation = options.renderingConfirmation ?? null;
   const applies = confirmationVouches(confirmation, raster.provenance.retrievedAt);
@@ -279,7 +263,6 @@ export function checkWith(
     const e = evaluateCandidate(candidate, plan, {
       raster,
       heightAt,
-      covers: options.coverage,
       margin: margin.margin,
       allowance: heightReference.allowance,
       anchorTolerance,
@@ -287,6 +270,7 @@ export function checkWith(
       footprintHull: footprint.hullLike,
       footprintPartial: footprint.partial,
       emptyRasterUnconfirmed: rasterEmpty && !applies,
+      otherBuildings: options.otherBuildings,
     });
     return {
       candidate,
@@ -321,6 +305,14 @@ export function checkWith(
   for (const r of results) summary[r.outcome]++;
 
   const warnings = [...facts.warnings];
+  const others = options.otherBuildings;
+  if (!others || !others.complete) {
+    warnings.push(
+      `${others ? `The other buildings' footprints supplied (${others.provenance.source}) are not complete` : "No source of other buildings' footprints was supplied"}: ` +
+        'a transparent sample cannot be told from a neighbouring building the hazard model raised, so no element is reported as no runoff mapped, ' +
+        'and above the mapped class range only where every sample shows a class.',
+    );
+  }
   warnings.push(
     `The map is read at ${raster.cellSize} m cells next to each element. The publisher states the map must not be used at scales ` +
       'more detailed than its stated limit; treat every per-element result as screening, not as a site assessment.',
@@ -372,6 +364,9 @@ export function checkWith(
     heightPlausibility,
     heightReference,
     layerCheck: { rasterEmpty, confirmation, confirmationApplies: applies },
+    skipped: facts.skipped,
+    coverage: facts.coverage ?? null,
+    otherBuildings: others ? { supplied: true, complete: others.complete, count: others.rings.length, provenance: others.provenance } : { supplied: false, complete: false, count: 0, provenance: null },
     footprintSource: facts.footprint.source,
     footprintPartial: footprint.partial,
     footprintQuality: footprint.worst,

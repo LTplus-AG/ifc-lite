@@ -20,6 +20,7 @@ import {
   syntheticRaster,
   terrainFn,
   TEST_MARGIN,
+  NO_OTHER_BUILDINGS,
 } from './helpers.js';
 
 /** Raster over the box building and 10 m around it, 0.5 m cells. */
@@ -37,8 +38,12 @@ const withRef = (cs: Parameters<typeof boxFacts>[0], over: Parameters<typeof box
 /** An element on the upper storey (not a ground-storey entry). */
 const upper = (level: number, over = {}) => door(level, { storeyId: 11, category: 'window', ifcClass: 'IfcWindow', ...over });
 
+/**
+ * The element under test sits on the south façade but on the upper storey: the height reference is the reference door
+ * alone (a raised ground-storey door would disagree with it about the terrain and leave the reference unconfirmed).
+ */
 function run(level: number, paint: (p: MapPoint) => number, terrain: TerrainSampler = flatTerrain(500), over = {}, options: CheckOptions = {}) {
-  return checkFloodExposure(withRef([door(level, over)]), raster(paint), terrain, options).results[0];
+  return checkFloodExposure(withRef([door(level, { storeyId: 11, ...over })]), raster(paint), terrain, { otherBuildings: NO_OTHER_BUILDINGS, ...options }).results[0];
 }
 
 function refusalOf(f: () => unknown): FloodCheckRefusal {
@@ -163,10 +168,13 @@ describe('outcomes', () => {
 
   it('samples outside the coverage perimeter are no data, not "no runoff"', () => {
     const coverage = (p: MapPoint) => (p.y > N0 - 2.5 ? true : p.y < N0 - 2.6 ? false : null);
-    const r = run(499.5, () => CELL_NO_RUNOFF, flatTerrain(500), {}, { renderingConfirmation: CONFIRMED, coverage: () => false });
+    // The coverage test travels with the raster (`ClassifiedHazardRaster.covers`).
+    const covered = (level: number, paint: (p: MapPoint) => number, covers: (p: MapPoint) => boolean | null, options: CheckOptions = {}) =>
+      checkFloodExposure(withRef([door(level, { storeyId: 11 })]), syntheticRaster(E0 - 10, N0 - 10, 80, 60, 0.5, paint, 'EPSG:2056', covers), flatTerrain(500), options).results[0];
+    const r = covered(499.5, () => CELL_NO_RUNOFF, () => false, { renderingConfirmation: CONFIRMED });
     expect(r).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'outside-coverage' });
     // Mixed: the samples inside coverage carry a class; the unreadable rest withholds the favourable outcome.
-    const mixed = run(503, south(low), flatTerrain(500), {}, { coverage });
+    const mixed = covered(503, south(low), coverage);
     expect(mixed.outcome).toBe('within-class-range');
     expect(mixed.samples.byReading['outside-coverage']).toBeGreaterThan(0);
     expect(mixed.favourableWithheldBecause.join()).toMatch(/outside, or too near the edge of, the area the map covers/);

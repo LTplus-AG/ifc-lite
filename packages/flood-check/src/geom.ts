@@ -67,6 +67,39 @@ export function closestBoundaryPoint(
 }
 
 /**
+ * The closest point of the footprint's true outline: like
+ * {@link closestBoundaryPoint}, but a boundary point with no ground outside
+ * every ring right next to it (the seam where two adjacent or overlapping
+ * slabs meet) is interior, not outline, and is skipped. The edges of `courtyards` (rings
+ * nested in another, {@link nestedRings}) are façades and always count. Falls
+ * back to the closest boundary point when every candidate is such a seam.
+ */
+export function closestOutlinePoint(
+  p: MapPoint,
+  rings: readonly (readonly MapPoint[])[],
+  courtyards: ReadonlySet<number> = new Set(),
+): { point: MapPoint; distance: number; ring: number } | null {
+  // A point is on the true outline when ground outside every ring lies right next to it (within a millimetre).
+  const onOutline = (q: MapPoint) => {
+    for (let k = 0; k < 16; k++) {
+      const a = (2 * Math.PI * k) / 16;
+      if (!insideAny({ x: q.x + 1e-3 * Math.cos(a), y: q.y + 1e-3 * Math.sin(a) }, rings)) return true;
+    }
+    return false;
+  };
+  let best: { point: MapPoint; distance: number; ring: number } | null = null;
+  rings.forEach((ring, r) => {
+    for (let i = 0; i < ring.length; i++) {
+      const q = closestOnSegment(p, ring[i], ring[(i + 1) % ring.length]);
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (best && d >= best.distance) continue;
+      if (courtyards.has(r) || onOutline(q)) best = { point: q, distance: d, ring: r };
+    }
+  });
+  return best ?? closestBoundaryPoint(p, rings);
+}
+
+/**
  * Signed distance to the footprint: positive outside, negative inside, in
  * metres. Infinity when there are no rings.
  */

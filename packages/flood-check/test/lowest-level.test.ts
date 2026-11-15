@@ -69,7 +69,8 @@ describe('locate returns the lowest possible level with the level', () => {
     expect(locate('window', { placement: at, own: { ...NO_BODY }, filled: body(1, 0, 0), overallHeight: 3.8 })).toMatchObject({ quality: 'upper-estimate' });
     expect((locate('window', { placement: at, own: { ...NO_BODY }, filled: body(1, 0, 0), overallHeight: 3.8 }) as { lowest: number }).lowest).toBeCloseTo(500.2, 6);
     expect(locate('window', { placement: at, own: { ...NO_BODY }, filled: body(1, 0, 0) })).toMatchObject({ quality: 'upper-estimate', lowest: null });
-    expect(locate('opening', { placement: at, own: body(1, 0, 0), fillingLowest: 502 })).toMatchObject({ quality: 'upper-estimate', lowest: 502 });
+    // An opening is bounded only by its own readable body, never by its filling's height (audit finding 8: it may be taller).
+    expect(locate('opening', { placement: at, own: body(1, 0, 0) })).toMatchObject({ quality: 'upper-estimate', lowest: null });
     expect(locate('light-well', { placement: at, own: body(2, 1, 503) })).toMatchObject({ quality: 'upper-estimate', lowest: null });
     expect(locate('equipment', { placement: at, own: { ...NO_BODY } })).toMatchObject({ quality: 'upper-estimate', lowest: null });
     expect(locate('equipment', { placement: at, own: body(1, 1, 504) })).toMatchObject({ quality: 'exact', lowest: 504 });

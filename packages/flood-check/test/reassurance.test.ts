@@ -14,7 +14,7 @@ import { readCell } from '../src/check/sampling.js';
 import { FloodCheckRefusal } from '../src/errors.js';
 import type { CandidateFact } from '../src/model/facts.js';
 import { CELL_NO_RUNOFF, CELL_UNCLASSIFIED, type HazardProvider, type MapPoint, type TerrainSampler } from '../src/types.js';
-import { boxFacts, candidate, CODE, CONFIRMED, E0, flatTerrain, N0, syntheticRaster, terrainFn, TEST_MARGIN } from './helpers.js';
+import { boxFacts, candidate, CODE, CONFIRMED, E0, flatTerrain, N0, syntheticRaster, terrainFn, TEST_MARGIN, NO_OTHER_BUILDINGS } from './helpers.js';
 
 const raster = (paint: (p: MapPoint) => number) => syntheticRaster(E0 - 10, N0 - 10, 80, 60, 0.5, paint);
 const south = (code: number) => (p: MapPoint) => (p.y < N0 ? code : CELL_NO_RUNOFF);
@@ -27,7 +27,7 @@ const upperWindow = (level: number, over: Partial<CandidateFact> = {}) =>
   candidate({ expressId: 3, category: 'window', ifcClass: 'IfcWindow', position: { x: E0 + 5, y: N0 }, level, storeyId: 11, ...over });
 
 function check(cs: CandidateFact[], ground: number, paint: (p: MapPoint) => number, terrain: TerrainSampler, options: CheckOptions = {}) {
-  return checkFloodExposure(boxFacts(cs, { groundStorey: { expressId: 10, level: ground, basis: 'given' } }), raster(paint), terrain, options);
+  return checkFloodExposure(boxFacts(cs, { groundStorey: { expressId: 10, level: ground, basis: 'given' } }), raster(paint), terrain, { otherBuildings: NO_OTHER_BUILDINGS, ...options });
 }
 
 /** Either a refusal, or results none of which is favourable. */
@@ -151,7 +151,7 @@ describe('"no runoff mapped" is guarded like the favourable outcome', () => {
   it('an element on a hull footprint is unclassified (hull-footprint)', () => {
     const facts = boxFacts([groundDoor(500)]);
     facts.footprint.source = 'external-wall-hull';
-    const r = checkFloodExposure(facts, raster(clear), flatTerrain(500), { renderingConfirmation: CONFIRMED });
+    const r = checkFloodExposure(facts, raster(clear), flatTerrain(500), { renderingConfirmation: CONFIRMED, otherBuildings: NO_OTHER_BUILDINGS });
     expect(r.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'hull-footprint' });
   });
 
@@ -215,7 +215,7 @@ describe('review threads', () => {
       },
     };
     const terrain = { crs: 'EPSG:2056', verticalCrs: 'EPSG:5728', verticalAccuracy: 0.3, heightAt: () => 500 };
-    const run = await runFloodCheck(boxFacts([groundDoor(500), ref]), provider, terrain);
+    const run = await runFloodCheck(boxFacts([groundDoor(500), ref]), provider, terrain, { otherBuildings: NO_OTHER_BUILDINGS });
     expect(asked).toBe(1);
     expect(run.layerCheck.confirmation?.confirmed).toBe(true);
   });

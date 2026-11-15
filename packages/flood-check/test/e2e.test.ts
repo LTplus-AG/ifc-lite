@@ -19,7 +19,7 @@ import { FloodCheckRefusal } from '../src/errors.js';
 import { extractModelFacts } from '../src/model/extract.js';
 import { ELEMENT_PSET, SITE_PSET, toPropertySets } from '../src/psets.js';
 import type { HazardProvider, MapBBox, MapPoint, TerrainSource } from '../src/types.js';
-import { CODE, fixture, rgbaPng, syntheticRaster } from './helpers.js';
+import { CODE, fixture, rgbaPng, syntheticRaster, NO_OTHER_BUILDINGS } from './helpers.js';
 import { ORIGIN, ROTATION_DEG, parseStep, syntheticHouse } from './synthetic-model.js';
 
 const VIOLET = [223, 115, 255, 255];
@@ -146,7 +146,7 @@ describe('a wholly transparent answer through the BAFU provider', () => {
   it('reports "no runoff mapped" only after the reference location confirms the layer renders', async () => {
     const facts = extractModelFacts(await parseStep(syntheticHouse()), { expectedCrs: 'EPSG:2056' });
     const up = wms(fixture('bern-uniform-9px.png'));
-    const ok = await runFloodCheck(facts, createBafuRunoffProvider({ fetch: up.fetchImpl }), flatGrid(499.95, 'EPSG:5728', 'EPSG:2056'));
+    const ok = await runFloodCheck(facts, createBafuRunoffProvider({ fetch: up.fetchImpl }), flatGrid(499.95, 'EPSG:5728', 'EPSG:2056'), { otherBuildings: NO_OTHER_BUILDINGS });
     expect(up.urls).toHaveLength(2);
     expect(ok.layerCheck.confirmation?.confirmed).toBe(true);
     // Every element not withheld is "no runoff mapped"; interior equipment (anchor moved) and the external stair
@@ -158,7 +158,7 @@ describe('a wholly transparent answer through the BAFU provider', () => {
     expect(ok.results.find((r) => r.candidate.name === 'Haustür')?.outcome).toBe('no-runoff-mapped');
 
     const down = wms(rgbaPng(9, 9, () => CLEAR));
-    const outage = await runFloodCheck(facts, createBafuRunoffProvider({ fetch: down.fetchImpl }), flatGrid(499.95, 'EPSG:5728', 'EPSG:2056'));
+    const outage = await runFloodCheck(facts, createBafuRunoffProvider({ fetch: down.fetchImpl }), flatGrid(499.95, 'EPSG:5728', 'EPSG:2056'), { otherBuildings: NO_OTHER_BUILDINGS });
     expect(new Set(outage.results.map((r) => r.unclassifiedReason))).toEqual(new Set(['layer-not-confirmed']));
     const site = Object.fromEntries(toPropertySets(outage, BAFU_CLASSES).site.Properties.map((p) => [p.Name, p.NominalValue]));
     expect(site).toMatchObject({ RasterEmpty: true, LayerRenderingConfirmed: false, Count_NoRunoffMapped: 0 });

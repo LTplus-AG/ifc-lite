@@ -81,6 +81,8 @@ const B_ELEMENTS = ['B Tür', 'B Kellerfenster', 'B Heizkessel'];
 describe('a file with two buildings', () => {
   for (const gap of [20, 100]) {
     describe(`the second building ${gap} m away`, () => {
+      // Since audit finding 4 the second building's door without IsExternal (on its own façade, far outside the checked
+      // footprint) cannot be interior, so it is kept and counted among the elements not checked: 4, where it was 3.
       it('checks only the ground storey\'s building and names the other with its count', async () => {
         const facts = await twoBuildings(gap);
         const names = facts.candidates.map((c) => c.name);
@@ -88,10 +90,10 @@ describe('a file with two buildings', () => {
         expect(names).toContain('Heizkessel');
         expect(facts.buildingScope).toMatchObject({
           checked: { name: 'House' },
-          notChecked: [{ name: 'Nebengebäude', candidatesNotChecked: 3 }],
+          notChecked: [{ name: 'Nebengebäude', candidatesNotChecked: 4 }],
         });
-        expect(facts.skipped.filter((s) => /which was not checked/.test(s.reason))).toHaveLength(3);
-        expect(facts.warnings.join()).toMatch(/only "House" .* was checked\. Not checked: "Nebengebäude" .*\(3 candidate element\(s\)\)/);
+        expect(facts.skipped.filter((s) => /which was not checked/.test(s.reason))).toHaveLength(4);
+        expect(facts.warnings.join()).toMatch(/only "House" .* was checked\. Not checked: "Nebengebäude" .*\(4 candidate element\(s\)\)/);
       });
 
       for (const [scenario, paint] of [
@@ -103,11 +105,11 @@ describe('a file with two buildings', () => {
           const facts = await twoBuildings(gap);
           const r = checkFloodExposure(facts, rasterOver(gap, paint), flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
           expect(r.results.map((x) => x.candidate.name)).not.toEqual(expect.arrayContaining([expect.stringMatching(/^B /)]));
-          expect(r.buildingScope.notChecked).toMatchObject([{ name: 'Nebengebäude', candidatesNotChecked: 3 }]);
+          expect(r.buildingScope.notChecked).toMatchObject([{ name: 'Nebengebäude', candidatesNotChecked: 4 }]);
           expect(r.warnings.join()).toMatch(/Not checked: "Nebengebäude"/);
           const site = Object.fromEntries(toPropertySets(r, BAFU_CLASSES).site.Properties.map((p) => [p.Name, p.NominalValue]));
-          expect(site).toMatchObject({ CheckedBuilding: expect.stringMatching(/^"House"/), CountElementsNotChecked: 3 });
-          expect(site.BuildingsNotChecked).toMatch(/^"Nebengebäude" .*: 3$/);
+          expect(site).toMatchObject({ CheckedBuilding: expect.stringMatching(/^"House"/), CountElementsNotChecked: 4 });
+          expect(site.BuildingsNotChecked).toMatch(/^"Nebengebäude" .*: 4$/);
         });
       }
 

@@ -144,7 +144,9 @@ export function sitePropertySet(result: FloodCheckResult, classes: readonly Haza
     .label('RingDistances', result.parameters.ringDistances.map((d) => `${d} m`).join(', '))
     .length('MinOutsideDistance', result.parameters.minOutsideDistance)
     .length('AnchorTolerance', result.parameters.anchorTolerance)
-    .bool('RasterEmpty', result.layerCheck.rasterEmpty);
+    .bool('RasterEmpty', result.layerCheck.rasterEmpty)
+    .label('OtherBuildingsSource', result.otherBuildings.provenance?.source ?? 'none supplied')
+    .bool('OtherBuildingsComplete', result.otherBuildings.complete);
   if (result.layerCheck.confirmation) {
     b.bool('LayerRenderingConfirmed', result.layerCheck.confirmationApplies)
       .text('LayerRenderingCheck', `${result.layerCheck.confirmation.detail} (${result.layerCheck.confirmation.requestUrl})`)
@@ -154,6 +156,11 @@ export function sitePropertySet(result: FloodCheckResult, classes: readonly Haza
     b.int(`Count_${outcome.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()).replace(/^./, (c) => c.toUpperCase())}`, count);
   }
   b.int('CountReachableBelowGroundSpaces', result.reachableBelowGround.length);
+  // Results plus skipped equals walked, checkable from this set alone (the element sets are the results).
+  if (result.coverage) b.int('CountElementsWalked', result.coverage.walked).int('CountElementsSkipped', result.coverage.skipped);
+  const byReason = new Map<string, number>();
+  for (const s of result.skipped) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1);
+  b.text('ElementsSkippedByReason', [...byReason].map(([reason, n]) => `${n}× ${reason}`).join(' | '));
   return { Name: SITE_PSET, Properties: b.props };
 }
 

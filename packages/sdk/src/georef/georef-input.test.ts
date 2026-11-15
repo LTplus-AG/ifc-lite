@@ -383,7 +383,7 @@ describe('bim.georef second review follow-ups', () => {
       expect(model.bim.georef.get().ProjectedCRS?.mapUnitResolved).toBe(false);
       // So a write that would carry the unit from the current state refuses; it never writes MILLIMETRE over METRE.
       expect(refusal(() => model.bim.georef.set(NEW_NO_UNIT)).missing).toEqual(['ProjectedCRS.MapUnit']);
-      expect(refusal(() => model.bim.georef.update({ MapConversion: { OrthogonalHeight: 4 } })).missing).toEqual(['ProjectedCRS.MapUnit']);
+      expect(refusal(() => model.bim.georef.update({ MapConversion: { OrthogonalHeight: 4 } })).code).toBe('UNSUPPORTED_RECORD');
       // An explicit unit still writes.
       expect(model.bim.georef.set({ ...NEW_NO_UNIT, ProjectedCRS: { Name: 'EPSG:2236', MapUnit: 'METRE' } }).mapUnit).toMatchObject({ value: 'METRE', source: 'explicit' });
     } finally { model.close(); }

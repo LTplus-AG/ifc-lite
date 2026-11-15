@@ -23,7 +23,7 @@ const MC_PROPS = ['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 
 
 export const georeferencingReadTool: Tool = {
   name: 'georeferencing',
-  description: 'Georeferencing of a model: IfcProjectedCRS + IfcMapConversion (IFC4X3: IfcMapConversionScaled, IfcRigidOperation; IFC2X3: ePSet_MapConversion/ePSet_ProjectedCRS; IfcSite lat/long fallback), rotation in degrees, and whether this session holds an unsaved georeferencing_write. `georef` uses the attribute names georeferencing_write takes (ProjectedCRS and MapConversion members); its read-only members (type, expressId, mapUnitResolved, source, storage, pending, rotationDegrees, RigidOperation, site) are not inputs, so pass only the attribute fields back, never the whole object. `georeferencing` is the parser\'s source-only reading, kept for existing callers.',
+  description: 'Georeferencing of a model: IfcProjectedCRS + IfcMapConversion (IFC4X3: IfcMapConversionScaled, IfcRigidOperation; IFC2X3: ePSet_MapConversion/ePSet_ProjectedCRS; IfcSite lat/long fallback), rotation in degrees, and whether this session holds an unsaved georeferencing_write. `georef` uses the attribute names georeferencing_write takes (ProjectedCRS and MapConversion members); its read-only members (type, expressId, mapUnitResolved, source, storage, pending, untrusted, rotationDegrees, RigidOperation, site) are not inputs, so pass only the attribute fields back, never the whole object. `georeferencing` is the parser\'s source-only reading, kept for existing callers.',
   scope: 'read',
   inputSchema: { type: 'object', properties: { model_id: { type: 'string' } }, additionalProperties: false },
   handler(input, ctx) {
@@ -38,7 +38,8 @@ export const georeferencingReadTool: Tool = {
         crs ? `  CRS ${crs.Name}${crs.MapUnit ? `, MapUnit ${crs.MapUnit}` : ', no MapUnit'}` : '  no CRS',
         mc ? `  E ${mc.Eastings} N ${mc.Northings} H ${mc.OrthogonalHeight}${georef.rotationDegrees === null ? '' : `, rotation ${georef.rotationDegrees}°`}${mc.Scale === undefined ? '' : `, scale ${mc.Scale}`}` : '',
       ].filter(Boolean).join('\n');
-    return okResult(text, { georef, georeferencing: extractGeoreferencingOnDemand(m.store) ?? null });
+    const note = georef.untrusted ? `\nValues may differ from the export (changed outside georeferencing_write): ${georef.untrusted.join('; ')}` : '';
+    return okResult(text + note, { georef, georeferencing: extractGeoreferencingOnDemand(m.store) ?? null });
   },
 };
 

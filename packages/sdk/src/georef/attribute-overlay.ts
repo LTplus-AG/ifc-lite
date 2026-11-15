@@ -20,17 +20,14 @@ import { exporterKey, MC_FIELDS } from './plan.js';
 import { rotationOf, compact } from './read.js';
 import type { GeoreferencingState } from './types.js';
 
-/** Position of `MapUnit` among the IfcProjectedCRS attributes. */
-const MAP_UNIT_INDEX = 6;
-
 /** `CRS_FIELDS` without `MapUnit` (a reference attribute); a literal so the module does no work at import. */
-const CRS_TEXT_FIELDS: readonly string[] = ['Name', 'Description', 'GeodeticDatum', 'VerticalDatum', 'MapProjection', 'MapZone'];
+export const CRS_TEXT_FIELDS: readonly string[] = ['Name', 'Description', 'GeodeticDatum', 'VerticalDatum', 'MapProjection', 'MapZone'];
 
 /**
  * The exporter's reading of a numeric edit (`serializeAttributeValue`): empty or `$` is unset, an
  * overflowing literal is written as `$`, a finite number is a number, anything else is not stated here.
  */
-function numberOf(raw: string): number | null | undefined {
+export function numberOf(raw: string): number | null | undefined {
   const text = raw.trim();
   if (text === '' || text === '$') return null;
   const n = Number(text);
@@ -73,10 +70,6 @@ export function withAttributeEdits(
       if (t === null) delete fields[name]; else fields[name] = t;
       changed = true;
     }
-    // A re-pointed MapUnit (named or positional edit) reaches the export but names a unit entity this overlay
-    // does not read back. Say the unit is unsettled so no write carries the old one over (unless a session write sets it).
-    const unitEdited = view.getAttributeMutationsForEntity(crs.expressId).some((m) => m.name === 'MapUnit') || view.getPositionalMutationsForEntity(crs.expressId)?.has(MAP_UNIT_INDEX);
-    if (unitEdited && !('mapUnit' in (written?.projectedCRS ?? {})) && fields.MapUnit !== undefined) { fields.mapUnitResolved = false; changed = true; }
     next.ProjectedCRS = compact(fields) as unknown as typeof crs;
   }
   return changed ? next : state;

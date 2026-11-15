@@ -203,7 +203,7 @@ function decideMapUnit(input: GeorefProjectedCRSAttributes, current: Georeferenc
 export function unresolvedMapUnit(where: string): GeoreferencingError {
   return new GeoreferencingError(
     'MISSING_INPUT',
-    `ProjectedCRS.MapUnit is required: the MapUnit of ${where} could not be resolved (ifc-lite reads it as a METRE default, which may be wrong), so it is not carried over. Pass ProjectedCRS.MapUnit explicitly (e.g. METRE, US SURVEY FOOT).`,
+    `ProjectedCRS.MapUnit is required: the MapUnit of ${where} could not be resolved (ifc-lite reads it as a METRE default, which may be wrong) or was changed outside bim.georef, so it is not carried over. Pass ProjectedCRS.MapUnit explicitly (e.g. METRE, US SURVEY FOOT).`,
     ['ProjectedCRS.MapUnit'],
   );
 }

@@ -16,11 +16,13 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { isExpressibleMapUnit } from '@ifc-lite/export';
 import { PropertyValueType } from '@ifc-lite/data';
 import { recordCompoundMutation, recordSessionMutation, StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import { collectGeorefModelFacts, EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS, type GeorefModelFacts } from './model-facts.js';
 import { CRS_FIELDS, MC_FIELDS, planRemove, planSet, stateAfter, type GeorefWritePlan, type PropertySetOp, type StepGeorefMutations } from './plan.js';
 import { withAttributeEdits } from './attribute-overlay.js';
+import { assertWritable, assessTrust } from './trust.js';
 import { planUpdate } from './plan-update.js';
 import { readSourceGeoreferencing, readWithoutGeoreferencing } from './read.js';
 import type { GeorefMapConversionAttributes, GeorefProjectedCRSAttributes, GeoreferencingState, GeoreferencingWriteRequest, GeoreferencingWriteResult } from './types.js';
@@ -57,6 +59,18 @@ export class GeoreferencingSession {
 
   /** The effective georeferencing: this session's latest write, or the source minus its deletions. */
   get(): GeoreferencingState {
+    const state = this.read();
+    const view = this.deps.view();
+    if (!view) return state;
+    const { reasons, foreign } = assessTrust(this.deps.store, view, this.current()?.pending ?? null);
+    const untrusted = Object.entries(reasons).filter(([part]) => part !== 'site' || state.site).flatMap(([, why]) => why);
+    if (untrusted.length === 0) return state;
+    // A unit read from an untrusted CRS (or unit record) is not carried into a write: the existing unresolved-unit refusal applies.
+    const unitUnsettled = !!(reasons.ProjectedCRS || reasons.MapUnit || foreign.length) && state.ProjectedCRS?.MapUnit !== undefined;
+    return { ...state, untrusted, ...(unitUnsettled && state.ProjectedCRS ? { ProjectedCRS: { ...state.ProjectedCRS, mapUnitResolved: false } } : {}) };
+  }
+
+  private read(): GeoreferencingState {
     const top = this.current();
     const view = this.deps.view();
     if (top) {
@@ -87,6 +101,7 @@ export class GeoreferencingSession {
       isDeleted: (id) => view.isDeleted(id),
       getForEntity: (id) => view.getForEntity(id),
     });
+    assertWritable(request.action, assessTrust(store, view, prior?.pending ?? null));
     const ctx = {
       modelId: this.deps.modelId, facts, current: this.get(), pending: prior?.pending ?? null,
       afterRemove: (withPropertySets: boolean) => readWithoutGeoreferencing(store, modelId, withPropertySets, (id) => view.isDeleted(id)),
@@ -129,7 +144,15 @@ export class GeoreferencingSession {
     const mc = pick(facts.ePSetMapConversion, MC_FIELDS);
     const crs = pick(facts.ePSetProjectedCRS, CRS_FIELDS);
     if (!mc) return none();
-    return stateAfter({ modelId: this.deps.modelId, facts }, 'propertySets', crs as GeorefProjectedCRSAttributes | null, mc as unknown as GeorefMapConversionAttributes);
+    const state = stateAfter({ modelId: this.deps.modelId, facts }, 'propertySets', crs as GeorefProjectedCRSAttributes | null, mc as unknown as GeorefMapConversionAttributes);
+    // The unit's resolution is the source reading's while the label is the file's own; a label the session
+    // wrote or an edit changed is resolved only when the writer can express it. Never marked resolved by presence alone.
+    const unit = state.ProjectedCRS?.MapUnit;
+    if (state.ProjectedCRS && unit !== undefined) {
+      const fromFile = readSourceGeoreferencing(this.deps.store, this.deps.modelId).ProjectedCRS;
+      state.ProjectedCRS.mapUnitResolved = unit === fromFile?.MapUnit ? fromFile.mapUnitResolved !== false : isExpressibleMapUnit(String(unit));
+    }
+    return state;
   }
 
   /** `StepExportOptions.georefMutations` for an export of this session, if any. */

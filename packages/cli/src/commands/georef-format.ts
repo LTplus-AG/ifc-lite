@@ -35,6 +35,7 @@ export function georeferencingSummary(state: GeoreferencingState): string {
 
 export function describeGeoreferencing(state: GeoreferencingState): string {
   const lines = [`  Schema:   ${state.schema}`];
+  if (state.untrusted) lines.push(`  Warning:  values may differ from the export (changed outside georef): ${state.untrusted.join('; ')}`);
   if (!state.hasGeoreference) {
     lines.push('  Georeferencing: none');
     return lines.join('\n') + '\n';

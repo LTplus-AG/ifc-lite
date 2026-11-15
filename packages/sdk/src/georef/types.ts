@@ -108,6 +108,11 @@ export interface GeoreferencingState {
   rotationDegrees: number | null;
   /** True when this session holds a georeferencing write not yet exported. */
   pending: boolean;
+  /**
+   * Present when a generic edit (outside `bim.georef`) changed something these values are read from that
+   * `get()` does not interpret: the values may differ from what the export writes, and no write carries them.
+   */
+  untrusted?: string[];
 }
 
 /** `bim.georef.set()`: a complete georeferencing. */

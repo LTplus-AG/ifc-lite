@@ -40,6 +40,8 @@ import { useViewerStore } from '@/store/index.js';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { createSyntheticDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '@/hooks/useBCF.js';
 import { render, click, cleanup, waitFor } from '@/test/render.js';
 import { PdfViewExportDialog, type ViewPdfExporter } from './PdfViewExportDialog.js';
@@ -610,5 +612,43 @@ describe('PdfViewExportDialog closeOnSuccess (#5848)', () => {
       null,
       'a reopened dialog must not show the previous run\'s stale error',
     );
+  });
+});
+
+describe('PdfViewExportDialog follows a retype while open (#10246)', () => {
+  afterEach(() => {
+    cleanup();
+    clearGlobalRefs();
+    document.body.innerHTML = '';
+  });
+
+  it('draws a space retyped to a wall once its class is no longer hidden', () => {
+    // A 4 x 3 wall (501) and an 8 x 6 IfcSpace (502); Spaces are off by default, so only the wall is drawn.
+    const space = { ...boxMesh({ x: 8, y: 6, z: 2 }), expressId: 502, ifcType: 'IfcSpace' };
+    const geometry = { ...boxGeometry({ x: 8, y: 6, z: 2 }), meshes: [boxMesh(), space] };
+    const store = createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 0, entities: [
+      { expressId: 501, type: 'IfcWall', hasGeometry: true },
+      { expressId: 502, type: 'IfcSpace', hasGeometry: true },
+    ] });
+    const model = fixtureModel('m1', { idOffset: 0 });
+    const view = new MutablePropertyView(null, 'm1');
+    useViewerStore.setState({
+      ...fixtureModels({ ...model, ifcDataStore: store, geometryResult: geometry }),
+      hiddenEntities: new Set<number>(), isolatedEntities: null, classFilter: null,
+      selectedStoreys: new Set<number>(), projectionMode: 'orthographic', mutationViews: new Map([['m1', view]]),
+    });
+    setGlobalCanvasRef({ current: Object.defineProperty(document.createElement('canvas'), 'clientHeight', { value: 500, configurable: true }) });
+    setGlobalRendererRef({ current: fakeRenderer({ x: 8, y: 6, z: 2 }) });
+
+    openDialog();
+    chooseScale('1:100');
+    assert.match(readout(), /Estimated page: 60 x 67 mm/);
+
+    act(() => {
+      new StoreEditor(store, view).setEntityType(502, 'IfcWall');
+      useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
+    });
+    // 8 m x 6 m at 10 mm/m, plus margins and the scale band.
+    assert.match(readout(), /Estimated page: 100 x 97 mm/);
   });
 });

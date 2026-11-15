@@ -61,8 +61,10 @@ test('each building is drawn as a roof mesh and a wall mesh of one entity, with 
   assert.deepEqual(Array.from(roof.indices), [4, 5, 6, 4, 6, 7]);
   assert.equal(wall.indices.length, 12);
   assert.notDeepEqual(roof.color, wall.color, 'roof and wall have their own colours');
-  assert.ok(roof.color[0] > roof.color[2], 'roof reads warm');
-  assert.ok(roof.color[0] + roof.color[1] + roof.color[2] < wall.color[0] + wall.color[1] + wall.color[2], 'roof a little darker than the wall');
+  // Neutral massing: both nearly grey (a trace of warmth at most), the roof clearly darker than the wall.
+  for (const c of [roof.color, wall.color]) assert.ok(Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]) <= 0.02, `desaturated: ${c.join(', ')}`);
+  assert.ok(wall.color[0] - roof.color[0] >= 0.15, 'roof clearly darker than the wall');
+  assert.ok(wall.color[0] < 0.8, 'wall held below white so sunlit faces keep form');
   assert.equal(roof.positions, wall.positions, 'parts share the building\'s vertices');
   assert.equal(dataStore.getEntitiesByType('IfcBuilding').length, 2);
   assert.equal(dataStore.properties.getPropertyValue(1, 'IfcLite_SiteContextBuilding', 'EGID'), '100');

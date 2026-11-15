@@ -1,13 +1,14 @@
 diff --git a/packages/parser/src/structural-face-regions.ts b/packages/parser/src/structural-face-regions.ts
 --- a/packages/parser/src/structural-face-regions.ts
 +++ b/packages/parser/src/structural-face-regions.ts
-@@ -103,7 +103,8 @@ export function faceRegionsOfOuterBounds(allRings: readonly Vec3[][]): FaceRegio
-   // it outside. The interior point (not the vertex average, which can fall in a notch of a concave
+@@ -103,7 +103,9 @@ export function faceRegionsOfOuterBounds(allRings: readonly Vec3[][]): FaceRegio
+   // edge midpoint of it outside (a chord between two points of a concave loop can leave it). The interior point (not the vertex average, which can fall in a notch of a concave
    // loop) rules out a tile that fills a notch of a concave loop with all its vertices on that loop's edge.
    const middle = flat.map(interiorPoint);
 -  const containers = flat.map((): number[] => []); void middle; void inside; void onBoundary; void areas;
 +  const containers = flat.map((ring, i) => flat.map((_, j) => j).filter((j) => j !== i && areas[j] > areas[i]
-+    && inside(middle[i], flat[j]) && ring.every((p) => inside(p, flat[j]) || onBoundary(p, flat[j]))));
++    && inside(middle[i], flat[j]) && ring.every((p) => inside(p, flat[j]) || onBoundary(p, flat[j]))
++    && ring.every((p, k) => { const q = ring[(k + 1) % ring.length]; const mid: readonly [number, number] = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]; return inside(mid, flat[j]) || onBoundary(mid, flat[j]); })));
    const regions = new Map<number, FaceRegion>();
    rings.forEach((polygon, i) => { if (containers[i].length % 2 === 0) regions.set(i, { polygon, innerBounds: [] }); });
    rings.forEach((polygon, i) => {

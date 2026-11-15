@@ -47,6 +47,13 @@ describe('faceRegionsOfOuterBounds', () => {
     expect(faceRegionsOfOuterBounds([l, tile])).toEqual([{ polygon: l, innerBounds: [] }, { polygon: tile, innerBounds: [] }]);
   });
 
+  it('keeps a triangle that spans the notch of an L as a region although every vertex is on the L', () => {
+    const l: Vec3[] = [[0, 0, 0], [10, 0, 0], [10, 4, 0], [4, 4, 0], [4, 10, 0], [0, 10, 0]];
+    // Its edge (10,4)-(4,10) crosses the notch, so it leaves the L; its interior point (4.67, 4.67) is inside the L.
+    const triangle: Vec3[] = [[0, 0, 0], [10, 4, 0], [4, 10, 0]];
+    expect(faceRegionsOfOuterBounds([l, triangle])).toEqual([{ polygon: l, innerBounds: [] }, { polygon: triangle, innerBounds: [] }]);
+  });
+
   it('reads loops in different planes as no regions of one face', () => {
     const wall: Vec3[] = [[0, 0, 0], [10, 0, 0], [10, 0, 10], [0, 0, 10]];
     const floorPatch: Vec3[] = [[4, 0, 4], [6, 0, 4], [6, 2, 4], [4, 2, 4]]; // projects inside the wall loop but lies in another plane

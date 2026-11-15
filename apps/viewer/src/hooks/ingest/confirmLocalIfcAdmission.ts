@@ -63,7 +63,14 @@ export function createLocalIfcLoadAdmission(file: File, options: {
   return {
     admit,
     setServer: (attempt: () => Promise<boolean>) => { server = attempt; },
-    preflight: () => options.serverEligible() ? Promise.resolve(undefined)
-      : preflightLocalIfcSource(file, { ...options, admit }),
+    preflight: () => {
+      if (options.serverEligible()) return undefined;
+      // Ordinary files keep the loader's existing first-read/error lifecycle.
+      // Only a potentially refused or consent-requiring source needs a read
+      // before scene replacement; the header still decides whether it is IFC.
+      const inspectHeader = () => preflightLocalIfcSource(file, { ...options, admit });
+      try { return inspectLocalIfcAdmission(file.size) ? inspectHeader() : undefined; }
+      catch (error) { if (error instanceof RangeError) return inspectHeader(); throw error; }
+    },
   };
 }

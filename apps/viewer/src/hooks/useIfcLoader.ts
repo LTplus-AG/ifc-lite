@@ -287,7 +287,7 @@ export function useIfcLoader() {
       serverEligible: () => target.kind === 'primary' && !useViewerStore.getState().mergeLayers && USE_SERVER && !!SERVER_URL && geometryKernel.serverEnabled,
       onFailure: error => { showLoadError(formatLoadError(error, file.name, 'ifc_model_load'), classifyLoadError(error, 'ifc_model_load')); settleLoadUi(); },
       finish: () => { metadataAbort.abort(); releaseCanceller(); } });
-    const preflightHead = await localAdmission.preflight();
+    const preflight = localAdmission.preflight(), preflightHead = preflight && await preflight;
     if (preflightHead === null) return;
 
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates

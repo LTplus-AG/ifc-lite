@@ -23,6 +23,7 @@ use ifc_lite_core::{ifc_type_from_keyword, IfcType};
 use ifc_lite_processing::data_model::EntityMetadata;
 
 use crate::buf::Buf;
+use crate::row_facts::RowFacts;
 use crate::strings::StringTable;
 use crate::type_enum::type_ordinal;
 
@@ -45,9 +46,10 @@ struct Row {
 
 /// Interns each row's strings in the order `EntityTableBuilder.add` does
 /// (globalId, name, description, objectType, rawTypeName) and writes the
-/// section.
-pub(crate) fn write_entities(strings: &mut StringTable, entities: &[EntityMetadata]) -> Vec<u8> {
-    let rows: Vec<Row> = entities.iter().map(|entity| row(strings, entity)).collect();
+/// section. `facts` says which nameless rows the source names `''` (every
+/// other one is `$`) and which rows have their own `Representation`.
+pub(crate) fn write_entities(strings: &mut StringTable, entities: &[EntityMetadata], facts: &RowFacts) -> Vec<u8> {
+    let rows: Vec<Row> = entities.iter().map(|entity| row(strings, entity, facts)).collect();
     let count = rows.len();
     let mut buf = Buf::with_capacity(4 + count * 43 + 2);
     buf.u32(count as u32);
@@ -83,11 +85,12 @@ pub(crate) fn write_entities(strings: &mut StringTable, entities: &[EntityMetada
     buf.into_vec()
 }
 
-fn row(strings: &mut StringTable, entity: &EntityMetadata) -> Row {
+fn row(strings: &mut StringTable, entity: &EntityMetadata, facts: &RowFacts) -> Row {
     let upper = entity.type_name.to_ascii_uppercase();
     let ty = ifc_type_from_keyword(&upper);
     let mut bits = 0;
-    if entity.has_geometry {
+    // The row's own Representation, not the data model's class guess (#4666).
+    if facts.own_representation.contains(&entity.entity_id) {
         bits |= flags::HAS_GEOMETRY;
     }
     if ty.is_subtype_of(IfcType::IfcTypeObject) {
@@ -97,8 +100,12 @@ fn row(strings: &mut StringTable, entity: &EntityMetadata) -> Row {
         express_id: entity.entity_id,
         type_enum: type_ordinal(&upper),
         global_id: strings.intern(entity.global_id.as_deref().unwrap_or("")),
-        // Absent stays absent (#4930): a `$` name is the null index.
-        name: strings.intern_opt(entity.name.as_deref()),
+        // Absent stays absent (#4930): a `$` name is the null index, an
+        // explicit `''` the empty string.
+        name: strings.intern_opt(match entity.name.as_deref() {
+            None if facts.empty_names.contains(&entity.entity_id) => Some(""),
+            name => name,
+        }),
         description: strings.intern(entity.description.as_deref().unwrap_or("")),
         object_type: strings.intern(entity.object_type.as_deref().unwrap_or("")),
         flags: bits,

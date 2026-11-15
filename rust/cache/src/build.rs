@@ -19,7 +19,7 @@ use crate::format::{
     SECTION_ENTRY_SIZE,
 };
 use crate::strings::StringTable;
-use crate::{entities, entity_index, geometry, pipeline, relationships};
+use crate::{entities, entity_index, geometry, pipeline, relationships, row_facts};
 use crate::{CacheError, CacheOptions, CacheStats};
 
 /// An empty PropertyTable / QuantityTable section: count 0, no columns, three
@@ -38,7 +38,8 @@ pub(crate) fn build(source: &[u8], options: &CacheOptions) -> Result<(Vec<u8>, C
     );
 
     let mut strings = StringTable::new();
-    let entities = entities::write_entities(&mut strings, &model.entities);
+    let facts = row_facts::row_facts(source, &model.entities);
+    let entities = entities::write_entities(&mut strings, &model.entities, &facts);
     let mut sections: Vec<(SectionType, Vec<u8>)> = vec![
         (SectionType::Strings, strings.write()),
         (SectionType::Entities, entities),

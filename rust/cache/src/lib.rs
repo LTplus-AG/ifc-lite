@@ -40,17 +40,20 @@
 //!   pool is empty: canonical-item source indices are a browser-batch output.
 //! - **`shadingColor`** (v25) is never present: the native pass reports one
 //!   colour per mesh and no distinct authored DiffuseColour.
-//! - **Mesh frame.** Native `process` meshes in absolute f32 coordinates
-//!   (per-mesh `origin` zero; the browser path stores local-frame origins) and
+//! - **Mesh frame.** Native `process` meshes with its own per-mesh origins
+//!   (zero for most meshes; the browser path stores local-frame origins) and
 //!   in its own frame tier: when it selects the `IfcSite`-local tier it also
 //!   removes the site rotation, which `CoordinateInfo` cannot express. The
 //!   translation is recorded as `wasmRtcOffset`; `wasmRtcFrame`,
 //!   `buildingRotation` and `boundsRecoveryFallbackCount` are left absent
 //!   (each is producer provenance of the browser path).
-//! - **Entity rows** are the data model's rooted table with its own
-//!   `has_geometry` and naming rules, not the TS parser's row selection, so
-//!   the scalar sections encode the same model the TS writer would be handed
-//!   for this data, not the bytes a TS parse of the same file produces.
+//! - **Entity rows** are the data model's rooted table and naming rules (an
+//!   explicit `''` Name and the own-Representation flag are re-read from the
+//!   source, which the data model does not carry: `row_facts.rs`), not the
+//!   TS parser's row selection, so the scalar sections encode the same model
+//!   the TS writer would be handed for this data, not the bytes a TS parse of
+//!   the same file produces. `scripts/cache-native-conformance.mjs` states
+//!   and checks the row-set difference against a TS parse.
 
 mod buf;
 mod build;
@@ -60,6 +63,7 @@ mod format;
 mod geometry;
 mod pipeline;
 mod relationships;
+mod row_facts;
 mod strings;
 mod type_enum;
 

@@ -19,4 +19,5 @@ export const changesPanelFr = {
   "changesPanel.revertPermission": "Activez le mode Édition ou demandez un accès en modification avant d'inverser une modification.",
   "changesPanel.revertSharedRoom": "Quittez la salle partagée avant d'inverser une modification. La salle ne peut pas encore synchroniser cette inversion.",
   "changesPanel.revertUnsupported": "Cette modification ne peut pas être inversée depuis le tiroir. Utilisez Annuler lorsqu'il s'agit de l'étape la plus récente.",
+  "changesPanel.byAgent": "Agent local · {field}",
 } satisfies Catalogue;

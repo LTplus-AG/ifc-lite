@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { PointCloudAssetHandle, PointCloudRenderer, PointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
-import { isRenderablePointCloud } from './pointcloud/point-cloud-placement.js';
+import { isRenderablePointCloud } from './renderable-coordinates.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 

@@ -86,15 +86,6 @@ function originMatrix(origin: readonly [number, number, number]): Float64Array |
   return new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
 }
 
-/** Whether an inline cloud renders: it has points (a streamed scan's
- * descriptor has none) and its optional origin can cross the GPU boundary.
- * Pick identity and the viewer's class histogram use it; uploads apply its two
- * halves separately (setAssets drops clouds with no points, bulk uploads skip
- * a bad origin with a warning) (#10094). */
-export function isRenderablePointCloud(asset: { origin?: readonly number[] | null; chunk: { pointCount: number } }): boolean {
-  return asset.chunk.pointCount > 0 && (asset.origin == null || renderableCoordinates(asset.origin));
-}
-
 /** The f64 origin matrix of an inline cloud: undefined without an origin, null for an unrenderable one. */
 function pointCloudOriginMatrix(asset: PointCloudAsset): Float64Array | null | undefined {
   return asset.origin == null ? undefined : originMatrix(asset.origin);

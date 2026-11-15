@@ -6687,6 +6687,7 @@
     "Geocoder: interface",
     "Geometry: type",
     "HttpError: class",
+    "HttpTimeoutError: class",
     "MapLayerDescriptor: interface",
     "MapServiceDescriptor: type",
     "MultiPolygonGeometry: interface",
@@ -6708,10 +6709,7 @@
     "VECTOR_LAYERS: const",
     "VectorFeatureProvider: interface",
     "attributionFor: function",
-    "createSwissGeodata: function",
-    "lv95ToWgs84Approx: function",
-    "paddedWgs84BBox: function",
-    "wgs84ToLv95Approx: function"
+    "createSwissGeodata: function"
   ],
   "@ifc-lite/geometry": [
     "AABB: interface",

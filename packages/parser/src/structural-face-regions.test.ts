@@ -54,6 +54,14 @@ describe('faceRegionsOfOuterBounds', () => {
     expect(faceRegionsOfOuterBounds([l, triangle])).toEqual([{ polygon: l, innerBounds: [] }, { polygon: triangle, innerBounds: [] }]);
   });
 
+  it('keeps a tile whose edge cuts across a thin notch off its midpoint as a region', () => {
+    // A square with a thin slot cut in from the top at x = 3..3.2; the tile's long edge from (0,0) to
+    // (10,9) passes through the slot while its midpoint (5,4.5) and endpoints lie in the square.
+    const slotted: Vec3[] = [[0, 0, 0], [10, 0, 0], [10, 10, 0], [3.2, 10, 0], [3.2, 2, 0], [3, 2, 0], [3, 10, 0], [0, 10, 0]];
+    const tile: Vec3[] = [[0, 0, 0], [10, 9, 0], [10, 0.5, 0]];
+    expect(faceRegionsOfOuterBounds([slotted, tile])).toEqual([{ polygon: slotted, innerBounds: [] }, { polygon: tile, innerBounds: [] }]);
+  });
+
   it('reads loops in different planes as no regions of one face', () => {
     const wall: Vec3[] = [[0, 0, 0], [10, 0, 0], [10, 0, 10], [0, 0, 10]];
     const floorPatch: Vec3[] = [[4, 0, 4], [6, 0, 4], [6, 2, 4], [4, 2, 4]]; // projects inside the wall loop but lies in another plane

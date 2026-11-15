@@ -53,6 +53,22 @@ function onBoundary([x, y]: readonly [number, number], poly: Flat): boolean {
   return false;
 }
 
+/** Whether segments ab and cd cross at a point interior to both (touching and overlapping do not count). */
+function crosses(a: readonly [number, number], b: readonly [number, number], c: readonly [number, number], d: readonly [number, number]): boolean {
+  const side = (p: readonly [number, number], q: readonly [number, number], r: readonly [number, number]) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  const [s1, s2, s3, s4] = [side(a, b, c), side(a, b, d), side(c, d, a), side(c, d, b)];
+  return s1 * s2 < 0 && s3 * s4 < 0;
+}
+
+/** Whether every edge of `ring` stays in `outer`: no edge crosses an edge of `outer`, and each edge midpoint is in or on it. */
+function stays(ring: Flat, outer: Flat): boolean {
+  return ring.every((p, k) => {
+    const q = ring[(k + 1) % ring.length];
+    const mid: readonly [number, number] = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+    return (inside(mid, outer) || onBoundary(mid, outer)) && outer.every((c, m) => !crosses(p, q, c, outer[(m + 1) % outer.length]));
+  });
+}
+
 /** A point inside a simple polygon: the midpoint of the first span of a scanline between two vertex heights (even-odd). */
 function interiorPoint(poly: Flat): readonly [number, number] {
   const heights = [...new Set(poly.map((p) => p[1]))].sort((a, b) => a - b);
@@ -99,13 +115,13 @@ export function faceRegionsOfOuterBounds(allRings: readonly Vec3[][]): FaceRegio
   const y = cross(normal, x);
   const flat = rings.map((ring): Flat => ring.map((p) => [dot(sub(p, reference[0]), x), dot(sub(p, reference[0]), y)] as const));
   const areas = flat.map(area);
-  // The loops each loop lies in: a larger loop that holds a point inside this one and has no vertex or
-  // edge midpoint of it outside (a chord between two points of a concave loop can leave it). The interior point (not the vertex average, which can fall in a notch of a concave
+  // The loops each loop lies in: a larger loop that holds a point inside this one and has no vertex of it outside and no edge of
+  // it leaving it (a chord between two points of a concave loop can leave it). The interior point (not the vertex average, which can fall in a notch of a concave
   // loop) rules out a tile that fills a notch of a concave loop with all its vertices on that loop's edge.
   const middle = flat.map(interiorPoint);
   const containers = flat.map((ring, i) => flat.map((_, j) => j).filter((j) => j !== i && areas[j] > areas[i]
     && inside(middle[i], flat[j]) && ring.every((p) => inside(p, flat[j]) || onBoundary(p, flat[j]))
-    && ring.every((p, k) => { const q = ring[(k + 1) % ring.length]; const mid: readonly [number, number] = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]; return inside(mid, flat[j]) || onBoundary(mid, flat[j]); })));
+    && stays(ring, flat[j])));
   const regions = new Map<number, FaceRegion>();
   rings.forEach((polygon, i) => { if (containers[i].length % 2 === 0) regions.set(i, { polygon, innerBounds: [] }); });
   rings.forEach((polygon, i) => {

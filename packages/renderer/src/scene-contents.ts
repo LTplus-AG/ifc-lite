@@ -128,6 +128,10 @@ export interface SceneContents {
    */
   hasMeshData(expressId: number, modelIndex?: number): boolean;
   getAllMeshDataExpressIds(): number[];
+  /** Live triangle occurrences by renderer entity ID, without expanding instances.
+   * Null while a cached scene still awaits source-geometry hydration. */
+  onGeometryChange?(listener: () => void): () => void;
+  getTriangleCounts?(): ReadonlyMap<number, number> | null;
   getBounds(): {
     min: { x: number; y: number; z: number };
     max: { x: number; y: number; z: number };

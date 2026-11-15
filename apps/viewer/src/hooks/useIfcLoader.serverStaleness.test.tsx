@@ -20,6 +20,7 @@ const { useIfcLoader } = await import('./useIfcLoader.js');
 const { getProcessingServerUrl, setProcessingServerUrl } = await import('@/lib/processed-model');
 const { loadDialogs } = await import('@/test/dialog-host.js');
 const { click, waitFor } = await import('@/test/render.js');
+const { propertyModelBuffer } = await import('../../../../packages/server-client/test/fixtures/property-model.js');
 
 const PARQUET_RESULT: ParquetParseResponse = {
   meshes: [
@@ -359,6 +360,53 @@ for (const phase of ['header', 'dialog']) it(`#10264 loading-card Cancel during 
     assert.equal(document.querySelector('[role="alertdialog"]') !== null, false);
   } finally {
     releaseHead(); await act(async () => { root.render(null); }); await pending;
+    if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
+  }
+});
+
+for (const outcome of ['refusal', 'dialog-cancel', 'loading-cancel', 'replacement']) it(`#10264 pending displayed-model properties survive candidate ${outcome} until replacement commits`, async () => {
+  const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+  let deliver: ((bytes: ArrayBuffer) => void) | undefined, propertySignal: AbortSignal | undefined;
+  let polls = 0;
+  const wire = propertyModelBuffer();
+  mock.method(IfcServerClient.prototype, 'fetchDataModel', async (_key: string, options?: Parameters<IfcServerClient['fetchDataModel']>[1]) => {
+    if (++polls !== 1) return null;
+    propertySignal = typeof options === 'object' ? options.signal : undefined;
+    return new Promise<ArrayBuffer>(resolve => { deliver = resolve; });
+  });
+  let candidate: Promise<void> | undefined;
+  try {
+    await act(async () => { await api!.loadFile(file('prior-with-properties.ifc'), { kind: 'primary', modelId: 'hydration-prior' }); });
+    await waitFor(() => !!deliver, 'displayed model property fetch is held');
+    assert.equal(useViewerStore.getState().models.get('hydration-prior')?.loadState, 'complete');
+    assert.equal(propertySignal?.aborted, false);
+    if (outcome === 'replacement') {
+      await act(async () => { await api!.loadFile(file('accepted-replacement.ifc'), { kind: 'primary', modelId: 'replacement' }); });
+      assert.equal(propertySignal?.aborted, true, 'an actually committed replacement still supersedes old properties');
+      deliver!(wire);
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+      assert.equal(useViewerStore.getState().models.has('hydration-prior'), false);
+      assert.equal(useViewerStore.getState().models.has('replacement'), true);
+      return;
+    }
+    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: outcome === 'refusal' ? 4 : 8 });
+    useViewerStore.setState({ mergeLayers: true }); // configured server cannot accept this candidate
+    const source = file('unadmitted-candidate.ifc'), blob = new Blob([source]);
+    Object.defineProperty(source, 'size', { value: 1.05e9 });
+    Object.defineProperty(source, 'slice', { value: blob.slice.bind(blob) });
+    await act(async () => { candidate = api!.loadFile(source); });
+    if (outcome !== 'refusal') {
+      await waitFor(() => !!document.querySelector('[role="alertdialog"]'), 'candidate awaits admission');
+      if (outcome === 'dialog-cancel') click(document.querySelector('[role="alertdialog"] button')!);
+      else await act(async () => { useViewerStore.getState().activeLoadCanceller?.(); });
+    }
+    await candidate;
+    assert.equal(propertySignal?.aborted, false, 'displayed model hydration survives a refused or cancelled candidate');
+    deliver!(wire);
+    await waitFor(() => useViewerStore.getState().models.get('hydration-prior')?.ifcDataStore?.entities.getName(1) === 'Server properties', 'real server wire properties commit to the still-displayed model');
+    assert.equal(useViewerStore.getState().models.get('hydration-prior')?.ifcDataStore?.entities.getName(1), 'Server properties');
+  } finally {
+    deliver?.(wire); await act(async () => { root.render(null); }); await candidate;
     if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
   }
 });

@@ -193,8 +193,9 @@ const COMPLETE_FRAME_WAIT_MS = 1000;
  */
 export function useIfcLoader() {
   // Guard against stale async writes when user loads a new file before previous completes.
-  // Incremented on each loadFile call; deferred callbacks check their captured session.
+  // Committed model sessions and pending admission attempts have separate ownership.
   const loadSessionRef = useRef(0);
+  const admissionSessionRef = useRef(0);
 
   const {
     setLoading,
@@ -261,14 +262,14 @@ export function useIfcLoader() {
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
     const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options), { hasSourceBytes: !options?.processedModel }); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
-    // A primary supersedes every outstanding hook owner via the shared canceller. Federated additions capture this hook's session and remain independent.
-    const currentSession = target.kind === 'primary'
-      ? ++loadSessionRef.current
-      : loadSessionRef.current;
+    // An unadmitted primary supersedes pending admissions, not the displayed model's hydration.
+    const admissionSession = target.kind === 'primary' ? ++admissionSessionRef.current : admissionSessionRef.current;
+    let currentSession = loadSessionRef.current;
     const modelId = target.modelId ?? crypto.randomUUID();
     const processedModel = options?.processedModel && normalizedProcessedModel(options.processedModel); // one hash spelling for the record and the server
     let cancelled = false;
-    const isCurrent = () => !cancelled && loadSessionRef.current === currentSession;
+    const isCurrent = () => !cancelled && (target.kind === 'primary' && !initialized
+      ? admissionSessionRef.current === admissionSession : loadSessionRef.current === currentSession);
     const isStale = () => !isCurrent();
     let abortGeometry: (() => void) | null = null; // set once the geometry pool starts
     let cancelOwnedStream: (() => void) | null = null;
@@ -278,10 +279,10 @@ export function useIfcLoader() {
     let initialized = false;
     const releaseCanceller = installModelLoadCanceller(target.kind, () => {
       cancelled = true;
-      if (target.kind === 'primary' && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
+      if (target.kind === 'primary' && initialized && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
       metadataAbort.abort();
       abortGeometry?.();
-    }, () => cancelOwnedStream, activity, () => initialized); // #5849: federated cancellation preserves loaded models
+    }, () => cancelOwnedStream, activity, () => initialized, target.kind === 'primary'); // #5849: federated cancellation preserves loaded models
     // Every end of this load, completed or failed: the last live load ends the shared UI (L2).
     const settleLoadUi = (progress: Parameters<typeof settleOwnedLoadUi>[1] = null) => settleOwnedLoadUi(releaseCanceller, progress, modelId);
 
@@ -420,6 +421,7 @@ export function useIfcLoader() {
       let shardGeneration = instancedShardGeneration();
       const initializeModel = () => {
         if (initialized) return;
+        if (target.kind === 'primary') { releaseCanceller.commit(); currentSession = ++loadSessionRef.current; }
         initialized = true;
         // Reset all viewer state before loading new file — PRIMARY ONLY. A
         // federated add must never wipe model #1; it joins the existing map.

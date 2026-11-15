@@ -137,27 +137,32 @@ END-ISO-10303-21;
 /// Core and finish over `x` in [0, 1.5], one full-thickness body over
 /// [1.5, 4]. The recess spans [1, 2].
 fn split_bodies() -> String {
-    let rect = |id: u32, x0: f64, x1: f64, y0: f64, y1: f64| {
-        format!(
-            "#{p}=IFCCARTESIANPOINT(({:?},{:?}));\n#{a}=IFCAXIS2PLACEMENT2D(#{p},$);\n\
-             #{r}=IFCRECTANGLEPROFILEDEF(.AREA.,$,#{a},{:?},{:?});\n\
-             #{e}=IFCEXTRUDEDAREASOLID(#{r},#11,#14,{WALL_HEIGHT:?});\n",
-            (x0 + x1) * 0.5,
-            (y0 + y1) * 0.5,
-            x1 - x0,
-            y1 - y0,
-            p = id,
-            a = id + 1,
-            r = id + 2,
-            e = id + 3,
-        )
-    };
-    let total = CORE + FINISH;
     format!(
-        "{}{}{}#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#63,#67,#71));",
-        rect(60, 0.0, 1.5, 0.0, CORE),
-        rect(64, 0.0, 1.5, CORE, total),
-        rect(68, 1.5, WALL_LENGTH, 0.0, total),
+        "{}{}#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#63,#67,#71));",
+        split_extrusions(),
+        extrusion(68, 1.5, WALL_LENGTH, 0.0, CORE + FINISH),
+    )
+}
+
+/// Core (#63) and finish (#67) over `x` in [0, 1.5].
+fn split_extrusions() -> String {
+    extrusion(60, 0.0, 1.5, 0.0, CORE) + &extrusion(64, 0.0, 1.5, CORE, CORE + FINISH)
+}
+
+/// A box extruded over the wall height, entities `#id` to `#id+3`.
+fn extrusion(id: u32, x0: f64, x1: f64, y0: f64, y1: f64) -> String {
+    format!(
+        "#{p}=IFCCARTESIANPOINT(({:?},{:?}));\n#{a}=IFCAXIS2PLACEMENT2D(#{p},$);\n\
+         #{r}=IFCRECTANGLEPROFILEDEF(.AREA.,$,#{a},{:?},{:?});\n\
+         #{e}=IFCEXTRUDEDAREASOLID(#{r},#11,#14,{WALL_HEIGHT:?});\n",
+        (x0 + x1) * 0.5,
+        (y0 + y1) * 0.5,
+        x1 - x0,
+        y1 - y0,
+        p = id,
+        a = id + 1,
+        r = id + 2,
+        e = id + 3,
     )
 }
 
@@ -166,8 +171,6 @@ fn split_bodies() -> String {
 /// `y = CORE`. The split vertices also sit on its top and bottom faces, so
 /// the shell stays closed.
 fn split_meshed_bodies() -> String {
-    let extrusions = split_bodies();
-    let extrusions = &extrusions[..extrusions.find("#68=").expect("the split body's profile")];
     let (x0, x1, ym, y1, z1) = (1.5, WALL_LENGTH, CORE, CORE + FINISH, WALL_HEIGHT);
     let points = [
         [x0, 0.0, 0.0],
@@ -184,7 +187,7 @@ fn split_meshed_bodies() -> String {
     // Outward loops, 1-based into `points`.
     let faces: [&[usize]; 7] =
         [&[1, 5, 4, 3, 2], &[6, 7, 8, 9, 10], &[1, 2, 7, 6], &[3, 4, 9, 8], &[2, 3, 8, 7], &[1, 6, 10, 5], &[5, 10, 9, 4]];
-    let mut out = extrusions.to_string();
+    let mut out = split_extrusions();
     for (i, [x, y, z]) in points.iter().enumerate() {
         out += &format!("#{}=IFCCARTESIANPOINT(({x:?},{y:?},{z:?}));\n", 900 + i);
     }

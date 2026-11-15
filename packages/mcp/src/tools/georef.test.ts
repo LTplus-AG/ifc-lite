@@ -9,7 +9,7 @@
  * the map origin around as a JSON side file.
  */
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -85,6 +85,9 @@ beforeAll(async () => {
   tmp = await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-georef-'));
   await writeFile(join(tmp, 'ifc4.ifc'), header('IFC4') + BODY, 'utf-8');
   await writeFile(join(tmp, 'ifc2x3.ifc'), header('IFC2X3') + BODY, 'utf-8');
+  await writeFile(join(tmp, 'ifc4-georef.ifc'), header('IFC4') + BODY.replace('ENDSEC;', `#50= IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#31);
+#51= IFCMAPCONVERSION(#20,#50,1.,2.,3.,$,$,$);
+ENDSEC;`), 'utf-8');
 });
 
 afterAll(async () => {
@@ -161,5 +164,27 @@ describe('georeferencing_write', () => {
     expect(await refused({ action: 'remove', replace: true })).toBeInstanceOf(ToolExecutionError);
     const read = await structured<{ georef: GeoreferencingState }>('georeferencing', {});
     expect(read.georef).toMatchObject({ hasGeoreference: false, pending: false });
+  });
+
+  it('mutation_undo takes a replace back whole: the saved file and the read tool agree', async () => {
+    await session('ifc4-georef.ifc');
+    const before = (await structured<{ georef: GeoreferencingState }>('georeferencing', {})).georef;
+    await structured('georeferencing_write', {
+      action: 'set', replace: true, epsg: 2056, ProjectedCRS: { MapUnit: 'METRE' },
+      MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 },
+    });
+    await structured('mutation_undo', { n: 1 });
+    const after = (await structured<{ georef: GeoreferencingState }>('georeferencing', {})).georef;
+    expect(after).toEqual(before);
+    await structured('model_save', { file_path: join(tmp, 'ifc4-undone.ifc') });
+    const text = await readFile(join(tmp, 'ifc4-undone.ifc'), 'utf-8');
+    expect(text).toContain("IFCPROJECTEDCRS('EPSG:2056'");
+    expect(text).toMatch(/IFCMAPCONVERSION\(#20,#50,1\.,2\.,3\./);
+  });
+
+  it('refuses keys bim.georef does not write, even when the call skips schema validation', async () => {
+    await session('ifc4.ifc');
+    const err = await refused({ action: 'set', epsg: 2056, ProjectedCRS: { MapUnit: 'METRE' }, MapConversion: { Eastings: 1, Northings: 2, OrthogonalHeight: 3, Rotation: 12 } });
+    expect(err.details).toMatchObject({ georefCode: 'INVALID_INPUT', missing: ['MapConversion.Rotation'] });
   });
 });

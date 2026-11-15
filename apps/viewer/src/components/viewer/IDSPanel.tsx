@@ -197,7 +197,7 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
     >
       <div className="flex-1 min-h-0 flex flex-col">
         {!report && <DefinitionLibraryToolbar kind="ids" onImport={handleLoadIdsClick} />}
-        {document && <IDSTargetFilter modelId={pendingModelId ?? undefined} />}
+        {document && <IDSTargetFilter modelId={pendingModelId ?? reportModelId ?? undefined} />}
         <IDSPanelStates
           ids={ids}
           fileInputRef={fileInputRef}

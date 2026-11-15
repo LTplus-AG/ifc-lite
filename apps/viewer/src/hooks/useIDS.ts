@@ -241,7 +241,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
 
       const entityIds = filterAtStart ? await resolveIdsTargetFilter(useViewerStore.getState(), modelId, dataStore,
         structuredClone(filterAtStart.groups), abortController.signal) : undefined;
-      if (!stillWanted(myEpoch) || useViewerStore.getState().idsTargetFilter !== filterAtStart) { setIdsProgress(null); return null; }
+      if (!stillWanted(myEpoch)) return null;
+      if (useViewerStore.getState().idsTargetFilter !== filterAtStart) { setIdsProgress(null); return null; }
       const { report: validationReport, snapshot } = await runIdsCheck({
         document, modelId, dataStore, mutationView: getMutationView(modelId),
         locale, models, signal: abortController.signal, onProgress, entityIds,

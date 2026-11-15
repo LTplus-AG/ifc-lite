@@ -9,10 +9,12 @@ import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { parseIDS, type IDSValidationReport } from '@ifc-lite/ids';
 import { Rule } from '@ifc-lite/rules';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { render, click, cleanup } from '@/test/render';
 import { IDSTargetFilter } from '@/components/viewer/IDSTargetFilter';
+import { IDSPanel } from '@/components/viewer/IDSPanel';
 import { useIDS } from './useIDS';
 import { resolveIdsTargetFilter } from '@/lib/ids/resolve-target-filter';
 
@@ -123,4 +125,66 @@ it('does not apply the Search display cap to the validation population (#10371)'
     [{ combinator: 'AND', rules: [Rule.ifcType(['IfcWall'])] }]);
   assert.equal(ids.length, count);
   assert.ok(ids.includes(100) && ids.includes(100 + count - 1));
+});
+
+it('offers filter options from the displayed report model instead of a different active model (#10371 review)', async () => {
+  await seed();
+  await act(async () => { await api!.runValidation('M'); });
+  const other = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC.replaceAll('IFCWALL(', 'IFCDOOR(')).buffer as ArrayBuffer,
+    { disableWorkerScan: true });
+  const b = fixtureModel('B'); b.ifcDataStore = other; b.maxExpressId = 107;
+  await act(async () => {
+    useViewerStore.setState(state => ({ models: new Map([...state.models, ['B', b]]), activeModelId: 'B' }));
+    useViewerStore.getState().setIdsTargetFilter(() => ({ activeGroup: 0,
+      groups: [{ combinator: 'AND', rules: [Rule.ifcType([])] }] }));
+  });
+  const panel = render(<IDSPanel onClose={() => {}} />);
+  const controls = panel.querySelector('section[aria-label="Objects to validate"]')!;
+  assert.ok(controls);
+  const pick = [...controls.querySelectorAll('button')].find(button => button.textContent?.includes('Pick values'));
+  assert.ok(pick); click(pick);
+  const menu = document.querySelector('[role="menu"]');
+  assert.ok(menu);
+  assert.match(menu.textContent ?? '', /IfcWall/);
+  assert.doesNotMatch(menu.textContent ?? '', /IfcDoor/, 'rerun targets report M, not active B');
+});
+
+it('a superseded filter iterator cannot clear the newer run progress (#10371 review)', async () => {
+  await seed();
+  const walls = Array.from({ length: 20_000 }, (_, index) =>
+    `#${100 + index}=IFCWALL('${index.toString().padStart(22, '0')}',$,'Wall ${index}',$,$,$,$,$,.STANDARD.);`).join('\n');
+  const data = await new IfcParser().parseColumnar(new TextEncoder().encode(
+    `ISO-10303-21; HEADER; FILE_SCHEMA(('IFC4')); ENDSEC; DATA; ${walls} ENDSEC; END-ISO-10303-21;`).buffer as ArrayBuffer,
+    { disableWorkerScan: true });
+  const model = fixtureModel('M'); model.ifcDataStore = data; model.maxExpressId = 20_099;
+  const view = new MutablePropertyView(null, 'M'); view.setAttribute(100, 'Name', 'Edited wall');
+  await act(async () => {
+    useViewerStore.setState({ ...fixtureModels(model), ifcDataStore: data, mutationViews: new Map([['M', view]]) });
+    useViewerStore.getState().setIdsTargetFilter(() => ({ activeGroup: 0,
+      groups: [{ combinator: 'AND', rules: [Rule.name('eq', 'No matching wall')] }] }));
+  });
+  const previousScheduler = Object.getOwnPropertyDescriptor(globalThis, 'scheduler');
+  let yielded!: () => void, resume!: () => void;
+  const reachedYield = new Promise<void>(resolve => { yielded = resolve; });
+  const heldYield = new Promise<void>(resolve => { resume = resolve; });
+  Object.defineProperty(globalThis, 'scheduler', { configurable: true, value: {
+    yield: () => { yielded(); return heldYield; },
+  } });
+  let older: Promise<IDSValidationReport | null> | undefined, newer: Promise<IDSValidationReport | null> | undefined;
+  try {
+    act(() => { older = api!.runValidation('M'); });
+    await reachedYield; // Real edited-entity iterator has scanned its final chunk.
+    act(() => { newer = api!.runValidation('M'); });
+    const progress = useViewerStore.getState().idsProgress;
+    assert.equal(progress?.phase, 'filtering');
+    await act(async () => { resume(); await older; });
+    assert.equal(useViewerStore.getState().idsLoading, true);
+    assert.equal(useViewerStore.getState().idsProgress, progress, 'older normal return cannot clear the new owner');
+  } finally {
+    resume();
+    act(() => api!.cancelValidation());
+    await Promise.allSettled([older, newer]);
+    if (previousScheduler) Object.defineProperty(globalThis, 'scheduler', previousScheduler);
+    else Reflect.deleteProperty(globalThis, 'scheduler');
+  }
 });

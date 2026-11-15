@@ -5,16 +5,21 @@
 import type { NewEntity } from './types.js';
 
 let internalReads = 0;
-const observers = new WeakMap<NewEntity, Set<() => void>>();
-const dataBarriers = new WeakMap<object, { getter: PropertyDescriptor['get']; read(): NewEntity['attributes'] }>();
+type ExposureListener = (entity: NewEntity) => void;
+interface AttributeBarrier {
+  value: NewEntity['attributes'];
+  descriptor?: PropertyDescriptor;
+  listeners: ExposureListener | Set<ExposureListener>;
+}
+const barriers = new WeakMap<object, AttributeBarrier>();
 /** Rows whose mutable attribute arrays reached a caller; their borrows are never reused. */
 const escaped = new WeakSet<NewEntity>();
 const borrows = new WeakMap<NewEntity, NewEntity>();
 
 /** Cooperative cloning may unwrap our own data barrier, never a caller getter. */
 export function entityAttributeData(object: object, key: PropertyKey, descriptor: PropertyDescriptor | undefined): PropertyDescriptor | undefined {
-  const barrier = key === 'attributes' ? dataBarriers.get(object) : undefined;
-  return barrier && descriptor?.get === barrier.getter ? { value: barrier.read() } : undefined;
+  const barrier = key === 'attributes' ? barriers.get(object) : undefined;
+  return barrier && !barrier.descriptor?.get && descriptor?.get === readAttributes ? { value: barrier.value } : undefined;
 }
 
 /** Internal snapshots/readers do not hand mutable arrays to a caller. */
@@ -26,34 +31,44 @@ export function withoutEntityExposure<T>(read: () => T): T {
 /** Keep ordinary arrays and structuredClone compatibility. Once a caller has
  * obtained an attribute array, its index must conservatively recheck that row:
  * an alias can be edited again without another getNewEntity call. */
-export function observeEntityAttributes(entity: NewEntity, exposed: () => void): void {
-  const previous = observers.get(entity);
-  if (previous) { previous.add(exposed); return; }
+function notify(entity: NewEntity, barrier: AttributeBarrier): void {
+  escaped.add(entity); borrows.delete(entity);
+  if (typeof barrier.listeners === 'function') barrier.listeners(entity);
+  else for (const listener of barrier.listeners) listener(entity);
+}
+
+// One accessor pair for every ordinary row. Its data lives in a weak record,
+// rather than closures (and a descriptor/read closure) retained per IFC atom.
+function readAttributes(this: NewEntity): NewEntity['attributes'] {
+  const barrier = barriers.get(this)!;
+  if (!internalReads) notify(this, barrier);
+  return barrier.descriptor?.get ? barrier.descriptor.get.call(this) as NewEntity['attributes'] : barrier.value;
+}
+function writeAttributes(this: NewEntity, next: NewEntity['attributes']): void {
+  const barrier = barriers.get(this)!;
+  notify(this, barrier);
+  if (barrier.descriptor?.set) barrier.descriptor.set.call(this, next);
+  else barrier.value = next;
+}
+
+export function observeEntityAttributes(entity: NewEntity, exposed: ExposureListener): void {
+  const previous = barriers.get(entity);
+  if (previous) {
+    if (previous.listeners === exposed) return;
+    if (typeof previous.listeners === 'function') previous.listeners = new Set([previous.listeners]);
+    previous.listeners.add(exposed);
+    return;
+  }
   const descriptor = Object.getOwnPropertyDescriptor(entity, 'attributes');
-  if (descriptor && !descriptor.configurable) { escaped.add(entity); exposed(); return; }
-  const listeners = new Set([exposed]);
-  observers.set(entity, listeners);
-  let value = descriptor && 'value' in descriptor
+  if (descriptor && !descriptor.configurable) { escaped.add(entity); exposed(entity); return; }
+  const value = descriptor && 'value' in descriptor
     ? descriptor.value as NewEntity['attributes'] : withoutEntityExposure(() => entity.attributes);
-  const notify = () => {
-    escaped.add(entity); borrows.delete(entity);
-    for (const listener of listeners) listener();
-  };
+  barriers.set(entity, { value, listeners: exposed, ...(descriptor?.get || descriptor?.set ? { descriptor } : {}) });
   Object.defineProperty(entity, 'attributes', {
     enumerable: descriptor?.enumerable ?? true, configurable: true,
-    get() {
-      if (!internalReads) notify();
-      return descriptor?.get ? descriptor.get.call(entity) as NewEntity['attributes'] : value;
-    },
-    set: descriptor?.get && !descriptor.set || descriptor?.writable === false ? undefined : (next: NewEntity['attributes']) => {
-      notify();
-      if (descriptor?.set) descriptor.set.call(entity, next);
-      else value = next;
-    },
+    get: readAttributes,
+    set: descriptor?.get && !descriptor.set || descriptor?.writable === false ? undefined : writeAttributes,
   });
-  if (descriptor && 'value' in descriptor) {
-    dataBarriers.set(entity, { getter: Object.getOwnPropertyDescriptor(entity, 'attributes')!.get, read: () => value });
-  }
 }
 
 function frozenCopy(value: unknown, copies: Map<object, unknown>): unknown {
@@ -86,6 +101,6 @@ export function readEntitySnapshot(entity: NewEntity): NewEntity {
     copy.attributes = frozenCopy(copy.attributes, new Map()) as NewEntity['attributes'];
     return Object.freeze(copy);
   });
-  if (dataBarriers.has(entity) && !escaped.has(entity)) borrows.set(entity, row);
+  if (barriers.has(entity) && !escaped.has(entity)) borrows.set(entity, row);
   return row;
 }

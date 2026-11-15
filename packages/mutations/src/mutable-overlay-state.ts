@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { indexedHistory } from './indexed-mutation-history.js';
 import { materializeOverlay } from './sparse-overlay.js';
 import { withoutEntityExposure } from './entity-read-barrier.js';
 import { sameOverlayValue } from './overlay-value-equality.js';
@@ -11,8 +12,6 @@ import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyMutation, QuantityMutation, AttributeMutation,
   EntityTypeMutation, Mutation, SetOverlaySnapshot } from './types.js';
 import { quantityKey } from './types.js';
-
-
 /**
  * Everything `deleteEntity` purges out of the live overlay maps for a
  * forgotten-created entity, captured so `restoreNewEntity` can put it all
@@ -31,7 +30,6 @@ export interface ForgottenEntityOverlay {
   /** This entity's own records, removed from the append-only `mutationHistory`. */
   historyEntries: Mutation[];
 }
-
 /** Internal mutable overlay state; source tables and extractors are never copied. */
 export class MutableOverlayState {
   protected propertyTargets: Map<string, readonly [string, string]> = new Map();
@@ -147,7 +145,9 @@ export class MutableOverlayState {
   getAttributeOverrideReferenceCandidates(id: number): number[] {
     return Array.from(this.overriddenEntities.referencing(id), row => row.expressId);
   }
-  protected mutationHistory: Mutation[] = [];
+  private journal: Mutation[] = indexedHistory([]);
+  protected get mutationHistory(): Mutation[] { return this.journal; }
+  protected set mutationHistory(rows: Mutation[]) { this.journal = indexedHistory(rows); }
 
   private mutationRevision = 0;
 

@@ -4,6 +4,7 @@
 
 /** Mutable overlay over immutable or on-demand properties; changes apply on reads. */
 
+import { historyForEntity, purgeEntityHistory } from './indexed-mutation-history.js';
 import { runSparseAtomic } from './sparse-atomic.js';
 import { readEntitySnapshot } from './entity-read-barrier.js';
 import { registerCooperativeOverlay } from './cooperative-overlay-access.js';
@@ -1419,15 +1420,7 @@ export class MutablePropertyView extends MutableOverlayState {
       this.deletedQsets.delete(key);
     }
 
-    const keptHistory: Mutation[] = [];
-    for (const mutation of this.mutationHistory) {
-      if (mutation.entityId === expressId) {
-        stash.historyEntries.push(mutation);
-      } else {
-        keptHistory.push(mutation);
-      }
-    }
-    this.mutationHistory = keptHistory;
+    stash.historyEntries = purgeEntityHistory(this.mutationHistory, expressId);
 
     const hasStashedData =
       stash.propertyEntries.length > 0 ||
@@ -1596,7 +1589,7 @@ export class MutablePropertyView extends MutableOverlayState {
    * Get mutations for a specific entity
    */
   getMutationsForEntity(entityId: number): Mutation[] {
-    return this.mutationHistory.filter(m => m.entityId === entityId);
+    return historyForEntity(this.mutationHistory, entityId);
   }
 
   /**

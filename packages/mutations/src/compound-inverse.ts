@@ -91,7 +91,7 @@ export interface CompoundInverse {
   maps: Array<{ field: MapField; entries: Entry[] }>;
   sets: Array<{ field: SetField; entries: Array<{ key: unknown; present: boolean }> }>;
   historyLength: number;
-  history: Array<{ index: number; mutation: Mutation }>;
+  history: Array<{ index: number; mutation: Mutation; beforeId?: string | null }>;
 }
 
 export function captureCompoundInverse(before: OverlaySnapshot, after: OverlaySnapshot): CompoundInverse {
@@ -132,10 +132,17 @@ export function restoreCompoundInverse(state: OverlaySnapshot, inverse: Compound
     }
   }
   state.mutationHistory = state.mutationHistory.slice(0, -writtenCount);
-  for (const { index, mutation } of inverse.history) {
+  // Indexed removals record their live successor at removal time. Reverse
+  // replay puts that successor back before reinserting an earlier row.
+  const indexed = inverse.history.filter(row => row.beforeId !== undefined).reverse();
+  const positional = inverse.history.filter(row => row.beforeId === undefined);
+  for (const { index, mutation, beforeId } of [...positional, ...indexed]) {
     const existing = state.mutationHistory.findIndex(m => m.id === mutation.id);
     if (existing >= 0) state.mutationHistory.splice(existing, 1);
-    state.mutationHistory.splice(index, 0, structuredClone(mutation));
+    const at = beforeId === undefined ? index : beforeId === null ? state.mutationHistory.length
+      : state.mutationHistory.findIndex(m => m.id === beforeId);
+    if (at < 0) throw new Error('Compound journal successor disappeared before undo');
+    state.mutationHistory.splice(at, 0, structuredClone(mutation));
   }
   if (state.mutationHistory.length !== inverse.historyLength) throw new Error('Compound history changed; cannot restore its journal');
   // Preserve the current allocator: undo never permits express ID reuse.

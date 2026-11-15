@@ -28,7 +28,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
   declare private referencesById?: Map<number, Set<number>>;
   declare private byType?: Map<string, Map<number, NewEntity>>;
   declare private exposed?: Set<number>;
-  declare private callbacks?: WeakMap<NewEntity, () => void>;
+  declare private exposureCallback?: (entity: NewEntity) => void;
   declare private weakSelf?: WeakRef<NewEntityMap>;
   declare private exposureListeners?: Set<(id: number) => void>;
 
@@ -69,18 +69,17 @@ export class NewEntityMap extends Map<number, NewEntity> {
       if (!bucket) this.byReference.set(id, bucket = new Set());
       bucket.add(expressId);
     }
-    this.callbacks ??= new WeakMap();
-    if (!this.callbacks.has(entity)) {
+    if (!this.exposureCallback) {
       const owner = this.weakSelf ??= new WeakRef(this);
-      const exposed = () => {
-        const map = owner.deref();
-        if (!map?.has(expressId)) return;
-        (map.exposed ??= new Set()).add(expressId);
-        for (const listener of map.exposureListeners ?? []) listener(expressId);
+      this.exposureCallback = (row: NewEntity) => {
+        const map = owner.deref(), id = row.expressId;
+        // A replaced row's escaped arrays no longer belong to this index.
+        if (map?.peek(id) !== row) return;
+        (map.exposed ??= new Set()).add(id);
+        for (const listener of map.exposureListeners ?? []) listener(id);
       };
-      this.callbacks.set(entity, exposed);
-      observeEntityAttributes(entity, exposed);
     }
+    observeEntityAttributes(entity, this.exposureCallback);
     return this;
   }
 

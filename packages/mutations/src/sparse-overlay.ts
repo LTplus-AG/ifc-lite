@@ -4,6 +4,7 @@
 
 /** Detached synchronous drafts: copy values on first read, publish only changed
  * entries. Neither transaction setup nor an append visits the session prefix. */
+import { forkHistory, finishHistory, materializeHistory } from './indexed-mutation-history.js';
 import { NewEntityMap } from './new-entity-map.js';
 import { withoutEntityExposure } from './entity-read-barrier.js';
 import { sameOverlayValue } from './overlay-value-equality.js';
@@ -18,7 +19,7 @@ const materializers = new WeakMap<object, () => object>();
 /** Snapshots may still be requested explicitly inside an incremental draft. */
 export function materializeOverlay(state: OverlaySnapshot): OverlaySnapshot {
   return Object.fromEntries(Object.entries(state).map(([key, value]) =>
-    [key, value && typeof value === 'object' ? materializers.get(value)?.() ?? value : value])) as OverlaySnapshot;
+    [key, key === 'mutationHistory' ? materializeHistory(value as OverlaySnapshot['mutationHistory']) : value && typeof value === 'object' ? materializers.get(value)?.() ?? value : value])) as OverlaySnapshot;
 }
 
 function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): Change } {
@@ -167,38 +168,6 @@ function sparseSet<T>(base: Set<T>): { value: Set<T>; changes(): Change } {
 /** A native array facade with a private sparse prefix and append-only tail.
  * Array methods still work normally; only methods that ask for the prefix pay
  * to visit it (delete/undo), never ordinary history appends. */
-function sparseHistory(base: OverlaySnapshot['mutationHistory']) {
-  const rows = new Map<number, OverlaySnapshot['mutationHistory'][number]>();
-  let length = base.length;
-  const get = (i: number) => {
-    if (!rows.has(i) && i < base.length) rows.set(i, structuredClone(base[i]));
-    return rows.get(i);
-  };
-  const index = (key: PropertyKey) => typeof key === 'string' && /^(0|[1-9]\d*)$/.test(key) ? Number(key) : null;
-  const value = new Proxy([] as OverlaySnapshot['mutationHistory'], {
-    get(target, key, receiver) {
-      if (key === 'length') return length;
-      const i = index(key);
-      return i === null ? Reflect.get(target, key, receiver) : i < length ? get(i) : undefined;
-    },
-    has(target, key) { const i = index(key); return i === null ? Reflect.has(target, key) : i < length; },
-    ownKeys() { return [...Array.from({ length }, (_, i) => String(i)), 'length']; },
-    getOwnPropertyDescriptor(target, key) {
-      const i = index(key);
-      return i === null ? Reflect.getOwnPropertyDescriptor(target, key)
-        : i < length ? { configurable: true, enumerable: true, writable: true, value: get(i) } : undefined;
-    },
-    set(_target, key, next) {
-      if (key === 'length') { length = Number(next); for (const i of rows.keys()) if (i >= length) rows.delete(i); return true; }
-      const i = index(key);
-      if (i === null) return Reflect.set(_target, key, next);
-      rows.set(i, next); length = Math.max(length, i + 1); return true;
-    },
-    deleteProperty(_target, key) { const i = index(key); if (i !== null) rows.delete(i); return true; },
-  });
-  materializers.set(value, () => Array.from(value));
-  return { value, rows, get };
-}
 
 export function sparseOverlay(original: OverlaySnapshot) {
   const state = { ...original };
@@ -211,8 +180,8 @@ export function sparseOverlay(original: OverlaySnapshot) {
       fields.push({ key, changes: draft.changes });
     }
   }
-  const history = sparseHistory(original.mutationHistory);
-  state.mutationHistory = history.value;
+  const history = forkHistory(original.mutationHistory);
+  state.mutationHistory = history;
   return { state, finish(after: OverlaySnapshot, record: boolean) {
     const changes = fields.map(field => ({ ...field, ...field.changes() }));
     const beforeSmall = { ...original, mutationHistory: [] } as OverlaySnapshot;
@@ -236,29 +205,30 @@ export function sparseOverlay(original: OverlaySnapshot) {
       }
     }
     const nextHistory = after.mutationHistory;
-    const appendOnly = nextHistory === history.value && nextHistory.length >= original.mutationHistory.length
-      && [...history.rows].every(([i, row]) => i >= original.mutationHistory.length || sameOverlayValue(row, original.mutationHistory[i]));
-    let written: string[] = [];
-    if (appendOnly) {
-      written = nextHistory.slice(original.mutationHistory.length).map(m => m.id);
-      if (inverse) inverse.historyLength = original.mutationHistory.length;
-    } else if (record) {
+    const journal = finishHistory(original.mutationHistory, nextHistory);
+    let written: string[];
+    let tail: OverlaySnapshot['mutationHistory'] | undefined;
+    if (journal) {
+      written = journal.written;
+      if (inverse) { inverse.historyLength = original.mutationHistory.length; inverse.history = journal.history; }
+    } else {
+      // Undo/import explicitly replace the journal: comparing/materializing it
+      // is proportional to the history that operation requested.
       const old = new Set(original.mutationHistory.map(m => m.id));
       written = nextHistory.filter(m => !old.has(m.id)).map(m => m.id);
-      const historyInverse = captureCompoundInverse({ ...beforeSmall, mutationHistory: original.mutationHistory }, { ...beforeSmall, mutationHistory: Array.from(nextHistory) });
-      inverse!.historyLength = historyInverse.historyLength;
-      inverse!.history = historyInverse.history;
+      if (inverse) {
+        const captured = captureCompoundInverse({ ...beforeSmall, mutationHistory: original.mutationHistory }, { ...beforeSmall, mutationHistory: Array.from(nextHistory) });
+        inverse.historyLength = captured.historyLength; inverse.history = captured.history;
+      }
+      tail = structuredClone(Array.from(nextHistory));
     }
-    // Clone all output BEFORE any publication. A failed clone is atomic too.
-    const tail = appendOnly ? structuredClone(nextHistory.slice(original.mutationHistory.length)) : structuredClone(Array.from(nextHistory));
     const publication = { ...original, nextAllocatedId: after.nextAllocatedId };
     const replacements = changes.filter(c => after[c.key] !== state[c.key]).map(c => [c.key, structuredClone(after[c.key])] as const);
-    return { inverse, written, changed: after.nextAllocatedId !== original.nextAllocatedId || changes.some(c => !sameOverlayValue(c.before, c.after)) || !appendOnly || tail.length > 0,
+    return { inverse, written, changed: after.nextAllocatedId !== original.nextAllocatedId || changes.some(c => !sameOverlayValue(c.before, c.after)) || (journal ? journal.changed : true),
       publish() {
         for (const change of changes) if (after[change.key] === state[change.key]) change.apply();
         for (const [key, value] of replacements) Object.assign(publication, { [key]: value });
-        if (appendOnly) for (const row of tail) original.mutationHistory.push(row);
-        else publication.mutationHistory = tail;
+        publication.mutationHistory = journal ? journal.publish() : tail!;
         return publication;
       } };
   } };

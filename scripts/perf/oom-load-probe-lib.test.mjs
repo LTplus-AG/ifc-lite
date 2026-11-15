@@ -315,3 +315,74 @@ test('#10264 the final snapshot decides, not which promise settled first (review
   // An earlier poll's storeError is never overwritten.
   assert.equal(mergeFinalSnapshot({ ...rejected, storeError: 'first' }, { error: 'second', modelStates: [], notices: [] }).storeError, 'first');
 });
+
+// Precedence: each test builds observations where BOTH adjacent rows match, so the higher
+// row must win. Changing the order of PRECEDENCE breaks exactly the pair that moved.
+const base = { oomKills: 0, killedTypes: [], pageCrashed: false, browserGone: false, interactive: false, storeError: null, notices: [], timedOut: false, warningShown: false, decision: 'none' };
+const REFUSAL_TEXT = "This IFC file exceeds this tab's local processing memory budget (3.0 GiB estimated, 3.0 GiB budget).";
+const OOM_TEXT = 'Ran out of memory while processing x.ifc.';
+
+test('precedence: the table order is pinned', async () => {
+  const { PRECEDENCE } = await import('./oom-load-probe-lib.mjs');
+  assert.deepEqual(PRECEDENCE.map((r) => r.outcome), ['killed', 'error', 'loaded', 'refused', 'error', 'error', 'cancelled', 'awaiting-decision', 'timeout', 'error']);
+});
+
+test('precedence 1>2: tab death beats an OOM kill with an unknown victim', () => {
+  const r = classify({ ...base, oomKills: 2, killedTypes: [], pageCrashed: true });
+  assert.equal(r.outcome, 'killed');
+  assert.equal(r.rule, 1);
+});
+
+test('precedence 2>3: an unidentified OOM kill beats a finished load', () => {
+  assert.equal(classify({ ...base, oomKills: 1, killedTypes: [], interactive: true }).rule, 2);
+});
+
+test('precedence 3>4: a positively interactive load beats refusal text', () => {
+  const r = classify({ ...base, interactive: true, notices: [REFUSAL_TEXT] });
+  assert.equal(r.outcome, 'loaded');
+  assert.equal(r.rule, 3);
+});
+
+test('precedence 4>5: the refusal beats the generic load error it also is', () => {
+  const r = classify({ ...base, storeError: `Failed to load "x.ifc": ${REFUSAL_TEXT}` });
+  assert.equal(r.outcome, 'refused');
+  assert.equal(r.rule, 4);
+});
+
+test('precedence 5>6: a load error beats cancelled', () => {
+  const r = classify({ ...base, storeError: OOM_TEXT, warningShown: true, decision: 'cancel' });
+  assert.equal(r.outcome, 'error');
+  assert.equal(r.rule, 5);
+});
+
+test('precedence 5>7 (review on #10415): a load error with the warning still on screen is error, never awaiting-decision', () => {
+  const r = classify({ ...base, storeError: OOM_TEXT, warningShown: true });
+  assert.equal(r.outcome, 'error');
+  assert.equal(verdict(r.outcome, 'not-killed').pass, false);
+  // The OOM text only in an error card (row 6) also beats the warning states.
+  assert.equal(classify({ ...base, notices: [OOM_TEXT], warningShown: true }).outcome, 'error');
+});
+
+test('precedence 6>7: cancelled beats awaiting-decision', () => {
+  const r = classify({ ...base, warningShown: true, decision: 'cancel' });
+  assert.equal(r.outcome, 'cancelled');
+  assert.equal(r.rule, 7);
+});
+
+test('precedence 7>8: awaiting-decision beats timeout', () => {
+  const r = classify({ ...base, warningShown: true, timedOut: true });
+  assert.equal(r.outcome, 'awaiting-decision');
+  assert.equal(r.rule, 8);
+});
+
+test('precedence 8>9: timeout beats no verdict, and nothing observed is error', () => {
+  assert.equal(classify({ ...base, timedOut: true }).rule, 9);
+  const none = classify(base);
+  assert.equal(none.outcome, 'error');
+  assert.equal(none.rule, 10);
+});
+
+test('precedence: a load error beats loaded only when the load was not interactive', () => {
+  assert.equal(classify({ ...base, storeError: OOM_TEXT, interactive: true }).outcome, 'loaded');
+  assert.equal(classify({ ...base, storeError: OOM_TEXT, interactive: false }).outcome, 'error');
+});

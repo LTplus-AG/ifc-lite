@@ -59,47 +59,69 @@ export const DIALOG_BUTTONS = Object.freeze({ cancel: /^cancel$/i, continue: /^c
 const TAB_PROCESSES = new Set(['renderer', 'browser']);
 
 /**
+ * Outcome precedence: one table, applied top to bottom, first match wins. Every adjacent pair
+ * has a unit test (oom-load-probe-lib.test.mjs, "precedence:"), so a reorder cannot go unnoticed.
+ *
+ *  #  outcome                        when                                                  why it outranks the rows below
+ *  1  killed / killed-after-continue the renderer or browser vanished at an OOM kill, the  a dead tab is the defect under test;
+ *                                    page crashed, or the browser exited                    nothing a dead page showed can override it
+ *  2  error                          an OOM kill whose victim could not be identified,     cannot be called killed or alive: never a pass
+ *                                    with the page alive
+ *  3  loaded                         the load reached full interactivity (positively       a finished model beats any text elsewhere on
+ *                                    observed); a GPU/utility OOM kill is noted            the page, including a stale or later error
+ *  4  refused                        the explicit pre-read refusal text (store load        the refusal IS a load error; it must be read
+ *                                    error or a dialog/notice)                             before the generic error row
+ *  5  error                          any other load error (store error or a model in       a failed load is never a pass, even with a
+ *                                    error), incl. "Ran out of memory while processing"     memory warning still on screen (review #10415)
+ *  6  cancelled                      the warning was shown and the probe clicked Cancel    a decision was made; outranks "waiting"
+ *  7  awaiting-decision              the warning was shown, no decision, load not started  the viewer is waiting for the user, not stuck
+ *  8  timeout                        the time limit passed with none of the above          no verdict reached in time
+ *  9  error                          nothing at all was observed                           never a pass
+ */
+const TAB_DEATH = (o, k) => [...k.types.filter((t) => TAB_PROCESSES.has(t)).map((t) => `${t} OOM-killed`), o.pageCrashed && 'page crashed', o.browserGone && 'browser exited'].filter(Boolean);
+const texts = (o) => [o.storeError, ...(o.notices ?? [])].filter(Boolean).map(String);
+export const PRECEDENCE = Object.freeze([
+  { outcome: 'killed', when: (o, k) => TAB_DEATH(o, k).length > 0,
+    reason: (o, k) => `${TAB_DEATH(o, k).join(', ')}${k.kills ? ` (cgroup oom_kill=${k.kills})` : ''}` },
+  { outcome: 'error', when: (o, k) => k.kills > 0 && k.types.length === 0,
+    reason: (o, k) => `cgroup oom_kill=${k.kills} but the probe could not tell which process died; the page stayed alive` },
+  { outcome: 'loaded', when: (o) => Boolean(o.interactive), reason: () => 'interactive' },
+  { outcome: 'refused', when: (o) => texts(o).some((t) => REFUSAL_MESSAGE.test(t)),
+    reason: (o) => texts(o).find((t) => REFUSAL_MESSAGE.test(t)).trim().slice(0, 300) },
+  { outcome: 'error', when: (o) => Boolean(o.storeError),
+    reason: (o) => (OOM_FAILURE_MESSAGE.test(String(o.storeError)) ? `out of memory during processing: ${String(o.storeError).trim().slice(0, 260)}` : String(o.storeError).slice(0, 300)) },
+  { outcome: 'error', when: (o) => texts(o).some((t) => OOM_FAILURE_MESSAGE.test(t)),
+    reason: (o) => `out of memory during processing: ${texts(o).find((t) => OOM_FAILURE_MESSAGE.test(t)).trim().slice(0, 260)}` },
+  { outcome: 'cancelled', when: (o) => o.warningShown && o.decision === 'cancel', reason: () => 'memory warning, probe clicked Cancel' },
+  { outcome: 'awaiting-decision', when: (o) => o.warningShown && (o.decision ?? 'none') === 'none', reason: () => 'memory warning shown, load not started' },
+  { outcome: 'timeout', when: (o) => Boolean(o.timedOut), reason: () => 'time limit' },
+  { outcome: 'error', when: () => true, reason: () => 'no verdict observed' },
+]);
+
+/**
  * @param {object} o
  * @param {number} [o.oomKills]        memory.events oom_kill of the cap's cgroup.
- * @param {string[]} [o.killedTypes]   Chrome process types that vanished at an OOM kill
- *                                     ('renderer', 'browser', 'gpu-process', 'utility', ...); empty if unknown.
+ * @param {string[]} [o.killedTypes]   Chrome process types that vanished at an OOM kill; empty if unknown.
  * @param {boolean} [o.pageCrashed]    Playwright page 'crash'.
  * @param {boolean} [o.browserGone]    Playwright context 'close' before the verdict.
  * @param {boolean} [o.interactive]    openAndWaitInteractive resolved.
- * @param {string|null} [o.storeError] the viewer store's load error.
+ * @param {string|null} [o.storeError] the viewer store's load error (or 'model load error').
  * @param {string[]} [o.notices]       text of dialogs, alerts and toasts at the end (not the whole page).
  * @param {boolean} [o.timedOut]
- * @param {boolean} [o.warningShown]   a MEMORY_WARNING dialog appeared before the load started.
+ * @param {boolean} [o.warningShown]   a MEMORY_WARNING dialog appeared.
  * @param {'none'|'continue'|'cancel'} [o.decision] what the probe clicked on it.
- * @returns {{ outcome: string, reason: string }}
+ * @returns {{ outcome: string, reason: string, rule: number }}
  */
 export function classify(o) {
-  const killed = o.decision === 'continue' ? 'killed-after-continue' : 'killed';
-  const types = o.killedTypes ?? [];
-  const kills = o.oomKills ?? 0;
-  const tabTypes = types.filter((t) => TAB_PROCESSES.has(t));
-  const evidence = [...tabTypes.map((t) => `${t} OOM-killed`), o.pageCrashed && 'page crashed', o.browserGone && 'browser exited'].filter(Boolean);
-  if (evidence.length) return { outcome: killed, reason: `${evidence.join(', ')}${kills ? ` (cgroup oom_kill=${kills})` : ''}` };
-  if (kills > 0 && !types.length) return { outcome: 'error', reason: `cgroup oom_kill=${kills} but the probe could not tell which process died; the page stayed alive` };
-  // Only GPU/utility processes died (or none): classify by what the surviving tab did.
-  const note = kills > 0 ? `; note: cgroup OOM-killed ${types.join('+')} (not the tab)` : '';
-  const r = classifyAlive(o);
-  return note ? { outcome: r.outcome, reason: `${r.reason}${note}` } : r;
-}
-
-/** Outcome of a load whose tab is still alive. */
-function classifyAlive(o) {
-  if (o.interactive) return { outcome: 'loaded', reason: 'interactive' };
-  if (o.warningShown && o.decision === 'cancel') return { outcome: 'cancelled', reason: 'memory warning, probe clicked Cancel' };
-  if (o.warningShown && (o.decision ?? 'none') === 'none') return { outcome: 'awaiting-decision', reason: 'memory warning shown, load not started' };
-  const texts = [o.storeError, ...(o.notices ?? [])].filter(Boolean).map(String);
-  const refusal = texts.find((t) => REFUSAL_MESSAGE.test(t));
-  if (refusal) return { outcome: 'refused', reason: refusal.trim().slice(0, 300) };
-  const oom = texts.find((t) => OOM_FAILURE_MESSAGE.test(t));
-  if (oom) return { outcome: 'error', reason: `out of memory during processing: ${oom.trim().slice(0, 260)}` };
-  if (o.storeError) return { outcome: 'error', reason: String(o.storeError).slice(0, 300) };
-  if (o.timedOut) return { outcome: 'timeout', reason: 'time limit' };
-  return { outcome: 'error', reason: 'no verdict observed' };
+  const k = { kills: o.oomKills ?? 0, types: o.killedTypes ?? [] };
+  const index = PRECEDENCE.findIndex((r) => r.when(o, k));
+  const rule = PRECEDENCE[index];
+  let outcome = rule.outcome;
+  if (outcome === 'killed' && o.decision === 'continue') outcome = 'killed-after-continue';
+  let reason = rule.reason(o, k);
+  // Rows 3+ are a live tab: note a GPU/utility OOM kill that did not end it.
+  if (index >= 2 && k.kills > 0) reason += `; note: cgroup OOM-killed ${k.types.join('+')} (not the tab)`;
+  return { outcome, reason, rule: index + 1 };
 }
 
 /**

@@ -500,6 +500,19 @@ describe('IfcCreator', () => {
     expect(placementOf('IFCBUILDING')).toBe(placementOf('IFCSITE'));
   });
 
+  it('maps a generic IFC2X3 proxy PredefinedType onto CompositionType (#9359)', () => {
+    const creator = new IfcCreator({ Schema: 'IFC2X3' });
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    const proxy = (PredefinedType?: string) => creator.addElement(storey, { IfcType: 'IFCBUILDINGELEMENTPROXY', Placement: { Location: [0, 0, 0] }, Profile: { ProfileType: 'AREA', XDim: 1, YDim: 1 } as never, Depth: 0.1, PredefinedType });
+    proxy('NOTDEFINED');
+    proxy('PARTIAL');
+    expect(() => proxy('USERDEFINED')).toThrow(/CompositionType must be one of COMPLEX, ELEMENT, PARTIAL in IFC2X3; got USERDEFINED/);
+    const proxies = creator.toIfc().content.split('\n').filter(l => l.includes('=IFCBUILDINGELEMENTPROXY('));
+    expect(proxies.map(l => stepAttrs(l)[8])).toEqual(['$', '.PARTIAL.']);
+    expect(() => creator.addElement(storey, { IfcType: 'IFCMEMBER', Placement: { Location: [0, 0, 0] }, Profile: { ProfileType: 'AREA', XDim: 1, YDim: 1 } as never, Depth: 1, PredefinedType: 'BRACE' }))
+      .toThrow(/IfcMember has no PredefinedType attribute in IFC2X3/);
+  });
+
   it('refuses IFC4-only scheduling data in IFC2X3 instead of writing invalid records (#9359)', () => {
     const creator = new IfcCreator({ Schema: 'IFC2X3' });
     const t1 = creator.addIfcTask({ Name: 'T1' });

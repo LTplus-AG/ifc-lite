@@ -79,8 +79,8 @@ export function classificationToken(schema: CreatorSchema, request: Classificati
 /**
  * The attributes after `Tag` for a generic element writer (`addElement`,
  * `addAxisElement`), shaped by `schema`: `,.TOKEN.` where the entity has a
- * PredefinedType slot, `,$` for IFC2X3's optional `CompositionType` on
- * IfcBuildingElementProxy (whose enum has no NOTDEFINED), and `''` where the
+ * PredefinedType slot, IFC2X3's optional `CompositionType` on IfcBuildingElementProxy
+ * (`$` for none/NOTDEFINED, else a checked COMPLEX/ELEMENT/PARTIAL), and `''` where the
  * entity ends at `Tag` (IFC2X3 IfcMember, IfcPlate, IfcFlowSegment, …).
  * Entities the schema does not know keep the historical `,.TOKEN.` tail.
  */
@@ -94,6 +94,14 @@ export function genericElementTail(schema: CreatorSchema, ifcTypeUpper: string, 
     if (predefinedType !== undefined) throw new Error(`${entity} has no PredefinedType attribute in ${schema}`);
     return '';
   }
-  if (slot.name === 'CompositionType') return predefinedType !== undefined ? `,.${predefinedType}.` : ',$';
+  if (slot.name === 'CompositionType') {
+    // IFC2X3 proxy: NOTDEFINED (the IFC4 default) means "no composition"; anything else must be an enum member.
+    if (predefinedType === undefined || predefinedType === 'NOTDEFINED') return ',$';
+    const allowed = registry.enums[slot.type] ?? [];
+    if (!allowed.includes(predefinedType)) {
+      throw new Error(`${entity}.CompositionType must be one of ${allowed.join(', ')} in ${schema}; got ${predefinedType}`);
+    }
+    return `,.${predefinedType}.`;
+  }
   return token;
 }

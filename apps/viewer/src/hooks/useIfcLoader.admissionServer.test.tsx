@@ -72,7 +72,7 @@ for (const kind of ['primary', 'federated'] as const) for (const archive of ['st
       value: function (size: number) { allocations.push(size); return new realShared(Math.min(size, bytes.byteLength)); } });
     try {
       let pending: Promise<void> | undefined;
-      await act(async () => { pending = api.loadFile(file, { kind }, { onLoadError: message => errors.push(message) }); });
+      await act(async () => { pending = api.loadFile(file, kind === 'primary' ? { kind } : { kind, modelId: 'admission-candidate' }, { onLoadError: message => errors.push(message) }); });
       if (memory === 8) {
         await waitFor(() => !!document.querySelector('[role="alertdialog"]'), 'local memory warning after server failure');
         assert.equal(useViewerStore.getState().models, models, 'opening the warning must not replace existing models');

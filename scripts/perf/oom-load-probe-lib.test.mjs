@@ -180,7 +180,12 @@ test('#10264 withTimeout falls back when a close hangs', async () => {
   assert.equal(await withTimeout(Promise.resolve('closed'), 1000, () => 'forced'), 'closed');
 });
 
-const facts = (f = {}, extra = {}) => ({ reported: true, pickKnown: true, sourceMarked: true, truncated: false, facts: { firstLargeSourceRead: null, firstUnattributedRead: null, firstSourcePost: null, firstOtherPost: null, ...f }, ...extra });
+const facts = (f = {}, extra = {}) => ({ reported: true, pickKnown: true, sourceMarked: true, truncated: false, requestsBeforePick: 0, requestsAfterPick: 0, failuresAfterPick: 0,
+  facts: { firstLargeSourceRead: null, firstUnattributedRead: null, firstSourcePost: null, firstOtherPost: null, firstRequestAfterPick: null, startupRequests: [], ...f }, ...extra });
+/** Tracker summary with page-clock requests: `after` / `before` are ms relative to the page pick. */
+const withRequests = ({ after = [], before = [], failures = 0 } = {}, f = {}, extra = {}) => facts(
+  { firstRequestAfterPick: after.length ? { ms: Math.min(...after) } : null, startupRequests: before.map((ms) => ({ ms })), ...f },
+  { requestsAfterPick: after.length, requestsBeforePick: before.length, failuresAfterPick: failures, ...extra });
 
 test('#10353 server proof: a failed server attempt before the warning, no read or post before it', async () => {
   const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
@@ -188,7 +193,7 @@ test('#10353 server proof: a failed server attempt before the warning, no read o
     { ms: 40, event: 'request', clock: 'page', url: 'http://127.0.0.1:9/api/v1/health' },
     { ms: 42, event: 'requestfailed', clock: 'page', failure: 'net::ERR_CONNECTION_REFUSED' },
     { ms: 60, event: 'dialog', text: 'This model may exceed available memory\nThis model may need about 6.0 GiB' },
-  ], { watching: true, tracker: facts() });
+  ], { watching: true, tracker: withRequests({ after: [40], failures: 1 }) });
   assert.deepEqual(s, { watched: true, trackerReported: true, sourceMarked: true, pickKnown: true, attempts: 1, failures: 1, failureCode: null, startupRequests: { count: 0, ms: [] }, firstAttemptMs: 40, firstDecisionMs: 60, decisionWindowMs: 0,
     attemptBeforeDecision: true, readBeforeDecision: false, unattributedReadBeforeDecision: false, sourcePostBeforeDecision: false, logTruncated: false, channels: null });
   assert.equal(expectFlags(s, SERVER_FIRST).pass, true);
@@ -214,13 +219,13 @@ test('#10353 server proof: verdicts come from kept facts, so a truncated log can
 test('#10353 server proof: a refusal seen only by the poll makes events inside its window unknown', async () => {
   const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
   const polled = { ms: 2031, event: 'store-error', windowMs: 2000, text: "This IFC file exceeds this tab's local processing memory budget" };
-  const s = serverAttemptSummary([{ ms: 155, event: 'request', clock: 'page' }, polled], { watching: true, tracker: facts({ firstSourcePost: { ms: 1500, worker: 'w.js' } }) });
+  const s = serverAttemptSummary([{ ms: 155, event: 'request', clock: 'page' }, polled], { watching: true, tracker: withRequests({ after: [155] }, { firstSourcePost: { ms: 1500, worker: 'w.js' } }) });
   assert.equal(s.decisionWindowMs, 2000);
   assert.equal(s.attemptBeforeDecision, null, '155 ms is inside (31, 2031]: the refusal may have come first');
   assert.equal(s.sourcePostBeforeDecision, null);
   // A precise stamp (store subscription or notice) settles it.
   const precise = serverAttemptSummary([{ ms: 155, event: 'request', clock: 'page' }, { ms: 400, event: 'notice', text: "Failed to load: exceeds this tab's local processing memory budget" }, polled],
-    { watching: true, tracker: facts({ firstSourcePost: { ms: 1500, worker: 'w.js' } }) });
+    { watching: true, tracker: withRequests({ after: [155] }, { firstSourcePost: { ms: 1500, worker: 'w.js' } }) });
   assert.equal(precise.firstDecisionMs, 400);
   assert.equal(precise.attemptBeforeDecision, true);
   assert.equal(precise.sourcePostBeforeDecision, false);
@@ -251,12 +256,12 @@ test('#10353 server proof: unreported instrumentation gives null, and null never
 test('#10353 server proof: a request during viewer startup is not the attempt for this load (review on #10415)', async () => {
   const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
   const dialog = { ms: 50, event: 'dialog', text: 'This model may exceed available memory' };
-  const onlyStartup = serverAttemptSummary([{ ms: -800, event: 'request', clock: 'page' }, { ms: -799, event: 'requestfailed', clock: 'page' }, dialog], { watching: true, tracker: facts() });
+  const onlyStartup = serverAttemptSummary([{ ms: -800, event: 'request', clock: 'page' }, { ms: -799, event: 'requestfailed', clock: 'page' }, dialog], { watching: true, tracker: withRequests({ before: [-800] }) });
   assert.equal(onlyStartup.attemptBeforeDecision, false, 'instrument present, no attempt for this load');
   assert.equal(onlyStartup.attempts, 0);
   assert.equal(onlyStartup.failures, 0);
   assert.deepEqual(onlyStartup.startupRequests, { count: 1, ms: [-800] });
-  const both = serverAttemptSummary([{ ms: -800, event: 'request', clock: 'page' }, { ms: 20, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: facts() });
+  const both = serverAttemptSummary([{ ms: -800, event: 'request', clock: 'page' }, { ms: 20, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: withRequests({ before: [-800], after: [20] }) });
   assert.equal(both.firstAttemptMs, 20);
   assert.equal(both.attemptBeforeDecision, true);
   assert.equal(both.attempts, 1);
@@ -421,11 +426,11 @@ test('#10353 server proof: a request between the driver call and the real pick i
   const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
   const dialog = { ms: 60, event: 'dialog', text: 'This model may exceed available memory' };
   // Times are relative to the page's pick stamp; the request at -5 ms happened while the pick was pending.
-  const pending = serverAttemptSummary([{ ms: -5, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: facts() });
+  const pending = serverAttemptSummary([{ ms: -5, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: withRequests({ before: [-5] }) });
   assert.equal(pending.attempts, 0);
   assert.deepEqual(pending.startupRequests, { count: 1, ms: [-5] });
   assert.equal(pending.attemptBeforeDecision, false);
-  const after = serverAttemptSummary([{ ms: -5, event: 'request', clock: 'page' }, { ms: 20, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: facts() });
+  const after = serverAttemptSummary([{ ms: -5, event: 'request', clock: 'page' }, { ms: 20, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: withRequests({ before: [-5], after: [20] }) });
   assert.equal(after.firstAttemptMs, 20);
   assert.equal(after.attemptBeforeDecision, true);
 });
@@ -441,4 +446,31 @@ test('#10353 server proof: unknown pick time or driver-only requests make the or
   assert.equal(driverOnly.attemptBeforeDecision, null);
   assert.equal(driverOnly.failureCode, 'net::ERR_CONNECTION_REFUSED');
   assert.match(driverOnly.unknownBecause.attemptBeforeDecision, /only by the driver/);
+});
+
+test('#10353 server proof: the attempt and request counts survive a log filled by 50 startup requests (review on #10415)', async (t) => {
+  const { installSourceTracker, trackerSummary } = await import('./oom-load-probe-tracker.mjs');
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
+  const saved = Object.fromEntries(['arrayBuffer', 'text', 'bytes', 'stream', 'slice'].map((m) => [m, Blob.prototype[m]]));
+  t.after(() => { for (const [m, f] of Object.entries(saved)) Blob.prototype[m] = f; });
+  let clock = 0;
+  const target = { location: { href: 'http://127.0.0.1:5173/' }, fetch: () => Promise.reject(new TypeError('Failed to fetch')) };
+  // Detailed log keeps only the first 10 and last 10 events per kind.
+  const tracker = installSourceTracker({ Blob, target, now: () => clock, watchOrigin: 'http://127.0.0.1:49159', keepEvents: 10 });
+  for (let i = 0; i < 50; i++) { clock = i; target.fetch('http://127.0.0.1:49159/api/v1/health').catch(() => {}); }
+  clock = 100; tracker.markSource(new Blob([new Uint8Array(4)]));
+  clock = 130; await target.fetch('http://127.0.0.1:49159/api/v1/health').catch(() => {});
+  await new Promise((r) => setTimeout(r, 0));
+  const tr = trackerSummary(tracker.report(), 90);
+  assert.equal(tr.truncated, true, 'the detailed log overflowed');
+  assert.equal(tr.requestsBeforePick, 50);
+  assert.equal(tr.requestsAfterPick, 1);
+  assert.equal(tr.facts.firstRequestAfterPick.ms, 30);
+  const timeline = [...tr.events, { ms: 60, event: 'dialog', text: 'This model may exceed available memory' }];
+  const v = serverAttemptSummary(timeline, { watching: true, tracker: tr });
+  assert.equal(v.attempts, 1);
+  assert.equal(v.startupRequests.count, 50);
+  assert.equal(v.firstAttemptMs, 30);
+  assert.equal(v.attemptBeforeDecision, true);
+  assert.equal(expectFlags(v, SERVER_FIRST).pass, true);
 });

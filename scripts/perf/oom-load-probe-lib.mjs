@@ -279,13 +279,14 @@ export function serverAttemptSummary(timeline, { watching, tracker }) {
   };
   const trackerReported = tracker?.reported === true;
   const facts = trackerReported ? tracker.facts : null;
-  // Only page-clock requests at or after the page's pick belong to this load; earlier ones are
-  // viewer startup. Driver-side network events are on another clock and only supply error codes.
-  const pageRequests = timeline.filter((e) => e.event === 'request' && e.clock === 'page');
-  const loadRequests = watching ? pageRequests.filter((e) => e.ms >= 0) : [];
-  const startup = watching ? pageRequests.filter((e) => e.ms < 0).map((e) => e.ms) : null;
-  const firstAttemptMs = watching ? (loadRequests.map((e) => e.ms).sort((a, b) => a - b)[0] ?? null) : null;
-  const driverOnly = watching && pageRequests.length === 0 && timeline.some((e) => e.event === 'driver-request');
+  // Request counts and the attempt come from the tracker's uncapped counters and kept facts
+  // (page clock, relative to the page's own pick), never from the bounded event log, so many
+  // startup requests cannot push the real attempt out of view. Driver-side network events are
+  // on another clock and only supply the browser's error code.
+  const tr = trackerReported ? tracker : null;
+  const firstAttemptMs = watching && tr ? (tr.facts?.firstRequestAfterPick?.ms ?? null) : null;
+  const pageSawRequests = tr ? (tr.requestsBeforePick ?? 0) + (tr.requestsAfterPick ?? 0) > 0 : false;
+  const driverOnly = watching && tr !== null && !pageSawRequests && timeline.some((e) => e.event === 'driver-request');
   const unknown = {};
   if (watching && !pickKnown) unknown.order = 'the page never stamped the file pick (source not marked), so no order is established';
   if (driverOnly) unknown.attemptBeforeDecision = 'requests were seen only by the driver (from a worker or the browser), not on the page clock';
@@ -316,10 +317,10 @@ export function serverAttemptSummary(timeline, { watching, tracker }) {
     trackerReported,
     sourceMarked: trackerReported ? tracker.sourceMarked : null,
     pickKnown,
-    attempts: watching ? loadRequests.length : null,
-    failures: watching ? timeline.filter((e) => e.event === 'requestfailed' && e.clock === 'page' && e.ms >= 0).length : null,
+    attempts: watching && tr ? tr.requestsAfterPick ?? null : null,
+    failures: watching && tr ? tr.failuresAfterPick ?? null : null,
     failureCode: watching ? (timeline.find((e) => e.event === 'driver-requestfailed')?.failure ?? null) : null,
-    startupRequests: watching ? { count: startup.length, ms: startup } : null,
+    startupRequests: watching && tr ? { count: tr.requestsBeforePick ?? 0, ms: (tr.facts?.startupRequests ?? []).map((e) => e.ms) } : null,
     firstAttemptMs,
     firstDecisionMs,
     decisionWindowMs: decision ? windowMs : null,

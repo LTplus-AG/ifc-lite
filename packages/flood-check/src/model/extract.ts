@@ -127,8 +127,17 @@ function pickGroundStorey(
   warnings: string[],
 ): ModelFacts['groundStorey'] {
   if (wanted !== undefined) {
-    const s = storeys.find((st) => matchesStorey(reader, st.expressId, wanted));
-    if (!s) throw new RangeError(`no IfcBuildingStorey matches groundStorey ${JSON.stringify(wanted)}`);
+    const matches = storeys.filter((st) => matchesStorey(reader, st.expressId, wanted));
+    if (matches.length === 0) throw new RangeError(`no IfcBuildingStorey matches groundStorey ${JSON.stringify(wanted)}`);
+    // A name shared by several storeys (two buildings each with an "EG") would pick a building by entity order: refused.
+    if (matches.length > 1) {
+      const list = matches.map((st) => `#${st.expressId} "${st.name ?? ''}" (GlobalId ${st.globalId ?? 'none'})`).join(', ');
+      throw new FloodCheckRefusal(
+        'ambiguous-building',
+        `groundStorey ${JSON.stringify(wanted)} matches ${matches.length} storeys: ${list}; pass the storey's GlobalId or express id to choose one`,
+      );
+    }
+    const s = matches[0];
     return { expressId: s.expressId, level: s.level, basis: 'given' };
   }
   if (storeys.length === 0) {

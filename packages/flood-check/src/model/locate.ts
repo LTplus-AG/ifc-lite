@@ -34,7 +34,8 @@ import { asNumber, type DecodedEntity } from './reader.js';
 import type { CandidateContext } from './candidate-base.js';
 
 export type LocateKind = 'door' | 'window' | 'opening' | 'slab-opening' | 'light-well' | 'stair' | 'ramp' | 'equipment';
-export type LevelQuality = 'exact' | 'upper-estimate';
+/** `lower-bound`: read from a clipped body's outer operand, which may have lost its bottom; the true level is no lower. */
+export type LevelQuality = 'exact' | 'upper-estimate' | 'lower-bound';
 export type Readability = 'none' | 'readable' | 'partial' | 'unreadable';
 
 /** A body in map coordinates: how many solid items it has, how many were read, and the read corners. */
@@ -151,10 +152,13 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
   // Level: the lowest of the sources that define it for this kind.
   let level = at.level;
   let basis: LevelBasis = 'placement-origin';
-  const lower = (value: number, why: LevelBasis) => {
+  // Whether the level came from a clipped body (its outer operand's bottom: the true bottom may be higher).
+  let fromClipped = false;
+  const lower = (value: number, why: LevelBasis, clipped: boolean) => {
     if (value < level) {
       level = value;
       basis = why;
+      fromClipped = clipped;
     }
   };
   if (kind === 'opening' || kind === 'slab-opening') {
@@ -162,14 +166,16 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
     if (ownRead) {
       level = bottom(s.own);
       basis = 'opening-body-bottom';
+      fromClipped = clippedBody(s.own);
     }
     // A slab opening: the lower of the slab's placement and its own readable body's bottom.
     if (kind === 'slab-opening' && typeof s.hostLevel === 'number' && (!ownRead || s.hostLevel < level)) {
       level = s.hostLevel;
       basis = 'host-slab-top';
+      fromClipped = false;
     }
   } else {
-    if (ownRead) lower(bottom(s.own), kind === 'light-well' ? 'opening-body-bottom' : 'body-bottom');
+    if (ownRead) lower(bottom(s.own), kind === 'light-well' ? 'opening-body-bottom' : 'body-bottom', clippedBody(s.own));
     if (filledRead) {
       const holeBottom = bottom(s.filled!);
       if (Math.abs(at.level - holeBottom) > LEVEL_DISAGREEMENT) {
@@ -178,7 +184,7 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
             `${Math.abs(at.level - holeBottom).toFixed(2)} m (some tools place windows at the head or centre); the lower is used`,
         );
       }
-      lower(holeBottom, 'opening-body-bottom');
+      lower(holeBottom, 'opening-body-bottom', clippedBody(s.filled));
     }
   }
 
@@ -195,9 +201,12 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
     doubts.push(filling ? 'no readable body or filled opening corroborates its placement, which may be at its head' : 'no body corroborates its placement');
   }
   for (const d of doubts) notes.push(`${d}: the level is an upper estimate`);
-  const quality: LevelQuality = doubts.length > 0 ? 'upper-estimate' : 'exact';
+  // An upper estimate wins (it may be too high, so it can never clear); else a level from a clipped body is only a lower bound.
+  const quality: LevelQuality = doubts.length > 0 ? 'upper-estimate' : fromClipped ? 'lower-bound' : 'exact';
+  if (quality === 'lower-bound') notes.push('the level is read from a clipped body\'s outer operand, which may have lost its bottom: it is a lower bound, the true level may be higher');
   let lowest: number | null = null;
-  if (quality === 'exact') lowest = level;
+  // A lower bound is exactly what the scope rule needs.
+  if (quality === 'exact' || quality === 'lower-bound') lowest = level;
   else if (filling && typeof s.overallHeight === 'number') lowest = Math.min(level, at.level - s.overallHeight);
   return { position, level, basis, quality, positionCertain, lowest, notes };
 }

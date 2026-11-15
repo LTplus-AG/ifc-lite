@@ -51,7 +51,9 @@ entities, properties and containment from the parsed store. No meshing.
   (`vertical-datum-unrecognised`). An unstated datum is recorded as an
   assumption, not refused.
 - **Ground storey**: **state it with the `groundStorey` option** (express
-  id, GlobalId or Name). Without it, the storey placed nearest project ±0.00
+  id, GlobalId or Name; a Name shared by several storeys, for example "EG" in
+  two buildings, is refused as `ambiguous-building`, listing them, so pass a
+  GlobalId or express id). Without it, the storey placed nearest project ±0.00
   (Swiss convention: ±0.00 is the finished ground floor and
   `OrthogonalHeight` its absolute height), else the lowest storey, is taken
   with a warning; such a pick may be the basement, so it is a guess: the height
@@ -95,7 +97,12 @@ entities, properties and containment from the parsed store. No meshing.
   window or opening placed more than 1 m outside it, makes it `partial` (that
   element is kept, never interior); an external wall axis more than 1 m
   inside it makes it `oversized` (a podium or forecourt slab), which counts
-  as a hull.
+  as a hull. Every source walked for the footprint or this wall check and not
+  used is recorded once with why (`quality.unreadable`) and makes it
+  `partial`: a slab that cannot be read or only in part, a slab ring under
+  1 m², an external wall whose placement or axis cannot be read. An external
+  wall with no `Axis` representation at all is noted, not marked partial: it
+  only cannot cross-check the outline.
   **One prepared footprint for every question** (`src/region.ts`): the
   rings are prepared once (courtyards as holes, seams and narrow gaps
   closed), and the inside test, the signed distance, the closest outline
@@ -214,7 +221,9 @@ entities, properties and containment from the parsed store. No meshing.
   courtyard (a redundant ring cannot be told from one); in slab outlines it
   never is.
 - A position read from a clipped body's outer operand is marked uncertain
-  (`positionIsUncertain`), as are positions read from part of a body.
+  (`positionIsUncertain`), as are positions read from part of a body, and a
+  level read from it is a lower bound (`levelIsLowerBound`: the cut may have
+  removed its bottom), never exact.
 - An arc in a profile or curve is traced by points on it alternating with
   tangent corners just outside it: within 5e-5 × the shorter of its radius
   and its length (1 mm on a 20 m radius, 3 cm on a 624 m arc of a 30 km

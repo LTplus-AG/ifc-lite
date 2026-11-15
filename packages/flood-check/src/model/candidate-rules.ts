@@ -46,6 +46,7 @@ function at(ctx: CandidateContext, entity: DecodedEntity, category: CandidateCat
   const fact = base(ctx, entity, category, { position: loc.position, level: loc.level }, because, basis);
   if (loc.quality === 'upper-estimate') fact.levelIsUpperEstimate = true;
   if (!loc.positionCertain) fact.positionIsUncertain = true;
+  if (loc.quality === 'lower-bound') fact.levelIsLowerBound = true;
   if (loc.notes.length > 0) fact.notes = [...loc.notes];
   return fact;
 }

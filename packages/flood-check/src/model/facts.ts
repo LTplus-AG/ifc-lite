@@ -58,6 +58,12 @@ export interface CandidateFact {
    * ground next to it may not be the ground in front of the element.
    */
   positionIsUncertain?: boolean;
+  /**
+   * `level` is only a lower bound (read from a clipped body's outer operand,
+   * which may have lost its bottom): the true level may be higher. Not exact,
+   * so it must not stand in for an entry level (the height reference).
+   */
+  levelIsLowerBound?: boolean;
   storeyId: number | null;
   /** Why the element was selected, for example `IsExternal`, `on footprint boundary`, `IfcBoiler`. */
   selectedBecause: string;

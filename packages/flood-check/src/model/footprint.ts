@@ -48,9 +48,12 @@ class QualityLog {
     if (!this.conditions.includes(condition)) this.conditions.push(condition);
   }
 
-  /** A source tried that could not be read: the outline may miss its area. */
+  /**
+   * The one recorder for a source walked for the footprint (or its wall check)
+   * and not used, with why: it is listed once and the footprint is partial.
+   */
   unread(expressId: number, ifcClass: string, reason: string): void {
-    this.unreadable.push({ expressId, ifcClass, reason });
+    if (!this.unreadable.some((u) => u.expressId === expressId)) this.unreadable.push({ expressId, ifcClass, reason });
     this.mark('partial');
   }
 
@@ -124,9 +127,22 @@ function checkAgainstWalls(rings: MapPoint[][], source: FootprintFact['source'],
       if (!wall || isExternal(reader, wall) !== true) continue;
       if (ground.expressId !== null && storeyOf(id) !== ground.expressId) continue;
       const frame = placements.ofProduct(id);
-      if (!frame) continue;
+      const cls = reader.className(wall);
+      // A wall that cannot be checked is recorded, never skipped silently: the footprint may disagree with it.
+      if (!frame) {
+        log.unread(id, cls, 'external wall in the ground storey whose placement cannot be read, so the footprint cannot be checked against it');
+        continue;
+      }
+      const axis = readWallAxis(reader, id);
+      const axisState = completeness(axis);
+      if (axisState === 'unreadable' || axisState === 'partial') {
+        log.unread(id, cls, `external wall in the ground storey whose axis can be read ${axisState === 'partial' ? `only in part (${axis.readable} of ${axis.items} curves)` : 'not at all'}, so the footprint cannot be fully checked against it`);
+      } else if (axisState === 'none') {
+        // No Axis representation: nothing to read (common), so the wall cannot cross-check the outline. Recorded, not partial.
+        log.remark(`external wall ${cls} #${id} has no Axis representation, so the footprint is not checked against it`);
+      }
       // Along the whole axis (every 0.5 m), not only its ends: a wall's ends may sit on a slab's edge while its middle runs inside.
-      const points = readWallAxis(reader, id).lines.flatMap((l) => {
+      const points = axis.lines.flatMap((l) => {
         const line = toWorld(frame, l).map((p) => {
           const [x, y] = georef.toMap(p);
           return { x, y };

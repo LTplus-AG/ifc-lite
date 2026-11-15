@@ -253,6 +253,7 @@ export const propertiesEn = {
   'properties.modelMetadata.notAvailable': 'N/A',
   'properties.modelMetadata.buildingStoreys': 'Building Storeys',
   'properties.modelMetadata.elementsWithGeometry': 'Elements with Geometry',
+  'properties.modelMetadata.triangles': 'Triangles',
   'properties.modelMetadata.maxExpressId': 'Max Express ID',
   'properties.modelMetadata.classificationSystemsHeading': 'Classification Systems',
   'properties.modelMetadata.classificationUnresolved': 'Classification systems present, but unavailable on this data source',

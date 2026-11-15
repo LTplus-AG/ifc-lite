@@ -5,7 +5,7 @@ import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Scene } from './scene.js';
 import type { MeshData } from '@ifc-lite/geometry';
-import { TriangleCounts } from './triangle-counts.js';
+import { SceneTriangleCounts, TriangleCounts } from './triangle-counts.js';
 
 it('counts split and merged indexed faces under their original objects (#10370)', () => {
   const counts = new TriangleCounts();
@@ -17,20 +17,22 @@ it('counts split and merged indexed faces under their original objects (#10370)'
   assert.equal(counts.byEntity.get(7), 3);
   assert.equal(counts.byEntity.get(8), 1);
   assert.equal(counts.byEntity.has(999), false);
-  assert.equal(counts.total, 4);
+  assert.equal([...counts.byEntity.values()].reduce((sum, count) => sum + count, 0), 4);
 });
 
-it('counts each template occurrence and combines flat and instanced pieces (#10370)', () => {
-  const counts = new TriangleCounts();
-  const template = { positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
-    normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), origin: [0, 0, 0] as [number, number, number] };
-  const occurrence = (entityId: number) => ({ entityId, templateIndex: 0,
-    color: [1, 1, 1, 1] as [number, number, number, number], transform: new Float32Array(16) });
-  counts.addInstancedShard({ templates: [template], instances: [occurrence(7), occurrence(8), occurrence(8)] });
-  counts.addMesh({ expressId: 7, indices: template.indices });
-  assert.equal(counts.byEntity.get(7), 2);
-  assert.equal(counts.byEntity.get(8), 2);
-  assert.equal(counts.total, 4, 'one template used three times contributes three faces');
+it('counts live template occurrences together with flat pieces without expanding vertices (#10370)', () => {
+  const counts = new SceneTriangleCounts();
+  counts.noteSources([sourceTriangle(7)]);
+  const host = { templates: [{ indexCount: 3 }], instances: new Map([
+    [7, [{ templateIndex: 0 }]], [8, [{ templateIndex: 0 }, { templateIndex: 0 }]],
+  ]) };
+  const result = counts.read(host, 1, false);
+  assert.equal(result?.get(7), 2);
+  assert.equal(result?.get(8), 2);
+  assert.equal(counts.read(host, 1, false), result, 'unchanged topology has a stable snapshot');
+  host.instances.delete(8);
+  assert.equal(counts.read(host, 2, false)?.has(8), false, 'removed occurrences no longer contribute');
+  assert.equal(counts.read(host, 2, true), null, 'snapshot hydration cannot publish a premature zero');
 });
 
 function sourceTriangle(expressId: number): MeshData {
@@ -54,4 +56,18 @@ it('keeps source counts across CPU release, deletion and a new scene (#10370)', 
   assert.equal(scene.getTriangleCounts()?.size, 0, 'a reset cannot reuse the previous model counts');
   scene.queueMeshes([sourceTriangle(7), sourceTriangle(7)]);
   assert.equal(scene.getTriangleCounts()?.get(7), 2, 'new geometry under a reused ID has its own count');
+});
+
+it('notifies count consumers once after a batch and stops after unsubscribe (#10370)', async () => {
+  const scene = new Scene();
+  const observed: number[] = [];
+  const release = scene.onGeometryChange(() => observed.push(scene.getTriangleCounts()?.get(7) ?? 0));
+  scene.queueMeshes([sourceTriangle(7)]);
+  scene.queueMeshes([sourceTriangle(7)]);
+  await Promise.resolve();
+  assert.deepEqual(observed, [2]);
+  release();
+  scene.clearFlatGeometry();
+  await Promise.resolve();
+  assert.deepEqual(observed, [2]);
 });

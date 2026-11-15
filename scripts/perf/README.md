@@ -37,6 +37,13 @@ Two tools:
 loaded or refused**, telling you to switch to `--expect not-killed` (the #10264 acceptance:
 the tab is never killed). `error` and `timeout` never pass.
 
+A viewer may instead warn before an oversized load (a dialog "This model may exceed available
+memory" with Continue loading / Cancel). `--on-memory-dialog wait` (default) reports
+`awaiting-decision`, `cancel` reports `cancelled`, and `continue` clicks Continue loading and
+then reports `loaded` or `killed-after-continue`. `--expect not-killed` accepts `loaded`,
+`refused`, `awaiting-decision` and `cancelled`; a kill after an explicit Continue passes only
+`--expect warned`, and its verdict says so.
+
 ```bash
 pnpm install && pnpm build:wasm && pnpm turbo build --filter=@ifc-lite/viewer   # or any built apps/viewer/dist
 npx playwright install chromium                            # once

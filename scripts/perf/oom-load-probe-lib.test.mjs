@@ -60,3 +60,26 @@ test('#10264 cap sizes and phase labels', () => {
   assert.equal(phaseOf({ loading: true, tris: 10 }), 'geometry-streaming');
   assert.equal(phaseOf({ interactive: true, tris: 10 }), 'loaded');
 });
+
+test('#10264 a pre-load memory warning: waiting, cancelling and continuing are distinct outcomes', () => {
+  assert.equal(classify({ warningShown: true }).outcome, 'awaiting-decision');
+  assert.equal(classify({ warningShown: true, decision: 'cancel' }).outcome, 'cancelled');
+  assert.equal(classify({ warningShown: true, decision: 'continue', interactive: true }).outcome, 'loaded');
+  // A kill after the user accepted the warning is reported on its own, never as plain `killed`.
+  assert.equal(classify({ warningShown: true, decision: 'continue', oomKills: 1 }).outcome, 'killed-after-continue');
+  assert.equal(classify({ warningShown: true, decision: 'continue', pageCrashed: true }).outcome, 'killed-after-continue');
+  // An outright refusal below the warning threshold is still `refused`.
+  assert.equal(classify({ storeError: "This IFC file exceeds this tab's local processing memory budget" }).outcome, 'refused');
+});
+
+test('#10264 killed-after-continue fails acceptance; passes only the explicit warned mode, and says so', () => {
+  assert.equal(verdict('killed-after-continue', 'not-killed').pass, false);
+  const warned = verdict('killed-after-continue', 'warned');
+  assert.equal(warned.pass, true);
+  assert.match(warned.message, /AFTER the user clicked Continue loading/);
+  assert.equal(verdict('killed', 'warned').pass, false);
+  for (const ok of ['awaiting-decision', 'cancelled']) assert.equal(verdict(ok, 'not-killed').pass, true);
+  // The known-issue run fails once a warning appears instead of the kill.
+  assert.equal(verdict('awaiting-decision', 'killed').pass, false);
+  assert.equal(phaseOf({ warning: true, tris: 0 }), 'memory warning (load not started)');
+});

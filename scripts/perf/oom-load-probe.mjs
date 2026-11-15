@@ -24,6 +24,12 @@
  *        (--fixture FILE.ifc | --kind tfs|brep --target-mb N [--seed 1])
  *        --cap 3G [--device-memory 4] [--cores 4] [--cpu-quota 400%]
  *        [--gl swiftshader|hardware] [--out DIR] [--limit-min 10] [--keep-fixture]
+ *        [--on-memory-dialog wait|cancel|continue]
+ *
+ * A viewer that warns before an oversized load (a dialog titled "... may exceed
+ * available memory" with Continue loading / Cancel) is left waiting by default
+ * (`awaiting-decision`); `cancel` clicks Cancel (`cancelled`), `continue` clicks
+ * Continue loading and then reports `loaded` or `killed-after-continue`.
  *
  * `--gl hardware` launches headed Chrome on $DISPLAY with ANGLE/Vulkan (use a
  * private Xvfb; headless Chrome can lose a discrete GPU's device). Under
@@ -43,7 +49,7 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { writeDenseIfc } from './gen-dense-ifc.mjs';
-import { EXPECTATIONS, classify, parseSize, phaseOf, verdict } from './oom-load-probe-lib.mjs';
+import { EXPECTATIONS, MEMORY_WARNING, classify, parseSize, phaseOf, verdict } from './oom-load-probe-lib.mjs';
 import { GPU_ARGS } from './retained-qual-browser.mjs';
 import { chromePids, memoryOf } from './scenoptic-bench-sampling.mjs';
 import { openAndWaitInteractive, openViewerPage, startViewerServer } from './viewer-load-probe.mjs';
@@ -126,7 +132,8 @@ export async function runProbe(opts) {
 
   const { server, baseUrl } = await startViewerServer(() => resolve(opts.dist));
   const profileDir = mkdtempSync(join(tmpdir(), 'oom-load-probe-profile-'));
-  const obs = { oomKills: 0, pageCrashed: false, browserGone: false, interactive: false, storeError: null, pageText: '', timedOut: false };
+  const obs = { oomKills: 0, pageCrashed: false, browserGone: false, interactive: false, storeError: null, pageText: '', timedOut: false,
+    warningShown: false, decision: 'none' };
   const peak = { pssMiB: 0, cgroupMiB: 0 };
   let last = null, context, sampler, cg = null, verdictReady = false;
   try {
@@ -163,6 +170,20 @@ export async function runProbe(opts) {
         const st = await Promise.race([page.evaluate(PAGE_PROBE), new Promise((r) => setTimeout(() => r(null), 15000))]).catch(() => null);
         if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
         if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? 'model load error'; return; }
+        if (obs.decision === 'none') {
+          const dialog = page.getByRole('dialog').filter({ hasText: MEMORY_WARNING });
+          if (await dialog.count().catch(() => 0)) {
+            obs.warningShown = true;
+            result.memoryWarning = { text: (await dialog.first().innerText().catch(() => '')).slice(0, 500), trisBefore: st?.tris ?? null };
+            last = { ...(st ?? {}), warning: true };
+            if (opts.onMemoryDialog === 'wait') return;
+            const name = opts.onMemoryDialog === 'cancel' ? /^cancel$/i : /continue loading/i;
+            await dialog.first().getByRole('button', { name }).click({ timeout: 10000 });
+            obs.decision = opts.onMemoryDialog;
+            log({ t: (Date.now() - t0) / 1000, clicked: opts.onMemoryDialog });
+            if (opts.onMemoryDialog === 'cancel') { await new Promise((r) => setTimeout(r, 3000)); return; }
+          }
+        }
       }
     })();
     await Promise.race([interactive, watch]);
@@ -191,6 +212,8 @@ export async function runProbe(opts) {
     rmSync(profileDir, { recursive: true, force: true });
     if (generated && !opts.keepFixture) rmSync(fixture, { force: true });
   }
+  result.memoryDialogPolicy = opts.onMemoryDialog;
+  result.memoryDialogDecision = obs.decision;
   Object.assign(result, classify(obs), { phase: phaseOf(last), last, peakPssMiB: Math.round(peak.pssMiB),
     peakCgroupMiB: Math.round(peak.cgroupMiB), oomKills: obs.oomKills });
   const v = verdict(result.outcome, opts.expect);
@@ -204,7 +227,7 @@ function cli() {
     dist: { type: 'string' }, fixture: { type: 'string' }, kind: { type: 'string' }, 'target-mb': { type: 'string' },
     seed: { type: 'string' }, cap: { type: 'string' }, 'device-memory': { type: 'string' }, cores: { type: 'string' },
     'cpu-quota': { type: 'string' }, gl: { type: 'string' }, expect: { type: 'string' }, out: { type: 'string' },
-    'limit-min': { type: 'string' }, 'keep-fixture': { type: 'boolean' },
+    'limit-min': { type: 'string' }, 'keep-fixture': { type: 'boolean' }, 'on-memory-dialog': { type: 'string' },
   } });
   const fail = (m) => { console.error(`oom-load-probe: ${m}`); process.exit(2); };
   if (!v.dist || !existsSync(join(v.dist, 'index.html'))) fail('--dist must point at a built viewer (apps/viewer/dist)');
@@ -214,11 +237,13 @@ function cli() {
   const gl = v.gl ?? 'swiftshader';
   if (!GPU_ARGS[gl]) fail('--gl must be swiftshader or hardware');
   if (gl === 'hardware' && !process.env.DISPLAY) fail('--gl hardware needs a $DISPLAY (headed Chrome, e.g. a private Xvfb)');
+  const onMemoryDialog = v['on-memory-dialog'] ?? 'wait';
+  if (!['wait', 'cancel', 'continue'].includes(onMemoryDialog)) fail('--on-memory-dialog must be wait, cancel or continue');
   const cores = v.cores ? Number(v.cores) : null;
   const opts = { dist: resolve(v.dist), fixture: v.fixture && resolve(v.fixture), kind: v.kind, targetMb: Number(v['target-mb']),
     seed: v.seed ? Number(v.seed) : 1, cap: v.cap, deviceMemory: v['device-memory'] ? Number(v['device-memory']) : null, cores,
     cpuQuota: v['cpu-quota'] ?? `${(cores ?? 4) * 100}%`, gl, expect: v.expect, out: v.out && resolve(v.out),
-    limitMin: Number(v['limit-min'] ?? 10), keepFixture: Boolean(v['keep-fixture']) };
+    limitMin: Number(v['limit-min'] ?? 10), keepFixture: Boolean(v['keep-fixture']), onMemoryDialog };
   try { preflight(); } catch (err) { fail(err.message); }
   runProbe(opts).then(({ result, outDir }) => {
     console.log(`outcome=${result.outcome} phase="${result.phase}" peakPssMiB=${result.peakPssMiB} peakCgroupMiB=${result.peakCgroupMiB} `

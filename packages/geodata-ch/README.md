@@ -99,7 +99,9 @@ terrain) implements the same interfaces. Only Switzerland is implemented here.
   hook (`{ get, set }` keyed by URL plus `Range`), per-host rate limiting
   (default 5 requests/s) and truncated exponential backoff with jitter on
   408/425/429/5xx, network errors and timeouts, honouring `Retry-After` in
-  both its seconds and HTTP-date forms. That is the retry strategy
+  both its seconds and HTTP-date forms, capped at `maxDelayMs` (default 32 s):
+  a server that asks for a longer wait is retried after the cap, not the full
+  wait, so raise `maxDelayMs` if you want to honour it fully. That is the retry strategy
   geo.admin.ch asks clients to use. Each attempt has a timeout (`timeoutMs`,
   default 30 s) combined with the caller's `AbortSignal`: either aborts the
   request. A stalled socket surfaces as a typed `HttpTimeoutError` once the

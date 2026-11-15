@@ -41,7 +41,11 @@ export interface HttpOptions {
   maxRetries?: number;
   /** First backoff delay in ms; doubles per retry. Default 1000. */
   baseDelayMs?: number;
-  /** Cap on one backoff delay in ms, before jitter. Default 32000. */
+  /**
+   * Cap on one backoff delay in ms, before jitter. Default 32000. It also caps
+   * `Retry-After` (seconds or HTTP-date): a longer server-requested wait is
+   * cut to this, so raise it to honour long waits in full.
+   */
   maxDelayMs?: number;
   /**
    * Sent as `User-Agent` only where the runtime allows it without a CORS

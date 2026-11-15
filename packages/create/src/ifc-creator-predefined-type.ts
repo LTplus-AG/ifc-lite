@@ -78,30 +78,33 @@ export function classificationToken(schema: CreatorSchema, request: Classificati
 
 /**
  * The attributes after `Tag` for a generic element writer (`addElement`,
- * `addAxisElement`), shaped by `schema`: `,.TOKEN.` where the entity has a
- * PredefinedType slot, IFC2X3's optional `CompositionType` on IfcBuildingElementProxy
- * (`$` for none/NOTDEFINED, else a checked COMPLEX/ELEMENT/PARTIAL), and `''` where the
- * entity ends at `Tag` (IFC2X3 IfcMember, IfcPlate, IfcFlowSegment, …).
+ * `addAxisElement`), written from the target schema's own attribute list:
+ * - the classification slot (`PredefinedType`, else the first enum slot, e.g. IFC2X3
+ *   `CompositionType` / `ShapeType`) gets the caller's value, checked against its enum,
+ *   defaulting to NOTDEFINED where the enum has it and `$` where it is optional;
+ * - every other optional slot (IfcDoor `OverallHeight`, …) is `$`, a required enum
+ *   slot is NOTDEFINED, and any other required slot throws;
+ * - a caller value with no classification slot throws.
  * Entities the schema does not know keep the historical `,.TOKEN.` tail.
  */
 export function genericElementTail(schema: CreatorSchema, ifcTypeUpper: string, predefinedType: string | undefined): string {
-  const token = `,.${predefinedType ?? 'NOTDEFINED'}.`;
   const registry = getSchemaRegistryForVersion(schema);
   const entity = Object.keys(registry.entities).find((name) => name.toUpperCase() === ifcTypeUpper);
-  const slot = entity ? registry.entities[entity].allAttributes?.[8] : undefined;
-  if (!entity) return token;
-  if (!slot) {
-    if (predefinedType !== undefined) throw new Error(`${entity} has no PredefinedType attribute in ${schema}`);
-    return '';
-  }
-  if (slot.name === 'CompositionType') {
-    // IFC2X3 proxy: NOTDEFINED (the IFC4 default) means "no composition"; anything else must be an enum member.
-    if (predefinedType === undefined || predefinedType === 'NOTDEFINED') return ',$';
-    const allowed = registry.enums[slot.type] ?? [];
-    if (!allowed.includes(predefinedType)) {
-      throw new Error(`${entity}.CompositionType must be one of ${allowed.join(', ')} in ${schema}; got ${predefinedType}`);
+  if (!entity) return `,.${predefinedType ?? 'NOTDEFINED'}.`;
+  const rest = (registry.entities[entity].allAttributes ?? []).slice(8);
+  const target = rest.find((a) => a.name === 'PredefinedType') ?? rest.find((a) => registry.enums[a.type]);
+  if (predefinedType !== undefined && !target) throw new Error(`${entity} has no PredefinedType attribute in ${schema}`);
+  return rest.map((attr) => {
+    const allowed = registry.enums[attr.type] ?? [];
+    if (attr === target && predefinedType !== undefined && !(predefinedType === 'NOTDEFINED' && !allowed.includes('NOTDEFINED'))) {
+      if (!allowed.includes(predefinedType)) {
+        throw new Error(`${entity}.${attr.name} must be one of ${allowed.join(', ')} in ${schema}; got ${predefinedType}`);
+      }
+      return `,.${predefinedType}.`;
     }
-    return `,.${predefinedType}.`;
-  }
-  return token;
+    if (attr === target && allowed.includes('NOTDEFINED')) return ',.NOTDEFINED.';
+    if (attr.optional) return ',$';
+    if (allowed.includes('NOTDEFINED')) return ',.NOTDEFINED.';
+    throw new Error(`${entity}.${attr.name} is required in ${schema} and cannot be written by the generic element writer`);
+  }).join('');
 }

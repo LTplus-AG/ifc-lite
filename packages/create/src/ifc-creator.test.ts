@@ -513,6 +513,35 @@ describe('IfcCreator', () => {
       .toThrow(/IfcMember has no PredefinedType attribute in IFC2X3/);
   });
 
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('writes generic door/window/stair/proxy tails from the %s schema (#9359)', (schema) => {
+    const creator = new IfcCreator({ Schema: schema });
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    const profile = { ProfileType: 'AREA', XDim: 1, YDim: 1 } as never;
+    for (const IfcType of ['IFCDOOR', 'IFCWINDOW', 'IFCSTAIR', 'IFCBUILDINGELEMENTPROXY', 'IFCMEMBER', 'IFCFLOWSEGMENT']) {
+      creator.addElement(storey, { IfcType, Placement: { Location: [0, 0, 0] }, Profile: profile, Depth: 1 });
+      creator.addAxisElement(storey, { IfcType, Start: [0, 0, 0], End: [1, 0, 0], Profile: profile, PredefinedType: IfcType === 'IFCFLOWSEGMENT' || (schema === 'IFC2X3' && IfcType !== 'IFCSTAIR') ? undefined : 'NOTDEFINED' });
+    }
+    expect(() => creator.addElement(storey, { IfcType: 'IFCDOOR', Placement: { Location: [0, 0, 0] }, Profile: profile, Depth: 1, PredefinedType: 'NOT_A_DOOR' }))
+      .toThrow(schema === 'IFC2X3' ? /IfcDoor has no PredefinedType attribute in IFC2X3/ : /IfcDoor.PredefinedType must be one of/);
+    const registry = getSchemaRegistryForVersion(schema);
+    const byUpper = new Map(Object.keys(registry.entities).map(name => [name.toUpperCase(), name]));
+    let checked = 0;
+    for (const line of creator.toIfc().content.split('\n')) {
+      const tag = /^#\d+=([A-Z0-9]+)\(/.exec(line)?.[1];
+      if (!tag || !['IFCDOOR', 'IFCWINDOW', 'IFCSTAIR', 'IFCBUILDINGELEMENTPROXY', 'IFCMEMBER', 'IFCFLOWSEGMENT'].includes(tag)) continue;
+      const attrs = registry.entities[byUpper.get(tag)!].allAttributes ?? [];
+      const values = stepAttrs(line);
+      expect(values.length, line).toBe(attrs.length);
+      attrs.forEach((attr, i) => {
+        const token = /^\.([A-Z_0-9]+)\.$/.exec(values[i])?.[1];
+        if (token) expect(registry.enums[attr.type], `${tag}.${attr.name} in ${line}`).toContain(token);
+        if (!attr.optional) expect(values[i], `${tag}.${attr.name} in ${line}`).not.toBe('$');
+      });
+      checked++;
+    }
+    expect(checked).toBe(12);
+  });
+
   it('refuses IFC4-only scheduling data in IFC2X3 instead of writing invalid records (#9359)', () => {
     const creator = new IfcCreator({ Schema: 'IFC2X3' });
     const t1 = creator.addIfcTask({ Name: 'T1' });

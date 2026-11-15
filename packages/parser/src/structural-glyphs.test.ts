@@ -704,6 +704,21 @@ describe('face stations', () => {
     return hit;
   }
 
+  /** Distance from a 2D point to the nearest edge of a polygon. */
+  function edgeClearance([u, v]: readonly number[], polygon: readonly (readonly number[])[]): number {
+    return Math.min(...polygon.map(([ax, ay], i) => {
+      const [bx, by] = polygon[(i + 1) % polygon.length];
+      const t = Math.max(0, Math.min(1, ((u - ax) * (bx - ax) + (v - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2 || 1)));
+      return Math.hypot(u - ax - t * (bx - ax), v - ay - t * (by - ay));
+    }));
+  }
+  /**
+   * The radius of the largest circle in the corner of two perpendicular edges that touches the reflex
+   * corner (cx, cy) measured from that corner of the box (#9828): (cx - r)^2 + (cy - r)^2 = r^2, so
+   * r = cx + cy - sqrt(2 cx cy). Worked out from the geometry, not read back from the module.
+   */
+  const cornerRadius = (cx: number, cy: number) => cx + cy - Math.sqrt(2 * cx * cy);
+
   it('places a notched face with no lattice point inside on the face, not at its centroid', () => {
     // C shape: the vertex average (0.54, 0.5) lies in the open notch, and no
     // point of the 3 x 3 lattice (1/6, 1/2, 5/6) is inside the 0.15-wide spine
@@ -714,12 +729,37 @@ describe('face stations', () => {
     const stations = shapeStations({ kind: 'face', polygon });
     expect(stations).toHaveLength(1);
     for (const station of stations) expect(inside(station, polygon)).toBe(true);
-    // Most clearance: the centre of the bottom or the top band (0.16 tall, they
-    // tie), not the 0.15-wide spine.
+    // Most open point (#9828): not a band's centre (clearance 0.08) but where the spine meets a
+    // band, a circle tangent to the left edge, the band's outer edge and the inner corner (0.15, 0.16).
+    // The bottom and top corners tie.
+    const r = cornerRadius(0.15, 0.16);
     const [x, y, z] = stations[0];
     expect(z).toBeCloseTo(0);
-    expect(x).toBeCloseTo(0.5);
-    expect(Math.min(Math.abs(y - 0.08), Math.abs(y - 0.92))).toBeLessThan(1e-9);
+    expect(r).toBeCloseTo(0.0909, 4);
+    expect(x).toBeCloseTo(r, 2);
+    expect(Math.min(Math.abs(y - r), Math.abs(y - (1 - r)))).toBeLessThan(0.01);
+    expect(edgeClearance([x, y], polygon)).toBeGreaterThan(r * 0.998);
+  });
+
+  it('anchors a rotated notched face at its most open point, as a brute-force grid finds it (#9828)', () => {
+    const c: [number, number][] = [[0, 0], [1, 0], [1, 0.16], [0.15, 0.16], [0.15, 0.84], [1, 0.84], [1, 1], [0, 1]];
+    for (const angle of [Math.PI / 4, Math.PI / 6, 0.3, 1.1]) {
+      const polygon = c.map(([u, v]): [number, number, number] => [u * Math.cos(angle) - v * Math.sin(angle), u * Math.sin(angle) + v * Math.cos(angle), 0]);
+      const xs = polygon.map((p) => p[0]);
+      const ys = polygon.map((p) => p[1]);
+      let grid = 0;
+      for (let i = 0; i <= 160; i++) {
+        for (let j = 0; j <= 160; j++) {
+          const p = [Math.min(...xs) + (Math.max(...xs) - Math.min(...xs)) * i / 160, Math.min(...ys) + (Math.max(...ys) - Math.min(...ys)) * j / 160];
+          if (inside(p, polygon)) grid = Math.max(grid, edgeClearance(p, polygon));
+        }
+      }
+      const centre = shapeCentre({ kind: 'face', polygon });
+      expect(inside(centre, polygon), `angle ${angle}`).toBe(true);
+      expect(edgeClearance(centre, polygon), `angle ${angle}`).toBeGreaterThanOrEqual(grid * 0.995);
+      // More open than the 0.08 centre of a band.
+      expect(edgeClearance(centre, polygon), `angle ${angle}`).toBeGreaterThan(0.085);
+    }
   });
 
   it('anchors the single marker of a notched face on the face', () => {
@@ -738,21 +778,24 @@ describe('face stations', () => {
     const flat: [number, number][] = [[0, 0], [1, 0], [1, 0.16], [0.15, 0.16], [0.15, 0.84], [1, 0.84], [1, 1], [0, 1]];
     const toWorld = ([u, v]: readonly number[]): [number, number, number] => [5 + u, -3 + v * c, 2 + v * sn];
     const polygon = flat.map(toWorld);
-    // The centre of a band, (0.5, 0.08) or (0.5, 0.92); the marker and the
+    // The bottom or top corner of the spine, (r, r) or (r, 1 - r) with r = 0.0909; the marker and the
     // only station agree on it.
     const stations = shapeStations({ kind: 'face', polygon });
     expect(stations).toHaveLength(1);
-    const offBand = Math.min(...[[0.5, 0.08], [0.5, 0.92]].map((uv) => Math.hypot(...toWorld(uv).map((x, i) => x - stations[0][i]))));
-    expect(offBand).toBeLessThan(1e-9);
+    const r = cornerRadius(0.15, 0.16);
+    const offCorner = Math.min(...[[r, r], [r, 1 - r]].map((uv) => Math.hypot(...toWorld(uv).map((x, i) => x - stations[0][i]))));
+    expect(offCorner).toBeLessThan(0.01);
     close(shapeCentre({ kind: 'face', polygon }), stations[0]);
   });
 
   it('anchors a face with a horizontal edge at mid-height on its widest part, in any orientation or winding', () => {
-    // U shape: the notch's bottom edge sits at v = 0.5, the middle of the face,
-    // and its vertex average (0.5, 0.625) lies in the notch. The bottom bar
-    // (1 wide, 0.5 tall) has more clearance than an arm (0.3 wide), so the
-    // anchor is its centre (0.5, 0.25).
+    // U shape: the notch's bottom edge sits at v = 0.5, the middle of the face, and its vertex average
+    // (0.5, 0.625) lies in the notch. The most open point is where an arm meets the bottom bar (#9828),
+    // a circle tangent to the outer side, the bottom and the inner corner (0.3, 0.5), r = 0.2523: a
+    // little more open than the bar's centre (0.25). The two corners tie.
     const flat: [number, number][] = [[0, 0], [1, 0], [1, 1], [0.7, 1], [0.7, 0.5], [0.3, 0.5], [0.3, 1], [0, 1]];
+    const r = cornerRadius(0.3, 0.5);
+    expect(r).toBeCloseTo(0.2523, 4);
     for (const winding of [flat, [...flat].reverse()]) {
       for (let k = 0; k < 40; k++) {
         // A general orthonormal in-plane basis (e1, e2) and an offset origin.
@@ -761,7 +804,9 @@ describe('face stations', () => {
         const e2 = [-Math.sin(a) * Math.cos(b), Math.cos(a) * Math.cos(b), Math.sin(b)];
         const o = [12.3, -45.6, 7.89];
         const at = (u: number, v: number) => [0, 1, 2].map((i) => o[i] + u * e1[i] + v * e2[i]) as [number, number, number];
-        close(shapeCentre({ kind: 'face', polygon: winding.map(([u, v]) => at(u, v)) }), at(0.5, 0.25));
+        const centre = shapeCentre({ kind: 'face', polygon: winding.map(([u, v]) => at(u, v)) });
+        const off = Math.min(...[[r, r], [1 - r, r]].map(([u, v]) => Math.hypot(...at(u, v).map((x, i) => x - centre[i]))));
+        expect(off).toBeLessThan(0.01);
       }
     }
   });
@@ -791,11 +836,11 @@ describe('face stations', () => {
     const polygon: [number, number, number][] = [[0, 0, 0], [1, 0, 0], ...teeth.slice(1), ...saw];
     const average = [0, 1].map((i) => polygon.reduce((sum, p) => sum + p[i], 0) / polygon.length);
     expect(inside(average, polygon)).toBe(false);
+    // The base is 0.3 tall, so its most open points are 0.15 clear (a brute-force grid over the face
+    // finds 0.1495 at x = 0.16); the scanline candidate alone was 0.125 clear (#9828).
     const [x, y] = shapeCentre({ kind: 'face', polygon });
-    expect(x).toBeGreaterThan(0.4);
-    expect(x).toBeLessThan(0.6);
-    expect(y).toBeGreaterThan(0.1);
-    expect(y).toBeLessThan(0.2);
+    expect(inside([x, y], polygon)).toBe(true);
+    expect(edgeClearance([x, y], polygon)).toBeGreaterThan(0.1495);
   });
 
   it('anchors a long, very thin notched face inside it, not on a corner', () => {
@@ -803,8 +848,8 @@ describe('face stations', () => {
     // vertex average off the face.
     const h = 5e-6;
     const polygon: [number, number, number][] = [[0, 0, 0], [1e4, 0, 0], [1e4, h, 0], [9e3, h, 0], [9e3, h / 2, 0], [1e3, h / 2, 0], [1e3, h, 0], [0, h, 0]];
-    // The best candidates (mid-length on the lower half, or mid-lobe on the
-    // upper half) are all h / 4 clear of every edge.
+    // A point in either lobe at y = h / 2 is h / 2 clear (the most open); the scanline candidate alone
+    // was h / 4 (#9828).
     const centre = shapeCentre({ kind: 'face', polygon });
     expect(inside(centre, polygon)).toBe(true);
     const [u, v] = centre;
@@ -813,7 +858,7 @@ describe('face stations', () => {
       const t = Math.max(0, Math.min(1, ((u - ax) * (bx - ax) + (v - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2)));
       return Math.hypot(u - ax - t * (bx - ax), v - ay - t * (by - ay));
     });
-    expect(Math.min(...edgeDistance)).toBeGreaterThan(h / 4 * (1 - 1e-6));
+    expect(Math.min(...edgeDistance)).toBeGreaterThan(h / 2 * 0.97);
   });
 
   it('retains interior stations for a convex sliver', () => {

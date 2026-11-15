@@ -9798,6 +9798,7 @@
     "invertAppearancePartition: function",
     "isEntityVisible: function",
     "isNegativeDelta: function",
+    "isRenderablePointCloud: function",
     "lodCellSizeForBounds: function",
     "nearestCardinalAxis: function",
     "normalizeGaussianAttributes: function",

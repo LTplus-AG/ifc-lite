@@ -113,6 +113,9 @@ export const commandsEn = {
   // UI
   'commands.ui.commandPalette': 'Command palette',
   'commands.ui.openPanel': 'Open a panel from the rail ({sidePanels}; {bottomPanels} open at the bottom)',
+  'commands.ui.openPanelSideOnly': 'Open a panel from the rail ({sidePanels})',
+  /** One panel in the Alt+digit row: its key's digit and its title. */
+  'commands.ui.openPanelEntry': '{digit} {panel}',
   'commands.ui.toggleSidebar': 'Toggle sidebar (expand ⇄ collapse to icons)',
   'commands.ui.closeAllPanels': 'Close all panels (keeps visibility)',
   'commands.ui.closeOverlay': 'Close the open menu or dialog',

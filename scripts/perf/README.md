@@ -7448,6 +7448,25 @@ restored and verified between every short unit. The earlier uncapped/noisy and
 thermally refused attempts remain unqualified; their successful subsets were
 not promoted into a verdict.
 
+The remaining million-rooted-element acceptance case is now qualified separately.
+The original reporter's unchanged generator was recovered and its plain and
+property-heavy fixture hashes matched the originals. Fresh A/A calibration and
+interleaved A/B on the original measured base and implementation passed the
+unchanged noise gate in the same post-reboot power regime. Every timed row
+matched the complete source-bound hydrated store: entity/string columns, CSR
+ordering and shadowed relationships, hierarchy, lazy property-owner references,
+and representative decoded property values. All bounded CPU-cap windows were
+restored and verified; failed or cancelled earlier attempts contributed no rows.
+
+Verdict for those metadata-only fixtures: spatial and metadata readiness improve
+in both cases, and observed metadata-plus-render readiness improves in the
+property-heavy case. Other whole-load metrics remain within noise, so this does
+not extend the earlier neutral real-model result into a universal speedup claim.
+The generated cases contain no geometry and make no first-paint claim. The fresh
+power regime was calibrated independently; earlier power-regime timings were
+neither pooled nor used as the baseline. This closes the residual acceptance
+scope of #8450 without changing the implementation already merged in #9467.
+
 Lesson: removing eager indexing work need not move whole-load readiness when
 other metadata and renderer stages dominate. Keep the mechanism claim separate
 from a speedup claim, and qualify browser hydration with complete worker-pool

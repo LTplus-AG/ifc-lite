@@ -17,7 +17,8 @@
 
 import { wallBaseSolid } from './edit/wall-base-solid.js';
 import { createSchemaEntityNameSnapshot, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { effectiveReferencers } from '@ifc-lite/export';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import type { WallJoinTarget } from './wall-join-apply.js';
 import type { PlanPoint, WallConnectionType, WallEndCut, WallJoinWall } from './wall-join.js';
@@ -315,7 +316,11 @@ export function readWallJoinRels(
 ): WallJoinRel[] {
   const reader = new AnchorEntityReader(store, view);
   const rels: WallJoinRel[] = [];
-  for (const relId of reader.ids('IFCRELCONNECTSPATHELEMENTS')) {
+  const referencing = wallIds ? effectiveReferencers(store, view ?? new MutablePropertyView(null, 'wall-join-read')) : null;
+  const candidates = referencing && wallIds
+    ? new Set([...wallIds].flatMap(id => referencing(id))) : reader.ids('IFCRELCONNECTSPATHELEMENTS');
+  for (const relId of candidates) {
+    if (reader.entity(relId)?.type.toUpperCase() !== 'IFCRELCONNECTSPATHELEMENTS') continue;
     const attributes = reader.entity(relId)?.attributes;
     if (!attributes) continue;
     const relatingId = refId(attributes[5]);

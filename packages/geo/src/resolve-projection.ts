@@ -9,19 +9,15 @@
  * proj4 definitions are resolved from:
  *   1. The bundled EPSG index (@ifc-lite/data) — covers all 7000+ codes
  *   2. Programmatically constructed (UTM zones, well-known codes)
- *   3. The host's EPSG definition loader as last resort (`configureCrsLoaders`)
+ *   3. The engine's EPSG definition loader as last resort (`configureCrsLoaders`)
  */
 
 import { lookupEpsgByCode } from '@ifc-lite/data';
-import { crsLoaders } from './loaders.js';
+import { reportCrsDiagnostic } from './diagnostics.js';
+import { defaultEngineState, type EngineState, type ResolvedDefinition } from './engine-state.js';
 import { PRECISION_GRIDS, resolvePrecisionDef } from './precision-grids.js';
 import { isGeographicProj4, projectedDefinitionInMetres, utmProj4String } from './proj4-utils.js';
-import {
-  approximateProjectionCodes,
-  projDefCache,
-  refusedProjectionCodes,
-  sanitizeProj4,
-} from './sanitize-proj4.js';
+import { sanitizeProj4 } from './sanitize-proj4.js';
 import { wellKnownCrsCode } from './well-known-crs.js';
 import { resolveWktProjection, withWktExtent } from './wkt-projection.js';
 
@@ -73,8 +69,22 @@ function utmDefinitionFromMetadata(crs: CrsDescriptor): string | null {
   return null;
 }
 
+/** A definition that uses the CRS's own operation. */
+function asDefined(definition: string): ResolvedDefinition {
+  return { definition, datumShift: 'as-defined' };
+}
+
 /**
- * Resolve a proj4 definition for the given CRS metadata.
+ * Resolve a proj4 definition for the given CRS metadata, through the default
+ * engine. See {@link resolveDefinition} for the order.
+ */
+export async function resolveProjection(crs: CrsDescriptor): Promise<string | null> {
+  return (await resolveDefinition(crs, defaultEngineState()))?.definition ?? null;
+}
+
+/**
+ * Resolve a proj4 definition, and how its datum shift is obtained, for the
+ * given CRS metadata.
  *
  * An `IfcWellKnownText` definition is authoritative over the name (which may
  * then be a placeholder such as "WKT"): an EPSG identifier it names resolves
@@ -84,25 +94,34 @@ function utmDefinitionFromMetadata(crs: CrsDescriptor): string | null {
  * Resolution order:
  *   1. Cache hit
  *   2. Precision grid (NTv2/GeoTIFF) for codes where +towgs84 is too coarse
- *      (RD/NL, OSGB/UK, BD72/BE) — loaded once through the host's grid
+ *      (RD/NL, OSGB/UK, BD72/BE) — loaded once through the engine's grid
  *      loader, gives sub-decimeter accuracy. Falls through to (3) when no
  *      loader is installed or the load fails.
  *   3. Bundled EPSG index (7000+ codes with proj4 strings)
  *   4. UTM zone heuristic (from CRS metadata — mapZone, name, description, mapProjection)
- *   5. The host's EPSG definition loader (epsg.io when the host installs
+ *   5. The engine's EPSG definition loader (epsg.io when the host installs
  *      `epsgIoDefinitionLoader`; skipped when none is installed)
+ *
+ * The datum-shift verdict travels with the definition it describes, so a
+ * concurrent resolution that loads a grid cannot change what an earlier
+ * result says about itself.
  */
-export async function resolveProjection(crs: CrsDescriptor): Promise<string | null> {
+export async function resolveDefinition(crs: CrsDescriptor, state: EngineState): Promise<ResolvedDefinition | null> {
   if (crs.wellKnownText) {
     const wkt = resolveWktProjection(crs.wellKnownText);
-    if (wkt?.kind === 'definition') return wkt.definition;
+    if (wkt?.kind === 'definition') return asDefined(wkt.definition);
     const named: CrsDescriptor = { ...crs, wellKnownText: undefined };
-    const definition = await resolveProjection(wkt?.kind === 'epsg' ? { ...named, name: `EPSG:${wkt.code}` } : named);
-    if (!definition || wkt?.kind !== 'epsg') return definition;
-    // The WKT's own datum shift and declared extent still apply to the registry projection.
-    return withWktExtent(crs.wellKnownText, wkt.towgs84
-      ? `${definition.replace(/\s\+(?:towgs84|nadgrids)=\S+/g, '')} +towgs84=${wkt.towgs84}`
-      : definition);
+    const resolved = await resolveDefinition(wkt?.kind === 'epsg' ? { ...named, name: `EPSG:${wkt.code}` } : named, state);
+    if (!resolved || wkt?.kind !== 'epsg') return resolved;
+    // The WKT's own datum shift and declared extent still apply to the registry
+    // projection. A shift the WKT states is its author's operation, so it is
+    // as defined even where the registry's own would be an approximation.
+    return wkt.towgs84
+      ? asDefined(withWktExtent(
+        crs.wellKnownText,
+        `${resolved.definition.replace(/\s\+(?:towgs84|nadgrids)=\S+/g, '')} +towgs84=${wkt.towgs84}`,
+      ))
+      : { ...resolved, definition: withWktExtent(crs.wellKnownText, resolved.definition) };
   }
   const explicitCode = extractEpsgCode(crs);
   const aliasCode = explicitCode ? undefined : wellKnownCrsCode(crs.name ?? '');
@@ -114,82 +133,84 @@ export async function resolveProjection(crs: CrsDescriptor): Promise<string | nu
     if (utm) {
       // Retain the declared datum rather than changing NAD27/NAD83/ETRS89
       // coordinates into WGS84 UTM. Cache only the native geographic CRS.
-      const geographic = await resolveProjection({ name: `EPSG:${aliasCode}` });
-      if (!geographic || !isGeographicProj4(geographic)) return null;
+      const geographic = await resolveDefinition({ name: `EPSG:${aliasCode}` }, state);
+      if (!geographic || !isGeographicProj4(geographic.definition)) return null;
       const zoneParameters = utm.match(/\+zone=\d+(?: \+south)?/)?.[0];
       if (!zoneParameters) return null;
-      return projectedDefinitionInMetres(geographic.replace(/\+proj=longlat\b/, `+proj=utm ${zoneParameters}`));
+      return {
+        ...geographic,
+        definition: projectedDefinitionInMetres(geographic.definition.replace(/\+proj=longlat\b/, `+proj=utm ${zoneParameters}`)),
+      };
     }
   }
   const code = explicitCode ?? aliasCode ?? null;
+  const cache = state.definitions;
 
   // 1. Check cache
   // A cached approximate/refused fallback is not terminal for a CRS with a
   // precision grid: a later online attempt may populate the grid cache. Exact
   // cached definitions remain fast and deterministic.
-  if (code && projDefCache.has(code)
-    && (!PRECISION_GRIDS[code] || (!approximateProjectionCodes.has(code) && !refusedProjectionCodes.has(code)))) {
-    return projDefCache.get(code) ?? null;
-  }
+  const cached = code ? cache.get(code) : undefined;
+  if (cached && (!PRECISION_GRIDS[code!] || cached.datumShift === 'as-defined')) return cached;
 
   // 2. Precision grid (NTv2/GeoTIFF). For Bessel-based national grids
   // (RD/NL, BD72/BE, OSGB/UK), the +towgs84 approximation that the bundled
   // entries carry is off by 80-200 m. proj4js can consume PROJ's GeoTIFF
   // datum-shift grids — load and register, then use a +nadgrids-based
   // proj4 string for sub-decimeter accuracy.
+  // A listed precision grid is a required operation for placement: without
+  // it, the bundled Helmert below may still serve a map preview, but is
+  // never an exact result and `resolveProjectionOperation` refuses it by default.
+  let gridRequired = false;
   if (code && PRECISION_GRIDS[code]) {
+    gridRequired = true;
     try {
-      const precisionDef = await resolvePrecisionDef(code);
+      const precisionDef = await resolvePrecisionDef(code, state);
       if (precisionDef) {
-        approximateProjectionCodes.delete(code);
-        refusedProjectionCodes.delete(code);
-        projDefCache.set(code, precisionDef);
-        return precisionDef;
+        const exact = asDefined(precisionDef);
+        cache.set(code, exact);
+        return exact;
       }
-      // A listed precision grid is a required operation for placement. Its
-      // bundled Helmert may still be useful for a map preview, but is never an
-      // exact cached result and `resolveProjectionId` must refuse it by default.
-      approximateProjectionCodes.add(code);
     } catch (error) {
-      approximateProjectionCodes.add(code);
-      console.warn(`[reproject] precision grid resolution failed for EPSG:${code}, falling back`, error);
+      reportCrsDiagnostic(`[reproject] precision grid resolution failed for EPSG:${code}, falling back`, error);
     }
   }
+  /** A grid-listed CRS without its grid is at best an approximation. */
+  const withoutGrid = (resolved: ResolvedDefinition): ResolvedDefinition =>
+    gridRequired && resolved.datumShift === 'as-defined' ? { ...resolved, datumShift: 'helmert-approximation' } : resolved;
 
   // 3. Bundled EPSG index (primary source — all 7000+ codes)
   if (code) {
     try {
       const entry = await lookupEpsgByCode(code);
       if (entry?.proj4) {
-        const sanitized = sanitizeProj4(entry.proj4, code, entry.datum);
-        projDefCache.set(code, sanitized);
+        const sanitized = withoutGrid(sanitizeProj4(entry.proj4, code, entry.datum));
+        cache.set(code, sanitized);
         return sanitized;
       }
-    } catch {
-      // EPSG index not loaded yet, continue to fallbacks
+    } catch (error) {
+      reportCrsDiagnostic(`[reproject] EPSG index lookup failed for EPSG:${code}`, error);
     }
   }
 
   // 4. UTM zone heuristic — check mapZone, name, description, AND mapProjection
   const utm = utmDefinitionFromMetadata(crs);
   if (utm) {
-    if (code) projDefCache.set(code, utm);
-    return utm;
+    const resolved = withoutGrid(asDefined(utm));
+    if (code) cache.set(code, resolved);
+    return resolved;
   }
 
-  // 5. Last resort — the host's EPSG definition loader (epsg.io in the viewer)
+  // 5. Last resort — the engine's EPSG definition loader (epsg.io in the viewer)
   if (code) {
-    const raw = await crsLoaders().epsgDefinition?.(code) ?? null;
+    const raw = await state.loaders.epsgDefinition?.(code) ?? null;
     // We don't have a bundled EpsgIndexEntry here (otherwise we'd have hit
-    // step 2), so fall back to parsing the datum name out of the proj4
-    // string itself when possible. `+datum=` is rare in modern proj4 output;
-    // the typical hint is `+ellps=` which we already accept as a weak signal
-    // inside DATUM_TOWGS84 keys above.
+    // step 3), so there is no datum name to key a fallback shift on.
     // Only positive-cache a successful result, so a transient network
     // failure (offline/CDN hiccup/timeout) can be retried later instead of
     // permanently poisoning this EPSG code for the rest of the session.
-    const fetched = raw ? sanitizeProj4(raw, code, null) : null;
-    if (fetched) projDefCache.set(code, fetched);
+    const fetched = raw ? withoutGrid(sanitizeProj4(raw, code, null)) : null;
+    if (fetched) cache.set(code, fetched);
     return fetched;
   }
 
@@ -223,11 +244,11 @@ export async function resolveProjectionOperation(
 ): Promise<ProjectionOperation> {
   if (!/^EPSG:\d+$/i.test(id.trim())) return { kind: 'refused', reason: 'unresolvable' };
   const canonical = id.trim().toUpperCase();
-  const code = canonical.slice('EPSG:'.length);
-  const definition = await resolveProjection({ name: canonical });
-  if (!definition) return { kind: 'refused', reason: 'unresolvable' };
-  if (refusedProjectionCodes.has(code)) return { kind: 'refused', reason: 'required-grid-unavailable' };
-  if (approximateProjectionCodes.has(code)) {
+  const resolved = await resolveDefinition({ name: canonical }, defaultEngineState());
+  if (!resolved) return { kind: 'refused', reason: 'unresolvable' };
+  const { definition, datumShift } = resolved;
+  if (datumShift === 'grid-unavailable') return { kind: 'refused', reason: 'required-grid-unavailable' };
+  if (datumShift === 'helmert-approximation') {
     return options.allowApproximate
       ? { kind: 'approximate', definition, provenance: 'helmert-fallback' }
       : { kind: 'refused', reason: 'approximation-not-authorized' };

@@ -4,20 +4,14 @@
 
 /**
  * Datum-shift fallbacks for definitions whose canonical datum operation is a
- * grid file proj4js cannot read, and the record of which EPSG codes resolved
- * through such a fallback.
+ * grid file proj4js cannot read. Each result says which fallback it took, so
+ * the caller holds that verdict together with the definition.
  */
 
-// Cache resolved projection definitions (from any source).
-export const projDefCache = new Map<string, string | null>();
-// Definitions that were made usable by injecting a Bursa-Wolf approximation
-// after their exact browser grid was unavailable. Map display may opt into
-// these; federation placement must name that compromise explicitly.
-export const approximateProjectionCodes = new Set<string>();
-// A browser cannot make a horizontal datum operation from a required grid when
-// it has neither that grid nor a documented replacement.  Keep the display
-// definition separately, but never let placement silently use it.
-export const refusedProjectionCodes = new Set<string>();
+import { reportCrsDiagnostic } from './diagnostics.js';
+import type { ResolvedDefinition } from './engine-state.js';
+
+// Diagnostics are reported once per code or datum per process.
 const approxDatumWarningCache = new Set<string>();
 // Track datums where the bundled proj4 lacked any datum-shift parameters and we
 // couldn't supply a fallback — surfaced via diagnostics, warned once per datum.
@@ -90,8 +84,12 @@ const DATUM_TOWGS84: Record<string, string> = {
  * Skipped (returns input verbatim) when:
  *   - No +nadgrids reference (or it's the no-op `@null`)
  *   - A +towgs84 is already present (proj4 will honour it)
+ *
+ * `datumShift` is `helmert-approximation` when a 7-parameter shift stands in
+ * for a grid (or for a shift the definition omits), `grid-unavailable` when a
+ * required grid was dropped with nothing to replace it.
  */
-export function sanitizeProj4(def: string, code?: string | null, datumName?: string | null): string {
+export function sanitizeProj4(def: string, code?: string | null, datumName?: string | null): ResolvedDefinition {
   const stripNadgrids = (s: string) => s.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim();
   const hasNadgrids = def.includes('+nadgrids') && !def.includes('+nadgrids=@null');
   const hasTowgs84 = /\+towgs84=/.test(def);
@@ -101,8 +99,9 @@ export function sanitizeProj4(def: string, code?: string | null, datumName?: str
   // result as an ordinary definition, allowing federation to claim exact CRS
   // placement while silently losing metres of accuracy.
   if (hasTowgs84) {
-    if (hasNadgrids && code) approximateProjectionCodes.add(code);
-    return hasNadgrids ? stripNadgrids(def) : def;
+    return hasNadgrids
+      ? { definition: stripNadgrids(def), datumShift: 'helmert-approximation' }
+      : { definition: def, datumShift: 'as-defined' };
   }
 
   const datumKey = datumName?.trim().toLowerCase() ?? '';
@@ -114,7 +113,7 @@ export function sanitizeProj4(def: string, code?: string | null, datumName?: str
     // already be WGS84-aligned, or simply unknown to us).
     if (hasNadgrids && datumKey && !unknownDatumWarningCache.has(datumKey)) {
       unknownDatumWarningCache.add(datumKey);
-      console.warn(
+      reportCrsDiagnostic(
         `[reproject] EPSG:${code ?? '?'} ("${datumName}") needs browser-unavailable `
         + 'datum grids and has no known +towgs84 fallback for its datum. '
         + 'Positions will be aligned to the source CRS but may be tens of metres '
@@ -122,8 +121,9 @@ export function sanitizeProj4(def: string, code?: string | null, datumName?: str
         + 'DATUM_TOWGS84 in packages/geo/src/sanitize-proj4.ts.',
       );
     }
-    if (hasNadgrids && code) refusedProjectionCodes.add(code);
-    return hasNadgrids ? stripNadgrids(def) : def;
+    return hasNadgrids
+      ? { definition: stripNadgrids(def), datumShift: 'grid-unavailable' }
+      : { definition: def, datumShift: 'as-defined' };
   }
 
   // We have a +towgs84 for this datum and the def carries none. Apply it. This
@@ -133,13 +133,15 @@ export function sanitizeProj4(def: string, code?: string | null, datumName?: str
   // all and the model lands hundreds of metres off the basemap. (#1357)
   if (code && !approxDatumWarningCache.has(code)) {
     approxDatumWarningCache.add(code);
-    console.warn(
+    reportCrsDiagnostic(
       `[reproject] EPSG:${code} ("${datumName}") uses an approximate +towgs84 `
       + 'datum shift (browser-unavailable precision grid). '
       + 'Expect metre-level XY differences for some locations.',
     );
   }
 
-  if (code) approximateProjectionCodes.add(code);
-  return `${hasNadgrids ? stripNadgrids(def) : def.replace(/\s+/g, ' ').trim()} ${towgs84}`;
+  return {
+    definition: `${hasNadgrids ? stripNadgrids(def) : def.replace(/\s+/g, ' ').trim()} ${towgs84}`,
+    datumShift: 'helmert-approximation',
+  };
 }

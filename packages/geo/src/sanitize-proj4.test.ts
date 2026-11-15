@@ -18,7 +18,7 @@ describe('sanitizeProj4 datum shift (#1357)', () => {
     // packages/data/src/generated/epsg-index.generated.ts. Using the plain
     // "S-JTSK" name here made this fixture unable to observe a datum-key
     // lookup miss: production always passes the "(Ferro)" form for 2065.
-    const out = sanitizeProj4(ferro, '2065', 'S-JTSK (Ferro)');
+    const out = sanitizeProj4(ferro, '2065', 'S-JTSK (Ferro)').definition;
     assert.ok(out.includes(SJTSK), `expected +towgs84 to be injected, got: ${out}`);
     assert.ok(out.includes('+pm=ferro'), 'must preserve the rest of the definition');
   });
@@ -29,25 +29,25 @@ describe('sanitizeProj4 datum shift (#1357)', () => {
     // 'osgb 1936' key below.
     const OSGB = '+towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489';
     const withGrid = '+proj=tmerc +ellps=airy +nadgrids=OSTN15_NTv2_OSGBtoETRS.gsb +units=m +no_defs';
-    const out = sanitizeProj4(withGrid, '27700', 'OSGB36');
+    const out = sanitizeProj4(withGrid, '27700', 'OSGB36').definition;
     assert.ok(!out.includes('+nadgrids'), 'must drop the unusable grid reference');
     assert.ok(out.includes(OSGB), `expected OSGB36 +towgs84 to be injected, got: ${out}`);
   });
 
   it('strips an unusable +nadgrids and substitutes the datum +towgs84', () => {
     const withGrid = '+proj=krovak +ellps=bessel +nadgrids=cz_cuzk_CR-2005.tif +units=m +no_defs';
-    const out = sanitizeProj4(withGrid, '5514', 'S-JTSK');
+    const out = sanitizeProj4(withGrid, '5514', 'S-JTSK').definition;
     assert.ok(!out.includes('+nadgrids'), 'must drop the grid reference');
     assert.ok(out.includes(SJTSK), 'must add the +towgs84 fallback');
   });
 
   it('leaves an existing +towgs84 untouched', () => {
     const def = '+proj=utm +zone=33 +ellps=bessel +towgs84=1,2,3,0,0,0,0 +units=m +no_defs';
-    assert.equal(sanitizeProj4(def, '9999', 'S-JTSK'), def);
+    assert.equal(sanitizeProj4(def, '9999', 'S-JTSK').definition, def);
   });
 
   it('leaves a WGS84-aligned def (unknown datum) unchanged', () => {
     const def = '+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs';
-    assert.equal(sanitizeProj4(def, '32632', 'WGS 84'), def);
+    assert.equal(sanitizeProj4(def, '32632', 'WGS 84').definition, def);
   });
 });

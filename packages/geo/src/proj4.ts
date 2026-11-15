@@ -8,7 +8,8 @@
  * These functions hand out and take proj4 definitions directly, which is what
  * a host needs when it calls proj4 itself (the viewer's globe placement does).
  * A definition returned for a WKT is a handle registered with the proj4
- * instance this package imports; it is only valid in that instance.
+ * instance this package imports; it is only valid in that instance. Every
+ * function here uses the default engine (`configureCrsLoaders`).
  */
 
 export {
@@ -24,6 +25,7 @@ export {
   type LatLon,
 } from './reproject-point.js';
 export { resolveMapUnitToMetreScale } from './map-unit.js';
+export { projectedUnitToMetres } from './projected-units.js';
 export {
   computeGridConvergence,
   computeGridFrame,

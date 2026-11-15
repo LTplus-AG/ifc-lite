@@ -1351,8 +1351,10 @@ Direct placement translations return the final local coordinates after fitting a
 Hosted door and window types are reused only when their resolved IFC operation
 or partitioning and user-defined text match. An enumeration and free text with
 the same display label remain distinct types. Low-level `duplicateInStore`
-callers supplying an association `relId` must also supply its `relatedIds`;
-incomplete associations are refused before any records are written.
+callers supplying an `IfcRelDefinesByType` association's `relId` must also
+supply a nonempty `relatedIds` list containing its current `RelatedObjects`.
+Missing or empty lists are refused before any records are written. Material
+associations retain their `relId`-only input form.
 
 Attachment notices identify the element kind so a column, beam, member or
 curtain wall is described in its own terms. Raw authored doors or windows with

@@ -234,7 +234,7 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
 
     if let (Some(crs), Some(&id)) = (&g.projected_crs, crs_ids.first()) {
         // Text is text (`$`, `*`, `#12` stay strings, as on the create path); only an empty value clears the slot.
-        let mut edits: Vec<(String, String)> = named_edits(
+        let raw = named_edits(
             crs,
             &[
                 ("name", "Name"),
@@ -244,11 +244,10 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
                 ("mapProjection", "MapProjection"),
                 ("mapZone", "MapZone"),
             ],
-        )
-        .into_iter()
-        .map(|(attr, text)| if text.is_empty() { (attr, "$".to_string()) } else { (attr, text) })
-        .collect();
-        let text_attrs: Vec<String> = edits.iter().filter(|(_, v)| v != "$").map(|(a, _)| a.clone()).collect();
+        );
+        // The text is text whatever it looks like: only an EMPTY value is the `$` token, a text that spells `$` is quoted.
+        let text_attrs: Vec<String> = raw.iter().filter(|(_, text)| !text.is_empty()).map(|(attr, _)| attr.clone()).collect();
+        let mut edits: Vec<(String, String)> = raw.into_iter().map(|(attr, text)| if text.is_empty() { (attr, "$".to_string()) } else { (attr, text) }).collect();
         if let Some(unit) = crs.get("mapUnit") {
             let value = map_unit_token(pass, unit)?;
             edits.push(("MapUnit".to_string(), value));

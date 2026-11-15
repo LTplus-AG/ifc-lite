@@ -11,6 +11,9 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { zipSync, strToU8 } from 'fflate';
+import { Scene, type Renderer } from '@ifc-lite/renderer';
+import { setGlobalRendererRef } from './useBCF.js';
+import { recordModelLoadedSnapshot, getModelLoadedSnapshot } from '@/utils/loadTelemetry.js';
 import { IfcServerClient } from '@ifc-lite/server-client';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
@@ -32,7 +35,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   useViewerStore.getState().activeLoadCanceller?.();
-  await act(async () => root.unmount()); container.remove(); mock.restoreAll();
+  await act(async () => root.unmount()); container.remove(); setGlobalRendererRef({ current: null }); mock.restoreAll();
 });
 
 for (const archive of [false, true]) for (const memory of [8, 4]) {
@@ -47,6 +50,12 @@ for (const archive of [false, true]) for (const memory of [8, 4]) {
     Object.defineProperty(file, 'arrayBuffer', { value: () => { reads++; return read(); } });
     Object.defineProperty(file, 'stream', { value: () => { reads++; return stream(); } });
     const models = useViewerStore.getState().models, active = useViewerStore.getState().activeModelId;
+    const snapshot = { fileSizeMB: 7, totalTriangles: 12 };
+    recordModelLoadedSnapshot(snapshot);
+    const scene = new Scene();
+    scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [] });
+    const providerWrites = mock.method(scene, 'setColdGeometryProvider');
+    setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer });
     const errors: string[] = [];
     const realShared = globalThis.SharedArrayBuffer;
     const allocations: number[] = [];
@@ -65,6 +74,8 @@ for (const archive of [false, true]) for (const memory of [8, 4]) {
       assert.deepEqual(allocations.filter(size => size >= 1024 * 1024), [], 'no file-sized source allocation');
       assert.equal(useViewerStore.getState().models, models, 'Cancel/refusal preserves existing model identities');
       assert.equal(useViewerStore.getState().activeModelId, active);
+      assert.equal(getModelLoadedSnapshot(), snapshot, 'Cancel/refusal retains the displayed model telemetry');
+      assert.equal(providerWrites.mock.callCount(), 0, 'Cancel/refusal must not invalidate the displayed cold geometry');
       assert.equal(useViewerStore.getState().loading, false);
       if (memory === 4) { assert.equal(errors.length, 1); assert.match(errors[0], /local processing memory budget/); }
       else { assert.equal(errors.length, 0); assert.equal(useViewerStore.getState().error, null); }

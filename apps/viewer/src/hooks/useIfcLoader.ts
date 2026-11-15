@@ -321,7 +321,7 @@ export function useIfcLoader() {
             console.warn('[useIfc] cold-tier drain before federated add failed:', err));
           if (isStale()) { releaseCanceller(); return; }
         }
-        scene.setColdGeometryProvider(null);
+        if (target.kind === 'federated') scene.setColdGeometryProvider(null);
       }
     }
 
@@ -329,13 +329,6 @@ export function useIfcLoader() {
     const totalStartTime = performance.now();
     const trace = loadTracer.startLoad(modelId, { journey: target.kind === 'federated' ? 'J4' : 'J1', modelKind: target.kind }, totalStartTime); // #6956
     publishLoadTrace(modelId, trace); // #6979: streaming upload, finalize, BVH and search spans land on this load
-
-    // #2624: a primary replaces the scene, so clear device-loss telemetry now.
-    // A failure before captureModelLoaded must not describe removed geometry.
-    // Federated adds keep the last completed snapshot until their own capture.
-    if (target.kind === 'primary') {
-      clearModelLoadedSnapshot();
-    }
 
     // Records the tier the WASM tessellation path actually ran at, for the
     // resource-retry decision in the catch. Declared out here (not in the try)
@@ -437,6 +430,8 @@ export function useIfcLoader() {
         // Reset all viewer state before loading new file — PRIMARY ONLY. A
         // federated add must never wipe model #1; it joins the existing map.
         if (target.kind === 'primary') {
+          clearModelLoadedSnapshot();
+          getGlobalRenderer()?.getScene()?.setColdGeometryProvider(null);
           resetViewerState();
           clearAllModels();
           // A non-federated load has no layer stack behind it (#1717).

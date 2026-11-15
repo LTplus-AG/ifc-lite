@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { detectFormat } from '@ifc-lite/parser';
 import { headIsZip } from './sourceBuffers';
+import { archiveAllowsServer } from './archiveServerAdmission';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { resolve as t } from '@/i18n/registry';
 import { inspectLocalIfcAdmission } from './localIfcAdmission';
@@ -69,10 +70,9 @@ export function createLocalIfcLoadAdmission(file: File, options: {
       // Ordinary files keep the loader's existing first-read/error lifecycle.
       // Only a potentially refused or consent-requiring source needs a read
       // before scene replacement; the header still decides whether it is IFC.
-      const inspectHeader = () => preflightLocalIfcSource(file, { ...options, admit: (bytes, head) => {
-        // Archive resources are not known until unwrap; do not lose textures by
-        // sending an uninspected archive through the plain-IFC server route.
-        sourceAllowsServer = !headIsZip(head);
+      const inspectHeader = () => preflightLocalIfcSource(file, { ...options, admit: async (bytes, head) => {
+        // Inspect bounded ZIP metadata, never the compressed model body.
+        sourceAllowsServer = !headIsZip(head) || await archiveAllowsServer(file);
         return admit(bytes);
       } });
       try { return inspectLocalIfcAdmission(file.size) ? inspectHeader() : undefined; }

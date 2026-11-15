@@ -18,7 +18,7 @@ export interface FetchResponseLike {
   status: number;
   arrayBuffer(): Promise<ArrayBuffer>;
   body?: { getReader(): ReadableStreamDefaultReader<Uint8Array>; cancel?(reason?: unknown): Promise<void> } | null;
-  /** Used for `Content-Length`, which refuses an oversized response before its body is read. */
+  /** Not used for the budget (Content-Length is the encoded size); kept so a response from `fetch` is accepted as is. */
   headers?: { get(name: string): string | null };
   /** Final URL after redirects; re-checked against the URL policy when it differs from the requested one. */
   url?: string;
@@ -183,12 +183,9 @@ export class BudgetedFetcher {
   /** Read a response body, stopping as soon as it would cross the remaining byte budget. */
   private async readBody(res: FetchResponseLike): Promise<Uint8Array> {
     const remaining = (): number => this.maxBytes - this.stats.bytes;
-    const declared = res.headers?.get('content-length');
-    // Content-Length is the encoded size; the decoded body is at least as large, so it can only refuse early, never admit.
-    if (declared && /^\d+$/.test(declared) && Number(declared) > remaining()) {
-      await res.body?.cancel?.().catch(() => undefined);
-      this.refuse();
-    }
+    // Content-Length is deliberately not used to refuse early: it is the encoded transfer size, which for a small or
+    // incompressible gzip body exceeds the decoded size the budget counts, and a browser may hide Content-Encoding.
+    // The stream below is stopped at the exact decoded count instead.
     if (!res.body || typeof res.body.getReader !== 'function') {
       const whole = new Uint8Array(await res.arrayBuffer());
       if (whole.byteLength > remaining()) this.refuse();

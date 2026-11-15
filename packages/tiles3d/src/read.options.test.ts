@@ -101,3 +101,16 @@ describe('glTF JSON content is not mistaken for a tileset (#10404 review)', () =
     expect(detectContentKind(enc({ asset: { version: '1.0' }, geometricError: 1, root: {} }))).toBe('tileset');
   });
 });
+
+describe('a GLB shorter than its header declares is reported, not clamped (#10404 review, round 2)', () => {
+  it('drops the last four bytes of a valid GLB: an invalid-content issue, no features, not complete', async () => {
+    const glb = quadGlb();
+    const cut = glb.slice(0, glb.byteLength - 4);
+    const fetch = mapFetch({ [`${BASE}tileset.json`]: tileset('a.glb'), [`${BASE}a.glb`]: cut });
+    const res = await readTilesetRegion({ url: `${BASE}tileset.json`, region: WORLD, fetch, featureFilter: 'tiles' });
+    expect(res.complete).toBe(false);
+    expect(res.features).toEqual([]);
+    expect(res.issues).toMatchObject([{ severity: 'error', code: 'invalid-content' }]);
+    expect(res.issues[0].message).toMatch(/truncated/);
+  });
+});

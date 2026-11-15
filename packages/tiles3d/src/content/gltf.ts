@@ -92,7 +92,10 @@ export function parseGlb(bytes: Uint8Array): Gltf {
   const view = dataView(bytes);
   const version = view.getUint32(4, true);
   if (version !== 2) throw invalid(`binary glTF version ${version} is not supported (glTF 2.0 only)`);
-  const length = Math.min(view.getUint32(8, true), bytes.byteLength);
+  const declared = view.getUint32(8, true);
+  // A header that declares more than was received is a truncated download, not a smaller file: report it.
+  if (declared > bytes.byteLength) throw invalid(`binary glTF is truncated: its header declares ${declared} bytes but ${bytes.byteLength} were received`);
+  const length = declared;
   let offset = 12;
   let json: GltfDocument | undefined;
   let bin: Uint8Array | undefined;

@@ -76,12 +76,19 @@ describe('maxBytes bounds every response (#10404 review, item 2)', () => {
     expect(res.stats.bytes).toBeLessThanOrEqual(2_500_000);
   });
 
-  it('refuses on Content-Length before reading the body', async () => {
+  it('does not trust Content-Length: an encoded size above the decoded size still reads, an endless body is still stopped', async () => {
+    const glb = quadGlb();
+    // Encoded (gzip) size 120 bytes above a tile that decodes to glb.byteLength: it fits the budget exactly.
+    const small = streamResponse(() => chunked(glb, 16), { contentLength: glb.byteLength + 120 });
+    const fits = await read(routes({ [ROOT]: () => ok(json(tileset([leaf('a.glb')]))), [`${BASE}a.glb`]: () => small }), { maxBytes: glb.byteLength + json(tileset([leaf('a.glb')])).byteLength });
+    expect(fits.truncated).toBe(false);
+    expect(fits.complete).toBe(true);
+    expect(fits.features).toHaveLength(2);
+
     const resp = streamResponse(() => endless(1024), { contentLength: 10_000_000 });
-    const fetch = routes({ [ROOT]: () => ok(json(tileset([leaf('a.glb')]))), [`${BASE}a.glb`]: () => resp });
-    const res = await read(fetch, { maxBytes: 1_000_000 });
+    const res = await read(routes({ [ROOT]: () => ok(json(tileset([leaf('a.glb')]))), [`${BASE}a.glb`]: () => resp }), { maxBytes: 1_000_000 });
     expect(res.truncation).toEqual({ reason: 'bytes', pendingUrls: [`${BASE}a.glb`] });
-    expect(resp.readerOpened()).toBe(false);
+    expect(res.stats.bytes).toBeLessThanOrEqual(1_000_000);
   });
 
   it('reads a streamed tile in full when it fits', async () => {

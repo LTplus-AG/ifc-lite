@@ -35,6 +35,24 @@ async function session(readOnly = false) {
   } };
 }
 
+it('#9352 MCP reads a copied top and actual height when floor Elevation differs from placement', async () => {
+  const { registry, call } = await session();
+  const model = registry.get('alpha')!, S = model.bim.store;
+  const home = S.listStoreyLevels('alpha')[0].expressId;
+  const middle = S.addStorey('alpha', { Name: 'Middle', Elevation: 3 });
+  const upper = S.addStorey('alpha', { Name: 'Upper', Elevation: 6 });
+  S.setPositionalAttribute(middle, 9, { real: 2.75 });
+  const wall = S.addWall('alpha', home, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 6,
+    TopConstraint: { kind: 'storey', storeyId: upper.expressId } });
+  const [copy] = S.copyElements('alpha', [wall.expressId], [{ targetStoreyId: middle.expressId }]);
+  const result = await call('get_entity', { express_id: copy.expressId, include: ['properties', 'quantities'] });
+  expect(result.isError).not.toBe(true);
+  expect(result.structuredContent?.properties).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'IfcLite_StoreyAttachment',
+    properties: expect.arrayContaining([expect.objectContaining({ name: 'TopConstraint', value: model.bim.entity(upper)!.globalId })]) })]));
+  expect(result.structuredContent?.quantities).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Qto_WallBaseQuantities',
+    quantities: expect.arrayContaining([expect.objectContaining({ name: 'Height', value: 3 })]) })]));
+});
+
 describe('#9013 storey tools', () => {
   it('adds a storey from its neighbour, re-levels it, exports it and undoes each step', async () => {
     const { registry, call } = await session();

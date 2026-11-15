@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { uniqueWallJoins, wallEndpointsJoined } from '../lib/oracles.mjs';
+import { uniqueWallJoins, fourWallJoins } from '../lib/oracles.mjs';
 import { task } from '../lib/driver.mjs';
 import { escape, oracleModel, tool } from '../lib/model-ui.mjs';
 
@@ -37,7 +37,7 @@ export default {
           { name: '4 walls', ok: axes.length === 4, detail: `${axes.length} walls` },
           { name: 'corners within 50 mm of the clicked points', ok: onTarget, detail: axes.map((a) => `${fmt(a.start)}->${fmt(a.end)}`).join(' ') },
           { name: 'loop closed exactly (snapped to the first point)', ok: closed, detail: closed ? 'closed' : 'open' },
-          { name: 'corners auto-joined (4 IfcRelConnectsPathElements)', ok: joins >= 4 && wallEndpointsJoined(step), detail: `${joins} joins` },
+          { name: 'corners auto-joined (4 IfcRelConnectsPathElements)', ok: fourWallJoins(step), detail: `${joins} joins` },
         ],
         metrics: { cameraJumps: s.counters.cameraJumps },
       };

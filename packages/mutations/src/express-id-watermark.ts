@@ -22,8 +22,8 @@ const watermarks = new WeakMap<object, WatermarkKey>();
 
 function watermarkKey(store: MutationStoreShape, max: number): WatermarkKey {
   // @raw-entity-enumeration-ok index identities and sizes only; no ids are read
-  const byId = store.entityIndex.byId, deferred = store.deferredEntityIndex, table = store.entities?.expressId;
-  return { byId, byIdSize: byId.size, deferred, deferredSize: deferred?.size ?? 0, table, tableLength: table?.length ?? 0, max };
+  const byId = store.entityIndex?.byId, deferred = store.deferredEntityIndex, table = store.entities?.expressId;
+  return { byId, byIdSize: byId?.size ?? 0, deferred, deferredSize: deferred?.size ?? 0, table, tableLength: table?.length ?? 0, max };
 }
 
 /**
@@ -55,8 +55,12 @@ export function rescanHighestExpressId(store: MutationStoreShape): number {
 
 function scanHighestExpressId(store: MutationStoreShape): number {
   let max = 0;
+  // Indexless stores (IFCX, collab tables) own their table rows, read below.
   // @raw-entity-enumeration-ok allocator watermark must include tombstoned source IDs so a new entity never reuses one
-  for (const id of store.entityIndex.byId.keys()) {
+  const index = store.entityIndex?.byId;
+  const compactMax = index && 'maxExpressId' in index ? index.maxExpressId : undefined;
+  if (typeof compactMax === 'number') max = compactMax;
+  else if (index) for (const id of index.keys()) {
     if (id > max) max = id;
   }
   const deferred = store.deferredEntityIndex;
@@ -66,7 +70,11 @@ function scanHighestExpressId(store: MutationStoreShape): number {
     }
   }
   const table = store.entities?.expressId;
-  if (table) {
+  // Compact stores derive table rows from the same primary refs (columnar-parser)
+  // or fill table + compact index together (viewer/serverEntityTable). Deferred
+  // property atoms are separate and checked above. Only map/indexless stores
+  // (e.g. IFCX/collab) can have table-only IDs.
+  if (table && typeof compactMax !== 'number') {
     for (let i = 0; i < table.length; i++) {
       const id = table[i];
       if (id !== undefined && id > max) max = id;

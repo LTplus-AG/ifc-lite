@@ -11,7 +11,7 @@ const PAGE_MM = 100;
 const PT_PER_MM = 72 / 25.4;
 const CAP_HEIGHT_EM = 0.718;
 const DESCENT_EM = 0.207;
-const LINE_HEIGHT = 1.3;
+const LINE_HEIGHT = 5 / 3; // AutoCAD MTEXT pitch at spacing factor 1
 // Drawing metres → page mm, y up in the drawing and down on the page.
 const mapPoint = (x: number, y: number) => ({ x: 50 + x * 10, y: 50 - y * 10 });
 const metresToMm = 10;

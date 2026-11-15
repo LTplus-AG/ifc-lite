@@ -7,6 +7,7 @@ import assert from 'node:assert';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { createModelSlice, type ModelSlice } from './modelSlice.js';
+import type { ViewerState } from '../index.js';
 import type { FederatedModel } from '../types.js';
 import { __resetLiveMarkupCacheForTests } from './drawing2DSlice.markupTransition.js';
 import { getDefaultDrawing2DState, type Measure2DResult } from './drawing2DSlice.js';
@@ -24,6 +25,7 @@ import { getDefaultDrawing2DState, type Measure2DResult } from './drawing2DSlice
  * seeds it rather than in the slice.
  */
 interface ModelHarnessCrossState {
+  mutationViews: ViewerState['mutationViews'];
   ifcDataStore: IfcDataStore | null;
   geometryResult: GeometryResult | null;
   meshColorBackup: Map<number, [number, number, number, number]> | null;
@@ -126,6 +128,7 @@ describe('ModelSlice', () => {
     );
     state = {
       ...slice,
+      mutationViews: new Map(),
       ifcDataStore: null,
       geometryResult: null,
       meshColorBackup: null,

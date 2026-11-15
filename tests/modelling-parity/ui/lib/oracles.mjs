@@ -67,10 +67,15 @@ export function uniqueWallJoins(step) {
 export function wallEndpointsJoined(step) {
   const walls = new Set(step.of('IFCWALL').map(w => w.id));
   if (!walls.size) return false;
+  const axes=new Map(step.wallAxes().map(w=>[w.id,w]));
+  if (walls.size===4 && step.of('IFCRELCONNECTSPATHELEMENTS').length!==4) return false;
   const joined = new Set();
   for (const rel of step.of('IFCRELCONNECTSPATHELEMENTS')) {
     const a = rel.args?.[5]?.ref, b = rel.args?.[6]?.ref;
-    if (a === b || !walls.has(a) || !walls.has(b)) continue;
+    if (a === b || !walls.has(a) || !walls.has(b)) return false;
+    const endpoint=(id,kind)=>kind==='ATSTART'?axes.get(id)?.start:kind==='ATEND'?axes.get(id)?.end:undefined;
+    const p=endpoint(a,rel.args?.[10]?.enum), q=endpoint(b,rel.args?.[9]?.enum);
+    if (!p || !q || p.length!==2 || q.length!==2 || ![...p,...q,axes.get(a).z,axes.get(b).z].every(Number.isFinite) || Math.hypot(p[0]-q[0],p[1]-q[1])>.001 || Math.abs(axes.get(a).z-axes.get(b).z)>.001) return false;
     for (const [id, endpoint] of [[a, rel.args?.[10]?.enum], [b, rel.args?.[9]?.enum]]) {
       if (endpoint === 'ATSTART' || endpoint === 'ATEND') joined.add(`${id}:${endpoint}`);
     }
@@ -102,4 +107,42 @@ export function roofGeometry(step, meshes, expected) {
   const roofs = [...step.of('IFCROOF'), ...step.of('IFCSLAB').filter(e => e.args?.[8]?.enum === 'ROOF')];
   if (roofs.length !== 1) return `expected one roof, found ${roofs.length}`;
   return judgeRoof(meshes.get(roofs[0].id)?.parts ?? [], expected);
+}
+
+/** Complete bipartite assignment: export ordering must not change the verdict. */
+export function matchAreas(expected, actual, tolerance) {
+  if (expected.length !== actual.length || ![...expected,...actual].every(Number.isFinite)) return false;
+  const owner = new Map();
+  const assign = (i, visited) => {
+    for (let j = 0; j < actual.length; j++) {
+      if (visited.has(j) || Math.abs(actual[j]-expected[i]) > expected[i]*tolerance) continue;
+      visited.add(j);
+      if (!owner.has(j) || assign(owner.get(j), visited)) { owner.set(j,i); return true; }
+    }
+    return false;
+  };
+  return expected.every((_,i) => assign(i,new Set()));
+}
+
+/** Exactly four distinct corner joins are required for the authored four-wall loop. */
+export function fourWallJoins(step) {
+  const walls=step.of('IFCWALL'), joins=step.of('IFCRELCONNECTSPATHELEMENTS');
+  if(walls.length!==4 || joins.length!==4 || uniqueWallJoins(step)!==4 || !wallEndpointsJoined(step)) return false;
+  const visited=new Set(), pending=[walls[0].id];
+  while(pending.length) {
+    const id=pending.pop();
+    if(visited.has(id)) continue;
+    visited.add(id);
+    for(const rel of joins) {
+      const a=rel.args[5].ref,b=rel.args[6].ref;
+      if(a===id) pending.push(b);
+      if(b===id) pending.push(a);
+    }
+  }
+  if(visited.size!==4) return false;
+  const corners=[];
+  for(const wall of step.wallAxes()) for(const point of [wall.start,wall.end]) {
+    if(!corners.some(p=>Math.hypot(p[0]-point[0],p[1]-point[1],p[2]-wall.z)<=.001)) corners.push([...point,wall.z]);
+  }
+  return corners.length===4;
 }

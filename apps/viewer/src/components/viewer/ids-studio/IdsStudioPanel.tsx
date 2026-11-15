@@ -61,7 +61,7 @@ export function IdsStudioPanel() {
   };
   return <StudioDiagnosticsProvider value={diagnostics}>
     {/* The panel-level shortcuts are a keyboard convenience for the focused panel. */}
-    <div className="flex h-full min-h-0 flex-col text-xs" onKeyDown={onKeyDown} role="presentation" {...tourAnchor(TOUR_ANCHORS.idsStudioPanel)}>
+    <div className="flex h-full min-h-0 flex-col text-xs" onKeyDown={onKeyDown} data-own-history="" role="presentation" {...tourAnchor(TOUR_ANCHORS.idsStudioPanel)}>
       <div className="flex items-center gap-1 border-b border-border px-2 py-1">
         <span className="min-w-0 flex-1 truncate font-semibold" title={doc.ids.info.title}>{doc.ids.info.title || t('idsStudio.outline.untitled')}</span>
         <IconButton label={t('idsStudio.header.undo')} className="h-7 w-7" disabled={!canUndo(state)} onClick={undo}>

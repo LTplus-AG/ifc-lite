@@ -102,8 +102,20 @@ export function spatialReferenceFromIfc(input: IfcSpatialReferenceInput): ModelS
       mapConversionExpressId: input.mapConversion.id,
       projectedCrsExpressId: input.projectedCRS.id,
       mapUnitToMetres: mapUnitScale,
+      ...(input.projectedCRS.mapUnit ? { mapUnit: input.projectedCRS.mapUnit } : {}),
       ...(input.projectedCRS.name ? { projectedCrsName: input.projectedCRS.name } : {}),
       ...(input.projectedCRS.verticalDatum ? { verticalDatum: input.projectedCRS.verticalDatum } : {}),
     }),
   });
+}
+
+/**
+ * True when the reference's IfcProjectedCRS.MapUnit reads as METRE at scale 1.
+ * `@ifc-lite/parser` gives an unresolvable MapUnit exactly that answer, so a
+ * declared metre and an unreadable unit cannot be told apart: callers say the
+ * map unit is assumed to be metres.
+ */
+export function mapUnitAssumedMetres(reference: ModelSpatialReference): boolean {
+  const meta = reference.sourceMetadata;
+  return meta?.format === 'ifc' && meta.mapUnit === 'METRE' && meta.mapUnitToMetres === 1;
 }

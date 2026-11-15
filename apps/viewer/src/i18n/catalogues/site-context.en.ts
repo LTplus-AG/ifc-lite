@@ -18,6 +18,7 @@ export const siteContextEn = {
   'siteContext.section.privacy': 'Requests go from your browser directly to geo.admin.ch, only when you click.',
   'siteContext.section.crsAssumed': 'The CRS was assumed from its name ({crs}).',
   'siteContext.section.heightAssumed': 'This model states no vertical datum; its heights will be taken as LN02.',
+  'siteContext.section.mapUnitAssumed': 'This model\'s map unit reads as metres; an unreadable map unit reads the same, so metres are assumed. Check the map unit if the context lands in the wrong place.',
   'siteContext.section.stats': '{requests} requests, {size}, {seconds} s ({cacheHits} from cache)',
   'siteContext.status.idle': 'Not loaded',
   'siteContext.status.fetching': 'Loading…',

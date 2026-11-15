@@ -135,7 +135,7 @@ export async function getEpsgAreaOfUse(code: string | number): Promise<EpsgAreaO
   return (await getEpsgAreasOfUse(code))?.[0];
 }
 
-/** Every current area of use of an EPSG code; most CRSs have one. */
+/** Every distinct current area-of-use box of an EPSG code (usages with identical boxes are stored once); most CRSs have one. */
 export async function getEpsgAreasOfUse(code: string | number): Promise<EpsgAreaOfUse[] | undefined> {
   const data = await loadExtentsData();
   const row = data.rows[codeKey(code)];

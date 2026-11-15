@@ -5,6 +5,9 @@
 import type { Catalogue } from '../../registry';
 
 export const propertiesRu = {
+  "properties.spatialLocation.storeyLabel": "Этаж",
+  "properties.spatialLocation.elevationLabel": "Отметка этажа",
+  "properties.spatialLocation.heightLabel": "Высота этажа",
   "properties.panel.occurrenceQuantitiesHeading": "Количественные характеристики экземпляра",
   "properties.panel.typeQuantitiesHeading": "Унаследованные количественные характеристики типа",
   "properties.propertySet.unnamed": "Безымянный набор свойств",

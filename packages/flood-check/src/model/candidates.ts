@@ -68,6 +68,8 @@ const COMMON_PSET: Record<string, string> = {
   IFCRAMP: 'Pset_RampCommon',
   IFCRAMPFLIGHT: 'Pset_RampFlightCommon',
   IFCSLAB: 'Pset_SlabCommon',
+  IFCSLABSTANDARDCASE: 'Pset_SlabCommon',
+  IFCSLABELEMENTEDCASE: 'Pset_SlabCommon',
 };
 
 export interface CandidateContext {
@@ -255,7 +257,7 @@ function collectOpenings(ctx: CandidateContext, out: CandidateFact[]): void {
     if (!host) continue;
     const at = openingExtent(ctx, entity);
     if (!at) continue;
-    if (host.type === 'IFCSLAB') {
+    if (host.type === 'IFCSLAB' || host.type === 'IFCSLABSTANDARDCASE' || host.type === 'IFCSLABELEMENTEDCASE') {
       const hostAt = placed(ctx, host);
       if (!hostAt || hostAt.level > ctx.groundLevel + 0.01) continue;
       const fact = base(ctx, entity, 'slab-opening', { position: at.position, level: hostAt.level }, 'unfilled opening in a slab at or below the ground storey', 'host-slab-top');

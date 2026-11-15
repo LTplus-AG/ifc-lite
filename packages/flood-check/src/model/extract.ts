@@ -132,7 +132,8 @@ function deriveFootprint(
   const rings: MapPoint[][] = [];
   const from: number[] = [];
   let voids = false;
-  for (const id of reader.idsOfType('IFCSLAB')) {
+  // Ids are keyed by the raw STEP name: the standard and elemented cases are separate keys.
+  for (const id of [...reader.idsOfType('IFCSLAB'), ...reader.idsOfType('IFCSLABSTANDARDCASE'), ...reader.idsOfType('IFCSLABELEMENTEDCASE')]) {
     if (ground.expressId !== null && storeyOf(id) !== ground.expressId) continue;
     const kind = asEnum(reader.attr(reader.entity(id), 'PredefinedType'));
     if (kind && !['FLOOR', 'BASESLAB', 'NOTDEFINED', 'USERDEFINED'].includes(kind)) continue;

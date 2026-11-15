@@ -125,6 +125,19 @@ describe('technical equipment', () => {
   });
 });
 
+describe('standard-case slabs', () => {
+  it('an IfcSlabStandardCase gives the slab outline like an IfcSlab', async () => {
+    const extra = (b: Extra) => {
+      const solid = b.rectExtrusion(10, 5, 20, 10, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
+      const slab = b.add(`IFCSLABSTANDARDCASE(${b.guid()},$,'Bodenplatte',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLOOR.)`);
+      b.contain(b.storeys.eg.id, slab);
+    };
+    const f = await facts({ slab: false, extra });
+    expect(f.footprint.source).toBe('slab-outline');
+    expect(f.footprint.rings[0]).toHaveLength(4);
+  });
+});
+
 describe('stairs, ramps, doors and windows', () => {
   // Review finding 7.
   it('keeps an external ramp placed at its top and skips an external stair whose body leads up', async () => {

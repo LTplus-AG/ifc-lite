@@ -749,8 +749,10 @@ transparency rule [test].
   for a model that has one, and every other model's rows act on what they
   hold directly, as for IFC. A row offers Show while anything that comes back
   with it is hidden, and reads as hidden once nothing that comes back is
-  drawn. A row that stands for an object hidden on its own comes back without
-  that object, and its own eye, being the layer's, does not show it either.
+  drawn. A row that stands for an object comes back without that object when
+  the object is hidden on its own or sits behind an off layer that has no row
+  between it and the row's layer; the row's own eye, being the layer's, does
+  not show it either, so only the viewport brings it back.
   Not covered: a storey row merged across models, which acts on direct
   members; a merged object whose parts sit on different layers, whose own
   state follows its first part's layer; a stamped project layer nested under
@@ -763,7 +765,8 @@ transparency rule [test].
   sub-layer Rhino turned off with its parent is saved as on [crafted test: an off layer with a sub-layer that is on, one
   that is off and an object hidden on its own; a stamped storey whose class
   sublayer is off; a stamped storey whose own object is hidden; a merged
-  object hidden for two causes] (#10214).
+  object hidden for two causes; a stamped storey object on an off sublayer, and
+  on an off layer that has its own row] (#10214).
 - Layers are reordered parent first, keeping file order among siblings. A
   layer whose parent is missing becomes a root; so does a layer in a parent
   cycle, with a warning. An object whose layer index is outside the table

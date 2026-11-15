@@ -257,7 +257,8 @@ export function planRhinoTree(
  * starts off when it is hidden on its own or such a layer is off; a merged
  * object whose parts Rhino hides for different causes starts off too. A row
  * that stands for an object comes back without that object when the object is
- * hidden on its own or sits behind an off layer below the row's own.
+ * hidden on its own or sits behind an off layer, with no row of its own,
+ * below the row's layer.
  */
 export function planRhinoContainerVisibility(
   result: RhinoImport,
@@ -273,6 +274,20 @@ export function planRhinoContainerVisibility(
       if (layers[index]?.visible === false) return false; // a file with no layer table has none to be off
     }
     return true;
+  };
+
+  // Whether a layer with no row of its own sits off between an object's layer
+  // and its row's layer. A layer with a row of its own governs that stretch
+  // through its own row, and an object outside the row's layer has none.
+  const rowLayers = new Set(tree.containers.flatMap((container) => (container.layer === null ? [] : [container.layer])));
+  const offBelowRow = (from: number, rowLayer: number | null): boolean => {
+    let off = false;
+    for (let index: number | null = from; index !== null; index = layers[index]?.parent ?? null) {
+      if (index === rowLayer) return off;
+      if (rowLayers.has(index)) return false;
+      if (layers[index]?.visible === false) off = true;
+    }
+    return false;
   };
 
   const rows = new Map<number, { children: number[]; members: number[] }>(
@@ -293,7 +308,7 @@ export function planRhinoContainerVisibility(
   for (const container of tree.containers) {
     // A row that stands for an object: that object's own layer may be a sublayer of the row's.
     const object = objectOfRow.get(container.expressId);
-    if (object && (hiddenOnItsOwn.has(container.expressId) || !layersOn(object.layer, container.layer))) selfOff.add(container.expressId);
+    if (object && (hiddenOnItsOwn.has(container.expressId) || offBelowRow(object.layer, container.layer))) selfOff.add(container.expressId);
     if (container.parent === null) continue;
     rows.get(container.parent)?.children.push(container.expressId);
     if (container.layer !== null && !layersOn(container.layer, layerOfRow.get(container.parent) ?? null)) ownOff.add(container.expressId);

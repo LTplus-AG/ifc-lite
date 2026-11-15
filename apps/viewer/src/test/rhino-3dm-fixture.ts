@@ -294,6 +294,27 @@ export function craftRhinoStoreyObjectOnOffLayer(): Promise<Uint8Array> {
 }
 
 /**
+ * A stamped storey whose own object sits on another layer that has a row of
+ * its own and is off (#10214): that row, not the storey row, governs it.
+ */
+export function craftRhinoStoreyObjectOnOffRowLayer(): Promise<Uint8Array> {
+  const storey: [string, string][] = [['IFC::GlobalId', CRAFTED_STOREY.globalId], ['IFC::Class', 'IfcBuildingStorey']];
+  return craftLayeredRhino3dm(
+    [
+      { name: 'Project', userStrings: [['IFC::GlobalId', CRAFTED_PROJECT_GLOBAL_ID], ['IFC::Class', 'IfcProject']] },
+      { name: CRAFTED_STOREY.name, parent: 'Project', userStrings: storey },
+      { name: 'IfcWall', parent: CRAFTED_STOREY.name },
+      { name: 'Annex', visible: false },
+    ],
+    [
+      { layer: 'Annex', name: 'Storey object', userStrings: storey },
+      { layer: 'Annex', name: 'Bench' },
+      { layer: 'IfcWall', name: 'Wall' },
+    ],
+  );
+}
+
+/**
  * One element whose parts Rhino shows differently: a shown triangle, a hidden
  * triangle and a hidden point cloud that share a GlobalId and a group, so the
  * reader merges them into one visible entity (D8). Plus an object hidden on

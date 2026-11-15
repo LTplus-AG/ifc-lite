@@ -8,7 +8,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { SceneSnapshot } from '@ifc-lite/renderer';
 import { decodeSceneSnapshot, encodeSceneSnapshot } from '@ifc-lite/renderer';
 import { pieceSignature, scenePieceIdentity, snapshotSignature } from './sceneIdentity.js';
-import { sceneIdentityEnabled, tapSceneSnapshot, tappedSceneSnapshots } from './sceneIdentityTap.js';
+import { sceneIdentityEnabled, tapSceneSnapshot, tappedSceneSnapshots, resetSceneIdentityTap } from './sceneIdentityTap.js';
 
 const mesh = (expressId: number, shift = 0): MeshData => ({
   expressId,
@@ -73,6 +73,26 @@ describe('scene identity (scoreboard identity pass)', () => {
     assert.notEqual(snapshotSignature(fit(0)), snapshotSignature(fit(-3)), 'the stored camera fit (hostData) is part of it (review #9863)');
   });
 
+  it('#9990 hashes the same snapshot bytes equally at every alignment, including short tails', () => {
+    for (let length = 0; length <= 17; length++) {
+      const bytes = Uint8Array.from({ length }, (_, i) => (i * 41 + 17) & 255);
+      const at = (offset: number) => {
+        const backing = new Uint8Array(length + 8).fill(0xee);
+        backing.set(bytes, offset);
+        return snapshot([{ ...batch('aligned', 1), vertexData: backing.subarray(offset, offset + length) }]);
+      };
+      const expected = snapshotSignature(at(0));
+      for (const offset of [1, 2, 3, 4]) {
+        const shifted = at(offset);
+        assert.equal(snapshotSignature(shifted), expected, `length ${length}, offset ${offset}`);
+        if (length > 0) {
+          shifted.batches[0].vertexData[length - 1] ^= 1;
+          assert.notEqual(snapshotSignature(shifted), expected, 'a changed tail byte still fails closed');
+        }
+      }
+    }
+  });
+
   it('a snapshot keeps its signature through the cache codec, the path an adopted snapshot takes (review #9863)', async () => {
     // Written side: the object that was encoded. Adopted side: what decodeSceneSnapshot returns from the stored bytes.
     const stored: SceneSnapshot = { ...snapshot([batch('a', 1), batch('b', 3)]), hostData: { fitBounds: { min: [-2, 0, 0], max: [1, 1, 1] }, shards: null } };
@@ -95,7 +115,7 @@ describe('scene identity (scoreboard identity pass)', () => {
   describe('with ?perf.sceneIdentity=1', () => {
     const g = globalThis as Record<string, unknown>;
     const saved = g.location;
-    afterEach(() => { g.location = saved; });
+    afterEach(() => { g.location = saved; resetSceneIdentityTap(); });
     it('a tap hashes off the load path and reports when done', async () => {
       g.location = { search: '?perf.sceneIdentity=1', href: 'http://x/?perf.sceneIdentity=1' };
       assert.equal(sceneIdentityEnabled(), true);

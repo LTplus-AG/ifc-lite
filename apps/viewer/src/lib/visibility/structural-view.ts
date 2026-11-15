@@ -61,6 +61,13 @@ export function hasStructuralData(state: { models: ReadonlyMap<string, Federated
   });
 }
 
+/** The analytical/physical command is disabled once no structural data is left, so
+ *  a latched mode could never be switched off and would mask the next physical-only
+ *  model. Called after a model removal; `clearAllModels` resets it the same way (#9957). */
+export function resetStructuralModeWithoutData(state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews' | 'structuralViewMode' | 'setStructuralViewMode'>): void {
+  if ((state.structuralViewMode ?? 'both') !== 'both' && !hasStructuralData(state)) state.setStructuralViewMode('both');
+}
+
 /** An entity's class after the view's edits, stored or created this session; null when deleted or unknown. */
 export function entityClass(store: IfcDataStore | null | undefined, view: MutablePropertyView | undefined, id: number): string | null {
   const created = view?.getNewEntity(id);

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readPerfFlag } from './perf/flags.js';
-import { sceneIdentityEnabled, tappedSceneSnapshots } from './perf/sceneIdentityTap.js';
+import { sceneIdentityEnabled, tappedSceneSnapshots, resetSceneIdentityTap } from './perf/sceneIdentityTap.js';
 import { appearanceSourceTriangle, MathUtils, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
@@ -236,6 +236,7 @@ export function installViewportDebugHooks(
 }
 
 export function clearViewportDebugHooks(): void {
+  resetSceneIdentityTap();
   const host = globalThis as Record<string, unknown>;
   setSourceSegmentScreenProbe(null);
   delete host.__ifc_lite_render_frame__;

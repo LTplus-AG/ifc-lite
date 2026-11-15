@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { StepExporter } from '@ifc-lite/export';
 import { existsSync, readFileSync } from 'node:fs';
 import { afterAll, beforeAll, it, expect, describe } from 'vitest';
 import { QuantityType } from '@ifc-lite/data';
@@ -9,6 +10,10 @@ import { wallQuantitySetCount } from './storey/storey-level-write.js';
 import { scaleWallQuantities } from './storey/wall-height-quantities.js';
 import { recordCompoundMutation, StoreEditor, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
+import { copyBatchInStore } from './copy-batch.js';
+import { parse, session } from './__test__/storey-fixtures.oracle.js';
+import { readTopAttachment } from './storey/storey-attachment.js';
+import { readStoreyInventory } from './storey/storey-model.js';
 import { addWallToStore } from './wall.js';
 import { addRoofToStore } from './roof.js';
 import { getFootprintRoofPlaneParts } from './roof-plane-parts.js';
@@ -44,6 +49,34 @@ it.each(['IFC4', 'IFC2X3', 'IFC4X3'] as const)('%s: a wall top meets both slopes
   expect(translateProduct(s.store, s.view, s.editor, roof, [0, 0, 1]).ok).toBe(true);
   check(1);
 });
+for (const together of [false, true]) {
+  it.each([false, true])(`#9352 copying a footprint-roof-bound wall refits its cut (roof copied=${together}, reopen=%s)`, async reopen => {
+    const source = await newStorey();
+    const roof = addRoofToStore(source.editor, source.anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25,
+      EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 }).roofId;
+    const wall = addWallToStore(source.editor, source.anchor, { Start: [5, 0, 0], End: [5, 6, 0], Height: 3, Thickness: .2 }).wallId;
+    setTopConstraintInStore(source.store, source.editor, wall, { kind: 'roof', roofId: roof });
+    let s: Pick<ReturnType<typeof session>, 'store' | 'view' | 'editor'> = reopen ? session(await parse(exportText(source))) : source;
+    // Own shapes allow the same edit after reopening without touching source CSG.
+    const offset: [number, number, number] = together ? [20, 0, 0] : [0, 1, 0];
+    const results = copyBatchInStore(s.store, s.editor, together ? [wall, roof] : [wall], [{ offset }], { shape: 'own' });
+    const copy = results[0].copyId, targetRoof = together ? results[1].copyId : roof;
+    const text = new TextDecoder().decode(new StepExporter(s.store, s.view).export({ applyMutations: true }).content);
+    s = session(await parse(text));
+    expect(readTopAttachment(readStoreyInventory(s.store, s.view), copy)?.targetElementId).toBe(targetRoof);
+    const meshes = meshWalls(api, text).get(copy) ?? [];
+    expect(meshes.length).toBeGreaterThan(0);
+    for (const y of [2, 3, 5, 6]) {
+      const roofY = together ? y - 1 : y;
+      const z = 4 + Math.min(roofY, 8 - roofY) * Math.tan(Math.PI / 6);
+      const worldY = together ? y - 1 : y;
+      expect(insideMesh(meshes, [5 + offset[0], z - .03, -worldY])).toBe(true);
+      expect(insideMesh(meshes, [5 + offset[0], z + .03, -worldY])).toBe(false);
+    }
+    const sourceMeshes = meshWalls(api, text).get(wall) ?? [];
+    expect(insideMesh(sourceMeshes, [5, 4 + Math.tan(Math.PI / 6) - .03, -1])).toBe(true);
+  });
+}
 it('a slab attachment follows a direct target lift, not only a storey edit (#9296)', async () => {
   const s = await newStorey();
   const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .3, ExtrudedDirection: [0, 0, -1] }).slabId;

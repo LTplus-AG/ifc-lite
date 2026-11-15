@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 import { IfcCreator } from '../../ifc-creator.js';
 import { addOrdinaryElementInStore } from '../ordinary-element.js';
 import { AnchorEntityReader, resolveSpatialAnchor } from '../resolve-anchor.js';
-import { refId } from '../host-geometry-frame.js';
+import { applyFrame, placementInAncestor, refId } from '../host-geometry-frame.js';
 import { parse, session } from '../__test__/storey-fixtures.oracle.js';
 import { addStoreyInStore } from './storey-add.js';
 import { attachedTopWorldOrigin, levelTopFaceAbove, readAttachedTop } from './storey-attached.js';
@@ -53,6 +53,29 @@ for (const kind of ['beam', 'member'] as const) {
         expect(plan.refusals).toEqual([]);
         applyStoreyDelete(s.store, s.editor, home, mode, plan);
         const check = () => {
+          // Independent solid/placement oracle: no attachment-top helper in
+          // this calculation. The fixture has a centred 0.3 m rectangle.
+          const reader = new AnchorEntityReader(s.store, s.view);
+          const product = reader.entity(id)!;
+          const shape = reader.entity(refId(product.attributes[6])!)!;
+          const representations = shape.attributes[2];
+          if (!Array.isArray(representations)) throw new Error('Expected representations');
+          const representation = representations.map(refId).filter((value): value is number => value !== null)
+            .map(value => reader.entity(value)!).find(value => value.attributes[1] === 'Body')!;
+          const items = representation.attributes[3];
+          if (!Array.isArray(items)) throw new Error('Expected one body solid');
+          const solid = reader.entity(refId(items[0])!)!;
+          expect(solid.type.toUpperCase()).toBe('IFCEXTRUDEDAREASOLID');
+          const length = solid.attributes[3];
+          if (typeof length !== 'number') throw new Error('Expected extrusion depth');
+          const frame = placementInAncestor(reader, refId(product.attributes[5])!, null)!;
+          if (fit.name === 'valid level') {
+            const corners = [-.15, .15].flatMap(x => [-.15, .15].flatMap(y => [0, length].map(z => applyFrame(frame, [x, y, z]))));
+            expect(Math.max(...corners.map(point => point[2]))).toBeCloseTo(3, 8);
+          } else {
+            // Sloping/vertical members constrain their upper axis endpoint.
+            expect(Math.max(frame.o[2], applyFrame(frame, [0, 0, length])[2])).toBeCloseTo(3, 8);
+          }
           const target = { dataStore: s.store, view: s.view, editor: s.editor };
           expect(readAttachedTop(target, id, 'linear')! + attachedTopWorldOrigin(target, id, 'linear')!
             + levelTopFaceAbove(target, id, 'linear')).toBeCloseTo(3, 8);

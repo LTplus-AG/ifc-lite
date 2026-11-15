@@ -6,7 +6,7 @@ import { IfcCreator } from '../ifc-creator.js';
 import { addOrdinaryElementInStore } from './ordinary-element.js';
 import { addSlabToStore } from './slab.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
-import { translateProduct } from './edit/placement-core.js';
+import { resolvePlacementChain, translateProduct } from './edit/placement-core.js';
 import { readStoreyInventory } from './storey/storey-model.js';
 import { setTopConstraintInStore } from './storey/storey-top-constraint.js';
 import { readAttachedTop } from './storey/storey-attached.js';
@@ -35,5 +35,33 @@ for (const kind of ['column', 'beam', 'member'] as const) {
     const reopened = session(await parse(s.text()));
     const after = readAttachedTop({ dataStore: reopened.store, view: reopened.view, editor: reopened.editor }, id, kind === 'column' ? 'column' : 'linear');
     expect(after).toBeCloseTo(top!, 8);
+  });
+}
+
+for (const kind of ['beam', 'member'] as const) {
+  it.each([false, true])(`#9352 a moved level ${kind} returns its final refitted coordinates (reopen=%s)`, async reopen => {
+    const creator = new IfcCreator({ Name: 'Move result' });
+    creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
+    let s = session(await parse(creator.toIfc().content));
+    const home = readStoreyInventory(s.store, s.view).storeys[0].expressId;
+    const anchor = resolveSpatialAnchor(s.store, home, s.view);
+    const slab = addSlabToStore(s.editor, anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .3, ExtrudedDirection: [0, 0, -1] }).slabId;
+    const id = addOrdinaryElementInStore(s.editor, draft => resolveSpatialAnchor(s.store, home, draft.getMutationView()),
+      { kind, params: { Start: [1, 2, 2], End: [5, 2, 2], Width: .3, Height: .3 } });
+    setTopConstraintInStore(s.store, s.editor, id, { kind: 'slab', slabId: slab });
+    if (reopen) s = session(await parse(s.text()));
+    const before = resolvePlacementChain(s.store, s.view, s.editor, id)!.coordinates;
+    const result = translateProduct(s.store, s.view, s.editor, id, [1, 0, 1]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.oldCoordinates).toEqual(before);
+    // The whole level section is lifted back under the slab, cancelling Z.
+    expect(result.newCoordinates).toEqual(resolvePlacementChain(s.store, s.view, s.editor, id)!.coordinates);
+    expect(result.newCoordinates[0]).toBeCloseTo(before[0] + 1, 8);
+    expect(result.newCoordinates[2]).toBeCloseTo(before[2], 8);
+    expect(s.worldZ(id) + .15).toBeCloseTo(3.7, 8);
+    s = session(await parse(s.text()));
+    expect(resolvePlacementChain(s.store, s.view, s.editor, id)!.coordinates).toEqual(result.newCoordinates);
+    expect(s.worldZ(id) + .15).toBeCloseTo(3.7, 8);
   });
 }

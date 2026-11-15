@@ -106,3 +106,25 @@ it.each([false, true])('#9352 deletion preview refuses a positive refit that wou
   expect(() => applyStoreyDelete(s.store, s.editor, home, mode, plan)).toThrow(/opening|door|top/i);
   expect(s.snapshot()).toEqual(before);
 });
+
+for (const destination of ['self', 'missing'] as const) {
+  it.each([false, true])(`#9352 an invalid ${destination} move destination returns a refusal for an attached home (reopen=%s)`, async reopen => {
+    const creator = new IfcCreator({ Name: 'Invalid destination' });
+    creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
+    let s = session(await parse(creator.toIfc().content));
+    const home = readStoreyInventory(s.store, s.view).storeys[0].expressId;
+    const upper = addStoreyInStore(s.store, s.editor, { Name: 'Upper', Elevation: 3 }).storeyId;
+    const wall = addOrdinaryElementInStore(s.editor, draft => resolveSpatialAnchor(s.store, home, draft.getMutationView()),
+      { kind: 'wall', params: { Start: [0, 0, 0], End: [4, 0, 0], Thickness: .2, Height: 3 } });
+    writeTopAttachment(s.view, wall, readStoreyInventory(s.store, s.view).storeys.find(x => x.expressId === upper)!.GlobalId, 'relative');
+    if (reopen) s = session(await parse(s.text()));
+    const before = s.snapshot();
+    const mode = { kind: 'move' as const, targetStoreyId: destination === 'self' ? home : 999999 };
+    const plan = planStoreyDelete(readStoreyInventory(s.store, s.view), home, mode);
+    expect(plan.refusals).toEqual([expect.objectContaining({ code: 'invalidTarget' })]);
+    expect(plan.bindings).toEqual([]);
+    expect(s.snapshot()).toEqual(before);
+    expect(() => applyStoreyDelete(s.store, s.editor, home, mode, plan)).toThrow(/another storey/);
+    expect(s.snapshot()).toEqual(before);
+  });
+}

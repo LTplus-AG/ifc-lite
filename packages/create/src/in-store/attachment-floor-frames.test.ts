@@ -83,7 +83,7 @@ it('#9352 an inserted storey rebinds from the actual old floor frame', async () 
   expect(s.worldZ(wall) + height(s, wall)).toBeCloseTo(s.worldZ(added.storeyId), 8);
 });
 
-it('#9352 a hierarchy-only home identifies a legacy relative binding without resurrecting a detached containment', async () => {
+it('#9352 an aggregate ancestor identifies a legacy relative binding without resurrecting a detached containment', async () => {
   const { s, home, middle, wall } = await setup(3);
   // A contained assembly supplies the child's parsed hierarchy; the child
   // has no direct containment of its own.
@@ -116,7 +116,8 @@ it('#9352 a hierarchy-only home identifies a legacy relative binding without res
 
 
 it('#9352 the next storey above skips equal-elevation siblings', async () => {
-  const { s, home, middle, upper, wall } = await setup();
+  let { s, home, middle, upper, wall } = await setup(3);
+  expect(height(s, wall)).toBeCloseTo(3, 8);
   s.editor.setPositionalAttribute(middle, 9, { real: 0 });
   const homePlacement = new AnchorEntityReader(s.store, s.view).entity(home)!.attributes[5];
   if (typeof homePlacement !== 'string' && typeof homePlacement !== 'number') throw new Error('The fixture storey needs a placement reference');
@@ -124,6 +125,9 @@ it('#9352 the next storey above skips equal-elevation siblings', async () => {
   setTopConstraintInStore(s.store, s.editor, wall, { kind: 'storeyAbove' });
   expect(readTopAttachment(readStoreyInventory(s.store, s.view), wall)?.targetStoreyId).toBe(upper);
   expect(height(s, wall)).toBeCloseTo(6, 8);
+  s = session(await parse(s.text()));
+  expect(height(s, wall)).toBeCloseTo(6, 8);
+  expect(readTopAttachment(readStoreyInventory(s.store, s.view), wall)?.targetStoreyId).toBe(upper);
 });
 
 
@@ -342,4 +346,43 @@ it.each([[false, 0], [false, 1], [true, 1]] as const)('#9352 unreadable slab-bou
   check();
   s = session(await parse(s.text()));
   check();
+});
+
+for (const fault of ['cycle', 'dangling'] as const) {
+  it.each([false, true])(`#9352 a present ${fault} floor placement cannot fall back to Elevation (reopen=%s)`, async reopen => {
+    let { s, middle, wall } = await setup(1);
+    const inventory = readStoreyInventory(s.store, s.view);
+    const placement = inventory.storeys.find(x => x.expressId === middle)!.placementId!;
+    s.editor.setPositionalAttribute(placement, 0, `#${fault === 'cycle' ? placement : 999999}`);
+    if (reopen) s = session(await parse(s.text()));
+    const before = s.snapshot();
+    expect(() => setTopConstraintInStore(s.store, s.editor, wall, { kind: 'storey', storeyId: middle })).toThrow(/placement.*cannot be read|unreadable.*placement/i);
+    expect(s.snapshot()).toEqual(before);
+    expect(height(s, wall)).toBeCloseTo(1, 8);
+    expect(readTopAttachment(readStoreyInventory(s.store, s.view), wall)).toBeNull();
+    const saved = session(await parse(s.text()));
+    expect(height(saved, wall)).toBeCloseTo(1, 8);
+    expect(readTopAttachment(readStoreyInventory(saved.store, saved.view), wall)).toBeNull();
+  });
+}
+
+it('#9352 a parsed-only cached home supports a legacy binding when no source spatial edge exists', async () => {
+  const { s, home, middle, wall } = await setup(1);
+  for (const rel of readStoreyInventory(s.store, s.view).incoming.get(wall) ?? []) s.editor.removeEntity(rel.id);
+  writeTopAttachment(s.view, wall, guid(s, middle));
+  const saved = session(await parse(s.text()));
+  // Format adapters may supply parsed membership separately from IFC edges.
+  // The fixture has no original or live parent edge for this source product.
+  const hierarchy = saved.store.spatialHierarchy;
+  if (!hierarchy) throw new Error('Expected the fixture spatial hierarchy');
+  hierarchy.elementToStorey.set(wall, home);
+  const inventory = readStoreyInventory(saved.store, saved.view);
+  expect(inventory.incoming.get(wall) ?? []).toEqual([]);
+  expect(homeStoreyOf(inventory, wall)).toBe(home);
+  expect(readTopAttachment(inventory, wall)?.binding).toBe('relative');
+  setTopConstraintInStore(saved.store, saved.editor, wall, { kind: 'storeyAbove' });
+  expect(height(saved, wall)).toBeCloseTo(3, 8);
+  const reopened = session(await parse(saved.text()));
+  expect(height(reopened, wall)).toBeCloseTo(3, 8);
+  expect(readTopAttachment(readStoreyInventory(reopened.store, reopened.view), wall)?.targetStoreyId).toBe(middle);
 });

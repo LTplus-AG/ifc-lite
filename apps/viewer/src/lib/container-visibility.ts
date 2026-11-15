@@ -23,7 +23,7 @@ export interface ContainerVisibilityPlan {
    * the whole tree on every click.
    */
   readonly ownOff: Set<number>;
-  /** Rows whose own object stays hidden when they come back with a parent: the object a stamped row stands for, hidden on its own. */
+  /** Rows that are also an object of their own whose own state is off, so they come back with a parent without that object. */
   readonly selfOff: Set<number>;
 }
 
@@ -54,8 +54,8 @@ export function containerVisibilityTargets(plan: ContainerVisibilityPlan, row: n
   return targets;
 }
 
-/** Record that the user turned `id`'s own state on or off from the tree. Returns whether anything changed. */
-export function setOwnState(plan: ContainerVisibilityPlan, id: number, on: boolean): boolean {
+/** Record that the user turned `id`'s own state on or off from the tree. */
+export function setOwnState(plan: ContainerVisibilityPlan, id: number, on: boolean): void {
   let changed: boolean;
   if (on) {
     const wasOff = plan.ownOff.delete(id);
@@ -65,5 +65,4 @@ export function setOwnState(plan: ContainerVisibilityPlan, id: number, on: boole
     plan.ownOff.add(id);
   }
   if (changed) revisions.set(plan, ownStateRevision(plan) + 1);
-  return changed;
 }

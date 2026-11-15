@@ -35,12 +35,10 @@ export function hierarchyNodeVisibility(
 /** Global targets per plan for its current own-state revision, by model, action and row. */
 const planTargetCache = new WeakMap<ContainerVisibilityPlan, { revision: number; targets: Map<string, number[]> }>();
 
-/** Grouping rows (type, class, material, group, layer, unified storey, model header) never follow a container plan. */
-const GROUPING_ROWS = new Set(['type-group', 'ifc-type', 'material-group', 'group', 'presentation-layer', 'group-member', 'unified-storey', 'model-header']);
-
-/** The plan of a single model's spatial or element row, when its model has one. */
+/** The plan of a single model's spatial or element row, when its model has
+ *  one. The spatial rows are the `Ifc*` node types; grouping rows never follow a plan. */
 function rowPlan(node: TreeNode, models: Map<string, FederatedModel>): ContainerVisibilityPlan | undefined {
-  if (node.expressIds.length !== 1 || GROUPING_ROWS.has(node.type)) return undefined;
+  if (node.expressIds.length !== 1 || !(node.type === 'element' || node.type.startsWith('Ifc'))) return undefined;
   return models.get(node.modelIds[0])?.containerVisibility;
 }
 

@@ -42,15 +42,24 @@ export type BasketInputSource = 'selection' | 'hierarchy' | 'visible' | 'empty';
 type CacheEntry = { key: string; refs: EntityRef[] };
 let _visibleCache: CacheEntry | null = null;
 
+/** Murmur3 finalizer: spreads each id over 32 bits, so the order-independent sum and
+ *  xor below cannot be matched by a different set that merely totals the same (#10247). */
+function mixId(n: number): number {
+  let h = n >>> 0;
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
 function digestNumberSet(values: Iterable<number>): string {
   let count = 0;
   let xor = 0;
   let sum = 0;
   for (const v of values) {
-    const n = Number.isFinite(v) ? (v | 0) : 0;
+    const mixed = mixId(Number.isFinite(v) ? (v | 0) : 0);
     count++;
-    xor ^= n;
-    sum = (sum + (n >>> 0)) >>> 0;
+    xor ^= mixed;
+    sum = (sum + mixed) >>> 0;
   }
   return `${count}:${xor >>> 0}:${sum >>> 0}`;
 }

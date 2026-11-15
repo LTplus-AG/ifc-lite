@@ -11,6 +11,8 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { addRoofToStore } from '../../../../../packages/create/src/in-store/roof.js';
 import { addWallToStore } from '../../../../../packages/create/src/in-store/wall.js';
 import { setTopConstraintInStore } from '../../../../../packages/create/src/in-store/storey/storey-top-constraint.js';
+import { addOrdinaryElementInStore } from '../../../../../packages/create/src/in-store/ordinary-element.js';
+import { readAttachedTop } from '../../../../../packages/create/src/in-store/storey/storey-attached.js';
 import { addSlabToStore } from '../../../../../packages/create/src/in-store/slab.js';
 import { writeTopAttachment } from '../../../../../packages/create/src/in-store/storey/storey-attachment.js';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -77,3 +79,22 @@ it('a storey-attached wall keeps the plain move presentation and placement mirro
   assert.deepEqual(state.pendingMeshTranslations?.get(toGlobalIdFromModels(state.models, 'm', wall)), [1, 0, -0]);
   assert.deepEqual(mirrored, [['m', wall, [1, 0, 0]]]);
 });
+
+for (const kind of ['column', 'beam', 'member'] as const) for (const movement of ['translate', 'position'] as const) {
+  it(`#9352 a slab-bound ${kind} refits its own top through public ${movement} and one undo`, async () => {
+    const s = await newStorey(), mirrored: unknown[] = [];
+    const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .3, ExtrudedDirection: [0, 0, -1] }).slabId;
+    const id = addOrdinaryElementInStore(s.editor, () => s.anchor, kind === 'column'
+      ? { kind, params: { Position: [1, 2, 0], Width: .3, Depth: .3, Height: 3 } }
+      : { kind, params: { Start: [1, 2, 0], End: [1, 2, 3], Width: .3, Height: .3 } });
+    setTopConstraintInStore(s.store, s.editor, id, { kind: 'slab', slabId: slab });
+    seedViewer(s, mirrored);
+    const top = () => readAttachedTop({ dataStore: s.store, view: s.view, editor: s.editor }, id, kind === 'column' ? 'column' : 'linear');
+    const state = useViewerStore.getState();
+    const result = movement === 'translate' ? state.translateEntity('m', id, [1, 0, 1]) : state.setEntityPosition('m', id, [2, 2, 1]);
+    assert.ok(result.ok, result.ok ? '' : result.reason);
+    assert.ok(Math.abs(top()! - (kind === 'column' ? 2.7 : 3.7)) < 1e-8);
+    state.undo('m');
+    assert.ok(Math.abs(top()! - 3.7) < 1e-8, 'the placement and fitted shape undo together');
+  });
+}

@@ -260,3 +260,22 @@ describe('review threads', () => {
     expect(readCell(r, { x: 0.5, y: 2.01 })).toEqual({ kind: 'outside' });
   });
 });
+
+// Review round on head 4239cce5: an empty caller footprint was trusted as a 'given' outline with no rings.
+describe('an empty footprint option', () => {
+  it('is refused, not read as a building with no outline whose interior samples count as ground', async () => {
+    const { extractModelFacts } = await import('../src/model/extract.js');
+    const { parseStep, syntheticHouse } = await import('./synthetic-model.js');
+    const store = await parseStep(syntheticHouse({ verticalDatum: 'LN02' }));
+    expect(() => extractModelFacts(store, { expectedCrs: 'EPSG:2056', footprint: [] })).toThrow(RangeError);
+    expect(() => extractModelFacts(store, { expectedCrs: 'EPSG:2056', footprint: [[{ x: 2_600_000, y: 1_200_000 }, { x: 2_600_010, y: 1_200_000 }]] })).toThrow(RangeError);
+  });
+
+  it('hand-built facts with no footprint rings get no reassuring outcome', () => {
+    const facts = boxFacts([groundDoor(500), candidate({ expressId: 4, category: 'equipment', ifcClass: 'IfcBoiler', position: { x: E0 + 10, y: N0 + 5 }, level: 497, storeyId: 9 })], {
+      footprint: { rings: [], source: 'given', fromElements: [] },
+    });
+    const r = checkFloodExposure(facts, raster(() => CELL_NO_RUNOFF), flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
+    for (const x of r.results) expect(['no-runoff-mapped', 'above-mapped-class-range']).not.toContain(x.outcome);
+  });
+});

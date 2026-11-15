@@ -271,6 +271,10 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
   const storeyOf = storeyResolver(reader, new Set(storeys.map((s) => s.expressId)));
   const groundStorey = pickGroundStorey(storeys, localLevels, reader, georef, options.groundStorey, warnings);
 
+  // An empty or degenerate given footprint would be trusted as an outline with no inside: refused, not read as ground.
+  if (options.footprint && (options.footprint.length === 0 || options.footprint.some((ring) => ring.length < 3 || ringArea(ring) < 1 || ring.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))))) {
+    throw new RangeError('footprint must have at least one ring, each of at least 3 finite points enclosing at least 1 m²');
+  }
   let footprint: FootprintFact | null = options.footprint
     ? { rings: options.footprint, source: 'given', fromElements: [] }
     : deriveFootprint(reader, placements, georef, storeyOf, groundStorey, skipped, warnings);

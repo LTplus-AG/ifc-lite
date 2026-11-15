@@ -101,12 +101,26 @@ export function openingVerdict(ctx: CandidateContext, entity: DecodedEntity, fil
   return candidate(fact);
 }
 
-/** An element whose Name or ObjectType names a light well. */
+/**
+ * An element whose Name or ObjectType names a light well, read like an
+ * opening: at its body's plan centre when readable, at the lower of its
+ * placement and its body's bottom (an upper estimate when the body is only
+ * partly readable), since its placement may be at the rim, the centre or a
+ * wall's origin.
+ */
 export function lightWellVerdict(ctx: CandidateContext, entity: DecodedEntity): Verdict {
   const at = placed(ctx, entity);
-  if (!at) return skip(NO_PLACEMENT);
-  if (!inScope(ctx, at.level)) return skip(outOfScopeReason(ctx, at.level));
-  return candidate(base(ctx, entity, 'light-well', at, `Name/ObjectType "${elementLabel(ctx, entity).trim()}"`));
+  const body = openingExtent(ctx, entity);
+  if (!at || !body) return skip(NO_PLACEMENT);
+  const lower = body.fromBody && body.level < at.level;
+  const level = lower ? body.level : at.level;
+  if (!inScope(ctx, level)) return skip(outOfScopeReason(ctx, level));
+  const fact = base(ctx, entity, 'light-well', { position: body.position, level }, `Name/ObjectType "${elementLabel(ctx, entity).trim()}"`, lower ? 'opening-body-bottom' : 'placement-origin');
+  if (body.partial) {
+    fact.levelIsUpperEstimate = true;
+    fact.notes = ['part of its body cannot be read, so it may reach lower: the level is an upper estimate'];
+  }
+  return candidate(fact);
 }
 
 /** The stair's or ramp's own body and its parts' bodies, in map coordinates; `complete` when every part was fully readable. */

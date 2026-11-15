@@ -281,7 +281,8 @@ export function checkWith(
       allowance: heightReference.allowance,
       anchorTolerance,
       footprintSource: facts.footprint.source,
-      footprintPartial: facts.footprint.partial === true,
+      // No rings at all (hand-built facts) misses the whole building.
+      footprintPartial: facts.footprint.partial === true || facts.footprint.rings.length === 0,
       emptyRasterUnconfirmed: rasterEmpty && !applies,
     });
     return {

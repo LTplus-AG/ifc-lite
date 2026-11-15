@@ -130,6 +130,22 @@ describe('the three reported cases', () => {
   });
 });
 
+describe('a light well whose body reaches below its placement', () => {
+  /** A light-well opening placed at 2 m (502 m) beside the east wall, its body reaching down to -1 m (499 m). */
+  const lightWell = (b: Extra) => {
+    const body = b.rectExtrusion(0, 0, 1, 1, 3, b.axis(0, 0, -3), b.dir(0, 0, 1));
+    b.add(`IFCOPENINGELEMENT(${b.guid()},$,'Lichtschacht Öffnung',$,$,#${b.place(b.storeys.eg.pl, 21, 5, 2)},#${b.shape([body])},$,.OPENING.)`);
+  };
+  it('is listed at the bottom of its body, so a shallow class cannot clear it', async () => {
+    const facts = await extract(lightWell);
+    const well = facts.candidates.find((c) => c.name === 'Lichtschacht Öffnung')!;
+    expect(well).toMatchObject({ category: 'light-well', levelBasis: 'opening-body-bottom' });
+    expect(well.level).toBeCloseTo(499, 3);
+    const r = checkFloodExposure(facts, raster(() => shallow), flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
+    expect(r.results.find((x) => x.candidate.name === 'Lichtschacht Öffnung')!.outcome).toBe('exposed');
+  });
+});
+
 describe('an element excluded for unreadable data does not take a checkable neighbour with it', () => {
   it('an unplaceable door: its readable opening is checked as a hole, and the door is skipped with a reason', async () => {
     const facts = await extract(unplacedDoorInPlacedOpening);

@@ -216,7 +216,9 @@ entities, properties and containment from the parsed store. No meshing.
   has none. When a ground-storey floor slab has no readable outline (a Brep,
   a Boolean UNION) while others do, the footprint misses its area:
   `footprint.partial` is set, the slab is in `skipped`, a warning says so and
-  no element gets a reassuring outcome (`partial-footprint`).
+  no element gets a reassuring outcome (`partial-footprint`). A given
+  `footprint` must have at least one ring of 3 or more points enclosing at
+  least 1 m² (`RangeError` otherwise).
 - **Building**: the footprint is one building's outline, so only the
   elements of the **ground storey's building** are checked (pass
   `groundStorey` to choose another). An element of another building would be
@@ -238,7 +240,7 @@ entities, properties and containment from the parsed store. No meshing.
   | `basement-window` | such a window below the ground storey | as `window` |
   | `wall-opening` | unfilled opening (not RECESS) in an external wall | lowest point of its extruded body |
   | `slab-opening` | unfilled opening in a slab at or below the ground storey | the slab's placement |
-  | `light-well` | proxy / chamber / civil element / assembly / opening named Lichtschacht, Kellerschacht, light well, saut-de-loup, bocca di lupo, … | placement origin |
+  | `light-well` | proxy / chamber / civil element / assembly / opening named Lichtschacht, Kellerschacht, light well, saut-de-loup, bocca di lupo, … | the lower of the placement origin and its body's bottom (an upper estimate when the body is only partly readable), at the body's plan centre when readable |
   | `stair`, `ramp` | outside the footprint — by placement, by any body corner, or, with no fully readable body, by a placement within 1 m of the outline (even when it states `IsExternal = false`, often an authoring default) — or `IsExternal`; skipped only when a readable body lies wholly at or above the ground storey (1 cm tolerance; it leads up); kept when the body cannot be read, or only partly (an unreadable item, a Boolean UNION), since the placement origin may be at the top | `ground-storey-or-terrain`: the check compares the **lower of the ground storey level and the terrain** at each sample, so any mapped depth class there makes it `exposed`; never favourable |
   | `equipment` | in the ground storey or below. IFC4 / IFC4X3 occurrences: `IfcElectricDistributionBoard`, `IfcTransformer`, `IfcElectricGenerator`, `IfcElectricFlowStorageDevice` (batteries), `IfcSwitchingDevice`, `IfcProtectiveDevice`, `IfcCommunicationsAppliance`, `IfcBoiler`, `IfcChiller`, `IfcUnitaryEquipment` (heat pumps), `IfcPump`, `IfcTank`, `IfcTransportElement` ELEVATOR / LIFTINGGEAR (or no stated kind). Every schema, and the only way in IFC2X3: `IfcEnergyConversionDevice`, `IfcFlowMovingDevice`, `IfcFlowStorageDevice`, `IfcFlowController` or `IfcFlowTerminal` typed by `IfcTransformerType`, `IfcElectricGeneratorType`, `IfcElectricFlowStorageDeviceType`, `IfcSwitchingDeviceType`, `IfcProtectiveDeviceType`, `IfcBoilerType`, `IfcChillerType`, `IfcUnitaryEquipmentType`, `IfcPumpType`, `IfcTankType` (and, IFC4 on, `IfcCommunicationsApplianceType`, `IfcElectricDistributionBoardType`). IFC2X3 also has `IfcElectricDistributionPoint`; it has no communications-appliance class or type | placement origin (base) |
 
@@ -323,7 +325,7 @@ and `open-ended-class` are never withheld (they are the conservative side);
 | a ground sample lies in an area the map did not model (glacier) | `within-class-range` | `unclassified` (`excluded-area`) |
 | the element was moved more than `anchorTolerance` (1 m) to reach the outline | `within-class-range` | `unclassified` (`anchor-moved`) |
 | the footprint fills courtyards (`external-wall-hull`, `candidate-hull`, `slab-outline-voids-filled`) | `within-class-range` | `unclassified` (`hull-footprint`) |
-| the footprint is partial: a ground-storey floor slab has no readable outline, so an element in its area reads as outside and is sampled inside the building | `within-class-range` | `unclassified` (`partial-footprint`) |
+| the footprint is partial: a ground-storey floor slab has no readable outline, or (hand-built facts) the footprint has no rings, so an element in the missing area reads as outside and is sampled inside the building | `within-class-range` | `unclassified` (`partial-footprint`) |
 | the element's nearest footprint boundary is a ring lying wholly inside another ring (a courtyard drawn as its own ring, for example in a given footprint): a point inside any ring counts as inside, so the courtyard is filled and its ground is not sampled | `within-class-range` | `unclassified` (`courtyard-ring`) |
 | height reference unconfirmed (see below) | `within-class-range` | `unclassified` (`height-reference-unconfirmed`) |
 | no cell of the raster shows a mapped class and the layer is not confirmed to render (no positive confirmation fetched within 5 minutes of the raster) | (no class to compare) | `unclassified` (`layer-not-confirmed`) |

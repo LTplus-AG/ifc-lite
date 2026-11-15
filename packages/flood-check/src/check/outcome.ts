@@ -53,7 +53,7 @@ export type UnclassifiedReason =
   | 'hull-footprint'
   /** Every sample is transparent, but the nearest footprint boundary is a courtyard ring the footprint fills, so the ground in front of the element was not sampled. */
   | 'courtyard-ring'
-  /** Every sample is transparent, but the footprint misses a ground-storey slab whose outline could not be read. */
+  /** Every sample is transparent, but the footprint may miss part of the building (an unreadable ground-storey slab, or no rings at all). */
   | 'partial-footprint'
   /** Every sample is transparent, but the model's height reference (and so its georeference) could not be confirmed. */
   | 'height-reference-unconfirmed'

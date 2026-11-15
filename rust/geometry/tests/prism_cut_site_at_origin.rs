@@ -10,6 +10,9 @@
 //! face flush with a host face then lies half an f32 step from it all the way
 //! along, and the cut bridges that gap with zero-area triangles. These hosts
 //! came back with open edges from that input and closed from the rotated one.
+//!
+//! The last test reads a host under its file's own site: it pins the same
+//! consolidation step and shares the helpers here.
 
 #[path = "corpus/rtc_frame.rs"]
 mod census_rtc;
@@ -108,4 +111,21 @@ fn a_cut_with_two_copies_of_a_crossing_consolidates_closed() {
     );
     let volume_cm3 = (mesh_volume(&mesh) * 1.0e6).round() as i64;
     assert!((39_200..=39_500).contains(&volume_cm3), "#11232 volume {volume_cm3} cm3");
+}
+
+/// A clipped wall whose analytic cut is closed while both consolidations of
+/// it come back open. The cut was then thrown away for the exact kernel,
+/// which left 9 open edges. The cut is kept as it was made instead. This
+/// wall is read under the file's own site. The volume is IfcOpenShell
+/// 0.8.2's.
+#[test]
+fn a_closed_cut_that_consolidation_opens_is_kept_as_cut() {
+    let Some(content) = ifc_lite_testkit::fixture_text("ara3d/FM_ARC_DigitalHub.ifc") else {
+        eprintln!("Skipping: run pnpm fixtures");
+        return;
+    };
+    let mesh = cut(&content, 138037);
+    assert_eq!(open_edges(&mesh), 0, "#138037 must be closed");
+    let volume = mesh_volume(&mesh);
+    assert!((volume - 34.089_375).abs() < 2.0e-4, "#138037 volume {volume} m3 against the reference 34.089375");
 }

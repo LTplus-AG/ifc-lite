@@ -58,8 +58,7 @@ import { fillsCourtyards, type CandidateFact, type ModelFacts } from '../model/f
 import type { ClassifiedHazardRaster, HazardClassDefinition, MapBBox, MapPoint } from '../types.js';
 import { compareLevel, type LevelComparison, type Outcome, type UnclassifiedReason } from './outcome.js';
 import { readCell, type SamplePlan } from './sampling.js';
-import { insideAny } from '../geom.js';
-import { insideExtent } from './other-buildings.js';
+import { insideExtent, insideOtherBuilding } from './other-buildings.js';
 
 export interface SampleCounts {
   /** Ring points considered. */
@@ -137,7 +136,7 @@ export function evaluateCandidate(candidate: CandidateFact, plan: SamplePlan, ct
   for (const { point } of plan.points) {
     const reading = readCell(raster, point);
     // Transparent inside another building is "raised, not modelled" (the hazard model raised every building).
-    if (reading.kind === 'no-runoff' && ctx.otherBuildings && insideAny(point, ctx.otherBuildings.rings)) {
+    if (reading.kind === 'no-runoff' && ctx.otherBuildings && insideOtherBuilding(point, ctx.otherBuildings.rings)) {
       byReading['other-building']++;
       continue;
     }

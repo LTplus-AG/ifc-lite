@@ -222,3 +222,15 @@ describe('the auditor\'s suspicion: the checked building\'s own pixels beyond a 
     expect(r.results[0].outcome).not.toBe('no-runoff-mapped');
   });
 });
+
+describe('CodeRabbit: a sample on another building\'s boundary is inside it', () => {
+  it('a transparent sample on the north edge of another building counts as other-building, not open ground', () => {
+    // The door's 3 m sample due south lands exactly on the shed's north edge (y = -3).
+    const shed = [P(9.75, -4), P(10.25, -4), P(10.25, -3), P(9.75, -3)];
+    const r = checkFloodExposure(boxFacts([candidate({ position: P(10, 0), level: 500 })]), ras(() => CELL_NO_RUNOFF), flatTerrain(499.95), {
+      renderingConfirmation: CONFIRMED,
+      otherBuildings: { ...NO_OTHER_BUILDINGS, rings: [shed] },
+    });
+    expect(r.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'other-building' });
+  });
+});

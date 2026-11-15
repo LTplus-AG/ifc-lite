@@ -11,7 +11,7 @@
  * the stated `extent`: a transparent sample outside it proves nothing.
  */
 
-import { ringArea } from '../geom.js';
+import { closestBoundaryPoint, insideAny, ringArea } from '../geom.js';
 import type { MapBBox, MapPoint, OtherBuildingFootprints } from '../types.js';
 
 export interface ResolvedOtherBuildings {
@@ -66,4 +66,13 @@ export function resolveOtherBuildings(o: OtherBuildingFootprints): ResolvedOther
 
 export function insideExtent(p: MapPoint, e: MapBBox | null): boolean {
   return !!e && p.x >= e.minX && p.x <= e.maxX && p.y >= e.minY && p.y <= e.maxY;
+}
+
+/**
+ * Inside another building, its boundary included: the even-odd test leaves a
+ * point on a ring's north or east edge outside, yet the raster cell it reads
+ * there is the building's own (raised, transparent).
+ */
+export function insideOtherBuilding(p: MapPoint, rings: readonly (readonly MapPoint[])[]): boolean {
+  return insideAny(p, rings) || (closestBoundaryPoint(p, rings)?.distance ?? Infinity) <= 1e-6;
 }

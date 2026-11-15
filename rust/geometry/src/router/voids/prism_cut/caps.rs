@@ -9,6 +9,7 @@
 use super::cap_cdt::{cap_cdt, cap_cdt_xor, emit_cap};
 use super::extension::point_inside;
 use super::face::Seam;
+use super::flush_cap::FlushSeats;
 use super::frame::{Face, PrismFrame};
 use super::kit::{add, scale, V2, V3};
 use super::plane2::{pip, seg_cross_param};
@@ -46,6 +47,31 @@ pub(super) fn cap_plane_breakpoints(pf: &PrismFrame, j: usize) -> Vec<V2> {
     out
 }
 
+/// The pre-cut host a reveal is classified against, and its seated caps.
+pub(super) struct CapHost<'a> {
+    pub(super) tris: &'a [PTri],
+    pub(super) aabbs: &'a [(V3, V3)],
+    pub(super) seats: &'a FlushSeats,
+}
+
+/// Build every face's cap ([`build_face_cap`]) in face order, or `None` when
+/// one of them cannot be built.
+pub(super) fn build_caps(
+    pf: &PrismFrame,
+    faces: &[Face],
+    seams: &[Vec<Seam>],
+    plane_pts: &[Vec<V2>],
+    host: &CapHost<'_>,
+) -> Option<Vec<PTri>> {
+    let mut caps = Vec::new();
+    for (&face, seams) in faces.iter().zip(seams) {
+        if !build_face_cap(pf, face, seams, plane_pts, host, &mut caps) {
+            return None;
+        }
+    }
+    Some(caps)
+}
+
 /// Build the cap (reveal face) for one cutter face: CDT of the face domain
 /// constrained by the reveal seams (and, for a stepped cap, the adjacent
 /// profiles' rings), each sub-triangle kept iff its centroid lies in the
@@ -57,8 +83,7 @@ pub(super) fn build_face_cap(
     face: Face,
     seams: &[Seam],
     plane_pts: &[Vec<V2>],
-    host: &[PTri],
-    aabbs: &[(V3, V3)],
+    &CapHost { tris: host, aabbs, seats }: &CapHost<'_>,
     caps: &mut Vec<PTri>,
 ) -> bool {
     match face {
@@ -136,7 +161,7 @@ pub(super) fn build_face_cap(
                 &inject,
                 desired,
                 true,
-                |q| pip(q, &ring2),
+                |q| pip(q, &ring2) && seats.strip_reaches(q[1]),
                 host,
                 aabbs,
                 caps,
@@ -180,12 +205,13 @@ pub(super) fn build_face_cap(
             // exists ⇒ +d. Resolved per emitted triangle inside `cap_cdt` via
             // the classifier below; the `desired`/flip passed in cover the
             // "+d" branch and the emitter flips for the −d case.
-            let in_lower = |q: V2| j > 0 && pip(q, &pf.profiles[j - 1]);
-            let in_upper = |q: V2| j < pf.profiles.len() && pip(q, &pf.profiles[j]);
+            let last = pf.profiles.len();
+            let in_lower = |q: V2| j > 0 && pip(q, &pf.profiles[j - 1]) && !seats.floors_cap(j, last, q);
+            let in_upper = |q: V2| j < last && pip(q, &pf.profiles[j]) && !seats.floors_cap(j, last, q);
             // Fast skip for the OUTERMOST caps with no seams (the common
             // extended-cap case): probe the adjacent slab interior.
-            if seams.is_empty() && (j == 0 || j == pf.profiles.len()) {
-                let k = if j == 0 { 0 } else { pf.profiles.len() - 1 };
+            if seams.is_empty() && (j == 0 || j == last) {
+                let k = if j == 0 { 0 } else { last - 1 };
                 let interior = pf.slab_interior[k];
                 let probe = pf.lift(interior[0], interior[1], wdepth);
                 if !point_inside(host, aabbs, probe) {

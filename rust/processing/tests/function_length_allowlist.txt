@@ -46,7 +46,7 @@
    224 rust/geometry/src/router/voids/aabb_clip.rs Execution::clip_triangle_against_box
    168 rust/geometry/src/router/voids/aabb_clip.rs Execution::triangle_intersects_box
    161 rust/geometry/src/router/voids/prism_cut/caps.rs build_face_cap
-   233 rust/geometry/src/router/voids/prism_cut/cut.rs cut_prism
+   230 rust/geometry/src/router/voids/prism_cut/cut.rs cut_prism
    185 rust/geometry/src/router/voids/prism_cut/detect.rs detect_prism
    295 rust/geometry/src/router/voids/prism_cut/driver.rs Execution::try_prism_cut
    197 rust/geometry/src/router/voids/synthesis.rs Execution::extend_opening_along_direction

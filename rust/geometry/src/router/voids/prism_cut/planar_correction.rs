@@ -4,9 +4,10 @@
 
 //! Final overlap removal for staged mixed planar/residual differences (#4617).
 
+use super::flush_cap::extend_and_seat_caps;
 use super::{
-    closed_enough_to_emit, cut_prism, dedup_cut_vertices, extend_prism_caps, mesh_from_ptris,
-    prepare_prism, ptris_from_mesh, CutterKind, Mesh, PTri,
+    closed_enough_to_emit, cut_prism, dedup_cut_vertices, mesh_from_ptris, prepare_prism,
+    ptris_from_mesh, CutterKind, Mesh, PTri,
 };
 
 /// Apply every mandatory correction atomically using the analytic prism kernel.
@@ -34,8 +35,8 @@ pub(in crate::router::voids) fn correct_planar_overlap(
         let opening = CutterKind::NonRectangular(cutter.clone(), lo.cast(), hi.cast(), None);
         let mut prism = prepare_prism(&opening, mesh)?;
         let aabbs: Vec<_> = tris.iter().map(PTri::aabb).collect();
-        extend_prism_caps(&mut prism, &tris, &aabbs);
-        tris = cut_prism(&tris, &prism).ok()?;
+        let seats = extend_and_seat_caps(&mut prism, &tris, &aabbs);
+        tris = cut_prism(&tris, &prism, &seats).ok()?;
     }
     let out = dedup_cut_vertices(&mesh_from_ptris(&tris, mesh), mesh);
     closed_enough_to_emit(&out).then_some(out)

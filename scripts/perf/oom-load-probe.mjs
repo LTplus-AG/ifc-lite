@@ -92,6 +92,36 @@ const scopeProp = (unit, prop) => {
   try { return execFileSync('systemctl', ['--user', 'show', `${unit}.scope`, '-p', prop, '--value'], { encoding: 'utf8' }).trim(); } catch { return null; }
 };
 
+/**
+ * Init script: count reads of large Blobs/Files on the page's main thread
+ * (arrayBuffer/text/bytes/stream, FileReader, and slices over 1 MiB), so a
+ * cancelled load can show it never read its source. Reads inside workers are
+ * not seen; a File posted to a worker is counted as `postedToWorker`.
+ */
+const COUNT_SOURCE_READS = () => {
+  const MIN = 1 << 20, c = (globalThis.__oomProbeReads = { reads: 0, bytes: 0, slices: 0, postedToWorker: 0 });
+  const big = (b) => b && b.size >= MIN;
+  for (const m of ['arrayBuffer', 'text', 'bytes', 'stream']) {
+    const orig = Blob.prototype[m];
+    if (orig) Blob.prototype[m] = function (...a) { if (big(this)) { c.reads++; c.bytes += this.size; } return orig.apply(this, a); };
+  }
+  const slice = Blob.prototype.slice;
+  Blob.prototype.slice = function (start = 0, end = this.size, ...rest) {
+    const part = slice.call(this, start, end, ...rest);
+    if (big(part)) c.slices++;
+    return part;
+  };
+  for (const m of ['readAsArrayBuffer', 'readAsText', 'readAsBinaryString', 'readAsDataURL']) {
+    const orig = FileReader.prototype[m];
+    FileReader.prototype[m] = function (b, ...a) { if (big(b)) { c.reads++; c.bytes += b.size; } return orig.call(this, b, ...a); };
+  }
+  const post = Worker.prototype.postMessage;
+  Worker.prototype.postMessage = function (msg, ...a) {
+    try { if (msg instanceof Blob ? big(msg) : msg && typeof msg === 'object' && Object.values(msg).some((v) => v instanceof Blob && big(v))) c.postedToWorker++; } catch { /* exotic message */ }
+    return post.call(this, msg, ...a);
+  };
+};
+
 /** In page: what the load has reached. */
 const PAGE_PROBE = () => {
   const s = globalThis.__ifc_lite_viewer_store__?.getState();
@@ -144,6 +174,7 @@ export async function runProbe(opts) {
       if (dm !== null) Object.defineProperty(Navigator.prototype, 'deviceMemory', { get: () => dm, configurable: true });
       if (hc !== null) Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => hc, configurable: true });
     }, { dm: opts.deviceMemory, hc: opts.cores });
+    await context.addInitScript(COUNT_SOURCE_READS);
     cg = cgroupOf(unit);
     if (!cg) throw new EnvError(`Chrome did not start inside scope ${unit}`);
     const page = await openViewerPage(context, `${baseUrl}/?perfTrace=1&perfMem=1`);
@@ -192,6 +223,7 @@ export async function runProbe(opts) {
     await new Promise((r) => setTimeout(r, 1500)); // let a pending OOM kill / crash land before the verdict
     if (!obs.pageCrashed && !obs.browserGone) {
       obs.pageText = await Promise.race([page.evaluate(() => document.body?.innerText ?? ''), new Promise((r) => setTimeout(() => r(''), 5000))]).catch(() => '');
+      result.sourceReads = await page.evaluate(() => globalThis.__oomProbeReads ?? null).catch(() => null);
       if (obs.interactive) last = { ...(await page.evaluate(PAGE_PROBE).catch(() => last)), interactive: true };
       await page.screenshot({ path: join(outDir, 'end.png') }).catch(() => {});
     }
@@ -248,7 +280,7 @@ function cli() {
   try { preflight(); } catch (err) { fail(err.message); }
   runProbe(opts).then(({ result, outDir }) => {
     console.log(`outcome=${result.outcome} phase="${result.phase}" peakPssMiB=${result.peakPssMiB} peakCgroupMiB=${result.peakCgroupMiB} `
-      + `oomKills=${result.oomKills} reason="${result.reason}" -> ${result.verdict} [${outDir}/result.json]`);
+      + `oomKills=${result.oomKills} sourceReads=${JSON.stringify(result.sourceReads ?? null)} reason="${result.reason}" -> ${result.verdict} [${outDir}/result.json]`);
     process.exit(result.pass ? 0 : 1);
   }, (err) => {
     console.error(`oom-load-probe: ${err instanceof EnvError ? '' : 'driver error: '}${err.stack ?? err}`);

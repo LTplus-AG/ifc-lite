@@ -15,6 +15,8 @@ import { esc, num } from './ifc-creator-math.js';
 /** The one creator hook these emitters need. */
 export interface StyleContext {
   emit: (type: string, attrs: string) => number;
+  /** IFC2X3: `IfcStyledItem.Styles` takes `IfcPresentationStyleAssignment`, not the style itself. */
+  wrapStyles?: boolean;
 }
 
 /** A per-element colour assignment, as `IfcCreator` records it. */
@@ -52,6 +54,16 @@ export function emitStyledItems(
   ctx: StyleContext,
 ): void {
   const styleCache = new Map<string, number>();
+  const assignments = new Map<number, number>();
+  const styleRef = (styleId: number): number => {
+    if (!ctx.wrapStyles) return styleId;
+    let id = assignments.get(styleId);
+    if (id === undefined) {
+      id = ctx.emit('IFCPRESENTATIONSTYLEASSIGNMENT', `(#${styleId})`);
+      assignments.set(styleId, id);
+    }
+    return id;
+  };
   for (const [elementId, solidIds] of elementSolids) {
     const color = elementColors.get(elementId);
     let styleId = defaultStyleId;
@@ -65,8 +77,9 @@ export function emitStyledItems(
         styleCache.set(key, styleId);
       }
     }
+    const ref = solidIds.length > 0 ? styleRef(styleId) : styleId;
     for (const solidId of solidIds) {
-      ctx.emit('IFCSTYLEDITEM', `#${solidId},(#${styleId}),$`);
+      ctx.emit('IFCSTYLEDITEM', `#${solidId},(#${ref}),$`);
     }
   }
 }

@@ -126,28 +126,71 @@ export interface HazardRasterRequest {
   signal?: AbortSignal;
 }
 
+/**
+ * Whether a point lies inside the area a provider's map covers: `true` inside,
+ * `false` outside, `null` within the stated tolerance of the perimeter (too
+ * close to tell). Outside the perimeter a transparent pixel means "no data",
+ * not "no runoff".
+ */
+export type CoverageTest = (point: MapPoint) => boolean | null;
+
+/** The answer of a provider's rendering check (see {@link HazardProvider.confirmRendering}). */
+export interface RenderingConfirmation {
+  /** True when the reference request decoded to mapped classes as expected. */
+  confirmed: boolean;
+  /** The reference request. */
+  requestUrl: string;
+  /** What was found, in words. */
+  detail: string;
+}
+
 /** A source of classified hazard rasters in one projected CRS. */
 export interface HazardProvider {
   readonly id: string;
   readonly crs: string;
   readonly classes: readonly HazardClassDefinition[];
-  /** Area the dataset covers, in its CRS; requests outside it are refused. */
+  /** Box around the dataset, in its CRS; requests outside it are refused. */
   readonly extent: MapBBox;
   /** Resolution of the underlying model raster, metres. */
   readonly modelCellSize: number;
+  /** The coverage perimeter, when the provider knows it. Without it, every sample on the raster counts as covered. */
+  readonly covers?: CoverageTest;
   fetchRaster(request: HazardRasterRequest): Promise<ClassifiedHazardRaster>;
+  /**
+   * Request a small reference area where the map is known to show runoff and
+   * say whether it does. Used when a whole raster comes back transparent, so a
+   * layer outage or reprocessing is not read as "no runoff mapped".
+   */
+  confirmRendering?(signal?: AbortSignal): Promise<RenderingConfirmation>;
 }
 
-/** A north-up height grid. `heights[row * width + col]` is the height at the CENTRE of that cell; NaN is no data. */
+/**
+ * A north-up height grid, field-compatible with `ElevationGrid` of
+ * `@ifc-lite/geodata-ch` plus the required `sampling` convention:
+ *
+ * - `'node'`: `values[row * width + col]` is the height AT
+ *   `(origin.x + col * resolution, origin.y - row * resolution)`; `origin` is
+ *   the north-west node (the geodata-ch convention).
+ * - `'cell-centre'`: it is the height at the CENTRE of the cell whose
+ *   north-west corner is `(origin.x + col * resolution, origin.y - row * resolution)`;
+ *   `origin` is the north-west corner of the grid (the GeoTIFF pixel-is-area convention).
+ *
+ * NaN is no data; `hasData: false` means the grid carries no heights at all.
+ */
 export interface TerrainGrid {
   crs: string;
-  verticalReference: string;
+  /** Vertical CRS of the heights as an EPSG identifier, for example `EPSG:5728` (LN02). Compared by code. */
+  verticalCrs: string;
+  /** Human-readable vertical reference, for display only; never compared. */
+  verticalReference?: string;
+  sampling: 'node' | 'cell-centre';
   width: number;
   height: number;
-  cellSize: number;
-  /** Top-left (north-west) corner of the grid. */
+  resolution: number;
   origin: MapPoint;
-  heights: Float32Array | Float64Array;
+  values: ArrayLike<number>;
+  /** `false` when the grid carries no heights (for example a box outside coverage). Treated as all NaN. */
+  hasData?: boolean;
 }
 
 /**
@@ -156,9 +199,15 @@ export interface TerrainGrid {
  */
 export interface TerrainSource {
   readonly crs: string;
-  /** The vertical reference frame of every height, for example `LN02`. */
-  readonly verticalReference: string;
-  /** 1-sigma vertical accuracy in metres, when the source states one. */
+  /** Vertical CRS of every height as an EPSG identifier, for example `EPSG:5728` (LN02). Compared by code. */
+  readonly verticalCrs: string;
+  /** Human-readable vertical reference, for display only. */
+  readonly verticalReference?: string;
+  /**
+   * 1-sigma vertical accuracy in metres as the source states it. Without it
+   * the check cannot size its clearance margin and never reports
+   * `above-mapped-class-range`.
+   */
   readonly verticalAccuracy?: number;
   heightAt?(point: MapPoint, signal?: AbortSignal): number | null | Promise<number | null>;
   grid?(bbox: MapBBox, options: { resolution: number; signal?: AbortSignal }): Promise<TerrainGrid>;
@@ -167,6 +216,10 @@ export interface TerrainSource {
 /** The synchronous terrain view the pure check reads. */
 export interface TerrainSampler {
   readonly crs: string;
-  readonly verticalReference: string;
+  /** EPSG identifier of the vertical CRS, for example `EPSG:5728`. */
+  readonly verticalCrs: string;
+  readonly verticalReference?: string;
+  /** 1-sigma vertical accuracy in metres, when the source states one. */
+  readonly verticalAccuracy?: number;
   heightAt(point: MapPoint): number | null;
 }

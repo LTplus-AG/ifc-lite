@@ -12,6 +12,7 @@ export {
   CELL_NO_RUNOFF,
   CELL_UNCLASSIFIED,
   type ClassifiedHazardRaster,
+  type CoverageTest,
   type HazardCellCounts,
   type HazardClassDefinition,
   type HazardProvenance,
@@ -20,6 +21,7 @@ export {
   type LocalizedText,
   type MapBBox,
   type MapPoint,
+  type RenderingConfirmation,
   type TerrainGrid,
   type TerrainSampler,
   type TerrainSource,
@@ -70,10 +72,14 @@ export {
   checkFloodExposure,
   type CandidateResult,
   type CheckOptions,
+  type DrivingSample,
   type FloodCheckResult,
+  type LayerCheck,
   type ReachableSpace,
   type SampleCounts,
 } from './check/check.js';
+export type { MarginBasis, MarginOptions } from './check/margin.js';
+export type { HeightPlausibility, PlausibilityOptions } from './check/plausibility.js';
 export { compareLevel, type LevelComparison, type Outcome, type UnclassifiedReason } from './check/outcome.js';
 export { terrainSamplerFromGrid, type SamplingOptions } from './check/sampling.js';
 export { runFloodCheck, type RunOptions } from './check/run.js';

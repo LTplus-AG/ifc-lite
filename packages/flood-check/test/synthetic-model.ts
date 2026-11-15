@@ -20,6 +20,27 @@ export interface SyntheticOptions {
   lengthUnit?: 'METRE' | 'MILLIMETRE';
   scale?: number;
   withMapConversion?: boolean;
+  /** Write the ground slab (the footprint source). Default true. */
+  slab?: boolean;
+  /** Add more entities; see {@link Extra}. */
+  extra?: (b: Extra) => void;
+}
+
+/** What {@link SyntheticOptions.extra} can use to add entities to the house. */
+export interface Extra {
+  add(body: string): number;
+  guid(): string;
+  /** A local placement relative to `rel` (a placement id) at local metres. */
+  place(rel: number, x: number, y: number, z: number): number;
+  pset(target: number, name: string, prop: string, value: string): void;
+  shape(items: number[], id?: string, type?: string): number;
+  /** An extruded rectangle (centre, size) at `position` (an IfcAxis2Placement3D id) along `extrude` (an IfcDirection id). */
+  rectExtrusion(cx: number, cy: number, xd: number, yd: number, depth: number, position: number, extrude: number): number;
+  axis(x: number, y: number, z: number, zDir?: number, xDir?: number): number;
+  dir(x: number, y: number, z: number): number;
+  pt2(x: number, y: number): number;
+  storeys: { ug: { pl: number; id: number }; eg: { pl: number; id: number }; og: { pl: number; id: number } };
+  contain(storeyId: number, id: number): void;
 }
 
 export const ROTATION_DEG = 30;
@@ -96,10 +117,12 @@ export function syntheticHouse(o: SyntheticOptions = {}): string {
   };
 
   // Ground slab: the footprint.
-  const slabPl = place(eg.pl, 0, 0, 0);
-  const slabSolid = rectExtrusion(10, 5, 20, 10, 0.3, axis(0, 0, 0), dir(0, 0, -1));
-  const slab = add(`IFCSLAB(${g()},$,'Bodenplatte EG',$,$,#${slabPl},#${shape([slabSolid])},$,.FLOOR.)`);
-  contained[eg.id].push(slab);
+  if (o.slab !== false) {
+    const slabPl = place(eg.pl, 0, 0, 0);
+    const slabSolid = rectExtrusion(10, 5, 20, 10, 0.3, axis(0, 0, 0), dir(0, 0, -1));
+    const slab = add(`IFCSLAB(${g()},$,'Bodenplatte EG',$,$,#${slabPl},#${shape([slabSolid])},$,.FLOOR.)`);
+    contained[eg.id].push(slab);
+  }
 
   // South external wall with an axis.
   const wallPl = place(eg.pl, 0, 0, 0);
@@ -138,6 +161,20 @@ export function syntheticHouse(o: SyntheticOptions = {}): string {
   const ogDoor = add(`IFCDOOR(${g()},$,'Balkontür',$,$,#${place(og.pl, 10, 0, 0)},$,$,2.1,1.,.DOOR.,$,$)`);
   pset(ogDoor, 'Pset_DoorCommon', 'IsExternal', 'IFCBOOLEAN(.T.)');
   contained[og.id].push(ogDoor);
+
+  o.extra?.({
+    add,
+    guid: g,
+    place,
+    pset,
+    shape,
+    rectExtrusion,
+    axis,
+    dir,
+    pt2,
+    storeys: { ug, eg, og },
+    contain: (storeyId, id) => contained[storeyId].push(id),
+  });
 
   for (const [storeyId, ids] of Object.entries(contained)) {
     add(`IFCRELCONTAINEDINSPATIALSTRUCTURE(${g()},$,$,$,(${ids.map((i) => `#${i}`).join(',')}),#${storeyId})`);

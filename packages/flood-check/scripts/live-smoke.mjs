@@ -9,11 +9,14 @@
  *   pnpm --filter @ifc-lite/flood-check build
  *   node packages/flood-check/scripts/live-smoke.mjs [easting northing]
  *
- * Makes exactly two small requests: one WMS GetMap of the BAFU layer over a
- * ~40 x 30 m box (about 3 KB to 10 KB), and one point height from the
- * geo.admin.ch height service at the box centre, used as flat terrain. A
- * synthetic 20 m x 10 m building with one door per façade, thresholds 5 cm
- * above that terrain, is then checked and the numbers are printed.
+ * Makes two or three small requests: one WMS GetMap of the BAFU layer over a
+ * ~30 x 20 m box (about 3 KB to 10 KB), one point height from the
+ * geo.admin.ch height service at the box centre, used as flat terrain, and,
+ * only when the GetMap answer is wholly transparent, the provider's 9 x 9 px
+ * rendering check at its reference location. A synthetic 20 m x 10 m building
+ * with one door per façade, thresholds 5 cm above that terrain, is then
+ * checked and the numbers are printed. The height service states no accuracy,
+ * so no door can come out above the mapped class range.
  */
 
 import { BAFU_CLASSES, checkFloodExposure, createBafuRunoffProvider } from '../dist/index.js';
@@ -78,8 +81,9 @@ const raster = await provider.fetchRaster({
   crs: 'EPSG:2056',
 });
 // The height service's vertical frame is taken to be LN02 (swisstopo heights); this script does not verify it.
-const terrain = { crs: 'EPSG:2056', verticalReference: 'LN02', heightAt: () => terrainHeight };
-const result = checkFloodExposure(facts, raster, terrain);
+const terrain = { crs: 'EPSG:2056', verticalCrs: 'EPSG:5728', verticalReference: 'LN02', heightAt: () => terrainHeight };
+const renderingConfirmation = raster.cells.every((c) => c === 0) ? await provider.confirmRendering() : undefined;
+const result = checkFloodExposure(facts, raster, terrain, { coverage: provider.covers, renderingConfirmation });
 
 console.log(JSON.stringify({
   request: raster.provenance.requestUrl,
@@ -96,5 +100,8 @@ console.log(JSON.stringify({
     levelAboveSurfaceLowerBound: r.comparison ? Number(r.comparison.levelAboveSurfaceLowerBound.toFixed(3)) : null,
   })),
   summary: result.summary,
+  layerCheck: result.layerCheck,
+  heightPlausibility: result.heightPlausibility.statement,
+  margin: result.margin.statement,
   classes: BAFU_CLASSES.map((c) => c.id),
 }, null, 2));

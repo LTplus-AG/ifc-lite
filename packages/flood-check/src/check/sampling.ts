@@ -25,6 +25,7 @@ import {
   CELL_NO_RUNOFF,
   CELL_UNCLASSIFIED,
   type ClassifiedHazardRaster,
+  type CoverageTest,
   type MapPoint,
   type TerrainGrid,
   type TerrainSampler,
@@ -56,6 +57,8 @@ export function resolveSampling(options: SamplingOptions = {}): ResolvedSampling
 export interface SamplePlan {
   anchor: MapPoint;
   anchorBasis: 'element' | 'nearest-outline-point';
+  /** How far the anchor was moved from the element's position to reach the outline, metres (0 when not moved). */
+  anchorOffset: number;
   /** Ring points outside the footprint, in ring then direction order. */
   points: Array<{ point: MapPoint; ring: number }>;
   /** Ring points dropped for lying inside or too close to the footprint. */
@@ -67,11 +70,13 @@ export function planSamples(candidate: CandidateFact, footprint: ModelFacts['foo
   const d = signedDistance(candidate.position, rings);
   let anchor = candidate.position;
   let anchorBasis: SamplePlan['anchorBasis'] = 'element';
+  let anchorOffset = 0;
   if (d <= 0) {
     const nearest = closestBoundaryPoint(candidate.position, rings);
     if (nearest) {
       anchor = nearest.point;
       anchorBasis = 'nearest-outline-point';
+      anchorOffset = nearest.distance;
     }
   }
   const points: SamplePlan['points'] = [];
@@ -84,13 +89,19 @@ export function planSamples(candidate: CandidateFact, footprint: ModelFacts['foo
       else rejected++;
     }
   }
-  return { anchor, anchorBasis, points, rejected };
+  return { anchor, anchorBasis, anchorOffset, points, rejected };
 }
 
-/** What a raster says at a point. */
-export type CellReading = { kind: 'class'; code: number } | { kind: 'no-runoff' } | { kind: 'unclassified' } | { kind: 'outside' };
+/** What a raster says at a point. `outside-coverage`: outside (or too near) the perimeter the map covers. */
+export type CellReading =
+  | { kind: 'class'; code: number }
+  | { kind: 'no-runoff' }
+  | { kind: 'unclassified' }
+  | { kind: 'outside' }
+  | { kind: 'outside-coverage' };
 
-export function readCell(raster: ClassifiedHazardRaster, p: MapPoint): CellReading {
+export function readCell(raster: ClassifiedHazardRaster, p: MapPoint, covers?: CoverageTest): CellReading {
+  if (covers && covers(p) !== true) return { kind: 'outside-coverage' };
   const col = Math.floor((p.x - raster.origin.x) / raster.cellSize);
   const row = Math.floor((raster.origin.y - p.y) / raster.cellSize);
   if (col < 0 || row < 0 || col >= raster.width || row >= raster.height) return { kind: 'outside' };
@@ -100,25 +111,33 @@ export function readCell(raster: ClassifiedHazardRaster, p: MapPoint): CellReadi
   return { kind: 'class', code };
 }
 
-/** Bilinear interpolation between cell centres of a terrain grid; null outside it or next to no-data. */
-export function terrainSamplerFromGrid(grid: TerrainGrid): TerrainSampler {
+/**
+ * Bilinear interpolation over a terrain grid, honouring its `sampling`
+ * convention (`node` or `cell-centre`, see {@link TerrainGrid}); null outside
+ * the grid, next to a NaN, or when the grid says it has no data.
+ */
+export function terrainSamplerFromGrid(grid: TerrainGrid, options: { verticalAccuracy?: number } = {}): TerrainSampler {
+  if (grid.sampling !== 'node' && grid.sampling !== 'cell-centre') {
+    throw new TypeError(`TerrainGrid.sampling must be 'node' or 'cell-centre', got ${JSON.stringify(grid.sampling)}`);
+  }
+  const shift = grid.sampling === 'cell-centre' ? 0.5 : 0;
+  const empty = grid.hasData === false;
   return {
     crs: grid.crs,
+    verticalCrs: grid.verticalCrs,
     verticalReference: grid.verticalReference,
+    verticalAccuracy: options.verticalAccuracy,
     heightAt(p: MapPoint): number | null {
-      const fx = (p.x - grid.origin.x) / grid.cellSize - 0.5;
-      const fy = (grid.origin.y - p.y) / grid.cellSize - 0.5;
-      const c0 = Math.floor(fx);
-      const r0 = Math.floor(fy);
+      if (empty) return null;
+      // Fractional node index: node (c, r) sits at origin + (c + shift, -(r + shift)) * resolution.
+      const fx = (p.x - grid.origin.x) / grid.resolution - shift;
+      const fy = (grid.origin.y - p.y) / grid.resolution - shift;
+      if (!(fx >= 0 && fy >= 0 && fx <= grid.width - 1 && fy <= grid.height - 1)) return null;
+      const c0 = Math.min(Math.floor(fx), grid.width - 1);
+      const r0 = Math.min(Math.floor(fy), grid.height - 1);
       const tx = fx - c0;
       const ty = fy - r0;
-      const at = (c: number, r: number): number => {
-        const cc = Math.min(Math.max(c, 0), grid.width - 1);
-        const rr = Math.min(Math.max(r, 0), grid.height - 1);
-        return grid.heights[rr * grid.width + cc];
-      };
-      if (fx < -0.5 || fy < -0.5 || fx > grid.width - 0.5 || fy > grid.height - 0.5) return null;
-      // Only cells with a non-zero weight count, so a no-data neighbour does not poison an exact hit.
+      // Only nodes with a non-zero weight count, so a no-data neighbour does not poison an exact hit.
       let h = 0;
       for (const [c, r, weight] of [
         [c0, r0, (1 - tx) * (1 - ty)],
@@ -127,8 +146,8 @@ export function terrainSamplerFromGrid(grid: TerrainGrid): TerrainSampler {
         [c0 + 1, r0 + 1, tx * ty],
       ] as const) {
         if (weight === 0) continue;
-        const v = at(c, r);
-        if (!Number.isFinite(v)) return null;
+        const v = grid.values[r * grid.width + c];
+        if (v === undefined || !Number.isFinite(v)) return null;
         h += v * weight;
       }
       return h;
@@ -138,13 +157,14 @@ export function terrainSamplerFromGrid(grid: TerrainGrid): TerrainSampler {
 
 /** A sampler over heights fetched for known points (keyed to the millimetre). */
 export function terrainSamplerFromPoints(
-  crs: string,
-  verticalReference: string,
+  source: Pick<TerrainSampler, 'crs' | 'verticalCrs' | 'verticalReference' | 'verticalAccuracy'>,
   heights: ReadonlyMap<string, number | null>,
 ): TerrainSampler {
   return {
-    crs,
-    verticalReference,
+    crs: source.crs,
+    verticalCrs: source.verticalCrs,
+    verticalReference: source.verticalReference,
+    verticalAccuracy: source.verticalAccuracy,
     heightAt: (p) => heights.get(pointKey(p)) ?? null,
   };
 }

@@ -11,7 +11,10 @@
  *
  * - {@link SITE_PSET} on the IfcSite (or IfcBuilding): dataset, dates, class
  *   definition, return period, licence, attribution, limits, parameters.
- * - {@link ELEMENT_PSET} on each checked element: outcome and its numbers.
+ * - {@link ELEMENT_PSET} on each checked element: outcome and its numbers,
+ *   plus what the outcome means, the screening caveat, the attribution and the
+ *   dataset date, and the name of the site set, so a payload read on its own
+ *   still carries them.
  *
  * The shape matches `PropertySetDef` of `@ifc-lite/create` structurally
  * (`Name`, `Properties[{ Name, NominalValue, Type }]`). Lengths are converted
@@ -21,9 +24,10 @@
  */
 
 import type { CandidateResult, FloodCheckResult } from './check/check.js';
+import { SITE_PSET } from './check/wording.js';
 import type { HazardClassDefinition } from './types.js';
 
-export const SITE_PSET = 'IfcLite_SurfaceRunoffHazardSite';
+export { SITE_PSET };
 export const ELEMENT_PSET = 'IfcLite_SurfaceRunoffExposure';
 
 export type FloodPropertyType = 'IfcLabel' | 'IfcText' | 'IfcIdentifier' | 'IfcInteger' | 'IfcBoolean' | 'IfcLengthMeasure';
@@ -104,16 +108,33 @@ export function sitePropertySet(result: FloodCheckResult, classes: readonly Haza
     .text('DisclaimerDE', p.disclaimer.de)
     .text('DisclaimerEN', p.disclaimer.en)
     .text('CoordinateReferenceSystem', result.crs, 'IfcIdentifier')
+    .text('CaveatDE', result.caveat.de)
+    .text('CaveatEN', result.caveat.en)
     .label('TerrainVerticalReference', result.terrainVerticalReference)
+    .text('TerrainVerticalCrs', result.verticalDatum.terrainCrs, 'IfcIdentifier')
     .label('VerticalDatumBasis', result.verticalDatum.basis)
     .label('FootprintSource', result.footprintSource)
     .label('GroundStoreyBasis', result.groundStorey.basis)
     .length('GroundStoreyLevel', result.groundStorey.level)
-    .length('ClearanceMargin', result.parameters.clearanceMargin)
+    .label('HeightPlausibilityStatus', result.heightPlausibility.status)
+    .text('HeightPlausibilityBasis', result.heightPlausibility.statement)
+    .length('TerrainMinNearBuilding', result.heightPlausibility.terrainMin)
+    .length('TerrainMaxNearBuilding', result.heightPlausibility.terrainMax)
+    .length('HeightPlausibilityBelow', result.heightPlausibility.below)
+    .length('HeightPlausibilityAbove', result.heightPlausibility.above)
+    .length('ClearanceMargin', result.margin.margin)
+    .text('ClearanceMarginBasis', result.margin.statement)
+    .length('TerrainVerticalAccuracy', result.margin.terrainAccuracy)
     .length('RasterCellSize', result.parameters.rasterCellSize)
     .label('RingDistances', result.parameters.ringDistances.map((d) => `${d} m`).join(', '))
     .length('MinOutsideDistance', result.parameters.minOutsideDistance)
-    .label('EdgePolicy', result.parameters.edgePolicy);
+    .length('AnchorTolerance', result.parameters.anchorTolerance)
+    .label('EdgePolicy', result.parameters.edgePolicy)
+    .bool('RasterEmpty', result.layerCheck.rasterEmpty);
+  if (result.layerCheck.confirmation) {
+    b.bool('LayerRenderingConfirmed', result.layerCheck.confirmation.confirmed)
+      .text('LayerRenderingCheck', `${result.layerCheck.confirmation.detail} (${result.layerCheck.confirmation.requestUrl})`);
+  }
   for (const [outcome, count] of Object.entries(result.summary)) {
     b.int(`Count_${outcome.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()).replace(/^./, (c) => c.toUpperCase())}`, count);
   }
@@ -121,12 +142,17 @@ export function sitePropertySet(result: FloodCheckResult, classes: readonly Haza
   return { Name: SITE_PSET, Properties: b.props };
 }
 
-/** The per-element set: outcome and every number behind it. */
+/** The per-element set: outcome, what it means, every number behind it, and the caveat and source it must carry. */
 export function elementPropertySet(r: CandidateResult, result: FloodCheckResult): FloodPropertySet {
   const c = r.comparison;
   const cls = r.hazardClass;
+  const d = r.drivingSample;
   const b = new Builder(result.lengthUnitScale)
     .label('Outcome', r.outcome)
+    .text('OutcomeMeaningEN', r.meaning.en)
+    .text('OutcomeMeaningDE', r.meaning.de)
+    .text('CaveatEN', r.caveat.en)
+    .text('CaveatDE', r.caveat.de)
     .label('UnclassifiedReason', r.unclassifiedReason)
     .label('Category', r.candidate.category)
     .label('SelectedBecause', r.candidate.selectedBecause)
@@ -134,21 +160,29 @@ export function elementPropertySet(r: CandidateResult, result: FloodCheckResult)
     .length('ClassLowerBound', cls?.lowerBound)
     .length('ClassUpperBound', cls?.upperBound);
   if (cls) b.bool('ClassOpenEnded', cls.upperBound === null);
-  b.length('ElementLevel', r.candidate.level)
+  b.label('ClassesFound', r.classesFound.join(', '))
+    .length('ElementLevel', r.candidate.level)
     .label('LevelBasis', r.candidate.levelBasis)
     .bool('LevelIsUpperEstimate', r.candidate.levelIsUpperEstimate)
+    .length('ComparedLevel', d?.level)
     .length('TerrainHeight', r.terrainHeight)
     .length('WaterSurfaceLowerBound', c?.surfaceLowerBound)
     .length('WaterSurfaceUpperBound', c?.surfaceUpperBound)
     .length('LevelAboveSurfaceLowerBound', c?.levelAboveSurfaceLowerBound)
     .length('LevelAboveSurfaceUpperBound', c?.levelAboveSurfaceUpperBound)
     .length('ClearanceMargin', r.clearanceMargin)
-    .label('GoverningSample', r.governingSample ? `E ${r.governingSample.x.toFixed(2)}, N ${r.governingSample.y.toFixed(2)} (${result.crs})` : null)
+    .label('DrivingSample', d ? `E ${d.point.x.toFixed(2)}, N ${d.point.y.toFixed(2)} (${result.crs})` : null)
+    .int('SamplesCompared', r.samplesCompared)
     .int('SamplesOutsideFootprint', r.samples.planned - r.samples.insideFootprint)
-    .int('SamplesUnreadable', r.samples.byReading.unclassified + r.samples.byReading.outside)
+    .int('SamplesUnreadable', r.samples.byReading.unclassified + r.samples.byReading.outside + r.samples.byReading['outside-coverage'])
+    .length('AnchorOffset', r.anchorOffset)
+    .text('FavourableWithheldBecause', r.favourableWithheldBecause.join(' | '))
     .text('Notes', r.notes.join(' | '))
     .text('Dataset', result.provenance.datasetId, 'IfcIdentifier')
-    .label('RetrievedAt', result.provenance.retrievedAt);
+    .label('DatasetDate', result.provenance.datasetDate)
+    .label('RetrievedAt', result.provenance.retrievedAt)
+    .text('Attribution', result.provenance.attribution)
+    .label('SitePropertySet', SITE_PSET);
   return { Name: ELEMENT_PSET, Properties: b.props };
 }
 

@@ -16,10 +16,17 @@
  *   below the ground storey (`slab-opening`); RECESS openings are not through.
  * - Light wells: no IFC class exists, so proxies, chambers, civil elements,
  *   assemblies and openings whose Name/ObjectType say so (DE/FR/IT/EN).
- * - Stairs and ramps that lie outside the footprint (or are `IsExternal`) and
- *   lead down from the ground storey. Interior stairs are not entry points.
+ * - Stairs and ramps that lie outside the footprint (or are `IsExternal`).
+ *   Interior stairs are not entry points. One whose body is readable and lies
+ *   wholly above the ground storey leads up and is skipped; every other one is
+ *   kept (its placement origin may be at its top), with the entry level at the
+ *   terrain (`ground-storey-or-terrain`).
  * - Technical equipment in the ground storey and below, by class and
- *   predefined type (see {@link EQUIPMENT}).
+ *   predefined type, or through the type object of a generic occurrence (see
+ *   `equipment.ts`).
+ * - Door and window levels are the lower of the placement origin and the
+ *   bottom of the filled opening's body, with a note when they differ by more
+ *   than 0.3 m (some tools place windows at the head or the centre).
  *
  * Doors, windows and openings above `ground storey + aboveGroundScope` are
  * out of scope of a surface-runoff check and are not listed.
@@ -32,18 +39,8 @@ import type { CandidateCategory, CandidateFact, LevelBasis } from './facts.js';
 import type { ModelGeoreference } from './georef.js';
 import { extrusionCorners, toWorld } from './outline.js';
 import type { PlacementResolver } from './placement.js';
+import { EQUIPMENT_OCCURRENCES, EQUIPMENT_TYPES, GENERIC_OCCURRENCES } from './equipment.js';
 import { asEnum, asString, type DecodedEntity, type ModelReader } from './reader.js';
-
-/** Equipment classes (UPPERCASE STEP names) and, where only some types qualify, their predefined types. */
-export const EQUIPMENT: ReadonlyArray<{ type: string; predefined?: readonly string[] }> = [
-  { type: 'IFCELECTRICDISTRIBUTIONBOARD' },
-  { type: 'IFCELECTRICDISTRIBUTIONPOINT' }, // IFC2X3 name of the distribution board
-  { type: 'IFCTRANSFORMER' },
-  { type: 'IFCBOILER' },
-  { type: 'IFCPUMP' },
-  { type: 'IFCTANK' },
-  { type: 'IFCTRANSPORTELEMENT', predefined: ['ELEVATOR', 'LIFTINGGEAR'] },
-];
 
 const DOOR_TYPES = ['IFCDOOR', 'IFCDOORSTANDARDCASE'];
 const WINDOW_TYPES = ['IFCWINDOW', 'IFCWINDOWSTANDARDCASE'];
@@ -161,7 +158,7 @@ function base(
     position: at.position,
     level: at.level,
     levelBasis,
-    levelIsUpperEstimate: levelBasis === 'ground-storey-level',
+    levelIsUpperEstimate: levelBasis === 'ground-storey-or-terrain',
     storeyId: ctx.storeyOf(entity.expressId),
     selectedBecause,
   };
@@ -192,10 +189,34 @@ function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host: Decode
     return `host IsExternal (${COMMON_PSET[host!.type]})${own === false ? '; the element itself states IsExternal = false' : ''}`;
   }
   if (own === false || hostExternal === false) return null;
+  // No outline to test against (no slab, no external wall): keep it rather than lose every façade element.
+  if (ctx.footprint.length === 0) return 'IsExternal not stated and no footprint to test against (kept conservatively)';
   const d = signedDistance(at, ctx.footprint);
   return Number.isFinite(d) && Math.abs(d) <= ctx.boundaryTolerance
     ? `within ${ctx.boundaryTolerance} m of the footprint outline (IsExternal not stated)`
     : null;
+}
+
+/** Placement and opening-body levels further apart than this get a note. */
+const LEVEL_DISAGREEMENT = 0.3;
+
+/** A door's or window's level: the lower of its placement origin and the bottom of the opening it fills. */
+function fillingLevel(
+  ctx: CandidateContext,
+  placementLevel: number,
+  opening: DecodedEntity | null,
+): { level: number; basis: LevelBasis; note?: string } {
+  const body = opening ? openingExtent(ctx, opening) : null;
+  if (!body || !body.fromBody) return { level: placementLevel, basis: 'placement-origin' };
+  const diff = placementLevel - body.level;
+  const note =
+    Math.abs(diff) > LEVEL_DISAGREEMENT
+      ? `placement origin ${placementLevel.toFixed(3)} m and the bottom of the filled opening ${body.level.toFixed(3)} m differ by ` +
+        `${Math.abs(diff).toFixed(2)} m (some tools place windows at the head or centre); the lower is used`
+      : undefined;
+  return body.level < placementLevel
+    ? { level: body.level, basis: 'opening-body-bottom', note }
+    : { level: placementLevel, basis: 'placement-origin', note };
 }
 
 function collectFillings(ctx: CandidateContext, types: readonly string[], out: CandidateFact[]): void {
@@ -214,7 +235,9 @@ function collectFillings(ctx: CandidateContext, types: readonly string[], out: C
       const category: CandidateCategory = isWindow
         ? belowGround(ctx, id, at.level) ? 'basement-window' : 'window'
         : 'door';
-      const fact = base(ctx, entity, category, at, reason);
+      const level = fillingLevel(ctx, at.level, opening === undefined ? null : r.entity(opening));
+      const fact = base(ctx, entity, category, { position: at.position, level: level.level }, reason, level.basis);
+      if (level.note) fact.notes = [level.note];
       if (host) fact.host = { expressId: host.expressId, ifcClass: r.className(host) };
       out.push(fact);
     }
@@ -264,6 +287,30 @@ function collectLightWells(ctx: CandidateContext, out: CandidateFact[]): void {
   }
 }
 
+/**
+ * Whether an external stair or ramp can lead down to (or sit at) the entry
+ * level. Only a readable body that lies wholly above the ground storey proves
+ * it leads up; a placement origin alone does not, since a ramp is often
+ * placed at its top.
+ */
+function descentEvidence(ctx: CandidateContext, entity: DecodedEntity, level: number): { keep: boolean; why: string } {
+  if (belowGround(ctx, entity.expressId, level)) return { keep: true, why: 'in a storey below ground' };
+  const frame = ctx.placements.ofProduct(entity.expressId);
+  const ids = [entity.expressId, ...ctx.reader.related(entity.expressId, RelationshipType.Aggregates, 'forward')];
+  let minZ = Infinity;
+  let readable = false;
+  for (const id of ids) {
+    const f = id === entity.expressId ? frame : ctx.placements.ofProduct(id);
+    const corners = f ? extrusionCorners(ctx.reader, id) : null;
+    if (!f || !corners) continue;
+    readable = true;
+    for (const p of toWorld(f, corners)) minZ = Math.min(minZ, ctx.georef.toMap(p)[2]);
+  }
+  if (!readable) return { keep: true, why: 'its body cannot be read, so it may lead down (kept conservatively)' };
+  if (minZ < ctx.groundLevel - 0.3) return { keep: true, why: `its body reaches ${(ctx.groundLevel - minZ).toFixed(2)} m below the ground storey` };
+  return { keep: false, why: 'its body lies wholly at or above the ground storey (leads up)' };
+}
+
 function collectDescents(ctx: CandidateContext, types: readonly string[], category: 'stair' | 'ramp', out: CandidateFact[]): void {
   const r = ctx.reader;
   for (const type of types) {
@@ -276,37 +323,62 @@ function collectDescents(ctx: CandidateContext, types: readonly string[], catego
       if (!at) continue;
       const external = isExternal(r, entity);
       const outside = signedDistance(at.position, ctx.footprint) > 0;
-      if (external === false || (!external && !outside)) continue;
-      if (!belowGround(ctx, id, at.level)) continue;
+      // Outside the footprint is decisive: an explicit `false` is often an authoring default.
+      if (!external && !outside) continue;
+      const evidence = descentEvidence(ctx, entity, at.level);
+      if (!evidence.keep) {
+        ctx.skip(id, r.className(entity), `external ${category}: ${evidence.why}`);
+        continue;
+      }
       out.push(
         base(
           ctx,
           entity,
           category,
           { position: at.position, level: ctx.groundLevel },
-          `${external ? 'IsExternal' : 'outside the footprint'} and leading down from the ground storey`,
-          'ground-storey-level',
+          `${external ? 'IsExternal' : `outside the footprint${external === false ? ' (despite IsExternal = false)' : ''}`}; ${evidence.why}; entry at the terrain`,
+          'ground-storey-or-terrain',
         ),
       );
     }
   }
 }
 
+function inLowestStoreys(ctx: CandidateContext, id: number, level: number): boolean {
+  const storey = ctx.storeyOf(id);
+  const storeyLevel = storey === null ? undefined : ctx.storeyLevel.get(storey);
+  return storeyLevel !== undefined ? storeyLevel <= ctx.groundLevel + 0.01 : level <= ctx.groundLevel + ctx.aboveGroundScope;
+}
+
 function collectEquipment(ctx: CandidateContext, out: CandidateFact[]): void {
   const r = ctx.reader;
-  for (const { type, predefined } of EQUIPMENT) {
+  const taken = new Set<number>();
+  const add = (entity: DecodedEntity, because: string) => {
+    const at = placed(ctx, entity);
+    if (!at || !inLowestStoreys(ctx, entity.expressId, at.level)) return;
+    taken.add(entity.expressId);
+    out.push(base(ctx, entity, 'equipment', at, `${because} in the ground storey or below`));
+  };
+  for (const { type, predefined } of EQUIPMENT_OCCURRENCES) {
     for (const id of r.idsOfType(type)) {
       const entity = r.entity(id);
-      if (!entity) continue;
+      if (!entity || taken.has(id)) continue;
       const kind = predefinedType(r, entity);
       if (predefined && (!kind || !predefined.includes(kind))) continue;
-      const at = placed(ctx, entity);
-      if (!at) continue;
-      const storey = ctx.storeyOf(id);
-      const storeyLevel = storey === null ? undefined : ctx.storeyLevel.get(storey);
-      const lowest = storeyLevel !== undefined ? storeyLevel <= ctx.groundLevel + 0.01 : at.level <= ctx.groundLevel + ctx.aboveGroundScope;
-      if (!lowest) continue;
-      out.push(base(ctx, entity, 'equipment', at, `${r.className(entity)}${kind ? ` ${kind}` : ''} in the ground storey or below`));
+      add(entity, `${r.className(entity)}${kind ? ` ${kind}` : ''}`);
+    }
+  }
+  for (const type of GENERIC_OCCURRENCES) {
+    for (const id of r.idsOfType(type)) {
+      const entity = r.entity(id);
+      if (!entity || taken.has(id)) continue;
+      const typeObject = r
+        .related(id, RelationshipType.DefinesByType, 'inverse')
+        .map((t) => r.entity(t))
+        .find((t): t is DecodedEntity => t !== null && EQUIPMENT_TYPES.has(t.type));
+      if (!typeObject) continue;
+      const kind = predefinedType(r, entity);
+      add(entity, `${r.className(entity)} typed ${r.className(typeObject)}${kind ? ` ${kind}` : ''}`);
     }
   }
 }

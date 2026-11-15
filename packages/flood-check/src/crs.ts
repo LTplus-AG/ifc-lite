@@ -49,28 +49,29 @@ export function projectedCrsIdentifier(crs: ProjectedCRS): string | null {
   );
 }
 
-/** Spellings of the same vertical reference frame. */
-const VERTICAL_ALIASES: ReadonlyArray<readonly string[]> = [
-  ['LN02', 'EPSG:5728', 'LANDESNIVELLEMENT1902', 'SWISSLN02', 'LN02HEIGHT'],
-  ['LHN95', 'EPSG:5729', 'LANDESHOEHENNETZ1995', 'LANDESHÖHENNETZ1995', 'SWISSLHN95', 'LHN95HEIGHT'],
-  ['NAP', 'EPSG:5709', 'NORMAALAMSTERDAMSPEIL'],
-  ['DHHN2016', 'EPSG:7837'],
-  ['EVRF2007', 'EPSG:5621'],
+/** Spellings of one vertical CRS, keyed by its EPSG identifier. */
+const VERTICAL_ALIASES: ReadonlyArray<readonly [string, ...string[]]> = [
+  ['EPSG:5728', 'LN02', 'LANDESNIVELLEMENT1902', 'SWISSLN02', 'LN02HEIGHT'],
+  ['EPSG:5729', 'LHN95', 'LANDESHOEHENNETZ1995', 'LANDESHÖHENNETZ1995', 'SWISSLHN95', 'LHN95HEIGHT'],
+  ['EPSG:5709', 'NAP', 'NAPHEIGHT', 'NORMAALAMSTERDAMSPEIL'],
+  ['EPSG:7837', 'DHHN2016', 'DHHN2016HEIGHT'],
+  ['EPSG:5621', 'EVRF2007', 'EVRF2007HEIGHT'],
 ];
 
 function squash(value: string): string {
-  const epsg = /EPSG\s*:{0,2}\s*(\d{4,6})/i.exec(value);
-  if (epsg) return `EPSG:${Number(epsg[1])}`;
   return value.toUpperCase().replace(/[\s_\-./()]+/g, '');
 }
 
-/** A canonical key for a vertical datum name, so `"LN 02"` and `"EPSG:5728"` compare equal. */
-export function normalizeVerticalDatum(value: string): string {
+/**
+ * The EPSG identifier of a vertical CRS named by `value`: an EPSG code in any
+ * common spelling (`EPSG:5728`, `urn:ogc:def:crs:EPSG::5728`) or a known name
+ * of one (`LN02`, `Landesnivellement 1902`, `NAP`). Null when it names none.
+ */
+export function verticalCrsIdentifier(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const epsg = /EPSG\s*:{0,2}\s*(\d{4,6})/i.exec(value);
+  if (epsg) return `EPSG:${Number(epsg[1])}`;
   const key = squash(value);
-  for (const group of VERTICAL_ALIASES) if (group.includes(key)) return group[0];
-  return key;
-}
-
-export function sameVerticalDatum(a: string, b: string): boolean {
-  return normalizeVerticalDatum(a) === normalizeVerticalDatum(b);
+  for (const [code, ...names] of VERTICAL_ALIASES) if (names.includes(key)) return code;
+  return null;
 }

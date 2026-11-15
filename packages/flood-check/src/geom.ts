@@ -99,3 +99,37 @@ export function bboxOf(points: Iterable<MapPoint>): MapBBox | null {
 export function expandBBox(box: MapBBox, by: number): MapBBox {
   return { minX: box.minX - by, minY: box.minY - by, maxX: box.maxX + by, maxY: box.maxY + by };
 }
+
+/**
+ * Join polylines end to end into ONE closed ring, matching endpoints within
+ * `tolerance`. Null unless every polyline is used and the chain closes (a
+ * T-junction, a gap or two separate loops all give null).
+ */
+export function chainIntoRing(polylines: readonly (readonly MapPoint[])[], tolerance: number): MapPoint[] | null {
+  const lines = polylines.filter((l) => l.length >= 2);
+  if (lines.length < 3) return null;
+  const near = (a: MapPoint, b: MapPoint) => Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
+  const used = new Uint8Array(lines.length);
+  const ring: MapPoint[] = [...lines[0]];
+  used[0] = 1;
+  for (let placed = 1; placed < lines.length; placed++) {
+    const end = ring[ring.length - 1];
+    let next = -1;
+    let reversed = false;
+    for (let i = 0; i < lines.length && next < 0; i++) {
+      if (used[i]) continue;
+      if (near(lines[i][0], end)) next = i;
+      else if (near(lines[i][lines[i].length - 1], end)) {
+        next = i;
+        reversed = true;
+      }
+    }
+    if (next < 0) return null;
+    used[next] = 1;
+    const pts = reversed ? [...lines[next]].reverse() : lines[next];
+    ring.push(...pts.slice(1));
+  }
+  if (!near(ring[ring.length - 1], ring[0])) return null;
+  ring.pop();
+  return ring.length >= 3 ? ring : null;
+}

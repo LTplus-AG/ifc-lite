@@ -12,7 +12,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
-import { convexHull, ringArea } from '../geom.js';
+import { chainIntoRing, convexHull, ringArea } from '../geom.js';
 import type { MapPoint } from '../types.js';
 import { collectCandidates, isExternal } from './candidates.js';
 import type { FootprintFact, ModelFacts, SpaceFact, StoreyFact } from './facts.js';
@@ -24,15 +24,25 @@ import { asEnum, asString, ModelReader } from './reader.js';
 export interface ExtractOptions extends GeoreferenceOptions {
   /** The ground storey, by express id, GlobalId or Name. Default: the storey at project ±0.00 (see README). */
   groundStorey?: number | string;
-  /** Footprint rings in map coordinates (for example a cadastral outline); replaces the model-derived one. */
+  /**
+   * Footprint rings in map coordinates (for example a cadastral or survey
+   * outline); replaces the model-derived one. Prefer it when the model has no
+   * ground-floor slab outline: a hull fills courtyards and notches.
+   */
   footprint?: MapPoint[][];
   /** Doors, windows and openings higher than this above the ground storey are not listed. Default 3.0 m. */
   aboveGroundScope?: number;
-  /** Distance from the outline within which an element without `IsExternal` counts as façade. Default 1.0 m. */
+  /**
+   * Distance from the outline within which an element without `IsExternal`
+   * counts as façade. Default 1.0 m. Pass the same value as the check's
+   * `anchorTolerance`.
+   */
   boundaryTolerance?: number;
 }
 
 const MAX_SPATIAL_HOPS = 16;
+/** Wall axes meeting at a butt joint stop about half a wall thickness short of each other. */
+const WALL_JOIN_TOLERANCE = 0.5;
 
 function storeyResolver(reader: ModelReader, storeys: ReadonlySet<number>): (id: number) => number | null {
   const memo = new Map<number, number | null>();
@@ -127,6 +137,8 @@ function deriveFootprint(
   if (rings.length > 0) return { rings, source: 'slab-outline', fromElements: from };
 
   const points: MapPoint[] = [];
+  const axes: MapPoint[][] = [];
+  let everyAxisRead = true;
   for (const type of ['IFCWALL', 'IFCWALLSTANDARDCASE']) {
     for (const id of reader.idsOfType(type)) {
       const wall = reader.entity(id);
@@ -134,11 +146,17 @@ function deriveFootprint(
       if (ground.expressId !== null && storeyOf(id) !== ground.expressId) continue;
       const frame = placements.ofProduct(id);
       if (!frame) continue;
-      const axis = wallAxis(reader, id) ?? [[0, 0, 0]];
-      points.push(...toRing(toWorld(frame, axis)));
+      const axis = wallAxis(reader, id);
+      if (!axis || axis.length < 2) everyAxisRead = false;
+      const line = toRing(toWorld(frame, axis ?? [[0, 0, 0]]));
+      points.push(...line);
+      axes.push(line);
       from.push(id);
     }
   }
+  // A real outline first: the external walls' axes chained into one closed ring keeps courtyards and notches.
+  const chained = everyAxisRead ? chainIntoRing(axes, WALL_JOIN_TOLERANCE) : null;
+  if (chained && ringArea(chained) >= 1) return { rings: [chained], source: 'external-wall-outline', fromElements: from };
   const hull = convexHull(points);
   if (hull.length >= 3 && ringArea(hull) >= 1) return { rings: [hull], source: 'external-wall-hull', fromElements: from };
   return null;

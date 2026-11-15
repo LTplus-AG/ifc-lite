@@ -17,12 +17,16 @@ import { classifyRgba, type StyleCheckOptions } from '../legend.js';
 import { decodePng } from '../png.js';
 import { HazardRequestError, HazardResponseError, FloodCheckRefusal } from '../errors.js';
 import { sameCrs } from '../crs.js';
-import type {
-  ClassifiedHazardRaster,
-  HazardProvider,
-  HazardRasterRequest,
-  MapBBox,
+import {
+  CELL_NO_RUNOFF,
+  CELL_UNCLASSIFIED,
+  type ClassifiedHazardRaster,
+  type HazardProvider,
+  type HazardRasterRequest,
+  type MapBBox,
+  type RenderingConfirmation,
 } from '../types.js';
+import { bafuCovers } from './coverage.js';
 import {
   BAFU_ATTRIBUTION,
   BAFU_CLASSES,
@@ -36,6 +40,8 @@ import {
   BAFU_LIMITS,
   BAFU_METADATA_UPDATED,
   BAFU_MODEL_CELL_SIZE,
+  BAFU_REFERENCE_BOX,
+  BAFU_REFERENCE_CELL_SIZE,
   BAFU_RETURN_PERIOD,
   BAFU_TITLE,
   BAFU_WMS_URL,
@@ -168,12 +174,81 @@ export function createBafuRunoffProvider(options: BafuProviderOptions = {}): Haz
   const defaultCell = options.cellSize ?? 0.5;
   const maxPixels = options.maxPixels ?? 4096;
   const now = options.now ?? (() => new Date());
+  let rendering: Promise<RenderingConfirmation> | null = null;
+
+  async function raster(bbox: MapBBox, cellSize: number, signal: AbortSignal): Promise<ClassifiedHazardRaster> {
+    if (!(cellSize > 0)) throw new RangeError('cellSize must be positive');
+    const snapped = snapRequestBox(bbox, cellSize);
+    if (snapped.width > maxPixels || snapped.height > maxPixels) {
+      throw new FloodCheckRefusal(
+        'request-too-large',
+        `a request of ${snapped.width} x ${snapped.height} px at ${cellSize} m exceeds ${maxPixels} px per side; ` +
+          'a single building never needs that much, so check the georeferencing (unit, scale) or the requested box',
+      );
+    }
+    const url = bafuGetMapUrl(snapped.bbox, snapped.width, snapped.height, options.baseUrl);
+    let cached = await options.cache?.get(url);
+    if (!cached) {
+      if (!fetchImpl) throw new HazardRequestError('no fetch implementation is available');
+      const bytes = await fetchBytes(url, fetchImpl, signal, timeoutMs);
+      cached = { bytes, retrievedAt: now().toISOString() };
+      await options.cache?.set(url, cached);
+    }
+    const image = decodePng(cached.bytes);
+    if (image.width !== snapped.width || image.height !== snapped.height) {
+      throw new HazardResponseError(
+        `hazard image is ${image.width} x ${image.height} px; ${snapped.width} x ${snapped.height} px were requested`,
+      );
+    }
+    const decoded = classifyRgba(image.rgba, BAFU_LEGEND, BAFU_CLASSES, options.style);
+    return {
+      crs: BAFU_CRS,
+      width: image.width,
+      height: image.height,
+      cellSize,
+      origin: { x: snapped.bbox.minX, y: snapped.bbox.maxY },
+      cells: decoded.cells,
+      classes: BAFU_CLASSES,
+      counts: decoded.counts,
+      provenance: {
+        providerId: 'bafu-surface-runoff',
+        datasetId: BAFU_LAYER,
+        datasetTitle: BAFU_TITLE,
+        datasetDate: BAFU_DATASET_DATE,
+        metadataUpdated: BAFU_METADATA_UPDATED,
+        retrievedAt: cached.retrievedAt,
+        requestUrl: url,
+        attribution: BAFU_ATTRIBUTION,
+        licence: BAFU_LICENCE,
+        returnPeriod: BAFU_RETURN_PERIOD,
+        limits: BAFU_LIMITS,
+        disclaimer: BAFU_DISCLAIMER,
+      },
+    };
+  }
+
+  async function confirm(signal: AbortSignal): Promise<RenderingConfirmation> {
+    const snapped = snapRequestBox(BAFU_REFERENCE_BOX, BAFU_REFERENCE_CELL_SIZE);
+    const url = bafuGetMapUrl(snapped.bbox, snapped.width, snapped.height, options.baseUrl);
+    try {
+      const reference = await raster(BAFU_REFERENCE_BOX, BAFU_REFERENCE_CELL_SIZE, signal);
+      const classified = reference.cells.filter((c) => c !== CELL_NO_RUNOFF && c !== CELL_UNCLASSIFIED).length;
+      return classified > 0
+        ? { confirmed: true, requestUrl: url, detail: `${classified} of ${reference.cells.length} reference pixels show a mapped class` }
+        : { confirmed: false, requestUrl: url, detail: 'the reference area, where the map shows runoff, came back without any mapped class' };
+    } catch (error) {
+      if (!(error instanceof HazardRequestError || error instanceof HazardResponseError)) throw error;
+      return { confirmed: false, requestUrl: url, detail: `the reference request failed: ${error.message}` };
+    }
+  }
+
   return {
     id: 'bafu-surface-runoff',
     crs: BAFU_CRS,
     classes: BAFU_CLASSES,
     extent: BAFU_EXTENT,
     modelCellSize: BAFU_MODEL_CELL_SIZE,
+    covers: bafuCovers,
     async fetchRaster(request: HazardRasterRequest): Promise<ClassifiedHazardRaster> {
       if (!sameCrs(request.crs, BAFU_CRS)) {
         throw new FloodCheckRefusal('crs-mismatch', `the BAFU map is published in ${BAFU_CRS}; the request is in ${request.crs}`);
@@ -182,52 +257,20 @@ export function createBafuRunoffProvider(options: BafuProviderOptions = {}): Haz
       if (b.maxX < BAFU_EXTENT.minX || b.minX > BAFU_EXTENT.maxX || b.maxY < BAFU_EXTENT.minY || b.minY > BAFU_EXTENT.maxY) {
         throw new FloodCheckRefusal('outside-provider-extent', `the requested box lies outside the BAFU layer extent`);
       }
-      const cellSize = request.cellSize ?? defaultCell;
-      if (!(cellSize > 0)) throw new RangeError('cellSize must be positive');
-      const snapped = snapRequestBox(b, cellSize);
-      if (snapped.width > maxPixels || snapped.height > maxPixels) {
-        throw new RangeError(`request of ${snapped.width} x ${snapped.height} px exceeds ${maxPixels} px per side`);
+      return raster(b, request.cellSize ?? defaultCell, request.signal ?? new AbortController().signal);
+    },
+    /** One 9 x 9 px request at the documented reference location, made once per provider and cached like any other. */
+    confirmRendering(signal?: AbortSignal): Promise<RenderingConfirmation> {
+      if (!rendering) {
+        rendering = confirm(signal ?? new AbortController().signal);
+        // A failed or negative answer is not kept: the next check asks again.
+        void rendering.then((r) => {
+          if (!r.confirmed) rendering = null;
+        }, () => {
+          rendering = null;
+        });
       }
-      const url = bafuGetMapUrl(snapped.bbox, snapped.width, snapped.height, options.baseUrl);
-      const signal = request.signal ?? new AbortController().signal;
-      let cached = await options.cache?.get(url);
-      if (!cached) {
-        if (!fetchImpl) throw new HazardRequestError('no fetch implementation is available');
-        const bytes = await fetchBytes(url, fetchImpl, signal, timeoutMs);
-        cached = { bytes, retrievedAt: now().toISOString() };
-        await options.cache?.set(url, cached);
-      }
-      const image = decodePng(cached.bytes);
-      if (image.width !== snapped.width || image.height !== snapped.height) {
-        throw new HazardResponseError(
-          `hazard image is ${image.width} x ${image.height} px; ${snapped.width} x ${snapped.height} px were requested`,
-        );
-      }
-      const decoded = classifyRgba(image.rgba, BAFU_LEGEND, BAFU_CLASSES, options.style);
-      return {
-        crs: BAFU_CRS,
-        width: image.width,
-        height: image.height,
-        cellSize,
-        origin: { x: snapped.bbox.minX, y: snapped.bbox.maxY },
-        cells: decoded.cells,
-        classes: BAFU_CLASSES,
-        counts: decoded.counts,
-        provenance: {
-          providerId: 'bafu-surface-runoff',
-          datasetId: BAFU_LAYER,
-          datasetTitle: BAFU_TITLE,
-          datasetDate: BAFU_DATASET_DATE,
-          metadataUpdated: BAFU_METADATA_UPDATED,
-          retrievedAt: cached.retrievedAt,
-          requestUrl: url,
-          attribution: BAFU_ATTRIBUTION,
-          licence: BAFU_LICENCE,
-          returnPeriod: BAFU_RETURN_PERIOD,
-          limits: BAFU_LIMITS,
-          disclaimer: BAFU_DISCLAIMER,
-        },
-      };
+      return rendering;
     },
   };
 }

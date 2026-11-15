@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest';
 import { createBafuRunoffProvider, snapRequestBox, type CachedHazardResponse } from '../src/bafu/provider.js';
 import { BAFU_ATTRIBUTION, BAFU_DATASET_DATE, BAFU_LIMITS } from '../src/bafu/dataset.js';
 import { FloodCheckRefusal, HazardRequestError, HazardResponseError } from '../src/errors.js';
-import { fixture } from './helpers.js';
+import { BAFU_COVERAGE_RINGS, BAFU_COVERAGE_TOLERANCE } from '../src/bafu/coverage-data.js';
+import { bafuCovers } from '../src/bafu/coverage.js';
+import { fixture, rgbaPng } from './helpers.js';
 
 const SITE1 = { minX: 2599537, minY: 1199703, maxX: 2599637, maxY: 1199803 };
 
@@ -114,5 +116,49 @@ describe('BAFU provider', () => {
     await expect(
       provider.fetchRaster({ bbox: { minX: 90770, minY: 435320, maxX: 90800, maxY: 435350 }, crs: 'EPSG:2056' }),
     ).rejects.toBeInstanceOf(FloodCheckRefusal);
+  });
+
+  it('refuses a request larger than the pixel limit with a typed refusal', async () => {
+    const provider = createBafuRunoffProvider({ fetch: stubFetch(fixture('bern-uniform-9px.png')).fetchImpl });
+    const huge = { minX: 2_600_000, minY: 1_200_000, maxX: 2_610_000, maxY: 1_205_000 };
+    await expect(provider.fetchRaster({ bbox: huge, crs: 'EPSG:2056' })).rejects.toMatchObject({ code: 'request-too-large' });
+  });
+
+  // Review finding 10.
+  describe('no data versus no runoff', () => {
+    const transparent = rgbaPng(9, 9, () => [0, 0, 0, 0]);
+
+    it('confirms rendering with one 9 x 9 px request at the documented reference location, once', async () => {
+      const { fetchImpl, calls } = stubFetch(fixture('bern-uniform-9px.png'));
+      const provider = createBafuRunoffProvider({ fetch: fetchImpl });
+      const answer = await provider.confirmRendering!();
+      expect(answer).toMatchObject({ confirmed: true, detail: '81 of 81 reference pixels show a mapped class' });
+      expect(new URL(calls[0]).searchParams.get('BBOX')).toBe('2599560,1199720,2599569,1199729');
+      expect(new URL(calls[0]).searchParams.get('WIDTH')).toBe('9');
+      await provider.confirmRendering!();
+      expect(calls).toHaveLength(1);
+    });
+
+    it('does not confirm when the reference area comes back transparent, or the request fails, and asks again next time', async () => {
+      const { fetchImpl, calls } = stubFetch(transparent);
+      const provider = createBafuRunoffProvider({ fetch: fetchImpl });
+      expect(await provider.confirmRendering!()).toMatchObject({ confirmed: false, detail: expect.stringMatching(/without any mapped class/) });
+      await provider.confirmRendering!();
+      expect(calls).toHaveLength(2);
+      const failing = createBafuRunoffProvider({ fetch: stubFetch('down', { status: 503 }).fetchImpl });
+      expect(await failing.confirmRendering!()).toMatchObject({ confirmed: false, detail: expect.stringMatching(/HTTP 503/) });
+    });
+
+    it('knows the perimeter of Switzerland and Liechtenstein, and says when a point is too close to tell', () => {
+      expect(bafuCovers({ x: 2_600_000, y: 1_200_000 })).toBe(true); // Bern
+      expect(bafuCovers({ x: 2_758_000, y: 1_222_000 })).toBe(true); // Vaduz (LI)
+      expect(bafuCovers({ x: 2_733_000, y: 1_035_000 })).toBe(false); // Milan
+      expect(bafuCovers({ x: 2_693_805, y: 1_283_550 })).toBe(false); // Büsingen enclave (DE)
+      expect(bafuCovers({ x: 2_718_937, y: 1_091_917 })).toBe(false); // Campione enclave (IT)
+      const [x, y] = BAFU_COVERAGE_RINGS[0].split(',').slice(0, 2).map(Number);
+      expect(bafuCovers({ x, y })).toBeNull();
+      expect(bafuCovers({ x: x + BAFU_COVERAGE_TOLERANCE / 2, y })).toBeNull();
+      expect(createBafuRunoffProvider().covers).toBe(bafuCovers);
+    });
   });
 });

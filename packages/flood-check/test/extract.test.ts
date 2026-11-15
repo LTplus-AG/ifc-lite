@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import { FloodCheckRefusal } from '../src/errors.js';
 import { extractModelFacts } from '../src/model/extract.js';
-import { mapOf, parseStep, syntheticHouse } from './synthetic-model.js';
+import { equipment2x3 } from './synthetic-2x3.js';
+import { mapOf, parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
 
 async function facts(options: Parameters<typeof syntheticHouse>[0] = {}, extract: Parameters<typeof extractModelFacts>[1] = {}) {
   return extractModelFacts(await parseStep(syntheticHouse(options)), extract);
@@ -61,11 +62,11 @@ describe('extractModelFacts on a synthetic EPSG:2056 house', () => {
     expect(byName['Lichtschacht 1'].level).toBeCloseTo(498.8, 9);
     expect(byName['Heizkessel']).toMatchObject({ category: 'equipment', ifcClass: 'IfcBoiler', predefinedType: 'WATER', level: 497 });
     expect(byName['Hauptverteilung']).toMatchObject({ category: 'equipment', ifcClass: 'IfcElectricDistributionBoard', level: 500 });
-    // External stair: no top edge readable, so the ground storey level, flagged as an upper estimate.
+    // External stair: entry at the terrain; the ground storey level is the upper estimate the check lowers to terrain.
     expect(byName['Kellertreppe aussen']).toMatchObject({
       category: 'stair',
       level: 500,
-      levelBasis: 'ground-storey-level',
+      levelBasis: 'ground-storey-or-terrain',
       levelIsUpperEstimate: true,
     });
     // Not picked: the interior stair, the pump upstairs, the upper-floor door.
@@ -81,6 +82,148 @@ describe('extractModelFacts on a synthetic EPSG:2056 house', () => {
 
   it('records a stated vertical datum for the check to compare', async () => {
     expect((await facts({ verticalDatum: 'LN02' })).georeference.verticalDatum).toBe('LN02');
+  });
+});
+
+// Review finding 5.
+describe('technical equipment', () => {
+  it('resolves IFC2X3 generic occurrences through their type object', async () => {
+    const f = extractModelFacts(await parseStep(equipment2x3()), { expectedCrs: 'EPSG:2056' });
+    expect(f.georeference.source).toBe('ePSetMapConversion');
+    const picked = Object.fromEntries(f.candidates.filter((c) => c.category === 'equipment').map((c) => [c.name, c]));
+    expect(Object.keys(picked).sort()).toEqual(['Batteriespeicher', 'Hauptschalter', 'Hauptverteilung', 'Heizkessel', 'Umwälzpumpe', 'Wärmepumpe']);
+    expect(picked['Heizkessel']).toMatchObject({ ifcClass: 'IfcEnergyConversionDevice', predefinedType: 'WATER', level: 497 });
+    expect(picked['Heizkessel'].selectedBecause).toBe('IfcEnergyConversionDevice typed IfcBoilerType WATER in the ground storey or below');
+    expect(picked['Batteriespeicher'].selectedBecause).toMatch(/IfcFlowStorageDevice typed IfcElectricFlowStorageDeviceType BATTERY/);
+    expect(picked['Hauptverteilung'].ifcClass).toBe('IfcElectricDistributionPoint');
+    // Not picked: a wash basin (IfcFlowTerminal typed IfcSanitaryTerminalType) and a pump upstairs.
+  });
+
+  it('adds batteries, generators, heat pumps, chillers, switching and protective devices and communications appliances in IFC4', async () => {
+    const extra = (b: Extra) => {
+      const at = (cls: string, name: string, predefined: string) =>
+        b.contain(b.storeys.ug.id, b.add(`${cls}(${b.guid()},$,'${name}',$,$,#${b.place(b.storeys.ug.pl, 6, 6, 0)},$,$,.${predefined}.)`));
+      at('IFCELECTRICFLOWSTORAGEDEVICE', 'Batterie', 'BATTERY');
+      at('IFCELECTRICGENERATOR', 'Notstrom', 'CHP');
+      at('IFCUNITARYEQUIPMENT', 'Wärmepumpe', 'SPLITSYSTEM');
+      at('IFCCHILLER', 'Kältemaschine', 'AIRCOOLED');
+      at('IFCSWITCHINGDEVICE', 'Trenner', 'SWITCHDISCONNECTOR');
+      at('IFCPROTECTIVEDEVICE', 'FI', 'RESIDUALCURRENTCIRCUITBREAKER');
+      at('IFCCOMMUNICATIONSAPPLIANCE', 'Router', 'ROUTER');
+      // IFC4 exporters also write a generic occurrence with a specific type.
+      const o = b.add(`IFCFLOWMOVINGDEVICE(${b.guid()},$,'Hebeanlage',$,$,#${b.place(b.storeys.ug.pl, 7, 7, 0)},$,$)`);
+      const t = b.add(`IFCPUMPTYPE(${b.guid()},$,'Pumpe',$,$,$,$,$,$,.SUBMERSIBLEPUMP.)`);
+      b.add(`IFCRELDEFINESBYTYPE(${b.guid()},$,$,$,(#${o}),#${t})`);
+      b.contain(b.storeys.ug.id, o);
+    };
+    const f = await facts({ extra });
+    const names = f.candidates.filter((c) => c.category === 'equipment').map((c) => c.name);
+    for (const name of ['Batterie', 'Notstrom', 'Wärmepumpe', 'Kältemaschine', 'Trenner', 'FI', 'Router', 'Hebeanlage', 'Heizkessel', 'Hauptverteilung']) {
+      expect(names, name).toContain(name);
+    }
+    expect(names).not.toContain('Pumpe OG');
+  });
+});
+
+describe('stairs, ramps, doors and windows', () => {
+  // Review finding 7.
+  it('keeps an external ramp placed at its top and skips an external stair whose body leads up', async () => {
+    const extra = (b: Extra) => {
+      // A garage ramp placed at its top edge (ground storey level), no readable body.
+      b.contain(b.storeys.eg.id, b.add(`IFCRAMP(${b.guid()},$,'Rampe Tiefgarage',$,$,#${b.place(b.storeys.eg.pl, 10, -6, 0)},$,$,.STRAIGHT_RUN_RAMP.)`));
+      // Entrance steps: body from z = 0 to 0.6 m, outside the footprint, leading UP.
+      const solid = b.rectExtrusion(0, 0, 2, 1, 0.6, b.axis(0, 0, 0), b.dir(0, 0, 1));
+      const steps = b.add(`IFCSTAIR(${b.guid()},$,'Eingangsstufen',$,$,#${b.place(b.storeys.eg.pl, 3, -2, 0)},#${b.shape([solid])},$,.STRAIGHT_RUN_STAIR.)`);
+      b.contain(b.storeys.eg.id, steps);
+    };
+    const f = await facts({ extra });
+    const ramp = f.candidates.find((c) => c.name === 'Rampe Tiefgarage');
+    expect(ramp).toMatchObject({ category: 'ramp', level: 500, levelBasis: 'ground-storey-or-terrain', levelIsUpperEstimate: true });
+    expect(ramp?.selectedBecause).toMatch(/body cannot be read.*kept conservatively.*entry at the terrain/);
+    expect(f.candidates.some((c) => c.name === 'Eingangsstufen')).toBe(false);
+    expect(f.skipped.find((s) => s.ifcClass === 'IfcStair')?.reason).toMatch(/leads up/);
+  });
+
+  // Review finding 8.
+  it('takes the lower of a window placement and its filled opening, with a note when they differ', async () => {
+    let wallPl = 0;
+    const extra = (b: Extra) => {
+      wallPl = b.place(b.storeys.eg.pl, 0, 0, 0);
+      const wall = b.add(`IFCWALL(${b.guid()},$,'Wand Süd 2',$,$,#${wallPl},$,$,.STANDARD.)`);
+      b.pset(wall, 'Pset_WallCommon', 'IsExternal', 'IFCBOOLEAN(.T.)');
+      b.contain(b.storeys.eg.id, wall);
+      // Opening hole z 1.0..2.2 at x 4..5; the window is placed at its HEAD (z 2.2).
+      const solid = b.rectExtrusion(0, 0, 1, 1.2, 0.4, b.axis(4.5, -0.2, 1.6, b.dir(0, 1, 0), b.dir(1, 0, 0)), b.dir(0, 0, 1));
+      const opening = b.add(`IFCOPENINGELEMENT(${b.guid()},$,'Öffnung Fenster',$,$,#${b.place(wallPl, 0, 0, 0)},#${b.shape([solid])},$,.OPENING.)`);
+      b.add(`IFCRELVOIDSELEMENT(${b.guid()},$,$,$,#${wall},#${opening})`);
+      const win = b.add(`IFCWINDOW(${b.guid()},$,'Fenster Kopf',$,$,#${b.place(b.storeys.eg.pl, 4.5, 0, 2.2)},$,$,1.2,1.,.WINDOW.,$,$)`);
+      b.add(`IFCRELFILLSELEMENT(${b.guid()},$,$,$,#${opening},#${win})`);
+      b.contain(b.storeys.eg.id, win);
+    };
+    const f = await facts({ extra });
+    const win = f.candidates.find((c) => c.name === 'Fenster Kopf')!;
+    expect(win.levelBasis).toBe('opening-body-bottom');
+    expect(win.level).toBeCloseTo(501, 9);
+    expect(win.notes?.join()).toMatch(/placement origin 502\.200 m and the bottom of the filled opening 501\.000 m differ by 1\.20 m/);
+    // The door, whose opening has no body, keeps its placement.
+    expect(f.candidates.find((c) => c.name === 'Haustür')).toMatchObject({ levelBasis: 'placement-origin', level: 500 });
+  });
+});
+
+// Review finding 6: without a slab outline, the external walls' axes are chained into a real outline.
+describe('footprint from external walls', () => {
+  const walls = (pts: Array<[number, number]>, closed: boolean) => (b: Extra) => {
+    const n = closed ? pts.length : pts.length - 1;
+    for (let i = 0; i < n; i++) {
+      const [x0, y0] = pts[i];
+      const [x1, y1] = pts[(i + 1) % pts.length];
+      const curve = b.add(`IFCPOLYLINE((#${b.pt2(x0, y0)},#${b.pt2(x1, y1)}))`);
+      const wall = b.add(`IFCWALL(${b.guid()},$,'W${i}',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([curve], 'Axis', 'Curve2D')},$,.STANDARD.)`);
+      b.pset(wall, 'Pset_WallCommon', 'IsExternal', 'IFCBOOLEAN(.T.)');
+      b.contain(b.storeys.eg.id, wall);
+    }
+  };
+  // An L: the notch at x 12..20, y 6..10 is outside the building. (The house's own south wall 0..20 stays; it lies on this ring.)
+  const L: Array<[number, number]> = [[20, 0], [20, 6], [12, 6], [12, 10], [0, 10], [0, 0]];
+
+  it('keeps an L-notch outside the footprint', async () => {
+    const f = await facts({ slab: false, extra: walls(L, false) });
+    expect(f.footprint.source).toBe('external-wall-outline');
+    const ring = f.footprint.rings[0];
+    expect(ring).toHaveLength(6);
+    const notch = mapOf(16, 8);
+    expect(ring.some((p) => Math.hypot(p.x - mapOf(12, 6).x, p.y - mapOf(12, 6).y) < 1e-6)).toBe(true);
+    const { insideAny } = await import('../src/geom.js');
+    expect(insideAny(notch, f.footprint.rings)).toBe(false);
+  });
+
+  it('falls back to the hull when the walls do not close', async () => {
+    const f = await facts({ slab: false, extra: walls([[20, 0], [20, 6], [12, 6], [12, 10], [0, 10]], false) });
+    expect(f.footprint.source).toBe('external-wall-hull');
+  });
+});
+
+describe('review threads: no footprint, explicit IsExternal = false outside', () => {
+  it('keeps doors without IsExternal when no outline can be read, on a candidate hull', async () => {
+    const extra = (b: Extra) => {
+      for (const [name, x, y] of [['Tür A', 0, 5], ['Tür B', 20, 5], ['Tür C', 10, 10]] as const) {
+        b.contain(b.storeys.eg.id, b.add(`IFCDOOR(${b.guid()},$,'${name}',$,$,#${b.place(b.storeys.eg.pl, x, y, 0)},$,$,2.1,1.,.DOOR.,$,$)`));
+      }
+    };
+    // No slab, and the house's south wall is the only external wall: no ring can be built from one axis.
+    const f = await facts({ slab: false, extra });
+    const doors = f.candidates.filter((c) => c.category === 'door').map((c) => c.name);
+    expect(doors).toEqual(expect.arrayContaining(['Tür A', 'Tür B', 'Tür C']));
+  });
+
+  it('keeps an outside stair that states IsExternal = false', async () => {
+    const extra = (b: Extra) => {
+      const stair = b.add(`IFCSTAIR(${b.guid()},$,'Aussentreppe falsch',$,$,#${b.place(b.storeys.ug.pl, 25, 2, 0)},$,$,.STRAIGHT_RUN_STAIR.)`);
+      b.pset(stair, 'Pset_StairCommon', 'IsExternal', 'IFCBOOLEAN(.F.)');
+      b.contain(b.storeys.ug.id, stair);
+    };
+    const stair = (await facts({ extra })).candidates.find((c) => c.name === 'Aussentreppe falsch');
+    expect(stair?.selectedBecause).toMatch(/outside the footprint \(despite IsExternal = false\)/);
   });
 });
 

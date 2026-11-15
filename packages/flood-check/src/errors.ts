@@ -49,6 +49,9 @@ export type RefusalCode =
   | 'crs-unrecognised'
   | 'crs-mismatch'
   | 'vertical-datum-mismatch'
+  | 'vertical-datum-unrecognised'
+  | 'georeference-implausible'
+  | 'request-too-large'
   | 'ambiguous-map-scale'
   | 'outside-provider-extent'
   | 'no-candidates';

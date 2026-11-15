@@ -19,7 +19,7 @@ import { FloodCheckRefusal } from '../src/errors.js';
 import { extractModelFacts } from '../src/model/extract.js';
 import { ELEMENT_PSET, SITE_PSET, toPropertySets } from '../src/psets.js';
 import type { HazardProvider, MapBBox, MapPoint, TerrainSource } from '../src/types.js';
-import { CODE, rgbaPng, syntheticRaster } from './helpers.js';
+import { CODE, fixture, rgbaPng, syntheticRaster } from './helpers.js';
 import { ORIGIN, ROTATION_DEG, parseStep, syntheticHouse } from './synthetic-model.js';
 
 const VIOLET = [223, 115, 255, 255];
@@ -55,24 +55,28 @@ function fakeWms(): { fetchImpl: typeof fetch; urls: string[] } {
   return { fetchImpl, urls };
 }
 
-function flatGrid(height: number, verticalReference: string, crs: string): TerrainSource & { boxes: MapBBox[] } {
+/** A flat terrain grid in the geodata-ch shape: values at nodes, origin at the north-west node. */
+function flatGrid(height: number, verticalCrs: string, crs: string): TerrainSource & { boxes: MapBBox[] } {
   const boxes: MapBBox[] = [];
   return {
     crs,
-    verticalReference,
+    verticalCrs,
+    verticalAccuracy: 0.5,
     boxes,
     async grid(bbox, { resolution }) {
       boxes.push(bbox);
-      const width = Math.ceil((bbox.maxX - bbox.minX) / resolution);
-      const rows = Math.ceil((bbox.maxY - bbox.minY) / resolution);
+      const width = Math.floor((bbox.maxX - bbox.minX) / resolution) + 1;
+      const rows = Math.floor((bbox.maxY - bbox.minY) / resolution) + 1;
       return {
         crs,
-        verticalReference,
+        verticalCrs,
+        sampling: 'node',
         width,
         height: rows,
-        cellSize: resolution,
+        resolution,
         origin: { x: bbox.minX, y: bbox.maxY },
-        heights: new Float32Array(width * rows).fill(height),
+        values: new Float32Array(width * rows).fill(height),
+        hasData: true,
       };
     },
   };
@@ -84,7 +88,7 @@ describe('synthetic EPSG:2056 house through the BAFU provider', () => {
     const facts = extractModelFacts(store, { expectedCrs: 'EPSG:2056' });
     const { fetchImpl, urls } = fakeWms();
     const provider = createBafuRunoffProvider({ fetch: fetchImpl, now: () => new Date('2026-11-15T11:00:00Z') });
-    const terrain = flatGrid(499.95, 'LN02', 'EPSG:2056');
+    const terrain = flatGrid(499.95, 'EPSG:5728', 'EPSG:2056');
     const result = await runFloodCheck(facts, provider, terrain);
 
     expect(urls).toHaveLength(1);
@@ -121,6 +125,37 @@ describe('synthetic EPSG:2056 house through the BAFU provider', () => {
   });
 });
 
+// Review finding 10: an outage answers transparent PNGs, which must not read as "no runoff mapped".
+describe('a wholly transparent answer through the BAFU provider', () => {
+  function wms(reference: Uint8Array): { fetchImpl: typeof fetch; urls: string[] } {
+    const urls: string[] = [];
+    const fetchImpl = (async (input: string) => {
+      urls.push(String(input));
+      const q = new URL(String(input)).searchParams;
+      const png = q.get('BBOX') === '2599560,1199720,2599569,1199729'
+        ? reference
+        : rgbaPng(Number(q.get('WIDTH')), Number(q.get('HEIGHT')), () => CLEAR);
+      return new Response(new Blob([png as BlobPart]), { headers: { 'content-type': 'image/png' } });
+    }) as unknown as typeof fetch;
+    return { fetchImpl, urls };
+  }
+
+  it('reports "no runoff mapped" only after the reference location confirms the layer renders', async () => {
+    const facts = extractModelFacts(await parseStep(syntheticHouse()), { expectedCrs: 'EPSG:2056' });
+    const up = wms(fixture('bern-uniform-9px.png'));
+    const ok = await runFloodCheck(facts, createBafuRunoffProvider({ fetch: up.fetchImpl }), flatGrid(499.95, 'EPSG:5728', 'EPSG:2056'));
+    expect(up.urls).toHaveLength(2);
+    expect(ok.layerCheck.confirmation?.confirmed).toBe(true);
+    expect(new Set(ok.results.map((r) => r.outcome))).toEqual(new Set(['no-runoff-mapped']));
+
+    const down = wms(rgbaPng(9, 9, () => CLEAR));
+    const outage = await runFloodCheck(facts, createBafuRunoffProvider({ fetch: down.fetchImpl }), flatGrid(499.95, 'EPSG:5728', 'EPSG:2056'));
+    expect(new Set(outage.results.map((r) => r.unclassifiedReason))).toEqual(new Set(['layer-not-confirmed']));
+    const site = Object.fromEntries(toPropertySets(outage, BAFU_CLASSES).site.Properties.map((p) => [p.Name, p.NominalValue]));
+    expect(site).toMatchObject({ RasterEmpty: true, LayerRenderingConfirmed: false, Count_NoRunoffMapped: 0 });
+  });
+});
+
 describe('repo fixtures', () => {
   const sample = fileURLToPath(new URL('../../../apps/viewer/public/samples/building-architecture.ifc', import.meta.url));
 
@@ -135,7 +170,7 @@ describe('repo fixtures', () => {
     const facts = extractModelFacts(store);
     expect(facts.georeference.crs).toBe('EPSG:32760');
     const provider = createBafuRunoffProvider({ fetch: (() => { throw new Error('must not fetch'); }) as unknown as typeof fetch });
-    await expect(runFloodCheck(facts, provider, flatGrid(0, 'LN02', 'EPSG:2056'))).rejects.toBeInstanceOf(FloodCheckRefusal);
+    await expect(runFloodCheck(facts, provider, flatGrid(0, 'EPSG:5728', 'EPSG:2056'))).rejects.toBeInstanceOf(FloodCheckRefusal);
   });
 
   const miniBim = fileURLToPath(new URL('../../../tests/models/georeferencer/MiniBIM-3.1-DO_01_VORM.ifc', import.meta.url));
@@ -153,7 +188,7 @@ describe('repo fixtures', () => {
 
     // The Swiss provider refuses this model outright.
     const bafu = createBafuRunoffProvider({ fetch: (() => { throw new Error('must not fetch'); }) as unknown as typeof fetch });
-    await expect(runFloodCheck(facts, bafu, flatGrid(3.4, 'NAP', 'EPSG:28992'))).rejects.toMatchObject({ code: 'crs-mismatch' });
+    await expect(runFloodCheck(facts, bafu, flatGrid(3.4, 'EPSG:5709', 'EPSG:28992'))).rejects.toMatchObject({ code: 'crs-mismatch' });
 
     // A stub provider in the model's own CRS: 0–0.1 m everywhere outside the building.
     const stub: HazardProvider = {
@@ -168,7 +203,7 @@ describe('repo fixtures', () => {
         return syntheticRaster(bbox.minX, bbox.minY, w, h, 1, () => CODE['depth-0-0.1'], 'EPSG:28992');
       },
     };
-    const result = await runFloodCheck(facts, stub, flatGrid(3.4, 'NAP', 'EPSG:28992'));
+    const result = await runFloodCheck(facts, stub, flatGrid(3.4, 'EPSG:5709', 'EPSG:28992'));
     expect(result.results).toHaveLength(facts.candidates.length);
     // Thresholds at 3.50 vs class (0, 0.1] on terrain 3.40: 3.40 < 3.50 <= 3.50 + 0.5 → undecidable from the class.
     const doors = result.results.filter((r) => r.candidate.category === 'door');

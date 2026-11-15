@@ -22,13 +22,17 @@ export type CandidateCategory =
  * How a candidate's level was obtained.
  * - `placement-origin`: the element's own placement origin (doors: threshold;
  *   windows: sill in the common authoring convention; equipment: base).
- * - `opening-body-bottom`: the lowest point of an opening's extruded body (its sill).
+ * - `opening-body-bottom`: the lowest point of an opening's extruded body (its
+ *   sill): for an unfilled opening, and for a door or window whose filled
+ *   opening reaches lower than its placement origin.
  * - `host-slab-top`: the placement of the slab an opening cuts.
- * - `ground-storey-level`: no top edge could be read (external stairs and
- *   ramps); the ground storey level is used and is an UPPER estimate.
+ * - `ground-storey-or-terrain`: external stairs and ramps, whose real entry is
+ *   at the terrain. `level` holds the ground storey level; the check compares
+ *   the LOWER of it and the terrain at each ground sample, so any mapped depth
+ *   class there makes the element `exposed`. An upper estimate.
  * - `given`: supplied by the caller.
  */
-export type LevelBasis = 'placement-origin' | 'opening-body-bottom' | 'host-slab-top' | 'ground-storey-level' | 'given';
+export type LevelBasis = 'placement-origin' | 'opening-body-bottom' | 'host-slab-top' | 'ground-storey-or-terrain' | 'given';
 
 /** One element where water could enter or do damage. */
 export interface CandidateFact {
@@ -44,12 +48,14 @@ export interface CandidateFact {
   /** The lowest relevant level (threshold, sill, top edge, base), absolute metres in the model's vertical datum. */
   level: number;
   levelBasis: LevelBasis;
-  /** True when `level` may be higher than the real entry level, so it can flag but never clear. */
+  /** True when `level` may be higher than the real entry level, so it can flag but never be favourable. */
   levelIsUpperEstimate: boolean;
   storeyId: number | null;
   /** Why the element was selected, for example `IsExternal`, `on footprint boundary`, `IfcBoiler`. */
   selectedBecause: string;
   host?: { expressId: number; ifcClass: string };
+  /** Observations made while reading the element (for example a placement far from its opening's sill). */
+  notes?: string[];
 }
 
 export interface StoreyFact {
@@ -69,7 +75,13 @@ export interface SpaceFact {
   floorLevel: number;
 }
 
-export type FootprintSource = 'given' | 'slab-outline' | 'external-wall-hull' | 'candidate-hull';
+/**
+ * `given` and `slab-outline` are real outlines, and so is `external-wall-outline`
+ * (the external walls' axes chained into a closed ring). The two hulls fill
+ * courtyards and notches, so no element is reported above the mapped class
+ * range on them.
+ */
+export type FootprintSource = 'given' | 'slab-outline' | 'external-wall-outline' | 'external-wall-hull' | 'candidate-hull';
 
 export interface FootprintFact {
   /** Rings in map coordinates; a point inside any ring is inside the building. */

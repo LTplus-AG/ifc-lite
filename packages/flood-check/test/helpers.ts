@@ -157,9 +157,27 @@ export function syntheticRaster(
   };
 }
 
-export function flatTerrain(height: number, verticalReference = 'LN02', crs = 'EPSG:2056'): TerrainSampler {
-  return { crs, verticalReference, heightAt: () => height };
+/** swissALTI3D's stated 1-sigma accuracy for new LiDAR, used as the default stated accuracy in tests. */
+export const TEST_ACCURACY = 0.3;
+/** The margin that accuracy yields: max(0.5, 2 * sqrt(0.3^2 + 0.25^2 + 0.1^2)). */
+export const TEST_MARGIN = 2 * Math.sqrt(0.3 ** 2 + 0.25 ** 2 + 0.1 ** 2);
+
+export function flatTerrain(
+  height: number,
+  verticalCrs = 'EPSG:5728',
+  crs = 'EPSG:2056',
+  verticalAccuracy: number | null = TEST_ACCURACY,
+): TerrainSampler {
+  return { crs, verticalCrs, verticalAccuracy: verticalAccuracy ?? undefined, heightAt: () => height };
 }
+
+/** A sampler from a height function, with the test accuracy. */
+export function terrainFn(heightAt: (p: MapPoint) => number | null, verticalAccuracy: number | null = TEST_ACCURACY): TerrainSampler {
+  return { crs: 'EPSG:2056', verticalCrs: 'EPSG:5728', verticalAccuracy: verticalAccuracy ?? undefined, heightAt };
+}
+
+/** The rendering confirmation a provider would give for a layer that renders. */
+export const CONFIRMED = { confirmed: true, requestUrl: 'https://example.invalid/reference', detail: 'test' } as const;
 
 /** A 20 m x 10 m box building at (E0, N0)-(E0+20, N0+10), ground storey at `ground`. */
 export const E0 = 2_600_000;

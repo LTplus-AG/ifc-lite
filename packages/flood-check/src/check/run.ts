@@ -5,10 +5,18 @@
 /** Fetch what the pure check needs (one hazard raster, terrain) and run it. */
 
 import { FloodCheckRefusal } from '../errors.js';
-import { sameCrs, sameVerticalDatum } from '../crs.js';
+import { normalizeCrs, sameCrs } from '../crs.js';
 import { bboxOf, expandBBox } from '../geom.js';
 import type { ModelFacts } from '../model/facts.js';
-import type { HazardProvider, MapBBox, MapPoint, TerrainSampler, TerrainSource } from '../types.js';
+import {
+  CELL_NO_RUNOFF,
+  type HazardProvider,
+  type MapBBox,
+  type MapPoint,
+  type RenderingConfirmation,
+  type TerrainSampler,
+  type TerrainSource,
+} from '../types.js';
 import { assertCompatible, checkFloodExposure, type CheckOptions, type FloodCheckResult } from './check.js';
 import {
   planSamples,
@@ -18,11 +26,18 @@ import {
   terrainSamplerFromPoints,
 } from './sampling.js';
 
-export interface RunOptions extends CheckOptions {
+export interface RunOptions extends Omit<CheckOptions, 'coverage' | 'renderingConfirmation'> {
   /** Hazard raster cell size, metres. The provider's default when omitted. */
   cellSize?: number;
   /** Terrain grid resolution when the source offers grids, metres. Default 0.5. */
   terrainResolution?: number;
+  /**
+   * Largest plan extent, metres, that the candidates, footprint and rings may
+   * span before the check refuses (`georeference-implausible`): a building's
+   * elements spread over kilometres means a wrong length unit or map scale.
+   * Default 1000.
+   */
+  maxPlanExtent?: number;
   signal?: AbortSignal;
 }
 
@@ -39,6 +54,21 @@ function overlaps(a: MapBBox, b: MapBBox): boolean {
   return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
 }
 
+/** Refuse when the elements spread further than one building can: a wrong unit or scale reading. */
+function assertPlausibleExtent(bbox: MapBBox, options: RunOptions): void {
+  const limit = options.maxPlanExtent ?? 1000;
+  const w = bbox.maxX - bbox.minX;
+  const h = bbox.maxY - bbox.minY;
+  if (w > limit || h > limit) {
+    throw new FloodCheckRefusal(
+      'georeference-implausible',
+      `the candidates, footprint and ground samples span ${w.toFixed(0)} m x ${h.toFixed(0)} m, more than the ${limit} m one building ` +
+        "can cover. This indicates a wrong length unit or map scale in the model's georeferencing (IfcMapConversion.Scale, the project " +
+        'length unit), not flood exposure; no element results are reported. Pass mapScale or fix the model, or raise maxPlanExtent for a large site.',
+    );
+  }
+}
+
 async function terrainFor(
   facts: ModelFacts,
   source: TerrainSource,
@@ -47,13 +77,14 @@ async function terrainFor(
 ): Promise<TerrainSampler> {
   if (source.grid) {
     const grid = await source.grid(bbox, { resolution: options.terrainResolution ?? 0.5, signal: options.signal });
-    if (!sameVerticalDatum(grid.verticalReference, source.verticalReference) || !sameCrs(grid.crs, source.crs)) {
+    const gridVertical = normalizeCrs(grid.verticalCrs);
+    if (!gridVertical || gridVertical !== normalizeCrs(source.verticalCrs) || !sameCrs(grid.crs, source.crs)) {
       throw new FloodCheckRefusal(
         'vertical-datum-mismatch',
-        `the terrain grid is in ${grid.crs} / ${grid.verticalReference}; its source declared ${source.crs} / ${source.verticalReference}`,
+        `the terrain grid is in ${grid.crs} / ${grid.verticalCrs}; its source declared ${source.crs} / ${source.verticalCrs}`,
       );
     }
-    return terrainSamplerFromGrid(grid);
+    return terrainSamplerFromGrid(grid, { verticalAccuracy: source.verticalAccuracy });
   }
   if (!source.heightAt) throw new TypeError('the terrain source offers neither heightAt nor grid');
   const s = resolveSampling(options);
@@ -66,12 +97,14 @@ async function terrainFor(
       heights.set(key, await source.heightAt(point, options.signal));
     }
   }
-  return terrainSamplerFromPoints(source.crs, source.verticalReference, heights);
+  return terrainSamplerFromPoints(source, heights);
 }
 
 /**
- * Refuse early on CRS / datum mismatch, fetch one hazard raster over the
- * building and the terrain under it, and run {@link checkFloodExposure}.
+ * Refuse early on CRS / vertical CRS mismatch or an implausible plan extent,
+ * fetch one hazard raster over the building and the terrain under it, confirm
+ * the layer renders when that raster is wholly transparent, and run
+ * {@link checkFloodExposure} with the provider's coverage perimeter.
  */
 export async function runFloodCheck(
   facts: ModelFacts,
@@ -90,7 +123,12 @@ export async function runFloodCheck(
       `the model lies at E ${bbox.minX.toFixed(0)}, N ${bbox.minY.toFixed(0)}, outside the extent of ${provider.id}; check the georeferencing`,
     );
   }
+  assertPlausibleExtent(bbox, options);
   const raster = await provider.fetchRaster({ bbox, crs: provider.crs, cellSize: options.cellSize, signal: options.signal });
+  let renderingConfirmation: RenderingConfirmation | undefined;
+  if (provider.confirmRendering && raster.cells.every((c) => c === CELL_NO_RUNOFF)) {
+    renderingConfirmation = await provider.confirmRendering(options.signal);
+  }
   const sampler = await terrainFor(facts, terrain, bbox, options);
-  return checkFloodExposure(facts, raster, sampler, options);
+  return checkFloodExposure(facts, raster, sampler, { ...options, coverage: provider.covers, renderingConfirmation });
 }

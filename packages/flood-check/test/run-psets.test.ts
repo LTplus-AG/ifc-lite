@@ -14,8 +14,15 @@ import { checkFloodExposure } from '../src/check/check.js';
 import { checkBBox, runFloodCheck } from '../src/check/run.js';
 import { planSamples, resolveSampling, terrainSamplerFromGrid } from '../src/check/sampling.js';
 import { ELEMENT_PSET, SITE_PSET, toPropertySets } from '../src/psets.js';
-import type { HazardProvider, MapPoint } from '../src/types.js';
-import { boxFacts, candidate, CODE, E0, flatTerrain, N0, syntheticRaster } from './helpers.js';
+import type { HazardProvider, MapPoint, TerrainSource } from '../src/types.js';
+import { boxFacts, candidate, CODE, E0, flatTerrain, N0, syntheticRaster, TEST_ACCURACY } from './helpers.js';
+
+const pointTerrain = (heightAt: (p: MapPoint) => number | null): TerrainSource => ({
+  crs: 'EPSG:2056',
+  verticalCrs: 'EPSG:5728',
+  verticalAccuracy: TEST_ACCURACY,
+  heightAt,
+});
 
 const door = (level: number) => candidate({ position: { x: E0 + 10, y: N0 }, level });
 const southRaster = (code: number) =>
@@ -41,23 +48,23 @@ describe('runFloodCheck', () => {
   it('fetches heights only for the distinct sample points when the terrain offers points', async () => {
     const asked: MapPoint[] = [];
     const facts = boxFacts([door(500), candidate({ expressId: 2, position: { x: E0 + 10, y: N0 }, level: 501 })]);
-    const result = await runFloodCheck(facts, stubProvider(), {
-      crs: 'EPSG:2056',
-      verticalReference: 'LN02',
-      heightAt: (p) => {
+    const result = await runFloodCheck(
+      facts,
+      stubProvider(),
+      pointTerrain((p) => {
         asked.push(p);
         return 500;
-      },
-    });
+      }),
+    );
     // Both candidates share one anchor, so one set of 12 ring points.
     expect(asked).toHaveLength(planSamples(door(500), facts.footprint, resolveSampling()).points.length);
-    expect(result.results.map((r) => r.outcome)).toEqual(['exposed', 'clear']);
+    expect(result.results.map((r) => r.outcome)).toEqual(['exposed', 'above-mapped-class-range']);
   });
 
   it('requests one raster covering every ring point', async () => {
     const provider = stubProvider();
     const facts = boxFacts([door(500)]);
-    await runFloodCheck(facts, provider, { crs: 'EPSG:2056', verticalReference: 'LN02', heightAt: () => 500 });
+    await runFloodCheck(facts, provider, pointTerrain(() => 500));
     expect(provider.requests).toHaveLength(1);
     const box = checkBBox(facts);
     expect(box.minY).toBeLessThanOrEqual(N0 - 3);
@@ -66,7 +73,7 @@ describe('runFloodCheck', () => {
 
   it('refuses before fetching: no candidates, outside the extent, wrong datum', async () => {
     const provider = stubProvider();
-    const terrain = { crs: 'EPSG:2056', verticalReference: 'LN02', heightAt: () => 500 };
+    const terrain = pointTerrain(() => 500);
     await expect(runFloodCheck(boxFacts([]), provider, terrain)).rejects.toMatchObject({ code: 'no-candidates' });
     const far = boxFacts([candidate({ position: { x: 90_770, y: 435_320 }, level: 3 })], {
       footprint: { rings: [], source: 'candidate-hull', fromElements: [] },
@@ -77,23 +84,88 @@ describe('runFloodCheck', () => {
     await expect(runFloodCheck(lhn, provider, terrain)).rejects.toMatchObject({ code: 'vertical-datum-mismatch' });
     expect(provider.requests).toHaveLength(0);
   });
+
+  // Review finding 2: a wrong unit or scale reading spreads a building over kilometres; it died with a RangeError.
+  it('refuses a plan extent no building has (wrong length unit or map scale) before fetching', async () => {
+    const provider = stubProvider();
+    const spread = boxFacts([door(500), candidate({ expressId: 2, position: { x: E0 + 10_000, y: N0 + 5_000 }, level: 500 })]);
+    const refused = runFloodCheck(spread, provider, pointTerrain(() => 500));
+    await expect(refused).rejects.toMatchObject({ code: 'georeference-implausible' });
+    await expect(refused).rejects.toThrow(/span 10010 m x 5010 m, more than the 1000 m.*wrong length unit or map scale/);
+    expect(provider.requests).toHaveLength(0);
+    await expect(runFloodCheck(spread, provider, pointTerrain(() => 500), { maxPlanExtent: 20_000 })).resolves.toBeDefined();
+  });
+
+  it('refuses an implausible ground storey even when the terrain comes as points', async () => {
+    const sunk = boxFacts([door(0)], { groundStorey: { expressId: 10, level: 0, basis: 'project-zero' } });
+    await expect(runFloodCheck(sunk, stubProvider(), pointTerrain(() => 500))).rejects.toMatchObject({ code: 'georeference-implausible' });
+  });
+
+  it('passes the provider coverage perimeter to the check', async () => {
+    const provider = { ...stubProvider(), covers: () => false };
+    const result = await runFloodCheck(boxFacts([door(500)]), provider, pointTerrain(() => 500));
+    expect(result.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'outside-coverage' });
+  });
+
+  it('asks the provider to confirm rendering only when the whole raster is transparent', async () => {
+    let asked = 0;
+    const empty: HazardProvider = {
+      ...stubProvider(),
+      async fetchRaster() {
+        return southRaster(0);
+      },
+      async confirmRendering() {
+        asked++;
+        return { confirmed: true, requestUrl: 'ref', detail: '81 of 81' };
+      },
+    };
+    const result = await runFloodCheck(boxFacts([door(500)]), empty, pointTerrain(() => 500));
+    expect(asked).toBe(1);
+    expect(result.results[0].outcome).toBe('no-runoff-mapped');
+    expect(result.layerCheck).toMatchObject({ rasterEmpty: true, confirmation: { confirmed: true } });
+    const withClasses = { ...stubProvider(), confirmRendering: empty.confirmRendering };
+    await runFloodCheck(boxFacts([door(500)]), withClasses, pointTerrain(() => 500));
+    expect(asked).toBe(1);
+  });
 });
 
+// Review finding 9: grids state whether their values sit on nodes or cell centres.
 describe('terrainSamplerFromGrid', () => {
-  it('interpolates between cell centres and returns null off the grid or next to no-data', () => {
-    const sampler = terrainSamplerFromGrid({
+  const grid = (sampling: 'node' | 'cell-centre', values: number[], hasData?: boolean) =>
+    terrainSamplerFromGrid({
       crs: 'EPSG:2056',
-      verticalReference: 'LN02',
+      verticalCrs: 'EPSG:5728',
+      sampling,
       width: 2,
       height: 2,
-      cellSize: 2,
+      resolution: 2,
       origin: { x: 0, y: 4 },
-      heights: new Float32Array([10, 12, 14, NaN]),
+      values: new Float32Array(values),
+      ...(hasData === undefined ? {} : { hasData }),
     });
+
+  it('cell-centre grids: interpolates between cell centres, null off the grid or next to no-data', () => {
+    const sampler = grid('cell-centre', [10, 12, 14, NaN]);
     expect(sampler.heightAt({ x: 1, y: 3 })).toBe(10); // centre of the top-left cell
     expect(sampler.heightAt({ x: 2, y: 3 })).toBe(11); // halfway to the top-right cell centre
     expect(sampler.heightAt({ x: 3, y: 1 })).toBeNull(); // no-data cell
     expect(sampler.heightAt({ x: 9, y: 9 })).toBeNull();
+  });
+
+  it('node grids (the geodata-ch convention): values sit at origin + (col, -row) * resolution, no half-cell shift', () => {
+    const sampler = grid('node', [10, 12, 14, 16]);
+    expect(sampler.heightAt({ x: 0, y: 4 })).toBe(10); // the north-west node is the origin itself
+    expect(sampler.heightAt({ x: 2, y: 4 })).toBe(12);
+    expect(sampler.heightAt({ x: 1, y: 3 })).toBe(13); // centre of the four nodes
+    expect(sampler.heightAt({ x: 2, y: 2 })).toBe(16);
+    // The cell-centre reading of the same values is half a cell off:
+    expect(grid('cell-centre', [10, 12, 14, 16]).heightAt({ x: 0, y: 4 })).toBeNull();
+    expect(sampler.heightAt({ x: 2.01, y: 4 })).toBeNull();
+  });
+
+  it('honours hasData: false and refuses an unknown convention', () => {
+    expect(grid('node', [10, 12, 14, 16], false).heightAt({ x: 1, y: 3 })).toBeNull();
+    expect(() => grid('corner' as 'node', [1, 2, 3, 4])).toThrow(/sampling must be/);
   });
 });
 
@@ -110,11 +182,33 @@ describe('property-set payloads', () => {
     expect(props.ClassDefinition.NominalValue).toContain('depth-gt-0.25: 0.25 m < h (Flow depth h > 0.25 m)');
     expect(props.ClassDefinition.NominalValue).toContain('depth-0-0.1: 0 m < h <= 0.1 m');
     expect(props.Count_Exposed.NominalValue).toBe(1);
+    expect(props.Count_AboveMappedClassRange.NominalValue).toBe(0);
     expect(props.VerticalDatumBasis.NominalValue).toBe('not-stated-assumed-equal');
+    expect(props.TerrainVerticalCrs.NominalValue).toBe('EPSG:5728');
+    expect(props.HeightPlausibilityStatus.NominalValue).toBe('within-band');
+    expect(props.HeightPlausibilityBasis.NominalValue).toMatch(/ground storey 500\.00 m within \[500\.00 - 1\.5, 500\.00 \+ 2\.5\] m/);
+    expect(props.TerrainMinNearBuilding.NominalValue).toBe(500);
+    expect(props.ClearanceMarginBasis.NominalValue).toMatch(/^max\(0\.5, 2 \* sqrt\(0\.3\^2/);
     for (const name of ['ReturnPeriodDE', 'ReturnPeriodEN', 'Licence', 'Attribution', 'LimitsDE', 'LimitsEN', 'DisclaimerDE', 'DisclaimerEN']) {
       expect(props[name], name).toBeDefined();
     }
     expect(elements[0].propertySet.Name).toBe(ELEMENT_PSET);
+  });
+
+  // Review finding 3: an element set read on its own must carry the caveat, the source and the dataset date.
+  it('gives every element payload the meaning, the caveat, attribution, dataset date and the site set', () => {
+    const result = checkFloodExposure(boxFacts([door(503)]), southRaster(CODE['depth-0-0.1']), flatTerrain(500));
+    const set = toPropertySets(result, BAFU_CLASSES).elements[0].propertySet;
+    const props = Object.fromEntries(set.Properties.map((p) => [p.Name, p.NominalValue]));
+    expect(props.Outcome).toBe('above-mapped-class-range');
+    expect(props.OutcomeMeaningEN).toMatch(/This is all it states/);
+    expect(props.CaveatEN).toMatch(/Screening result .* not intended for use at building scale; areas it shows as unaffected may still be affected/);
+    expect(props.CaveatDE).toMatch(/können dennoch betroffen sein/);
+    expect(props.Attribution).toBe('test attribution');
+    expect(props.DatasetDate).toBe('2018-05-22');
+    expect(props.SitePropertySet).toBe(SITE_PSET);
+    expect(props.DrivingSample).toMatch(/^E 2600\d+\.\d\d, N 1199\d+\.\d\d \(EPSG:2056\)$/);
+    expect(Object.values(props)).not.toContain('clear');
   });
 
   it('writes lengths in the project unit and omits what does not exist', () => {

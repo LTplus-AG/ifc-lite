@@ -32,6 +32,14 @@ export const BAFU_TECHNICAL_REPORT_URL =
 export const BAFU_TERMS_URL = 'https://www.geo.admin.ch/en/general-terms-of-use-fsdi';
 /** Layer bounding box in EPSG:2056 from the WMS capabilities. */
 export const BAFU_EXTENT: MapBBox = { minX: 2_300_000, minY: 900_000, maxX: 3_100_000, maxY: 1_450_000 };
+/**
+ * Reference location for the rendering check: a 9 m x 9 m box in Bern where
+ * the map shows flow depth 0 to 0.1 m in every pixel (recorded 2026-11-15 as
+ * `test/fixtures/bafu/bern-uniform-9px.png`: 81 of 81 pixels depth-0-0.1).
+ * One 9 x 9 px request, about 80 bytes.
+ */
+export const BAFU_REFERENCE_BOX: MapBBox = { minX: 2_599_560, minY: 1_199_720, maxX: 2_599_569, maxY: 1_199_729 };
+export const BAFU_REFERENCE_CELL_SIZE = 1;
 /** The hazard model's raster resolution (technical report). */
 export const BAFU_MODEL_CELL_SIZE = 1;
 /** Most detailed scale the publisher allows the map to be used at (1:10,000 in Liechtenstein). */

@@ -215,7 +215,7 @@ function lerpAtY(p: Position, q: Position, y: number): Position {
   return [p[0] + t * (q[0] - p[0]), y];
 }
 
-/** Even-odd containment across all rings (holes included); boundary points count as inside only by chance. */
+/** Even-odd containment across all rings (holes included); boundary points are not reliably classified (`geometryIntersectsPolygon` adds an explicit boundary test). */
 function pointInRings(x: number, y: number, rings: Position[][]): boolean {
   let inside = false;
   for (const ring of rings) {
@@ -226,6 +226,15 @@ function pointInRings(x: number, y: number, rings: Position[][]): boolean {
     }
   }
   return inside;
+}
+
+function pointOnRings(p: Position, rings: Position[][]): boolean {
+  for (const ring of rings) {
+    for (let j = 1; j < ring.length; j++) {
+      if (orient(ring[j - 1], ring[j], p) === 0 && onSegment(ring[j - 1], ring[j], p)) return true;
+    }
+  }
+  return false;
 }
 
 function orient(a: Position, b: Position, c: Position): number {
@@ -272,7 +281,7 @@ export function geometryIntersectsPolygon(g: Geometry, poly: PolygonGeometry): b
   const pb = geometryBBox(poly);
   if (gb.maxX < pb.minX || gb.minX > pb.maxX || gb.maxY < pb.minY || gb.minY > pb.maxY) return false;
   const rings = poly.coordinates;
-  const pointIn = (p: Position): boolean => pointInRings(p[0], p[1], rings);
+  const pointIn = (p: Position): boolean => pointInRings(p[0], p[1], rings) || pointOnRings(p, rings);
   const lineHits = (line: Position[]): boolean => line.some(pointIn) || pathCrossesRings(line, rings);
   const polygonHits = (fr: Position[][]): boolean =>
     fr.some((r) => r.some(pointIn) || pathCrossesRings(r, rings)) || pointInRings(rings[0][0][0], rings[0][0][1], fr);

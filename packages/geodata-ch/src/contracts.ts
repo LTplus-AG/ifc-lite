@@ -240,6 +240,13 @@ export interface FeatureQueryResult extends Sourced {
    * afterwards. Empty when every cell was queried with the exact polygon.
    */
   bboxFallbackCells: BBox[];
+  /**
+   * Ids of features in `features` that could NOT be tested against the
+   * polygon because the service returned no geometry for them, in a query
+   * that used the bounding-box fallback. They are kept, not dropped, but may
+   * lie outside the polygon. Empty when nothing was left unchecked.
+   */
+  unverifiedFeatureIds: string[];
 }
 
 export interface VectorFeatureProvider {

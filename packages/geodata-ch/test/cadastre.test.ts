@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { geocode, lv95FromSearchAttrs } from '../src/geocode.js';
 import { CANTON_OEREB_SERVICES } from '../src/oereb-cantons.js';
-import { extractUrls, oerebExtractForEgrid, oerebExtractsAtPoint, serviceBaseFromExtractUrl } from '../src/oereb.js';
+import { OerebExtractUnavailableError, extractUrls, oerebExtractForEgrid, oerebExtractsAtPoint, serviceBaseFromExtractUrl } from '../src/oereb.js';
 import { parcelByEgrid, parcelsAtPoint } from '../src/parcel.js';
 import { fixture, json, mockFetch, testClient } from './helpers/mock-fetch.js';
 
@@ -90,6 +90,20 @@ describe('ÖREB extract resolution', () => {
     );
     const ref = await oerebExtractForEgrid(testClient(m.fetch), 'CH134676354275');
     expect(ref).toMatchObject({ source: 'canton-table', canton: 'BE', serviceBase: 'https://www.oereb2.apps.be.ch' });
+  });
+
+  it('does not use the canton table when the register has the parcel but no extract URL', async () => {
+    const recorded = fixture<{ results: Array<{ attributes: Record<string, unknown> }> }>('find-oereb-CH134676354275.json');
+    const noUrl = structuredClone(recorded);
+    for (const r of noUrl.results) delete r.attributes.oereb_extract_url;
+    const m = mockFetch(
+      onLayer('/find', register, noUrl),
+      onLayer('/find', 'ch.kantone.cadastralwebmap-farbe', fixture('find-parcel-CH134676354275.json')),
+    );
+    const err = await oerebExtractForEgrid(testClient(m.fetch), 'CH134676354275').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OerebExtractUnavailableError);
+    expect(err).toMatchObject({ egrid: 'CH134676354275' });
+    expect(m.calls.every((c) => c.searchParams.get('layer') === register)).toBe(true);
   });
 
   it('reads extract references at a point', async () => {

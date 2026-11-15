@@ -82,6 +82,7 @@ await step('terrain across a tile seam at 0.5 m vs 1 m', async () => {
   for (let r = 0; r < coarse.height; r++)
     for (let c = 0; c < coarse.width; c++)
       maxDiff = Math.max(maxDiff, Math.abs(coarse.values[r * coarse.width + c] - fine.values[2 * r * fine.width + 2 * c]));
+  expect(maxDiff < 0.5, `grids disagree by ${maxDiff.toFixed(3)} m at shared nodes across the seam`);
   return `levels ${fine.sources[0].gsd} m / ${coarse.sources[0].gsd} m, max |Δ| at shared nodes ${maxDiff.toFixed(3)} m`;
 });
 

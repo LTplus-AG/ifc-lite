@@ -189,7 +189,57 @@ describe('featuresInArea with long polygons and MultiPolygons', () => {
   });
 });
 
+describe('featuresInArea guards and the bounding-box fallback', () => {
+  const longPoly = { type: 'Polygon' as const, coordinates: [circle(600)] };
+
+  it('rejects a NaN or negative budget instead of silently disabling it', async () => {
+    const c = testClient(identifyServer(points(3000)).fetch);
+    for (const bad of [{ maxRequests: NaN }, { maxDepth: NaN }, { maxUrlLength: NaN }, { maxRequests: -1 }]) {
+      await expect(featuresInArea(c, LAYER, ROOT, bad)).rejects.toThrow(/must be a number >= 0/);
+    }
+  });
+
+  it('keeps a point exactly on the polygon edge when the bounding box was queried', async () => {
+    const ring = circle(600);
+    const onEdge: Position = [ring[0][0], ring[0][1]]; // a polygon vertex, so on its right-most edge
+    const server = mockFetch((url) =>
+      url.pathname.endsWith('/identify')
+        ? json({ results: [{ id: 1, featureId: 1, layerBodId: LAYER, geometry: { type: 'Point', coordinates: onEdge }, properties: {} }] })
+        : undefined,
+    );
+    const res = await featuresInArea(testClient(server.fetch), LAYER, { type: 'Polygon', coordinates: [ring] });
+    expect(res.bboxFallbackCells.length).toBeGreaterThan(0);
+    expect(res.features.map((f) => f.id)).toEqual(['1']);
+  });
+
+  it('names features without geometry that the fallback could not test', async () => {
+    const server = mockFetch((url) =>
+      url.pathname.endsWith('/identify')
+        ? json({ results: [{ id: 7, featureId: 7, layerBodId: LAYER, properties: {} }] })
+        : undefined,
+    );
+    const res = await featuresInArea(testClient(server.fetch), LAYER, longPoly);
+    expect(res.bboxFallbackCells.length).toBeGreaterThan(0);
+    expect(res.features.map((f) => f.id)).toEqual(['7']);
+    expect(res.unverifiedFeatureIds).toEqual(['7']);
+  });
+
+  it('reports no unverified features when the exact polygon was sent', async () => {
+    const tri = { type: 'Polygon' as const, coordinates: [[[2_600_100, 1_199_100], [2_600_900, 1_199_100], [2_600_100, 1_199_900], [2_600_100, 1_199_100]]] };
+    const res = await featuresInArea(testClient(identifyServer(points(10)).fetch), LAYER, tri);
+    expect(res.unverifiedFeatureIds).toEqual([]);
+  });
+});
+
 describe('geometryIntersectsPolygon', () => {
+  it('counts a point on the right edge or a vertex as touching', () => {
+    const sq = { type: 'Polygon' as const, coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] };
+    for (const p of [[10, 5], [0, 5], [5, 0], [5, 10], [10, 10]]) {
+      expect(geometryIntersectsPolygon({ type: 'Point', coordinates: p }, sq)).toBe(true);
+    }
+    expect(geometryIntersectsPolygon({ type: 'Point', coordinates: [10.001, 5] }, sq)).toBe(false);
+  });
+
   const sq = { type: 'Polygon' as const, coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] };
   const holed = { type: 'Polygon' as const, coordinates: [sq.coordinates[0], [[4, 4], [6, 4], [6, 6], [4, 6], [4, 4]]] };
   it('handles points, lines crossing without a vertex inside, containment both ways, and holes', () => {

@@ -162,6 +162,9 @@ export async function elevationGrid(http: HttpClient, bbox: BBox, options: Terra
   if (!(resolution > 0) || !Number.isFinite(resolution)) throw new RangeError('resolution must be a positive number');
   const shape = gridShape(bbox, resolution);
   const maxNodes = options.maxNodes ?? 25_000_000;
+  if (!(maxNodes >= 0)) throw new RangeError(`maxNodes must be a number >= 0, got ${maxNodes}`);
+  const maxSourcePixels = options.maxSourcePixels ?? 2 ** 26;
+  if (!(maxSourcePixels >= 0)) throw new RangeError(`maxSourcePixels must be a number >= 0, got ${maxSourcePixels}`);
   if (shape.width * shape.height > maxNodes) {
     throw new RangeError(`${shape.width}×${shape.height} nodes exceeds maxNodes ${maxNodes}; use a coarser resolution`);
   }
@@ -186,7 +189,6 @@ export async function elevationGrid(http: HttpClient, bbox: BBox, options: Terra
 
   const g = opened.length > 0 ? await pickLevel(opened[0].tiff, resolution) : gsd;
   const mosaic = createMosaic(bbox, g);
-  const maxSourcePixels = options.maxSourcePixels ?? 2 ** 26;
   if (mosaic.width * mosaic.height > maxSourcePixels) {
     throw new RangeError(
       `reading ${mosaic.width}×${mosaic.height} source pixels at ${g} m exceeds maxSourcePixels ${maxSourcePixels}`,

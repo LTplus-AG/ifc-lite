@@ -180,6 +180,9 @@ describe('elevationGrid', () => {
       /not in LV95/,
     );
     await expect(elevationGrid(client, BOX, { resolution: 0.01 })).rejects.toThrow(/maxNodes/);
+    // NaN compares false with everything: it must be refused, not let the limit lapse.
+    await expect(elevationGrid(client, BOX, { resolution: 0.01, maxNodes: NaN })).rejects.toThrow(/maxNodes must be a number/);
+    await expect(elevationGrid(client, BOX, { resolution: 100, maxSourcePixels: NaN })).rejects.toThrow(/maxSourcePixels must be a number/);
   });
 });
 

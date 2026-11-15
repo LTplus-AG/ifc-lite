@@ -16,8 +16,9 @@
  * crossing the boundary comes back entire, once.
  *
  * Nothing is dropped silently: hitting `maxRequests`, hitting `maxDepth` and
- * falling back from an over-long polygon to its bounding box are all reported
- * on the result.
+ * falling back from an over-long polygon to its bounding box (and any feature
+ * that fallback could not test against the polygon) are all reported on the
+ * result.
  */
 
 import { featureProps, identify, identifyUrl, IDENTIFY_MAX_LIMIT, type IdentifyGeometry } from './api3.js';
@@ -133,6 +134,10 @@ export async function featuresInArea(
   const maxDepth = options.maxDepth ?? 6;
   const maxRequests = options.maxRequests ?? 500;
   const maxUrlLength = options.maxUrlLength ?? DEFAULT_MAX_URL_LENGTH;
+  // `NaN` compares false with everything, so it would silently disable a budget.
+  for (const [name, value] of [['maxDepth', maxDepth], ['maxRequests', maxRequests], ['maxUrlLength', maxUrlLength]] as const) {
+    if (!(value >= 0)) throw new RangeError(`${name} must be a number >= 0, got ${value}`);
+  }
 
   const byId = new Map<string, Feature>();
   const truncatedCells: BBox[] = [];
@@ -169,9 +174,17 @@ export async function featuresInArea(
   }
 
   let features = [...byId.values()];
+  const unverifiedFeatureIds: string[] = [];
   // Cells queried by bounding box return features beside the polygon: clip them here.
+  // A feature without geometry cannot be tested; it is kept, and named in `unverifiedFeatureIds`.
   if (bboxFallbackCells.length > 0 && polygons) {
-    features = features.filter((f) => !f.geometry || polygons.some((p) => geometryIntersectsPolygon(f.geometry as Geometry, p)));
+    features = features.filter((f) => {
+      if (!f.geometry) {
+        unverifiedFeatureIds.push(f.id);
+        return true;
+      }
+      return polygons.some((p) => geometryIntersectsPolygon(f.geometry as Geometry, p));
+    });
   }
 
   const requestLimitReached = unqueriedCells.length > 0;
@@ -184,6 +197,7 @@ export async function featuresInArea(
     unqueriedCells,
     truncated: requestLimitReached || truncatedCells.length > 0,
     bboxFallbackCells,
+    unverifiedFeatureIds,
     crs: LV95,
     attribution: [dataset ? attributionFor(dataset) : unrecordedLayerAttribution(layer)],
   };

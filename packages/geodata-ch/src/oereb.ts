@@ -9,7 +9,8 @@
  * First choice is the federal availability register
  * (`ch.swisstopo-vd.stand-oerebkataster`), which carries, per parcel, the
  * canton's extract URL. Only when the register has no record does the
- * static per-canton table answer, flagged as such.
+ * static per-canton table answer, flagged as such. A register record without
+ * a usable URL throws `OerebExtractUnavailableError`.
  */
 
 import { featureProps, findExact, identify, str, type Api3Feature } from './api3.js';
@@ -57,6 +58,25 @@ export function extractUrls(base: string, egrid: string): Record<OerebFormat, st
   };
 }
 
+/**
+ * The federal register lists the EGRID but has no usable extract URL for it.
+ * Thrown instead of returning `null` ("not found") or a canton-table guess.
+ */
+export class OerebExtractUnavailableError extends Error {
+  constructor(
+    readonly egrid: string,
+    /** The register's status text (German), when present. */
+    readonly status: string | null,
+    readonly canton: string | null,
+  ) {
+    super(
+      `the ÖREB register lists ${egrid}${status ? ` (status: ${status})` : ''} but has no usable extract URL; ` +
+        'the canton table is not used because it may point to a service that has no extract for this parcel',
+    );
+    this.name = 'OerebExtractUnavailableError';
+  }
+}
+
 function fromRegister(f: Api3Feature): OerebExtractRef | null {
   const a = featureProps(f);
   const egrid = str(a.egris_egrid);
@@ -91,9 +111,18 @@ export async function oerebExtractForEgrid(
     returnGeometry: false,
     signal: options.signal,
   });
+  let recordWithoutUrl: Api3Feature | null = null;
   for (const h of hits) {
     const ref = fromRegister(h);
     if (ref && ref.egrid === id) return ref;
+    if (str(featureProps(h).egris_egrid) === id) recordWithoutUrl = h;
+  }
+  // The register knows this parcel but gives no usable extract URL. That is not
+  // "no record": the canton table must not stand in for it and make an
+  // unavailable extract look available.
+  if (recordWithoutUrl) {
+    const a = featureProps(recordWithoutUrl);
+    throw new OerebExtractUnavailableError(id, str(a.oereb_status_de), str(a.kanton));
   }
   // Not in the register: fall back to the canton table via the parcel's canton.
   const parcel = await parcelByEgrid(http, id, options);

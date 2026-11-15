@@ -262,18 +262,25 @@ export function serverAttemptSummary(timeline, { watching, tracker }) {
   // A decision seen only by a periodic poll happened at some point in (ms - windowMs, ms].
   const windowMs = decision?.windowMs ?? 0;
   /** true / false / null for "observed event at `ms` happened before the decision". */
+  // Orders need the page's own pick stamp: every page-side time is relative to it, on one clock.
+  const pickKnown = tracker?.reported === true && tracker.pickKnown === true;
   const before = (ms, observed) => {
-    if (!observed || firstDecisionMs === null) return null;
+    if (!observed || !pickKnown || firstDecisionMs === null) return null;
     if (ms === null || ms === undefined || ms >= firstDecisionMs) return false;
     return ms < firstDecisionMs - windowMs ? true : null;
   };
   const trackerReported = tracker?.reported === true;
   const facts = trackerReported ? tracker.facts : null;
-  // Only requests at or after the file pick belong to this load; earlier ones are viewer startup.
-  const loadRequests = watching ? timeline.filter((e) => e.event === 'request' && e.ms >= 0) : [];
-  const startup = watching ? timeline.filter((e) => e.event === 'request' && e.ms < 0).map((e) => e.ms) : null;
+  // Only page-clock requests at or after the page's pick belong to this load; earlier ones are
+  // viewer startup. Driver-side network events are on another clock and only supply error codes.
+  const pageRequests = timeline.filter((e) => e.event === 'request' && e.clock === 'page');
+  const loadRequests = watching ? pageRequests.filter((e) => e.ms >= 0) : [];
+  const startup = watching ? pageRequests.filter((e) => e.ms < 0).map((e) => e.ms) : null;
   const firstAttemptMs = watching ? (loadRequests.map((e) => e.ms).sort((a, b) => a - b)[0] ?? null) : null;
+  const driverOnly = watching && pageRequests.length === 0 && timeline.some((e) => e.event === 'driver-request');
   const unknown = {};
+  if (watching && !pickKnown) unknown.order = 'the page never stamped the file pick (source not marked), so no order is established';
+  if (driverOnly) unknown.attemptBeforeDecision = 'requests were seen only by the driver (from a worker or the browser), not on the page clock';
   /** Identity-dependent flag: null when the source was never marked, or when an unattributed
    *  event of at least the threshold size happened before the decision (it might be the source). */
   const identity = (name, ms, other, otherWhat) => {
@@ -300,13 +307,15 @@ export function serverAttemptSummary(timeline, { watching, tracker }) {
     watched: Boolean(watching),
     trackerReported,
     sourceMarked: trackerReported ? tracker.sourceMarked : null,
+    pickKnown,
     attempts: watching ? loadRequests.length : null,
-    failures: watching ? timeline.filter((e) => e.event === 'requestfailed' && e.ms >= 0).length : null,
+    failures: watching ? timeline.filter((e) => e.event === 'requestfailed' && e.clock === 'page' && e.ms >= 0).length : null,
+    failureCode: watching ? (timeline.find((e) => e.event === 'driver-requestfailed')?.failure ?? null) : null,
     startupRequests: watching ? { count: startup.length, ms: startup } : null,
     firstAttemptMs,
     firstDecisionMs,
     decisionWindowMs: decision ? windowMs : null,
-    attemptBeforeDecision: before(firstAttemptMs, watching),
+    attemptBeforeDecision: driverOnly ? null : before(firstAttemptMs, watching),
     // From the tracker's kept facts (uncapped), never from its possibly truncated event log.
     readBeforeDecision: identity('readBeforeDecision', facts?.firstLargeSourceRead?.ms ?? null, facts?.firstUnattributedRead, 'an unattributed read'),
     unattributedReadBeforeDecision: before(facts?.firstUnattributedRead?.ms ?? null, trackerReported),

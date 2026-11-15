@@ -180,16 +180,16 @@ test('#10264 withTimeout falls back when a close hangs', async () => {
   assert.equal(await withTimeout(Promise.resolve('closed'), 1000, () => 'forced'), 'closed');
 });
 
-const facts = (f = {}, extra = {}) => ({ reported: true, sourceMarked: true, truncated: false, facts: { firstLargeSourceRead: null, firstUnattributedRead: null, firstSourcePost: null, firstOtherPost: null, ...f }, ...extra });
+const facts = (f = {}, extra = {}) => ({ reported: true, pickKnown: true, sourceMarked: true, truncated: false, facts: { firstLargeSourceRead: null, firstUnattributedRead: null, firstSourcePost: null, firstOtherPost: null, ...f }, ...extra });
 
 test('#10353 server proof: a failed server attempt before the warning, no read or post before it', async () => {
   const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
   const s = serverAttemptSummary([
-    { ms: 40, event: 'request', url: 'http://127.0.0.1:9/api/v1/health' },
-    { ms: 42, event: 'requestfailed', failure: 'net::ERR_CONNECTION_REFUSED' },
+    { ms: 40, event: 'request', clock: 'page', url: 'http://127.0.0.1:9/api/v1/health' },
+    { ms: 42, event: 'requestfailed', clock: 'page', failure: 'net::ERR_CONNECTION_REFUSED' },
     { ms: 60, event: 'dialog', text: 'This model may exceed available memory\nThis model may need about 6.0 GiB' },
   ], { watching: true, tracker: facts() });
-  assert.deepEqual(s, { watched: true, trackerReported: true, sourceMarked: true, attempts: 1, failures: 1, startupRequests: { count: 0, ms: [] }, firstAttemptMs: 40, firstDecisionMs: 60, decisionWindowMs: 0,
+  assert.deepEqual(s, { watched: true, trackerReported: true, sourceMarked: true, pickKnown: true, attempts: 1, failures: 1, failureCode: null, startupRequests: { count: 0, ms: [] }, firstAttemptMs: 40, firstDecisionMs: 60, decisionWindowMs: 0,
     attemptBeforeDecision: true, readBeforeDecision: false, unattributedReadBeforeDecision: false, sourcePostBeforeDecision: false, logTruncated: false, channels: null });
   assert.equal(expectFlags(s, SERVER_FIRST).pass, true);
 });
@@ -197,7 +197,7 @@ test('#10353 server proof: a failed server attempt before the warning, no read o
 test('#10353 server proof: verdicts come from kept facts, so a truncated log cannot hide a large read', async () => {
   const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
   const dialog = { ms: 600, event: 'dialog', text: 'This model may exceed available memory' };
-  const req = { ms: 10, event: 'request' };
+  const req = { ms: 10, event: 'request', clock: 'page' };
   // 500 small reads then a whole-file read before the decision; the log dropped the middle.
   const early = serverAttemptSummary([req, dialog], { watching: true, tracker: facts({ firstLargeSourceRead: { ms: 501, bytes: 740e6 } }, { truncated: true }) });
   assert.equal(early.readBeforeDecision, true);
@@ -214,12 +214,12 @@ test('#10353 server proof: verdicts come from kept facts, so a truncated log can
 test('#10353 server proof: a refusal seen only by the poll makes events inside its window unknown', async () => {
   const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
   const polled = { ms: 2031, event: 'store-error', windowMs: 2000, text: "This IFC file exceeds this tab's local processing memory budget" };
-  const s = serverAttemptSummary([{ ms: 155, event: 'request' }, polled], { watching: true, tracker: facts({ firstSourcePost: { ms: 1500, worker: 'w.js' } }) });
+  const s = serverAttemptSummary([{ ms: 155, event: 'request', clock: 'page' }, polled], { watching: true, tracker: facts({ firstSourcePost: { ms: 1500, worker: 'w.js' } }) });
   assert.equal(s.decisionWindowMs, 2000);
   assert.equal(s.attemptBeforeDecision, null, '155 ms is inside (31, 2031]: the refusal may have come first');
   assert.equal(s.sourcePostBeforeDecision, null);
   // A precise stamp (store subscription or notice) settles it.
-  const precise = serverAttemptSummary([{ ms: 155, event: 'request' }, { ms: 400, event: 'notice', text: "Failed to load: exceeds this tab's local processing memory budget" }, polled],
+  const precise = serverAttemptSummary([{ ms: 155, event: 'request', clock: 'page' }, { ms: 400, event: 'notice', text: "Failed to load: exceeds this tab's local processing memory budget" }, polled],
     { watching: true, tracker: facts({ firstSourcePost: { ms: 1500, worker: 'w.js' } }) });
   assert.equal(precise.firstDecisionMs, 400);
   assert.equal(precise.attemptBeforeDecision, true);
@@ -229,19 +229,19 @@ test('#10353 server proof: a refusal seen only by the poll makes events inside i
 test('#10353 server proof: unreported instrumentation gives null, and null never passes', async () => {
   const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
   const dialog = { ms: 5, event: 'dialog', text: 'This model may exceed available memory' };
-  const noTracker = serverAttemptSummary([{ ms: 1, event: 'request' }, dialog], { watching: true, tracker: { reported: false } });
+  const noTracker = serverAttemptSummary([{ ms: 1, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: { reported: false } });
   assert.equal(noTracker.readBeforeDecision, null, 'no tracker report is unknown, not "no read"');
   assert.equal(noTracker.sourcePostBeforeDecision, null);
   assert.equal(noTracker.unattributedReadBeforeDecision, null);
   assert.equal(noTracker.logTruncated, null);
-  assert.equal(noTracker.attemptBeforeDecision, true);
+  assert.equal(noTracker.attemptBeforeDecision, null, 'no tracker: no page pick stamp, so no order');
   assert.match(expectFlags(noTracker, SERVER_FIRST).message, /readBeforeDecision=unknown/);
   assert.equal(expectFlags(noTracker, SERVER_FIRST).pass, false);
   const unwatched = serverAttemptSummary([dialog], { watching: false, tracker: facts() });
   assert.equal(unwatched.attempts, null);
   assert.equal(unwatched.attemptBeforeDecision, null);
   assert.equal(serverAttemptSummary([dialog], { watching: true, tracker: facts() }).attemptBeforeDecision, false);
-  const noDecision = serverAttemptSummary([{ ms: 1, event: 'request' }], { watching: true, tracker: facts() });
+  const noDecision = serverAttemptSummary([{ ms: 1, event: 'request', clock: 'page' }], { watching: true, tracker: facts() });
   assert.equal(noDecision.firstDecisionMs, null);
   assert.equal(noDecision.attemptBeforeDecision, null);
   assert.equal(noDecision.readBeforeDecision, null);
@@ -251,12 +251,12 @@ test('#10353 server proof: unreported instrumentation gives null, and null never
 test('#10353 server proof: a request during viewer startup is not the attempt for this load (review on #10415)', async () => {
   const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
   const dialog = { ms: 50, event: 'dialog', text: 'This model may exceed available memory' };
-  const onlyStartup = serverAttemptSummary([{ ms: -800, event: 'request' }, { ms: -799, event: 'requestfailed' }, dialog], { watching: true, tracker: facts() });
+  const onlyStartup = serverAttemptSummary([{ ms: -800, event: 'request', clock: 'page' }, { ms: -799, event: 'requestfailed', clock: 'page' }, dialog], { watching: true, tracker: facts() });
   assert.equal(onlyStartup.attemptBeforeDecision, false, 'instrument present, no attempt for this load');
   assert.equal(onlyStartup.attempts, 0);
   assert.equal(onlyStartup.failures, 0);
   assert.deepEqual(onlyStartup.startupRequests, { count: 1, ms: [-800] });
-  const both = serverAttemptSummary([{ ms: -800, event: 'request' }, { ms: 20, event: 'request' }, dialog], { watching: true, tracker: facts() });
+  const both = serverAttemptSummary([{ ms: -800, event: 'request', clock: 'page' }, { ms: 20, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: facts() });
   assert.equal(both.firstAttemptMs, 20);
   assert.equal(both.attemptBeforeDecision, true);
   assert.equal(both.attempts, 1);
@@ -264,7 +264,7 @@ test('#10353 server proof: a request during viewer startup is not the attempt fo
 
 test('#10353 server proof: an unmarked source or an unattributed large event before the decision makes identity flags null (review on #10415)', async () => {
   const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
-  const tl = [{ ms: 5, event: 'request' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }];
+  const tl = [{ ms: 5, event: 'request', clock: 'page' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }];
   const unmarked = serverAttemptSummary(tl, { watching: true, tracker: facts({ firstUnattributedRead: { ms: 30, bytes: 740e6 } }, { sourceMarked: false }) });
   assert.equal(unmarked.sourceMarked, false);
   assert.equal(unmarked.readBeforeDecision, null);
@@ -287,7 +287,7 @@ test('#10353 server proof: an unmarked source or an unattributed large event bef
 
 test('#10353 server proof: a blob: URL of the source before the decision makes the post verdict null', async () => {
   const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
-  const v = serverAttemptSummary([{ ms: 1, event: 'request' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }],
+  const v = serverAttemptSummary([{ ms: 1, event: 'request', clock: 'page' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }],
     { watching: true, tracker: facts({ firstSourceObjectUrl: { ms: 20, url: 'blob:x' } }) });
   assert.equal(v.sourcePostBeforeDecision, null);
   assert.match(v.unknownBecause.sourcePostBeforeDecision, /blob: URL of the source/);
@@ -385,4 +385,30 @@ test('precedence 8>9: timeout beats no verdict, and nothing observed is error', 
 test('precedence: a load error beats loaded only when the load was not interactive', () => {
   assert.equal(classify({ ...base, storeError: OOM_TEXT, interactive: true }).outcome, 'loaded');
   assert.equal(classify({ ...base, storeError: OOM_TEXT, interactive: false }).outcome, 'error');
+});
+
+test('#10353 server proof: a request between the driver call and the real pick is startup, after the pick it is the attempt (review on #10415)', async () => {
+  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
+  const dialog = { ms: 60, event: 'dialog', text: 'This model may exceed available memory' };
+  // Times are relative to the page's pick stamp; the request at -5 ms happened while the pick was pending.
+  const pending = serverAttemptSummary([{ ms: -5, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: facts() });
+  assert.equal(pending.attempts, 0);
+  assert.deepEqual(pending.startupRequests, { count: 1, ms: [-5] });
+  assert.equal(pending.attemptBeforeDecision, false);
+  const after = serverAttemptSummary([{ ms: -5, event: 'request', clock: 'page' }, { ms: 20, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: facts() });
+  assert.equal(after.firstAttemptMs, 20);
+  assert.equal(after.attemptBeforeDecision, true);
+});
+
+test('#10353 server proof: unknown pick time or driver-only requests make the order null', async () => {
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
+  const dialog = { ms: 60, event: 'dialog', text: 'This model may exceed available memory' };
+  const noPick = serverAttemptSummary([{ ms: 20, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: facts({}, { pickKnown: false }) });
+  for (const k of ['attemptBeforeDecision', 'readBeforeDecision', 'unattributedReadBeforeDecision', 'sourcePostBeforeDecision']) assert.equal(noPick[k], null, k);
+  assert.match(noPick.unknownBecause.order, /never stamped the file pick/);
+  assert.equal(expectFlags(noPick, SERVER_FIRST).pass, false);
+  const driverOnly = serverAttemptSummary([{ ms: 20, event: 'driver-request', clock: 'driver' }, { ms: 21, event: 'driver-requestfailed', failure: 'net::ERR_CONNECTION_REFUSED' }, dialog], { watching: true, tracker: facts() });
+  assert.equal(driverOnly.attemptBeforeDecision, null);
+  assert.equal(driverOnly.failureCode, 'net::ERR_CONNECTION_REFUSED');
+  assert.match(driverOnly.unknownBecause.attemptBeforeDecision, /only by the driver/);
 });

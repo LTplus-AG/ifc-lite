@@ -32,6 +32,8 @@
  * @param {any} [env.BroadcastChannel] likewise
  * @param {any} [env.URL]           `createObjectURL` of the source is recorded
  * @param {number} [env.scanBudget] max objects visited per message (default 50000); beyond it the post is `scanTruncated`
+ * @param {string} [env.watchOrigin] origin whose fetch/XMLHttpRequest calls are recorded on the page clock
+ * @param {any} [env.XMLHttpRequest]
  * @param {number} [env.keepEvents] detailed log keeps this many first and last events per kind (default 100)
  */
 export function installSourceTracker(env) {
@@ -47,17 +49,52 @@ export function installSourceTracker(env) {
     if (l.tail.length > keep) { l.tail.shift(); l.dropped++; }
   };
   const state = {
-    installed: true, sourcesMarked: 0, sourceBytes: null,
+    installed: true, sourcesMarked: 0, sourceBytes: null, pickAt: null, watchOrigin: env.watchOrigin ?? null,
     // Uncapped counters, incremented for every event.
-    counts: { sourceReads: 0, sourceReadBytes: 0, largeSourceReads: 0, unattributedReads: 0, unattributedBytes: 0, sourcePosts: 0, otherPosts: 0, incompleteScans: 0, sourceObjectUrls: 0 },
+    counts: { sourceReads: 0, sourceReadBytes: 0, largeSourceReads: 0, unattributedReads: 0, unattributedBytes: 0, sourcePosts: 0, otherPosts: 0, incompleteScans: 0, sourceObjectUrls: 0, requestsBeforePick: 0, requestsAfterPick: 0, failuresAfterPick: 0 },
     // Facts the verdicts depend on, kept regardless of the log.
-    facts: { firstSourceRead: null, firstLargeSourceRead: null, largestSourceRead: null, firstUnattributedRead: null, firstSourcePost: null, firstOtherPost: null, firstIncompleteScan: null, firstSourceObjectUrl: null },
-    logs: { sourceReads: log(), unattributedReads: log(), workerPosts: log(), workersCreated: log() },
+    facts: { firstSourceRead: null, firstLargeSourceRead: null, largestSourceRead: null, firstUnattributedRead: null, firstSourcePost: null, firstOtherPost: null, firstIncompleteScan: null, firstSourceObjectUrl: null, firstRequestAfterPick: null, firstFailureAfterPick: null, startupRequests: [] },
+    logs: { sourceReads: log(), unattributedReads: log(), workerPosts: log(), workersCreated: log(), requests: log() },
   };
   const isSource = (b) => b != null && (sources.has(b) || derived.has(b));
   const markSource = (file) => {
-    if (file && !sources.has(file)) { sources.add(file); state.sourcesMarked++; state.sourceBytes = file.size; }
+    if (file && !sources.has(file)) { sources.add(file); state.sourcesMarked++; state.sourceBytes = file.size; state.pickAt ??= env.now(); }
   };
+  // Requests to the watched origin, stamped on the page clock (same clock as the pick).
+  const watchOrigin = env.watchOrigin ?? null;
+  const originOf = (url) => { try { return new URL(String(url), env.target.location?.href).origin; } catch { return null; } };
+  const request = (url, kind, extra = {}) => {
+    if (!watchOrigin || originOf(url) !== watchOrigin) return;
+    const e = { t: env.now(), url: String(url), kind, ...extra };
+    const c = state.counts, f = state.facts;
+    add(state.logs.requests, e);
+    if (state.pickAt === null || e.t < state.pickAt) {
+      if (kind === 'request') { c.requestsBeforePick++; if (f.startupRequests.length < 50) f.startupRequests.push(e); }
+      return;
+    }
+    if (kind === 'request') { c.requestsAfterPick++; f.firstRequestAfterPick ??= e; }
+    if (kind === 'failed') { c.failuresAfterPick++; f.firstFailureAfterPick ??= e; }
+  };
+  if (watchOrigin && typeof env.target.fetch === 'function') {
+    const orig = env.target.fetch;
+    env.target.fetch = function (input, init) {
+      const url = typeof input === 'string' || input instanceof URL ? String(input) : input?.url;
+      request(url, 'request', { via: 'fetch' });
+      const p = orig.call(this, input, init);
+      p.then((r) => request(url, 'response', { status: r.status }), (err) => request(url, 'failed', { error: String(err?.message ?? err) }));
+      return p;
+    };
+  }
+  if (watchOrigin && env.XMLHttpRequest) {
+    const X = env.XMLHttpRequest.prototype, open = X.open, send = X.send, urls = new WeakMap();
+    X.open = function (method, url, ...a) { urls.set(this, url); return open.call(this, method, url, ...a); };
+    X.send = function (...a) {
+      const url = urls.get(this);
+      request(url, 'request', { via: 'xhr' });
+      this.addEventListener?.('loadend', () => request(url, this.status ? 'response' : 'failed', this.status ? { status: this.status } : { error: 'xhr network error' }));
+      return send.apply(this, a);
+    };
+  }
   const read = (b, via) => {
     if (!b || typeof b.size !== 'number') return;
     const c = state.counts, f = state.facts;
@@ -179,12 +216,14 @@ export function installSourceTracker(env) {
   const channels = {
     instrumented: [env.Worker && 'Worker.postMessage (whole message + transfer list)', env.MessagePort && 'MessagePort.postMessage',
       env.BroadcastChannel && 'BroadcastChannel.postMessage', env.URL?.createObjectURL && 'URL.createObjectURL of the source',
-      env.Worker && 'new Worker (URL, blob: flag)'].filter(Boolean),
+      env.Worker && 'new Worker (URL, blob: flag)', watchOrigin && typeof env.target.fetch === 'function' && 'fetch to the watched origin (page clock)',
+      watchOrigin && env.XMLHttpRequest && 'XMLHttpRequest to the watched origin (page clock)'].filter(Boolean),
     notInstrumented: [
       'ArrayBuffer / typed-array / ReadableStream copies of the source (the main-thread read that produced them is counted as a source read)',
       'reads and fetches inside workers (e.g. fetch of a blob: URL; its creation from the source is counted)',
       'SharedWorker and ServiceWorker messaging',
       'IndexedDB / Cache API writes of the source',
+      ...(watchOrigin ? ['requests to the watched origin made from workers or by the browser itself (seen only by the driver, on its clock)'] : []),
       ...(env.Worker ? [] : ['Worker.postMessage']), ...(env.MessagePort ? [] : ['MessagePort.postMessage']),
       ...(env.BroadcastChannel ? [] : ['BroadcastChannel.postMessage']), ...(env.URL?.createObjectURL ? [] : ['URL.createObjectURL']),
     ],
@@ -192,7 +231,7 @@ export function installSourceTracker(env) {
   env.target.__oomProbeTracker = {
     markSource,
     report: () => JSON.parse(JSON.stringify({ ...state, channels,
-      logs: { sourceReads: flat(state.logs.sourceReads), unattributedReads: flat(state.logs.unattributedReads), workerPosts: flat(state.logs.workerPosts), workersCreated: flat(state.logs.workersCreated) } })),
+      logs: { sourceReads: flat(state.logs.sourceReads), unattributedReads: flat(state.logs.unattributedReads), workerPosts: flat(state.logs.workerPosts), workersCreated: flat(state.logs.workersCreated), requests: flat(state.logs.requests) } })),
   };
   return env.target.__oomProbeTracker;
 }
@@ -203,17 +242,24 @@ export function installSourceTracker(env) {
  * `truncated`/`dropped` say whether the detailed log lost events. `report` null means the
  * instrumentation did not report: every count and fact is null.
  */
-export function trackerSummary(report, pickAt) {
+export function trackerSummary(report, driverPickAt) {
   if (!report?.installed) {
-    return { reported: false, sourceMarked: null, sourceReads: null, sourceReadBytes: null, largeSourceReads: null, unattributedReads: null, unattributedBytes: null,
-      sourcePosts: null, otherPosts: null, incompleteScans: null, sourceObjectUrls: null, facts: null, channels: null, truncated: null, dropped: null, events: [] };
+    return { reported: false, pickKnown: false, pickAt: null, sourceMarked: null, sourceReads: null, sourceReadBytes: null, largeSourceReads: null, unattributedReads: null, unattributedBytes: null,
+      sourcePosts: null, otherPosts: null, incompleteScans: null, sourceObjectUrls: null, requestsBeforePick: null, requestsAfterPick: null, failuresAfterPick: null,
+      facts: null, channels: null, truncated: null, dropped: null, events: [] };
   }
-  const ms = (t) => t - pickAt;
+  // Every page-side time is on the page clock, relative to the page's own pick stamp. Without it
+  // (source never marked) times fall back to the driver's call time and orders are not established.
+  const pickKnown = report.pickAt !== null && report.pickAt !== undefined;
+  const base = pickKnown ? report.pickAt : driverPickAt;
+  const ms = (t) => t - base;
   const at = (e, extra = {}) => (e ? { ms: ms(e.t), bytes: e.bytes, ...extra } : null);
   const f = report.facts, c = report.counts, L = report.logs;
-  const dropped = L.sourceReads.dropped + L.unattributedReads.dropped + L.workerPosts.dropped + L.workersCreated.dropped;
+  const dropped = Object.values(L).reduce((n, l) => n + l.dropped, 0);
   return {
     reported: true,
+    pickKnown,
+    pickAt: report.pickAt,
     sourceMarked: report.sourcesMarked > 0,
     ...c,
     facts: {
@@ -225,6 +271,9 @@ export function trackerSummary(report, pickAt) {
       firstOtherPost: at(f.firstOtherPost, { worker: f.firstOtherPost?.worker }),
       firstIncompleteScan: f.firstIncompleteScan ? { ms: ms(f.firstIncompleteScan.t), worker: f.firstIncompleteScan.worker } : null,
       firstSourceObjectUrl: f.firstSourceObjectUrl ? { ms: ms(f.firstSourceObjectUrl.t), url: f.firstSourceObjectUrl.url } : null,
+      firstRequestAfterPick: f.firstRequestAfterPick ? { ms: ms(f.firstRequestAfterPick.t), url: f.firstRequestAfterPick.url } : null,
+      firstFailureAfterPick: f.firstFailureAfterPick ? { ms: ms(f.firstFailureAfterPick.t), error: f.firstFailureAfterPick.error } : null,
+      startupRequests: (f.startupRequests ?? []).map((e) => ({ ms: ms(e.t), url: e.url })),
     },
     channels: report.channels,
     truncated: dropped > 0,
@@ -234,6 +283,7 @@ export function trackerSummary(report, pickAt) {
       ...L.unattributedReads.events.map((r) => ({ ms: ms(r.t), event: 'unattributed-read', bytes: r.bytes, via: r.via })),
       ...L.workerPosts.events.map((p) => ({ ms: ms(p.t), event: 'worker-post', worker: p.worker, bytes: p.bytes, source: p.source, path: p.path, scanTruncated: p.scanTruncated })),
       ...L.workersCreated.events.map((w) => ({ ms: ms(w.t), event: 'worker-created', url: w.url, blobUrl: w.blobUrl })),
+      ...(L.requests?.events ?? []).map((r) => ({ ms: ms(r.t), event: r.kind === 'request' ? 'request' : r.kind === 'failed' ? 'requestfailed' : 'response', url: r.url, via: r.via, status: r.status, error: r.error, clock: 'page' })),
     ],
   };
 }

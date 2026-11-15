@@ -162,7 +162,7 @@ test('#10353 BroadcastChannel posts, blob: URLs of the source and blob-URL worke
   assert.equal(s.sourcePosts, 1);
   assert.equal(s.events.find((e) => e.event === 'worker-post').worker, 'BroadcastChannel ifc');
   assert.equal(s.sourceObjectUrls, 1);
-  assert.deepEqual(s.facts.firstSourceObjectUrl, { ms: 7, url: 'blob:http://x/1' });
+  assert.deepEqual(s.facts.firstSourceObjectUrl, { ms: 0, url: 'blob:http://x/1' }, 'times are relative to the page pick (same tick)');
   assert.equal(s.events.find((e) => e.event === 'worker-created').blobUrl, true);
   assert.ok(s.channels.instrumented.includes('BroadcastChannel.postMessage'));
   assert.ok(s.channels.notInstrumented.some((c) => /MessagePort/.test(c)), 'no MessagePort given: listed as not watched');
@@ -179,10 +179,42 @@ test('#10353 a message beyond the scan budget is an incomplete scan, not "no sou
   new target.Worker('/big.js').postMessage({ list: Array.from({ length: 50 }, (_, i) => ({ i })) });
   const s = trackerSummary(tracker.report(), 0);
   assert.equal(s.incompleteScans, 1);
-  assert.deepEqual(s.facts.firstIncompleteScan, { ms: 5, worker: '/big.js' });
+  assert.deepEqual(s.facts.firstIncompleteScan, { ms: 0, worker: '/big.js' });
   assert.equal(s.events.filter((e) => e.event === 'worker-post').length, 0, 'nothing found in the part scanned');
   const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
   const v = serverAttemptSummary([{ ms: 1, event: 'request' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }], { watching: true, tracker: s });
   assert.equal(v.sourcePostBeforeDecision, null);
   assert.match(v.unknownBecause.sourcePostBeforeDecision, /too large to scan/);
+});
+
+test('#10353 the pick is stamped by the page when the source is marked; watched requests use the same clock (review on #10415)', async (t) => {
+  const saved = Object.fromEntries(['arrayBuffer', 'text', 'bytes', 'stream', 'slice'].map((m) => [m, Blob.prototype[m]]));
+  t.after(() => { for (const [m, f] of Object.entries(saved)) Blob.prototype[m] = f; });
+  let clock = 1000;
+  const target = { location: { href: 'http://127.0.0.1:5173/' }, fetch: (url) => (String(url).includes('49159') ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve({ status: 200 })) };
+  const tracker = installSourceTracker({ Blob, target, now: () => clock, watchOrigin: 'http://127.0.0.1:49159' });
+  // The driver has called openAndWaitInteractive (its clock: 990), but the input has not delivered the file yet.
+  clock = 1005; target.fetch('http://127.0.0.1:49159/api/v1/health').catch(() => {}); // still before the real pick
+  clock = 1010; tracker.markSource(new Blob([new Uint8Array(4)])); // the real pick
+  clock = 1030; await target.fetch('http://127.0.0.1:49159/api/v1/health').catch(() => {});
+  clock = 1031; await target.fetch('http://127.0.0.1:5173/other').catch(() => {}); // not the watched origin
+  await new Promise((r) => setTimeout(r, 0));
+  const s = trackerSummary(tracker.report(), 990);
+  assert.equal(s.pickKnown, true);
+  assert.equal(s.pickAt, 1010);
+  assert.equal(s.requestsBeforePick, 1);
+  assert.equal(s.requestsAfterPick, 1);
+  assert.deepEqual(s.facts.startupRequests.map((e) => e.ms), [-5], 'between the driver call and the real pick: startup, not the attempt');
+  assert.equal(s.facts.firstRequestAfterPick.ms, 20);
+  assert.ok(s.events.filter((e) => e.event === 'request').every((e) => e.clock === 'page'));
+  assert.ok(s.events.some((e) => e.event === 'requestfailed' && /Failed to fetch/.test(e.error)));
+});
+
+test('#10353 without a page pick stamp, times fall back to the driver call and pickKnown is false', (t) => {
+  const saved = Object.fromEntries(['arrayBuffer', 'text', 'bytes', 'stream', 'slice'].map((m) => [m, Blob.prototype[m]]));
+  t.after(() => { for (const [m, f] of Object.entries(saved)) Blob.prototype[m] = f; });
+  const tracker = installSourceTracker({ Blob, target: {}, now: () => 50 });
+  const s = trackerSummary(tracker.report(), 40);
+  assert.equal(s.pickKnown, false);
+  assert.equal(s.sourceMarked, false);
 });

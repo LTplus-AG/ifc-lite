@@ -76,8 +76,11 @@ store's load error by a subscription the moment it is set. If a decision was onl
 probe's 2 s poll, an event inside that window has unknown order (`null`). Peak summed PSS is
 sampled every 500 ms; the cgroup peak is the kernel's exact high-water mark.
 
-`--watch-url URL` records every request to that origin (and its failure or response), and the
-probe builds a timeline relative to the file pick: server attempts, dialogs (stamped when they
+`--watch-url URL` records every request to that origin in the page (`fetch` and `XMLHttpRequest`,
+on the page clock); the driver's view of the same requests is kept only for the browser's error
+code. The time origin is the page's own pick stamp, taken when the tracker marks the source, so
+every order is on one clock; without it (source never marked) every order is `null`. The probe
+builds a timeline relative to that pick: server attempts, dialogs (stamped when they
 appear), the store's load error, source reads, unattributed reads and worker posts. Each derived
 flag (`attemptBeforeDecision`, `readBeforeDecision`, `unattributedReadBeforeDecision`,
 `sourcePostBeforeDecision`) is `true`, `false` only when the instrument that would have seen the

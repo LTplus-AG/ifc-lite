@@ -211,14 +211,15 @@ export async function runProbe(opts) {
       if (hc !== null) Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => hc, configurable: true });
     }, { dm: opts.deviceMemory, hc: opts.cores });
     // Source identity, reads and worker posts (oom-load-probe-tracker.mjs), injected as source text.
-    await context.addInitScript({ content: `(${installSourceTracker})({ Blob, FileReader, Worker: globalThis.Worker, MessagePort: globalThis.MessagePort, BroadcastChannel: globalThis.BroadcastChannel, URL, target: globalThis, document, now: Date.now });` });
+    await context.addInitScript({ content: `(${installSourceTracker})({ Blob, FileReader, Worker: globalThis.Worker, MessagePort: globalThis.MessagePort, BroadcastChannel: globalThis.BroadcastChannel, URL, XMLHttpRequest, target: globalThis, document, now: Date.now, watchOrigin: ${JSON.stringify(watchOrigin)} });` });
     await context.addInitScript(DIALOG_MARKS);
     if (watchOrigin) {
       const sameOrigin = (url) => { try { return new URL(url).origin === watchOrigin; } catch { return false; } };
-      const net = (event, extra) => (r) => { if (sameOrigin(r.url())) netEvents.push({ t: Date.now(), event, url: r.url(), ...extra(r) }); };
-      context.on('request', net('request', (r) => ({ method: r.method() })));
-      context.on('requestfailed', net('requestfailed', (r) => ({ failure: r.failure()?.errorText ?? null })));
-      context.on('response', (res) => net('response', () => ({ status: res.status() }))(res.request()));
+      // Driver-side view (its own clock): kept for the browser's error code, never used for order.
+      const net = (event, extra) => (r) => { if (sameOrigin(r.url())) netEvents.push({ t: Date.now(), event, url: r.url(), clock: 'driver', ...extra(r) }); };
+      context.on('request', net('driver-request', (r) => ({ method: r.method() })));
+      context.on('requestfailed', net('driver-requestfailed', (r) => ({ failure: r.failure()?.errorText ?? null })));
+      context.on('response', (res) => net('driver-response', () => ({ status: res.status() }))(res.request()));
     }
     cg = cgroupOf(unit);
     if (!cg) throw new EnvError(`Chrome did not start inside scope ${unit}`);
@@ -314,8 +315,11 @@ export async function runProbe(opts) {
   result.memoryDialogDecision = obs.decision;
   result.notices = obs.notices;
   if (pickAt !== null) {
-    const ms = (t) => t - pickAt;
+    // The page's own pick stamp (tracker) is the time origin; the driver's call time only as fallback.
     const tracked = trackerSummary(trackerReport, pickAt);
+    const origin = tracked.pickKnown ? tracked.pickAt : pickAt;
+    const ms = (t) => t - origin;
+    result.driverCallToPickMs = tracked.pickKnown ? tracked.pickAt - pickAt : null;
     const { events: trackedEvents, ...trackedCounts } = tracked;
     result.sourceTracking = trackedCounts;
     result.timeline = [

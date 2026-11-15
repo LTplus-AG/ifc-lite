@@ -55,13 +55,19 @@ for (const kind of ['door', 'window'] as const) {
   });
 }
 
-it('#9352 an empty operation text does not reuse the default door type', async () => {
+it('#9352 an empty operation text has a distinct reusable door type through reopen', async () => {
   const { s, wall } = await setup();
   const make = (offset: number, OperationType: string) => addHostedElementInStore(s.store, s.editor, wall,
     { kind: 'door', params: { Offset: offset, Width: .9, Height: 2.1, OperationType } }).expressId;
-  const a = make(1, 'SINGLE_SWING_LEFT'), b = make(3, '');
-  const types = readRelatedLists(s.store, 'IfcRelDefinesByType', s.view);
-  expect(types.find(r => r.relatedIds.includes(a))!.relatingId).not.toBe(types.find(r => r.relatedIds.includes(b))!.relatingId);
+  const a = make(1, 'SINGLE_SWING_LEFT'), b = make(3, ''), c = make(5, '');
+  const check = (current: typeof s) => {
+    const types = readRelatedLists(current.store, 'IfcRelDefinesByType', current.view);
+    const typeOf = (id: number) => types.find(r => r.relatedIds.includes(id))!.relatingId;
+    expect(typeOf(b)).not.toBe(typeOf(a));
+    expect(typeOf(c)).toBe(typeOf(b));
+  };
+  check(s);
+  check(session(await parse(s.text())));
 });
 
 it('#9352 duplicate refuses an incomplete external association before writing', async () => {
@@ -83,7 +89,18 @@ it('#9352 duplicate still replays a material association that carries only relId
   const rel = s.editor.addEntity('IfcRelAssociatesMaterial', ['0000000000000000000003', null, null, null, [`#${wall}`], `#${material.expressId}`]);
   source.associations = [{ relType: 'IfcRelAssociatesMaterial', relId: rel.expressId, relatingExpressId: material.expressId,
     ownerHistoryId: null, name: null, description: null }];
-  expect(() => duplicateInStore(s.editor, source)).not.toThrow();
+  const duplicate = duplicateInStore(s.editor, source);
+  const check = (current: typeof s) => {
+    const replays = readRelatedLists(current.store, 'IfcRelAssociatesMaterial', current.view)
+      .filter(r => r.relatedIds.includes(duplicate.newId));
+    expect(replays).toHaveLength(1);
+    expect(replays[0].relId).not.toBe(rel.expressId);
+    expect(replays[0].relatedIds).toEqual([duplicate.newId]);
+    expect(replays[0].relatingId).toBe(material.expressId);
+    expect(duplicate.associationRelIds).toContain(replays[0].relId);
+  };
+  check(s);
+  check(session(await parse(s.text())));
 });
 
 it('#9352 a source nested part follows its host through a new containment', async () => {

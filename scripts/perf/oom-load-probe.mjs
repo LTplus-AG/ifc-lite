@@ -49,8 +49,7 @@ import { basename, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { writeDenseIfc } from './gen-dense-ifc.mjs';
-import { DIALOG_BUTTONS, MEMORY_WARNING, SERVER_FIRST, classify, expectFlags, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, serverAttemptSummary, verdict, withTimeout } from './oom-load-probe-lib.mjs';
-import { installSourceTracker, trackerSummary } from './oom-load-probe-tracker.mjs';
+import { DIALOG_BUTTONS, MEMORY_WARNING, classify, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
 import { GPU_ARGS } from './retained-qual-browser.mjs';
 import { chromePids, memoryOf } from './scenoptic-bench-sampling.mjs';
 import { openAndWaitInteractive, openViewerPage, startViewerServer } from './viewer-load-probe.mjs';
@@ -91,38 +90,6 @@ function cgroupOf(unit) {
 }
 const scopeProp = (unit, prop) => {
   try { return execFileSync('systemctl', ['--user', 'show', `${unit}.scope`, '-p', prop, '--value'], { encoding: 'utf8' }).trim(); } catch { return null; }
-};
-
-/**
- * Init script: stamp (wall clock) every dialog, alert, status or toast each time its text
- * changes (a reused element with new text is a new event; no first-match-wins), and the
- * viewer store's load error the moment it is set (a subscription, not the 2 s poll).
- */
-const DIALOG_MARKS = () => {
-  const marks = (globalThis.__oomProbeDialogs = []), lastText = new WeakMap();
-  const SEL = '[role=dialog],[role=alertdialog],[role=alert],[role=status],[data-sonner-toast]';
-  const scan = () => {
-    for (const el of document.querySelectorAll(SEL)) {
-      const text = el.innerText?.trim();
-      if (text && lastText.get(el) !== text) {
-        lastText.set(el, text);
-        const kind = /dialog/.test(el.getAttribute('role') ?? '') ? 'dialog' : 'notice';
-        marks.push({ t: Date.now(), kind, text: text.slice(0, 4000) });
-      }
-    }
-  };
-  new MutationObserver(scan).observe(document, { subtree: true, childList: true, characterData: true });
-  const hook = setInterval(() => {
-    const store = globalThis.__ifc_lite_viewer_store__;
-    if (!store?.subscribe) return;
-    clearInterval(hook);
-    let prev = store.getState().error ?? null;
-    store.subscribe((st) => {
-      const err = st.error ?? null;
-      if (err && err !== prev) marks.push({ t: Date.now(), kind: 'store-error', text: String(err).slice(0, 4000) });
-      prev = err;
-    });
-  }, 25);
 };
 
 /** In page: what the load has reached. */
@@ -172,9 +139,7 @@ export async function runProbe(opts) {
     timedOut: false, warningShown: false, decision: 'none' };
   const peak = { pssMiB: 0, cgroupMiB: 0 };
   const unit = `oom-load-probe-${process.pid}-${Date.now()}`;
-  let last = null, context, sampler, cg = null, verdictReady = false, pickAt = null, dialogs = [], trackerReport = null;
-  const netEvents = [], storeErrors = [];
-  const watchOrigin = opts.watchUrl ? new URL(opts.watchUrl).origin : null;
+  let last = null, context, sampler, cg = null, verdictReady = false;
   try {
     let fixture = opts.fixture;
     if (!fixture) {
@@ -210,17 +175,6 @@ export async function runProbe(opts) {
       if (dm !== null) Object.defineProperty(Navigator.prototype, 'deviceMemory', { get: () => dm, configurable: true });
       if (hc !== null) Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => hc, configurable: true });
     }, { dm: opts.deviceMemory, hc: opts.cores });
-    // Source identity, reads and worker posts (oom-load-probe-tracker.mjs), injected as source text.
-    await context.addInitScript({ content: `(${installSourceTracker})({ Blob, FileReader, Worker: globalThis.Worker, MessagePort: globalThis.MessagePort, BroadcastChannel: globalThis.BroadcastChannel, URL, XMLHttpRequest, target: globalThis, document, now: Date.now, watchOrigin: ${JSON.stringify(watchOrigin)} });` });
-    await context.addInitScript(DIALOG_MARKS);
-    if (watchOrigin) {
-      const sameOrigin = (url) => { try { return new URL(url).origin === watchOrigin; } catch { return false; } };
-      // Driver-side view (its own clock): kept for the browser's error code, never used for order.
-      const net = (event, extra) => (r) => { if (sameOrigin(r.url())) netEvents.push({ t: Date.now(), event, url: r.url(), clock: 'driver', ...extra(r) }); };
-      context.on('request', net('driver-request', (r) => ({ method: r.method() })));
-      context.on('requestfailed', net('driver-requestfailed', (r) => ({ failure: r.failure()?.errorText ?? null })));
-      context.on('response', (res) => net('driver-response', () => ({ status: res.status() }))(res.request()));
-    }
     cg = cgroupOf(unit);
     if (!cg) throw new EnvError(`Chrome did not start inside scope ${unit}`);
     const page = await openViewerPage(context, `${baseUrl}/?perfTrace=1&perfMem=1`);
@@ -248,7 +202,6 @@ export async function runProbe(opts) {
     cleanup.push({ name: 'sampler', fn: () => clearInterval(sampler) });
 
     let done = false;
-    pickAt = Date.now();
     const interactive = openAndWaitInteractive(page, [fixture], { timeoutMs: opts.limitMin * 60_000 })
       .then(() => { obs.interactive = true; }, (e) => { if (/timeout/i.test(String(e?.message))) obs.timedOut = true; result.waitError = String(e?.message ?? e).slice(0, 300); });
     const watch = (async () => {
@@ -259,7 +212,7 @@ export async function runProbe(opts) {
         if (done || obs.pageCrashed || obs.browserGone || obs.killedTypes.some((t) => t === 'renderer' || t === 'browser')) return;
         const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 15000, () => null);
         if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
-        if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? 'model load error'; storeErrors.push({ t: Date.now(), text: obs.storeError }); return; }
+        if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? 'model load error'; return; }
         if (obs.decision === 'none') {
           // CSS role selectors, not getByRole: when another layer (e.g. a privacy banner) is open the
           // dialog's container can be aria-hidden, which hides it from getByRole although it is on screen.
@@ -294,8 +247,6 @@ export async function runProbe(opts) {
       }
       const notices = await withTimeout(page.evaluate(NOTICES).catch(() => null), 5000, () => null);
       Object.assign(obs, mergeFinalSnapshot(obs, st ? { error: st.error, modelStates: st.modelStates, warningVisible, notices } : (notices ? { notices } : null)));
-      dialogs = await withTimeout(page.evaluate(() => globalThis.__oomProbeDialogs ?? []).catch(() => []), 5000, () => []);
-      trackerReport = await withTimeout(page.evaluate(() => globalThis.__oomProbeTracker?.report() ?? null).catch(() => null), 5000, () => null);
       if (obs.interactive) last = { ...(await withTimeout(page.evaluate(PAGE_PROBE).catch(() => last), 5000, () => last)), interactive: true };
       await page.screenshot({ path: join(outDir, 'end.png'), timeout: 10000 }).catch(() => {});
     }
@@ -314,31 +265,10 @@ export async function runProbe(opts) {
   result.memoryDialogPolicy = opts.onMemoryDialog;
   result.memoryDialogDecision = obs.decision;
   result.notices = obs.notices;
-  if (pickAt !== null) {
-    // The page's own pick stamp (tracker) is the time origin; the driver's call time only as fallback.
-    const tracked = trackerSummary(trackerReport, pickAt);
-    const origin = tracked.pickKnown ? tracked.pickAt : pickAt;
-    const ms = (t) => t - origin;
-    result.driverCallToPickMs = tracked.pickKnown ? tracked.pickAt - pickAt : null;
-    const { events: trackedEvents, ...trackedCounts } = tracked;
-    result.sourceTracking = trackedCounts;
-    result.timeline = [
-      ...netEvents.map(({ t, ...e }) => ({ ms: ms(t), ...e })),
-      ...dialogs.map((d) => ({ ms: ms(d.t), event: d.kind ?? 'dialog', text: d.text })),
-      // The probe's own 2 s poll: the error appeared at some point in the 2 s before it was seen.
-      ...storeErrors.map((e) => ({ ms: ms(e.t), event: 'store-error', text: e.text, windowMs: 2000 })),
-      ...trackedEvents,
-    ].sort((a, b) => a.ms - b.ms);
-    result.serverAttempts = serverAttemptSummary(result.timeline, { watching: Boolean(watchOrigin), tracker: tracked });
-  }
   Object.assign(result, classify(obs), { phase: phaseOf(last), last, peakPssMiB: Math.round(peak.pssMiB),
     peakCgroupMiB: Math.round(peak.cgroupMiB), oomKills: obs.oomKills, killedTypes: obs.killedTypes });
   const v = verdict(result.outcome, opts.expect);
   Object.assign(result, { pass: v.pass, verdict: v.message });
-  if (opts.expectServerFirst) {
-    const f = expectFlags(result.serverAttempts, SERVER_FIRST);
-    Object.assign(result, { pass: result.pass && f.pass, verdict: `${result.verdict}; ${f.message}` });
-  }
   writeFileSync(join(outDir, 'result.json'), `${JSON.stringify(result, null, 1)}\n`);
   return { result, outDir };
 }
@@ -349,7 +279,6 @@ function cli() {
     seed: { type: 'string' }, cap: { type: 'string' }, 'device-memory': { type: 'string' }, cores: { type: 'string' },
     'cpu-quota': { type: 'string' }, gl: { type: 'string' }, expect: { type: 'string' }, out: { type: 'string' },
     'limit-min': { type: 'string' }, 'keep-fixture': { type: 'boolean' }, 'on-memory-dialog': { type: 'string' },
-    'watch-url': { type: 'string' }, 'expect-server-first': { type: 'boolean' },
   } });
   const fail = (m) => { console.error(`oom-load-probe: ${m}`); process.exit(2); };
   if (!v.dist || !existsSync(join(v.dist, 'index.html'))) fail('--dist must point at a built viewer (apps/viewer/dist)');
@@ -362,14 +291,11 @@ function cli() {
   const opts = { dist: resolve(v.dist), fixture: v.fixture && resolve(v.fixture), kind: v.kind, targetMb: Number(v['target-mb']),
     seed: v.seed ? Number(v.seed) : 1, cap: v.cap, deviceMemory: v['device-memory'] ? Number(v['device-memory']) : null, cores,
     cpuQuota: v['cpu-quota'] ?? `${(cores ?? 4) * 100}%`, gl, expect: v.expect, out: v.out && resolve(v.out),
-    limitMin: Number(v['limit-min'] ?? 10), keepFixture: Boolean(v['keep-fixture']), onMemoryDialog: v['on-memory-dialog'] ?? 'wait',
-    watchUrl: v['watch-url'], expectServerFirst: Boolean(v['expect-server-first']) };
-  if (opts.expectServerFirst && !opts.watchUrl) fail('--expect-server-first needs --watch-url');
+    limitMin: Number(v['limit-min'] ?? 10), keepFixture: Boolean(v['keep-fixture']), onMemoryDialog: v['on-memory-dialog'] ?? 'wait' };
   try { preflight(); } catch (err) { fail(err.message); }
   runProbe(opts).then(({ result, outDir }) => {
     console.log(`outcome=${result.outcome} phase="${result.phase}" peakPssMiB=${result.peakPssMiB} peakCgroupMiB=${result.peakCgroupMiB} `
-      + `oomKills=${result.oomKills} sourceTracking=${JSON.stringify(result.sourceTracking ?? null)} reason="${result.reason}" `
-      + `${result.serverAttempts?.watched ? `server=${JSON.stringify(result.serverAttempts)} ` : ''}-> ${result.verdict} [${outDir}/result.json]`);
+      + `oomKills=${result.oomKills} reason="${result.reason}" -> ${result.verdict} [${outDir}/result.json]`);
     if (result.cleanupFailures) console.error(`oom-load-probe: cleanup failures: ${result.cleanupFailures.join('; ')}`);
     process.exit(result.pass ? 0 : 1);
   }, (err) => {

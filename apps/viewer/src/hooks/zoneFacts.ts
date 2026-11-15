@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createModelMutationView } from '@/utils/model-mutation-view';
 /**
  * How much of each element is in each zone, resolved once for every consumer
  * (issue #2508).
@@ -16,11 +17,10 @@
  * writes. See `lib/zones/writeback.ts` for the pure naming/labelling half.
  */
 
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { OccurrenceQuantityReadError, readCurrentProjectUnits, readCurrentTypeQuantities, type IfcDataStore, type TypeQuantityInfo } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
-import { configureMutationView } from '@/utils/configureMutationView';
 import {
   declaredVolumeBases,
   volumeBasisFromQuantityName,
@@ -67,8 +67,7 @@ export function contextFor(modelId: string, cache: Map<string, ModelContext | nu
       cache.set(modelId, null);
       return null;
     }
-    view = new MutablePropertyView(store.properties || null, modelId);
-    configureMutationView(view, store);
+    view = createModelMutationView(store, modelId);
     state.registerMutationView(modelId, view);
   }
   const units = volumeScaleOf(store, view);

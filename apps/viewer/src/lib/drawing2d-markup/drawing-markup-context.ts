@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createModelMutationView } from '@/utils/model-mutation-view';
 /**
  * Get-or-create a model's `MutablePropertyView` (+ `StoreEditor` where a
  * caller actually WRITES), shared by `drawing-markup-save.ts` and
@@ -30,7 +31,6 @@
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
-import { configureMutationView } from '@/utils/configureMutationView';
 
 export interface DrawingMarkupReadContext {
   view: MutablePropertyView;
@@ -56,8 +56,7 @@ export function getDrawingMarkupReadContext(modelId: string): DrawingMarkupReadC
 
   let view = state.getMutationView(modelId);
   if (!view) {
-    view = new MutablePropertyView(dataStore.properties || null, modelId);
-    configureMutationView(view, dataStore);
+    view = createModelMutationView(dataStore, modelId);
     state.registerMutationView(modelId, view);
   }
 

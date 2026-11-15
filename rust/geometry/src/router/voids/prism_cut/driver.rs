@@ -233,59 +233,12 @@ impl Execution {
             defer(4);
             return None;
         }
-        // WATERTIGHT SLIVER REFINEMENT (#1007): the per-triangle CDT can emit a
-        // high-aspect corner sliver at an opening rim (a far-corner triangle
-        // fanned to two rim vertices) — the visible roof-slope chamfer the
-        // exact path also produces and repairs. Run the SAME lockstep-bisection
-        // pass the exact kernel output gets (targets aspect <= 8:1, watertight
-        // by construction), so the analytic cut meets the same rim-quality bar.
-        // The pass fixes one edge per internal round (64 max); the analytic
-        // cut can carry more rim fans than that, so drive it to a (bounded)
-        // fixpoint — each iteration is a no-op clone once no sliver remains.
-        // SELF-CHECKED application, and ONLY when this cut is FINAL (no
-        // residual): with a residual, the exact kernel still cuts this mesh and
-        // runs its own sliver refinement on ITS output — refining first would
-        // hand the arrangement midpoint-split geometry it re-fragments (#1167).
-        // On a hairline-tolerated output the lockstep split can also see just
-        // one side of an overlapping chain pair and amplify the sub-grid
-        // mismatch, and the split slivers can fall below the clean-degenerate
-        // grid — so accept the refined mesh only when it is STRICTLY closed
-        // and stays so once cleaned (`finish::can_adopt_refinement`).
+        // Rim-sliver refinement (#1007), only when this cut is FINAL: with a
+        // residual the exact kernel still cuts this mesh and refines its own
+        // output, and refining first would hand the arrangement midpoint-split
+        // geometry it re-fragments (#1167).
         if residual_idx.is_empty() && consolidated_closure.is_directed_closed() {
-            // SCOPED to the committed cutters' padded AABBs: #1007's target is
-            // the high-aspect corner sliver the CUT emits at an opening rim, and
-            // every rim-incident sliver touches its cutter's box. The unscoped
-            // pass also bisected the host's own authored long-thin faces (a thin
-            // steel wall is legitimately full of >8:1 quads), inflating output
-            // triangles and paying the full lockstep fixpoint on every
-            // analytic-cut host (the Holter 4.1.x regression).
-            //
-            // Refine straight off `out` first: the scoped pass returns the input
-            // unchanged when no in-region sliver fires (the common clean-cut
-            // case), and for a NO-OP fixpoint `refined == out` byte-for-byte, so
-            // the upfront clone, the probe clean, and the closure audits decided
-            // nothing. Only a fixpoint that actually split an edge pays the
-            // probe + self-check audits. Same 6-refine budget as before
-            // (1 here + up to 5 below). This refinement is not a replacement
-            // for the router's source-triangle cleanup and does not promise
-            // hygienic output. The probe informs acceptance; `finish_cut`
-            // closure-audits and prefers a clean result, but may return its
-            // explicit compatibility result (#4797).
-            let mut refined =
-                crate::facet_weld::refine_high_aspect_slivers_within(&out, &refine_boxes);
-            if refined.indices.len() != out.indices.len() {
-                for _ in 0..5 {
-                    let next =
-                        crate::facet_weld::refine_high_aspect_slivers_within(&refined, &refine_boxes);
-                    if next.indices.len() == refined.indices.len() {
-                        break;
-                    }
-                    refined = next;
-                }
-                if finish::can_adopt_refinement(boundary, &refined) {
-                    out = refined;
-                }
-            }
+            out = super::rim_refine::refine_rim_slivers(out, &refine_boxes, boundary);
         }
         // The finalizer cleans before the ulp weld so discarded slivers cannot
         // choose a surviving seam coordinate, then audits the exact mesh it

@@ -67,6 +67,7 @@ export {
   ref,
   enumVal,
   serializeValue,
+  stepString,
   formatStepReal,
   toStepLineWithRegistry,
   generateHeader,

@@ -47,6 +47,12 @@ describe('faceRegionsOfOuterBounds', () => {
     expect(faceRegionsOfOuterBounds([l, tile])).toEqual([{ polygon: l, innerBounds: [] }, { polygon: tile, innerBounds: [] }]);
   });
 
+  it('keeps loops in different planes as separate regions instead of nesting their projections', () => {
+    const wall: Vec3[] = [[0, 0, 0], [10, 0, 0], [10, 0, 10], [0, 0, 10]];
+    const floorPatch: Vec3[] = [[4, 0, 4], [6, 0, 4], [6, 2, 4], [4, 2, 4]]; // projects inside the wall loop but lies in another plane
+    expect(faceRegionsOfOuterBounds([wall, floorPatch])).toEqual([{ polygon: wall, innerBounds: [] }, { polygon: floorPatch, innerBounds: [] }]);
+  });
+
   it('keeps every loop of a non-planar or degenerate face as its own region', () => {
     const line: Vec3[] = [[0, 0, 0], [1, 0, 0], [2, 0, 0]];
     expect(faceRegionsOfOuterBounds([line, square(5, 5, 1)])).toHaveLength(2);
@@ -111,6 +117,17 @@ describe('the item reader keeps the regions of an IfcFaceSurface (#9945)', () =>
 #42=IFCPRODUCTDEFINITIONSHAPE($,$,(#41));
 #43=IFCSTRUCTURALSURFACEMEMBER('0Slab000000000000000a',$,'Slab',$,$,#20,#42,.SHELL.,0.2);
 ENDSEC;END-ISO-10303-21;`;
+
+  it('uses the largest region as the face polygon, so a sliver first in the file does not lose the face', async () => {
+    const withSliver = STEP.replace('#36=IFCPOLYLOOP((#30,#31,#32));', '#36=IFCPOLYLOOP((#30,#31,#31));').replace('#37=IFCPOLYLOOP((#33,#34,#35));', '#37=IFCPOLYLOOP((#33,#34,#35));');
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(withSliver).buffer as ArrayBuffer);
+    const shape = new ItemGeometryReader(store).shape(43);
+    expect(shape?.kind).toBe('face');
+    if (shape?.kind !== 'face') return;
+    expect(shape.polygon).toEqual([[10, 0, 0], [12, 0, 0], [10, 2, 0]]);
+    expect(shape.regions).toEqual([{ polygon: [[0, 0, 0], [2, 0, 0], [2, 0, 0]], innerBounds: [] }]);
+    expect(onShape(shape, [10.5, 0.5, 0])).toBe(true);
+  });
 
   it('returns the first triangle as the polygon and the second as a further region', async () => {
     const store = await new IfcParser().parseColumnar(new TextEncoder().encode(STEP).buffer as ArrayBuffer);

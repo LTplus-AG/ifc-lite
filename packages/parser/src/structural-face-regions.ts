@@ -12,6 +12,16 @@
 
 import { cross, dot, normalize, sub, type Vec3 } from './structural-item-geometry.js';
 
+/** Twice-signed-area magnitude of a ring, from its vector area; zero for a sliver or a line. */
+export function ringArea(ring: readonly Vec3[]): number {
+  let sum: Vec3 = [0, 0, 0];
+  for (let i = 1; i + 1 < ring.length; i++) {
+    const c = cross(sub(ring[i], ring[0]), sub(ring[i + 1], ring[0]));
+    sum = [sum[0] + c[0], sum[1] + c[1], sum[2] + c[2]];
+  }
+  return Math.hypot(...sum) / 2;
+}
+
 /** One region of a face: its outer ring and the openings in it. */
 export interface FaceRegion {
   polygon: Vec3[];
@@ -64,6 +74,10 @@ export function faceRegionsOfOuterBounds(rings: readonly Vec3[][]): FaceRegion[]
   }
   const x = normal && normalize(sub(reference[1], reference[0]));
   if (!normal || !x) return alone();
+  // Every loop must lie in the plane of the reference loop; a loop in another plane is projected onto it
+  // wrongly, so a face that is not planar keeps each loop as its own region.
+  const extent = Math.max(...reference.map((p) => Math.hypot(...sub(p, reference[0]))), 1e-9);
+  if (rings.some((ring) => ring.some((p) => Math.abs(dot(sub(p, reference[0]), normal!)) > 1e-6 * extent + 1e-9))) return alone();
   const y = cross(normal, x);
   const flat = rings.map((ring): Flat => ring.map((p) => [dot(sub(p, reference[0]), x), dot(sub(p, reference[0]), y)] as const));
   const areas = flat.map(area);

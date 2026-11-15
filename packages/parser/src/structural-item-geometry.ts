@@ -21,7 +21,7 @@
  * have no source record and read as `null`: no glyph, rather than a guess.
  */
 
-import { faceRegionsOfOuterBounds, type FaceRegion } from './structural-face-regions.js';
+import { faceRegionsOfOuterBounds, ringArea, type FaceRegion } from './structural-face-regions.js';
 import { firstProjAxis, walkPlacementChain } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { getEntityRefFromStore } from './columnar-parser-root-attributes.js';
@@ -314,8 +314,12 @@ export class ItemGeometryReader {
       const rings = bounds.map((b) => this.boundPolygon(b));
       // An unreadable bound must not silently drop its region.
       if (rings.some((ring) => !ring)) return null;
-      const [first, ...rest] = faceRegionsOfOuterBounds(rings as Vec3[][]);
-      return { polygon: first.polygon, innerBounds: first.innerBounds, ...(rest.length ? { regions: rest } : {}) };
+      const found = faceRegionsOfOuterBounds(rings as Vec3[][]);
+      // The face's frame comes from its main region, so that is the largest one; a sliver first in the file would give none.
+      const areas = found.map((region) => ringArea(region.polygon));
+      const main = areas.indexOf(Math.max(...areas));
+      const [first] = found.splice(main, 1);
+      return { polygon: first.polygon, innerBounds: first.innerBounds, ...(found.length ? { regions: found } : {}) };
     }
     const outer = bounds.find((b) => b?.type === 'IFCFACEOUTERBOUND') ?? bounds.find((b) => b?.type === 'IFCFACEBOUND');
     const polygon = this.boundPolygon(outer);

@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ProjectedCRS } from '@ifc-lite/parser';
 import { reprojectFromLatLon, reprojectPointToLatLon, resolveProjection, type LatLon } from './reproject.js';
-import { isGeographicProj4, projectedDefinitionInMetres } from './proj4-utils.js';
+import { isGeographicProj4, projectedDefinitionInMetres } from '@ifc-lite/geo/proj4';
 import { projectedUnitToMetres } from '../../hooks/ingest/projected-units.js';
 
 /** Metres per degree of latitude; longitude is scaled by cos(lat). */

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import proj4 from 'proj4';
-import { isWktDefinition, registeredWktDefinition, wktDefinitionInMetres } from './wkt-projection';
+import { isWktDefinition, registeredWktDefinition, wktDefinitionInMetres } from './wkt-projection.js';
 
 /** Also answers for a WKT definition registered by `resolveWktProjection`. */
 export function isGeographicProj4(definition: string): boolean {

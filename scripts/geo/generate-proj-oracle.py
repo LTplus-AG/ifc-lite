@@ -3,7 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """PROJ oracle vectors for the viewer's globe placement helpers.
 
-Writes apps/viewer/src/lib/geo/__fixtures__/proj-oracle.json. The viewer tests
+Writes packages/geo/src/__fixtures__/proj-oracle.json. The viewer tests
 compare proj4js-based helpers against these values, so the expected numbers are
 PROJ's, never proj4js's own.
 
@@ -290,7 +290,7 @@ def main():
         "warpGeographic": warp_geographic(),
     }
     here = os.path.dirname(os.path.abspath(__file__))
-    target = os.path.join(here, "..", "..", "apps", "viewer", "src", "lib", "geo", "__fixtures__", "proj-oracle.json")
+    target = os.path.join(here, "..", "..", "packages", "geo", "src", "__fixtures__", "proj-oracle.json")
     os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, "w", encoding="utf-8") as fh:
         json.dump(doc, fh, indent=1)

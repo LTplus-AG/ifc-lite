@@ -16,6 +16,7 @@ import { GeometryProcessor } from '@ifc-lite/geometry';
 import { IfcServerClient, type HealthResponse, type ParquetParseResponse } from '@ifc-lite/server-client';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { getProcessingServerUrl, setProcessingServerUrl } from '@/lib/processed-model';
 const { useIfcLoader } = await import('./useIfcLoader.js');
 
 const PARQUET_RESULT: ParquetParseResponse = {
@@ -152,6 +153,8 @@ for (const archive of [false, true]) for (const scenario of ['unavailable', 'ine
     Object.defineProperty(source, 'slice', { value: content.slice.bind(content) });
     Object.defineProperty(source, 'size', { value: 1.26e9 });
     let fullReads = 0, largeAllocations = 0, attempts = 0;
+    const priorServerUrl = getProcessingServerUrl();
+    const servers: string[] = [];
     Object.defineProperty(source, 'arrayBuffer', { value: async () => {
       fullReads++; throw new Error('unexpected whole-source read #10264');
     } });
@@ -160,8 +163,9 @@ for (const archive of [false, true]) for (const scenario of ['unavailable', 'ine
       if (args[0] >= 1e9) { largeAllocations++; throw new Error('unexpected source allocation #10264'); }
       return Reflect.construct(target, args);
     } });
-    mock.method(IfcServerClient.prototype, 'parseParquetStream', async (_file: Parameters<IfcServerClient['parseParquetStream']>[0], onBatch: Parameters<IfcServerClient['parseParquetStream']>[1]) => {
+    mock.method(IfcServerClient.prototype, 'parseParquetStream', async function (this: IfcServerClient, _file: Parameters<IfcServerClient['parseParquetStream']>[0], onBatch: Parameters<IfcServerClient['parseParquetStream']>[1]) => {
       attempts++;
+      servers.push((this as unknown as { baseUrl: string }).baseUrl);
       if (scenario !== 'success') throw new Error('unavailable server #10264');
       onBatch({ meshes: PARQUET_RESULT.meshes, batch_number: 1, decode_time_ms: 0 });
       return { cache_key: PARQUET_RESULT.cache_key, total_meshes: 1,
@@ -170,11 +174,13 @@ for (const archive of [false, true]) for (const scenario of ['unavailable', 'ine
     useViewerStore.setState({ mergeLayers: scenario === 'ineligible' });
     const errors: string[] = [];
     try {
+      setProcessingServerUrl('/memory-admission-runtime');
       await act(async () => { await api!.loadFile(source, undefined, { onLoadError: message => errors.push(message) }); });
       assert.equal(fullReads, 0, 'no whole-file ArrayBuffer acquisition');
       assert.equal(largeAllocations, 0, 'no file-sized shared allocation before server/fallback decision');
       assert.equal(engineInits, 0, 'never starts an oversized local fallback');
       assert.equal(attempts, scenario === 'ineligible' ? 0 : 1, 'eligible server upload is still attempted');
+      assert.deepEqual(servers, scenario === 'ineligible' ? [] : ['/memory-admission-runtime'], 'pre-allocation server admission uses the runtime URL (#10142/#10264)');
       assert.equal(useViewerStore.getState().loading, false);
       if (scenario === 'success') {
         assert.deepEqual(errors, []);
@@ -185,6 +191,7 @@ for (const archive of [false, true]) for (const scenario of ['unavailable', 'ine
         assert.match(errors[0], /local processing memory budget/);
       }
     } finally {
+      setProcessingServerUrl(priorServerUrl);
       globalThis.SharedArrayBuffer = realSab;
       if (memory) Object.defineProperty(navigator, 'deviceMemory', memory);
       else Reflect.deleteProperty(navigator, 'deviceMemory');
@@ -242,4 +249,24 @@ it('#10264 ZIP extraction cannot exceed its admitted model size when the directo
     value instanceof Error && /extracted entry.*exceeds.*limit/.test(value.message))),
   'the bounded extractor aborts while streaming, rather than after a full size-mismatch result');
   assert.equal(engineInits, 0, 'bounded archive extraction stops before WASM');
+});
+
+it('a server URL set at runtime takes the upload of a locally opened IFC too', async () => {
+  const { setProcessingServerUrl } = await import('@/lib/processed-model');
+  const servers: string[] = [];
+  mock.method(IfcServerClient.prototype, 'parseParquet', async function (this: IfcServerClient) {
+    servers.push((this as unknown as { baseUrl: string }).baseUrl);
+    return PARQUET_RESULT;
+  });
+  try {
+    setProcessingServerUrl('/runtime-processor');
+    await act(async () => { await api!.loadFile(file('runtime.ifc')); });
+    assert.deepEqual(servers, ['/runtime-processor'], 'the upload gate and the request read the same URL');
+    assert.equal(engineInits, 0);
+
+    setProcessingServerUrl('');
+    await act(async () => { await api!.loadFile(file('no-server.ifc')); });
+    assert.deepEqual(servers, ['/runtime-processor'], 'with no server URL the build flag alone uploads nothing');
+    assert.equal(engineInits, 1, 'the file is processed locally');
+  } finally { setProcessingServerUrl('http://localhost:9999'); release(); }
 });

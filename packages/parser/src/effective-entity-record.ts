@@ -67,5 +67,27 @@ export function resolveEffectiveEntityRecord(
     if (index >= 0) attributes[index] = value;
   }
   for (const [index, value] of edits.positional) attributes[index] = value;
-  return { type, attributes, names };
+  return { type, attributes: literalReadValues(attributes), names };
+}
+
+/** Read literal markers at every aggregate level without changing authored
+ * values, recursing on the JS stack, or revisiting shared/cyclic arrays. */
+function literalReadValues(values: unknown[]): unknown[] {
+  const result: unknown[] = new Array(values.length);
+  const copies = new WeakMap<unknown[], unknown[]>([[values, result]]);
+  const pending = [{ source: values, target: result }];
+  while (pending.length > 0) {
+    const { source, target } = pending.pop()!;
+    source.forEach((value, index) => {
+      if (Array.isArray(value)) {
+        let copy = copies.get(value);
+        if (!copy) { copy = new Array(value.length); copies.set(value, copy); pending.push({ source: value, target: copy }); }
+        target[index] = copy;
+      } else {
+        target[index] = value && typeof value === 'object' && 'literal' in value && typeof value.literal === 'string'
+          ? value.literal : value;
+      }
+    });
+  }
+  return result;
 }

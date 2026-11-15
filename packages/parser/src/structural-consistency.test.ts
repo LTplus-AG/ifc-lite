@@ -135,7 +135,7 @@ describe('structural-class-mismatch', () => {
 
 describe('structural-unconnected-member', () => {
   const connected = (expressId: number, type = 'IfcStructuralCurveMember') =>
-    ({ ...member(expressId, type), connectionGlobalIds: ['C1'], IfcRelConnectsStructuralMember: [{ expressId: 100 + expressId, RelatedStructuralConnection: 20 }] });
+    ({ ...member(expressId, type), connectionGlobalIds: ['C1'], IfcRelConnectsStructuralMember: [{ expressId: 100 + expressId, type: 'IfcRelConnectsStructuralMember', RelatedStructuralConnection: 20 }] });
 
   it('reports every member with no connection once any member is connected', () => {
     const issues = checkStructuralConsistency(model([connected(10), member(11, 'IfcStructuralCurveMember'), member(12, 'IfcStructuralSurfaceMember')]), []);
@@ -144,7 +144,7 @@ describe('structural-unconnected-member', () => {
   });
 
   it('counts a relationship whose connection has no GlobalId as a connection', () => {
-    const related = { ...member(11, 'IfcStructuralCurveMember'), IfcRelConnectsStructuralMember: [{ expressId: 50, RelatedStructuralConnection: 20 }] };
+    const related = { ...member(11, 'IfcStructuralCurveMember'), IfcRelConnectsStructuralMember: [{ expressId: 50, type: 'IfcRelConnectsStructuralMember', RelatedStructuralConnection: 20 }] };
     expect(ids(checkStructuralConsistency(model([connected(10), related]), []), 'structural-unconnected-member')).toEqual([]);
   });
 

@@ -32,6 +32,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/cache`](#ifc-litecache) | Binary cache format for IFC-Lite - fast model loading |
 | [`@ifc-lite/pointcloud`](#ifc-litepointcloud) | Point cloud decoders and types for IFC-Lite |
 | [`@ifc-lite/solar`](#ifc-litesolar) | Solar position, sunrise/sunset and 3D sun-path geometry for IFC-Lite |
+| [`@ifc-lite/tiles3d`](#ifc-litetiles3d) | Headless OGC 3D Tiles reader: region queries over tilesets, b3dm/glb decoding (incl. Draco) into per-feature ECEF meshes with attributes |
 | [`@ifc-lite/sdk`](#ifc-litesdk) | Scripting SDK for ifc-lite — the bim.* API for BIM automation |
 | [`@ifc-lite/sandbox`](#ifc-litesandbox) | QuickJS-in-WASM sandboxed script execution for ifc-lite |
 | [`@ifc-lite/extensions`](#ifc-liteextensions) | Extension manifest, capability grammar, and slot registry for ifc-lite user customization |
@@ -53,6 +54,8 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/documents-api`](https://www.npmjs.com/package/@ifc-lite/documents-api) | OpenCDE Documents API 1.0 client: select, download, query and upload documents against a buildingSMART Documents API server |
 | [`@ifc-lite/flow`](https://www.npmjs.com/package/@ifc-lite/flow) | Keyed-data graph runtime for BIM workflows: typed ports, item/list/group lifting, memoised evaluation, and element tracking for re-runnable graphs |
 | [`@ifc-lite/flow-nodes`](https://www.npmjs.com/package/@ifc-lite/flow-nodes) | Standard node library for @ifc-lite/flow over the ifc-lite SDK: model reads and writes, tables, viewer, and a sandboxed Script node |
+| [`@ifc-lite/geodata-ch`](https://www.npmjs.com/package/@ifc-lite/geodata-ch) | Typed headless client for Swiss federal geodata (address search, parcels, swissALTI3D terrain, swissBUILDINGS3D tiles, swissTLM3D features, ÖREB) as site context in LV95 |
+| [`@ifc-lite/georef-check`](https://www.npmjs.com/package/@ifc-lite/georef-check) | Diagnose IFC georeferencing: Levels of Georeferencing found, and findings with plain-language explanations and structured fixes (double map position, scale slips, zone prefixes, LV03/LV95, tool-default site locations) |
 | [`@ifc-lite/ids-agent`](https://www.npmjs.com/package/@ifc-lite/ids-agent) | Headless IDS authoring agent: a tool-calling loop over the IDS Studio op vocabulary, grounded by the gate, producing reviewable proposals |
 | [`@ifc-lite/ids-authoring`](https://www.npmjs.com/package/@ifc-lite/ids-authoring) | Headless IDS authoring core: Studio document with stable node ids, typed invertible operations, a grounding gate against the IFC schema tables, history, sidecar and re-identification |
 | [`@ifc-lite/load-trace`](https://www.npmjs.com/package/@ifc-lite/load-trace) | Dependency-free load-trace spans: performance.measure plus a per-load, cross-thread span tree with worker clock alignment and Chrome-trace export |
@@ -1108,6 +1111,10 @@ Point cloud decoders and types: `decodePcd`, LAS/LAZ support including `LasStrea
 ## @ifc-lite/solar
 
 Solar position, sunrise/sunset, and 3D sun-path geometry: `sunPosition`, `sunTimes`, and the sun-path dome builders (day paths, hourly analemmas). Renderer-agnostic.
+
+## @ifc-lite/tiles3d
+
+Headless OGC 3D Tiles reader: `readTilesetRegion` returns the features of a tileset inside a WGS84 region as float64 meshes (tileset frame / ECEF) with batch table attributes, primitive groups and tile provenance. It handles b3dm and glb content (with Draco), budgets and explicit truncation, and has a `readSwisstopoBuildings` preset. `ecefToGeodetic` / `geodeticToEcef` convert positions.
 
 ## @ifc-lite/sdk
 

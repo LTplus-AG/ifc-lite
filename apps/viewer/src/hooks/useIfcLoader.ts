@@ -56,7 +56,8 @@ import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { armColdSceneCapture, coldCaptureEligible } from './sceneSnapshotLoad.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from '@ifc-lite/cache';
-import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
+import { serverUploadsEnabled } from '../lib/processed-model.js';
+import { CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,
   createCoordinateInfo,
@@ -692,7 +693,7 @@ export function useIfcLoader() {
         loadStage = 'server-fetch';
         return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId, initializeModel), isStale, completeServerLoad);
       };
-      localAdmission.setServer(async parsedBytes => !serverAttempted && target.kind === 'primary' && !useViewerStore.getState().mergeLayers && USE_SERVER && !!SERVER_URL && geometryKernel.serverEnabled
+      localAdmission.setServer(async parsedBytes => !serverAttempted && target.kind === 'primary' && !useViewerStore.getState().mergeLayers && serverUploadsEnabled() && geometryKernel.serverEnabled
         ? tryServer({ byteLength: parsedBytes }) : false);
       const preflightHead = target.kind === 'federated' ? federatedHead : await localAdmission.preflight();
       if (preflightHead === null || isStale()) return;
@@ -775,7 +776,7 @@ export function useIfcLoader() {
       // A SAB here is the un-unwrapped file, so `headBuf` is its head.
       format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : headBuf);
 
-      if (!USE_SERVER && format === 'ifc' && !await localAdmission.admit(buffer.byteLength)) return;
+      if (!serverUploadsEnabled() && format === 'ifc' && !await localAdmission.admit(buffer.byteLength)) return;
       if (geometryKernel.refuseSource(format, buffer.byteLength, { modelId, activity })) { settleLoadUi(); return; }
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
@@ -1244,7 +1245,7 @@ export function useIfcLoader() {
       }
 
       // Native server eligibility excludes local-only fidelity modes and textured archives.
-      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '' && geometryKernel.serverEnabled) {
+      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && serverUploadsEnabled() && geometryKernel.serverEnabled) {
         if (!serverAttempted && await tryServer(buffer)) return;
         // Server not available - continue with local WASM (no error logging needed)
       }

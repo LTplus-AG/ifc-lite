@@ -1,0 +1,13 @@
+diff --git a/packages/data/src/epsg-extents.ts b/packages/data/src/epsg-extents.ts
+index 365eee795f..c2a1f8fbe3 100644
+--- a/packages/data/src/epsg-extents.ts
++++ b/packages/data/src/epsg-extents.ts
+@@ -294,7 +294,7 @@ function hullOf(boxes: Array<[number, number, number, number]>, code: string): [
+   return [
+     Math.min(...boxes.map(b => b[0])),
+     Math.min(...boxes.map(b => b[1])),
+-    Math.min(...boxes.map(b => b[2])),
++    Math.max(...boxes.map(b => b[2])),
+     Math.max(...boxes.map(b => b[3])),
+   ];
+ }

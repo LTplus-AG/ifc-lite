@@ -185,3 +185,34 @@ describe('decisions that rest on an uncertain ground storey or footprint keep th
     expect(facts.candidates.find((c) => c.name === 'Hoftür')?.selectedBecause).toMatch(/fills courtyards/);
   });
 });
+
+describe('an uncertain location does not exclude (review round on head ecc53bf3)', () => {
+  it('a window whose filled opening reads only 2.5 m inside the façade, beside an unreadable part, is kept', async () => {
+    const facts = extractModelFacts(await parseStep(syntheticHouse({
+      verticalDatum: 'LN02',
+      extra: (b) => {
+        // The opening's readable part is centred 2.5 m inside the east face (x = 17.5); an unreadable Brep may reach x = 20.
+        const part = b.rectExtrusion(0, 0, 1, 1, 0.4, b.axis(17.3, 5, 1, b.dir(1, 0, 0), b.dir(0, 1, 0)), b.dir(0, 0, 1));
+        const brep = b.add(`IFCFACETEDBREP(#${b.add('IFCCLOSEDSHELL(())')})`);
+        const opening = b.add(`IFCOPENINGELEMENT(${b.guid()},$,'Öffnung teils',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([part, brep])},$,.OPENING.)`);
+        const win = b.add(`IFCWINDOW(${b.guid()},$,'Fenster teils',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},$,$,1.,1.,.WINDOW.,$,$)`);
+        b.add(`IFCRELFILLSELEMENT(${b.guid()},$,$,$,#${opening},#${win})`);
+        b.contain(b.storeys.eg.id, win);
+      },
+    })), { expectedCrs: 'EPSG:2056' });
+    expect(facts.candidates.find((c) => c.name === 'Fenster teils')).toMatchObject({ levelIsUpperEstimate: true });
+  });
+
+  it('equipment with no storey whose readable part is above the scope, beside an unreadable part, is kept', async () => {
+    const facts = extractModelFacts(await parseStep(syntheticHouse({
+      verticalDatum: 'LN02',
+      extra: (b) => {
+        const part = b.rectExtrusion(0, 0, 1, 1, 1, b.axis(0, 0, -1), b.dir(0, 0, 1)); // 504..505 m
+        const brep = b.add(`IFCFACETEDBREP(#${b.add('IFCCLOSEDSHELL(())')})`);
+        // Not contained in any storey: the storey cannot be resolved.
+        b.add(`IFCPUMP(${b.guid()},$,'Pumpe ohne Geschoss',$,$,#${b.place(b.storeys.eg.pl, 10, 5, 5)},#${b.shape([part, brep])},$,.CIRCULATOR.)`);
+      },
+    })), { expectedCrs: 'EPSG:2056' });
+    expect(facts.candidates.find((c) => c.name === 'Pumpe ohne Geschoss')).toMatchObject({ levelIsUpperEstimate: true });
+  });
+});

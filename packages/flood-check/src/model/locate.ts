@@ -59,6 +59,14 @@ export interface Location {
   level: number;
   basis: LevelBasis;
   quality: LevelQuality;
+  /**
+   * The position comes from a source that defines it and was read in full:
+   * a fully readable body (the filled opening's, for a door or window), or a
+   * placement the schema defines (a door, window or equipment with no body
+   * that could place it elsewhere). An uncertain position proves nothing about
+   * an element's distance to the outline.
+   */
+  positionCertain: boolean;
   notes: string[];
 }
 
@@ -93,7 +101,7 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
   const notes: string[] = [];
   const own = readability(s.own);
   if (kind === 'stair' || kind === 'ramp') {
-    return { position: at.position, level: s.groundLevel ?? at.level, basis: 'ground-storey-or-terrain', quality: 'upper-estimate', notes };
+    return { position: at.position, level: s.groundLevel ?? at.level, basis: 'ground-storey-or-terrain', quality: 'upper-estimate', positionCertain: true, notes };
   }
   const filled = s.filled ? readability(s.filled) : 'none';
   const ownRead = s.own.readable > 0;
@@ -101,12 +109,17 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
 
   // Position: the hole a door or window fills, else the element's own body, else its placement.
   let position = at.position;
-  if ((kind === 'door' || kind === 'window') && filledRead) {
+  const filling = kind === 'door' || kind === 'window';
+  const bodyDefined = kind === 'opening' || kind === 'slab-opening' || kind === 'light-well';
+  let positionCertain = !bodyDefined || own === 'readable';
+  if (filling && s.filled) positionCertain = filled === 'readable';
+  if (filling && filledRead) {
     position = centre(s.filled!);
     const apart = Math.hypot(position.x - at.position.x, position.y - at.position.y);
     if (apart > POSITION_DISAGREEMENT) notes.push(`placed ${apart.toFixed(2)} m from the hole it fills (for example at its wall's origin); the hole's position is used`);
   } else if (ownRead) {
     position = centre(s.own);
+    if (own !== 'readable') positionCertain = false;
   }
 
   // Level: the lowest of the sources that define it for this kind.
@@ -150,7 +163,7 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
   if (kind === 'light-well' && own === 'none') doubts.push('it has no body, and a light well\'s placement has no defined height');
   if (kind === 'slab-opening' && s.hostLevel === null) doubts.push('the slab it cuts cannot be placed');
   for (const d of doubts) notes.push(`${d}: the level is an upper estimate`);
-  return { position, level, basis, quality: doubts.length > 0 ? 'upper-estimate' : 'exact', notes };
+  return { position, level, basis, quality: doubts.length > 0 ? 'upper-estimate' : 'exact', positionCertain, notes };
 }
 
 function mapBody(ctx: CandidateContext, id: number): MapBody {

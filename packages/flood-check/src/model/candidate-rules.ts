@@ -67,7 +67,7 @@ export function fillingVerdict(ctx: CandidateContext, entity: DecodedEntity): Ve
   if (outOfScope) return skip(outOfScope);
   const opening = r.related(entity.expressId, RelationshipType.FillsElement, 'inverse')[0];
   const host = opening === undefined ? null : hostOfOpening(ctx, opening);
-  const reason = facadeReason(ctx, entity, host, loc.position);
+  const reason = facadeReason(ctx, entity, host, loc.position, loc.positionCertain);
   if (typeof reason !== 'string') return skip(reason.not);
   const category: CandidateCategory = isWindow ? belowGround(ctx, entity.expressId, loc.level) ? 'basement-window' : 'window' : 'door';
   const fact = at(ctx, entity, category, loc, reason);
@@ -97,7 +97,7 @@ export function openingVerdict(ctx: CandidateContext, entity: DecodedEntity, fil
   const outOfScope = scopeExclusion(ctx, entity.expressId, loc.level, loc.quality === 'upper-estimate');
   if (outOfScope) return skip(outOfScope);
   // With no host, the opening itself is tested against the outline.
-  const reason = facadeReason(ctx, host ?? entity, null, loc.position);
+  const reason = facadeReason(ctx, host ?? entity, null, loc.position, loc.positionCertain);
   if (typeof reason !== 'string') return skip(reason.not);
   const fact = at(ctx, entity, 'wall-opening', loc, `${filled ? 'opening' : 'unfilled opening'}; ${reason}${host ? '' : ' (no host element)'}`);
   if (host) fact.host = { expressId: host.expressId, ifcClass: r.className(host) };
@@ -166,10 +166,11 @@ export function descentVerdict(ctx: CandidateContext, entity: DecodedEntity, cat
   return candidate(at(ctx, entity, category, loc, `${why}; ${evidenceWhy}; entry at the terrain`));
 }
 
-function inLowestStoreys(ctx: CandidateContext, id: number, level: number): boolean {
+/** In the ground storey or below by its storey; with no storey, by its level, which proves nothing when it is an upper estimate. */
+function inLowestStoreys(ctx: CandidateContext, id: number, level: number, upperEstimate: boolean): boolean {
   const storey = ctx.storeyOf(id);
   const storeyLevel = storey === null ? undefined : ctx.storeyLevel.get(storey);
-  return storeyLevel !== undefined ? storeyLevel <= ctx.groundLevel + 0.01 : level <= ctx.groundLevel + ctx.aboveGroundScope;
+  return storeyLevel !== undefined ? storeyLevel <= ctx.groundLevel + 0.01 : upperEstimate || level <= ctx.groundLevel + ctx.aboveGroundScope;
 }
 
 /**
@@ -192,7 +193,7 @@ export function equipmentVerdict(ctx: CandidateContext, entity: DecodedEntity, b
   }
   const loc = where(ctx, entity, 'equipment');
   if (!loc) return skip(NO_PLACEMENT);
-  const lowest = inLowestStoreys(ctx, entity.expressId, loc.level);
+  const lowest = inLowestStoreys(ctx, entity.expressId, loc.level, loc.quality === 'upper-estimate');
   if (!lowest && !groundDoubt(ctx)) return skip('equipment above the ground storey');
   return candidate(at(ctx, entity, 'equipment', loc, lowest ? `${why} in the ground storey or below` : `${why}; ${groundDoubt(ctx)}`));
 }

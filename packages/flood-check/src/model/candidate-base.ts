@@ -148,7 +148,7 @@ export function hostOfOpening(ctx: CandidateContext, openingId: number): Decoded
 }
 
 /** Why the element is in the façade, or `{ not }` with why it is taken not to be. */
-export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host: DecodedEntity | null, at: MapPoint): string | { not: string } {
+export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host: DecodedEntity | null, at: MapPoint, positionCertain = true): string | { not: string } {
   const own = isExternal(ctx.reader, entity);
   if (own === true) return `IsExternal (${COMMON_PSET[entity.type]})`;
   const hostExternal = host ? isExternal(ctx.reader, host) : null;
@@ -163,5 +163,7 @@ export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host:
   if (Number.isFinite(d) && Math.abs(d) <= ctx.boundaryTolerance) return `within ${ctx.boundaryTolerance} m of the footprint outline (IsExternal not stated)`;
   const doubt = footprintDoubt(ctx, d);
   if (doubt) return `IsExternal not stated, ${doubt}`;
+  // A position read from part of a body, or standing in for a hole that may lie elsewhere, proves no distance.
+  if (!positionCertain) return 'IsExternal not stated, and its position is uncertain (a body that places it cannot be fully read), so its distance to the outline proves nothing (kept conservatively)';
   return { not: `not in the façade: IsExternal not stated and ${Math.abs(d).toFixed(2)} m from the footprint outline (more than ${ctx.boundaryTolerance} m)` };
 }

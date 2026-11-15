@@ -371,11 +371,11 @@ whose input is incomplete is withheld with the reason.
 | --- | --- | --- |
 | not placed (skipped, named in a warning) | `locate` | the element's placement |
 | out of scope (`aboveGroundScope` above the ground storey) | `scopeExclusion` | level quality (`locate`), the element's storey, the ground storey's basis (a guessed one excludes nothing) |
-| not in the façade (no `IsExternal`, beyond 1 m of the outline) | `facadeReason` | `IsExternal` of element and host, the footprint's quality (hull, filled voids: kept; partial: kept outside the readable rings), no footprint at all (kept) |
+| not in the façade (no `IsExternal`, beyond 1 m of the outline) | `facadeReason` | `IsExternal` of element and host, the position's certainty (`locate`: read from part of a body, or a placement standing in for a hole: kept), the footprint's quality (hull, filled voids: kept; partial: kept outside the readable rings), no footprint at all (kept) |
 | interior stair or ramp | `descentVerdict` | `IsExternal`, placement and every body corner, body completeness, the footprint's quality (hull, filled voids: kept; partial: outside counts as outside) |
 | a stair or ramp leads up (skipped) | `descentEvidence` | body completeness (a complete body only), the ground storey's basis (a guessed one excludes nothing) |
 | a slab opening above the ground storey | `openingVerdict` | the host slab's placement (unplaced: kept, upper estimate), the ground storey's basis |
-| equipment above the ground storey | `equipmentVerdict` | the element's storey, else its level (`locate`), the ground storey's basis |
+| equipment above the ground storey | `equipmentVerdict` | the element's storey, else its level and that level's quality (an upper estimate proves nothing), the ground storey's basis |
 | a transport element of another kind | `equipmentVerdict` | its stated kind (an unstated kind is kept) |
 | RECESS opening | `openingVerdict` | its stated predefined type |
 | reported through its door, window or stair | `selectCandidates` | that element's verdict (only a candidate reports for another) |

@@ -537,9 +537,9 @@ export interface PreAlignmentSnapshot {
   instancedGeometryAabbs: Map<number, EntityWorldAabb> | undefined;
 }
 export interface FederatedModel extends ModelLoadReportFields {
+  hasOverlayCapacity?: boolean; // false when the overlay range is exhausted; unset counts as capacity.
   id: string; // UUID generated on load.
-  /** Display name (filename by default, user can rename) */
-  name: string;
+  name: string; // Display name (filename by default, user can rename)
   sourceFingerprint?: string; // Durable identity for persisted model filters.
   sourceContentHash?: string; // Full-content identity for workspace placements.
   /** Parsed IFC data model */
@@ -585,13 +585,12 @@ export interface FederatedModel extends ModelLoadReportFields {
    * layers. Held in memory only; never serialized to cache.
    */
   sourceHandle?: FileSystemFileHandle;
-  /**
-   * ID offset for this model (from FederationRegistry)
+  /** ID offset for this model (from FederationRegistry).
    * All mesh expressIds are globalIds = originalExpressId + idOffset
    * Use this to convert back to original IDs for property lookup
    */
   idOffset: number;
-  /** Maximum original expressId in this model (for range validation) */
+  /** Highest local expressId this model owns (reverse resolvers bound its global ids at `idOffset + maxExpressId`); after a later model's clamp, the published end, which can sit below the store's highest id. */
   maxExpressId: number;
   /** Unified ingest lifecycle state. */
   loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error';

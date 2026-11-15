@@ -80,7 +80,7 @@ test('#10264 OOM kill with an unidentified victim and a live page: `error`, a pa
   for (const extra of [{}, { interactive: true }, { timedOut: true }]) {
     const r = classify({ oomKills: 1, killedTypes: [], ...extra });
     assert.equal(r.outcome, 'error');
-    assert.match(r.reason, /only 0 victim\(s\) identified/);
+    assert.match(r.reason, /kill\(s\) whose victim was not identified/);
     for (const e of ['killed', 'not-killed', 'warned']) assert.equal(verdict(r.outcome, e).pass, false);
   }
 });
@@ -396,7 +396,7 @@ test('precedence 2 (review on #10415): two OOM kills with one identified GPU vic
   const r = classify({ ...base, oomKills: 2, killedTypes: ['gpu-process'], interactive: true });
   assert.equal(r.outcome, 'error');
   assert.equal(r.rule, 2);
-  assert.match(r.reason, /only 1 victim\(s\) identified \(gpu-process\)/);
+  assert.match(r.reason, /1 kill\(s\) whose victim was not identified \(identified: gpu-process\)/);
   for (const e of ['killed', 'not-killed', 'warned', 'loaded']) assert.equal(verdict(r.outcome, e).pass, false);
   // Every kill accounted for by a non-tab victim: the live, interactive load is loaded with a note.
   assert.equal(classify({ ...base, oomKills: 2, killedTypes: ['gpu-process', 'utility'], interactive: true }).outcome, 'loaded');
@@ -473,4 +473,50 @@ test('#10353 server proof: the attempt and request counts survive a log filled b
   assert.equal(v.firstAttemptMs, 30);
   assert.equal(v.attemptBeforeDecision, true);
   assert.equal(expectFlags(v, SERVER_FIRST).pass, true);
+});
+
+test('OOM accounting per event (review on #10415): an extra vanished process in one interval cannot cover a missing victim in another', async () => {
+  const { oomAccounting } = await import('./oom-load-probe-lib.mjs');
+  // Interval A: one kill, two processes vanished (one was a normal exit). Interval B: one kill, nothing vanished.
+  const events = [{ added: 1, types: ['gpu-process', 'utility'] }, { added: 1, types: [] }];
+  assert.equal(oomAccounting(events, 2).unidentified, 1, 'the aggregate count (2 kills, 2 types) would have hidden it');
+  const r = classify({ ...base, oomKills: 2, killEvents: events, killedTypes: ['gpu-process', 'utility'], interactive: true });
+  assert.equal(r.outcome, 'error');
+  assert.equal(r.rule, 2);
+  assert.equal(verdict(r.outcome, 'not-killed').pass, false);
+});
+
+test('OOM accounting per event: two kills in one interval with one vanished process leave one unidentified', async () => {
+  const { oomAccounting } = await import('./oom-load-probe-lib.mjs');
+  assert.equal(oomAccounting([{ added: 2, types: ['gpu-process'] }], 2).unidentified, 1);
+  assert.equal(classify({ ...base, oomKills: 2, killEvents: [{ added: 2, types: ['gpu-process'] }], interactive: true }).outcome, 'error');
+});
+
+test('OOM accounting per event: the same process type killed twice in two intervals is fully identified', async () => {
+  const { oomAccounting } = await import('./oom-load-probe-lib.mjs');
+  const events = [{ added: 1, types: ['gpu-process'] }, { added: 1, types: ['gpu-process'] }];
+  assert.deepEqual(oomAccounting(events, 2), { kills: 2, types: ['gpu-process', 'gpu-process'], unidentified: 0 });
+  const r = classify({ ...base, oomKills: 2, killEvents: events, interactive: true });
+  assert.equal(r.outcome, 'loaded');
+  assert.match(r.reason, /OOM-killed gpu-process\+gpu-process \(not the tab\)/);
+});
+
+test('OOM accounting per event: kills the sampler never saw (counter read only at the end) are unidentified', async () => {
+  const { oomAccounting } = await import('./oom-load-probe-lib.mjs');
+  assert.equal(oomAccounting([{ added: 1, types: ['gpu-process'] }], 3).unidentified, 2);
+  assert.equal(classify({ ...base, oomKills: 1, killEvents: [], interactive: true }).outcome, 'error');
+  // A renderer victim in any interval is still a tab death (row 1 beats row 2).
+  assert.equal(classify({ ...base, oomKills: 2, killEvents: [{ added: 1, types: ['renderer'] }, { added: 1, types: [] }] }).outcome, 'killed');
+});
+
+test('withTimeout (review on #10415): a fallback that throws rejects, so cleanup records it and runs the remaining steps', async () => {
+  await assert.rejects(withTimeout(new Promise(() => {}), 10, () => { throw new Error('systemctl stop failed'); }), /systemctl stop failed/);
+  await assert.rejects(withTimeout(new Promise(() => {}), 10, () => Promise.reject(new Error('async fallback failed'))), /async fallback failed/);
+  const ran = [];
+  const failures = await runCleanup([
+    { name: 'fixture', fn: () => ran.push('fixture') },
+    { name: 'browser', fn: () => withTimeout(new Promise(() => {}), 10, () => { throw new Error('systemctl stop failed'); }) },
+  ]);
+  assert.deepEqual(ran, ['fixture'], 'the step after the failing fallback still ran');
+  assert.deepEqual(failures, ['browser: systemctl stop failed']);
 });

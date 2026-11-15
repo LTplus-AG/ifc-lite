@@ -65,8 +65,8 @@ const TAB_PROCESSES = new Set(['renderer', 'browser']);
  *  #  outcome                        when                                                  why it outranks the rows below
  *  1  killed / killed-after-continue the renderer or browser vanished at an OOM kill, the  a dead tab is the defect under test;
  *                                    page crashed, or the browser exited                    nothing a dead page showed can override it
- *  2  error                          more OOM kills than identified victims (any kill's    cannot be called killed or alive: never a pass,
- *                                    victim unknown), with the page alive                   even when the page is interactive (review #10415)
+ *  2  error                          any OOM kill whose victim was not identified in its   cannot be called killed or alive: never a pass,
+ *                                    own sample interval (per event), with the page alive   even when the page is interactive (review #10415)
  *  3  loaded                         the load reached full interactivity (positively       a finished model beats any text elsewhere on
  *                                    observed); a GPU/utility OOM kill is noted            the page, including a stale or later error
  *  4  refused                        the explicit pre-read refusal text (store load        the refusal IS a load error; it must be read
@@ -86,8 +86,8 @@ export const GENERIC_MODEL_ERROR = 'model load error';
 export const PRECEDENCE = Object.freeze([
   { outcome: 'killed', when: (o, k) => TAB_DEATH(o, k).length > 0,
     reason: (o, k) => `${TAB_DEATH(o, k).join(', ')}${k.kills ? ` (cgroup oom_kill=${k.kills})` : ''}` },
-  { outcome: 'error', when: (o, k) => k.kills > k.types.length,
-    reason: (o, k) => `cgroup oom_kill=${k.kills} but only ${k.types.length} victim(s) identified${k.types.length ? ` (${k.types.join('+')})` : ''}; the page stayed alive` },
+  { outcome: 'error', when: (o, k) => k.unidentified > 0,
+    reason: (o, k) => `cgroup oom_kill=${k.kills} with ${k.unidentified} kill(s) whose victim was not identified${k.types.length ? ` (identified: ${k.types.join('+')})` : ''}; the page stayed alive` },
   { outcome: 'loaded', when: (o) => Boolean(o.interactive), reason: () => 'interactive' },
   { outcome: 'refused', when: (o) => texts(o).some((t) => REFUSAL_MESSAGE.test(t)),
     reason: (o) => texts(o).find((t) => REFUSAL_MESSAGE.test(t)).trim().slice(0, 300) },
@@ -105,6 +105,7 @@ export const PRECEDENCE = Object.freeze([
  * @param {object} o
  * @param {number} [o.oomKills]        memory.events oom_kill of the cap's cgroup.
  * @param {string[]} [o.killedTypes]   Chrome process types that vanished at an OOM kill; empty if unknown.
+ * @param {{added: number, types: string[]}[]} [o.killEvents] per increase of oom_kill: kills added, types vanished.
  * @param {boolean} [o.pageCrashed]    Playwright page 'crash'.
  * @param {boolean} [o.browserGone]    Playwright context 'close' before the verdict.
  * @param {boolean} [o.interactive]    openAndWaitInteractive resolved.
@@ -117,7 +118,11 @@ export const PRECEDENCE = Object.freeze([
  * @returns {{ outcome: string, reason: string, rule: number }}
  */
 export function classify(o) {
-  const k = { kills: o.oomKills ?? 0, types: o.killedTypes ?? [] };
+  // Per-event accounting when the sampler recorded events; otherwise (callers without events)
+  // the aggregate form, which is equivalent when every kill came from one interval.
+  const k = o.killEvents
+    ? oomAccounting(o.killEvents, o.oomKills ?? 0)
+    : { kills: o.oomKills ?? 0, types: o.killedTypes ?? [], unidentified: Math.max(0, (o.oomKills ?? 0) - (o.killedTypes ?? []).length) };
   const index = PRECEDENCE.findIndex((r) => r.when(o, k));
   const rule = PRECEDENCE[index];
   let outcome = rule.outcome;
@@ -244,7 +249,27 @@ export async function runCleanup(steps) {
 /** Resolve `promise`, or `onTimeout()` after `ms`. */
 export function withTimeout(promise, ms, onTimeout) {
   let timer;
-  return Promise.race([promise.finally(() => clearTimeout(timer)), new Promise((r) => { timer = setTimeout(() => r(onTimeout()), ms); })]);
+  // The fallback runs inside the promise: a throw (or a rejected fallback promise) rejects this
+  // promise, so a caller such as runCleanup records it instead of an uncaught timer exception.
+  const fallback = new Promise((resolve, reject) => {
+    timer = setTimeout(() => { Promise.resolve().then(onTimeout).then(resolve, reject); }, ms);
+  });
+  return Promise.race([promise.finally(() => clearTimeout(timer)), fallback]);
+}
+
+/**
+ * Per-event OOM accounting: `events` are `{ added, types }`, one per increase of the cgroup's
+ * oom_kill counter, with the Chrome process types that vanished in that interval. A kill counts
+ * as identified only within its own interval, so an extra vanished process in one interval can
+ * never stand in for a missing victim in another. Kills the sampler never saw as an event
+ * (`totalKills` above the events' sum) are unidentified.
+ */
+export function oomAccounting(events, totalKills = 0) {
+  const types = events.flatMap((e) => e.types);
+  let unidentified = events.reduce((n, e) => n + Math.max(0, e.added - e.types.length), 0);
+  const seen = events.reduce((n, e) => n + e.added, 0);
+  if (totalKills > seen) unidentified += totalKills - seen;
+  return { kills: Math.max(totalKills, seen), types, unidentified };
 }
 
 /**

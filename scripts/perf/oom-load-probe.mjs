@@ -168,7 +168,7 @@ export async function runProbe(opts) {
   process.once('SIGTERM', onSignal);
   cleanup.push({ name: 'signal handlers', fn: () => { process.off('SIGINT', onSignal); process.off('SIGTERM', onSignal); } });
 
-  const obs = { oomKills: 0, killedTypes: [], pageCrashed: false, browserGone: false, interactive: false, storeError: null, notices: [],
+  const obs = { oomKills: 0, killedTypes: [], killEvents: [], pageCrashed: false, browserGone: false, interactive: false, storeError: null, notices: [],
     timedOut: false, warningShown: false, decision: 'none' };
   const peak = { pssMiB: 0, cgroupMiB: 0 };
   const unit = `oom-load-probe-${process.pid}-${Date.now()}`;
@@ -236,8 +236,11 @@ export async function runProbe(opts) {
       const ev = readKV(`${cg}/memory.events`);
       const kills = ev.oom_kill ?? 0;
       if (kills > obs.oomKills) {
-        // Which processes vanished since the last sample: what the OOM killer took.
-        for (const [pid, type] of types) if (!now.has(pid) && type) obs.killedTypes.push(type);
+        // One event per counter increase: how many kills it added and which processes vanished in
+        // this interval. A kill is identified only by a process that vanished in its own interval.
+        const vanished = [...types].filter(([pid, type]) => !now.has(pid) && type).map(([, type]) => type);
+        obs.killEvents.push({ t: (Date.now() - t0) / 1000, added: kills - obs.oomKills, types: vanished });
+        obs.killedTypes.push(...vanished);
         obs.oomKills = kills;
       }
       types = now;
@@ -302,6 +305,7 @@ export async function runProbe(opts) {
   } finally {
     clearInterval(sampler);
     if (cg) {
+      // Kills the sampler never saw as an event stay unidentified (oomAccounting counts them).
       obs.oomKills = Math.max(obs.oomKills, readKV(`${cg}/memory.events`).oom_kill ?? 0);
       const p = readNum(`${cg}/memory.peak`);
       if (p !== null) peak.cgroupMiB = Math.max(peak.cgroupMiB, p / MiB);
@@ -332,7 +336,7 @@ export async function runProbe(opts) {
     result.serverAttempts = serverAttemptSummary(result.timeline, { watching: Boolean(watchOrigin), tracker: tracked });
   }
   Object.assign(result, classify(obs), { phase: phaseOf(last), last, peakPssMiB: Math.round(peak.pssMiB),
-    peakCgroupMiB: Math.round(peak.cgroupMiB), oomKills: obs.oomKills, killedTypes: obs.killedTypes });
+    peakCgroupMiB: Math.round(peak.cgroupMiB), oomKills: obs.oomKills, killedTypes: obs.killedTypes, killEvents: obs.killEvents });
   const v = verdict(result.outcome, opts.expect);
   Object.assign(result, { pass: v.pass, verdict: v.message });
   if (opts.expectServerFirst) {

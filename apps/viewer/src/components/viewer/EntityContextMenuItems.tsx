@@ -7,6 +7,7 @@ import { ChevronRight, CopyPlus } from 'lucide-react';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { surfaceCommand, type SurfaceCommandId, type SurfaceCommandState } from './surface-command-registry';
 import { runSurfaceCommand } from './surface-command-run';
+import { isSurfaceCommandAvailable } from './surface-command-features';
 import { DUPLICATE_CONTEXT_DIRECTIONS } from './surface-commands-context';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
@@ -79,6 +80,7 @@ export type CommandMenuItemProps = Omit<MenuItemViewProps, 'icon' | 'label' | 's
 export function CommandMenuItem({ commandId, commandState, ...props }: CommandMenuItemProps) {
   const { t } = useTranslation();
   const command = surfaceCommand(commandId, 'context');
+  if (!isSurfaceCommandAvailable(command)) return null;
   return <MenuItem {...props} commandId={command.id}
     icon={command.contextIcon ?? command.icon}
     label={t(command.contextLabelKey ?? command.labelKey, command.contextLabelParams?.(commandState))}
@@ -93,6 +95,7 @@ export function DuplicateItems({ onDuplicate, canEdit, reason }: {
 }) {
   const { t } = useTranslation();
   const duplicate = surfaceCommand('context:duplicate', 'context');
+  if (!isSurfaceCommandAvailable(duplicate)) return null;
   const commandState = { canEditInSession: canEdit };
   const disabled = !duplicate.enabled(commandState);
   return (

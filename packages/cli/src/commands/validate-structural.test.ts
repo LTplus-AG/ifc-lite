@@ -44,6 +44,55 @@ ENDSEC;END-ISO-10303-21;`;
     ]);
   });
 
+  it('lists the first 50 unconnected members, then one summary (#9931)', async () => {
+    const members = Array.from({ length: 53 }, (_, i) => `#${300 + i}=IFCSTRUCTURALCURVEMEMBER('2Curv${String(i).padStart(17, '0')}',$,'M',$,$,$,$,.RIGID_JOINED_MEMBER.,$);`);
+    const step = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('x.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCPROJECT('0Project0000000000000a',$,'Project',$,$,$,$,$,$);
+#2=IFCSTRUCTURALCURVEMEMBER('2Connected0000000000a',$,'Connected',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
+#3=IFCSTRUCTURALPOINTCONNECTION('2Conn000000000000000a',$,'C',$,$,$,$,$,$);
+#4=IFCRELCONNECTSSTRUCTURALMEMBER('2Rel0000000000000000a',$,$,$,#2,#3,$,$,$,$);
+${members.join('\n')}
+ENDSEC;END-ISO-10303-21;`;
+    const issues = computeValidationIssues(await new IfcParser().parseColumnar(new TextEncoder().encode(step).buffer as ArrayBuffer))
+      .filter((issue) => issue.rule === 'structural-unconnected-member');
+    expect(issues).toHaveLength(51);
+    expect(issues.slice(0, 50).map((issue) => issue.entityId)).toEqual(Array.from({ length: 50 }, (_, i) => 300 + i));
+    expect(issues[50]).toEqual({
+      severity: 'warning', rule: 'structural-unconnected-member',
+      message: '3 more structural member(s) with no connection not listed (53 total)',
+    });
+  });
+
+  it('runs the axis-drift rule: a member 1 m off its beam is reported (#9931)', async () => {
+    const step = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('x.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCPROJECT('0Project0000000000000a',$,'Project',$,$,$,$,$,$);
+#10=IFCCARTESIANPOINT((0.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#10,$,$);
+#12=IFCLOCALPLACEMENT($,#11);
+#20=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,0.2,0.2);
+#21=IFCDIRECTION((1.,0.,0.));
+#22=IFCAXIS2PLACEMENT3D(#10,#21,$);
+#23=IFCDIRECTION((0.,0.,1.));
+#24=IFCEXTRUDEDAREASOLID(#20,#22,#23,4.);
+#25=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#24));
+#26=IFCPRODUCTDEFINITIONSHAPE($,$,(#25));
+#27=IFCBEAM('2Beam000000000000000a',$,'B',$,$,#12,#26,$,.BEAM.);
+#30=IFCCARTESIANPOINT((0.,1.,0.));
+#31=IFCCARTESIANPOINT((4.,1.,0.));
+#32=IFCVERTEXPOINT(#30);
+#33=IFCVERTEXPOINT(#31);
+#34=IFCEDGE(#32,#33);
+#35=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#34));
+#36=IFCPRODUCTDEFINITIONSHAPE($,$,(#35));
+#37=IFCSTRUCTURALCURVEMEMBER('2Curv000000000000000a',$,'M',$,$,#12,#36,.RIGID_JOINED_MEMBER.,$);
+#38=IFCRELASSIGNSTOPRODUCT('2Rel0000000000000000a',$,$,$,(#37),$,#27);
+ENDSEC;END-ISO-10303-21;`;
+    const issues = computeValidationIssues(await new IfcParser().parseColumnar(new TextEncoder().encode(step).buffer as ArrayBuffer))
+      .filter((issue) => issue.rule === 'structural-axis-drift');
+    expect(issues.map((issue) => [issue.entityId, issue.target])).toEqual([[37, 27]]);
+    expect(issues[0].distance).toBeCloseTo(1, 6);
+  });
+
   it('IFC4: reports the six unlinked load-bearing elements of ISSUE_171 as warnings with their GlobalIds', async (ctx) => {
     if (!existsSync(FIXTURE)) ctx.skip('ISSUE_171 fixture missing — run `pnpm fixtures`');
     const bytes = readFileSync(FIXTURE);

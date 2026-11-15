@@ -203,7 +203,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let unwritable = |e: super::values::Unwritable| invalid(format!("export_step_with_log: {}", e.0));
     let collected = collect(&mut pass, &mut base);
     if let Some(georef) = &log.georef_mutations {
-        super::georef::apply(&mut pass, georef).map_err(unwritable)?;
+        // The FILE_SCHEMA this export declares, which decides whether
+        // IfcMapConversionScaled may be written (TS: `pass.schemaToken`).
+        let source_header = crate::source_header::parse_source_header(content);
+        let file_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, &target).to_string();
+        super::georef::apply(&mut pass, georef, &file_schema).map_err(unwritable)?;
     }
     retain_shared_atoms(&mut pass);
 

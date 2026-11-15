@@ -95,6 +95,17 @@ export function resolveMapUnitReference(unitName: string, newGeorefLines: string
   return null;
 }
 
+/**
+ * Whether {@link resolveMapUnitReference} can write `unitName` as an
+ * `IfcNamedUnit` — the same whole-name rule, exposed so a caller that must
+ * refuse an unsupported unit BEFORE writing (the SDK's `bim.georef`) asks the
+ * writer instead of keeping a second list that could drift from it.
+ */
+export function isExpressibleMapUnit(unitName: string): boolean {
+  const normalized = normalizeMapUnitName(unitName);
+  return siPrefixOf(normalized) !== undefined || normalized === 'FOOT' || normalized === 'US SURVEY FOOT';
+}
+
 /** Every `IfcSIPrefix` member, longest first so `MILLI` cannot shadow `MILLIMICRO`-style
  *  compounds and `DECA` cannot shadow `DECI`. */
 const SI_PREFIXES = [

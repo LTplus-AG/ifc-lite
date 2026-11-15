@@ -1930,6 +1930,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
 | `derive-structural` | Derive a linked structural analysis model from beams, columns, slabs, walls |
 | `storey` | Author storeys; geometry follows ("storey --help" for actions) |
+| `georef` | Read and write georeferencing ("georef --help" for every option) |
 | `ask` | Natural language BIM queries |
 | `view` | Interactive 3D viewer in browser |
 | `analyze` | Query + visualize analysis results |

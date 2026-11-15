@@ -951,6 +951,64 @@ describe('StepExporter georeferencing — IfcMapConversionScaled', () => {
     expect(duplicateDefinedIds(content)).toEqual([]);
   });
 
+  it('writes FactorX/Y/Z onto an existing IfcMapConversionScaled by name', () => {
+    const exporter = new StepExporter(buildScaledGeoreferencedMockDataStore());
+    const result = exporter.export({
+      schema: 'IFC4X3',
+      applyMutations: true,
+      georefMutations: { mapConversion: { factorX: 0.5, factorY: 0.25, factorZ: 2 } },
+    });
+    expect(decode(result.content)).toContain('#41=IFCMAPCONVERSIONSCALED(#20,#40,1.,2.,3.,1.,0.,1.,0.5,0.25,2.);');
+    expect(result.stats.warnings ?? []).toEqual([]);
+  });
+
+  it('creates IfcMapConversionScaled when all three factors are requested', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,$,$);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+    ]);
+    const result = new StepExporter(dataStore).export({
+      schema: 'IFC4X3',
+      applyMutations: true,
+      georefMutations: {
+        projectedCRS: { name: 'EPSG:2056', mapUnit: 'METRE' },
+        mapConversion: { eastings: 1, northings: 2, orthogonalHeight: 3, factorX: 0.9, factorY: 0.8, factorZ: 1 },
+      },
+    });
+    const content = decode(result.content);
+    expect(content).toMatch(/=IFCMAPCONVERSIONSCALED\(#20,#\d+,1\.,2\.,3\.,\$,\$,\$,0\.9,0\.8,1\.\);/);
+    expect(content).not.toMatch(/=IFCMAPCONVERSION\(/);
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('refuses a partial factor triple, and factors on a plain IfcMapConversion, with a warning', () => {
+    const partial = new StepExporter(buildScaledGeoreferencedMockDataStore()).export({
+      schema: 'IFC4X3', applyMutations: true, georefMutations: { mapConversion: { factorX: 3 } },
+    });
+    expect(decode(partial.content)).toContain('#41=IFCMAPCONVERSIONSCALED(#20,#40,1.,2.,3.,1.,0.,1.,1.,1.,1.);');
+    expect(partial.stats.warnings?.join('\n')).toMatch(/FactorX, FactorY and FactorZ are all mandatory/);
+
+    const plain = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,$,$);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+      [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#2);"],
+      [41, 'IFCMAPCONVERSION', '#41=IFCMAPCONVERSION(#20,#40,1.,2.,3.,$,$,$);'],
+    ]);
+    const onPlain = new StepExporter(plain).export({
+      schema: 'IFC4X3', applyMutations: true, georefMutations: { mapConversion: { factorX: 1, factorY: 1, factorZ: 1 } },
+    });
+    expect(decode(onPlain.content)).toContain('#41=IFCMAPCONVERSION(#20,#40,1.,2.,3.,$,$,$);');
+    expect(onPlain.stats.warnings?.join('\n')).toMatch(/exist only on IfcMapConversionScaled/);
+  });
+
   it('still creates a conversion when the file genuinely has none', () => {
     // The control. Widening the lookup must not disable the create path for a
     // file that really is missing a map conversion — otherwise the assertion

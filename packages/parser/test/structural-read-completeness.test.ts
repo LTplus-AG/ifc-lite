@@ -137,6 +137,9 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
         expect(a.CausedBy).toBe(old ? 200 : undefined);
         expect(a.VaryingAppliedLoadLocation).toBe(a.type.endsWith('Varying') ? 201 : undefined);
         expect(a.SubsequentAppliedLoads).toEqual(a.type.endsWith('Varying') ? [101,100,100] : undefined);
+        // The resolved payloads follow the same order as the ids (#101 = 4,5,6; #100 = 1,2,3).
+        const t = (x: number, y: number, z: number) => old ? {DeltaT_Constant:x,DeltaT_Y:y,DeltaT_Z:z} : {DeltaTConstant:x,DeltaTY:y,DeltaTZ:z};
+        expect(a.subsequentLoads?.map(l => l?.components)).toEqual(a.type.endsWith('Varying') ? [t(4,5,6), t(1,2,3), t(1,2,3)] : undefined);
         expect(a.globalOrLocal).toBe('LOCAL_COORDS');
         expect(a.destabilizingLoad).toBe(true);
         expect(a.ProjectedOrTrue).toBe(a.type === 'IfcStructuralPointAction' ? undefined : old ? 'PROJECTED_LENGTH' : 'TRUE_LENGTH');

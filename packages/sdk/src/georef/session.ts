@@ -64,7 +64,7 @@ export class GeoreferencingSession {
       // A record the cached state names was deleted outside bim.georef (generic store API): the
       // cache describes a file the export will not write, so report the source minus deletions.
       // The pending edit still stands (the exporter refuses to create from it), hence `pending`.
-      if (view && [top.state.ProjectedCRS, top.state.MapConversion, top.state.RigidOperation].some((r) => r?.expressId !== undefined && view.isDeleted(r.expressId))) {
+      if (view && [top.state.ProjectedCRS, top.state.MapConversion, top.state.RigidOperation, top.state.site].some((r) => r?.expressId !== undefined && view.isDeleted(r.expressId))) {
         return { ...readSourceGeoreferencing(this.deps.store, this.deps.modelId, (id) => view.isDeleted(id)), pending: true };
       }
       return view ? withAttributeEdits(top.state, view, top.pending) : top.state;
@@ -89,7 +89,7 @@ export class GeoreferencingSession {
     });
     const ctx = {
       modelId: this.deps.modelId, facts, current: this.get(), pending: prior?.pending ?? null,
-      afterRemove: (withPropertySets: boolean) => readWithoutGeoreferencing(store, modelId, withPropertySets),
+      afterRemove: (withPropertySets: boolean) => readWithoutGeoreferencing(store, modelId, withPropertySets, (id) => view.isDeleted(id)),
     };
     const plan: GeorefWritePlan = request.action === 'set' ? planSet(request.input, ctx)
       : request.action === 'update' ? planUpdate(request.input, ctx)
@@ -120,8 +120,8 @@ export class GeoreferencingSession {
    * georeferenced (the IfcSite fallback aside).
    */
   private liveEPSetState(): GeoreferencingState {
-    const none = () => readWithoutGeoreferencing(this.deps.store, this.deps.modelId, true);
     const view = this.deps.view();
+    const none = () => readWithoutGeoreferencing(this.deps.store, this.deps.modelId, true, view ? (id) => view.isDeleted(id) : undefined);
     if (!view) return none();
     const facts = collectGeorefModelFacts(this.deps.store, { isDeleted: (id) => view.isDeleted(id), getForEntity: (id) => view.getForEntity(id) });
     const pick = (loc: GeorefModelFacts['ePSetMapConversion'], fields: readonly string[]) =>

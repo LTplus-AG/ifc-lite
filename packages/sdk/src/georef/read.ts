@@ -81,8 +81,9 @@ function withoutDeletedGeorefRecords(store: IfcDataStore, isDeleted: (expressId:
   if (!store.entityIndex) return store;
   // @raw-entity-enumeration-ok source ids of the georeferencing classes, filtered by the session's tombstones
   const { byType } = store.entityIndex;
-  // IFC2X3 keeps its georeferencing in IfcPropertySet records, which `bim.store.removeEntity` can delete too.
-  const touched = [...GEOREF_RECORD_TYPES, 'IFCPROPERTYSET'].filter((t) => (byType.get(t) ?? []).some(isDeleted));
+  // IFC2X3 keeps its georeferencing in IfcPropertySet records, and the IfcSite RefLatitude/RefLongitude
+  // fallback reads IfcSite records: `bim.store.removeEntity` can delete all of them.
+  const touched = [...GEOREF_RECORD_TYPES, 'IFCPROPERTYSET', 'IFCSITE'].filter((t) => (byType.get(t) ?? []).some(isDeleted));
   if (touched.length === 0) return store;
   const filtered = new Map(byType);
   for (const t of touched) filtered.set(t, (byType.get(t) ?? []).filter((id) => !isDeleted(id)));
@@ -97,11 +98,13 @@ function withoutDeletedGeorefRecords(store: IfcDataStore, isDeleted: (expressId:
  * IFC2X3, every convention set) is gone: the IfcSite RefLatitude/RefLongitude fallback, or nothing.
  * The state `remove` leaves, so `get()` agrees with the exported file.
  */
-export function readWithoutGeoreferencing(store: IfcDataStore, modelId: string, withPropertySets: boolean): GeoreferencingState {
+export function readWithoutGeoreferencing(store: IfcDataStore, modelId: string, withPropertySets: boolean, isDeleted?: (expressId: number) => boolean): GeoreferencingState {
   const schema = String(store.schemaVersion ?? '');
   if (!store.entityIndex) return emptyGeoreferencingState(modelId, schema);
-  // @raw-entity-enumeration-ok every georeferencing class (and convention set) is dropped wholesale here, so no per-record liveness applies
-  const byType = new Map(store.entityIndex.byType);
+  // The IfcSite fallback is what is left to read, so a site the session deleted must not count.
+  const live = isDeleted ? withoutDeletedGeorefRecords(store, isDeleted) : store;
+  // @raw-entity-enumeration-ok `live` already omits deleted IfcSites; the georeferencing classes (and convention sets) are dropped wholesale below
+  const byType = new Map(live.entityIndex.byType);
   for (const t of withPropertySets ? [...GEOREF_RECORD_TYPES, 'IFCPROPERTYSET'] : GEOREF_RECORD_TYPES) byType.delete(t);
   const view = Object.create(store) as IfcDataStore;
   Object.defineProperty(view, 'georeferencing', { value: undefined, enumerable: true });

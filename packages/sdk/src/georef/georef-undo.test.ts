@@ -179,6 +179,24 @@ describe('bim.georef writes are atomic under undo', () => {
     expect(() => bim.export.ifc()).toThrow(/Cannot create IfcMapConversion from a partial edit/);
   });
 
+  it('an IfcSite deleted outside bim.georef stops supplying the latitude/longitude fallback', async () => {
+    const SITE = `${BASE}`.replace("#6=IFCSITE('1Pbuu0tu59NfhrTsztVBK1',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);", "#6=IFCSITE('1Pbuu0tu59NfhrTsztVBK1',$,'Site',$,$,$,$,$,.ELEMENT.,(47,22,0,0),(8,32,0,0),12.,$,$);");
+    expect(SITE).not.toBe(BASE);
+    // Without any georeferencing record the site is the whole georeference.
+    const a = await session('IFC4', SITE);
+    expect((await a.consistent()).hasGeoreference).toBe(true);
+    a.bim.store.removeEntity({ modelId: 'model', expressId: 6 });
+    expect(a.bim.georef.get().hasGeoreference).toBe(false);
+    await a.consistent();
+    // With a conversion, after remove() only the site is left; deleting it leaves nothing.
+    const b = await session('IFC4', `${SITE}\n#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#90);\n#21=IFCMAPCONVERSION(#5,#20,1.,2.,3.,$,$,$);`);
+    b.bim.georef.remove();
+    expect(b.bim.georef.get().hasGeoreference).toBe(true);
+    b.bim.store.removeEntity({ modelId: 'model', expressId: 6 });
+    expect(b.bim.georef.get().hasGeoreference).toBe(false);
+    await b.consistent();
+  });
+
   it('bim.mutate.undo / redo (no history on this backend) leave a georeferencing write in place', async () => {
     const { bim, consistent } = await session('IFC4', GEOREFERENCED);
     bim.georef.set(NEW);

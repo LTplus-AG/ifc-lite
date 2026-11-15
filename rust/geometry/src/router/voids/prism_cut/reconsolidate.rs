@@ -30,7 +30,7 @@
 
 use super::checks::result_volume_within_bounds;
 use super::{dedup_cut_vertices, finish_cut_verdict};
-use crate::csg::{ClippingProcessor, ConsolidationOutcome};
+use crate::csg::{ClippingProcessor, ConsolidationBoundary, ConsolidationOutcome};
 use crate::mesh::Mesh;
 use crate::mesh_check::{ClosureVerdict, Degenerate, EdgeLedger, VertexKey};
 
@@ -71,15 +71,17 @@ pub(super) fn consolidate(
     }
     // Neither consolidation kept the cut closed and whole. Consolidating is a
     // saving in triangles, not a correction: the cut as it was made stands,
-    // provided it is still closed once finished, on the 1 mm grid and on the
-    // kernel's. Otherwise the opening goes to the exact kernel, as it did.
-    let finishes_closed = finish_cut_verdict(raw.clone(), host, first.boundary)
+    // provided it is still closed once finished, strictly and on the 1 mm
+    // grid. Otherwise the opening goes to the exact kernel, as it did. The raw
+    // cut carries no remote repair, so it is finished as an established one.
+    let boundary = ConsolidationBoundary::Established;
+    let finishes_closed = finish_cut_verdict(raw.clone(), host, boundary)
         .is_some_and(|(finished, directed)| directed && open_edges(&finished) == 0);
     if !finishes_closed {
         return (first, verdict);
     }
     let raw_verdict = ClosureVerdict::for_mesh(&raw);
-    (ConsolidationOutcome { mesh: raw, boundary: first.boundary }, raw_verdict)
+    (ConsolidationOutcome { mesh: raw, boundary }, raw_verdict)
 }
 
 #[cfg(test)]

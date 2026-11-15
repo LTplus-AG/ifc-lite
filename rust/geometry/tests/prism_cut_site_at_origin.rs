@@ -127,5 +127,5 @@ fn a_closed_cut_that_consolidation_opens_is_kept_as_cut() {
     let mesh = cut(&content, 138037);
     assert_eq!(open_edges(&mesh), 0, "#138037 must be closed");
     let volume = mesh_volume(&mesh);
-    assert!((volume - 34.089_375).abs() < 2.0e-3, "#138037 volume {volume} m3 against the reference 34.089375");
+    assert!((volume - 34.089_375).abs() < 2.0e-4, "#138037 volume {volume} m3 against the reference 34.089375");
 }

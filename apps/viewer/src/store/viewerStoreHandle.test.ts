@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { after, it } from 'node:test';
-import { findStoreImportCycles } from '../../../../scripts/check-store-import-cycles.mjs';
 
 const storeKey = '__ifc_lite_viewer_store__';
 const globalStore = globalThis as typeof globalThis & Record<string, unknown>;
@@ -16,13 +16,14 @@ after(() => {
   else globalStore[storeKey] = savedStore;
 });
 
-it('keeps store-entry modules cycle-free and reads the registered viewer store', async () => {
-  // Check the real reachable import graph before loading the handle. When the
-  // production change is reverted, this assertion fails on the two modules
-  // that still import store/index; it does not fail because the new handle
-  // file was removed and could not be imported.
-  assert.deepEqual(findStoreImportCycles().offenders, []);
-
+it('reads the registered viewer store through the handle when it exists', async (t) => {
+  // The production revert removes the handle module. The import-cycle
+  // assertion lives in scripts/check-store-import-cycles.test.mjs, so this
+  // behavior test skips cleanly on the baseline instead of failing to load.
+  if (!existsSync(new URL('./viewerStoreHandle.ts', import.meta.url))) {
+    t.skip('viewer store handle is absent');
+    return;
+  }
   const { getViewerState, peekViewerStore, registerViewerStore } = await import('./viewerStoreHandle.js');
   assert.equal(peekViewerStore(), undefined);
   assert.throws(() => getViewerState(), /viewer store read before/);

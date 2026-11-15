@@ -155,6 +155,8 @@ export function installModelLoadCanceller(
   deferPrimarySupersession = false,
 ): (() => void) & { commit(): void } {
   const store = getViewerStoreApi();
+  const supersededLoads = new Set(pendingLoads.keys());
+  const supersededWatches = new Set(supersessionWatches.keys());
   let committed = false;
   let released = false;
   let abandoned = false;
@@ -173,6 +175,7 @@ export function installModelLoadCanceller(
     }
     pendingLoads.delete(abandon);
     pendingAdmissions.delete(abandon);
+    supersededLoads.clear(); supersededWatches.clear();
     if (store.getState().activeLoadCanceller === cancel) {
       store.getState().setActiveLoadCanceller([...pendingLoads.values()].at(-1) ?? null);
     }
@@ -200,8 +203,10 @@ export function installModelLoadCanceller(
     // A primary's scene is the one every pending federated add is joining
     // (installing the primary abandoned all earlier loads), so its Cancel
     // ends them too; a federated Cancel ends only its own load (L5).
-    if (kind === 'primary' && committed) for (const pending of [...pendingLoads.keys()]) pending();
-    else abandon();
+    if (kind === 'primary') {
+      const owned = [...pendingLoads.keys()].filter(pending => committed || pending === abandon || !supersededLoads.has(pending));
+      for (const pending of owned) pending();
+    } else abandon();
     const state = store.getState();
     // Stop this load's point-cloud stream too. A federated add may overlap
     // another load, so only cancel its own stream handle in that case.
@@ -227,10 +232,10 @@ export function installModelLoadCanceller(
     committed = true;
     pendingAdmissions.delete(abandon);
     for (const [watch, scope] of [...supersessionWatches]) {
-      if (scope === 'primary' && kind !== 'primary') continue;
+      if ((scope === 'primary' && kind !== 'primary') || (deferPrimarySupersession && !supersededWatches.has(watch))) continue;
       supersessionWatches.delete(watch); watch.abort();
     }
-    if (kind === 'primary') for (const previous of [...pendingLoads.keys()]) if (previous !== abandon) previous();
+    if (kind === 'primary') for (const previous of [...supersededLoads]) previous();
   };
   if (kind === 'primary' && deferPrimarySupersession) {
     for (const previous of [...pendingAdmissions]) previous();

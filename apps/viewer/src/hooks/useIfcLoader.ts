@@ -196,6 +196,7 @@ export function useIfcLoader() {
   // Committed model sessions and pending admission attempts have separate ownership.
   const loadSessionRef = useRef(0);
   const admissionSessionRef = useRef(0);
+  const pendingPrimarySessionRef = useRef<{ value: number } | null>(null);
 
   const {
     setLoading,
@@ -264,12 +265,14 @@ export function useIfcLoader() {
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // An unadmitted primary supersedes pending admissions, not the displayed model's hydration.
     const admissionSession = target.kind === 'primary' ? ++admissionSessionRef.current : admissionSessionRef.current;
-    let currentSession = loadSessionRef.current;
+    const sessionOwner = target.kind === 'primary' ? { value: loadSessionRef.current } : pendingPrimarySessionRef.current ?? { value: loadSessionRef.current };
+    if (target.kind === 'primary') pendingPrimarySessionRef.current = sessionOwner;
+    let currentSession = sessionOwner.value;
     const modelId = target.modelId ?? crypto.randomUUID();
     const processedModel = options?.processedModel && normalizedProcessedModel(options.processedModel); // one hash spelling for the record and the server
     let cancelled = false;
     const isCurrent = () => !cancelled && (target.kind === 'primary' && !primaryCommitted
-      ? admissionSessionRef.current === admissionSession : loadSessionRef.current === currentSession);
+      ? admissionSessionRef.current === admissionSession : loadSessionRef.current === sessionOwner.value);
     const isStale = () => !isCurrent();
     let abortGeometry: (() => void) | null = null; // set once the geometry pool starts
     let cancelOwnedStream: (() => void) | null = null;
@@ -420,7 +423,7 @@ export function useIfcLoader() {
 
       let shardGeneration = instancedShardGeneration();
       const commitPrimarySession = () => {
-        if (target.kind === 'primary' && !primaryCommitted) { releaseCanceller.commit(); currentSession = ++loadSessionRef.current; primaryCommitted = true; }
+        if (target.kind === 'primary' && !primaryCommitted) { releaseCanceller.commit(); currentSession = ++loadSessionRef.current; sessionOwner.value = currentSession; primaryCommitted = true; }
       };
       const initializeModel = () => {
         if (initialized) return;
@@ -2139,6 +2142,7 @@ export function useIfcLoader() {
       settleLoadUi();
     } finally {
       settleResumable();
+      if (target.kind === 'primary' && pendingPrimarySessionRef.current === sessionOwner) pendingPrimarySessionRef.current = null;
       metadataAbort.abort();
       // #1959: every exit releases its ownership; actual freeing still waits
       // for the parser to stop using the raw handle (geometryHandleDisposal).

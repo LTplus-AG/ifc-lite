@@ -12,7 +12,7 @@ export async function resolveIdsTargetFilter(state: ViewerState, modelId: string
   groups: readonly FilterGroup[], signal?: AbortSignal): Promise<number[]> {
   if (!groups.some(group => group.rules.length > 0)) throw new Error('Add at least one object filter before running a filtered IDS check.');
   const canonical = evaluatorModelsFromState(state).find(model => model.id === modelId);
-  const model = { ...canonical, id: modelId, store: dataStore, mutationView: state.getMutationView(modelId) };
+  const model = { ...canonical, id: modelId, store: dataStore, mutationView: state.getMutationView(modelId) ?? undefined };
   const matches = await evaluateFilterGroupsFederated([model], groups, {
     limit: Number.MAX_SAFE_INTEGER, signal, definedModelTagIds: definedModelTagIdsOf(state),
   });

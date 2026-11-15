@@ -121,7 +121,7 @@ for (const layout of ['grid', 'below', 'gridTall', 'scrollBody', 'viewportBounds
       const height = layout === 'phoneCap' ? 640 : 900;
       await settle(page, layout === 'phoneCap' ? 320 : 1600, height);
       await page.addScriptTag({ content: bundle });
-      await page.evaluate(layout => (window as FixtureWindow).DialogToastFixture.mountDialog(layout), layout);
+      await page.evaluate(layout => (window as unknown as FixtureWindow).DialogToastFixture.mountDialog(layout), layout);
       await paintDialog(page);
       const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
       const field = dialog.getByRole('textbox', { name: 'File name' });
@@ -133,7 +133,7 @@ for (const layout of ['grid', 'below', 'gridTall', 'scrollBody', 'viewportBounds
         inline: (element as HTMLElement).style.paddingTop, computed: getComputedStyle(element).paddingTop,
       }));
       assert.ok(fieldBounds && buttonBounds && panelBounds);
-      await page.evaluate(() => (window as FixtureWindow).DialogToastFixture.raiseNotices());
+      await page.evaluate(() => (window as unknown as FixtureWindow).DialogToastFixture.raiseNotices());
       await paintDialog(page);
       const shelf = page.locator('[data-notice-shelf]');
       const dismiss = shelf.getByRole('button', { name: 'Dismiss notification', exact: true });
@@ -172,7 +172,7 @@ it('#9879 portal selects and popovers escape a capped dialog', { skip: CONTRAST_
   await withThemedPage('light', '<div id="live-dialog-fixture"></div>', async page => {
     await settle(page);
     await page.addScriptTag({ content: bundle });
-    await page.evaluate(() => (window as FixtureWindow).DialogToastFixture.mountDialog('portalControls'));
+    await page.evaluate(() => (window as unknown as FixtureWindow).DialogToastFixture.mountDialog('portalControls'));
     await paintDialog(page);
     // Radix temporarily aria-hides the parent while a select popup owns focus.
     const dialog = page.locator('[data-dialog-panel]');
@@ -295,5 +295,49 @@ it('#9879 remeasuring the capped fallback preserves the panel scroll position', 
     assert.equal(await panel.evaluate(element => element.scrollTop), before);
     assert.equal(await receivesPointer(shelf.getByRole('button', { name: 'Dismiss notification' })), true,
       'a fallback notice must remain visible and dismissible when the form is scrolled to its last field');
+  });
+});
+
+
+it('#9879 keyboard dismissal keeps focus inside the modal while another notice survives', { skip: CONTRAST_BROWSER_SKIP }, async () => {
+  const bundle = await liveDialogBundle();
+  await withThemedPage('light', '<div id="live-dialog-fixture"></div>', async page => {
+    await settle(page);
+    await page.addScriptTag({ content: bundle });
+    await page.evaluate(() => (window as unknown as FixtureWindow).DialogToastFixture.mountDialog('grid'));
+    await paintDialog(page);
+    await page.evaluate(() => (window as unknown as FixtureWindow).DialogToastFixture.raiseNotices());
+    await paintDialog(page);
+    const dismiss = page.locator('[data-notice-shelf]').getByRole('button', { name: 'Dismiss notification', exact: true });
+    assert.equal(await dismiss.count(), 2);
+    await dismiss.first().focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await dismiss.count(), 1);
+    assert.equal(await dismiss.first().evaluate(element => document.activeElement === element), true,
+      'keyboard dismissal must focus the surviving notice instead of body');
+    await page.keyboard.press('Enter');
+    assert.equal(await dismiss.count(), 0);
+    assert.equal(await page.getByRole('dialog', { name: 'Settings', exact: true })
+      .evaluate(element => document.activeElement === element), true, 'the final dismissal restores panel focus');
+  });
+});
+
+it('#9879 fallback shelf padding does not intercept the dialog Close button', { skip: CONTRAST_BROWSER_SKIP }, async () => {
+  const bundle = await liveDialogBundle();
+  await withThemedPage('light', '<div id="live-dialog-fixture"></div>', async page => {
+    await settle(page, 320, 640);
+    await page.addScriptTag({ content: bundle });
+    await page.evaluate(() => (window as unknown as FixtureWindow).DialogToastFixture.mountDialog('phoneCap'));
+    await paintDialog(page);
+    await page.evaluate(() => (window as unknown as FixtureWindow).DialogToastFixture.raiseNotices());
+    await paintDialog(page);
+    assert.equal(await page.locator('[data-notice-shelf]').getAttribute('data-notice-placement'), 'flow');
+    const close = page.getByRole('dialog', { name: 'Settings', exact: true }).getByRole('button', { name: 'Close', exact: true });
+    assert.equal(await close.evaluate(element => {
+      const bounds = element.getBoundingClientRect();
+      return document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)?.closest('button') === element;
+    }), true, 'the Close button centre must hit Close, including through transparent shelf padding');
+    await close.click();
+    assert.equal(await page.getByRole('dialog', { name: 'Settings', exact: true }).count(), 0);
   });
 });

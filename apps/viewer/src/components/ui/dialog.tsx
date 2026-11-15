@@ -77,12 +77,14 @@ const DialogContent = React.forwardRef<
   }, [ref]);
   useDialogNoticeLayout(panel, noticeShelf, notices.length > 0);
   React.useLayoutEffect(() => {
+    const content = panel.current;
     if (!owner.open) shelfFocused.current = false;
-    else if (!notices.length && shelfFocused.current) {
+    else if (content && shelfFocused.current && (!notices.length || content.ownerDocument.activeElement === content.ownerDocument.body)) {
       shelfFocused.current = false;
-      panel.current?.focus({ preventScroll: true });
+      const next = noticeShelf.current?.querySelector<HTMLButtonElement>('[data-toast-seq] > button:last-child');
+      (next ?? content).focus({ preventScroll: true });
     }
-  }, [notices.length, owner.open]);
+  }, [notices, owner.open]);
   const isNoticeTarget = (target: EventTarget | null) => target instanceof Node && noticeShelf.current?.contains(target);
   const isNoticeInteraction = (event: { target: EventTarget | null; detail: { originalEvent: Event } }) =>
     isNoticeTarget(event.target) || noticePointers.current.has(event.detail.originalEvent);
@@ -128,7 +130,7 @@ const DialogContent = React.forwardRef<
         <div ref={noticeShelf} id={shelfId} data-notice-shelf data-notice-panel={owner.id}
           data-dialog-notices={notices.length ? '' : undefined}
           className={notices.length ? 'fixed z-50 min-w-0 max-h-[30dvh] overflow-y-auto' : 'sr-only pointer-events-none'}
-          style={{ pointerEvents: notices.length ? 'auto' : 'none' }}
+          style={{ pointerEvents: 'none' }}
           onPointerDownCapture={event => {
             // Outside dispatch is deferred; dismiss can remove the target before pointerup.
             noticePointers.current.add(event.nativeEvent);

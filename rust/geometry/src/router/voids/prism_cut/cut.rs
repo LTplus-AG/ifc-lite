@@ -9,7 +9,7 @@ use super::caps::{build_face_cap, cap_plane_breakpoints, CapHost};
 use super::checks::{has_measurable_region, partition_consistent};
 use super::decompose::decompose_tri;
 use super::face::{cached_crossing, face_plane, CrossCache, Seam};
-use super::flush_cap::FlushSeats;
+use super::flush_cap::{footprint_pad, FlushSeats};
 use super::frame::{cap_xor, stack_faces, Face, PrismFrame};
 use super::kit::{add, dot, lerp, scale, V2, V3};
 use super::plane2::seg_cross_param;
@@ -17,7 +17,8 @@ use super::ptri::PTri;
 
 /// Subtract the stepped solid `pf` from the host triangle list. `Err(defer
 /// index)` ⇒ a gate or self-check failed ⇒ the caller must leave the host
-/// untouched and route this opening to the exact kernel.
+/// untouched and route this opening to the exact kernel. `seats` are the
+/// end caps seated on flush host faces ([`FlushSeats`]); the default is none.
 pub(super) fn cut_prism(tris: &[PTri], pf: &PrismFrame, seats: &FlushSeats) -> Result<Vec<PTri>, usize> {
     let faces = stack_faces(pf);
     if faces.len() > u16::MAX as usize {
@@ -35,13 +36,14 @@ pub(super) fn cut_prism(tris: &[PTri], pf: &PrismFrame, seats: &FlushSeats) -> R
     let mut inside: Vec<PTri> = Vec::new();
     let mut seams: Vec<Vec<Seam>> = (0..faces.len()).map(|_| Vec::new()).collect();
     let mut any_cut = false;
+    let pad = footprint_pad(pf);
 
     for t in tris {
         // Quick reject: depth interval and 2D bbox versus the overall bbox.
         let w0 = dot(t.p[0], pf.d);
         let w1 = dot(t.p[1], pf.d);
         let w2 = dot(t.p[2], pf.d);
-        if seats.beyond_caps(pf, t, [w0, w1, w2]) {
+        if seats.beyond_caps(pf, t, [w0, w1, w2], pad) {
             out.push(t.clone());
             continue;
         }
@@ -231,8 +233,9 @@ pub(super) fn cut_prism(tris: &[PTri], pf: &PrismFrame, seats: &FlushSeats) -> R
     // Caps: one CDT per face, constrained by that face's seams, classified by
     // ray parity against the PRE-CUT host.
     let mut caps: Vec<PTri> = Vec::new();
+    let cap_host = CapHost { tris, aabbs: &aabbs, seats };
     for (fi, &face) in faces.iter().enumerate() {
-        if !build_face_cap(pf, face, &seams[fi], &plane_pts, &CapHost { tris, aabbs: &aabbs, seats }, &mut caps) {
+        if !build_face_cap(pf, face, &seams[fi], &plane_pts, &cap_host, &mut caps) {
             return Err(7);
         }
     }

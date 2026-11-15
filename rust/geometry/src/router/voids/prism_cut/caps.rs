@@ -65,10 +65,9 @@ pub(super) fn build_face_cap(
     face: Face,
     seams: &[Seam],
     plane_pts: &[Vec<V2>],
-    host: &CapHost<'_>,
+    &CapHost { tris: host, aabbs, seats }: &CapHost<'_>,
     caps: &mut Vec<PTri>,
 ) -> bool {
-    let (seats, aabbs, host) = (host.seats, host.aabbs, host.tris);
     match face {
         Face::Strip { k, i } => {
             let prof = &pf.profiles[k];
@@ -188,8 +187,11 @@ pub(super) fn build_face_cap(
             // exists ⇒ +d. Resolved per emitted triangle inside `cap_cdt` via
             // the classifier below; the `desired`/flip passed in cover the
             // "+d" branch and the emitter flips for the −d case.
-            let in_lower = |q: V2| j > 0 && pip(q, &pf.profiles[j - 1]) && !(j == pf.profiles.len() && seats.floored(true, q));
-            let in_upper = |q: V2| j < pf.profiles.len() && pip(q, &pf.profiles[j]) && !(j == 0 && seats.floored(false, q));
+            // An end cap is not built where a flush host face floors it.
+            let last = pf.profiles.len();
+            let floored = |q: V2| (j == 0 && seats.floored(false, q)) || (j == last && seats.floored(true, q));
+            let in_lower = |q: V2| j > 0 && pip(q, &pf.profiles[j - 1]) && !floored(q);
+            let in_upper = |q: V2| j < last && pip(q, &pf.profiles[j]) && !floored(q);
             // Fast skip for the OUTERMOST caps with no seams (the common
             // extended-cap case): probe the adjacent slab interior.
             if seams.is_empty() && (j == 0 || j == pf.profiles.len()) {

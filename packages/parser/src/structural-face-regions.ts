@@ -31,6 +31,18 @@ function inside([x, y]: readonly [number, number], poly: Flat): boolean {
   return hit;
 }
 
+/** Whether a point lies on the boundary of a polygon, to a tolerance relative to its size. */
+function onBoundary([x, y]: readonly [number, number], poly: Flat): boolean {
+  const scale = Math.max(...poly.flat().map(Math.abs), 1);
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [ax, ay] = poly[j];
+    const [ex, ey] = [poly[i][0] - ax, poly[i][1] - ay];
+    const t = Math.max(0, Math.min(1, ((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey || 1)));
+    if (Math.hypot(x - ax - t * ex, y - ay - t * ey) <= 1e-9 * scale) return true;
+  }
+  return false;
+}
+
 const area = (poly: Flat): number => {
   let twice = 0;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) twice += poly[j][0] * poly[i][1] - poly[i][0] * poly[j][1];
@@ -55,8 +67,12 @@ export function faceRegionsOfOuterBounds(rings: readonly Vec3[][]): FaceRegion[]
   const y = cross(normal, x);
   const flat = rings.map((ring): Flat => ring.map((p) => [dot(sub(p, reference[0]), x), dot(sub(p, reference[0]), y)] as const));
   const areas = flat.map(area);
-  // The loops each loop lies in: all its vertices inside a larger loop.
-  const containers = flat.map((ring, i) => flat.map((_, j) => j).filter((j) => j !== i && areas[j] > areas[i] && ring.every((p) => inside(p, flat[j]))));
+  // The loops each loop lies in: a larger loop that holds its vertex average and has no vertex of it
+  // outside. The average rules out a tile that fills a notch of a concave loop with all its vertices
+  // on that loop's edge.
+  const middle = flat.map((ring): readonly [number, number] => [ring.reduce((sum, p) => sum + p[0], 0) / ring.length, ring.reduce((sum, p) => sum + p[1], 0) / ring.length]);
+  const containers = flat.map((ring, i) => flat.map((_, j) => j).filter((j) => j !== i && areas[j] > areas[i]
+    && inside(middle[i], flat[j]) && ring.every((p) => inside(p, flat[j]) || onBoundary(p, flat[j]))));
   const regions = new Map<number, FaceRegion>();
   rings.forEach((polygon, i) => { if (containers[i].length % 2 === 0) regions.set(i, { polygon, innerBounds: [] }); });
   rings.forEach((polygon, i) => {

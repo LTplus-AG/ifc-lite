@@ -40,6 +40,13 @@ describe('faceRegionsOfOuterBounds', () => {
     ]);
   });
 
+  it('keeps a tile that fills the notch of a concave loop as its own region', () => {
+    // An L whose notch is the square [2,4] x [2,4]; the tile below has all three vertices on the L's edges and lies outside it.
+    const l: Vec3[] = [[0, 0, 0], [4, 0, 0], [4, 2, 0], [2, 2, 0], [2, 4, 0], [0, 4, 0]];
+    const tile: Vec3[] = [[4, 2, 0], [2, 4, 0], [2, 2, 0]];
+    expect(faceRegionsOfOuterBounds([l, tile])).toEqual([{ polygon: l, innerBounds: [] }, { polygon: tile, innerBounds: [] }]);
+  });
+
   it('keeps every loop of a non-planar or degenerate face as its own region', () => {
     const line: Vec3[] = [[0, 0, 0], [1, 0, 0], [2, 0, 0]];
     expect(faceRegionsOfOuterBounds([line, square(5, 5, 1)])).toHaveLength(2);

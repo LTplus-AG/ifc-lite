@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-const decoder = new TextDecoder('utf-8');
+// Created on first use: module-level work would defeat the package's `sideEffects: false`.
+let decoder: TextDecoder | undefined;
 
 /**
  * UTF-8 decode a byte range. Copies first when the bytes sit on a
@@ -11,6 +12,7 @@ const decoder = new TextDecoder('utf-8');
 export function decodeUtf8(bytes: Uint8Array, start = 0, end = bytes.byteLength): string {
   const view = bytes.subarray(start, end);
   const shared = typeof SharedArrayBuffer !== 'undefined' && view.buffer instanceof SharedArrayBuffer;
+  decoder ??= new TextDecoder('utf-8');
   return decoder.decode(shared ? view.slice() : view);
 }
 

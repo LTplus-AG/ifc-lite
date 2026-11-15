@@ -4,7 +4,7 @@
 
 /** Tile content sniffing and decoding into feature meshes. */
 
-import { magicAt } from '../bytes.js';
+import { decodeUtf8, magicAt } from '../bytes.js';
 import type { ContentBudget } from '../limits.js';
 import type { Mat4 } from '../matrix.js';
 import type { TileProvenance } from '../traverse.js';
@@ -32,7 +32,7 @@ export function detectContentKind(bytes: Uint8Array): ContentKind {
   // Decide on the top-level keys of the full parse: a glTF may carry "root" or
   // "geometricError" in nested extras, which a text sniff cannot tell apart.
   try {
-    const json = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    const json = JSON.parse(decodeUtf8(bytes)) as unknown;
     if (json && typeof json === 'object' && !Array.isArray(json)) {
       const top = json as Record<string, unknown>;
       const gltfShaped = 'meshes' in top || 'accessors' in top || 'nodes' in top || 'scenes' in top || 'buffers' in top;
@@ -41,7 +41,7 @@ export function detectContentKind(bytes: Uint8Array): ContentKind {
   } catch (err) {
     if (!(err instanceof SyntaxError)) throw err;
     // Unparsable: fall back to a key sniff on the head so a broken tileset is reported as one.
-    const head = new TextDecoder().decode(bytes.subarray(i, Math.min(bytes.length, i + 4096)));
+    const head = decodeUtf8(bytes, i, Math.min(bytes.length, i + 4096));
     if (/"root"\s*:/.test(head) || /"geometricError"\s*:/.test(head)) return 'tileset';
   }
   return 'gltf';

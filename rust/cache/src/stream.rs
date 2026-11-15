@@ -44,10 +44,14 @@ fn io_error(context: impl Into<String>) -> impl FnOnce(io::Error) -> CacheError 
 }
 
 /// The temporary output and the spool, removed on drop unless committed (the
-/// spool always).
+/// spool always). Only files THIS invocation created are removed: if a name
+/// is already taken (`create_new` fails), the existing file belongs to
+/// someone else and is left alone.
 struct Staging {
     temp: PathBuf,
     spool: PathBuf,
+    temp_owned: bool,
+    spool_owned: bool,
     committed: bool,
 }
 
@@ -59,11 +63,17 @@ impl Staging {
             let error = io::Error::new(io::ErrorKind::InvalidInput, "not a file path");
             return Err(io_error(format!("output {}", output.display()))(error));
         };
-        let dir = parent_dir(output);
         let unique = format!("{}.{}", std::process::id(), SEQUENCE.fetch_add(1, Ordering::Relaxed));
-        let staging = Self {
+        Self::create_named(parent_dir(output), &name, &unique)
+    }
+
+    /// [`Staging::create`] with the unique part of the names given.
+    fn create_named(dir: &Path, name: &str, unique: &str) -> Result<(Self, File), CacheError> {
+        let mut staging = Self {
             temp: dir.join(format!(".{name}.{unique}.tmp")),
             spool: dir.join(format!(".{name}.{unique}.spool")),
+            temp_owned: false,
+            spool_owned: false,
             committed: false,
         };
         let spool = OpenOptions::new()
@@ -72,6 +82,7 @@ impl Staging {
             .create_new(true)
             .open(&staging.spool)
             .map_err(io_error(format!("create spool {}", staging.spool.display())))?;
+        staging.spool_owned = true;
         Ok((staging, spool))
     }
 
@@ -86,6 +97,7 @@ impl Staging {
             .create_new(true)
             .open(&self.temp)
             .map_err(io_error(temp_context()))?;
+        self.temp_owned = true;
         temp.write_all(prefix).map_err(io_error(temp_context()))?;
         let copied = io::copy(&mut BufReader::with_capacity(IO_BUFFER, spool), &mut temp)
             .map_err(io_error(temp_context()))?;
@@ -104,8 +116,11 @@ impl Staging {
 
 impl Drop for Staging {
     fn drop(&mut self) {
-        let mut doomed = vec![&self.spool];
-        if !self.committed {
+        let mut doomed = Vec::new();
+        if self.spool_owned {
+            doomed.push(&self.spool);
+        }
+        if self.temp_owned && !self.committed {
             doomed.push(&self.temp);
         }
         for path in doomed {

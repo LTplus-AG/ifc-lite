@@ -170,8 +170,10 @@ pub fn build_cache(source: &[u8], options: CacheOptions) -> Result<(Vec<u8>, Cac
 ///
 /// `output` appears complete or not at all: the cache is written to a
 /// temporary file in the same directory, synced, then renamed over it. On
-/// any error the temporary file and the spool are removed and an existing
-/// `output` is left untouched.
+/// any error before the rename, the temporary file and the spool are removed
+/// and an existing `output` is left untouched. An error from syncing the
+/// parent directory after the rename (Unix) means `output` already holds the
+/// complete new cache, but the rename may not survive a crash.
 pub fn build_cache_to_path(source: &[u8], output: &Path, options: CacheOptions) -> Result<CacheStats, CacheError> {
     stream::build_to_path(source, output, &options, format::Limits::FORMAT, stream::BATCH_JOBS)
 }

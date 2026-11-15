@@ -20,7 +20,14 @@ fn main() {
         eprintln!("usage: pipeline_floor <in.ifc>");
         std::process::exit(2);
     };
-    let source = std::fs::read(&input).unwrap_or_else(|error| panic!("read {input}: {error}"));
+    // Mapped exactly as `ifc-build-cache` maps it, so the two peaks count the
+    // input under the same memory class and their difference is the writer's.
+    let file = std::fs::File::open(&input).unwrap_or_else(|error| panic!("open {input}: {error}"));
+    let empty = file.metadata().map(|m| m.len() == 0).unwrap_or(false);
+    // SAFETY: as in the CLI, a concurrent truncation of the input could fault
+    // the read; this is a measurement harness over files nothing rewrites.
+    let map = (!empty).then(|| unsafe { memmap2::Mmap::map(&file) }.unwrap_or_else(|error| panic!("map {input}: {error}")));
+    let source: &[u8] = map.as_deref().unwrap_or(&[]);
     let features = Features::default().properties(false).presentation_layers(false).finishes(true);
     let request = ProcessingRequest::default()
         .batching(Batching::new(1024, 1024))
@@ -28,6 +35,6 @@ fn main() {
         .retain_meshes(false)
         .features(features);
     let mut meshes = 0usize;
-    process(&source, &request, &mut OnBatch::new(|batch: &[_], _, _| meshes += batch.len()));
+    process(source, &request, &mut OnBatch::new(|batch: &[_], _, _| meshes += batch.len()));
     println!("{{\"meshCount\":{meshes}}}");
 }

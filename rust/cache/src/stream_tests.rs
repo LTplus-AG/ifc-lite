@@ -95,6 +95,25 @@ fn issue_9584_a_failed_rename_removes_the_written_temp_file() {
     fs::remove_dir_all(dir).unwrap();
 }
 
+/// #9584: staging only removes what it created. When a staging name is
+/// already taken (another process in a different PID namespace can produce
+/// the same pid and sequence in a shared directory), creation fails and the
+/// existing file is left for its owner.
+#[test]
+fn issue_9584_a_taken_staging_name_is_not_removed() {
+    let dir = scratch("taken-staging");
+    let theirs = dir.join(".model.ifclite.1.0.spool");
+    fs::write(&theirs, b"another build's spool").unwrap();
+    match Staging::create_named(&dir, "model.ifclite", "1.0") {
+        Err(CacheError::Io { context, .. }) => assert!(context.starts_with("create spool "), "failed at {context}"),
+        Err(other) => panic!("expected the taken spool name to fail, got {other:?}"),
+        Ok(_) => panic!("a taken spool name must not be reused"),
+    }
+    assert_eq!(fs::read(&theirs).unwrap(), b"another build's spool", "the other build's spool survives");
+    assert_eq!(listing(&dir), vec![".model.ifclite.1.0.spool".to_owned()]);
+    fs::remove_dir_all(dir).unwrap();
+}
+
 /// #9584: the u32 bound, end to end through the streaming writer, with an
 /// injected limit instead of a 4 GiB model: refused with `TooLarge`, and
 /// cleaned up like any other failure.

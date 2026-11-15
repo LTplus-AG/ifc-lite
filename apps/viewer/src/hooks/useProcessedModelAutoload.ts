@@ -7,8 +7,8 @@
  * files one itself from `?processed=<sha256>&bytes=<source size>&name=<file name>`.
  *
  * For a host that keeps the IFC on its own server: the source file never
- * reaches this browser. The viewer asks the processing server (the runtime
- * URL, else `VITE_IFC_SERVER_URL`; either may be a same-origin path) to replay
+ * reaches this browser. The viewer asks the processing server (the request's
+ * own, else the runtime URL, else `VITE_IFC_SERVER_URL`; any may be a same-origin path) to replay
  * the result stored under that hash. `bytes` and `name` are for display and for
  * choosing the streamed or one-shot route; only the hash selects what is opened.
  *
@@ -65,12 +65,12 @@ export function useProcessedModelAutoload(): void {
     const loadWaiting = () => {
       const request = takeProcessedModelRequest();
       if (!request) return;
-      const { sha256, bytes, name, serverUrl } = request;
+      const { name, ...processedModel } = request;
       const attempt = () => {
         markLoadIntent();
         // Replay-safe (a request, no user gesture): Retry on the unsupported card may re-run it.
         if (!guardWebGpu(attempt, { replay: 'free' })) return;
-        void loadFile(new File([], name), { kind: 'primary' }, { processedModel: { sha256, bytes, serverUrl } });
+        void loadFile(new File([], name), { kind: 'primary' }, { processedModel });
       };
       attempt();
     };

@@ -27,14 +27,14 @@ export interface ProcessedModelRequest extends ProcessedModelRef {
 }
 
 export interface OpenProcessedModelOptions {
-  /** Processing server for this request and Retry only. Omitted: snapshot the current global server. */
+  /** Processing server for this request and its Retry only. Omitted: the global server when the load runs. */
   serverUrl?: string;
 }
 
 let serverUrl: string = cleanServerUrl(SERVER_URL);
 /** A stored result and, when a request picked one, the processing server to ask for it (also on Retry). */
 export type ProcessedModelSource = ProcessedModelRef & { readonly serverUrl?: string };
-export type FiledProcessedModelRequest = ProcessedModelRequest & Required<Pick<ProcessedModelSource, 'serverUrl'>>;
+export type FiledProcessedModelRequest = ProcessedModelRequest & Pick<ProcessedModelSource, 'serverUrl'>;
 let pending: FiledProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();
 /** A host asked for a model (`openProcessedModel`); a model named in the page URL then yields. */
@@ -50,7 +50,8 @@ export function getProcessingServerUrl(): string {
 /**
  * Point the viewer at a processing server at runtime. Every server request
  * goes there, uploads of locally opened IFC files included when the build
- * routes them to the server (`VITE_USE_SERVER=true`).
+ * routes them to the server (`VITE_USE_SERVER=true`), except a processed-model
+ * request that named its own server.
  */
 export function setProcessingServerUrl(url: string): void {
   serverUrl = cleanServerUrl(url);
@@ -73,7 +74,8 @@ export function serverUploadsEnabled(): boolean {
  * SHA-256, before anything is asked of the server.
  */
 export function openProcessedModel(model: ProcessedModelRequest, options?: OpenProcessedModelOptions): void {
-  const request = { ...normalizedRequest(model), serverUrl: cleanServerUrl(options?.serverUrl ?? serverUrl) };
+  const override = options?.serverUrl;
+  const request = override === undefined ? normalizedRequest(model) : { ...normalizedRequest(model), serverUrl: cleanServerUrl(override) };
   hostRequested = true;
   fileRequest(request);
 }
@@ -84,7 +86,7 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
  * `openProcessedModel` it does not count as a host request.
  */
 export function openProcessedModelFromUrl(model: ProcessedModelRequest): void {
-  if (pageUrlModelAllowed('processed')) fileRequest({ ...normalizedRequest(model), serverUrl });
+  if (pageUrlModelAllowed('processed')) fileRequest(normalizedRequest(model));
 }
 
 /**

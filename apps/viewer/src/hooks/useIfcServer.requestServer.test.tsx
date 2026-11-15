@@ -15,7 +15,7 @@ import { IfcServerClient } from '@ifc-lite/server-client';
 const { useIfcServer } = await import('./useIfcServer');
 const { openProcessedModel, getProcessingServerUrl, serverUploadsEnabled, resetProcessedModelRequestsForTests } = await import('@/lib/processed-model');
 
-it('a host server override never redirects a local upload with server uploads enabled', async () => {
+it('a host server override never redirects a local upload with server uploads enabled (#10142)', async () => {
   const destinations: string[] = [];
   let upload: File | undefined;
   let api: ReturnType<typeof useIfcServer> | undefined;

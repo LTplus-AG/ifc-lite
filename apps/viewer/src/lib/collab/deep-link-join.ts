@@ -7,12 +7,14 @@
  * room), unless `pageUrlModelAllowed('room')` refuses it for a host's model.
  */
 
-import type { StartCollabOptions } from '@/store/slices/collabSlice';
+import type { ViewerState } from '@/store';
 import { onProcessedModelRequest, pageUrlModelAllowed } from '@/lib/processed-model';
 import { isCollabEnabled } from './config';
 import { parseRoleFromToken } from './share-link';
 
-export function joinRoomFromPageUrl(search: string, startCollab: (opts: StartCollabOptions) => unknown, stopCollab: () => void): void {
+type CollabControls = Pick<ViewerState, 'startCollab' | 'stopCollab' | 'collabRoomId'>;
+
+export function joinRoomFromPageUrl(search: string, collab: () => CollabControls): void {
   if (!isCollabEnabled()) return;
   const params = new URLSearchParams(search);
   const roomId = params.get('room');
@@ -20,14 +22,11 @@ export function joinRoomFromPageUrl(search: string, startCollab: (opts: StartCol
   const token = params.get('t') ?? undefined;
   const role = (token && parseRoleFromToken(token)) || 'viewer';
   // Retire a pending page-link join before it can hydrate or seed the host's model.
-  // stopCollab also cancels a session still being created or waiting for sync.
+  // stopCollab also cancels a session still being created or waiting for sync. A room
+  // the user switched to meanwhile is not this link's, so it stays.
   const unsubscribe = onProcessedModelRequest(() => {
-    if (!pageUrlModelAllowed('room')) stopCollab();
+    const controls = collab();
+    if (controls.collabRoomId === roomId && !pageUrlModelAllowed('room')) controls.stopCollab();
   });
-  try {
-    void Promise.resolve(startCollab({ roomId, role, token })).finally(unsubscribe);
-  } catch (error) {
-    unsubscribe();
-    throw error;
-  }
+  void collab().startCollab({ roomId, role, token }).finally(unsubscribe);
 }

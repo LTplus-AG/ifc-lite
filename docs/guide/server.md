@@ -1112,9 +1112,10 @@ openProcessedModel({ sha256, bytes, name }, { serverUrl: '/ifc' });
 The call may come before the viewer mounts; the request waits for it, and a
 `?processed=` or `?model=` in the page URL is then ignored (each logged once), so the host's model wins.
 A collaboration link (`?room=`) is refused the same way. If its join is still in progress,
-the viewer leaves it before it can hydrate or seed the host's model.
+the viewer leaves it before it can hydrate or seed the host's model. A call after the join
+has finished does not leave the room.
 The `serverUrl` option applies only to this request and its Retry; it does not redirect local uploads.
-Omitting it captures the global server when the request is filed, also for Retry.
+Without it, the load asks the global server as it stands when the load runs.
 `setProcessingServerUrl(url)` explicitly sets the global server. This URL replaces
 `VITE_IFC_SERVER_URL` for every server request, so in a build with
 `VITE_USE_SERVER=true` it also receives the uploads of IFC files opened from

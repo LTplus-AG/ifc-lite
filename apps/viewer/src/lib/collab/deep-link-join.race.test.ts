@@ -15,7 +15,7 @@ import { setCollabEnabledOverride } from './config';
 import { openProcessedModel, resetProcessedModelRequestsForTests } from '@/lib/processed-model';
 register('../../test/collab-session-race-hook.mjs', import.meta.url);
 
-it('leaves a page room parked at sync when a host request arrives, without hydration or seeding', async () => {
+it('leaves a page room parked at sync when a host request arrives, without hydration or seeding (#10142)', async () => {
   const globals = globalThis as typeof globalThis & {
     __collabSyncGate?: Promise<void>;
     __collabSessionGated?: () => void;
@@ -32,10 +32,10 @@ it('leaves a page room parked at sync when a host request arrives, without hydra
   let pending!: Promise<void>;
   setCollabEnabledOverride(true);
   try {
-    joinRoomFromPageUrl('?room=host-race', opts => {
-      pending = state.get().startCollab(opts);
-      return pending;
-    }, state.get().stopCollab);
+    joinRoomFromPageUrl('?room=host-race', () => ({
+      ...state.get(),
+      startCollab: opts => (pending = state.get().startCollab(opts)),
+    }));
     await Promise.race([atSync.promise, pending.then(() => { throw new Error('join returned before sync gate'); })]);
     await ownSync;
     assert.equal(state.get().collabConnecting, true);

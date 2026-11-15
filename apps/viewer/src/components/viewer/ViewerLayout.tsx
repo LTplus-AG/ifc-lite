@@ -102,7 +102,7 @@ export function ViewerLayout() {
     if (collabJoinDoneRef.current) return;
     collabJoinDoneRef.current = true;
     try {
-      joinRoomFromPageUrl(window.location.search, useViewerStore.getState().startCollab, useViewerStore.getState().stopCollab);
+      joinRoomFromPageUrl(window.location.search, useViewerStore.getState);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[collab] deep-link join failed:', err);

@@ -194,8 +194,8 @@ pub(super) fn build_face_cap(
             let in_upper = |q: V2| j < last && pip(q, &pf.profiles[j]) && !floored(q);
             // Fast skip for the OUTERMOST caps with no seams (the common
             // extended-cap case): probe the adjacent slab interior.
-            if seams.is_empty() && (j == 0 || j == pf.profiles.len()) {
-                let k = if j == 0 { 0 } else { pf.profiles.len() - 1 };
+            if seams.is_empty() && (j == 0 || j == last) {
+                let k = if j == 0 { 0 } else { last - 1 };
                 let interior = pf.slab_interior[k];
                 let probe = pf.lift(interior[0], interior[1], wdepth);
                 if !point_inside(host, aabbs, probe) {

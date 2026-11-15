@@ -99,6 +99,20 @@ fn signed_xy_area(mesh: &crate::Mesh) -> f64 {
         .sum()
 }
 
+/// Whether some triangle of the mesh contains the point (x, y) of the xy plane.
+fn covers(mesh: &crate::Mesh, x: f64, y: f64) -> bool {
+    mesh.indices.chunks_exact(3).any(|triangle| {
+        let point = |index: u32| {
+            let base = index as usize * 3;
+            [mesh.positions[base] as f64, mesh.positions[base + 1] as f64]
+        };
+        let [a, b, c] = [point(triangle[0]), point(triangle[1]), point(triangle[2])];
+        let side = |p: [f64; 2], q: [f64; 2]| (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]);
+        let (s1, s2, s3) = (side(a, b), side(b, c), side(c, a));
+        (s1 >= -1e-9 && s2 >= -1e-9 && s3 >= -1e-9) || (s1 <= 1e-9 && s2 <= 1e-9 && s3 <= 1e-9)
+    })
+}
+
 fn curved_member(orientation: bool) -> String {
     let oriented = if orientation {
         "#9=IFCORIENTEDEDGE(*,*,#8,.T.);"
@@ -755,6 +769,24 @@ fn disjoint_outer_bounds_on_another_product_are_regions_issue_9945() {
         "#5=IFCPOLYLOOP((#1,#2,#3));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#1,#3,#4));#21=IFCFACEOUTERBOUND(#20,.T.);",
     ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
     assert!((signed_xy_area(&meshed(&proxy_with(&source), 18)) - 100.0).abs() < 1e-5);
+}
+
+#[test]
+fn a_tile_across_a_slot_of_a_concave_loop_is_a_region_issue_9945() {
+    // A 10 x 10 square with a thin slot cut in from the top (x 3 to 3.2, down to y 2), and a thin triangle whose
+    // vertices and edge midpoints are all in the square but whose long edge (0,0)-(10,9) crosses the slot.
+    // The triangle is a region of its own, not the square's opening, so the part of it inside the slot is drawn.
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#31,#32,#33,#34,#35,#36,#37,#38));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#31,#40,#41));#21=IFCFACEOUTERBOUND(#20,.T.);\
+         #31=IFCCARTESIANPOINT((0.,0.,0.));#32=IFCCARTESIANPOINT((10.,0.,0.));#33=IFCCARTESIANPOINT((10.,10.,0.));\
+         #34=IFCCARTESIANPOINT((3.2,10.,0.));#35=IFCCARTESIANPOINT((3.2,2.,0.));#36=IFCCARTESIANPOINT((3.,2.,0.));\
+         #37=IFCCARTESIANPOINT((3.,10.,0.));#38=IFCCARTESIANPOINT((0.,10.,0.));\
+         #40=IFCCARTESIANPOINT((10.,9.,0.));#41=IFCCARTESIANPOINT((10.,0.5,0.));",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    let mesh = meshed(&proxy_with(&source), 18);
+    assert!(covers(&mesh, 3.1, 2.4), "the triangle is a region: its part inside the slot is meshed");
+    assert!(covers(&mesh, 8.0, 5.0), "the square is meshed");
 }
 
 #[test]

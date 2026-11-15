@@ -184,6 +184,25 @@ fn edge_distance_2d(p: &Point2<f64>, ring: &[Point2<f64>]) -> f64 {
     best
 }
 
+/// Whether segments `ab` and `cd` cross at a point interior to both (touching and overlapping do not count).
+fn segments_cross(a: &Point2<f64>, b: &Point2<f64>, c: &Point2<f64>, d: &Point2<f64>) -> bool {
+    let side = |p: &Point2<f64>, q: &Point2<f64>, r: &Point2<f64>| ((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)).signum();
+    let (s1, s2, s3, s4) = (side(a, b, c), side(a, b, d), side(c, d, a), side(c, d, b));
+    s1 * s2 < 0.0 && s3 * s4 < 0.0
+}
+
+/// Whether every edge of `ring` stays in `outer`: its midpoint is in or on `outer`
+/// and it crosses no edge of `outer` (a chord between two points of a concave
+/// loop can leave it).
+fn ring_stays_in(ring: &[Point2<f64>], outer: &[Point2<f64>], tolerance: f64) -> bool {
+    (0..ring.len()).all(|k| {
+        let (p, q) = (ring[k], ring[(k + 1) % ring.len()]);
+        let mid = Point2::new((p.x + q.x) / 2.0, (p.y + q.y) / 2.0);
+        (inside_2d(&mid, outer) || edge_distance_2d(&mid, outer) <= tolerance)
+            && (0..outer.len()).all(|m| !segments_cross(&p, &q, &outer[m], &outer[(m + 1) % outer.len()]))
+    })
+}
+
 /// A point inside a simple polygon: the midpoint of the first span of a
 /// scanline halfway between two vertex heights (even-odd). The first vertex
 /// when no span has width, a ring of no area.
@@ -244,6 +263,7 @@ fn outer_bound_regions(rings: &[&Vec<Point3<f64>>]) -> Option<Vec<FaceBounds>> {
                         && areas[j] > areas[i]
                         && inside_2d(&middle, &flat[j])
                         && flat[i].iter().all(|p| inside_2d(p, &flat[j]) || edge_distance_2d(p, &flat[j]) <= tolerance)
+                        && ring_stays_in(&flat[i], &flat[j], tolerance)
                 })
                 .collect()
         })

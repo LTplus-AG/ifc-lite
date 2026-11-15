@@ -239,3 +239,15 @@ it('#8452 selected wall joins do not read unrelated path relationship payloads',
     expect(payloadReads).toBe(0);
   } finally { spy.mockRestore(); }
 });
+
+it('#8452 selected relationship reads preserve creation order after endpoint retargeting', async () => {
+  const s = await room();
+  const [a, b, c, d] = s.ids;
+  const first = joinWallsInStore(s.editor, s.store, s.joinAnchor, a, b, { Name: 'first' }).relId;
+  const later = s.editor.addEntity('IfcRelConnectsPathElements', [
+    '0000000000000000000042', null, 'later', null, null, `#${c}`, `#${d}`, [], [], '.ATSTART.', '.ATEND.',
+  ]).expressId;
+  s.editor.setPositionalAttribute(later, 5, `#${a}`);
+  s.editor.setPositionalAttribute(later, 6, `#${b}`);
+  expect(readWallJoinRels(s.store, s.view, new Set([a])).map(rel => rel.relId)).toEqual([first, later]);
+});

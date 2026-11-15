@@ -1373,3 +1373,7 @@ curtain wall is described in its own terms. Raw authored doors or windows with
 nonpositive or nonfinite numeric `OverallWidth` or `OverallHeight` report a quantity diagnostic and keep
 an empty derived quantity result; existing third-party quantity sets are
 preserved.
+
+### Ordering a bounded set of authored records
+
+`view.getNewEntityCreationOrder(expressId)` reads a live creation's relative insertion order without enumerating the session. It returns `null` for an ID that is not a live creation. Compare these numbers only within the current view order; atomic publication, undo and snapshot restoration may renumber them. Nested atomic drafts include their own new records.

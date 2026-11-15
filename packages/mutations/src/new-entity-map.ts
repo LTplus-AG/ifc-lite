@@ -129,6 +129,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
   }
 
   /** Insertion order for sparse inverse capture; new keys sort after old keys. */
+  creationOrderEnd(): number { return this.nextPosition ?? 0; }
   positionOf(id: number): number { return this.positions?.get(id)?.position ?? Infinity; }
   successorOf(id: number): number | null { return this.positions?.get(id)?.next ?? null; }
 

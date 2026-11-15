@@ -285,7 +285,9 @@ it('#8452 nested ID-only readers do not materialize unrelated parent-draft paylo
   }
   view.runAtomic(outer => outer.runAtomic(inner => {
     expect([...inner.readNewEntityKinds()]).toHaveLength(200);
-    inner.createEntity('IfcCartesianPoint', [[201, 0, 0]]);
+    const added = inner.createEntity('IfcCartesianPoint', [[201, 0, 0]]).expressId;
+    expect(inner.getNewEntityCreationOrder(added)).not.toBeNull();
+    expect(inner.getNewEntityCreationOrder(added)!).toBeGreaterThan(inner.getNewEntityCreationOrder(1)!);
   }));
   expect(payloadReads).toBe(0);
   expect(view.getNewEntityCount()).toBe(201);

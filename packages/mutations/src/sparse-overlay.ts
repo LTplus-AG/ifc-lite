@@ -26,7 +26,8 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
   const reads = new Map<K, V>(), removed = new Set<K>(), inserted = new Set<K>();
   const localEntities = base instanceof NewEntityMap ? new NewEntityMap() : null;
   let ordering: Map<number, number> | undefined;
-  const positionOf = (id: number): number => ordering?.get(id) ?? (base instanceof NewEntityMap ? base.positionOf(id) : Infinity);
+  const positionOf = (id: number): number => ordering?.get(id) ?? (base instanceof NewEntityMap
+    ? inserted.has(id as K) ? base.creationOrderEnd() + localEntities!.positionOf(id) : base.positionOf(id) : Infinity);
   let size = base.size;
   const has = (key: K) => inserted.has(key) || (!removed.has(key) && base.has(key));
   const get = (key: K): V | undefined => {
@@ -60,6 +61,7 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
   const value = new Proxy(target, { get(_target, name) {
     if (name === 'size') return size;
     if (name === 'positionOf' && localEntities) return positionOf;
+    if (name === 'creationOrderEnd' && base instanceof NewEntityMap) return () => base.creationOrderEnd() + localEntities!.creationOrderEnd();
     if (name === 'restoreOrder' && localEntities) return restoreOrder;
     if (name === 'restoreBefore' && localEntities) return (before: ReadonlyMap<number, number | null>) => {
       if (before.size) restoreOrder(restoreEntityOrder(keys() as Iterable<number>, before));

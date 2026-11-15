@@ -6,7 +6,7 @@ import '@/test/content-fixture.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import type { Renderer } from '@ifc-lite/renderer';
+import { federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import { IfcParser } from '@ifc-lite/parser';
 import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
 import { IfcTypeEnum } from '@ifc-lite/data';
@@ -40,18 +40,20 @@ const geometry: GeometryResult = { meshes: [], totalTriangles: 0, totalVertices:
   coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false,
     originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
     shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } } } };
-afterEach(() => { cleanup(); clearGlobalRefs(); });
+afterEach(() => { cleanup(); clearGlobalRefs(); federationRegistry.clear(); });
 
 it('shows own model/object counts, live changes, and numeric list sorting across federation (#10370)', async () => {
   const bytes = new TextEncoder().encode(IFC);
   const storeA = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
   const storeB = await new IfcParser().parseColumnar(bytes.buffer.slice(0) as ArrayBuffer, { disableWorkerScan: true });
-  const a = fixtureModel('A'), b = fixtureModel('B', { idOffset: 1_000_000 });
+  federationRegistry.clear();
+  const a = fixtureModel('A', { idOffset: federationRegistry.registerModel('A', 3) });
+  const b = fixtureModel('B', { idOffset: federationRegistry.registerModel('B', 3) });
   for (const [model, store] of [[a, storeA], [b, storeB]] as const) {
     model.ifcDataStore = store; model.geometryResult = geometry; model.loadState = 'complete'; model.maxExpressId = 3;
   }
   useViewerStore.setState({ ...fixtureModels(a, b), geometryResult: geometry });
-  const { scene, device, pipeline } = appearanceInstanceScene([triangle(2), triangle(1_000_002)]);
+  const { scene, device, pipeline } = appearanceInstanceScene([triangle(federationRegistry.toGlobalId('A', 2)), triangle(federationRegistry.toGlobalId('B', 2))]);
   scene.appendToBatches([triangle(2), triangle(3, 12)], device, pipeline);
   setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer });
   const ownModel = render(<TriangleCountRow modelId="A" />);

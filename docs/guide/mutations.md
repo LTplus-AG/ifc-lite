@@ -1347,3 +1347,24 @@ readable before export.
 Retargeting a roof-cut wall to a planar roof or storey restores a planar top and updates its existing prism quantities from their pre-cut baseline. Repeated refits preserve declared quantity units, including a net area in mm² beside a gross area in m².
 
 Direct placement translations return the final local coordinates after fitting an attached top; a level beam or member can therefore keep its original Z under a slab despite a requested vertical move. A storey with a present but unreadable placement cannot supply a floor from its Elevation metadata: fitting a top refuses atomically until that placement is repaired. An invalid storey-delete move destination returns an `invalidTarget` refusal before planning relative attachments. A deletion preview returns an `unreadablePlacement` refusal when a target floor has an explicit missing reference or an unreadable placement chain.
+
+Hosted door and window types are reused only when their resolved IFC operation
+or partitioning and user-defined text match. An enumeration and free text with
+the same display label remain distinct types. Low-level `duplicateInStore`
+callers supplying an `IfcRelDefinesByType` association's `relId` must also
+supply a nonempty `relatedIds` list containing its current `RelatedObjects`.
+Missing or empty lists are refused before any records are written. A parsed
+relationship without a live overlay list is checked against its source
+`RelatedObjects`; incomplete or extra members are refused atomically. Later
+copies preserve the current overlay list, including earlier copies. Material
+associations retain their `relId`-only input form.
+
+`StoreEditor.getSourceEntityData(id)` exposes one source record's bytes and its
+rebased entity index span for builders that need to verify source-backed relationships;
+it returns `null` when that entity has no source span.
+
+Attachment notices identify the element kind so a column, beam, member or
+curtain wall is described in its own terms. Raw authored doors or windows with
+nonpositive or nonfinite numeric `OverallWidth` or `OverallHeight` report a quantity diagnostic and keep
+an empty derived quantity result; existing third-party quantity sets are
+preserved.

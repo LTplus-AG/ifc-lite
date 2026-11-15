@@ -1159,7 +1159,7 @@ When copying a top-constrained product, floor placement frames determine its
 physical height. A storey's `Elevation` may differ from its placement Z. An
 explicit top keeps its target and offset; a relative top follows the next
 higher storey in the same building. Extra vertical copy offsets are included,
-even when copying onto the same storey. A copy sharing an imported source body
+even when copying onto the same storey. A wall copied under a footprint roof refits its cut to the roof at the copy's position, following a copied roof when both are copied together. A copy sharing an imported source body
 that would require resizing remains fixed and reports `unattachedTops`.
 
 Wall top refits keep height, area and volume quantities consistent with the
@@ -1345,3 +1345,5 @@ relationships. This keeps raw STEP authoring and high-level property edits
 readable before export.
 
 Retargeting a roof-cut wall to a planar roof or storey restores a planar top and updates its existing prism quantities from their pre-cut baseline. Repeated refits preserve declared quantity units, including a net area in mm² beside a gross area in m².
+
+Direct placement translations return the final local coordinates after fitting an attached top; a level beam or member can therefore keep its original Z under a slab despite a requested vertical move. A storey with a present but unreadable placement cannot supply a floor from its Elevation metadata: fitting a top refuses atomically until that placement is repaired. An invalid storey-delete move destination returns an `invalidTarget` refusal before planning relative attachments.

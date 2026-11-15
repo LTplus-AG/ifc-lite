@@ -271,11 +271,14 @@ export function translateProduct(
     return { ok: true, oldCoordinates: chain.coordinates, newCoordinates: next };
   }
   try {
-    const remesh = editor.runAtomic(draft => {
+    const fitted = editor.runAtomic(draft => {
       draft.setPositionalAttribute(chain.cartesianPointId, 0, next);
-      return refreshTopAttachmentsInStore({ dataStore, view: draft.getMutationView(), editor: draft }, [expressId], [expressId]);
+      const remesh = refreshTopAttachmentsInStore({ dataStore, view: draft.getMutationView(), editor: draft }, [expressId], [expressId]);
+      const final = resolvePlacementChain(dataStore, draft.getMutationView(), draft, expressId);
+      if (!final) throw new Error('The translated placement cannot be read after fitting its attached top');
+      return { newCoordinates: final.coordinates, remesh };
     });
-    return { ok: true, oldCoordinates: chain.coordinates, newCoordinates: next, remesh };
+    return { ok: true, oldCoordinates: chain.coordinates, ...fitted };
   } catch (error) { return { ok: false, reason: error instanceof Error ? error.message : String(error) }; }
 }
 

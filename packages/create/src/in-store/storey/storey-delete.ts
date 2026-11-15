@@ -126,7 +126,7 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
     }
   }
   // A move also pins its destination (with its placement chain) and the relationships it re-points.
-  const bindings = planDeletionBindings(inventory, storeyId, mode);
+  const bindings = refusals.some(refusal => refusal.code === 'invalidTarget') ? [] : planDeletionBindings(inventory, storeyId, mode);
   refusals.push(...deletionBindingRefusals(inventory, bindings));
   const pinned = mode.kind === 'move' ? [storeyId, ...contents, mode.targetStoreyId] : [storeyId, ...contents];
   pinned.push(...bindings.flatMap(binding => [binding.elementId, ...(binding.targetStoreyId === null ? [] : [binding.targetStoreyId])]));

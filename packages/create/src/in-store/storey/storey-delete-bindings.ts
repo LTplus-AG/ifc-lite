@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { StoreyRefusal } from './storey-validation.js';
-import { placementInAncestor } from '../host-geometry-frame.js';
+import { storeyFloorWorld } from './storey-floor-frame.js';
 import type { EditTarget } from '../edit/target.js';
 import { heightRefusal } from '../edit/hosted-opening-refit.js';
 import { attachedKind, attachedTopWorldOrigin, levelTopFaceAbove, linearTopRefusal, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT, type AttachedKind } from './storey-attached.js';
@@ -24,8 +24,7 @@ export interface DeletionBinding {
 
 function floorZ(inventory: StoreyInventory, id: number): number {
   const storey = inventory.storeys.find(s => s.expressId === id)!;
-  const frame = storey.placementId === null ? null : placementInAncestor(inventory.reader, storey.placementId, null);
-  return frame ? frame.o[2] * inventory.scale : storey.elevation;
+  return storeyFloorWorld(inventory, storey);
 }
 
 /** A relative target follows the sequence after deletion, including contents moved to a new home. */

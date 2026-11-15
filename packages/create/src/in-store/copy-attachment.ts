@@ -37,6 +37,8 @@ import {
 import {
   attachedKind, attachedTopEditsBody, attachedTopWorldOrigin, levelTopFaceAbove, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT,
 } from './storey/storey-attached.js';
+import { roofUndersideWorld } from './wall-roof-clip.js';
+import { setTopConstraintInStore } from './storey/storey-top-constraint.js';
 import { slabUndersideWorld } from './storey/storey-attachment-target.js';
 import { refId } from './host-geometry-frame.js';
 import { storeyFloorWorld } from './storey/storey-floor-frame.js';
@@ -166,10 +168,13 @@ export function rebindCopiedAttachments(
         }
         continue;
       }
+      const roofId = attachment.kind === 'element' && kind === 'wall'
+        && roofUndersideWorld(target, slabCopy ?? attachment.targetElementId!) !== null
+        ? slabCopy ?? attachment.targetElementId! : null;
       let to = from;
       if (attachment.kind === 'element') {
         const slabId = slabCopy ?? attachment.targetElementId!;
-        const underside = slabUndersideWorld(target, slabId);
+        const underside = roofId === null ? slabUndersideWorld(target, slabId) : roofUndersideWorld(target, roofId);
         const origin = attachedTopWorldOrigin(target, copyId, kind);
         if (underside === null || origin === null || !Number.isFinite(origin)) throw fail(copyId, `the slab #${slabId} or the copy cannot be read`);
         to = underside - origin;
@@ -198,13 +203,20 @@ export function rebindCopiedAttachments(
             : storeyFloorWorld(inventory, next!) - levelTopFaceAbove(target, copyId, kind);
         to = worldTop - origin;
       }
-      if (Math.abs(to - from) < 1e-9) continue;
+      if (Math.abs(to - from) < 1e-9 && roofId === null) continue;
       if (kind !== 'linear' && to < MIN_ATTACHED_EXTENT) throw fail(copyId, `it would end ${to.toFixed(3)} m tall`);
       const shape = refId(ctx.read(copyId)?.attributes[6]);
       // A level beam is lifted by its own placement, so a shared body does not stop it.
       if (shape !== null && shape === refId(ctx.read(sourceId)?.attributes[6]) && attachedTopEditsBody(target, copyId, kind)) {
         clearTopAttachment(view, copyId);
         unattached.push({ copyId, reason: SHARED_BODY });
+        continue;
+      }
+      if (roofId !== null) {
+        // Recompute the cut even at the same envelope height: a horizontal
+        // copy may now lie under a different roof plane. The shared setter
+        // keeps the cut, quantities and attachment in the same transaction.
+        reshaped.push(...setTopConstraintInStore(ctx.store, ctx.editor, copyId, { kind: 'roof', roofId }).remesh);
         continue;
       }
       const outcome = writeAttachedTop(target, copyId, kind, from, to);

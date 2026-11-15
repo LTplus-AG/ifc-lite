@@ -684,31 +684,40 @@ fn a_cap_that_builds_no_region_leaves_the_section_where_it_was() {
 
 /// A thin part kept whole above the plane, one corner in the same weld cell
 /// as a section vertex of the wall being capped. The weld moves section
-/// vertices only: the part keeps every corner where it was.
+/// vertices only, and never onto that corner: the part keeps every corner
+/// where it was and the cap still meets the wall, whichever of the two comes
+/// first in the mesh and with the model 1 km from the origin.
 #[test]
 fn a_part_above_the_plane_keeps_its_corners_beside_a_welded_section() {
-    let ring: Vec<[f32; 2]> = (0..400)
-        .map(|i| {
-            let a = std::f64::consts::TAU * i as f64 / 400.0;
-            [(12.5 * a.cos()) as f32, (12.5 * a.sin()) as f32]
-        })
-        .collect();
-    let mut host = extrude_profile(&ring, 0.0, 3.2);
-    // Outside the wall at its (12.5, 0) corner, 0.05 mm above the cut plane.
-    let footprint = [[12.5, 0.0], [12.5, -0.001], [12.501, -0.001], [12.501, 0.0]];
-    let plate = extrude_profile(&footprint, 0.00165, 0.0025);
-    let base = (host.positions.len() / 3) as u32;
-    host.positions.extend_from_slice(&plate.positions);
-    host.normals.extend_from_slice(&plate.normals);
-    host.indices.extend(plate.indices.iter().map(|i| i + base));
+    for (offset, plate_first) in [(0.0_f32, false), (0.0, true), (1000.0, false), (1000.0, true)] {
+        let ring: Vec<[f32; 2]> = (0..400)
+            .map(|i| {
+                let a = std::f64::consts::TAU * i as f64 / 400.0;
+                [offset + (12.5 * a.cos()) as f32, (12.5 * a.sin()) as f32]
+            })
+            .collect();
+        let wall = extrude_profile(&ring, 0.0, 3.2);
+        // Outside the wall at its (12.5, 0) corner, 0.05 mm above the cut plane.
+        let x = offset + 12.5;
+        let footprint = [[x, 0.0], [x, -0.001], [x + 0.001, -0.001], [x + 0.001, 0.0]];
+        let plate = extrude_profile(&footprint, 0.00165, 0.0025);
+        let (first, second) = if plate_first { (&plate, &wall) } else { (&wall, &plate) };
+        let mut host = first.clone();
+        let base = (host.positions.len() / 3) as u32;
+        host.positions.extend_from_slice(&second.positions);
+        host.normals.extend_from_slice(&second.normals);
+        host.indices.extend(second.indices.iter().map(|i| i + base));
 
-    let clip_normal = Vector3::new(0.0, 0.0, 1.0);
-    let plane_point = Point3::new(0.0, 0.0, 0.0016);
-    let mut clipped =
-        ClippingProcessor::new().clip_mesh(&host, &Plane::new(plane_point, clip_normal)).unwrap();
-    assert!(cap_half_space_clip(&mut clipped, plane_point, clip_normal));
-    let corners: Vec<&[f32]> = clipped.positions.chunks_exact(3).collect();
-    for corner in plate.positions.chunks_exact(3) {
-        assert!(corners.contains(&corner), "plate corner {corner:?} moved");
+        let clip_normal = Vector3::new(0.0, 0.0, 1.0);
+        let plane_point = Point3::new(0.0, 0.0, 0.0016);
+        let mut clipped =
+            ClippingProcessor::new().clip_mesh(&host, &Plane::new(plane_point, clip_normal)).unwrap();
+        assert!(cap_half_space_clip(&mut clipped, plane_point, clip_normal));
+        let corners: Vec<&[f32]> = clipped.positions.chunks_exact(3).collect();
+        for corner in plate.positions.chunks_exact(3) {
+            assert!(corners.contains(&corner), "offset {offset}, plate first {plate_first}: {corner:?} moved");
+        }
+        let paired = EdgeLedger::build(&clipped, VertexKey::GridMul(1.0e5), Degenerate::SkipTriangle).strictly_paired();
+        assert!(paired, "offset {offset}, plate first {plate_first}: the cap must meet the wall");
     }
 }

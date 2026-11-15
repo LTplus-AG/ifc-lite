@@ -117,6 +117,11 @@ fn census_aspect(t: &[[f64; 3]; 3]) -> f64 {
     longest / norm(cross(sub(t[1], t[0]), sub(t[2], t[0])))
 }
 
+/// Normals closer than this are one plane to the flap oracle: a split leaves
+/// its pieces this close, well under the 0.0002 degrees #1112's roof facets
+/// now lie apart.
+const COPLANAR_DEG: f64 = 1.0e-5;
+
 /// The #1007 rim-corner CHAMFER, measured as what made it show: a thin flap
 /// fanned from a far roof corner to two rim points, lying in a plane of its
 /// own. It sat alone in its plane bucket, a fraction of a degree off the roof
@@ -124,9 +129,11 @@ fn census_aspect(t: &[[f64; 3]; 3]) -> f64 {
 /// see it (it lies outside the cap footprint), but it touches a rim vertex.
 ///
 /// Returns the largest tilt, in degrees, of a thin triangle touching `rim`
-/// against the neighbour it lies flattest with. A thin triangle that is part of
-/// a flat face reads 0 whatever its shape. Thin is past 8:1 by the census
-/// aspect; a triangle with no neighbour at all reads 180.
+/// against the neighbour it lies flattest with, outside the triangles in its
+/// own plane (within [`COPLANAR_DEG`]). A thin triangle that is part of a flat
+/// face reads 0 whatever its shape, and so does a split one. Thin is past 8:1
+/// by the census aspect. A plane with nothing outside it reads 0, a triangle
+/// with no neighbour at all 180.
 fn worst_rim_flap_tilt_deg(tris: &[[[f64; 3]; 3]], rim: &[[f64; 3]]) -> f64 {
     let near = |p: [f64; 3]| rim.iter().any(|r| norm(sub(p, *r)) < 5e-3);
     let key = |p: [f64; 3]| [0, 1, 2].map(|k| (p[k] * 1.0e4).round() as i64);
@@ -148,12 +155,29 @@ fn worst_rim_flap_tilt_deg(tris: &[[[f64; 3]; 3]], rim: &[[f64; 3]]) -> f64 {
             continue;
         }
         let n = tri_normal(t);
-        let flattest = edges(t)
+        let angle = |j: usize| dot(n, tri_normal(&tris[j])).clamp(-1.0, 1.0).acos().to_degrees();
+        // The triangles in its own plane, as a split leaves its pieces: a
+        // piece is measured against what lies around the group, not against
+        // a sibling.
+        let mut group = vec![i];
+        let mut k = 0;
+        while k < group.len() {
+            for &j in edges(&tris[group[k]]).iter().flat_map(|e| by_edge[e].iter()) {
+                if !group.contains(&j) && angle(j) < COPLANAR_DEG {
+                    group.push(j);
+                }
+            }
+            k += 1;
+        }
+        let flattest = group
             .iter()
-            .flat_map(|e| by_edge[e].iter())
-            .filter(|&&j| j != i)
-            .map(|&j| dot(n, tri_normal(&tris[j])).clamp(-1.0, 1.0).acos().to_degrees())
-            .fold(180.0, f64::min);
+            .flat_map(|&g| edges(&tris[g]).into_iter())
+            .flat_map(|e| by_edge[&e].iter())
+            .filter(|j| !group.contains(j))
+            .map(|&j| angle(j))
+            .reduce(f64::min)
+            // Nothing outside its plane: a flat surface, unless it is alone.
+            .unwrap_or(if group.len() > 1 { 0.0 } else { 180.0 });
         worst = worst.max(flattest);
     }
     worst
@@ -393,6 +417,13 @@ fn rim_flap_oracle_reads_a_tilted_fan_and_not_a_flat_one() {
     let (tilted, rim) = fan(0.2 * 0.09_f64.to_radians().tan());
     let read = worst_rim_flap_tilt_deg(&tilted, &rim);
     assert!(read > 0.08 && read < 0.1, "tilt read {read}");
+    // Split at the middle of its edge to the far corner, with the slope
+    // triangle across that edge, the tilted fan reads the same.
+    let (t, right) = (tilted[0], tilted[1]);
+    let mid = [0, 1, 2].map(|k| 0.5 * (t[1][k] + t[2][k]));
+    let split = vec![[t[0], t[1], mid], [t[0], mid, t[2]], [right[0], right[1], mid], [mid, right[1], right[2]], tilted[2]];
+    let read_split = worst_rim_flap_tilt_deg(&split, &rim);
+    assert!((read_split - read).abs() < 1e-6, "split tilt read {read_split}, unsplit {read}");
 }
 
 /// Schependomlaan window opening — same strict assertion, SKIP-IF-ABSENT. Models a

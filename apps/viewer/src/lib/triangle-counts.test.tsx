@@ -63,7 +63,7 @@ it('keeps partial geometry unavailable in inspector and list output until explic
     { label: 'explicit geometry outranks old complete load', flags: { loadState: 'complete', geometryLoadState: 'streaming' }, count: null },
     { label: 'geometry failure is not a completed count', flags: { loadState: 'complete', geometryLoadState: 'error' }, count: null },
     { label: 'completed geometry can precede metadata', flags: { loadState: 'hydrating-metadata', geometryLoadState: 'complete' }, count: 1 },
-    { label: 'explicit legacy load pending', flags: { loadState: 'loading-geometry' }, count: null },
+    { label: 'explicit legacy load pending', flags: { loadState: 'streaming-geometry' }, count: null },
     { label: 'explicit legacy load complete', flags: { loadState: 'complete' }, count: 1 },
     { label: 'legacy geometry-only compatibility', flags: {}, count: 1 },
     { label: 'cache geometry not restored yet', flags: { geometryLoadState: 'complete', geometryRestorePending: true }, count: null },

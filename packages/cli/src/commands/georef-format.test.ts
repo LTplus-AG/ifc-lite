@@ -20,4 +20,9 @@ describe('verifyWritten compares the unit, not only its name', () => {
   it('a resolved unit passes', () => {
     expect(verifyWritten(state({ MapUnit: 'FOOT' }), state({ MapUnit: 'FOOT', mapUnitResolved: true }), {} as never).filter((m) => /MapUnit/.test(m))).toEqual([]);
   });
+
+  it('a removal that leaves nothing to read is a success, not "could not be read back"', () => {
+    const empty = { hasGeoreference: false, ProjectedCRS: null, MapConversion: null, RigidOperation: null } as unknown as GeoreferencingState;
+    expect(verifyWritten(empty, empty, null)).toEqual([]);
+  });
 });

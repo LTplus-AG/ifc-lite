@@ -60,7 +60,8 @@ export class GeoreferencingSession {
 
   /** The effective georeferencing: this session's latest write, or the source minus its deletions. */
   get(): GeoreferencingState {
-    const state = this.read();
+    // A snapshot: the caller may change what it gets without changing the session's own record of its writes.
+    const state = structuredClone(this.read());
     const view = this.deps.view();
     if (!view) return state;
     const { reasons, foreign } = this.trust(state, view);
@@ -130,7 +131,7 @@ export class GeoreferencingSession {
       for (const op of plan.propertySetOps) applyPropertySetOp(draft, op);
       return recordSessionMutation(draft, historyEntity(facts, plan), GEOREF_SESSION_KIND);
     });
-    this.writes.push({ marker: marker.id, pending: plan.georefMutations, state: plan.next });
+    this.writes.push({ marker: marker.id, pending: plan.georefMutations, state: structuredClone(plan.next) });
     return {
       action: plan.action,
       storage: plan.storage,

@@ -219,3 +219,28 @@ describe('F8. stray convention sets never leave a user without a next step', () 
     });
   });
 });
+
+describe('review follow-ups that are small and real', () => {
+  it('a null factor is refused, not replaced by the existing one (IFC4X3)', async () => {
+    const m = await open('IFC4X3', `${BASE}
+#95=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCPROJECTEDCRS('EPSG:2056','d',$,$,$,$,#95);
+#21=IFCMAPCONVERSIONSCALED(#5,#20,1.,2.,3.,$,$,$,0.9,0.8,1.);`);
+    refusal(() => m.bim.georef.update({ MapConversion: { FactorX: null as never } }));
+  });
+  it('sets recreated through the property API after an empty remove() are read back (IFC2X3)', async () => {
+    const m = await open('IFC2X3', `${BASE}\n${sets(100, 1000000)}\n${attach(100, 6)}`);
+    m.bim.georef.remove();
+    expect(m.bim.georef.get().hasGeoreference).toBe(false);
+    for (const [p, v] of [['Eastings', 5], ['Northings', 6], ['OrthogonalHeight', 7]] as const) {
+      m.view().setProperty(6, 'ePSet_MapConversion', p, v, PropertyValueType.Real, undefined, false, 'IfcReal');
+    }
+    await trueOrUntrusted(m.bim);
+  });
+  it('the state a write returns is a snapshot: changing it does not change later get()', async () => {
+    const m = await open('IFC4', BASE);
+    const result = m.bim.georef.set(SET);
+    (result.state.MapConversion as unknown as { Eastings: number }).Eastings = 99;
+    expect(m.bim.georef.get().MapConversion?.Eastings).toBe(2600000);
+  });
+});

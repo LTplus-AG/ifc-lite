@@ -78,13 +78,14 @@ function close(a: number, b: number): boolean {
  */
 export function verifyWritten(intended: GeoreferencingState, reread: GeoreferencingState, info: GeoreferenceInfo | null): string[] {
   const out: string[] = [];
-  if (!info) return ['the written file could not be read back'];
   const want = intended.ProjectedCRS;
   const got = reread.ProjectedCRS;
   if (!want && !intended.MapConversion) {
+    // A removal can leave nothing at all for the reader to find (no IfcSite fallback): that is the success.
     if (reread.MapConversion || reread.ProjectedCRS || reread.RigidOperation) out.push('georeferencing is still present after remove');
     return out;
   }
+  if (!info) return ['the written file could not be read back'];
   if (want) {
     if (!got) out.push('no CRS was read back');
     else for (const key of CRS_KEYS) {

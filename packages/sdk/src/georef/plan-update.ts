@@ -129,7 +129,7 @@ export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): 
       );
     }
     const factors = resolveFactors(
-      { FactorX: (mcIn.FactorX ?? curMc?.FactorX) as number, FactorY: (mcIn.FactorY ?? curMc?.FactorY) as number, FactorZ: (mcIn.FactorZ ?? curMc?.FactorZ) as number },
+      { FactorX: (mcIn.FactorX === undefined ? curMc?.FactorX : mcIn.FactorX) as number, FactorY: (mcIn.FactorY === undefined ? curMc?.FactorY : mcIn.FactorY) as number, FactorZ: (mcIn.FactorZ === undefined ? curMc?.FactorZ : mcIn.FactorZ) as number },
       ctx.facts.fileSchema,
       ctx.facts.supportsScaled && storage === 'entities',
     );

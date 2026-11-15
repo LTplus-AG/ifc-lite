@@ -1,0 +1,13 @@
+diff --git a/packages/flood-check/src/check/outcome.ts b/packages/flood-check/src/check/outcome.ts
+index 3685baf..de08c2e 100644
+--- a/packages/flood-check/src/check/outcome.ts
++++ b/packages/flood-check/src/check/outcome.ts
+@@ -60,7 +60,7 @@ export function compareLevel(level: number, terrain: number, cls: HazardClassDef
+   const aboveLower = level - lower;
+   const aboveUpper = upper === null ? null : level - upper;
+   let outcome: LevelComparison['outcome'];
+-  if (level < lower) outcome = 'exposed';
++  if (level <= lower) outcome = 'exposed';
+   else if (upper === null) outcome = 'open-ended-class';
+   else if (level > upper + margin) outcome = 'clear';
+   else outcome = 'within-class-range';

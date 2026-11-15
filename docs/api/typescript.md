@@ -51,6 +51,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/bcf-api`](https://www.npmjs.com/package/@ifc-lite/bcf-api) | BCF API (OpenCDE) REST client for connecting to BCF servers |
 | [`@ifc-lite/charts`](https://www.npmjs.com/package/@ifc-lite/charts) | Headless chart data binding for IFC-Lite: aggregate model rows into buckets that keep their element ids, build ECharts options, render SVG |
 | [`@ifc-lite/documents-api`](https://www.npmjs.com/package/@ifc-lite/documents-api) | OpenCDE Documents API 1.0 client: select, download, query and upload documents against a buildingSMART Documents API server |
+| [`@ifc-lite/flood-check`](https://www.npmjs.com/package/@ifc-lite/flood-check) | Headless check of a georeferenced building model against a surface-runoff hazard map (Swiss BAFU provider included) |
 | [`@ifc-lite/flow`](https://www.npmjs.com/package/@ifc-lite/flow) | Keyed-data graph runtime for BIM workflows: typed ports, item/list/group lifting, memoised evaluation, and element tracking for re-runnable graphs |
 | [`@ifc-lite/flow-nodes`](https://www.npmjs.com/package/@ifc-lite/flow-nodes) | Standard node library for @ifc-lite/flow over the ifc-lite SDK: model reads and writes, tables, viewer, and a sandboxed Script node |
 | [`@ifc-lite/ids-agent`](https://www.npmjs.com/package/@ifc-lite/ids-agent) | Headless IDS authoring agent: a tool-calling loop over the IDS Studio op vocabulary, grounded by the gate, producing reviewable proposals |

@@ -1,0 +1,178 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * End to end: parse → extract facts → fetch (stubbed) → check → property sets.
+ * No live network: the BAFU provider is fed a PNG rendered from a known
+ * hazard layout, and terrain comes from a stub grid.
+ */
+
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { IfcParser } from '@ifc-lite/parser';
+import { describe, expect, it } from 'vitest';
+import { BAFU_CLASSES } from '../src/bafu/dataset.js';
+import { createBafuRunoffProvider } from '../src/bafu/provider.js';
+import { runFloodCheck } from '../src/check/run.js';
+import { FloodCheckRefusal } from '../src/errors.js';
+import { extractModelFacts } from '../src/model/extract.js';
+import { ELEMENT_PSET, SITE_PSET, toPropertySets } from '../src/psets.js';
+import type { HazardProvider, MapBBox, MapPoint, TerrainSource } from '../src/types.js';
+import { CODE, rgbaPng, syntheticRaster } from './helpers.js';
+import { ORIGIN, ROTATION_DEG, parseStep, syntheticHouse } from './synthetic-model.js';
+
+const VIOLET = [223, 115, 255, 255];
+const PURPLE = [132, 0, 168, 255];
+const CLEAR = [0, 0, 0, 0];
+
+function toLocal(p: MapPoint): MapPoint {
+  const a = (-ROTATION_DEG * Math.PI) / 180;
+  const dx = p.x - ORIGIN.e;
+  const dy = p.y - ORIGIN.n;
+  return { x: dx * Math.cos(a) - dy * Math.sin(a), y: dx * Math.sin(a) + dy * Math.cos(a) };
+}
+
+/** A fake wms.geo.admin.ch: south of the house 0.1–0.25 m, east of it > 0.25 m, elsewhere nothing. */
+function fakeWms(): { fetchImpl: typeof fetch; urls: string[] } {
+  const urls: string[] = [];
+  const fetchImpl = (async (input: string) => {
+    urls.push(String(input));
+    const q = new URL(String(input)).searchParams;
+    const [minX, minY, maxX, maxY] = q.get('BBOX')!.split(',').map(Number);
+    const w = Number(q.get('WIDTH'));
+    const h = Number(q.get('HEIGHT'));
+    const cell = (maxX - minX) / w;
+    const png = rgbaPng(w, h, (col, row) => {
+      const local = toLocal({ x: minX + (col + 0.5) * cell, y: maxY - (row + 0.5) * cell });
+      if (local.x > 20) return PURPLE;
+      if (local.y < 0) return VIOLET;
+      return CLEAR;
+    });
+    expect(minY).toBeLessThan(maxY);
+    return new Response(new Blob([png as BlobPart]), { headers: { 'content-type': 'image/png' } });
+  }) as unknown as typeof fetch;
+  return { fetchImpl, urls };
+}
+
+function flatGrid(height: number, verticalReference: string, crs: string): TerrainSource & { boxes: MapBBox[] } {
+  const boxes: MapBBox[] = [];
+  return {
+    crs,
+    verticalReference,
+    boxes,
+    async grid(bbox, { resolution }) {
+      boxes.push(bbox);
+      const width = Math.ceil((bbox.maxX - bbox.minX) / resolution);
+      const rows = Math.ceil((bbox.maxY - bbox.minY) / resolution);
+      return {
+        crs,
+        verticalReference,
+        width,
+        height: rows,
+        cellSize: resolution,
+        origin: { x: bbox.minX, y: bbox.maxY },
+        heights: new Float32Array(width * rows).fill(height),
+      };
+    },
+  };
+}
+
+describe('synthetic EPSG:2056 house through the BAFU provider', () => {
+  it('finds exposed, undecidable and unaffected elements with the numbers and provenance', async () => {
+    const store = await parseStep(syntheticHouse({ verticalDatum: 'LN02' }));
+    const facts = extractModelFacts(store, { expectedCrs: 'EPSG:2056' });
+    const { fetchImpl, urls } = fakeWms();
+    const provider = createBafuRunoffProvider({ fetch: fetchImpl, now: () => new Date('2026-11-15T11:00:00Z') });
+    const terrain = flatGrid(499.95, 'LN02', 'EPSG:2056');
+    const result = await runFloodCheck(facts, provider, terrain);
+
+    expect(urls).toHaveLength(1);
+    expect(terrain.boxes).toHaveLength(1);
+    const byName = Object.fromEntries(result.results.map((r) => [r.candidate.name, r]));
+    // Door threshold 500.00 vs class (0.1, 0.25] on terrain 499.95: surface > 500.05 → exposed.
+    expect(byName['Haustür']).toMatchObject({ outcome: 'exposed', hazardClass: { id: 'depth-0.1-0.25' } });
+    expect(byName['Haustür'].terrainHeight).toBeCloseTo(499.95, 4);
+    expect(byName['Haustür'].comparison?.levelAboveSurfaceLowerBound).toBeCloseTo(-0.05, 4);
+    // Opening sill 500.30: between 500.05 and 500.70 (500.20 + 0.5 margin) → the class cannot decide.
+    expect(byName['Lüftung'].outcome).toBe('within-class-range');
+    expect(byName['Kellerfenster'].outcome).toBe('exposed');
+    expect(byName['Lichtschacht 1'].outcome).toBe('exposed');
+    expect(byName['Heizkessel']).toMatchObject({ outcome: 'exposed', anchorBasis: 'nearest-outline-point' });
+    // West of the house nothing is mapped.
+    expect(byName['Hauptverteilung'].outcome).toBe('no-runoff-mapped');
+    // External stair east of the house, class > 0.25 m: its upper-estimate top edge 500.00 <= 500.20 → exposed.
+    expect(byName['Kellertreppe aussen']).toMatchObject({ outcome: 'exposed', hazardClass: { id: 'depth-gt-0.25' } });
+    expect(result.reachableBelowGround.map((r) => r.space.name)).toEqual(['Keller']);
+    expect(result.verticalDatum.basis).toBe('stated-and-equal');
+    expect(result.provenance.retrievedAt).toBe('2026-11-15T11:00:00.000Z');
+
+    const psets = toPropertySets(result, BAFU_CLASSES);
+    expect(psets.site.Name).toBe(SITE_PSET);
+    expect(psets.elements).toHaveLength(result.results.length);
+    const doorSet = psets.elements.find((e) => e.expressId === byName['Haustür'].candidate.expressId)!.propertySet;
+    expect(doorSet.Name).toBe(ELEMENT_PSET);
+    expect(Object.fromEntries(doorSet.Properties.map((p) => [p.Name, p.NominalValue]))).toMatchObject({
+      Outcome: 'exposed',
+      HazardClass: 'depth-0.1-0.25',
+      ElementLevel: 500,
+      LevelBasis: 'placement-origin',
+    });
+  });
+});
+
+describe('repo fixtures', () => {
+  const sample = fileURLToPath(new URL('../../../apps/viewer/public/samples/building-architecture.ifc', import.meta.url));
+
+  async function parseFile(path: string) {
+    const b = readFileSync(path);
+    return new IfcParser().parseColumnar(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer);
+  }
+
+  it('refuses the committed UTM 60S sample against the Swiss map, both at extraction and at run time', async () => {
+    const store = await parseFile(sample);
+    await expect(async () => extractModelFacts(store, { expectedCrs: 'EPSG:2056' })).rejects.toMatchObject({ code: 'crs-mismatch' });
+    const facts = extractModelFacts(store);
+    expect(facts.georeference.crs).toBe('EPSG:32760');
+    const provider = createBafuRunoffProvider({ fetch: (() => { throw new Error('must not fetch'); }) as unknown as typeof fetch });
+    await expect(runFloodCheck(facts, provider, flatGrid(0, 'LN02', 'EPSG:2056'))).rejects.toBeInstanceOf(FloodCheckRefusal);
+  });
+
+  const miniBim = fileURLToPath(new URL('../../../tests/models/georeferencer/MiniBIM-3.1-DO_01_VORM.ifc', import.meta.url));
+  it.skipIf(!existsSync(miniBim))('runs a Revit-exported model (MiniBIM, EPSG:28992) end to end with a stub provider in its CRS (fixture: pnpm fixtures)', async () => {
+    const store = await parseFile(miniBim);
+    const facts = extractModelFacts(store);
+    expect(facts.georeference).toMatchObject({ crs: 'EPSG:28992', orthogonalHeight: 3.5, verticalDatum: null });
+    expect(facts.groundStorey).toMatchObject({ level: 3.5, basis: 'project-zero' });
+    expect(facts.footprint.source).toBe('slab-outline');
+    const count = (cat: string) => facts.candidates.filter((c) => c.category === cat).length;
+    // Ten ground-floor doors sit in walls with Pset_WallCommon.IsExternal = TRUE (the doors themselves say FALSE).
+    expect(count('door')).toBe(10);
+    expect(count('wall-opening')).toBe(15);
+    expect(count('slab-opening')).toBe(4);
+
+    // The Swiss provider refuses this model outright.
+    const bafu = createBafuRunoffProvider({ fetch: (() => { throw new Error('must not fetch'); }) as unknown as typeof fetch });
+    await expect(runFloodCheck(facts, bafu, flatGrid(3.4, 'NAP', 'EPSG:28992'))).rejects.toMatchObject({ code: 'crs-mismatch' });
+
+    // A stub provider in the model's own CRS: 0–0.1 m everywhere outside the building.
+    const stub: HazardProvider = {
+      id: 'stub',
+      crs: 'EPSG:28992',
+      classes: BAFU_CLASSES,
+      extent: { minX: 0, minY: 300_000, maxX: 300_000, maxY: 650_000 },
+      modelCellSize: 1,
+      async fetchRaster({ bbox }) {
+        const w = Math.ceil(bbox.maxX - bbox.minX);
+        const h = Math.ceil(bbox.maxY - bbox.minY);
+        return syntheticRaster(bbox.minX, bbox.minY, w, h, 1, () => CODE['depth-0-0.1'], 'EPSG:28992');
+      },
+    };
+    const result = await runFloodCheck(facts, stub, flatGrid(3.4, 'NAP', 'EPSG:28992'));
+    expect(result.results).toHaveLength(facts.candidates.length);
+    // Thresholds at 3.50 vs class (0, 0.1] on terrain 3.40: 3.40 < 3.50 <= 3.50 + 0.5 → undecidable from the class.
+    const doors = result.results.filter((r) => r.candidate.category === 'door');
+    expect(new Set(doors.map((r) => r.outcome))).toEqual(new Set(['within-class-range']));
+    expect(result.verticalDatum.basis).toBe('not-stated-assumed-equal');
+  });
+});

@@ -1,0 +1,76 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Identifying a model's CRS and vertical datum well enough to compare them
+ * with a data source's, and nothing more: no reprojection. A CRS that cannot
+ * be pinned to an EPSG code is "unrecognised", and the check refuses.
+ */
+
+import type { ProjectedCRS } from '@ifc-lite/parser';
+
+/** Names that unambiguously denote one EPSG CRS without saying "EPSG". */
+const NAMED_CRS: ReadonlyArray<[RegExp, number]> = [
+  [/^\s*(CH1903\+\s*\/\s*)?LV95\s*$/i, 2056],
+  [/^\s*CH1903\+\s*\/\s*LV95\b/i, 2056],
+];
+
+/** `EPSG:2056` for `"EPSG:2056"`, `"epsg 2056"`, `"urn:ogc:def:crs:EPSG::2056"`; null otherwise. */
+export function normalizeCrs(value: string | undefined | null): string | null {
+  if (!value) return null;
+  const m = /EPSG\s*:{0,2}\s*(\d{4,6})\b/i.exec(value);
+  if (m) return `EPSG:${Number(m[1])}`;
+  for (const [pattern, code] of NAMED_CRS) if (pattern.test(value)) return `EPSG:${code}`;
+  return null;
+}
+
+export function sameCrs(a: string, b: string): boolean {
+  const na = normalizeCrs(a);
+  return na !== null && na === normalizeCrs(b);
+}
+
+/** The EPSG code a WKT's top-level ID/AUTHORITY names (the last one in the string). */
+function epsgFromWkt(wkt: string): string | null {
+  const ids = [...wkt.matchAll(/(?:ID|AUTHORITY)\s*\[\s*"EPSG"\s*,\s*"?(\d{4,6})"?\s*\]/gi)];
+  if (ids.length === 0) return null;
+  return `EPSG:${Number(ids[ids.length - 1][1])}`;
+}
+
+/**
+ * The EPSG identifier of a model's projected CRS, from its Name, its WKT, or
+ * its Description; null when none of them names one unambiguously.
+ */
+export function projectedCrsIdentifier(crs: ProjectedCRS): string | null {
+  return (
+    normalizeCrs(crs.name) ??
+    (crs.wellKnownText ? epsgFromWkt(crs.wellKnownText) : null) ??
+    normalizeCrs(crs.description)
+  );
+}
+
+/** Spellings of the same vertical reference frame. */
+const VERTICAL_ALIASES: ReadonlyArray<readonly string[]> = [
+  ['LN02', 'EPSG:5728', 'LANDESNIVELLEMENT1902', 'SWISSLN02', 'LN02HEIGHT'],
+  ['LHN95', 'EPSG:5729', 'LANDESHOEHENNETZ1995', 'LANDESHÖHENNETZ1995', 'SWISSLHN95', 'LHN95HEIGHT'],
+  ['NAP', 'EPSG:5709', 'NORMAALAMSTERDAMSPEIL'],
+  ['DHHN2016', 'EPSG:7837'],
+  ['EVRF2007', 'EPSG:5621'],
+];
+
+function squash(value: string): string {
+  const epsg = /EPSG\s*:{0,2}\s*(\d{4,6})/i.exec(value);
+  if (epsg) return `EPSG:${Number(epsg[1])}`;
+  return value.toUpperCase().replace(/[\s_\-./()]+/g, '');
+}
+
+/** A canonical key for a vertical datum name, so `"LN 02"` and `"EPSG:5728"` compare equal. */
+export function normalizeVerticalDatum(value: string): string {
+  const key = squash(value);
+  for (const group of VERTICAL_ALIASES) if (group.includes(key)) return group[0];
+  return key;
+}
+
+export function sameVerticalDatum(a: string, b: string): boolean {
+  return normalizeVerticalDatum(a) === normalizeVerticalDatum(b);
+}

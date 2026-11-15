@@ -25,6 +25,8 @@ export type CandidateCategory =
  * - `opening-body-bottom`: the lowest point of an opening's extruded body (its
  *   sill): for an unfilled opening, and for a door or window whose filled
  *   opening reaches lower than its placement origin.
+ * - `body-bottom`: the lowest point of the element's own body (a door, window
+ *   or piece of equipment whose body reaches below its placement origin).
  * - `host-slab-top`: the placement of the slab an opening cuts.
  * - `ground-storey-or-terrain`: external stairs and ramps, whose real entry is
  *   at the terrain. `level` holds the ground storey level; the check compares
@@ -32,7 +34,7 @@ export type CandidateCategory =
  *   class there makes the element `exposed`. An upper estimate.
  * - `given`: supplied by the caller.
  */
-export type LevelBasis = 'placement-origin' | 'opening-body-bottom' | 'host-slab-top' | 'ground-storey-or-terrain' | 'given';
+export type LevelBasis = 'placement-origin' | 'body-bottom' | 'opening-body-bottom' | 'host-slab-top' | 'ground-storey-or-terrain' | 'given';
 
 /** One element where water could enter or do damage. */
 export interface CandidateFact {

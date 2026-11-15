@@ -3,9 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Shared reading for candidate selection (`candidates.ts`): placements,
- * opening bodies, façade tests and levels. None of these records a skip: the
- * rules in `candidate-rules.ts` return one verdict per element.
+ * Shared helpers for candidate selection: properties, façade tests, scope and
+ * the candidate record. Positions and levels come only from `locate.ts`.
  */
 
 import { RelationshipType } from '@ifc-lite/data';
@@ -13,7 +12,6 @@ import { signedDistance } from '../geom.js';
 import type { MapPoint } from '../types.js';
 import type { CandidateCategory, CandidateFact, LevelBasis } from './facts.js';
 import type { ModelGeoreference } from './georef.js';
-import { extrusionBody, toWorld } from './outline.js';
 import type { PlacementResolver } from './placement.js';
 import { asEnum, asString, type DecodedEntity, type ModelReader } from './reader.js';
 
@@ -64,47 +62,6 @@ export function predefinedType(reader: ModelReader, entity: DecodedEntity): stri
   }
   // IFC2X3 transport elements carry the kind in OperationType.
   return asEnum(reader.attr(entity, 'OperationType')) ?? own;
-}
-
-/** Map position and absolute level of a product's placement origin; null when unplaced. */
-export function placed(ctx: CandidateContext, entity: DecodedEntity): { position: MapPoint; level: number } | null {
-  const frame = ctx.placements.ofProduct(entity.expressId);
-  if (!frame) return null;
-  const [x, y, z] = ctx.georef.toMap(frame.origin);
-  return { position: { x, y }, level: z };
-}
-
-export interface OpeningExtent {
-  position: MapPoint;
-  level: number;
-  /** The level and position come from the body's extrusion. */
-  fromBody: boolean;
-  /** Some body item could not be read, so the hole may reach lower than `level`. */
-  partial: boolean;
-}
-
-/**
- * An opening's hole: plan centre and lowest point of its extrusion when
- * readable, else its placement origin. Null when unplaced.
- */
-export function openingExtent(ctx: CandidateContext, entity: DecodedEntity): OpeningExtent | null {
-  const frame = ctx.placements.ofProduct(entity.expressId);
-  if (!frame) return null;
-  const body = extrusionBody(ctx.reader, entity.expressId);
-  if (!body) {
-    const [x, y, z] = ctx.georef.toMap(frame.origin);
-    return { position: { x, y }, level: z, fromBody: false, partial: false };
-  }
-  const world = toWorld(frame, body.corners).map((p) => ctx.georef.toMap(p));
-  let sx = 0;
-  let sy = 0;
-  let minZ = Infinity;
-  for (const [x, y, z] of world) {
-    sx += x;
-    sy += y;
-    minZ = Math.min(minZ, z);
-  }
-  return { position: { x: sx / world.length, y: sy / world.length }, level: minZ, fromBody: true, partial: !body.complete };
 }
 
 export function base(
@@ -168,43 +125,4 @@ export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host:
   return Number.isFinite(d) && Math.abs(d) <= ctx.boundaryTolerance
     ? `within ${ctx.boundaryTolerance} m of the footprint outline (IsExternal not stated)`
     : { not: `not in the façade: IsExternal not stated and ${Math.abs(d).toFixed(2)} m from the footprint outline (more than ${ctx.boundaryTolerance} m)` };
-}
-
-/** Placement and opening-body positions or levels further apart than these get a note. */
-const LEVEL_DISAGREEMENT = 0.3;
-const POSITION_DISAGREEMENT = 1;
-
-export interface FillingAt {
-  position: MapPoint;
-  level: number;
-  basis: LevelBasis;
-  /** The opening's body is only partly readable, so its hole may reach lower: the level can flag but never clear. */
-  upperEstimate: boolean;
-  notes: string[];
-}
-
-/**
- * A door's or window's position and level from its placement and the opening
- * it fills: the hole's plan centre when the body is readable (a filling may be
- * placed at its wall's origin), and the lower of the placement origin and the
- * bottom of the hole.
- */
-export function fillingAt(ctx: CandidateContext, at: { position: MapPoint; level: number }, opening: DecodedEntity | null): FillingAt {
-  const body = opening ? openingExtent(ctx, opening) : null;
-  if (!body || !body.fromBody) return { position: at.position, level: at.level, basis: 'placement-origin', upperEstimate: false, notes: [] };
-  const notes: string[] = [];
-  const apart = Math.hypot(body.position.x - at.position.x, body.position.y - at.position.y);
-  if (apart > POSITION_DISAGREEMENT) {
-    notes.push(`placed ${apart.toFixed(2)} m from the hole it fills (for example at its wall's origin); the hole's position is used`);
-  }
-  const diff = at.level - body.level;
-  if (Math.abs(diff) > LEVEL_DISAGREEMENT) {
-    notes.push(
-      `placement origin ${at.level.toFixed(3)} m and the bottom of the filled opening ${body.level.toFixed(3)} m differ by ` +
-        `${Math.abs(diff).toFixed(2)} m (some tools place windows at the head or centre); the lower is used`,
-    );
-  }
-  if (body.partial) notes.push('part of the filled opening\'s body cannot be read, so the hole may reach lower: the level is an upper estimate');
-  const lower = body.level < at.level;
-  return { position: body.position, level: lower ? body.level : at.level, basis: lower ? 'opening-body-bottom' : 'placement-origin', upperEstimate: body.partial, notes };
 }

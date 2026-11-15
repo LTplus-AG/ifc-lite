@@ -236,13 +236,29 @@ entities, properties and containment from the parsed store. No meshing.
 
   | Category | Selected when | Level |
   | --- | --- | --- |
-  | `door`, `window` | `IsExternal` on the element or its host wall (an external host wins over the element's own `false`); with neither stated, within 1 m of the outline (kept when no outline can be read at all) | the lower of the placement origin (threshold / sill) and the bottom of the filled opening's body, with a note when they differ by more than 0.3 m (some tools place windows at the head or centre); an **upper estimate** when part of that body cannot be read. Position: the hole's plan centre when its body is readable (a filling may be placed at its wall's origin), with a note when more than 1 m from the placement |
+  | `door`, `window` | `IsExternal` on the element or its host wall (an external host wins over the element's own `false`); with neither stated, within 1 m of the outline (kept when no outline can be read at all) | the lowest of the placement origin (threshold / sill, by the schema), its own body's bottom and the filled opening's body's bottom, with a note when placement and hole differ by more than 0.3 m (some tools place windows at the head or centre); at the hole's plan centre when readable (a filling may be placed at its wall's origin) |
   | `basement-window` | such a window below the ground storey | as `window` |
-  | `wall-opening` | unfilled opening (not RECESS) in an external wall | lowest point of its extruded body |
+  | `wall-opening` | unfilled opening (not RECESS) in an external wall | lowest point of its body, at its plan centre; with no body, its placement as an upper estimate |
   | `slab-opening` | unfilled opening in a slab at or below the ground storey | the slab's placement |
-  | `light-well` | proxy / chamber / civil element / assembly / opening named Lichtschacht, Kellerschacht, light well, saut-de-loup, bocca di lupo, … | the lower of the placement origin and its body's bottom (an upper estimate when the body is only partly readable), at the body's plan centre when readable |
+  | `light-well` | proxy / chamber / civil element / assembly / opening named Lichtschacht, Kellerschacht, light well, saut-de-loup, bocca di lupo, … | the lower of the placement origin and its body's bottom, at the body's plan centre; with no body, its placement as an upper estimate (a light well's placement has no defined height) |
   | `stair`, `ramp` | outside the footprint — by placement, by any body corner, or, with no fully readable body, by a placement within 1 m of the outline (even when it states `IsExternal = false`, often an authoring default) — or `IsExternal`; skipped only when a readable body lies wholly at or above the ground storey (1 cm tolerance; it leads up); kept when the body cannot be read, or only partly (an unreadable item, a Boolean UNION), since the placement origin may be at the top | `ground-storey-or-terrain`: the check compares the **lower of the ground storey level and the terrain** at each sample, so any mapped depth class there makes it `exposed`; never favourable |
   | `equipment` | in the ground storey or below. IFC4 / IFC4X3 occurrences: `IfcElectricDistributionBoard`, `IfcTransformer`, `IfcElectricGenerator`, `IfcElectricFlowStorageDevice` (batteries), `IfcSwitchingDevice`, `IfcProtectiveDevice`, `IfcCommunicationsAppliance`, `IfcBoiler`, `IfcChiller`, `IfcUnitaryEquipment` (heat pumps), `IfcPump`, `IfcTank`, `IfcTransportElement` ELEVATOR / LIFTINGGEAR (or no stated kind). Every schema, and the only way in IFC2X3: `IfcEnergyConversionDevice`, `IfcFlowMovingDevice`, `IfcFlowStorageDevice`, `IfcFlowController` or `IfcFlowTerminal` typed by `IfcTransformerType`, `IfcElectricGeneratorType`, `IfcElectricFlowStorageDeviceType`, `IfcSwitchingDeviceType`, `IfcProtectiveDeviceType`, `IfcBoilerType`, `IfcChillerType`, `IfcUnitaryEquipmentType`, `IfcPumpType`, `IfcTankType` (and, IFC4 on, `IfcCommunicationsApplianceType`, `IfcElectricDistributionBoardType`). IFC2X3 also has `IfcElectricDistributionPoint`; it has no communications-appliance class or type | placement origin (base) |
+
+  **Level, position and their quality** come from one function
+  (`locate` in `src/model/locate.ts`), which also holds the only reader of
+  placements and bodies in candidate selection. A body is read as a count of
+  solid items and how many of them could be read, so "no body", "partly
+  readable" and "wholly unreadable" stay apart. The level is `exact` only
+  when every source that could lower it or move the position was readable
+  and used. It is an **upper estimate** — it can flag but never clear
+  (`level-upper-estimate`) — whenever the element's own body or the body of
+  the opening it fills exists but cannot be read, in whole or in part (a
+  Brep, an `IfcMappedItem`, a Boolean UNION), or is absent where it alone
+  defines the level (an opening without a body; a light well without one).
+  Stairs and ramps are always upper estimates (entry at the terrain). An
+  element with no readable placement is not placed: it is skipped and named
+  in a warning. A door or window placed by its placement alone stays exact,
+  since the schema places it at its threshold or sill.
 
   Doors, windows and openings more than `aboveGroundScope` (3 m) above the
   ground storey are out of scope, judged by their corrected level (a window

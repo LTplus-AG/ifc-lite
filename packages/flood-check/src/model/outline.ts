@@ -196,30 +196,43 @@ export function toWorld(frame: Frame, points: readonly Vec3[]): Vec3[] {
   return points.map((p) => applyFrame(frame, p));
 }
 
-/**
- * Corner points of every extruded `Body` item of a product, top and bottom,
- * in the product's object coordinates. Null when no item is a readable
- * extrusion. Used for openings, whose placement often sits at the host's
- * origin while the hole itself is placed by its extrusion.
- */
-export function extrusionCorners(reader: ModelReader, productId: number): Vec3[] | null {
-  return extrusionBody(reader, productId)?.corners ?? null;
+/** Representations that carry no solid: they say nothing about where a body ends. */
+const NON_SOLID = new Set(['Axis', 'FootPrint', 'Profile', 'Annotation', 'Reference', 'CoG', 'Clearance', 'Lighting', 'Box', 'Surface']);
+
+/** What could be read of a product's body. */
+export interface BodyReading {
+  /** Items of its solid representations (`Body`, or a representation with no identifier). 0: it has no body. */
+  items: number;
+  /** Of those, the items read as extrusions. */
+  readable: number;
+  /** Corners of the readable items, top and bottom, in the product's object coordinates. */
+  corners: Vec3[];
 }
 
 /**
- * {@link extrusionCorners} plus whether EVERY `Body` item was a readable
- * extrusion. A body with an unreadable item (a Brep, a UNION) may reach lower
- * than the corners show, so only a complete body can prove where it ends.
+ * Every solid item of a product, counted whether or not it can be read, so
+ * "no body" (`items === 0`), "partly readable" and "wholly unreadable"
+ * (`items > 0`, `readable === 0`) stay apart. A Boolean UNION is unreadable
+ * (only its first operand would be read); a DIFFERENCE or INTERSECTION is
+ * bounded by its first operand.
  */
-export function extrusionBody(reader: ModelReader, productId: number): { corners: Vec3[]; complete: boolean } | null {
-  const out: Vec3[] = [];
-  let complete = true;
-  for (const item of representationItems(reader, productId, 'Body')) {
-    const before = out.length;
-    readExtrusion(reader, item, out);
-    if (out.length === before) complete = false;
+export function readBody(reader: ModelReader, productId: number): BodyReading {
+  const product = reader.entity(productId);
+  const shape = reader.entity(asRef(reader.attr(product, 'Representation')));
+  const out: BodyReading = { items: 0, readable: 0, corners: [] };
+  if (!shape) return out;
+  for (const repId of asRefList(reader.attr(shape, 'Representations'))) {
+    const rep = reader.entity(repId);
+    const identifier = rep ? asString(reader.attr(rep, 'RepresentationIdentifier')) : null;
+    if (!rep || (identifier !== null && NON_SOLID.has(identifier))) continue;
+    for (const item of asRefList(reader.attr(rep, 'Items'))) {
+      out.items++;
+      const before = out.corners.length;
+      readExtrusion(reader, item, out.corners);
+      if (out.corners.length > before) out.readable++;
+    }
   }
-  return out.length > 0 ? { corners: out, complete } : null;
+  return out;
 }
 
 function readExtrusion(reader: ModelReader, item: number, out: Vec3[]): void {

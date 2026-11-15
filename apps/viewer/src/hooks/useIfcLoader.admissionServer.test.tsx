@@ -44,6 +44,8 @@ for (const archive of [false, true]) for (const memory of [8, 4]) {
     Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: memory });
     const bytes = archive ? zipSync({ 'model.ifc': strToU8(step) }) : strToU8(step);
     const file = new File([bytes as BlobPart], archive ? 'large.ifcZIP' : 'large.ifc');
+    const content = new Blob([bytes as BlobPart]);
+    Object.defineProperty(file, 'slice', { value: content.slice.bind(content) });
     Object.defineProperty(file, 'size', { value: 1.26e9 });
     let reads = 0;
     const read = file.arrayBuffer.bind(file), stream = file.stream.bind(file);

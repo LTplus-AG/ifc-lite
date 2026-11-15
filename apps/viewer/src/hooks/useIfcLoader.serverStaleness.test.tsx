@@ -147,6 +147,9 @@ for (const archive of [false, true]) for (const scenario of ['unavailable', 'ine
     const source = archive
       ? new File([zipSync({ 'model.ifc': strToU8('ISO-10303-21;\nHEADER;\nFILE_SCHEMA((\'IFC4\'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;') }) as BlobPart], 'oversized-server.ifcZIP')
       : file('oversized-server.ifc');
+    // Keep the real ZIP metadata slices while reporting an over-budget model size.
+    const content = new Blob([source]);
+    Object.defineProperty(source, 'slice', { value: content.slice.bind(content) });
     Object.defineProperty(source, 'size', { value: 1.26e9 });
     let fullReads = 0, largeAllocations = 0, attempts = 0;
     Object.defineProperty(source, 'arrayBuffer', { value: async () => {

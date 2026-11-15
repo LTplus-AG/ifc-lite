@@ -225,3 +225,17 @@ it('#10264 a server stream owns replacement only when geometry arrives and a lat
     if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
   }
 });
+
+it('#10264 ZIP extraction cannot exceed its admitted model size when the directory lies', async () => {
+  const bytes = zipSync({ 'model.ifc': strToU8('ISO-10303-21;'.repeat(20000)) });
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const directory = view.getUint32(bytes.length - 22 + 16, true);
+  view.setUint32(directory + 24, 32, true);
+  const errors: string[] = [];
+  await act(async () => {
+    await api!.loadFile(new File([bytes as BlobPart], 'forged-size.ifcZIP'), undefined, { onLoadError: message => errors.push(message) });
+  });
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /extracted entry.*exceeds.*limit/);
+  assert.equal(engineInits, 0, 'bounded archive extraction stops before WASM');
+});

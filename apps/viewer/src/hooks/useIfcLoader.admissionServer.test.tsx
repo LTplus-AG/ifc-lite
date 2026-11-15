@@ -38,15 +38,22 @@ afterEach(async () => {
   await act(async () => root.unmount()); container.remove(); setGlobalRendererRef({ current: null }); mock.restoreAll();
 });
 
-for (const archive of [false, true]) for (const memory of [8, 4]) {
-  it(`#10264 ${archive ? 'IFC ZIP' : 'STEP'}: server fallback ${memory === 8 ? 'Cancel' : 'refusal'} preserves existing models before acquisition`, async () => {
+for (const kind of ['primary', 'federated'] as const) for (const archive of ['step', 'zip-file', 'zip-expanded'] as const) for (const memory of [8, 4]) {
+  it(`#10264 ${kind} ${archive}: server fallback ${memory === 8 ? 'Cancel' : 'refusal'} preserves existing models before acquisition`, async () => {
     const oldMemory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
     Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: memory });
-    const bytes = archive ? zipSync({ 'model.ifc': strToU8(step) }) : strToU8(step);
-    const file = new File([bytes as BlobPart], archive ? 'large.ifcZIP' : 'large.ifc');
+    const bytes = archive === 'step' ? strToU8(step) : zipSync({ 'model.ifc': strToU8(step) });
+    if (archive === 'zip-expanded') {
+      // A small archive declaring an over-budget model must stop without inflation.
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const directory = view.getUint32(bytes.length - 22 + 16, true);
+      view.setUint32(directory + 24, 1.26e9, true);
+    }
+    const file = new File([bytes as BlobPart], archive === 'step' ? 'large.ifc' : 'large.ifcZIP');
     const content = new Blob([bytes as BlobPart]);
     Object.defineProperty(file, 'slice', { value: content.slice.bind(content) });
-    Object.defineProperty(file, 'size', { value: 1.26e9 });
+    if (archive !== 'zip-expanded') Object.defineProperty(file, 'size', { value: 1.26e9 });
+    else assert.ok(file.size < 4096, 'compressed input itself is well below the warning threshold');
     let reads = 0;
     const read = file.arrayBuffer.bind(file), stream = file.stream.bind(file);
     Object.defineProperty(file, 'arrayBuffer', { value: () => { reads++; return read(); } });
@@ -55,7 +62,8 @@ for (const archive of [false, true]) for (const memory of [8, 4]) {
     const snapshot = { fileSizeMB: 7, totalTriangles: 12 };
     recordModelLoadedSnapshot(snapshot);
     const providerWrites = mock.fn<ReturnType<Renderer['getScene']>['setColdGeometryProvider']>();
-    const scene = { setColdGeometryProvider: providerWrites };
+    const drains = mock.fn(async () => {});
+    const scene = { setColdGeometryProvider: providerWrites, drainColdTier: drains };
     setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer });
     const errors: string[] = [];
     const realShared = globalThis.SharedArrayBuffer;
@@ -64,7 +72,7 @@ for (const archive of [false, true]) for (const memory of [8, 4]) {
       value: function (size: number) { allocations.push(size); return new realShared(Math.min(size, bytes.byteLength)); } });
     try {
       let pending: Promise<void> | undefined;
-      await act(async () => { pending = api.loadFile(file, { kind: 'primary' }, { onLoadError: message => errors.push(message) }); });
+      await act(async () => { pending = api.loadFile(file, { kind }, { onLoadError: message => errors.push(message) }); });
       if (memory === 8) {
         await waitFor(() => !!document.querySelector('[role="alertdialog"]'), 'local memory warning after server failure');
         assert.equal(useViewerStore.getState().models, models, 'opening the warning must not replace existing models');
@@ -77,10 +85,11 @@ for (const archive of [false, true]) for (const memory of [8, 4]) {
       assert.equal(useViewerStore.getState().activeModelId, active);
       assert.equal(getModelLoadedSnapshot(), snapshot, 'Cancel/refusal retains the displayed model telemetry');
       assert.equal(providerWrites.mock.callCount(), 0, 'Cancel/refusal must not invalidate the displayed cold geometry');
+      assert.equal(drains.mock.callCount(), 0, 'Cancel/refusal must not drain the existing cold tier');
       assert.equal(useViewerStore.getState().loading, false);
       if (memory === 4) { assert.equal(errors.length, 1); assert.match(errors[0], /local processing memory budget/); }
       else { assert.equal(errors.length, 0); assert.equal(useViewerStore.getState().error, null); }
-      assert.ok(healthCalls > 0, 'plain STEP exercised the configured unavailable server (later attempts may use its cache)');
+      if (kind === 'primary') assert.ok(healthCalls > 0, 'eligible server was exercised (later attempts may use its health cache)');
     } finally {
       Object.defineProperty(globalThis, 'SharedArrayBuffer', { configurable: true, writable: true, value: realShared });
       if (oldMemory) Object.defineProperty(navigator, 'deviceMemory', oldMemory); else Reflect.deleteProperty(navigator, 'deviceMemory');

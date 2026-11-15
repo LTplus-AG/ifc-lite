@@ -4,7 +4,7 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { zipSync, strToU8 } from 'fflate';
-import { archiveAllowsServer } from './archiveServerAdmission.js';
+import { inspectIfcArchiveAdmission } from './archiveServerAdmission.js';
 
 for (const image of [null, 'textures/wall.png', 'textures/wall.JPG']) {
   it(`#10264 ZIP admission inspects metadata without inflating model or dropping ${image ?? 'a texture-free server route'}`, async () => {
@@ -16,7 +16,7 @@ for (const image of [null, 'textures/wall.png', 'textures/wall.JPG']) {
     Object.defineProperty(file, 'slice', { value: (start?: number, end?: number) => {
       const part = slice(start, end); reads.push(part.size); return part;
     } });
-    assert.equal(await archiveAllowsServer(file), image === null);
+    assert.deepEqual(await inspectIfcArchiveAdmission(file), { modelBytes: entries['model.ifc'].byteLength, allowsServer: image === null });
     assert.equal(reads.length, 2);
     assert.ok(reads[0] <= 65557 && reads[1] <= 1024 * 1024);
   });
@@ -31,6 +31,6 @@ for (const fault of ['truncated', 'oversized-directory', 'zip64', 'multipart', '
     if (fault === 'oversized-directory') view.setUint32(end + 12, 1024 * 1024 + 1, true);
     if (fault === 'zip64') view.setUint32(end + 16, 0xffffffff, true);
     if (fault === 'multipart') view.setUint16(end + 4, 1, true);
-    assert.equal(await archiveAllowsServer(new File([bytes as BlobPart], 'model.ifcZIP')), false);
+    assert.equal(await inspectIfcArchiveAdmission(new File([bytes as BlobPart], 'model.ifcZIP')), null);
   });
 }

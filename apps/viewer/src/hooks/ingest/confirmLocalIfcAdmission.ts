@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { detectFormat } from '@ifc-lite/parser';
 import { headIsZip } from './sourceBuffers';
-import { archiveAllowsServer } from './archiveServerAdmission';
+import { inspectIfcArchiveAdmission } from './archiveServerAdmission';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { resolve as t } from '@/i18n/registry';
 import { inspectLocalIfcAdmission } from './localIfcAdmission';
@@ -60,23 +60,23 @@ export function createLocalIfcLoadAdmission(file: File, options: {
   isCurrent: () => boolean; signal: AbortSignal;
   onCancel: () => void; onFailure: (error: unknown) => void; finish: () => void;
 }) {
-  let server = async () => false;
+  let server: (bytes: number) => Promise<boolean> = async () => false;
   let sourceAllowsServer = true;
-  const admit = createLocalIfcAdmission({ ...options, tryServer: () => sourceAllowsServer ? server() : Promise.resolve(false) });
+  let archiveModelBytes: number | undefined;
+  const admit = createLocalIfcAdmission({ ...options, tryServer: () => sourceAllowsServer ? server(Math.max(file.size, archiveModelBytes ?? 0)) : Promise.resolve(false) });
   return {
     admit,
-    setServer: (attempt: () => Promise<boolean>) => { server = attempt; },
-    preflight: () => {
-      // Ordinary files keep the loader's existing first-read/error lifecycle.
-      // Only a potentially refused or consent-requiring source needs a read
-      // before scene replacement; the header still decides whether it is IFC.
-      const inspectHeader = () => preflightLocalIfcSource(file, { ...options, admit: async (bytes, head) => {
-        // Inspect bounded ZIP metadata, never the compressed model body.
-        sourceAllowsServer = !headIsZip(head) || await archiveAllowsServer(file);
-        return admit(bytes);
-      } });
-      try { return inspectLocalIfcAdmission(file.size) ? inspectHeader() : undefined; }
-      catch (error) { if (error instanceof RangeError) return inspectHeader(); throw error; }
-    },
+    setServer: (attempt: (bytes: number) => Promise<boolean>) => { server = attempt; },
+    archiveModelLimit: () => archiveModelBytes,
+    preflight: () => preflightLocalIfcSource(file, { ...options, admit: async (bytes, head) => {
+      if (headIsZip(head)) {
+        const archive = await inspectIfcArchiveAdmission(file);
+        if (!archive) throw new RangeError('Cannot safely inspect this IFC ZIP model size within the archive metadata limit. Extract the IFC before opening it, or use the native CLI/server.');
+        sourceAllowsServer = archive.allowsServer;
+        archiveModelBytes = archive.modelBytes;
+        bytes = Math.max(bytes, archiveModelBytes);
+      }
+      return admit(bytes);
+    } }),
   };
 }

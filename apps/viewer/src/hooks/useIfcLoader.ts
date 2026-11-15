@@ -294,27 +294,14 @@ export function useIfcLoader() {
       },
       finish: () => { metadataAbort.abort(); releaseCanceller(); } });
 
-    // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
-    // the previous entry-backed provider — a primary load replaces the model,
-    // and a federated add's geometry is not in the primary's cache entry (a
-    // cold restore could not serve it, so the tier must switch off).
-    // loadFromCache re-wires it for v13 primary hits. A FEDERATED add must
-    // first drain existing cold buckets back to warm while the provider still
-    // exists, or the primary's cold chunks would be stranded shells (their
-    // geometry unreachable). Primary loads skip the drain and replace the scene.
-    // Wall-clock timings absorb the time the user spends on another tab, so
-    // stamp every load with whether that happened. Lets the perf queries drop
-    // contaminated rows on evidence rather than on a duration threshold.
-    // Taken BEFORE the first awaited work below (the federated cold-tier
-    // drain): a tab hidden and re-shown entirely within that drain would
-    // otherwise go unrecorded, and the drain is slowest exactly when it is
-    // most likely to span a tab switch. `totalStartTime` deliberately stays
-    // where it is — the drain sits outside `total_elapsed_ms`, so moving it
-    // would silently redefine the metric. (#2385)
+    // Capture visibility before admission and the federated cold-tier drain.
+    // The drain remains outside total_elapsed_ms (#2385).
     const wasHidden = visibilityWitness();
+    const federatedHead = target.kind === 'federated' && !processedModel ? await localAdmission.preflight() : undefined;
+    if (federatedHead === null || isStale()) return;
 
     {
-      const scene = getGlobalRenderer()?.getScene();
+      const scene = target.kind === 'federated' && !processedModel ? getGlobalRenderer()?.getScene() : undefined;
       if (scene) {
         if (target.kind === 'federated') {
           await scene.drainColdTier().catch((err) =>
@@ -699,9 +686,9 @@ export function useIfcLoader() {
         loadStage = 'server-fetch';
         return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId, initializeModel), isStale, completeServerLoad);
       };
-      localAdmission.setServer(async () => !serverAttempted && target.kind === 'primary' && !useViewerStore.getState().mergeLayers && USE_SERVER && !!SERVER_URL && geometryKernel.serverEnabled
-        ? tryServer({ byteLength: file.size }) : false);
-      const preflight = localAdmission.preflight(), preflightHead = preflight && await preflight;
+      localAdmission.setServer(async parsedBytes => !serverAttempted && target.kind === 'primary' && !useViewerStore.getState().mergeLayers && USE_SERVER && !!SERVER_URL && geometryKernel.serverEnabled
+        ? tryServer({ byteLength: parsedBytes }) : false);
+      const preflightHead = target.kind === 'federated' ? federatedHead : await localAdmission.preflight();
       if (preflightHead === null || isStale()) return;
       runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
       initializeModel();
@@ -768,7 +755,7 @@ export function useIfcLoader() {
       let textureBitmaps: TextureBitmapStore | null = null;
       if (!pointCloudFormat) {
         // Only an archive pays the ArrayBuffer copy; the magic check reads `headBuf`.
-        const zipContents = headIsZip(headBuf) ? await trace.span('source.unwrap', () => unwrapIfcZipWithResources(sourceArrayBuffer(buffer, 'source.zipInput'))) : null;
+        const zipContents = headIsZip(headBuf) ? await trace.span('source.unwrap', () => unwrapIfcZipWithResources(sourceArrayBuffer(buffer, 'source.zipInput'), localAdmission.archiveModelLimit())) : null;
         if (zipContents) buffer = zipContents.model;
         // Retain original archive paths/encoded bytes alongside shared bitmaps.
         appearanceLoad = modelAppearanceAssets.begin(modelId);

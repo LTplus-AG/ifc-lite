@@ -24,6 +24,8 @@ import type { TranslatableMessage, TranslationKey } from '@/i18n';
 const DENIAL_KEY: Record<MutationDenialReason, TranslationKey> = {
   'workflow-running': 'flowAssistant.preflightDeniedWorkflow', 'edit-mode': 'flowAssistant.preflightDeniedEditMode',
   'collab-role': 'flowAssistant.preflightDeniedRole', 'model-unavailable': 'flowAssistant.preflightDeniedModel',
+  'properties-loading': 'mutationPermission.propertiesLoading', 'properties-failed': 'mutationPermission.propertiesFailed',
+  'id-space-exhausted': 'mutationPermission.idSpaceExhausted',
 };
 const native = (error: unknown): TranslatableMessage =>
   ({ labelKey: 'flowAssistant.preflightNative', params: { message: error instanceof Error ? error.message : String(error) } });

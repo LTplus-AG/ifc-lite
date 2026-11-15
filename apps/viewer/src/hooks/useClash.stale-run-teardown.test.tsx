@@ -293,6 +293,8 @@ describe('a clash run landing after its models are gone must not repopulate the 
   it('a discarded duplicate scan must not publish its duplicate sets either', async () => {
     await seed(['A', 'B']);
     const seqBefore = useViewerStore.getState().clashRunSeq;
+    // Armed at the scan: store subscribers (overlay capacity) also read the source.
+    let armed = false;
     useViewerStore.setState((s) => {
       const models = new Map(s.models);
       const b = models.get('B')!;
@@ -304,7 +306,7 @@ describe('a clash run landing after its models are gone must not repopulate the 
         // recorded and its elements taken — the federation the scan examined
         // is gone by the time it publishes.
         get ifcDataStore() {
-          if (!fired) {
+          if (armed && !fired) {
             fired = true;
             useViewerStore.getState().removeModel('A');
           }
@@ -314,6 +316,7 @@ describe('a clash run landing after its models are gone must not repopulate the 
       return { models };
     });
 
+    armed = true;
     await act(async () => { await api!.runDuplicates(); });
 
     const s = useViewerStore.getState();
@@ -505,6 +508,8 @@ describe('a teardown mid-run aborts the clash engine and stops its writes (A2)',
   it('a session reset while runDuplicates gathers: the scan publishes nothing into the new session', async () => {
     await seed(['A']);
     const seqBefore = useViewerStore.getState().clashRunSeq;
+    // Armed at the scan: store subscribers (overlay capacity) also read the source.
+    let armed = false;
     useViewerStore.setState((s) => {
       const models = new Map(s.models);
       const a = models.get('A')!;
@@ -513,7 +518,7 @@ describe('a teardown mid-run aborts the clash engine and stops its writes (A2)',
       models.set('A', {
         ...a,
         get ifcDataStore() {
-          if (!fired) {
+          if (armed && !fired) {
             fired = true;
             useViewerStore.getState().resetViewerState();
           }
@@ -523,6 +528,7 @@ describe('a teardown mid-run aborts the clash engine and stops its writes (A2)',
       return { models };
     });
 
+    armed = true;
     await act(async () => { await api!.runDuplicates(); });
 
     const s = useViewerStore.getState();

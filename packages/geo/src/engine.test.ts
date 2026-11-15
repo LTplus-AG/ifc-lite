@@ -160,3 +160,30 @@ describe('diagnostics', () => {
     assert.equal(warn.mock.callCount(), 0);
   });
 });
+
+describe('replacing the loaders while a grid is loading', () => {
+  it('does not let the old loader\'s late failure block the new loader (#10385 review)', async () => {
+    let rejectOld: ((error: Error) => void) | undefined;
+    const previous = configureCrsLoaders({
+      gridFile: () => new Promise<ArrayBuffer | null>((_, reject) => { rejectOld = reject; }),
+    });
+    const previousDiagnostics = configureCrsDiagnostics(null);
+    try {
+      const pending = resolveCrs({ epsg: 28992 });
+      for (let turn = 0; !rejectOld && turn < 1000; turn++) await new Promise((resolve) => setTimeout(resolve, 1));
+      assert.ok(rejectOld, 'the first loader was asked for the grid');
+
+      let requests = 0;
+      configureCrsLoaders({ gridFile: async () => { requests++; return zeroGrid(); } });
+      rejectOld(new Error('network gone'));
+      assert.equal((await pending)?.datumShift, 'helmert-approximation');
+
+      const crs = await resolveCrs({ epsg: 28992 });
+      assert.equal(requests, 1, 'the new loader is asked');
+      assert.equal(crs?.datumShift, 'as-defined');
+    } finally {
+      configureCrsLoaders(previous);
+      configureCrsDiagnostics(previousDiagnostics);
+    }
+  });
+});

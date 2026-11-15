@@ -79,6 +79,14 @@ describe('resolveCrs: the CRS input', () => {
     assert.ok(Math.abs(fromWkt[0] - fromCode[0]) < 1e-12 && Math.abs(fromWkt[1] - fromCode[1]) < 1e-12);
   });
 
+  it('lets a readable WKT define the CRS even next to an unreadable epsg (#10385 review)', async () => {
+    const crs = await resolveCrs({ wkt: UTM32_WKT, epsg: 'not a code' });
+    assert.ok(crs, 'the WKT is authoritative');
+    assert.equal(crs.kind, 'projected');
+    assert.equal(await resolveCrs({ wkt: 'VERTCRS["height only"]', epsg: 'not a code', name: 'LV95' }), null,
+      'an unreadable WKT does not turn an unreadable epsg into the name');
+  });
+
   it('is null for an input that names no CRS', async () => {
     assert.equal(await resolveCrs({}), null);
     assert.equal(await resolveCrs({ epsg: 'not a code' }), null);

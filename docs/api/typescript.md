@@ -1108,7 +1108,7 @@ Point cloud decoders and types: `decodePcd`, LAS/LAZ support including `LasStrea
 
 ## @ifc-lite/geo
 
-Headless CRS engine: `resolveCrs({ epsg, name, wkt })` returns a transformer with `toWgs84` / `fromWgs84` (projected coordinates in metres, longitude first) and `gridFactors` (grid convergence and point scale factor). Also `egm96Undulation`, and `configureCrsLoaders` for the optional epsg.io and cdn.proj.org lookups; nothing reaches the network unless a loader is installed. There is no vertical transformation, and the datum shift in use is reported per CRS; see the package README for the accuracy notes.
+Headless CRS engine: `resolveCrs({ epsg, name, wkt })` returns a transformer with `toWgs84` / `fromWgs84` (projected coordinates in metres even for a foot-based CRS, whose own unit is reported as `linearUnit`; longitude first) and `gridFactors` (grid convergence and point scale factor). Also `egm96Undulation`; `configureCrsLoaders` for the optional epsg.io and cdn.proj.org lookups (one configuration per process) and `createCrsEngine` for an engine with loaders and caches of its own; `configureCrsDiagnostics` for its warnings, silent by default. Nothing reaches the network unless a loader is installed. There is no vertical transformation, and the datum shift in use is reported per transformer; see the package README for the accuracy notes. `@ifc-lite/geo/wkt` reads what a CRS WKT states without resolving it.
 
 ## @ifc-lite/solar
 

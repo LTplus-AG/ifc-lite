@@ -136,8 +136,10 @@ export function resolveCrs(input: CrsInput): Promise<CrsTransformer | null> {
 
 async function resolveCrsWith(state: EngineState, input: CrsInput): Promise<CrsTransformer | null> {
   const epsg = input.epsg === undefined ? undefined : epsgName(input.epsg);
-  if (epsg === null) return null;
-  const descriptor = { name: epsg ?? input.name, wellKnownText: input.wkt };
+  // An unreadable `epsg` is refused, unless a readable WKT defines the CRS:
+  // the WKT comes first, and lower-priority input cannot veto it.
+  if (epsg === null && !input.wkt) return null;
+  const descriptor = { name: epsg === null ? undefined : epsg ?? input.name, wellKnownText: input.wkt };
   const resolved = await resolveDefinition(descriptor, state);
   if (!resolved) return null;
 

@@ -23,6 +23,8 @@ Two tools:
   | `brep` | IFC2X3 `IfcFacetedBrep`, one face per triangle | ~6.1–6.7 k | ~21–23.5 k | mode A: killed before geometry, while the entity pre-pass overlaps worker source copies |
 
   Default mesh 24×48 (2,256 triangles per element); about 30 MB/s on one core.
+  Only `tfs` has measured thresholds below; the `brep` mode-A sizes come from the #10264
+  attribution on other hardware and were not re-measured here.
 - `oom-load-probe.mjs` opens one file in a built viewer (`apps/viewer/dist`) with
   `navigator.deviceMemory` / `hardwareConcurrency` overridden, and runs only Chrome inside
   `systemd-run --user --scope -p MemoryMax=CAP -p MemorySwapMax=0 -p CPUQuota=…`. It reports
@@ -48,11 +50,32 @@ then reports `loaded` or `killed-after-continue`. `--expect not-killed` accepts 
 pnpm install && pnpm build:wasm && pnpm turbo build --filter=@ifc-lite/viewer   # or any built apps/viewer/dist
 npx playwright install chromium                            # once
 node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect killed \
-  --kind tfs --target-mb MINIMAL_SWIFTSHADER --device-memory 4 --cores 4 --cap 3G   # swiftshader, headless
+  --kind tfs --target-mb 300 --device-memory 4 --cores 4 --cap 3G   # swiftshader, headless
 # Hardware GL: headed on a private Xvfb, e.g. DISPLAY=:181 ... --gl hardware
 ```
 
-MEASURED_TABLE
+Measured 2026-11-15 on one Linux laptop (32 logical CPUs, NVIDIA RTX 4000 Ada laptop GPU, driver
+595.104, kernel 7.2.15, CPU held at a 65 W package limit and a 60% frequency ceiling), Chrome for
+Testing 156, viewer built from main `5db30f9a6b`, generator seed 1, device memory 4, 4 cores,
+3 GiB cap with no swap, CPU quota 400%. Peak PSS is summed over all Chrome processes; the cgroup
+peak is what the cap charges (3,072 MiB = the cap). Untimed; the seconds only place the kill.
+
+| file | GL | runs | outcome | peak PSS MiB | cgroup peak MiB | where it ended |
+|---|---|---:|---|---:|---:|---|
+| tfs-100 (100 MB, 4.06 M tris) | swiftshader | 1 | loaded | 2,143 | 1,976 | interactive after ~5 min |
+| tfs-150 (150 MB, 6.10 M tris) | swiftshader | 1 | timeout | 2,537 | 2,427 | all geometry streamed, never interactive in 8 min |
+| tfs-225 (225 MB, 9.15 M tris) | swiftshader | 1 | timeout | 3,219 | 3,029 | all geometry streamed at ~78 s, never interactive in 8 min |
+| **tfs-300** (300 MB, 12.19 M tris) | swiftshader | 3 | **killed 3/3** | 3,202–3,271 | 3,072 | OOM kill at ~36 s, 9.0 M tris streamed |
+| tfs-225 | NVIDIA Vulkan, headed Xvfb | 3 | loaded 3/3 | 3,086–3,116 | 2,938–2,987 | interactive at ~12 s |
+| **tfs-300** | NVIDIA Vulkan, headed Xvfb | 3 | **killed 3/3** | 3,313–3,320 | 3,072 | OOM kill at ~10 s, 7.9 M tris streamed |
+
+The minimal reproducer is the same on both backends: tfs-300 at device memory 4 / 3 GiB. Under
+swiftshader the GPU buffers count against the cap, but rendering is slow enough that geometry
+streams more slowly, so the peak is not lower than on hardware. A 150-225 MB file under
+swiftshader survives its peak but takes longer than the 8 minute limit to render the
+scene, so treat it as a `timeout`, not a pass. These numbers are not comparable with earlier
+campaign runs that put the driver process inside the cap as well: there tfs-225 was killed on
+hardware, here it loads with about 90 MiB to spare.
 
 CI: not wired. Per-PR CI is too heavy (a viewer build plus a ~1 min browser run). The proposed
 home is a `workflow_dispatch`/nightly job, added only once the cap is verified on a GitHub-hosted

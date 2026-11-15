@@ -1060,12 +1060,17 @@ describe('StepExporter georeferencing — IfcMapConversionScaled', () => {
     });
 
     it('converts from the SourceCRS the planner named, not the one the file would pick', () => {
-      const text = decode(run({ projectedCRS: { name: 'X', mapUnit: 'METRE' }, mapConversion: mc, sourceCrs: 25 }).content);
+      const text = decode(run({ projectedCRS: { name: 'X', mapUnit: 'METRE' }, mapConversion: mc, sourceCrs: [25] }).content);
+      expect(text).toMatch(/IFCMAPCONVERSION\(#25,#/);
+    });
+
+    it('takes the first named SourceCRS that is still a representation context', () => {
+      const text = decode(run({ projectedCRS: { name: 'X', mapUnit: 'METRE' }, mapConversion: mc, sourceCrs: [2, 99, 25, 20] }).content);
       expect(text).toMatch(/IFCMAPCONVERSION\(#25,#/);
     });
 
     it('refuses a named SourceCRS that is not a representation context, writing no conversion', () => {
-      const result = run({ projectedCRS: { name: 'X', mapUnit: 'METRE' }, mapConversion: mc, sourceCrs: 2 });
+      const result = run({ projectedCRS: { name: 'X', mapUnit: 'METRE' }, mapConversion: mc, sourceCrs: [2] });
       expect(decode(result.content)).not.toMatch(/=IFCMAPCONVERSION/);
       expect(result.stats.georeferencingWarnings?.length).toBeGreaterThan(0);
     });

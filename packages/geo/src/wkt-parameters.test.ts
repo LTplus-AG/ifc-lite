@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import parseWkt from 'wkt-parser';
 
 import { configureCrsDiagnostics } from './diagnostics.js';
-import { resolveCrs } from './index.js';
+import { resolveCrs, type CrsInput } from './index.js';
 import { missingProjectionParameters, withImpliedParameterUnits } from './wkt-parameters.js';
 
 const DEG = Math.PI / 180;
@@ -122,12 +122,17 @@ describe('a parse without the parameters its projection needs', () => {
 
   it('does not fall back to an EPSG code given beside a refused WKT (#10385 review)', async () => {
     const unrecognised = TM_WKT1_NAMES.replace('central_meridian', 'CentralMeridianOfZone');
-    let resolved: Awaited<ReturnType<typeof resolveCrs>> | undefined;
-    await diagnosticsOf(async () => { resolved = await resolveCrs({ wkt: unrecognised, epsg: 32632 }); });
-    assert.equal(resolved, null, 'the custom CRS is not replaced by UTM 32N');
+    const quietly = async (input: CrsInput) => {
+      const previous = configureCrsDiagnostics(null);
+      try {
+        return await resolveCrs(input);
+      } finally {
+        configureCrsDiagnostics(previous);
+      }
+    };
+    assert.equal(await quietly({ wkt: unrecognised, epsg: 32632 }), null, 'the custom CRS is not replaced by UTM 32N');
     // An unreadable WKT still falls back, as documented.
-    await diagnosticsOf(async () => { resolved = await resolveCrs({ wkt: 'VERTCRS["height only"]', epsg: 32632 }); });
-    assert.equal(resolved?.epsg, 32632);
+    assert.equal((await quietly({ wkt: 'VERTCRS["height only"]', epsg: 32632 }))?.epsg, 32632);
   });
 
   it('refuses a 2SP whose second parallel the reader did not recognise (#10385 review)', async () => {

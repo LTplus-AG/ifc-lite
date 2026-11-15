@@ -156,6 +156,7 @@ impl<'a> VoidControl<'a> {
 
     fn accept_in_frame(&mut self, reply: VoidReply, router: &GeometryRouter) {
         let (host_id, part_bounds) = (self.host.id, self.part_bounds.take());
+        let restate = part_bounds.map(|bounds| (bounds, router.recorded_host_bounds(host_id)));
         let phase = std::mem::replace(&mut self.phase, Phase::Taken);
         self.phase = match (phase, reply) {
             (Phase::Host(mut product, ids), VoidReply::Host(reply)) => {
@@ -173,8 +174,8 @@ impl<'a> VoidControl<'a> {
             // keeps only the reached kernel failures, an unwind resumes.
             (Phase::Cuts { context, parts, id, .. }, VoidReply::Cut(outcome)) => match outcome.publish(router) {
                 Ok(mesh) => {
-                    if let Some(bounds) = part_bounds {
-                        router.restate_host_bounds(host_id, bounds);
+                    if let Some((bounds, recorded)) = restate {
+                        router.restate_host_bounds(host_id, recorded, bounds);
                     }
                     Phase::Cuts { context, parts, id, step: Cutting::Clean(mesh) }
                 }
@@ -256,14 +257,14 @@ impl<'a> VoidControl<'a> {
             self.phase = loop {
                 // Accept the geometry and publish its diagnostics once; a stop
                 // keeps only the reached kernel failures, an unwind resumes.
-                let bounds = self.frame.outer_bounds(&mesh);
+                let restate = self.frame.outer_bounds(&mesh).map(|b| (b, router.recorded_host_bounds(id)));
                 let outcome = execute(mesh, &context, id, router.tessellation_quality());
                 let mut cut = match outcome.publish(router) {
                     Ok(cut) => cut,
                     Err(error) => break Phase::Complete(Err(error)),
                 };
-                if let Some(bounds) = bounds {
-                    router.restate_host_bounds(id, bounds);
+                if let Some((bounds, recorded)) = restate {
+                    router.restate_host_bounds(id, recorded, bounds);
                 }
                 clean_cut(&mut cut, styled);
                 keep_cut(&mut parts, part_id, cut);

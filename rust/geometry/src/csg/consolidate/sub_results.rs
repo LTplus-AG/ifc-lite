@@ -17,7 +17,7 @@ use super::{ConsolidationUse, Mesh};
 use crate::csg::ClippingProcessor;
 
 /// Results keyed by `(preserve_supported, preserve_folds, preserve_connected)`.
-/// At most five per input, so a scan beats a map.
+/// At most eight per input, so a scan beats a map.
 #[derive(Default)]
 pub(super) struct SubResults(Vec<((bool, bool, bool), Mesh)>);
 

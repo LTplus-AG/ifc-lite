@@ -23,7 +23,8 @@
 //! the cut. A chain whose root is the identity is in this frame already and
 //! keeps the caller's.
 
-use super::GeometryRouter;
+use super::{instancing_enabled, GeometryRouter};
+use crate::math::aabb::Aabb3;
 use crate::math::mat4;
 use crate::placement::{self, LinkKind, PlacementResult};
 use crate::Mesh;
@@ -99,41 +100,72 @@ impl GeometryRouter {
         Ok(Some(relative))
     }
 
-    /// Place a mesh cut in a root frame into the caller's frame: `root` is the
-    /// root placement and `host` the host's whole placement, both in metres.
-    /// Runs with the cut frame closed, so the world step sees the caller's
-    /// RTC offset.
+    /// Place a mesh cut in a root frame into the caller's frame by the root
+    /// placement. Runs with the cut frame closed, so the world step sees the
+    /// caller's RTC offset. The object-frame capture (#1474) is the cut's
+    /// bounds in the host's own frame, paired with the host's whole
+    /// placement; with a singular host placement every part carries none.
     ///
     /// The cut is welded first, for the reason [`Self::place_mesh`] gives:
     /// the weld keys on f32 bits, so welding the placed result would make the
     /// vertex buffer depend on where the model sits (#4103).
-    pub(crate) fn place_root_frame_cut(&self, mesh: &mut Mesh, root: &Matrix4<f64>, host: &Matrix4<f64>) {
+    pub(crate) fn place_root_frame_cut(&self, mesh: &mut Mesh, at: &RootPlacement) {
         crate::mesh_weld::weld_mesh(mesh);
-        self.bake_root_frame_cut(mesh, root, host);
+        // As `place_mesh` does for a placed product: a host cut in a root
+        // frame has a placement.
+        if let Some(meta) = mesh.instance_meta.as_mut() {
+            meta.transform = mat4::from_na(&at.host);
+        }
+        self.bake_root_frame_cut(mesh, at);
     }
 
     /// [`Self::place_root_frame_cut`] for a sub-mesh, carrying its UVs.
-    pub(crate) fn place_root_frame_cut_sub(
-        &self,
-        sub: &mut crate::SubMesh,
-        root: &Matrix4<f64>,
-        host: &Matrix4<f64>,
-    ) {
+    pub(crate) fn place_root_frame_cut_sub(&self, sub: &mut crate::SubMesh, at: &RootPlacement) {
         crate::mesh_weld::weld_sub_mesh(sub);
-        self.bake_root_frame_cut(&mut sub.mesh, root, host);
+        // As `place_sub_meshes` does: only with instancing on.
+        if instancing_enabled() {
+            if let Some(meta) = sub.mesh.instance_meta.as_mut() {
+                meta.transform = mat4::from_na(&at.host);
+            }
+        }
+        self.bake_root_frame_cut(&mut sub.mesh, at);
     }
 
-    fn bake_root_frame_cut(&self, mesh: &mut Mesh, root: &Matrix4<f64>, host: &Matrix4<f64>) {
+    fn bake_root_frame_cut(&self, mesh: &mut Mesh, at: &RootPlacement) {
         debug_assert!(!self.in_cut_frame(), "a root-frame cut is placed with its frame closed");
-        let host = mat4::from_na(host);
-        if let Some(meta) = mesh.instance_meta.as_mut() {
-            meta.transform = host;
-        }
-        self.transform_mesh_world(mesh, root);
-        // The object-frame bounds were captured when the host was placed in
-        // the root frame; their transform is the host's whole placement (#1474).
-        mesh.local_to_world = Some(host);
+        // Bounds the cut carried could be in any frame it passed through, so
+        // they are recomputed. The bake would pair root-frame bounds with
+        // `root`; the host's own frame is what the capture promises.
+        let bounds = at.to_host.filter(|_| !mesh.positions.is_empty()).map(|to_host| {
+            let b = bounds_in(mesh, &to_host);
+            let enclose = super::super::processing::enclosing_f32;
+            let (lo, hi) = (b.min.map(|v| enclose(v, true)), b.max.map(|v| enclose(v, false)));
+            [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]]
+        });
+        self.transform_mesh_world(mesh, &at.root);
+        // Written after the bake, which captures its own pair.
+        (mesh.local_bounds, mesh.local_to_world) = (bounds, at.to_host.map(|_| mat4::from_na(&at.host)));
     }
+}
+
+/// The f64 box of `mesh`'s positions mapped by `m`.
+fn bounds_in(mesh: &Mesh, m: &Matrix4<f64>) -> Aabb3 {
+    let o = mesh.origin;
+    Aabb3::from_points(mesh.positions.chunks_exact(3).map(|c| {
+        let p = m.transform_point(&nalgebra::Point3::new(c[0] as f64 + o[0], c[1] as f64 + o[1], c[2] as f64 + o[2]));
+        [p.x, p.y, p.z]
+    }))
+}
+
+/// Where a finished root-frame cut goes: `root` is the root placement and
+/// `host` the host's whole placement (`root` times the host placement
+/// relative to it, so the two compose exactly), both in the caller's frame
+/// and in metres; `to_host` maps the root frame into the host's own frame,
+/// and is `None` when that relative placement is singular or not finite.
+pub(crate) struct RootPlacement {
+    pub(crate) root: Matrix4<f64>,
+    pub(crate) host: Matrix4<f64>,
+    to_host: Option<Matrix4<f64>>,
 }
 
 /// The frame one voided host is cut in.
@@ -142,10 +174,9 @@ pub(crate) enum CutFrame {
     Unchosen,
     /// The frame the caller is in.
     Outer,
-    /// The root `base` of the host's placement chain. `root` is that
-    /// placement and `host` the host's whole placement, both in the caller's
-    /// frame and in metres; `rtc` is the caller's RTC offset.
-    Root { base: u32, root: Matrix4<f64>, host: Matrix4<f64>, rtc: (f64, f64, f64), placed: bool },
+    /// The root `base` of the host's placement chain, where the finished cut
+    /// goes, and the caller's RTC offset.
+    Root { base: u32, at: RootPlacement, rtc: (f64, f64, f64) },
 }
 
 impl CutFrame {
@@ -153,7 +184,8 @@ impl CutFrame {
     /// false (the host's geometry arrived placed), when a cut frame is open
     /// already, and when the chain has no root that moves anything: no
     /// placement, an unreadable one, a root that is not an
-    /// `IfcLocalPlacement`, or one that is the identity or singular.
+    /// `IfcLocalPlacement`, one that is the identity or singular, or a host
+    /// placement that does not resolve relative to it.
     pub(crate) fn choose(
         &mut self,
         host: &DecodedEntity,
@@ -162,9 +194,8 @@ impl CutFrame {
         decoder: &mut EntityDecoder,
     ) {
         if matches!(self, Self::Unchosen) {
-            *self = Self::root_of(host, router, decoder)
-                .filter(|_| own_frame && !router.in_cut_frame())
-                .unwrap_or(Self::Outer);
+            let root = (own_frame && !router.in_cut_frame()).then(|| Self::root_of(host, router, decoder));
+            *self = root.flatten().unwrap_or(Self::Outer);
         }
     }
 
@@ -174,11 +205,18 @@ impl CutFrame {
         if base.kind != LinkKind::Local {
             return None;
         }
-        let mut root = placement::resolve_chain(&decoder.decode_by_id(base.id).ok()?, decoder).ok()?;
+        let base_entity = decoder.decode_by_id(base.id).ok()?;
+        let mut root = placement::resolve_chain(&base_entity, decoder).ok()?;
         router.scale_transform(&mut root);
-        let host = router.resolve_object_placement(host, decoder).ok()?.transform;
         let moves = root != Matrix4::identity() && root.iter().all(|v| v.is_finite()) && root.try_inverse().is_some();
-        moves.then(|| Self::Root { base: base.id, root, host, rtc: router.rtc_offset(), placed: false })
+        if !moves {
+            return None;
+        }
+        let mut in_root = placement::resolve_chain_relative(&placement, &base_entity, decoder).ok()?;
+        router.scale_transform(&mut in_root);
+        let to_host = in_root.try_inverse().filter(|m| m.iter().all(|v| v.is_finite()));
+        let at = RootPlacement { root, host: root * in_root, to_host };
+        Some(Self::Root { base: base.id, at, rtc: router.rtc_offset() })
     }
 
     /// Open the root frame on `router`, if this host is cut in one.
@@ -210,33 +248,24 @@ impl CutFrame {
     /// The bounds `mesh` has in the caller's frame once placed, for the host
     /// diagnostic. `None` when the mesh is in the caller's frame already.
     pub(crate) fn outer_bounds(&self, mesh: &Mesh) -> Option<((f32, f32, f32), (f32, f32, f32))> {
-        let Self::Root { root, rtc, .. } = self else {
+        let Self::Root { at, rtc, .. } = self else {
             return None;
         };
-        let (mut min, mut max) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
-        for chunk in mesh.positions.chunks_exact(3) {
-            let point = root.transform_point(&nalgebra::Point3::new(
-                chunk[0] as f64 + mesh.origin[0],
-                chunk[1] as f64 + mesh.origin[1],
-                chunk[2] as f64 + mesh.origin[2],
-            ));
-            for (axis, value) in [point.x - rtc.0, point.y - rtc.1, point.z - rtc.2].into_iter().enumerate() {
-                min[axis] = min[axis].min(value);
-                max[axis] = max[axis].max(value);
-            }
-        }
-        Some(((min[0] as f32, min[1] as f32, min[2] as f32), (max[0] as f32, max[1] as f32, max[2] as f32)))
+        let Aabb3 { min, max } = bounds_in(mesh, &at.root);
+        let (lo, hi) = ([min[0] - rtc.0, min[1] - rtc.1, min[2] - rtc.2], [max[0] - rtc.0, max[1] - rtc.1, max[2] - rtc.2]);
+        Some(((lo[0] as f32, lo[1] as f32, lo[2] as f32), (hi[0] as f32, hi[1] as f32, hi[2] as f32)))
     }
 
     /// The root and host placements in the caller's frame, handed out once:
-    /// the finished cut is placed by them exactly one time.
-    pub(crate) fn take_placement(&mut self) -> Option<(Matrix4<f64>, Matrix4<f64>)> {
-        match self {
-            Self::Root { root, host, placed: placed @ false, .. } => {
-                *placed = true;
-                Some((*root, *host))
+    /// the finished cut is placed by them exactly one time, and the host is
+    /// in the caller's frame from then on.
+    pub(crate) fn take_placement(&mut self) -> Option<RootPlacement> {
+        match std::mem::replace(self, Self::Outer) {
+            Self::Root { at, .. } => Some(at),
+            other => {
+                *self = other;
+                None
             }
-            _ => None,
         }
     }
 }

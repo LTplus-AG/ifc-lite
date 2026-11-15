@@ -103,8 +103,8 @@ pub struct Mesh {
     /// (synthetic/test meshes) — see issue #1474.
     pub local_to_world: Option<[f64; 16]>,
     /// Welded in the OBJECT FRAME by `mesh_weld::weld_mesh`/`weld_sub_mesh`
-    /// (its only setters; `rebuilt_like` clears it like `instance_meta`). The
-    /// real "already welded?" answer `build_mesh_data` today INFERS (#4122).
+    /// (`resource::mesh` copies it; `rebuilt_like`, `reframed_like` and `merge`
+    /// clear it). `build_mesh_data` reads it, with `instance_meta` (#4122).
     pub welded_in_object_frame: bool,
     /// Per-triangle kernel-f64 supporting planes (issue #3914), 1:1 with
     /// `indices.chunks_exact(3)` when `Some`. Carried by direct kernel union

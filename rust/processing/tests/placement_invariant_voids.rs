@@ -15,6 +15,7 @@
 //! and came back with a different triangulation.
 
 use ifc_lite_processing::{process, MeshData, ProcessingRequest, ProcessingResult};
+use ifc_lite_testkit::mesh::{open_edges, signed_volume, Key};
 
 /// Site placement of the moved copy: metres, and the yaw about Z.
 const SITE_AT: [f64; 3] = [31.25, -47.5, 12.0];
@@ -145,22 +146,19 @@ END-ISO-10303-21;
     )
 }
 
-/// The voided hosts of one run, by express id, with vertices in world
-/// coordinates (the mesh frame undone in f64).
-fn hosts(result: &ProcessingResult) -> Vec<(u32, &MeshData, Vec<[f64; 3]>)> {
+/// `mesh`'s vertices in world coordinates (the mesh frame undone in f64).
+fn world_vertices(result: &ProcessingResult, mesh: &MeshData) -> Vec<[f64; 3]> {
     let to_world = result.frame.world_mapper();
+    mesh.positions.chunks_exact(3).map(|p| to_world([0, 1, 2].map(|k| p[k] as f64 + mesh.origin[k]))).collect()
+}
+
+/// The voided hosts of one run, by express id, with world vertices.
+fn hosts(result: &ProcessingResult) -> Vec<(u32, &MeshData, Vec<[f64; 3]>)> {
     let mut hosts: Vec<_> = result
         .meshes
         .iter()
         .filter(|mesh| [50, 90, 130].contains(&mesh.express_id))
-        .map(|mesh| {
-            let world = mesh
-                .positions
-                .chunks_exact(3)
-                .map(|p| to_world([0, 1, 2].map(|k| p[k] as f64 + mesh.origin[k])))
-                .collect();
-            (mesh.express_id, mesh, world)
-        })
+        .map(|mesh| (mesh.express_id, mesh, world_vertices(result, mesh)))
         .collect();
     hosts.sort_by_key(|(id, ..)| *id);
     hosts
@@ -173,6 +171,44 @@ fn into_site(p: [f64; 3]) -> [f64; 3] {
     [cos * d[0] + sin * d[1], -sin * d[0] + cos * d[1], d[2]]
 }
 
+/// The object-frame capture (#1474) of `mesh` must hold its vertices:
+/// `local_to_world` applied to `local_bounds` bounds every world vertex.
+/// `required` refuses a mesh without one; otherwise it is skipped.
+fn assert_capture_holds(label: &str, mesh: &MeshData, world: &[[f64; 3]], required: bool) {
+    let (Some(b), Some(m)) = (mesh.local_bounds, mesh.local_to_world) else {
+        assert!(!required, "{label}: the object-frame capture is missing");
+        return;
+    };
+    let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+    for corner in 0..8 {
+        let p = [0, 1, 2].map(|k| b[if corner >> k & 1 == 0 { k } else { k + 3 }] as f64);
+        for r in 0..3 {
+            let v = m[r * 4] * p[0] + m[r * 4 + 1] * p[1] + m[r * 4 + 2] * p[2] + m[r * 4 + 3];
+            lo[r] = lo[r].min(v);
+            hi[r] = hi[r].max(v);
+        }
+    }
+    for v in world {
+        assert!(
+            (0..3).all(|r| v[r] >= lo[r] - 1.0e-4 && v[r] <= hi[r] + 1.0e-4),
+            "{label}: vertex {v:?} lies outside the captured object-frame box {lo:?}..{hi:?}"
+        );
+    }
+}
+
+/// The largest distance between a vertex at the origin and its moved
+/// counterpart taken back into the site frame.
+fn worst_deviation(at_origin: &[[f64; 3]], moved: &[[f64; 3]]) -> f64 {
+    at_origin
+        .iter()
+        .zip(moved)
+        .map(|(a, b)| {
+            let b = into_site(*b);
+            ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+        })
+        .fold(0.0, f64::max)
+}
+
 #[test]
 fn voided_hosts_mesh_the_same_wherever_the_site_is() {
     let request = ProcessingRequest::full_pass();
@@ -181,8 +217,33 @@ fn voided_hosts_mesh_the_same_wherever_the_site_is() {
     let (at_origin, moved) = (hosts(&unplaced), hosts(&placed));
     assert_eq!(at_origin.len(), 3, "two walls and a slab at the origin");
     assert_eq!(moved.len(), 3, "two walls and a slab under the moved site");
+    // A site that only translates keeps the object-frame capture (#4176), and
+    // a host cut in that root frame must carry a capture that holds it.
+    let shifted = process(fixture(SITE_AT, 0.0).as_bytes(), &request, &mut ());
+    for (id, mesh, world) in hosts(&shifted) {
+        assert_capture_holds(&format!("#{id} under a translated site"), mesh, &world, true);
+    }
+    // The capture is the host's own frame: each wall's whole placement is the
+    // site, the storey (z 3) and its own. Wall A sits at (2, 3, 0) along the
+    // site X axis; wall B at (10, 3, 0) with its X axis along the site Y axis.
+    for (id, at, x_axis) in [(50, [2.0, 3.0], [1.0, 0.0, 0.0]), (90, [10.0, 3.0], [0.0, 1.0, 0.0])] {
+        let wall = shifted.meshes.iter().find(|mesh| mesh.express_id == id).expect("the wall is meshed");
+        let l2w = wall.local_to_world.expect("the wall carries its placement");
+        let origin = [SITE_AT[0] + at[0], SITE_AT[1] + at[1], SITE_AT[2] + 3.0];
+        for r in 0..3 {
+            assert!((l2w[r * 4 + 3] - origin[r]).abs() < 1.0e-9, "#{id} local_to_world origin: {l2w:?}");
+            assert!((l2w[r * 4] - x_axis[r]).abs() < 1.0e-12, "#{id} local_to_world X axis: {l2w:?}");
+        }
+        // Bounds in the wall's own frame: its 5 x 0.2 x 3 m extrusion.
+        let bounds = wall.local_bounds.expect("the wall carries its bounds");
+        for (k, want) in [0.0, 0.0, 0.0, 5.0, 0.2, 3.0].into_iter().enumerate() {
+            assert!((bounds[k] as f64 - want).abs() < 1.0e-4, "#{id} local_bounds: {bounds:?}");
+        }
+    }
 
     for ((id, origin_mesh, origin_world), (_, moved_mesh, moved_world)) in at_origin.iter().zip(&moved) {
+        assert_capture_holds(&format!("#{id} at the origin"), origin_mesh, origin_world, false);
+        assert_capture_holds(&format!("#{id} moved"), moved_mesh, moved_world, false);
         // Every opening actually cut its host: a box has 12 triangles.
         assert!(origin_mesh.indices.len() / 3 > 12, "#{id}: the opening was not cut");
         assert_eq!(
@@ -196,14 +257,7 @@ fn voided_hosts_mesh_the_same_wherever_the_site_is() {
             "#{id}: vertex count changed with the site placement"
         );
         assert_eq!(moved_mesh.indices, origin_mesh.indices, "#{id}: index buffer changed with the site placement");
-        let worst = origin_world
-            .iter()
-            .zip(moved_world)
-            .map(|(a, b)| {
-                let b = into_site(*b);
-                ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
-            })
-            .fold(0.0, f64::max);
+        let worst = worst_deviation(origin_world, moved_world);
         assert!(
             worst <= TOLERANCE_M,
             "#{id}: a vertex moved {worst:.3e} m with the site placement (tolerance {TOLERANCE_M:.1e} m)"
@@ -276,29 +330,6 @@ END-ISO-10303-21;
     )
 }
 
-/// Undirected edges not used exactly once in each direction, keyed on a
-/// 1 um grid, and the enclosed volume (m3).
-fn closure_and_volume(world: &[[f64; 3]], indices: &[u32]) -> (usize, f64) {
-    use std::collections::HashMap;
-    let key = |p: [f64; 3]| p.map(|c| (c * 1.0e6).round() as i64);
-    let mut edges: HashMap<([i64; 3], [i64; 3]), i64> = HashMap::new();
-    let mut volume = 0.0;
-    for t in indices.chunks_exact(3) {
-        let [a, b, c] = [0, 1, 2].map(|k| world[t[k] as usize]);
-        volume += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
-            + a[2] * (b[0] * c[1] - b[1] * c[0]))
-            / 6.0;
-        for (p, q) in [(a, b), (b, c), (c, a)] {
-            let (p, q) = (key(p), key(q));
-            if p != q {
-                let (lo, hi, s) = if p < q { (p, q, 1) } else { (q, p, -1) };
-                *edges.entry((lo, hi)).or_insert(0) += s;
-            }
-        }
-    }
-    (edges.values().filter(|&&n| n != 0).count(), volume)
-}
-
 /// A host and an opening placed absolutely, each the root of its own chain,
 /// cut the same at the origin and under a rotated, translated placement, and
 /// closed with the expected volume both times: 5 x 0.2 x 3 m less the
@@ -309,30 +340,17 @@ fn absolutely_placed_host_and_opening_mesh_the_same_wherever_they_are() {
     let unplaced = process(absolute_fixture([0.0; 3], 0.0).as_bytes(), &request, &mut ());
     let placed = process(absolute_fixture(SITE_AT, SITE_YAW_DEG).as_bytes(), &request, &mut ());
     let wall = |result: &ProcessingResult| {
-        let to_world = result.frame.world_mapper();
-        let mesh = result.meshes.iter().find(|mesh| mesh.express_id == 50).expect("the wall is meshed").clone();
-        let world: Vec<[f64; 3]> = mesh
-            .positions
-            .chunks_exact(3)
-            .map(|p| to_world([0, 1, 2].map(|k| p[k] as f64 + mesh.origin[k])))
-            .collect();
-        (mesh, world)
+        result.meshes.iter().find(|mesh| mesh.express_id == 50).expect("the wall is meshed").clone()
     };
-    let ((origin_mesh, origin_world), (moved_mesh, moved_world)) = (wall(&unplaced), wall(&placed));
-    for (label, mesh, world) in [("origin", &origin_mesh, &origin_world), ("moved", &moved_mesh, &moved_world)] {
-        let (open, volume) = closure_and_volume(world, &mesh.indices);
+    let (origin_mesh, moved_mesh) = (wall(&unplaced), wall(&placed));
+    for (label, mesh) in [("origin", &origin_mesh), ("moved", &moved_mesh)] {
+        let open = open_edges(&mesh.positions, &mesh.indices, Key::Grid(1.0e-6));
+        let volume = signed_volume(&mesh.positions, &mesh.indices);
         assert_eq!(open, 0, "{label}: the cut wall is not closed");
         // The census bless bound: within 0.05% of the exact volume.
         assert!((volume - 2.76).abs() <= 2.76 * 5.0e-4, "{label}: volume {volume:.9} m3, expected 2.76");
     }
     assert_eq!(moved_mesh.indices, origin_mesh.indices, "index buffer changed with the placement");
-    let worst = origin_world
-        .iter()
-        .zip(&moved_world)
-        .map(|(a, b)| {
-            let b = into_site(*b);
-            ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
-        })
-        .fold(0.0, f64::max);
+    let worst = worst_deviation(&world_vertices(&unplaced, &origin_mesh), &world_vertices(&placed, &moved_mesh));
     assert!(worst <= TOLERANCE_M, "a vertex moved {worst:.3e} m with the placement (tolerance {TOLERANCE_M:.1e} m)");
 }

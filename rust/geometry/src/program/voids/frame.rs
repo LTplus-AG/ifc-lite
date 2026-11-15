@@ -44,15 +44,15 @@ impl<'a> VoidControl<'a> {
         let Phase::Complete(Ok(output)) = &mut self.phase else {
             return;
         };
-        let Some((root, host)) = self.frame.take_placement() else {
+        let Some(at) = self.frame.take_placement() else {
             return;
         };
         match output {
             ProductOutput::Parts(parts) => {
-                parts.iter_mut().for_each(|part| router.place_root_frame_cut(part, &root, &host))
+                parts.iter_mut().for_each(|part| router.place_root_frame_cut(part, &at))
             }
             ProductOutput::Styled(subs) => {
-                subs.sub_meshes.iter_mut().for_each(|sub| router.place_root_frame_cut_sub(sub, &root, &host))
+                subs.sub_meshes.iter_mut().for_each(|sub| router.place_root_frame_cut_sub(sub, &at))
             }
             ProductOutput::Retained(..) => {}
         }

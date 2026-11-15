@@ -132,12 +132,7 @@ fn full_climb(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> Placeme
 /// The placements from `placement` up to the root, leaf first, cycle-checked.
 /// No transforms are composed and the memo is not consulted.
 pub fn chain(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<SmallVec<[Link; 8]>> {
-    let mut climbed = Climb::new();
-    climb(&mut climbed, placement, decoder, false, false, None)?;
-    if let Some((at, found)) = climbed.stopped_at {
-        return Err(unsupported(decoder, at, found));
-    }
-    Ok(climbed.frames.iter().map(|f| Link { id: f.entity.id, kind: f.kind }).collect())
+    Ok(full_climb(placement, decoder)?.frames.iter().map(|f| Link { id: f.entity.id, kind: f.kind }).collect())
 }
 
 /// The local-to-parent frame of one link. A frame that cannot be read or

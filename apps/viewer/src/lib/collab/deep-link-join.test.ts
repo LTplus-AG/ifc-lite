@@ -11,6 +11,8 @@ import type { ViewerState } from '@/store';
 import { setCollabEnabledOverride } from './config';
 import { joinRoomFromPageUrl } from './deep-link-join';
 import { openProcessedModel, resetProcessedModelRequestsForTests } from '@/lib/processed-model';
+import { deferred, type Deferred } from '@/test/race';
+import { beginCollabAttempt, liveCollabAttempt } from './session-attempt';
 
 class MemoryStorage {
   private readonly store = new Map<string, string>();
@@ -24,27 +26,28 @@ let joins: StartCollabOptions[];
 let infos: string[];
 const realInfo = console.info;
 const realStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
-let roomId: string | null;
 let stops: number;
-let joined: Promise<void>;
-const collab = () => ({
-  collabRoomId: roomId,
-  startCollab: (opts: StartCollabOptions) => { joins.push(opts); roomId = opts.roomId; return joined; },
-  stopCollab: () => { stops++; roomId = null; },
-}) as Pick<ViewerState, 'startCollab' | 'stopCollab' | 'collabRoomId'>;
+let joined: Deferred<void>;
+const collab = (): Pick<ViewerState, 'startCollab' | 'stopCollab'> => ({
+  startCollab: async (opts: StartCollabOptions) => { joins.push(opts); beginCollabAttempt(opts.roomId); await joined.promise; },
+  stopCollab: () => { stops++; liveCollabAttempt()?.retire(); },
+});
 
 beforeEach(() => {
   Object.defineProperty(globalThis, 'localStorage', { value: new MemoryStorage(), configurable: true });
   setCollabEnabledOverride(true);
   joins = [];
-  roomId = null;
   stops = 0;
-  joined = Promise.resolve();
+  joined = deferred();
+  joined.resolve();
   infos = [];
   console.info = (...args: unknown[]) => { infos.push(args.join(' ')); };
 });
 
-afterEach(() => {
+afterEach(async () => {
+  joined.resolve(); // every test's join settles, so its listener goes
+  await joined.promise;
+  liveCollabAttempt()?.retire();
   console.info = realInfo;
   if (realStorage) Object.defineProperty(globalThis, 'localStorage', realStorage);
   else Reflect.deleteProperty(globalThis, 'localStorage');
@@ -73,14 +76,21 @@ it('does nothing without a room or with collaboration off', () => {
   assert.deepEqual(joins, []);
 });
 
-it('a host request leaves the pending page room, not a room the user switched to (#10142)', () => {
-  joined = new Promise(() => {}); // the page-link join never settles
+const hostAsks = () => openProcessedModel({ sha256: 'a'.repeat(64), bytes: 0, name: 'host.ifc' });
+
+it('a host request leaves the page room while it is still joining (#10142)', () => {
+  joined = deferred();
   joinRoomFromPageUrl(link, collab);
-  roomId = 'picked-in-the-room-panel';
-  openProcessedModel({ sha256: 'a'.repeat(64), bytes: 0, name: 'host.ifc' });
-  assert.equal(stops, 0, "the user's room stays");
-  resetProcessedModelRequestsForTests();
-  roomId = 'r1';
-  openProcessedModel({ sha256: 'a'.repeat(64), bytes: 0, name: 'host.ifc' });
-  assert.equal(stops, 1, 'the pending page room is left');
+  hostAsks();
+  assert.equal(stops, 1);
 });
+
+for (const [room, what] of [['picked-in-the-room-panel', 'switched to'], ['r1', 'left and rejoined']] as const) {
+  it(`a host request keeps a room the user ${what} while the link was joining (#10142)`, () => {
+    joined = deferred();
+    joinRoomFromPageUrl(link, collab);
+    beginCollabAttempt(room); // the user's own join retires the link's attempt
+    hostAsks();
+    assert.equal(stops, 0);
+  });
+}

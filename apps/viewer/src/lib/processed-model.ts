@@ -75,7 +75,7 @@ export function serverUploadsEnabled(): boolean {
  */
 export function openProcessedModel(model: ProcessedModelRequest, options?: OpenProcessedModelOptions): void {
   const override = options?.serverUrl;
-  const request = override === undefined ? normalizedRequest(model) : { ...normalizedRequest(model), serverUrl: cleanServerUrl(override) };
+  const request = override == null ? normalizedRequest(model) : { ...normalizedRequest(model), serverUrl: cleanServerUrl(override) };
   hostRequested = true;
   fileRequest(request);
 }

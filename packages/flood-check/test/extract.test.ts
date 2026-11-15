@@ -144,6 +144,20 @@ describe('stairs, ramps, doors and windows', () => {
     expect(f.skipped.find((s) => s.ifcClass === 'IfcStair')?.reason).toMatch(/leads up/);
   });
 
+  it('keeps an external stair when one flight leads up but another has no readable body', async () => {
+    const extra = (b: Extra) => {
+      const solid = b.rectExtrusion(0, 0, 2, 1, 0.6, b.axis(0, 0, 0), b.dir(0, 0, 1));
+      const stair = b.add(`IFCSTAIR(${b.guid()},$,'Aussentreppe',$,$,#${b.place(b.storeys.eg.pl, 3, -2, 0)},#${b.shape([solid])},$,.STRAIGHT_RUN_STAIR.)`);
+      const flight = b.add(`IFCSTAIRFLIGHT(${b.guid()},$,'Lauf unten',$,$,#${b.place(b.storeys.eg.pl, 3, -3, 0)},$,$,1,1,$,$,$)`);
+      b.add(`IFCRELAGGREGATES(${b.guid()},$,$,$,#${stair},(#${flight}))`);
+      b.contain(b.storeys.eg.id, stair);
+    };
+    const f = await facts({ extra });
+    const stair = f.candidates.find((c) => c.name === 'Aussentreppe');
+    expect(stair?.selectedBecause).toMatch(/no readable body.*kept conservatively/);
+    expect(f.skipped.some((s) => s.ifcClass === 'IfcStair')).toBe(false);
+  });
+
   // Review finding 8.
   it('takes the lower of a window placement and its filled opening, with a note when they differ', async () => {
     let wallPl = 0;

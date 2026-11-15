@@ -298,16 +298,18 @@ function descentEvidence(ctx: CandidateContext, entity: DecodedEntity, level: nu
   const frame = ctx.placements.ofProduct(entity.expressId);
   const ids = [entity.expressId, ...ctx.reader.related(entity.expressId, RelationshipType.Aggregates, 'forward')];
   let minZ = Infinity;
-  let readable = false;
+  let readable = 0;
   for (const id of ids) {
     const f = id === entity.expressId ? frame : ctx.placements.ofProduct(id);
     const corners = f ? extrusionCorners(ctx.reader, id) : null;
     if (!f || !corners) continue;
-    readable = true;
+    readable++;
     for (const p of toWorld(f, corners)) minZ = Math.min(minZ, ctx.georef.toMap(p)[2]);
   }
-  if (!readable) return { keep: true, why: 'its body cannot be read, so it may lead down (kept conservatively)' };
+  if (readable === 0) return { keep: true, why: 'its body cannot be read, so it may lead down (kept conservatively)' };
   if (minZ < ctx.groundLevel - 0.3) return { keep: true, why: `its body reaches ${(ctx.groundLevel - minZ).toFixed(2)} m below the ground storey` };
+  // One flight proven to lead up says nothing about a flight whose body cannot be read.
+  if (readable < ids.length) return { keep: true, why: 'a part of it has no readable body (the readable parts lead up), so it may lead down (kept conservatively)' };
   return { keep: false, why: 'its body lies wholly at or above the ground storey (leads up)' };
 }
 

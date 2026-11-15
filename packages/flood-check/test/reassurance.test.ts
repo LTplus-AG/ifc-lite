@@ -234,12 +234,20 @@ describe('review threads', () => {
     }
   });
 
-  it('a ground-storey door with a non-finite level cannot confirm the height reference', () => {
-    const r = check([groundDoor(NaN), upperWindow(503)], 500, south(mid), flatTerrain(500));
-    expect(r.heightReference.status).toBe('unconfirmed');
-    expect(r.heightReference.unconfirmedBecause.join(' ')).toMatch(/no finite level/);
-    expect(r.results.map((x) => x.outcome)).not.toContain('above-mapped-class-range');
-    expect(r.results.map((x) => x.outcome)).not.toContain('no-runoff-mapped');
+  it('a candidate with a non-finite level is refused, whatever its category: no favourable result from an Infinity level', () => {
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      for (const cs of [[groundDoor(bad), upperWindow(503)], [groundDoor(500), upperWindow(bad)]]) {
+        const e = (() => {
+          try {
+            check(cs, 500, south(mid), flatTerrain(500), { renderingConfirmation: CONFIRMED });
+          } catch (err) {
+            return err;
+          }
+        })();
+        expect(e).toBeInstanceOf(FloodCheckRefusal);
+        expect((e as FloodCheckRefusal).code).toBe('georeference-implausible');
+      }
+    }
   });
 
   it('a sample on a row boundary reads the row whose closed north edge it is, as the raster contract says', () => {

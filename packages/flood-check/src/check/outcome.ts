@@ -77,6 +77,8 @@ export interface LevelComparison {
  */
 export function compareLevel(level: number, terrain: number, cls: HazardClassDefinition, margin: number): LevelComparison {
   if (!(margin >= 0)) throw new RangeError(`margin must be >= 0 (Infinity allowed), got ${margin}`);
+  // Every comparison with a non-finite level is false or true by accident (Infinity > anything), never by evidence.
+  if (!Number.isFinite(level) || !Number.isFinite(terrain)) throw new RangeError(`level and terrain must be finite, got level ${level}, terrain ${terrain}`);
   const lower = terrain + cls.lowerBound;
   const upper = cls.upperBound === null ? null : terrain + cls.upperBound;
   const aboveLower = level - lower;

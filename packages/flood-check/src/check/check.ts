@@ -246,6 +246,14 @@ export function checkWith(
   unconfirmedBecause: readonly string[],
 ): FloodCheckResult {
   assertCompatible(facts, raster.crs, terrain);
+  // A level that is not a finite height compares true or false by accident; refuse before any of it can read as evidence.
+  const unusable = facts.candidates.find((c) => !Number.isFinite(c.level));
+  if (unusable) {
+    throw new FloodCheckRefusal(
+      'georeference-implausible',
+      `candidate #${unusable.expressId} (${unusable.ifcClass}) has level ${unusable.level}, not a finite height, so it cannot be compared with the hazard map; no element results are reported.`,
+    );
+  }
   const s = resolveSampling();
   const anchorTolerance = options.anchorTolerance ?? DEFAULT_ANCHOR_TOLERANCE;
   if (!(anchorTolerance >= 0) || anchorTolerance > DEFAULT_ANCHOR_TOLERANCE) {

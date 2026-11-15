@@ -9,6 +9,7 @@
  * that matched nothing printed 0/0 · 0%. The report now uses the panel's units.
  */
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -198,4 +199,14 @@ describe('IDS report requirement-check ring (#8417)', () => {
     layoutIdsReport(synthetic, cursor, 220, 10, undefined, (item) => drawn.push(item));
     assert.equal(drawn.length, 1, 'a narrow block keeps its summary readable');
   });
+});
+
+it('keeps the subset qualifier in preview and PDF when report stamps are hidden (#10371)', () => {
+  const block: IdsReportBlock = { ...synthetic, showStamp: false, targetScope: { kind: 'subset', entityCount: 128 } };
+  const ui = render(<IdsReportPreview block={block} />);
+  assert.match(ui.textContent ?? '', /Filtered population: 128 candidates/);
+  assert.match(ui.textContent ?? '', /not a whole-model validation/);
+  const text = pdfTexts(block).join(' ');
+  assert.match(text, /Filtered population: 128 candidates/);
+  assert.match(text, /not a whole-model validation/);
 });

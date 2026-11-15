@@ -58,6 +58,7 @@
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/semantic": "workspace:^",
     "@ifc-lite/site-context": "workspace:^",
+    "@ifc-lite/tiles3d": "workspace:^",
     "@ifc-lite/viewer-core": "workspace:^",
     "@ifc-lite/wasm": "workspace:^"
   },

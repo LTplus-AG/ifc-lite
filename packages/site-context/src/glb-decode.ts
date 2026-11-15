@@ -71,7 +71,8 @@ function fromGltfAxes(src: Float32Array): Float32Array {
 }
 
 function readMesh(json: GltfJson, bin: Uint8Array | null, index: number): SiteContextMesh {
-  const prim = json.meshes?.[index]?.primitives[0];
+  const gltfMesh = json.meshes?.[index];
+  const prim = gltfMesh?.primitives[0];
   if (!prim) throw new SiteContextFormatError(`mesh ${index} has no primitive`);
   const mesh: SiteContextMesh = {
     positions: fromGltfAxes(readAccessor<Float32Array>(json, bin, prim.attributes.POSITION, 'f32')),
@@ -79,6 +80,16 @@ function readMesh(json: GltfJson, bin: Uint8Array | null, index: number): SiteCo
     indices: readAccessor<Uint32Array>(json, bin, prim.indices, 'u32'),
   };
   if (prim.attributes.TEXCOORD_0 !== undefined) mesh.uvs = readAccessor<Float32Array>(json, bin, prim.attributes.TEXCOORD_0, 'f32');
+  const parts = gltfMesh?.extras?.[EXTRAS_KEY]?.parts;
+  if (parts) {
+    let next = 0;
+    for (const p of parts) {
+      if (p.firstIndex !== next || !(p.indexCount >= 0) || p.indexCount % 3 !== 0) throw new SiteContextFormatError(`mesh ${index}: part "${p.name}" is not the next contiguous triangle range`);
+      next += p.indexCount;
+    }
+    if (next !== mesh.indices.length) throw new SiteContextFormatError(`mesh ${index}: parts cover ${next} of ${mesh.indices.length} indices`);
+    mesh.parts = parts.map((p) => ({ name: p.name, firstIndex: p.firstIndex, indexCount: p.indexCount }));
+  }
   return mesh;
 }
 
@@ -87,7 +98,7 @@ function readFeature(json: GltfJson, bin: Uint8Array | null, node: GltfNode, doc
   if (!x) throw new SiteContextFormatError(`node "${node.name ?? '?'}" has no ${EXTRAS_KEY} extras`);
   const t = node.translation ?? [0, 0, 0];
   const origin: [number, number, number] = x.origin ?? [docOrigin[0] + t[0], docOrigin[1] - t[2], docOrigin[2] + t[1]];
-  return {
+  const feature: SiteContextFeature = {
     id: x.id,
     ifcType: x.ifcType,
     name: x.name,
@@ -96,6 +107,8 @@ function readFeature(json: GltfJson, bin: Uint8Array | null, node: GltfNode, doc
     attributes: x.attributes,
     provenance: x.provenance,
   };
+  if (x.subject === true) feature.subject = true;
+  return feature;
 }
 
 export function decodeSiteContextGlb(bytes: Uint8Array): SiteContextDocument {
@@ -106,12 +119,16 @@ export function decodeSiteContextGlb(bytes: Uint8Array): SiteContextDocument {
     throw new SiteContextFormatError(`site-context format version ${meta.formatVersion} is not supported (this reader: ${SITE_CONTEXT_FORMAT_VERSION})`);
   }
   const nodes = json.nodes ?? [];
-  const layers: SiteContextLayer[] = meta.layers.map((l) => ({
-    kind: l.kind,
-    features: (nodes[l.node]?.children ?? []).map((i) => readFeature(json, bin, nodes[i], meta.origin)),
-    attribution: l.attribution,
-    issues: l.issues,
-    complete: l.complete,
-  }));
+  const layers: SiteContextLayer[] = meta.layers.map((l) => {
+    const layer: SiteContextLayer = {
+      kind: l.kind,
+      features: (nodes[l.node]?.children ?? []).map((i) => readFeature(json, bin, nodes[i], meta.origin)),
+      attribution: l.attribution,
+      issues: l.issues,
+      complete: l.complete,
+    };
+    if (l.provenance) layer.provenance = l.provenance;
+    return layer;
+  });
   return { crs: meta.crs, verticalCrs: meta.verticalCrs, origin: meta.origin, layers };
 }

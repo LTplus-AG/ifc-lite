@@ -76,7 +76,10 @@ function addMesh(bin: BinWriter, mesh: SiteContextMesh, material: number) {
   };
   if (mesh.uvs) attributes.TEXCOORD_0 = bin.add(mesh.uvs, ARRAY_BUFFER, 'VEC2', false);
   const indices = bin.add(mesh.indices, ELEMENT_ARRAY_BUFFER, 'SCALAR', false);
-  return { primitives: [{ attributes, indices, material, mode: 4 }] };
+  const out: NonNullable<GltfJson['meshes']>[number] = { primitives: [{ attributes, indices, material, mode: 4 }] };
+  // Parts stay index ranges of the one primitive, so a reader that ignores them still gets the whole mesh.
+  if (mesh.parts) out.extras = { [EXTRAS_KEY]: { parts: mesh.parts.map((p) => ({ name: p.name, firstIndex: p.firstIndex, indexCount: p.indexCount })) } };
+  return out;
 }
 
 function pad(bytes: Uint8Array, fill: number): Uint8Array {
@@ -105,7 +108,14 @@ export function encodeSiteContextGlb(doc: SiteContextDocument): Uint8Array {
     const group: GltfNode = { name: layer.kind, children: [] };
     nodes.push(group);
     nodes[0].children!.push(layerNode);
-    meta.layers.push({ kind: layer.kind, attribution: layer.attribution, issues: layer.issues, complete: layer.complete, node: layerNode });
+    meta.layers.push({
+      kind: layer.kind,
+      attribution: layer.attribution,
+      issues: layer.issues,
+      complete: layer.complete,
+      node: layerNode,
+      ...(layer.provenance ? { provenance: layer.provenance } : {}),
+    });
     for (const f of layer.features) {
       const extras: SiteContextGlbNodeExtras = {
         id: f.id,
@@ -114,6 +124,7 @@ export function encodeSiteContextGlb(doc: SiteContextDocument): Uint8Array {
         origin: [...f.origin],
         attributes: f.attributes,
         provenance: f.provenance,
+        ...(f.subject ? { subject: true as const } : {}),
       };
       const node: GltfNode = {
         name: f.name,

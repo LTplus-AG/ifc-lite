@@ -16,7 +16,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { attributionFor, type BBox, type ElevationGrid, type SwissParcel } from '@ifc-lite/geodata-ch';
-import { decodeSiteContextGlb, type SiteContextGeodata } from '@ifc-lite/site-context';
+import { resolveCrs } from '@ifc-lite/geo';
+import { decodeSiteContextGlb, type BuildingsReader, type SiteContextGeodata } from '@ifc-lite/site-context';
+import { geodeticToEcef, type SwissBuildingFeature } from '@ifc-lite/tiles3d';
 import { georefCommand } from './georef.js';
 import { siteContextCommand } from './site-context.js';
 import { diskCache } from './site-context-cache.js';
@@ -105,12 +107,61 @@ interface Report {
   layers: Array<{ kind: string; complete: boolean; features: number; triangles: number; issues: Array<{ code: string }>; attribution: string[] }>;
   parcels: Array<{ egrid: string; number: string | null; canton: string | null; oerebExtractUrl: string | null }>;
   attribution: string[]; warnings: string[];
+  buildings?: {
+    count: number; withEgid: number; requests: number | null; bytes: number | null;
+    subject: { id: string; egid: string | null; match: { method: string; overlap?: number } } | null;
+    subjectFootprint: { elements: number; ring: Array<{ x: number; y: number }> } | null;
+    issues: Array<{ code: string; message: string }>;
+  };
 }
 
-async function siteContext(args: string[], geodata = stub()): Promise<Report> {
+async function siteContext(args: string[], geodata = stub(), buildingsReader?: BuildingsReader): Promise<Report> {
   capture();
-  await siteContextCommand([...args, '--json', '--cache-dir', p('cache')], { geodata });
+  await siteContextCommand([...args, '--json', '--cache-dir', p('cache')], { geodata, buildingsReader });
   return JSON.parse(stdout) as Report;
+}
+
+/** A flat-roofed prism on an EPSG:2056 ring, encoded as the swisstopo tiles do (ECEF, wall and roof groups). */
+async function prism(ring: Array<{ x: number; y: number }>, base: number, top: number, attributes: Record<string, unknown>, featureId: number): Promise<SwissBuildingFeature> {
+  const lv95 = (await resolveCrs({ epsg: 2056 }))!;
+  const verts: number[] = [];
+  for (const z of [base, top]) {
+    for (const q of ring) {
+      const [lon, lat] = lv95.toWgs84([q.x, q.y])!;
+      verts.push(...geodeticToEcef(lon, lat, z));
+    }
+  }
+  const n = ring.length;
+  const walls: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    walls.push(i, j, n + j, i, n + j, n + i);
+  }
+  const roof: number[] = [];
+  for (let i = 1; i < n - 1; i++) roof.push(n, n + i, n + i + 1);
+  const url = 'https://3d.geo.admin.ch/ch.swisstopo.swissbuildings3d.3d/v1/20260520/stub.b3dm';
+  return {
+    featureId,
+    positions: new Float64Array(verts),
+    indices: new Uint32Array([...walls, ...roof]),
+    groups: [
+      { start: 0, count: walls.length, node: 0, mesh: 0, primitive: 0, baseColorFactor: [0.89, 0.85, 0.56, 1] },
+      { start: walls.length, count: roof.length, node: 0, mesh: 0, primitive: 1, baseColorFactor: [0.81, 0.25, 0.25, 1] },
+    ],
+    attributes,
+    tile: { url, tilesetUrl: url, tilesetChain: [url], assetVersion: '1.0' },
+  };
+}
+
+function reader(features: SwissBuildingFeature[]): BuildingsReader {
+  return async () => ({
+    features, tiles: [], issues: [], truncated: false, complete: true, attribution: '© swisstopo (swissBUILDINGS3D)',
+    stats: { requests: 7, bytes: 4096, cacheHits: 2, nodesVisited: 0, tilesetsLoaded: 0, contentsSelected: 0, featuresOutsideRegion: 0, decodedVertices: 0, decodedIndices: 0 },
+  });
+}
+
+function square(cx: number, cy: number, h: number): Array<{ x: number; y: number }> {
+  return [{ x: cx - h, y: cy - h }, { x: cx + h, y: cy - h }, { x: cx + h, y: cy + h }, { x: cx - h, y: cy + h }];
 }
 
 async function refusal(args: string[]): Promise<string> {
@@ -221,6 +272,50 @@ describe('ifc-lite site-context without a model', () => {
     expect(r.centre).toEqual({ x: CENTRE.x + 5, y: CENTRE.y - 5, source: '--egrid' });
     expect(r.parcels[0].egrid).toBe('CH999999999999');
     expect(geodata.calls.filter((c) => c.startsWith('parcelById'))).toHaveLength(2);
+  });
+});
+
+describe('ifc-lite site-context buildings', () => {
+  it('reads buildings, marks the subject by --subject-egid and reports counts, requests and bytes', async () => {
+    const features = [
+      await prism(square(CENTRE.x, CENTRE.y, 8), 500, 510, { EGID: 190001, UUID: 'A' }, 0),
+      await prism(square(CENTRE.x + 25, CENTRE.y, 5), 500, 506, { UUID: 'B' }, 1),
+    ];
+    const r = await siteContext(['--centre', `${CENTRE.x},${CENTRE.y}`, '--radius', '40', '--layers', 'terrain,parcel,buildings', '--subject-egid', '190001', '--out', p('b.glb')], stub(), reader(features));
+    expect(r.buildings).toMatchObject({ count: 2, withEgid: 1, requests: 7, bytes: 4096, subject: { id: 'building:egid:190001', egid: '190001', match: { method: 'egid' } }, subjectFootprint: null });
+    expect(r.buildings!.issues.map((i) => i.code)).toEqual(expect.arrayContaining(['buildings-subject-matched', 'buildings-missing-egid']));
+    expect(r.requests).toBe(3 + 7);
+    expect(r.attribution).toContain('© swisstopo (swissBUILDINGS3D)');
+    const doc = decodeSiteContextGlb(new Uint8Array(await readFile(p('b.glb'))));
+    const subject = doc.layers[2].features.find((f) => f.subject)!;
+    expect(subject.mesh!.parts!.map((q) => q.name)).toEqual(['roof', 'wall']);
+  });
+
+  it('derives a footprint from a rotated millimetre model and matches the building it stands in by overlap', async () => {
+    const first = await siteContext([p('rotated-mm.ifc'), '--radius', '40', '--layers', 'buildings', '--out', p('m0.glb')], stub(), reader([]));
+    const ring = first.buildings!.subjectFootprint!.ring;
+    expect(first.buildings!.subjectFootprint!.elements).toBeGreaterThan(0);
+    // The model's 60° rotation carries into its footprint (not into the context): its edges run at 60° / 150°.
+    const angle = (Math.atan2(ring[1].y - ring[0].y, ring[1].x - ring[0].x) * 180) / Math.PI;
+    expect(((angle % 90) + 90) % 90).toBeCloseTo(60, 6);
+    expect(first.buildings!.issues.map((i) => i.code)).toContain('buildings-subject-not-found');
+    const own = await prism(ring, 500, 512, { UUID: 'OWN' }, 0);
+    const other = await prism(square(CENTRE.x + 30, CENTRE.y + 30, 4), 500, 505, { UUID: 'OTHER' }, 1);
+    const r = await siteContext([p('rotated-mm.ifc'), '--radius', '40', '--layers', 'buildings', '--out', p('m.glb')], stub(), reader([other, own]));
+    expect(r.buildings!.subject).toMatchObject({ id: 'building:uuid:OWN', match: { method: 'footprint' } });
+    expect(r.buildings!.subject!.match.overlap).toBeGreaterThan(0.99);
+  });
+
+  it('turns an offline run without cached tiles into a failed buildings layer, not a failed run', async () => {
+    capture();
+    await siteContextCommand(['--centre', `${CENTRE.x},${CENTRE.y}`, '--radius', '20', '--layers', 'buildings', '--offline', '--json', '--cache-dir', p('empty-cache'), '--out', p('off.glb')], { geodata: stub() });
+    const r = JSON.parse(stdout) as Report;
+    expect(r.layers[0]).toMatchObject({ kind: 'buildings', complete: false, features: 0 });
+    expect(r.buildings!.issues).toEqual([expect.objectContaining({ code: 'buildings-fetch-failed', message: expect.stringContaining('offline') })]);
+  });
+
+  it('refuses a non-numeric --subject-egid', async () => {
+    expect(await refusal(['--centre', '2600000,1200000', '--layers', 'buildings', '--subject-egid', 'abc', '--out', p('x.glb')])).toMatch(/numeric EGID/);
   });
 });
 

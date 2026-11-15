@@ -10,6 +10,7 @@ import { decodeSiteContextGlb, SiteContextFormatError } from '../src/glb-decode.
 import { encodeSiteContextGlb } from '../src/glb-encode.js';
 import type { GltfJson } from '../src/glb-format.js';
 import { paraboloid, stubGeodata } from './stub-geodata.js';
+import { prismFeature, stubReader } from './tiles-support.js';
 
 async function sampleDoc() {
   return buildSiteContext({
@@ -17,6 +18,13 @@ async function sampleDoc() {
     radius: 70,
     layers: ['terrain', 'parcel', 'buildings'],
     geodata: stubGeodata({ height: paraboloid, noData: (x, y) => x > 2_600_050 && y > 1_200_050 }),
+    subject: { egid: '42' },
+    buildings: {
+      reader: stubReader([
+        prismFeature({ ring: [[2_599_990, 1_199_990], [2_600_010, 1_199_990], [2_600_010, 1_200_000], [2_599_990, 1_200_000]], base: 595, top: 607, attributes: { EGID: 42, DACH_MAX: 607 } }, 0),
+        prismFeature({ ring: [[2_600_030, 1_200_020], [2_600_045, 1_200_020], [2_600_045, 1_200_035], [2_600_030, 1_200_035]], base: 597, top: 604 }, 1),
+      ]),
+    },
   });
 }
 
@@ -77,7 +85,67 @@ describe('site-context GLB', () => {
     const meta = gltfJson(encodeSiteContextGlb(doc)).asset.extras!.ifcLiteSiteContext!;
     expect(meta.layers.map((l) => [l.kind, l.complete])).toEqual(doc.layers.map((l) => [l.kind, l.complete]));
     expect(meta.layers[1].attribution.some((a) => a.termsVerifiedOn === null)).toBe(true);
-    expect(meta.layers[2].issues[0].code).toBe('layer-unsupported');
+    expect(meta.layers[2].attribution[0].text).toBe('© swisstopo (swissBUILDINGS3D)');
+    expect(meta.layers[2].provenance).toEqual(doc.layers[2].provenance);
+  });
+
+  it('carries building parts as index ranges of one primitive, and the subject flag, through the round trip', async () => {
+    const doc = await sampleDoc();
+    const buildings = doc.layers[2].features;
+    expect(buildings.map((f) => f.mesh!.parts!.map((p) => p.name))).toEqual([['roof', 'wall'], ['roof', 'wall']]);
+    expect(buildings.map((f) => f.subject)).toEqual([true, undefined]);
+    const glb = encodeSiteContextGlb(doc);
+    const json = gltfJson(glb);
+    const meshes = json.meshes!.filter((m) => m.extras?.ifcLiteSiteContext);
+    expect(meshes).toHaveLength(2);
+    // One primitive with every index: a reader that ignores the extras still gets the whole building.
+    for (const m of meshes) {
+      expect(m.primitives).toHaveLength(1);
+      const parts = m.extras!.ifcLiteSiteContext!.parts;
+      expect(json.accessors![m.primitives[0].indices].count).toBe(parts.reduce((n, p) => n + p.indexCount, 0));
+    }
+    // Terrain and parcel meshes carry no parts and nodes no subject: those layers are written as before.
+    expect(json.meshes!.filter((m) => !m.extras)).toHaveLength(json.meshes!.length - 2);
+    expect(json.nodes!.filter((n) => (n.extras?.ifcLiteSiteContext as { subject?: boolean } | undefined)?.subject)).toHaveLength(1);
+    const back = decodeSiteContextGlb(glb);
+    expect(back.layers[2].features).toEqual(buildings);
+  });
+
+  it('decodes a file written before parts, subject and layer provenance existed', async () => {
+    const doc = await sampleDoc();
+    const json = gltfJson(encodeSiteContextGlb(doc));
+    // Strip what this change added: what is left is a format 1 file as the earlier encoder wrote it.
+    for (const m of json.meshes!) delete m.extras;
+    for (const n of json.nodes!) delete (n.extras?.ifcLiteSiteContext as { subject?: boolean } | undefined)?.subject;
+    for (const l of json.asset.extras!.ifcLiteSiteContext!.layers) delete l.provenance;
+    const glb = encodeSiteContextGlb(doc);
+    const dv = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
+    const jsonLength = dv.getUint32(12, true);
+    const bin = glb.subarray(20 + jsonLength);
+    const text = new TextEncoder().encode(JSON.stringify(json));
+    const padded = new Uint8Array(Math.ceil(text.length / 4) * 4).fill(0x20);
+    padded.set(text);
+    const old = new Uint8Array(20 + padded.length + bin.length);
+    const ov = new DataView(old.buffer);
+    ov.setUint32(0, 0x46546c67, true);
+    ov.setUint32(4, 2, true);
+    ov.setUint32(8, old.length, true);
+    ov.setUint32(12, padded.length, true);
+    ov.setUint32(16, 0x4e4f534a, true);
+    old.set(padded, 20);
+    old.set(bin, 20 + padded.length);
+    const back = decodeSiteContextGlb(old);
+    expect(back.layers[0]).toEqual(doc.layers[0]);
+    expect(back.layers[2].features.map((f) => [f.subject, f.mesh!.parts, f.mesh!.indices.length])).toEqual(
+      doc.layers[2].features.map((f) => [undefined, undefined, f.mesh!.indices.length]),
+    );
+    expect(back.layers[2].provenance).toBeUndefined();
+  });
+
+  it('refuses parts that do not tile the index buffer', async () => {
+    const doc = await sampleDoc();
+    doc.layers[2].features[0].mesh!.parts![0].indexCount -= 3;
+    expect(() => decodeSiteContextGlb(encodeSiteContextGlb(doc))).toThrow(/parts|contiguous/);
   });
 
   it('refuses bytes that are not a site-context GLB', () => {

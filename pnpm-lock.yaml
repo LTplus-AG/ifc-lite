@@ -1231,6 +1231,9 @@ importers:
       '@ifc-lite/site-context':
         specifier: workspace:^
         version: link:../site-context
+      '@ifc-lite/tiles3d':
+        specifier: workspace:^
+        version: link:../tiles3d
       '@ifc-lite/viewer-core':
         specifier: workspace:^
         version: link:../viewer
@@ -2590,9 +2593,15 @@ importers:
 
   packages/site-context:
     dependencies:
+      '@ifc-lite/geo':
+        specifier: workspace:^
+        version: link:../geo
       '@ifc-lite/geodata-ch':
         specifier: workspace:^
         version: link:../geodata-ch
+      '@ifc-lite/tiles3d':
+        specifier: workspace:^
+        version: link:../tiles3d
     devDependencies:
       '@mergifyio/vitest':
         specifier: ^2026.10.11

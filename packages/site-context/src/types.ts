@@ -15,8 +15,9 @@
  */
 
 import type { Attribution, SwissGeodata } from '@ifc-lite/geodata-ch';
+import type { FetchLike, readSwisstopoBuildings, TilesCache } from '@ifc-lite/tiles3d';
 
-/** The layers a site context can hold. `buildings` is accepted but not built yet. */
+/** The layers a site context can hold. */
 export type SiteContextLayerKind = 'terrain' | 'parcel' | 'buildings';
 
 /** A JSON value: what feature attributes and provenance are made of. */
@@ -38,6 +39,20 @@ export interface SiteContextMesh {
   normals: Float32Array;
   uvs?: Float32Array;
   indices: Uint32Array;
+  /**
+   * Named triangle ranges a consumer may style differently, e.g. a
+   * neighbouring building's `roof` and `wall`. Ranges are contiguous, in
+   * order, and together cover `indices` exactly. Absent: one undivided mesh.
+   */
+  parts?: SiteContextMeshPart[];
+}
+
+/** A contiguous range of a mesh's `indices` (3 per triangle). */
+export interface SiteContextMeshPart {
+  /** `roof` or `wall` for buildings. */
+  name: string;
+  firstIndex: number;
+  indexCount: number;
 }
 
 export interface SiteContextFeature {
@@ -52,6 +67,12 @@ export interface SiteContextFeature {
   mesh: SiteContextMesh | null;
   attributes: { [key: string]: JsonValue };
   provenance: { [key: string]: JsonValue };
+  /**
+   * `true` on the neighbouring building that is the model's own building
+   * (see `BuildSiteContextOptions.subject`). It is kept in the document; a
+   * viewer decides whether to hide it. Absent on every other feature.
+   */
+  subject?: true;
 }
 
 export type SiteContextIssueSeverity = 'info' | 'warning' | 'error';
@@ -74,6 +95,8 @@ export interface SiteContextLayer {
   issues: SiteContextIssue[];
   /** `false` when the layer could not be built in full; `issues` says why. */
   complete: boolean;
+  /** How the layer was read (source, release, requests, bytes, caps, subject match), when the layer records it. */
+  provenance?: { [key: string]: JsonValue };
 }
 
 export interface SiteContextDocument {
@@ -90,7 +113,7 @@ export type SiteContextGeodata = Pick<SwissGeodata, 'elevationGrid' | 'parcelByI
 };
 
 export interface SiteContextProgress {
-  stage: 'terrain-grid' | 'terrain-mesh' | 'parcel' | 'oereb' | 'done';
+  stage: 'terrain-grid' | 'terrain-mesh' | 'parcel' | 'oereb' | 'buildings' | 'done';
   message: string;
 }
 
@@ -105,12 +128,41 @@ export interface BuildSiteContextOptions {
   /**
    * The building the context is for. `footprint` (EPSG:2056 rings) moves the
    * parcel lookup to its centroid; `egrid` takes the parcel by its EGRID
-   * instead of by point; `egid` is kept for the buildings layer.
+   * instead of by point. In the buildings layer, the neighbour whose `EGID`
+   * equals `egid` is marked `subject: true`; without an EGID match, the one
+   * whose footprint overlaps `footprint` most (at least
+   * `SUBJECT_MIN_OVERLAP` of the smaller of the two areas).
    */
   subject?: { footprint?: MapPoint[][]; egid?: string; egrid?: string };
   geodata: SiteContextGeodata;
+  /** The buildings layer's reader, network and caps (see `BuildingsOptions`). */
+  buildings?: BuildingsOptions;
   signal?: AbortSignal;
   onProgress?: (progress: SiteContextProgress) => void;
   /** Called once per finished layer, in document order. */
   onLayer?: (layer: SiteContextLayer) => void;
+}
+
+/** Reads neighbouring buildings for a WGS84 region: `readSwisstopoBuildings` of `@ifc-lite/tiles3d`, or a stand-in with its signature. */
+export type BuildingsReader = typeof readSwisstopoBuildings;
+
+export interface BuildingsOptions {
+  /** Default: the swisstopo swissBUILDINGS3D preset of `@ifc-lite/tiles3d`. */
+  reader?: BuildingsReader;
+  /** Passed to the reader: the CLI injects its fetch and on-disk cache, the viewer its own. */
+  fetch?: FetchLike;
+  cache?: TilesCache;
+  /** Pin a dated swisstopo release (YYYYMMDD); default: the current one. */
+  release?: string;
+  /** Request and byte budgets of the read; default: the preset's (64 requests, 32 MiB). */
+  maxRequests?: number;
+  maxBytes?: number;
+  /** Tile-cull margin in metres; default: the preset's measured 100 m. */
+  tileCullMarginMetres?: number;
+  /** Emscripten options for the Draco decoder, e.g. `{ locateFile: () => wasmUrl }` in a browser. */
+  dracoModuleOptions?: Record<string, unknown>;
+  /** At most this many buildings are kept, nearest the centre first (default 5000). */
+  maxFeatures?: number;
+  /** At most this many triangles in all, nearest the centre first (default 2 000 000). */
+  maxTriangles?: number;
 }

@@ -1,0 +1,59 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * A coarse footprint of the model in EPSG:2056, to find its own building
+ * among the neighbours: the plan bounding rectangle of the model's shaped
+ * elements (LOD0 boxes from `@ifc-lite/export`, no meshing), carried to the
+ * map through the model's IfcMapConversion (rotation and scale applied).
+ * The site context itself never uses the model's rotation; only this
+ * matching footprint does, because it describes where the model stands.
+ */
+
+import { generateLod0 } from '@ifc-lite/export';
+import type { ModelCentre } from './site-context-model.js';
+
+export interface ModelFootprint {
+  /** One ring, counter-clockwise, EPSG:2056 metres. */
+  ring: Array<{ x: number; y: number }>;
+  elements: number;
+  /** Map-conversion scale applied, metres of map per metre of model. */
+  scale: number;
+  warnings: string[];
+}
+
+/** Elements that are not the building: the site and its terrain, annotations, grids, virtual and external-space elements. */
+const NOT_BUILDING = new Set(['IfcSite', 'IfcGeographicElement', 'IfcAnnotation', 'IfcGrid', 'IfcVirtualElement', 'IfcExternalSpatialElement', 'IfcCivilElement', 'IfcProject']);
+
+/**
+ * `null` when no element has a shape to bound. `lengthUnitScale` is the
+ * project's length unit in metres; the LOD0 boxes are in metres already.
+ */
+export async function modelFootprint(bytes: Uint8Array, model: ModelCentre, lengthUnitScale: number): Promise<ModelFootprint | null> {
+  const lod0 = await generateLod0(bytes);
+  const shaped = lod0.elements.filter((e) => e.bbox_source === 'shape' && !NOT_BUILDING.has(e.ifcClass));
+  if (shaped.length === 0) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const e of shaped) {
+    minX = Math.min(minX, e.bbox.min[0]);
+    minY = Math.min(minY, e.bbox.min[1]);
+    maxX = Math.max(maxX, e.bbox.max[0]);
+    maxY = Math.max(maxY, e.bbox.max[1]);
+  }
+  const warnings: string[] = [];
+  // IFC: Scale converts project length units to map units; the boxes are metres, the result is metres.
+  let scale = (model.conversionScale ?? 1) * (model.mapUnitToMetres / lengthUnitScale);
+  if (!(Math.abs(scale - 1) <= 0.1)) {
+    warnings.push(`the map conversion's effective scale is ${scale}, which looks like a unit mix-up; the subject footprint uses 1`);
+    scale = 1;
+  }
+  const theta = ((model.rotationDegrees ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(theta), sin = Math.sin(theta);
+  const corners: Array<[number, number]> = [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]];
+  const ring = corners.map(([x, y]) => ({
+    x: model.conversionOrigin.x + scale * (x * cos - y * sin),
+    y: model.conversionOrigin.y + scale * (x * sin + y * cos),
+  }));
+  return { ring, elements: shaped.length, scale, warnings };
+}

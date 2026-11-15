@@ -15,6 +15,7 @@ import {
   SiteContextCoverageError,
   siteBBox,
 } from './frame.js';
+import { buildingsLayer } from './buildings-layer.js';
 import { footprintCentroid, parcelLayer } from './parcel-layer.js';
 import { terrainLayer } from './terrain-layer.js';
 import type { BuildSiteContextOptions, SiteContextDocument, SiteContextLayer, SiteContextLayerKind } from './types.js';
@@ -40,16 +41,6 @@ export function originHeight(grid: Pick<ElevationGrid, 'origin' | 'resolution' |
     }
   }
   return n > 0 ? Math.round(sum / n) : 0;
-}
-
-function unsupportedLayer(kind: SiteContextLayerKind): SiteContextLayer {
-  return {
-    kind,
-    features: [],
-    attribution: [],
-    issues: [{ code: 'layer-unsupported', severity: 'warning', message: `the ${kind} layer is not implemented yet; nothing was fetched for it` }],
-    complete: false,
-  };
 }
 
 export async function buildSiteContext(options: BuildSiteContextOptions): Promise<SiteContextDocument> {
@@ -115,7 +106,8 @@ export async function buildSiteContext(options: BuildSiteContextOptions): Promis
         layer.issues.push({ code: 'terrain-fetch-failed', severity: 'error', message: `elevation grid could not be read: ${gridError}` });
       }
     } else {
-      layer = unsupportedLayer(kind);
+      onProgress?.({ stage: 'buildings', message: 'reading neighbouring buildings' });
+      layer = await buildingsLayer({ centre, radius, subject: options.subject, options: options.buildings, signal });
     }
     layers.push(layer);
     onLayer?.(layer);

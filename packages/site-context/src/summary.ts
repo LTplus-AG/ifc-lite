@@ -5,7 +5,8 @@
 /** Counts and the facts a consumer prints next to a site context, from the document alone. */
 
 import type { Attribution } from '@ifc-lite/geodata-ch';
-import type { JsonValue, SiteContextDocument, SiteContextIssue, SiteContextLayerKind } from './types.js';
+import { BUILDING_SET } from './buildings-layer.js';
+import type { JsonValue, SiteContextDocument, SiteContextIssue, SiteContextLayer, SiteContextLayerKind } from './types.js';
 
 export interface SiteContextLayerSummary {
   kind: SiteContextLayerKind;
@@ -24,16 +25,54 @@ export interface SiteContextParcelSummary {
   oerebExtractUrl: string | null;
 }
 
+export interface SiteContextBuildingsSummary {
+  count: number;
+  withEgid: number;
+  /** The subject building and how it was matched; `null` when none was marked. */
+  subject: { id: string; egid: string | null; match: JsonValue } | null;
+  /** Network requests and bytes of the tile read (cache hits are free), from the layer provenance. */
+  requests: number | null;
+  bytes: number | null;
+  cacheHits: number | null;
+  /** Count per part name over all buildings (`roof`, `wall`), in triangles. */
+  partTriangles: { [part: string]: number };
+}
+
 export interface SiteContextSummary {
   crs: 'EPSG:2056';
   verticalCrs: 'EPSG:5728';
   origin: [number, number, number];
   layers: SiteContextLayerSummary[];
   parcels: SiteContextParcelSummary[];
+  /** Present when the document has a buildings layer. */
+  buildings?: SiteContextBuildingsSummary;
 }
 
 function str(v: JsonValue | undefined): string | null {
   return typeof v === 'string' ? v : null;
+}
+
+function num(v: JsonValue | undefined): number | null {
+  return typeof v === 'number' ? v : null;
+}
+
+function egidOf(attributes: { [key: string]: JsonValue }): string | null {
+  const set = attributes[BUILDING_SET];
+  return set && typeof set === 'object' && !Array.isArray(set) ? str(set.EGID) : null;
+}
+
+function buildingsSummary(layer: SiteContextLayer): SiteContextBuildingsSummary {
+  const partTriangles: { [part: string]: number } = {};
+  let withEgid = 0;
+  let subject: SiteContextBuildingsSummary['subject'] = null;
+  for (const f of layer.features) {
+    const egid = egidOf(f.attributes);
+    if (egid !== null) withEgid++;
+    if (f.subject) subject = { id: f.id, egid, match: f.provenance.subjectMatch ?? null };
+    for (const p of f.mesh?.parts ?? []) partTriangles[p.name] = (partTriangles[p.name] ?? 0) + p.indexCount / 3;
+  }
+  const prov = layer.provenance ?? {};
+  return { count: layer.features.length, withEgid, subject, requests: num(prov.requests), bytes: num(prov.bytes), cacheHits: num(prov.cacheHits), partTriangles };
 }
 
 export function summarizeSiteContext(doc: SiteContextDocument): SiteContextSummary {
@@ -68,5 +107,6 @@ export function summarizeSiteContext(doc: SiteContextDocument): SiteContextSumma
       issues: layer.issues,
     };
   });
-  return { crs: doc.crs, verticalCrs: doc.verticalCrs, origin: doc.origin, layers, parcels };
+  const buildings = doc.layers.find((l) => l.kind === 'buildings');
+  return { crs: doc.crs, verticalCrs: doc.verticalCrs, origin: doc.origin, layers, parcels, ...(buildings ? { buildings: buildingsSummary(buildings) } : {}) };
 }

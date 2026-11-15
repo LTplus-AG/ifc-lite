@@ -20,6 +20,7 @@ import {
   carriesGpuInstancedGeometry,
   convergeGeometryOntoRtcAnchor,
   isOnRtcAnchor,
+  isStreamedScanOnly,
   rebaseCoordinateInfoOntoRtcAnchor,
   rebaseOriginByRtcDelta,
   rtcRebaseDeltaFor,
@@ -115,7 +116,9 @@ export function convergeFederationRtcFrame(): void {
   const instancedIds = new Set(settled.filter(([id]) => hasInstancedShards(id)).map(([, model]) => model.geometryResult!));
   const movable = settled.filter(([, model]) => {
     const geometry = model.geometryResult!;
-    return !isOnRtcAnchor(geometry.coordinateInfo, anchor) && !carriesGpuInstancedGeometry(geometry) && !instancedIds.has(geometry);
+    // The same skips `convergeGeometryOntoRtcAnchor` makes, so a streamed scan's index is never withdrawn either.
+    return !isStreamedScanOnly(geometry) && !isOnRtcAnchor(geometry.coordinateInfo, anchor)
+      && !carriesGpuInstancedGeometry(geometry) && !instancedIds.has(geometry);
   });
   // Captured BEFORE the move, while each model's `CoordinateInfo` still
   // records the frame it is leaving: everything recorded in that frame outside

@@ -157,7 +157,7 @@ export function carriesGpuInstancedGeometry(geometry: RtcRebaseGeometry): boolea
  * zero-point identity descriptors; an inline cloud carries its points and
  * follows the anchor like a mesh (#10029).
  */
-function isStreamedScanOnly(geometry: RtcRebaseGeometry): boolean {
+export function isStreamedScanOnly(geometry: RtcRebaseGeometry): boolean {
   const clouds = cloudsOf(geometry);
   return geometry.meshes.length === 0 && clouds.length > 0 && clouds.every(isStreamedDescriptor);
 }

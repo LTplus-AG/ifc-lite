@@ -6805,6 +6805,7 @@
     "carriesGpuInstancedGeometry: function",
     "convergeGeometryOntoRtcAnchor: function",
     "isOnRtcAnchor: function",
+    "isStreamedScanOnly: function",
     "rebaseCoordinateInfoOntoRtcAnchor: function",
     "rebaseOriginByRtcDelta: function",
     "rtcRebaseDeltaFor: function",

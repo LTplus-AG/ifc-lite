@@ -4,7 +4,7 @@
 
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { projectedUnitToMetres } from './projected-units.js';
+import { projectedLinearUnit, projectedUnitToMetres } from './projected-units.js';
 
 describe('proj4 projected-unit boundary (#5048)', () => {
   it('normalizes metre, international-foot, and US-survey-foot definitions', () => {
@@ -18,5 +18,13 @@ describe('proj4 projected-unit boundary (#5048)', () => {
     assert.equal(projectedUnitToMetres('+proj=lcc +units=furlong'), null);
     assert.equal(projectedUnitToMetres('+proj=lcc +to_meter=0'), null);
     assert.equal(projectedUnitToMetres('+proj=lcc +to_meter=broken'), null);
+    assert.equal(projectedUnitToMetres('+proj=lcc +units=constructor'), null, 'an Object.prototype key is not a unit');
+  });
+
+  it('names the unit, also when only its factor is stated', () => {
+    assert.deepEqual(projectedLinearUnit('+proj=lcc +units=us-ft'), { name: 'US survey foot', toMetres: 1200 / 3937 });
+    assert.deepEqual(projectedLinearUnit('+proj=lcc +to_meter=0.3048'), { name: 'foot', toMetres: 0.3048 });
+    assert.deepEqual(projectedLinearUnit('+proj=lcc +to_meter=0.2'), { name: null, toMetres: 0.2 });
+    assert.deepEqual(projectedLinearUnit('+proj=utm +zone=32'), { name: 'metre', toMetres: 1 });
   });
 });

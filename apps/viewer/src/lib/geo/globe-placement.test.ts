@@ -15,7 +15,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import PROJ_ORACLE from './__fixtures__/proj-oracle.json' with { type: 'json' };
+import PROJ_ORACLE from '../../test/proj-oracle.js';
 import {
   bendsAwayFromAnchorPlane, estimateAnchorError, planGlobePlacement, prescribedGlobePlacement, resolveGlobePlacement,
 } from './globe-placement.js';

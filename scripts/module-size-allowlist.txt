@@ -116,8 +116,6 @@
    501 apps/viewer/src/lib/geo/cesium-bridge.ts
    461 apps/viewer/src/lib/geo/custom-basemap.ts
    405 apps/viewer/src/lib/geo/map-webgl-support.ts
-   462 apps/viewer/src/lib/geo/precision-grids.ts
-   726 apps/viewer/src/lib/geo/reproject.ts
    621 apps/viewer/src/lib/ifc4-pset-definitions.ts
    417 apps/viewer/src/lib/lists/adapter.ts
    445 apps/viewer/src/lib/llm/script-diagnostics.ts

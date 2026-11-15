@@ -20,7 +20,7 @@
  * not a survey-grade datum transform.
  */
 
-import { EGM96_GRID } from './egm96-undulation-data';
+import { EGM96_GRID } from './egm96-undulation-data.js';
 
 let grid: Int16Array | null = null;
 

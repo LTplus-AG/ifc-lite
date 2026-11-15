@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/src/lib/site-context/site-context-model.ts b/apps/viewer/src/lib/site-context/site-context-model.ts
+index 80f55e96a6..79b278d5df 100644
+--- a/apps/viewer/src/lib/site-context/site-context-model.ts
++++ b/apps/viewer/src/lib/site-context/site-context-model.ts
+@@ -96,7 +96,7 @@ function toViewerAxes(source: Float32Array): Float32Array {
+   for (let i = 0; i < source.length; i += 3) {
+     out[i] = source[i];
+     out[i + 1] = source[i + 2];
+-    out[i + 2] = source[i + 1];
++    out[i + 2] = -source[i + 1];
+   }
+   return out;
+ }

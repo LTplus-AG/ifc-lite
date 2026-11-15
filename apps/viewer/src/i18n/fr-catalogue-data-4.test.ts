@@ -30,6 +30,7 @@ catalogueBatchContract('fr', 8904, [
   'structural-review',
   'swept-disk-inspection',
   'table-corrections',
+  'site-context',
   'terrain-imagery',
   'tours',
   'trim-extend',

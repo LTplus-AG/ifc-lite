@@ -25,6 +25,7 @@
 
 import type { CandidateResult, FloodCheckResult } from './check/check.js';
 import { SITE_PSET } from './check/wording.js';
+import { buildingLabel } from './model/facts.js';
 import type { HazardClassDefinition } from './types.js';
 
 export { SITE_PSET };
@@ -114,6 +115,9 @@ export function sitePropertySet(result: FloodCheckResult, classes: readonly Haza
     .text('TerrainVerticalCrs', result.verticalDatum.terrainCrs, 'IfcIdentifier')
     .label('VerticalDatumBasis', result.verticalDatum.basis)
     .label('FootprintSource', result.footprintSource)
+    .label('CheckedBuilding', result.buildingScope.checked ? buildingLabel(result.buildingScope.checked) : null)
+    .text('BuildingsNotChecked', result.buildingScope.notChecked.map((b) => `${buildingLabel(b)}: ${b.candidatesNotChecked}`).join(' | '))
+    .int('CountElementsNotChecked', result.buildingScope.notChecked.reduce((n, b) => n + b.candidatesNotChecked, 0))
     .label('GroundStoreyBasis', result.groundStorey.basis)
     .length('GroundStoreyLevel', result.groundStorey.level)
     .label('HeightPlausibilityStatus', result.heightPlausibility.status)

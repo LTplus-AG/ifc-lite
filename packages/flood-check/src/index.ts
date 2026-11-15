@@ -58,7 +58,10 @@ export {
 export type { LegendEntry } from './legend.js';
 export { extractModelFacts, type ExtractOptions } from './model/extract.js';
 export type { GeoreferenceOptions, ModelGeoreference } from './model/georef.js';
+export { buildingLabel } from './model/facts.js';
 export type {
+  BuildingRef,
+  BuildingScope,
   CandidateCategory,
   CandidateFact,
   FootprintFact,

@@ -23,7 +23,7 @@
 
 import { FloodCheckRefusal } from '../errors.js';
 import { normalizeCrs, sameCrs, verticalCrsIdentifier } from '../crs.js';
-import { fillsCourtyards, type CandidateFact, type ModelFacts, type SpaceFact } from '../model/facts.js';
+import { fillsCourtyards, type BuildingScope, type CandidateFact, type ModelFacts, type SpaceFact } from '../model/facts.js';
 import {
   CELL_NO_RUNOFF,
   CELL_UNCLASSIFIED,
@@ -147,6 +147,7 @@ export interface FloodCheckResult {
   layerCheck: LayerCheck;
   footprintSource: ModelFacts['footprint']['source'];
   groundStorey: ModelFacts['groundStorey'];
+  buildingScope: BuildingScope; // see BuildingScope; empty for hand-built facts without it
   /** The screening caveat every result carries. */
   caveat: LocalizedText;
   results: CandidateResult[];
@@ -389,6 +390,7 @@ export function checkWith(
     layerCheck: { rasterEmpty, confirmation },
     footprintSource: facts.footprint.source,
     groundStorey: facts.groundStorey,
+    buildingScope: facts.buildingScope ?? { checked: null, notChecked: [] },
     caveat,
     results,
     reachableBelowGround: reachableSpaces(facts, results),

@@ -40,6 +40,8 @@ export interface Extra {
   dir(x: number, y: number, z: number): number;
   pt2(x: number, y: number): number;
   storeys: { ug: { pl: number; id: number }; eg: { pl: number; id: number }; og: { pl: number; id: number } };
+  /** The site, to aggregate a further building under it. */
+  site: { pl: number; id: number };
   contain(storeyId: number, id: number): void;
 }
 
@@ -173,6 +175,7 @@ export function syntheticHouse(o: SyntheticOptions = {}): string {
     dir,
     pt2,
     storeys: { ug, eg, og },
+    site: { pl: sitePl, id: site },
     contain: (storeyId, id) => contained[storeyId].push(id),
   });
 

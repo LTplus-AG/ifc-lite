@@ -54,7 +54,8 @@ export type RefusalCode =
   | 'request-too-large'
   | 'ambiguous-map-scale'
   | 'outside-provider-extent'
-  | 'no-candidates';
+  | 'no-candidates'
+  | 'ambiguous-building';
 
 /** The model and the data sources do not fit together; the check refuses instead of guessing. */
 export class FloodCheckRefusal extends FloodCheckError {

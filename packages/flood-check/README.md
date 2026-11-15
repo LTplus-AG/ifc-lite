@@ -198,6 +198,19 @@ entities, properties and containment from the parsed store. No meshing.
   or a slab outline with filled voids fills courtyards and notches, so on it
   no element gets a reassuring outcome; pass a real outline when the model
   has none.
+- **Building**: the footprint is one building's outline, so only the
+  elements of the **ground storey's building** are checked (pass
+  `groundStorey` to choose another). An element of another building would be
+  sampled next to itself, often inside that building, where the map shows no
+  depth because the hazard model raised every building, and would read as
+  `no runoff mapped`. When the file has several `IfcBuilding`s, the result
+  names the checked one (`buildingScope.checked`) and every other one with the
+  number of candidate elements found in it (`buildingScope.notChecked`; those
+  elements are also in `skipped`), with a warning; façade elements there that
+  state no `IsExternal` are not even counted, since they are tested against
+  the checked building's outline. Run the check once per building. With
+  several buildings and no ground storey placed in one of them, it
+  **refuses** (`ambiguous-building`).
 - **Candidates** and their lowest relevant level:
 
   | Category | Selected when | Level |
@@ -420,6 +433,8 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
   `Licence`, `Attribution`, `LimitsDE/EN`, `DisclaimerDE/EN`, `CaveatDE/EN`,
   `CoordinateReferenceSystem`, `TerrainVerticalReference`,
   `TerrainVerticalCrs`, `VerticalDatumBasis`, `FootprintSource`,
+  `CheckedBuilding`, `BuildingsNotChecked` (each with its count of candidate
+  elements), `CountElementsNotChecked`,
   `GroundStoreyBasis`, `GroundStoreyLevel`, `HeightPlausibilityStatus`,
   `HeightPlausibilityBasis`, `TerrainMinNearBuilding`,
   `TerrainMaxNearBuilding`, `HeightPlausibilityBelow/Above`,

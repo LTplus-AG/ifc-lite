@@ -103,6 +103,30 @@ export interface FootprintFact {
   fromElements: number[];
 }
 
+/** An IfcBuilding, as the result names it. */
+export interface BuildingRef {
+  expressId: number;
+  globalId: string | null;
+  name: string | null;
+}
+
+/** `"Name" (GlobalId)`, or `#id` when the building states neither. */
+export function buildingLabel(b: BuildingRef): string {
+  const parts = [b.name ? `"${b.name}"` : null, b.globalId ? `(${b.globalId})` : null].filter(Boolean);
+  return parts.length > 0 ? parts.join(' ') : `#${b.expressId}`;
+}
+
+/**
+ * Which building of the file was checked. The footprint is one building's
+ * outline, so only that building's elements are checked; the others are named
+ * with the number of candidate elements found in them, which get no result.
+ */
+export interface BuildingScope {
+  /** The building of the ground storey; null when the file has at most one IfcBuilding and the storey is not placed in it. */
+  checked: BuildingRef | null;
+  notChecked: Array<BuildingRef & { candidatesNotChecked: number }>;
+}
+
 export interface ModelFacts {
   georeference: Omit<ModelGeoreference, 'toMap'>;
   footprint: FootprintFact;
@@ -110,7 +134,9 @@ export interface ModelFacts {
   groundStorey: { expressId: number | null; level: number; basis: 'given' | 'project-zero' | 'lowest-storey' | 'none' };
   candidates: CandidateFact[];
   spaces: SpaceFact[];
-  /** Elements skipped (no readable placement), with the reason. */
+  /** Absent on hand-built facts: then every candidate is taken to belong to the footprint's building. */
+  buildingScope?: BuildingScope;
+  /** Elements skipped (no readable placement, or in a building that was not checked), with the reason. */
   skipped: Array<{ expressId: number; ifcClass: string; reason: string }>;
   warnings: string[];
 }

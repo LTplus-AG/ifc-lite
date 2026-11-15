@@ -15,7 +15,8 @@ import { RelationshipType } from '@ifc-lite/data';
 import { chainIntoRing, convexHull, ringArea } from '../geom.js';
 import type { MapPoint } from '../types.js';
 import { collectCandidates, isExternal } from './candidates.js';
-import type { FootprintFact, ModelFacts, SpaceFact, StoreyFact } from './facts.js';
+import { FloodCheckRefusal } from '../errors.js';
+import { buildingLabel, type BuildingRef, type BuildingScope, type FootprintFact, type ModelFacts, type SpaceFact, type StoreyFact } from './facts.js';
 import { georeferenceData, resolveModelGeoreference, type GeoreferenceOptions, type ModelGeoreference } from './georef.js';
 import { slabOutline, slabOutlineHasVoids, toWorld, wallAxis } from './outline.js';
 import { PlacementResolver } from './placement.js';
@@ -66,6 +67,48 @@ function storeyResolver(reader: ModelReader, storeys: ReadonlySet<number>): (id:
     }
     memo.set(id, found);
     return found;
+  };
+}
+
+/**
+ * The building whose elements are checked: the ground storey's. The footprint
+ * is that building's outline, so an element of another building would be
+ * sampled next to itself, possibly inside its own building, where the hazard
+ * map shows no depth (it raised every building), and would read as "no runoff
+ * mapped". Elements of other buildings are therefore not checked, and the
+ * result names those buildings with a count; never silently.
+ */
+function scopeToBuilding(
+  reader: ModelReader,
+  groundStorey: number | null,
+  storeyCount: number,
+): { checked: BuildingRef | null; others: BuildingRef[]; buildingOf(id: number): number | null; inScope(building: number | null): boolean } {
+  const ids = reader.idsOfType('IFCBUILDING');
+  const ref = (id: number): BuildingRef => {
+    const e = reader.entity(id);
+    return { expressId: id, globalId: asString(reader.attr(e, 'GlobalId')), name: asString(reader.attr(e, 'Name')) };
+  };
+  const buildingOf = storeyResolver(reader, new Set(ids));
+  if (ids.length <= 1) {
+    return { checked: ids.length === 1 ? ref(ids[0]) : null, others: [], buildingOf, inScope: () => true };
+  }
+  const checked = groundStorey === null ? null : buildingOf(groundStorey);
+  if (checked === null) {
+    throw new FloodCheckRefusal(
+      'ambiguous-building',
+      `the file contains ${ids.length} IfcBuilding entities and ${storeyCount === 0 ? 'no IfcBuildingStorey' : 'the ground storey is not placed in any of them'}, ` +
+        'so it is unknown which building the footprint belongs to; pass groundStorey (a storey of the building to check)',
+    );
+  }
+  // A building containing the checked one (a building complex) holds elements that are not in any storey of it.
+  const enclosing = new Set<number>([checked]);
+  for (let b: number | null = buildingOf(checked); b !== null && !enclosing.has(b); b = buildingOf(b)) enclosing.add(b);
+  return {
+    checked: ref(checked),
+    others: ids.filter((id) => !enclosing.has(id)).map(ref),
+    buildingOf,
+    // An element in no building (for example contained in the site) is kept, as in a single-building file.
+    inScope: (building) => building === null || enclosing.has(building),
   };
 }
 
@@ -208,7 +251,8 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
     ? { rings: options.footprint, source: 'given', fromElements: [] }
     : deriveFootprint(reader, placements, georef, storeyOf, groundStorey);
 
-  const candidates = collectCandidates({
+  const buildings = scopeToBuilding(reader, groundStorey.expressId, storeys.length);
+  const collected = collectCandidates({
     reader,
     placements,
     georef,
@@ -220,6 +264,27 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
     boundaryTolerance: atLeast('boundaryTolerance', options.boundaryTolerance, 1),
     skip: (expressId, ifcClass, reason) => skipped.push({ expressId, ifcClass, reason }),
   });
+  const notChecked = new Map(buildings.others.map((b) => [b.expressId, { ...b, candidatesNotChecked: 0 }]));
+  const candidates = collected.filter((c) => {
+    const building = buildings.buildingOf(c.expressId);
+    if (buildings.inScope(building)) return true;
+    const other = building === null ? undefined : notChecked.get(building);
+    if (other) {
+      other.candidatesNotChecked++;
+      skipped.push({ expressId: c.expressId, ifcClass: c.ifcClass, reason: `in building ${buildingLabel(other)}, which was not checked` });
+    }
+    return false;
+  });
+  const buildingScope: BuildingScope = { checked: buildings.checked, notChecked: [...notChecked.values()] };
+  if (buildingScope.notChecked.length > 0) {
+    const n = buildingScope.notChecked.reduce((sum, b) => sum + b.candidatesNotChecked, 0);
+    warnings.push(
+      `the file contains ${buildingScope.notChecked.length + 1} buildings; only ${buildingScope.checked ? buildingLabel(buildingScope.checked) : 'the ground storey\'s'} ` +
+        `(the ground storey's) was checked. Not checked: ${buildingScope.notChecked.map((b) => `${buildingLabel(b)} (${b.candidatesNotChecked} candidate element(s))`).join(', ')}; ` +
+        `those ${n} element(s) have no result, and façade elements there that do not state IsExternal are not counted. ` +
+        'Run the check again with groundStorey set to a storey of each other building',
+    );
+  }
 
   if (!footprint) {
     const hull = convexHull(candidates.map((c) => c.position));
@@ -234,7 +299,7 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
   for (const id of reader.idsOfType('IFCSPACE')) {
     const e = reader.entity(id);
     const frame = placements.ofProduct(id);
-    if (!e || !frame) continue;
+    if (!e || !frame || !buildings.inScope(buildings.buildingOf(id))) continue;
     spaces.push({
       expressId: id,
       globalId: asString(reader.attr(e, 'GlobalId')),
@@ -244,5 +309,5 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
     });
   }
 
-  return { georeference: georeferenceData(georef), footprint, storeys, groundStorey, candidates, spaces, skipped, warnings };
+  return { georeference: georeferenceData(georef), footprint, storeys, groundStorey, candidates, spaces, buildingScope, skipped, warnings };
 }

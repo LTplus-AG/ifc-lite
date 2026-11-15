@@ -45,6 +45,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import { useIfcLoader } from './useIfcLoader.js';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
 /**
  * `STREAM_SAB_THRESHOLD` (apps/viewer/src/utils/ifcConfig.ts) is 256 MiB.
@@ -146,6 +147,7 @@ let container: HTMLDivElement | null = null;
 beforeEach(async () => {
   hookApi = null;
   useViewerStore.getState().resetViewerState();
+  useViewerStore.getState().clearAllModels();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -212,6 +214,7 @@ for (const name of ['large.ifc', 'renamed.bin']) {
       const probe: FileProbe = { arrayBuffer: 0, stream: 0 };
       const sizes: number[] = [];
       const errors: string[] = [];
+      if (kind === 'federated') useViewerStore.setState(fixtureModels(fixtureModel('already-loaded')));
       const existingModels = new Map(useViewerStore.getState().models);
       try {
         await withRecordedSharedArrayBuffer(sizes, async () => {

@@ -114,18 +114,22 @@ impl SurfaceCurveSweptAreaSolidProcessor {
         // Drop consecutive coincident samples — a zero-length step yields a NaN
         // tangent in the RMF and shatters the tube. Evaluated tangents (a
         // gradient directrix) are kept in step with their points.
+        // The tangents are compacted in place, one per sample.
+        let mut tangents = samples.tangents;
         let mut points: Vec<Point3<f64>> = Vec::with_capacity(samples.points.len());
-        let mut tangents = samples.tangents.as_ref().map(|t| Vec::with_capacity(t.len()));
         for (i, p) in samples.points.iter().enumerate() {
             if points
                 .last()
                 .is_none_or(|last: &Point3<f64>| (p - last).norm() > tol::POINT_COINCIDENT_EPS)
             {
-                points.push(*p);
-                if let (Some(kept), Some(all)) = (tangents.as_mut(), samples.tangents.as_ref()) {
-                    kept.push(all[i]);
+                if let Some(t) = tangents.as_mut() {
+                    t[points.len()] = t[i];
                 }
+                points.push(*p);
             }
+        }
+        if let Some(t) = tangents.as_mut() {
+            t.truncate(points.len());
         }
         if points.len() < 2 {
             return Ok(None);
@@ -142,8 +146,11 @@ impl SurfaceCurveSweptAreaSolidProcessor {
         for p in &mut points {
             *p = position.transform_point(p);
         }
-        let tangents: Option<Vec<_>> =
-            tangents.map(|t| t.iter().map(|t| position.transform_vector(t).normalize()).collect());
+        if let Some(tangents) = tangents.as_mut() {
+            for t in tangents.iter_mut() {
+                *t = position.transform_vector(t).normalize();
+            }
+        }
         // The placement is file data too: re-gate the placed samples (#5191).
         if !directrix_is_sweepable(&points)? {
             return Ok(None);

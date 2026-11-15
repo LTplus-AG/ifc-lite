@@ -170,8 +170,17 @@ export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyVi
     : store.lengthUnitScale ?? 1;
   const deleted = view.getTombstones();
   const cache = storeyInventoryCache(store, view, reader, parent => { readStoreyInventory(store, parent, { lazyRelationships: true }); });
-  let graph = cache.graph ?? (options.lazyRelationships ? undefined : relationshipMaps(relationshipsOf(reader, deleted)));
-  const full = () => cache.graph = graph ??= relationshipMaps(relationshipsOf(reader, deleted));
+  const revision = view.getMutationRevision();
+  let graph = options.lazyRelationships ? undefined : cache.graph ?? relationshipMaps(relationshipsOf(reader, deleted));
+  const full = () => {
+    if (!graph) {
+      const unchanged = view.getMutationRevision() === revision;
+      graph = unchanged && cache.graph ? cache.graph : relationshipMaps(relationshipsOf(
+        unchanged ? reader : new CachedReader(store, view, names), view.getTombstones()));
+      if (unchanged) cache.graph = graph;
+    }
+    return graph;
+  };
   if (graph) cache.graph = graph;
   // Aggregates are few (the spatial tree and assemblies); read them whole.
   const aggregates = graph ? undefined : relationshipMaps(relationshipsOf(reader, deleted, ['IFCRELAGGREGATES']));

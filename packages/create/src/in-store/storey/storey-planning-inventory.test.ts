@@ -19,6 +19,15 @@ it('#8452 a draft edited before its first inventory read cannot borrow the paren
   });
 });
 
+it('#8452 a lazy relationship read materializes at first use even when a prior inventory warmed the graph', async () => {
+  const s = session(await parse(THIRD_PARTY));
+  readStoreyInventory(s.store, s.view);
+  const lazy = readStoreyInventory(s.store, s.view, { lazyRelationships: true });
+  const product = s.view.createEntity('IfcColumn', ['new', null, null, null, null, '#44', null, null, null]).expressId;
+  s.view.createEntity('IfcRelContainedInSpatialStructure', ['rel', null, null, null, [`#${product}`], '#42']);
+  expect(lazy.incoming.get(product)?.some(rel => rel.parent === 42)).toBe(true);
+});
+
 it('#8452 inherited products remain in moved IDs without repeated payload planning, including apply and undo', async () => {
   const s = session(await parse(THIRD_PARTY));
   const products = new Set<number>();

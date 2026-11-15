@@ -642,24 +642,7 @@ fn a_section_with_vertices_inside_one_weld_cell_is_capped_closed() {
             [(RADIUS * a.cos()) as f32, (RADIUS * a.sin()) as f32]
         })
         .collect();
-    let mut prism = Mesh::new();
-    let mut tri = |a: [f32; 3], b: [f32; 3], c: [f32; 3]| {
-        let base = (prism.positions.len() / 3) as u32;
-        for p in [a, b, c] {
-            prism.positions.extend_from_slice(&p);
-            prism.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
-        }
-        prism.indices.extend_from_slice(&[base, base + 1, base + 2]);
-    };
-    for i in 0..FACETS {
-        let (p, q) = (ring[i], ring[(i + 1) % FACETS]);
-        let (b0, b1) = ([p[0], p[1], 0.0], [q[0], q[1], 0.0]);
-        let (t0, t1) = ([p[0], p[1], HEIGHT], [q[0], q[1], HEIGHT]);
-        tri(b0, b1, t1);
-        tri(b0, t1, t0);
-        tri([0.0, 0.0, 0.0], b1, b0);
-        tri([0.0, 0.0, HEIGHT], t0, t1);
-    }
+    let prism = extrude_profile(&ring, 0.0, HEIGHT);
     assert_eq!(open_edges(&prism), 0, "the faceted prism is watertight");
 
     let clip_normal = Vector3::new(0.0, 0.0, 1.0);

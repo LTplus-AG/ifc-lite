@@ -154,8 +154,9 @@ export function summarize(plan, rawSamples, { floors = null } = {}) {
   for (const fx of planFixtures) {
     const lanes = {};
     // The cold lane's cross-side output, whatever the plan's lane order (reopen verdicts are chained through it).
-    const coldOutputOf = (name) => {
-      const cold = samples.filter((s) => s.fixture === name && s.lane === 'browser-cold' && s.ok);
+    const coldOutputOf = (name, reopenLane) => {
+      const coldLane = reopenLane.replace(/^browser-warm(?:1)?/, 'browser-cold');
+      const cold = samples.filter((s) => s.fixture === name && s.lane === coldLane && s.ok);
       const fp = (side) => [...new Set(cold.filter((r) => r.side === side).map((r) => r.fingerprint))];
       return cold.length ? outputVerdict(fp('base'), fp('branch')) : undefined;
     };
@@ -212,7 +213,7 @@ export function summarize(plan, rawSamples, { floors = null } = {}) {
       const timed = outputVerdict(sides.base.fingerprints, sides.branch.fingerprints);
       const identityLane = identityLaneFor(lane);
       const identity = identityLane ? laneIdentityVerdict(samples.filter((s) => s.fixture === fx.name), identityLane) : null;
-      const output = (identity === null ? null : reopenOutputVerdict(identity, timed, lanes['browser-cold']?.output ?? coldOutputOf(fx.name))) ?? timed;
+      const output = (identity === null ? null : reopenOutputVerdict(identity, timed, coldOutputOf(fx.name, lane))) ?? timed;
       // -settled lanes: both sides must have armed the same way, or the comparison says so.
       let armProtocol = null;
       if (lane.endsWith('-settled')) {

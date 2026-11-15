@@ -149,3 +149,24 @@ test('the identity pass waits for the viewer\'s own settled check, not only hydr
   assert.equal(identityReady({ ...quiet, settled: true, pending: 1 }), false);
   assert.equal(identityReady(quiet), true, 'a build that does not report settled keeps the narrower check');
 });
+
+for (const suffix of ['-early', '-settled']) for (const warm of ['browser-warm', 'browser-warm1']) {
+  test(`#9990 ${warm}${suffix} chains only through the cold output of its own arm`, async () => {
+    const { summarize } = await load('./load-scoreboard-report.mjs');
+    const lane = warm + suffix, cold = 'browser-cold' + suffix;
+    // Reopen first deliberately: output linkage must not depend on lane order.
+    const plan = { name: 'same-arm', lanes: [lane, cold, 'browser-cold'], rounds: 1, warmOpens: 2,
+      fixtures: [{ name: 'F', bytes: 2 ** 25 }], sides: { base: {}, branch: {} } };
+    const sample = (lane, side, fingerprint) => ({ lane, side, fixture: 'F', round: 0, ok: true, interactiveMs: 100, fingerprint });
+    const rows = ['base', 'branch'].flatMap(side => [
+      sample('browser-cold', side, 'elements=2 sig=plain'),
+      sample(lane, side, 'UNVERIFIABLE (cache hit)'),
+      { lane: 'identity', side, fixture: 'F', round: 0, ok: true, reopens: { [warm]: { verdict: 'match', match: true } } },
+    ]);
+    const output = (extra) => summarize(plan, [...rows, ...extra]).fixtures[0].lanes[lane].output;
+    assert.match(output([]), /^unverifiable/, 'a plain cold match cannot substitute for the missing arm');
+    assert.equal(output(['base', 'branch'].map(side => sample(cold, side, 'elements=2 sig=arm'))), 'match');
+    assert.match(output([sample(cold, 'base', 'elements=2 sig=A'), sample(cold, 'branch', 'elements=2 sig=B')]), /^CHANGED/,
+      'a plain cold match cannot hide changed output in this arm');
+  });
+}

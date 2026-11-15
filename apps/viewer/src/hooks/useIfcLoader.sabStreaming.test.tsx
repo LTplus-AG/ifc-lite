@@ -212,6 +212,7 @@ for (const name of ['large.ifc', 'renamed.bin']) {
       const probe: FileProbe = { arrayBuffer: 0, stream: 0 };
       const sizes: number[] = [];
       const errors: string[] = [];
+      const existingModels = new Map(useViewerStore.getState().models);
       try {
         await withRecordedSharedArrayBuffer(sizes, async () => {
           await act(async () => {
@@ -225,7 +226,11 @@ for (const name of ['large.ifc', 'renamed.bin']) {
         assert.deepEqual(probe, { arrayBuffer: 0, stream: 0 }, 'no whole-source read started');
         assert.deepEqual(fileSized(sizes), [], 'no file-sized shared source was allocated');
         assert.equal(useViewerStore.getState().loading, false, 'the refusal settles the load UI');
-        if (kind === 'federated') assert.equal(useViewerStore.getState().models.size, 0);
+        if (kind === 'federated') {
+          const models = useViewerStore.getState().models;
+          assert.deepEqual([...models.keys()], [...existingModels.keys()], 'no new model is registered');
+          for (const [id, model] of existingModels) assert.equal(models.get(id), model, 'existing models are untouched');
+        }
       } finally {
         if (memory) Object.defineProperty(navigator, 'deviceMemory', memory);
         else Reflect.deleteProperty(navigator, 'deviceMemory');

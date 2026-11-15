@@ -44,19 +44,6 @@ import {
 /** Debounce window for recomputing the band selection on rapid slider drags. */
 const RECOMPUTE_DEBOUNCE_MS = 120;
 
-// Stable object identities without render-time ref writes (#10094, 3b review).
-const cloudObjectIds = new WeakMap<object, number>();
-let nextCloudObjectId = 1;
-function cloudObjectId(value: object | null | undefined): number {
-  if (!value) return 0;
-  let id = cloudObjectIds.get(value);
-  if (id === undefined) {
-    id = nextCloudObjectId++;
-    cloudObjectIds.set(value, id);
-  }
-  return id;
-}
-
 export const SCAN_SECTION_AXIS_MAP: Record<'down' | 'front' | 'side', 'x' | 'y' | 'z'> = {
   down: 'y',
   front: 'z',
@@ -217,8 +204,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
   // is a real dependency of the recompute below, not a one-shot read.
   const alignmentEnabled = useViewerStore((st) => st.pointCloudAlignmentEnabled);
   const placementRevision = useViewerStore((st) => st.modelPlacement.revision);
-  // Re-render to observe in-place alignment/re-base commits, but only restart
-  // the point scan when its cloud inputs changed (#10094, 3b).
+  // The RTC re-base moves inline cloud origins in place and bumps this (#10029).
   const geometryContentVersion = useViewerStore((st) => st.geometryContentVersion);
 
   // Fold every dependency the computation reads into one key so the
@@ -228,39 +214,20 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
   const customKey = sectionPlane.custom
     ? `${sectionPlane.custom.normal.join(',')}|${sectionPlane.custom.distance}|${sectionPlane.custom.tangent.join(',')}|${sectionPlane.custom.bitangent.join(',')}`
     : '';
-  const modelsKey = useMemo(() => {
-    // Alignment and RTC re-base replace inline origins/chunks. For streamed
-    // scans, snapshot GPU matrix values: realignment may mutate them in place.
-    const inputs: unknown[] = [];
-    const addCloud = (cloud: PointCloudAsset) => inputs.push([
-      cloudObjectId(cloud), cloudObjectId(cloud.origin), cloudObjectId(cloud.chunk),
-    ]);
-    if (models.size > 0) {
-      for (const [id, model] of models) {
-        if (!model.visible) continue;
-        // Mesh-only references can change the anchor used to align scans.
-        inputs.push(id);
-        if (typeof model.pointCloudHandleId === 'number') {
-          const handleId = model.pointCloudHandleId;
-          const matrix = getGlobalRenderer()?.getPointCloudTransform({ id: handleId });
-          inputs.push([handleId, cloudObjectId(getPointCloudScanSample(handleId)),
-            matrix ? Array.from(matrix) : null]);
-        }
-        model.geometryResult?.pointClouds?.forEach(addCloud);
-      }
-    } else {
-      legacyPointClouds?.forEach(addCloud);
-    }
-    return JSON.stringify(inputs);
-  }, [models, legacyPointClouds, geometryContentVersion]);
+  // Includes the inline point-cloud count so a federated IFCx model whose
+  // `geometryResult.pointClouds` populates AFTER registration (same
+  // id/visible/handleId) still retriggers the recompute below.
+  const modelsKey = Array.from(models.entries())
+    .map(([id, m]) => `${id}:${m.visible ? 1 : 0}:${m.pointCloudHandleId ?? ''}:${m.geometryResult?.pointClouds?.length ?? 0}`)
+    .join('|');
 
   // Cheap presence check (map lookups, no O(n) point scan) — independent of
   // `enabled` so the UI can report "a scan is loaded, just hidden".
   const hasPointCloud = useMemo(
     () => collectScanSources(models, legacyPointClouds).length > 0,
-    // Keyed on the cloud revision, not `models` identity, since
+    // Keyed on `modelsKey` (a stable string), not `models` identity, since
     // the Map reference can change without any visible-content change.
-    [modelsKey, alignmentEnabled],
+    [modelsKey, legacyPointClouds, alignmentEnabled],
   );
 
   useEffect(() => {
@@ -327,9 +294,11 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     thickness,
     classMask,
     modelsKey,
+    legacyPointClouds,
     maxRendered,
     alignmentEnabled,
     placementRevision,
+    geometryContentVersion,
     outlineEnabled,
     outlineMaxGap,
   ]);

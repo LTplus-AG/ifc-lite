@@ -62,19 +62,19 @@ it('includes inline cloud points in cross-CRS refusal accounting (#10094, 3f)', 
   assert.equal(points.chunk, original, 'failed staging leaves the cloud intact');
 });
 
-it('counts unmappable origins and seeds as failed attempts (#10094, 3f review)', () => {
+it('refuses an unmappable origin or seed without counting it as a vertex attempt, like the mesh origin (#10094, 3f)', () => {
   for (const origin of [undefined, [2600000, 1200000, 400] as [number, number, number]]) {
     for (const result of [null, [Infinity, 0, 0] as [number, number, number]]) {
       const outcomes: boolean[] = [];
       const staged = stageInlineClouds([cloud(origin)], () => result,
         () => assert.fail('failed staging must not extend bounds'), (succeeded) => outcomes.push(succeeded));
       assert.equal(staged, null);
-      assert.deepEqual(outcomes, [false], 'failed frame setup counts as exactly one failed attempt');
+      assert.deepEqual(outcomes, [], 'frame setup is not a vertex reprojection');
     }
   }
 });
 
-it('counts non-finite mapped points and overflowing residuals once (#10094, 3f review)', () => {
+it('refuses a point whose residual overflows f32 without counting it as a failed projection (#10094, 3f)', () => {
   for (const x of [Infinity, 1e40]) {
     let calls = 0;
     const outcomes: boolean[] = [];
@@ -82,6 +82,6 @@ it('counts non-finite mapped points and overflowing residuals once (#10094, 3f r
       () => ++calls === 1 ? [0, 0, 0] : [x, 0, 0],
       () => assert.fail('failed staging must not extend bounds'), (succeeded) => outcomes.push(succeeded));
     assert.equal(staged, null);
-    assert.deepEqual(outcomes, [false], 'successful setup is excluded; failed point is counted once');
+    assert.deepEqual(outcomes, [true], 'the projection succeeded; the f32 overflow is a separate refusal');
   }
 });

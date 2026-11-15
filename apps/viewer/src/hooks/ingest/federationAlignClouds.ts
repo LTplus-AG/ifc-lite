@@ -27,8 +27,9 @@ export interface StagedCloud {
 /** Map every inline cloud; `null` when any point cannot be mapped or narrowed.
  * `extend` receives each staged cloud's two world bbox corners (f64 origin +
  * f32 residual bounds), which bound its aligned points exactly.
- * `onPointMapped` accounts for reprojection attempts, excluding successful origin setup
- * and missing (NaN) points, just like the mesh vertex loop. */
+ * `onPointMapped` reports each point's reprojection, as the mesh vertex loop
+ * counts its vertices: origin setup, missing (NaN) points and an f32 overflow
+ * are not reprojection attempts. The affine (same-CRS) path reports nothing. */
 export function stageInlineClouds(
   clouds: readonly PointCloudAsset[] | undefined, mapping: WorldPointMap | AffineTransform3D, extend: (x: number, y: number, z: number) => void,
   onPointMapped?: (succeeded: boolean) => void,
@@ -49,10 +50,7 @@ export function stageInlineClouds(
     // Like the mesh paths: transform the origin when there is one, otherwise
     // seed the local frame at the first point (a raw 0,0,0 may not project).
     const to = cloud.origin ? map(ox, oy, oz) : map(positions[first], positions[first + 1], positions[first + 2]);
-    if (!to || !to.every(Number.isFinite)) {
-      if (!transform) onPointMapped?.(false);
-      return null;
-    }
+    if (!to || !to.every(Number.isFinite)) return null;
     const [tx, ty, tz] = to;
     const out = new Float32Array(pointCount * 3).fill(NaN);
     let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
@@ -68,16 +66,12 @@ export function stageInlineClouds(
         az = transform.m20 * x + transform.m21 * y + transform.m22 * z + transform.tz;
       } else {
         const aligned = map(x, y, z);
-        if (!aligned) {
-          onPointMapped?.(false);
-          return null;
-        }
+        onPointMapped?.(aligned !== null);
+        if (!aligned) return null;
         [ax, ay, az] = aligned;
       }
       const rx = Math.fround(ax - tx), ry = Math.fround(ay - ty), rz = Math.fround(az - tz);
-      const succeeded = Number.isFinite(rx) && Number.isFinite(ry) && Number.isFinite(rz);
-      if (!transform) onPointMapped?.(succeeded);
-      if (!succeeded) return null;
+      if (!Number.isFinite(rx) || !Number.isFinite(ry) || !Number.isFinite(rz)) return null;
       out[i] = rx; out[i + 1] = ry; out[i + 2] = rz;
       if (rx < minX) minX = rx; if (rx > maxX) maxX = rx;
       if (ry < minY) minY = ry; if (ry > maxY) maxY = ry;

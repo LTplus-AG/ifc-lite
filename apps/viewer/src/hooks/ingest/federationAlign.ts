@@ -419,7 +419,7 @@ async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source:
     (succeeded) => { attempts += 1; if (!succeeded) projFailures += 1; });
   if (!stagedClouds) {
     restoreSourceFrame();
-    console.warn(`[ifc-lite] Cross-CRS alignment refused: ${projFailures}/${attempts} vertex transforms failed; an inline point cloud could not be reprojected.`, pointMap.firstError());
+    console.warn(`[ifc-lite] Cross-CRS alignment refused: an inline point cloud's origin or a point could not be reprojected, or its f32 residual would overflow (${projFailures}/${attempts} vertex transforms failed).`, pointMap.firstError());
     return false;
   }
   if (!found) {

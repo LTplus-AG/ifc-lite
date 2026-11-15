@@ -190,6 +190,12 @@
       "@ifc-lite/geodata-ch/*": [
         "packages/geodata-ch/dist/*"
       ],
+      "@ifc-lite/site-context": [
+        "packages/site-context/dist/index.d.ts"
+      ],
+      "@ifc-lite/site-context/*": [
+        "packages/site-context/dist/*"
+      ],
       "@ifc-lite/oci": [
         "packages/oci/dist/index.d.ts"
       ],

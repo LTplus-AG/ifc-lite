@@ -348,12 +348,13 @@ it.each([[false, 0], [false, 1], [true, 1]] as const)('#9352 unreadable slab-bou
   check();
 });
 
-for (const fault of ['cycle', 'dangling'] as const) {
+for (const fault of ['cycle', 'dangling', 'missingRoot'] as const) {
   it.each([false, true])(`#9352 a present ${fault} floor placement cannot fall back to Elevation (reopen=%s)`, async reopen => {
     let { s, middle, wall } = await setup(1);
     const inventory = readStoreyInventory(s.store, s.view);
     const placement = inventory.storeys.find(x => x.expressId === middle)!.placementId!;
-    s.editor.setPositionalAttribute(placement, 0, `#${fault === 'cycle' ? placement : 999999}`);
+    if (fault === 'missingRoot') s.editor.setPositionalAttribute(middle, 5, '#999999');
+    else s.editor.setPositionalAttribute(placement, 0, `#${fault === 'cycle' ? placement : 999999}`);
     if (reopen) s = session(await parse(s.text()));
     const before = s.snapshot();
     expect(() => setTopConstraintInStore(s.store, s.editor, wall, { kind: 'storey', storeyId: middle })).toThrow(/placement.*cannot be read|unreadable.*placement/i);
@@ -385,4 +386,14 @@ it('#9352 a parsed-only cached home supports a legacy binding when no source spa
   const reopened = session(await parse(saved.text()));
   expect(height(reopened, wall)).toBeCloseTo(3, 8);
   expect(readTopAttachment(readStoreyInventory(reopened.store, reopened.view), wall)?.targetStoreyId).toBe(middle);
+});
+
+it('#9352 an omitted floor placement still uses Elevation through reopen', async () => {
+  let { s, middle, wall } = await setup(1);
+  s.editor.setPositionalAttribute(middle, 5, null);
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'storey', storeyId: middle });
+  expect(height(s, wall)).toBeCloseTo(3, 8);
+  s = session(await parse(s.text()));
+  expect(height(s, wall)).toBeCloseTo(3, 8);
+  expect(readTopAttachment(readStoreyInventory(s.store, s.view), wall)?.targetStoreyId).toBe(middle);
 });

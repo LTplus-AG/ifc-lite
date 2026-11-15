@@ -82,6 +82,7 @@ for (const together of [false, true]) {
     }
     const sourceMeshes = meshWalls(api, text).get(wall) ?? [];
     expect(insideMesh(sourceMeshes, [5, 4 + Math.tan(Math.PI / 6) - .03, -1])).toBe(true);
+    expect(insideMesh(sourceMeshes, [5, 4 + Math.tan(Math.PI / 6) + .03, -1])).toBe(false);
   });
 }
 it('a slab attachment follows a direct target lift, not only a storey edit (#9296)', async () => {

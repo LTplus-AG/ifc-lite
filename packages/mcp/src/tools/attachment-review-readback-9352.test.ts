@@ -18,13 +18,14 @@ it('#9352 MCP invalid self-delete returns the intended refusal and leaves readba
   expect((await call('get_entity', { express_id: wall.expressId, include: ['properties', 'quantities'] })).structuredContent).toEqual(before.structuredContent);
 });
 
-it.each(['cycle', 'dangling'] as const)('#9352 MCP refuses an unreadable %s target and preserves readback after reopen', async fault => {
+it.each(['cycle', 'dangling', 'missingRoot'] as const)('#9352 MCP refuses an unreadable %s target and preserves readback after reopen', async fault => {
   const { registry, call } = await liveToolSession(1);
   const model = registry.get('alpha')!, S = model.bim.store, home = S.listStoreyLevels('alpha')[0].expressId;
   const upper = S.addStorey('alpha', { Name: 'Upper', Elevation: 3 });
   const wall = S.addWall('alpha', home, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 1, TopConstraint: { kind: 'fixed' } });
   const placement = readStoreyInventory(model.store, model.backend.getMutationView()!).storeys.find(x => x.expressId === upper.expressId)!.placementId!;
-  S.setPositionalAttribute({ modelId: 'alpha', expressId: placement }, 0, `#${fault === 'cycle' ? placement : 999999}`);
+  if (fault === 'missingRoot') S.setPositionalAttribute(upper, 5, '#999999');
+  else S.setPositionalAttribute({ modelId: 'alpha', expressId: placement }, 0, `#${fault === 'cycle' ? placement : 999999}`);
   for (const reopen of [false, true]) {
     if (reopen) {
       const bytes = model.bim.export.ifc();

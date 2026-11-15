@@ -5,6 +5,7 @@ import { expect, it } from 'vitest';
 import { IfcCreator } from '../../ifc-creator.js';
 import { addOrdinaryElementInStore } from '../ordinary-element.js';
 import { addHostedElementInStore } from '../hosted-element.js';
+import { refId } from '../host-geometry-frame.js';
 import { resolveSpatialAnchor } from '../resolve-anchor.js';
 import { readStoreyInventory } from './storey-model.js';
 import { addStoreyInStore } from './storey-add.js';
@@ -126,5 +127,34 @@ for (const destination of ['self', 'missing'] as const) {
     expect(s.snapshot()).toEqual(before);
     expect(() => applyStoreyDelete(s.store, s.editor, home, mode, plan)).toThrow(/another storey/);
     expect(s.snapshot()).toEqual(before);
+  });
+}
+
+for (const fault of ['cycle', 'dangling', 'missingRoot'] as const) {
+  it.each([false, true])(`#9352 deletion preview reports an unreadable ${fault} next floor without throwing (reopen=%s)`, async reopen => {
+    const creator = new IfcCreator({ Name: 'Unreadable deletion floor' });
+    creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
+    let s = session(await parse(creator.toIfc().content));
+    const home = readStoreyInventory(s.store, s.view).storeys[0].expressId;
+    const middle = addStoreyInStore(s.store, s.editor, { Name: 'Middle', Elevation: 3 }).storeyId;
+    const upper = addStoreyInStore(s.store, s.editor, { Name: 'Upper', Elevation: 6 }).storeyId;
+    const wall = addOrdinaryElementInStore(s.editor, draft => resolveSpatialAnchor(s.store, home, draft.getMutationView()),
+      { kind: 'wall', params: { Start: [0, 0, 0], End: [4, 0, 0], Thickness: .2, Height: 3 } });
+    const inventory = readStoreyInventory(s.store, s.view);
+    writeTopAttachment(s.view, wall, inventory.storeys.find(x => x.expressId === middle)!.GlobalId, 'relative');
+    const placement = refId(inventory.reader.entity(upper)!.attributes[5])!;
+    if (fault === 'missingRoot') s.editor.setPositionalAttribute(upper, 5, '#999999');
+    else s.editor.setPositionalAttribute(placement, 0, `#${fault === 'cycle' ? placement : 999999}`);
+    if (reopen) s = session(await parse(s.text()));
+    const before = s.snapshot(), mode = { kind: 'empty' as const };
+    const plan = planStoreyDelete(readStoreyInventory(s.store, s.view), middle, mode);
+    expect(plan.refusals).toEqual([expect.objectContaining({ code: 'unreadablePlacement' })]);
+    expect(plan.refusals[0].message).toMatch(/placement.*cannot be read/i);
+    expect(plan.bindings).toEqual([]);
+    expect(s.snapshot()).toEqual(before);
+    expect(() => applyStoreyDelete(s.store, s.editor, middle, mode, plan)).toThrow(/placement.*cannot be read/i);
+    expect(s.snapshot()).toEqual(before);
+    expect(readTopAttachment(readStoreyInventory(s.store, s.view), wall)?.targetStoreyId).toBe(middle);
+    expect(readAttachedTop({ dataStore: s.store, view: s.view, editor: s.editor }, wall, 'wall')).toBeCloseTo(3, 8);
   });
 }

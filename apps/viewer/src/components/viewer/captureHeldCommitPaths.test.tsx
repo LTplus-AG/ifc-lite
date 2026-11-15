@@ -17,6 +17,7 @@ import { useRepositionPicking } from './reposition/useRepositionPicking';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { createCommandPressController } from './commandPress';
+import { handleSelectionClick } from './selectionHandlers';
 import type { MouseHandlerContext } from './mouseHandlerTypes';
 import { registerModelingCommand, getModelingCommand } from '@/lib/commands/modeling/registry';
 import type { CommandId } from '@/lib/commands/modeling/types';
@@ -203,6 +204,41 @@ test('#10218 a command press begun during restore cannot place on its later clic
     controller.begin(event('pointerdown'));
     controller.end(event('pointerup'));
     assert.deepEqual(calls, ['down', 'up']);
+  } finally { controller.dispose(); h.unregister(); unregisterCommand(); }
+});
+
+test('#10218 a command press released during restore consumes its click even after release', async () => {
+  await seedModelingSession();
+  const h = rig(), calls: string[] = [];
+  const id = 'test.restore-release-race' as CommandId;
+  const unregisterCommand = registerModelingCommand({ ...getModelingCommand('column.place')!, id,
+    pointerDown: g => { calls.push('down'); return g; },
+    pointerUp: g => { calls.push('up'); return g; },
+  });
+  useViewerStore.getState().startCommand(id);
+  const ctx = { canvas: h.canvas, renderer: h.renderer, mouseState: { didDrag: false, isDragging: false }, activeToolRef: { current: 'command' },
+    measureRaycastPendingRef: { current: false }, measureRaycastFrameRef: { current: null },
+    snapEnabledRef: { current: false }, setSnapTarget() {},
+    getPickOptions: () => ({ hiddenIds: new Set(), isolatedIds: null, isStreaming: false }),
+  } as unknown as MouseHandlerContext;
+  const controller = createCommandPressController(ctx);
+  const models = new Map(useViewerStore.getState().models);
+  const [modelId, model] = [...models][0]!;
+  try {
+    controller.begin(event('pointerdown'));
+    models.set(modelId, { ...model, geometryRestorePending: true });
+    useViewerStore.setState({ models });
+    controller.end(event('pointerup'));
+    models.set(modelId, { ...model, geometryRestorePending: false });
+    useViewerStore.setState({ models });
+    await handleSelectionClick(ctx, new MouseEvent('click', { button: 0, clientX: 20, clientY: 30, detail: 1 }));
+    assert.deepEqual(calls, [], 'a click delivered after restore must not place for a press released during the hold');
+    assert.equal(ctx.mouseState.didDrag, true);
+    ctx.mouseState.didDrag = false;
+    controller.begin(event('pointerdown'));
+    controller.end(event('pointerup'));
+    await handleSelectionClick(ctx, new MouseEvent('click', { button: 0, clientX: 20, clientY: 30, detail: 1 }));
+    assert.deepEqual(calls, ['down'], 'a normal press/release/click still places');
   } finally { controller.dispose(); h.unregister(); unregisterCommand(); }
 });
 

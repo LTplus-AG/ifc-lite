@@ -1705,6 +1705,8 @@ jobs:
         run: pnpm test:packed
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      - name: Check viewer store import cycles
+        run: pnpm check:store-import-cycles
       - name: Check export completion calls
         run: node scripts/check-export-event-calls.mjs
       # AI evaluation corpus (#6928): fingerprints, privacy scan, recordings,
@@ -2184,6 +2186,7 @@ jobs:
             scripts/check-sdk-canary-coverage.test.mjs \
             scripts/check-server-bin-targets.test.mjs \
             scripts/check-server-browser-type-parity.test.mjs \
+            scripts/check-store-import-cycles.test.mjs \
             scripts/check-source-text-assertions-identity.test.mjs \
             scripts/check-source-text-assertions.test.mjs \
             scripts/check-step-escaper-copies.test.mjs \

@@ -149,7 +149,7 @@ for (const scenario of ['unavailable', 'ineligible', 'success'] as const) {
       fullReads++; throw new Error('unexpected whole-source read #10264');
     } });
     const realSab = globalThis.SharedArrayBuffer;
-    globalThis.SharedArrayBuffer = new Proxy(realSab, { construct(target, args: [number]) {
+    globalThis.SharedArrayBuffer = new Proxy(realSab, { construct(target, args) {
       if (args[0] >= 1e9) { largeAllocations++; throw new Error('unexpected source allocation #10264'); }
       return Reflect.construct(target, args);
     } });

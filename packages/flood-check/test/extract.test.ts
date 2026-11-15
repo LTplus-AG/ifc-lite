@@ -154,7 +154,7 @@ describe('stairs, ramps, doors and windows', () => {
     expect(ramp).toMatchObject({ category: 'ramp', level: 500, levelBasis: 'ground-storey-or-terrain', levelIsUpperEstimate: true });
     expect(ramp?.selectedBecause).toMatch(/body cannot be read.*kept conservatively.*entry at the terrain/);
     expect(f.candidates.some((c) => c.name === 'Eingangsstufen')).toBe(false);
-    expect(f.skipped.find((s) => s.ifcClass === 'IfcStair')?.reason).toMatch(/leads up/);
+    expect(f.skipped.find((s) => s.ifcClass === 'IfcStair' && /leads up/.test(s.reason))).toBeDefined();
   });
 
   it('keeps an external stair when one flight leads up but another has no readable body', async () => {
@@ -167,8 +167,8 @@ describe('stairs, ramps, doors and windows', () => {
     };
     const f = await facts({ extra });
     const stair = f.candidates.find((c) => c.name === 'Aussentreppe');
-    expect(stair?.selectedBecause).toMatch(/no readable body.*kept conservatively/);
-    expect(f.skipped.some((s) => s.ifcClass === 'IfcStair')).toBe(false);
+    expect(stair?.selectedBecause).toMatch(/cannot be read.*kept conservatively/);
+    expect(f.skipped.some((s) => s.ifcClass === 'IfcStair' && /leads up/.test(s.reason))).toBe(false);
   });
 
   // Review finding 8.

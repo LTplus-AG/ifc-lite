@@ -15,6 +15,7 @@ import { RelationshipType } from '@ifc-lite/data';
 import { chainIntoRing, convexHull, ringArea } from '../geom.js';
 import type { MapPoint } from '../types.js';
 import { collectCandidates, isExternal } from './candidates.js';
+import { NO_PLACEMENT } from './candidate-base.js';
 import { FloodCheckRefusal } from '../errors.js';
 import { buildingLabel, type BuildingRef, type BuildingScope, type FootprintFact, type ModelFacts, type SpaceFact, type StoreyFact } from './facts.js';
 import { georeferenceData, resolveModelGeoreference, type GeoreferenceOptions, type ModelGeoreference } from './georef.js';
@@ -240,6 +241,10 @@ function deriveFootprint(
 export function extractModelFacts(store: IfcDataStore, options: ExtractOptions = {}): ModelFacts {
   const georef = resolveModelGeoreference(store, options);
   const reader = new ModelReader(store);
+  const nameOf = (id: number) => {
+    const name = asString(reader.attr(reader.entity(id), 'Name'));
+    return name ? ` "${name}"` : '';
+  };
   const placements = new PlacementResolver(reader);
   const warnings: string[] = [];
   const skipped: ModelFacts['skipped'] = [];
@@ -251,7 +256,7 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
     const e = reader.entity(id);
     const frame = placements.ofProduct(id);
     if (!e || !frame) {
-      skipped.push({ expressId: id, ifcClass: 'IfcBuildingStorey', reason: 'no readable IfcLocalPlacement chain' });
+      skipped.push({ expressId: id, ifcClass: 'IfcBuildingStorey', reason: NO_PLACEMENT });
       continue;
     }
     localLevels.set(id, frame.origin[2] * georef.lengthUnitScale);
@@ -295,6 +300,13 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
     return false;
   });
   const buildingScope: BuildingScope = { checked: buildings.checked, notChecked: [...notChecked.values()] };
+  const unplaced = skipped.filter((e) => e.reason === NO_PLACEMENT && e.ifcClass !== 'IfcBuildingStorey');
+  if (unplaced.length > 0) {
+    warnings.push(
+      `${unplaced.length} element(s) of the checked classes could not be placed and have no result: ` +
+        unplaced.map((e) => `${e.ifcClass} #${e.expressId}${nameOf(e.expressId)}`).join(', '),
+    );
+  }
   if (buildingScope.notChecked.length > 0) {
     const n = buildingScope.notChecked.reduce((sum, b) => sum + b.candidatesNotChecked, 0);
     warnings.push(

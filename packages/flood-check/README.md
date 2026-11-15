@@ -234,17 +234,26 @@ entities, properties and containment from the parsed store. No meshing.
 
   | Category | Selected when | Level |
   | --- | --- | --- |
-  | `door`, `window` | `IsExternal` on the element or its host wall (an external host wins over the element's own `false`); with neither stated, within 1 m of the outline (kept when no outline can be read at all) | the lower of the placement origin (threshold / sill) and the bottom of the filled opening's body, with a note when they differ by more than 0.3 m (some tools place windows at the head or centre) |
+  | `door`, `window` | `IsExternal` on the element or its host wall (an external host wins over the element's own `false`); with neither stated, within 1 m of the outline (kept when no outline can be read at all) | the lower of the placement origin (threshold / sill) and the bottom of the filled opening's body, with a note when they differ by more than 0.3 m (some tools place windows at the head or centre); an **upper estimate** when part of that body cannot be read. Position: the hole's plan centre when its body is readable (a filling may be placed at its wall's origin), with a note when more than 1 m from the placement |
   | `basement-window` | such a window below the ground storey | as `window` |
   | `wall-opening` | unfilled opening (not RECESS) in an external wall | lowest point of its extruded body |
   | `slab-opening` | unfilled opening in a slab at or below the ground storey | the slab's placement |
   | `light-well` | proxy / chamber / civil element / assembly / opening named Lichtschacht, Kellerschacht, light well, saut-de-loup, bocca di lupo, … | placement origin |
-  | `stair`, `ramp` | outside the footprint (even when it states `IsExternal = false`, often an authoring default) or `IsExternal`; skipped only when a readable body lies wholly at or above the ground storey (1 cm tolerance; it leads up); kept when the body cannot be read, or only partly (an unreadable item, a Boolean UNION), since the placement origin may be at the top | `ground-storey-or-terrain`: the check compares the **lower of the ground storey level and the terrain** at each sample, so any mapped depth class there makes it `exposed`; never favourable |
-  | `equipment` | in the ground storey or below. IFC4 / IFC4X3 occurrences: `IfcElectricDistributionBoard`, `IfcTransformer`, `IfcElectricGenerator`, `IfcElectricFlowStorageDevice` (batteries), `IfcSwitchingDevice`, `IfcProtectiveDevice`, `IfcCommunicationsAppliance`, `IfcBoiler`, `IfcChiller`, `IfcUnitaryEquipment` (heat pumps), `IfcPump`, `IfcTank`, `IfcTransportElement` ELEVATOR / LIFTINGGEAR. Every schema, and the only way in IFC2X3: `IfcEnergyConversionDevice`, `IfcFlowMovingDevice`, `IfcFlowStorageDevice`, `IfcFlowController` or `IfcFlowTerminal` typed by `IfcTransformerType`, `IfcElectricGeneratorType`, `IfcElectricFlowStorageDeviceType`, `IfcSwitchingDeviceType`, `IfcProtectiveDeviceType`, `IfcBoilerType`, `IfcChillerType`, `IfcUnitaryEquipmentType`, `IfcPumpType`, `IfcTankType` (and, IFC4 on, `IfcCommunicationsApplianceType`, `IfcElectricDistributionBoardType`). IFC2X3 also has `IfcElectricDistributionPoint`; it has no communications-appliance class or type | placement origin (base) |
+  | `stair`, `ramp` | outside the footprint — by placement, by any body corner, or, with no fully readable body, by a placement within 1 m of the outline (even when it states `IsExternal = false`, often an authoring default) — or `IsExternal`; skipped only when a readable body lies wholly at or above the ground storey (1 cm tolerance; it leads up); kept when the body cannot be read, or only partly (an unreadable item, a Boolean UNION), since the placement origin may be at the top | `ground-storey-or-terrain`: the check compares the **lower of the ground storey level and the terrain** at each sample, so any mapped depth class there makes it `exposed`; never favourable |
+  | `equipment` | in the ground storey or below. IFC4 / IFC4X3 occurrences: `IfcElectricDistributionBoard`, `IfcTransformer`, `IfcElectricGenerator`, `IfcElectricFlowStorageDevice` (batteries), `IfcSwitchingDevice`, `IfcProtectiveDevice`, `IfcCommunicationsAppliance`, `IfcBoiler`, `IfcChiller`, `IfcUnitaryEquipment` (heat pumps), `IfcPump`, `IfcTank`, `IfcTransportElement` ELEVATOR / LIFTINGGEAR (or no stated kind). Every schema, and the only way in IFC2X3: `IfcEnergyConversionDevice`, `IfcFlowMovingDevice`, `IfcFlowStorageDevice`, `IfcFlowController` or `IfcFlowTerminal` typed by `IfcTransformerType`, `IfcElectricGeneratorType`, `IfcElectricFlowStorageDeviceType`, `IfcSwitchingDeviceType`, `IfcProtectiveDeviceType`, `IfcBoilerType`, `IfcChillerType`, `IfcUnitaryEquipmentType`, `IfcPumpType`, `IfcTankType` (and, IFC4 on, `IfcCommunicationsApplianceType`, `IfcElectricDistributionBoardType`). IFC2X3 also has `IfcElectricDistributionPoint`; it has no communications-appliance class or type | placement origin (base) |
 
   Doors, windows and openings more than `aboveGroundScope` (3 m) above the
   ground storey are out of scope, judged by their corrected level (a window
-  placed at its head is in scope when its opening reaches down into it). Interior stairs are not entry points.
+  placed at its head is in scope when its opening reaches down into it).
+  **Every element of these classes ends up as a candidate or in `skipped`
+  with a reason** (interior, out of scope, leads up, filled by a door or
+  window, RECESS, a transport element of another kind, no placement, another
+  building), never neither. An exclusion that would rest on unreadable data
+  keeps the element instead: an opening filled by something other than a door
+  or window is still a hole, an `IfcTransportElement` with no stated kind is
+  kept, an opening with no host is tested against the outline, and an
+  opening or filled opening whose body is only partly readable gets an
+  upper-estimate level. Elements that cannot be placed are named in a warning. Interior stairs are not entry points.
 
 ## The check
 

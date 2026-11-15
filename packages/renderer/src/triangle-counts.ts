@@ -14,7 +14,7 @@ export class TriangleCounts {
   }
 
   addMesh(mesh: Pick<MeshData, 'expressId' | 'indices' | 'entityIds'>): void {
-    if (!mesh.entityIds) {
+    if (!mesh.entityIds?.length) {
       this.add(mesh.expressId, mesh.indices.length / 3);
       return;
     }
@@ -37,12 +37,28 @@ interface TriangleCountHost {
  * Instance counts come from live slots without materializing vertices. */
 export class SceneTriangleCounts {
   private flat = new TriangleCounts();
+  private queued = new TriangleCounts();
   private revision = -1;
   private cached: ReadonlyMap<number, number> | undefined;
 
-  noteSources(meshes: readonly MeshData[]): void {
-    for (const mesh of meshes) this.flat.addMesh(mesh);
+  noteSources(meshes: readonly MeshData[], queued = false): void {
+    const added = new TriangleCounts();
+    for (const mesh of meshes) added.addMesh(mesh);
+    for (const [id, count] of added.byEntity) {
+      this.flat.add(id, count);
+      if (queued) this.queued.add(id, count);
+    }
     this.cached = undefined;
+  }
+
+  uploaded(meshes: readonly MeshData[]): void {
+    const added = new TriangleCounts();
+    for (const mesh of meshes) added.addMesh(mesh);
+    for (const [id, count] of added.byEntity) {
+      const left = (this.queued.byEntity.get(id) ?? 0) - count;
+      if (left > 0) this.queued.byEntity.set(id, left);
+      else this.queued.byEntity.delete(id);
+    }
   }
 
   read(host: TriangleCountHost, revision: number, hydrating: boolean): ReadonlyMap<number, number> | null {
@@ -58,6 +74,11 @@ export class SceneTriangleCounts {
     return this.cached = counts.byEntity;
   }
 
-  remove(id: number): void { this.flat.byEntity.delete(id); this.cached = undefined; }
-  clear(): void { this.flat = new TriangleCounts(); this.cached = undefined; this.revision = -1; }
+  remove(id: number): void {
+    const pending = this.queued.byEntity.get(id);
+    if (pending) this.flat.byEntity.set(id, pending);
+    else this.flat.byEntity.delete(id);
+    this.cached = undefined;
+  }
+  clear(): void { this.flat = new TriangleCounts(); this.queued = new TriangleCounts(); this.cached = undefined; this.revision = -1; }
 }

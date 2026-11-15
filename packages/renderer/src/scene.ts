@@ -1756,7 +1756,7 @@ export class Scene {
    * The animation loop calls flushPending() each frame to drain the queue.
    */
   queueMeshes(meshes: MeshData[]): void {
-    this.triangleCounts.noteSources(meshes); this.geometryChanges.changed();
+    this.triangleCounts.noteSources(meshes, true); this.geometryChanges.changed();
     for (let i = 0; i < meshes.length; i++) {
       const fragments = this.splitMeshForStreaming(meshes[i]);
       for (let j = 0; j < fragments.length; j++) {
@@ -1827,6 +1827,7 @@ export class Scene {
     const result = flushQueuedMeshes(this.meshQueue, this.meshQueueReadIndex, (chunk, nextReadIndex) => {
       this.meshQueueReadIndex = nextReadIndex;
       this.appendToBatches(chunk, device, pipeline, true, true);
+      this.triangleCounts.uploaded(chunk);
     }, { budgetMs, trace, deterministicUploads, maxIndicesPerAppend: Scene.STREAMING_FRAGMENT_MAX_INDICES });
     this.meshQueue = result.queue;
     this.meshQueueReadIndex = result.readIndex;

@@ -42,10 +42,10 @@ function sourceTriangle(expressId: number): MeshData {
 }
 
 it('keeps source counts across CPU release, deletion and a new scene (#10370)', () => {
-  const scene = new Scene();
+  const scene = new CpuScene();
   const mesh = sourceTriangle(7);
   scene.queueMeshes([mesh, sourceTriangle(8)]);
-  scene.addMeshData(mesh);
+  flushCpu(scene);
   assert.equal(scene.getTriangleCounts()?.get(7), 1);
   scene.releaseGeometryData();
   assert.equal(scene.getTriangleCounts()?.get(7), 1, 'releasing vertices does not erase compact source metadata');
@@ -70,4 +70,49 @@ it('notifies count consumers once after a batch and stops after unsubscribe (#10
   scene.clearFlatGeometry();
   await Promise.resolve();
   assert.deepEqual(observed, [2]);
+});
+
+// The production queue still decides chunks/read positions; CPU registration
+// lets these ownership invariants run without a Node WebGPU adapter.
+class CpuScene extends Scene {
+  override appendToBatches(meshes: MeshData[]): void { for (const mesh of meshes) this.addMeshData(mesh); }
+}
+function flushCpu(scene: CpuScene): void {
+  scene.flushPending({} as GPUDevice, {} as Parameters<Scene['flushPending']>[1], Number.POSITIVE_INFINITY);
+}
+
+it('treats empty ownership arrays as dedicated object geometry (#10370 review)', () => {
+  const scene = new CpuScene();
+  scene.queueMeshes([7, 8].map(id => ({ ...sourceTriangle(id), entityIds: new Uint32Array(0) })));
+  flushCpu(scene);
+  const counts = scene.getTriangleCounts();
+  assert.deepEqual([...counts!.entries()].sort(), [[7, 1], [8, 1]]);
+});
+
+it('preserves unregistered queued counts when removal cannot remove that mesh (#10370 review)', () => {
+  const scene = new CpuScene();
+  scene.queueMeshes([sourceTriangle(7)]);
+  assert.equal(scene.removeMeshesForEntity(7), false);
+  assert.equal(scene.getTriangleCounts()?.get(7), 1);
+  flushCpu(scene);
+  let raw = 0;
+  scene.forEachMeshData(mesh => { raw += mesh.indices.length / 3; });
+  assert.equal(raw, 1);
+  assert.equal(scene.getTriangleCounts()?.get(7), raw);
+});
+
+it('removes uploaded contributions while retaining later queued pieces of the same object (#10370 review)', () => {
+  const scene = new CpuScene();
+  scene.queueMeshes([sourceTriangle(7)]); flushCpu(scene);
+  scene.queueMeshes([sourceTriangle(7)]);
+  assert.equal(scene.getTriangleCounts()?.get(7), 2);
+  assert.equal(scene.removeMeshesForEntity(7), true);
+  assert.equal(scene.getTriangleCounts()?.get(7), 1);
+  flushCpu(scene);
+  let raw = 0;
+  scene.forEachMeshData(mesh => { raw += mesh.indices.length / 3; });
+  assert.equal(raw, 1);
+  assert.equal(scene.getTriangleCounts()?.get(7), raw);
+  scene.removeMeshesForEntity(7);
+  assert.equal(scene.getTriangleCounts()?.has(7), false, 'flushed pieces no longer count as queued');
 });

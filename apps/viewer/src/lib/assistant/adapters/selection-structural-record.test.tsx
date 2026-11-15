@@ -54,6 +54,29 @@ ENDSEC;END-ISO-10303-21;`);
   assert.deepEqual(record.selfWeightCoefficients, { count: 3, values: [0, 0, -1] });
 });
 
+test('#9951 a selected analysis model names its type', async () => {
+  const store = await parseStep(`ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('x.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);
+#40=IFCSTRUCTURALANALYSISMODEL('am0000000000000000000a',$,'Model',$,$,.LOADING_3D.,$,$,$,$);
+ENDSEC;END-ISO-10303-21;`);
+  const data = extractStructuralOnDemand(store);
+  const record = recordOf(structuralEvidence(data, 40, undefined, 10, 20, ProjectUnits.empty(), store.schemaVersion, true));
+  assert.deepEqual([record.expressId, record.type, record.Name], [40, 'IfcStructuralAnalysisModel', 'Model']);
+});
+
+test('#9951 without the source file the assignment totals of a record are unknown, not zero', async () => {
+  const store = await parseStep(`ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('x.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);
+#30=IFCSTRUCTURALLOADCASE('lc0000000000000000000a',$,'Dead load',$,$,.LOAD_CASE.,.PERMANENT_G.,.DEAD_LOAD_G.,1.35,'Self weight',(0.,0.,-1.));
+ENDSEC;END-ISO-10303-21;`);
+  const data = extractStructuralOnDemand(store);
+  const withSource = recordOf(structuralEvidence(data, 30, undefined, 10, 20, ProjectUnits.empty(), store.schemaVersion, true));
+  const without = recordOf(structuralEvidence(data, 30, undefined, 10, 20, ProjectUnits.empty(), store.schemaVersion, false));
+  assert.deepEqual(withSource.activityGlobalIds, { count: 0, values: [] });
+  assert.deepEqual(without.activityGlobalIds, { count: null, values: [] });
+  assert.deepEqual(without.selfWeightCoefficients, { count: 3, values: [0, 0, -1] }, 'a known aggregate keeps its length');
+});
+
 test('#9951 a selection that is no structural record still has no structural evidence', async () => {
   const { saved } = await structuralEvidenceFixture();
   const data = extractStructuralOnDemand(saved);

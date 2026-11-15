@@ -62,7 +62,7 @@ const modelRow = (model: AnalysisModel, limit: number, count: (value: number) =>
   resultGroupCount: count(model.resultGroupGlobalIds.length), loadGroupGlobalIds: model.loadGroupGlobalIds.slice(0, limit), resultGroupGlobalIds: model.resultGroupGlobalIds.slice(0, limit) });
 
 /** The scalar fields of a load group, load case, combination or result group, bounded; held records and large lists are not expanded. */
-function groupRow(record: { type: string; info: object }, valueLimit: number) {
+function groupRow(record: { type: string; info: object }, valueLimit: number, sourceAvailable: boolean) {
   const info = record.info as Record<string, unknown>;
   const fields: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(info)) {
@@ -70,7 +70,8 @@ function groupRow(record: { type: string; info: object }, valueLimit: number) {
     if (typeof value === 'string') fields[key] = bounded(value);
     else if (typeof value === 'number' || typeof value === 'boolean') fields[key] = value;
     else if (Array.isArray(value) && value.every((v) => typeof v === 'string' || typeof v === 'number')) {
-      fields[key] = { count: value.length, values: value.slice(0, valueLimit) };
+      // Assignments are read from the source file; without it an empty list is unknown, not zero.
+      fields[key] = { count: key.endsWith('GlobalIds') && !sourceAvailable ? null : value.length, values: value.slice(0, valueLimit) };
     }
   }
   return { expressId: info.expressId, type: record.type, ...fields };
@@ -86,10 +87,10 @@ export function structuralEvidence(data: StructuralExtraction | null, expressId:
     if (!found) return null;
     const info = found.info;
     const count = (value: number) => sourceAvailable ? value : null;
-    const row = found.type === 'IfcStructuralAnalysisModel' ? modelRow(info as AnalysisModel, limit, count)
+    const row = found.type === 'IfcStructuralAnalysisModel' ? { type: found.type, ...modelRow(info as AnalysisModel, limit, count) }
       : data.activities.includes(info as Activity) ? activityRow(info as Activity, valueLimit, units, schema)
       : data.connections.includes(info as Connection) ? connectionRow(info as Connection, valueLimit, units, schema)
-      : groupRow(found, valueLimit);
+      : groupRow(found, valueLimit, sourceAvailable);
     return { record: row };
   }
   const connectionRows = structuralRelatedRows(data.connections, member.connectionGlobalIds);

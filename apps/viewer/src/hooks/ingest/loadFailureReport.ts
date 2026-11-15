@@ -18,7 +18,8 @@ import { showLoadError as reportLoadError } from '@/lib/analytics';
 export type LoadFailureReporter = (message: string, code: string, retry?: (() => void) | null) => void;
 
 export function loadFailureReporter(
-  file: File,
+  /** The source to offer with an error report; absent when there are no bytes here (a processed model). */
+  file: File | undefined,
   activity: { fail(message: string): string },
   retryThisLoad: () => void,
   onLoadError: ((message: string) => void) | undefined,

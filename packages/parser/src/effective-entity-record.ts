@@ -67,5 +67,10 @@ export function resolveEffectiveEntityRecord(
     if (index >= 0) attributes[index] = value;
   }
   for (const [index, value] of edits.positional) attributes[index] = value;
+  // #9876: authoring markers pin the write token, while read surfaces expose text.
+  for (let i = 0; i < attributes.length; i++) {
+    const value = attributes[i];
+    if (value && typeof value === 'object' && 'literal' in value && typeof value.literal === 'string') attributes[i] = value.literal;
+  }
   return { type, attributes, names };
 }

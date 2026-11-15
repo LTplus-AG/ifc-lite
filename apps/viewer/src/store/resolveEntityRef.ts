@@ -14,11 +14,12 @@
 import type { EntityRef } from './types.js';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { effectiveMetadataRecord } from '@ifc-lite/parser';
-import { useViewerStore } from './index.js';
+import type { ViewerState } from './index.js';
+import { getViewerState } from './viewerStoreHandle.js';
 
 /** Resolve a renderer/global ID against one consistent Viewer store snapshot. */
 function resolveEntityRefFromState(
-  state: ReturnType<typeof useViewerStore.getState>,
+  state: ViewerState,
   globalId: number,
 ): EntityRef {
   const resolved = state.resolveGlobalIdFromModels(globalId);
@@ -58,7 +59,7 @@ function resolveEntityRefFromState(
  * (multi-select, basket, context menu) can proceed without null-guards.
  */
 export function resolveEntityRef(globalId: number): EntityRef {
-  return resolveEntityRefFromState(useViewerStore.getState(), globalId);
+  return resolveEntityRefFromState(getViewerState(), globalId);
 }
 
 /**
@@ -69,7 +70,7 @@ export function resolveEntityRef(globalId: number): EntityRef {
  * renderer ID resolution path.
  */
 export function resolveGlobalId(globalId: number): string | null {
-  const state = useViewerStore.getState();
+  const state = getViewerState();
   const entityRef = resolveEntityRefFromState(state, globalId);
   const modelGlobalId = resolveEntityRefGlobalIdFromState(state, entityRef);
   if (modelGlobalId) return modelGlobalId;
@@ -86,13 +87,13 @@ export function resolveGlobalId(globalId: number): string | null {
 /** Resolve an exact model-space ref without losing identity to overlapping
  * renderer-id ranges. Parsed and StoreEditor-created entities share this path. */
 export function resolveEntityRefGlobalId(entityRef: EntityRef): string | null {
-  return resolveEntityRefGlobalIdFromState(useViewerStore.getState(), entityRef);
+  return resolveEntityRefGlobalIdFromState(getViewerState(), entityRef);
 }
 
 /** Snapshot-aware variant for transactions that must not follow a model
  * replacement while awaiting other work. */
 export function resolveEntityRefGlobalIdFromState(
-  state: Pick<ReturnType<typeof useViewerStore.getState>, 'models' | 'ifcDataStore' | 'mutationViews'>,
+  state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews'>,
   entityRef: EntityRef,
 ): string | null {
   const dataStore = entityRef.modelId === 'legacy'

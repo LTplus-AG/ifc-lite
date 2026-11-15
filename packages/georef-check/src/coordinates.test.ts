@@ -115,6 +115,9 @@ describe('tuplesFromRecordPrefix', () => {
       { x: 4500, y: -6, z: 7 },
     ]);
   });
+  it('reads a record with whitespace between its parentheses (STEP allows it)', () => {
+    expect(tuplesFromRecordPrefix('#5=IFCCARTESIANPOINTLIST3D( ( (2600000.,1200000.,0.) ) , $);')).toEqual([{ x: 2_600_000, y: 1_200_000, z: 0 }]);
+  });
   it('reads 2D lists with z = 0, and ignores a tag list', () => {
     expect(tuplesFromRecordPrefix("#5=IFCCARTESIANPOINTLIST2D(((1.,2.),(3.,4.)),('a','b'));")).toEqual([
       { x: 1, y: 2, z: 0 },

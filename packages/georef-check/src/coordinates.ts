@@ -197,10 +197,11 @@ const TUPLE = /\(\s*([-+]?[0-9.]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9.]+(?:[eE
 /** The complete coordinate tuples in the first bytes of a point list record. */
 export function tuplesFromRecordPrefix(text: string): Vec3[] {
   // CoordList is the first attribute: everything after the record's "((".
-  const start = text.indexOf('((');
-  if (start < 0) return [];
+  // STEP allows whitespace between tokens: "( (".
+  const open = /\(\s*\(/.exec(text);
+  if (!open) return [];
   const out: Vec3[] = [];
-  for (const m of text.slice(start + 1).matchAll(TUPLE)) {
+  for (const m of text.slice(open.index + 1).matchAll(TUPLE)) {
     const v = [Number(m[1]), Number(m[2]), m[3] === undefined ? 0 : Number(m[3])];
     if (v.every(Number.isFinite)) out.push({ x: v[0], y: v[1], z: v[2] });
   }

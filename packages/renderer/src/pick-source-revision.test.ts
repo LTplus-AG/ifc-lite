@@ -34,7 +34,8 @@ const chunk = (x: number) => ({ pointCount: 1, positions: new Float32Array([x, 0
 function setup() {
   const renderer = new Renderer({ width: 256, height: 256,
     getBoundingClientRect: () => ({ width: 256, height: 256 }) } as unknown as HTMLCanvasElement);
-  const points = new PointCloudRenderer(pointDevice(), 'rgba8unorm', 'depth32float', 1);
+  const device = pointDevice();
+  const points = new PointCloudRenderer(device, 'rgba8unorm', 'depth32float', 1);
   (renderer as unknown as { pointCloudRenderer: PointCloudRenderer }).pointCloudRenderer = points;
   renderer.addPointClouds([{ expressId: 1, modelIndex: 0, chunk: chunk(1) }]);
   const scan = renderer.beginPointCloudStream({ expressId: 2, modelIndex: 1 });
@@ -45,7 +46,7 @@ function setup() {
     change();
     return renderer.getPickGeometryRevision() !== before;
   };
-  return { renderer, points, scan, bumps };
+  return { renderer, points, scan, bumps, device };
 }
 
 const ALL_CLASSES = new Uint32Array(8).fill(0xffffffff);
@@ -102,6 +103,32 @@ describe('point clouds in the pick-geometry revision (#9029)', () => {
     assert.equal(bumps(() => renderer.setPointClouds([{ ...list[0], origin: [2, 0, 0] }])), true, 'a moved origin');
   });
 
+  it('#10094 3a excludes skipped origins from the embedded pick key', () => {
+    const { renderer, points, bumps } = setup();
+    const cloud = { expressId: 3, chunk: chunk(4) };
+    renderer.setPointClouds([cloud]);
+    for (const bad of [NaN, Infinity, 1e39]) {
+      assert.equal(bumps(() => renderer.setPointClouds([cloud, { expressId: 9, chunk: chunk(9), origin: [bad, 0, 0] }])), false);
+      assert.equal(points.getNodeCount(), 2, 'only the good inline cloud and streamed scan remain');
+    }
+    assert.equal(bumps(() => renderer.setPointClouds([cloud])), false);
+    renderer.destroy();
+  });
+
+  it('#10094 3c compares all origin values and snapshots in-place edits', () => {
+    const { renderer, bumps } = setup();
+    const origin: [number, number, number] = [1, 2, 3];
+    const asset = { expressId: 3, chunk: chunk(4), origin };
+    renderer.setPointClouds([asset]);
+    assert.equal(bumps(() => renderer.setPointClouds([{ ...asset, origin: [1, 2, 3] }])), false);
+    for (const axis of [0, 1, 2]) {
+      origin[axis]++;
+      assert.equal(bumps(() => renderer.setPointClouds([asset])), true);
+      assert.equal(bumps(() => renderer.setPointClouds([{ ...asset, origin: [...origin] }])), false);
+    }
+    renderer.destroy();
+  });
+
   it('#9093 re-installing the same embedded list after teardown counts', () => {
     const { renderer, bumps } = setup();
     const list = [{ expressId: 3, modelIndex: 2, chunk: chunk(3) }];
@@ -120,21 +147,21 @@ describe('point clouds in the pick-geometry revision (#9029)', () => {
   });
 
   it('a replacement that fails partway counts, and so does the retry of the same list', () => {
-    const { renderer, points, bumps } = setup();
+    const { renderer, device, bumps } = setup();
     const list = [{ expressId: 3, chunk: chunk(4) }];
     renderer.setPointClouds(list);
-    const upload = points.addAsset;
-    points.addAsset = () => { throw new Error('out of memory'); };
+    const upload = device.createBindGroup;
+    device.createBindGroup = () => { throw new Error('out of memory'); };
     assert.equal(bumps(() => assert.throws(() => renderer.setPointClouds(list))), true, 'the old clouds were dropped');
-    points.addAsset = upload;
+    device.createBindGroup = upload;
     assert.equal(bumps(() => renderer.setPointClouds(list)), true, 'the retry rebuilt them');
   });
 
   it('an add or a COPC node that fails partway still counts', () => {
-    const { renderer, points, scan, bumps } = setup();
-    const upload = points.addAsset.bind(points);
+    const { renderer, points, scan, bumps, device } = setup();
+    const upload = device.createBindGroup.bind(device);
     let uploads = 0;
-    points.addAsset = (asset) => { if (++uploads > 1) throw new Error('out of memory'); return upload(asset); };
+    device.createBindGroup = (descriptor) => { if (++uploads > 1) throw new Error('out of memory'); return upload(descriptor); };
     assert.equal(bumps(() => assert.throws(() => renderer.addPointClouds([{ expressId: 5, chunk: chunk(5) }, { expressId: 6, chunk: chunk(6) }]))), true,
       'the first cloud became pickable before the second threw');
     points.appendChunk = () => { throw new Error('out of memory'); };

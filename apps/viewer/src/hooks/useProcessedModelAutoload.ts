@@ -25,7 +25,7 @@ import { showLoadError } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { markLoadIntent } from '@/lib/load-intent';
-import { normalizeProcessedModelHash } from '@ifc-lite/server-client';
+import { normalizeProcessedModelHash, processedModelSize } from '@ifc-lite/server-client';
 import { onProcessedModelRequest, openProcessedModelFromUrl, pageUrlModelAllowed, takeProcessedModelRequest, type ProcessedModelRequest } from '@/lib/processed-model';
 
 /** The model `?processed=` names, `'malformed'` when the hash is not one, `null` when the parameter is absent. */
@@ -36,7 +36,7 @@ export function processedModelFromQuery(search: string): ProcessedModelRequest |
   const sha256 = normalizeProcessedModelHash(raw);
   if (sha256 === null) return 'malformed';
   const bytes = params.get('bytes') ?? '';
-  return { sha256, bytes: /^\d+$/.test(bytes) ? Number(bytes) : 0, name: params.get('name') ?? '' }; // digits only: no hex, exponent or padding
+  return { sha256, bytes: processedModelSize(/^\d+$/.test(bytes) ? Number(bytes) : 0), name: params.get('name') ?? '' }; // digits only: no hex, exponent or padding
 }
 
 export function useProcessedModelAutoload(): void {

@@ -224,7 +224,7 @@ it('?processed= accepts the hash in upper case and asks for it in lower case', a
 });
 
 it('?processed= reads a size that is not plain digits as unknown', () => {
-  for (const bad of ['abc', '0x9502F900', '1.6e8', '-5', ' 12', '']) {
+  for (const bad of ['abc', '0x9502F900', '1.6e8', '-5', ' 12', '', '99999999999999999999']) {
     assert.equal((processedModelFromQuery(`?processed=${sha256}&bytes=${encodeURIComponent(bad)}`) as ProcessedModelRef).bytes, 0, bad);
   }
 });

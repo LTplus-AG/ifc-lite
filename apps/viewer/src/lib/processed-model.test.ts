@@ -28,4 +28,13 @@ describe('setProcessingServerUrl', () => {
     setProcessingServerUrl('');
     assert.equal(getProcessingServerUrl(), '');
   });
+
+  it('trims spaces, and reads a blank or missing value as no server', () => {
+    setProcessingServerUrl(' /ifc/ ');
+    assert.equal(getProcessingServerUrl(), '/ifc');
+    setProcessingServerUrl('   ');
+    assert.equal(getProcessingServerUrl(), '');
+    setProcessingServerUrl(undefined as unknown as string); // an untyped host
+    assert.equal(getProcessingServerUrl(), '');
+  });
 });

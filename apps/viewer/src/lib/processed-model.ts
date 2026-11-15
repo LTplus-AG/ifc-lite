@@ -50,8 +50,9 @@ export function getProcessingServerUrl(): string {
  * routes them to the server (`VITE_USE_SERVER=true`).
  */
 export function setProcessingServerUrl(url: string): void {
+  const trimmed = typeof url === 'string' ? url.trim() : ''; // a host config value may carry spaces, or be missing
   // Trailing slashes go, unless nothing would be left: '/' is the page's own origin, a valid server URL.
-  serverUrl = url.replace(/\/+$/, '') || (url.startsWith('/') ? '/' : '');
+  serverUrl = trimmed.replace(/\/+$/, '') || (trimmed.startsWith('/') ? '/' : '');
 }
 
 /** Whether a locally opened IFC is sent to the processing server: the build flag, and a server to send it to. */

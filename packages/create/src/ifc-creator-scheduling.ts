@@ -15,7 +15,7 @@
  * returns the id — so nothing here needs the creator's private state.
  */
 
-import type { WorkCalendarParams, WorkTimeParams, RecurrencePatternParams, TaskParams } from './types.js';
+import type { WorkCalendarParams, WorkTimeParams, RecurrencePatternParams, TaskParams, WorkScheduleParams } from './types.js';
 import { esc, optStr, optEnum, optBool, optReal, optInt, refList, intList } from './ifc-creator-math.js';
 
 /** Allocate an express id, emit `#id=TYPE(attrs);`, and return the id. */
@@ -160,4 +160,21 @@ export function emitTaskTime(params: TaskParams, emit: EmitEntity): number {
     optReal(params.Completion),               // Completion
   ];
   return emit('IFCTASKTIME', attrs.join(','));
+}
+
+/**
+ * IFC4 `IfcWorkSchedule` / `IfcWorkPlan` attributes (same layout via IfcWorkControl):
+ * GlobalId, OwnerHistory, Name, Description, ObjectType, Identification, CreationDate,
+ * Creators, Purpose, Duration, TotalFloat, StartTime, FinishTime, PredefinedType.
+ */
+export function workControlAttrs(params: WorkScheduleParams, globalId: string, ownerRef: string, nowMs: number): string {
+  const creationDate = params.CreationDate ?? new Date(nowMs).toISOString().slice(0, 19);
+  return `'${globalId}',${ownerRef},'${esc(params.Name)}',${optStr(params.Description)},$,${optStr(params.Identification)},`
+    + `'${esc(creationDate)}',$,${optStr(params.Purpose)},${optStr(params.Duration)},${optStr(params.TotalFloat)},`
+    + `'${esc(params.StartTime)}',${optStr(params.FinishTime)},${optEnum(params.PredefinedType)}`;
+}
+
+/** The error for scheduling data IFC2X3 cannot represent with these writers. */
+export function ifc2x3Unsupported(op: string, what: string): Error {
+  return new Error(`${op}: ${what} are not supported for IFC2X3. Create the model as IFC4 or IFC4X3.`);
 }

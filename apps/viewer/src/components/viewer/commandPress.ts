@@ -7,7 +7,7 @@ import { commandPointerCancel, getCommandRuntime, type CommandRuntimeState } fro
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import { releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
-import { isGeometryHeld } from '@/lib/pick-gating';
+import { isGeometryHeld, isGeometryRestoreHeld } from '@/lib/pick-gating';
 import { cancelCommandPointer, routeCommandPointer } from './commandPointer.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
@@ -69,8 +69,9 @@ export function createCommandPressController(ctx: MouseHandlerContext) {
       const owner = press;
       press = null; // Clear before releasePointer emits lostpointercapture.
       const current = sameRuntime(owner);
+      const restoreHeldAtRelease = isGeometryRestoreHeld(useViewerStore.getState());
       cancelCommandPointer(ctx);
-      ctx.mouseState.didDrag = owner.held || owner.onPress || !current;
+      ctx.mouseState.didDrag = owner.held || owner.onPress || !current || restoreHeldAtRelease;
       // A press taken before a restore hold and released during it: its 'up' would be held back, leaving the drag grabbed.
       if (owner.onPress && current && !owner.held) { if (isGeometryHeld(useViewerStore.getState())) commandPointerCancel(); else feed('up', event); }
       return true;

@@ -32,4 +32,5 @@ twox-hash = { version = "2.1", default-features = false, features = ["xxhash64"]
 thiserror.workspace = true
 
 [dev-dependencies]
+ifc-lite-testkit = { path = "../testkit" }
 rayon.workspace = true

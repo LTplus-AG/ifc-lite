@@ -1581,6 +1581,7 @@ dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-processing",
+ "ifc-lite-testkit",
  "miniz_oxide 0.9.1",
  "rayon",
  "thiserror 2.0.21",

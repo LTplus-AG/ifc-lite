@@ -7,7 +7,8 @@
 //! emit order, so no batch-completion order may reach the bytes.
 //!
 //! The committed viewer samples are used so this never skips; the catalogued
-//! fixture below skips with a `pnpm fixtures` message when absent.
+//! fixture below is read through `ifc_lite_testkit::fixture_bytes`, so it skips
+//! locally when absent and fails in CI, where the fixtures are required.
 
 use ifc_lite_cache::{build_cache, CacheOptions, FORMAT_VERSION};
 
@@ -44,9 +45,10 @@ fn issue_9584_samples_are_byte_identical_across_runs_and_thread_counts() {
 
 #[test]
 fn issue_9584_catalogued_fixture_is_byte_identical_across_thread_counts() {
-    let path = "tests/models/ara3d/AC20-FZK-Haus.ifc";
-    let Some(source) = workspace_file(path) else {
-        eprintln!("SKIP: {path} absent; run `pnpm fixtures`");
+    // Gated read: absent skips locally, but fails under IFC_LITE_REQUIRE_FIXTURES (CI).
+    let path = "ara3d/AC20-FZK-Haus.ifc";
+    let Some(source) = ifc_lite_testkit::fixture_bytes(path) else {
+        eprintln!("SKIP: tests/models/{path} absent; run `pnpm fixtures`");
         return;
     };
     assert_reproducible(path, &source);

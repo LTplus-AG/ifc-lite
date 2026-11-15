@@ -25,6 +25,9 @@ export interface GaussianRowSource {
   /** Largest |SH coefficient| over all rows; decides the GPU coefficient encoding before any upload. */
   readonly maxAbsShCoefficient: number;
   /**
+   * The rows must not change while the asset exists: the SH degrees and coefficient
+   * range above are decided once, and every re-read must deliver the same values.
+   *
    * Visit every row once, in order, as normalized source-local chunks (`rowStart`
    * counts from 0). Chunks may be views; the visitor copies what it keeps. Each
    * call reads afresh, so it may be repeated. Rejects when `signal` aborts.
@@ -34,7 +37,7 @@ export interface GaussianRowSource {
 
 const VIEW_ROWS = 65_536;
 
-/** A row source over arrays the caller keeps alive; chunks are views, nothing is copied. */
+/** A row source over arrays the caller keeps alive and unmodified; chunks are views, nothing is copied. */
 export function gaussianRowsFromAttributes(attributes: NormalizedGaussianAttributes): GaussianRowSource {
   const { count, sphericalHarmonicsDegree: degree } = attributes;
   const basis = (degree + 1) ** 2 - 1;

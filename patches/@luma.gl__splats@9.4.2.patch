@@ -89,7 +89,7 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..00a296bd8c6275ada1a2f83ea671d14b
 +  // ifc-lite #9018 gpu-columns: a column held only on the GPU has no CPU array to check.
 +  const gpu = source.gpuColumns ?? {};
 +  const rows = (name, stride) => gpu[name] ? gpu[name].byteLength === length * stride * 4 : source[name]?.length === length * stride;
-+  if (!Number.isInteger(length) || !rows("scales", 3) || !rows("rotations", 4) || (gpu.colors ? gpu.colors.byteLength !== length * (source.colorFormat === "unorm8x4" ? 4 : 16) : source.colors.length !== length * 4) || source.opacities.length !== length || source.semanticIds && source.semanticIds.length !== length) {
++  if (!Number.isInteger(length) || !rows("scales", 3) || !rows("rotations", 4) || (gpu.colors ? gpu.colors.byteLength !== length * ((source.colorFormat ?? (source.colors instanceof Float32Array ? "float32x4" : "unorm8x4")) === "unorm8x4" ? 4 : 16) : source.colors.length !== length * 4) || source.opacities.length !== length || source.semanticIds && source.semanticIds.length !== length) {
      throw new Error("SplatSource columns must contain matching Gaussian splat rows");
    }
    return length;
@@ -522,7 +522,7 @@ index 7c9d3f54e43ce2f5954d09f67d20f6a492e66fb4..f4a2ad3ee354b6f1e567ead7db234f5b
 -        source.colors.length !== length * 4 ||
 +        !rows('scales', 3) ||
 +        !rows('rotations', 4) ||
-+        (gpu.colors ? gpu.colors.byteLength !== length * (source.colorFormat === 'unorm8x4' ? 4 : 16) : source.colors.length !== length * 4) ||
++        (gpu.colors ? gpu.colors.byteLength !== length * ((source.colorFormat ?? (source.colors instanceof Float32Array ? 'float32x4' : 'unorm8x4')) === 'unorm8x4' ? 4 : 16) : source.colors.length !== length * 4) ||
          source.opacities.length !== length ||
          (source.semanticIds && source.semanticIds.length !== length)) {
          throw new Error('SplatSource columns must contain matching Gaussian splat rows');

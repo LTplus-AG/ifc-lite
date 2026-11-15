@@ -115,8 +115,12 @@ export async function openGaussianCaptureRows(file: File, signal?: AbortSignal):
     count: summary.count, sphericalHarmonicsDegree: summary.shDegree,
     effectiveShDegree: summary.effectiveShDegree, maxAbsShCoefficient: summary.maxAbsShCoefficient,
     async read(visit, readSignal) {
-      const stream = first ?? await openStreamWorker(file, readSignal, summary);
+      const reused = first;
       first = null;
+      const stream = reused ?? await openStreamWorker(file, readSignal, summary);
+      // The first worker was opened before this read: make it observe this read's signal too.
+      const abort = () => stream.close();
+      if (reused) readSignal?.addEventListener('abort', abort, { once: true });
       // One slice's arrays on the main thread at a time: the decoded columns go back to the
       // worker with the next request, and the normalized rows are rewritten in place (the
       // visitor copies what it keeps), so streaming a capture allocates no per-slice garbage.
@@ -130,8 +134,12 @@ export async function openGaussianCaptureRows(file: File, signal?: AbortSignal):
           normalized = normalizeGaussianAttributes({ count, shDegree: summary.shDegree, columns }, normalized);
           spent = columns;
           await visit(normalized, start);
+          readSignal?.throwIfAborted(); // a visitor may abort, also during the last window
         }
-      } finally { stream.close(); }
+      } finally {
+        readSignal?.removeEventListener('abort', abort);
+        stream.close();
+      }
     },
   };
   return { ...summary, rows, close: () => { first?.close(); first = null; } };

@@ -665,19 +665,42 @@ test('#9018 recovery and an SH layout change read sources again; compaction copi
   assert.equal(h.scene().sources.at(-1)!.readRows, 4);
 });
 
+/**
+ * Independent binary16 reference (Node 22 has no Math.f16round without a flag): the
+ * nearest half, ties to even, by power-of-two scaling, which is exact in float64.
+ */
+function halfReference(value: number): number {
+  const magnitude = Math.abs(value);
+  if (magnitude === 0) return value;
+  let exponent = Math.floor(Math.log2(magnitude));
+  if (2 ** exponent > magnitude) exponent--;
+  if (2 ** (exponent + 1) <= magnitude) exponent++;
+  const ulp = 2 ** (Math.max(exponent, -14) - 10);
+  const scaled = magnitude / ulp;
+  const floor = Math.floor(scaled);
+  const rest = scaled - floor;
+  const rounded = rest > 0.5 || (rest === 0.5 && floor % 2 === 1) ? floor + 1 : floor;
+  return Math.sign(value) * rounded * ulp; // keeps -0 for a negative value that rounds to zero
+}
+const nativeHalf = (Math as { f16round?: (value: number) => number }).f16round;
+
 test('#9018 SH coefficients pack as round-to-nearest-even halves, with a float32 fallback', async () => {
-  for (const value of [0, -0, 1, -1, 0.1, 0.25, 1 / 3, 65_504, 6.1e-5, 5.96e-8, 3e-8, 2.98e-8, 1e-9, 0.5595555901527405, 2049, 2051, 4097]) {
-    assert.equal(halfToFloat(halfBits(value)), Math.f16round(value), `half of ${value}`);
+  const check = (value: number, label: string) => {
+    if (nativeHalf) assert.equal(halfReference(value), nativeHalf(value), `reference agrees with Math.f16round for ${label}`);
+    assert.equal(halfToFloat(halfBits(value)), halfReference(value), `half of ${label}`);
+  };
+  for (const value of [0, -0, 1, -1, 0.1, 0.25, 1 / 3, 65_504, 6.1e-5, 5.96e-8, 3e-8, 2.98e-8, 1e-9, -1e-9, 0.5595555901527405, 2049, 2051, 4097]) {
+    check(value, String(value));
   }
   for (let i = 0; i < 20_000; i++) {
-    const value = (Math.random() - 0.5) * 10 ** (Math.random() * 9 - 6);
-    assert.equal(halfToFloat(halfBits(Math.fround(value))), Math.f16round(Math.fround(value)));
+    const value = Math.fround((Math.random() - 0.5) * 10 ** (Math.random() * 9 - 6));
+    check(value, String(value));
   }
   const small = harness();
   await small.layer.add({ rows: countingRows(3, 1, 0.1).rows, placement: { matrix: IDENTITY }, modelIndex: 0 }, OPT_IN);
   const packed = small.scene().sources.at(-1)!;
   assert.equal(packed.layout.shEncoding, 'float16x2');
-  assert.deepEqual([...packed.sphericalHarmonics.subarray(0, 9)], Array(9).fill(Math.f16round(0.1)));
+  assert.deepEqual([...packed.sphericalHarmonics.subarray(0, 9)], Array(9).fill(halfReference(0.1)));
   const large = harness();
   await large.layer.add({ rows: countingRows(3, 1, 70_000).rows, placement: { matrix: IDENTITY }, modelIndex: 0 }, OPT_IN);
   assert.equal(large.scene().sources.at(-1)!.layout.shEncoding, 'float32', 'coefficients beyond half range keep float32');

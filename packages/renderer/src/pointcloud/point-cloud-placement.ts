@@ -5,7 +5,7 @@ import { transformAabb, type PointCloudNode } from './point-cloud-node.js';
 
 type Translation = readonly [number, number, number];
 interface Placement { baseline: Float64Array; translation: Translation }
-export const IDENTITY_MATRIX: readonly number[] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 /** Compose import alignment and manual placement through one writer. In particular
  * toggling alignment must never erase a manual correction (#4226). */
@@ -15,7 +15,7 @@ export class PointCloudPlacements {
   private entry(node: PointCloudNode): Placement {
     let entry = this.placements.get(node);
     if (!entry) {
-      entry = { baseline: new Float64Array(node.placement ?? node.model ?? IDENTITY_MATRIX), translation: [0, 0, 0] };
+      entry = { baseline: new Float64Array(node.placement ?? node.model ?? IDENTITY), translation: [0, 0, 0] };
       this.placements.set(node, entry);
     }
     return entry;
@@ -26,7 +26,7 @@ export class PointCloudPlacements {
       throw new Error('Pointcloud placement needs a finite 4×4 matrix.');
     }
     const entry = this.entry(node);
-    const next = { ...entry, baseline: new Float64Array(matrix ?? IDENTITY_MATRIX) };
+    const next = { ...entry, baseline: new Float64Array(matrix ?? IDENTITY) };
     this.apply(node, next);
     this.placements.set(node, next);
   }

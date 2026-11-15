@@ -55,7 +55,8 @@ export interface DeviationDispatchInput {
    * Optional per-asset model matrix (column-major, 16 floats) — the
    * exact cloud placement rebased to the BVH's shared anchor before f32
    * narrowing (#10094 item 1). Includes #1804 IfcMapConversion alignment.
-   * Omitted/malformed → identity (chunk space IS the BVH's local frame).
+   * Omitted/malformed → identity, which is right only when the BVH was built
+   * with no anchor; callers with an anchored BVH must pass the rebased model.
    */
   model?: Float32Array;
 }

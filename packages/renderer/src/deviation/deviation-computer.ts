@@ -18,7 +18,7 @@
 
 import { DeviationPipeline } from './deviation-pipeline.js';
 import { buildTriangleBVH } from './triangle-bvh.js';
-import { exactPlacement, IDENTITY_MATRIX } from '../pointcloud/point-cloud-placement.js';
+import { exactPlacement } from '../pointcloud/point-cloud-placement.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { WebGPUDevice } from '../device.js';
 import type { Scene } from '../scene.js';
@@ -202,7 +202,8 @@ export class DeviationComputer {
         // can't alias each other. A federation reload that swaps one
         // model for another with the same total triangle count would
         // otherwise reuse the previous BVH and report wrong distances.
-        const fingerprint = `${anchor.join(',')}|${computeBvhFingerprint(meshes)}`;
+        // The anchor is a mesh origin, which the fingerprint already covers.
+        const fingerprint = computeBvhFingerprint(meshes);
         if (opts.forceRebuild || fingerprint !== this.bvhFingerprint) {
             const bvh = buildTriangleBVH(meshes, { anchor });
             this.pipeline.uploadBvh(bvh);
@@ -220,7 +221,7 @@ export class DeviationComputer {
         let pointsProcessed = 0;
         const computedBuffers = new WeakSet<GPUBuffer>();
         for (const node of nodes) {
-            const model = exactPlacement(node) ?? new Float64Array(IDENTITY_MATRIX);
+            const model = exactPlacement(node) ?? new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
             for (let axis = 0; axis < 3; axis++) model[12 + axis] -= anchor[axis];
             const relativeModel = new Float32Array(model);
             for (const chunk of node.chunks) {

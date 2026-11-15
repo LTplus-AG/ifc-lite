@@ -56,6 +56,7 @@ function planRowTargets(node: TreeNode, models: Map<string, FederatedModel>, act
   const key = `${modelId}\u0000${action}\u0000${row}`;
   let targets = cache.targets.get(key);
   if (!targets) {
+    // A whole subtree at once: map through the models map, not resolveTreeGlobalId's store lookup per id.
     targets = containerVisibilityTargets(plan, row, action).map((id) => toGlobalIdFromModels(models, modelId, id));
     cache.targets.set(key, targets);
   }

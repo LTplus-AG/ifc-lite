@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useMemo } from 'react';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
 import { sameModelsExceptGeometry } from '@/lib/streaming-refresh';
@@ -335,14 +336,14 @@ export function StatusBar() {
         <StatusBarWorkspaceChip />
         <ActivityTrayButton />
         <StatusBarPresentationButton />
-        <Separator orientation="vertical" className="h-3.5" />
-        <FlavorIndicator onClick={() => useViewerStore.getState().setFlavorDialogRequested(true)} />
+        {isFeatureEnabled('automate.extensions') && <><Separator orientation="vertical" className="h-3.5" />
+          <FlavorIndicator onClick={() => useViewerStore.getState().setFlavorDialogRequested(true)} /></>}
 
         <Separator orientation="vertical" className="h-3.5" />
 
         <span className="opacity-60">{t('shellChrome.statusBar.appVersion', { version: __APP_VERSION__ })}</span>
 
-        <Separator orientation="vertical" className="h-3.5" />
+        {isFeatureEnabled('help.product-links') && <><Separator orientation="vertical" className="h-3.5" />
 
         <a
           href="https://ifclite.dev"
@@ -352,7 +353,7 @@ export function StatusBar() {
           aria-label={t('shellChrome.statusBar.ifcliteAriaLabel')}
         >
           {t('shellChrome.statusBar.ifcliteLinkLabel')}
-        </a>
+        </a></>}
       </div>
 
     </div>

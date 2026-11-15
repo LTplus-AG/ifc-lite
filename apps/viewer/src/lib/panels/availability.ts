@@ -21,11 +21,8 @@ import { isCollabEnabled } from '@/lib/collab/config';
 import { isFeatureEnabled, type FeatureId } from '@/lib/features';
 import type { WorkspacePanelId } from './registry';
 
-/**
- * Panels not listed are not switchable yet (the editing, file, AI, extension
- * and collaboration panels join with their features).
- */
-export const PANEL_FEATURE: Readonly<Partial<Record<WorkspacePanelId, FeatureId>>> = {
+export const PANEL_FEATURE: Readonly<Record<Exclude<WorkspacePanelId, 'hierarchy' | 'properties'>, FeatureId>> = {
+  sources: 'files.sources',
   measurements: 'tools.measure',
   lens: 'view.lens',
   environment: 'view.environment',
@@ -49,13 +46,20 @@ export const PANEL_FEATURE: Readonly<Partial<Record<WorkspacePanelId, FeatureId>
   semantic: 'data.linked-records',
   layers: 'data.layers',
   influx: 'data.time-series',
+  changes: 'edit.model',
+  model: 'edit.model',
+  changeSets: 'edit.model',
+  placement: 'edit.placement',
   script: 'automate.scripting',
   flow: 'automate.flows',
+  extensions: 'automate.extensions',
+  assistant: 'ai.assistant',
+  collab: 'collab.sessions',
 };
 
 /** Whether the host left this panel's feature on. A panel that is not available never opens or renders. */
 export function isPanelAvailable(id: WorkspacePanelId): boolean {
-  const feature = PANEL_FEATURE[id];
+  const feature = (PANEL_FEATURE as Partial<Record<WorkspacePanelId, FeatureId>>)[id];
   return feature === undefined || isFeatureEnabled(feature);
 }
 

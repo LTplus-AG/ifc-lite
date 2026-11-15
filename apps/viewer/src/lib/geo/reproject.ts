@@ -11,6 +11,7 @@
  * entry points under the viewer's long-standing import path.
  */
 
+import { isFeatureEnabled } from '../features/index.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { coordinatesToLatLon, isGeographicProj4, resolveProjection, type LatLon } from '@ifc-lite/geo/proj4';
@@ -202,6 +203,7 @@ export async function computeFootprintGeoJSON(
  * Returns height in metres above sea level, or null on failure.
  */
 export async function queryTerrainElevation(latLon: LatLon): Promise<number | null> {
+  if (!isFeatureEnabled('privacy.third-party')) return null;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {

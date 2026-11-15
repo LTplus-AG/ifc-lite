@@ -68,7 +68,9 @@ export function mainViewerToolDefinitions(): AgentToolDefinition[] {
 }
 
 function readDefinitions(scopes: Map<string, string>): AgentToolDefinition[] {
-  return createAnthropicToolDefinitions(MAIN_VIEWER_TOOL_ALLOWLIST).map((definition) => {
+  // A tool this page does not serve (`mainViewerTool`, e.g. bSDD with outside services off) is not offered.
+  const served = MAIN_VIEWER_TOOL_ALLOWLIST.filter((name) => mainViewerTool(name) !== undefined);
+  return createAnthropicToolDefinitions(served).map((definition) => {
     const tool = mainViewerTool(definition.name);
     let schema = definition.input_schema;
     if (tool && tool.needs !== 'none') schema = withModelId(schema);

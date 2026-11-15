@@ -24,7 +24,7 @@
  * `runtime.sendMessage` round trip — and the pair firing milliseconds apart in
  * two differently-sized foreign bundles is that handshake failing, not one of
  * our components rendering. The viewer's own `tab.id` sites cannot produce it:
- * `RibbonToolbar` maps a module-level `RIBBON_TABS` literal and
+ * `RibbonToolbar` maps the module-level `RIBBON_TABS` literal and
  * `WidgetRenderer` maps tabs already validated by `@ifc-lite/extensions`'
  * widget schema, and a throw from either would carry a frame in our bundle
  * under `https://www.ifclite.com/assets/`, which neither of these does.

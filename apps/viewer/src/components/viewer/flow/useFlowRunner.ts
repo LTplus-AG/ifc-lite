@@ -10,6 +10,7 @@
  * ours).
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useCallback, useEffect, useRef } from 'react';
 import { MemoCache, type RunResult } from '@ifc-lite/flow';
 import { resumeOutputs, type FlowCheckpoint } from '@ifc-lite/flow/checkpoint';
@@ -132,7 +133,8 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, optio
       // AI nodes get the Assistant's model, spending one root budget per run; a
       // resume continues the paused run's budget, and its restored nodes need no model.
       const restored = new Set(Object.keys(resume?.outputs ?? {}));
-      const ai = doc.nodes.some((n) => n.type.startsWith('ai.') && !restored.has(n.id))
+      // A host that switched AI off (`lib/features`) gets no model: preflight then refuses AI nodes.
+      const ai = isFeatureEnabled('ai.assistant') && doc.nodes.some((n) => n.type.startsWith('ai.') && !restored.has(n.id))
         ? (await import('@/lib/flow/ai-host')).viewerFlowAi(resume?.budget) : null;
       const preparedInputs = await preflightWorkflow(session, doc, inputs ?? {}, viewerFlowFeatures(true, !!ai), restored);
       session.check();

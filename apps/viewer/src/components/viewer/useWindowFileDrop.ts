@@ -25,6 +25,7 @@
  *   the full-window overlay so the zone's own highlight shows.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useEffect, useState } from 'react';
 import { useLatestRef } from '@/hooks/useLatestRef';
 import { initialDragOverlayState, reduceDragOverlay, type DragOverlayEvent } from './dragOverlayState';
@@ -43,6 +44,10 @@ export function isFileDrag(dataTransfer: DataTransfer | null | undefined): boole
 export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, accept: boolean): boolean {
   const [overlay, setOverlay] = useState(false);
   const onDropRef = useLatestRef(onDrop);
+  // A host can switch local files off (`lib/features`): the window then takes
+  // a dropped file only to stop the browser navigating to it, and opens nothing.
+  const local = isFeatureEnabled('files.local');
+  const canAccept = accept && local;
 
   useEffect(() => {
     let state = initialDragOverlayState;
@@ -55,7 +60,7 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
     let inPage = false;
     const sync = () => setOverlay(state.dragging && !claimed);
     const step = (event: DragOverlayEvent) => {
-      state = reduceDragOverlay(state, event, accept);
+      state = reduceDragOverlay(state, event, canAccept);
       if (!state.dragging) claimed = false;
       sync();
     };
@@ -79,7 +84,7 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
       claimed = e.defaultPrevented;
       if (!claimed) {
         e.preventDefault(); // makes the window a drop target, so no navigation
-        if (e.dataTransfer) e.dataTransfer.dropEffect = accept ? 'copy' : 'none';
+        if (e.dataTransfer) e.dataTransfer.dropEffect = canAccept ? 'copy' : 'none';
       }
       sync();
     };
@@ -97,7 +102,7 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
       // `accept` only steers the cursor/overlay above, so the caller's own
       // guard — not a swallowed drop — is what explains an unsupported
       // browser. A silent no-op here is the bug #5851 fixed.
-      if (e.dataTransfer) onDropRef.current(e.dataTransfer);
+      if (local && e.dataTransfer) onDropRef.current(e.dataTransfer);
     };
 
     const listeners: Array<[string, (e: DragEvent) => void, boolean]> = [
@@ -116,7 +121,7 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
       for (const [type, fn, capture] of listeners) window.removeEventListener(type, fn as EventListener, capture);
       setOverlay(false);
     };
-  }, [accept, onDropRef]);
+  }, [canAccept, local, onDropRef]);
 
   return overlay;
 }

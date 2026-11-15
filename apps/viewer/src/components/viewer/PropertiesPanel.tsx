@@ -56,6 +56,7 @@ import { PresentationLayersSection } from './properties/PresentationLayersSectio
 import { AssemblyBadge } from './properties/AssemblyBadge';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
+import { isFeatureEnabled } from '@/lib/features';
 import { RawStepCard } from './properties/RawStepCard';
 import { TriangleCountRow } from './properties/TriangleCountRow';
 import { EntityHeader } from './properties/EntityHeader';
@@ -143,6 +144,8 @@ export function PropertiesPanel() {
 
   const multiSelectionCount = useViewerStore((s) => s.selectedEntitiesSet.size);
   const [find, setFind] = useState('');
+  // The bSDD tab queries buildingSMART's service, a third party (`lib/features`).
+  const bsdd = isFeatureEnabled('privacy.third-party');
 
   // Data editing is available in place, independent of the Model workspace (#9296).
   const collabRole = useViewerStore((s) => s.collabRole);
@@ -1169,7 +1172,7 @@ export function PropertiesPanel() {
             georefPanel={{
               georef: renderedGeoref,
               modelId: selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId),
-              enableEditing: geometryEditMode,
+              enableEditing: geometryEditMode && isFeatureEnabled('edit.placement'),
               schemaVersion: activeDataStore?.schemaVersion,
               coordinateInfo: (model?.geometryResult ?? geometryResult)?.coordinateInfo,
               geometryResult: model?.geometryResult ?? geometryResult,
@@ -1275,13 +1278,13 @@ export function PropertiesPanel() {
       )}
 
       {/* Tabs */}
-      {!editPermission.allowed && selectedEntity && (
+      {!editPermission.allowed && editPermission.reason !== 'switched-off' && selectedEntity && (
         <output className="block border-b px-3 py-2 text-xs text-muted-foreground">
           {t(mutationDenialKey(editPermission.reason))}
         </output>
       )}
       <Tabs
-        value={propertiesActiveTab}
+        value={propertiesActiveTab === 'bsdd' && !bsdd ? 'properties' : propertiesActiveTab}
         onValueChange={(v) => setPropertiesActiveTab(v as 'properties' | 'quantities' | 'bsdd' | 'raw-step')}
         className="flex-1 flex flex-col overflow-hidden"
       >
@@ -1302,14 +1305,14 @@ export function PropertiesPanel() {
             <Calculator className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.quantities')}</span>
           </TabsTrigger>
-          <TabsTrigger
+          {bsdd && <TabsTrigger
             value="bsdd"
             title={t('properties.panel.tab.bsdd')}
             className="properties-tab-trigger flex-1 min-w-0 text-xs"
           >
             <Tag className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.bsdd')}</span>
-          </TabsTrigger>
+          </TabsTrigger>}
           <TabsTrigger
             value="raw-step"
             title={t('properties.panel.tab.rawStepTitle')}

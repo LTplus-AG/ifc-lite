@@ -22,11 +22,11 @@ for (const image of [null, 'textures/wall.png', 'textures/wall.JPG']) {
   });
 }
 
-for (const fault of ['truncated', 'oversized-directory', 'zip64', 'multipart', 'extra-model', 'unicode-path', 'zip64-extra', 'zip64-compressed-size', 'zip64-local-offset'] as const) {
+for (const fault of ['truncated', 'oversized-directory', 'zip64', 'multipart', 'extra-model', 'unicode-path', 'zip64-extra', 'zip64-extra-only', 'zip64-compressed-size', 'zip64-local-offset'] as const) {
   it(`#10264 ZIP ${fault} cannot authorize an uninspected server upload`, async () => {
     let bytes = zipSync({ 'model.ifc': strToU8('ISO-10303-21;'), ...(fault === 'extra-model' ? { 'other.ifc': strToU8('ISO-10303-21;') } : {}) },
       fault === 'unicode-path' ? { extra: { 0x7075: new Uint8Array([1, 0, 0, 0, 0, ...strToU8('hidden.png')]) } } :
-      fault === 'zip64-extra' ? { extra: { 0x0001: new Uint8Array(8) } } : {});
+      fault.startsWith('zip64-extra') ? { extra: { 0x0001: new Uint8Array(8) } } : {});
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), end = bytes.length - 22;
     if (fault === 'truncated') bytes = bytes.slice(0, -5);
     if (fault === 'oversized-directory') view.setUint32(end + 12, 1024 * 1024 + 1, true);

@@ -519,8 +519,8 @@ export async function* processParallel(
   // to replace a worker regardless of whether #4884's in-call recovery is
   // enabled, and replaying this log is how a replacement reaches the same
   // state every other worker is in.
-  const setupLog = new PoolSetupBroadcast(workers, holdsPoolUntilPrepassEnds(sharedBuffer.byteLength));
-  const broadcastSetup = (setup: (w: Worker) => void) => setupLog.broadcast(setup); // held until the pre-pass ends on large files (#10264)
+  const setupLog = new PoolSetupBroadcast(workers, holdsPoolUntilPrepassEnds(sharedBuffer.byteLength, workerCount));
+  const broadcastSetup = (setup: (w: Worker) => void) => setupLog.broadcast(setup); // held until the pre-pass ends on large 1-worker loads (#10264)
   const postInitMessages = (worker: Worker) => postGeometryWorkerInit(worker, options, sharedWasmModule);
   setupLog.record(postInitMessages);
   // This loop runs BEFORE the try/finally below (which owns teardown for the
@@ -1013,7 +1013,7 @@ export async function* processParallel(
   const shardActive = shardScanEnabled
     && typeof SharedArrayBuffer !== 'undefined'
     && sharedBuffer.byteLength >= SHARD_MIN_BYTES
-    && workers.length >= 2 && !setupLog.holding; // shard scans install the source in every worker (#10264)
+    && workers.length >= 2;
   if (shardActive) {
     const len = sharedBuffer.byteLength;
     const n = workers.length;

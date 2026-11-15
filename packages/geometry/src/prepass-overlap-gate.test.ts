@@ -12,15 +12,30 @@ import {
 const MB = 1024 * 1024;
 
 describe('holdsPoolUntilPrepassEnds (#10264)', () => {
-  it('gates at 512 MiB and above, never below', () => {
-    expect(PREPASS_OVERLAP_GATE_MIN_BYTES).toBe(512 * MB);
-    expect(holdsPoolUntilPrepassEnds(PREPASS_OVERLAP_GATE_MIN_BYTES - 1)).toBe(false);
-    expect(holdsPoolUntilPrepassEnds(PREPASS_OVERLAP_GATE_MIN_BYTES)).toBe(true);
-    expect(holdsPoolUntilPrepassEnds(1200 * MB)).toBe(true);
+  const T = PREPASS_OVERLAP_GATE_MIN_BYTES;
+
+  it('gates a 1-worker plan at 512 MiB and above, never below', () => {
+    expect(T).toBe(512 * MB);
+    expect(holdsPoolUntilPrepassEnds(T - 1, 1)).toBe(false);
+    expect(holdsPoolUntilPrepassEnds(T, 1)).toBe(true);
+    expect(holdsPoolUntilPrepassEnds(1200 * MB, 1)).toBe(true);
   });
 
-  it('keeps the load-time goal fixtures (20, 177 and 343 MB) on the ungated path', () => {
-    for (const mb of [20, 177, 343]) expect(holdsPoolUntilPrepassEnds(mb * MB)).toBe(false);
+  it('never gates a plan with 2 or more workers, at any size (main path, sharded scan included)', () => {
+    for (const workers of [2, 3, 4, 8]) {
+      expect(holdsPoolUntilPrepassEnds(T, workers)).toBe(false);
+      expect(holdsPoolUntilPrepassEnds(2048 * MB, workers)).toBe(false);
+    }
+  });
+
+  it('does not gate a pool with no workers', () => {
+    expect(holdsPoolUntilPrepassEnds(2048 * MB, 0)).toBe(false);
+  });
+
+  it('keeps the load-time goal fixtures (20, 177 and 343 MB) on the ungated path at any worker count', () => {
+    for (const mb of [20, 177, 343]) {
+      for (const workers of [1, 2, 4]) expect(holdsPoolUntilPrepassEnds(mb * MB, workers)).toBe(false);
+    }
   });
 });
 

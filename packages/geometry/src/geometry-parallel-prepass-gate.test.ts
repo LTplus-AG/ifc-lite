@@ -3,11 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #10264, pool side of the pre-pass overlap gate: on a gated (large) load no
- * process worker receives any per-load setup or jobs chunk while the pre-pass
- * is still running; once it completes, its worker is terminated first and
- * then each process worker receives the exact message sequence an ungated
- * load sends. The sharded index scan stays off for gated loads. Drives
+ * #10264, pool side of the pre-pass overlap gate: on a gated load (large
+ * source, ONE planned worker) the process worker receives no per-load setup or
+ * jobs chunk while the pre-pass is still running; once it completes, its
+ * worker is terminated first and then the process worker receives the exact
+ * message sequence an ungated load sends. A large load planned with 2+
+ * workers is not held and keeps the sharded index scan. Drives
  * `processParallel`'s real message protocol with fake workers (fixture
  * pattern: geometry-parallel-hung-job).
  */
@@ -18,10 +19,15 @@ import { CoordinateHandler } from './coordinate-handler.js';
 import type { StreamingGeometryEvent } from './index.js';
 
 const gate = vi.hoisted(() => ({ minBytes: Number.POSITIVE_INFINITY }));
-vi.mock('./prepass-overlap-gate.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./prepass-overlap-gate.js')>()),
-  holdsPoolUntilPrepassEnds: (bytes: number) => bytes >= gate.minBytes,
-}));
+// Only the size threshold is scaled down for the test; the worker-count rule is the real one.
+vi.mock('./prepass-overlap-gate.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./prepass-overlap-gate.js')>();
+  return {
+    ...real,
+    holdsPoolUntilPrepassEnds: (bytes: number, workers: number) =>
+      real.holdsPoolUntilPrepassEnds(bytes >= gate.minBytes ? real.PREPASS_OVERLAP_GATE_MIN_BYTES : 0, workers),
+  };
+});
 
 const SOURCE = '#1=IFCWALL();#2=IFCBEAM();#3=IFCSLAB();';
 const SOURCE_BYTES = 8 * 1024 * 1024; // the shard scan's minimum, so only the gate can keep it off
@@ -164,32 +170,19 @@ describe('processParallel pre-pass overlap gate (#10264)', () => {
     expect(events.at(-1)?.type).toBe('complete');
   });
 
-  it('gated: the sharded index scan stays off even with two workers and a large enough source', async () => {
-    gate.minBytes = 1024 * 1024;
-    const { events } = await runLoad(2);
-    for (const w of created.slice(0, 2)) {
-      expect(types(w)).not.toContain('scan-shard');
-      expect(types(w)).toEqual([...CONFIG, 'stream-start', 'set-entity-index', 'set-styles', 'stream-chunk', 'stream-end']);
-    }
-    expect(types(created[2])).toContain('prepass-streaming');
-    expect(types(created[2])).not.toContain('prepass-streaming-sharded');
-    expect(events.at(-1)?.type).toBe('complete');
-  });
-
-  it('gated, three workers: nothing before the pre-pass ends, then every worker gets the full sequence', async () => {
-    gate.minBytes = 1024 * 1024;
-    const { beforeComplete, events } = await runLoad(3);
-    for (let i = 0; i < 3; i++) {
-      const before = beforeComplete.filter((t) => t.startsWith(`geom${i}:`)).map((t) => t.slice(`geom${i}:`.length));
-      expect(before).toEqual(CONFIG);
-      expect(types(created[i])).toEqual([...CONFIG, ...LOAD]);
-    }
-    expect(events.at(-1)?.type).toBe('complete');
+  it.each([2, 3])('large source planned with %i workers: not held, sharded index scan on (main path)', async (workerCount) => {
+    const controller = new AbortController();
+    const load = await startHeldLoad(workerCount, controller.signal);
+    for (let i = 0; i < workerCount; i++) expect(types(created[i])).toContain('scan-shard');
+    expect(types(created[workerCount])).not.toContain('prepass-streaming'); // waits for the stitched index, as on main
+    controller.abort();
+    await load.settled();
   });
 });
 
-/** Starts a gated load and pumps it until the pool is holding (pre-pass has
- *  sent meta, entity-index, styles and jobs, but not `complete`). */
+/** Starts a large load (above the scaled gate threshold) and pumps it; with
+ *  one worker the pool is then holding (pre-pass has sent meta, entity-index,
+ *  styles and jobs, but not `complete`). */
 async function startHeldLoad(workerCount: number, signal?: AbortSignal) {
   gate.minBytes = 1024 * 1024;
   installFakeWorkers(workerCount);
@@ -227,36 +220,36 @@ function expectNothingReleasedAndAllTerminated(workerCount: number): void {
 describe('processParallel pre-pass overlap gate: ending a load during the hold (#10264)', () => {
   it('abort during the hold', async () => {
     const controller = new AbortController();
-    const load = await startHeldLoad(2, controller.signal);
+    const load = await startHeldLoad(1, controller.signal);
     expect(types(created[0])).toEqual(CONFIG); // holding
     controller.abort();
     await load.settled();
     expect(load.events.some((e) => e.type === 'complete')).toBe(false);
-    expectNothingReleasedAndAllTerminated(2);
+    expectNothingReleasedAndAllTerminated(1);
   });
 
   it('pre-pass reports an error during the hold', async () => {
-    const load = await startHeldLoad(2);
+    const load = await startHeldLoad(1);
     load.prepass.reply({ type: 'error', message: 'boom' });
     await load.settled();
     expect(String(load.error())).toMatch(/Pre-pass worker error: boom/);
-    expectNothingReleasedAndAllTerminated(2);
+    expectNothingReleasedAndAllTerminated(1);
   });
 
   it('pre-pass worker crashes during the hold', async () => {
-    const load = await startHeldLoad(2);
+    const load = await startHeldLoad(1);
     load.prepass.onerror?.({ message: 'worker crashed', filename: 'geometry.worker.js', lineno: 1 });
     await load.settled();
     expect(String(load.error())).toMatch(/Pre-pass worker failed/);
-    expectNothingReleasedAndAllTerminated(2);
+    expectNothingReleasedAndAllTerminated(1);
   });
 
   it('consumer stops at the rtcOffset event, which arrives during the hold', async () => {
     gate.minBytes = 1024 * 1024;
-    installFakeWorkers(2);
+    installFakeWorkers(1);
     const shared = new SharedArrayBuffer(SOURCE_BYTES);
     new Uint8Array(shared).set(new TextEncoder().encode(SOURCE));
-    const gen = processParallel(new Uint8Array(shared), new CoordinateHandler(), undefined, shared, { workerCountOverride: 2 });
+    const gen = processParallel(new Uint8Array(shared), new CoordinateHandler(), undefined, shared, { workerCountOverride: 1 });
     let sawRtc = false;
     const consume = (async () => {
       for await (const event of gen) {
@@ -265,6 +258,6 @@ describe('processParallel pre-pass overlap gate: ending a load during the hold (
     })();
     await Promise.race([consume, new Promise((_, reject) => setTimeout(() => reject(new Error('TIMED_OUT')), 1_000))]);
     expect(sawRtc).toBe(true);
-    expectNothingReleasedAndAllTerminated(2);
+    expectNothingReleasedAndAllTerminated(1);
   });
 });

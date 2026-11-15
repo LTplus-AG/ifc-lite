@@ -9,36 +9,42 @@
  * load's setup (entity index, pre-pass columns) and their first chunk (which
  * installs a full copy of the source). Normally that starts while the pre-pass
  * worker is still scanning, so its peak heap (about 1.25x the file) coexists
- * with every process worker's source copy, entity index and early meshing.
- * Measured on entity-heavy 1.2 GB files with ONE process worker, this overlap
- * is the whole tab's peak before any geometry exists (about 5.5x the file, vs
- * about 3.7x once the pre-pass worker is gone), and a 6 GiB tab is killed in it.
+ * with the process worker's source copy, entity index and early meshing.
+ * Measured on an entity-heavy 1.2 GB synthetic with ONE process worker, that
+ * overlap is the tab's peak before any geometry exists (about 6.9 GB summed
+ * PSS), and a 6 GiB tab is killed in it.
  *
- * For large sources the pool therefore holds every per-load setup message and
- * every jobs chunk until the pre-pass has completed and its worker has been
- * terminated, then delivers them in their original order. Each worker receives
- * exactly the message sequence it would have received without the gate, only
- * later, so geometry output is unchanged. The sharded index scan is off for
- * gated loads because it installs the source into every process worker before
- * the pre-pass even starts.
+ * For a large source planned with exactly one process worker, the pool
+ * therefore holds every per-load setup message and every jobs chunk until the
+ * pre-pass has completed and its worker has been terminated, then delivers
+ * them in their original order. The worker receives exactly the message
+ * sequence it would have received without the gate, only later, so geometry
+ * output is unchanged (measured: about 1.4 GB lower pre-geometry peak).
  *
- * Small and medium files keep today's path and timing: the overlap costs at
- * most about 1.25x the file there, and starting geometry before the pre-pass
- * ends is what keeps their first geometry early.
+ * Loads planned with two or more workers keep main's path unchanged,
+ * including the sharded index scan. There the pool's own source copies
+ * dominate (measured with four workers: about 0.7 GB saved) while holding
+ * would move first geometry from about 6 s to about 18 s, because the sharded
+ * scan is what gives such a pool its index early. Small and medium files keep
+ * today's path at any worker count.
  */
 
 /**
- * Gate threshold. 512 MiB is above every file the load-time goals measure
+ * Size threshold. 512 MiB is above every file the load-time goals measure
  * (the largest, about 343 MB, keeps the ungated path) and below the smallest
  * file the #10264 measurements saw killed before geometry (a 572 MB
- * entity-heavy file loaded under a 6 GiB cap, a 858 MB one was killed). It is
- * also where the worker planner already switches to its large-file tiers.
+ * entity-heavy file loaded under a 6 GiB cap, a 858 MB one was killed).
  */
 export const PREPASS_OVERLAP_GATE_MIN_BYTES = 512 * 1024 * 1024;
 
-/** True when a load of `sourceBytes` holds the pool until the pre-pass ends. */
-export function holdsPoolUntilPrepassEnds(sourceBytes: number): boolean {
-  return sourceBytes >= PREPASS_OVERLAP_GATE_MIN_BYTES;
+/**
+ * True when a load of `sourceBytes` whose pool was planned with
+ * `plannedWorkers` process workers (the count the pool is built with,
+ * including an explicit `?geomWorkers` override) holds the pool until the
+ * pre-pass ends.
+ */
+export function holdsPoolUntilPrepassEnds(sourceBytes: number, plannedWorkers: number): boolean {
+  return sourceBytes >= PREPASS_OVERLAP_GATE_MIN_BYTES && plannedWorkers === 1;
 }
 
 type WorkerSetup = (worker: Worker) => void;

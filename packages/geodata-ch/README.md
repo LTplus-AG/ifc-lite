@@ -62,6 +62,14 @@ terrain) implements the same interfaces. Only Switzerland is implemented here.
   entry point throws a `RangeError` for values outside LV95, and says the
   arguments look swapped when exchanging them would fit. Without that, a
   swapped call returns `[]`, which reads as "no parcel here".
+- **A parcel without a usable extract is not "no record".**
+  `oerebExtractsAtPoint(x, y)` returns `{ extracts, unavailable }`: a parcel
+  the register lists without an extract URL is in `unavailable`, and only both
+  lists empty means the register has nothing there. `geocode`'s `limit` must be
+  a whole number from 1 to 50, otherwise it throws a `RangeError`.
+- **Request counts say what they count.** `FeatureQueryResult.requests` is the
+  number of cell queries (what `maxRequests` budgets); `networkRequests` is
+  what was sent, retries included and cache hits excluded.
 - **Long polygons.** A polygon query travels as JSON in a GET URL, so a parcel
   with hundreds of vertices can exceed URL limits. Above `maxUrlLength`
   (default 6000 characters) a cell is queried by its bounding box instead and

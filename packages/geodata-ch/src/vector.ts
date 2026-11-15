@@ -63,7 +63,9 @@ export interface FeatureQueryOptions {
    */
   maxDepth?: number;
   /**
-   * Stop after this many requests. Default 500. What was collected so far is
+   * Stop after this many `identify` queries (cells). Default 500. A retry of
+   * one query inside the HTTP client is not a further query, so this bounds
+   * cells, not network sends; `networkRequests` reports the sends. What was collected so far is
    * returned with `requestLimitReached` and `truncated` set and the cells
    * never queried in `unqueriedCells`; it is not thrown away.
    */
@@ -144,6 +146,7 @@ export async function featuresInArea(
   const bboxFallbackCells: BBox[] = [];
   const unqueriedCells: BBox[] = [];
   let requests = 0;
+  let networkRequests = 0;
   const queue: Array<{ cell: BBox; depth: number; polygon: PolygonGeometry | null }> = roots.map((r) => ({
     cell: r.bbox,
     depth: 0,
@@ -159,7 +162,12 @@ export async function featuresInArea(
     }
     if (query.fallback) bboxFallbackCells.push(cell);
     requests++;
-    const hits = await identify(http, { layer, geometry: query.geometry, limit: IDENTIFY_MAX_LIMIT, signal: options.signal });
+    const hits = await identify(http, { layer, geometry: query.geometry, limit: IDENTIFY_MAX_LIMIT,
+      signal: options.signal,
+      onSend: () => {
+        networkRequests++;
+      },
+    });
     for (const f of hits) {
       const id = `${f.layerBodId}:${f.featureId ?? f.id}`;
       if (!byId.has(id)) {
@@ -192,6 +200,7 @@ export async function featuresInArea(
   return {
     features,
     requests,
+    networkRequests,
     truncatedCells,
     requestLimitReached,
     unqueriedCells,

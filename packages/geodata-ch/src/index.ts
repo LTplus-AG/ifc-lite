@@ -35,6 +35,6 @@ export { SWISSALTI3D_VERTICAL_REFERENCE, type TerrainOptions } from './terrain.j
 export type { BuildingTileOptions } from './buildings.js';
 export { VECTOR_LAYERS, type FeatureQueryOptions } from './vector.js';
 export { OerebExtractUnavailableError } from './oereb.js';
-export type { OerebExtractRef, OerebFormat } from './oereb.js';
+export type { OerebExtractRef, OerebExtractsAtPoint, OerebExtractUnavailable, OerebFormat } from './oereb.js';
 export { CANTON_OEREB_SERVICES, type CantonOerebService } from './oereb-cantons.js';
 export { DATASETS, attributionFor, type DatasetId } from './attribution.js';

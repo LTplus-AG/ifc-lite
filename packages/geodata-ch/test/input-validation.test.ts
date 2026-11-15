@@ -32,7 +32,7 @@ describe('every public entry point with coordinates rejects swapped arguments be
     const { geo: g, calls } = geo();
     await expect(g.oerebExtractsAtPoint(N, E)).rejects.toThrow(/look swapped/);
     expect(calls).toHaveLength(0);
-    await expect(g.oerebExtractsAtPoint(E, N)).resolves.toEqual([]);
+    await expect(g.oerebExtractsAtPoint(E, N)).resolves.toEqual({ extracts: [], unavailable: [] });
   });
 
   it('features (bbox and polygon)', async () => {

@@ -141,13 +141,31 @@ export async function oerebExtractForEgrid(
   };
 }
 
+/** A parcel the register lists at a point but for which it gives no usable extract URL. */
+export interface OerebExtractUnavailable {
+  egrid: string | null;
+  /** The register's status text (German), when present. */
+  status: string | null;
+  canton: string | null;
+}
+
+/**
+ * Outcome of an ÖREB lookup at a point. `extracts` empty AND `unavailable`
+ * empty is the only "the register has no record here"; a listed parcel
+ * without a usable URL is in `unavailable`, never dropped.
+ */
+export interface OerebExtractsAtPoint {
+  extracts: OerebExtractRef[];
+  unavailable: OerebExtractUnavailable[];
+}
+
 /** Extract references for every parcel at a point, from the register only. */
 export async function oerebExtractsAtPoint(
   http: HttpClient,
   x: number,
   y: number,
   options: { signal?: AbortSignal } = {},
-): Promise<OerebExtractRef[]> {
+): Promise<OerebExtractsAtPoint> {
   assertLv95Point(x, y);
   const hits = await identify(http, {
     layer: OEREB_REGISTER_LAYER,
@@ -155,5 +173,16 @@ export async function oerebExtractsAtPoint(
     returnGeometry: false,
     signal: options.signal,
   });
-  return hits.map(fromRegister).filter((r): r is OerebExtractRef => r !== null);
+  const extracts: OerebExtractRef[] = [];
+  const unavailable: OerebExtractUnavailable[] = [];
+  for (const h of hits) {
+    const ref = fromRegister(h);
+    if (ref) {
+      extracts.push(ref);
+      continue;
+    }
+    const a = featureProps(h);
+    unavailable.push({ egrid: str(a.egris_egrid), status: str(a.oereb_status_de), canton: str(a.kanton) });
+  }
+  return { extracts, unavailable };
 }

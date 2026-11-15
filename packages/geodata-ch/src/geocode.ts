@@ -14,7 +14,7 @@ import { isLv95Easting, isLv95Northing, LV95 } from './lv95.js';
 export type SearchOrigin = 'address' | 'parcel' | 'zipcode' | 'gg25' | 'district' | 'kantone' | 'gazetteer';
 
 export interface GeocodeOptions {
-  /** Max 50 (the service's cap). Default 5. */
+  /** Whole number from 1 to 50 (the service's cap), otherwise a `RangeError`. Default 5. */
   limit?: number;
   /** Default `['address']`. */
   origins?: SearchOrigin[];
@@ -52,7 +52,11 @@ export function lv95FromSearchAttrs(x: number, y: number): { e: number; n: numbe
 }
 
 export async function geocode(http: HttpClient, text: string, options: GeocodeOptions = {}): Promise<GeocodeResult> {
-  const limit = Math.min(Math.max(1, options.limit ?? 5), 50);
+  const limit = options.limit ?? 5;
+  // Clamping would turn NaN or 0 into a query the caller did not ask for; refuse instead.
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+    throw new RangeError(`limit must be an integer from 1 to 50, got ${limit}`);
+  }
   const url =
     `${API3_BASE}/api/SearchServer?` +
     query({

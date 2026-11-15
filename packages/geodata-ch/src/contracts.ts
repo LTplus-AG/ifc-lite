@@ -213,8 +213,14 @@ export interface Feature {
 
 export interface FeatureQueryResult extends Sourced {
   features: Feature[];
-  /** Number of HTTP requests the query took. */
+  /**
+   * Number of `identify` queries issued, one per cell: the unit `maxRequests`
+   * budgets. A query answered from the response cache counts here, and one
+   * the client retried counts once; see `networkRequests` for what was sent.
+   */
   requests: number;
+  /** HTTP requests actually sent for this query: cache hits excluded, every retry included. */
+  networkRequests: number;
   /**
    * Cells that still hit the service cap at the deepest split. Non-empty
    * means the result may be incomplete in those cells.

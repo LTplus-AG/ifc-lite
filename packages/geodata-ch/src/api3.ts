@@ -45,6 +45,8 @@ export interface IdentifyParams {
   returnGeometry?: boolean;
   limit?: number;
   signal?: AbortSignal;
+  /** Forwarded to `HttpClient.get`: called once per network send. */
+  onSend?: () => void;
 }
 
 function encodeGeometry(g: IdentifyGeometry): { geometryType: string; geometry: string } {
@@ -95,7 +97,7 @@ export function identifyUrl(p: IdentifyParams): string {
  * without one.
  */
 export async function identify(http: HttpClient, p: IdentifyParams): Promise<Api3Feature[]> {
-  const res = await http.getJson<Api3Results>(identifyUrl(p), { signal: p.signal });
+  const res = await http.getJson<Api3Results>(identifyUrl(p), { signal: p.signal, onSend: p.onSend });
   return res.results ?? [];
 }
 

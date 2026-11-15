@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { BBox, Position } from '../src/contracts.js';
+import { HttpClient, type CachedResponse } from '../src/http.js';
 import { geometryIntersectsPolygon } from '../src/lv95.js';
 import { VECTOR_LAYERS, featuresInArea } from '../src/vector.js';
 import { fixture, json, mockFetch, testClient } from './helpers/mock-fetch.js';
@@ -186,6 +187,35 @@ describe('featuresInArea with long polygons and MultiPolygons', () => {
   it('rejects an unsupported area geometry with a clear error', async () => {
     const bad = { type: 'Point', coordinates: [2_600_000, 1_199_000] } as never;
     await expect(featuresInArea(testClient(identifyServer([]).fetch), LAYER, bad)).rejects.toThrow(/unsupported area geometry/);
+  });
+});
+
+describe('featuresInArea request accounting', () => {
+  it('counts queries apart from network sends: a retry is a further send, a cache hit none', async () => {
+    const server = identifyServer(points(20));
+    let first = true;
+    const flaky = async (u: string, i?: RequestInit): Promise<Response> => {
+      if (first) {
+        first = false;
+        return new Response('busy', { status: 503 });
+      }
+      return server.fetch(u, i);
+    };
+    const res = await featuresInArea(testClient(flaky), LAYER, ROOT);
+    expect(res.requests).toBe(1);
+    expect(res.networkRequests).toBe(2);
+
+    const cache = new Map<string, CachedResponse>();
+    const cached = new HttpClient({
+      fetch: server.fetch,
+      sleep: async () => {},
+      random: () => 0,
+      cache: { get: (k) => cache.get(k), set: (k, v) => void cache.set(k, v) },
+    });
+    await featuresInArea(cached, LAYER, ROOT);
+    const again = await featuresInArea(cached, LAYER, ROOT);
+    expect(again.requests).toBe(1);
+    expect(again.networkRequests).toBe(0);
   });
 });
 

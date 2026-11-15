@@ -96,6 +96,12 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** Skip the cache for this request (read and write). */
   noCache?: boolean;
+  /**
+   * Called once per network send (each retry is a send, a cache hit is none).
+   * Lets a caller count the requests its own call put on the wire, which the
+   * shared `requestCount` cannot do while other calls run on the same client.
+   */
+  onSend?: () => void;
 }
 
 export const DEFAULT_USER_AGENT = 'ifc-lite-geodata-ch';
@@ -254,6 +260,7 @@ export class HttpClient {
       let retryAfter: string | null = null;
       try {
         this.requestCount++;
+        options.onSend?.();
         const res = await this.fetchImpl(url, { headers, signal: attemptCtl.signal });
         if (res.ok) {
           const out: CachedResponse = {

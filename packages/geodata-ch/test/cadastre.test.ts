@@ -36,6 +36,18 @@ describe('geocode (recorded SearchServer response, Bundesplatz 3, Bern)', () => 
     expect(m.calls[0].searchParams.get('returnGeometry')).toBeNull();
   });
 
+  it.each([NaN, 0, -1, 51, 2.5, Infinity])('rejects limit %s instead of clamping it', async (limit) => {
+    const m = mockFetch(onPath('/SearchServer', fixture('search-bundesplatz-3-bern.json')));
+    await expect(geocode(testClient(m.fetch), 'Bern', { limit })).rejects.toThrow(RangeError);
+    expect(m.calls).toHaveLength(0);
+  });
+
+  it('sends the limits 1 and 50 as given', async () => {
+    const m = mockFetch(onPath('/SearchServer', fixture('search-bundesplatz-3-bern.json')));
+    for (const limit of [1, 50]) await geocode(testClient(m.fetch), 'Bern', { limit });
+    expect(m.calls.map((c) => c.searchParams.get('limit'))).toEqual(['1', '50']);
+  });
+
   it('refuses coordinates that are LV95 in neither axis order', () => {
     expect(lv95FromSearchAttrs(1_199_521, 2_600_423)).toEqual({ e: 2_600_423, n: 1_199_521 });
     expect(lv95FromSearchAttrs(2_600_423, 1_199_521)).toEqual({ e: 2_600_423, n: 1_199_521 });
@@ -110,7 +122,18 @@ describe('ÖREB extract resolution', () => {
     const recorded = fixture<{ results: unknown[] }>('find-oereb-CH134676354275.json');
     const m = mockFetch(onLayer('/identify', register, recorded));
     const refs = await oerebExtractsAtPoint(testClient(m.fetch), 2_600_500, 1_199_700);
-    expect(refs.map((r) => r.egrid)).toEqual(['CH134676354275']);
+    expect(refs.extracts.map((r) => r.egrid)).toEqual(['CH134676354275']);
+    expect(refs.unavailable).toEqual([]);
+  });
+
+  it('reports a parcel listed without an extract URL as unavailable, not as no record', async () => {
+    const recorded = fixture<{ results: Array<{ attributes: Record<string, unknown> }> }>('find-oereb-CH134676354275.json');
+    const noUrl = structuredClone(recorded);
+    for (const r of noUrl.results) delete r.attributes.oereb_extract_url;
+    const m = mockFetch(onLayer('/identify', register, noUrl));
+    const refs = await oerebExtractsAtPoint(testClient(m.fetch), 2_600_500, 1_199_700);
+    expect(refs.extracts).toEqual([]);
+    expect(refs.unavailable.map((u) => u.egrid)).toEqual(['CH134676354275']);
   });
 
   it('derives the service base from the extract URL shapes the register uses', () => {

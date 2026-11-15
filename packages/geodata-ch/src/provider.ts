@@ -23,7 +23,7 @@ import type {
 import { geocode, type GeocodeOptions } from './geocode.js';
 import { HttpClient, type HttpOptions } from './http.js';
 import { MAP_LAYERS } from './layers.js';
-import { oerebExtractForEgrid, oerebExtractsAtPoint, type OerebExtractRef } from './oereb.js';
+import { oerebExtractForEgrid, oerebExtractsAtPoint, type OerebExtractRef, type OerebExtractsAtPoint } from './oereb.js';
 import { parcelByEgrid, parcelsAtPoint, type SwissParcel } from './parcel.js';
 import { elevationGrid, type TerrainOptions } from './terrain.js';
 import { featuresInArea, type FeatureQueryOptions } from './vector.js';
@@ -43,7 +43,7 @@ export interface SwissGeodata
   features(layer: string, area: BBox | PolygonGeometry | MultiPolygonGeometry, options?: FeatureQueryOptions): Promise<FeatureQueryResult>;
   /** Where the parcel's ÖREB extract lives (register first, canton table as fallback). */
   oerebExtract(egrid: string, options?: { signal?: AbortSignal }): Promise<OerebExtractRef | null>;
-  oerebExtractsAtPoint(x: number, y: number, options?: { signal?: AbortSignal }): Promise<OerebExtractRef[]>;
+  oerebExtractsAtPoint(x: number, y: number, options?: { signal?: AbortSignal }): Promise<OerebExtractsAtPoint>;
   /** Imagery, basemap and hazard layer descriptors. No network. */
   mapLayers(): readonly MapLayerDescriptor[];
   /** Network requests sent so far (cache hits excluded). */

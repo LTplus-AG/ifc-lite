@@ -11,6 +11,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { registerRoomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { exportModelStep } from './model-step-export';
 import { roomMergeInput } from '@/lib/collab/room-merged-export';
+import { stepRecordsUnavailableReason } from './step-records-reason';
 
 const OPTIONS = { schema: 'IFC4', applyMutations: true } as const;
 
@@ -57,8 +58,10 @@ test('a room whose root set moved past its portable source refuses STEP export (
 });
 
 test('a tabular store with no portable source refuses STEP export (#10045)', async () => {
+  const store = tabularFixtureStore();
+  assert.equal(stepRecordsUnavailableReason(store), 'noRecords');
   await assert.rejects(
-    exportModelStep({ modelId: 'ifcx', dataStore: tabularFixtureStore(), options: OPTIONS, scheduleState: null }),
+    exportModelStep({ modelId: 'ifcx', dataStore: store, options: OPTIONS, scheduleState: null }),
     refusal('noRecords'),
   );
 });

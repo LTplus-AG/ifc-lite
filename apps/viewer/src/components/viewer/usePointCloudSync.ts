@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useRef, type MutableRefObject } from 'react';
+import { isRenderablePointCloud } from '@ifc-lite/renderer';
 import type { PointColorMode, PointSizeMode, Renderer } from '@ifc-lite/renderer';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
@@ -79,6 +80,7 @@ export function usePointCloudSync(params: UsePointCloudSyncParams): void {
     const counts: Record<number, number> = {};
     let sawClassifications = false;
     for (const asset of assets) {
+      if (!isRenderablePointCloud(asset)) continue; // count what the renderer uploads
       const classes = asset.chunk.classifications;
       if (!classes) continue;
       sawClassifications = true;

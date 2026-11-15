@@ -16,13 +16,13 @@ export function matchesPropertySearch(value: unknown, query: string): boolean {
 }
 
 /** Preserve set metadata and only remove rows that the user cannot find (#5899). */
-export function filterPropertySets<T extends PropertySet>(sets: readonly T[], query: string, units: ProjectUnits, overrides: Record<string, string>, projectUnitsAvailable = true): T[] {
+export function filterPropertySets<T extends PropertySet>(sets: readonly T[], query: string, units: ProjectUnits, overrides: Record<string, string>, projectUnitsAvailable = true, locale = 'en'): T[] {
   if (!query) return [...sets];
   return sets.flatMap((set) => {
     if (matchesPropertySearch(set.name, query)) return [set];
     const properties = set.properties.filter((property) => {
       if (matchesPropertySearch(property.name, query)) return true;
-      const display = propertyDisplayValue(property, units, overrides, projectUnitsAvailable);
+      const display = propertyDisplayValue(property, units, overrides, projectUnitsAvailable, locale);
       return matchesPropertySearch(display.full, query);
     });
     return properties.length > 0 ? [{ ...set, properties } as T] : [];
@@ -42,14 +42,14 @@ export function filterQuantitySets(sets: readonly QuantitySet[], query: string, 
 }
 
 /** Material properties live on the associated material, outside occurrence and type sets. */
-export function filterMaterialPropertyGroups(groups: readonly MaterialPsetGroup[], query: string, units: ProjectUnits, overrides: Record<string, string>, projectUnitsAvailable = true) {
+export function filterMaterialPropertyGroups(groups: readonly MaterialPsetGroup[], query: string, units: ProjectUnits, overrides: Record<string, string>, projectUnitsAvailable = true, locale = 'en') {
   return groups.flatMap((group) => {
     const psets = filterPropertySets(group.psets.map((pset) => ({
       name: pset.name,
       properties: pset.properties.map((property) => ({
         name: property.name, value: property.value, dataType: property.dataType,
       })),
-    })), query, units, overrides, projectUnitsAvailable);
+    })), query, units, overrides, projectUnitsAvailable, locale);
     return psets.length > 0 ? [{ ...group, psets }] : [];
   });
 }

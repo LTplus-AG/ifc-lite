@@ -14,6 +14,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { IfcServerClient, type HealthResponse, type ParquetParseResponse } from '@ifc-lite/server-client';
 import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 const { useIfcLoader } = await import('./useIfcLoader.js');
 
 const PARQUET_RESULT: ParquetParseResponse = {
@@ -184,3 +185,37 @@ for (const scenario of ['unavailable', 'ineligible', 'success'] as const) {
     }
   });
 }
+
+it('#10264 a server stream owns replacement only when geometry arrives and a later failure does not offer local Cancel', async () => {
+  useViewerStore.setState(fixtureModels(fixtureModel('prior-model')));
+  const prior = useViewerStore.getState().models;
+  const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+  Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 8 });
+  const source = file('server-partial.ifc');
+  Object.defineProperty(source, 'size', { value: 1.26e9 });
+  let reads = 0;
+  Object.defineProperty(source, 'arrayBuffer', { value: () => { reads++; throw new Error('unexpected local source read'); } });
+  Object.defineProperty(source, 'stream', { value: () => { reads++; throw new Error('unexpected local source stream'); } });
+  mock.method(IfcServerClient.prototype, 'parseParquetStream', async (_source: Parameters<IfcServerClient['parseParquetStream']>[0], batch: Parameters<IfcServerClient['parseParquetStream']>[1]) => {
+    assert.equal(useViewerStore.getState().models, prior, 'the server request itself does not replace the scene');
+    assert.equal(useViewerStore.getState().loading, true, 'server work still has a loading indicator before replacement');
+    batch({ meshes: PARQUET_RESULT.meshes, batch_number: 0, decode_time_ms: 0 });
+    assert.notEqual(useViewerStore.getState().models, prior, 'first server geometry commits the replacement');
+    assert.equal(useViewerStore.getState().geometryResult?.totalTriangles, 1);
+    assert.match(useViewerStore.getState().progress?.phase ?? '', /Streaming batch/);
+    throw new Error('server stream failed after first geometry');
+  });
+  const errors: string[] = [];
+  try {
+    await act(async () => { await api!.loadFile(source, { kind: 'primary', modelId: 'partial-server' }, { onLoadError: message => errors.push(message) }); });
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /server stream failed after first geometry/);
+    assert.equal(useViewerStore.getState().models.get('partial-server')?.loadState, 'error');
+    assert.equal(useViewerStore.getState().loading, false);
+    assert.equal(document.querySelector('[role="alertdialog"]'), null, 'no consent whose Cancel could no longer preserve the prior scene');
+    assert.equal(reads, 0);
+    assert.equal(engineInits, 0, 'no implicit local fallback after server publication');
+  } finally {
+    if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
+  }
+});

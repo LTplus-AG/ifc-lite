@@ -274,6 +274,7 @@ export function useIfcLoader() {
     const metadataAbort = new AbortController();
     const activity = createModelLoadActivity(file.name);
     let modelCompletion: ReturnType<typeof createModelLoadCompletion> | undefined;
+    let initialized = false;
     const releaseCanceller = installModelLoadCanceller(target.kind, () => {
       cancelled = true;
       if (target.kind === 'primary' && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
@@ -286,7 +287,11 @@ export function useIfcLoader() {
     const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
     const showLoadError = loadFailureReporter(processedModel ? undefined : file, activity, retryThisLoad, options?.onLoadError);
     const localAdmission = createLocalIfcLoadAdmission(file, { isCurrent, signal: metadataAbort.signal, onCancel: () => settleLoadUi(),
-      onFailure: error => { showLoadError(formatLoadError(error, file.name, 'ifc_model_load'), classifyLoadError(error, 'ifc_model_load')); settleLoadUi(); },
+      onFailure: error => {
+        const message = formatLoadError(error, file.name, 'ifc_model_load');
+        if (initialized) updateModel(modelId, { loadState: 'error', loadError: message });
+        showLoadError(message, classifyLoadError(error, 'ifc_model_load')); settleLoadUi();
+      },
       finish: () => { metadataAbort.abort(); releaseCanceller(); } });
 
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
@@ -443,7 +448,6 @@ export function useIfcLoader() {
       // #7022: one full-source hash, awaited only for publication/cache.
       let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined);
 
-      let initialized = false;
       let shardGeneration = instancedShardGeneration();
       const initializeModel = () => {
         if (initialized) return;
@@ -715,6 +719,8 @@ export function useIfcLoader() {
       let serverAttempted = false;
       const tryServer = async (source: Pick<ArrayBuffer, 'byteLength'>): Promise<boolean> => {
         serverAttempted = true;
+        setLoading(true);
+        useViewerStore.getState().setLoadingFileName(file.name);
         loadedBufferByteLength = source.byteLength;
         loadStage = 'server-fetch';
         return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId, initializeModel), isStale, completeServerLoad);

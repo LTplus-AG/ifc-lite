@@ -85,7 +85,11 @@ export function useIfcServer() {
     const processed = isProcessedModelRef(file);
     let published = false;
     const publishGeometry: typeof setGeometryResult = result => {
-      beforePublish?.();
+      if (beforePublish) {
+        const progress = useViewerStore.getState().progress;
+        beforePublish();
+        setProgress(progress);
+      }
       published = true;
       setGeometryResult(result);
     };

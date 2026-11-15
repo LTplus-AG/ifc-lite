@@ -261,3 +261,28 @@ describe('listing options may only widen what is listed', () => {
     await expect(facts({}, { expectedCrs: 'EPSG:2056', aboveGroundScope: 4, boundaryTolerance: 1.5 })).resolves.toBeDefined();
   });
 });
+
+// PR review thread: a slab profile with voids lost its courtyards but was still called a real outline.
+describe('slab outline with voids', () => {
+  it('is labelled slab-outline-voids-filled, which withholds reassuring outcomes like a hull', async () => {
+    const f = await facts(
+      {
+        slab: false,
+        extra: (b) => {
+          const loop = (pts: Array<[number, number]>) =>
+            b.add(`IFCPOLYLINE((${[...pts, pts[0]].map(([x, y]) => `#${b.pt2(x, y)}`).join(',')}))`);
+          const outer = loop([[0, 0], [20, 0], [20, 10], [0, 10]]);
+          const court = loop([[6, 3], [14, 3], [14, 7], [6, 7]]);
+          const profile = b.add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#${outer},(#${court}))`);
+          const solid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 0)},#${b.dir(0, 0, -1)},0.3)`);
+          const slab = b.add(`IFCSLAB(${b.guid()},$,'Bodenplatte mit Hof',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLOOR.)`);
+          b.contain(b.storeys.eg.id, slab);
+        },
+      },
+      { expectedCrs: 'EPSG:2056' },
+    );
+    expect(f.footprint.source).toBe('slab-outline-voids-filled');
+    const { fillsCourtyards } = await import('../src/model/facts.js');
+    expect(fillsCourtyards(f.footprint.source)).toBe(true);
+  });
+});

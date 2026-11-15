@@ -53,7 +53,8 @@ console.log(site.Name, elements.length, BAFU_ATTRIBUTION, BAFU_DISCLAIMER.de);
 `checkFloodExposure(facts, raster, terrainSampler, options)` is the pure core:
 no I/O. `runFloodCheck` refuses a plan extent no building has, fetches one
 raster over the building and the terrain under it, asks the provider to
-confirm the layer renders when that raster is wholly transparent, and calls it
+confirm the layer renders when no cell of that raster shows a mapped class
+(only transparent or unreadable edge pixels), and calls it
 with the provider's coverage perimeter.
 
 ## Interfaces
@@ -153,7 +154,8 @@ it does where no runoff is mapped. So:
   metres, so the boundary is known to 51 m (`scripts/build-coverage.mjs`
   regenerates `src/bafu/coverage-data.ts`). A sample outside, or within 51 m
   of the border, reads `outside-coverage`: no data.
-- When the whole raster over the building is transparent, `runFloodCheck`
+- When no cell of the raster over the building shows a mapped class (it is
+  transparent, or transparent with unreadable edge pixels), `runFloodCheck`
   calls `confirmRendering()`: one 9 × 9 px request (about 80 bytes) at a
   reference box in Bern, E 2,599,560–2,599,569, N 1,199,720–1,199,729, where
   the map shows flow depth 0–0.1 m in all 81 pixels (recorded 2026-11-15 as
@@ -187,12 +189,15 @@ entities, properties and containment from the parsed store. No meshing.
   (see "Height reference" below).
 - **Footprint**: `footprint` option (for example a cadastral outline), else
   the outlines of the ground storey's floor slabs (`FootPrint` curve or the
-  extruded `Body` profile), else its external walls' axes chained into one
-  closed ring (`external-wall-outline`, which keeps courtyards and notches),
-  else the hull of those axes (`external-wall-hull`), else the hull of the
-  candidates (`candidate-hull`, with a warning). A hull fills courtyards and
-  notches, so on a hull footprint no element is reported
-  `above-mapped-class-range`; pass a real outline when the model has none.
+  extruded `Body` profile; `slab-outline`, or `slab-outline-voids-filled`
+  when a slab profile has voids or its `FootPrint` more than one curve,
+  because the inner boundaries are not kept), else its external walls' axes
+  chained into one closed ring (`external-wall-outline`, which keeps
+  courtyards and notches), else the hull of those axes (`external-wall-hull`),
+  else the hull of the candidates (`candidate-hull`, with a warning). A hull
+  or a slab outline with filled voids fills courtyards and notches, so on it
+  no element gets a reassuring outcome; pass a real outline when the model
+  has none.
 - **Candidates** and their lowest relevant level:
 
   | Category | Selected when | Level |
@@ -258,9 +263,9 @@ and `open-ended-class` are never withheld (they are the conservative side);
 | a ground sample is outside (or too near) the coverage perimeter | `within-class-range` | `unclassified` (`outside-coverage`) |
 | a ground sample lies in an area the map did not model (glacier) | `within-class-range` | `unclassified` (`excluded-area`) |
 | the element was moved more than `anchorTolerance` (1 m) to reach the outline | `within-class-range` | `unclassified` (`anchor-moved`) |
-| the footprint is a hull (`external-wall-hull`, `candidate-hull`) | `within-class-range` | `unclassified` (`hull-footprint`) |
+| the footprint fills courtyards (`external-wall-hull`, `candidate-hull`, `slab-outline-voids-filled`) | `within-class-range` | `unclassified` (`hull-footprint`) |
 | height reference unconfirmed (see below) | `within-class-range` | `unclassified` (`height-reference-unconfirmed`) |
-| the whole raster is transparent and the layer is not confirmed to render | (no class to compare) | `unclassified` (`layer-not-confirmed`) |
+| no cell of the raster shows a mapped class and the layer is not confirmed to render | (no class to compare) | `unclassified` (`layer-not-confirmed`) |
 | a classified sample has no terrain height | `within-class-range` | (no classified sample) |
 | clearance exceeds `m` but not `m + a` | `within-class-range` | (no comparison) |
 

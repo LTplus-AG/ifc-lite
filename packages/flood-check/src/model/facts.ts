@@ -78,10 +78,22 @@ export interface SpaceFact {
 /**
  * `given` and `slab-outline` are real outlines, and so is `external-wall-outline`
  * (the external walls' axes chained into a closed ring). The two hulls fill
- * courtyards and notches, so no element is reported above the mapped class
- * range on them.
+ * courtyards and notches, and so does `slab-outline-voids-filled` (a slab
+ * outline whose inner boundaries, courtyards, are not kept), so no element
+ * gets a reassuring outcome on them ({@link fillsCourtyards}).
  */
-export type FootprintSource = 'given' | 'slab-outline' | 'external-wall-outline' | 'external-wall-hull' | 'candidate-hull';
+export type FootprintSource =
+  | 'given'
+  | 'slab-outline'
+  | 'slab-outline-voids-filled'
+  | 'external-wall-outline'
+  | 'external-wall-hull'
+  | 'candidate-hull';
+
+/** Footprints that fill courtyards or notches, so the ground sampled may not be in front of an element. */
+export function fillsCourtyards(source: FootprintSource): boolean {
+  return source === 'external-wall-hull' || source === 'candidate-hull' || source === 'slab-outline-voids-filled';
+}
 
 export interface FootprintFact {
   /** Rings in map coordinates; a point inside any ring is inside the building. */

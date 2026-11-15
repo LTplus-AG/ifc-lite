@@ -17,7 +17,7 @@ import type { MapPoint } from '../types.js';
 import { collectCandidates, isExternal } from './candidates.js';
 import type { FootprintFact, ModelFacts, SpaceFact, StoreyFact } from './facts.js';
 import { georeferenceData, resolveModelGeoreference, type GeoreferenceOptions, type ModelGeoreference } from './georef.js';
-import { slabOutline, toWorld, wallAxis } from './outline.js';
+import { slabOutline, slabOutlineHasVoids, toWorld, wallAxis } from './outline.js';
 import { PlacementResolver } from './placement.js';
 import { asEnum, asString, ModelReader } from './reader.js';
 
@@ -131,6 +131,7 @@ function deriveFootprint(
   });
   const rings: MapPoint[][] = [];
   const from: number[] = [];
+  let voids = false;
   for (const id of reader.idsOfType('IFCSLAB')) {
     if (ground.expressId !== null && storeyOf(id) !== ground.expressId) continue;
     const kind = asEnum(reader.attr(reader.entity(id), 'PredefinedType'));
@@ -142,8 +143,9 @@ function deriveFootprint(
     if (ringArea(ring) < 1) continue;
     rings.push(ring);
     from.push(id);
+    if (slabOutlineHasVoids(reader, id)) voids = true;
   }
-  if (rings.length > 0) return { rings, source: 'slab-outline', fromElements: from };
+  if (rings.length > 0) return { rings, source: voids ? 'slab-outline-voids-filled' : 'slab-outline', fromElements: from };
 
   const points: MapPoint[] = [];
   const axes: MapPoint[][] = [];

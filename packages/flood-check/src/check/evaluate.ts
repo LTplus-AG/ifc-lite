@@ -36,14 +36,14 @@
  *   a sample is outside the map's coverage      -> within-class-range      -> unclassified (outside-coverage)
  *   a sample is in an area the map excluded     -> within-class-range      -> unclassified (excluded-area)
  *   anchor moved > anchorTolerance              -> within-class-range      -> unclassified (anchor-moved)
- *   footprint is a hull                         -> within-class-range      -> unclassified (hull-footprint)
+ *   footprint fills courtyards (hull, voids)    -> within-class-range      -> unclassified (hull-footprint)
  *   height reference unconfirmed                -> within-class-range      -> unclassified (height-reference-unconfirmed)
- *   whole raster transparent, layer unconfirmed (no class to compare)      -> unclassified (layer-not-confirmed)
+ *   raster shows no class, layer unconfirmed    (no class to compare)      -> unclassified (layer-not-confirmed)
  *   a classified sample has no terrain          -> within-class-range      (no classified sample)
  *   clearance short of m + a, not of m          -> within-class-range      (no comparison)
  */
 
-import type { CandidateFact, ModelFacts } from '../model/facts.js';
+import { fillsCourtyards, type CandidateFact, type ModelFacts } from '../model/facts.js';
 import type { ClassifiedHazardRaster, CoverageTest, HazardClassDefinition, MapPoint } from '../types.js';
 import { compareLevel, type LevelComparison, type Outcome, type UnclassifiedReason } from './outcome.js';
 import { readCell, type SamplePlan } from './sampling.js';
@@ -91,7 +91,7 @@ export interface EvaluationContext {
   allowance: number | null;
   anchorTolerance: number;
   footprintSource: ModelFacts['footprint']['source'];
-  /** The whole raster is transparent and the provider did not confirm the layer renders. */
+  /** No cell of the raster shows a mapped class and the provider did not confirm the layer renders. */
   emptyRasterUnconfirmed: boolean;
 }
 
@@ -245,7 +245,7 @@ function conditionsWithholding(
     out.push({ reason: 'outside-coverage', text: `${byReading['outside-coverage']} ground sample(s) lie outside, or too near the edge of, the area the map covers` });
   }
   if (ctx.emptyRasterUnconfirmed) {
-    out.push({ reason: 'layer-not-confirmed', text: 'the whole raster is transparent and the layer could not be confirmed to render' });
+    out.push({ reason: 'layer-not-confirmed', text: 'no cell of the raster shows a mapped class and the layer could not be confirmed to render' });
   }
   if (plan.anchorOffset > ctx.anchorTolerance) {
     out.push({
@@ -255,10 +255,10 @@ function conditionsWithholding(
         'at the outline may not be the ground in front of it (courtyard, notch or interior element)',
     });
   }
-  if (ctx.footprintSource === 'external-wall-hull' || ctx.footprintSource === 'candidate-hull') {
+  if (fillsCourtyards(ctx.footprintSource)) {
     out.push({
       reason: 'hull-footprint',
-      text: `the footprint is a ${ctx.footprintSource}, which fills courtyards and notches, so the ground sampled may not be in front of the element`,
+      text: `the footprint is a ${ctx.footprintSource}, which fills courtyards or notches, so the ground sampled may not be in front of the element`,
     });
   }
   if (ctx.allowance === null) {

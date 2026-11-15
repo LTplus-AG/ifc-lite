@@ -23,9 +23,10 @@
 
 import { FloodCheckRefusal } from '../errors.js';
 import { normalizeCrs, sameCrs, verticalCrsIdentifier } from '../crs.js';
-import type { CandidateFact, ModelFacts, SpaceFact } from '../model/facts.js';
+import { fillsCourtyards, type CandidateFact, type ModelFacts, type SpaceFact } from '../model/facts.js';
 import {
   CELL_NO_RUNOFF,
+  CELL_UNCLASSIFIED,
   type ClassifiedHazardRaster,
   type CoverageTest,
   type HazardClassDefinition,
@@ -114,7 +115,7 @@ export interface ReachableSpace {
 }
 
 export interface LayerCheck {
-  /** Every cell of the raster is transparent. */
+  /** No cell of the raster carries a mapped class (every cell is transparent or an unreadable edge pixel). */
   rasterEmpty: boolean;
   /** The provider's rendering check, when one was made. */
   confirmation: RenderingConfirmation | null;
@@ -207,8 +208,14 @@ function reachableSpaces(facts: ModelFacts, results: readonly CandidateResult[])
   return [...out.values()].sort((a, b) => a.space.floorLevel - b.space.floorLevel);
 }
 
-function rasterIsEmpty(raster: ClassifiedHazardRaster): boolean {
-  for (const c of raster.cells) if (c !== CELL_NO_RUNOFF) return false;
+/**
+ * True when no cell carries a mapped class. Transparent and unreadable
+ * (edge-blend) cells alone do not show that the layer renders, so such a
+ * raster needs the provider's rendering confirmation like a wholly
+ * transparent one.
+ */
+export function rasterShowsNoClass(raster: Pick<ClassifiedHazardRaster, 'cells' | 'classes'>): boolean {
+  for (const c of raster.cells) if (c !== CELL_NO_RUNOFF && c !== CELL_UNCLASSIFIED && c <= raster.classes.length) return false;
   return true;
 }
 
@@ -264,7 +271,7 @@ export function checkWith(
   for (const point of outlineTerrainPoints(facts.footprint, s)) read(point);
   const heightPlausibility = assessHeightReference(facts.groundStorey.level, seen, options.heightPlausibility);
   const heightAt = (p: MapPoint) => heights.get(pointKey(p)) ?? null;
-  const hull = facts.footprint.source === 'external-wall-hull' || facts.footprint.source === 'candidate-hull';
+  const hull = fillsCourtyards(facts.footprint.source);
   const heightReference = confirmEntries(
     facts,
     (i) => plans[i].points.map(({ point }) => heightAt(point)).filter((h): h is number => h !== null),
@@ -274,7 +281,7 @@ export function checkWith(
     unconfirmedBecause,
   );
   const margin = deriveClearanceMargin(terrain.verticalAccuracy, options);
-  const rasterEmpty = rasterIsEmpty(raster);
+  const rasterEmpty = rasterShowsNoClass(raster);
   const confirmation = options.renderingConfirmation ?? null;
   const caveat = screeningCaveat(raster.provenance);
 
@@ -351,8 +358,8 @@ export function checkWith(
   if (rasterEmpty) {
     warnings.push(
       confirmation?.confirmed
-        ? `The whole raster is transparent; the layer was confirmed to render at a reference location (${confirmation.requestUrl}).`
-        : `The whole raster is transparent and the layer could not be confirmed to render${confirmation ? ` (${confirmation.detail})` : ''}; ` +
+        ? `No cell of the raster shows a mapped class; the layer was confirmed to render at a reference location (${confirmation.requestUrl}).`
+        : `No cell of the raster shows a mapped class and the layer could not be confirmed to render${confirmation ? ` (${confirmation.detail})` : ''}; ` +
             'transparent samples are not reported as "no runoff mapped".',
     );
   }

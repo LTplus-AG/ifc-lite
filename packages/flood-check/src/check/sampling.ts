@@ -143,6 +143,9 @@ export type CellReading =
 
 export function readCell(raster: ClassifiedHazardRaster, p: MapPoint, covers?: CoverageTest): CellReading {
   if (covers && covers(p) !== true) return { kind: 'outside-coverage' };
+  // Cell (col, row) covers [x0 + col*c, x0 + (col+1)*c) in x and (y0 - (row+1)*c, y0 - row*c] in y (types.ts):
+  // each cell is closed at its north edge, so a point on a row boundary is the north edge of the row SOUTH of it,
+  // and floor((y0 - y) / c) is that row.
   const col = Math.floor((p.x - raster.origin.x) / raster.cellSize);
   const row = Math.floor((raster.origin.y - p.y) / raster.cellSize);
   if (col < 0 || row < 0 || col >= raster.width || row >= raster.height) return { kind: 'outside' };

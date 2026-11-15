@@ -45,7 +45,7 @@ export type UnclassifiedReason =
   | 'no-terrain'
   /** Every readable ground sample lies outside, or too close to, the perimeter the map covers: transparent there means no data. */
   | 'outside-coverage'
-  /** The whole raster is transparent and the provider could not confirm that the layer is rendering. */
+  /** No cell of the raster shows a mapped class (only transparent or edge pixels) and the provider could not confirm that the layer is rendering. */
   | 'layer-not-confirmed'
   /** Every sample is transparent, but the element had to be moved further than the anchor tolerance to reach the outline. */
   | 'anchor-moved'

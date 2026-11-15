@@ -9,9 +9,11 @@
 
 import { describe, expect, it } from 'vitest';
 import { checkFloodExposure, type CheckOptions, type FloodCheckResult } from '../src/check/check.js';
+import { runFloodCheck } from '../src/check/run.js';
+import { readCell } from '../src/check/sampling.js';
 import { FloodCheckRefusal } from '../src/errors.js';
 import type { CandidateFact } from '../src/model/facts.js';
-import { CELL_NO_RUNOFF, CELL_UNCLASSIFIED, type MapPoint, type TerrainSampler } from '../src/types.js';
+import { CELL_NO_RUNOFF, CELL_UNCLASSIFIED, type HazardProvider, type MapPoint, type TerrainSampler } from '../src/types.js';
 import { boxFacts, candidate, CODE, CONFIRMED, E0, flatTerrain, N0, syntheticRaster, terrainFn, TEST_MARGIN } from './helpers.js';
 
 const raster = (paint: (p: MapPoint) => number) => syntheticRaster(E0 - 10, N0 - 10, 80, 60, 0.5, paint);
@@ -182,5 +184,49 @@ describe('no option makes an outcome more favourable', () => {
     expect(() => checkFloodExposure(facts, raster(south(low)), flatTerrain(500), { anchorTolerance: 1.5 })).toThrow(/may only be lowered/);
     expect(() => checkFloodExposure(facts, raster(south(low)), flatTerrain(500), { classResolution: 0.1 })).toThrow(/may only be raised/);
     expect(checkFloodExposure(facts, raster(south(low)), flatTerrain(500), { anchorTolerance: 0.5 }).parameters.anchorTolerance).toBe(0.5);
+  });
+});
+
+// PR review threads on the second round.
+describe('review threads', () => {
+  const ref = groundDoor(500, { expressId: 99, position: { x: E0 + 10, y: N0 + 10 } });
+  /** Transparent everywhere except one unreadable edge pixel far from the building. */
+  const oneEdgePixel = (p: MapPoint) => (p.x < E0 - 9 && p.y > N0 + 19 ? CELL_UNCLASSIFIED : CELL_NO_RUNOFF);
+
+  it('a raster of transparent cells and one edge pixel needs the rendering confirmation like an empty one', async () => {
+    const unconfirmed = check([groundDoor(500), ref], 500, oneEdgePixel, flatTerrain(500));
+    expect(unconfirmed.layerCheck.rasterEmpty).toBe(true);
+    expect(unconfirmed.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'layer-not-confirmed' });
+    const confirmed = check([groundDoor(500), ref], 500, oneEdgePixel, flatTerrain(500), { renderingConfirmation: CONFIRMED });
+    expect(confirmed.results[0].outcome).toBe('no-runoff-mapped');
+
+    // runFloodCheck asks the provider for the confirmation on such a raster.
+    let asked = 0;
+    const provider: HazardProvider = {
+      id: 'stub',
+      crs: 'EPSG:2056',
+      classes: raster(oneEdgePixel).classes,
+      extent: { minX: 2_000_000, minY: 1_000_000, maxX: 3_000_000, maxY: 1_400_000 },
+      modelCellSize: 1,
+      fetchRaster: async () => raster(oneEdgePixel),
+      confirmRendering: async () => {
+        asked++;
+        return CONFIRMED;
+      },
+    };
+    const terrain = { crs: 'EPSG:2056', verticalCrs: 'EPSG:5728', verticalAccuracy: 0.3, heightAt: () => 500 };
+    const run = await runFloodCheck(boxFacts([groundDoor(500), ref]), provider, terrain);
+    expect(asked).toBe(1);
+    expect(run.layerCheck.confirmation?.confirmed).toBe(true);
+  });
+
+  it('a sample on a row boundary reads the row whose closed north edge it is, as the raster contract says', () => {
+    // Two rows of 1 m with origin y = 2: row 0 covers (1, 2], row 1 covers (0, 1]. y = 1 is row 1's north edge.
+    const r = syntheticRaster(0, 0, 1, 2, 1, (p) => (p.y > 1 ? low : mid));
+    expect(readCell(r, { x: 0.5, y: 1 })).toEqual({ kind: 'class', code: mid });
+    expect(readCell(r, { x: 0.5, y: 2 })).toEqual({ kind: 'class', code: low });
+    expect(readCell(r, { x: 0.5, y: 1.5 })).toEqual({ kind: 'class', code: low });
+    expect(readCell(r, { x: 0.5, y: 0 })).toEqual({ kind: 'outside' });
+    expect(readCell(r, { x: 0.5, y: 2.01 })).toEqual({ kind: 'outside' });
   });
 });

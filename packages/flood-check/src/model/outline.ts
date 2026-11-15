@@ -134,6 +134,30 @@ export function slabOutline(reader: ModelReader, slabId: number): Vec3[] | null 
   return null;
 }
 
+/**
+ * Whether the slab's outline has inner boundaries that {@link slabOutline}
+ * drops: an `IfcArbitraryProfileDefWithVoids` body profile with inner curves,
+ * or a `FootPrint` with more than one curve. The outline then fills the
+ * courtyards those voids stand for.
+ */
+export function slabOutlineHasVoids(reader: ModelReader, slabId: number): boolean {
+  let footprintCurves = 0;
+  for (const item of representationItems(reader, slabId, 'FootPrint')) {
+    const pts = curvePoints(reader, item);
+    if (pts && pts.length >= 3) footprintCurves++;
+  }
+  if (footprintCurves > 1) return true;
+  for (const item of representationItems(reader, slabId, 'Body')) {
+    const solid = reader.entity(unwrapClipping(reader, item));
+    if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') continue;
+    const profile = reader.entity(asRef(reader.attr(solid, 'SweptArea')));
+    if (profile?.type !== 'IFCARBITRARYPROFILEDEFWITHVOIDS') continue;
+    const inner = reader.attr(profile, 'InnerCurves');
+    if (Array.isArray(inner) && inner.length > 0) return true;
+  }
+  return false;
+}
+
 /** A wall's `Axis` curve points in object coordinates (raw file units). */
 export function wallAxis(reader: ModelReader, wallId: number): Vec3[] | null {
   for (const item of representationItems(reader, wallId, 'Axis')) {

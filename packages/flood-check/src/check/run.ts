@@ -9,7 +9,6 @@ import { normalizeCrs, sameCrs } from '../crs.js';
 import { bboxOf, expandBBox } from '../geom.js';
 import type { ModelFacts } from '../model/facts.js';
 import {
-  CELL_NO_RUNOFF,
   type HazardProvider,
   type MapBBox,
   type MapPoint,
@@ -17,7 +16,7 @@ import {
   type TerrainSampler,
   type TerrainSource,
 } from '../types.js';
-import { assertCompatible, checkWith, type CheckOptions, type FloodCheckResult } from './check.js';
+import { assertCompatible, checkWith, rasterShowsNoClass, type CheckOptions, type FloodCheckResult } from './check.js';
 import {
   outlineTerrainPoints,
   planSamples,
@@ -150,7 +149,7 @@ export async function runFloodCheck(
   const extentReason = assertPlausibleExtent(bbox, options);
   const raster = await provider.fetchRaster({ bbox, crs: provider.crs, cellSize: options.cellSize, signal: options.signal });
   let renderingConfirmation: RenderingConfirmation | undefined;
-  if (provider.confirmRendering && raster.cells.every((c) => c === CELL_NO_RUNOFF)) {
+  if (provider.confirmRendering && rasterShowsNoClass(raster)) {
     renderingConfirmation = await provider.confirmRendering(options.signal);
   }
   const sampler = await terrainFor(facts, terrain, bbox, options);

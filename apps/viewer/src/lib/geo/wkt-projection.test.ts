@@ -29,10 +29,11 @@ const DB_REF_LOCAL_TM = 'COMPOUNDCRS["LOCAL_TM_EXAMPLE",PROJCRS["Local TM",BASEG
 const crs = (wellKnownText: string, name = 'WKT'): ProjectedCRS => ({ id: 1, name, wellKnownText, mapUnitScale: 1 });
 
 /**
- * The IfcWellKnownText shape Allplan and other ODA-based exporters write: WKT2
- * keywords with the WKT1 method and parameter names (`Transverse_Mercator`,
- * `central_meridian`, ...), no EPSG identifier, and parameter values without
- * a unit. Here ETRS89 / UTM zone 32N written out that way.
+ * The IfcWellKnownText shape of Allplan/ODA-style exports: WKT2 keywords with
+ * the WKT1 method and parameter names (`Transverse_Mercator`,
+ * `central_meridian`, ...) and no EPSG identifier, here also with parameter
+ * values that state no unit (the ISO 19162 implied-unit case). ETRS89 / UTM
+ * zone 32N written out that way.
  */
 const ODA_STYLE_UTM32_WKT = 'PROJCRS["ETRS89 / UTM zone 32N",BASEGEOGCRS["ETRS89",DATUM["European Terrestrial Reference System 1989",ELLIPSOID["GRS 1980",6378137,298.257222101,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["Degree",0.0174532925199433]]],CONVERSION["UTM zone 32N",METHOD["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",9],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0]],CS[Cartesian,2],AXIS["(E)",east,ORDER[1],LENGTHUNIT["metre",1]],AXIS["(N)",north,ORDER[2],LENGTHUNIT["metre",1]]]';
 
@@ -66,7 +67,7 @@ describe('IfcWellKnownText projections', () => {
     assert.ok(result, 'did not resolve');
     // PROJ for EPSG:25832 at E 690000 N 5335000 (the same expectation as the
     // EPSG-named WKT2 case below). Unit-less parameters used to be taken as
-    // radians: a central meridian of 9 rad put the site at 155.7 degrees east.
+    // radians: a central meridian of 9 rad (155.66 degrees E) put the site at 158.22 degrees east.
     const offset = offsetMetres(result, { lon: 11.55407270413273, lat: 48.13985773317233 });
     assert.ok(offset < 0.05, `lands ${offset.toFixed(3)} m off (${result.lat}, ${result.lon})`);
   });

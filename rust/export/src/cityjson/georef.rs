@@ -136,14 +136,18 @@ fn model_context(content: &[u8], decoder: &mut EntityDecoder) -> Result<u32, Str
 
 /// The EPSG code a CRS name spells: `EPSG:2056`, `EPSG: 2056`, an OGC URN
 /// (`urn:ogc:def:crs:EPSG::2056`) or URL (`…/def/crs/EPSG/0/2056`). For a
-/// compound `EPSG:2056+5728` the horizontal code is returned.
+/// compound `EPSG:2056+5728` the horizontal code is returned. The URN's
+/// version segment, empty or not, is skipped.
 pub(super) fn epsg_code(name: &str) -> Option<u32> {
     let s = name.trim();
     let lower = s.to_ascii_lowercase();
     let tail = if let Some(rest) = lower.strip_prefix("epsg:") {
         rest.trim_start()
     } else if let Some(at) = lower.find("crs:epsg:") {
-        &lower[at + "crs:epsg:".len()..]
+        // `urn:ogc:def:crs:EPSG:<version>:<code>`: the version may be empty
+        // (`EPSG::2056`) or given (`EPSG:0:2056`, `EPSG:9.9.1:2056`).
+        let rest = &lower[at + "crs:epsg:".len()..];
+        rest.rsplit_once(':').map_or(rest, |(_, code)| code)
     } else if let Some(at) = lower.find("/crs/epsg/") {
         let rest = &lower[at + "/crs/epsg/".len()..];
         rest.split_once('/').map(|(_, code)| code)?

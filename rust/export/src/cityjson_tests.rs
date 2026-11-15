@@ -349,6 +349,8 @@ fn epsg_names() {
     assert_eq!(epsg_code("EPSG:2056"), Some(2056));
     assert_eq!(epsg_code("epsg: 28992"), Some(28992));
     assert_eq!(epsg_code("urn:ogc:def:crs:EPSG::32632"), Some(32632));
+    assert_eq!(epsg_code("urn:ogc:def:crs:EPSG:0:2056"), Some(2056), "versioned URN");
+    assert_eq!(epsg_code("urn:ogc:def:crs:EPSG:9.9.1:2056"), Some(2056), "versioned URN");
     assert_eq!(epsg_code("http://www.opengis.net/def/crs/EPSG/0/7415"), Some(7415));
     assert_eq!(epsg_code("EPSG:2056+5728"), Some(2056));
     assert_eq!(epsg_code("NC83"), None);

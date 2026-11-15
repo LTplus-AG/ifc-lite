@@ -16,11 +16,12 @@
  */
 
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { CRS_FIELDS, exporterKey, MC_FIELDS } from './plan.js';
+import { exporterKey, MC_FIELDS } from './plan.js';
 import { rotationOf, compact } from './read.js';
 import type { GeoreferencingState } from './types.js';
 
-const CRS_TEXT_FIELDS: readonly string[] = CRS_FIELDS.filter((f) => f !== 'MapUnit');
+/** `CRS_FIELDS` without `MapUnit` (a reference attribute); a literal so the module does no work at import. */
+const CRS_TEXT_FIELDS: readonly string[] = ['Name', 'Description', 'GeodeticDatum', 'VerticalDatum', 'MapProjection', 'MapZone'];
 
 /**
  * The exporter's reading of a numeric edit (`serializeAttributeValue`): empty or `$` is unset, an

@@ -197,6 +197,34 @@ describe('bim.georef writes are atomic under undo', () => {
     await b.consistent();
   });
 
+  it('a MapUnit re-pointed by position is not carried over from a stale read', async () => {
+    const { bim, backend } = await session('IFC4', `${GEOREFERENCED.replace('#20=IFCPROJECTEDCRS(\'EPSG:2056\',$,$,$,$,$,#90);', "#95=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);\n#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#95);")}`);
+    expect(bim.georef.get().ProjectedCRS).toMatchObject({ MapUnit: 'MILLIMETRE', mapUnitResolved: true });
+    bim.mutate.setAttribute({ modelId: 'model', expressId: 6 }, 'Description', 'x'); // opens the session's mutation view
+    backend.getMutationView()!.setPositionalAttribute(20, 6, '#90' as never);
+    expect(bim.georef.get().ProjectedCRS?.mapUnitResolved).toBe(false);
+    expect(() => bim.georef.set({ ...NEW, ProjectedCRS: { Name: 'EPSG:2056' } })).toThrow(/MapUnit is required/);
+  });
+
+  it('IFC2X3: after remove() with an IfcSite fallback, get, a second remove, update, set and the export agree', async () => {
+    const SITE_LL = BASE.replace("#6=IFCSITE('1Pbuu0tu59NfhrTsztVBK1',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);", "#6=IFCSITE('1Pbuu0tu59NfhrTsztVBK1',$,'Site',$,$,$,$,$,.ELEMENT.,(47,22,0,0),(8,32,0,0),12.,$,$);");
+    const { bim, consistent } = await session('IFC2X3', SITE_LL);
+    bim.georef.set({ ...NEW, replace: undefined });
+    expect((await consistent()).source).toBe('ePSet_MapConversion');
+    bim.georef.remove();
+    // Only the site fallback is left, and get() is what re-parsing the export reads.
+    const after = bim.georef.get();
+    expect(after).toMatchObject({ hasGeoreference: true, MapConversion: null, ProjectedCRS: null });
+    expect(after.site).not.toBeNull();
+    await consistent();
+    // The site fallback is not something remove() can take away: a second remove refuses, it is not a silent no-op.
+    expect(() => bim.georef.remove()).toThrow(/carries no/);
+    // update has nothing to edit and refuses; set writes the sets anew without `replace`.
+    expect(() => bim.georef.update({ MapConversion: { Eastings: 1, Northings: 2, OrthogonalHeight: 3 } })).toThrow(/The model has no IfcMapConversion/);
+    bim.georef.set({ ...NEW, replace: undefined });
+    expect((await consistent()).source).toBe('ePSet_MapConversion');
+  });
+
   it('bim.mutate.undo / redo (no history on this backend) leave a georeferencing write in place', async () => {
     const { bim, consistent } = await session('IFC4', GEOREFERENCED);
     bim.georef.set(NEW);

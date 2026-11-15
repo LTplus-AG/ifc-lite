@@ -371,6 +371,24 @@ describe('bim.georef second review follow-ups', () => {
     } finally { model.close(); }
   });
 
+  it('a MapUnit re-pointed through the generic attribute API is not carried over from a stale read', async () => {
+    const model = await open(withMapUnit('IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)'));
+    try {
+      expect(model.bim.georef.get().ProjectedCRS).toMatchObject({ MapUnit: 'MILLIMETRE', mapUnitResolved: true });
+      // The generic edit re-points the CRS at the plain METRE unit (#90); the export honours it.
+      model.bim.mutate.setAttribute({ modelId: 'model', expressId: 20 }, 'MapUnit', '#90');
+      const reopened = await openModel(new TextEncoder().encode(String(model.bim.export.ifc())), { disableWorkerScan: true });
+      try { expect(reopened.bim.georef.get().ProjectedCRS).toMatchObject({ MapUnit: 'METRE' }); } finally { reopened.close(); }
+      // get() cannot resolve the new reference, so it says so instead of reporting the old unit as settled.
+      expect(model.bim.georef.get().ProjectedCRS?.mapUnitResolved).toBe(false);
+      // So a write that would carry the unit from the current state refuses; it never writes MILLIMETRE over METRE.
+      expect(refusal(() => model.bim.georef.set(NEW_NO_UNIT)).missing).toEqual(['ProjectedCRS.MapUnit']);
+      expect(refusal(() => model.bim.georef.update({ MapConversion: { OrthogonalHeight: 4 } })).missing).toEqual(['ProjectedCRS.MapUnit']);
+      // An explicit unit still writes.
+      expect(model.bim.georef.set({ ...NEW_NO_UNIT, ProjectedCRS: { Name: 'EPSG:2236', MapUnit: 'METRE' } }).mapUnit).toMatchObject({ value: 'METRE', source: 'explicit' });
+    } finally { model.close(); }
+  });
+
   it.each([1e308, -1e308, 361])('refuses rotationDegrees %s instead of writing a NaN axis', async (rotationDegrees) => {
     const model = await open(BASE);
     try {

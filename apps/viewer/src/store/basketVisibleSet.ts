@@ -13,7 +13,8 @@ import {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { EntityRef } from './types.js';
 import { entityRefToString, stringToEntityRef } from './types.js';
-import { useViewerStore } from './index.js';
+import type { ViewerState } from './index.js';
+import { getViewerState } from './viewerStoreHandle.js';
 import { toGlobalIdFromModels } from './globalId.js';
 import { resolveViewHiddenEntities, retypedClasses } from '../lib/visibility/structural-view';
 import { isMeshTypeVisible } from './typeVisibilityFilter.js';
@@ -21,7 +22,7 @@ import { collectAggregatedDescendants, type AggregationRelationships } from '../
 import { effectiveSpatialMembers } from '../lib/effective-spatial-members.js';
 import { objectIdentity } from '../utils/objectIdentity.js';
 
-type ViewerStateSnapshot = ReturnType<typeof useViewerStore.getState>;
+type ViewerStateSnapshot = ViewerState;
 
 type VisibleCandidate = {
   globalId: number;
@@ -442,7 +443,7 @@ function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
 }
 
 /** `ignoreIsolatedEntities`: as if `isolatedEntities` were unset, so a panel's own isolation does not filter its own rows (#6368). */
-export function getVisibleBasketEntityRefsFromStore(ignoreIsolatedEntities = false, live = useViewerStore.getState()): EntityRef[] {
+export function getVisibleBasketEntityRefsFromStore(ignoreIsolatedEntities = false, live = getViewerState()): EntityRef[] {
   const state = ignoreIsolatedEntities && live.isolatedEntities !== null ? { ...live, isolatedEntities: null } : live;
   const key = visibilityFingerprint(state);
   if (_visibleCache?.key === key) return _visibleCache.refs;
@@ -466,7 +467,7 @@ export function getVisibleBasketEntityRefsFromStore(ignoreIsolatedEntities = fal
  * Resolve active entity selection into basket refs.
  * Explicit selected entities are preferred; if empty, selected storeys are expanded.
  */
-export function getBasketSelectionRefsFromStore(state = useViewerStore.getState()): EntityRef[] {
+export function getBasketSelectionRefsFromStore(state = getViewerState()): EntityRef[] {
 
   const expandedSelection = getExpandedSelectionRefs(state);
   if (expandedSelection.length > 0) {
@@ -481,7 +482,7 @@ export function getBasketSelectionRefsFromStore(state = useViewerStore.getState(
  * Priority: explicit hierarchy source snapshot -> selected storeys -> selected hierarchy container/entity.
  */
 export function getHierarchyBasketEntityRefsFromStore(): EntityRef[] {
-  const state = useViewerStore.getState();
+  const state = getViewerState();
 
   if (state.hierarchyBasketSelection.size > 0) {
     const hierarchyRefs = Array.from(state.hierarchyBasketSelection).map((key) => stringToEntityRef(key));
@@ -532,7 +533,7 @@ export function getSmartBasketInputFromStore(): { refs: EntityRef[]; source: Bas
 /** "Is the basket shown?" — every basket element is isolated. A subset test, not equality: a basket that
  *  WIDENED a foreign isolation (#4527) is shown too, and "Show active basket" would evict the foreign ids. */
 export function isBasketIsolationActiveFromStore(): boolean {
-  const state = useViewerStore.getState();
+  const state = getViewerState();
   if (state.pinboardEntities.size === 0 || state.isolatedEntities === null) return false;
   for (const id of basketToGlobalIds(state)) {
     if (!state.isolatedEntities.has(id)) return false;
@@ -541,7 +542,7 @@ export function isBasketIsolationActiveFromStore(): boolean {
 }
 
 export function getVisibleBasketStatsFromStore(): BasketVisibleStats {
-  const state = useViewerStore.getState();
+  const state = getViewerState();
   const visibleRefs = getVisibleBasketEntityRefsFromStore();
   const visibleKeys = new Set<string>(visibleRefs.map(entityRefToString));
   let removeCount = 0;

@@ -790,6 +790,18 @@ fn a_tile_across_a_slot_of_a_concave_loop_is_a_region_issue_9945() {
 }
 
 #[test]
+fn an_opening_that_touches_the_outer_loop_is_still_an_opening_issue_9945() {
+    // A 10 x 10 square and a triangle (base 4, height 3, area 6) with one vertex on the square's bottom edge.
+    // Touching is no crossing, so the triangle is the square's opening: 100 - 6 = 94, not two regions (106).
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#31,#32,#33));#21=IFCFACEOUTERBOUND(#20,.T.);\
+         #31=IFCCARTESIANPOINT((5.,0.,0.));#32=IFCCARTESIANPOINT((7.,3.,0.));#33=IFCCARTESIANPOINT((3.,3.,0.));",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    assert!((signed_xy_area(&meshed(&proxy_with(&source), 18)) - 94.0).abs() < 1e-5);
+}
+
+#[test]
 fn an_opening_tagged_as_an_outer_bound_is_an_opening_on_every_product_issue_9945() {
     // A 2 x 2 loop tagged IfcFaceOuterBound inside the 10 x 10 loop is that loop's
     // opening: 100 - 4 = 96, on a proxy and on a structural member alike. Main

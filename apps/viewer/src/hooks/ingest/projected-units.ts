@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { isWktDefinition, registeredWktDefinition, wktDefinitionInMetres } from '../../lib/geo/wkt-projection.js';
+import { isWktDefinition, registeredWktDefinition, wktDefinitionInMetres } from '@ifc-lite/geo/proj4';
 
 /** Resolve proj4's native projected unit to metres. */
 export function projectedUnitToMetres(definition: string): number | null {

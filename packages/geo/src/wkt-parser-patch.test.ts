@@ -21,9 +21,9 @@ import { fileURLToPath } from 'node:url';
 import parseWkt from 'wkt-parser';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const viewerRoot = join(here, '..', '..', '..');
-const repoRoot = join(viewerRoot, '..', '..');
-const require = createRequire(join(viewerRoot, 'package.json'));
+const packageRoot = join(here, '..');
+const repoRoot = join(packageRoot, '..', '..');
+const require = createRequire(join(packageRoot, 'package.json'));
 
 function readJson(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
@@ -37,13 +37,13 @@ function patchedWktParserEntry(): [string, string] {
 }
 
 describe('wkt-parser patch', () => {
-  it('is pinned to the wkt-parser version the viewer declares and installs', () => {
+  it('is pinned to the wkt-parser version the package declares and installs', () => {
     const [key, patchPath] = patchedWktParserEntry();
     const patchedVersion = key.slice('wkt-parser@'.length);
-    const declared = (readJson(join(viewerRoot, 'package.json')).dependencies as Record<string, string>)['wkt-parser'];
+    const declared = (readJson(join(packageRoot, 'package.json')).dependencies as Record<string, string>)['wkt-parser'];
     const installed = (require('wkt-parser/package.json') as { version: string }).version;
 
-    assert.equal(declared, patchedVersion, 'apps/viewer pins the exact version the patch was made for');
+    assert.equal(declared, patchedVersion, 'packages/geo pins the exact version the patch was made for');
     assert.equal(installed, patchedVersion, 'the installed wkt-parser is the patched version');
     assert.equal(patchPath, `patches/wkt-parser@${patchedVersion}.patch`);
     assert.ok(existsSync(join(repoRoot, patchPath)), `${patchPath} exists`);

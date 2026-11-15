@@ -31,6 +31,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/encoding`](#ifc-liteencoding) | IFC string encoding/decoding and property value parsing for IFC-Lite |
 | [`@ifc-lite/cache`](#ifc-litecache) | Binary cache format for IFC-Lite - fast model loading |
 | [`@ifc-lite/pointcloud`](#ifc-litepointcloud) | Point cloud decoders and types for IFC-Lite |
+| [`@ifc-lite/geo`](#ifc-litegeo) | Headless CRS engine for IFC-Lite: resolve a CRS, reproject to and from WGS84, grid convergence and scale factors, EGM96 undulation |
 | [`@ifc-lite/solar`](#ifc-litesolar) | Solar position, sunrise/sunset and 3D sun-path geometry for IFC-Lite |
 | [`@ifc-lite/sdk`](#ifc-litesdk) | Scripting SDK for ifc-lite — the bim.* API for BIM automation |
 | [`@ifc-lite/sandbox`](#ifc-litesandbox) | QuickJS-in-WASM sandboxed script execution for ifc-lite |
@@ -1104,6 +1105,10 @@ Binary cache format for fast model loading: `BinaryCacheWriter`, `BinaryCacheRea
 ## @ifc-lite/pointcloud
 
 Point cloud decoders and types: `decodePcd`, LAS/LAZ support including `LasStreamingSource` for chunked streaming, and `decompressLZF`.
+
+## @ifc-lite/geo
+
+Headless CRS engine: `resolveCrs({ epsg, name, wkt })` returns a transformer with `toWgs84` / `fromWgs84` (projected coordinates in metres, longitude first) and `gridFactors` (grid convergence and point scale factor). Also `egm96Undulation`, and `configureCrsLoaders` for the optional epsg.io and cdn.proj.org lookups; nothing reaches the network unless a loader is installed. There is no vertical transformation, and the datum shift in use is reported per CRS; see the package README for the accuracy notes.
 
 ## @ifc-lite/solar
 

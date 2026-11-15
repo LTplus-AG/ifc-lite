@@ -8,6 +8,7 @@ import proj4 from 'proj4';
 import { writeArrayBuffer } from 'geotiff';
 import { lookupEpsgByCode } from '@ifc-lite/data';
 
+import { configureCrsLoaders, projCdnGridLoader } from './loaders.js';
 import { PRECISION_GRIDS, isHorizontalOffsetGrid, resolvePrecisionDef, hasLoadedPrecisionGrid, hasFailedPrecisionGrid } from './precision-grids.js';
 
 describe('precision-grids datum-shift table (#1357)', () => {
@@ -200,10 +201,9 @@ describe('precision grids validate source datums before registration (#7052)', (
     });
     const originalFetch = globalThis.fetch;
     const originalWarn = console.warn;
-    const testContext = process.env.NODE_TEST_CONTEXT;
     const warnings: string[] = [];
     let requests = 0;
-    delete process.env.NODE_TEST_CONTEXT;
+    const previousLoaders = configureCrsLoaders({ gridFile: projCdnGridLoader() });
     globalThis.fetch = async () => {
       requests++;
       return new Response(grid, { status: 200 });
@@ -237,8 +237,7 @@ describe('precision grids validate source datums before registration (#7052)', (
     } finally {
       globalThis.fetch = originalFetch;
       console.warn = originalWarn;
-      if (testContext === undefined) delete process.env.NODE_TEST_CONTEXT;
-      else process.env.NODE_TEST_CONTEXT = testContext;
+      configureCrsLoaders(previousLoaders);
     }
   });
 });

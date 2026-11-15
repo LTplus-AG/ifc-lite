@@ -7,7 +7,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { reprojectPointToLatLon, reprojectToLatLon, resolveProjection, type LatLon } from '@/lib/geo/reproject';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
-import { isGeographicProj4 } from '@/lib/geo/proj4-utils';
+import { isGeographicProj4 } from '@ifc-lite/geo/proj4';
 import { distanceMetres, siteLocationDisagreement, type SiteLocationReference } from '@/lib/geo/site-location-disagreement';
 import type { TranslationKey } from '@/i18n';
 

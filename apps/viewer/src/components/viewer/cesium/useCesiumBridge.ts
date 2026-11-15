@@ -28,7 +28,7 @@ import {
   shouldApplyGeoidUndulation,
   orthometricTargetForTerrain,
 } from '@/lib/geo/cesium-placement';
-import { egm96Undulation } from '@/lib/geo/egm96-undulation';
+import { egm96Undulation } from '@ifc-lite/geo';
 import { bendsAwayFromAnchorPlane } from '@/lib/geo/globe-placement';
 import { holdCameraY, type ViewerHeightFrame } from '@/lib/geo/viewer-up-scale';
 import { getGlobalRenderer } from '@/hooks/useBCF';

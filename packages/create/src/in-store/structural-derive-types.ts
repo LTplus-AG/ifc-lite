@@ -34,7 +34,8 @@
  * element is skipped with the reason.
  *
  * Curve members. The Axis representation when present. Otherwise the prism
- * axis: through the centre of the profile's bounds, along the extrusion when
+ * axis: through the profile's centroid (the centre of its bounds for symmetric
+ * profiles), along the extrusion when
  * the extrusion is the prism's longest side, or along the profile's long side
  * at half depth when the profile is a near-rectangle longer than the
  * extrusion (beams drawn in elevation). Anything else is skipped.
@@ -136,6 +137,8 @@ export interface PrismFact {
   extrusion: Vec3;
   /** False when `outline` is only the profile's bounding rectangle (I-shapes, circles, ...). */
   outlineExact: boolean;
+  /** The profile's centroid on the base plane, when it is not the centre of the bounds (L, T, U, C sections). */
+  centroid?: Vec3;
 }
 
 export interface PhysicalElementFact {

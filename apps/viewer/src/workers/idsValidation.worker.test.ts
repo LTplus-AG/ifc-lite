@@ -107,7 +107,8 @@ afterEach(() => {
 
 async function validate(
   propertyOverlay?: PropertyOverlaySnapshot,
-  idsXml: string = IDS_XML
+  idsXml: string = IDS_XML,
+  entityIds?: readonly number[]
 ): Promise<IDSValidationReport> {
   const request: IdsWorkerRequest = {
     type: 'validate',
@@ -119,6 +120,7 @@ async function validate(
     locale: 'en',
     includePassingEntities: true,
     propertyOverlay,
+    entityIds,
   };
   await onmessage!({ data: request } as MessageEvent<IdsWorkerRequest>);
 
@@ -185,4 +187,16 @@ describe('IDS worker property overlay (#3946)', () => {
     assert.equal(report.summary.totalEntitiesPassed, 0);
     assert.equal(report.summary.failedSpecifications, 1);
   });
+});
+
+it('worker restricts type fast paths and reports subset scope without hiding referenced psets (#10371)', async () => {
+  const empty = await validate(undefined, IDS_XML, []);
+  assert.equal(empty.summary.totalEntitiesChecked, 0);
+  assert.deepEqual(empty.targetScope, { kind: 'subset', entityCount: 0 });
+  const selected = await validate(undefined, IDS_XML_EXISTENCE, [WALL_ID]);
+  assert.equal(selected.summary.totalEntitiesPassed, 1);
+  assert.equal(selected.modelInfo[0].entityCount, 1);
+  assert.deepEqual(selected.targetScope, { kind: 'subset', entityCount: 1 });
+  const all = await validate(undefined, IDS_XML_EXISTENCE);
+  assert.equal(all.targetScope, undefined, 'whole-model runs keep their existing meaning');
 });

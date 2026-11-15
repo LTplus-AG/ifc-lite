@@ -122,7 +122,8 @@ export async function runIdsBcfExport({
   const bcfProject = createBCFFromIDSReport(
     {
       title: document?.info.title ?? 'Validation Report',
-      description: document?.info.description,
+      description: [document?.info.description, report.targetScope
+        ? `Filtered population: ${report.targetScope.entityCount} candidates. This is not a whole-model validation.` : undefined].filter(Boolean).join('\n\n') || undefined,
       specificationResults: report.specificationResults,
     },
     exportOptions,

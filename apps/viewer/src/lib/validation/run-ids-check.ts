@@ -71,5 +71,6 @@ export async function runIdsCheck(options: RunIdsCheckOptions) {
     }, { translator: createTranslationService(locale), onProgress, includePassingEntities: true });
   }
   throwIfCheckAborted(signal);
+  if (entityIds !== undefined) report.targetScope = { kind: 'subset', entityCount: report.modelInfo.find(model => model.modelId === modelId)?.entityCount ?? 0 };
   return { report, snapshot: validationReportSnapshot(report, reportModels, options.snapshotId ?? 'run') };
 }

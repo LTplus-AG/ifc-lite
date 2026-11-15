@@ -144,6 +144,7 @@ self.onmessage = async (event: MessageEvent<IdsWorkerRequest>) => {
       }
     );
 
+    if (req.entityIds !== undefined) report.targetScope = { kind: 'subset', entityCount: accessor.getAllEntityIds().length };
     post({ type: 'complete', id: req.id, report });
   } catch (err) {
     post({

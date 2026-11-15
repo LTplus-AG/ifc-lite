@@ -12,6 +12,8 @@ import { PropertyValueType } from '@ifc-lite/data';
 import { Rule, type RuleSetFile } from '@ifc-lite/rules';
 import { scopedIdsAccessor } from '@/lib/ids/scoped-accessor';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
+import { validateIdsReportBlock } from '@ifc-lite/sdk/review';
+import { buildReportJSON, buildReportHTML } from '@/hooks/ids/idsExportService';
 import { runIdsCheck } from './run-ids-check';
 import { runInformationCheck } from './run-information-check';
 
@@ -151,6 +153,15 @@ it('IDS scopes candidate scans while preserving referenced property definitions 
   const selected = await runIdsCheck({ ...input, entityIds: [100] });
   assert.equal(selected.report.summary.totalEntitiesChecked, 1, 'the entity-facet type fast path respects the subset');
   assert.equal(selected.report.summary.totalEntitiesFailed, 1);
+  assert.deepEqual(selected.report.targetScope, { kind: 'subset', entityCount: 1 });
+  assert.deepEqual(selected.snapshot.targetScope, { kind: 'subset', entityCount: 1 });
+  assert.deepEqual(buildReportJSON(selected.report).targetScope, { kind: 'subset', entityCount: 1 });
+  assert.match(buildReportHTML(selected.report, 'en'), /Filtered population: 1 candidates/);
+  const invalidScopeErrors: Parameters<typeof validateIdsReportBlock>[2] = [];
+  validateIdsReportBlock({ ...selected.snapshot, targetScope: { kind: 'subset', entityCount: -1 } }, 'report', invalidScopeErrors);
+  assert.ok(invalidScopeErrors.some(error => error.path === 'report.targetScope'), 'portable readers reject an invalid scope qualifier');
+  selected.report.targetScope!.entityCount = 999;
+  assert.equal(selected.snapshot.targetScope?.entityCount, 1, 'saved evidence does not share mutable scope metadata');
   mutationView.setProperty(100, 'Pset_WallCommon', 'FireRating', 'F90', PropertyValueType.String);
   const corrected = await runIdsCheck({ ...input, entityIds: [100] });
   assert.equal(corrected.report.summary.totalEntitiesPassed, 1, 'property definitions outside the candidate set still resolve');

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { stepString } from '@ifc-lite/data';
 import { structuralReferenceAttributes } from './_structural-reference.js';
 import { asRef } from './style-entity-reader.js';
 
@@ -15,7 +16,7 @@ export function prepareThicknessAspect(editor: StoreEditor, id: number, count: n
   const optionalText = (value: unknown) => {
     if (value == null) return null;
     if (typeof value !== 'string') throw new Error(`${label} has an invalid label`);
-    return value;
+    return stepString(value);
   };
   const name = optionalText(aspect[1]), description = optionalText(aspect[2]);
   const logical = aspect[3];

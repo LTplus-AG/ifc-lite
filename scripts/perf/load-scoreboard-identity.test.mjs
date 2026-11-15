@@ -91,7 +91,7 @@ test('identity rows map reopen i to its lane, and the report takes the reopen ou
 });
 
 test('review #9863: the cold lane links the sides, timed RESTORE MISMATCH wins, failed samples never match', async () => {
-  const { reopenOutputVerdict, laneIdentityVerdict, identityRowReopens } = await load('./load-scoreboard-identity.mjs');
+  const { reopenOutputVerdict, identityRowReopens } = await load('./load-scoreboard-identity.mjs');
   assert.equal(reopenOutputVerdict('match', 'unverifiable (x)', 'match'), 'match');
   assert.match(reopenOutputVerdict('match', 'unverifiable (x)', 'CHANGED'), /^CHANGED \(cold output CHANGED across sides/, 'different builds never read as matching');
   assert.match(reopenOutputVerdict('match', 'unverifiable (x)', 'unverifiable (a sample has no output identity)'), /^unverifiable \(each reopen restored its own cold open, but the cold lane/);
@@ -124,8 +124,8 @@ test('review #9863: a reopen lane whose cold output differs across sides reads C
 test('review #9863: a clean earlier reopen keeps its match through identityRow when a later reopen failed', async () => {
   const { identityRow, laneIdentityVerdict } = await load('./load-scoreboard-identity.mjs');
   const opens = [{ label: 'cold', identity: id('P', [cap('S1')]) }, { label: 'warm1', identity: id('P', [adopt('S1')]) }, { label: 'warm2', identity: id('P', [adopt('S1')]) }];
-  const sample = (side) => ({ meta: { identityOpens: opens }, lanes: { 'browser-cold': { ok: true }, 'browser-warm1': { ok: true }, 'browser-warm': { ok: false, error: 'warm2: GPU device lost' } } });
-  const rows = ['base', 'branch'].map((side) => identityRow({ fixture: 'F', side, round: 0, group: 'browser' }, sample(side), 2, () => {}));
+  const sample = () => ({ meta: { identityOpens: opens }, lanes: { 'browser-cold': { ok: true }, 'browser-warm1': { ok: true }, 'browser-warm': { ok: false, error: 'warm2: GPU device lost' } } });
+  const rows = ['base', 'branch'].map((side) => identityRow({ fixture: 'F', side, round: 0, group: 'browser' }, sample(), 2, () => {}));
   assert.equal(rows[0].ok, false, 'the row records the failed sample');
   assert.equal(laneIdentityVerdict(rows, 'browser-warm1'), 'match', 'warm1 was clean on both sides');
   assert.match(laneIdentityVerdict(rows, 'browser-warm'), /^unverifiable \(identity pass: UNVERIFIABLE \(identity sample failed: warm2: GPU device lost/);

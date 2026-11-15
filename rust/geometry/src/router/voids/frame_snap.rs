@@ -142,20 +142,21 @@ pub(super) fn snap_to_frame_planes(host: &mut Mesh, openings: &mut [CutterKind],
     }
 }
 
-/// Whether an opening only touches the host: on the frame axis where its
-/// bounds overlap the host's least, they enter the host's by no more than
-/// `tol`, or stop short of them by no more than that. `tol` is [`frame_snap_tolerance`], so such an opening is one
-/// whose face the author put ON a host face and f32 world storage moved off
-/// it. Cut as stored it shaves the host or chips its corners; the snap puts
-/// the two faces back on one plane and the opening then cuts nothing.
+/// Whether an opening only touches the host: its bounds meet the host's on
+/// every frame axis, and on one of them they end within `tol` of a host face,
+/// entering by no more than that or stopping short by no more. `tol` is
+/// [`frame_snap_tolerance`], so such an opening is one whose face the author
+/// put ON a host face and f32 world storage moved off it. Cut as stored it
+/// shaves the host or chips its corners; the snap puts the two faces back on
+/// one plane and the opening then cuts nothing. An opening thinner than `tol`
+/// inside the host is a cut, not a touch.
 pub(super) fn touches_host(host: &Mesh, openings: &[CutterKind], tol: f64) -> bool {
     let (host_lo, host_hi) = host.bounds();
+    let (host_lo, host_hi) = (host_lo.map(f64::from), host_hi.map(f64::from));
     openings.iter().any(|op| {
         let (lo, hi) = op.cutter().bounds();
-        let entered = (0..3)
-            .map(|k| hi[k].min(host_hi[k] as f64) - lo[k].max(host_lo[k] as f64))
-            .fold(f64::INFINITY, f64::min);
-        entered.abs() <= tol
+        (0..3).all(|k| hi[k].min(host_hi[k]) - lo[k].max(host_lo[k]) >= -tol)
+            && (0..3).any(|k| (hi[k] - host_lo[k]).abs() <= tol || (host_hi[k] - lo[k]).abs() <= tol)
     })
 }
 

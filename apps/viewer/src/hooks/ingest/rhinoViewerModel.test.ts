@@ -41,6 +41,7 @@ import {
   rhinoPayloadOf as payloadOf,
 } from '@/test/rhino-3dm-fixture.js';
 import { rhinoViewerModel } from './rhinoViewerModel.js';
+import { planRhinoContainerVisibility, type RhinoTreePlan } from './rhinoLayerTree.js';
 import { containerVisibilityTargets } from '@/lib/container-visibility';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
@@ -275,6 +276,22 @@ describe('rhinoViewerModel, a layer row hides and shows its sub-layers as Rhino 
     const shown = await eye(await craftRhinoHiddenStoreyObject(), 'Project', 'show');
     assert.ok(shown.includes('Wall'), 'the wall under the storey comes back');
     assert.ok(!shown.includes('Storey object'), 'the storey object Rhino hides on its own stays hidden');
+  });
+
+  it('keeps the object a layer row stands for hidden when that row is shown, since the eye is the layer\'s', async () => {
+    // The storey row stands for the storey object and carries its name.
+    assert.deepEqual(await eye(await craftRhinoHiddenStoreyObject(), 'Storey object', 'show'), ['Wall']);
+  });
+
+  it('starts every object of a file with no layer table with its own state on', () => {
+    // openNURBS writes a default layer, so a reader result with none (another
+    // exporter's file) is built by hand: the reader puts its objects on layer 0.
+    const shown = { hidden: false, hiddenByObject: false, hiddenByLayer: false, layer: 0 };
+    const result = { layers: [], entities: [shown, shown] } as unknown as RhinoImport;
+    const tree = { containers: [{ expressId: 3, parent: null, layer: null, fromEntity: false }], containerOfEntity: [3, 3], root: 3 } as unknown as RhinoTreePlan;
+    const plan = planRhinoContainerVisibility(result, tree, (index) => index + 1);
+    assert.deepEqual(plan.rows.get(3)?.members, [1, 2]);
+    assert.deepEqual([...plan.ownOff], []);
   });
 
   it('keeps a merged object hidden whose parts Rhino hides for different causes', async () => {

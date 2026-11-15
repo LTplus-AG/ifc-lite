@@ -212,14 +212,18 @@ export function HierarchyPanel() {
 
     if (visibilityAction === 'hide') {
       hideEntities(targets);
-      if (selectedEntityId !== null && targets.includes(selectedEntityId)) {
+      // Read at click time: a layer row's hide reaches sub-layers whose rows may not have re-rendered.
+      const selection = useViewerStore.getState();
+      if ((selection.selectedEntityId !== null && targets.includes(selection.selectedEntityId))
+        || targets.some((id) => selection.selectedEntityIds.has(id))) {
         clearSelection();
       }
     } else {
       showEntities(targets);
     }
-    recordHierarchyOwnState(node, visibilityAction, models);
-  }, [getNodeElements, hiddenEntities, hideEntities, showEntities, selectedEntityId, clearSelection, models]);
+    // Own states are the layer tree's: a class or group row's eye leaves them as they are.
+    if (groupingMode === 'spatial') recordHierarchyOwnState(node, visibilityAction, models);
+  }, [getNodeElements, hiddenEntities, hideEntities, showEntities, clearSelection, models, groupingMode]);
 
   // Handle model visibility toggle
   const handleModelVisibilityToggle = useCallback((modelId: string, e: React.MouseEvent) => {

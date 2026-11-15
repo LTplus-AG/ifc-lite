@@ -750,8 +750,10 @@ transparency rule [test].
   hold directly, as for IFC. A row offers Show while anything that comes back
   with it is hidden, and reads as hidden once nothing that comes back is
   drawn. A row that stands for an object hidden on its own comes back without
-  that object. Not covered: a storey row merged across models, which acts on
-  direct members; Isolate, which still takes a row's direct members; the
+  that object, and its own eye, being the layer's, does not show it either.
+  Not covered: a storey row merged across models, which acts on direct
+  members; a merged object whose parts sit on different layers, whose own
+  state follows its first part's layer; Isolate, which still takes a row's direct members; the
   file root and stamped site and building rows, which have no eye once a
   second model is loaded; and hiding from anywhere but the layer tree's own
   rows (the viewport, a class or group row), which does not change an own

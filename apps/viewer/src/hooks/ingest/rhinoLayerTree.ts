@@ -269,7 +269,7 @@ export function planRhinoContainerVisibility(
   // reader hands layers parent first, so the walk climbs and ends.
   const layersOn = (from: number, stop: number | null): boolean => {
     for (let index: number | null = from; index !== null && index !== stop; index = layers[index]?.parent ?? null) {
-      if (!layers[index]?.visible) return false;
+      if (layers[index] && !layers[index].visible) return false; // a file with no layer table has none to be off
     }
     return true;
   };
@@ -278,7 +278,10 @@ export function planRhinoContainerVisibility(
     tree.containers.map((container) => [container.expressId, { children: [], members: [] }]));
   const ownOff = new Set<number>();
   const selfOff = new Set<number>();
-  const hiddenOnItsOwn = new Set(result.entities.flatMap((entity, index) => (entity.hiddenByObject ? [entityExpressId(index)] : [])));
+  // `hidden` with neither cause set is a merged entity whose parts are hidden for different causes.
+  const mixedCauses = (entity: RhinoImport['entities'][number]) => entity.hidden && !entity.hiddenByObject && !entity.hiddenByLayer;
+  const hiddenOnItsOwn = new Set(result.entities.flatMap((entity, index) =>
+    (entity.hiddenByObject || mixedCauses(entity) ? [entityExpressId(index)] : [])));
   for (const container of tree.containers) {
     if (container.fromEntity && hiddenOnItsOwn.has(container.expressId)) selfOff.add(container.expressId);
     if (container.parent === null) continue;
@@ -290,9 +293,7 @@ export function planRhinoContainerVisibility(
     const entity = result.entities[index];
     const id = entityExpressId(index);
     rows.get(row)?.members.push(id);
-    // `hidden` with neither cause set is a merged entity whose parts are hidden for different causes.
-    const mixedCauses = entity.hidden && !entity.hiddenByObject && !entity.hiddenByLayer;
-    if (entity.hiddenByObject || mixedCauses || !layersOn(entity.layer, layerOfRow.get(row) ?? null)) ownOff.add(id);
+    if (entity.hiddenByObject || mixedCauses(entity) || !layersOn(entity.layer, layerOfRow.get(row) ?? null)) ownOff.add(id);
   });
   return { rows, ownOff, selfOff };
 }

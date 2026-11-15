@@ -69,6 +69,16 @@ describe('HierarchyPanel: a .3dm layer row hides and shows its sub-layers (#1021
     assert.deepEqual(hiddenNames(), ['Bolt', 'Bolts', 'Column', 'Columns', 'Spare beam']);
   });
 
+  it('clears a multi-selection inside a sub-layer the parent hides', () => {
+    const container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+    click(eye(container, 'Show', 'Frame'));
+    const column = [...store.entities.expressId].find((id) => store.entities.getName(id) === 'Column')!;
+    const beam = [...store.entities.expressId].find((id) => store.entities.getName(id) === 'Beam')!;
+    useViewerStore.setState({ selectedEntityId: null, selectedEntityIds: new Set([column, beam]) });
+    click(eye(container, 'Hide', 'Frame'));
+    assert.equal(useViewerStore.getState().selectedEntityIds.size, 0);
+  });
+
   it('hides and shows the whole file from the root row', () => {
     const container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
     click(eye(container, 'Hide', 'layers.3dm'));

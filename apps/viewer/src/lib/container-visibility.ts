@@ -23,7 +23,7 @@ export interface ContainerVisibilityPlan {
    * rebuild the whole tree on every click.
    */
   readonly ownOff: ReadonlySet<number>;
-  /** Rows that are also an object of their own whose own state is off, so they come back with a parent without that object. */
+  /** Rows that are also an object of their own whose own state is off: the row's eye is the layer's, so it never shows that object. */
   readonly selfOff: ReadonlySet<number>;
 }
 
@@ -46,7 +46,7 @@ export function containerVisibilityTargets(plan: ContainerVisibilityPlan, row: n
   const pending = [row];
   while (pending.length > 0) {
     const id = pending.pop()!;
-    if (id === row || action === 'hide' || !plan.selfOff.has(id)) targets.push(id);
+    if (action === 'hide' || !plan.selfOff.has(id)) targets.push(id);
     const { children, members } = plan.rows.get(id)!;
     for (const child of children) if (comesBack(child)) pending.push(child);
     for (const member of members) if (comesBack(member)) targets.push(member);
@@ -57,11 +57,10 @@ export function containerVisibilityTargets(plan: ContainerVisibilityPlan, row: n
 /** Record that the user turned `id`'s own state on or off from the tree. */
 export function setOwnState(plan: ContainerVisibilityPlan, id: number, on: boolean): void {
   // The plan's sets are read-only to everyone else, so the revision cannot be skipped.
-  const ownOff = plan.ownOff as Set<number>, selfOff = plan.selfOff as Set<number>;
+  const ownOff = plan.ownOff as Set<number>;
   let changed: boolean;
   if (on) {
-    const wasOff = ownOff.delete(id);
-    changed = selfOff.delete(id) || wasOff;
+    changed = ownOff.delete(id);
   } else {
     changed = !ownOff.has(id);
     ownOff.add(id);

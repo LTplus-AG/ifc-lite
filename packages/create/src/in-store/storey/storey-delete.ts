@@ -126,7 +126,13 @@ export function planStoreyDelete(inventory: StoreyInventory, storeyId: number, m
     }
   }
   // A move also pins its destination (with its placement chain) and the relationships it re-points.
-  const bindings = refusals.some(refusal => refusal.code === 'invalidTarget') ? [] : planDeletionBindings(inventory, storeyId, mode);
+  let bindings: DeletionBinding[] = [];
+  if (!refusals.some(refusal => refusal.code === 'invalidTarget')) {
+    try { bindings = planDeletionBindings(inventory, storeyId, mode); }
+    catch (error) {
+      refusals.push({ code: 'unreadablePlacement', message: error instanceof Error ? error.message : String(error) });
+    }
+  }
   refusals.push(...deletionBindingRefusals(inventory, bindings));
   const pinned = mode.kind === 'move' ? [storeyId, ...contents, mode.targetStoreyId] : [storeyId, ...contents];
   pinned.push(...bindings.flatMap(binding => [binding.elementId, ...(binding.targetStoreyId === null ? [] : [binding.targetStoreyId])]));

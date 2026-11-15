@@ -179,11 +179,11 @@ ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	8756	Clipping	0	
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	9094	SweptSolid	27	677	0	0	27	0	27	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	11115	Clipping	0	126	0	0	0	-	0	6419464
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	12381	SweptSolid	0	5884	1	0	0	-	0	1437099805
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	32810	SweptSolid	3	3207	0	0	3	0	3	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	32810	SweptSolid	0	3064	0	0	0	-	0	881259691
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	34385	SweptSolid	0	1436	0	0	0	-	0	1486458247
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	36735	SweptSolid	0	2274	0	0	0	-	0	136222143
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57084	SweptSolid	0	54	1	0	0	-	0	7719690
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57776	SweptSolid	0	224	0	0	36	-	0	6569300
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57776	SweptSolid	0	224	0	0	0	-	0	6569300
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57944	Clipping	0	202	0	0	0	-	0	7092437
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	58297	Clipping	0	76	0	0	0	-	0	5854663
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	59111	SweptSolid	0	4008	0	0	0	-	0	277314271
@@ -852,7 +852,7 @@ ara3d/dental_clinic.ifc	2297	SweptSolid	0	44	0	0	0	-	0	32319
 ara3d/dental_clinic.ifc	2298	SweptSolid	0	44	0	0	0	-	0	32317
 ara3d/dental_clinic.ifc	2299	SweptSolid	0	44	0	0	0	-	0	32317
 ara3d/dental_clinic.ifc	2300	SweptSolid	0	64	0	0	0	-	0	67331
-ara3d/dental_clinic.ifc	2301	SweptSolid	6	634	0	0	6	0	6	-
+ara3d/dental_clinic.ifc	2301	SweptSolid	0	636	0	0	0	-	0	109606
 ara3d/dental_clinic.ifc	2302	SweptSolid	0	312	1	0	0	-	0	61018
 ara3d/dental_clinic.ifc	2304	SweptSolid	0	56	0	0	0	-	0	56842
 ara3d/dental_clinic.ifc	2305	SweptSolid	0	56	0	0	0	-	0	56845
@@ -889,7 +889,7 @@ ara3d/duplex.ifc	14394	SurfaceModel	85	292	0	0	86	70	85	-
 ara3d/duplex.ifc	14749	SurfaceModel	89	292	0	0	89	70	89	-
 ara3d/duplex.ifc	15103	SurfaceModel	85	292	0	0	86	70	85	-
 ara3d/duplex.ifc	16261	SweptSolid	0	68	0	0	0	-	0	80792
-ara3d/duplex.ifc	16802	SweptSolid	3	727	0	0	3	0	3	-
+ara3d/duplex.ifc	16802	SweptSolid	0	728	0	0	0	-	0	74334
 ara3d/duplex.ifc	22475	unknown	0	0	0	0	0	-	0	0
 ara3d/duplex.ifc	22492	SweptSolid	0	52	0	0	0	-	0	60747162
 ara3d/duplex.ifc	35199	SweptSolid	0	28	0	0	0	-	0	356003

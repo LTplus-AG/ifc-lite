@@ -18,7 +18,7 @@
  * in front of it), on every request.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useIfcLoader } from './useIfcLoader.js';
 import { useWebGpuOpenGuard } from './useWebGpuOpenGuard';
 import { showLoadError } from '@/lib/analytics';
@@ -34,8 +34,8 @@ export function processedModelFromQuery(search: string): (ProcessedModelRef & { 
   if (raw === null) return null;
   const sha256 = normalizeProcessedModelHash(raw);
   if (sha256 === null) return 'malformed';
-  const bytes = Number(params.get('bytes'));
-  return { sha256, bytes: Number.isSafeInteger(bytes) && bytes > 0 ? bytes : 0, name: params.get('name') || 'model.ifc' };
+  // `loadFile` turns a missing or bad size into 0, unknown.
+  return { sha256, bytes: Number(params.get('bytes')), name: params.get('name') || 'model.ifc' };
 }
 
 export function useProcessedModelAutoload(): void {
@@ -44,13 +44,11 @@ export function useProcessedModelAutoload(): void {
   const { t } = useTranslation();
   const doneRef = useRef(false);
   // Navigation may change the query while the adapter probe is pending. Keep what this mount asked for.
-  const requestRef = useRef<ReturnType<typeof processedModelFromQuery> | undefined>(undefined);
-  if (requestRef.current === undefined) requestRef.current = processedModelFromQuery(window.location.search); // parse once, not per render
+  const [request] = useState(() => processedModelFromQuery(window.location.search));
 
   useEffect(() => {
     // Wait for the async adapter probe, as `?model=` does, so the guard gets a definitive answer.
     if (webgpu.checking || doneRef.current) return;
-    const request = requestRef.current;
     if (!request) return;
     doneRef.current = true;
     if (request === 'malformed') {
@@ -67,5 +65,5 @@ export function useProcessedModelAutoload(): void {
       void loadFile(new File([], name), { kind: 'primary' }, { processedModel: { sha256, bytes } });
     };
     attempt();
-  }, [guardWebGpu, loadFile, t, webgpu.checking]);
+  }, [guardWebGpu, loadFile, request, t, webgpu.checking]);
 }

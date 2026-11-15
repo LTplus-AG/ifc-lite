@@ -232,3 +232,32 @@ process.exitCode = await runTests(process.cwd(), process.argv.slice(2));
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// #10279: typecheck creates this gitignored no-emit program. Explicit build
+// globs must not re-include it and invalidate every production dependency.
+test('generated test programs do not invalidate production builds, while real inputs still do (#10279)', () => {
+  const root = fixture();
+  try {
+    write(join(root, '.gitignore'), readFileSync(join(root, '.gitignore'), 'utf8') + 'tsconfig.tests.json\n');
+    const pkg = join(root, 'packages/embed-protocol');
+    const build = () => JSON.parse(command(root, process.execPath,
+      [turbo, 'build', '--filter=@ifc-lite/embed-protocol', '--dry-run=json']))
+      .tasks.find(task => task.task === 'build');
+    const initial = build().hash;
+    const generated = join(pkg, 'tsconfig.tests.json');
+    json(generated, { files: ['test/invariant.test.mjs'], compilerOptions: { noEmit: true } });
+    assert.equal(build().hash, initial, 'generating the test-only program does not rebuild production');
+    json(generated, { files: ['test/another.test.mjs'], compilerOptions: { noEmit: true } });
+    assert.equal(build().hash, initial, 'regenerating it with a different test inventory also preserves the build key');
+    rmSync(generated);
+    assert.equal(build().hash, initial, 'removing a generated program does not rebuild production');
+    for (const input of ['src/input.txt', 'tsconfig.json', 'tsconfig.build.json', 'test/invariant.test.mjs']) {
+      const full = join(pkg, input);
+      let previous;
+      try { previous = readFileSync(full); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      write(full, previous === undefined ? '{}' : previous + '\n');
+      assert.notEqual(build().hash, initial, input + ' still invalidates the production build');
+      if (previous === undefined) rmSync(full); else write(full, previous);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -24,7 +24,7 @@ import { isolateModelsPatch, modelFieldPatch, modelsVisibilityPatch } from './mo
 import { upsertModelPatch } from './modelSlice.upsert.js';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { endChartVisibilityPresentation } from '@/lib/charts/visibility-ownership';
-import { hasStructuralData } from '@/lib/visibility/structural-view';
+import { resetStructuralModeWithoutData } from '@/lib/visibility/structural-view';
 import { toPublishedGlobalIdFromState } from '../federation-overlay-publication.js';
 
 export interface ModelSlice {
@@ -382,12 +382,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // through `withVisibilityOwnershipInvalidation`.
     const state = get();
     set(viewerTeardown(modelRemovedScope(state, modelId), state));
-    releaseRemovedModelSession(modelId);
-    // The analytical/physical command is disabled once no structural data is left
-    // (`hasStructuralData`), so a latched mode could never be switched off and
-    // would mask the next physical-only model. `clearAllModels` resets it too (#9957).
-    const after = get();
-    if ((after.structuralViewMode ?? 'both') !== 'both' && !hasStructuralData(after)) after.setStructuralViewMode('both');
+    releaseRemovedModelSession(modelId); resetStructuralModeWithoutData(get()); // #9957
   },
 
   clearAllModels: () => {

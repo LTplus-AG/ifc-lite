@@ -31,6 +31,8 @@ import {
   craftRhino3dm,
   craftRhinoLayerTree,
   craftRhinoMergedParts,
+  craftRhinoNestedOffLayers,
+  craftRhinoOffClassLayer,
   craftRhinoPartlyHidden,
   craftRhinoSpatialLayers,
   craftRhinoStampCollision,
@@ -38,6 +40,7 @@ import {
   rhinoPayloadOf as payloadOf,
 } from '@/test/rhino-3dm-fixture.js';
 import { rhinoViewerModel } from './rhinoViewerModel.js';
+import { containerVisibilityTargets } from '@/lib/container-visibility';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
 const samples = new URL('../../../../../tests/models/rhino/mcneel-rhino3dm/', import.meta.url);
@@ -239,6 +242,37 @@ describe('rhinoViewerModel, the layer tree of a Rhino-authored file', () => {
     // Nothing else is hidden, so a file Rhino shows in full opens in full.
     const visible = await payloadOf(await craftRhino3dm());
     assert.deepEqual(visible.hiddenExpressIds, []);
+  });
+});
+
+describe('rhinoViewerModel, a layer row hides and shows its sub-layers as Rhino does (#10214)', () => {
+  /** What a row's eye hides or shows, by name, for the row named `rowName`. */
+  async function eye(bytes: Uint8Array, rowName: string, action: 'show' | 'hide'): Promise<string[]> {
+    const { dataStore, containerVisibility } = await payloadOf(bytes, 'layers.3dm');
+    assert.ok(containerVisibility, 'a .3dm states how its layer rows act');
+    const row = [...containerVisibility.rows.keys()].find((id) => dataStore.entities.getName(id) === rowName);
+    assert.ok(row !== undefined, `a row named ${rowName}`);
+    return containerVisibilityTargets(containerVisibility, row, action).map((id) => dataStore.entities.getName(id) ?? String(id)).sort();
+  }
+
+  it('shows each sub-layer that is on, with its objects, when the parent layer is shown', async () => {
+    // Bracing is off itself and the spare beam is hidden on its own: Rhino keeps both hidden.
+    assert.deepEqual(await eye(await craftRhinoNestedOffLayers(), 'Frame', 'show'),
+      ['Beam', 'Bolt', 'Bolts', 'Column', 'Columns', 'Frame']);
+  });
+
+  it('hides the whole subtree when the parent layer is hidden', async () => {
+    assert.deepEqual(await eye(await craftRhinoNestedOffLayers(), 'Frame', 'hide'),
+      ['Beam', 'Bolt', 'Bolts', 'Brace', 'Bracing', 'Column', 'Columns', 'Frame', 'Spare beam']);
+  });
+
+  it('shows a sub-layer that is off when its own row is shown', async () => {
+    assert.deepEqual(await eye(await craftRhinoNestedOffLayers(), 'Bracing', 'show'), ['Brace', 'Bracing']);
+  });
+
+  it('keeps an object hidden when a layer between it and its row is off, though that layer has no row', async () => {
+    assert.deepEqual(await eye(await craftRhinoOffClassLayer(), CRAFTED_STOREY.name, 'show'), [CRAFTED_STOREY.name, 'Slab']);
+    assert.deepEqual(await eye(await craftRhinoOffClassLayer(), CRAFTED_STOREY.name, 'hide'), [CRAFTED_STOREY.name, 'Slab', 'Wall']);
   });
 });
 

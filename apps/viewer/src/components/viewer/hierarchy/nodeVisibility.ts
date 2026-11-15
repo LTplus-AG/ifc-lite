@@ -6,6 +6,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { EntityRef, FederatedModel, ViewerState } from '@/store';
 import { collectIfcBuildingStoreyElementsWithIfcSpace, collectSpatialSubtreeElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import { ownedAggregationRelationships } from '@/utils/entity-ownership';
+import { containerVisibilityTargets } from '@/lib/container-visibility';
 import { resolveTreeGlobalId } from './productTree';
 import { effectiveRowType, overlayViewFor, type TreeOverlay } from './treeOverlay';
 import type { TreeNode } from './types';
@@ -19,12 +20,39 @@ export function hierarchyNodeVisibility(
   node: TreeNode,
   elements: readonly number[],
   hidden: ReadonlySet<number>,
+  models?: Map<string, FederatedModel>,
 ): { nodeHidden: boolean; visibilityAction: HierarchyVisibilityAction } {
   const targets = node.assemblyChildGlobalIds?.length ? node.assemblyChildGlobalIds : elements;
+  // A row with a container plan offers Show while something that comes back with it is hidden.
+  const decidedBy = (models && planRowTargets(node, models, 'show')) ?? elements;
   return {
     nodeHidden: targets.length > 0 && targets.every((id) => hidden.has(id)),
-    visibilityAction: elements.some((id) => hidden.has(id)) ? 'show' : 'hide',
+    visibilityAction: decidedBy.some((id) => hidden.has(id)) ? 'show' : 'hide',
   };
+}
+
+/** A row's subtree as global ids, when its model states how its containers
+ *  hide and show (a Rhino layer, #10214); null for any other row. */
+function planRowTargets(node: TreeNode, models: Map<string, FederatedModel>, action: HierarchyVisibilityAction): number[] | null {
+  const modelId = node.modelIds[0];
+  const plan = node.expressIds.length === 1 ? models.get(modelId)?.containerVisibility : undefined;
+  const local = plan ? containerVisibilityTargets(plan, node.expressIds[0], action) : [];
+  return local.length > 0 ? local.map((id) => resolveTreeGlobalId(modelId, id, models)) : null;
+}
+
+/** The global ids a row's eye acts on. A row of a model that states how its
+ *  containers hide and show (a Rhino layer, #10214) acts on its subtree: all of
+ *  it on hide, what comes back with it on show. Any other row acts on
+ *  `elements`, what it holds directly. */
+export function hierarchyToggleTargets(
+  node: TreeNode,
+  elements: readonly number[],
+  action: HierarchyVisibilityAction,
+  models: Map<string, FederatedModel>,
+): readonly number[] {
+  const targets = planRowTargets(node, models, action);
+  if (!targets) return elements;
+  return action === 'hide' ? [...new Set([...elements, ...targets])] : targets;
 }
 
 /** Storey rows: a single storey, a unified storey across models, and one
@@ -83,13 +111,14 @@ export function hierarchyNodeAppearance(
   hidden: ReadonlySet<number>,
   isolation: ReadonlySet<number> | null,
   spatialSubtree: (node: TreeNode) => readonly number[],
+  models?: Map<string, FederatedModel>,
 ): { nodeHidden: boolean; visibilityAction: HierarchyVisibilityAction; outsideIsolation: boolean } {
   let outsideIsolation = isolation !== null && elements.every((id) => !isolation.has(id));
   if (outsideIsolation && isolation) {
     const subtree = spatialSubtree(node);
     outsideIsolation = elements.length + subtree.length > 0 && subtree.every((id) => !isolation.has(id));
   }
-  return { ...hierarchyNodeVisibility(node, elements, hidden), outsideIsolation };
+  return { ...hierarchyNodeVisibility(node, elements, hidden, models), outsideIsolation };
 }
 
 /** A subgroup is a container, never a product whose id shares its prefix. */

@@ -209,6 +209,52 @@ export function craftRhinoStampCollision(): Promise<Uint8Array> {
 }
 
 /**
+ * Layers under a layer that is off (#10214): a sub-layer that is on, with one
+ * of its own that is on; a sub-layer that is off itself; and on the off
+ * parent, one object and one object hidden on its own.
+ */
+export function craftRhinoNestedOffLayers(): Promise<Uint8Array> {
+  return craftLayeredRhino3dm(
+    [
+      { name: 'Frame', visible: false },
+      { name: 'Columns', parent: 'Frame' },
+      { name: 'Bolts', parent: 'Columns' },
+      { name: 'Bracing', parent: 'Frame', visible: false },
+      { name: 'Site' },
+    ],
+    [
+      { layer: 'Frame', name: 'Beam' },
+      { layer: 'Frame', name: 'Spare beam', hidden: true },
+      { layer: 'Columns', name: 'Column' },
+      { layer: 'Bolts', name: 'Bolt' },
+      { layer: 'Bracing', name: 'Brace' },
+      { layer: 'Site', name: 'Terrain' },
+    ],
+  );
+}
+
+/**
+ * A stamped storey whose class sublayer, which has no row of its own, is off:
+ * the storey row holds the sublayer's wall and its own slab (#10214).
+ */
+export function craftRhinoOffClassLayer(): Promise<Uint8Array> {
+  return craftLayeredRhino3dm(
+    [
+      { name: 'Project', userStrings: [['IFC::GlobalId', CRAFTED_PROJECT_GLOBAL_ID], ['IFC::Class', 'IfcProject']] },
+      {
+        name: CRAFTED_STOREY.name, parent: 'Project',
+        userStrings: [['IFC::GlobalId', CRAFTED_STOREY.globalId], ['IFC::Class', 'IfcBuildingStorey']],
+      },
+      { name: 'IfcWall', parent: CRAFTED_STOREY.name, visible: false },
+    ],
+    [
+      { layer: CRAFTED_STOREY.name, name: 'Slab' },
+      { layer: 'IfcWall', name: 'Wall' },
+    ],
+  );
+}
+
+/**
  * One element whose parts Rhino shows differently: a shown triangle, a hidden
  * triangle and a hidden point cloud that share a GlobalId and a group, so the
  * reader merges them into one visible entity (D8). Plus an object hidden on

@@ -736,14 +736,19 @@ transparency rule [test].
   and one box hidden on its own; a group hidden on its own with one part also
   on an off layer; parts that need different actions plus one that needs
   both; a hidden mesh next to a curve] (#10214).
-- Showing a parent layer row does not show a child layer that starts hidden
-  because the parent was off. A `.3dm` layer row is an `IfcSpatialZone` row,
-  and its eye acts on the zone and what it holds directly, as for IFC; a
-  cascade that matched Rhino would show only child layers whose own
-  `layers[i].visible` is set, and in them only objects whose `hiddenByObject`
-  is not, which needs a per-row channel the shared tree code does not have.
-  For the same reason showing a layer row also shows an object on it that
-  Rhino hides on its own. Deferred (#10214).
+- A layer row's eye acts on its subtree as Rhino does. Hiding it hides every
+  row and object under it. Showing it brings back each child row whose own
+  layer, and every transparent layer between it and the row, is on, and in
+  every row that comes back each object that is not hidden on its own
+  (`hiddenByObject`) and has no off layer between it and its row. A row that
+  is off itself, and an object hidden on its own, stay hidden until their own
+  row shows them. The adapter states this per row and per object in the
+  payload's `containerVisibility`, which the load puts on the model; the tree
+  reads it for a model that has one, and every other model's rows act on what
+  they hold directly, as for IFC. A row offers Show while anything that comes
+  back with it is hidden [crafted test: an off layer with a sub-layer that is
+  on, one that is off and an object hidden on its own; a stamped storey whose
+  class sublayer is off] (#10214).
 - Layers are reordered parent first, keeping file order among siblings. A
   layer whose parent is missing becomes a root; so does a layer in a parent
   cycle, with a warning. An object whose layer index is outside the table
@@ -1193,10 +1198,9 @@ One issue, stacked PRs, each under about 1,500 lines:
    file's provenance (above); an `IfcSpace` of an ifc-lite export comes back as
    a node under its storey, but the elements the IFC contained in that space
    come back on the storey, because the export puts them on the storey's class
-   layer and the space is not a layer; and a container row's eye toggle acts on
-   the objects it holds directly, as every other container row in the viewer
-   does, so turning off a parent layer does not turn off a child layer's
-   objects.
+   layer and the space is not a layer; and a layer row's eye acts on its
+   subtree as Rhino does (#10214), unlike every other container row in the
+   viewer, which acts on the objects it holds directly.
 4. **E2E and acceptance:** the overlay spec, screenshots, and a guide section.
    **Done.** Deviations: the guide is a page of its own,
    [Rhino .3dm](../guide/rhino-3dm.md), rather than a section inside an

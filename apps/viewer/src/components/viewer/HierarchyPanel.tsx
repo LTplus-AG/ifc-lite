@@ -44,7 +44,7 @@ import { ModelsSectionHeader } from './hierarchy/ModelsSectionHeader';
 import { StoreyDisplayControls, StoreyFloorplanButton } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { hierarchyRowSelection } from './hierarchy/rowSelection';
-import { createSpatialSubtreeResolver, hierarchyNodeAppearance, hierarchyNodeVisibility } from './hierarchy/nodeVisibility';
+import { createSpatialSubtreeResolver, hierarchyNodeAppearance, hierarchyNodeVisibility, hierarchyToggleTargets } from './hierarchy/nodeVisibility';
 import { hierarchyRowActions, type HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
@@ -208,16 +208,17 @@ export function HierarchyPanel() {
     const elements = getNodeElements(node);
     if (elements.length === 0) return;
 
-    const { visibilityAction } = hierarchyNodeVisibility(node, elements, hiddenEntities);
+    const { visibilityAction } = hierarchyNodeVisibility(node, elements, hiddenEntities, models);
+    const targets = hierarchyToggleTargets(node, elements, visibilityAction, models);
     if (visibilityAction === 'hide') {
-      hideEntities(elements);
-      if (selectedEntityId !== null && elements.includes(selectedEntityId)) {
+      hideEntities([...targets]);
+      if (selectedEntityId !== null && targets.includes(selectedEntityId)) {
         clearSelection();
       }
     } else {
-      showEntities(elements);
+      showEntities([...targets]);
     }
-  }, [getNodeElements, hiddenEntities, hideEntities, showEntities, selectedEntityId, clearSelection]);
+  }, [getNodeElements, hiddenEntities, hideEntities, showEntities, selectedEntityId, clearSelection, models]);
 
   // Handle model visibility toggle
   const handleModelVisibilityToggle = useCallback((modelId: string, e: React.MouseEvent) => {
@@ -379,7 +380,7 @@ export function HierarchyPanel() {
     const isSelected = rows.length > 0 && rows.every(({ globalId }) =>
       selectedEntityId === globalId || selectedEntityIds.has(globalId));
 
-    const appearance = hierarchyNodeAppearance(node, getNodeElements(node), hiddenEntities, viewportIsolation, spatialSubtreeOf);
+    const appearance = hierarchyNodeAppearance(node, getNodeElements(node), hiddenEntities, viewportIsolation, spatialSubtreeOf, models);
 
     // Model visibility for model-header nodes
     let modelVisible: boolean | undefined;

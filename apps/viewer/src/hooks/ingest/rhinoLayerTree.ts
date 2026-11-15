@@ -33,6 +33,7 @@
 
 import { isSpatialStructureTypeName } from '@ifc-lite/data';
 import type { RhinoImport } from '@ifc-lite/rhino3dm';
+import type { ContainerVisibilityPlan } from '@/lib/container-visibility';
 
 /** One spatial container: a Rhino layer, or the root that stands for the file. */
 export interface RhinoContainer {
@@ -55,6 +56,8 @@ export interface RhinoContainer {
   elevation: number | null;
   /** The containing container's express id; null for the root. */
   parent: number | null;
+  /** The layer this row stands for, by index; null for a root that stands for the file. */
+  layer: number | null;
   /** The layer is off in Rhino, itself or through an ancestor. */
   hidden: boolean;
 }
@@ -174,7 +177,7 @@ export function planRhinoTree(
       containers.push({
         expressId, fromEntity: true,
         ifcClass: result.entities[entity].ifcClass, globalId: spatial.globalId,
-        name: result.entities[entity].name, elevation: spatial.elevation, parent,
+        name: result.entities[entity].name, elevation: spatial.elevation, parent, layer: index,
         // The entity carries its own hidden flag, which the reader already
         // folded its layer path into.
         hidden: false,
@@ -184,7 +187,7 @@ export function planRhinoTree(
     containers.push({
       expressId: nextExpressId, fromEntity: false, ifcClass: spatial.ifcClass,
       globalId: entity === undefined ? spatial.globalId : '',
-      name: layers[index].name, elevation: spatial.elevation, parent, hidden: off[index],
+      name: layers[index].name, elevation: spatial.elevation, parent, layer: index, hidden: off[index],
     });
     return nextExpressId++;
   };
@@ -193,7 +196,7 @@ export function planRhinoTree(
   const addFileRoot = (): number => {
     containers.push({
       expressId: nextExpressId, fromEntity: false, ifcClass: 'IfcProject',
-      globalId: '', name: fileName, elevation: null, parent: null, hidden: false,
+      globalId: '', name: fileName, elevation: null, parent: null, layer: null, hidden: false,
     });
     return nextExpressId++;
   };
@@ -202,7 +205,7 @@ export function planRhinoTree(
   const addLayerZone = (index: number, parent: number): number => {
     containers.push({
       expressId: nextExpressId, fromEntity: false, ifcClass: LAYER_CLASS,
-      globalId: '', name: layers[index].name, elevation: null, parent, hidden: off[index],
+      globalId: '', name: layers[index].name, elevation: null, parent, layer: index, hidden: off[index],
     });
     return nextExpressId++;
   };
@@ -243,4 +246,44 @@ export function planRhinoTree(
     // no layer at all puts them on the root.
     containerEntities.has(index) ? null : containerOfLayer[entity.layer] ?? root);
   return { containers, containerOfEntity, root, firstFreeExpressId: nextExpressId };
+}
+
+/**
+ * How the tree's layer rows hide and show their subtree, as Rhino does
+ * (#10214): turning a layer off hides everything under it, and turning it on
+ * brings back each sub-layer and object whose own state shows it. A sub-layer
+ * comes back when its own layer, and every layer between it and its parent row
+ * (a transparent layer has no row), is on. An object comes back when it is
+ * not hidden on its own and every layer between it and its row is on.
+ */
+export function planRhinoContainerVisibility(
+  result: RhinoImport,
+  tree: RhinoTreePlan,
+  entityExpressId: (entityIndex: number) => number,
+): ContainerVisibilityPlan {
+  const layers = result.layers;
+  const layerOfRow = new Map(tree.containers.map((container) => [container.expressId, container.layer]));
+  // Whether every layer from `from` up to, not including, `stop` is on. The
+  // reader hands layers parent first, so the walk climbs and ends.
+  const layersOn = (from: number, stop: number | null): boolean => {
+    for (let index: number | null = from; index !== null && index !== stop; index = layers[index]?.parent ?? null) {
+      if (!layers[index]?.visible) return false;
+    }
+    return true;
+  };
+  const hiddenOnItsOwn = new Map<number, boolean>();
+  result.entities.forEach((entity, index) => hiddenOnItsOwn.set(entityExpressId(index), entity.hiddenByObject));
+
+  const rows: ContainerVisibilityPlan['rows'] = new Map(tree.containers.map((container) => [container.expressId, {
+    parent: container.parent,
+    showsWithParent: container.parent === null || container.layer === null
+      || (!hiddenOnItsOwn.get(container.expressId) && layersOn(container.layer, layerOfRow.get(container.parent) ?? null)),
+  }]));
+  const members = new Map<number, { row: number; showsWithRow: boolean }>();
+  tree.containerOfEntity.forEach((row, index) => {
+    if (row === null) return;
+    const entity = result.entities[index];
+    members.set(entityExpressId(index), { row, showsWithRow: !entity.hiddenByObject && layersOn(entity.layer, layerOfRow.get(row) ?? null) });
+  });
+  return { rows, members };
 }

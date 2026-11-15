@@ -60,7 +60,8 @@ export function sourceSpatialContext(store: IfcDataStore, view: MutablePropertyV
     }
     if (added) relationships = resolveEffectiveRelationshipOverlay(store, reader);
     const parents = store.relationships.inverse.getEdges(id, RelationshipType.ContainsElements)
-      .concat(store.relationships.inverse.getEdges(id, RelationshipType.Aggregates)).map(edge => edge.target);
+      .concat(store.relationships.inverse.getEdges(id, RelationshipType.Aggregates),
+        store.relationships.inverse.getEdges(id, RelationshipType.Nests)).map(edge => edge.target);
     for (const rel of relationships.relationships) {
       if (['IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELAGGREGATES', 'IFCRELNESTS'].includes(rel.relationshipType.toUpperCase()) && rel.related.includes(id)) parents.push(...rel.relating);
     }

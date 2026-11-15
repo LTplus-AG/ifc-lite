@@ -63,7 +63,7 @@ export interface CrsTransformer {
   readonly datumShift: CrsDatumShift;
   /**
    * CRS coordinates to WGS84 `[longitude, latitude]` in degrees. `null` when
-   * the input is not finite, lies outside a loaded grid's coverage or the
+   * the input (a given `z` included) is not finite, lies outside a loaded grid's coverage or the
    * extent the WKT declares, or does not map to a valid position.
    *
    * `z` is returned unchanged: there is no vertical transformation, so a
@@ -116,7 +116,7 @@ export interface CrsEngine {
  * once and keeps it.
  */
 export function createCrsEngine(options: CrsEngineOptions = {}): CrsEngine {
-  const state = createEngineState(options.loaders ?? {}, true);
+  const state = createEngineState(options.loaders ?? {});
   return { resolveCrs: (input) => resolveCrsWith(state, input) };
 }
 
@@ -153,10 +153,12 @@ async function resolveCrsWith(state: EngineState, input: CrsInput): Promise<CrsT
     epsg: code === null ? null : Number(code),
     datumShift,
     toWgs84([x, y, z]) {
+      if (z !== undefined && !Number.isFinite(z)) return null;
       const position = coordinatesToLatLon(definition, x, y);
       return position && withZ(position.lon, position.lat, z);
     },
     fromWgs84([lon, lat, z]) {
+      if (z !== undefined && !Number.isFinite(z)) return null;
       const position = latLonToCoordinates(definition, lon, lat);
       return position && withZ(position.x, position.y, z);
     },

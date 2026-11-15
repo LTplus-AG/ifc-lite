@@ -50,18 +50,18 @@ export interface EngineState {
   readonly definitions: Map<string, ResolvedDefinition>;
   readonly grids: GridState;
   /**
-   * The name a grid is registered under in proj4's process-wide grid table.
-   * The default engine uses the grid's own key; any other engine adds a
-   * suffix so the grid bytes its loader returned cannot replace the default
-   * engine's (or another engine's) registration.
+   * The name a grid is registered under in proj4's process-wide grid table:
+   * the grid's key with a suffix unique to this engine, so the grid bytes one
+   * engine's loader returned never replace another engine's registration, nor
+   * the grid a transformer from an earlier default engine still uses.
    */
   gridName(key: string): string;
 }
 
-let privateEngines = 0;
+let engines = 0;
 
-export function createEngineState(loaders: CrsLoaders, isolated: boolean): EngineState {
-  const suffix = isolated ? `~engine${++privateEngines}` : '';
+export function createEngineState(loaders: CrsLoaders): EngineState {
+  const suffix = `~engine${++engines}`;
   return {
     loaders: { epsgDefinition: loaders.epsgDefinition ?? null, gridFile: loaders.gridFile ?? null },
     definitions: new Map(),
@@ -70,7 +70,7 @@ export function createEngineState(loaders: CrsLoaders, isolated: boolean): Engin
   };
 }
 
-let defaultState = createEngineState({}, false);
+let defaultState = createEngineState({});
 
 /** The default engine's state. Read it per call: `configureCrsLoaders` replaces it. */
 export function defaultEngineState(): EngineState {
@@ -80,6 +80,6 @@ export function defaultEngineState(): EngineState {
 /** Replace the default engine with a fresh one using `loaders`; returns the previous loaders. */
 export function replaceDefaultEngineState(loaders: CrsLoaders): CrsLoaders {
   const previous = { ...defaultState.loaders };
-  defaultState = createEngineState(loaders, false);
+  defaultState = createEngineState(loaders);
   return previous;
 }

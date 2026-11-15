@@ -211,7 +211,9 @@ describe('precision grids validate source datums before registration (#7052)', (
     const previousDiagnostics = configureCrsDiagnostics((message) => { warnings.push(message); });
     try {
       const valid = PRECISION_GRIDS['28992'];
-      assert.equal(await resolvePrecisionDef('28992'), valid.proj4);
+      // The grid is registered under a name of this engine's own.
+      const resolved = await resolvePrecisionDef('28992');
+      assert.equal(resolved?.replace(/(\+nadgrids=\S+?)~engine\d+/, '$1'), valid.proj4);
       assert.equal(hasLoadedPrecisionGrid('28992'), true);
       assert.equal(requests, 1);
       // ETRS89 is already the grid's target frame. A legacy-datum shift

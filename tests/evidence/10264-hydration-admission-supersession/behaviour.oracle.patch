@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/hooks/useIfcLoader.ts
++++ b/apps/viewer/src/hooks/useIfcLoader.ts
+@@ -282,7 +282,7 @@
+       if (target.kind === 'primary' && initialized && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
+       metadataAbort.abort();
+       abortGeometry?.();
+-    }, () => cancelOwnedStream, activity, () => initialized, false); // #5849: federated cancellation preserves loaded models
++    }, () => cancelOwnedStream, activity, () => initialized, target.kind === 'primary'); // #5849: federated cancellation preserves loaded models
+     // Every end of this load, completed or failed: the last live load ends the shared UI (L2).
+     const settleLoadUi = (progress: Parameters<typeof settleOwnedLoadUi>[1] = null) => settleOwnedLoadUi(releaseCanceller, progress, modelId);
+ 

@@ -1,0 +1,14 @@
+diff --git a/rust/cache/src/stream.rs b/rust/cache/src/stream.rs
+--- a/rust/cache/src/stream.rs
++++ b/rust/cache/src/stream.rs
+@@ -105,7 +105,9 @@ impl Staging {
+ impl Drop for Staging {
+     fn drop(&mut self) {
+         let mut doomed = vec![&self.spool];
+-        let _ = self.committed;
++        if !self.committed {
++            doomed.push(&self.temp);
++        }
+         for path in doomed {
+             match fs::remove_file(path) {
+                 Ok(()) => {}

@@ -66,7 +66,7 @@ for (const together of [false, true]) {
       // cannot resize that copy, so preserve its fixed shape and report it.
       expect(results[0].unattachedTops).toEqual([{ copyId: copy, reason: expect.stringMatching(/body cannot be read/) }]);
     } else expect(results[0].unattachedTops ?? []).toEqual([]);
-    const text = new TextDecoder().decode(new StepExporter(s.store, s.view).export({ applyMutations: true }).content);
+    const text = new TextDecoder().decode(new StepExporter(s.store, s.view).export({ schema: 'IFC4', applyMutations: true }).content);
     s = session(await parse(text));
     const attachment = readTopAttachment(readStoreyInventory(s.store, s.view), copy);
     if (reopen) expect(attachment).toBeNull();

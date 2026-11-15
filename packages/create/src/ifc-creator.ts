@@ -668,7 +668,7 @@ export class IfcCreator {
     const predType = params.PredefinedType ?? 'NOTDEFINED';
 
     this.line(doorId, 'IFCDOOR',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${doorPlacementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)},.${predType}.,.${opType}.,$`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${doorPlacementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)}${this.ifc4Only(`.${predType}.,.${opType}.,$`)}`);
 
     this.addIfcRelFillsElement(openingId, doorId);
     this.elementSolids.set(doorId, [solidId]);
@@ -709,7 +709,7 @@ export class IfcCreator {
     const partType = params.PartitioningType ?? 'SINGLE_PANEL';
 
     this.line(windowId, 'IFCWINDOW',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${windowPlacementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)},.NOTDEFINED.,.${partType}.,$`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${windowPlacementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)}${this.ifc4Only(`.NOTDEFINED.,.${partType}.,$`)}`);
 
     this.addIfcRelFillsElement(openingId, windowId);
     this.elementSolids.set(windowId, [solidId]);
@@ -744,7 +744,7 @@ export class IfcCreator {
     const predType = params.PredefinedType ?? 'NOTDEFINED';
 
     this.line(doorId, 'IFCDOOR',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)},.${predType}.,.${opType}.,$`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)}${this.ifc4Only(`.${predType}.,.${opType}.,$`)}`);
 
     this.elementSolids.set(doorId, [solidId]);
     this.trackElement(storeyId, doorId);
@@ -777,7 +777,7 @@ export class IfcCreator {
     const partType = params.PartitioningType ?? 'SINGLE_PANEL';
 
     this.line(windowId, 'IFCWINDOW',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)},.NOTDEFINED.,.${partType}.,$`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)}${this.ifc4Only(`.NOTDEFINED.,.${partType}.,$`)}`);
 
     this.elementSolids.set(windowId, [solidId]);
     this.trackElement(storeyId, windowId);
@@ -933,7 +933,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(plateId, 'IFCPLATE',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(plateId, [solidId]);
     this.trackElement(storeyId, plateId);
@@ -972,7 +972,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(memberId, 'IFCMEMBER',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(memberId, [solidId]);
     this.trackElement(storeyId, memberId);
@@ -1045,7 +1045,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(pileId, 'IFCPILE',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.DRIVEN.,$`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${this.schema === 'IFC2X3' ? '.NOTDEFINED.' : '.DRIVEN.'},$`); // DRIVEN is IFC4+
 
     this.elementSolids.set(pileId, [solidId]);
     this.trackElement(storeyId, pileId);
@@ -1123,7 +1123,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(cwId, 'IFCCURTAINWALL',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(cwId, [solidId]);
     this.trackElement(storeyId, cwId);
@@ -1194,7 +1194,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(proxyId, 'IFCBUILDINGELEMENTPROXY',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objTypeStr},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objTypeStr},#${placementId},#${prodShapeId},${tag},${this.schema === 'IFC2X3' ? '$' : '.NOTDEFINED.'}`); // IFC2X3 slot is CompositionType (no NOTDEFINED)
 
     this.elementSolids.set(proxyId, [solidId]);
     this.trackElement(storeyId, proxyId);
@@ -1338,7 +1338,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(memberId, 'IFCMEMBER',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(memberId, [solidId]);
     this.trackElement(storeyId, memberId);
@@ -1395,7 +1395,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(memberId, 'IFCMEMBER',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(memberId, [solidId]);
     this.trackElement(storeyId, memberId);
@@ -1452,7 +1452,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(memberId, 'IFCMEMBER',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(memberId, [solidId]);
     this.trackElement(storeyId, memberId);
@@ -2093,11 +2093,15 @@ export class IfcCreator {
       `'${siteGlobalId}',#${this.ownerHistoryId},'Site',$,$,#${this.worldPlacementId},$,$,.ELEMENT.,$,$,$,$,$`);
     this.entities.push({ expressId: this.siteId, type: 'IfcSite', Name: 'Site' });
 
-    // IfcBuilding
+    // IfcBuilding. IFC2X3 restricts IfcObjectPlacement.PlacesObject to exactly one
+    // product, so there the building gets its own placement relative to the site's.
+    const buildingPlacementId = this.schema === 'IFC2X3'
+      ? this.emitEntity('IFCLOCALPLACEMENT', `#${this.worldPlacementId},#${worldAxisId}`)
+      : this.worldPlacementId;
     this.buildingId = this.id();
     const buildingGlobalId = this.newGlobalId();
     this.line(this.buildingId, 'IFCBUILDING',
-      `'${buildingGlobalId}',#${this.ownerHistoryId},'Building',$,$,#${this.worldPlacementId},$,$,.ELEMENT.,$,$,$`);
+      `'${buildingGlobalId}',#${this.ownerHistoryId},'Building',$,$,#${buildingPlacementId},$,$,.ELEMENT.,$,$,$`);
     this.entities.push({ expressId: this.buildingId, type: 'IfcBuilding', Name: 'Building' });
   }
 
@@ -2147,6 +2151,7 @@ export class IfcCreator {
   private finalizeStyles(): void {
     emitStyledItems(this.elementSolids, this.elementColors, this.defaultStyleId, {
       emit: this.emitEntity,
+      wrapStyles: this.schema === 'IFC2X3',
     });
   }
 

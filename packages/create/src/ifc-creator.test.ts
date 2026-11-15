@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { generateIfcGuid, isValidIfcGuid, ifcGuidToUuid, uuidToIfcGuid } from '@ifc-lite/encoding';
-import { IfcParser, extractScheduleOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractScheduleOnDemand, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { IfcCreator } from './ifc-creator.js';
 
 describe('IfcCreator', () => {
@@ -401,6 +401,83 @@ describe('IfcCreator', () => {
     expect(find('IFCCOLUMN')).toMatch(/,\$\);$/);
     expect(find('IFCBEAM')).toMatch(/,\$\);$/);
     expect(find('IFCRELSEQUENCE')).toMatch(/,\.FINISH_START\.\);$/);
+  });
+
+  it('writes IFC2X3 attribute layouts and enums for door/window/plate/member/curtain wall/proxy/pile (#9359)', () => {
+    const creator = new IfcCreator({ Schema: 'IFC2X3' });
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    const wall = creator.addIfcWall(storey, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: 0.2, Height: 3 });
+    creator.addIfcWallDoor(wall, { Position: [1, 0, 0], Width: 0.9, Height: 2.1 });
+    creator.addIfcWallWindow(wall, { Position: [4, 0, 1], Width: 1.2, Height: 1.2 });
+    creator.addIfcDoor(storey, { Position: [1, 2, 0], Width: 0.9, Height: 2.1 });
+    creator.addIfcWindow(storey, { Position: [1, 2, 0], Width: 1.2, Height: 1.5 });
+    creator.addIfcPlate(storey, { Position: [1, 2, 0], Width: 1, Depth: 1, Thickness: 0.01 });
+    creator.addIfcMember(storey, { Start: [0, 0, 0], End: [2, 0, 0], Width: 0.1, Height: 0.1 });
+    creator.addIfcLShapeMember(storey, { Start: [0, 0, 0], End: [2, 0, 0], Depth: 0.1, Width: 0.1, Thickness: 0.01 });
+    creator.addIfcTShapeMember(storey, { Start: [0, 0, 0], End: [2, 0, 0], FlangeWidth: 0.1, Depth: 0.1, WebThickness: 0.01, FlangeThickness: 0.01 });
+    creator.addIfcUShapeMember(storey, { Start: [0, 0, 0], End: [2, 0, 0], Depth: 0.1, FlangeWidth: 0.05, WebThickness: 0.01, FlangeThickness: 0.01 });
+    creator.addIfcCurtainWall(storey, { Start: [0, 3, 0], End: [3, 3, 0], Height: 3 });
+    creator.addIfcBuildingElementProxy(storey, { Position: [5, 5, 0], Width: 1, Depth: 1, Height: 1 });
+    creator.addIfcPile(storey, { Position: [6, 6, 0], Length: 5, Diameter: 0.4 });
+
+    const registry = getSchemaRegistryForVersion('IFC2X3');
+    const attrs = (line: string) => {
+      const body = line.slice(line.indexOf('(') + 1, line.lastIndexOf(')'));
+      const out: string[] = [];
+      let depth = 0, inStr = false, cur = '';
+      for (const ch of body) {
+        if (ch === "'") inStr = !inStr;
+        if (!inStr && ch === '(') depth++;
+        if (!inStr && ch === ')') depth--;
+        if (!inStr && depth === 0 && ch === ',') { out.push(cur); cur = ''; } else cur += ch;
+      }
+      out.push(cur);
+      return out;
+    };
+    const entities: Record<string, string> = {
+      IFCDOOR: 'IfcDoor', IFCWINDOW: 'IfcWindow', IFCPLATE: 'IfcPlate', IFCMEMBER: 'IfcMember',
+      IFCCURTAINWALL: 'IfcCurtainWall', IFCBUILDINGELEMENTPROXY: 'IfcBuildingElementProxy', IFCPILE: 'IfcPile',
+    };
+    const lines = creator.toIfc().content.split('\n');
+    const seen = new Map<string, number>();
+    for (const line of lines) {
+      const tag = /^#\d+=([A-Z0-9]+)\(/.exec(line)?.[1];
+      const entity = tag ? entities[tag] : undefined;
+      if (!entity) continue;
+      seen.set(tag!, (seen.get(tag!) ?? 0) + 1);
+      const schemaAttrs = registry.entities[entity].allAttributes;
+      const values = attrs(line);
+      expect(values.length, line).toBe(schemaAttrs.length);
+      schemaAttrs.forEach((attr, i) => {
+        const enumValues = registry.enums[attr.type];
+        const token = /^\.([A-Z_]+)\.$/.exec(values[i])?.[1];
+        if (enumValues && token) expect(enumValues, `${entity}.${attr.name} in ${line}`).toContain(token);
+      });
+    }
+    expect(Object.fromEntries(seen)).toEqual({
+      IFCDOOR: 2, IFCWINDOW: 2, IFCPLATE: 1, IFCMEMBER: 4, IFCCURTAINWALL: 1, IFCBUILDINGELEMENTPROXY: 1, IFCPILE: 1,
+    });
+
+    // IfcStyledItem.Styles takes IfcPresentationStyleAssignment, and a placement places exactly one product.
+    const byId = new Map(lines.map(l => [/^#(\d+)=/.exec(l)?.[1], l] as const));
+    const styled = lines.filter(l => l.includes('=IFCSTYLEDITEM('));
+    expect(styled.length).toBeGreaterThan(0);
+    for (const line of styled) {
+      const ref = /,\(#(\d+)\),/.exec(line)![1];
+      expect(byId.get(ref)).toMatch(/=IFCPRESENTATIONSTYLEASSIGNMENT\(\(#\d+\)\);$/);
+    }
+    const placementOf = (tag: string) => attrs(lines.find(l => l.includes(`=${tag}(`))!)[5];
+    expect(placementOf('IFCBUILDING')).not.toBe(placementOf('IFCSITE'));
+  });
+
+  it('keeps IFC4 styled items and the shared site/building placement unchanged', () => {
+    const creator = new IfcCreator();
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    creator.addIfcWall(storey, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
+    const content = creator.toIfc().content;
+    expect(content).not.toContain('IFCPRESENTATIONSTYLEASSIGNMENT');
+    const placement = (tag: string) => new RegExp(`=${tag}\\('[^']*',#\\d+,'[^']*',\\$,\\$,(#\\d+),`).exec(content)?.[1];
+    expect(placement('IFCBUILDING')).toBe(placement('IFCSITE'));
   });
 
   it('attaches a simple material via IfcRelAssociatesMaterial', () => {

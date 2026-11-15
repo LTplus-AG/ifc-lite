@@ -27,3 +27,20 @@ it('#8452 placement closure bounds cycles and retains foreign owners and unresol
   expect(() => index.apply(1, 2, [[1, null], [2, product(99, 20, null)]])).toThrow(/mismatch/);
   expect([...index.candidates([], [10])].sort()).toEqual([1,2,3,4]);
 });
+
+it('#8452 floor-height inventory skips equal-delta attachment groups without rereading product payloads', () => {
+  const index = new StoreyPlannerIndex();
+  let reads = 0;
+  const rows = Array.from({ length: 10000 }, (_, i) => {
+    const home = i % 10;
+    const p: PlannerProduct = { id: i + 1, storey: home, placement: i + 20000, parentPlacement: null,
+      get attachmentTargets() { reads++; return [home + 1]; }, exceptional: false };
+    return [p.id, p] as const;
+  });
+  index.apply(0, 1, rows); reads = 0;
+  const deltas = new Map(Array.from({ length: 9 }, (_, i) => [i + 1, .25] as const));
+  const expected = rows.filter(([, p]) => (deltas.get(p.storey + 1) ?? 0) !== (deltas.get(p.storey) ?? 0)).map(([id]) => id);
+  expect([...index.heightCandidates(deltas)].sort((a,b) => a-b)).toEqual(expected);
+  expect(expected).toHaveLength(2000); // Home 0 grows; home 9 targets the unshifted floor 10.
+  expect(reads).toBe(0);
+});

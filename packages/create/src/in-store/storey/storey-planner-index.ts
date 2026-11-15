@@ -15,7 +15,7 @@ export class StoreyPlannerIndex {
   private readonly products = new Map<number, PlannerProduct>();
   private readonly contents: Buckets = new Map();
   private readonly exceptions: Buckets = new Map();
-  private readonly targets: Buckets = new Map();
+  private readonly attachmentPairs = new Map<number, Buckets>();
   private readonly placements: Buckets = new Map();
   private readonly parents: Buckets = new Map();
   private readonly unresolved = new Set<number>();
@@ -27,7 +27,14 @@ export class StoreyPlannerIndex {
   private index(p: PlannerProduct, add: boolean): void {
     this.update(this.contents, p.storey, p.id, add);
     if (p.exceptional) this.update(this.exceptions, p.storey, p.id, add);
-    for (const target of p.attachmentTargets) this.update(this.targets, target, p.id, add);
+    for (const target of p.attachmentTargets) {
+      let owners = this.attachmentPairs.get(target);
+      if (!owners && add) this.attachmentPairs.set(target, owners = new Map());
+      if (owners) {
+        this.update(owners, p.storey, p.id, add);
+        if (!owners.size) this.attachmentPairs.delete(target);
+      }
+    }
     if (p.placement === null) { if (add) this.unresolved.add(p.id); else this.unresolved.delete(p.id); }
     else this.update(this.placements, p.placement, p.id, add);
     if (p.parentPlacement !== null) this.update(this.parents, p.parentPlacement, p.id, add);
@@ -54,11 +61,23 @@ export class StoreyPlannerIndex {
     const seen = new Set<number>();
     for (const storey of storeys) for (const id of this.contents.get(storey) ?? []) if (!seen.has(id)) { seen.add(id); yield id; }
   }
+  /** Equal owner/target deltas leave attachment heights unchanged. Inspect
+   * storey-pair groups, never every product in the unchanged groups. */
+  heightCandidates(deltas: ReadonlyMap<number, number>): Set<number> {
+    const ids = new Set(this.unresolved);
+    for (const [target, owners] of this.attachmentPairs) for (const [owner, products] of owners) {
+      if ((deltas.get(target) ?? 0) !== (deltas.get(owner) ?? 0)) for (const id of products) ids.add(id);
+    }
+    return ids;
+  }
   /** Only exceptional placement owners, affected targets and placement
    * descendants need detailed planning. Missing placements remain refusals. */
+  /** This convenience query assumes one common shift; callers with different
+   * deltas use heightCandidates with their full delta map. */
   candidates(storeys: Iterable<number>, changedPlacements: Iterable<number>): Set<number> {
-    const ids = new Set(this.unresolved), queue = [...changedPlacements], visited = new Set<number>();
-    for (const storey of storeys) for (const buckets of [this.exceptions, this.targets]) for (const id of buckets.get(storey) ?? []) ids.add(id);
+    const shifted = [...storeys];
+    const ids = this.heightCandidates(new Map(shifted.map(id => [id, 1]))), queue = [...changedPlacements], visited = new Set<number>();
+    for (const storey of shifted) for (const id of this.exceptions.get(storey) ?? []) ids.add(id);
     while (queue.length) {
       const placement = queue.pop()!;
       if (visited.has(placement)) continue;

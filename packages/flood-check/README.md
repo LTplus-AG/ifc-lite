@@ -200,7 +200,9 @@ entities, properties and containment from the parsed store. No meshing.
   `OrthogonalHeight` its absolute height); else the lowest storey with a
   warning. The check **refuses** when it is implausible against the terrain
   (see "Height reference" below).
-- **Footprint**: `footprint` option (for example a cadastral outline), else
+- **Footprint**: `footprint` option (for example a cadastral outline; a point
+  inside any ring is inside, so a courtyard given as its own ring is filled
+  and elements facing it get no reassuring outcome, `courtyard-ring`), else
   the outlines of the ground storey's floor slabs (`FootPrint` curve or the
   extruded `Body` profile; `slab-outline`, or `slab-outline-voids-filled`
   when a slab profile has voids or its `FootPrint` more than one curve,
@@ -265,7 +267,7 @@ open-ended class and watercourses):
 | `above-mapped-class-range` | every sample has `z > Ti + Ui + m + a` (`a`: the height-reference allowance), and no condition below withholds it |
 | `within-class-range` | otherwise: the class ranges cannot decide it |
 | `no-runoff-mapped` | every ground sample is transparent, and no condition below withholds it. **Not "safe"**: the publisher states areas shown unaffected may still be affected |
-| `unclassified` | `map-edge-blend`, `outside-raster`, `outside-coverage`, `layer-not-confirmed`, `no-ground-sample`, `excluded-area`, `no-terrain`, or a withheld `no-runoff-mapped`: `anchor-moved`, `hull-footprint`, `height-reference-unconfirmed`, `level-upper-estimate`, `margin-not-sized` |
+| `unclassified` | `map-edge-blend`, `outside-raster`, `outside-coverage`, `layer-not-confirmed`, `no-ground-sample`, `excluded-area`, `no-terrain`, or a withheld `no-runoff-mapped`: `anchor-moved`, `hull-footprint`, `courtyard-ring`, `height-reference-unconfirmed`, `level-upper-estimate`, `margin-not-sized` |
 
 `above-mapped-class-range` states only that: the element level is above the
 range of every class the map shows next to it, with the margin to spare. It
@@ -290,6 +292,7 @@ and `open-ended-class` are never withheld (they are the conservative side);
 | a ground sample lies in an area the map did not model (glacier) | `within-class-range` | `unclassified` (`excluded-area`) |
 | the element was moved more than `anchorTolerance` (1 m) to reach the outline | `within-class-range` | `unclassified` (`anchor-moved`) |
 | the footprint fills courtyards (`external-wall-hull`, `candidate-hull`, `slab-outline-voids-filled`) | `within-class-range` | `unclassified` (`hull-footprint`) |
+| the element's nearest footprint boundary is a ring lying wholly inside another ring (a courtyard drawn as its own ring, for example in a given footprint): a point inside any ring counts as inside, so the courtyard is filled and its ground is not sampled | `within-class-range` | `unclassified` (`courtyard-ring`) |
 | height reference unconfirmed (see below) | `within-class-range` | `unclassified` (`height-reference-unconfirmed`) |
 | no cell of the raster shows a mapped class and the layer is not confirmed to render (no positive confirmation fetched within 5 minutes of the raster) | (no class to compare) | `unclassified` (`layer-not-confirmed`) |
 | a classified sample has no terrain height | `within-class-range` | (no classified sample) |

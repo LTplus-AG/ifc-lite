@@ -17,8 +17,27 @@ export function insideRing(p: MapPoint, ring: readonly MapPoint[]): boolean {
   return inside;
 }
 
+/**
+ * A point inside ANY ring is inside the footprint: rings may overlap (several
+ * slabs), and even-odd across rings would turn an overlap into "outside" and
+ * accept samples inside the building. So a courtyard drawn as its own ring is
+ * filled; see {@link nestedRings}.
+ */
 export function insideAny(p: MapPoint, rings: readonly (readonly MapPoint[])[]): boolean {
   return rings.some((ring) => insideRing(p, ring));
+}
+
+/**
+ * Indices of rings lying wholly inside another ring (every vertex inside it):
+ * a courtyard drawn as its own ring, which {@link insideAny} fills, so the
+ * ground in front of an element facing it is not sampled.
+ */
+export function nestedRings(rings: readonly (readonly MapPoint[])[]): Set<number> {
+  const out = new Set<number>();
+  rings.forEach((ring, j) => {
+    if (ring.length > 0 && rings.some((other, i) => i !== j && ring.every((p) => insideRing(p, other)))) out.add(j);
+  });
+  return out;
 }
 
 function closestOnSegment(p: MapPoint, a: MapPoint, b: MapPoint): MapPoint {
@@ -29,19 +48,19 @@ function closestOnSegment(p: MapPoint, a: MapPoint, b: MapPoint): MapPoint {
   return { x: a.x + t * dx, y: a.y + t * dy };
 }
 
-/** The closest point on any ring's boundary, and its distance. */
+/** The closest point on any ring's boundary, its distance and the index of that ring. */
 export function closestBoundaryPoint(
   p: MapPoint,
   rings: readonly (readonly MapPoint[])[],
-): { point: MapPoint; distance: number } | null {
-  let best: { point: MapPoint; distance: number } | null = null;
-  for (const ring of rings) {
+): { point: MapPoint; distance: number; ring: number } | null {
+  let best: { point: MapPoint; distance: number; ring: number } | null = null;
+  rings.forEach((ring, r) => {
     for (let i = 0; i < ring.length; i++) {
       const q = closestOnSegment(p, ring[i], ring[(i + 1) % ring.length]);
       const d = Math.hypot(q.x - p.x, q.y - p.y);
-      if (!best || d < best.distance) best = { point: q, distance: d };
+      if (!best || d < best.distance) best = { point: q, distance: d, ring: r };
     }
-  }
+  });
   return best;
 }
 

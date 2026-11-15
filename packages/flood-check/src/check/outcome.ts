@@ -51,6 +51,8 @@ export type UnclassifiedReason =
   | 'anchor-moved'
   /** Every sample is transparent, but the footprint is a hull, so the ground sampled may not be in front of the element. */
   | 'hull-footprint'
+  /** Every sample is transparent, but the nearest footprint boundary is a courtyard ring the footprint fills, so the ground in front of the element was not sampled. */
+  | 'courtyard-ring'
   /** Every sample is transparent, but the model's height reference (and so its georeference) could not be confirmed. */
   | 'height-reference-unconfirmed'
   /** Every sample is transparent, but the element's level is only an upper estimate. */

@@ -37,6 +37,7 @@
  *   a sample is in an area the map excluded     -> within-class-range      -> unclassified (excluded-area)
  *   anchor moved > anchorTolerance              -> within-class-range      -> unclassified (anchor-moved)
  *   footprint fills courtyards (hull, voids)    -> within-class-range      -> unclassified (hull-footprint)
+ *   nearest boundary is a nested (courtyard) ring -> within-class-range    -> unclassified (courtyard-ring)
  *   height reference unconfirmed                -> within-class-range      -> unclassified (height-reference-unconfirmed)
  *   raster shows no class, layer unconfirmed    (no class to compare)      -> unclassified (layer-not-confirmed)
  *   a classified sample has no terrain          -> within-class-range      (no classified sample)
@@ -263,6 +264,14 @@ function conditionsWithholding(
     out.push({
       reason: 'hull-footprint',
       text: `the footprint is a ${ctx.footprintSource}, which fills courtyards or notches, so the ground sampled may not be in front of the element`,
+    });
+  }
+  if (plan.nearestBoundaryNested) {
+    out.push({
+      reason: 'courtyard-ring',
+      text:
+        'the nearest footprint boundary is a ring lying inside another ring (a courtyard), which the footprint counts as inside the building, ' +
+        'so the ground in front of the element is not sampled and any sample may lie on the far side of the building',
     });
   }
   if (ctx.allowance === null) {

@@ -96,7 +96,11 @@ export function fillsCourtyards(source: FootprintSource): boolean {
 }
 
 export interface FootprintFact {
-  /** Rings in map coordinates; a point inside any ring is inside the building. */
+  /**
+   * Rings in map coordinates; a point inside any ring is inside the building,
+   * so a courtyard ring nested in an outer ring is filled (its elements get no
+   * reassuring outcome: `courtyard-ring`).
+   */
   rings: MapPoint[][];
   source: FootprintSource;
   /** Slabs or walls the rings were read from. */

@@ -19,7 +19,7 @@
  * would start reading flow paths that do not touch the façade.
  */
 
-import { closestBoundaryPoint, signedDistance } from '../geom.js';
+import { closestBoundaryPoint, nestedRings, signedDistance } from '../geom.js';
 import type { CandidateFact, ModelFacts } from '../model/facts.js';
 import {
   CELL_NO_RUNOFF,
@@ -104,10 +104,17 @@ export interface SamplePlan {
   points: Array<{ point: MapPoint; ring: number }>;
   /** Ring points dropped for lying inside or too close to the footprint. */
   rejected: number;
+  /** The nearest footprint boundary is a ring lying inside another ring (a courtyard the footprint fills). */
+  nearestBoundaryNested: boolean;
 }
+
+const nestedCache = new WeakMap<object, Set<number>>();
 
 export function planSamples(candidate: CandidateFact, footprint: ModelFacts['footprint'], s: ResolvedSampling): SamplePlan {
   const rings = footprint.rings;
+  let nested = nestedCache.get(rings);
+  if (!nested) nestedCache.set(rings, (nested = nestedRings(rings)));
+  const nearestRing = closestBoundaryPoint(candidate.position, rings)?.ring;
   const d = signedDistance(candidate.position, rings);
   let anchor = candidate.position;
   let anchorBasis: SamplePlan['anchorBasis'] = 'element';
@@ -130,7 +137,7 @@ export function planSamples(candidate: CandidateFact, footprint: ModelFacts['foo
       else rejected++;
     }
   }
-  return { anchor, anchorBasis, anchorOffset, points, rejected };
+  return { anchor, anchorBasis, anchorOffset, points, rejected, nearestBoundaryNested: nearestRing !== undefined && nested.has(nearestRing) };
 }
 
 /** What a raster says at a point. `outside-coverage`: outside (or too near) the perimeter the map covers. */

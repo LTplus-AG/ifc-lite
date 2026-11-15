@@ -28,7 +28,8 @@ export interface ExtractOptions extends GeoreferenceOptions {
   /**
    * Footprint rings in map coordinates (for example a cadastral or survey
    * outline); replaces the model-derived one. Prefer it when the model has no
-   * ground-floor slab outline: a hull fills courtyards and notches.
+   * ground-floor slab outline: a hull fills courtyards and notches. A point
+   * inside any ring is inside, so a courtyard ring is filled, not a hole.
    */
   footprint?: MapPoint[][];
   /** Doors, windows and openings higher than this above the ground storey are not listed. Default 3.0 m; may only be raised. */

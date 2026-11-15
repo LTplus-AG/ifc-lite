@@ -70,6 +70,19 @@ for await (const event of client.parseStream(file)) {
 }
 ```
 
+## Open a stored result without the file
+
+When the server has already processed a model and the browser does not hold the
+IFC, name the result by the SHA-256 of its source file:
+
+```typescript
+const stored = { sha256: 'c0ffee…', bytes: 46_000_000 };
+const result = await client.parseParquet(stored); // or parseParquetStream(stored, onBatch)
+```
+
+Nothing is hashed or uploaded. A miss rejects with `IfcServerError` (`404`,
+`NOT_FOUND`); there is no upload to fall back to.
+
 ## Health check + server info
 
 ```typescript

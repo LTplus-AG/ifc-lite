@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { isSurfaceCommandAvailable } from './surface-command-features';
 import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense } from 'react';
 import { X, Sparkles, Info, Keyboard, ExternalLink, GraduationCap } from 'lucide-react';
@@ -84,7 +85,7 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
         <div className="flex shrink-0 items-center justify-between gap-2 p-4 border-b">
           <DialogTitle className="text-lg font-semibold shrink-0">{t('keyboardShortcuts.header.title')}</DialogTitle>
           <div className="flex items-center gap-1 min-w-0">
-            <button
+            {isFeatureEnabled('help.product-links') && <button
               type="button"
               onClick={() => { onClose(); navigateToPath('/mcp'); }}
               className="group inline-flex min-w-0 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 transition-colors px-3 py-1.5 text-xs font-medium text-primary"
@@ -93,7 +94,7 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
               <Sparkles className="h-3.5 w-3.5 shrink-0 group-hover:rotate-12 transition-transform" />
               <span className="truncate">{t('keyboardShortcuts.header.mcpCta')}</span>
               <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
-            </button>
+            </button>}
             <IconButton label={t('viewerShell.dialog.close')} variant="ghost" size="icon-sm" className="shrink-0" onClick={onClose}>
               <X className="h-4 w-4" />
             </IconButton>

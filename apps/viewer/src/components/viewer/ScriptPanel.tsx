@@ -56,6 +56,7 @@ import { cn, formatDuration } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
+import { isFeatureEnabled } from '@/lib/features';
 import { useSandbox } from '@/hooks/useSandbox';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { CodeEditor } from './CodeEditor';
@@ -189,7 +190,7 @@ export function ScriptPanel() {
   }, [createScript]);
 
   const [promoteOpen, setPromoteOpen] = useState(false);
-  const canPromote = !!extensionHost && editorContent.trim().length > 0;
+  const canPromote = isFeatureEnabled('automate.extensions') && !!extensionHost && editorContent.trim().length > 0;
 
   const handleDeleteConfirm = useCallback(() => {
     if (deleteConfirmId) {
@@ -276,7 +277,7 @@ export function ScriptPanel() {
 
         <ScriptFileControls />
         {/* Post-authoring install banner keeps the Promote action beside authored code. */}
-        {chatToolReady?.kind === 'script' && (
+        {canPromote && chatToolReady?.kind === 'script' && (
           <div className="shrink-0 border-b bg-primary/15 px-3 py-2.5 ring-1 ring-inset ring-primary/40">
             <div className="flex items-center gap-2.5">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -339,10 +340,8 @@ export function ScriptPanel() {
             <Save className="h-3.5 w-3.5" />
           </IconButton>
 
-          {/* Save-as-tool — the explicit, always-visible bridge from a
-              one-shot script to a persistent toolbar button. A labelled
-              outline button (not a buried icon) so the "keep this"
-              step is discoverable without nagging. */}
+          {/* Save-as-tool keeps authored code as a persistent toolbar action.
+              Installation requires the extensions feature and nonempty code. */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -566,7 +565,7 @@ export function ScriptPanel() {
         </DialogContent>
       </Dialog>
 
-      {promoteOpen && extensionHost && (
+      {promoteOpen && canPromote && (
         <PromoteToolDialog
           open={promoteOpen}
           source={editorContent}

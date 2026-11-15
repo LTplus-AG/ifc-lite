@@ -70,5 +70,6 @@ for (const [id, Tab] of TABS) {
 
 it('author tab opens on its first shown group when editing is off', () => {
   resetFeaturesForTest({ default: 'none', enable: ['view.appearance', 'automate.extensions'] });
+  assert.deepEqual(availableRibbonTabs().map((tab) => tab.id), ['file', 'home', 'view', 'elements', 'analyze', 'author']);
   assert.equal(bandShape(render(<AuthorTab />)), 'G|G');
 });

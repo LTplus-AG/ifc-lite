@@ -24,7 +24,7 @@ it('uses the opening heading when samples or blank models are offered (#10176)',
     const card = render(<ViewportWelcomeCard webgpu={{ supported: true, checking: false }} onOpenClick={() => {}}
       onStartBlank={() => {}} recentFiles={[]} loadFile={async () => {}} />);
     assert.ok(card.querySelector('button'));
-    assert.doesNotMatch(card.querySelector('h2')?.textContent ?? '', /No model open/);
+    assert.equal(card.querySelector('h2')?.textContent, 'Open a model');
     cleanup();
   }
 });

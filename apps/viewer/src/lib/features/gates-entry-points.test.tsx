@@ -26,6 +26,7 @@ import type { FederatedModel } from '@/store';
 import { GeoreferenceTab } from '@/components/viewer/placement/GeoreferenceTab';
 import { PositionedDownload } from '@/components/viewer/PositionedDownload';
 import { ViewportWelcomeCard } from '@/components/viewer/ViewportWelcomeCard';
+import { LayersPanel } from '@/components/viewer/layers/LayersPanel';
 import { PanelModelGate } from '@/components/viewer/PanelModelGate';
 import { AboutTab } from '@/components/viewer/KeyboardShortcutsDialogTabs';
 import { ShortcutsTab } from '@/components/viewer/ShortcutsTab';
@@ -239,6 +240,17 @@ describe('files and samples off have no other door', () => {
     }
   }
 
+  for (const localFiles of [false, true]) {
+    it(`the Layers picker follows local files independently of samples (#10176): ${localFiles}`, () => {
+      resetFeaturesForTest({ default: 'all', disable: localFiles ? ['files.samples'] : ['files.local'] });
+      useViewerStore.setState({ layerStack: [] });
+      render(<LayersPanel onClose={() => {}} />);
+      assert.equal(buttonsNamed('Open .ifcx files'), localFiles ? 1 : 0);
+      assert.equal(document.querySelectorAll('input[type="file"]').length, localFiles ? 1 : 0);
+      assert.equal(buttonsNamed('Load demo stack'), localFiles ? 0 : 1);
+    });
+  }
+
   it('the open and add-model handlers do not show a picker with local files off', async () => {
     resetFeaturesForTest({ default: 'all', disable: ['files.local'] });
     let pickers = 0;
@@ -307,6 +319,27 @@ describe('AI and extensions off have no other door', () => {
     }
   });
 
+  for (const extensions of [false, true]) {
+    it(`script promotion and its install banner follow extensions (#10176): ${extensions}`, () => {
+      resetFeaturesForTest({ default: 'all', disable: extensions ? ['ai.assistant'] : ['ai.assistant', 'automate.extensions'] });
+      useViewerStore.setState({ scriptEditorContent: 'console.log("tool");', chatToolReady: { kind: 'script', name: 'Tool' } });
+      const network = captureFetch(() => Promise.reject(new Error('network disabled in test')));
+      try {
+        render(<BimReactContext.Provider value={{} as BimContext}>
+          <ExtensionHostContext.Provider value={{} as ExtensionHostService}><ScriptPanel /></ExtensionHostContext.Provider>
+        </BimReactContext.Provider>);
+        const promote = document.querySelector<HTMLButtonElement>('button[aria-label="Save this script as a persistent tool"]');
+        assert.ok(promote);
+        assert.equal(promote.disabled, !extensions);
+        assert.equal(buttonsNamed('Install as tool'), extensions ? 1 : 0);
+        if (!extensions) {
+          click(promote);
+          assert.equal(document.querySelectorAll('[role="dialog"]').length, 0);
+        }
+      } finally { network.restore(); }
+    });
+  }
+
   it('a profile opened from a library does not open the flavor dialog', async () => {
     // Mounting the dialog here (no extension host) throws, so reaching it fails the test too.
     resetFeaturesForTest({ default: 'all', disable: ['automate.extensions'] });
@@ -324,6 +357,14 @@ describe('AI and extensions off have no other door', () => {
 });
 
 describe('product links and outside services off have no other door', () => {
+  for (const productLinks of [false, true]) {
+    it(`the info-dialog MCP action follows product links (#10176): ${productLinks}`, () => {
+      resetFeaturesForTest({ default: 'all', disable: productLinks ? [] : ['help.product-links'] });
+      render(<KeyboardShortcutsDialog open onClose={() => {}} />);
+      assert.equal(document.querySelectorAll('button[aria-label^="Open ifc-lite MCP"]').length, productLinks ? 1 : 0);
+    });
+  }
+
   it('the About and Shortcuts tabs link nowhere outside the viewer', () => {
     resetFeaturesForTest({ default: 'all', disable: ['help.product-links'] });
     render(<AboutTab />);

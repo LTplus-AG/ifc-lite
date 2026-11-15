@@ -30,7 +30,13 @@ import {
   CRAFTED_VERTEX_VIEWER,
   craftRhino3dm,
   craftRhinoLayerTree,
+  craftRhinoHiddenStoreyObject,
   craftRhinoMergedParts,
+  craftRhinoNestedOffLayers,
+  craftRhinoStoreyObjectAboveItsLayer,
+  craftRhinoStoreyObjectOnOffLayer,
+  craftRhinoStoreyObjectOnOffRowLayer,
+  craftRhinoOffClassLayer,
   craftRhinoPartlyHidden,
   craftRhinoSpatialLayers,
   craftRhinoStampCollision,
@@ -38,6 +44,8 @@ import {
   rhinoPayloadOf as payloadOf,
 } from '@/test/rhino-3dm-fixture.js';
 import { rhinoViewerModel } from './rhinoViewerModel.js';
+import { planRhinoContainerVisibility, type RhinoTreePlan } from './rhinoLayerTree.js';
+import { containerVisibilityTargets } from '@/lib/container-visibility';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
 const samples = new URL('../../../../../tests/models/rhino/mcneel-rhino3dm/', import.meta.url);
@@ -239,6 +247,84 @@ describe('rhinoViewerModel, the layer tree of a Rhino-authored file', () => {
     // Nothing else is hidden, so a file Rhino shows in full opens in full.
     const visible = await payloadOf(await craftRhino3dm());
     assert.deepEqual(visible.hiddenExpressIds, []);
+  });
+});
+
+describe('rhinoViewerModel, a layer row hides and shows its sub-layers as Rhino does (#10214)', () => {
+  /** What a row's eye hides or shows, by name, for the row named `rowName`. */
+  async function eye(bytes: Uint8Array, rowName: string, action: 'show' | 'hide'): Promise<string[]> {
+    const { dataStore, containerVisibility } = await payloadOf(bytes, 'layers.3dm');
+    assert.ok(containerVisibility, 'a .3dm states how its layer rows act');
+    const row = [...containerVisibility.rows.keys()].find((id) => dataStore.entities.getName(id) === rowName);
+    assert.ok(row !== undefined, `a row named ${rowName}`);
+    return containerVisibilityTargets(containerVisibility, row, action).map((id) => dataStore.entities.getName(id) ?? String(id)).sort();
+  }
+
+  it('shows each sub-layer that is on, with its objects, when the parent layer is shown', async () => {
+    // Bracing is off itself and the spare beam is hidden on its own: Rhino keeps both hidden.
+    assert.deepEqual(await eye(await craftRhinoNestedOffLayers(), 'Frame', 'show'),
+      ['Beam', 'Bolt', 'Bolts', 'Column', 'Columns', 'Frame']);
+  });
+
+  it('hides the whole subtree when the parent layer is hidden', async () => {
+    assert.deepEqual(await eye(await craftRhinoNestedOffLayers(), 'Frame', 'hide'),
+      ['Beam', 'Bolt', 'Bolts', 'Brace', 'Bracing', 'Column', 'Columns', 'Frame', 'Spare beam']);
+  });
+
+  it('shows a sub-layer that is off when its own row is shown', async () => {
+    assert.deepEqual(await eye(await craftRhinoNestedOffLayers(), 'Bracing', 'show'), ['Brace', 'Bracing']);
+  });
+
+  it('brings a layer row back with its parent when only the object it stands for is hidden on its own', async () => {
+    const shown = await eye(await craftRhinoHiddenStoreyObject(), 'Project', 'show');
+    assert.ok(shown.includes('Wall'), 'the wall under the storey comes back');
+    assert.ok(!shown.includes('Storey object'), 'the storey object Rhino hides on its own stays hidden');
+  });
+
+  it('keeps the object a layer row stands for hidden when that row is shown, since the eye is the layer\'s', async () => {
+    // The storey row stands for the storey object and carries its name.
+    assert.deepEqual(await eye(await craftRhinoHiddenStoreyObject(), 'Storey object', 'show'), ['Wall']);
+  });
+
+  it('starts every object of a file with no layer table with its own state on', () => {
+    // openNURBS writes a default layer, so a reader result with none (another
+    // exporter's file) is built by hand: the reader puts its objects on layer 0.
+    const shown = { hidden: false, hiddenByObject: false, hiddenByLayer: false, layer: 0 };
+    const result = { layers: [], entities: [shown, shown] } as unknown as RhinoImport;
+    const tree = { containers: [{ expressId: 3, parent: null, layer: null, fromEntity: false }], containerOfEntity: [3, 3], root: 3 } as unknown as RhinoTreePlan;
+    const plan = planRhinoContainerVisibility(result, tree, (index) => index + 1);
+    assert.deepEqual(plan.rows.get(3)?.members, [1, 2]);
+    assert.deepEqual([...plan.ownOff], []);
+  });
+
+  it('keeps the object a layer row stands for hidden when its own sublayer is off', async () => {
+    const shown = await eye(await craftRhinoStoreyObjectOnOffLayer(), 'Project', 'show');
+    assert.ok(shown.includes('Wall'), 'the wall under the storey comes back');
+    assert.ok(!shown.includes('Storey object'), 'the storey object behind its off sublayer stays hidden');
+  });
+
+  it('keeps the object a row stands for hidden while its own layer, elsewhere in the tree, is off', async () => {
+    const shown = await eye(await craftRhinoStoreyObjectOnOffRowLayer(), 'Project', 'show');
+    assert.ok(shown.includes('Wall'), 'the storey row and its wall come back');
+    assert.ok(!shown.includes('Storey object'), 'the storey object stays hidden behind the off Annex layer');
+  });
+
+  it('shows the object a row stands for with that row when the off layer is above the row', async () => {
+    assert.deepEqual(await eye(await craftRhinoStoreyObjectAboveItsLayer(), 'Storey object', 'show'), ['Storey object', 'Wall']);
+  });
+
+  it('keeps a merged object hidden whose parts Rhino hides for different causes', async () => {
+    const { containerVisibility, dataStore } = await payloadOf(await craftRhinoMergedParts([
+      { name: 'Own', kind: 'mesh', hidden: true }, { name: 'Layer', kind: 'mesh', layerOff: true },
+    ]), 'merged.3dm');
+    const merged = [...containerVisibility!.rows.values()].flatMap((row) => row.members);
+    assert.equal(merged.length, 1, 'one merged entity');
+    assert.ok(containerVisibility!.ownOff.has(merged[0]), `${dataStore.entities.getName(merged[0])} starts with its own state off`);
+  });
+
+  it('keeps an object hidden when a layer between it and its row is off, though that layer has no row', async () => {
+    assert.deepEqual(await eye(await craftRhinoOffClassLayer(), CRAFTED_STOREY.name, 'show'), [CRAFTED_STOREY.name, 'Slab']);
+    assert.deepEqual(await eye(await craftRhinoOffClassLayer(), CRAFTED_STOREY.name, 'hide'), [CRAFTED_STOREY.name, 'Slab', 'Wall']);
   });
 });
 

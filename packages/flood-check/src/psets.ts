@@ -158,9 +158,17 @@ export function sitePropertySet(result: FloodCheckResult, classes: readonly Haza
   b.int('CountReachableBelowGroundSpaces', result.reachableBelowGround.length);
   // Results plus skipped equals walked, checkable from this set alone (the element sets are the results).
   if (result.coverage) b.int('CountElementsWalked', result.coverage.walked).int('CountElementsSkipped', result.coverage.skipped);
-  const byReason = new Map<string, number>();
-  for (const s of result.skipped) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1);
-  b.text('ElementsSkippedByReason', [...byReason].map(([reason, n]) => `${n}× ${reason}`).join(' | '));
+  // Elements only, so the counts sum to CountElementsSkipped; footprint sources and storeys have their own fields.
+  const list = (entries: FloodCheckResult['skipped']) => {
+    const byReason = new Map<string, number>();
+    for (const s of entries) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1);
+    return [...byReason].map(([reason, n]) => `${n}× ${reason}`).join(' | ');
+  };
+  b.text('ElementsSkippedByReason', list(result.skipped.filter((s) => s.stage === undefined)));
+  const sources = result.skipped.filter((s) => s.stage === 'footprint-source');
+  b.int('CountFootprintSourcesNotRead', sources.length).text('FootprintSourcesNotRead', sources.map((s) => `${s.ifcClass} #${s.expressId}: ${s.reason}`).join(' | '));
+  const storeys = result.skipped.filter((s) => s.stage === 'storey');
+  if (storeys.length > 0) b.text('StoreysSkipped', storeys.map((s) => `#${s.expressId}: ${s.reason}`).join(' | '));
   return { Name: SITE_PSET, Properties: b.props };
 }
 

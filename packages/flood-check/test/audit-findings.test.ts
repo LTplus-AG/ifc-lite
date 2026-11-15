@@ -14,7 +14,7 @@ import { bafuCovers } from '../src/bafu/coverage.js';
 import { checkFloodExposure } from '../src/check/check.js';
 import { runFloodCheck } from '../src/check/run.js';
 import { FloodCheckRefusal } from '../src/errors.js';
-import { commonPset } from '../src/model/candidate-base.js';
+import { commonPsets } from '../src/model/candidate-base.js';
 import { extractModelFacts } from '../src/model/extract.js';
 import { footprintConcerns } from '../src/model/facts.js';
 import { toPropertySets } from '../src/psets.js';
@@ -26,7 +26,7 @@ import { parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
 const deep = CODE['depth-gt-0.25'];
 const mid = CODE['depth-0.1-0.25'];
 const extract = async (extra: (b: Extra) => void, slab = true) =>
-  extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', slab, extra })), { expectedCrs: 'EPSG:2056' });
+  extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', slab, extra })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
 const leafOf = (b: Extra, w = 1, h = 2.1) => b.shape([b.rectExtrusion(0, 0, w, 0.1, h, b.axis(0, 0, 0), b.dir(0, 0, 1))]);
 
 describe('finding 1: the height reference is confirmed only by a known ground storey whose doors agree', () => {
@@ -117,7 +117,7 @@ describe('finding 2: transparent counts as no runoff only with proof that it is 
     expect(withSource.results[0].outcome).toBe('above-mapped-class-range');
     expect(without.results[1].outcome).toBe('exposed');
     expect(without.warnings.join()).toMatch(/No source of other buildings' footprints was supplied/);
-    expect(without.otherBuildings).toEqual({ supplied: false, complete: false, count: 0, provenance: null });
+    expect(without.otherBuildings).toEqual({ supplied: false, complete: false, count: 0, rejected: [], extent: null, provenance: null });
   });
 
   it('runFloodCheck fetches a buildings source for the check box and refuses one in another CRS', async () => {
@@ -228,14 +228,14 @@ describe('finding 6: the host is found through an opening or the decomposition p
     expect(facts.candidates.find((c) => c.name === 'Tür HRB')?.selectedBecause).toMatch(/host IsExternal \(Pset_WallCommon\)/);
   });
 
-  it('maps the Common set by supertype', () => {
+  it('maps the Common set by supertype (generic since the re-audit: every class of the chain, nearest first)', () => {
     const e = (type: string) => ({ expressId: 1, type, attributes: [] });
-    expect(commonPset(e('IFCWALLELEMENTEDCASE'))).toBe('Pset_WallCommon');
-    expect(commonPset(e('IFCPLATESTANDARDCASE'))).toBe('Pset_PlateCommon');
-    expect(commonPset(e('IFCROOF'))).toBe('Pset_RoofCommon');
-    expect(commonPset(e('IFCCOVERING'))).toBe('Pset_CoveringCommon');
-    expect(commonPset(e('IFCSLABELEMENTEDCASE'))).toBe('Pset_SlabCommon');
-    expect(commonPset(e('IFCBOILER'))).toBeNull();
+    expect(commonPsets(e('IFCWALLELEMENTEDCASE'))).toContain('Pset_WallCommon');
+    expect(commonPsets(e('IFCPLATESTANDARDCASE'))).toContain('Pset_PlateCommon');
+    expect(commonPsets(e('IFCROOF'))).toContain('Pset_RoofCommon');
+    expect(commonPsets(e('IFCCOVERING'))).toContain('Pset_CoveringCommon');
+    expect(commonPsets(e('IFCSLABELEMENTEDCASE'))).toContain('Pset_SlabCommon');
+    expect(commonPsets(e('IFCBOILER'))[0]).toBe('Pset_BoilerCommon');
   });
 });
 

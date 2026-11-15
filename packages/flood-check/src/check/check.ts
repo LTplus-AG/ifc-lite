@@ -23,6 +23,7 @@
 
 import { FloodCheckRefusal } from '../errors.js';
 import { normalizeCrs, sameCrs, verticalCrsIdentifier } from '../crs.js';
+import { resolveOtherBuildings } from './other-buildings.js';
 import { assertCompatible } from './compat.js';
 import { footprintConcerns, type FootprintQuality, type BuildingScope, type CandidateFact, type ModelFacts } from '../model/facts.js';
 import { reachableSpaces, type ReachableSpace } from './reachable.js';
@@ -31,6 +32,7 @@ import {
   type HazardClassDefinition,
   type HazardProvenance,
   type LocalizedText,
+  type MapBBox,
   type MapPoint,
   type OtherBuildingFootprints,
   type RenderingConfirmation,
@@ -156,7 +158,8 @@ export interface FloodCheckResult {
   /** Covered elements walked and how many were skipped: `walked === results.length + coverage.skipped`. Null for hand-built facts. */
   coverage: { walked: number; skipped: number } | null;
   /** What was known about other buildings' footprints: without a complete source, transparent samples are unknown. */
-  otherBuildings: { supplied: boolean; complete: boolean; count: number; provenance: OtherBuildingFootprints['provenance'] | null };
+  /** `count` valid rings; `rejected` why rings or the extent were not accepted (any makes the source not complete). */
+  otherBuildings: { supplied: boolean; complete: boolean; count: number; rejected: string[]; extent: MapBBox | null; provenance: OtherBuildingFootprints['provenance'] | null };
   footprintSource: ModelFacts['footprint']['source'];
   footprintPartial: boolean; // see FootprintFact.partial
   footprintQuality: FootprintQuality; // the worst condition of the footprint's quality record
@@ -203,6 +206,7 @@ export function checkWith(
   if (options.otherBuildings && !sameCrs(options.otherBuildings.crs, raster.crs)) {
     throw new FloodCheckRefusal('crs-mismatch', `the other buildings' footprints are in ${options.otherBuildings.crs}; the hazard map is in ${raster.crs}`);
   }
+  const others = options.otherBuildings ? resolveOtherBuildings(options.otherBuildings) : null;
   // Every covered element extraction walked is a candidate or skipped; fewer candidates now means one went missing.
   if (facts.coverage && facts.coverage.walked !== facts.candidates.length + facts.coverage.skipped) {
     throw new Error(`candidate selection walked ${facts.coverage.walked} elements; ${facts.candidates.length} candidates + ${facts.coverage.skipped} skipped do not add up`);
@@ -270,7 +274,7 @@ export function checkWith(
       footprintHull: footprint.hullLike,
       footprintPartial: footprint.partial,
       emptyRasterUnconfirmed: rasterEmpty && !applies,
-      otherBuildings: options.otherBuildings,
+      otherBuildings: others ?? undefined,
     });
     return {
       candidate,
@@ -305,10 +309,10 @@ export function checkWith(
   for (const r of results) summary[r.outcome]++;
 
   const warnings = [...facts.warnings];
-  const others = options.otherBuildings;
+  const given = options.otherBuildings;
   if (!others || !others.complete) {
     warnings.push(
-      `${others ? `The other buildings' footprints supplied (${others.provenance.source}) are not complete` : "No source of other buildings' footprints was supplied"}: ` +
+      `${given ? `The other buildings' footprints supplied (${given.provenance.source}) are not complete${others!.rejected.length > 0 ? ` (${others!.rejected.join('; ')})` : ''}` : "No source of other buildings' footprints was supplied"}: ` +
         'a transparent sample cannot be told from a neighbouring building the hazard model raised, so no element is reported as no runoff mapped, ' +
         'and above the mapped class range only where every sample shows a class.',
     );
@@ -366,7 +370,9 @@ export function checkWith(
     layerCheck: { rasterEmpty, confirmation, confirmationApplies: applies },
     skipped: facts.skipped,
     coverage: facts.coverage ?? null,
-    otherBuildings: others ? { supplied: true, complete: others.complete, count: others.rings.length, provenance: others.provenance } : { supplied: false, complete: false, count: 0, provenance: null },
+    otherBuildings: given && others
+      ? { supplied: true, complete: others.complete, count: others.rings.length, rejected: others.rejected, extent: others.extent, provenance: given.provenance }
+      : { supplied: false, complete: false, count: 0, rejected: [], extent: null, provenance: null },
     footprintSource: facts.footprint.source,
     footprintPartial: footprint.partial,
     footprintQuality: footprint.worst,

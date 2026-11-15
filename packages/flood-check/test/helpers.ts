@@ -239,4 +239,4 @@ export function boxFacts(candidates: CandidateFact[], over: Partial<ModelFacts> 
  * A complete source stating there are no other buildings near the test
  * building: transparent samples are then open ground (`CheckOptions.otherBuildings`).
  */
-export const NO_OTHER_BUILDINGS: OtherBuildingFootprints = { crs: 'EPSG:2056', rings: [], complete: true, provenance: { source: 'test: no other buildings' } };
+export const NO_OTHER_BUILDINGS: OtherBuildingFootprints = { crs: 'EPSG:2056', rings: [], complete: true, extent: { minX: E0 - 5000, minY: N0 - 5000, maxX: E0 + 5000, maxY: N0 + 5000 }, provenance: { source: 'test: no other buildings' } };

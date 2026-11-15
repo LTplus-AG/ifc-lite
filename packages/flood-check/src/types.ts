@@ -221,15 +221,28 @@ export interface OtherBuildingFootprints {
   crs: string;
   /** Footprint rings in `crs`; a point inside any ring is inside another building. */
   rings: MapPoint[][];
-  /** The source lists every building in the area asked for. Without that, transparency outside its rings proves nothing. */
+  /**
+   * The source lists every building in `extent`. Without that, transparency
+   * outside its rings proves nothing; an invalid ring (fewer than 3 finite
+   * points, no area, a repeated vertex, wholly outside `extent`) also voids it.
+   */
   complete: boolean;
+  /** The area the source covers, in `crs`: `complete` holds only inside it (an empty `rings` with an extent is open country). */
+  extent: MapBBox;
   provenance: { source: string; date?: string; detail?: string };
 }
 
-/** A source of {@link OtherBuildingFootprints} for an area, in the style of {@link TerrainSource}. */
+/**
+ * A source of {@link OtherBuildingFootprints} for an area, in the style of
+ * {@link TerrainSource}. The answer covers the box asked for unless it states
+ * its own `extent`.
+ */
 export interface BuildingFootprintSource {
   readonly crs: string;
-  footprints(bbox: MapBBox, signal?: AbortSignal): OtherBuildingFootprints | Promise<OtherBuildingFootprints>;
+  footprints(
+    bbox: MapBBox,
+    signal?: AbortSignal,
+  ): Omit<OtherBuildingFootprints, 'extent'> & { extent?: MapBBox } | Promise<Omit<OtherBuildingFootprints, 'extent'> & { extent?: MapBBox }>;
 }
 
 /**

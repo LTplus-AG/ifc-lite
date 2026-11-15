@@ -193,7 +193,12 @@ export interface ModelFacts {
   coverage?: { walked: number; skipped: number };
   /** Absent on hand-built facts: then every candidate is taken to belong to the footprint's building. */
   buildingScope?: BuildingScope;
-  /** Elements skipped (no readable placement, or in a building that was not checked), with the reason. */
-  skipped: Array<{ expressId: number; ifcClass: string; reason: string }>;
+  /**
+   * Entities skipped, with the reason: covered elements candidate selection
+   * did not keep (no `stage`), and, by their `stage`, footprint sources that
+   * could not be read and storeys without a placement, which are not elements
+   * walked and so not part of `coverage.skipped`.
+   */
+  skipped: Array<{ expressId: number; ifcClass: string; reason: string; stage?: 'footprint-source' | 'storey' }>;
   warnings: string[];
 }

@@ -31,7 +31,7 @@ function upperWindow(readable: boolean, overallHeight: number | null) {
 }
 
 const extract = async (extra: (b: Extra) => void) =>
-  extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', extra })), { expectedCrs: 'EPSG:2056' });
+  extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', extra })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
 
 describe('the reported case', () => {
   it('an upper-storey window whose filled opening cannot be read, with no OverallHeight, is kept (its storey proves no height)', async () => {

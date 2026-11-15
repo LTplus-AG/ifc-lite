@@ -143,6 +143,9 @@ function pickGroundStorey(
     if (!best || Math.abs(z) < Math.abs(localLevels.get(best.expressId) ?? Infinity)) best = s;
   }
   if (best && Math.abs(localLevels.get(best.expressId) ?? Infinity) <= 1.5) {
+    warnings.push(
+      `the ground storey "${best.name ?? best.expressId}" is only picked by the ±0.00 convention (it may be a basement), so the height reference stays unconfirmed — pass groundStorey to state it`,
+    );
     return { expressId: best.expressId, level: best.level, basis: 'project-zero' };
   }
   const lowest = storeys.reduce((a, b) => (b.level < a.level ? b : a));
@@ -166,13 +169,18 @@ function atLeast(name: string, value: number | undefined, fallback: number): num
  * whose `WorldCoordinateSystem` moves or turns that origin would shift every
  * position and level, so it is refused rather than ignored.
  */
-function refuseShiftedWorldCoordinateSystem(reader: ModelReader): void {
+/** Identity tolerances: a micrometre for the origin (after unit scaling), 1e-6 for each direction component. */
+export const WCS_ORIGIN_TOLERANCE_M = 1e-6;
+export const WCS_DIRECTION_TOLERANCE = 1e-6;
+
+function refuseShiftedWorldCoordinateSystem(reader: ModelReader, lengthUnitScale: number): void {
   for (const id of reader.idsOfType('IFCGEOMETRICREPRESENTATIONCONTEXT')) {
     const wcs = reader.attr(reader.entity(id), 'WorldCoordinateSystem');
     if (wcs === null || wcs === undefined) continue;
     const f = axisPlacementFrame(reader, wcs);
-    const near = (a: readonly number[], b: readonly number[]) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
-    if (!f || !near(f.origin, [0, 0, 0]) || !near(f.x, [1, 0, 0]) || !near(f.y, [0, 1, 0]) || !near(f.z, [0, 0, 1])) {
+    const near = (a: readonly number[], b: readonly number[], tol: number, k = 1) => a.every((v, i) => Math.abs(v * k - b[i]) <= tol);
+    const dir = (a: readonly number[], b: readonly number[]) => near(a, b, WCS_DIRECTION_TOLERANCE);
+    if (!f || !near(f.origin, [0, 0, 0], WCS_ORIGIN_TOLERANCE_M, lengthUnitScale) || !dir(f.x, [1, 0, 0]) || !dir(f.y, [0, 1, 0]) || !dir(f.z, [0, 0, 1])) {
       throw new FloodCheckRefusal(
         'world-coordinate-system',
         `representation context #${id} has a WorldCoordinateSystem that is not the identity (or cannot be read); positions and levels would shift, so the model is not checked`,
@@ -185,7 +193,7 @@ function refuseShiftedWorldCoordinateSystem(reader: ModelReader): void {
 export function extractModelFacts(store: IfcDataStore, options: ExtractOptions = {}): ModelFacts {
   const georef = resolveModelGeoreference(store, options);
   const reader = new ModelReader(store);
-  refuseShiftedWorldCoordinateSystem(reader);
+  refuseShiftedWorldCoordinateSystem(reader, georef.lengthUnitScale);
   const nameOf = (id: number) => {
     const name = asString(reader.attr(reader.entity(id), 'Name'));
     return name ? ` "${name}"` : '';
@@ -201,7 +209,7 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
     const e = reader.entity(id);
     const frame = placements.ofProduct(id);
     if (!e || !frame) {
-      skipped.push({ expressId: id, ifcClass: 'IfcBuildingStorey', reason: NO_PLACEMENT });
+      skipped.push({ expressId: id, ifcClass: 'IfcBuildingStorey', reason: NO_PLACEMENT, stage: 'storey' });
       continue;
     }
     localLevels.set(id, frame.origin[2] * georef.lengthUnitScale);
@@ -232,7 +240,8 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
       groundLevel: groundStorey.level,
       footprint: derived?.rings ?? [],
       footprintQuality: derived ? footprintConcerns(derived) : null,
-      groundUncertain: groundStorey.basis === 'lowest-storey' || groundStorey.basis === 'none',
+      // Only a stated ground storey is known: the ±0.00 convention can pick the basement (re-audit N2).
+      groundUncertain: groundStorey.basis !== 'given',
       aboveGroundScope: atLeast('aboveGroundScope', options.aboveGroundScope, 3),
       boundaryTolerance: atLeast('boundaryTolerance', options.boundaryTolerance, 1),
     },

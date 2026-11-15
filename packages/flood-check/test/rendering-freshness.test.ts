@@ -39,7 +39,7 @@ function switchableWms(state: { up: boolean; malformedReference?: boolean }) {
   return { fetchImpl, urls, references: () => urls.filter((u) => new URL(u).searchParams.get('BBOX') === REFERENCE_BBOX).length };
 }
 
-const facts = async () => extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02' })), { expectedCrs: 'EPSG:2056' });
+const facts = async () => extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02' })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
 const door = (r: Awaited<ReturnType<typeof runFloodCheck>>) => r.results.find((x) => x.candidate.name === 'Haustür')!;
 
 describe('a rendering confirmation and the rasters it vouches for', () => {

@@ -20,7 +20,7 @@ const sq = (x0: number, y0: number, x1: number, y1: number): MapPoint[] => [
 ];
 const inBox = (p: MapPoint, x0: number, y0: number, x1: number, y1: number) => p.x > E0 + x0 && p.x < E0 + x1 && p.y > N0 + y0 && p.y < N0 + y1;
 const extract = async (extra: (b: Extra) => void) =>
-  extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', extra })), { expectedCrs: 'EPSG:2056' });
+  extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', extra })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
 
 describe('the courtyard guard', () => {
   it('follows rings appended to the same footprint array between checks (no stale cache)', () => {

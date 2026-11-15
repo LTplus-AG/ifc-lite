@@ -24,6 +24,8 @@ export interface SyntheticOptions {
   slab?: boolean;
   /** Add more entities; see {@link Extra}. */
   extra?: (b: Extra) => void;
+  /** Storey elevations in metres; default UG -3, EG 0, OG 4. */
+  storeyZ?: { ug: number; eg: number; og: number };
 }
 
 /** What {@link SyntheticOptions.extra} can use to add entities to the house. */
@@ -98,9 +100,10 @@ export function syntheticHouse(o: SyntheticOptions = {}): string {
     const pl = place(bldPl, 0, 0, z);
     return { pl, id: add(`IFCBUILDINGSTOREY(${g()},$,'${name}',$,$,#${pl},$,$,.ELEMENT.,${n(z * k)})`) };
   };
-  const ug = storey('UG', -3);
-  const eg = storey('EG', 0);
-  const og = storey('OG', 4);
+  const z = o.storeyZ ?? { ug: -3, eg: 0, og: 4 };
+  const ug = storey('UG', z.ug);
+  const eg = storey('EG', z.eg);
+  const og = storey('OG', z.og);
   add(`IFCRELAGGREGATES(${g()},$,$,$,#${building},(#${ug.id},#${eg.id},#${og.id}))`);
 
   const contained: Record<number, number[]> = { [ug.id]: [], [eg.id]: [], [og.id]: [] };

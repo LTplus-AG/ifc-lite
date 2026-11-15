@@ -165,6 +165,7 @@ export async function runFloodCheck(
   if (options.buildings && !sameCrs(options.buildings.crs, provider.crs)) {
     throw new FloodCheckRefusal('crs-mismatch', `the buildings source is in ${options.buildings.crs}; the hazard map is in ${provider.crs}`);
   }
-  const otherBuildings = options.buildings ? await options.buildings.footprints(bbox, options.signal) : options.otherBuildings;
+  const answer = options.buildings ? await options.buildings.footprints(bbox, options.signal) : undefined;
+  const otherBuildings = answer ? { ...answer, extent: answer.extent ?? bbox } : options.otherBuildings;
   return checkWith(facts, raster, sampler, { ...options, otherBuildings, renderingConfirmation }, extentReason ? [extentReason] : []);
 }

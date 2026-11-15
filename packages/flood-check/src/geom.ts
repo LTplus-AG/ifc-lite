@@ -28,16 +28,26 @@ export function insideAny(p: MapPoint, rings: readonly (readonly MapPoint[])[]):
 }
 
 /**
- * Indices of rings lying inside the other rings (every vertex inside one of
- * them, so also a courtyard that two overlapping rings cover only together):
- * a courtyard drawn as its own ring, which {@link insideAny} fills, so the
- * ground in front of an element facing it is not sampled.
+ * Indices of courtyard rings: a ring whose whole boundary lies inside the
+ * union of the other rings (its edges, sampled every 0.25 m, not only its
+ * vertices, so a slab that spans a notch between two others is not taken for
+ * one). {@link insideAny} fills such a ring; the outline functions below treat
+ * it as open ground, a hole of the footprint.
  */
 export function nestedRings(rings: readonly (readonly MapPoint[])[]): Set<number> {
   const out = new Set<number>();
   rings.forEach((ring, j) => {
     const others = rings.filter((_, i) => i !== j);
-    if (ring.length > 0 && others.length > 0 && ring.every((p) => insideAny(p, others))) out.add(j);
+    if (ring.length < 3 || others.length === 0) return;
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 0.25));
+      for (let k = 0; k < steps; k++) {
+        if (!insideAny({ x: a.x + ((b.x - a.x) * k) / steps, y: a.y + ((b.y - a.y) * k) / steps }, others)) return;
+      }
+    }
+    out.add(j);
   });
   return out;
 }
@@ -67,36 +77,153 @@ export function closestBoundaryPoint(
 }
 
 /**
- * The closest point of the footprint's true outline: like
- * {@link closestBoundaryPoint}, but a boundary point with no ground outside
- * every ring right next to it (the seam where two adjacent or overlapping
- * slabs meet) is interior, not outline, and is skipped. The edges of `courtyards` (rings
- * nested in another, {@link nestedRings}) are façades and always count. Falls
- * back to the closest boundary point when every candidate is such a seam.
+ * A boundary point is footprint OUTLINE only if open ground reaches beyond
+ * it: some disc of radius `OUTLINE_CLEARANCE` centred `OUTLINE_PROBE` from it
+ * lies outside the building (courtyard rings count as open ground). So the
+ * seam between adjacent slabs, and a gap between slabs narrower than about
+ * 0.9 m (under an interior wall), are inside; a passage or courtyard 1 m wide
+ * or wider is outside. One rule for anchor, courtyard guard and façade test.
+ */
+export const OUTLINE_PROBE = 0.55;
+export const OUTLINE_CLEARANCE = 0.38;
+
+type Rings = readonly (readonly MapPoint[])[];
+
+/** Inside the building: inside a ring that is not a courtyard and inside no courtyard ring. */
+function solid(p: MapPoint, rings: Rings, courtyards: ReadonlySet<number>): boolean {
+  let inBuilding = false;
+  for (let i = 0; i < rings.length; i++) {
+    if (!insideRing(p, rings[i])) continue;
+    if (courtyards.has(i)) return false;
+    inBuilding = true;
+  }
+  return inBuilding;
+}
+
+const unit = (x: number, y: number) => {
+  const l = Math.hypot(x, y);
+  return l > 0 ? { x: x / l, y: y / l } : null;
+};
+
+/** Open ground reaches beyond `q`, a point of ring `r`'s segment `i` (see {@link OUTLINE_PROBE}). */
+function isOutline(q: MapPoint, rings: Rings, courtyards: ReadonlySet<number>, r: number, i: number): boolean {
+  const ring = rings[r];
+  const normalOf = (k: number) => {
+    const a = ring[(k + ring.length) % ring.length];
+    const b = ring[(k + 1) % ring.length];
+    return unit(b.y - a.y, -(b.x - a.x));
+  };
+  const dirs: Array<{ x: number; y: number } | null> = [];
+  const n = normalOf(i);
+  dirs.push(n, n && { x: -n.x, y: -n.y });
+  // At a vertex, the neighbouring segment's normal and the bisector (a convex or a reflex corner).
+  const a = ring[i];
+  const b = ring[(i + 1) % ring.length];
+  const at = Math.hypot(q.x - a.x, q.y - a.y) < 1e-9 ? i - 1 : Math.hypot(q.x - b.x, q.y - b.y) < 1e-9 ? i + 1 : null;
+  if (at !== null && n) {
+    const m = normalOf(at);
+    if (m) {
+      const bis = unit(n.x + m.x, n.y + m.y);
+      dirs.push(m, { x: -m.x, y: -m.y }, bis, bis && { x: -bis.x, y: -bis.y });
+    }
+  }
+  for (let k = 0; k < 16; k++) dirs.push({ x: Math.cos((2 * Math.PI * k) / 16), y: Math.sin((2 * Math.PI * k) / 16) });
+  // The ground must be open right from `q` to the disc (not across a strip of building into a courtyard behind it).
+  const openPath = (u: { x: number; y: number }) => {
+    for (let t = 0.01; t < OUTLINE_PROBE; t += 0.05) if (solid({ x: q.x + t * u.x, y: q.y + t * u.y }, rings, courtyards)) return false;
+    return true;
+  };
+  for (const u of dirs) {
+    if (!u) continue;
+    const c = { x: q.x + OUTLINE_PROBE * u.x, y: q.y + OUTLINE_PROBE * u.y };
+    if (!solid(c, rings, courtyards) && (closestBoundaryPoint(c, rings)?.distance ?? Infinity) >= OUTLINE_CLEARANCE && openPath(u)) return true;
+  }
+  return false;
+}
+
+/**
+ * The closest point of the footprint's true outline ({@link OUTLINE_PROBE}):
+ * along each segment, the closest point and then points further along it,
+ * every 0.25 m, until one is outline or none can be closer than the best.
+ * Falls back to the closest boundary point when no outline point exists.
  */
 export function closestOutlinePoint(
   p: MapPoint,
-  rings: readonly (readonly MapPoint[])[],
-  courtyards: ReadonlySet<number> = new Set(),
+  rings: Rings,
+  courtyards: ReadonlySet<number> = nestedRings(rings),
 ): { point: MapPoint; distance: number; ring: number } | null {
-  // A point is on the true outline when ground outside every ring lies right next to it (within a millimetre).
-  const onOutline = (q: MapPoint) => {
-    for (let k = 0; k < 16; k++) {
-      const a = (2 * Math.PI * k) / 16;
-      if (!insideAny({ x: q.x + 1e-3 * Math.cos(a), y: q.y + 1e-3 * Math.sin(a) }, rings)) return true;
-    }
-    return false;
-  };
   let best: { point: MapPoint; distance: number; ring: number } | null = null;
   rings.forEach((ring, r) => {
     for (let i = 0; i < ring.length; i++) {
-      const q = closestOnSegment(p, ring[i], ring[(i + 1) % ring.length]);
-      const d = Math.hypot(q.x - p.x, q.y - p.y);
-      if (best && d >= best.distance) continue;
-      if (courtyards.has(r) || onOutline(q)) best = { point: q, distance: d, ring: r };
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      const q0 = closestOnSegment(p, a, b);
+      const t0 = len > 0 ? Math.hypot(q0.x - a.x, q0.y - a.y) : 0;
+      // Distances along the segment from the closest point outwards, both ways, ending at the vertices.
+      const ts = [t0];
+      for (let s = 0.25; t0 - s > 0 || t0 + s < len; s += 0.25) {
+        if (t0 + s < len) ts.push(t0 + s);
+        if (t0 - s > 0) ts.push(t0 - s);
+      }
+      ts.push(0, len);
+      const cands = ts
+        .map((t) => (len > 0 ? { x: a.x + ((b.x - a.x) * t) / len, y: a.y + ((b.y - a.y) * t) / len } : a))
+        .map((q) => ({ q, d: Math.hypot(q.x - p.x, q.y - p.y) }))
+        .sort((u, v) => u.d - v.d);
+      for (const { q, d } of cands) {
+        if (best && d >= best.distance) break;
+        if (isOutline(q, rings, courtyards, r, i)) {
+          best = { point: q, distance: d, ring: r };
+          break;
+        }
+      }
     }
   });
   return best ?? closestBoundaryPoint(p, rings);
+}
+
+/**
+ * Signed distance to the footprint's true outline: negative inside the
+ * building, including a gap between slabs too narrow to be open ground and
+ * the seam between them, positive outside. Infinity when there are no rings.
+ */
+export function outlineDistance(p: MapPoint, rings: Rings, courtyards: ReadonlySet<number> = nestedRings(rings)): number {
+  const c = closestBoundaryPoint(p, rings);
+  if (!c) return Infinity;
+  if (!insideAny(p, rings)) {
+    if (c.distance >= OUTLINE_CLEARANCE) return c.distance;
+    const ring = rings[c.ring];
+    let seg = 0;
+    let bestSeg = Infinity;
+    for (let i = 0; i < ring.length; i++) {
+      const q = closestOnSegment(p, ring[i], ring[(i + 1) % ring.length]);
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d < bestSeg) [bestSeg, seg] = [d, i];
+    }
+    if (isOutline(c.point, rings, courtyards, c.ring, seg)) return c.distance;
+  }
+  return -(closestOutlinePoint(p, rings, courtyards)?.distance ?? c.distance);
+}
+
+/** Boundary stretches facing a gap closed by {@link outlineDistance} (sampled at segment midpoints). */
+export function closedGaps(rings: Rings, courtyards: ReadonlySet<number> = nestedRings(rings)): number {
+  let n = 0;
+  rings.forEach((ring, r) => {
+    if (courtyards.has(r)) return;
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      const u = unit(b.y - a.y, -(b.x - a.x));
+      if (!u) continue;
+      const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      for (const sgn of [1, -1]) {
+        const p = { x: m.x + sgn * 0.01 * u.x, y: m.y + sgn * 0.01 * u.y };
+        if (!insideAny(p, rings) && outlineDistance(p, rings, courtyards) < 0) n++;
+      }
+    }
+  });
+  return n;
 }
 
 /**

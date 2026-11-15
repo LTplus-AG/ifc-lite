@@ -19,7 +19,7 @@
  * would start reading flow paths that do not touch the façade.
  */
 
-import { closestBoundaryPoint, closestOutlinePoint, nestedRings, signedDistance } from '../geom.js';
+import { closestBoundaryPoint, closestOutlinePoint, nestedRings, outlineDistance, signedDistance } from '../geom.js';
 import type { CandidateFact, ModelFacts } from '../model/facts.js';
 import {
   CELL_NO_RUNOFF,
@@ -103,7 +103,7 @@ export interface SamplePlan {
   points: Array<{ point: MapPoint; ring: number }>;
   /** Ring points dropped for lying inside or too close to the footprint. */
   rejected: number;
-  /** The nearest footprint boundary is a ring lying inside another ring (a courtyard the footprint fills). */
+  /** The anchor was taken on, or the nearest footprint boundary is, a courtyard ring (one the footprint fills). */
   nearestBoundaryNested: boolean;
 }
 
@@ -113,17 +113,20 @@ export function planSamples(candidate: CandidateFact, footprint: ModelFacts['foo
   // Computed from the rings as they are now: facts are plain data and may change between checks.
   const nested = nestedRings(rings);
   const nearestRing = closestBoundaryPoint(candidate.position, rings)?.ring;
-  const d = signedDistance(candidate.position, rings);
+  let anchorRing = nearestRing;
+  // One outline for anchor, guard and façade test (geom.ts): a seam, or a gap between slabs too narrow to be open ground,
+  // is inside, so an element there is moved to the real façade, and the anchor-offset guard sees how far.
+  const d = outlineDistance(candidate.position, rings, nested);
   let anchor = candidate.position;
   let anchorBasis: SamplePlan['anchorBasis'] = 'element';
   let anchorOffset = 0;
   if (d <= 0) {
-    // The true outline: a seam between adjacent rings is interior, so an element on it is moved to the real façade.
     const nearest = closestOutlinePoint(candidate.position, rings, nested);
     if (nearest) {
       anchor = nearest.point;
       anchorBasis = 'nearest-outline-point';
       anchorOffset = nearest.distance;
+      anchorRing = nearest.ring;
     }
   }
   const points: SamplePlan['points'] = [];
@@ -136,7 +139,7 @@ export function planSamples(candidate: CandidateFact, footprint: ModelFacts['foo
       else rejected++;
     }
   }
-  return { anchor, anchorBasis, anchorOffset, points, rejected, nearestBoundaryNested: nearestRing !== undefined && nested.has(nearestRing) };
+  return { anchor, anchorBasis, anchorOffset, points, rejected, nearestBoundaryNested: [nearestRing, anchorRing].some((r) => r !== undefined && nested.has(r)) };
 }
 
 /** What a raster says at a point. `outside-coverage`: outside (or too near) the perimeter the map covers. */

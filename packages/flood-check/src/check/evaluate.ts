@@ -55,10 +55,11 @@
  */
 
 import { fillsCourtyards, type CandidateFact, type ModelFacts } from '../model/facts.js';
-import type { ClassifiedHazardRaster, HazardClassDefinition, MapPoint } from '../types.js';
+import type { ClassifiedHazardRaster, HazardClassDefinition, MapBBox, MapPoint } from '../types.js';
 import { compareLevel, type LevelComparison, type Outcome, type UnclassifiedReason } from './outcome.js';
 import { readCell, type SamplePlan } from './sampling.js';
 import { insideAny } from '../geom.js';
+import { insideExtent } from './other-buildings.js';
 
 export interface SampleCounts {
   /** Ring points considered. */
@@ -109,7 +110,7 @@ export interface EvaluationContext {
   /** No cell of the raster shows a mapped class and no positive confirmation fetched within 5 min of the raster vouches for it (`layer.ts`). */
   emptyRasterUnconfirmed: boolean;
   /** Other buildings' footprints (`CheckOptions.otherBuildings`); absent: transparent samples are unknown. */
-  otherBuildings?: { rings: readonly (readonly MapPoint[])[]; complete: boolean };
+  otherBuildings?: { rings: readonly (readonly MapPoint[])[]; complete: boolean; extent: MapBBox | null };
 }
 
 const fmt = (v: number) => v.toFixed(3);
@@ -129,7 +130,7 @@ function pickDriver(evaluated: DrivingSample[]): DrivingSample {
 
 export function evaluateCandidate(candidate: CandidateFact, plan: SamplePlan, ctx: EvaluationContext): Evaluation {
   const { raster } = ctx;
-  const byReading: Record<string, number> = { 'no-runoff': 0, unclassified: 0, outside: 0, 'outside-coverage': 0, 'other-building': 0 };
+  const byReading: Record<string, number> = { 'no-runoff': 0, unclassified: 0, outside: 0, 'outside-coverage': 0, 'other-building': 0, 'beyond-buildings-extent': 0 };
   for (const c of raster.classes) byReading[c.id] = 0;
   const classified: Array<{ point: MapPoint; cls: HazardClassDefinition; terrain: number | null }> = [];
   let excluded = false;
@@ -140,6 +141,8 @@ export function evaluateCandidate(candidate: CandidateFact, plan: SamplePlan, ct
       byReading['other-building']++;
       continue;
     }
+    // A complete source vouches only inside its extent (a subset count of `no-runoff`).
+    if (reading.kind === 'no-runoff' && !insideExtent(point, ctx.otherBuildings?.extent ?? null)) byReading['beyond-buildings-extent']++;
     if (reading.kind !== 'class') {
       byReading[reading.kind]++;
       continue;
@@ -293,7 +296,7 @@ function conditionsWithholding(
     out.push({
       reason: 'courtyard-ring',
       text:
-        'the nearest footprint boundary is a ring lying inside another ring (a courtyard), which the footprint counts as inside the building, ' +
+        'the anchor was taken on, or the nearest footprint boundary is, a ring lying inside another ring (a courtyard), within the union of the others, which the footprint counts as inside the building, ' +
         'so the ground in front of the element is not sampled and any sample may lie on the far side of the building',
     });
   }
@@ -310,7 +313,7 @@ function conditionsWithholding(
     out.push({ reason: 'other-building', text: `${byReading['other-building']} ground sample(s) lie inside another building, which the hazard model raised (not modelled there)` });
   }
   // Transparency is "open ground, no runoff mapped" only with proof the sample is not inside a building the model omits.
-  if (byReading['no-runoff'] > 0 && ctx.otherBuildings?.complete !== true) {
+  if (byReading['no-runoff'] > 0 && (ctx.otherBuildings?.complete !== true || byReading['beyond-buildings-extent'] > 0)) {
     out.push({
       reason: 'other-buildings-unknown',
       text:

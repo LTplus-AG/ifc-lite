@@ -216,8 +216,9 @@ export function confirmEntries(
   }
   const entries: EntryCheck[] = [];
   const g = facts.groundStorey.expressId;
-  // A guessed ground storey (the lowest storey, or none) may be the basement, whose doors really lie below terrain.
-  if (facts.groundStorey.basis === 'lowest-storey' || facts.groundStorey.basis === 'none') {
+  // Only a ground storey the caller stated can confirm: one picked by the ±0.00 convention, the lowest storey or none may be
+  // the basement, whose doors lie at the terrain of a sunken yard or below it (re-audit N2).
+  if (facts.groundStorey.basis !== 'given') {
     reasons.push(`the ground storey was guessed (${facts.groundStorey.basis}), so its doors cannot confirm the height reference; pass groundStorey`);
   }
   if (g === null) {

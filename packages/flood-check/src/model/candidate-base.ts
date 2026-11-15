@@ -8,7 +8,7 @@
  */
 
 import { RelationshipType } from '@ifc-lite/data';
-import { signedDistance } from '../geom.js';
+import { outlineDistance } from '../geom.js';
 import type { MapPoint } from '../types.js';
 import type { CandidateCategory, CandidateFact, LevelBasis } from './facts.js';
 import type { ModelGeoreference } from './georef.js';
@@ -17,35 +17,19 @@ import { getInheritanceChainAcrossSchemas, normalizeIfcTypeName } from '@ifc-lit
 import { asEnum, asString, type DecodedEntity, type ModelReader } from './reader.js';
 
 /**
- * The Common property set carrying `IsExternal`, by supertype: any subtype of
- * these classes (`IfcWallElementedCase`, `IfcPlateStandardCase`, …) uses its
- * supertype's set. Checked against the repo's property-set data for IFC2X3,
- * IFC4 and IFC4X3 (`IsExternal` is in each of these sets in all three, except
- * `Pset_CoveringCommon` in IFC2X3 and the flight sets, where it reads as
- * unstated).
+ * The Common property sets that may carry `IsExternal` for an element: the
+ * `Pset_<Class>Common` of its class and of every supertype, nearest first
+ * (`IfcWallStandardCase` → `Pset_WallStandardCaseCommon`, `Pset_WallCommon`,
+ * …). Generic, so any host class (a proxy, a member, a column, a railing, a
+ * plate) is read; names no standard defines simply hold no value.
  */
-const COMMON_BY_SUPERTYPE: Readonly<Record<string, string>> = {
-  IfcWall: 'Pset_WallCommon',
-  IfcPlate: 'Pset_PlateCommon',
-  IfcRoof: 'Pset_RoofCommon',
-  IfcCovering: 'Pset_CoveringCommon',
-  IfcCurtainWall: 'Pset_CurtainWallCommon',
-  IfcSlab: 'Pset_SlabCommon',
-  IfcDoor: 'Pset_DoorCommon',
-  IfcWindow: 'Pset_WindowCommon',
-  IfcStair: 'Pset_StairCommon',
-  IfcStairFlight: 'Pset_StairFlightCommon',
-  IfcRamp: 'Pset_RampCommon',
-  IfcRampFlight: 'Pset_RampFlightCommon',
-};
-const commonCache = new Map<string, string | null>();
-
-/** The Common property set of an element's class or the nearest supertype that has one; null when none does. */
-export function commonPset(entity: DecodedEntity): string | null {
+const commonCache = new Map<string, readonly string[]>();
+export function commonPsets(entity: DecodedEntity): readonly string[] {
   let hit = commonCache.get(entity.type);
   if (hit === undefined) {
     const chain = getInheritanceChainAcrossSchemas(normalizeIfcTypeName(entity.type));
-    hit = chain.map((c) => COMMON_BY_SUPERTYPE[c]).find((p) => p !== undefined) ?? null;
+    const classes = chain.length > 0 ? chain : [normalizeIfcTypeName(entity.type)];
+    hit = [...new Set(classes.filter((c) => /^Ifc/.test(c)).map((c) => `Pset_${c.slice(3)}Common`))];
     commonCache.set(entity.type, hit);
   }
   return hit;
@@ -88,12 +72,18 @@ export function groundDoubt(ctx: CandidateContext): string | null {
 
 export const NO_PLACEMENT = 'no readable IfcLocalPlacement chain';
 
+/** `IsExternal` and the set it was read from (the nearest Common set of the class chain that states a boolean). */
+export function externalOf(reader: ModelReader, entity: DecodedEntity): { value: boolean | null; pset: string | null } {
+  for (const pset of commonPsets(entity)) {
+    // Several same-named sets may disagree: any `true` keeps the element in the façade (an exclusion needs every set to say false).
+    const values = reader.propertyValues(entity.expressId, pset, 'IsExternal').filter((v): v is boolean => typeof v === 'boolean');
+    if (values.length > 0) return { value: values.includes(true), pset };
+  }
+  return { value: null, pset: null };
+}
+
 export function isExternal(reader: ModelReader, entity: DecodedEntity): boolean | null {
-  const pset = commonPset(entity);
-  if (!pset) return null;
-  // Several same-named sets may disagree: any `true` keeps the element in the façade (an exclusion needs every set to say false).
-  const values = reader.propertyValues(entity.expressId, pset, 'IsExternal').filter((v): v is boolean => typeof v === 'boolean');
-  return values.length === 0 ? null : values.includes(true);
+  return externalOf(reader, entity).value;
 }
 
 export function predefinedType(reader: ModelReader, entity: DecodedEntity): string | null {
@@ -176,17 +166,19 @@ export function hostOf(ctx: CandidateContext, entity: DecodedEntity): DecodedEnt
 
 /** Why the element is in the façade, or `{ not }` with why it is taken not to be. */
 export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host: DecodedEntity | null, at: MapPoint, positionCertain = true): string | { not: string } {
-  const own = isExternal(ctx.reader, entity);
-  if (own === true) return `IsExternal (${commonPset(entity)})`;
-  const hostExternal = host ? isExternal(ctx.reader, host) : null;
+  const ownRead = externalOf(ctx.reader, entity);
+  const own = ownRead.value;
+  if (own === true) return `IsExternal (${ownRead.pset})`;
+  const hostRead = host ? externalOf(ctx.reader, host) : { value: null, pset: null };
+  const hostExternal = hostRead.value;
   // An external host wins over the element's own `false`: authoring tools often default it.
   if (hostExternal === true) {
-    return `host IsExternal (${commonPset(host!)})${own === false ? '; the element itself states IsExternal = false' : ''}`;
+    return `host IsExternal (${hostRead.pset})${own === false ? '; the element itself states IsExternal = false' : ''}`;
   }
   // More than the tolerance OUTSIDE the footprint, an element cannot be interior, whatever it states (the footprint is then
   // marked partial by the extraction).
   if (ctx.footprint.length > 0) {
-    const out = signedDistance(at, ctx.footprint);
+    const out = outlineDistance(at, ctx.footprint);
     if (Number.isFinite(out) && out > ctx.boundaryTolerance) {
       return `${out.toFixed(2)} m outside the footprint, so it cannot be interior (kept${own === false || hostExternal === false ? ' despite IsExternal = false' : ''}, and the footprint is partial: it misses this part of the building)`;
     }
@@ -194,7 +186,7 @@ export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host:
   if (own === false || hostExternal === false) return { not: `not in the façade: ${own === false ? 'it' : 'its host'} states IsExternal = false` };
   // No outline to test against (no slab, no external wall): keep it rather than lose every façade element.
   if (ctx.footprint.length === 0) return 'IsExternal not stated and no footprint to test against (kept conservatively)';
-  const d = signedDistance(at, ctx.footprint);
+  const d = outlineDistance(at, ctx.footprint);
   if (Number.isFinite(d) && Math.abs(d) <= ctx.boundaryTolerance) return `within ${ctx.boundaryTolerance} m of the footprint outline (IsExternal not stated)`;
   const doubt = footprintDoubt(ctx, d);
   if (doubt) return `IsExternal not stated, ${doubt}`;

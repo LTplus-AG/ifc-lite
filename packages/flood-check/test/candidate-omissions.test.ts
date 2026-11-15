@@ -16,7 +16,7 @@ import { CODE, CONFIRMED, flatTerrain, syntheticRaster } from './helpers.js';
 import { mapOf, ORIGIN, parseStep, ROTATION_DEG, syntheticHouse, type Extra } from './synthetic-model.js';
 
 const extract = async (extra: (b: Extra) => void) =>
-  extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', extra })), { expectedCrs: 'EPSG:2056' });
+  extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', extra })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
 
 function localOf(p: MapPoint): MapPoint {
   const a = (ROTATION_DEG * Math.PI) / 180;

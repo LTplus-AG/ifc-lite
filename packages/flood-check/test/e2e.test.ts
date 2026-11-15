@@ -85,7 +85,7 @@ function flatGrid(height: number, verticalCrs: string, crs: string): TerrainSour
 describe('synthetic EPSG:2056 house through the BAFU provider', () => {
   it('finds exposed, undecidable and unaffected elements with the numbers and provenance', async () => {
     const store = await parseStep(syntheticHouse({ verticalDatum: 'LN02' }));
-    const facts = extractModelFacts(store, { expectedCrs: 'EPSG:2056' });
+    const facts = extractModelFacts(store, { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
     const { fetchImpl, urls } = fakeWms();
     const provider = createBafuRunoffProvider({ fetch: fetchImpl, now: () => new Date('2026-11-15T11:00:00Z') });
     const terrain = flatGrid(499.95, 'EPSG:5728', 'EPSG:2056');
@@ -144,7 +144,7 @@ describe('a wholly transparent answer through the BAFU provider', () => {
   }
 
   it('reports "no runoff mapped" only after the reference location confirms the layer renders', async () => {
-    const facts = extractModelFacts(await parseStep(syntheticHouse()), { expectedCrs: 'EPSG:2056' });
+    const facts = extractModelFacts(await parseStep(syntheticHouse()), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
     const up = wms(fixture('bern-uniform-9px.png'));
     const ok = await runFloodCheck(facts, createBafuRunoffProvider({ fetch: up.fetchImpl }), flatGrid(499.95, 'EPSG:5728', 'EPSG:2056'), { otherBuildings: NO_OTHER_BUILDINGS });
     expect(up.urls).toHaveLength(2);

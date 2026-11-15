@@ -14,7 +14,7 @@
  * record is frozen into the footprint (`FootprintFact.quality`).
  */
 
-import { chainIntoRing, convexHull, nestedRings, ringArea, signedDistance } from '../geom.js';
+import { chainIntoRing, closedGaps, convexHull, nestedRings, outlineDistance, ringArea } from '../geom.js';
 import type { MapPoint } from '../types.js';
 import { isExternal } from './candidate-base.js';
 import { FOOTPRINT_QUALITY_ORDER, type FootprintFact, type FootprintQuality, type FootprintQualityRecord, type ModelFacts } from './facts.js';
@@ -35,6 +35,11 @@ class QualityLog {
   /** A condition found by checking the footprint against the building, with what was found. */
   note(condition: Exclude<FootprintQuality, 'complete'>, text: string): void {
     this.mark(condition);
+    this.notes.push(text);
+  }
+
+  /** A finding that does not lower the quality (a closed gap between slabs). */
+  remark(text: string): void {
     this.notes.push(text);
   }
 
@@ -134,7 +139,7 @@ function checkAgainstWalls(rings: MapPoint[][], input: FootprintInput, log: Qual
         return line.length === 1 ? line : out;
       });
       if (points.length === 0) continue;
-      const d = points.map((p) => signedDistance(p, rings));
+      const d = points.map((p) => outlineDistance(p, rings));
       const out = Math.max(...d);
       if (out > FIT_TOLERANCE) log.note('partial', `external wall ${reader.className(wall)} #${id} reaches ${out.toFixed(2)} m outside the footprint`);
       else if (Math.min(...d) < -FIT_TOLERANCE) {
@@ -145,7 +150,10 @@ function checkAgainstWalls(rings: MapPoint[][], input: FootprintInput, log: Qual
 }
 
 function seal(rings: MapPoint[][], source: FootprintFact['source'], fromElements: number[], log: QualityLog): FootprintFact {
-  if (nestedRings(rings).size > 0) log.mark('courtyard-ring');
+  const courtyards = nestedRings(rings);
+  if (courtyards.size > 0) log.mark('courtyard-ring');
+  const gaps = closedGaps(rings, courtyards);
+  if (gaps > 0) log.remark(`${gaps} boundary stretch(es) face a gap between footprint rings narrower than about 0.9 m, closed as inside the building`);
   const quality = log.record();
   const fact: FootprintFact = { rings, source, fromElements, quality };
   if (quality.conditions.includes('partial')) fact.partial = true;
@@ -173,7 +181,7 @@ export function resolveFootprint(input: FootprintInput): FootprintResolution {
     reported = true;
     const unread = log.unreadableSources;
     if (unread.length === 0) return;
-    for (const u of unread) input.skipped.push(u);
+    for (const u of unread) input.skipped.push({ ...u, stage: 'footprint-source' });
     input.warnings.push(
       `the footprint covers only part of the ground storey: ${unread.length} source(s) there cannot be read (${unread.map((u) => `${u.ifcClass} #${u.expressId}`).join(', ')}); ` +
         'no element gets a reassuring outcome — pass a footprint (for example the cadastral outline)',

@@ -19,6 +19,9 @@ const NAMED_CRS: ReadonlyArray<[RegExp, number]> = [
 /** `EPSG:2056` for `"EPSG:2056"`, `"epsg 2056"`, `"urn:ogc:def:crs:EPSG::2056"`; null otherwise. */
 export function normalizeCrs(value: string | undefined | null): string | null {
   if (!value) return null;
+  // The OGC URI form: http(s)://www.opengis.net/def/crs/EPSG/0/2056.
+  const uri = /^\s*https?:\/\/www\.opengis\.net\/def\/crs\/EPSG\/[^/]+\/(\d{4,6})\s*$/i.exec(value);
+  if (uri) return `EPSG:${Number(uri[1])}`;
   const m = /EPSG\s*:{0,2}\s*(\d{4,6})\b/i.exec(value);
   if (m) return `EPSG:${Number(m[1])}`;
   for (const [pattern, code] of NAMED_CRS) if (pattern.test(value)) return `EPSG:${code}`;

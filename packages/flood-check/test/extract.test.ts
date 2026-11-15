@@ -8,7 +8,7 @@ import { extractModelFacts } from '../src/model/extract.js';
 import { equipment2x3 } from './synthetic-2x3.js';
 import { mapOf, parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
 
-async function facts(options: Parameters<typeof syntheticHouse>[0] = {}, extract: Parameters<typeof extractModelFacts>[1] = {}) {
+async function facts(options: Parameters<typeof syntheticHouse>[0] = {}, extract: Parameters<typeof extractModelFacts>[1] = { groundStorey: 'EG' }) {
   return extractModelFacts(await parseStep(syntheticHouse(options)), extract);
 }
 
@@ -24,7 +24,7 @@ async function refusal(promise: Promise<unknown>): Promise<FloodCheckRefusal> {
 
 describe('extractModelFacts on a synthetic EPSG:2056 house', () => {
   it('reads the georeference, storeys, ground storey and slab footprint in map coordinates', async () => {
-    const f = await facts();
+    const f = await facts({}, {});
     expect(f.georeference).toMatchObject({ crs: 'EPSG:2056', verticalDatum: null, scaleBasis: 'units-agree', orthogonalHeight: 500 });
     expect(f.georeference.rotationDegrees).toBeCloseTo(30, 9);
     expect(f.storeys.map((s) => [s.name, s.level])).toEqual([['UG', 497], ['EG', 500], ['OG', 504]]);
@@ -88,7 +88,7 @@ describe('extractModelFacts on a synthetic EPSG:2056 house', () => {
 // Review finding 5.
 describe('technical equipment', () => {
   it('resolves IFC2X3 generic occurrences through their type object', async () => {
-    const f = extractModelFacts(await parseStep(equipment2x3()), { expectedCrs: 'EPSG:2056' });
+    const f = extractModelFacts(await parseStep(equipment2x3()), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
     expect(f.georeference.source).toBe('ePSetMapConversion');
     const picked = Object.fromEntries(f.candidates.filter((c) => c.category === 'equipment').map((c) => [c.name, c]));
     expect(Object.keys(picked).sort()).toEqual(['Batteriespeicher', 'Hauptschalter', 'Hauptverteilung', 'Heizkessel', 'Umwälzpumpe', 'Wärmepumpe']);

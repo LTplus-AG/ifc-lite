@@ -268,7 +268,7 @@ export function useIfcLoader() {
     const modelId = target.modelId ?? crypto.randomUUID();
     const processedModel = options?.processedModel && normalizedProcessedModel(options.processedModel); // one hash spelling for the record and the server
     let cancelled = false;
-    const isCurrent = () => !cancelled && (target.kind === 'primary' && !initialized
+    const isCurrent = () => !cancelled && (target.kind === 'primary' && !primaryCommitted
       ? admissionSessionRef.current === admissionSession : loadSessionRef.current === currentSession);
     const isStale = () => !isCurrent();
     let abortGeometry: (() => void) | null = null; // set once the geometry pool starts
@@ -276,10 +276,10 @@ export function useIfcLoader() {
     const metadataAbort = new AbortController();
     const activity = createModelLoadActivity(file.name);
     let modelCompletion: ReturnType<typeof createModelLoadCompletion> | undefined;
-    let initialized = false;
+    let initialized = false, primaryCommitted = false;
     const releaseCanceller = installModelLoadCanceller(target.kind, () => {
       cancelled = true;
-      if (target.kind === 'primary' && initialized && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
+      if (target.kind === 'primary' && primaryCommitted && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
       metadataAbort.abort();
       abortGeometry?.();
     }, () => cancelOwnedStream, activity, () => initialized, target.kind === 'primary'); // #5849: federated cancellation preserves loaded models
@@ -419,9 +419,12 @@ export function useIfcLoader() {
       let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined);
 
       let shardGeneration = instancedShardGeneration();
+      const commitPrimarySession = () => {
+        if (target.kind === 'primary' && !primaryCommitted) { releaseCanceller.commit(); currentSession = ++loadSessionRef.current; primaryCommitted = true; }
+      };
       const initializeModel = () => {
         if (initialized) return;
-        if (target.kind === 'primary') { releaseCanceller.commit(); currentSession = ++loadSessionRef.current; }
+        commitPrimarySession();
         initialized = true;
         // Reset all viewer state before loading new file — PRIMARY ONLY. A
         // federated add must never wipe model #1; it joins the existing map.
@@ -700,6 +703,7 @@ export function useIfcLoader() {
         ? tryServer({ byteLength: parsedBytes }) : false);
       const preflightHead = target.kind === 'federated' ? federatedHead : await localAdmission.preflight();
       if (preflightHead === null || isStale()) return;
+      commitPrimarySession(); // supersede old work before the new pick starter installs its own watchers
       runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
       initializeModel();
       const headBuf = preflightHead ?? await file.slice(0, 4096).arrayBuffer();

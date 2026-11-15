@@ -103,13 +103,6 @@ fn preferred_context(pass: &Pass<'_, '_>) -> Option<u32> {
     first_3d.or_else(|| ids.first().copied())
 }
 
-/// A mandatory REAL: an absent or NaN value is the authored default 0 (the
-/// `Number(x) || 0` of the TypeScript writer); an infinity is refused.
-fn real_or_zero(v: Option<&Value>) -> Result<String, Unwritable> {
-    let n = v.map_or(f64::NAN, js_to_number);
-    to_step_real(if n.is_nan() || n == 0.0 { 0.0 } else { n })
-}
-
 fn real_or_unset(v: Option<&Value>) -> Result<String, Unwritable> {
     v.map_or(Ok("$".to_string()), |v| to_step_real(js_to_number(v)))
 }
@@ -150,6 +143,7 @@ fn map_conversion_line(
     context: u32,
     crs: u32,
     mc: &Map<String, Value>,
+    [eastings, northings, height]: [f64; 3],
     warnings: &mut Vec<String>,
     file_schema: &str,
 ) -> Result<String, Unwritable> {
@@ -161,9 +155,9 @@ fn map_conversion_line(
     let mut line = format!(
         "#{id}=IFCMAPCONVERSION{}(#{context},#{crs},{},{},{},{},{},{}",
         if factors.is_some() { "SCALED" } else { "" },
-        real_or_zero(mc.get("eastings"))?,
-        real_or_zero(mc.get("northings"))?,
-        real_or_zero(mc.get("orthogonalHeight"))?,
+        to_step_real(eastings + 0.0)?,
+        to_step_real(northings + 0.0)?,
+        to_step_real(height + 0.0)?,
         real_or_unset(mc.get("xAxisAbscissa"))?,
         real_or_unset(mc.get("xAxisOrdinate"))?,
         real_or_unset(mc.get("scale"))?,
@@ -206,15 +200,16 @@ fn map_unit_token(pass: &mut Pass<'_, '_>, unit: &Value) -> Result<String, Unwri
 /// Create the `IfcMapConversion` from the preferred context to `crs_id`, or
 /// report that no context exists.
 fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, Value>, file_schema: &str) -> Result<(), Unwritable> {
-    // A create needs the whole position: a partial edit whose record was deleted is refused, never written as 0.
-    if !["eastings", "northings", "orthogonalHeight"].iter().all(|k| mc.get(*k).is_some_and(|v| !v.is_null() && !js_to_number(v).is_nan())) {
+    // A create needs the whole position (`+ 0.0` below folds -0 to 0): a partial edit whose record was deleted is refused, never written as 0.
+    let pos = ["eastings", "northings", "orthogonalHeight"].map(|k| mc.get(k).filter(|v| !v.is_null()).map(js_to_number).filter(|n| !n.is_nan()));
+    let [Some(e), Some(n), Some(h)] = pos else {
         pass.warnings.push(INCOMPLETE_MAP_CONVERSION.to_string());
         return Ok(());
-    }
+    };
     match preferred_context(pass) {
         Some(context) => {
             let mc_id = pass.allocate()?;
-            let line = map_conversion_line(mc_id, context, crs_id, mc, &mut pass.warnings, file_schema)?;
+            let line = map_conversion_line(mc_id, context, crs_id, mc, [e, n, h], &mut pass.warnings, file_schema)?;
             pass.georef_lines.push((mc_id, line));
             pass.new_entity_count += 1;
         }

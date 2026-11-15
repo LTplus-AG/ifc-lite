@@ -44,7 +44,7 @@ pub(super) fn refine_rim_slivers(
         return out;
     };
     let plain = crate::facet_weld::canonicalised(&out);
-    if adoptable(&refined) && crate::facet_weld::improves(&refined, &plain) {
+    if crate::facet_weld::improves(&refined, &plain) && adoptable(&refined) {
         refined
     } else if adoptable(&plain) {
         plain

@@ -28,13 +28,12 @@ Two tools:
 - `oom-load-probe.mjs` opens one file in a built viewer (`apps/viewer/dist`) with
   `navigator.deviceMemory` / `hardwareConcurrency` overridden, and runs only Chrome inside
   `systemd-run --user --scope -p MemoryMax=CAP -p MemorySwapMax=0 -p CPUQuota=…`. It reports
-  `loaded` (checked first), `refused` (the load was stopped before local processing: a "local
-  processing memory budget" refusal, or main's "Ran out of memory while processing" before any
-  geometry streamed or the source was read), `killed` (the renderer or browser was OOM-killed or
+  `loaded` (checked first), `refused` (only the explicit pre-read "local processing memory
+  budget" refusal; the probe never infers a refusal from a read it did not see), `killed` (the renderer or browser was OOM-killed or
   crashed, or any Chrome process was OOM-killed and the page did not finish; a GPU or utility
   kill under a finished load is `loaded` with a note) or `error` (any other load error, including
-  that OOM message after processing ran and the worker/runtime crash messages that leave the tab
-  alive). Messages are read from the store's load error and dialogs/alerts/toasts, never the whole
+  main's "Ran out of memory while processing", always, and the worker/runtime crash messages that
+  leave the tab alive). Messages are read from the store's load error and dialogs/alerts/toasts, never the whole
   page. It also reports peak summed Chrome PSS, the cgroup peak, the phase reached, which process
   types an OOM kill took, and main-thread reads of the source file.
   Needs Linux with cgroup v2 and the memory controller delegated to the systemd user manager;

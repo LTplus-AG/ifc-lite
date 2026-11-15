@@ -11,9 +11,10 @@
  *   loaded   the viewer reached full interactivity. Checked first, so text
  *            elsewhere on the page can never turn a finished load into
  *            anything else.
- *   refused  the viewer stopped an oversized load BEFORE local processing
- *            and the tab survived (REFUSAL_MESSAGE in the store's load error
- *            or a dialog/toast).
+ *   refused  the viewer showed its explicit pre-read refusal (REFUSAL_MESSAGE,
+ *            in the store's load error or a dialog/toast) and the tab survived.
+ *            Nothing else is `refused`: the probe cannot see worker-side reads,
+ *            so "no read observed" is never taken to mean "never started".
  *   awaiting-decision  the viewer showed a "may exceed available memory"
  *            warning (Continue loading / Cancel) and the load had not started;
  *            the probe was told to leave it there (--on-memory-dialog wait).
@@ -24,10 +25,10 @@
  *   killed-after-continue  the same, after the probe clicked Continue loading
  *            (--on-memory-dialog continue): the user was warned. Reported on
  *            its own, never folded into a pass or into plain `killed`.
- *   error    any other load error, including main's after-the-fact
- *            "Ran out of memory while processing" once the load had started
- *            (the viewer failed, it did not refuse), and worker/runtime crash
- *            messages that leave the tab alive.
+ *   error    any other load error, including main's "Ran out of memory while
+ *            processing" (always: the message exists only once processing ran,
+ *            e.g. an entity pre-pass before any triangle streams) and the
+ *            worker/runtime crash messages that leave the tab alive.
  *   timeout  none of the above within the time limit.
  *
  * The warning and refusal strings below match draft PR #10353's wording and
@@ -62,7 +63,6 @@ const TAB_PROCESSES = new Set(['renderer', 'browser']);
  * @param {boolean} [o.interactive]    openAndWaitInteractive resolved.
  * @param {string|null} [o.storeError] the viewer store's load error.
  * @param {string[]} [o.notices]       text of dialogs, alerts and toasts at the end (not the whole page).
- * @param {boolean} [o.loadStarted]    geometry streamed or the source was read before the message.
  * @param {boolean} [o.timedOut]
  * @param {boolean} [o.warningShown]   a MEMORY_WARNING dialog appeared before the load started.
  * @param {'none'|'continue'|'cancel'} [o.decision] what the probe clicked on it.
@@ -88,11 +88,7 @@ export function classify(o) {
   const refusal = texts.find((t) => REFUSAL_MESSAGE.test(t));
   if (refusal) return { outcome: 'refused', reason: refusal.trim().slice(0, 300) };
   const oom = texts.find((t) => OOM_FAILURE_MESSAGE.test(t));
-  if (oom) {
-    return o.loadStarted
-      ? { outcome: 'error', reason: `out of memory after the load started: ${oom.trim().slice(0, 260)}` }
-      : { outcome: 'refused', reason: oom.trim().slice(0, 300) };
-  }
+  if (oom) return { outcome: 'error', reason: `out of memory during processing: ${oom.trim().slice(0, 260)}` };
   if (o.storeError) return { outcome: 'error', reason: String(o.storeError).slice(0, 300) };
   if (o.timedOut) return { outcome: 'timeout', reason: 'time limit' };
   return { outcome: 'error', reason: 'no verdict observed' };

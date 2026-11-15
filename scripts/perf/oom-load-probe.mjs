@@ -166,7 +166,7 @@ export async function runProbe(opts) {
   cleanup.push({ name: 'signal handlers', fn: () => { process.off('SIGINT', onSignal); process.off('SIGTERM', onSignal); } });
 
   const obs = { oomKills: 0, killedTypes: [], pageCrashed: false, browserGone: false, interactive: false, storeError: null, notices: [],
-    loadStarted: false, timedOut: false, warningShown: false, decision: 'none' };
+    timedOut: false, warningShown: false, decision: 'none' };
   const peak = { pssMiB: 0, cgroupMiB: 0 };
   const unit = `oom-load-probe-${process.pid}-${Date.now()}`;
   let last = null, context, sampler, cg = null, verdictReady = false;
@@ -240,7 +240,7 @@ export async function runProbe(opts) {
         await new Promise((r) => setTimeout(r, 2000));
         if (done || obs.pageCrashed || obs.browserGone || obs.oomKills > 0) return;
         const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 15000, () => null);
-        if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); if (st.tris > 0) obs.loadStarted = true; }
+        if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
         if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? 'model load error'; return; }
         if (obs.decision === 'none') {
           const dialog = page.getByRole('dialog').filter({ hasText: MEMORY_WARNING });
@@ -264,7 +264,6 @@ export async function runProbe(opts) {
     if (!obs.pageCrashed && !obs.browserGone) {
       obs.notices = await withTimeout(page.evaluate(NOTICES).catch(() => []), 5000, () => []);
       result.sourceReads = await withTimeout(page.evaluate(() => globalThis.__oomProbeReads ?? null).catch(() => null), 5000, () => null);
-      if ((result.sourceReads?.reads ?? 0) > 0) obs.loadStarted = true;
       if (obs.interactive) last = { ...(await withTimeout(page.evaluate(PAGE_PROBE).catch(() => last), 5000, () => last)), interactive: true };
       await page.screenshot({ path: join(outDir, 'end.png'), timeout: 10000 }).catch(() => {});
     }

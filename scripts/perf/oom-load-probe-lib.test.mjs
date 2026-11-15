@@ -17,15 +17,22 @@ test('#10264 an OOM kill wins over every other signal', () => {
   assert.equal(classify({ browserGone: true }).outcome, 'killed');
 });
 
-test('#10264 only a pre-read refusal, or an OOM message before any processing, is `refused`', () => {
+test('#10264 only the explicit pre-read refusal text is `refused`', () => {
   const r = classify({ notices: ["This IFC file exceeds this tab's local processing memory budget (6.0 GiB budget)."] });
   assert.equal(r.outcome, 'refused');
   assert.match(r.reason, /local processing memory budget/);
   assert.equal(classify({ storeError: "This IFC file exceeds this tab's local processing memory budget" }).outcome, 'refused');
-  // Main's out_of_memory text (load-error-message.ts) is an after-the-fact failure once processing ran.
+});
+
+test('#10264 "Ran out of memory while processing" is always `error`, even with no read observed', () => {
+  // An entity-heavy pre-pass can fail before any triangle streams, and worker-side reads are invisible
+  // to the probe: an unobserved start must not read as a refusal (review on #10415).
   const oom = 'Ran out of memory while processing big.ifc. This usually means the model is too large for this device\'s available memory.';
-  assert.equal(classify({ storeError: oom, loadStarted: true }).outcome, 'error');
-  assert.equal(classify({ storeError: oom, loadStarted: false }).outcome, 'refused');
+  for (const extra of [{}, { loadStarted: false }, { loadStarted: true }, { notices: [oom] }]) {
+    const r = classify({ storeError: oom, ...extra });
+    assert.equal(r.outcome, 'error');
+    assert.equal(verdict(r.outcome, 'not-killed').pass, false);
+  }
 });
 
 test('#10264 crash messages that leave the tab alive are `error`, never `refused`', () => {
@@ -33,7 +40,7 @@ test('#10264 crash messages that leave the tab alive are `error`, never `refused
   const worker = 'A geometry worker stopped unexpectedly while processing big.ifc. This usually means the model is too large for this device\'s available memory.';
   const runtime = "The 3D geometry engine crashed and can't restart in this tab. If it happens again on the same model, it is likely too large for this device's memory.";
   for (const storeError of [worker, runtime]) {
-    assert.equal(classify({ storeError, loadStarted: true }).outcome, 'error');
+    assert.equal(classify({ storeError }).outcome, 'error');
     assert.equal(verdict(classify({ storeError }).outcome, 'not-killed').pass, false);
   }
 });

@@ -153,11 +153,14 @@ impl ProfileProcessor {
                 }
             );
         }
-        let frames: Vec<_> = stations.into_iter().map(|s| alignment.evaluate(s)).collect();
-        Ok(Some(DirectrixSamples {
-            points: frames.iter().map(|f| f.origin).collect(),
-            tangents: Some(frames.iter().map(|f| f.tangent).collect()),
-        }))
+        let mut points = Vec::with_capacity(stations.len());
+        let mut tangents = Vec::with_capacity(stations.len());
+        for s in stations {
+            let frame = alignment.evaluate(s);
+            points.push(frame.origin);
+            tangents.push(frame.tangent);
+        }
+        Ok(Some(DirectrixSamples { points, tangents: Some(tangents) }))
     }
 }
 

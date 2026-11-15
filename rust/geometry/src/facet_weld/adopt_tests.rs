@@ -47,7 +47,7 @@ fn the_raw_pass_multiplies_the_needles_of_a_thin_sheet() {
 #[test]
 fn a_refinement_that_adds_slivers_is_not_kept() {
     let sheet = box_mesh(SHEET);
-    let kept = refine_slivers_if_better(&sheet);
+    let kept = refine_slivers_if_better(sheet.clone());
     let after = Quality::of(&kept);
     assert_eq!((kept.indices.len() / 3, after.shape.slivers, after.unpaired_edges), (12, 8, 0));
     assert!((after.shape.max_aspect - 250.0).abs() < 0.5, "worst aspect {}", after.shape.max_aspect);
@@ -82,7 +82,7 @@ fn a_refinement_takes_no_credit_for_what_canonicalising_drops() {
 #[test]
 fn a_mesh_without_slivers_comes_back_untouched() {
     let cube = box_mesh([1.0, 1.0, 1.0]);
-    let kept = refine_slivers_if_better(&cube);
+    let kept = refine_slivers_if_better(cube.clone());
     assert_eq!((kept.positions, kept.indices), (cube.positions, cube.indices));
 }
 

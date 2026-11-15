@@ -199,7 +199,7 @@ fn exact_tail_output_keeps_no_sliver() {
     let (shape, uncut) = (triangle_shape(&out), triangle_shape(&host));
     assert_eq!(shape.slivers, 0, "sliver of {}:1 left by the exact tail", shape.max_aspect);
     assert!(shape.max_aspect <= uncut.max_aspect + 1e-6, "{} past the wall's own {}", shape.max_aspect, uncut.max_aspect);
-    assert!(same_mesh(&crate::facet_weld::refine_slivers_if_better(&out), &out), "the tail must have run the pass");
+    assert!(same_mesh(&crate::facet_weld::refine_slivers_if_better(out.clone()), &out), "the tail must have run the pass");
     let bisected = triangle_shape(&crate::facet_weld::refine_high_aspect_slivers(&out));
     assert!(bisected.max_aspect > shape.max_aspect, "the fixture must tell the rule from the bare bisection");
 }

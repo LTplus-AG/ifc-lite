@@ -61,3 +61,18 @@ test('#8564 extreme finite logits and quaternions remain finite', () => {
   assert.deepEqual([...result.opacities], [0, 1]);
   for (let row = 0; row < 2; row++) assert.ok(Math.abs(Math.hypot(...result.rotations.slice(row * 4, row * 4 + 4)) - 1) < 1e-7);
 });
+
+test('#9018 normalizes into a matching target in place, and allocates for any other shape', () => {
+  for (const degree of [0, 3] as const) {
+    const fresh = normalizeGaussianAttributes(source(degree));
+    const target = normalizeGaussianAttributes(source(degree));
+    for (const array of [target.positions, target.scales, target.rotations, target.colors, target.opacities, target.sphericalHarmonics]) array.fill(Number.NaN);
+    const reused = normalizeGaussianAttributes(source(degree), target);
+    assert.equal(reused, target, 'the matching target is the result');
+    assert.deepEqual(reused, fresh, 'every element is rewritten');
+  }
+  const other = normalizeGaussianAttributes(source(1));
+  const result = normalizeGaussianAttributes(source(3), other);
+  assert.notEqual(result, other, 'a different SH degree is never reused');
+  assert.equal(result.sphericalHarmonics.length, 2 * 15 * 3);
+});

@@ -3,31 +3,46 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The single packed upstream `SplatSource` holding every asset (#8564). One source
- * means one upstream global sort and one draw: no 64-run limit, no slab fallback.
- * Positions are world coordinates relative to the layer's RTE anchor.
+ * The single packed upstream source holding every asset (#8564): one upstream
+ * global sort and one draw, no 64-run limit, no slab fallback. Positions are
+ * world coordinates relative to the layer's RTE anchor.
+ *
+ * #9018: the heavy columns live only on the GPU. The CPU keeps just what the
+ * upstream depth sort and the centre clip read (`GaussianSortColumns`).
  */
-export interface GaussianPackedSource {
+export interface GaussianPackedLayout {
+  readonly rows: number;
+  readonly shDegree: 0 | 1 | 2 | 3;
+  /** `float16x2`: two half coefficients per 32-bit word, row-major, no per-row padding. */
+  readonly shEncoding: 'float32' | 'float16x2';
+}
+
+/** CPU columns retained with the drawn data: anchor-local centres, opacities and asset slots. */
+export interface GaussianSortColumns {
+  readonly positions: Float32Array;
+  readonly opacities: Float32Array;
+  /** Asset slot per row; 0 marks padding. Slots are never reused, so stale rows can always be excluded. */
+  readonly semanticIds: Uint32Array;
+}
+
+/** Placed rows ready for the GPU. `sphericalHarmonics` holds coefficient words in the layout's encoding. */
+export interface GaussianGpuRows {
   readonly positions: Float32Array;
   readonly scales: Float32Array;
   readonly rotations: Float32Array;
   readonly colors: Float32Array;
   readonly opacities: Float32Array;
-  /** Asset slot per row. Slots are never reused, so stale rows can always be excluded. */
   readonly semanticIds: Uint32Array;
-  readonly sphericalHarmonics?: Float32Array;
-  readonly sphericalHarmonicsDegree: 0 | 1 | 2 | 3;
+  readonly sphericalHarmonics?: Float32Array | Uint32Array;
 }
 
-/** Complete replacement rows for one asset slice; columns keep the packed layout. */
-export interface GaussianRowUpdate {
-  readonly positions?: Float32Array;
-  readonly scales?: Float32Array;
-  readonly rotations?: Float32Array;
-  readonly sphericalHarmonics?: Float32Array;
+/** Fills a new GPU allocation. Rows starting a write or copy are even, so float16x2 words never straddle. */
+export interface GaussianRowWriter {
+  write(row: number, rows: GaussianGpuRows): void;
+  /** GPU-side copy of rows from the currently drawn data, which has the same layout. */
+  copy(fromRow: number, toRow: number, rows: number): void;
 }
 
-/** Row visibility for clipping; `rowIndex` indexes the packed source. */
 export type GaussianRowFilter = (semanticId: number | undefined, rowIndex: number) => boolean;
 
 /** Viewer-owned frame resources. A backend borrows them for one pass and never destroys them. */
@@ -61,10 +76,12 @@ export interface GaussianEncodeCamera {
 /** Per-device upstream renderer state. Owns only allocations it made itself. */
 export interface GaussianBackendScene {
   readonly gpuBytes: number;
-  /** Allocate and verify the new source first; on failure the previous source stays drawable. */
-  replaceSource(source: GaussianPackedSource): Promise<void>;
-  /** Rewrite rows in place; upstream also updates its CPU copy, which is the packed source itself. */
-  updateRows(rowOffset: number, rows: GaussianRowUpdate): void;
+  /**
+   * Allocate `layout`, let `fill` write it, verify the allocation, then draw it.
+   * On any failure (including `fill` throwing) the new allocation is released and
+   * the previous data stays drawable. `fill` returns the CPU columns to retain.
+   */
+  replaceRows(layout: GaussianPackedLayout, fill: (writer: GaussianRowWriter) => Promise<GaussianSortColumns>): Promise<void>;
   /** Draw only rows whose asset slot is in `include` and that pass `predicate`. */
   setFilter(include: ReadonlySet<number>, predicate: GaussianRowFilter | null): void;
   /**

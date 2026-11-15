@@ -36,7 +36,7 @@ export function storeyInventoryCache(
     entry = { store, changes, deleted: new Set(view.getTombstones()), revision: view.getMutationRevision(), dirty: new Set() };
     entries.set(view, entry);
     const origin = changes.origin;
-    if (origin && origin.view.getMutationRevision() === origin.revision) {
+    if (origin && view.getMutationRevision() === origin.revision && origin.view.getMutationRevision() === origin.revision) {
       readParent(origin.view);
       const parent = entries.get(origin.view);
       if (parent?.store === store) Object.assign(entry, { graph: parent.graph, planner: parent.dirty.size ? undefined : parent.planner,

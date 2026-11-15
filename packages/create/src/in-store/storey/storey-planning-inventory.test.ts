@@ -6,6 +6,18 @@ import { readStoreyInventory } from './storey-model.js';
 import { planStoreyLevelEdit } from './storey-level-plan.js';
 import { storeyPlanningWork } from './storey-planning-diagnostics.js';
 import { applyStoreyLevelEdit } from './storey-level-apply.js';
+import { homeStoreyOf } from './storey-attachment.js';
+
+it('#8452 a draft edited before its first inventory read cannot borrow the parent spatial graph', async () => {
+  const s = session(await parse(THIRD_PARTY));
+  readStoreyInventory(s.store, s.view);
+  s.view.runAtomic(draft => {
+    const product = draft.createEntity('IfcColumn', ['new', null, null, null, null, '#44', null, null, null]).expressId;
+    draft.createEntity('IfcRelContainedInSpatialStructure', ['rel', null, null, null, [`#${product}`], '#42']);
+    expect(homeStoreyOf(readStoreyInventory(s.store, draft), product)).toBe(42);
+    expect(homeStoreyOf(readStoreyInventory(s.store, s.view), product)).toBeNull();
+  });
+});
 
 it('#8452 inherited products remain in moved IDs without repeated payload planning, including apply and undo', async () => {
   const s = session(await parse(THIRD_PARTY));

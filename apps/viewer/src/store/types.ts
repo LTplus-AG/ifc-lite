@@ -442,7 +442,6 @@ export interface CameraCallbacks {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference, PointCloudAsset } from '@ifc-lite/geometry';
 import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
-import type { ContainerVisibilityPlan } from '../lib/container-visibility';
 export type AuthoringOverlayChannel = 'command' | 'grids' | 'proposal' | 'scan'; // authoring ghost-mesh channels (#6232); 'proposal': reviewed AI authoring (P15A); 'scan': scan-to-BIM detections (#6894)
 /**
  * Compound identifier for entities across multiple models.
@@ -547,8 +546,7 @@ export interface FederatedModel extends ModelLoadReportFields {
   ifcDataStore: IfcDataStore | null;
   /** Non-IFC source semantics, kept outside the IFC data store by design; `terrainImagery` is imagery draped on it (#5942), provenance only. */
   landXmlDocument?: LandXmlTinDocument; terrainImagery?: import('../lib/terrain-imagery/drape-state.js').TerrainImageryDrape;
-  /** How the source's container rows hide and show their subtree (a Rhino layer, #10214); absent means each row acts on what it holds directly. */
-  containerVisibility?: ContainerVisibilityPlan;
+  /** How container rows hide/show their subtree (a Rhino layer, #10214); absent: rows act on direct members. */ containerVisibility?: import('../lib/container-visibility').ContainerVisibilityPlan;
   /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
   sourceSchema?: LandXmlSchema;
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */

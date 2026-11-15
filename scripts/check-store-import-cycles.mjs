@@ -66,21 +66,33 @@ export function findStoreImportCycles(root = repoRoot) {
   return { reachable: [...visited].sort(), offenders: [...offenders].sort() };
 }
 
-/** @returns {{ reachable: string[], offenders: string[], newOffenders: string[] }} */
+/** @returns {{ reachable: string[], offenders: string[], newOffenders: string[], staleRows: string[] }} */
 export function checkStoreImportCycles(root = repoRoot, allowed = root === repoRoot
   ? readFileSync(resolve(root, ALLOWLIST), 'utf8').split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'))
   : []) {
   const result = findStoreImportCycles(root);
   const allowedPaths = new Set(allowed.map((path) => resolve(root, path)));
-  return { ...result, newOffenders: result.offenders.filter((path) => !allowedPaths.has(path)) };
+  const offenderPaths = new Set(result.offenders);
+  return {
+    ...result,
+    newOffenders: result.offenders.filter((path) => !allowedPaths.has(path)),
+    // A row whose module no longer imports the store must go: kept, it would let that cycle return unnoticed.
+    staleRows: [...allowedPaths].filter((path) => !offenderPaths.has(path)).sort(),
+  };
 }
 
 function main() {
-  const { reachable, offenders, newOffenders } = checkStoreImportCycles();
+  const { reachable, offenders, newOffenders, staleRows } = checkStoreImportCycles();
+  const rel = (file) => `  ${file.slice(repoRoot.length + 1)}`;
   if (newOffenders.length) {
-    console.error(`New store import cycle: reachable modules import ${STORE_ENTRY}:\n${newOffenders.map((file) => `  ${file.slice(repoRoot.length + 1)}`).join('\n')}`);
+    console.error(`New store import cycle: reachable modules import ${STORE_ENTRY}:\n${newOffenders.map(rel).join('\n')}`);
     process.exitCode = 1;
-  } else console.log(`Store import cycle check passed (${reachable.length} reachable modules; ${offenders.length} existing offender(s) allowlisted).`);
+  }
+  if (staleRows.length) {
+    console.error(`Stale rows in ${ALLOWLIST} (the module no longer imports ${STORE_ENTRY}); delete them:\n${staleRows.map(rel).join('\n')}`);
+    process.exitCode = 1;
+  }
+  if (process.exitCode !== 1) console.log(`Store import cycle check passed (${reachable.length} reachable modules; ${offenders.length} existing offender(s) allowlisted).`);
 }
 
 if (isMainEntry(import.meta.url)) main();

@@ -56,7 +56,20 @@ describe('viewer store import-cycle guard', () => {
     assert.deepEqual(findStoreImportCycles(root).offenders, []);
   });
 
-  it('passes the real viewer store graph', () => {
-    assert.deepEqual(checkStoreImportCycles().newOffenders, []);
+  it('reports an allowlist row whose module no longer imports the store entry as stale', () => {
+    const root = fixture({
+      [entry]: "import './slices/fixed.js';\nimport './slices/still.js';\n",
+      'apps/viewer/src/store/slices/fixed.ts': 'export const fixed = 1;\n',
+      'apps/viewer/src/store/slices/still.ts': "import { useViewerStore } from '@/store';\n",
+    });
+    const result = checkStoreImportCycles(root, ['apps/viewer/src/store/slices/fixed.ts', 'apps/viewer/src/store/slices/still.ts']);
+    assert.deepEqual(result.newOffenders, []);
+    assert.deepEqual(result.staleRows.map((path) => path.slice(root.length + 1)), ['apps/viewer/src/store/slices/fixed.ts']);
+  });
+
+  it('passes the real viewer store graph, with no stale allowlist rows', () => {
+    const result = checkStoreImportCycles();
+    assert.deepEqual(result.newOffenders, []);
+    assert.deepEqual(result.staleRows, []);
   });
 });

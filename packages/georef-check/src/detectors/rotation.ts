@@ -50,6 +50,8 @@ export function detectRotation(ctx: DiagnosisContext): GeorefFinding[] {
     });
     return findings;
   }
+  // Both unset: IFC defaults to no turn (1, 0), compared with TrueNorth like the same turn written out.
+  if (a === undefined && b === undefined) return detectTrueNorthContradiction(ctx, findings);
   if (a === undefined || b === undefined) return findings;
   const length = Math.hypot(a, b);
   if (!Number.isFinite(length) || length === 0) {

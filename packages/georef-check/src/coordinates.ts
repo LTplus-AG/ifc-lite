@@ -239,10 +239,11 @@ export function samplePointFamilies(
   maxPoints = DEFAULT_MAX_SAMPLED_POINTS,
   placementPoints: ReadonlyMap<number, number> = placementLocationUses(reader),
 ): { cartesianPoints: Vec3[]; pointLists: Vec3[] } {
-  // Stride first (twice the budget, so the placement points left out rarely
-  // starve the sample), then drop placement Locations: filtering every id of
-  // a 500k-point model first would cost more than the sample itself.
-  const geometryPointIds = stride(reader.idsOfType('IFCCARTESIANPOINT'), maxPoints * 2).filter((id) => !placementPoints.has(id));
+  // Drop placement Locations before striding: a stride over the unfiltered ids
+  // can land only on Locations when they alternate with geometry points, and
+  // leave an empty sample. The filter is one set lookup per id, far cheaper
+  // than the record reads the stride then limits.
+  const geometryPointIds = reader.idsOfType('IFCCARTESIANPOINT').filter((id) => !placementPoints.has(id));
   const cartesianPoints: Vec3[] = [];
   for (const id of stride(geometryPointIds, maxPoints)) {
     const p = readPoint(reader, id);

@@ -307,7 +307,7 @@ describe('ROTATION_INVALID only when a filled-in default is still ambiguous (fin
 describe('a half-set axis that fills in to a unit vector is still compared with TrueNorth (review)', () => {
   // XAxisAbscissa 1 turns nothing; TrueNorth pointing along +x is 90° from grid north.
   const east = { x: 1, y: 0 };
-  it.each([[1, undefined], [1, 0], [undefined, 0]] as const)('(%s, %s) with TrueNorth (1, 0) contradicts the turn', (a, b) => {
+  it.each([[1, undefined], [1, 0], [undefined, 0], [undefined, undefined]] as const)('(%s, %s) with TrueNorth (1, 0) contradicts the turn', (a, b) => {
     const codes = run(facts({ trueNorth: east }, { xAxisAbscissa: a, xAxisOrdinate: b })).findings.map((f) => f.code);
     expect(codes).toEqual(['TRUE_NORTH_CONTRADICTS_ROTATION']);
   });
@@ -320,6 +320,18 @@ describe('a blank CRS record is not a declared CRS for LoGeoRef 50 (review)', ()
     const report = run(f);
     expect(report.findings.map((x) => x.code)).toContain('OPERATION_WITHOUT_CRS');
     expect(report.levels).not.toContain(50);
+  });
+  it('the crsDeclared indicator agrees: blank is not declared, a name or a WKT is (entity and ePSet)', () => {
+    const blank = facts();
+    if (blank.entities?.crs) blank.entities.crs = { ...blank.entities.crs, name: ' ' };
+    expect(run(blank).indicators.crsDeclared).toBe(false);
+    const ePSet = facts();
+    ePSet.ePSet = { crs: { source: 'ePSet_ProjectedCRS', entityId: 30, name: '' } };
+    if (ePSet.entities?.crs) ePSet.entities.crs = { ...ePSet.entities.crs, name: '' };
+    expect(run(ePSet).indicators.crsDeclared).toBe(false);
+    expect(run(facts()).indicators.crsDeclared).toBe(true);
+    ePSet.ePSet = { crs: { source: 'ePSet_ProjectedCRS', entityId: 30, name: 'EPSG:2056' } };
+    expect(run(ePSet).indicators.crsDeclared).toBe(true);
   });
   it('a blank Name with a WKT definition still counts', () => {
     const f = facts();

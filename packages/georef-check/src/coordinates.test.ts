@@ -123,6 +123,20 @@ describe('tuplesFromRecordPrefix', () => {
   });
 });
 
+describe('placement Locations that alternate with geometry points (review)', () => {
+  it('8,192 points, every other one a placement Location: the geometry points are still sampled', () => {
+    const ids = Array.from({ length: 8192 }, (_, i) => i + 1);
+    const locations = new Map(ids.filter((id) => id % 2 === 1).map((id) => [id, 1] as const));
+    const reader: EntityReader = {
+      get: (id) => ({ type: 'IFCCARTESIANPOINT', attributes: [[id % 2 === 1 ? 1 : 2_600_000, id % 2 === 1 ? 2 : 1_200_000, 0]] }),
+      idsOfType: (type) => (type === 'IFCCARTESIANPOINT' ? ids : []),
+    };
+    const { cartesianPoints } = samplePointFamilies(reader, 2048, locations);
+    expect(cartesianPoints.length).toBeGreaterThan(0);
+    expect(cartesianPoints.every((p) => p.x === 2_600_000)).toBe(true);
+  });
+});
+
 describe('placement Locations are not geometry', () => {
   it('a far axis-placement Location does not make the geometry far', () => {
     const entities: Record<number, { type: string; attributes: unknown[] }> = {

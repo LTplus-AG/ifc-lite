@@ -8,6 +8,7 @@ import { BAFU_ATTRIBUTION, BAFU_DATASET_DATE, BAFU_LIMITS } from '../src/bafu/da
 import { FloodCheckRefusal, HazardRequestError, HazardResponseError } from '../src/errors.js';
 import { BAFU_COVERAGE_RINGS, BAFU_COVERAGE_TOLERANCE } from '../src/bafu/coverage-data.js';
 import { bafuCovers } from '../src/bafu/coverage.js';
+import { decodePng } from '../src/png.js';
 import { fixture, rgbaPng } from './helpers.js';
 
 const SITE1 = { minX: 2599537, minY: 1199703, maxX: 2599637, maxY: 1199803 };
@@ -147,6 +148,13 @@ describe('BAFU provider', () => {
       expect(calls).toHaveLength(2);
       const failing = createBafuRunoffProvider({ fetch: stubFetch('down', { status: 503 }).fetchImpl });
       expect(await failing.confirmRendering!()).toMatchObject({ confirmed: false, detail: expect.stringMatching(/HTTP 503/) });
+    });
+
+    it('does not confirm a partially rendered reference: one classified pixel among 80 transparent ones', async () => {
+      const full = decodePng(fixture('bern-uniform-9px.png'));
+      const partial = rgbaPng(9, 9, (x, y) => (x === 4 && y === 4 ? [...full.rgba.slice(0, 4)] : [0, 0, 0, 0]));
+      const provider = createBafuRunoffProvider({ fetch: stubFetch(partial).fetchImpl });
+      expect(await provider.confirmRendering!()).toMatchObject({ confirmed: false, detail: expect.stringMatching(/only 1 of 81 pixels classified/) });
     });
 
     it('knows the perimeter of Switzerland and Liechtenstein, and says when a point is too close to tell', () => {

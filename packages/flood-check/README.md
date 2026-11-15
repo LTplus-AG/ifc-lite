@@ -158,7 +158,7 @@ it does where no runoff is mapped. So:
   transparent, or transparent with unreadable edge pixels), `runFloodCheck`
   calls `confirmRendering()`: one 9 × 9 px request (about 80 bytes) at a
   reference box in Bern, E 2,599,560–2,599,569, N 1,199,720–1,199,729, where
-  the map shows flow depth 0–0.1 m in all 81 pixels (recorded 2026-11-15 as
+  the map shows flow depth 0–0.1 m in all 81 pixels, and all 81 must come back classified to confirm (a partially rendered reference does not) (recorded 2026-11-15 as
   `test/fixtures/bafu/bern-uniform-9px.png`). It goes through the same cache
   and is made once per provider; a negative answer is not kept. Without a
   confirmation, transparent samples are `unclassified` (`layer-not-confirmed`)

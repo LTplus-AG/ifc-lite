@@ -236,9 +236,17 @@ export function createBafuRunoffProvider(options: BafuProviderOptions = {}): Haz
     try {
       const reference = await raster(BAFU_REFERENCE_BOX, BAFU_REFERENCE_CELL_SIZE, signal);
       const classified = reference.cells.filter((c) => c !== CELL_NO_RUNOFF && c !== CELL_UNCLASSIFIED).length;
-      return classified > 0
+      // The reference box is uniform: every pixel shows a mapped class. A partially rendered response (some pixels
+      // classified, the rest transparent) must not confirm a layer whose building raster may be just as incomplete.
+      return classified === reference.cells.length && classified > 0
         ? { confirmed: true, requestUrl: url, detail: `${classified} of ${reference.cells.length} reference pixels show a mapped class` }
-        : { confirmed: false, requestUrl: url, detail: 'the reference area, where the map shows runoff, came back without any mapped class' };
+        : {
+            confirmed: false,
+            requestUrl: url,
+            detail: classified === 0
+              ? 'the reference area, where the map shows runoff, came back without any mapped class'
+              : `the reference area, where the map shows a mapped class in every pixel, came back with only ${classified} of ${reference.cells.length} pixels classified`,
+          };
     } catch (error) {
       if (!(error instanceof HazardRequestError || error instanceof HazardResponseError)) throw error;
       return { confirmed: false, requestUrl: url, detail: `the reference request failed: ${error.message}` };

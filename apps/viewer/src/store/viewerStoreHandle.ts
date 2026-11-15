@@ -34,9 +34,9 @@ export function registerViewerStore(store: ViewerStoreApi): void {
   globalStoreRegistry[STORE_SINGLETON_KEY] = store;
 }
 
-/** The live store state. Throws when called before `store/index` has evaluated. */
+/** The live store state. Throws when called before the `@/store` entry is imported. */
 export function getViewerState(): ViewerState {
   const store = globalStoreRegistry[STORE_SINGLETON_KEY];
-  if (!store) throw new Error('viewer store read before store/index created it');
+  if (!store) throw new Error("viewer store read before '@/store' was imported");
   return store.getState();
 }

@@ -220,6 +220,28 @@ describe('review threads', () => {
     expect(run.layerCheck.confirmation?.confirmed).toBe(true);
   });
 
+  it('a non-finite ground-storey level is refused, never read as inside the band', () => {
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const e = (() => {
+        try {
+          check([groundDoor(500), ref], bad, south(mid), flatTerrain(500), { renderingConfirmation: CONFIRMED });
+        } catch (err) {
+          return err;
+        }
+      })();
+      expect(e).toBeInstanceOf(FloodCheckRefusal);
+      expect((e as FloodCheckRefusal).code).toBe('georeference-implausible');
+    }
+  });
+
+  it('a ground-storey door with a non-finite level cannot confirm the height reference', () => {
+    const r = check([groundDoor(NaN), upperWindow(503)], 500, south(mid), flatTerrain(500));
+    expect(r.heightReference.status).toBe('unconfirmed');
+    expect(r.heightReference.unconfirmedBecause.join(' ')).toMatch(/no finite level/);
+    expect(r.results.map((x) => x.outcome)).not.toContain('above-mapped-class-range');
+    expect(r.results.map((x) => x.outcome)).not.toContain('no-runoff-mapped');
+  });
+
   it('a sample on a row boundary reads the row whose closed north edge it is, as the raster contract says', () => {
     // Two rows of 1 m with origin y = 2: row 0 covers (1, 2], row 1 covers (0, 1]. y = 1 is row 1's north edge.
     const r = syntheticRaster(0, 0, 1, 2, 1, (p) => (p.y > 1 ? low : mid));

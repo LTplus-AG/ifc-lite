@@ -94,6 +94,13 @@ export function assessHeightReference(
 ): HeightPlausibility {
   const below = nonNegative('below', options.below ?? PLAUSIBILITY_DEFAULTS.below);
   const above = nonNegative('above', options.above ?? PLAUSIBILITY_DEFAULTS.above);
+  // Both band comparisons are false for NaN, which would pass the band and let the level confirm itself.
+  if (!Number.isFinite(groundStoreyLevel)) {
+    throw new FloodCheckRefusal(
+      'georeference-implausible',
+      `the ground storey level is ${groundStoreyLevel}, not a finite height, so the height reference cannot be tested against the terrain; no element results are reported. Check the storey elevation and the map conversion's OrthogonalHeight.`,
+    );
+  }
   if (terrain.length === 0) {
     return {
       status: 'not-checked-no-terrain',
@@ -211,6 +218,11 @@ export function confirmEntries(
   } else {
     facts.candidates.forEach((c, i) => {
       if (c.category !== 'door' || c.storeyId !== g || !eligible(c, i)) return;
+      if (!Number.isFinite(c.level)) {
+        // A non-finite level compares false against every limit: it must not read as "not too high".
+        reasons.push(`ground-storey door #${c.expressId} has no finite level (${c.level}), so it cannot confirm the height reference`);
+        return;
+      }
       const heights = adjacent(i);
       const t = heights.length > 0 ? median(heights) : null;
       entries.push({ expressId: c.expressId, level: c.level, adjacentTerrain: t, heightAboveTerrain: t === null ? null : c.level - t });

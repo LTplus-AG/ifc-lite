@@ -145,10 +145,19 @@ pub fn try_export_cityjson(content: &[u8], opts: &CityJsonOptions) -> Result<Cit
                     // On the export grid, so it equals the written block's height.
                     let grid = |z: f64| (to_out([0.0, 0.0, z])[2] / opts.scale).round();
                     measured_height = Some((grid(fp.z_max) - grid(fp.z_min)) * opts.scale);
-                    geoms.extend(geometry::lod0(&fp, &mut pool, &to_out));
-                    match geometry::lod1(&fp, &mut pool, &to_out) {
+                    let min_area2 = opts.scale * opts.scale;
+                    let mut dropped = 0;
+                    geoms.extend(geometry::lod0(&fp, &mut pool, &to_out, min_area2, &mut dropped));
+                    // The same polygons again: its count would repeat LoD0's.
+                    let mut dropped_lod1 = 0;
+                    match geometry::lod1(&fp, &mut pool, &to_out, min_area2, &mut dropped_lod1) {
                         Some(g) => geoms.push(g),
                         None => warnings.push(format!("{name}: the LoD1 block has no height at the export scale and is omitted")),
+                    }
+                    if dropped > 0 {
+                        warnings.push(format!(
+                            "{name}: {dropped} footprint rings could not be written as valid polygon rings (an island inside a hole, or a hole outside every exterior) and are missing from LoD0 and LoD1"
+                        ));
                     }
                 }
                 None => warnings.push(format!("{name}: no element geometry to derive a footprint from; written without geometry")),
@@ -160,7 +169,8 @@ pub fn try_export_cityjson(content: &[u8], opts: &CityJsonOptions) -> Result<Cit
         }
         let row = rows.get(&node.id).copied();
         let ifc_class = type_of.get(&node.id).map(|t| t.name().to_string()).unwrap_or_default();
-        let attrs = attributes::attributes(&attributes::AttributeInput {
+        let vertical = |m: f64| frame.vertical_length(m);
+        let (attrs, conflicts) = attributes::attributes(&attributes::AttributeInput {
             kind: node.kind,
             row,
             ifc_class: &ifc_class,
@@ -168,7 +178,15 @@ pub fn try_export_cityjson(content: &[u8], opts: &CityJsonOptions) -> Result<Cit
             site: node.containers.last().or(Some(&node.id)).and_then(|b| site_of.get(b)).copied(),
             measured_height,
             length_metres: model.units.length_unit_scale,
+            vertical: &vertical,
         });
+        if !conflicts.is_empty() {
+            warnings.push(format!(
+                "{}: property sets of the same name were merged and these properties had conflicting values; the first value in model order is kept: {}",
+                ids[&node.id],
+                conflicts.join(", ")
+            ));
+        }
         objects.push(CityObject { node: node.clone(), geoms, attrs });
     }
 

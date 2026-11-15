@@ -32,8 +32,34 @@ fn json_value(p: &PropValue) -> Value {
     }
 }
 
-fn pset_json(ps: &PropertySet) -> Value {
-    Value::Object(ps.properties.iter().map(|p| (p.name.clone(), json_value(p))).collect())
+/// The carried property sets as `{ set: { property: value } }`. Two sets of
+/// one name on one object (two `IfcRelDefinesByProperties` naming the same
+/// set) are merged into one: properties keep their first occurrence in the
+/// model's set order (relationship file order, occurrence sets before
+/// inherited type sets), and a later set that gives the same property a
+/// different value is reported in `conflicts` as `set.property` rather than
+/// silently overwriting it.
+fn merged_sets<'a>(sets: impl IntoIterator<Item = &'a PropertySet>, conflicts: &mut Vec<String>) -> Map<String, Value> {
+    let mut out: Map<String, Value> = Map::new();
+    for ps in sets {
+        let Value::Object(target) = out.entry(ps.name.clone()).or_insert_with(|| Value::Object(Map::new())) else { continue };
+        for p in &ps.properties {
+            let value = json_value(p);
+            match target.get(&p.name) {
+                None => {
+                    target.insert(p.name.clone(), value);
+                }
+                Some(kept) if *kept != value => {
+                    let key = format!("{}.{}", ps.name, p.name);
+                    if !conflicts.contains(&key) {
+                        conflicts.push(key);
+                    }
+                }
+                Some(_) => {}
+            }
+        }
+    }
+    out
 }
 
 /// The property sets carried for a kind: every set of a building (few, and
@@ -73,9 +99,20 @@ pub(super) struct AttributeInput<'a> {
     pub measured_height: Option<f64>,
     /// Metres per project length unit, for `Elevation`.
     pub length_metres: f64,
+    /// A vertical length in IFC metres as a length in output units (the
+    /// output CRS's unit), the conversion `measuredHeight` is written in.
+    pub vertical: &'a dyn Fn(f64) -> f64,
 }
 
-pub(super) fn attributes(input: &AttributeInput<'_>) -> Map<String, Value> {
+/// The attributes of one City Object, and the `set.property` names whose
+/// values conflicted between same-named property sets (see [`merged_sets`]).
+pub(super) fn attributes(input: &AttributeInput<'_>) -> (Map<String, Value>, Vec<String>) {
+    let mut conflicts = Vec::new();
+    let a = attributes_into(input, &mut conflicts);
+    (a, conflicts)
+}
+
+fn attributes_into(input: &AttributeInput<'_>, conflicts: &mut Vec<String>) -> Map<String, Value> {
     let mut a = Map::new();
     a.insert("ifcClass".into(), Value::String(input.ifc_class.to_string()));
     let Some(row) = input.row else { return a };
@@ -91,8 +128,9 @@ pub(super) fn attributes(input: &AttributeInput<'_>) -> Map<String, Value> {
     }
     if input.kind == Kind::Storey {
         if let Some(e) = attribute(row, "Elevation").and_then(|v| v.value.parse::<f64>().ok()) {
-            // IFC: in the project length unit; written in metres.
-            if let Some(n) = Number::from_f64(e * input.length_metres) {
+            // IFC: in the project length unit; written in the output unit,
+            // like `measuredHeight` and the coordinates.
+            if let Some(n) = Number::from_f64((input.vertical)(e * input.length_metres)) {
                 a.insert("Elevation".into(), Value::Number(n));
             }
         }
@@ -121,10 +159,7 @@ pub(super) fn attributes(input: &AttributeInput<'_>) -> Map<String, Value> {
             a.insert("EGRID".into(), Value::String(egrid));
         }
     }
-    let sets: Map<String, Value> = row.property_sets.iter()
-        .filter(|ps| carried(input.kind, ps) && !ps.properties.is_empty())
-        .map(|ps| (ps.name.clone(), pset_json(ps)))
-        .collect();
+    let sets = merged_sets(row.property_sets.iter().filter(|ps| carried(input.kind, ps) && !ps.properties.is_empty()), conflicts);
     if !sets.is_empty() {
         a.insert("ifcPropertySets".into(), Value::Object(sets));
     }

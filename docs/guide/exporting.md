@@ -1059,20 +1059,28 @@ ifc-lite export model.ifc --format cityjson --blocks-only --scale 0.01 --out blo
 ```
 
 ```typescript
-import { cityJsonRefusalReason } from '@ifc-lite/geometry';
+import { exportCityJson, cityJsonRefusalReason } from '@ifc-lite/geometry';
 
 try {
-  const city = gp.exportCityJson(bytes, { scale: 0.001, elementGeometry: true }); // null before init()
-  if (city) {
-    await saveFile('model.city.json', city.text);
-    console.log(city.referenceSystem ?? 'local coordinates', city.warnings);
-  }
+  // Loads the separate export wasm (`@ifc-lite/wasm/rhino`) on first use.
+  const city = await exportCityJson(bytes, { scale: 0.001, elementGeometry: true });
+  await saveFile('model.city.json', city.text);
+  console.log(city.referenceSystem ?? 'local coordinates', city.warnings);
 } catch (error) {
   const reason = cityJsonRefusalReason(error); // null for anything but a refusal
   if (reason === null) throw error;
   console.warn(`Not exported: ${reason}`); // e.g. the model has no IfcBuilding
 }
 ```
+
+The writer is not part of the default geometry engine that every viewer load downloads: it ships
+in the separate export payload (`@ifc-lite/wasm/rhino`, shared with the Rhino `.3dm` scene builder),
+which `exportCityJson` fetches the first time it runs. The viewer does not offer CityJSON export yet.
+
+**Size limit.** The whole document is built in memory (every vertex, City Object and the JSON text),
+and CityJSONSeq is assembled the same way before it is returned, not streamed feature by feature. A
+very large model, on the order of 10 million triangles of element geometry, will not export within
+the memory a browser or a default Node heap gives; `--blocks-only` (LoD0/LoD1 only) is far smaller.
 
 ### Mapping
 
@@ -1096,11 +1104,17 @@ the `ifcBuildingStorey` attribute (the storey's City Object id).
 
 City Object ids are the IFC `GlobalId` (`ifc-<express id>` when it is missing or not unique).
 Attributes: `GlobalId`, `Name`, `Description`, `ObjectType`, `LongName`, `PredefinedType` and the
-storey `Elevation` (metres) under their EXPRESS names; `ifcClass`; `ifcPropertySets` (every set of a
-building, the `Pset_*Common` set of rooms and elements); CityGML's `measuredHeight` (the LoD1 block
+storey `Elevation` under their EXPRESS names; `ifcClass`; `ifcPropertySets` (every set of a
+building, the `Pset_*Common` set of rooms and elements; two sets of the same name on one object are
+merged, the first value in model order wins a conflicting property and a warning names it); CityGML's `measuredHeight` (the LoD1 block
 height) and `yearOfConstruction` (`Pset_BuildingCommon.YearOfConstruction`). A Swiss federal building
 identifier `EGID` in any property set of the building, and a parcel identifier `EGRID` in the
 building's or its site's, are surfaced as top-level `EGID` / `EGRID` attributes.
+
+**Units.** Every length in the document is in the output unit: the unit of the output CRS (see
+[Georeferencing](#georeferencing)), or metres for local output. That covers the vertices,
+`transform.scale`, `measuredHeight` and the storey `Elevation` alike, which go through the same unit
+conversion, map scale and IFC4X3 `FactorZ`.
 
 ### Levels of detail
 
@@ -1110,6 +1124,9 @@ building's or its site's, are surfaced as top-level `EGID` / `EGRID` attributes.
   maximal horizontal extent, which CityGML 3.0 allows as LoD0 (footprint or roof-edge
   representation). No generalisation beyond dropping vertices within half a grid step of a line. An
   element with more than 50,000 projected triangles is outlined by its convex hull, with a warning.
+  A ring that touches itself at a vertex is split there into valid rings (two lobes meeting at a
+  point become two polygons); a ring that still cannot be written (an island inside a hole) is left
+  out of LoD0 and LoD1 with a warning.
 - **LoD1**: that outline extruded from the lowest to the highest point of the same elements, one
   flat roof: the CityGML block model. A closed, outward-oriented `Solid` when the outline is one
   polygon (holes become inner walls), a `MultiSurface` of the same faces when the building has
@@ -1117,8 +1134,9 @@ building's or its site's, are surfaced as top-level `EGID` / `EGRID` attributes.
   which the construction makes unambiguous.
 - **LoD3**: rooms and elements carry their IFC body tessellated by the ifc-lite geometry pipeline
   (openings cut), as triangles. It is design geometry, not generalised, so it claims CityGML 3.0's most
-  detailed LoD. No `Solid` is claimed for it. CityJSON forbids semantic surfaces on
-  `BuildingConstructiveElement`, so the element class travels in `ifcClass` instead.
+  detailed LoD. No `Solid` is claimed for it. CityJSON 2.0 does not list
+  `BuildingConstructiveElement` among the City Object types that may carry semantic surfaces, so
+  none are written on it and the element class travels in `ifcClass` instead.
 
 The older `generateLod0` / `generateLod1` helpers are not used: their LOD0 is a per-element
 bounding box (a 0.2 m cube where the element has no `IfcBoundingBox` representation), not a
@@ -1137,7 +1155,10 @@ for a metric map unit (in the map unit itself, with a warning, otherwise) and
 
 Without a resolvable conversion (none, several, a CRS name that is not an EPSG code, a unit that
 cannot be converted exactly) the model is written in local IFC world coordinates in metres, Z up,
-without a reference system, and `warnings` says why. A CRS is never guessed.
+without a reference system, and `warnings` says why. A CRS is never guessed, and neither is a
+missing `Scale`: the most common authoring error, a millimetre project with a metre map unit and no
+`IfcMapConversion.Scale`, stays local, and the warning names both units and the value to set
+(`Scale` 0.001 for that case).
 
 ### Vertices
 

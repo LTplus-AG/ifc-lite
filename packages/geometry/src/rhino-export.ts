@@ -46,10 +46,11 @@ export interface RhinoSceneBuffers { manifest: string; blob: Uint8Array }
 type RhinoEngine = typeof import('@ifc-lite/wasm/rhino');
 let engine: Promise<RhinoEngine> | null = null;
 
-/** Import and initialize the separate Rhino wasm (`@ifc-lite/wasm/rhino`) once.
- * It is never part of the default engine, so nothing is fetched until the
- * first .3dm export. A failed load is not cached, so a later export retries. */
-function loadRhinoEngine(): Promise<RhinoEngine> {
+/** Import and initialize the separate export wasm (`@ifc-lite/wasm/rhino`:
+ * the Rhino scene builder and the CityJSON writer) once. It is never part of
+ * the default engine, so nothing is fetched until the first .3dm or CityJSON
+ * export. A failed load is not cached, so a later export retries. */
+export function loadRhinoEngine(): Promise<RhinoEngine> {
   engine ??= (async () => {
     const module = await import('@ifc-lite/wasm/rhino');
     const bytes = await readNodeWasmBytes('@ifc-lite/wasm/rhino_bg.wasm');

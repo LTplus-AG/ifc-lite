@@ -356,3 +356,95 @@ fn epsg_names() {
     assert_eq!(epsg_code("EPSG:12ab"), None);
 }
 
+
+/// The most common authoring error: a millimetre project, a metre map unit
+/// and no `Scale`. Still local (never inferred), but the warning names both
+/// units and the value to set.
+#[test]
+fn omitted_scale_across_units_names_the_cause_and_the_fix() {
+    let unscaled = MAP_IFC4.replace(",0.001);", ",$);");
+    let (out, doc) = export(&model("IFC4", &unscaled, None), &CityJsonOptions::default());
+    assert!(out.reference_system.is_none(), "never inferred");
+    let w = out.warnings.iter().find(|w| w.contains("not georeferenced")).expect("a fallback warning");
+    assert!(w.contains("omits Scale"), "{w}");
+    assert!(w.contains("project length unit (millimetre, 0.001 m)") && w.contains("map unit (metre, 1 m)"), "{w}");
+    assert!(w.contains("set IfcMapConversion.Scale to 0.001"), "{w}");
+    assert!(real_vertices(&doc).iter().any(|v| (v[0] - 1.0).abs() < 1e-9 && (v[1] - 2.0).abs() < 1e-9), "local corner");
+}
+
+/// With a map unit that is not the metre, every length is in that unit: the
+/// coordinates, `measuredHeight` and the storey `Elevation` alike.
+#[test]
+fn lengths_are_all_in_the_output_unit_when_the_map_unit_is_a_foot() {
+    let feet = "#90=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+','LN02',$,$,#91);\n\
+#91=IFCCONVERSIONBASEDUNIT(#93,.LENGTHUNIT.,'FOOT',#94);\n#93=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n\
+#94=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#95);\n#95=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n\
+#92=IFCMAPCONVERSION(#5,#90,2600000.,1200000.,400.,1.,0.,0.0032808398950131233);";
+    let (out, doc) = export(&model("IFC4", feet, None), &CityJsonOptions::default());
+    assert!(out.reference_system.is_some(), "{:?}", out.warnings);
+    let objs = &doc["CityObjects"];
+    let height = objs["0Bld0000000000000000B1"]["attributes"]["measuredHeight"].as_f64().unwrap();
+    let elevation = objs["0Sty0000000000000000T1"]["attributes"]["Elevation"].as_f64().unwrap();
+    // 6 m and 1.5 m in feet (the height on the 0.001 ft grid).
+    assert!((height - 6.0 / 0.3048).abs() < 0.001, "measuredHeight {height}");
+    assert!((elevation - 1.5 / 0.3048).abs() < 1e-6, "Elevation {elevation} is not in feet");
+}
+
+/// Two property sets of one name on one building are merged, not
+/// overwritten: the first value wins a conflict and the conflict is reported.
+#[test]
+fn same_named_property_sets_are_merged_with_a_warning_on_conflict() {
+    let extra = "#84=IFCPROPERTYSET('0Pst0000000000000000P5',$,'Pset_BuildingCommon',$,(#85,#86));\n\
+#85=IFCPROPERTYSINGLEVALUE('NumberOfStoreys',$,IFCINTEGER(1),$);\n#86=IFCPROPERTYSINGLEVALUE('YearOfConstruction',$,IFCLABEL('2001'),$);\n\
+#87=IFCRELDEFINESBYPROPERTIES('0Rel0000000000000000D5',$,$,$,(#41),#84);\n";
+    let content = model("IFC4", MAP_IFC4, None).replace("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"));
+    let (out, doc) = export(&content, &CityJsonOptions::default());
+    let set = &doc["CityObjects"]["0Bld0000000000000000B1"]["attributes"]["ifcPropertySets"]["Pset_BuildingCommon"];
+    assert_eq!(set["IsLandmarked"], false, "the first set's properties survive");
+    assert_eq!(set["NumberOfStoreys"].as_f64(), Some(1.0), "the second set's properties are added");
+    assert_eq!(set["YearOfConstruction"], "1984", "the first value in model order wins");
+    assert!(
+        out.warnings.iter().any(|w| w.contains("0Bld0000000000000000B1") && w.contains("Pset_BuildingCommon.YearOfConstruction")),
+        "{:?}",
+        out.warnings
+    );
+}
+
+/// A footprint ring touching itself at a vertex (two lobes meeting at a
+/// point) is split into two valid polygons, not dropped.
+#[test]
+fn a_pinched_footprint_ring_is_split_not_dropped() {
+    let ring = vec![[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [4.0, 2.0], [4.0, 4.0], [2.0, 4.0], [2.0, 2.0], [0.0, 2.0]];
+    let fp = footprint::Footprint { shapes: vec![vec![ring]], z_min: 0.0, z_max: 3.0, approximated: 0 };
+    let id = |p: [f64; 3]| p;
+    let mut pool = vertices::VertexPool::new(0.001);
+    let mut dropped = 0;
+    let g0 = geometry::lod0(&fp, &mut pool, &id, 1e-6, &mut dropped).expect("LoD0 survives the pinch");
+    let s0 = surfaces(&g0.value);
+    assert_eq!(s0.len(), 2, "two lobes");
+    for s in &s0 {
+        assert_eq!(s.len(), 1);
+        let mut r = s[0].clone();
+        r.sort_unstable();
+        r.dedup();
+        assert_eq!(r.len(), 4, "each lobe visits its four corners once");
+    }
+    let g1 = geometry::lod1(&fp, &mut pool, &id, 1e-6, &mut dropped).expect("LoD1 survives the pinch");
+    assert_eq!(g1.value["type"], "MultiSurface");
+    assert_eq!(surfaces(&g1.value).len(), 12, "two boxes of six faces");
+    assert_eq!(dropped, 0);
+}
+
+/// An island inside a hole cannot be a ring of the polygon; it is counted.
+#[test]
+fn an_island_inside_a_hole_is_counted_as_dropped() {
+    let outer = vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]];
+    // A clockwise hole that pinches off a counter-clockwise loop (an island).
+    let hole = vec![[2.0, 2.0], [2.0, 8.0], [8.0, 8.0], [5.0, 5.0], [4.0, 4.0], [6.0, 4.0], [5.0, 5.0], [8.0, 2.0]];
+    let fp = footprint::Footprint { shapes: vec![vec![outer, hole]], z_min: 0.0, z_max: 3.0, approximated: 0 };
+    let mut pool = vertices::VertexPool::new(0.001);
+    let mut dropped = 0;
+    let g0 = geometry::lod0(&fp, &mut pool, &|p: [f64; 3]| p, 1e-6, &mut dropped).unwrap();
+    assert_eq!(surfaces(&g0.value).len(), 1);
+    assert_eq!(dropped, 1, "the island");
+}

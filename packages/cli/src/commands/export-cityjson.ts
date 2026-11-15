@@ -4,7 +4,8 @@
 
 /**
  * `ifc-lite export <file> --format cityjson|cityjsonseq`: the Rust CityJSON
- * 2.0 writer (`rust/export/src/cityjson/`) through the wasm engine.
+ * 2.0 writer (`rust/export/src/cityjson/`) through the separate export
+ * payload (`@ifc-lite/wasm/rhino`), not the default geometry engine.
  *
  * A whole-model format: buildings come from the spatial structure, so the
  * entity filters do not apply. A model without an `IfcBuilding` is refused
@@ -13,7 +14,7 @@
  * then in local coordinates without a reference system.
  */
 
-import { GeometryProcessor, cityJsonRefusalReason } from '@ifc-lite/geometry';
+import { exportCityJson as runCityJsonExport, cityJsonRefusalReason } from '@ifc-lite/geometry';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
@@ -25,29 +26,23 @@ export async function exportCityJson(format: 'cityjson' | 'cityjsonseq', args: s
   }
   if (store.source.byteLength === 0) throw new Error('Export: the parsed model kept no source bytes');
   const bytes = store.source.materialize();
-  const gp = new GeometryProcessor();
-  await gp.init();
+  let result;
   try {
-    let result;
-    try {
-      result = gp.exportCityJson(bytes, {
-        scale,
-        elementGeometry: !hasFlag(args, '--blocks-only'),
-        sequence: format === 'cityjsonseq',
-      });
-    } catch (err) {
-      const reason = cityJsonRefusalReason(err);
-      if (reason !== null) fatal(`CityJSON export refused: ${reason}`);
-      throw err;
-    }
-    if (result == null) fatal('CityJSON export failed (geometry pipeline not initialized)');
-    for (const warning of result.warnings) process.stderr.write(`Warning: ${warning}\n`);
-    await writeOutput(result.text, getFlag(args, '--out'));
-    process.stderr.write(
-      `CityJSON: ${result.buildings} building(s), ${result.cityObjects} city objects, ${result.vertices} vertices, ` +
-        `${result.referenceSystem ?? 'local coordinates (no reference system)'}\n`,
-    );
-  } finally {
-    gp.dispose();
+    // The writer is in the separate export payload, loaded on first use.
+    result = await runCityJsonExport(bytes, {
+      scale,
+      elementGeometry: !hasFlag(args, '--blocks-only'),
+      sequence: format === 'cityjsonseq',
+    });
+  } catch (err) {
+    const reason = cityJsonRefusalReason(err);
+    if (reason !== null) fatal(`CityJSON export refused: ${reason}`);
+    throw err;
   }
+  for (const warning of result.warnings) process.stderr.write(`Warning: ${warning}\n`);
+  await writeOutput(result.text, getFlag(args, '--out'));
+  process.stderr.write(
+    `CityJSON: ${result.buildings} building(s), ${result.cityObjects} city objects, ${result.vertices} vertices, ` +
+      `${result.referenceSystem ?? 'local coordinates (no reference system)'}\n`,
+  );
 }

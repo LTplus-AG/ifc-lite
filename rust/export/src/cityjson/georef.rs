@@ -47,6 +47,17 @@ impl OutputFrame {
         }
     }
 
+    /// A vertical length of `metres` IFC metres as a length in output units:
+    /// the height difference it makes through [`Self::apply`], so a storey
+    /// `Elevation` goes through the same unit conversion, map scale and
+    /// IFC4X3 `FactorZ` as the coordinates and `measuredHeight`.
+    /// Rounded to a nanounit: the difference of two map heights carries
+    /// float noise far below any length IFC states.
+    pub(super) fn vertical_length(&self, metres: f64) -> f64 {
+        let d = self.apply([0.0, 0.0, metres])[2] - self.apply([0.0, 0.0, 0.0])[2];
+        (d * 1e9).round() / 1e9
+    }
+
     /// `metadata.referenceSystem`, when a CRS is claimed.
     pub(super) fn reference_system(&self) -> Option<String> {
         match self {

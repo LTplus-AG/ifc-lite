@@ -113,13 +113,15 @@ impl VertexPool {
     }
 }
 
-/// A ring with consecutive repeats of the same pool index (including the
-/// wrap from last to first) removed, or `None` when fewer than three
-/// distinct vertices remain or a vertex recurs. Snapping can merge
-/// neighbouring vertices; a ring that repeats a vertex is invalid (val3dity
-/// error 102), and one that collapses is no surface at all. `key` reads the
-/// pool index of an item.
-pub(super) fn clean_ring_by<T: Copy>(ring: &[T], key: impl Fn(&T) -> u32) -> Option<Vec<T>> {
+/// A ring split into simple rings on the snapped grid. Consecutive repeats
+/// of the same pool index (including the wrap from last to first) are
+/// removed; then wherever a vertex recurs further on (a pinch: the ring
+/// touches itself there) the loop between its two visits is cut out as a
+/// ring of its own, so every returned ring visits each vertex once (a ring
+/// that repeats a vertex is invalid, val3dity error 102). Loops of fewer
+/// than three vertices enclose no area and are not returned. `key` reads
+/// the pool index of an item.
+pub(super) fn split_ring_by<T: Copy>(ring: &[T], key: impl Fn(&T) -> u32) -> Vec<Vec<T>> {
     let mut out: Vec<T> = Vec::with_capacity(ring.len());
     for item in ring {
         if out.last().map(&key) != Some(key(item)) {
@@ -129,8 +131,27 @@ pub(super) fn clean_ring_by<T: Copy>(ring: &[T], key: impl Fn(&T) -> u32) -> Opt
     while out.len() > 1 && out.first().map(&key) == out.last().map(&key) {
         out.pop();
     }
-    let mut distinct: Vec<u32> = out.iter().map(&key).collect();
-    distinct.sort_unstable();
-    distinct.dedup();
-    (distinct.len() >= 3 && distinct.len() == out.len()).then_some(out)
+    let mut loops: Vec<Vec<T>> = Vec::new();
+    let mut stack: Vec<T> = Vec::with_capacity(out.len());
+    let mut at: HashMap<u32, usize> = HashMap::new();
+    for item in out {
+        let k = key(&item);
+        if let Some(&j) = at.get(&k) {
+            // Close the loop that started at this vertex's first visit; the
+            // vertex itself stays on the stack for the ring that continues.
+            let lp: Vec<T> = stack.drain(j + 1..).collect();
+            for v in &lp {
+                at.remove(&key(v));
+            }
+            let mut ring = vec![stack[j]];
+            ring.extend(lp);
+            loops.push(ring);
+        } else {
+            at.insert(k, stack.len());
+            stack.push(item);
+        }
+    }
+    loops.push(stack);
+    loops.retain(|r| r.len() >= 3);
+    loops
 }

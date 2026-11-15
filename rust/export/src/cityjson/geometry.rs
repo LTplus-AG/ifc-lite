@@ -29,7 +29,8 @@ use serde_json::{json, Value};
 use ifc_lite_processing::MeshData;
 
 use super::footprint::Footprint;
-use super::vertices::{clean_ring_by, VertexPool};
+use super::footprint::signed_area2;
+use super::vertices::{split_ring_by, VertexPool};
 
 /// A Geometry Object whose `boundaries` hold indices into the shared pool.
 pub(super) struct Geometry {
@@ -43,25 +44,86 @@ type PlacedRing = Vec<(u32, [f64; 2])>;
 /// The faces of one prism and the semantic surface index of each.
 type Prism = (Vec<Vec<Vec<u32>>>, Vec<u32>);
 
-/// Rings at one height, cleaned on the snapped grid, each vertex as its pool
-/// index and planimetric position; `None` when the exterior ring collapses.
-/// `to_out` maps an IFC world point to output coordinates.
-fn polygon_at(
+/// Twice the signed planimetric area of a placed ring.
+fn placed_area2(ring: &PlacedRing) -> f64 {
+    let pts: Vec<[f64; 2]> = ring.iter().map(|(_, p)| *p).collect();
+    signed_area2(&pts)
+}
+
+/// Even-odd point-in-ring test on planimetric positions.
+fn inside(p: [f64; 2], ring: &PlacedRing) -> bool {
+    let mut odd = false;
+    let n = ring.len();
+    for k in 0..n {
+        let (a, b) = (ring[k].1, ring[(k + 1) % n].1);
+        if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < a[0] + (p[1] - a[1]) / (b[1] - a[1]) * (b[0] - a[0]) {
+            odd = !odd;
+        }
+    }
+    odd
+}
+
+/// A footprint polygon at one height as valid polygons on the snapped grid,
+/// each a list of rings (exterior first) of pool indices with their
+/// planimetric positions. `to_out` maps an IFC world point to output
+/// coordinates.
+///
+/// A ring that touches itself at a vertex (a pinch, from the union output
+/// or from snapping) is split there ([`split_ring_by`]) instead of dropped:
+/// an exterior's loops of its own orientation are separate polygons (two
+/// lobes meeting at a point), its loops of the opposite orientation are
+/// holes touching it; a hole's loops are holes. A hole loop is placed in the
+/// polygon whose exterior contains it. A loop of the wrong orientation for
+/// its role that encloses area (an island inside a hole) cannot be written
+/// in the polygon and is counted in `dropped`, like a hole outside every
+/// exterior; loops without area (spikes, rings collapsed by snapping) are
+/// not.
+fn polygons_at(
     shape: &[Vec<[f64; 2]>],
     z: f64,
     pool: &mut VertexPool,
     to_out: &impl Fn([f64; 3]) -> [f64; 3],
-) -> Option<Vec<PlacedRing>> {
-    let mut rings = Vec::with_capacity(shape.len());
+    min_area2: f64,
+    dropped: &mut usize,
+) -> Vec<Vec<PlacedRing>> {
+    let mut exteriors: Vec<PlacedRing> = Vec::new();
+    let mut holes: Vec<PlacedRing> = Vec::new();
     for (i, ring) in shape.iter().enumerate() {
-        let pairs: Option<PlacedRing> = ring.iter().map(|p| pool.add(to_out([p[0], p[1], z])).map(|ix| (ix, *p))).collect();
-        match pairs.as_deref().and_then(|r| clean_ring_by(r, |(ix, _)| *ix)) {
-            Some(r) => rings.push(r),
-            None if i == 0 => return None,
-            None => {}
+        let Some(placed) = ring.iter().map(|p| pool.add(to_out([p[0], p[1], z])).map(|ix| (ix, *p))).collect::<Option<PlacedRing>>() else {
+            *dropped += usize::from(signed_area2(ring).abs() > min_area2);
+            continue;
+        };
+        for lp in split_ring_by(&placed, |(ix, _)| *ix) {
+            let a = placed_area2(&lp);
+            if a.abs() <= min_area2 {
+                continue;
+            }
+            // Exteriors are counter-clockwise, holes clockwise (footprint.rs).
+            match (i == 0, a > 0.0) {
+                (true, true) => exteriors.push(lp),
+                (_, false) => holes.push(lp),
+                (false, true) => *dropped += 1,
+            }
         }
     }
-    Some(rings)
+    let mut polygons: Vec<Vec<PlacedRing>> = exteriors.into_iter().map(|e| vec![e]).collect();
+    for hole in holes {
+        // A vertex of a hole may lie on its exterior (they touch); the
+        // midpoint of an edge between two of its vertices that are not
+        // shared with that exterior is strictly inside.
+        let probe = |poly: &Vec<PlacedRing>| {
+            (0..hole.len()).any(|k| {
+                let (a, b) = (hole[k].1, hole[(k + 1) % hole.len()].1);
+                let m = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0];
+                inside(m, &poly[0])
+            })
+        };
+        match polygons.iter_mut().find(|poly| probe(poly)) {
+            Some(poly) => poly.push(hole),
+            None => *dropped += 1,
+        }
+    }
+    polygons
 }
 
 fn indices(rings: &[PlacedRing]) -> Vec<Vec<u32>> {
@@ -69,8 +131,14 @@ fn indices(rings: &[PlacedRing]) -> Vec<Vec<u32>> {
 }
 
 /// The LoD0 footprint.
-pub(super) fn lod0(fp: &Footprint, pool: &mut VertexPool, to_out: &impl Fn([f64; 3]) -> [f64; 3]) -> Option<Geometry> {
-    let surfaces: Vec<Vec<Vec<u32>>> = fp.shapes.iter().filter_map(|s| polygon_at(s, fp.z_min, pool, to_out)).map(|r| indices(&r)).collect();
+///
+/// `min_area2` is twice the smallest ring area worth keeping (planimetric,
+/// IFC metres²); `dropped` counts rings with area that could not be written.
+pub(super) fn lod0(fp: &Footprint, pool: &mut VertexPool, to_out: &impl Fn([f64; 3]) -> [f64; 3], min_area2: f64, dropped: &mut usize) -> Option<Geometry> {
+    let surfaces: Vec<Vec<Vec<u32>>> = fp.shapes.iter()
+        .flat_map(|s| polygons_at(s, fp.z_min, pool, to_out, min_area2, dropped))
+        .map(|r| indices(&r))
+        .collect();
     if surfaces.is_empty() {
         return None;
     }
@@ -82,11 +150,13 @@ const GROUND: u32 = 0;
 const ROOF: u32 = 1;
 const WALL: u32 = 2;
 
-/// The LoD1 block; `None` when the outline or the height collapses on the grid.
-pub(super) fn lod1(fp: &Footprint, pool: &mut VertexPool, to_out: &impl Fn([f64; 3]) -> [f64; 3]) -> Option<Geometry> {
+/// The LoD1 block; `None` when the outline or the height collapses on the
+/// grid. The polygons are those of [`lod0`] (same splitting, same `dropped`
+/// semantics), one prism each.
+pub(super) fn lod1(fp: &Footprint, pool: &mut VertexPool, to_out: &impl Fn([f64; 3]) -> [f64; 3], min_area2: f64, dropped: &mut usize) -> Option<Geometry> {
     let mut prisms: Vec<Prism> = Vec::new();
-    for shape in &fp.shapes {
-        let Some(rings) = polygon_at(shape, fp.z_min, pool, to_out) else { continue };
+    let polygons: Vec<Vec<PlacedRing>> = fp.shapes.iter().flat_map(|s| polygons_at(s, fp.z_min, pool, to_out, min_area2, dropped)).collect();
+    for rings in polygons {
         let bottom = indices(&rings);
         // Top vertices share the bottom ring's planimetric positions (the map
         // conversion moves X/Y independently of height), so the same ring

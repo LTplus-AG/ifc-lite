@@ -8,4 +8,8 @@ Export a model's buildings as CityJSON 2.0 or CityJSONSeq, the first GIS-native 
 
 With one `IfcMapConversion` to an EPSG-named `IfcProjectedCRS`, coordinates are written in that CRS through the full conversion (offsets, rotation, scale, IFC4X3 per-axis factors), and `metadata.referenceSystem` names it. Otherwise the model is written in local metres with a warning and no reference system. Vertices are integers on a millimetre grid by default. A model without an `IfcBuilding` is refused with `CITYJSON_REFUSED:`.
 
-New: `IfcAPI.exportCityJson`, `GeometryProcessor.exportCityJson(bytes, { scale, elementGeometry, sequence })`, `CITYJSON_REFUSED`, `cityJsonRefusalReason`, the `CityJsonExport` and `CityJsonExportOptions` types, and `ifc-lite export --format cityjson|cityjsonseq [--scale STEP] [--blocks-only]`.
+All lengths (coordinates, `measuredHeight`, storey `Elevation`) are in the output CRS's unit. Same-named property sets on one object are merged, with a warning on a conflicting property. A footprint ring that touches itself is split into valid rings instead of dropped. A millimetre project with a metre map unit and no `IfcMapConversion.Scale` stays local, and the warning (shared with the LandXML terrain export) names both units and the `Scale` to set.
+
+The writer ships in the separate export payload (`@ifc-lite/wasm/rhino`, loaded on first use like the Rhino scene builder), so the default engine wasm does not grow. The whole document is built in memory; very large models (around 10 million triangles) will not export.
+
+New: `exportCityJson(bytes, { scale, elementGeometry, sequence })` in `@ifc-lite/geometry` and on `@ifc-lite/wasm/rhino`, `CITYJSON_REFUSED`, `cityJsonRefusalReason`, the `CityJsonExport` and `CityJsonExportOptions` types, and `ifc-lite export --format cityjson|cityjsonseq [--scale STEP] [--blocks-only]`.

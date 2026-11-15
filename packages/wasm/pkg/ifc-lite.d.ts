@@ -60,26 +60,6 @@ export interface RtcFrame {
 
 
 
-export interface CityJsonOptionsJs {
-    /** `transform.scale` in output units (metres for a metric CRS or local output). Default 0.001. */
-    scale?: number;
-    /** Write rooms and elements with their LoD3 geometry. Default true. */
-    elementGeometry?: boolean;
-    /** Write CityJSONSeq (`.city.jsonl`) instead of one CityJSON document. Default false. */
-    sequence?: boolean;
-}
-export interface CityJsonExportJs {
-    text: string;
-    /** `metadata.referenceSystem`, or null for local coordinates. */
-    referenceSystem: string | null;
-    warnings: string[];
-    buildings: number;
-    cityObjects: number;
-    vertices: number;
-}
-
-
-
 export interface LandXmlTerrainOptionsJs {
     /** `YYYY-MM-DD`, the required `LandXML@date`; the caller owns the clock. */
     date: string;
@@ -633,15 +613,6 @@ export class IfcAPI {
      * cap. The produced meshes are dropped; only the diagnostics are returned.
      */
     diagnoseGeometry(content: Uint8Array): any;
-    /**
-     * Export `content` as CityJSON 2.0 (or CityJSONSeq with `sequence`).
-     *
-     * A model with no `IfcBuilding` throws an `Error` whose message starts
-     * with `CITYJSON_REFUSED:`. Georeferencing that cannot be resolved is not
-     * an error: the document is written in local coordinates and `warnings`
-     * says why.
-     */
-    exportCityJson(content: Uint8Array, options: CityJsonOptionsJs): CityJsonExportJs;
     /**
      * Export tabular **CSV**. `mode` ∈ {`"entities"`, `"properties"`, `"quantities"`,
      * `"spatial"`}. `delimiter` defaults to `,` when empty; `include_properties` adds
@@ -2738,7 +2709,6 @@ export interface InitOutput {
     readonly ifcapi_clearPrePassCache: (a: number) => void;
     readonly ifcapi_createLandXmlTinStreamSession: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_diagnoseGeometry: (a: number, b: number, c: number) => number;
-    readonly ifcapi_exportCityJson: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_exportDfjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;

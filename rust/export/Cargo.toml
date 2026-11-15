@@ -11,9 +11,11 @@ description = "Domain-format exporters for ifc-lite (HBJSON, OBJ, glTF/GLB, CSV,
 [dependencies]
 ifc-lite-core = { workspace = true }
 ifc-lite-geometry = { workspace = true }
-# 2D polygon union of per-element footprint outlines (CityJSON LoD0/LoD1);
-# the version `ifc-lite-geometry` already builds with.
-i_overlay = "8.0"
+# 2D polygon union of per-element footprint outlines (CityJSON LoD0/LoD1),
+# shared with `ifc-lite-geometry`. The CityJSON exporter is not linked into the
+# default engine wasm: it is reached only from the separate `@ifc-lite/wasm/rhino`
+# export payload (rust/rhino-wasm), the CLI through it, and native builds.
+i_overlay.workspace = true
 geometry-predicates.workspace = true
 ifc-lite-processing = { workspace = true }
 rustc-hash.workspace = true

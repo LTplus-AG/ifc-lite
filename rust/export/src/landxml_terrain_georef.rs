@@ -155,7 +155,18 @@ impl ModelFacts {
         // 1 across a unit change would misplace every vertex by that ratio.
         let scale_omitted = conversion.attr(slot::IfcMapConversion::SCALE).is_none_or(AttributeValue::is_null);
         if scale_omitted && (map_metres - self.project_metres).abs() > 1e-12 * map_metres.max(self.project_metres) {
-            return Err(format!("IfcMapConversion #{conversion_id} omits Scale while the project and map length units differ; Scale is required, the exporter will not infer it"));
+            // The most common authoring error (a millimetre project, a metre
+            // map unit, no Scale): name both units and the value to set, but
+            // never apply it.
+            let ratio = self.project_metres / map_metres;
+            return Err(format!(
+                "IfcMapConversion #{conversion_id} omits Scale while the project length unit ({}) and the map unit ({}) differ; \
+                 Scale is required and the exporter will not infer it. If the map conversion is otherwise right, set IfcMapConversion.Scale to {} \
+                 (map units per project unit)",
+                unit_label(self.project_metres),
+                unit_label(map_metres),
+                format_ratio(ratio),
+            ));
         }
         let georef = GeoRefExtractor::extract(decoder, &[(conversion_id, kind), (crs_id, IfcType::IfcProjectedCRS)])
             .map_err(|error| error.to_string())?
@@ -192,6 +203,20 @@ fn project_length_metres(project: &DecodedEntity, decoder: &mut EntityDecoder) -
         [unit] => Ok((length_unit_metres(unit)?, unit.ifc_type == IfcType::IfcSIUnit)),
         units => Err(format!("IfcProject.UnitsInContext defines {} length units; exactly one is required", units.len())),
     }
+}
+
+/// A length unit for a message: its name when it is a common one, else its
+/// size in metres.
+fn unit_label(metres: f64) -> String {
+    let named = [(1.0, "metre"), (0.001, "millimetre"), (0.01, "centimetre"), (0.1, "decimetre"), (1000.0, "kilometre"), (0.3048, "foot"), (0.0254, "inch"), (1200.0 / 3937.0, "US survey foot")];
+    named.iter().find(|(m, _)| (m - metres).abs() <= 1e-12 * metres).map_or_else(|| format!("{metres} m"), |(_, name)| format!("{name}, {metres} m"))
+}
+
+/// A unit ratio without float noise (0.001, not 0.0010000000000000002).
+fn format_ratio(ratio: f64) -> String {
+    let s = format!("{ratio:.12}");
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    if s == "0" { format!("{ratio:e}") } else { s.to_string() }
 }
 
 /// Metres per one `unit`, refusing anything that is not a known length unit.

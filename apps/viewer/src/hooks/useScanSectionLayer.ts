@@ -47,7 +47,7 @@ const RECOMPUTE_DEBOUNCE_MS = 120;
 // Stable object identities without render-time ref writes (#10094, 3b review).
 const cloudObjectIds = new WeakMap<object, number>();
 let nextCloudObjectId = 1;
-function cloudObjectId(value: object | undefined): number {
+function cloudObjectId(value: object | null | undefined): number {
   if (!value) return 0;
   let id = cloudObjectIds.get(value);
   if (id === undefined) {

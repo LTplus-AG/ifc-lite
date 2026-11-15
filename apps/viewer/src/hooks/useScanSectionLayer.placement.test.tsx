@@ -73,7 +73,7 @@ it('ignores unrelated content bumps but recomputes cloud origin/chunk replacemen
 
 it('tracks streamed transforms and mesh references without debounce starvation (#10094, 3b review)', async () => {
   const renderer = new Renderer(document.createElement('canvas'));
-  const matrix = nativePointCloudOriginMatrix([0, 0, 0]);
+  const matrix = new Float32Array(nativePointCloudOriginMatrix([0, 0, 0]));
   renderer.getPointCloudTransform = () => matrix;
   setGlobalRendererRef({ current: renderer });
   const scan = { ...fixtureModel('scan'), pointCloudHandleId: 7 };

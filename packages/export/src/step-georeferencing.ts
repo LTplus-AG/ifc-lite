@@ -332,7 +332,7 @@ function mapConversionLine(id: number, contextId: number, crsId: number, mc: Map
 }
 
 const MAP_CONVERSION_INCOMPLETE_WARNING =
-  'Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight are all required. Nothing was written.';
+  'Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight are all required.';
 
 function reportGeorefWarning(warnings: string[], message: string): void {
   warnings.push(message);

@@ -22,7 +22,7 @@ use super::wire::GeorefMutations;
 
 const WITHOUT_CONTEXT: &str = "Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.";
 const WITHOUT_CRS: &str = "Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.";
-const INCOMPLETE_MAP_CONVERSION: &str = "Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight are all required. Nothing was written.";
+const INCOMPLETE_MAP_CONVERSION: &str = "Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight are all required.";
 const PARTIAL_FACTORS: &str = "Cannot write IfcMapConversionScaled: FactorX, FactorY and FactorZ are all mandatory and only some were given. The factors were not written.";
 const FACTORS_ON_UNSCALED: &str = "Cannot write FactorX/FactorY/FactorZ onto an existing IfcMapConversion: they exist only on IfcMapConversionScaled, and this edit does not change the class. The factors were not written.";
 
@@ -201,15 +201,15 @@ fn map_unit_token(pass: &mut Pass<'_, '_>, unit: &Value) -> Result<String, Unwri
 /// report that no context exists.
 fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, Value>, file_schema: &str) -> Result<(), Unwritable> {
     // A create needs the whole position (`+ 0.0` below folds -0 to 0): a partial edit whose record was deleted is refused, never written as 0.
-    let pos = ["eastings", "northings", "orthogonalHeight"].map(|k| mc.get(k).filter(|v| !v.is_null()).map(js_to_number).filter(|n| !n.is_nan()));
-    let [Some(e), Some(n), Some(h)] = pos else {
+    let pos = ["eastings", "northings", "orthogonalHeight"].map(|k| mc.get(k).filter(|v| !v.is_null()).map_or(f64::NAN, js_to_number));
+    if pos.iter().any(|n| n.is_nan()) {
         pass.warnings.push(INCOMPLETE_MAP_CONVERSION.to_string());
         return Ok(());
-    };
+    }
     match preferred_context(pass) {
         Some(context) => {
             let mc_id = pass.allocate()?;
-            let line = map_conversion_line(mc_id, context, crs_id, mc, [e, n, h], &mut pass.warnings, file_schema)?;
+            let line = map_conversion_line(mc_id, context, crs_id, mc, pos, &mut pass.warnings, file_schema)?;
             pass.georef_lines.push((mc_id, line));
             pass.new_entity_count += 1;
         }

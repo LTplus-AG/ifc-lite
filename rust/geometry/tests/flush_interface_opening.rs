@@ -54,6 +54,10 @@ enum Host {
     /// full thickness: past the interface under half the recess there is
     /// material and no floor face.
     SplitUnderRecess,
+    /// `SplitUnderRecess` with the full-thickness body a faceted brep whose
+    /// face inside the recess is split at the interface plane: no single
+    /// triangle runs through the plane there.
+    SplitMeshedAtInterface,
 }
 
 fn wall(site_at: [f64; 3], site_turn_deg: f64, wall_turn_deg: f64, wall_y: f64, recess: Recess, host: Host) -> String {
@@ -125,6 +129,7 @@ END-ISO-10303-21;
         bodies = match host {
             Host::CoreAndFinish => "#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#46,#47));".to_string(),
             Host::SplitUnderRecess => split_bodies(),
+            Host::SplitMeshedAtInterface => split_meshed_bodies(),
         },
     )
 }
@@ -153,6 +158,53 @@ fn split_bodies() -> String {
         rect(60, 0.0, 1.5, 0.0, CORE),
         rect(64, 0.0, 1.5, CORE, total),
         rect(68, 1.5, WALL_LENGTH, 0.0, total),
+    )
+}
+
+/// Core and finish over `x` in [0, 1.5] as extrusions, and the body over
+/// [1.5, 4] as a faceted brep box whose `x = 1.5` face is two quads split at
+/// `y = CORE`. The split vertices also sit on its top and bottom faces, so
+/// the shell stays closed.
+fn split_meshed_bodies() -> String {
+    let extrusions = split_bodies();
+    let extrusions = &extrusions[..extrusions.find("#68=").expect("the split body's profile")];
+    let (x0, x1, ym, y1, z1) = (1.5, WALL_LENGTH, CORE, CORE + FINISH, WALL_HEIGHT);
+    let points = [
+        [x0, 0.0, 0.0],
+        [x1, 0.0, 0.0],
+        [x1, y1, 0.0],
+        [x0, y1, 0.0],
+        [x0, ym, 0.0],
+        [x0, 0.0, z1],
+        [x1, 0.0, z1],
+        [x1, y1, z1],
+        [x0, y1, z1],
+        [x0, ym, z1],
+    ];
+    // Outward loops, 1-based into `points`.
+    let faces: [&[usize]; 7] =
+        [&[1, 5, 4, 3, 2], &[6, 7, 8, 9, 10], &[1, 2, 7, 6], &[3, 4, 9, 8], &[2, 3, 8, 7], &[1, 6, 10, 5], &[5, 10, 9, 4]];
+    let mut out = extrusions.to_string();
+    for (i, [x, y, z]) in points.iter().enumerate() {
+        out += &format!("#{}=IFCCARTESIANPOINT(({x:?},{y:?},{z:?}));\n", 900 + i);
+    }
+    let mut face_ids = Vec::new();
+    for (k, face) in faces.iter().enumerate() {
+        let id = 920 + 3 * k;
+        let refs: Vec<String> = face.iter().map(|i| format!("#{}", 899 + i)).collect();
+        out += &format!(
+            "#{id}=IFCPOLYLOOP(({}));\n#{}=IFCFACEOUTERBOUND(#{id},.T.);\n#{}=IFCFACE((#{}));\n",
+            refs.join(","),
+            id + 1,
+            id + 2,
+            id + 1,
+        );
+        face_ids.push(format!("#{}", id + 2));
+    }
+    out + &format!(
+        "#950=IFCCLOSEDSHELL(({}));\n#951=IFCFACETEDBREP(#950);\n\
+         #50=IFCSHAPEREPRESENTATION(#13,'Body','Brep',(#63,#67,#951));",
+        face_ids.join(",")
     )
 }
 
@@ -255,31 +307,27 @@ fn a_recess_ending_on_an_interface_a_kilometre_out_cuts_a_closed_solid() {
                     let (open, volume, surface) = (open_edges(&mesh), mesh_volume(&mesh), area(&mesh));
                     let excess = volume - analytic_volume();
                     let pin = gate_rejected_split(host, recess, wall_turn, step);
-                    let solid_ok = if let Some((pinned_open, lost)) = &pin {
-                        open == *pinned_open && lost.contains(&-excess)
+                    let solid_ok = if let Some((pinned_open, pinned_excess)) = &pin {
+                        open == *pinned_open && pinned_excess.contains(&excess)
                     } else {
                         open == 0
                             && match host {
                                 Host::CoreAndFinish => {
                                     excess.abs() <= 5.0e-4 && (surface - analytic_area(recess)).abs() <= 5.0e-3
                                 }
-                                Host::SplitUnderRecess => (-5.0e-4..=2.0e-3).contains(&excess),
+                                Host::SplitUnderRecess | Host::SplitMeshedAtInterface => {
+                                    (-5.0e-4..=2.0e-3).contains(&excess)
+                                }
                             }
                     };
                     if !solid_ok {
-                        let pinned = match &pin {
-                            Some((pinned_open, lost)) => format!(
-                                " [gate pin: {pinned_open} open edges, {lost:?} m3 lost; \
-                                 re-measure against main, do not re-pin]"
-                            ),
-                            None => String::new(),
-                        };
                         failures.push(format!(
                             "{host:?} {recess:?} wall turn {wall_turn} y {wall_y:.3}: \
                              {open} open edges, volume {volume:.6} m3 (analytic {:.6}), \
-                             surface {surface:.4} m2 (analytic for CoreAndFinish {:.4}){pinned}",
+                             surface {surface:.4} m2 (analytic for CoreAndFinish {:.4}){}",
                             analytic_volume(),
                             analytic_area(recess),
+                            describe_pin(&pin),
                         ));
                     }
                 }
@@ -294,9 +342,19 @@ fn a_recess_ending_on_an_interface_a_kilometre_out_cuts_a_closed_solid() {
     );
 }
 
-/// Under `csg_manifold_gate` (alone or with `csg_topology_gate`; both read the
-/// same), pinned like the #098 gate readings (#7990): the unpaired edges and the volume lost, in m3, that a split-wall
-/// placement is pinned to, or `None` where the ordinary bar holds.
+/// A placement's unpaired edges and volume excess over the analytic volume, in
+/// m3, as pinned under `csg_manifold_gate` (alone or with `csg_topology_gate`;
+/// both read the same), like the #098 gate readings (#7990).
+type GatePin = Option<(usize, std::ops::RangeInclusive<f64>)>;
+
+fn describe_pin(pin: &GatePin) -> String {
+    pin.as_ref().map_or(String::new(), |(open, excess)| {
+        format!(" [gate pin: {open} open edges, {excess:?} m3 excess; re-measure against main, do not re-pin]")
+    })
+}
+
+/// The pin of a placement in the kilometre test, or `None` where the
+/// ordinary bar holds.
 ///
 /// The split wall is not seated, so it takes the plain cut. At wall turn 0 and
 /// offset steps 1, 2 and 4 (y 2.137, 2.274, 2.548) the gate rejects that cut,
@@ -307,18 +365,70 @@ fn a_recess_ending_on_an_interface_a_kilometre_out_cuts_a_closed_solid() {
 /// `flush_cap.rs` stops, left 90 unpaired edges over these 24 placements under
 /// the gate against 354 here, but opened 18 placements in every other build.
 /// Remove the pin once the gate's fallback closes them.
-fn gate_rejected_split(
-    host: Host,
-    recess: Recess,
-    wall_turn: f64,
-    step: u32,
-) -> Option<(usize, std::ops::RangeInclusive<f64>)> {
+fn gate_rejected_split(host: Host, recess: Recess, wall_turn: f64, step: u32) -> GatePin {
     let rejected = cfg!(feature = "csg_manifold_gate")
         && matches!(host, Host::SplitUnderRecess)
         && wall_turn == 0.0
         && matches!(step, 1 | 2 | 4);
     rejected.then_some(match recess {
-        Recess::FromInterface => (62, 0.0227..=0.0238),
-        Recess::ToInterfaceAtTop => (56, 0.0287..=0.0298),
+        Recess::FromInterface => (62, -0.0238..=-0.0227),
+        Recess::ToInterfaceAtTop => (56, -0.0298..=-0.0287),
     })
+}
+
+/// The pin of a placement in the meshed-body test, or `None` where the
+/// ordinary bar holds. Under the gate two ToInterfaceAtTop placements at wall
+/// turn 0 take the fallback: at the origin, offset 2.685, 24 unpaired edges
+/// and 6.1 litres too much; at the kilometre site, offset 2.274, 43 unpaired
+/// edges and 28.9 litres too little. main 190d2fdb30 reads the same,
+/// placement for placement, over all 72 placements of that host it was
+/// measured at (walls 0, 42 and 90 deg). Remove the pin once the gate's
+/// fallback closes them.
+fn gate_rejected_meshed(recess: Recess, at_origin: bool, wall_turn: f64, step: u32) -> GatePin {
+    if !cfg!(feature = "csg_manifold_gate") || !matches!(recess, Recess::ToInterfaceAtTop) || wall_turn != 0.0 {
+        return None;
+    }
+    match (at_origin, step) {
+        (true, 5) => Some((24, 0.0059..=0.0063)),
+        (false, 2) => Some((43, -0.0291..=-0.0287)),
+        _ => None,
+    }
+}
+
+/// The split wall again, with the full-thickness body meshed so that its face
+/// inside the recess is split at the interface plane. The face still runs
+/// through the plane, only across two triangles, so the cap must keep the
+/// plain cut. Seated, it punched the core (200 litres lost) at the origin
+/// with the wall turned 0 deg at offset 2.274 (#10346 review).
+#[test]
+fn a_recess_over_a_body_meshed_at_the_interface_keeps_the_plain_cut() {
+    let mut failures = Vec::new();
+    for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
+        for site_at in [[0.0; 3], [1000.0, 800.0, 0.0]] {
+            for wall_turn in [0.0, 90.0] {
+                for step in 0..6 {
+                    let wall_y = 2.0 + 0.137 * f64::from(step);
+                    let content = wall(site_at, 0.0, wall_turn, wall_y, recess, Host::SplitMeshedAtInterface);
+                    let voids = build_void_index_like_production(&content);
+                    let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
+                    let (open, excess) = (open_edges(&mesh), mesh_volume(&mesh) - analytic_volume());
+                    let pin = gate_rejected_meshed(recess, site_at == [0.0; 3], wall_turn, step);
+                    // Unpinned: the same band as the split wall's in the
+                    // kilometre test.
+                    let ok = match &pin {
+                        Some((pinned_open, pinned_excess)) => open == *pinned_open && pinned_excess.contains(&excess),
+                        None => open == 0 && (-5.0e-4..=2.0e-3).contains(&excess),
+                    };
+                    if !ok {
+                        failures.push(format!(
+                            "{recess:?} site {site_at:?} wall turn {wall_turn} y {wall_y:.3}: \
+                             {open} open edges, volume {excess:+.6} m3 off analytic{}",
+                            describe_pin(&pin),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} of 48 placements are wrong:\n{}", failures.len(), failures.join("\n"));
 }

@@ -138,17 +138,28 @@ pub(super) fn extend_and_seat_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[
         let mut crossed = false;
         for (t, depth) in tris.iter().zip(&depths) {
             let Some((lo, hi)) = *depth else { continue };
-            // Reaching past the band on one side only: neither flush nor
-            // through the plane.
             let (below, above) = (lo < plane - allowance, hi > plane + allowance);
-            if below != above
-                || !tri_touches_slab_footprint(t, pf, &pf.profiles[slab], f64::NEG_INFINITY, f64::INFINITY, pad)
-            {
+            // Reaching past the band on one side only and stopping short of
+            // it: nothing to do with this cap.
+            if (below && hi < plane - allowance) || (above && lo > plane + allowance) {
                 continue;
             }
-            if below {
+            if !tri_touches_slab_footprint(t, pf, &pf.profiles[slab], f64::NEG_INFINITY, f64::INFINITY, pad) {
+                continue;
+            }
+            // Through the plane: in one triangle, or as a side face that ends
+            // in the band strictly inside the footprint, where its mesh may
+            // be split at the plane and carry on in the next triangle.
+            if (below && above)
+                || ((below || above)
+                    && faces_along(t, pf.d).is_none()
+                    && depths_over_footprint(t, pf, -pad).is_some())
+            {
                 crossed = true;
                 break;
+            }
+            if below || above {
+                continue;
             }
             // Facing the prism: along +d at the low cap, against it at the high.
             match faces_along(t, pf.d) {

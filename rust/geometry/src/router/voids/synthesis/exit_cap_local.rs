@@ -8,7 +8,7 @@ use super::super::super::flush::flush_band_at;
 use super::{CutterFrame, Point3, BAND_FRACTION};
 
 /// How a host facet in a cap's band meets the cap, weakest first.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Contact {
     /// Not over the cutter's footprint.
     Clear,
@@ -24,7 +24,8 @@ pub(super) fn flush_band(f: &CutterFrame) -> f64 {
     flush_band_at([f.lo, f.hi].iter().map(|p| f.point_at(p.x, p.y, p.z).coords.amax()).fold(0.0, f64::max))
 }
 
-/// The contact of a host facet with the cap at `cap` along the axis. A facet
+/// The contact of a host facet with the cap at `cap` along the axis, judged
+/// against the cutter's [`flush_band`] `band`. A facet
 /// may tilt up to ten degrees off the cap, so its distance is read where it
 /// matters: over the part of the facet that lies inside the cutter's
 /// footprint. A vertex beside the footprint, or the one listed first, decides
@@ -32,7 +33,7 @@ pub(super) fn flush_band(f: &CutterFrame) -> f64 {
 /// its first vertex. A facet that only reaches the pad around the footprint
 /// has no such part: it is in the band, as before, and never on the cap. A
 /// facet with a coordinate that is not a finite number keeps the pull-in.
-pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> Contact {
+pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64, band: f64) -> Contact {
     if !overlaps(f, triangle) {
         return Contact::Clear;
     }
@@ -61,7 +62,6 @@ pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> 
     if part.is_empty() {
         return Contact::Band;
     }
-    let band = flush_band(f);
     if part.iter().all(|p| p[2] - cap > band) || part.iter().all(|p| cap - p[2] > band) {
         Contact::Band
     } else {

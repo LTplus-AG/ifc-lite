@@ -38,8 +38,9 @@ shaders stay out of the bundle. Its point-cloud and deviation methods throw.
 See [Rendering](https://ifclite.dev/docs/guide/rendering/#mesh-only-pages-ifc-literenderercore).
 
 `isRenderablePointCloud(asset)` says whether an inline cloud renders: it has points
-and its optional origin is three finite coordinates within float32 range. Bulk
-uploads skip any other cloud; use this predicate when counting the clouds that render.
+and its optional origin is three finite coordinates within float32 range.
+`setPointClouds` skips any other cloud; use this predicate when counting the clouds
+that render.
 
 ## Inspect GPU pass timing
 

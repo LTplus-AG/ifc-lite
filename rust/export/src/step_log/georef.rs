@@ -22,7 +22,7 @@ use super::wire::GeorefMutations;
 
 const WITHOUT_CONTEXT: &str = "Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.";
 const WITHOUT_CRS: &str = "Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.";
-const INCOMPLETE_MAP_CONVERSION: &str = "Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight must all be given, and the file has no IfcMapConversion to edit (it may have been deleted). Nothing was written.";
+const INCOMPLETE_MAP_CONVERSION: &str = "Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight are all required. Nothing was written.";
 const PARTIAL_FACTORS: &str = "Cannot write IfcMapConversionScaled: FactorX, FactorY and FactorZ are all mandatory and only some were given. The factors were not written.";
 const FACTORS_ON_UNSCALED: &str = "Cannot write FactorX/FactorY/FactorZ onto an existing IfcMapConversion: they exist only on IfcMapConversionScaled, and this edit does not change the class. The factors were not written.";
 
@@ -207,8 +207,7 @@ fn map_unit_token(pass: &mut Pass<'_, '_>, unit: &Value) -> Result<String, Unwri
 /// report that no context exists.
 fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, Value>, file_schema: &str) -> Result<(), Unwritable> {
     // A create needs the whole position: a partial edit whose record was deleted is refused, never written as 0.
-    let given = |k: &str| mc.get(k).is_some_and(|v| !v.is_null() && !js_to_number(v).is_nan());
-    if !(given("eastings") && given("northings") && given("orthogonalHeight")) {
+    if !["eastings", "northings", "orthogonalHeight"].iter().all(|k| mc.get(*k).is_some_and(|v| !v.is_null() && !js_to_number(v).is_nan())) {
         pass.warnings.push(INCOMPLETE_MAP_CONVERSION.to_string());
         return Ok(());
     }

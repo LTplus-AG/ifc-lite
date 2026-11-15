@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -43,8 +44,8 @@ afterEach(() => { cleanup(); clearGlobalRefs(); });
 
 it('shows own model/object counts, live changes, and numeric list sorting across federation (#10370)', async () => {
   const bytes = new TextEncoder().encode(IFC);
-  const storeA = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
-  const storeB = await new IfcParser().parseColumnar(bytes.buffer.slice(0), { disableWorkerScan: true });
+  const storeA = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+  const storeB = await new IfcParser().parseColumnar(bytes.buffer.slice(0) as ArrayBuffer, { disableWorkerScan: true });
   const a = fixtureModel('A'), b = fixtureModel('B', { idOffset: 1_000_000 });
   for (const [model, store] of [[a, storeA], [b, storeB]] as const) {
     model.ifcDataStore = store; model.geometryResult = geometry; model.loadState = 'complete'; model.maxExpressId = 3;

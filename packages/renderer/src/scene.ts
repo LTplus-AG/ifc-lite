@@ -1107,11 +1107,7 @@ export class Scene {
    * data. This reduces streaming from O(N²) to O(N). Call finalizeStreaming()
    * when streaming completes to merge the streamed buckets (only those, #5358).
    */
-  appendToBatches(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline, isStreaming: boolean = false): void {
-    this.appendSourceMeshes(meshDataArray, device, pipeline, isStreaming, false);
-  }
-
-  private appendSourceMeshes(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline, isStreaming: boolean, sourceCounted: boolean): void {
+  appendToBatches(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline, isStreaming: boolean = false, sourceCounted: boolean = false): void {
     meshDataArray = meshDataArray.map((mesh) => this.modelTranslations.placeMesh(mesh));
     // One verdict per (mesh, frame) for the whole append: the validation below
     // and bucket routing ask the same question about the same placed mesh.
@@ -1194,13 +1190,13 @@ export class Scene {
         this.createStreamingFragments(renderable, device, pipeline);
         for (const mesh of renderable) this.streamingFragmentIndexBudget -= mesh.indices.length;
       }
-      if (!sourceCounted) { this.triangleCounts.noteSources(meshDataArray); this.bumpPickGeometryRevision(); }
+      if (!sourceCounted) { this.triangleCounts.noteSources(meshDataArray); this.geometryChanges.changed(); }
       return;
     }
 
     // NON-STREAMING: Rebuild full batches immediately
     this.rebuildPendingBatches(device, pipeline);
-    if (!sourceCounted) { this.triangleCounts.noteSources(meshDataArray); this.bumpPickGeometryRevision(); }
+    if (!sourceCounted) { this.triangleCounts.noteSources(meshDataArray); this.geometryChanges.changed(); }
   }
 
   /** Rebuild pending buckets after streaming or a geometry mutation. */
@@ -1249,7 +1245,7 @@ export class Scene {
    *     the IFC tombstone just means we ignore it for queries.
    */
   removeMeshesForEntity(expressId: number): boolean {
-    this.triangleCounts.remove(expressId); this.bumpPickGeometryRevision();
+    this.triangleCounts.remove(expressId); this.geometryChanges.changed();
     this.appearanceController?.forget(expressId);
     this.modelTranslations.forgetEntityBounds(expressId);
     const meshDataList = this.meshDataMap.get(expressId);
@@ -1760,7 +1756,7 @@ export class Scene {
    * The animation loop calls flushPending() each frame to drain the queue.
    */
   queueMeshes(meshes: MeshData[]): void {
-    this.triangleCounts.noteSources(meshes); this.bumpPickGeometryRevision();
+    this.triangleCounts.noteSources(meshes); this.geometryChanges.changed();
     for (let i = 0; i < meshes.length; i++) {
       const fragments = this.splitMeshForStreaming(meshes[i]);
       for (let j = 0; j < fragments.length; j++) {
@@ -1830,7 +1826,7 @@ export class Scene {
   flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 12, trace?: LoadTrace, deterministicUploads = false): boolean {
     const result = flushQueuedMeshes(this.meshQueue, this.meshQueueReadIndex, (chunk, nextReadIndex) => {
       this.meshQueueReadIndex = nextReadIndex;
-      this.appendSourceMeshes(chunk, device, pipeline, true, true);
+      this.appendToBatches(chunk, device, pipeline, true, true);
     }, { budgetMs, trace, deterministicUploads, maxIndicesPerAppend: Scene.STREAMING_FRAGMENT_MAX_INDICES });
     this.meshQueue = result.queue;
     this.meshQueueReadIndex = result.readIndex;
@@ -2626,7 +2622,7 @@ export class Scene {
   adoptSceneSnapshot(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline): object | null { return this.snapshots.adopt(snapshot, device, pipeline); }
   hydrateSceneSnapshot(adoption: object, meshes: readonly MeshData[]): boolean {
     if (!this.snapshots.hydrate(adoption, meshes)) return false;
-    this.triangleCounts.noteSources(meshes); this.bumpPickGeometryRevision();
+    this.triangleCounts.noteSources(meshes); this.geometryChanges.changed();
     return true;
   }
   abandonSceneSnapshot(adoption: object): void { this.snapshots.abandon(adoption); }

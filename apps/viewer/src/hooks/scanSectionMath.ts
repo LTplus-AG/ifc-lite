@@ -56,9 +56,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { isPointCloudClassVisible } from '@/store/slices/pointCloudSlice';
 import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** Default slab thickness (metres) around the section plane. */
 export const DEFAULT_SCAN_SECTION_THICKNESS = 0.3;
@@ -70,9 +68,7 @@ export const DEFAULT_SCAN_RENDER_CAP = 500_000;
 /** Hard cap for SVG export — keeps exported files a sane size. */
 export const DEFAULT_SCAN_SVG_CAP = 20_000;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type ScanSectionAxis = 'x' | 'y' | 'z';
 
@@ -151,9 +147,7 @@ export interface SelectScanBandParams {
   maxRendered?: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RENDER-FRAME SHIFT
-// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * The Y-up vector to SUBTRACT from a raw (Z-up-swapped-to-Y-up) point-cloud
@@ -205,9 +199,7 @@ export function resolveScanSectionPosition(
   return axisMin + (positionPercent / 100) * (axisMax - axisMin);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // BAND TEST + PROJECTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Signed distance from a render-frame point to the section plane.
@@ -247,9 +239,7 @@ export function projectScanPoint(p: Vec3, plane: ScanSectionPlane): Point2D {
   return projectTo2D(p, plane.axis, plane.flipped);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // BAND SELECTION (band test + class-mask filter + deterministic decimation)
-// ═══════════════════════════════════════════════════════════════════════════
 
 function readColor(
   colors: Uint8Array | Float32Array | null | undefined,
@@ -340,9 +330,12 @@ export function selectScanBand(params: SelectScanBandParams): ScanBandSelection 
   return { points, totalInBand, renderedCount: points.length, stride };
 }
 
-/** Every in-band point, undecimated, as flat drawing-space `[x0, y0, …]`:
- * the vector outline's input (#6871), which needs the full slab density. */
-export function collectScanBandPlaneXY(params: Omit<SelectScanBandParams, 'maxRendered'>): Float32Array {
+/** Every in-band point, undecimated, relative to a shared drawing-space anchor.
+ * The first in-band point supplies the f64 anchor unless given (#10094 item 2). */
+export function collectScanBandPlaneXY(
+  params: Omit<SelectScanBandParams, 'maxRendered'>,
+  anchor?: Point2D,
+): { planeXY: Float32Array; anchor: Point2D } {
   const { sample, plane } = params;
   const { passesClassMask, readPoint, inBand } = bandReader(params);
   let n = 0;
@@ -356,10 +349,11 @@ export function collectScanBandPlaneXY(params: Omit<SelectScanBandParams, 'maxRe
     const rp = readPoint(i);
     if (!inBand(rp)) continue;
     const p = projectScanPoint(rp, plane);
-    out[k++] = p.x;
-    out[k++] = p.y;
+    anchor ??= p;
+    out[k++] = p.x - anchor.x;
+    out[k++] = p.y - anchor.y;
   }
-  return out;
+  return { planeXY: out, anchor: anchor ?? { x: 0, y: 0 } };
 }
 
 /**

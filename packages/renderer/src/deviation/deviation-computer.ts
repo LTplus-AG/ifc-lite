@@ -188,15 +188,21 @@ export class DeviationComputer {
         }
         this.computedBuffers = null;
         const meshes = collectAllSceneMeshes(ctx.scene);
+        const nodes = Array.from(ctx.pointCloudRenderer.getInternalNodes());
+        // One shared frame, anchored at the first populated cloud's exact
+        // placement, keeps both points and triangles small (#10094 item 1).
+        const placement = nodes.find((node) => node.chunks.length > 0)?.placement;
+        const anchor: [number, number, number] = placement
+            ? [placement[12], placement[13], placement[14]] : [0, 0, 0];
         // Fingerprint folds in per-mesh expressId / modelIndex /
         // positions length / triangle count, so two distinct meshes
         // that happen to share an aggregate position-length total
         // can't alias each other. A federation reload that swaps one
         // model for another with the same total triangle count would
         // otherwise reuse the previous BVH and report wrong distances.
-        const fingerprint = computeBvhFingerprint(meshes);
+        const fingerprint = `${anchor.join(',')}|${computeBvhFingerprint(meshes)}`;
         if (opts.forceRebuild || fingerprint !== this.bvhFingerprint) {
-            const bvh = buildTriangleBVH(meshes);
+            const bvh = buildTriangleBVH(meshes, { anchor });
             this.pipeline.uploadBvh(bvh);
             this.bvhFingerprint = fingerprint;
         }
@@ -211,20 +217,21 @@ export class DeviationComputer {
         let chunksProcessed = 0;
         let pointsProcessed = 0;
         const computedBuffers = new WeakSet<GPUBuffer>();
-        const nodes = ctx.pointCloudRenderer.getInternalNodes();
         for (const node of nodes) {
+            const model = node.placement ? new Float64Array(node.placement) : new Float64Array([
+                1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
+            ]);
+            for (let axis = 0; axis < 3; axis++) model[12 + axis] -= anchor[axis];
+            const relativeModel = new Float32Array(model);
             for (const chunk of node.chunks) {
                 const ok = this.pipeline.dispatch(encoder, {
                     positionsBuffer: chunk.vertexBuffer,
                     deviationsBuffer: chunk.deviationBuffer,
                     pointCount: chunk.pointCount,
                     maxRange,
-                    // #1804: chunk positions are stored in the asset's
-                    // decode-shifted local frame when IfcMapConversion
-                    // alignment is active; the BVH triangles are world
-                    // space, so the compute pass must apply the same
-                    // per-asset matrix the splat shader renders with.
-                    model: node.model,
+                    // Preserve #1804 alignment, but in the BVH's shared local
+                    // frame: never narrow a map-grid translation first.
+                    model: relativeModel,
                 });
                 if (ok) {
                     chunksProcessed++;
@@ -268,7 +275,11 @@ export class DeviationComputer {
             bvhNodes: stats.nodeCount,
             chunksProcessed,
             pointsProcessed,
-            bounds: stats.bounds,
+            // Metadata remains in world/render coordinates for callers.
+            bounds: bb && stats.triangleCount > 0 ? {
+                min: [bb.min[0] + anchor[0], bb.min[1] + anchor[1], bb.min[2] + anchor[2]],
+                max: [bb.max[0] + anchor[0], bb.max[1] + anchor[1], bb.max[2] + anchor[2]],
+            } : bb,
             suggestedHalfRange,
         };
     }

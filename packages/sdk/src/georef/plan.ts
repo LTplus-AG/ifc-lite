@@ -81,9 +81,9 @@ export function exporterKey(attr: string): string {
   return attr.charAt(0).toLowerCase() + attr.slice(1);
 }
 
-/** The context the planner chose for a created conversion travels with the mutations; the exporter does not choose. */
+/** The contexts the planner would convert from, in its order, travel with the mutations; the exporter takes the first one still there. */
 export function withSourceCrs(m: StepGeorefMutations, facts: GeorefModelFacts): StepGeorefMutations {
-  return facts.preferredContext === null ? m : { ...m, sourceCrs: facts.preferredContext };
+  return facts.rankedContexts.length === 0 ? m : { ...m, sourceCrs: facts.rankedContexts };
 }
 
 export function toExporterMutations(

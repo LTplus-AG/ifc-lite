@@ -91,6 +91,8 @@ export function verifyWritten(intended: GeoreferencingState, reread: Georeferenc
       if ((want[key] ?? undefined) !== (got[key] ?? undefined)) out.push(`ProjectedCRS.${key}: wanted ${JSON.stringify(want[key])}, read ${JSON.stringify(got[key])}`);
     }
   }
+  // The name alone is not the unit: a unit that reads back with a factor other than its name's is not what was meant.
+  if (want?.MapUnit !== undefined && got?.mapUnitResolved === false) out.push(`ProjectedCRS.MapUnit: ${JSON.stringify(want.MapUnit)} reads back unresolved (its declared factor is not the one that name means)`);
   const mcWant = intended.MapConversion;
   const mcGot = reread.MapConversion;
   if (mcWant) {

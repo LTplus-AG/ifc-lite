@@ -26,7 +26,7 @@ export function requireNumber(value: unknown, path: string, opts: { positive?: b
 }
 
 export function requireText(value: unknown, path: string): string {
-  if (typeof value !== 'string' || value.trim() === '') {
+  if (typeof value !== 'string' || value.trim() === '' || value.charCodeAt(0) === 0) {
     throw new GeoreferencingError('INVALID_INPUT', `${path} must be a non-empty string, got ${JSON.stringify(value)}.`, [path]);
   }
   return value;

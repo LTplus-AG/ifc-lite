@@ -196,7 +196,7 @@ fn map_unit_token(pass: &mut Pass<'_, '_>, unit: &Value) -> Result<String, Unwri
 
 /// Create the `IfcMapConversion` from the preferred context to `crs_id`, or
 /// report that no context exists.
-fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, Value>, source_crs: Option<u32>, file_schema: &str) -> Result<(), Unwritable> {
+fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, Value>, source_crs: &[u32], file_schema: &str) -> Result<(), Unwritable> {
     // A create needs the whole position (`+ 0.0` below folds -0 to 0): a partial edit whose record was deleted is refused, never written as 0.
     let pos = ["eastings", "northings", "orthogonalHeight"].map(|k| mc.get(k).filter(|v| !v.is_null()).map_or(f64::NAN, js_to_number));
     if pos.iter().any(|n| n.is_nan()) {
@@ -204,9 +204,11 @@ fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, 
         return Ok(());
     }
     // The planner names the SourceCRS; a host that does not plan leaves the choice to the file's own contexts.
-    let context = match source_crs {
-        Some(id) => pass.of_type("IFCGEOMETRICREPRESENTATIONCONTEXT").contains(&id).then_some(id),
-        None => preferred_context(pass),
+    let context = if source_crs.is_empty() {
+        preferred_context(pass)
+    } else {
+        let contexts = pass.of_type("IFCGEOMETRICREPRESENTATIONCONTEXT");
+        source_crs.iter().copied().find(|id| contexts.contains(id))
     };
     match context {
         Some(context) => {
@@ -288,10 +290,10 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
         pass.georef_lines.push((crs_id, format!("#{crs_id}=IFCPROJECTEDCRS({},{unit_ref});", fields.join(","))));
         pass.new_entity_count += 1;
         if let Some(mc) = &g.map_conversion {
-            create_map_conversion(pass, crs_id, mc, g.source_crs, file_schema)?;
+            create_map_conversion(pass, crs_id, mc, &g.source_crs, file_schema)?;
         }
     } else if let (Some(mc), true, Some(&crs_id)) = (&g.map_conversion, mc_ids.is_empty(), crs_ids.first()) {
-        create_map_conversion(pass, crs_id, mc, g.source_crs, file_schema)?;
+        create_map_conversion(pass, crs_id, mc, &g.source_crs, file_schema)?;
     } else if g.map_conversion.is_some() && mc_ids.is_empty() && crs_ids.is_empty() {
         pass.warnings.push(WITHOUT_CRS.to_string());
     }

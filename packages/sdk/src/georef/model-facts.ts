@@ -50,6 +50,8 @@ export interface GeorefModelFacts {
    * context, else the first 3D one, else the first.
    */
   preferredContext: number | null;
+  /** Every context in the planner's order of preference: the preferred one, then the other 3D ones, then the rest. */
+  rankedContexts: number[];
   sites: number[];
   /** `sourceCrs`: the conversion's SourceCRS reference (a representation context). */
   mapConversions: Array<{ id: number; scaled: boolean; sourceCrs: number | null }>;
@@ -121,6 +123,7 @@ export function collectGeorefModelFacts(store: IfcDataStore, view: MutableProper
     contexts,
     contextTypes,
     preferredContext: model3d ?? first3d ?? contexts[0] ?? null,
+    rankedContexts: [...new Set([model3d, first3d, ...contexts].filter((id): id is number => id !== null))],
     sites,
     mapConversions: [
       ...live('IFCMAPCONVERSION').map((id) => ({ id, scaled: false, sourceCrs: sourceCrsOf(id) })),

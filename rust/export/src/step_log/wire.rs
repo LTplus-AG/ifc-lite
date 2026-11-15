@@ -204,9 +204,9 @@ pub struct GeorefMutations {
     pub projected_crs: Option<serde_json::Map<String, Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub map_conversion: Option<serde_json::Map<String, Value>>,
-    /// The context a created conversion converts from, as the planner chose it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_crs: Option<u32>,
+    /// The contexts a created conversion may convert from, in the planner's order; the first still a context wins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_crs: Vec<u32>,
 }
 
 impl GeorefMutations {
@@ -214,6 +214,6 @@ impl GeorefMutations {
         projected_crs: Option<serde_json::Map<String, Value>>,
         map_conversion: Option<serde_json::Map<String, Value>>,
     ) -> Self {
-        GeorefMutations { projected_crs, map_conversion, source_crs: None }
+        GeorefMutations { projected_crs, map_conversion, source_crs: Vec::new() }
     }
 }

@@ -280,7 +280,7 @@ type MapConversionRequest = NonNullable<NonNullable<StepExportOptions['georefMut
  * no longer exists (deleted since) is refused with a warning, never written
  * with the missing fields guessed as 0.
  */
-function createMapConversion(pass: ExportPass, ctx: GeorefContext, crsId: number, mc: MapConversionRequest, sourceCrs: number | undefined): void {
+function createMapConversion(pass: ExportPass, ctx: GeorefContext, crsId: number, mc: MapConversionRequest, sourceCrs: readonly number[] | undefined): void {
   const given = (v: unknown) => v !== undefined && v !== null && !Number.isNaN(Number(v));
   if (![mc.eastings, mc.northings, mc.orthogonalHeight].every(given)) {
     reportGeorefWarning(pass.warnings, MAP_CONVERSION_INCOMPLETE_WARNING);
@@ -289,7 +289,7 @@ function createMapConversion(pass: ExportPass, ctx: GeorefContext, crsId: number
   // The planner names the SourceCRS (it saw the session's creations, deletions and edits); a host that does not plan
   // (the viewer) leaves the choice to the file's own contexts.
   const contextId = sourceCrs === undefined ? findPreferredGeometricRepresentationContextId(pass.effective, ctx)
-    : pass.effective.typeOf(sourceCrs) === 'IFCGEOMETRICREPRESENTATIONCONTEXT' ? sourceCrs : null;
+    : sourceCrs.find((id) => pass.effective.typeOf(id) === 'IFCGEOMETRICREPRESENTATIONCONTEXT') ?? null;
   if (!contextId) return reportMapConversionRefused(pass.warnings);
   pass.newGeorefLines.push(mapConversionLine(ctx.allocateExpressId(), contextId, crsId, mc, pass.warnings, pass.schemaToken));
   pass.newEntityCount++;

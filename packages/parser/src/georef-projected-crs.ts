@@ -7,6 +7,7 @@
  * out of `georef-extractor.ts` to keep that module under its size budget.
  */
 
+import { inferMapUnitScaleFromLabel } from './map-unit-label.js';
 import type { IfcEntity } from './entity-extractor.js';
 import type { ProjectedCRS } from './georef-extractor.js';
 import { getString, getReference } from './attribute-helpers.js';
@@ -106,10 +107,14 @@ export function extractProjectedCRS(
         mapUnitScale = scale;
         if (name) {
           mapUnit = name;
-          // A name the table knows, but a factor the file declares differently (a survey foot named FOOT): the
-          // name no longer says which unit this is, so it is a reading nobody may carry into a write.
+          // The name only identifies the unit when the factor the file declares is the one that name means (the
+          // writer's own table: SI-prefixed metre, FOOT, US SURVEY FOOT, plus the conversion-based names above).
+          // A survey foot named FOOT, a metre declared as 0.3048, or a missing, zero or negative factor is a
+          // reading nobody may carry into a write.
           const declared = resolveMeasureWithUnit(unitEntity.attributes?.[3], resolveEntity!);
-          mapUnitResolved = !(declared !== undefined && Math.abs(declared - scale) / scale > 1e-7);
+          const expected = inferMapUnitScaleFromLabel(name) ?? CONVERSION_BASED_UNIT_FACTORS[name];
+          mapUnitResolved = declared !== undefined && Number.isFinite(declared) && declared > 0
+            && (expected === undefined || Math.abs(declared - expected) / expected <= 1e-7);
         }
       }
     } else if (unitEntity && unitType === 'IFCSIUNIT') {

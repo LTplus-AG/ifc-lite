@@ -50,9 +50,9 @@ export function interpretsMcEdit(name: string, raw: string, scaled: boolean): bo
   return n !== undefined && !(n === null && MANDATORY_MC_FIELDS.includes(name));
 }
 
-/** A text edit is the plain text (the exporter quotes and escapes it); empty is unset. */
+/** A text edit as `serializeStringSlot` writes it: `$` is unset, `''` stays an empty string, anything else is itself. */
 function textOf(raw: string): string | null {
-  return raw === '' ? null : raw;
+  return raw === '$' ? null : raw;
 }
 
 /** `state` with this view's attribute edits of its georeferencing records applied; `state` itself when there are none. */

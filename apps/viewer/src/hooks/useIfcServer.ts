@@ -96,8 +96,8 @@ export function useIfcServer() {
       }
       // The route follows the size the server parses; the model info shows the file as opened.
       // They differ for an .ifcZIP upload, whose buffer is already unwrapped.
-      const parsedBytes = processed ? processedModelSize(file) : buffer.byteLength;
-      const openedBytes = processed ? processedModelSize(file) : file.size;
+      const parsedBytes = processed ? processedModelSize(file.bytes) : buffer.byteLength;
+      const openedBytes = processed ? parsedBytes : file.size;
 
       if (isStale?.()) return false;
       setProgress({ phase: 'Processing on server (parallel)', percent: 15 });

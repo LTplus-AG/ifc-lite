@@ -50,9 +50,9 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('processedModelSize', () => {
   it('keeps a positive integer and reads anything else as unknown (0)', () => {
-    expect(processedModelSize(ref)).toBe(46_000_000);
+    expect(processedModelSize(ref.bytes)).toBe(46_000_000);
     for (const bytes of [undefined, 0, -5, 1.5, Number.NaN, '12']) {
-      expect(processedModelSize({ sha256, bytes } as { sha256: string; bytes?: number })).toBe(0);
+      expect(processedModelSize(bytes)).toBe(0);
     }
   });
 });

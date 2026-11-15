@@ -18,9 +18,8 @@ export interface ProcessedModelRef {
   readonly bytes?: number;
 }
 
-/** The size `ref` states, or 0 (unknown) when it is absent or not a positive integer. */
-export function processedModelSize(ref: ProcessedModelRef): number {
-  const { bytes } = ref;
+/** A reference's `bytes` as a size, or 0 (unknown) when it is absent or not a positive integer. */
+export function processedModelSize(bytes: unknown): number {
   return typeof bytes === 'number' && Number.isSafeInteger(bytes) && bytes > 0 ? bytes : 0;
 }
 

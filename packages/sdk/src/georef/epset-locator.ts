@@ -26,6 +26,9 @@ interface SourceSets {
 }
 const cache = new WeakMap<IfcDataStore, SourceSets>();
 
+// @raw-entity-enumeration-ok point read of one source record selected from the cached source class lists below
+const sourceRef = (store: IfcDataStore, id: number) => store.entityIndex?.byId.get(id);
+
 function sourceSets(store: IfcDataStore): SourceSets {
   let sets = cache.get(store);
   if (sets) return sets;
@@ -33,7 +36,7 @@ function sourceSets(store: IfcDataStore): SourceSets {
   const extractor = store.source?.length ? new EntityExtractor(store.source) : null;
   // @raw-entity-enumeration-ok immutable source membership, cached per store; tombstones and creations are applied by the caller
   for (const id of store.entityIndex?.byType.get('IFCPROPERTYSET') ?? []) {
-    const ref = store.entityIndex.byId.get(id);
+    const ref = sourceRef(store, id);
     const name = ref && extractor?.extractEntity(ref)?.attributes?.[2];
     if (typeof name === 'string' && NAMES.includes(name.toLowerCase())) sets.named.set(id, name);
   }
@@ -47,7 +50,7 @@ function sourceRels(store: IfcDataStore, sets: SourceSets): NonNullable<SourceSe
   sets.rels = [];
   // @raw-entity-enumeration-ok immutable source relationships, cached per store; deletions and creations are applied by the caller
   for (const id of store.entityIndex?.byType.get('IFCRELDEFINESBYPROPERTIES') ?? []) {
-    const ref = store.entityIndex.byId.get(id);
+    const ref = sourceRef(store, id);
     const attrs = ref && extractor?.extractEntity(ref)?.attributes;
     if (attrs && typeof attrs[5] === 'number') sets.rels.push({ id, hosts: (Array.isArray(attrs[4]) ? attrs[4] : []).filter((h): h is number => typeof h === 'number'), set: attrs[5] });
   }

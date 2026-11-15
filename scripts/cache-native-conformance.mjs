@@ -10,7 +10,9 @@
  * conformance_writer`) and this script asserts the four agreed properties:
  *
  *  1. Self-reproducible: the native bytes are identical under
- *     RAYON_NUM_THREADS=1 and the default pool.
+ *     RAYON_NUM_THREADS=1 and the default pool, and the `ifc-build-cache`
+ *     CLI (the streaming writer, `build_cache_to_path`) writes the same
+ *     bytes, so everything below holds for the CLI's output too.
  *  2. Scalar sections: the TS writer, handed the SAME model (the one the
  *     native cache encodes, as the TS reader decodes it), emits the header
  *     and Strings / Entities / Properties / Quantities / Relationships /
@@ -56,7 +58,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -115,15 +117,18 @@ const data = await import(DATA_DIST);
 const parser = await import(PARSER_DIST);
 
 const examples = ['conformance_writer', 'processing_oracle'];
-const build = spawnSync('cargo', ['build', '--locked', '-p', 'ifc-lite-cache', ...examples.flatMap((e) => ['--example', e])], {
-  cwd: ROOT,
-  stdio: 'inherit',
-});
+const build = spawnSync(
+  'cargo',
+  ['build', '--locked', '-p', 'ifc-lite-cache', ...examples.flatMap((e) => ['--example', e]), '--bin', 'ifc-build-cache'],
+  { cwd: ROOT, stdio: 'inherit' },
+);
 if (build.status !== 0) process.exit(build.status ?? 1);
 const targetDir = process.env.CARGO_TARGET_DIR || join(ROOT, 'target');
-const exampleBin = (name) => join(targetDir, 'debug/examples', process.platform === 'win32' ? `${name}.exe` : name);
+const exe = process.platform === 'win32' ? '.exe' : '';
+const exampleBin = (name) => join(targetDir, 'debug/examples', `${name}${exe}`);
 const writerBin = exampleBin('conformance_writer');
 const oracleBin = exampleBin('processing_oracle');
+const cliBin = join(targetDir, 'debug', `ifc-build-cache${exe}`);
 
 const work = mkdtempSync(join(tmpdir(), 'cache-native-'));
 let checked = 0;
@@ -157,6 +162,15 @@ function writeNative(source, threads) {
   return { bytes: readFileSync(out), stats: JSON.parse(run.stdout) };
 }
 
+/** The CLI's streamed cache, built at a path that already holds a stale file. */
+function writeStreamed(source) {
+  const out = join(work, 'streamed.ifclite');
+  writeFileSync(out, 'stale');
+  const run = spawnSync(cliBin, [source, out], { encoding: 'utf8' });
+  assert.equal(run.status, 0, `ifc-build-cache failed: ${run.stderr}`);
+  return { bytes: readFileSync(out), stats: JSON.parse(run.stdout) };
+}
+
 function toArrayBuffer(buf) {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
@@ -171,6 +185,12 @@ async function checkFixture(fixture, sourcePath) {
   const single = writeNative(sourcePath, 1);
   assert.ok(native.bytes.equals(single.bytes), `${label}: RAYON_NUM_THREADS=1 and default differ`);
   assert.ok(native.stats.meshCount > 0, `${label}: produced meshes`);
+  const streamed = writeStreamed(sourcePath);
+  assert.ok(streamed.bytes.equals(native.bytes), `${label}: ifc-build-cache (streamed) differs from build_cache`);
+  for (const [key, value] of Object.entries(native.stats)) {
+    assert.equal(streamed.stats[key], value, `${label}: ifc-build-cache stats.${key}`);
+  }
+  assert.deepEqual(readdirSync(work).filter((name) => name.startsWith('.')), [], `${label}: no staging file left`);
 
   // 4. Acceptance, with source-hash validation.
   const nativeBuffer = toArrayBuffer(native.bytes);

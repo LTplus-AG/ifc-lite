@@ -4,7 +4,9 @@
 
 //! Test harness for `scripts/cache-native-conformance.mjs` (#9584): writes the
 //! native cache of one IFC so the TypeScript reader and writer can be run
-//! against it. Not a distributed tool; the CLI is a later slice.
+//! against it, through the in-memory `build_cache`. Not a distributed tool:
+//! that is `ifc-build-cache`, which streams, and which the script checks
+//! writes the same bytes as this.
 //!
 //!   cargo run -p ifc-lite-cache --example conformance_writer -- <in.ifc> <out.ifclite>
 //!   cargo run -p ifc-lite-cache --example conformance_writer -- --deflated-length <payload>
@@ -33,7 +35,7 @@ fn main() {
         .unwrap_or_else(|error| panic!("build {input}: {error}"));
     std::fs::write(output, &bytes).unwrap_or_else(|error| panic!("write {output}: {error}"));
     println!(
-        "{{\"entityCount\":{},\"entityRows\":{},\"meshCount\":{},\"skippedMeshes\":{},\"chunkCount\":{},\"totalVertices\":{},\"totalTriangles\":{},\"cacheBytes\":{}}}",
+        "{{\"entityCount\":{},\"entityRows\":{},\"meshCount\":{},\"skippedMeshes\":{},\"chunkCount\":{},\"totalVertices\":{},\"totalTriangles\":{},\"cacheBytes\":{},\"chunkCells\":{},\"peakOpenChunkBytes\":{}}}",
         stats.entity_count,
         stats.entity_rows,
         stats.mesh_count,
@@ -42,5 +44,7 @@ fn main() {
         stats.total_vertices,
         stats.total_triangles,
         stats.cache_bytes,
+        stats.chunk_cells,
+        stats.peak_open_chunk_bytes,
     );
 }

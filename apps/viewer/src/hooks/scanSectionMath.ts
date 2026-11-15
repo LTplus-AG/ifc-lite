@@ -56,7 +56,9 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { isPointCloudClassVisible } from '@/store/slices/pointCloudSlice';
 import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 
+// ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════
 
 /** Default slab thickness (metres) around the section plane. */
 export const DEFAULT_SCAN_SECTION_THICKNESS = 0.3;
@@ -68,7 +70,9 @@ export const DEFAULT_SCAN_RENDER_CAP = 500_000;
 /** Hard cap for SVG export — keeps exported files a sane size. */
 export const DEFAULT_SCAN_SVG_CAP = 20_000;
 
+// ═══════════════════════════════════════════════════════════════════════════
 // TYPES
+// ═══════════════════════════════════════════════════════════════════════════
 
 export type ScanSectionAxis = 'x' | 'y' | 'z';
 
@@ -147,7 +151,9 @@ export interface SelectScanBandParams {
   maxRendered?: number;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
 // RENDER-FRAME SHIFT
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * The Y-up vector to SUBTRACT from a raw (Z-up-swapped-to-Y-up) point-cloud
@@ -199,7 +205,9 @@ export function resolveScanSectionPosition(
   return axisMin + (positionPercent / 100) * (axisMax - axisMin);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
 // BAND TEST + PROJECTION
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Signed distance from a render-frame point to the section plane.
@@ -239,7 +247,9 @@ export function projectScanPoint(p: Vec3, plane: ScanSectionPlane): Point2D {
   return projectTo2D(p, plane.axis, plane.flipped);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
 // BAND SELECTION (band test + class-mask filter + deterministic decimation)
+// ═══════════════════════════════════════════════════════════════════════════
 
 function readColor(
   colors: Uint8Array | Float32Array | null | undefined,

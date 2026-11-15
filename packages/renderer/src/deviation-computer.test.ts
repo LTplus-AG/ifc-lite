@@ -275,8 +275,10 @@ describe('DeviationComputer workspace placement (#4226)', () => {
       assert.equal(firstTriangles.destroyed, 1);
       const rebuilt = created.find((buffer) => buffer !== firstTriangles && uploads.get(buffer)?.length === 12)!;
       const triangle = uploads.get(rebuilt)!;
-      assert.equal(triangle[0], 100, 'rebuilt BVH triangle starts at the moved world position');
-      assert.equal(triangle[3], 101); assert.equal(triangle[6], 100);
+      // Triangles are uploaded relative to the mesh-anchored compute frame
+      // (#10094 item 1): world x 100 minus the new anchor, the mesh origin 100.
+      assert.equal(triangle[0], 0, 'rebuilt BVH triangle starts at the moved mesh, in the anchored frame');
+      assert.equal(triangle[3], 1); assert.equal(triangle[6], 0);
     } finally { computer.destroy(); }
   });
 });
@@ -351,21 +353,15 @@ describe('DeviationComputer shared precision frame (#10094 item 1)', () => {
     });
   });
 
-  it('rebuilds the BVH when the shared cloud anchor moves, then reuses the new frame', async () => {
+  it('keeps the BVH when only a cloud moves, since the frame is anchored on the meshes', async () => {
     const { computer, ctx, uploads, placement } = fixture(2_600_000);
     try {
       const before = await computer.compute({}, ctx);
-      const firstTriangleX = uploads.find((data) => data.length === 12)![0];
       uploads.length = 0;
       placement[12] += 0.002;
       const after = await computer.compute({}, ctx);
-      const rebuilt = uploads.find((data) => data.length === 12);
-      assert.ok(rebuilt, 'changing only the anchor must invalidate the cached BVH');
-      assert.ok(Math.abs(rebuilt[0] - firstTriangleX + 0.002) < 1e-7);
-      assert.deepEqual(after.bounds, before.bounds, 'world-space bounds do not move with the compute frame');
-      uploads.length = 0;
-      await computer.compute({}, ctx);
-      assert.equal(uploads.filter((data) => data.length === 12).length, 0, 'unchanged frame reuses the BVH');
+      assert.equal(uploads.filter((data) => data.length === 12).length, 0, 'a cloud move reuses the cached BVH');
+      assert.deepEqual(after.bounds, before.bounds, 'world-space bounds do not move with a cloud');
     } finally { computer.destroy(); }
   });
 });

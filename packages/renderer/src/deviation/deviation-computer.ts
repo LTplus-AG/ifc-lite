@@ -18,6 +18,7 @@
 
 import { DeviationPipeline } from './deviation-pipeline.js';
 import { buildTriangleBVH } from './triangle-bvh.js';
+import { exactPlacement, IDENTITY_MATRIX } from '../pointcloud/point-cloud-placement.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { WebGPUDevice } from '../device.js';
 import type { Scene } from '../scene.js';
@@ -189,11 +190,12 @@ export class DeviationComputer {
         this.computedBuffers = null;
         const meshes = collectAllSceneMeshes(ctx.scene);
         const nodes = Array.from(ctx.pointCloudRenderer.getInternalNodes());
-        // One shared frame, anchored at the first populated cloud's exact
-        // placement, keeps both points and triangles small (#10094 item 1).
-        const placement = nodes.find((node) => node.chunks.length > 0)?.placement;
-        const anchor: [number, number, number] = placement
-            ? [placement[12], placement[13], placement[14]] : [0, 0, 0];
+        // One shared frame keeps both points and triangles small (#10094
+        // item 1). It is anchored on the meshes, so it moves only with them
+        // (and the BVH cache with it), not with cloud order or streaming: the
+        // first mesh's f64 origin; a mesh without one is absolute already.
+        const origin = meshes.find((mesh) => mesh.origin)?.origin;
+        const anchor: [number, number, number] = origin ? [origin[0], origin[1], origin[2]] : [0, 0, 0];
         // Fingerprint folds in per-mesh expressId / modelIndex /
         // positions length / triangle count, so two distinct meshes
         // that happen to share an aggregate position-length total
@@ -218,9 +220,7 @@ export class DeviationComputer {
         let pointsProcessed = 0;
         const computedBuffers = new WeakSet<GPUBuffer>();
         for (const node of nodes) {
-            const model = node.placement ? new Float64Array(node.placement) : new Float64Array([
-                1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
-            ]);
+            const model = exactPlacement(node) ?? new Float64Array(IDENTITY_MATRIX);
             for (let axis = 0; axis < 3; axis++) model[12 + axis] -= anchor[axis];
             const relativeModel = new Float32Array(model);
             for (const chunk of node.chunks) {

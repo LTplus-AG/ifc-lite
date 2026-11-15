@@ -1012,12 +1012,12 @@ export function PropertiesPanel() {
   const foundAttributes = renderedAttributes.filter((attr) => matchesPropertySearch(attr.name, findQuery) || matchesPropertySearch(attr.value, findQuery));
   const foundStructure = renderedSpatialContainment?.filter((item) => matchesPropertySearch(item.label, findQuery) || matchesPropertySearch(item.value, findQuery));
   const foundZones = zoneMembership?.filter((item) => matchesPropertySearch(item.label, findQuery) || matchesPropertySearch(item.value, findQuery));
-  const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
-  const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
+  const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable', locale);
+  const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable', locale);
   const foundQuantities = filterQuantitySets(renderedQuantities, findQuery, projectUnits, unitDisplayOverrides, locale, quantityUnitContext.status !== 'unavailable');
   // Own sets remain the canonical prefix; identical names do not identify ownership (#7382).
   const foundInheritedQuantities = filterQuantitySets(renderedQuantitiesWithInheritedType.slice(renderedQuantities.length), findQuery, projectUnits, unitDisplayOverrides, locale, quantityUnitContext.status !== 'unavailable');
-  const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
+  const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable', locale);
   const foundAssociations = findAssociationAttributes({
     classifications: renderedClassifications, materials: renderedMaterialInfos,
     documents: renderedDocuments, query: findQuery, t, locale,

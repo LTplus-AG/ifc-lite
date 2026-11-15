@@ -59,6 +59,7 @@
     "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {
+    "ajv": "^8.17.1",
     "rhino3dm": "8.35.0",
     "@ifc-lite/bcf-api": "workspace:^",
     "@mergifyio/vitest": "^2026.10.11",

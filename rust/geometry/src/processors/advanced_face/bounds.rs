@@ -210,17 +210,15 @@ fn ring_stays_in(ring: &[Point2<f64>], outer: &[Point2<f64>], tolerance: f64) ->
     }) && outer_clear_of(outer, ring, tolerance)
 }
 
-/// Whether no part of `outer`'s boundary enters the interior of `ring`: each outer edge has its endpoints and midpoint
-/// outside or on `ring`, and crosses none of its edges. A ring inside the outer loop cannot contain a piece of it
+/// Whether no part of `outer`'s boundary enters the interior of `ring`: each outer edge has its endpoint and midpoint
+/// outside or on `ring` (a proper crossing is already refused by [`ring_stays_in`], and crossing is symmetric). A ring inside the outer loop cannot contain a piece of it
 /// (a vertex, or a thin slit whose ends touch the ring's boundary).
 fn outer_clear_of(outer: &[Point2<f64>], ring: &[Point2<f64>], tolerance: f64) -> bool {
     let strictly_inside = |p: &Point2<f64>| inside_2d(p, ring) && edge_distance_2d(p, ring) > tolerance;
     (0..outer.len()).all(|k| {
         let (v, w) = (outer[k], outer[(k + 1) % outer.len()]);
         let mid = Point2::new((v.x + w.x) / 2.0, (v.y + w.y) / 2.0);
-        !strictly_inside(&v)
-            && !strictly_inside(&mid)
-            && (0..ring.len()).all(|m| !segments_cross(&v, &w, &ring[m], &ring[(m + 1) % ring.len()]))
+        !strictly_inside(&v) && !strictly_inside(&mid)
     })
 }
 

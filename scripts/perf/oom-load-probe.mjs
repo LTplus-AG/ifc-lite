@@ -135,7 +135,7 @@ export async function runProbe(opts) {
   process.once('SIGTERM', onSignal);
   cleanup.push({ name: 'signal handlers', fn: () => { process.off('SIGINT', onSignal); process.off('SIGTERM', onSignal); } });
 
-  const obs = { oomKills: 0, killedTypes: [], killEvents: [], pageCrashed: false, browserGone: false, interactive: false, storeError: null, notices: [],
+  const obs = { oomKills: 0, killedTypes: [], killEvents: [], pageCrashed: false, pageClosed: false, browserGone: false, interactive: false, storeError: null, notices: [],
     timedOut: false, warningShown: false, decision: 'none' };
   const peak = { pssMiB: 0, cgroupMiB: 0 };
   const unit = `oom-load-probe-${process.pid}-${Date.now()}`;
@@ -178,7 +178,11 @@ export async function runProbe(opts) {
     cg = cgroupOf(unit);
     if (!cg) throw new EnvError(`Chrome did not start inside scope ${unit}`);
     const page = await openViewerPage(context, `${baseUrl}/?perfTrace=1&perfMem=1`);
+    // Tab death is decided only from evidence about this page: its renderer crashed ('crash' is raised
+    // when this page's renderer process dies), the page closed, or the browser exited. CDP exposes no
+    // target-to-pid mapping (TargetInfo has no pid), so vanished process TYPES never decide it.
     page.on('crash', () => { obs.pageCrashed = true; });
+    page.on('close', () => { if (!verdictReady) obs.pageClosed = true; });
     result.navigator = await page.evaluate(() => ({ deviceMemory: navigator.deviceMemory ?? null, cores: navigator.hardwareConcurrency }));
     const t0 = Date.now();
     let types = new Map();
@@ -210,9 +214,9 @@ export async function runProbe(opts) {
     const watch = (async () => {
       while (!done) {
         await new Promise((r) => setTimeout(r, 2000));
-        // Stop at a tab death. A GPU/utility OOM kill (or an unidentified one with the page alive)
-        // does not end the load: keep watching until interactive, a renderer death or the limit.
-        if (done || obs.pageCrashed || obs.browserGone || obs.killedTypes.some((t) => t === 'renderer' || t === 'browser')) return;
+        // Stop at a tab death (crash, close, browser exit). An OOM kill of any other process, identified
+        // or not, does not end the load: keep watching until interactive, a tab death or the limit.
+        if (done || obs.pageCrashed || obs.pageClosed || obs.browserGone) return;
         const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 15000, () => null);
         if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
         if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? GENERIC_MODEL_ERROR; return; }
@@ -237,7 +241,7 @@ export async function runProbe(opts) {
     done = true;
     result.wallSeconds = (Date.now() - t0) / 1000;
     await new Promise((r) => setTimeout(r, 1500)); // let a pending OOM kill / crash land before the verdict
-    if (!obs.pageCrashed && !obs.browserGone) {
+    if (!obs.pageCrashed && !obs.pageClosed && !obs.browserGone) {
       // One final observation on every exit path (interactive, rejection, timeout, poll stop):
       // the 2 s poll is only a progress sampler, never the source of the verdict.
       const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 5000, () => null);

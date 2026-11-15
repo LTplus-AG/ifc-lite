@@ -209,8 +209,11 @@ function curveRing(reader: GeometryEntityReader, curve: Entity | null): Flat[] |
   return Math.hypot(first[0] - last[0], first[1] - last[1]) < 1e-9 ? points.slice(0, -1) : points;
 }
 
-/** Signed area and centroid of a simple polygon (shoelace); area 0 for a line. */
-function ringMoments(ring: readonly Flat[]): { area: number; cx: number; cy: number } {
+/** Area and first moments of a shape: the area, and area times centroid in x and y. */
+type Moments = { area: number; cx: number; cy: number };
+
+/** Signed area and first moments of a simple polygon (shoelace); area 0 for a line. */
+function ringMoments(ring: readonly Flat[]): Moments {
   let area = 0, cx = 0, cy = 0;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const cross = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
@@ -227,14 +230,26 @@ function ringCentroid(ring: readonly Flat[]): Flat | undefined {
   return Math.abs(area) > 1e-12 ? [cx / area, cy / area] : undefined;
 }
 
+/** The moments of a void curve: a polygonal ring, or an `IfcCircle` (its disc); null when it is not read. */
+function voidMoments(reader: GeometryEntityReader, curve: Entity | null): Moments | null {
+  if (upper(curve) === 'IFCCIRCLE') {
+    const position = axis2d(reader, curve!.attributes[0]);
+    const radius = num(curve!.attributes[1]);
+    if (!position || radius === null || radius <= 0) return null;
+    const area = Math.PI * radius * radius;
+    return { area, cx: position.o[0] * area, cy: position.o[1] * area };
+  }
+  const ring = curveRing(reader, curve);
+  return typeof ring === 'string' ? null : ringMoments(ring);
+}
+
 /** The centroid of an outer ring with voids removed. */
-function materialCentroid(outer: readonly Flat[], voids: readonly (readonly Flat[])[]): Flat | undefined {
+function materialCentroid(outer: readonly Flat[], voids: readonly Moments[]): Flat | undefined {
   const o = ringMoments(outer);
   const sign = Math.sign(o.area) || 1;
   let [area, cx, cy] = [o.area, o.cx, o.cy];
-  for (const ring of voids) {
-    const v = ringMoments(ring);
-    // Moments of a void subtract from the outer ring's, whatever its winding.
+  for (const v of voids) {
+    // The moments of a void subtract from the outer ring's, whatever its winding.
     const flip = Math.sign(v.area) === sign ? -1 : 1;
     area += flip * v.area; cx += flip * v.cx; cy += flip * v.cy;
   }
@@ -252,8 +267,8 @@ function profileOutline(reader: GeometryEntityReader, profile: Entity | null): {
     // material centroid subtracts them. An unreadable void leaves the centroid out, not wrong.
     let centroid: Flat | undefined = ringCentroid(outer);
     if (type === 'IFCARBITRARYPROFILEDEFWITHVOIDS') {
-      const voids = refs(a[3]).map((id) => curveRing(reader, reader.entity(id)));
-      centroid = voids.every((ring): ring is Flat[] => typeof ring !== 'string') ? materialCentroid(outer, voids) : undefined;
+      const voids = refs(a[3]).map((id) => voidMoments(reader, reader.entity(id)));
+      centroid = voids.every((v): v is Moments => v !== null) ? materialCentroid(outer, voids) : undefined;
     }
     return { points: outer, exact: true, ...(centroid ? { centroid } : {}) };
   }

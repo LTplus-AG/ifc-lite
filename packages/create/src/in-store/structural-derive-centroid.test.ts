@@ -47,6 +47,9 @@ DATA;
 #77=IFCCARTESIANPOINT((0.045,0.02));
 #78=IFCCARTESIANPOINT((0.005,0.02));
 #79=IFCPOLYLINE((#75,#76,#77,#78,#75));
+#80=IFCCARTESIANPOINT((0.025,0.));
+#81=IFCAXIS2PLACEMENT2D(#80,$);
+#82=IFCCIRCLE(#81,0.02);
 ${beam(11, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.075,0.006,$,$,$)')}
 ${beam(12, 'IFCTSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.08,0.006,0.01,$,$,$,$,$)')}
 ${beam(13, 'IFCUSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.05,0.006,0.008,$,$,$)')}
@@ -56,6 +59,7 @@ ${beam(16, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#48,0.1,0.075,0.006,$,$,$)')}
 ${beam(17, 'IFCISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.1,0.006,0.01,$)')}
 ${beam(18, 'IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#74,(#79))')}
 ${beam(19, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.1,$,0.006,$,$,$)')}
+${beam(20, 'IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#74,(#82))')}
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -70,6 +74,7 @@ const ORACLE: Record<number, [number, number]> = {
   174: [0, 0], // IfcIShapeProfileDef is symmetric
   184: [-4.762, 0], // 100 x 100 rectangle with a 40 x 40 void centred 25 mm right of the centre
   194: [-22.773, -22.773], // IfcLShapeProfileDef 100 x (Width omitted = Depth) x 6
+  204: [-3.553, 0], // the same square with a 20 mm radius circular void 25 mm right of the centre (IfcOpenShell tessellates the circle; the exact disc gives -3.593)
 };
 // Bounds centre of each profile in the profile frame (mm): the polygon's lower-left corner is the origin.
 const BOUNDS_CENTRE: Record<number, [number, number]> = { 154: [37.5, 50] };
@@ -84,8 +89,10 @@ describe('structural derive idealises an asymmetric section through its centroid
       expect(line, `beam #${id}`).toBeDefined();
       const [cx, cy] = BOUNDS_CENTRE[Number(id)] ?? [0, 0];
       const [start, end] = line!;
-      expect(start[0] * 1000, `#${id} x`).toBeCloseTo(cx + dx, 2);
-      expect(start[1] * 1000, `#${id} y`).toBeCloseTo(cy + dy, 2);
+      // The circular void is a polygon to IfcOpenShell and a disc here: they agree to 0.05 mm.
+      const digits = Number(id) === 204 ? 1 : 2;
+      expect(start[0] * 1000, `#${id} x`).toBeCloseTo(cx + dx, digits);
+      expect(start[1] * 1000, `#${id} y`).toBeCloseTo(cy + dy, digits);
       expect(end[0]).toBeCloseTo(start[0], 9);
       expect([start[2], end[2]]).toEqual([0, 3]);
     }

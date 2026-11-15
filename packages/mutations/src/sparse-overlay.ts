@@ -51,7 +51,8 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
   // Read-only borrowers see an unmodified row in place. They never receive a
   // mutable alias (borrows are frozen copies), so the row needs no private copy
   // and no comparison when the transaction finishes.
-  const peek = (key: K): V | undefined => !has(key) ? undefined : reads.has(key) ? reads.get(key) : base.get(key);
+  const peek = (key: K): V | undefined => !has(key) ? undefined : reads.has(key) ? reads.get(key)
+    : base instanceof NewEntityMap ? base.peek(key as number) as V | undefined : base.get(key);
   function* peekValues(): MapIterator<V> { for (const key of keys()) yield peek(key)!; }
   function* entries(): MapIterator<[K, V]> { for (const key of keys()) yield [key, get(key)!]; }
   function* values(): MapIterator<V> { for (const key of keys()) yield get(key)!; }

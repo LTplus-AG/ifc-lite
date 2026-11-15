@@ -272,3 +272,21 @@ it('the express-id watermark scans a store once, not once per editor, and rescan
   sameSize.setExpressIdWatermark(31);
   expect(new StoreEditor(store, sameSize).addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId).toBe(33);
 });
+
+it('#8452 nested ID-only readers do not materialize unrelated parent-draft payloads', () => {
+  const view = new MutablePropertyView(null, 'nested-kind-inventory');
+  let payloadReads = 0;
+  for (let i = 0; i < 200; i++) {
+    const attributes = [[i, 0, 0]];
+    const row = view.createEntity('IfcCartesianPoint', attributes);
+    Object.defineProperty(row, 'attributes', { configurable: true, enumerable: true,
+      get() { payloadReads++; return attributes; },
+    });
+  }
+  view.runAtomic(outer => outer.runAtomic(inner => {
+    expect([...inner.readNewEntityKinds()]).toHaveLength(200);
+    inner.createEntity('IfcCartesianPoint', [[201, 0, 0]]);
+  }));
+  expect(payloadReads).toBe(0);
+  expect(view.getNewEntityCount()).toBe(201);
+});

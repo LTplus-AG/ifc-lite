@@ -31,6 +31,8 @@ const { useIfcLoader } = await import('./useIfcLoader.js');
 const { processedModelFromQuery, useProcessedModelAutoload } = await import('./useProcessedModelAutoload.js');
 const { isStepSourceModel } = await import('@/components/viewer/step-export-source');
 const { getReportPrompt, clearLoadReport } = await import('@/lib/error-reports/context');
+const { openProcessedModel, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } = await import('@/lib/processed-model');
+const { useModelUrlAutoload } = await import('./useModelUrlAutoload.js');
 
 const sha256 = 'c'.repeat(64);
 const processedModel = { sha256, bytes: 46_000_000 };
@@ -50,7 +52,7 @@ const stored = (): ParquetParseResponse => ({
 
 let api: ReturnType<typeof useIfcLoader> | undefined;
 let root: Root, container: HTMLDivElement;
-let asked: unknown[], engineInits: number, uploads: number;
+let asked: unknown[], engineInits: number, uploads: number, servers: string[];
 let restoreGpu: (() => void) | undefined;
 function Probe({ fromUrl = false }: { fromUrl?: boolean }) {
   api = useIfcLoader();
@@ -61,12 +63,17 @@ const model = () => useViewerStore.getState().models.values().next().value;
 const nameOnly = () => new File([], 'stored.ifc');
 
 beforeEach(async () => {
-  asked = []; engineInits = 0; uploads = 0; clearLoadReport();
+  asked = []; engineInits = 0; uploads = 0; servers = []; clearLoadReport();
   useViewerStore.getState().resetViewerState(); useViewerStore.getState().clearAllModels();
   useViewerStore.setState({ error: null, lastLoadRetry: null });
   mock.method(IfcServerClient.prototype, 'health', async () => ({ status: 'ok' }) as HealthResponse);
   mock.method(IfcServerClient.prototype, 'isParquetSupported', async () => true);
-  mock.method(IfcServerClient.prototype, 'parseParquet', async (source: unknown) => { asked.push(source); return stored(); });
+  // Records which server each request went to: the runtime URL must reach the client.
+  mock.method(IfcServerClient.prototype, 'parseParquet', async function (this: IfcServerClient, source: unknown) {
+    servers.push((this as unknown as { baseUrl: string }).baseUrl);
+    asked.push(source);
+    return stored();
+  });
   for (const upload of ['parse', 'parseParquetStream'] as const) {
     mock.method(IfcServerClient.prototype, upload, async () => { uploads++; throw new Error('a processed model must not take this route'); });
   }
@@ -79,6 +86,7 @@ afterEach(async () => {
   await act(async () => root.unmount()); container.remove(); mock.restoreAll();
   restoreGpu?.(); restoreGpu = undefined;
   window.history.replaceState(null, '', '/');
+  resetProcessedModelRequestsForTests(); setProcessingServerUrl('http://localhost:9999');
   useViewerStore.getState().clearAllModels();
 });
 
@@ -216,7 +224,7 @@ it('?processed= accepts the hash in upper case and asks for it in lower case', a
 });
 
 it('?processed= reads a size that is not plain digits as unknown', () => {
-  for (const bad of ['abc', '0x9502F900', '1.6e8', '-5', ' 12', '']) {
+  for (const bad of ['abc', '0x9502F900', '1.6e8', '-5', ' 12', '', '99999999999999999999']) {
     assert.equal((processedModelFromQuery(`?processed=${sha256}&bytes=${encodeURIComponent(bad)}`) as ProcessedModelRef).bytes, 0, bad);
   }
 });
@@ -245,3 +253,95 @@ it('?processed= with something that is not a SHA-256 asks the server nothing and
   assert.equal(useViewerStore.getState().lastLoadRetry, null, 'the same string cannot succeed on retry');
   assert.equal(useViewerStore.getState().models.size, 0);
 });
+
+for (const when of ['before the viewer mounts', 'after the viewer mounted'] as const) {
+  it(`openProcessedModel called ${when} opens the result from the server it names`, async () => {
+    stubWebGpu();
+    const serverUrl = when === 'before the viewer mounts' ? '/processor' : '/other-processor';
+    const open = () => openProcessedModel({ sha256, bytes: 7_000_000, name: 'From the host.ifc' }, { serverUrl: `${serverUrl}/` });
+    if (when === 'before the viewer mounts') open();
+    await act(async () => { root.render(<Probe fromUrl />); });
+    if (when === 'after the viewer mounted') await act(async () => { open(); });
+    await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the host request loads the model'); });
+    assert.deepEqual(asked, [{ sha256, bytes: 7_000_000, serverUrl }]);
+    assert.deepEqual(servers, [serverUrl], 'the runtime URL replaces the build-time one for this request');
+    assert.equal(model()?.name, 'From the host.ifc');
+    assert.equal(model()?.fileSize, 7_000_000);
+    assert.equal(engineInits, 0);
+    assert.equal(takeProcessedModelRequest(), null, 'a request is loaded once');
+  });
+}
+
+it('openProcessedModel refuses a hash that is not a SHA-256 before anything is asked', async () => {
+  assert.throws(() => openProcessedModel({ sha256: '../x', bytes: 1, name: 'x.ifc' }, { serverUrl: '/elsewhere' }), /SHA-256 of its source file/);
+  assert.equal(takeProcessedModelRequest(), null);
+  await act(async () => { root.render(<Probe fromUrl />); });
+  assert.deepEqual(asked, []);
+  assert.deepEqual(servers, []);
+});
+
+it('with no processing server configured, the error says so and offers no Retry', async () => {
+  mock.method(console, 'error', () => {});
+  setProcessingServerUrl('');
+  await act(async () => { root.render(<Probe />); });
+  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel }); });
+  assert.deepEqual(asked, [], 'nothing is asked of a server that does not exist');
+  assert.match(useViewerStore.getState().error ?? '', /No processing server is configured/);
+  assert.equal(useViewerStore.getState().lastLoadRetry, null);
+});
+
+it("a host request filed before the viewer mounts wins over ?processed= in the page URL", async () => {
+  stubWebGpu();
+  const infos: unknown[][] = [];
+  mock.method(console, 'info', (...args: unknown[]) => { infos.push(args); });
+  window.history.replaceState(null, '', `/?processed=${'d'.repeat(64)}&bytes=9&name=url.ifc`);
+  openProcessedModel({ sha256, bytes: 7_000_000, name: 'From the host.ifc' });
+  await act(async () => { root.render(<Probe fromUrl />); });
+  await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the host model loads'); });
+  assert.deepEqual(asked, [{ sha256, bytes: 7_000_000 }], "only the host's model is asked for");
+  assert.equal(model()?.name, 'From the host.ifc');
+  assert.equal(infos.filter((args) => /ignored/.test(String(args[0]))).length, 1, 'the ignored URL is logged once');
+});
+
+function ModelUrlEntry() { useModelUrlAutoload(); return null; }
+it("a host request filed before the viewer mounts also wins over ?model= in the page URL", async () => {
+  stubWebGpu();
+  const fetched: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => { fetched.push(String(input)); return new Response(null, { status: 404 }); }) as typeof fetch;
+  const infos: unknown[][] = [];
+  mock.method(console, 'info', (...args: unknown[]) => { infos.push(args); });
+  try {
+    window.history.replaceState(null, '', '/?model=other.ifc');
+    openProcessedModel({ sha256, bytes: 7_000_000, name: 'From the host.ifc' });
+    await act(async () => { root.render(<><Probe fromUrl /><ModelUrlEntry /></>); });
+    await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the host model loads'); });
+    assert.deepEqual(asked, [{ sha256, bytes: 7_000_000 }]);
+    assert.deepEqual(fetched.filter((url) => url.includes('other.ifc')), [], '?model= is not fetched');
+    assert.equal(infos.filter((args) => /\?model= .*ignored/.test(String(args[0]))).length, 1, 'logged once');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+
+// #10142: the serverUrl option belongs to its request; without one the load asks the global server.
+for (const override of [undefined, '/host-processor']) {
+  it(`asks the request's server, else the global one at load time, also on Retry (override ${override}, #10142)`, async () => {
+    stubWebGpu();
+    mock.method(console, 'error', () => {});
+    setProcessingServerUrl('');
+    openProcessedModel({ sha256, bytes: 7_000_000, name: 'host.ifc' }, { serverUrl: override });
+    setProcessingServerUrl('/set-after-filing'); // a host may name the server after asking for the model
+    let attempts = 0;
+    mock.method(IfcServerClient.prototype, 'parseParquet', async function (this: IfcServerClient) {
+      servers.push((this as unknown as { baseUrl: string }).baseUrl);
+      if (++attempts === 1) throw new IfcServerError('temporary', 503, 'OVERLOADED');
+      return stored();
+    });
+    await act(async () => { root.render(<Probe fromUrl />); });
+    await act(async () => { await waitFor(() => !!useViewerStore.getState().lastLoadRetry, 'Retry appears'); });
+    setProcessingServerUrl('/changed-again');
+    await act(async () => { useViewerStore.getState().lastLoadRetry!(); });
+    await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'Retry completes'); });
+    assert.deepEqual(servers, override ? [override, override] : ['/set-after-filing', '/changed-again']);
+  });
+}

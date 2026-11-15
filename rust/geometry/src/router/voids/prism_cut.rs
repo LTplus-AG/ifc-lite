@@ -256,6 +256,7 @@ mod ptri;
 use checks::*;
 use cut::*;
 use detect::*;
+#[cfg(test)]
 use extension::*;
 use frame::*;
 pub(super) use kit::*;

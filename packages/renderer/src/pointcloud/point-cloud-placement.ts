@@ -81,7 +81,7 @@ export class PointCloudPlacements {
  * where a streamed scan's decode origin does, so rendering (RTE), picking,
  * snapping and bounds read it exactly; a model translation composes on top. */
 export function originMatrix(origin: readonly [number, number, number]): Float64Array | null {
-  if (!hasRenderablePointCloudOrigin({ origin })) return null;
+  if (!renderableCoordinates(origin)) return null;
   const [x, y, z] = origin;
   return new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
 }

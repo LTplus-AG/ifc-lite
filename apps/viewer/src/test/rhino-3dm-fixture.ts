@@ -294,8 +294,8 @@ export function craftRhinoStoreyObjectOnOffLayer(): Promise<Uint8Array> {
 }
 
 /**
- * A stamped storey whose own object sits on another layer that has a row of
- * its own and is off (#10214): that row, not the storey row, governs it.
+ * A stamped storey whose own object sits on another layer, outside the
+ * storey's, that has a row of its own and is off (#10214).
  */
 export function craftRhinoStoreyObjectOnOffRowLayer(): Promise<Uint8Array> {
   const storey: [string, string][] = [['IFC::GlobalId', CRAFTED_STOREY.globalId], ['IFC::Class', 'IfcBuildingStorey']];
@@ -309,6 +309,27 @@ export function craftRhinoStoreyObjectOnOffRowLayer(): Promise<Uint8Array> {
     [
       { layer: 'Annex', name: 'Storey object', userStrings: storey },
       { layer: 'Annex', name: 'Bench' },
+      { layer: 'IfcWall', name: 'Wall' },
+    ],
+  );
+}
+
+/**
+ * A stamped storey under a transparent layer that is off, with the storey's
+ * own object on that layer, above the storey layer (#10214): the off layer is
+ * the storey row's own state, not the object's.
+ */
+export function craftRhinoStoreyObjectAboveItsLayer(): Promise<Uint8Array> {
+  const storey: [string, string][] = [['IFC::GlobalId', CRAFTED_STOREY.globalId], ['IFC::Class', 'IfcBuildingStorey']];
+  return craftLayeredRhino3dm(
+    [
+      { name: 'Project', userStrings: [['IFC::GlobalId', CRAFTED_PROJECT_GLOBAL_ID], ['IFC::Class', 'IfcProject']] },
+      { name: 'Wing', parent: 'Project', visible: false },
+      { name: CRAFTED_STOREY.name, parent: 'Wing', userStrings: storey },
+      { name: 'IfcWall', parent: CRAFTED_STOREY.name },
+    ],
+    [
+      { layer: 'Wing', name: 'Storey object', userStrings: storey },
       { layer: 'IfcWall', name: 'Wall' },
     ],
   );

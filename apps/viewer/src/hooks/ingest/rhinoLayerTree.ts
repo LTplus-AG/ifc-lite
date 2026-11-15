@@ -257,8 +257,8 @@ export function planRhinoTree(
  * starts off when it is hidden on its own or such a layer is off; a merged
  * object whose parts Rhino hides for different causes starts off too. A row
  * that stands for an object comes back without that object when the object is
- * hidden on its own or sits behind an off layer, with no row of its own,
- * below the row's layer.
+ * hidden on its own or an off layer on its own path, other than the row's
+ * layer and those above it, hides it.
  */
 export function planRhinoContainerVisibility(
   result: RhinoImport,
@@ -276,16 +276,15 @@ export function planRhinoContainerVisibility(
     return true;
   };
 
-  // Whether a layer with no row of its own sits off between an object's layer
-  // and its row's layer. A layer with a row of its own governs that stretch
-  // through its own row, and an object outside the row's layer has none.
-  const rowLayers = new Set(tree.containers.flatMap((container) => (container.layer === null ? [] : [container.layer])));
-  const offBelowRow = (from: number, rowLayer: number | null): boolean => {
-    let off = false;
-    for (let index: number | null = from; index !== null; index = layers[index]?.parent ?? null) {
-      if (index === rowLayer) return off;
-      if (rowLayers.has(index)) return false;
-      if (layers[index]?.visible === false) off = true;
+  // Whether an off layer on an object's own path keeps it hidden when its row
+  // is shown. The row's layer and the layers above it are the row's own state
+  // and its parents'; every other layer on the path counts, since an object a
+  // row stands for is a member of no row that could show it.
+  const offOnObjectPath = (from: number, rowLayer: number | null): boolean => {
+    const rowChain = new Set<number>();
+    for (let index: number | null = rowLayer; index !== null; index = layers[index]?.parent ?? null) rowChain.add(index);
+    for (let index: number | null = from; index !== null && !rowChain.has(index); index = layers[index]?.parent ?? null) {
+      if (layers[index]?.visible === false) return true;
     }
     return false;
   };
@@ -308,7 +307,7 @@ export function planRhinoContainerVisibility(
   for (const container of tree.containers) {
     // A row that stands for an object: that object's own layer may be a sublayer of the row's.
     const object = objectOfRow.get(container.expressId);
-    if (object && (hiddenOnItsOwn.has(container.expressId) || offBelowRow(object.layer, container.layer))) selfOff.add(container.expressId);
+    if (object && (hiddenOnItsOwn.has(container.expressId) || offOnObjectPath(object.layer, container.layer))) selfOff.add(container.expressId);
     if (container.parent === null) continue;
     rows.get(container.parent)?.children.push(container.expressId);
     if (container.layer !== null && !layersOn(container.layer, layerOfRow.get(container.parent) ?? null)) ownOff.add(container.expressId);

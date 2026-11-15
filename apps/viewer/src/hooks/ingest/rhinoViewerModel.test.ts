@@ -33,6 +33,7 @@ import {
   craftRhinoHiddenStoreyObject,
   craftRhinoMergedParts,
   craftRhinoNestedOffLayers,
+  craftRhinoStoreyObjectAboveItsLayer,
   craftRhinoStoreyObjectOnOffLayer,
   craftRhinoStoreyObjectOnOffRowLayer,
   craftRhinoOffClassLayer,
@@ -302,9 +303,14 @@ describe('rhinoViewerModel, a layer row hides and shows its sub-layers as Rhino 
     assert.ok(!shown.includes('Storey object'), 'the storey object behind its off sublayer stays hidden');
   });
 
-  it('leaves the object a row stands for to the row of the layer it sits on, when that layer has one', async () => {
-    const shown = await eye(await craftRhinoStoreyObjectOnOffRowLayer(), 'Storey object', 'show');
-    assert.ok(shown.includes('Storey object'), 'the storey row shows its object; the off Annex row does not govern the storey row');
+  it('keeps the object a row stands for hidden while its own layer, elsewhere in the tree, is off', async () => {
+    const shown = await eye(await craftRhinoStoreyObjectOnOffRowLayer(), 'Project', 'show');
+    assert.ok(shown.includes('Wall'), 'the storey row and its wall come back');
+    assert.ok(!shown.includes('Storey object'), 'the storey object stays hidden behind the off Annex layer');
+  });
+
+  it('shows the object a row stands for with that row when the off layer is above the row', async () => {
+    assert.deepEqual(await eye(await craftRhinoStoreyObjectAboveItsLayer(), 'Storey object', 'show'), ['Storey object', 'Wall']);
   });
 
   it('keeps a merged object hidden whose parts Rhino hides for different causes', async () => {

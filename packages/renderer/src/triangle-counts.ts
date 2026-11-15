@@ -36,12 +36,14 @@ interface TriangleCountHost {
  * a cold chunk does not register a new source; a rebuild clears and queues it.
  * Instance counts come from live slots without materializing vertices. */
 export class SceneTriangleCounts {
+  private sourceKnown = false;
   private flat = new TriangleCounts();
   private queued = new TriangleCounts();
   private revision = -1;
   private cached: ReadonlyMap<number, number> | undefined;
 
   noteSources(meshes: readonly MeshData[], queued = false): void {
+    this.sourceKnown = true;
     const added = new TriangleCounts();
     for (const mesh of meshes) added.addMesh(mesh);
     for (const [id, count] of added.byEntity) {
@@ -63,6 +65,10 @@ export class SceneTriangleCounts {
 
   read(host: TriangleCountHost, revision: number, hydrating: boolean): ReadonlyMap<number, number> | null {
     if (hydrating) return null;
+    // A replacement Scene has not replayed any source yet. An empty map is
+    // a measured zero only after a source (including an empty one) arrived.
+    if (host.instances.size > 0) this.sourceKnown = true;
+    if (!this.sourceKnown) return null;
     if (this.revision === revision && this.cached) return this.cached;
     const counts = new TriangleCounts();
     for (const [id, count] of this.flat.byEntity) counts.add(id, count);
@@ -80,5 +86,5 @@ export class SceneTriangleCounts {
     else this.flat.byEntity.delete(id);
     this.cached = undefined;
   }
-  clear(): void { this.flat = new TriangleCounts(); this.queued = new TriangleCounts(); this.cached = undefined; this.revision = -1; }
+  clear(): void { this.sourceKnown = false; this.flat = new TriangleCounts(); this.queued = new TriangleCounts(); this.cached = undefined; this.revision = -1; }
 }

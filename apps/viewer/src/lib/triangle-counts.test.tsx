@@ -6,7 +6,7 @@ import '@/test/content-fixture.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { federationRegistry, type Renderer } from '@ifc-lite/renderer';
+import { federationRegistry, Scene, type Renderer } from '@ifc-lite/renderer';
 import { IfcParser } from '@ifc-lite/parser';
 import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
 import { IfcTypeEnum } from '@ifc-lite/data';
@@ -73,4 +73,16 @@ it('shows own model/object counts, live changes, and numeric list sorting across
   assert.equal(value(ownObject), '0');
   assert.equal(value(otherModel), '1');
   assert.equal(providers.pairs.find(pair => pair.modelId === 'A')!.provider.getTriangleCount?.(2), 0, 'a prepared provider reads current topology');
+  const replacement = new Scene();
+  await act(async () => {
+    setGlobalRendererRef({ current: { getScene: () => replacement } as unknown as Renderer });
+  });
+  assert.equal(value(ownModel), '—', 'a completed model has not reached the replacement Scene');
+  assert.equal(value(ownObject), '—');
+  assert.equal(value(otherModel), '—');
+  assert.equal(providers.pairs.find(pair => pair.modelId === 'A')!.provider.getTriangleCount?.(2), null);
+  await act(async () => { replacement.queueMeshes([triangle(2)]); await Promise.resolve(); });
+  assert.equal(value(ownModel), '1', 'the row recovers when source geometry is replayed');
+  assert.equal(value(ownObject), '1');
+  assert.equal(providers.pairs.find(pair => pair.modelId === 'A')!.provider.getTriangleCount?.(2), 1);
 });

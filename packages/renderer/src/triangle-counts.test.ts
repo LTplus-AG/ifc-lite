@@ -53,9 +53,19 @@ it('keeps source counts across CPU release, deletion and a new scene (#10370)', 
   assert.equal(scene.getTriangleCounts()?.has(7), false);
   assert.equal(scene.getTriangleCounts()?.get(8), 1);
   scene.clearFlatGeometry();
-  assert.equal(scene.getTriangleCounts()?.size, 0, 'a reset cannot reuse the previous model counts');
+  assert.equal(scene.getTriangleCounts(), null, 'a reset cannot claim a measured zero before source replay');
   scene.queueMeshes([sourceTriangle(7), sourceTriangle(7)]);
   assert.equal(scene.getTriangleCounts()?.get(7), 2, 'new geometry under a reused ID has its own count');
+});
+
+it('distinguishes a fresh Scene from an explicitly empty source and a removed last object (#10370 review)', () => {
+  const scene = new CpuScene();
+  assert.equal(scene.getTriangleCounts(), null);
+  scene.queueMeshes([]);
+  assert.equal(scene.getTriangleCounts()?.size, 0, 'an explicitly supplied empty source is known zero');
+  scene.queueMeshes([sourceTriangle(7)]); flushCpu(scene);
+  scene.removeMeshesForEntity(7);
+  assert.equal(scene.getTriangleCounts()?.size, 0, 'removing the last uploaded object is also known zero');
 });
 
 it('notifies count consumers once after a batch and stops after unsubscribe (#10370)', async () => {

@@ -110,3 +110,17 @@ it('does not publish a run after its object filter changes during the paint yiel
   assert.equal(useViewerStore.getState().idsLoading, false);
   assert.equal(useViewerStore.getState().idsProgress, null);
 });
+
+it('does not apply the Search display cap to the validation population (#10371)', async () => {
+  const count = 5_003;
+  const walls = Array.from({ length: count }, (_, index) =>
+    `#${100 + index}=IFCWALL('${index.toString().padStart(22, '0')}',$,'Wall ${index}',$,$,$,$,$,.STANDARD.);`).join('\n');
+  const source = `ISO-10303-21; HEADER; FILE_SCHEMA(('IFC4')); ENDSEC; DATA; ${walls} ENDSEC; END-ISO-10303-21;`;
+  const data = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer as ArrayBuffer, { disableWorkerScan: true });
+  const model = fixtureModel('large'); model.ifcDataStore = data; model.maxExpressId = 100 + count - 1;
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map() });
+  const ids = await resolveIdsTargetFilter(useViewerStore.getState(), 'large', data,
+    [{ combinator: 'AND', rules: [Rule.ifcType(['IfcWall'])] }]);
+  assert.equal(ids.length, count);
+  assert.ok(ids.includes(100) && ids.includes(100 + count - 1));
+});

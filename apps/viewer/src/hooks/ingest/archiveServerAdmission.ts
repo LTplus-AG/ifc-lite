@@ -27,11 +27,12 @@ export async function inspectIfcArchiveAdmission(file: File): Promise<{ modelByt
     const nameLength = view.getUint16(cursor + 28, true);
     const extraEnd = cursor + 46 + nameLength + view.getUint16(cursor + 30, true);
     const next = extraEnd + view.getUint16(cursor + 32, true);
-    if (next > bytes || view.getUint16(cursor + 34, true) !== 0) return null;
+    if (next > bytes || view.getUint16(cursor + 34, true) !== 0 ||
+        [20, 24, 42].some(field => view.getUint32(cursor + field, true) === 0xffffffff)) return null;
     // JSZip can replace the raw name from a Unicode Path extra field. Keep
-    // those archives local rather than certify an image-free raw-name list.
+    // those archives unadmitted rather than certify an image-free raw-name list.
     for (let extra = cursor + 46 + nameLength; extra < extraEnd;) {
-      if (extra + 4 > extraEnd || view.getUint16(extra, true) === 0x7075) return null;
+      if (extra + 4 > extraEnd || [0x0001, 0x7075].includes(view.getUint16(extra, true))) return null;
       extra += 4 + view.getUint16(extra + 2, true);
       if (extra > extraEnd) return null;
     }

@@ -66,6 +66,7 @@ export function createLocalIfcLoadAdmission(file: File, options: {
   const admit = createLocalIfcAdmission({ ...options, tryServer: () => sourceAllowsServer ? server(Math.max(file.size, archiveModelBytes ?? 0)) : Promise.resolve(false) });
   return {
     admit,
+    allowsServer: () => sourceAllowsServer,
     setServer: (attempt: (bytes: number) => Promise<boolean>) => { server = attempt; },
     archiveModelLimit: () => archiveModelBytes,
     preflight: () => preflightLocalIfcSource(file, { ...options, admit: async (bytes, head) => {

@@ -127,6 +127,16 @@ it('#9538 a current server failure starts local processing', async () => {
   assert.equal(engineInits, 1, 'a current server failure must try local WASM');
 });
 
+for (const image of ['unused.png', 'unused.JPG']) it(`#10264 small ZIP with unreferenced ${image} stays local after extraction`, async () => {
+  let serverAttempts = 0;
+  mock.method(IfcServerClient.prototype, 'isParquetSupported', async () => { serverAttempts++; return true; });
+  const model = new Uint8Array(await file('model.ifc').arrayBuffer());
+  const bytes = zipSync({ 'model.ifc': model, [image]: new Uint8Array([1, 2, 3]) });
+  await act(async () => { await api!.loadFile(new File([bytes as BlobPart], 'with-unused-image.ifcZIP')); });
+  assert.equal(serverAttempts, 0, 'archive eligibility must also guard the later server attempt');
+  assert.equal(engineInits, 1, 'unreferenced images create no bitmaps but the model still takes the local path');
+});
+
 it('#9538 geometry completes and load finally leaves the model property poll alive', async () => {
   let completed = false;
   const pending = api!.loadFile(file('geometry-ready.ifc')).then(() => { completed = true; });

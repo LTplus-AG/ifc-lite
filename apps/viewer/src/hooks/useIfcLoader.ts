@@ -686,6 +686,7 @@ export function useIfcLoader() {
       }
       let serverAttempted = false;
       const tryServer = async (source: Pick<ArrayBuffer, 'byteLength'>): Promise<boolean> => {
+        if (!localAdmission.allowsServer()) return false;
         serverAttempted = true;
         setLoading(true);
         useViewerStore.getState().setLoadingFileName(file.name);

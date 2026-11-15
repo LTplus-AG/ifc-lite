@@ -97,6 +97,10 @@ export function resolveModelGeoreference(store: IfcDataStore, options: Georefere
   // IFC: an absent MapUnit means the project length unit applies.
   const mus = crsInfo.mapUnitScale && crsInfo.mapUnitScale > 0 ? crsInfo.mapUnitScale : lus;
   const rawScale = conversion.scale;
+  // The transform reads a zero Scale as 1, and a negative or non-finite one is no georeference.
+  if (rawScale !== undefined && !(Number.isFinite(rawScale) && rawScale > 0)) {
+    throw new FloodCheckRefusal('georeference-implausible', `IfcMapConversion.Scale is ${rawScale}, not a positive number; the model cannot be placed`);
+  }
   const scaleUnset = rawScale === undefined || Math.abs(rawScale - 1) < EPS;
   const unitsDiffer = Math.abs(mus - lus) > EPS * Math.max(mus, lus);
   // IfcMapConversionScaled factors (projection distortion) stay in the matrix as written;

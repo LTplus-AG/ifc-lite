@@ -24,12 +24,11 @@
  * - Technical equipment in the ground storey and below, by class and
  *   predefined type, or through the type object of a generic occurrence (see
  *   `equipment.ts`).
- * - Door and window levels are the lower of the placement origin and the
- *   bottom of the filled opening's body, with a note when they differ by more
- *   than 0.3 m (some tools place windows at the head or the centre).
+ * - Door and window levels: the lower of the placement origin and the filled
+ *   opening's body bottom, noted when 0.3 m apart (windows placed at head/centre).
  *
- * Doors, windows and openings above `ground storey + aboveGroundScope` are
- * out of scope of a surface-runoff check and are not listed.
+ * Doors, windows and openings above `ground storey + aboveGroundScope` (by
+ * their corrected level) are out of scope and are not listed.
  */
 
 import { RelationshipType } from '@ifc-lite/data';
@@ -37,7 +36,7 @@ import { signedDistance } from '../geom.js';
 import type { MapPoint } from '../types.js';
 import type { CandidateCategory, CandidateFact, LevelBasis } from './facts.js';
 import type { ModelGeoreference } from './georef.js';
-import { extrusionCorners, toWorld } from './outline.js';
+import { extrusionBody, extrusionCorners, toWorld } from './outline.js';
 import type { PlacementResolver } from './placement.js';
 import { EQUIPMENT_OCCURRENCES, EQUIPMENT_TYPES, GENERIC_OCCURRENCES } from './equipment.js';
 import { asEnum, asString, type DecodedEntity, type ModelReader } from './reader.js';
@@ -228,8 +227,10 @@ function collectFillings(ctx: CandidateContext, types: readonly string[], out: C
       const entity = r.entity(id);
       if (!entity) continue;
       const at = placed(ctx, entity);
-      if (!at || !inScope(ctx, at.level)) continue;
+      if (!at) continue;
       const opening = r.related(id, RelationshipType.FillsElement, 'inverse')[0];
+      const level = fillingLevel(ctx, at.level, opening === undefined ? null : r.entity(opening));
+      if (!inScope(ctx, level.level)) continue;
       const host = opening === undefined ? null : hostOfOpening(ctx, opening);
       const reason = facadeReason(ctx, entity, host, at.position);
       if (!reason) continue;
@@ -237,7 +238,6 @@ function collectFillings(ctx: CandidateContext, types: readonly string[], out: C
       const category: CandidateCategory = isWindow
         ? belowGround(ctx, id, at.level) ? 'basement-window' : 'window'
         : 'door';
-      const level = fillingLevel(ctx, at.level, opening === undefined ? null : r.entity(opening));
       const fact = base(ctx, entity, category, { position: at.position, level: level.level }, reason, level.basis);
       if (level.note) fact.notes = [level.note];
       if (host) fact.host = { expressId: host.expressId, ifcClass: r.className(host) };
@@ -290,10 +290,10 @@ function collectLightWells(ctx: CandidateContext, out: CandidateFact[]): void {
 }
 
 /**
- * Whether an external stair or ramp can lead down to (or sit at) the entry
- * level. Only a readable body that lies wholly above the ground storey proves
- * it leads up; a placement origin alone does not, since a ramp is often
- * placed at its top.
+ * Whether an external stair or ramp can lead down to the entry level. Only a
+ * complete readable body wholly at or above the ground storey (1 cm tolerance)
+ * proves it leads up; a placement origin alone does not (a ramp is often placed
+ * at its top), nor a body with an unreadable item or UNION (`extrusionBody`).
  */
 function descentEvidence(ctx: CandidateContext, entity: DecodedEntity, level: number): { keep: boolean; why: string } {
   if (belowGround(ctx, entity.expressId, level)) return { keep: true, why: 'in a storey below ground' };
@@ -303,13 +303,13 @@ function descentEvidence(ctx: CandidateContext, entity: DecodedEntity, level: nu
   let readable = 0;
   for (const id of ids) {
     const f = id === entity.expressId ? frame : ctx.placements.ofProduct(id);
-    const corners = f ? extrusionCorners(ctx.reader, id) : null;
-    if (!f || !corners) continue;
+    const body = f ? extrusionBody(ctx.reader, id) : null;
+    if (!f || !body?.complete) continue;
     readable++;
-    for (const p of toWorld(f, corners)) minZ = Math.min(minZ, ctx.georef.toMap(p)[2]);
+    for (const p of toWorld(f, body.corners)) minZ = Math.min(minZ, ctx.georef.toMap(p)[2]);
   }
   if (readable === 0) return { keep: true, why: 'its body cannot be read, so it may lead down (kept conservatively)' };
-  if (minZ < ctx.groundLevel - 0.3) return { keep: true, why: `its body reaches ${(ctx.groundLevel - minZ).toFixed(2)} m below the ground storey` };
+  if (minZ < ctx.groundLevel - 0.01) return { keep: true, why: `its body reaches ${(ctx.groundLevel - minZ).toFixed(2)} m below the ground storey` };
   // One flight proven to lead up says nothing about a flight whose body cannot be read.
   if (readable < ids.length) return { keep: true, why: 'a part of it has no readable body (the readable parts lead up), so it may lead down (kept conservatively)' };
   return { keep: false, why: 'its body lies wholly at or above the ground storey (leads up)' };

@@ -103,6 +103,8 @@ export interface FootprintFact {
    */
   rings: MapPoint[][];
   source: FootprintSource;
+  /** Some ground-storey floor slab had no readable outline, so the rings may miss part of the building: no reassuring outcome. */
+  partial?: boolean;
   /** Slabs or walls the rings were read from. */
   fromElements: number[];
 }

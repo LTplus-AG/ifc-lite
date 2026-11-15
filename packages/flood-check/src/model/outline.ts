@@ -12,7 +12,7 @@
  */
 
 import { applyFrame, axisPlacementFrame, IDENTITY, type Frame, type Vec3 } from './placement.js';
-import { asNumber, asRef, asRefList, asString, type ModelReader } from './reader.js';
+import { asEnum, asNumber, asRef, asRefList, asString, type ModelReader } from './reader.js';
 
 type Pt2 = [number, number];
 
@@ -111,7 +111,12 @@ function representationItems(reader: ModelReader, productId: number, identifier:
   return items;
 }
 
-/** Follow IfcBooleanClippingResult first operands down to the solid they clip. */
+/**
+ * Follow IfcBooleanClippingResult / IfcBooleanResult first operands down to
+ * the solid they cut. A DIFFERENCE or INTERSECTION lies within its first
+ * operand, so that operand bounds it; a UNION does not (its second operand is
+ * dropped), so it is unreadable (null).
+ */
 function unwrapClipping(reader: ModelReader, id: number): number | null {
   const seen = new Set<number>();
   let current: number | null = id;
@@ -120,6 +125,7 @@ function unwrapClipping(reader: ModelReader, id: number): number | null {
     const e = reader.entity(current);
     if (!e) return null;
     if (e.type !== 'IFCBOOLEANCLIPPINGRESULT' && e.type !== 'IFCBOOLEANRESULT') return current;
+    if (e.type === 'IFCBOOLEANRESULT' && asEnum(reader.attr(e, 'Operator')) === 'UNION') return null;
     current = asRef(reader.attr(e, 'FirstOperand'));
   }
   return null;
@@ -197,24 +203,40 @@ export function toWorld(frame: Frame, points: readonly Vec3[]): Vec3[] {
  * origin while the hole itself is placed by its extrusion.
  */
 export function extrusionCorners(reader: ModelReader, productId: number): Vec3[] | null {
+  return extrusionBody(reader, productId)?.corners ?? null;
+}
+
+/**
+ * {@link extrusionCorners} plus whether EVERY `Body` item was a readable
+ * extrusion. A body with an unreadable item (a Brep, a UNION) may reach lower
+ * than the corners show, so only a complete body can prove where it ends.
+ */
+export function extrusionBody(reader: ModelReader, productId: number): { corners: Vec3[]; complete: boolean } | null {
   const out: Vec3[] = [];
+  let complete = true;
   for (const item of representationItems(reader, productId, 'Body')) {
-    const solid = reader.entity(unwrapClipping(reader, item));
-    if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') continue;
-    const profile = profilePoints(reader, asRef(reader.attr(solid, 'SweptArea')));
-    const depth = asNumber(reader.attr(solid, 'Depth'));
-    const dirEntity = reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection')));
-    const ratios = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
-    if (!profile || depth === null || !ratios || ratios.some((v) => v === null)) continue;
-    const n = Math.hypot(...(ratios as number[]));
-    if (!(n > 0)) continue;
-    const dir: Vec3 = [(ratios[0] as number) / n, (ratios[1] as number) / n, ((ratios[2] as number | undefined) ?? 0) / n];
-    const position = reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
-    if (!position) continue;
-    for (const [x, y] of profile) {
-      out.push(applyFrame(position, [x, y, 0]));
-      out.push(applyFrame(position, [x + dir[0] * depth, y + dir[1] * depth, dir[2] * depth]));
-    }
+    const before = out.length;
+    readExtrusion(reader, item, out);
+    if (out.length === before) complete = false;
   }
-  return out.length > 0 ? out : null;
+  return out.length > 0 ? { corners: out, complete } : null;
+}
+
+function readExtrusion(reader: ModelReader, item: number, out: Vec3[]): void {
+  const solid = reader.entity(unwrapClipping(reader, item));
+  if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') return;
+  const profile = profilePoints(reader, asRef(reader.attr(solid, 'SweptArea')));
+  const depth = asNumber(reader.attr(solid, 'Depth'));
+  const dirEntity = reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection')));
+  const ratios = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
+  if (!profile || depth === null || !ratios || ratios.some((v) => v === null)) return;
+  const n = Math.hypot(...(ratios as number[]));
+  if (!(n > 0)) return;
+  const dir: Vec3 = [(ratios[0] as number) / n, (ratios[1] as number) / n, ((ratios[2] as number | undefined) ?? 0) / n];
+  const position = reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
+  if (!position) return;
+  for (const [x, y] of profile) {
+    out.push(applyFrame(position, [x, y, 0]));
+    out.push(applyFrame(position, [x + dir[0] * depth, y + dir[1] * depth, dir[2] * depth]));
+  }
 }

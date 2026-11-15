@@ -149,6 +149,7 @@ export interface FloodCheckResult {
   heightReference: HeightReference;
   layerCheck: LayerCheck;
   footprintSource: ModelFacts['footprint']['source'];
+  footprintPartial: boolean; // see FootprintFact.partial
   groundStorey: ModelFacts['groundStorey'];
   buildingScope: BuildingScope; // see BuildingScope; empty for hand-built facts without it
   /** The screening caveat every result carries. */
@@ -274,7 +275,7 @@ export function checkWith(
   for (const point of outlineTerrainPoints(facts.footprint, s)) read(point);
   const heightPlausibility = assessHeightReference(facts.groundStorey.level, seen, options.heightPlausibility);
   const heightAt = (p: MapPoint) => heights.get(pointKey(p)) ?? null;
-  const hull = fillsCourtyards(facts.footprint.source);
+  const hull = fillsCourtyards(facts.footprint.source) || facts.footprint.partial === true;
   const heightReference = confirmEntries(
     facts,
     (i) => plans[i].points.map(({ point }) => heightAt(point)).filter((h): h is number => h !== null),
@@ -299,6 +300,7 @@ export function checkWith(
       allowance: heightReference.allowance,
       anchorTolerance,
       footprintSource: facts.footprint.source,
+      footprintPartial: facts.footprint.partial === true,
       emptyRasterUnconfirmed: rasterEmpty && !applies,
     });
     return {
@@ -386,6 +388,7 @@ export function checkWith(
     heightReference,
     layerCheck: { rasterEmpty, confirmation, confirmationApplies: applies },
     footprintSource: facts.footprint.source,
+    footprintPartial: facts.footprint.partial === true,
     groundStorey: facts.groundStorey,
     buildingScope: facts.buildingScope ?? { checked: null, notChecked: [] },
     caveat,

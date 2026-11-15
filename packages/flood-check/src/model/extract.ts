@@ -168,6 +168,8 @@ function deriveFootprint(
   georef: ModelGeoreference,
   storeyOf: (id: number) => number | null,
   ground: ModelFacts['groundStorey'],
+  skipped: ModelFacts['skipped'],
+  warnings: string[],
 ): FootprintFact | null {
   const toRing = (pts: [number, number, number][]): MapPoint[] => pts.map((p) => {
     const [x, y] = georef.toMap(p);
@@ -176,6 +178,7 @@ function deriveFootprint(
   const rings: MapPoint[][] = [];
   const from: number[] = [];
   let voids = false;
+  const unread: number[] = [];
   // Ids are keyed by the raw STEP name: the standard and elemented cases are separate keys.
   for (const id of [...reader.idsOfType('IFCSLAB'), ...reader.idsOfType('IFCSLABSTANDARDCASE'), ...reader.idsOfType('IFCSLABELEMENTEDCASE')]) {
     if (ground.expressId !== null && storeyOf(id) !== ground.expressId) continue;
@@ -183,14 +186,29 @@ function deriveFootprint(
     if (kind && !['FLOOR', 'BASESLAB', 'NOTDEFINED', 'USERDEFINED'].includes(kind)) continue;
     const frame = placements.ofProduct(id);
     const outline = frame ? slabOutline(reader, id) : null;
-    if (!frame || !outline) continue;
+    if (!frame || !outline) {
+      unread.push(id);
+      continue;
+    }
     const ring = toRing(toWorld(frame, outline));
     if (ringArea(ring) < 1) continue;
     rings.push(ring);
     from.push(id);
     if (slabOutlineHasVoids(reader, id)) voids = true;
   }
-  if (rings.length > 0) return { rings, source: voids ? 'slab-outline-voids-filled' : 'slab-outline', fromElements: from };
+  if (rings.length > 0) {
+    const fact: FootprintFact = { rings, source: voids ? 'slab-outline-voids-filled' : 'slab-outline', fromElements: from };
+    if (unread.length > 0) {
+      // The outline misses those slabs' area: an element there would read as outside and be sampled inside the building.
+      fact.partial = true;
+      for (const id of unread) skipped.push({ expressId: id, ifcClass: reader.className(reader.entity(id)!), reason: 'ground-storey floor slab whose outline cannot be read' });
+      warnings.push(
+        `the footprint covers only part of the ground storey: ${unread.length} floor slab(s) there have no readable outline (#${unread.join(', #')}); ` +
+          'no element gets a reassuring outcome — pass a footprint (for example the cadastral outline)',
+      );
+    }
+    return fact;
+  }
 
   const points: MapPoint[] = [];
   const axes: MapPoint[][] = [];
@@ -250,7 +268,7 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
 
   let footprint: FootprintFact | null = options.footprint
     ? { rings: options.footprint, source: 'given', fromElements: [] }
-    : deriveFootprint(reader, placements, georef, storeyOf, groundStorey);
+    : deriveFootprint(reader, placements, georef, storeyOf, groundStorey, skipped, warnings);
 
   const buildings = scopeToBuilding(reader, groundStorey.expressId, storeys.length);
   const collected = collectCandidates({

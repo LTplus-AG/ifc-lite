@@ -187,7 +187,8 @@ entities, properties and containment from the parsed store. No meshing.
   helpers. It **refuses** (`FloodCheckRefusal`, with a `code`) when there is no
   map conversion, the CRS is geographic or not identifiable as an EPSG code,
   it is not `expectedCrs`, or the Scale is ambiguous (project unit ≠ map unit
-  with Scale unset or 1: pass `mapScale: 'schema' | 'unit-bridged'`). The check
+  with Scale unset or 1: pass `mapScale: 'schema' | 'unit-bridged'`), or the
+  Scale is 0, negative or not finite (`georeference-implausible`). The check
   refuses again when the raster or terrain is in another CRS, or when the
   model **states** a vertical datum that is not the terrain's. A stated
   datum is identified as an EPSG vertical CRS (`LN02`, `Landesnivellement
@@ -212,7 +213,10 @@ entities, properties and containment from the parsed store. No meshing.
   else the hull of the candidates (`candidate-hull`, with a warning). A hull
   or a slab outline with filled voids fills courtyards and notches, so on it
   no element gets a reassuring outcome; pass a real outline when the model
-  has none.
+  has none. When a ground-storey floor slab has no readable outline (a Brep,
+  a Boolean UNION) while others do, the footprint misses its area:
+  `footprint.partial` is set, the slab is in `skipped`, a warning says so and
+  no element gets a reassuring outcome (`partial-footprint`).
 - **Building**: the footprint is one building's outline, so only the
   elements of the **ground storey's building** are checked (pass
   `groundStorey` to choose another). An element of another building would be
@@ -235,11 +239,12 @@ entities, properties and containment from the parsed store. No meshing.
   | `wall-opening` | unfilled opening (not RECESS) in an external wall | lowest point of its extruded body |
   | `slab-opening` | unfilled opening in a slab at or below the ground storey | the slab's placement |
   | `light-well` | proxy / chamber / civil element / assembly / opening named Lichtschacht, Kellerschacht, light well, saut-de-loup, bocca di lupo, … | placement origin |
-  | `stair`, `ramp` | outside the footprint (even when it states `IsExternal = false`, often an authoring default) or `IsExternal`; skipped only when a readable body lies wholly above the ground storey (it leads up); kept when the body cannot be read, since the placement origin may be at the top | `ground-storey-or-terrain`: the check compares the **lower of the ground storey level and the terrain** at each sample, so any mapped depth class there makes it `exposed`; never favourable |
+  | `stair`, `ramp` | outside the footprint (even when it states `IsExternal = false`, often an authoring default) or `IsExternal`; skipped only when a readable body lies wholly at or above the ground storey (1 cm tolerance; it leads up); kept when the body cannot be read, or only partly (an unreadable item, a Boolean UNION), since the placement origin may be at the top | `ground-storey-or-terrain`: the check compares the **lower of the ground storey level and the terrain** at each sample, so any mapped depth class there makes it `exposed`; never favourable |
   | `equipment` | in the ground storey or below. IFC4 / IFC4X3 occurrences: `IfcElectricDistributionBoard`, `IfcTransformer`, `IfcElectricGenerator`, `IfcElectricFlowStorageDevice` (batteries), `IfcSwitchingDevice`, `IfcProtectiveDevice`, `IfcCommunicationsAppliance`, `IfcBoiler`, `IfcChiller`, `IfcUnitaryEquipment` (heat pumps), `IfcPump`, `IfcTank`, `IfcTransportElement` ELEVATOR / LIFTINGGEAR. Every schema, and the only way in IFC2X3: `IfcEnergyConversionDevice`, `IfcFlowMovingDevice`, `IfcFlowStorageDevice`, `IfcFlowController` or `IfcFlowTerminal` typed by `IfcTransformerType`, `IfcElectricGeneratorType`, `IfcElectricFlowStorageDeviceType`, `IfcSwitchingDeviceType`, `IfcProtectiveDeviceType`, `IfcBoilerType`, `IfcChillerType`, `IfcUnitaryEquipmentType`, `IfcPumpType`, `IfcTankType` (and, IFC4 on, `IfcCommunicationsApplianceType`, `IfcElectricDistributionBoardType`). IFC2X3 also has `IfcElectricDistributionPoint`; it has no communications-appliance class or type | placement origin (base) |
 
   Doors, windows and openings more than `aboveGroundScope` (3 m) above the
-  ground storey are out of scope. Interior stairs are not entry points.
+  ground storey are out of scope, judged by their corrected level (a window
+  placed at its head is in scope when its opening reaches down into it). Interior stairs are not entry points.
 
 ## The check
 
@@ -267,7 +272,7 @@ open-ended class and watercourses):
 | `above-mapped-class-range` | every sample has `z > Ti + Ui + m + a` (`a`: the height-reference allowance), and no condition below withholds it |
 | `within-class-range` | otherwise: the class ranges cannot decide it |
 | `no-runoff-mapped` | every ground sample is transparent, and no condition below withholds it. **Not "safe"**: the publisher states areas shown unaffected may still be affected |
-| `unclassified` | `map-edge-blend`, `outside-raster`, `outside-coverage`, `layer-not-confirmed`, `no-ground-sample`, `excluded-area`, `no-terrain`, or a withheld `no-runoff-mapped`: `anchor-moved`, `hull-footprint`, `courtyard-ring`, `height-reference-unconfirmed`, `level-upper-estimate`, `margin-not-sized` |
+| `unclassified` | `map-edge-blend`, `outside-raster`, `outside-coverage`, `layer-not-confirmed`, `no-ground-sample`, `excluded-area`, `no-terrain`, or a withheld `no-runoff-mapped`: `anchor-moved`, `hull-footprint`, `courtyard-ring`, `partial-footprint`, `height-reference-unconfirmed`, `level-upper-estimate`, `margin-not-sized` |
 
 `above-mapped-class-range` states only that: the element level is above the
 range of every class the map shows next to it, with the margin to spare. It
@@ -292,6 +297,7 @@ and `open-ended-class` are never withheld (they are the conservative side);
 | a ground sample lies in an area the map did not model (glacier) | `within-class-range` | `unclassified` (`excluded-area`) |
 | the element was moved more than `anchorTolerance` (1 m) to reach the outline | `within-class-range` | `unclassified` (`anchor-moved`) |
 | the footprint fills courtyards (`external-wall-hull`, `candidate-hull`, `slab-outline-voids-filled`) | `within-class-range` | `unclassified` (`hull-footprint`) |
+| the footprint is partial: a ground-storey floor slab has no readable outline, so an element in its area reads as outside and is sampled inside the building | `within-class-range` | `unclassified` (`partial-footprint`) |
 | the element's nearest footprint boundary is a ring lying wholly inside another ring (a courtyard drawn as its own ring, for example in a given footprint): a point inside any ring counts as inside, so the courtyard is filled and its ground is not sampled | `within-class-range` | `unclassified` (`courtyard-ring`) |
 | height reference unconfirmed (see below) | `within-class-range` | `unclassified` (`height-reference-unconfirmed`) |
 | no cell of the raster shows a mapped class and the layer is not confirmed to render (no positive confirmation fetched within 5 minutes of the raster) | (no class to compare) | `unclassified` (`layer-not-confirmed`) |
@@ -449,6 +455,7 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
   `Licence`, `Attribution`, `LimitsDE/EN`, `DisclaimerDE/EN`, `CaveatDE/EN`,
   `CoordinateReferenceSystem`, `TerrainVerticalReference`,
   `TerrainVerticalCrs`, `VerticalDatumBasis`, `FootprintSource`,
+  `FootprintPartial`,
   `CheckedBuilding`, `BuildingsNotChecked` (each with its count of candidate
   elements), `CountElementsNotChecked`,
   `GroundStoreyBasis`, `GroundStoreyLevel`, `HeightPlausibilityStatus`,

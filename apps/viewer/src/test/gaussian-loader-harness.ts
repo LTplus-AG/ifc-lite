@@ -94,7 +94,9 @@ export function gaussianTestRenderer(limits = { maxStorageBufferBindingSize: 1 <
  */
 export function installInThreadGaussianWorker() {
   const saved = globalThis.Worker;
-  const stats = { created: 0, terminated: 0, scripts: [] as string[] };
+  // `validated`: streaming opens whose validating summary pass completed (#9018). The worker
+  // then stays open until the renderer has read the rows, so `terminated` marks the end of the upload.
+  const stats = { created: 0, terminated: 0, validated: 0, scripts: [] as string[] };
   let gate: Promise<void> | null = null;
   class InThreadGaussianWorker {
     onmessage: ((event: MessageEvent) => void) | null = null;
@@ -119,7 +121,11 @@ export function installInThreadGaussianWorker() {
       void (async () => {
         if (gate && (message instanceof File || message.type === 'open')) await gate;
         let data: unknown;
-        if (!(message instanceof File)) data = (await this.session(message)).reply;
+        if (!(message instanceof File)) {
+          const { reply } = await this.session(message);
+          if (reply.ok && reply.type === 'summary') stats.validated++;
+          data = reply;
+        }
         else {
           try { data = { ok: true, decoded: await decodeGaussianFile(message) }; }
           catch (error) { data = { ok: false, reason: error instanceof Error ? error.message : 'Gaussian decoding failed.' }; }

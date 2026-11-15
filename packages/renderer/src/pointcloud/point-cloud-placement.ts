@@ -88,7 +88,9 @@ function originMatrix(origin: readonly [number, number, number]): Float64Array |
 
 /** Whether an inline cloud renders: it has points (a streamed scan's
  * descriptor has none) and its optional origin can cross the GPU boundary.
- * Shared by upload, pick identity and the viewer's class histogram (#10094). */
+ * Pick identity and the viewer's class histogram use it; uploads apply its two
+ * halves separately (setAssets drops clouds with no points, bulk uploads skip
+ * a bad origin with a warning) (#10094). */
 export function isRenderablePointCloud(asset: { origin?: readonly number[] | null; chunk: { pointCount: number } }): boolean {
   return asset.chunk.pointCount > 0 && (asset.origin == null || renderableCoordinates(asset.origin));
 }

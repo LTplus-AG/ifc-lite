@@ -6808,6 +6808,7 @@
     "isStreamedScanOnly: function",
     "rebaseCoordinateInfoOntoRtcAnchor: function",
     "rebaseOriginByRtcDelta: function",
+    "rtcConvergeAction: function",
     "rtcRebaseDeltaFor: function",
     "rtcRebaseDeltaYup: function"
   ],

@@ -14,12 +14,13 @@ import {
  * worker holds one decode window at a time instead of the file bytes plus a fully
  * materialized table (about 2.3x the file, which no main-thread saving could
  * offset). `open` validates every row and summarizes the capture in one streaming
- * pass; `rows` then decodes, rebases and validates only the windows a request
- * covers. Values are identical to `decodeGaussianFile`, which export still uses.
+ * pass (split across helper workers when there are any); `rows` then decodes and
+ * rebases only the windows a request covers. Values are identical to
+ * `decodeGaussianFile`, which export still uses.
  */
 export interface GaussianDecodeStream {
   readonly summary: GaussianCaptureSummary;
-  /** Rebased, validated canonical columns of rows [start, start + count). */
+  /** Rebased canonical columns of rows [start, start + count) (validated by the summary pass). */
   rows(start: number, count: number): Promise<Record<string, Float32Array>>;
   /** Hand back columns a caller is done with; later windows decode into them instead of allocating. */
   recycle(columns: Readonly<Record<string, Float32Array>>): void;
@@ -74,12 +75,34 @@ function windowOf(source: ChunkSource, first: number, chunks: number, rows: numb
   };
 }
 
+/** One range's validated summary: bounds in source precision and the SH statistics. */
+export interface GaussianSummaryPart {
+  readonly start: number;
+  readonly end: number;
+  readonly count: number;
+  readonly shDegree: 0 | 1 | 2 | 3;
+  readonly bounds: { min: [number, number, number]; max: [number, number, number] };
+  readonly effectiveShDegree: 0 | 1 | 2 | 3;
+  readonly maxAbsShCoefficient: number;
+}
+
 /**
- * Open `file` for streaming. `known` (the summary of an earlier open of the same
- * File) skips the validating summary pass: a File's bytes cannot change, and every
- * window is validated again when it is read.
+ * Summarizes ranges elsewhere (helper workers). A range it could not take (no helper
+ * started) is null and is summarized locally; a validation failure rejects.
  */
-export async function openGaussianDecodeStream(file: File, windowRows: number, known?: GaussianCaptureSummary): Promise<GaussianDecodeStream> {
+export type GaussianRangeSummarizer = (ranges: ReadonlyArray<readonly [number, number]>) => Promise<Array<GaussianSummaryPart | null>>;
+
+interface Decoder {
+  readonly count: number;
+  readonly shDegree: 0 | 1 | 2 | 3;
+  readonly chunkSize: number;
+  decodeRange(start: number, end: number): Promise<{ rows: number; columns: { name: string; data: Float32Array }[]; read: (row: number, axis: number) => number }>;
+  recycle(columns: Iterable<{ name: string; data: Float32Array }>): void;
+  clearRecycled(): void;
+  close(): Promise<void>;
+}
+
+async function openDecoder(file: File, windowRows: number): Promise<Decoder> {
   const head = await file.slice(0, 65_536).arrayBuffer();
   const admission = await inspectGaussianDecodeAdmission(file, head.slice(0, 4096));
   if (admission.kind !== 'capture') {
@@ -116,73 +139,151 @@ export async function openGaussianDecodeStream(file: File, windowRows: number, k
       const index = list ? list.findIndex(array => array.length === length) : -1;
       return index >= 0 ? list!.splice(index, 1)[0] : new Float32Array(length);
     };
-    const recycle = (columns: Iterable<{ name: string; data: Float32Array }>) => {
-      for (const { name, data } of columns) {
-        if (!(data instanceof Float32Array) || data.buffer.byteLength === 0) continue; // detached or foreign
-        const list = free.get(name) ?? [];
-        if (list.length < 2) list.push(data); // one window in use, one prefetched
-        free.set(name, list);
+    return {
+      count, shDegree, chunkSize, close,
+      recycle(columns) {
+        for (const { name, data } of columns) {
+          if (!(data instanceof Float32Array) || data.buffer.byteLength === 0) continue; // detached or foreign
+          const list = free.get(name) ?? [];
+          if (list.length < 2) list.push(data); // one window in use, one prefetched
+          free.set(name, list);
+        }
+      },
+      clearRecycled: () => free.clear(),
+      /** Decode rows [start, end) (chunk-aligned window, sliced) with their source centre reader. */
+      async decodeRange(start, end) {
+        const first = Math.floor(start / chunkSize);
+        const last = Math.ceil(end / chunkSize);
+        const windowStart = first * chunkSize;
+        const windowEnd = Math.min(count, last * chunkSize);
+        const table = await materializeToDataTable(windowOf(opened, first, last - first, windowEnd - windowStart), pool, LAYERS);
+        if (table.numRows !== windowEnd - windowStart) throw new Error('Unsupported or inconsistent decoded Gaussian schema.');
+        const rows = end - start;
+        const offset = start - windowStart;
+        const columns = table.columns.map(column => {
+          const data = take(column.name, rows);
+          data.set((column.data as Float32Array).subarray(offset, offset + rows));
+          return { name: column.name, data };
+        });
+        const records = layout.needsRecords
+          ? new Uint8Array(await file.slice(layout.base + start * layout.stride, layout.base + end * layout.stride).arrayBuffer())
+          : undefined;
+        return { rows, columns, read: gaussianSourcePositions(layout, rows, columns, records) };
+      },
+    };
+  } catch (error) {
+    await close();
+    throw error;
+  }
+}
+
+/** Validate rows [start, end) as decodeGaussianFile does and summarize them. */
+async function summarizeWith(decoder: Decoder, start: number, end: number): Promise<GaussianSummaryPart> {
+  const { count, shDegree, chunkSize } = decoder;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end > count || start >= end) {
+    throw new Error('Gaussian summary range outside the capture.');
+  }
+  const bounds = emptyGaussianBounds();
+  const basis = (shDegree + 1) ** 2 - 1;
+  let effective = 0;
+  let maxAbs = 0;
+  for (let at = start; at < end;) {
+    const until = Math.min(end, (Math.floor(at / chunkSize) + 1) * chunkSize);
+    const window = await decoder.decodeRange(at, until);
+    accumulateGaussianBounds(window.read, window.rows, bounds);
+    // Centres are checked above in source precision; validate the other channels as decodeGaussianFile does.
+    for (const column of window.columns) if (column.name === 'x' || column.name === 'y' || column.name === 'z') column.data.fill(0);
+    validateGaussianDecoded(window.rows, shDegree, window.columns, { origin: [0, 0, 0], bounds });
+    for (const column of window.columns) {
+      if (!column.name.startsWith('f_rest_')) continue;
+      const band = Math.floor(Math.sqrt((Number(column.name.slice(7)) % basis) + 1));
+      const data = column.data;
+      for (let i = 0; i < data.length; i++) {
+        const magnitude = Math.abs(data[i]);
+        if (magnitude > maxAbs) maxAbs = magnitude;
+        if (magnitude !== 0 && band > effective) effective = band;
       }
-    };
+    }
+    decoder.recycle(window.columns);
+    at = until;
+  }
+  return { start, end, count, shDegree, bounds, effectiveShDegree: effective as 0 | 1 | 2 | 3, maxAbsShCoefficient: maxAbs };
+}
 
-    /** Decode rows [start, end) (chunk-aligned window, sliced) with their source centre reader. */
-    const decodeRange = async (start: number, end: number) => {
-      const first = Math.floor(start / chunkSize);
-      const last = Math.ceil(end / chunkSize);
-      const windowStart = first * chunkSize;
-      const windowEnd = Math.min(count, last * chunkSize);
-      const table = await materializeToDataTable(windowOf(opened, first, last - first, windowEnd - windowStart), pool, LAYERS);
-      if (table.numRows !== windowEnd - windowStart) throw new Error('Unsupported or inconsistent decoded Gaussian schema.');
-      const rows = end - start;
-      const offset = start - windowStart;
-      const columns = table.columns.map(column => {
-        const data = take(column.name, rows);
-        data.set((column.data as Float32Array).subarray(offset, offset + rows));
-        return { name: column.name, data };
-      });
-      const records = layout.needsRecords
-        ? new Uint8Array(await file.slice(layout.base + start * layout.stride, layout.base + end * layout.stride).arrayBuffer())
-        : undefined;
-      return { rows, columns, read: gaussianSourcePositions(layout, rows, columns, records) };
-    };
+/** Validate and summarize rows [start, end) of `file` (a helper worker's share of the summary pass). */
+export async function summarizeGaussianRange(file: File, windowRows: number, start: number, end: number): Promise<GaussianSummaryPart> {
+  const decoder = await openDecoder(file, windowRows);
+  try { return await summarizeWith(decoder, start, end); }
+  finally { await decoder.close(); }
+}
 
+/** One summary from parts that exactly tile [0, count) of the same capture. */
+export function mergeGaussianSummaries(parts: readonly GaussianSummaryPart[], count: number, shDegree: 0 | 1 | 2 | 3): GaussianCaptureSummary {
+  const sorted = [...parts].sort((a, b) => a.start - b.start);
+  const bounds = emptyGaussianBounds();
+  let effective = 0;
+  let maxAbs = 0;
+  let next = 0;
+  for (const part of sorted) {
+    if (part.start !== next || part.count !== count || part.shDegree !== shDegree) throw new Error('Gaussian summary parts disagree with the capture.');
+    for (let axis = 0; axis < 3; axis++) {
+      bounds.min[axis] = Math.min(bounds.min[axis], part.bounds.min[axis]);
+      bounds.max[axis] = Math.max(bounds.max[axis], part.bounds.max[axis]);
+    }
+    effective = Math.max(effective, part.effectiveShDegree);
+    maxAbs = Math.max(maxAbs, part.maxAbsShCoefficient);
+    next = part.end;
+  }
+  if (next !== count) throw new Error('Gaussian summary parts disagree with the capture.');
+  return {
+    count, shDegree, centerBounds: bounds, decodeOrigin: gaussianBoundsOrigin(bounds),
+    effectiveShDegree: effective as 0 | 1 | 2 | 3, maxAbsShCoefficient: maxAbs,
+  };
+}
+
+/** `parts` contiguous ranges of [0, count), split on chunk boundaries; fewer when the capture is small. */
+export function gaussianSummaryRanges(count: number, chunkSize: number, parts: number): Array<[number, number]> {
+  const chunks = Math.ceil(count / chunkSize);
+  const used = Math.max(1, Math.min(parts, chunks));
+  const ranges: Array<[number, number]> = [];
+  for (let i = 0; i < used; i++) {
+    const from = Math.round((chunks * i) / used) * chunkSize;
+    const to = Math.min(count, Math.round((chunks * (i + 1)) / used) * chunkSize);
+    if (to > from) ranges.push([from, to]);
+  }
+  return ranges;
+}
+
+/**
+ * Open `file` for streaming. `known` (the summary of an earlier open of the same
+ * File, or of the helpers that validated it) skips the summary pass: a File's bytes
+ * cannot change, so rows read later are the rows that were validated. Otherwise the
+ * summary pass validates every row; `helpers` (with `helperCount` workers) take all
+ * but the first range in parallel, and a range they cannot take is summarized here.
+ */
+export async function openGaussianDecodeStream(
+  file: File, windowRows: number, known?: GaussianCaptureSummary, helpers?: { count: number; summarize: GaussianRangeSummarizer },
+): Promise<GaussianDecodeStream> {
+  const decoder = await openDecoder(file, windowRows);
+  try {
+    const { count, shDegree } = decoder;
     let summary = known;
     if (summary) {
       if (summary.count !== count || summary.shDegree !== shDegree) throw new Error('The Gaussian capture changed since it was opened.');
     } else {
-      const bounds = emptyGaussianBounds();
-      const basis = (shDegree + 1) ** 2 - 1;
-      let effective = 0;
-      let maxAbs = 0;
-      for (let start = 0; start < count; start += chunkSize) {
-        const window = await decodeRange(start, Math.min(count, start + chunkSize));
-        accumulateGaussianBounds(window.read, window.rows, bounds);
-        // Centres are checked above in source precision; validate the other channels as decodeGaussianFile does.
-        for (const column of window.columns) if (column.name === 'x' || column.name === 'y' || column.name === 'z') column.data.fill(0);
-        validateGaussianDecoded(window.rows, shDegree, window.columns, { origin: [0, 0, 0], bounds });
-        for (const column of window.columns) {
-          const match = /^f_rest_(\d+)$/.exec(column.name);
-          if (!match) continue;
-          const band = Math.floor(Math.sqrt((Number(match[1]) % basis) + 1));
-          for (const value of column.data) {
-            const magnitude = Math.abs(value);
-            if (magnitude > maxAbs) maxAbs = magnitude;
-            if (magnitude !== 0 && band > effective) effective = band;
-          }
-        }
-        recycle(window.columns);
-      }
-      summary = {
-        count, shDegree, centerBounds: bounds, decodeOrigin: gaussianBoundsOrigin(bounds),
-        effectiveShDegree: effective as 0 | 1 | 2 | 3, maxAbsShCoefficient: maxAbs,
-      };
+      const [own, ...others] = gaussianSummaryRanges(count, decoder.chunkSize, 1 + Math.max(0, helpers?.count ?? 0));
+      const remote: Promise<Array<GaussianSummaryPart | null>> = others.length > 0 && helpers ? helpers.summarize(others) : Promise.resolve(others.map(() => null));
+      remote.catch(() => {}); // awaited below, after the local range
+      const parts = [await summarizeWith(decoder, own[0], own[1])];
+      const shared = await remote;
+      for (const [index, range] of others.entries()) parts.push(shared[index] ?? await summarizeWith(decoder, range[0], range[1]));
+      summary = mergeGaussianSummaries(parts, count, shDegree);
     }
     const origin = summary.decodeOrigin;
-    const centerBounds = summary.centerBounds;
     const decodeRows = async (start: number, rows: number) => {
-      const window = await decodeRange(start, start + rows);
+      const window = await decoder.decodeRange(start, start + rows);
       writeRebasedPositions(window.read, window.rows, window.columns, origin);
-      return validateGaussianDecoded(window.rows, shDegree, window.columns, { origin, bounds: centerBounds }).columns;
+      return Object.fromEntries(window.columns.map(column => [column.name, column.data])) as Record<string, Float32Array>;
     };
     // Decodes run one at a time (they share the pool). After serving a request the
     // stream decodes the next window of the same size, so the worker decodes while the
@@ -212,17 +313,17 @@ export async function openGaussianDecodeStream(file: File, windowRows: number, k
         return result;
       },
       recycle(columns) {
-        recycle(Object.entries(columns).map(([name, data]) => ({ name, data })));
+        decoder.recycle(Object.entries(columns).map(([name, data]) => ({ name, data })));
       },
       async close() {
         ahead = null;
-        free.clear();
+        decoder.clearRecycled();
         await tail;
-        await close();
+        await decoder.close();
       },
     };
   } catch (error) {
-    await close();
+    await decoder.close();
     throw error;
   }
 }

@@ -2,7 +2,8 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { decodeGaussianFile } from './gaussianDecode.js';
-import { openGaussianDecodeStream } from './gaussianDecodeStream.js';
+import { gaussianSummaryRanges, openGaussianDecodeStream, summarizeGaussianRange, type GaussianRangeSummarizer } from './gaussianDecodeStream.js';
+import { gaussianSummaryHelpers } from './gaussianSummaryHelpers.js';
 import { createGaussianDecodeSession, summarizeGaussianDecoded } from './gaussianDecodeSession.js';
 
 // #9018: the worker streams the capture by range reads instead of decoding it whole.
@@ -175,4 +176,44 @@ it('decodes later windows into columns the consumer hands back (#9018)', async (
     }
     stream.recycle({ x: new Float32Array(0) }); // a detached or empty array is ignored
   } finally { await stream.close(); }
+});
+
+/** In-process stand-in for the helper workers: the real range summary, optionally refusing some ranges. */
+const inProcessHelpers = (file: File, windowRows: number, refuse = new Set<number>()): GaussianRangeSummarizer =>
+  ranges => Promise.all(ranges.map(([start, end], index) => (refuse.has(index) ? Promise.resolve(null) : summarizeGaussianRange(file, windowRows, start, end))));
+
+for (const helpers of [1, 2, 5]) it(`a summary pass split across ${helpers} helper(s) equals the whole-file summary (#9018)`, async () => {
+  const decoded = await decodeGaussianFile(ply(37, 3, { double: true }));
+  const file = ply(37, 3, { double: true });
+  const stream = await openGaussianDecodeStream(file, 4, undefined, { count: helpers, summarize: inProcessHelpers(file, 4) });
+  try {
+    assert.deepEqual(stream.summary, summarizeGaussianDecoded(decoded));
+    assert.deepEqual([...(await stream.rows(30, 7)).z], [...decoded.columns.z.subarray(30, 37)]);
+  } finally { await stream.close(); }
+});
+
+it('summarizes locally a range no helper could take (#9018)', async () => {
+  const decoded = await decodeGaussianFile(ply(30, 1));
+  const file = ply(30, 1);
+  const stream = await openGaussianDecodeStream(file, 4, undefined, { count: 2, summarize: inProcessHelpers(file, 4, new Set([0, 1])) });
+  try { assert.deepEqual(stream.summary, summarizeGaussianDecoded(decoded)); } finally { await stream.close(); }
+});
+
+it('rejects the open when a helper finds an invalid row (#9018)', async () => {
+  const file = ply(30, 2, { poison: { row: 29, name: 'rot_0', value: Number.NaN } });
+  await assert.rejects(openGaussianDecodeStream(file, 4, undefined, { count: 2, summarize: inProcessHelpers(file, 4) }), /Non-finite/);
+});
+
+it('summary ranges tile the capture on chunk boundaries (#9018)', () => {
+  for (const [count, chunk, parts] of [[1, 4, 3], [10, 4, 3], [37, 4, 3], [100, 16, 2], [5, 16, 3]] as const) {
+    const ranges = gaussianSummaryRanges(count, chunk, parts);
+    assert.equal(ranges[0][0], 0);
+    assert.equal(ranges.at(-1)![1], count);
+    ranges.forEach(([from, to], i) => {
+      assert.ok(to > from && from % chunk === 0, `${count}/${chunk}/${parts}: [${from}, ${to})`);
+      if (i > 0) assert.equal(from, ranges[i - 1][1]);
+    });
+    assert.ok(ranges.length <= parts);
+  }
+  assert.deepEqual([2, 3, 4, 8, 32].map(cores => gaussianSummaryHelpers(new File([], 'x'), cores).count), [0, 1, 2, 2, 2]);
 });

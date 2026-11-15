@@ -196,7 +196,8 @@ export async function getEpsgCompoundComponents(
 /**
  * Whether a WGS84 lon/lat lies in the area of use of an EPSG code (any of its
  * current usages), widened by `marginDegrees`. `undefined` when the code has no
- * known area of use, so callers can skip the check instead of guessing.
+ * known area of use, so callers can skip the check instead of guessing. A negative
+ * or non-finite margin throws a `RangeError` even for an unknown code.
  */
 export async function isLonLatInEpsgAreaOfUse(
   code: string | number,
@@ -204,6 +205,10 @@ export async function isLonLatInEpsgAreaOfUse(
   latitude: number,
   marginDegrees = 0,
 ): Promise<boolean | undefined> {
+  // Validate the margin first: an invalid margin must not read as "unknown CRS".
+  if (!Number.isFinite(marginDegrees) || marginDegrees < 0) {
+    throw new RangeError(`marginDegrees must be a finite number >= 0, got ${marginDegrees}`);
+  }
   const areas = await getEpsgAreasOfUse(code);
   if (!areas) return undefined;
   return areas.some(area => isLonLatInAreaOfUse(area, longitude, latitude, marginDegrees));

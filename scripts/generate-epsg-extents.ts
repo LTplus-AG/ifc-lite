@@ -48,9 +48,20 @@ type Detail = {
 
 const args = process.argv.slice(2);
 const opt = (name: string) => args.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
-const concurrency = Math.min(8, Math.max(1, Number(opt('concurrency') ?? 6)));
-const delayMs = Math.max(0, Number(opt('delay-ms') ?? 50));
-const limit = opt('limit') ? Number(opt('limit')) : null;
+/** A numeric option must be a whole number in range; NaN or junk would silently start no workers or skip the politeness delay. */
+function intOpt(name: string, fallback: number, min: number, max: number): number {
+  const raw = opt(name);
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  if (raw.trim() === '' || !Number.isInteger(n) || n < min || n > max) {
+    console.error(`--${name} must be an integer from ${min} to ${max}, got "${raw}". Nothing written.`);
+    process.exit(2);
+  }
+  return n;
+}
+const concurrency = intOpt('concurrency', 6, 1, 8);
+const delayMs = intOpt('delay-ms', 50, 0, 60_000);
+const limit = opt('limit') !== undefined ? intOpt('limit', 0, 1, Number.MAX_SAFE_INTEGER) : null;
 const stdout = args.includes('--stdout');
 const out = opt('out') ? path.resolve(opt('out')!) : DEFAULT_OUT;
 if (limit !== null && !stdout && !opt('out')) {

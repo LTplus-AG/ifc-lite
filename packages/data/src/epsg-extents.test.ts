@@ -176,6 +176,9 @@ describe('helper edge cases', () => {
 
   it('rejects a negative margin through the per-code helper', async () => {
     await expect(isLonLatInEpsgAreaOfUse(2056, 7.44, 46.95, -0.5)).rejects.toThrow(RangeError);
+    // An invalid margin is an error even when the code is unknown, never `undefined`.
+    await expect(isLonLatInEpsgAreaOfUse(99999999, 0, 0, -1)).rejects.toThrow(RangeError);
+    await expect(isLonLatInEpsgAreaOfUse(99999999, 0, 0, Number.NaN)).rejects.toThrow(RangeError);
   });
 });
 
@@ -387,6 +390,21 @@ describe('generator safety', () => {
     expect(result.stderr).toContain('--out');
     expect(fs.statSync(committed).mtimeMs).toBe(before);
   }, 30000);
+
+  it('rejects non-numeric or out-of-range options and writes nothing', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'epsg-gen-'));
+    try {
+      const out = path.join(dir, 'x.ts');
+      for (const bad of ['--concurrency=NaN', '--concurrency=0', '--concurrency=9', '--concurrency=', '--delay-ms=NaN', '--delay-ms=-1', '--limit=NaN', '--limit=0']) {
+        const result = await run([bad, `--out=${out}`, '--dataset-version=1.0'], { EPSG_API_BASE: 'http://127.0.0.1:9' });
+        expect(result.code, bad).toBe(2);
+        expect(result.stderr, bad).toContain('must be an integer');
+      }
+      expect(fs.readdirSync(dir)).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60000);
 
   it('exits non-zero and writes nothing when an index code has no row and is not allow-listed', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'epsg-gen-'));

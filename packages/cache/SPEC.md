@@ -3,9 +3,13 @@
 > - **Current format version: 28** (`FORMAT_VERSION`, `src/types.ts:165`).
 > - **Status:** descriptive contract of the format as written and read by `@ifc-lite/cache` on `main`.
 >   Where this document and the code disagree, the code is the bug report: fix one of them in the same PR.
-> - **Change policy:** any change to the bytes a writer emits, or to how a reader interprets
->   existing bytes, bumps `FORMAT_VERSION` and updates this file (§13 history, §11 gates) in the same
->   PR. A bump that changes no bytes (producer semantics only) is still recorded in §13.
+> - **Change policy:** bump `FORMAT_VERSION` and update this file (§13 history, §11 gates) in the same PR
+>   for any change to the wire layout, to how a reader interprets existing bytes, or to the cache's
+>   semantics (what a decoded field means or what a producer puts in it). Two writer-side choices are
+>   **not** format changes and need no bump, because readers trust only the stored directory and decode
+>   the same values either way: the chunk grouping policy (§9.4), and the compressed representation of a
+>   chunk, i.e. which valid DEFLATE stream is stored and whether the strictly-smaller rule keeps it (§9.4,
+>   §12 item 5). A bump that changes no bytes (producer semantics only) is still recorded in §13.
 >   `src/spec.test.ts` fails when the version line above or the enum tables in §2 drift from the code.
 > - **Scope:** the file layout, every section's wire encoding, what the reader accepts, rejects and
 >   degrades, and the conformance criterion for a second (non-TypeScript) writer (§12). The IFNS

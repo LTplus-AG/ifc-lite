@@ -59,6 +59,11 @@ describe('SPEC.md matches the cache format code', () => {
     expect(bitTable('Geometry chunk flags')).toEqual(members(GeometryChunkFlags));
   });
 
+  it('ships in the published package, so the README link resolves on npm', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { files?: string[] };
+    expect(pkg.files).toContain('SPEC.md');
+  });
+
   it('lists every SectionType value', () => {
     const rows = new Map<string, number>();
     for (const line of block('Section types')) {

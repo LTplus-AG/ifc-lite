@@ -25,7 +25,7 @@ import { withAttributeEdits } from './attribute-overlay.js';
 import { assertWritable, assessTrust } from './trust.js';
 import { planUpdate } from './plan-update.js';
 import { readSourceGeoreferencing, readWithoutGeoreferencing } from './read.js';
-import type { GeorefMapConversionAttributes, GeorefProjectedCRSAttributes, GeoreferencingState, GeoreferencingWriteRequest, GeoreferencingWriteResult } from './types.js';
+import { GeoreferencingError, type GeorefMapConversionAttributes, type GeorefProjectedCRSAttributes, type GeoreferencingState, type GeoreferencingWriteRequest, type GeoreferencingWriteResult } from './types.js';
 
 export interface GeoreferencingSessionDeps {
   store: IfcDataStore;
@@ -97,10 +97,10 @@ export class GeoreferencingSession {
     this.deps.editor();
     const view = this.deps.view();
     if (!view) throw new Error('georef: the session has no mutation view to record the write in');
-    const facts = collectGeorefModelFacts(this.deps.store, {
-      isDeleted: (id) => view.isDeleted(id),
-      getForEntity: (id) => view.getForEntity(id),
-    });
+    const facts = collectGeorefModelFacts(this.deps.store, view);
+    if (facts.unknown.length > 0) {
+      throw new GeoreferencingError('UNSUPPORTED_RECORD', `The model's entities that georeferencing is planned from cannot be read reliably after the session's generic edits (${facts.unknown.join('; ')}), so nothing was written.`);
+    }
     assertWritable(request.action, assessTrust(store, view, prior?.pending ?? null));
     const ctx = {
       modelId: this.deps.modelId, facts, current: this.get(), pending: prior?.pending ?? null,
@@ -138,7 +138,7 @@ export class GeoreferencingSession {
     const view = this.deps.view();
     const none = () => readWithoutGeoreferencing(this.deps.store, this.deps.modelId, true, view ? (id) => view.isDeleted(id) : undefined);
     if (!view) return none();
-    const facts = collectGeorefModelFacts(this.deps.store, { isDeleted: (id) => view.isDeleted(id), getForEntity: (id) => view.getForEntity(id) });
+    const facts = collectGeorefModelFacts(this.deps.store, view);
     const pick = (loc: GeorefModelFacts['ePSetMapConversion'], fields: readonly string[]) =>
       loc ? Object.fromEntries(fields.filter((f) => loc.values[f] != null).map((f) => [f, loc.values[f]])) : null;
     const mc = pick(facts.ePSetMapConversion, MC_FIELDS);

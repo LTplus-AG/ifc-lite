@@ -11,7 +11,9 @@
  */
 
 import { declaresMapConversionScaled } from '@ifc-lite/export';
-import { EntityExtractor, parseSourceHeader, type IfcDataStore } from '@ifc-lite/parser';
+import { parseSourceHeader, type IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { effectiveEntities } from './effective-entities.js';
 import type { GeorefStorage } from './types.js';
 
 /** The two IFC2X3 convention property sets, matched case-insensitively like the reader. */
@@ -62,13 +64,11 @@ export interface GeorefModelFacts {
   ePSetProjectedCRS: EPSetLocation | null;
   /** IFC2X3 only: every copy of either set, on any host (the reader reads any of them). */
   ePSets: EPSetLocation[];
-}
-
-/** The slice of the session's mutation view the facts read. */
-export interface GeorefOverlayReader {
-  isDeleted(expressId: number): boolean;
-  /** Property sets of an entity, base and session edits combined. */
-  getForEntity(entityId: number): Array<{ name: string; properties: Array<{ name: string; value: unknown }> }>;
+  /**
+   * What the effective view cannot answer reliably (an entity whose attributes the exporter will write but this
+   * reader cannot interpret). A write planned from these facts refuses, naming each.
+   */
+  unknown: string[];
 }
 
 export function storageForSchema(schema: string): GeorefStorage | null {
@@ -77,16 +77,19 @@ export function storageForSchema(schema: string): GeorefStorage | null {
   return null;
 }
 
-/** Collect the facts. `overlay` is null for a session that has never written. */
-export function collectGeorefModelFacts(store: IfcDataStore, overlay: GeorefOverlayReader | null): GeorefModelFacts {
+/**
+ * Collect the facts from the session's effective view (`view` is null for a session that has never written):
+ * source plus created minus deleted, edits applied where a fact depends on an attribute.
+ */
+export function collectGeorefModelFacts(store: IfcDataStore, view: MutablePropertyView | null): GeorefModelFacts {
   const schema = String(store.schemaVersion ?? '');
-  // @raw-entity-enumeration-ok source ids of one class, minus this session's tombstones (georef records are never overlay-created)
-  const live = (type: string): number[] => (store.entityIndex.byType.get(type) ?? []).filter((id) => !overlay?.isDeleted(id));
-  const extractor = store.source?.length ? new EntityExtractor(store.source) : null;
+  const effective = effectiveEntities(store, view);
+  const unknown: string[] = [];
+  const live = (type: string): number[] => effective.idsOf(type);
   const attributes = (id: number): unknown[] => {
-    // @raw-entity-enumeration-ok point read of one source record selected above
-    const ref = store.entityIndex.byId.get(id);
-    return (ref && extractor?.extractEntity(ref)?.attributes) || [];
+    const read = effective.attributesOf(id);
+    if ('unknown' in read) { unknown.push(read.unknown); return []; }
+    return read.attributes;
   };
 
   const sites = live('IFCSITE');
@@ -137,15 +140,16 @@ export function collectGeorefModelFacts(store: IfcDataStore, overlay: GeorefOver
     ePSetMapConversion: null,
     ePSetProjectedCRS: null,
     ePSets: [],
+    unknown,
   };
 
-  if (facts.storage === 'propertySets' && overlay) {
+  if (facts.storage === 'propertySets' && view) {
     // The convention sets hang off IfcSite in practice; IfcProject and
     // IfcBuilding are searched too so an edit never misses one and then
     // writes a second, contradicting copy.
     const hosts = [...sites, ...live('IFCPROJECT'), ...live('IFCBUILDING')];
-    const mc = findEPSets(overlay, hosts, EPSET_MAP_CONVERSION);
-    const crs = findEPSets(overlay, hosts, EPSET_PROJECTED_CRS);
+    const mc = findEPSets(view, hosts, EPSET_MAP_CONVERSION);
+    const crs = findEPSets(view, hosts, EPSET_PROJECTED_CRS);
     facts.ePSetMapConversion = mc[0] ?? null;
     facts.ePSetProjectedCRS = crs[0] ?? null;
     facts.ePSets = [...mc, ...crs];
@@ -153,7 +157,7 @@ export function collectGeorefModelFacts(store: IfcDataStore, overlay: GeorefOver
   return facts;
 }
 
-function findEPSets(overlay: GeorefOverlayReader, hosts: number[], name: string): EPSetLocation[] {
+function findEPSets(overlay: Pick<MutablePropertyView, 'getForEntity'>, hosts: number[], name: string): EPSetLocation[] {
   const wanted = name.toLowerCase();
   const found: EPSetLocation[] = [];
   for (const hostId of new Set(hosts)) {

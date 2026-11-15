@@ -10,7 +10,7 @@
  * generic mutation alone produced it. There is no third state.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseModel } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -48,7 +48,15 @@ const CRS_FIXTURE = `${base(SITE_LL)}
 #21=IFCMAPCONVERSION(#5,#20,1.,2.,3.,$,$,$);`;
 
 type Fixture = { schema: string; data: string; prep?: (bim: BimContext) => void };
+const BUILDING = "#7=IFCBUILDING('1Pbuu0tu59NfhrTsztVBK2',$,'B',$,$,$,$,$,.ELEMENT.,$,$,$);";
+const RIGID = `${base(SITE_PLAIN)}
+#95=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#95);
+#21=IFCRIGIDOPERATION(#5,#20,10.,20.,5.);`;
 const FIXTURES: Record<string, Fixture> = {
+  plain2x3: { schema: 'IFC2X3', data: `${base(SITE_PLAIN)}\n${BUILDING}` },
+  plain4: { schema: 'IFC4', data: base(SITE_PLAIN) },
+  rigid: { schema: 'IFC4X3_ADD2', data: RIGID },
   crs: { schema: 'IFC4', data: CRS_FIXTURE },
   site: { schema: 'IFC4', data: base(SITE_LL) },
   epset: {
@@ -60,7 +68,7 @@ const FIXTURES: Record<string, Fixture> = {
 
 interface Ctx { bim: BimContext; view: () => MutablePropertyView }
 type Expect = 'refuse' | 'any';
-interface Row { name: string; fixture: keyof typeof FIXTURES; apply: (c: Ctx) => void; trusted: boolean; set: Expect; update: Expect }
+interface Row { name: string; fixture: keyof typeof FIXTURES; apply: (c: Ctx) => void; trusted: boolean; set: Expect; update: Expect; /** `set` with every value given, a unit included: refuses only when the model cannot anchor it. */ anchored?: 'refuse' }
 
 const attr = (id: number, name: string, value: string) => (c: Ctx) => c.bim.mutate.setAttribute({ modelId: 'model', expressId: id }, name, value);
 const positional = (id: number, index: number, value: string | number) => (c: Ctx) => { c.view().setPositionalAttribute(id, index, value as never); };
@@ -86,6 +94,18 @@ const ROWS: Row[] = [
   { name: 'the conversion retyped', fixture: 'crs', apply: (c) => { c.view().setEntityType(21, 'IfcMapConversionScaled'); }, trusted: false, set: 'any', update: 'refuse' },
   { name: 'a second conversion created on the same context', fixture: 'crs', apply: (c) => { c.view().createEntity('IfcMapConversion', [5, 20, 9, 9, 9, null, null, null]); }, trusted: false, set: 'refuse', update: 'refuse' },
   { name: 'positional RefLatitude of the IfcSite fallback', fixture: 'site', apply: positional(6, 9, 0), trusted: false, set: 'any', update: 'any' },
+  // Facts the planners anchor on: created and deleted entities count.
+  { name: 'a second IfcSite created (IFC2X3)', fixture: 'plain2x3', apply: (c) => { c.view().createEntity('IfcSite', ['2VQ9wAx1j4Bh3OB5NYQuhQ', null, 'Site2', ...Array(11).fill(null)]); }, trusted: true, set: 'refuse', update: 'any', anchored: 'refuse' },
+  { name: 'the only IfcSite deleted (IFC2X3)', fixture: 'plain2x3', apply: (c) => { c.bim.store.removeEntity({ modelId: 'model', expressId: 6 }); }, trusted: true, set: 'refuse', update: 'any', anchored: 'refuse' },
+  { name: 'a second IfcProject created (IFC2X3)', fixture: 'plain2x3', apply: (c) => { c.view().createEntity('IfcProject', ['3VQ9wAx1j4Bh3OB5NYQuhQ', null, 'P2', ...Array(6).fill(null)]); }, trusted: true, set: 'any', update: 'any' },
+  { name: 'an IfcBuilding retyped to IfcSite (IFC2X3)', fixture: 'plain2x3', apply: (c) => { c.view().setEntityType(7, 'IfcSite'); }, trusted: true, set: 'refuse', update: 'any', anchored: 'refuse' },
+  { name: 'a second representation context created (IFC4)', fixture: 'plain4', apply: (c) => { c.view().createEntity('IfcGeometricRepresentationContext', [null, 'Model', 3, 1e-5, 3, null]); }, trusted: true, set: 'any', update: 'any' },
+  { name: 'the only representation context deleted (IFC4)', fixture: 'plain4', apply: (c) => { c.bim.store.removeEntity({ modelId: 'model', expressId: 5 }); }, trusted: true, set: 'refuse', update: 'any', anchored: 'refuse' },
+  { name: 'the unit assignment deleted (IFC4)', fixture: 'plain4', apply: (c) => { c.bim.store.removeEntity({ modelId: 'model', expressId: 91 }); }, trusted: true, set: 'any', update: 'any' },
+  // IfcRigidOperation (IFC4X3).
+  { name: 'a numeric attribute of the IfcRigidOperation edited by name', fixture: 'rigid', apply: attr(21, 'FirstCoordinate', '99'), trusted: false, set: 'any', update: 'any' },
+  { name: 'the IfcRigidOperation deleted', fixture: 'rigid', apply: (c) => { c.bim.store.removeEntity({ modelId: 'model', expressId: 21 }); }, trusted: true, set: 'any', update: 'any' },
+  { name: 'a positional edit of the IfcRigidOperation', fixture: 'rigid', apply: positional(21, 2, 99), trusted: false, set: 'any', update: 'any' },
 ];
 
 async function fresh(fixture: Fixture, row: Row) {
@@ -109,6 +129,7 @@ async function reparsed(bim: BimContext): Promise<GeoreferencingState> {
 }
 
 const OPS = {
+  setWithUnit: (bim: BimContext) => bim.georef.set({ ProjectedCRS: { Name: 'EPSG:2056', MapUnit: 'METRE' }, MapConversion: { Eastings: 5, Northings: 6, OrthogonalHeight: 7 }, replace: true }),
   set: (bim: BimContext) => bim.georef.set({ ProjectedCRS: { Name: 'EPSG:2056' }, MapConversion: { Eastings: 5, Northings: 6, OrthogonalHeight: 7 }, replace: true }),
   update: (bim: BimContext) => bim.georef.update({ MapConversion: { OrthogonalHeight: 9 } }),
   remove: (bim: BimContext) => bim.georef.remove(),
@@ -128,7 +149,7 @@ describe.each(ROWS)('generic mutation: $name', (row) => {
     }
   });
 
-  for (const op of ['set', 'update', 'remove'] as const) {
+  for (const op of ['set', 'setWithUnit', 'update', 'remove'] as const) {
     it(`${op}: refuses with a typed error leaving the export alone, or the result is consistent`, async () => {
       const baseline = dataOf((await fresh(fixture, row)).bim);
       const { bim } = await fresh(fixture, row);
@@ -141,7 +162,8 @@ describe.each(ROWS)('generic mutation: $name', (row) => {
         expect(bim.georef.get().untrusted).toBeUndefined();
         expect(comparable(bim.georef.get())).toEqual(comparable(await reparsed(bim)));
       }
-      if (op !== 'remove' && row[op] === 'refuse') expect(refused).toBeInstanceOf(GeoreferencingError);
+      if (op === 'setWithUnit' && row.anchored === 'refuse') expect(refused).toBeInstanceOf(GeoreferencingError);
+      if ((op === 'set' || op === 'update') && row[op] === 'refuse') expect(refused).toBeInstanceOf(GeoreferencingError);
       if (!row.trusted && row.fixture === 'crs' && row.name.includes('second conversion')) expect(refused).toBeInstanceOf(GeoreferencingError);
     });
   }
@@ -180,5 +202,29 @@ describe('an IFC2X3 convention-set unit the file leaves unresolved stays unresol
     editEastings(m);
     expect(m.bim.georef.get().ProjectedCRS).toMatchObject({ MapUnit: 'FOOT', mapUnitResolved: true });
     expect(m.bim.georef.update({ MapConversion: { OrthogonalHeight: 11 } }).state.MapConversion?.OrthogonalHeight).toBe(11);
+  });
+});
+
+describe('a mutation kind nobody listed lands on the untrusted side', () => {
+  it('an unrecognised change kind on a read entity marks it untrusted and blocks update', async () => {
+    const row = ROWS[0];
+    const { bim, ctx } = await fresh(FIXTURES.crs, row);
+    expect(bim.georef.get().untrusted).toBeUndefined();
+    const real = ctx.view().getEffectiveChanges();
+    vi.spyOn(ctx.view(), 'getEffectiveChanges').mockReturnValue([...real, { entityId: 21, kind: 'a-kind-from-the-future' as never }]);
+    expect(bim.georef.get().untrusted?.join(' ')).toMatch(/a-kind-from-the-future/);
+    expect(() => bim.georef.update({ MapConversion: { OrthogonalHeight: 9 } })).toThrow(GeoreferencingError);
+  });
+});
+
+describe('a fact the effective view cannot answer is unknown, and the write refuses naming it', () => {
+  it('an IfcBuilding retyped to IfcSite: its attributes follow another layout', async () => {
+    const row = ROWS.find((r) => r.name.startsWith('an IfcBuilding retyped'))!;
+    const { bim } = await fresh(FIXTURES.plain2x3, row);
+    let error: unknown;
+    try { OPS.setWithUnit(bim); } catch (err) { error = err; }
+    expect(error).toBeInstanceOf(GeoreferencingError);
+    expect((error as GeoreferencingError).code).toBe('UNSUPPORTED_RECORD');
+    expect((error as GeoreferencingError).message).toMatch(/#7 \(IFCBUILDING\) was retyped/);
   });
 });

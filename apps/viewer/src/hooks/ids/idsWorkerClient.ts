@@ -57,6 +57,7 @@ export interface RunInWorkerArgs {
   modelId: string;
   locale: SupportedLocale;
   includePassingEntities: boolean;
+  entityIds?: readonly number[];
   /**
    * The model's pending property edits as plain, clonable data (#3946).
    *
@@ -158,6 +159,7 @@ export function runValidationInWorker(
       modelId: args.modelId,
       locale: args.locale,
       includePassingEntities: args.includePassingEntities,
+      entityIds: args.entityIds,
       propertyOverlay: args.propertyOverlay,
       entityVisibility: args.entityVisibility,
     };

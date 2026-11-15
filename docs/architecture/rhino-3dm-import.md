@@ -753,10 +753,10 @@ transparency rule [test].
   the object is hidden on its own or an off layer on its own path, other than
   the row's layer and those above it, hides it. That object is a member of no
   row, so turning such a layer's row on does not show it, nor does the row's
-  own eye, being the layer's, unless nothing else would come back with it: a
-  row with nothing to bring back acts on itself, so its eye is never a Hide
-  that does nothing. Showing a row whose parent row is off draws it and what
-  comes back with it, as a row's eye does everywhere in the viewer.
+  own eye, being the layer's, unless nothing else comes back; then the eye
+  acts on that row alone, so it is never a Hide that does nothing. Showing a
+  row whose parent row is off still draws it, since no row's eye in the
+  viewer waits for its parent.
   Not covered: a storey row merged across models, which acts on direct
   members; a merged object whose parts sit on different layers, whose own
   state follows its first part's layer; a stamped project layer nested under

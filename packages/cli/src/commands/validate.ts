@@ -19,6 +19,7 @@ import { loadIfcFile } from '../loader.js';
 import { hasFlag, fatal, printJson } from '../output.js';
 import { EntityNode } from '@ifc-lite/query';
 import { expandTypes, getInheritanceChainAcrossSchemas, structuralConsistencyIssues, type IfcDataStore } from '@ifc-lite/parser';
+import { structuralPhysicalAxes } from '@ifc-lite/create';
 import { resolvedTypeName } from '@ifc-lite/data';
 import { collectDanglingReferences } from './validate-references.js';
 
@@ -231,19 +232,26 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   }
 
   // 8. Where the physical and the structural analysis model disagree (#9668).
-  // Unlinked elements are capped like dangling references; the other rules are listed in full.
+  // The two per-element rules are capped like dangling references; the others are listed in full.
   try {
-    const structural = structuralConsistencyIssues(store);
-    const unlinked = structural.filter((issue) => issue.rule === 'structural-unlinked-element');
-    for (const issue of unlinked.slice(0, ISSUE_LIST_CAP)) issues.push(issue);
-    if (unlinked.length > ISSUE_LIST_CAP) {
-      issues.push({
-        severity: 'warning',
-        rule: 'structural-unlinked-element',
-        message: `${unlinked.length - ISSUE_LIST_CAP} more load-bearing element(s) with no structural item not listed (${unlinked.length} total)`,
-      });
+    // Axis drift compares each member with its element's line, one shape read per element.
+    // Read them only when the file has a curve member and a schema the reader supports.
+    // @raw-entity-enumeration-ok class census of the parsed file; no attribute decoding
+    const hasCurveMember = [...(store.entityIndex?.byType.keys() ?? [])].some((type) => /^ifcstructuralcurvemember/i.test(type));
+    const physicalAxes = hasCurveMember && store.schemaVersion !== 'IFC5' ? structuralPhysicalAxes(store) : undefined;
+    const structural = structuralConsistencyIssues(store, { physicalAxes });
+    const capped = new Map([
+      ['structural-unlinked-element', 'load-bearing element(s) with no structural item'],
+      ['structural-unconnected-member', 'structural member(s) with no connection'],
+    ]);
+    for (const [rule, what] of capped) {
+      const ofRule = structural.filter((issue) => issue.rule === rule);
+      for (const issue of ofRule.slice(0, ISSUE_LIST_CAP)) issues.push(issue);
+      if (ofRule.length > ISSUE_LIST_CAP) {
+        issues.push({ severity: 'warning', rule, message: `${ofRule.length - ISSUE_LIST_CAP} more ${what} not listed (${ofRule.length} total)` });
+      }
     }
-    for (const issue of structural) if (issue.rule !== 'structural-unlinked-element') issues.push(issue);
+    for (const issue of structural) if (!capped.has(issue.rule)) issues.push(issue);
   } catch (err) {
     issues.push({ severity: 'warning', rule: 'structural-consistency', message: `Structural consistency checks could not run: ${err instanceof Error ? err.message : String(err)}` });
   }

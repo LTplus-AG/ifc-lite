@@ -26,7 +26,7 @@ test('#8564 Gaussians never enter model bounds; only the orthographic depth rang
   fields.pipeline = {};
   const backend = async (): Promise<GaussianBackend> => ({
     upstreamReverseZ: true,
-    createScene: () => ({ gpuBytes: 64, async replaceSource() {}, updateRows() {}, setFilter() {}, encode() {}, destroy() {} }),
+    createScene: () => ({ gpuBytes: 64, async replaceRows(_layout: unknown, fill: (writer: { write(): void; copy(): void }) => Promise<unknown>) { await fill({ write() {}, copy() {} }); }, setFilter() {}, encode() {}, destroy() {} }),
   });
   ((fields.gaussianLayer as Record<string, unknown>).slot as Record<string, unknown>).createBackend = backend;
   (fields.overlays as Record<string, unknown>).section2DOverlayRenderer = { setLineOverlay() {} };
@@ -66,7 +66,7 @@ test('#8564 review round 4: moving a Gaussian far away moves the depth extent wi
   fields.pipeline = {};
   ((fields.gaussianLayer as Record<string, unknown>).slot as Record<string, unknown>).createBackend = async (): Promise<GaussianBackend> => ({
     upstreamReverseZ: true,
-    createScene: () => ({ gpuBytes: 64, async replaceSource() {}, updateRows() {}, setFilter() {}, encode() {}, destroy() {} }),
+    createScene: () => ({ gpuBytes: 64, async replaceRows(_layout: unknown, fill: (writer: { write(): void; copy(): void }) => Promise<unknown>) { await fill({ write() {}, copy() {} }); }, setFilter() {}, encode() {}, destroy() {} }),
   });
   (fields.overlays as Record<string, unknown>).section2DOverlayRenderer = { setLineOverlay() {} };
   renderer.setLineOverlay('annotation', new Float32Array([0, 0, 0, 100, 100, 100]));

@@ -3,15 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { PointCloudAssetHandle, PointCloudRenderer, PointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
+import { isRenderablePointCloud } from './renderable-coordinates.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 
 /** Same points, same pick identity: the viewer re-stamps `modelIndex` into a fresh object on every merge. */
-type EmbeddedKey = readonly [PointCloudAsset['chunk'], number, number, PointCloudAsset['origin']];
+type EmbeddedKey = readonly [PointCloudAsset['chunk'], number, number, number, number, number];
 /** `setAssets` skips zero-point descriptors (streamed scans' identities), so they are not part of the list either.
- * The origin is compared by reference; moving a cloud replaces the array. */
+ * Origin components are snapshotted so value changes, including in-place edits, count. */
 const embeddedKeys = (assets: readonly PointCloudAsset[]): EmbeddedKey[] =>
-  assets.filter((a) => a.chunk.pointCount > 0).map((a) => [a.chunk, a.expressId, a.modelIndex ?? 0, a.origin]);
+  assets.filter(isRenderablePointCloud).map((a) => [a.chunk, a.expressId, a.modelIndex ?? 0, a.origin?.[0] ?? 0, a.origin?.[1] ?? 0, a.origin?.[2] ?? 0]);
 
 /** What identifies a curve's snap points: its authored identity and where it evaluates. */
 function curveSetKey(curves: readonly SourceSnapCurve[]): string {

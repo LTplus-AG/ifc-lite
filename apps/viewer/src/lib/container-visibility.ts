@@ -42,7 +42,7 @@ export function containerVisibilityTargets(plan: ContainerVisibilityPlan, row: n
 
 /** The plan after the user turned `id`'s own state on or off from the tree; the same plan when it already was. */
 export function withOwnState(plan: ContainerVisibilityPlan, id: number, on: boolean): ContainerVisibilityPlan {
-  if (plan.ownOff.has(id) === !on) return plan;
+  if (plan.ownOff.has(id) !== on) return plan;
   const ownOff = new Set(plan.ownOff);
   if (on) ownOff.delete(id);
   else ownOff.add(id);

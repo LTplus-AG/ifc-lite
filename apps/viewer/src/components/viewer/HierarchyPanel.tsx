@@ -219,7 +219,7 @@ export function HierarchyPanel() {
       showEntities(targets);
     }
     const ownState = hierarchyOwnStateAfterToggle(node, visibilityAction, models);
-    if (ownState) useViewerStore.getState().updateModel(ownState.modelId, { containerVisibility: ownState.plan });
+    if (ownState) useViewerStore.getState().updateModel(node.modelIds[0], { containerVisibility: ownState });
   }, [getNodeElements, hiddenEntities, hideEntities, showEntities, selectedEntityId, clearSelection, models]);
 
   // Handle model visibility toggle

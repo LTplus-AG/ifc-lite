@@ -32,20 +32,25 @@ export function hierarchyNodeVisibility(
 }
 
 /** Global targets per plan, row and action; a new plan (an own state changed) starts afresh. */
-const planTargetCache = new WeakMap<ContainerVisibilityPlan, Map<string, number[]>>();
+const planTargetCache = new WeakMap<ContainerVisibilityPlan, { show: Map<number, number[]>; hide: Map<number, number[]> }>();
+
+/** The row's model plan, when it has one and the row is a single model's row. */
+function rowPlan(node: TreeNode, models: Map<string, FederatedModel>): ContainerVisibilityPlan | undefined {
+  return node.expressIds.length === 1 ? models.get(node.modelIds[0])?.containerVisibility : undefined;
+}
 
 /** A row's subtree as global ids, when its model states how its containers
  *  hide and show (a Rhino layer, #10214); null for any other row. */
 function planRowTargets(node: TreeNode, models: Map<string, FederatedModel>, action: HierarchyVisibilityAction): number[] | null {
-  const modelId = node.modelIds[0];
-  const plan = node.expressIds.length === 1 ? models.get(modelId)?.containerVisibility : undefined;
-  if (!plan?.rows.has(node.expressIds[0])) return null;
-  const cache = planTargetCache.get(plan) ?? planTargetCache.set(plan, new Map()).get(plan)!;
-  const key = `${node.expressIds[0]}:${action}`;
-  let targets = cache.get(key);
+  const plan = rowPlan(node, models);
+  const row = node.expressIds[0];
+  if (!plan?.rows.has(row)) return null;
+  let cache = planTargetCache.get(plan);
+  if (!cache) planTargetCache.set(plan, cache = { show: new Map(), hide: new Map() });
+  let targets = cache[action].get(row);
   if (!targets) {
-    targets = containerVisibilityTargets(plan, node.expressIds[0], action).map((id) => resolveTreeGlobalId(modelId, id, models));
-    cache.set(key, targets);
+    targets = containerVisibilityTargets(plan, row, action).map((id) => resolveTreeGlobalId(node.modelIds[0], id, models));
+    cache[action].set(row, targets);
   }
   return targets;
 }
@@ -72,12 +77,11 @@ export function hierarchyOwnStateAfterToggle(
   node: TreeNode,
   action: HierarchyVisibilityAction,
   models: Map<string, FederatedModel>,
-): { modelId: string; plan: ContainerVisibilityPlan } | null {
-  const modelId = node.modelIds[0];
-  const plan = node.expressIds.length === 1 ? models.get(modelId)?.containerVisibility : undefined;
+): ContainerVisibilityPlan | null {
+  const plan = rowPlan(node, models);
   if (!plan) return null;
   const next = withOwnState(plan, node.expressIds[0], action === 'show');
-  return next === plan ? null : { modelId, plan: next };
+  return next === plan ? null : next;
 }
 
 /** Storey rows: a single storey, a unified storey across models, and one

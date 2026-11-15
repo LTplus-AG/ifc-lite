@@ -22,7 +22,7 @@ vi.mock('./parquet-decoder.js', () => ({
 
 import { IfcServerClient } from './client.js';
 import { IfcServerError } from './server-error.js';
-import { isProcessedModelRef, normalizeProcessedModelHash } from './processed-model.js';
+import { isProcessedModelRef, normalizeProcessedModelHash, processedModelSize } from './processed-model.js';
 
 const sha256 = 'a'.repeat(64);
 const ref = { sha256, bytes: 46_000_000 };
@@ -47,6 +47,15 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
 });
 afterEach(() => vi.unstubAllGlobals());
+
+describe('processedModelSize', () => {
+  it('keeps a positive integer and reads anything else as unknown (0)', () => {
+    expect(processedModelSize(ref)).toBe(46_000_000);
+    for (const bytes of [undefined, 0, -5, 1.5, Number.NaN, '12']) {
+      expect(processedModelSize({ sha256, bytes } as { sha256: string; bytes?: number })).toBe(0);
+    }
+  });
+});
 
 describe('isProcessedModelRef', () => {
   it('tells a reference from the sources that carry bytes', () => {

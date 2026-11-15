@@ -173,7 +173,7 @@ for (const bytes of [0, undefined, Number.NaN, '12'] as const) it(`a model of un
     return rest;
   });
   await act(async () => { root.render(<Probe />); });
-  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel: { sha256, bytes } as unknown as ProcessedModelRef }); }); // a host calling from JS
+  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel: { sha256, bytes } as ProcessedModelRef }); }); // '12' and NaN as a host calling from JS might
   assert.deepEqual(streamed, { sha256, bytes: 0 });
   assert.deepEqual(asked, [], 'the one-shot route is not taken for an unknown size');
   assert.equal(model()?.loadState, 'complete');
@@ -213,6 +213,20 @@ it('?processed= accepts the hash in upper case and asks for it in lower case', a
   await act(async () => { root.render(<Probe fromUrl />); });
   await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the URL entry loads the model'); });
   assert.deepEqual(asked, [{ sha256, bytes: 10 }]);
+});
+
+it('?processed= with a size that is not a positive integer opens the model as unknown size', async () => {
+  stubWebGpu();
+  let streamed: unknown;
+  mock.method(IfcServerClient.prototype, 'parseParquetStream', async (source: unknown, onBatch: (batch: { meshes: ParquetParseResponse['meshes'] }) => void) => {
+    streamed = source; onBatch({ meshes: stored().meshes });
+    const { meshes: _meshes, parquet_stats: _stats, data_model: _dataModel, ...rest } = stored();
+    return rest;
+  });
+  window.history.replaceState(null, '', `/?processed=${sha256}&bytes=abc`);
+  await act(async () => { root.render(<Probe fromUrl />); });
+  await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the URL entry loads the model'); });
+  assert.deepEqual(streamed, { sha256, bytes: 0 });
 });
 
 it('?processed= with something that is not a SHA-256 asks the server nothing and says so', async () => {

@@ -18,6 +18,7 @@ import {
   IfcServerClient,
   decodeDataModel,
   isProcessedModelRef,
+  processedModelSize,
   type ProcessedModelRef,
   type ParquetBatch,
   type ParquetParseResponse,
@@ -95,8 +96,8 @@ export function useIfcServer() {
       }
       // The route follows the size the server parses; the model info shows the file as opened.
       // They differ for an .ifcZIP upload, whose buffer is already unwrapped.
-      const parsedBytes = processed ? file.bytes : buffer.byteLength;
-      const openedBytes = processed ? file.bytes : file.size;
+      const parsedBytes = processed ? processedModelSize(file) : buffer.byteLength;
+      const openedBytes = processed ? processedModelSize(file) : file.size;
 
       if (isStale?.()) return false;
       setProgress({ phase: 'Processing on server (parallel)', percent: 15 });

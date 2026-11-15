@@ -1075,7 +1075,7 @@ only wants a browser to show the result has no file to hash or upload. It
 passes a `ProcessedModelRef` in place of the file:
 
 ```typescript
-// The SHA-256 of the source file names the stored result; `bytes` is its size.
+// The SHA-256 of the source file names the stored result; `bytes` is its size (optional; unknown means streamed).
 const stored = { sha256: 'c0ffee…', bytes: 46_000_000 };
 const result = await client.parseParquetStream(stored, (batch) => {
   console.log(`${batch.meshes.length} meshes`);

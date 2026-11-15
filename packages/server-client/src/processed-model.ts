@@ -14,8 +14,14 @@
 export interface ProcessedModelRef {
   /** SHA-256 of the source file as hex; case-insensitive, sent lowercase. */
   readonly sha256: string;
-  /** Size of the source file in bytes. Not sent; callers use it to pick the streaming or one-shot route and to report a size. */
-  readonly bytes: number;
+  /** Size of the source file in bytes. Not sent; callers use it to pick the streaming or one-shot route and to report a size. Absent means unknown. */
+  readonly bytes?: number;
+}
+
+/** The size `ref` states, or 0 (unknown) when it is absent or not a positive integer. */
+export function processedModelSize(ref: ProcessedModelRef): number {
+  const { bytes } = ref;
+  return typeof bytes === 'number' && Number.isSafeInteger(bytes) && bytes > 0 ? bytes : 0;
 }
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;

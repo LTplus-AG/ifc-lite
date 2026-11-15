@@ -10917,6 +10917,7 @@
     "isParquetAvailable: function",
     "isProcessedModelRef: function",
     "normalizeProcessedModelHash: function",
+    "processedModelSize: function",
     "withNarrowedCoordinateSpace: function"
   ],
   "@ifc-lite/solar": [

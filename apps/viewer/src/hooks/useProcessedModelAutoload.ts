@@ -25,7 +25,7 @@ import { showLoadError } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { markLoadIntent } from '@/lib/load-intent';
-import { normalizeProcessedModelHash, type ProcessedModelRef } from '@ifc-lite/server-client';
+import { normalizeProcessedModelHash, processedModelSize, type ProcessedModelRef } from '@ifc-lite/server-client';
 
 /** The model `?processed=` names, `'malformed'` when the hash is not one, `null` when the parameter is absent. */
 export function processedModelFromQuery(search: string): (ProcessedModelRef & { name: string }) | 'malformed' | null {
@@ -34,8 +34,7 @@ export function processedModelFromQuery(search: string): (ProcessedModelRef & { 
   if (raw === null) return null;
   const sha256 = normalizeProcessedModelHash(raw);
   if (sha256 === null) return 'malformed';
-  // `loadFile` turns a missing or bad size into 0, unknown.
-  return { sha256, bytes: Number(params.get('bytes')), name: params.get('name') || 'model.ifc' };
+  return { sha256, bytes: processedModelSize({ sha256, bytes: Number(params.get('bytes')) }), name: params.get('name') || 'model.ifc' };
 }
 
 export function useProcessedModelAutoload(): void {

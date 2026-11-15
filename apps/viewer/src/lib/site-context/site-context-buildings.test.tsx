@@ -23,7 +23,7 @@ import { SiteContextCard } from '@/components/viewer/properties/SiteContextCard'
 import { subjectOf } from '@/hooks/ingest/siteContextLoad';
 import { applyInitialHiddenState } from '@/hooks/ingest/initialHiddenState';
 import { siteContextViewerModel, siteContextModelName } from './site-context-model';
-import { isAllowedSwisstopoUrl } from './swisstopo-fetch';
+import { isAllowedSwisstopoUrl } from '@ifc-lite/site-context';
 import { buildingsReadBudget } from './site-context-job';
 import { createSiteContextResponseCache, tilesCacheView } from './response-cache';
 

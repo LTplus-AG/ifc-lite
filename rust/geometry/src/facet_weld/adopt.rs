@@ -31,6 +31,7 @@ struct Quality {
 }
 
 impl Quality {
+    #[cfg(test)]
     fn of(mesh: &Mesh) -> Self {
         Self { shape: triangle_shape(mesh), unpaired_edges: undirected_defect_count(mesh) }
     }
@@ -47,8 +48,14 @@ impl Quality {
 }
 
 /// Whether `refined` improves on `plain` by [`Quality::improves_on`].
+///
+/// The edge ledgers are built only once the shapes allow it.
 pub(crate) fn improves(refined: &Mesh, plain: &Mesh) -> bool {
-    Quality::of(refined).improves_on(&Quality::of(plain))
+    let (now, was) = (triangle_shape(refined), triangle_shape(plain));
+    let shape_only = |shape| Quality { shape, unpaired_edges: 0 };
+    shape_only(now).improves_on(&shape_only(was))
+        && Quality { shape: now, unpaired_edges: undirected_defect_count(refined) }
+            .improves_on(&Quality { shape: was, unpaired_edges: undirected_defect_count(plain) })
 }
 
 /// `mesh` rebuilt from the pass's canonical vertices with nothing bisected:

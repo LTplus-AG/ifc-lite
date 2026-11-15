@@ -21,6 +21,7 @@ import { captureModelLoaded, snapshotFromGeometry } from '../../utils/loadTeleme
 import { LOAD_COMPLETE } from '../modelLoadCanceller.js';
 import { RhinoImportError } from '../../lib/import/rhino-import-client.js';
 import { applyInitialHiddenState } from './initialHiddenState.js';
+import { useViewerStore } from '@/store';
 import { prepareRhinoViewerModel } from './rhinoViewerModel.js';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
@@ -72,6 +73,7 @@ export async function loadRhino3dmModel(options: RhinoLoadOptions): Promise<void
     if (isStale()) return;
     // After `finalize`, which is when the model's express id range is known.
     applyInitialHiddenState(options.modelId, result.hiddenExpressIds ?? []);
+    if (result.containerVisibility) useViewerStore.getState().updateModel(options.modelId, { containerVisibility: result.containerVisibility });
     captureModelLoaded({
       format: '3dm', file_size_mb: Math.round(options.fileSizeMB * 100) / 100, load_target: options.targetKind,
       load_path: '3dm', total_elapsed_ms: Math.round(performance.now() - options.totalStartTime), was_hidden: options.wasHidden,

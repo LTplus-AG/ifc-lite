@@ -546,6 +546,7 @@ export interface FederatedModel extends ModelLoadReportFields {
   ifcDataStore: IfcDataStore | null;
   /** Non-IFC source semantics, kept outside the IFC data store by design; `terrainImagery` is imagery draped on it (#5942), provenance only. */
   landXmlDocument?: LandXmlTinDocument; terrainImagery?: import('../lib/terrain-imagery/drape-state.js').TerrainImageryDrape;
+  /** How container rows hide/show their subtree (a Rhino layer, #10214); absent: rows act on direct members. */ containerVisibility?: import('../lib/container-visibility').ContainerVisibilityPlan;
   /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
   sourceSchema?: LandXmlSchema;
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */

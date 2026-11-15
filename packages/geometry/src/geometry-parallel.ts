@@ -1361,7 +1361,7 @@ export async function* processParallel(
   const onPrepassComplete = () => {
     prepassDone = true;
     gateTracker.markPrepassDone();
-    prepassWorker.terminate(); // first: a held pool (#10264) grows its heaps only after this one is gone
+    prepassWorker.terminate(); // first: a held pool (#10264) starts only after this; its heap is freed asynchronously
     if (setupLog.holding) { setupLog.release(); drainQueuedChunksIfReady(); }
     // Only signal stream-end to workers if they actually got
     // stream-start (which gates on `meta`). Zero-geometry files

@@ -327,6 +327,10 @@
     "value": "SpaceMouse",
     "reason": "commandPalette.view.spacemouse.label: SpaceMouse is the device product name, shared across the palette, ribbon, settings and panel."
   },
+  "commands.ui.openPanelEntry": {
+    "value": "{digit} {panel}",
+    "reason": "Runtime placeholders only (the Alt shortcut digit and a panel title, each already localized); no English prose."
+  },
   "compareAnalysis.reconcile.runLabel": {
     "value": "{time} · {models}",
     "reason": "compareAnalysis.reconcile.runLabel: Run label joins a supplied time and model summary with a middle dot."

@@ -6,6 +6,7 @@
 import { eventKey, isPressableTarget, isTextEntryTarget } from '@/lib/keyboard-event';
 import { chordOnPlatform, isApplePlatform, type KeyChord } from './chord';
 import { KEY_COMMANDS, type KeyCommandId, type KeyContext } from './keyboard-commands';
+import { isKeyCommandAvailable } from './keyboard-command-features';
 
 export type KeyboardLayer = 'global' | 'tool' | 'popover' | 'modal';
 export type CommandRun = (event: KeyboardEvent) => boolean | void;
@@ -133,6 +134,7 @@ export function registerKeyboardCommand(
 ): () => void {
   const definition = BUILTIN.get(id);
   if (!definition) throw new Error(`Unknown keyboard command: ${id}`);
+  if (!isKeyCommandAvailable(definition)) return () => {}; // switched off by the host (lib/features)
   return registerKeyboardBinding({
     id, when: definition.when, keys: definition.keys,
     layer: options.layer ?? layerForContext(definition.when),

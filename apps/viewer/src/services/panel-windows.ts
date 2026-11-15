@@ -24,6 +24,7 @@
 
 import { getViewerStoreApi } from '@/store';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { isPanelAvailable } from '@/lib/panels/availability';
 import { resolve } from '@/i18n/registry';
 
 interface DocumentPictureInPictureApi {
@@ -132,11 +133,12 @@ function detach(id: WorkspacePanelId, closeWindow: boolean): void {
 
 /**
  * Tear `id` off into a PiP / popup window. Returns the window kind, or null if
- * the browser blocked it. Safe to call from a click handler (consumes the
- * user activation synchronously before the first await).
+ * the browser blocked it or the host switched the panel off (`lib/features`).
+ * Safe to call from a click handler (consumes the user activation
+ * synchronously before the first await).
  */
 export async function openPanelWindow(id: WorkspacePanelId): Promise<PanelWindowKind | null> {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || !isPanelAvailable(id)) return null;
   ensureStoreReconcile();
   const existing = open.get(id);
   if (existing) {

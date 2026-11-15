@@ -16,13 +16,11 @@ import assert from 'node:assert';
 
 import {
   reprojectPointToLatLon,
-} from './reproject.js';
-import type { ProjectedCRS } from '@ifc-lite/parser';
+} from './reproject-point.js';
+import type { CrsDescriptor } from './resolve-projection.js';
 
-const utmCrs: ProjectedCRS = {
-  id: 18,
+const utmCrs: CrsDescriptor = {
   name: 'EPSG:32760',
-  mapUnit: 'METRE',
   mapUnitScale: 1,
 };
 
@@ -54,7 +52,7 @@ describe('ADVERSARIAL: reprojectPointToLatLon hostile inputs', () => {
   });
 
   it('PROBE_mapUnitScale_zero: mapUnitScale=0 is silently reinterpreted as 1 (no crash)', async () => {
-    const zeroScale: ProjectedCRS = { id: 1, name: 'EPSG:32760', mapUnitScale: 0 };
+    const zeroScale: CrsDescriptor = { name: 'EPSG:32760', mapUnitScale: 0 };
     // With mapUnitScale=0, resolveMapUnitToMetreScale returns 1 -> treated as metres.
     const r = await reprojectPointToLatLon(500000, 5000000, zeroScale, 1);
     // Should behave identically to a metre CRS, not zero-collapse the coordinates.
@@ -63,14 +61,14 @@ describe('ADVERSARIAL: reprojectPointToLatLon hostile inputs', () => {
   });
 
   it('PROBE_negative_mapUnitScale: negative mapUnitScale also falls back to 1', async () => {
-    const neg: ProjectedCRS = { id: 1, name: 'EPSG:32760', mapUnitScale: -0.001 };
+    const neg: CrsDescriptor = { name: 'EPSG:32760', mapUnitScale: -0.001 };
     const r = await reprojectPointToLatLon(500000, 5000000, neg, 1);
     const ref = await reprojectPointToLatLon(500000, 5000000, utmCrs, 1);
     assert.deepStrictEqual(r, ref, 'negative mapUnitScale falls back to 1, not a mirrored/negative coordinate');
   });
 
   it('REFUTED_geographic_out_of_range: geographic CRS with lat>90 returns null', async () => {
-    const geo: ProjectedCRS = { id: 1, name: 'EPSG:4326' };
+    const geo: CrsDescriptor = { name: 'EPSG:4326' };
     // eastings=lon, northings=lat. Feed an impossible latitude.
     const r = await reprojectPointToLatLon(200, 999, geo, 1);
     assert.strictEqual(r, null, 'lat 999 must be rejected, not rendered as 999.000000');
@@ -81,7 +79,7 @@ describe('ADVERSARIAL: reprojectPointToLatLon hostile inputs', () => {
     // degrees verbatim (no *mapScale). If a file mislabels a lon/lat CRS as
     // MILLIMETRE, a valid lon like 5 is used as-is (fine), but this asymmetry
     // vs the projected branch is worth noting.
-    const geoMm: ProjectedCRS = { id: 1, name: 'EPSG:4326', mapUnit: 'MILLIMETRE', mapUnitScale: 0.001 };
+    const geoMm: CrsDescriptor = { name: 'EPSG:4326', mapUnitScale: 0.001 };
     const r = await reprojectPointToLatLon(5, 52, geoMm, 1);
     assert.ok(r, 'lon 5 / lat 52 accepted verbatim');
     assert.strictEqual(r!.lon, 5, 'lon not scaled by mapUnitScale in the geographic branch');
@@ -89,7 +87,7 @@ describe('ADVERSARIAL: reprojectPointToLatLon hostile inputs', () => {
   });
 
   it('REFUTED_never_throws_on_garbage_crs_name: bogus EPSG code returns null', async () => {
-    const bogus: ProjectedCRS = { id: 1, name: 'EPSG:0' };
+    const bogus: CrsDescriptor = { name: 'EPSG:0' };
     const r = await reprojectPointToLatLon(500000, 5000000, bogus, 1);
     assert.strictEqual(r, null);
   });

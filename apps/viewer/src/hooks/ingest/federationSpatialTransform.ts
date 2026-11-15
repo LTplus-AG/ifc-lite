@@ -8,7 +8,7 @@ import proj4 from 'proj4';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
 import { resolveProjectionId } from '../../lib/geo/reproject.js';
 import type { AffineTransform3D } from './federationAlignAabb.js';
-import { projectedUnitToMetres } from './projected-units.js';
+import { projectedUnitToMetres } from '@ifc-lite/geo/proj4';
 
 export interface PlacementInput { spatialReference: ModelSpatialReference; coordinateInfo?: CoordinateInfo }
 

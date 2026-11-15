@@ -10,15 +10,17 @@
  * (identity-validated handles, packing, budgets, lifecycle), the store and the
  * shared model-index allocator. Faked at the two browser boundaries only: the
  * `Worker` (an in-thread loop that speaks the dedicated worker's message
- * protocol around the real `decodeGaussianFile`) and the WebGPU upload, which a
+ * streaming protocol around the real upstream decoder) and the WebGPU upload, which a
  * recording backend accepts in place of luma.gl. Pixels are covered by the
  * production-bundle browser journey, not here.
  */
 
 import { Renderer } from '@ifc-lite/renderer';
-import type { GaussianBackend, GaussianBackendScene, GaussianPackedSource } from '../../../../packages/renderer/dist/gaussian/gaussian-backend.js';
+import type { GaussianBackend, GaussianBackendScene, GaussianPackedLayout, GaussianSortColumns } from '../../../../packages/renderer/dist/gaussian/gaussian-backend.js';
 import { GaussianSplatLayer } from '../../../../packages/renderer/dist/gaussian/gaussian-splat-layer.js';
 import { decodeGaussianFile } from '@/hooks/ingest/gaussianDecode';
+import { createGaussianDecodeSession, GAUSSIAN_STREAM_ROWS, type GaussianDecodeRequest } from '@/hooks/ingest/gaussianDecodeSession';
+import { openGaussianDecodeStream } from '@/hooks/ingest/gaussianDecodeStream';
 
 const BASE = ['x', 'y', 'z', 'rot_0', 'rot_1', 'rot_2', 'rot_3',
   'scale_0', 'scale_1', 'scale_2', 'opacity', 'f_dc_0', 'f_dc_1', 'f_dc_2'];
@@ -35,8 +37,9 @@ export function gaussianPly(name: string, centres: Array<[number, number, number
 }
 
 export interface RecordingBackend {
-  sources: GaussianPackedSource[];
-  /** Hold `replaceSource` (the GPU upload) until released. */
+  /** Every drawn upload: its layout and the CPU sort columns the scene retains. */
+  sources: Array<GaussianSortColumns & { layout: GaussianPackedLayout }>;
+  /** Hold the GPU upload (between filling and drawing the rows) until released. */
   hold(): () => void;
 }
 
@@ -47,8 +50,12 @@ function recordingBackend(): RecordingBackend & { factory: () => Promise<Gaussia
   };
   const scene = (): GaussianBackendScene => ({
     gpuBytes: 0,
-    async replaceSource(source) { if (state.gate) await state.gate; state.sources.push(source); },
-    updateRows() {}, setFilter() {}, encode() {}, destroy() {},
+    async replaceRows(layout, fill) {
+      const sort = await fill({ write() {}, copy() {} });
+      if (state.gate) await state.gate;
+      state.sources.push({ layout, ...sort });
+    },
+    setFilter() {}, encode() {}, destroy() {},
   });
   return Object.assign(state, { factory: async (): Promise<GaussianBackend> => ({ upstreamReverseZ: true, createScene: scene }) });
 }
@@ -87,7 +94,9 @@ export function gaussianTestRenderer(limits = { maxStorageBufferBindingSize: 1 <
  */
 export function installInThreadGaussianWorker() {
   const saved = globalThis.Worker;
-  const stats = { created: 0, terminated: 0, scripts: [] as string[] };
+  // `validated`: streaming opens whose validating summary pass completed (#9018). The worker
+  // then stays open until the renderer has read the rows, so `terminated` marks the end of the upload.
+  const stats = { created: 0, terminated: 0, validated: 0, scripts: [] as string[] };
   let gate: Promise<void> | null = null;
   class InThreadGaussianWorker {
     onmessage: ((event: MessageEvent) => void) | null = null;
@@ -102,16 +111,25 @@ export function installInThreadGaussianWorker() {
       this.decoder = String(script).includes('gaussianDecode.worker');
       if (this.decoder) stats.created++;
     }
-    postMessage(file: File) {
+    // The worker's own streaming protocol (#9018), run in-thread.
+    private readonly session = createGaussianDecodeSession((file, summary) => openGaussianDecodeStream(file, GAUSSIAN_STREAM_ROWS, summary));
+    postMessage(message: File | GaussianDecodeRequest) {
       if (!this.decoder) {
         queueMicrotask(() => this.onerror?.({ message: 'worker unavailable in node' } as ErrorEvent));
         return;
       }
       void (async () => {
-        if (gate) await gate;
+        if (gate && (message instanceof File || message.type === 'open')) await gate;
         let data: unknown;
-        try { data = { ok: true, decoded: await decodeGaussianFile(file) }; }
-        catch (error) { data = { ok: false, reason: error instanceof Error ? error.message : 'Gaussian decoding failed.' }; }
+        if (!(message instanceof File)) {
+          const { reply } = await this.session(message);
+          if (reply.ok && reply.type === 'summary') stats.validated++;
+          data = reply;
+        }
+        else {
+          try { data = { ok: true, decoded: await decodeGaussianFile(message) }; }
+          catch (error) { data = { ok: false, reason: error instanceof Error ? error.message : 'Gaussian decoding failed.' }; }
+        }
         if (!this.terminated) this.onmessage?.({ data } as MessageEvent);
       })();
     }

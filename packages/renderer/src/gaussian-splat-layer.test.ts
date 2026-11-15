@@ -9,26 +9,75 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { GaussianSplatLayer, type GaussianLayerHost } from './gaussian/gaussian-splat-layer.js';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { GaussianSplatError } from './gaussian/gaussian-errors.js';
-import type { GaussianBackend, GaussianBackendScene, GaussianPackedSource, GaussianRowFilter, GaussianRowUpdate } from './gaussian/gaussian-backend.js';
+import { halfBits } from './gaussian/gaussian-pack.js';
+import type { GaussianBackend, GaussianBackendScene, GaussianGpuRows, GaussianPackedLayout, GaussianRowFilter, GaussianRowWriter, GaussianSortColumns } from './gaussian/gaussian-backend.js';
 import type { NormalizedGaussianAttributes } from './gaussian/gaussian-attributes.js';
 import type { GaussianSplatBounds, GaussianSplatHandle } from './gaussian/gaussian-types.js';
 
+/** CPU mirror of the GPU columns a luma scene would hold, with SH decoded back to float. */
+interface MirrorRows {
+  layout: GaussianPackedLayout;
+  positions: Float32Array; scales: Float32Array; rotations: Float32Array; colors: Float32Array;
+  opacities: Float32Array; semanticIds: Uint32Array; sphericalHarmonics: Float32Array;
+  /** Rows written from a source read (not GPU-copied) while building this upload. */
+  readRows: number;
+}
+
+const basisOf = (degree: number) => ((degree + 1) ** 2 - 1) * 3;
+function halfToFloat(bits: number): number {
+  const sign = bits & 0x8000 ? -1 : 1, exponent = (bits >> 10) & 0x1f, mantissa = bits & 0x3ff;
+  if (exponent === 0) return sign * mantissa * 2 ** -24;
+  if (exponent === 31) return mantissa ? NaN : sign * Infinity;
+  return sign * (1 + mantissa / 1024) * 2 ** (exponent - 15);
+}
+
 class FakeScene implements GaussianBackendScene {
-  sources: GaussianPackedSource[] = [];
-  updates: Array<{ rowOffset: number; rows: GaussianRowUpdate }> = [];
+  sources: MirrorRows[] = [];
+  retained: GaussianSortColumns[] = [];
   filter: { include: ReadonlySet<number>; predicate: GaussianRowFilter | null } | null = null;
   destroyed = false;
   failNext: Error | null = null;
   gate: Promise<void> | null = null;
   get gpuBytes() { return this.sources.at(-1)?.opacities.byteLength ?? 0; }
-  async replaceSource(source: GaussianPackedSource): Promise<void> {
-    if (this.gate) await this.gate;
+  async replaceRows(layout: GaussianPackedLayout, fill: (writer: GaussianRowWriter) => Promise<GaussianSortColumns>): Promise<void> {
     if (this.destroyed) throw new GaussianSplatError('lost', 'released during upload'); // as the luma scene does
+    const n = layout.rows, basis = basisOf(layout.shDegree);
+    const next: MirrorRows = {
+      layout, positions: new Float32Array(n * 3), scales: new Float32Array(n * 3), rotations: new Float32Array(n * 4), colors: new Float32Array(n * 4),
+      opacities: new Float32Array(n), semanticIds: new Uint32Array(n), sphericalHarmonics: new Float32Array(n * basis), readRows: 0,
+    };
+    const current = this.sources.at(-1);
+    const sort = await fill({
+      write: (row: number, rows: GaussianGpuRows) => {
+        const count = rows.opacities.length;
+        assert.ok(layout.shEncoding === 'float32' || row % 2 === 0, 'packed coefficient writes start on even rows');
+        next.positions.set(rows.positions, row * 3); next.scales.set(rows.scales, row * 3); next.rotations.set(rows.rotations, row * 4);
+        next.colors.set(rows.colors, row * 4); next.opacities.set(rows.opacities, row); next.semanticIds.set(rows.semanticIds, row);
+        const sh = rows.sphericalHarmonics;
+        if (sh instanceof Uint32Array) {
+          for (let i = 0; i < count * basis; i++) next.sphericalHarmonics[row * basis + i] = halfToFloat((sh[i >> 1] >>> ((i & 1) * 16)) & 0xffff);
+        } else if (sh) next.sphericalHarmonics.set(sh, row * basis);
+        next.readRows += count;
+      },
+      copy: (from: number, to: number, rows: number) => {
+        assert.ok(current, 'a copy needs drawn rows');
+        assert.deepEqual(current.layout.shDegree, layout.shDegree);
+        for (const key of ['positions', 'scales', 'rotations', 'colors', 'opacities', 'semanticIds', 'sphericalHarmonics'] as const) {
+          const stride = current[key].length / current.layout.rows;
+          (next[key] as Float32Array).set((current[key] as Float32Array).subarray(from * stride, (from + rows) * stride), to * stride);
+        }
+      },
+    });
+    // As the luma scene awaits its allocation's error scopes, between filling and drawing the rows.
+    if (this.gate) await this.gate;
+    if (this.destroyed) throw new GaussianSplatError('lost', 'released during upload');
     if (this.failNext) { const error = this.failNext; this.failNext = null; throw error; }
-    this.sources.push(source);
+    this.sources.push(next);
+    this.retained.push(sort);
   }
-  updateRows(rowOffset: number, rows: GaussianRowUpdate): void { this.updates.push({ rowOffset, rows }); }
   setFilter(include: ReadonlySet<number>, predicate: GaussianRowFilter | null): void { this.filter = { include, predicate }; }
   encode(): void {}
   destroy(): void { this.destroyed = true; }
@@ -74,6 +123,10 @@ const add = (layer: GaussianSplatLayer, count = 4, matrix = IDENTITY, extra: { s
   layer.add({ attributes: attributes(count), placement: { matrix }, modelIndex: extra.modelIndex ?? 0 }, { ...OPT_IN, signal: extra.signal });
 const code = (expected: string) => (error: unknown) => error instanceof GaussianSplatError && error.code === expected;
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 0)); };
+/** Turn the event loop until `done` holds; a re-placement streams its rows over many turns (#9018). */
+const until = async (done: () => boolean, turns = 2_000) => {
+  for (let i = 0; i < turns && !done(); i++) await new Promise((resolve) => setTimeout(resolve, 0));
+};
 
 test('#8564 add needs the explicit internal opt-in and never makes readiness ready', async () => {
   const { layer } = harness();
@@ -119,8 +172,10 @@ test('#8564 every asset packs into one upstream source in add order', async () =
   const first = await add(layer, 3);
   const second = await add(layer, 5, translate(1));
   const source = scene().sources.at(-1)!;
-  assert.equal(source.opacities.length, 8);
-  assert.deepEqual([...source.semanticIds], [1, 1, 1, 2, 2, 2, 2, 2]);
+  // #9018: every asset starts on an even row; the padding row carries slot 0, which no filter includes.
+  assert.equal(source.opacities.length, 9);
+  assert.deepEqual([...source.semanticIds], [1, 1, 1, 0, 2, 2, 2, 2, 2]);
+  assert.equal(source.readRows, 5, 'the first asset was copied on the GPU, only the new one was read');
   assert.deepEqual([...scene().filter!.include].sort(), [1, 2]);
   assert.ok(layer.setVisible(first, false));
   assert.deepEqual([...scene().filter!.include], [2]);
@@ -213,8 +268,10 @@ test('#8564 placement edits validate first, commit atomically and supersede', as
   const latest = layer.setPlacement(handle, { matrix: translate(2) });
   assert.equal(await superseded, false);
   assert.equal(await latest, true);
-  assert.equal(scene().updates.length, 1);
-  assert.equal(scene().updates[0].rowOffset, 0);
+  const uploads = scene().sources;
+  assert.equal(uploads.length, 2, 'one upload for the add, one for the committed edit; superseded and rejected edits upload nothing');
+  assert.equal(uploads[1].readRows, 3, 'the edit read its asset again from its source');
+  assert.ok(Math.abs(uploads[1].positions[0] - uploads[0].positions[0] - 2) < 1e-6);
   const after = layer.getBounds(handle)!;
   assert.ok(Math.abs(after.min[0] - (before.min[0] + 2)) < 1e-6, 'bounds follow the committed placement');
 });
@@ -328,7 +385,7 @@ test('#8564 a model translation during an in-flight add is applied after commit'
   h.translations.set(3, [0, 0, 7]);
   h.layer.setModelTranslation(3);
   const handle = await pending;
-  await settle();
+  await until(() => Math.abs(h.layer.getBounds(handle)!.min[2] - 5) < 1e-6);
   assert.ok(Math.abs(h.layer.getBounds(handle)!.min[2] - 5) < 1e-6, 'z = -2 + 7');
 });
 
@@ -545,4 +602,133 @@ test('#8752 frame changes survive pending device recovery and refuse after clear
   assert.deepEqual(h.layer.getBounds(handle), pendingBounds);
   h.layer.clear();
   assert.equal(await h.layer.translateFrame([1, 0, 0]), false);
+});
+
+// #9018: memory ownership. The layer keeps no CPU copy of any asset's rows.
+
+/** A source that hands out fresh chunk arrays on every read and counts its reads. */
+function countingRows(count: number, degree: 0 | 1 = 0, coefficient = 0.25) {
+  const reads = { count: 0, live: [] as WeakRef<Float32Array>[] };
+  const rows = {
+    count, sphericalHarmonicsDegree: degree, effectiveShDegree: degree, maxAbsShCoefficient: degree ? Math.abs(coefficient) : 0,
+    async read(visit: (chunk: NormalizedGaussianAttributes, rowStart: number) => void | Promise<void>, signal?: AbortSignal) {
+      reads.count++;
+      for (let start = 0; start < count; start += 1000) {
+        signal?.throwIfAborted();
+        const chunk = attributes(Math.min(1000, count - start), start * 0.001, degree);
+        if (degree) chunk.sphericalHarmonics.fill(coefficient);
+        reads.live.push(new WeakRef(chunk.positions), new WeakRef(chunk.sphericalHarmonics));
+        await visit(chunk, start);
+      }
+    },
+  };
+  return { rows, reads };
+}
+
+function forceGc(): void {
+  setFlagsFromString('--expose_gc');
+  (runInNewContext('gc') as () => void)();
+}
+
+test('#9018 an added asset retains only the sort columns; every chunk it read is collectable', async () => {
+  const { layer, scene } = harness();
+  const { rows, reads } = countingRows(5_000, 1);
+  await layer.add({ rows, placement: { matrix: IDENTITY }, modelIndex: 0 }, OPT_IN);
+  assert.equal(reads.count, 1);
+  for (let i = 0; i < 3; i++) { await new Promise((resolve) => setTimeout(resolve, 0)); forceGc(); }
+  assert.equal(reads.live.filter((ref) => ref.deref()).length, 0, 'no chunk array outlives the upload');
+  const retained = scene().retained.at(-1)!;
+  assert.deepEqual(Object.keys(retained).sort(), ['opacities', 'positions', 'semanticIds']);
+  assert.equal(layer.getStats().cpuBytes, retained.positions.byteLength + retained.opacities.byteLength + retained.semanticIds.byteLength);
+  assert.equal(layer.getStats().cpuBytes, 5_000 * 20);
+});
+
+test('#9018 recovery and an SH layout change read sources again; compaction copies on the GPU', async () => {
+  const h = harness();
+  const a = countingRows(10, 0), b = countingRows(6, 1), c = countingRows(4, 0);
+  const first = await h.layer.add({ rows: a.rows, placement: { matrix: IDENTITY }, modelIndex: 0 }, OPT_IN);
+  await h.layer.add({ rows: c.rows, placement: { matrix: translate(1) }, modelIndex: 1 }, OPT_IN);
+  assert.deepEqual([a.reads.count, c.reads.count], [1, 1], 'appending at the same layout copies the first asset');
+  const withSh = await h.layer.add({ rows: b.rows, placement: { matrix: translate(2) }, modelIndex: 2 }, OPT_IN);
+  assert.deepEqual([a.reads.count, b.reads.count, c.reads.count], [2, 1, 2], 'a higher SH degree re-lays every asset from its source');
+  assert.equal(h.scene().sources.at(-1)!.layout.shEncoding, 'float16x2');
+  assert.ok(h.layer.remove(withSh));
+  await settle();
+  assert.deepEqual([a.reads.count, c.reads.count], [3, 3], 'dropping back to degree 0 re-lays the survivors');
+  assert.ok(h.layer.remove(first));
+  await settle();
+  assert.equal(c.reads.count, 3, 'compaction at an unchanged layout copies on the GPU');
+  assert.deepEqual([...h.scene().sources.at(-1)!.semanticIds], [2, 2, 2, 2]);
+  h.life.lost = true;
+  h.layer.release(false, false);
+  h.life.lost = false;
+  h.replaceDevice();
+  h.layer.frameReady();
+  await settle();
+  assert.equal(c.reads.count, 4, 'recovery reads the surviving asset again');
+  assert.equal(h.scene().sources.at(-1)!.readRows, 4);
+});
+
+/**
+ * Independent binary16 reference (Node 22 has no Math.f16round without a flag): the
+ * nearest half, ties to even, by power-of-two scaling, which is exact in float64.
+ */
+function halfReference(value: number): number {
+  const magnitude = Math.abs(value);
+  if (magnitude === 0) return value;
+  let exponent = Math.floor(Math.log2(magnitude));
+  if (2 ** exponent > magnitude) exponent--;
+  if (2 ** (exponent + 1) <= magnitude) exponent++;
+  const ulp = 2 ** (Math.max(exponent, -14) - 10);
+  const scaled = magnitude / ulp;
+  const floor = Math.floor(scaled);
+  const rest = scaled - floor;
+  const rounded = rest > 0.5 || (rest === 0.5 && floor % 2 === 1) ? floor + 1 : floor;
+  return Math.sign(value) * rounded * ulp; // keeps -0 for a negative value that rounds to zero
+}
+const nativeHalf = (Math as { f16round?: (value: number) => number }).f16round;
+
+test('#9018 SH coefficients pack as round-to-nearest-even halves, with a float32 fallback', async () => {
+  const check = (value: number, label: string) => {
+    if (nativeHalf) assert.equal(halfReference(value), nativeHalf(value), `reference agrees with Math.f16round for ${label}`);
+    assert.equal(halfToFloat(halfBits(value)), halfReference(value), `half of ${label}`);
+  };
+  for (const value of [0, -0, 1, -1, 0.1, 0.25, 1 / 3, 65_504, 6.1e-5, 5.96e-8, 3e-8, 2.98e-8, 1e-9, -1e-9, 0.5595555901527405, 2049, 2051, 4097]) {
+    check(value, String(value));
+  }
+  for (let i = 0; i < 20_000; i++) {
+    const value = Math.fround((Math.random() - 0.5) * 10 ** (Math.random() * 9 - 6));
+    check(value, String(value));
+  }
+  const small = harness();
+  await small.layer.add({ rows: countingRows(3, 1, 0.1).rows, placement: { matrix: IDENTITY }, modelIndex: 0 }, OPT_IN);
+  const packed = small.scene().sources.at(-1)!;
+  assert.equal(packed.layout.shEncoding, 'float16x2');
+  assert.deepEqual([...packed.sphericalHarmonics.subarray(0, 9)], Array(9).fill(halfReference(0.1)));
+  const large = harness();
+  await large.layer.add({ rows: countingRows(3, 1, 70_000).rows, placement: { matrix: IDENTITY }, modelIndex: 0 }, OPT_IN);
+  assert.equal(large.scene().sources.at(-1)!.layout.shEncoding, 'float32', 'coefficients beyond half range keep float32');
+  assert.equal(large.scene().sources.at(-1)!.sphericalHarmonics[0], 70_000);
+});
+
+test('#9018 an SH0 asset read after an SH1 asset in one pack gets zero coefficients, not the staged ones', async () => {
+  const h = harness();
+  const sh1 = countingRows(3, 1, 0.5);
+  const sh0 = countingRows(3, 0);
+  await h.layer.add({ rows: sh1.rows, placement: { matrix: IDENTITY }, modelIndex: 0 }, OPT_IN);
+  await h.layer.add({ rows: sh0.rows, placement: { matrix: IDENTITY }, modelIndex: 1 }, OPT_IN);
+  // Device recovery reads every asset into one fresh pack, sharing one staging set between them.
+  h.life.lost = true;
+  h.layer.release(false, false);
+  h.life.lost = false;
+  h.replaceDevice();
+  h.layer.frameReady();
+  await settle();
+  assert.equal(sh1.reads.count, 2, 'recovery read the SH1 asset');
+  assert.equal(sh0.reads.count, 2, 'and then the SH0 asset');
+  const packed = h.scene().sources.at(-1)!;
+  assert.equal(packed.layout.shDegree, 1);
+  const perRow = packed.sphericalHarmonics.length / packed.layout.rows;
+  assert.deepEqual([...packed.sphericalHarmonics.subarray(0, 3 * perRow)], Array(3 * perRow).fill(0.5), 'SH1 rows keep their coefficients');
+  assert.deepEqual([...packed.sphericalHarmonics.subarray(4 * perRow, 7 * perRow)], Array(3 * perRow).fill(0), 'SH0 rows (from row 4) carry no staged coefficients');
 });

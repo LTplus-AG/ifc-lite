@@ -18,6 +18,8 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 const { useIfcLoader } = await import('./useIfcLoader.js');
 const { getProcessingServerUrl, setProcessingServerUrl } = await import('@/lib/processed-model');
+const { loadDialogs } = await import('@/test/dialog-host.js');
+const { click, waitFor } = await import('@/test/render.js');
 
 const PARQUET_RESULT: ParquetParseResponse = {
   meshes: [
@@ -86,7 +88,8 @@ beforeEach(async () => {
   });
   mock.method(GeometryProcessor.prototype, 'init', async () => { engineInits++; throw new Error('local fallback sentinel #9538'); });
   container = document.createElement('div'); document.body.appendChild(container);
-  root = createRoot(container); await act(async () => { root.render(<Probe />); });
+  const { ConfirmDialogHost } = await loadDialogs();
+  root = createRoot(container); await act(async () => { root.render(<><Probe /><ConfirmDialogHost /></>); });
   assert.ok(api);
 });
 afterEach(async () => {
@@ -199,7 +202,7 @@ for (const archive of [false, true]) for (const scenario of ['unavailable', 'ine
   });
 }
 
-it('#10264 a server stream owns replacement only when geometry arrives and a later failure does not offer local Cancel', async () => {
+for (const publishes of [false, true]) it(`#10264 server failure ${publishes ? 'after' : 'before'} publication uses the real consent host`, async () => {
   useViewerStore.setState(fixtureModels(fixtureModel('prior-model')));
   const prior = useViewerStore.getState().models;
   const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
@@ -212,6 +215,7 @@ it('#10264 a server stream owns replacement only when geometry arrives and a lat
   mock.method(IfcServerClient.prototype, 'parseParquetStream', async (_source: Parameters<IfcServerClient['parseParquetStream']>[0], batch: Parameters<IfcServerClient['parseParquetStream']>[1]) => {
     assert.equal(useViewerStore.getState().models, prior, 'the server request itself does not replace the scene');
     assert.equal(useViewerStore.getState().loading, true, 'server work still has a loading indicator before replacement');
+    if (!publishes) throw new Error('server stream failed before geometry');
     batch({ meshes: PARQUET_RESULT.meshes, batch_number: 0, decode_time_ms: 0 });
     assert.notEqual(useViewerStore.getState().models, prior, 'first server geometry commits the replacement');
     assert.equal(useViewerStore.getState().geometryResult?.totalTriangles, 1);
@@ -219,16 +223,38 @@ it('#10264 a server stream owns replacement only when geometry arrives and a lat
     throw new Error('server stream failed after first geometry');
   });
   const errors: string[] = [];
+  let pending: Promise<void> | undefined;
+  let completed = false;
   try {
-    await act(async () => { await api!.loadFile(source, { kind: 'primary', modelId: 'partial-server' }, { onLoadError: message => errors.push(message) }); });
+    await act(async () => {
+      pending = api!.loadFile(source, { kind: 'primary', modelId: 'partial-server' }, { onLoadError: message => errors.push(message) })
+        .finally(() => { completed = true; });
+    });
+    await waitFor(() => completed || !!document.querySelector('[role="alertdialog"]'), 'server failure settles or requests local consent');
+    const dialog = document.querySelector('[role="alertdialog"]');
+    if (!publishes) {
+      assert.ok(dialog, 'the mounted host must visibly request consent before any replacement');
+      assert.match(dialog.textContent ?? '', /available memory/);
+      assert.equal(useViewerStore.getState().models, prior, 'pre-publication Cancel can preserve the prior scene');
+      click(dialog.querySelector('button')!);
+      await pending;
+      assert.deepEqual(errors, []);
+      assert.equal(useViewerStore.getState().models, prior);
+      assert.equal(reads, 0);
+      assert.equal(engineInits, 0);
+      return;
+    }
+    assert.equal(dialog, null, 'no consent whose Cancel could no longer preserve the prior scene');
+    await pending;
+    assert.equal(completed, true, 'post-publication failure settles without waiting for consent');
     assert.equal(errors.length, 1);
     assert.match(errors[0], /server stream failed after first geometry/);
     assert.equal(useViewerStore.getState().models.get('partial-server')?.loadState, 'error');
     assert.equal(useViewerStore.getState().loading, false);
-    assert.equal(document.querySelector('[role="alertdialog"]'), null, 'no consent whose Cancel could no longer preserve the prior scene');
     assert.equal(reads, 0);
     assert.equal(engineInits, 0, 'no implicit local fallback after server publication');
   } finally {
+    await act(async () => { useViewerStore.getState().activeLoadCanceller?.(); await pending; });
     if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
   }
 });

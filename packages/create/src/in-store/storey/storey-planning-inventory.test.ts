@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { expect, it, vi } from 'vitest';
 import { StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
+import { AnchorEntityReader } from '../resolve-anchor.js';
 import { parse, session, THIRD_PARTY } from '../__test__/storey-fixtures.oracle.js';
 import { readStoreyInventory } from './storey-model.js';
 import { planStoreyLevelEdit } from './storey-level-plan.js';
@@ -42,8 +43,11 @@ it('#8452 inherited products remain in moved IDs without repeated payload planni
   expect(cold.refusals).toEqual([]);
   expect(cold.moved.filter(id => products.has(id))).toHaveLength(1000);
   const reads = new Set<number>();
-  const read = s.view.readNewEntity.bind(s.view);
-  const spy = vi.spyOn(s.view, 'readNewEntity').mockImplementation(id => { if (products.has(id)) reads.add(id); return read(id); });
+  const read = AnchorEntityReader.prototype.entity;
+  const spy = vi.spyOn(AnchorEntityReader.prototype, 'entity').mockImplementation(function(this: AnchorEntityReader, id) {
+    if (products.has(id)) reads.add(id);
+    return read.call(this, id);
+  });
   const warm = planStoreyLevelEdit(readStoreyInventory(s.store, s.view), edit);
   expect(warm).toEqual(cold);
   expect(storeyPlanningWork(cold)?.inventoryProducts).toBeGreaterThanOrEqual(1000);

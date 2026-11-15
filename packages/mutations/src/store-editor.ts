@@ -291,7 +291,7 @@ export class StoreEditor {
   /** Whether an id resolves to a live source or overlay entity. */
   hasEntity(expressId: number): boolean {
     return Number.isSafeInteger(expressId) && expressId > 0 && !this.view.isDeleted(expressId)
-      && (this.view.getNewEntity(expressId) !== null || storeHasSourceEntity(this.store, expressId));
+      && (this.view.hasNewEntity(expressId) || storeHasSourceEntity(this.store, expressId));
   }
 
   /** All overlay-created entities, in insertion order. */

@@ -234,14 +234,23 @@ fn interior_point_2d(ring: &[Point2<f64>]) -> Point2<f64> {
 }
 
 /// The regions of a face written as `rings`, all outer bounds, in file order.
-/// A ring with no area bounds nothing and is dropped. A ring inside another
+/// A ring with no area (judged against its own extent) bounds nothing and is dropped. A ring inside another
 /// ring is that ring's opening (a writer tagging an opening as an outer bound),
 /// a ring inside an opening is a region again; inside means an interior point of
 /// the ring lies in the other and none of its vertices lie outside it. `None`
 /// when the rings do not share a plane, so the caller keeps the single-ring
 /// reading. Mirrors `faceRegionsOfOuterBounds` in `structural-face-regions.ts`.
 fn outer_bound_regions(rings: &[&Vec<Point3<f64>>]) -> Option<Vec<FaceBounds>> {
-    let live: Vec<&Vec<Point3<f64>>> = rings.iter().copied().filter(|ring| projected_area(ring) > 1e-12).collect();
+    // A ring with no area (collinear points) bounds nothing; judged against its own extent, so a tiny ring is still a ring.
+    let has_area = |ring: &Vec<Point3<f64>>| {
+        let (mut lo, mut hi) = (ring[0].coords, ring[0].coords);
+        for p in ring.iter() {
+            lo = lo.inf(&p.coords);
+            hi = hi.sup(&p.coords);
+        }
+        projected_area(ring) > 1e-9 * (hi - lo).norm_squared()
+    };
+    let live: Vec<&Vec<Point3<f64>>> = rings.iter().copied().filter(|ring| has_area(ring)).collect();
     if live.is_empty() {
         return None;
     }
@@ -357,6 +366,16 @@ mod region_tests {
 
     fn p(x: f64, y: f64) -> Point2<f64> {
         Point2::new(x, y)
+    }
+
+    #[test]
+    fn a_tiny_loop_is_still_a_region_and_a_collinear_one_is_not_issue_9945() {
+        let square = |x: f64, y: f64, s: f64| vec![Point3::new(x, y, 0.), Point3::new(x + s, y, 0.), Point3::new(x + s, y + s, 0.), Point3::new(x, y + s, 0.)];
+        let (big, tiny) = (square(0., 0., 10.), square(20., 0., 5e-7));
+        let regions = outer_bound_regions(&[&big, &tiny]).unwrap();
+        assert_eq!(regions.len(), 2, "a 0.5 micrometre loop in metres is a region of its own");
+        let line = vec![Point3::new(0., 0., 0.), Point3::new(1., 0., 0.), Point3::new(2., 0., 0.)];
+        assert_eq!(outer_bound_regions(&[&big, &line]).unwrap().len(), 1, "a collinear loop bounds nothing");
     }
 
     #[test]

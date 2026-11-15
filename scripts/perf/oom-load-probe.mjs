@@ -243,13 +243,15 @@ export async function runProbe(opts) {
         if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
         if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? 'model load error'; return; }
         if (obs.decision === 'none') {
-          const dialog = page.getByRole('dialog').filter({ hasText: MEMORY_WARNING });
+          // CSS role selectors, not getByRole: when another layer (e.g. a privacy banner) is open the
+          // dialog's container can be aria-hidden, which hides it from getByRole although it is on screen.
+          const dialog = page.locator('[role=dialog],[role=alertdialog]').filter({ hasText: MEMORY_WARNING });
           if (await dialog.count().catch(() => 0)) {
             obs.warningShown = true;
             result.memoryWarning = { text: (await dialog.first().innerText().catch(() => '')).slice(0, 500), trisBefore: st?.tris ?? null };
             last = { ...(st ?? {}), warning: true };
             if (opts.onMemoryDialog === 'wait') return;
-            await dialog.first().getByRole('button', { name: DIALOG_BUTTONS[opts.onMemoryDialog] }).click({ timeout: 10000 });
+            await dialog.first().locator('button').filter({ hasText: DIALOG_BUTTONS[opts.onMemoryDialog] }).first().click({ timeout: 10000 });
             obs.decision = opts.onMemoryDialog;
             log({ t: (Date.now() - t0) / 1000, clicked: opts.onMemoryDialog });
             if (opts.onMemoryDialog === 'cancel') { await new Promise((r) => setTimeout(r, 3000)); return; }

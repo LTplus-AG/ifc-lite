@@ -5,7 +5,9 @@
 /**
  * Georeferencing tools over `bim.georef`: the read tool (`georeferencing`)
  * and the write tool (`georeferencing_write`). Both report the SDK shape
- * (`GeoreferencingState`), so what an agent reads is what it can write back.
+ * (`GeoreferencingState`); an agent writes back the attribute fields it reads
+ * (ProjectedCRS and MapConversion members), not the read-only ones (`type`,
+ * `expressId`, `mapUnitResolved`, ...), which the write schema refuses.
  * A write is held in the session like any other mutation and lands in the
  * file with `export_ifc` / `model_save`.
  */
@@ -21,7 +23,7 @@ const MC_PROPS = ['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 
 
 export const georeferencingReadTool: Tool = {
   name: 'georeferencing',
-  description: 'Georeferencing of a model: IfcProjectedCRS + IfcMapConversion (IFC4X3: IfcMapConversionScaled, IfcRigidOperation; IFC2X3: ePSet_MapConversion/ePSet_ProjectedCRS; IfcSite lat/long fallback), rotation in degrees, and whether this session holds an unsaved georeferencing_write. `georef` is the shape georeferencing_write accepts; `georeferencing` is the parser\'s source-only reading, kept for existing callers.',
+  description: 'Georeferencing of a model: IfcProjectedCRS + IfcMapConversion (IFC4X3: IfcMapConversionScaled, IfcRigidOperation; IFC2X3: ePSet_MapConversion/ePSet_ProjectedCRS; IfcSite lat/long fallback), rotation in degrees, and whether this session holds an unsaved georeferencing_write. `georef` uses the attribute names georeferencing_write takes (ProjectedCRS and MapConversion members); its read-only members (type, expressId, mapUnitResolved, source, storage, pending, rotationDegrees, RigidOperation, site) are not inputs, so pass only the attribute fields back, never the whole object. `georeferencing` is the parser\'s source-only reading, kept for existing callers.',
   scope: 'read',
   inputSchema: { type: 'object', properties: { model_id: { type: 'string' } }, additionalProperties: false },
   handler(input, ctx) {

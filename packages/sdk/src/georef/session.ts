@@ -57,13 +57,13 @@ export class GeoreferencingSession {
   /** The effective georeferencing: this session's latest write, or the source minus its deletions. */
   get(): GeoreferencingState {
     const top = this.current();
-    if (top) return top.state.storage === 'propertySets' && top.state.hasGeoreference ? this.liveEPSetState(top.state) : top.state;
+    if (top) return top.state.storage === 'propertySets' && top.state.hasGeoreference ? this.liveEPSetState() : top.state;
     const view = this.deps.view();
     const source = readSourceGeoreferencing(this.deps.store, this.deps.modelId, view ? (id) => view.isDeleted(id) : undefined);
     // No georeferencing write, but an ordinary property edit of an IFC2X3 convention set
     // changes what the export says: read the sets back from the overlay, as after a write.
     return view && source.storage === 'propertySets' && conventionSetsEdited(view)
-      ? this.liveEPSetState(source, readWithoutGeoreferencing(this.deps.store, this.deps.modelId, true))
+      ? this.liveEPSetState()
       : source;
   }
 
@@ -104,19 +104,22 @@ export class GeoreferencingSession {
 
   /**
    * An IFC2X3 write lives in ordinary property sets, which any later property
-   * edit can change; read them back from the overlay so `get()` stays what
-   * the export will say.
+   * edit or deletion can change; read them back from the overlay so `get()`
+   * stays what the export will say. The reader takes `ePSet_ProjectedCRS`
+   * only alongside an `ePSet_MapConversion`, so without one nothing is
+   * georeferenced (the IfcSite fallback aside).
    */
-  private liveEPSetState(written: GeoreferencingState, whenEmpty: GeoreferencingState = written): GeoreferencingState {
+  private liveEPSetState(): GeoreferencingState {
+    const none = () => readWithoutGeoreferencing(this.deps.store, this.deps.modelId, true);
     const view = this.deps.view();
-    if (!view) return written;
+    if (!view) return none();
     const facts = collectGeorefModelFacts(this.deps.store, { isDeleted: (id) => view.isDeleted(id), getForEntity: (id) => view.getForEntity(id) });
     const pick = (loc: GeorefModelFacts['ePSetMapConversion'], fields: readonly string[]) =>
       loc ? Object.fromEntries(fields.filter((f) => loc.values[f] != null).map((f) => [f, loc.values[f]])) : null;
     const mc = pick(facts.ePSetMapConversion, MC_FIELDS);
     const crs = pick(facts.ePSetProjectedCRS, CRS_FIELDS);
-    if (!mc && !crs) return whenEmpty;
-    return stateAfter({ modelId: this.deps.modelId, facts }, 'propertySets', crs as GeorefProjectedCRSAttributes | null, mc as GeorefMapConversionAttributes | null);
+    if (!mc) return none();
+    return stateAfter({ modelId: this.deps.modelId, facts }, 'propertySets', crs as GeorefProjectedCRSAttributes | null, mc as unknown as GeorefMapConversionAttributes);
   }
 
   /** `StepExportOptions.georefMutations` for an export of this session, if any. */

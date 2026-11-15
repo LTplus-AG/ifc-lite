@@ -301,6 +301,37 @@ describe('bim.georef second review follow-ups', () => {
     } finally { model.close(); }
   });
 
+  it('get() agrees with the export after the convention set entity is deleted through bim.store.removeEntity', async () => {
+    const author = await open(BASE, 'IFC2X3');
+    let text: string;
+    try {
+      author.bim.georef.set({
+        ProjectedCRS: { Name: 'EPSG:2056', MapUnit: 'METRE' },
+        MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 },
+      });
+      text = String(author.bim.export.ifc());
+    } finally { author.close(); }
+    const model = await openModel(new TextEncoder().encode(text), { disableWorkerScan: true });
+    try {
+      expect(model.bim.georef.get().MapConversion?.Eastings).toBe(2600000);
+      const id = Number(/#(\d+)=IFCPROPERTYSET\([^\n]*'ePSet_MapConversion'/i.exec(text)?.[1]);
+      expect(Number.isInteger(id)).toBe(true);
+      // An earlier ordinary edit of the same set must not bring the deleted set back.
+      model.bim.mutate.setProperty({ modelId: 'model', expressId: 6 }, 'ePSet_MapConversion', 'Eastings', 2600005, 'IfcLengthMeasure');
+      expect(model.bim.georef.get().MapConversion?.Eastings).toBe(2600005);
+      expect(model.bim.store.removeEntity({ modelId: 'model', expressId: id })).toBe(true);
+      const exported = String(model.bim.export.ifc());
+      expect(exported).not.toMatch(/ePSet_MapConversion/i);
+      const reopened = await openModel(new TextEncoder().encode(exported), { disableWorkerScan: true });
+      try {
+        const fromFile = reopened.bim.georef.get();
+        expect(fromFile.MapConversion).toBeNull();
+        expect(model.bim.georef.get().MapConversion).toBeNull();
+        expect({ ...model.bim.georef.get(), pending: false }).toEqual(fromFile);
+      } finally { reopened.close(); }
+    } finally { model.close(); }
+  });
+
   it.each([1e308, -1e308, 361])('refuses rotationDegrees %s instead of writing a NaN axis', async (rotationDegrees) => {
     const model = await open(BASE);
     try {

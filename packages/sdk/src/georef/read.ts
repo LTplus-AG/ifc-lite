@@ -81,7 +81,8 @@ function withoutDeletedGeorefRecords(store: IfcDataStore, isDeleted: (expressId:
   if (!store.entityIndex) return store;
   // @raw-entity-enumeration-ok source ids of the georeferencing classes, filtered by the session's tombstones
   const { byType } = store.entityIndex;
-  const touched = GEOREF_RECORD_TYPES.filter((t) => (byType.get(t) ?? []).some(isDeleted));
+  // IFC2X3 keeps its georeferencing in IfcPropertySet records, which `bim.store.removeEntity` can delete too.
+  const touched = [...GEOREF_RECORD_TYPES, 'IFCPROPERTYSET'].filter((t) => (byType.get(t) ?? []).some(isDeleted));
   if (touched.length === 0) return store;
   const filtered = new Map(byType);
   for (const t of touched) filtered.set(t, (byType.get(t) ?? []).filter((id) => !isDeleted(id)));

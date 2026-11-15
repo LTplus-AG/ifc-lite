@@ -182,6 +182,23 @@ describe('georeferencing_write', () => {
     expect(text).toMatch(/IFCMAPCONVERSION\(#20,#50,1\.,2\.,3\./);
   });
 
+  it('writes back the attribute fields the read tool reports, and says the read-only members are not inputs', async () => {
+    await session('ifc4-georef.ifc');
+    const { georef } = await structured<{ georef: GeoreferencingState }>('georeferencing', {});
+    expect(tool('georeferencing').description).toMatch(/read-only members \(type, expressId, mapUnitResolved/);
+    // The whole state is not a valid input: its read-only members are refused by the schema.
+    const schema = tool('georeferencing_write').inputSchema as { properties: Record<string, { properties?: Record<string, unknown> }> };
+    expect(Object.keys(georef.ProjectedCRS ?? {}).filter((k) => !(k in (schema.properties.ProjectedCRS.properties ?? {})))).toEqual(
+      expect.arrayContaining(['type', 'expressId', 'mapUnitResolved']),
+    );
+    // Its attribute fields are.
+    const pick = (obj: object, allowed: Record<string, unknown>) => Object.fromEntries(Object.entries(obj).filter(([k]) => k in allowed));
+    const crs = pick(georef.ProjectedCRS ?? {}, schema.properties.ProjectedCRS.properties ?? {});
+    const mc = pick(georef.MapConversion ?? {}, schema.properties.MapConversion.properties ?? {});
+    const updated = await structured<{ georef: GeoreferencingState }>('georeferencing_write', { action: 'update', ProjectedCRS: crs, MapConversion: mc });
+    expect(updated.georef.MapConversion).toMatchObject({ Eastings: 1, Northings: 2, OrthogonalHeight: 3 });
+  });
+
   it('refuses keys bim.georef does not write, even when the call skips schema validation', async () => {
     await session('ifc4.ifc');
     const err = await refused({ action: 'set', epsg: 2056, ProjectedCRS: { MapUnit: 'METRE' }, MapConversion: { Eastings: 1, Northings: 2, OrthogonalHeight: 3, Rotation: 12 } });

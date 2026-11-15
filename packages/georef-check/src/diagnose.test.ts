@@ -419,6 +419,30 @@ describe('CRS_WITHOUT_OPERATION (bot review a)', () => {
   });
 });
 
+describe('a blank CRS and the unit of a new conversion (review round 2)', () => {
+  it('a blank-Name CRS with nothing else reads as no georeferencing, and the fix names the CRS', () => {
+    const blank = facts({ entities: { crs: { ...(facts().entities?.crs as CrsFact), name: '  ', mapUnit: undefined, mapUnitScale: undefined } } });
+    const report = run(blank);
+    const codes = report.findings.map((x) => x.code);
+    expect(codes).toContain('NO_GEOREFERENCE');
+    expect(codes).not.toContain('CRS_WITHOUT_OPERATION');
+    const changes = report.findings.find((x) => x.code === 'NO_GEOREFERENCE')?.fixes[0].changes;
+    expect(changes).toContainEqual({ entity: 'IfcProjectedCRS', entityId: 21, attribute: 'Name', value: null });
+  });
+  it('a metre CRS beside a millimetre project: the new conversion carries Scale 0.001', () => {
+    const f = facts({ entities: { crs: facts().entities?.crs } });
+    const [finding] = run(f).findings;
+    expect(finding.code).toBe('CRS_WITHOUT_OPERATION');
+    expect(finding.fixes[0].changes).toContainEqual({ entity: 'IfcMapConversion', attribute: 'Scale', value: 0.001 });
+    expect(finding.fixes[0].apply).toMatchObject({ via: 'georef.update', input: { MapConversion: { Scale: 0.001 } } });
+  });
+  it('a metre project with a metre CRS needs no Scale', () => {
+    const f = facts({ lengthUnitScale: 1, entities: { crs: facts().entities?.crs } });
+    const [finding] = run(f).findings;
+    expect(finding.fixes[0].changes.some((c) => c.attribute === 'Scale')).toBe(false);
+  });
+});
+
 describe('an undeclared length unit (sweep: a MagiCAD fragment with no IfcUnitAssignment)', () => {
   const placed = (x: number, lengthUnitDeclared: boolean) => facts({
     entities: undefined, lengthUnitScale: 1, lengthUnitDeclared,

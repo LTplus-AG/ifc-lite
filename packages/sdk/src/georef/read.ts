@@ -100,6 +100,7 @@ function withoutDeletedGeorefRecords(store: IfcDataStore, isDeleted: (expressId:
 export function readWithoutGeoreferencing(store: IfcDataStore, modelId: string, withPropertySets: boolean): GeoreferencingState {
   const schema = String(store.schemaVersion ?? '');
   if (!store.entityIndex) return emptyGeoreferencingState(modelId, schema);
+  // @raw-entity-enumeration-ok every georeferencing class (and convention set) is dropped wholesale here, so no per-record liveness applies
   const byType = new Map(store.entityIndex.byType);
   for (const t of withPropertySets ? [...GEOREF_RECORD_TYPES, 'IFCPROPERTYSET'] : GEOREF_RECORD_TYPES) byType.delete(t);
   const view = Object.create(store) as IfcDataStore;

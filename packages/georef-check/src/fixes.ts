@@ -14,7 +14,7 @@
  * the old CRS's other fields.
  */
 
-import { isIfc2x3, round, type DiagnosisContext } from './context.js';
+import { crsChange, isIfc2x3, round, type DiagnosisContext } from './context.js';
 import type { CrsFact, FieldChange, FixApplication, GeorefWriteInput, SuggestedFix, Vec3 } from './types.js';
 
 const OPERATION_ENTITIES: ReadonlySet<FieldChange['entity']> = new Set(['IfcMapConversion', 'IfcMapConversionScaled', 'ePSet_MapConversion']);
@@ -105,12 +105,23 @@ export function newMapConversionChanges(ctx: DiagnosisContext, values?: { e: num
   const ePSet = isIfc2x3(ctx.facts.schemaVersion);
   const opEntity = ePSet ? 'ePSet_MapConversion' : 'IfcMapConversion';
   const changes: FieldChange[] = [];
-  if (!ctx.crs) changes.push({ entity: ePSet ? 'ePSet_ProjectedCRS' : 'IfcProjectedCRS', attribute: 'Name', value: null });
+  // A CRS with no Name and no WKT identifies no map: it still needs its Name.
+  const named = !!ctx.crs && (ctx.crs.name.trim() !== '' || !!ctx.crs.wellKnownText);
+  if (!named) changes.push(crsChange(ctx.crs, 'Name', null, ePSet));
   changes.push(
     { entity: opEntity, attribute: 'Eastings', value: values ? round(values.e) : null },
     { entity: opEntity, attribute: 'Northings', value: values ? round(values.n) : null },
     { entity: opEntity, attribute: 'OrthogonalHeight', value: values ? round(values.h) : null },
   );
+  // Scale converts project units to map units. An existing CRS that states its
+  // MapUnit fixes the map unit, so a project in other units needs the factor
+  // (millimetres onto a metre grid: 0.001); an unset Scale means 1 and would
+  // leave the model that much too large. With no MapUnit the map unit is the
+  // project unit and 1 is right.
+  const mapUnitScale = ctx.crs?.mapUnitScale;
+  if (mapUnitScale !== undefined && mapUnitScale > 0 && Math.abs(ctx.lengthScale / mapUnitScale - 1) > 1e-9) {
+    changes.push({ entity: opEntity, attribute: 'Scale', value: round(ctx.lengthScale / mapUnitScale, 12) });
+  }
   return changes;
 }
 

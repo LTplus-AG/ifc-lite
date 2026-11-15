@@ -17,8 +17,10 @@ function hasOperation(ctx: DiagnosisContext): boolean {
   return !!ctx.facts.entities?.operation || !!ctx.facts.ePSet?.operation;
 }
 
+/** A CRS that names a map: a blank Name with no WKT is an empty record, the same as none (see `georeferencingLevels`). */
 function declaredCrs(ctx: DiagnosisContext): CrsFact | undefined {
-  return ctx.crs ?? ctx.facts.entities?.crs ?? ctx.facts.ePSet?.crs;
+  const usable = (c: CrsFact | undefined): CrsFact | undefined => (c && (c.name.trim() !== '' || c.wellKnownText) ? c : undefined);
+  return usable(ctx.crs) ?? usable(ctx.facts.entities?.crs) ?? usable(ctx.facts.ePSet?.crs);
 }
 
 /**
@@ -82,7 +84,7 @@ function mapCoordinatesInPlacements(ctx: DiagnosisContext): GeorefFinding | unde
 function crsWithoutOperation(ctx: DiagnosisContext): GeorefFinding | undefined {
   const crs = declaredCrs(ctx);
   if (hasOperation(ctx) || !crs) return undefined;
-  const label = crs.name.trim() ? `"${crs.name.trim()}"` : crs.wellKnownText ? '(defined by WKT)' : '(with a blank Name)';
+  const label = crs.name.trim() ? `"${crs.name.trim()}"` : '(defined by WKT)';
   const absolute = absoluteCoordinates(ctx);
   const evidence = { crsSource: crs.source, crsName: crs.name, absoluteCoordinates: absolute?.where ?? null };
   if (absolute) {

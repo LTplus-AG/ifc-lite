@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Every georeferencing source a file carries, losers included.
+ * The georeferencing sources a file carries, losers included.
  *
  * {@link extractGeoreferencing} answers "where does this model go?" and so
  * returns one winner: the IFC4 entities, else `ePSet_MapConversion`, else the

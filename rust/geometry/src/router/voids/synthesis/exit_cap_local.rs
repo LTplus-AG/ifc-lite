@@ -28,8 +28,9 @@ pub(super) fn flush_band(f: &CutterFrame) -> f64 {
 /// may tilt up to ten degrees off the cap, so its distance is read where it
 /// matters: over the part of the facet that lies inside the cutter's
 /// footprint. A vertex beside the footprint, or the one listed first, decides
-/// nothing. Where that part is empty or its depth is not a finite number, the
-/// pull-in stays.
+/// nothing here; whether a facet is asked at all is still `detect`'s test on
+/// its first vertex. Where that part is empty or its depth is not a finite
+/// number, the pull-in stays.
 pub(super) fn contact(f: &CutterFrame, triangle: [Point3<f64>; 3], cap: f64) -> Contact {
     if !overlaps(f, triangle) {
         return Contact::Clear;

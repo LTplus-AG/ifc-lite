@@ -116,4 +116,9 @@ test('#10264 rejects arguments that cannot produce a valid file', () => {
   assert.throws(() => render({ kind: 'tfs', schema: 'IFC2X3', elements: 1 }), /needs IFC4/);
   assert.throws(() => render({ kind: 'mesh', elements: 1 }), /unknown kind/);
   assert.throws(() => render({ kind: 'tfs' }), /elements or targetBytes/);
+  // CLI arguments arrive as Number('abc') = NaN; that must fail, not emit NaN coordinates or skip psets.
+  assert.throws(() => render({ kind: 'tfs', elements: 1, psets: NaN }), /psets must be an integer/);
+  assert.throws(() => render({ kind: 'tfs', elements: 1, grid: NaN }), /grid must be a positive number/);
+  assert.throws(() => render({ kind: 'tfs', elements: 1, rings: 2.5 }), /rings must be an integer/);
+  assert.throws(() => render({ kind: 'tfs', targetBytes: NaN, elements: 1 }), /targetBytes must be a positive number/);
 });

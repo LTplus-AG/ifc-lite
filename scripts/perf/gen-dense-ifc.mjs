@@ -30,7 +30,7 @@
  * Prints one JSON line: elements, triangles, entities, bytes, per-MB rates.
  */
 
-import { closeSync, openSync, renameSync, writeSync } from 'node:fs';
+import { closeSync, openSync, renameSync, rmSync, writeSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
@@ -100,7 +100,11 @@ export function generateDenseIfc(sink, options) {
   if (!['tfs', 'brep'].includes(o.kind)) throw new Error(`unknown kind ${o.kind}`);
   if (o.kind === 'tfs' && schema !== 'IFC4') throw new Error('IfcTriangulatedFaceSet needs IFC4');
   if (!(o.elements > 0) && !(o.targetBytes > 0)) throw new Error('elements or targetBytes required');
-  if (!(o.rings >= 2 && o.segs >= 3)) throw new Error('rings >= 2 and segs >= 3 required');
+  const int = (k, min) => { if (!Number.isInteger(o[k]) || o[k] < min) throw new Error(`${k} must be an integer >= ${min}, got ${o[k]}`); };
+  int('rings', 2); int('segs', 3); int('psets', 0); int('seed', 0);
+  if (o.elements !== undefined) int('elements', 0);
+  if (o.targetBytes !== undefined && !(Number.isFinite(o.targetBytes) && o.targetBytes > 0)) throw new Error(`targetBytes must be a positive number, got ${o.targetBytes}`);
+  if (!(Number.isFinite(o.grid) && o.grid > 0)) throw new Error(`grid must be a positive number, got ${o.grid}`);
   const rand = prng(o.seed);
   let id = 0, bytes = 0, g = 0;
   const raw = (s) => { bytes += s.length; sink(s); };
@@ -185,7 +189,13 @@ export function generateDenseIfc(sink, options) {
 export function writeDenseIfc(out, options) {
   const tmp = `${out}.tmp`, fd = openSync(tmp, 'w');
   let buf = [], len = 0;
-  const flush = () => { if (len) { writeSync(fd, buf.join('')); buf = []; len = 0; } };
+  const flush = () => {
+    if (!len) return;
+    const bytes = Buffer.from(buf.join(''), 'latin1');
+    // writeSync may write fewer bytes than asked (e.g. a filling disk); never drop the rest.
+    for (let off = 0; off < bytes.length;) off += writeSync(fd, bytes, off, bytes.length - off);
+    buf = []; len = 0;
+  };
   try {
     const stats = generateDenseIfc((s) => { buf.push(s); len += s.length; if (len >= 1 << 22) flush(); }, options);
     flush();
@@ -194,6 +204,7 @@ export function writeDenseIfc(out, options) {
     return { out, ...stats };
   } catch (err) {
     closeSync(fd);
+    rmSync(tmp, { force: true });
     throw err;
   }
 }

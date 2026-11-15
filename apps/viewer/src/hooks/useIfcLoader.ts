@@ -669,6 +669,7 @@ export function useIfcLoader() {
         activity.published = true;
         modelCompletion?.settleModel();
       };
+      const isResourceRetryLoad = options?.isResourceRetry === true;
       const tryServer = async (source: Pick<ArrayBuffer, 'byteLength'>): Promise<boolean> => {
         loadStage = 'server-fetch';
         return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId), isStale, async () => {
@@ -1116,7 +1117,6 @@ export function useIfcLoader() {
       // runs at `lowest` (`lib/resource-retry.ts`) and a first attempt reaches
       // `lowest` on its own at >= AUTO_LOWEST_TIER_MB or under a pinned
       // `?geomTier=lowest`, so the two are indistinguishable without the flag.
-      const isResourceRetryLoad = options?.isResourceRetry === true;
       // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
       // stays filename-safe and independent of the original filename. Pinned
       // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5

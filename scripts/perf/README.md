@@ -8,6 +8,50 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Capped-memory load test and synthetic dense IFC (#10264, known issue)
+
+Reproduces "a large IFC kills the tab instead of being refused" without private files.
+Two tools:
+
+- `gen-dense-ifc.mjs` writes a deterministic synthetic model (same arguments, same bytes;
+  `gen-dense-ifc.test.mjs` pins that). Every element is a unique jittered ellipsoid, so
+  nothing instances away. Never commit the output.
+
+  | `--kind` | schema / geometry | triangles per MB | entities per MB | reproduces |
+  |---|---|---:|---:|---|
+  | `tfs` | IFC4 `IfcTriangulatedFaceSet` | ~40.6 k | ~150 | mode B: killed mid-stream by geometry the main thread keeps (84 B/triangle) |
+  | `brep` | IFC2X3 `IfcFacetedBrep`, one face per triangle | ~6.1–6.7 k | ~21–23.5 k | mode A: killed before geometry, while the entity pre-pass overlaps worker source copies |
+
+  Default mesh 24×48 (2,256 triangles per element); about 30 MB/s on one core.
+- `oom-load-probe.mjs` opens one file in a built viewer (`apps/viewer/dist`) with
+  `navigator.deviceMemory` / `hardwareConcurrency` overridden, and runs only Chrome inside
+  `systemd-run --user --scope -p MemoryMax=CAP -p MemorySwapMax=0 -p CPUQuota=…`. It reports
+  `loaded`, `refused` (the viewer showed a memory message, either main's out-of-memory text or a
+  pre-read "local processing memory budget" refusal) or `killed` (a cgroup OOM kill, a renderer
+  crash or the browser exiting), plus peak summed Chrome PSS, the cgroup peak and the phase reached.
+  Needs Linux with cgroup v2 and the memory controller delegated to the systemd user manager;
+  anything missing exits 2, never skips.
+
+`--expect` is required. Today the issue is open, so the minimal case runs with
+`--expect killed`: it passes only while the tab is still killed and **fails once the load is
+loaded or refused**, telling you to switch to `--expect not-killed` (the #10264 acceptance:
+the tab is never killed). `error` and `timeout` never pass.
+
+```bash
+pnpm install && pnpm build:wasm && pnpm turbo build --filter=@ifc-lite/viewer   # or any built apps/viewer/dist
+npx playwright install chromium                            # once
+node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect killed \
+  --kind tfs --target-mb MINIMAL_SWIFTSHADER --device-memory 4 --cores 4 --cap 3G   # swiftshader, headless
+# Hardware GL: headed on a private Xvfb, e.g. DISPLAY=:181 ... --gl hardware
+```
+
+MEASURED_TABLE
+
+CI: not wired. Per-PR CI is too heavy (a viewer build plus a ~1 min browser run). The proposed
+home is a `workflow_dispatch`/nightly job, added only once the cap is verified on a GitHub-hosted
+runner: that needs `systemd-run --user` with a delegated memory controller there, or the job run
+inside a container with `--memory=3g --memory-swap=3g`. Neither was verified from here.
+
 ## Reopen interactive mark with a geometry-restore gate (#10218, merged)
 
 **Accepted: a reopened model counts as interactive when its stored scene is shown and metadata is published, while geometry-dependent input waits for geometry restore.**

@@ -731,7 +731,6 @@ export function useIfcLoader() {
         });
         return;
       }
-
       if (!pointCloudFormat && !serverUploadsEnabled() && detectFormat(headBuf) === 'ifc') assertWasmSourceSize(file.size);
       const fileReadStart = performance.now();
       const acquired: AcquiredBuffer = pointCloudFormat

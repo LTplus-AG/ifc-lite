@@ -500,7 +500,12 @@ image, network or application undo resources are implicitly published by this AP
 | `"#42"` (string) | entity reference |
 | `".AREA."` (string) | enum |
 | `"My Column"` (string) | quoted STEP string |
+| `stepString("$")` / `stepString("*")` from `@ifc-lite/data` | literal quoted text `'$'` / `'*'` |
 | `[1, 2, 3]` | STEP list `(1,2,3)` — recursive |
+
+Use `stepString(text)` for imported text that might look like a STEP marker,
+reference or enumeration. Existing plain `$` and `*` marker inputs retain their
+meaning; `null` remains the way to write an omitted attribute.
 
 ### High-Level Builders — `addColumnToStore` / `addWallToStore` / …
 

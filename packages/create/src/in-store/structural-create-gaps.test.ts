@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { IfcParser, EntityExtractor, extractStructuralOnDemand } from '@ifc-lite/parser';
 import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
+import { stepString } from '@ifc-lite/data';
 // The export barrel also exports geometry processors; this schema-only suite
 // intentionally loads the STEP writer without requiring a WASM runtime.
 import { StepExporter } from '../../../export/src/step-exporter.js';
@@ -327,3 +328,48 @@ describe('structural CREATE gaps (#9668)', () => {
   });
 
 });
+
+it.each(['$', '*', '#42', 'Station', null])('#9876 imported varying-thickness labels survive copy/export/reopen: %j', async label => {
+  const { editor, anchor, store, view } = await fresh('IFC2X3');
+  const surface = create.addStructuralSurfaceMemberToStore(editor, anchor, {
+    Boundary: [[0,0,0],[3,0,0],[0,3,0]], Thickness: 0.2,
+  });
+  const text = label === null ? null : stepString(label);
+  const reps = [[0,0,0],[3,0,0],[0,3,0]].map(position => {
+    const point = editor.addEntity('IfcCartesianPoint', [position]).expressId;
+    return `#${editor.addEntity('IfcShapeRepresentation', [`#${anchor.axisContextId}`, text, 'Point', [`#${point}`]]).expressId}`;
+  });
+  const originalId = editor.addEntity('IfcShapeAspect', [reps, text, text, true, `#${surface.productShapeId}`]).expressId;
+  const parse = async (content: Uint8Array) => new IfcParser().parseColumnar(
+    content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer, { disableWorkerScan: true });
+  const imported = await parse(new StepExporter(store, view).export({ schema: 'IFC2X3', applyMutations: true }).content);
+  const copiedView = new MutablePropertyView(null, 'literal-copy');
+  const copiedEditor = new StoreEditor(imported, copiedView);
+  create.addStructuralSurfaceMemberToStore(copiedEditor, create.resolveSpatialAnchor(imported, 45, copiedView), {
+    Type: 'IfcStructuralSurfaceMemberVarying', Boundary: [[0,0,0],[3,0,0],[0,3,0]],
+    Thickness: 0.2, SubsequentThickness: [0.3, 0.4], VaryingThicknessLocation: originalId,
+  }, imported);
+  const copiedAspect = copiedEditor.getNewEntities().find(entity => entity.type === 'IfcShapeAspect')!;
+  expect(copiedAspect).toBeDefined();
+  const output = new StepExporter(imported, copiedView).export({ schema: 'IFC2X3', applyMutations: true }).content;
+  const reopened = await parse(output), extractor = new EntityExtractor(reopened.source);
+  const read = (id: number) => extractor.extractEntity(reopened.entityIndex.byId.get(id)!)!.attributes;
+  for (const id of [originalId, copiedAspect.expressId]) {
+    const attributes = read(id);
+    expect(attributes[1]).toBe(label);
+    expect(attributes[2]).toBe(label);
+    for (const ref of attributes[0] as unknown[]) {
+      const representation = read(Number(String(ref).replace(/^#/, '')));
+      expect(representation[1]).toBe(label);
+    }
+  }
+  if (process.env.STRUCTURAL_EXPORT_DIR) writeFileSync(join(process.env.STRUCTURAL_EXPORT_DIR, `IFC2X3-literal-${Buffer.from(String(label)).toString('hex')}.ifc`), output);
+  if (canValidate) {
+    const dir = mkdtempSync(join(tmpdir(), 'literal-label-'));
+    try {
+      const path = join(dir, 'literal.ifc'); writeFileSync(path, output);
+      const result = spawnSync(PYTHON, [join(ROOT, 'tools/ifcopenshell_reference/validate_export.py'), path], { encoding: 'utf8', timeout: 55000 });
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+}, 60000);

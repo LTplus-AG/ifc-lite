@@ -141,7 +141,7 @@ it('#9538 geometry completes and load finally leaves the model property poll ali
 for (const scenario of ['unavailable', 'ineligible', 'success'] as const) {
   it(`#10264 server ${scenario} does not allocate an oversized local source`, async () => {
     const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
-    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 8 });
+    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 4 });
     const source = file('oversized-server.ifc');
     Object.defineProperty(source, 'size', { value: 1.26e9 });
     let fullReads = 0, largeAllocations = 0, attempts = 0;

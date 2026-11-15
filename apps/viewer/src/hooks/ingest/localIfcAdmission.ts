@@ -5,30 +5,26 @@
 import { assertWasmSourceSize } from '@ifc-lite/parser';
 
 const GiB = 1024 ** 3;
+export interface LocalIfcMemoryWarning { estimatedGiB: number; budgetGiB: number }
 
-/**
- * Pre-allocation safety policy, not a prediction of a model's exact footprint.
- * #10264 exhausted a 6 GiB tab with 1.05/1.26 GB sources even at one worker.
- * Reserve 25% of the reported device memory outside the tab, then admit an
- * eight-source working set plus 512 MiB of fixed viewer/browser overhead.
- * Source, parser/geometry WASM heaps, indexes, CPU meshes and GPU uploads all
- * overlap during a local load; the geometry worker count covers only one part.
- * Do not infer extra memory from CPU cores: an 8 GB report must stay 8 GB.
- * Smaller admitted models can still exhaust memory through their complexity.
- */
-export function assertLocalIfcAdmission(byteLength: number, deviceMemoryGB?: number): void {
+/** Pre-allocation policy, not an exact footprint prediction (#10264).
+ * Browser memory reports cap at 8 GiB: that value (or an absent report) may
+ * describe a much larger workstation, so it requires consent rather than a
+ * hard refusal. Below 8, refuse an over-budget load. Never infer RAM from CPU
+ * cores. Smaller complex models can still exhaust memory after this check. */
+export function inspectLocalIfcAdmission(byteLength: number, deviceMemoryGB?: number): LocalIfcMemoryWarning | null {
   assertWasmSourceSize(byteLength);
   const reported = deviceMemoryGB ?? (typeof navigator === 'undefined'
     ? undefined : (navigator as Navigator & { deviceMemory?: number }).deviceMemory);
   const memoryGB = typeof reported === 'number' && Number.isFinite(reported) && reported > 0 ? reported : 8;
   const budget = memoryGB * GiB * 0.75;
   const workingSet = byteLength * 8 + GiB / 2;
-  if (workingSet > budget) {
-    throw new RangeError(
-      `This IFC file exceeds this tab's local processing memory budget `
-      + `(${(workingSet / GiB).toFixed(1)} GiB estimated, ${(budget / GiB).toFixed(1)} GiB budget). `
-      + 'The load was stopped before local processing to avoid crashing the tab. '
-      + 'Export a smaller model or use the native CLI/server.',
-    );
-  }
+  if (workingSet <= budget) return null;
+  if (memoryGB >= 8) return { estimatedGiB: workingSet / GiB, budgetGiB: budget / GiB };
+  throw new RangeError(
+    `This IFC file exceeds this tab's local processing memory budget `
+    + `(${(workingSet / GiB).toFixed(1)} GiB estimated, ${(budget / GiB).toFixed(1)} GiB budget). `
+    + 'The load was stopped before local processing to avoid crashing the tab. '
+    + 'Export a smaller model or use the native CLI/server.',
+  );
 }

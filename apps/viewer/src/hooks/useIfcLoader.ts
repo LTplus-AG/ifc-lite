@@ -76,7 +76,7 @@ import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from '.
 import { isLandXmlFileName } from './ingest/landXmlSniff.js';
 import { loadLandXmlModel } from './ingest/landXmlLoad.js';
 import { drapeIfGeoRaster } from './ingest/drapeIfGeoRaster.js';
-import { assertLocalIfcAdmission } from './ingest/localIfcAdmission.js';
+import { createLocalIfcLoadAdmission } from './ingest/confirmLocalIfcAdmission.js';
 import { clearLandXmlRefusalPrompts, publishLandXmlRefusalPrompts } from './ingest/landXmlRefusalPrompts.js';
 import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
@@ -281,6 +281,15 @@ export function useIfcLoader() {
     // Every end of this load, completed or failed: the last live load ends the shared UI (L2).
     const settleLoadUi = (progress: Parameters<typeof settleOwnedLoadUi>[1] = null) => settleOwnedLoadUi(releaseCanceller, progress, modelId);
 
+    const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
+    const showLoadError = loadFailureReporter(file, activity, retryThisLoad, options?.onLoadError);
+    const localAdmission = createLocalIfcLoadAdmission(file, { isCurrent, signal: metadataAbort.signal, onCancel: () => settleLoadUi(),
+      serverEligible: () => target.kind === 'primary' && !useViewerStore.getState().mergeLayers && USE_SERVER && !!SERVER_URL && geometryKernel.serverEnabled,
+      onFailure: error => { showLoadError(formatLoadError(error, file.name, 'ifc_model_load'), classifyLoadError(error, 'ifc_model_load')); settleLoadUi(); },
+      finish: () => { metadataAbort.abort(); releaseCanceller(); } });
+    const preflightHead = await localAdmission.preflight();
+    if (preflightHead === null) return;
+
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
     // the previous entry-backed provider — a primary load replaces the model,
     // and a federated add's geometry is not in the primary's cache entry (a
@@ -422,10 +431,6 @@ export function useIfcLoader() {
       return true;
     };
 
-    // Every load failure the user sees goes through here (#5618); `retry`
-    // is fixed to THIS call so no call site below can omit or go stale.
-    const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
-    const showLoadError = loadFailureReporter(file, activity, retryThisLoad, options?.onLoadError);
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
@@ -670,7 +675,10 @@ export function useIfcLoader() {
         modelCompletion?.settleModel();
       };
       const isResourceRetryLoad = options?.isResourceRetry === true;
+      let serverAttempted = false;
       const tryServer = async (source: Pick<ArrayBuffer, 'byteLength'>): Promise<boolean> => {
+        serverAttempted = true;
+        loadedBufferByteLength = source.byteLength;
         loadStage = 'server-fetch';
         return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId), isStale, async () => {
           if (!modelSourceIdentity) {
@@ -704,8 +712,9 @@ export function useIfcLoader() {
           settleLoadUi(LOAD_COMPLETE);
         });
       };
-      if (!USE_SERVER && /\.ifc$/i.test(file.name)) assertLocalIfcAdmission(file.size);
-      const headBuf = await file.slice(0, 4096).arrayBuffer();
+      localAdmission.setServer(async () => !serverAttempted && target.kind === 'primary' && !useViewerStore.getState().mergeLayers && USE_SERVER && !!SERVER_URL && geometryKernel.serverEnabled
+        ? tryServer({ byteLength: file.size }) : false);
+      const headBuf = preflightHead ?? await file.slice(0, 4096).arrayBuffer();
       if (isStale()) return;
       const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);
       if (isStale()) return;
@@ -743,16 +752,8 @@ export function useIfcLoader() {
       }
 
       if (!pointCloudFormat && detectFormat(headBuf) === 'ifc') {
-        try { assertLocalIfcAdmission(file.size); } catch (refusal) {
-          // #10264: server upload consumes the File, never a locally acquired buffer.
-          // Refuse an unavailable/ineligible server before allocating local source bytes.
-          format = 'ifc';
-          if (target.kind === 'primary' && !useViewerStore.getState().mergeLayers && USE_SERVER && SERVER_URL && geometryKernel.serverEnabled) {
-            loadedBufferByteLength = file.size;
-            if (await tryServer({ byteLength: file.size })) return;
-          }
-          throw refusal;
-        }
+        format = 'ifc';
+        if (!await localAdmission.admit(file.size)) return;
       }
       const fileReadStart = performance.now();
       const acquired: AcquiredBuffer = pointCloudFormat
@@ -789,7 +790,7 @@ export function useIfcLoader() {
       // A SAB here is the un-unwrapped file, so `headBuf` is its head.
       format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : headBuf);
 
-      if (!USE_SERVER && format === 'ifc') assertLocalIfcAdmission(buffer.byteLength);
+      if (!USE_SERVER && format === 'ifc' && !await localAdmission.admit(buffer.byteLength)) return;
       if (geometryKernel.refuseSource(format, buffer.byteLength, { modelId, activity })) { settleLoadUi(); return; }
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
@@ -1259,11 +1260,11 @@ export function useIfcLoader() {
 
       // Native server eligibility excludes local-only fidelity modes and textured archives.
       if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '' && geometryKernel.serverEnabled) {
-        if (await tryServer(buffer)) return;
+        if (!serverAttempted && await tryServer(buffer)) return;
         // Server not available - continue with local WASM (no error logging needed)
       } else if (format === 'unknown') {
       }
-      if (format === 'ifc') assertLocalIfcAdmission(buffer.byteLength); // server fallback must pass local admission too (#10264)
+      if (format === 'ifc' && !await localAdmission.admit(buffer.byteLength)) return; // server fallback must pass local admission too (#10264)
       setProgress({ phase: 'Starting geometry streaming', percent: 10 });
       // Global streaming flag is a PRIMARY (active-model) concern; a federated
       // add must not toggle it (the former federated path never did).

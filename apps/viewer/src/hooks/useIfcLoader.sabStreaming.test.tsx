@@ -45,6 +45,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import { useIfcLoader } from './useIfcLoader.js';
+import { click, waitFor } from '@/test/render.js';
+import { loadDialogs } from '@/test/dialog-host.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
 /**
@@ -151,8 +153,9 @@ beforeEach(async () => {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
+  const { ConfirmDialogHost } = await loadDialogs();
   await act(async () => {
-    root!.render(<Probe />);
+    root!.render(<><Probe /><ConfirmDialogHost /></>);
   });
 });
 
@@ -209,7 +212,7 @@ for (const name of ['large.ifc', 'renamed.bin']) {
     it(`#10264 refuses a 1 GB+ ${kind} IFC (${name}) before reading or allocating its source`, async () => {
       const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
       const cores = Object.getOwnPropertyDescriptor(navigator, 'hardwareConcurrency');
-      Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 8 });
+      Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 4 });
       Object.defineProperty(navigator, 'hardwareConcurrency', { configurable: true, value: 32 });
       const probe: FileProbe = { arrayBuffer: 0, stream: 0 };
       const sizes: number[] = [];
@@ -242,4 +245,37 @@ for (const name of ['large.ifc', 'renamed.bin']) {
       }
     });
   }
+}
+
+for (const kind of ['primary', 'federated'] as const) {
+  for (const proceed of [false, true]) it(`#10264 ${kind}: 8 GB warning ${proceed ? 'Continue permits' : 'Cancel prevents'} source acquisition`, async () => {
+    const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 8 });
+    const probe: FileProbe = { arrayBuffer: 0, stream: 0 }, sizes: number[] = [];
+    useViewerStore.setState(fixtureModels(fixtureModel('existing')));
+    const before = new Map(useViewerStore.getState().models);
+    try {
+      await withRecordedSharedArrayBuffer(sizes, async () => {
+        let pending: Promise<void> | undefined;
+        await act(async () => { pending = hookApi!.loadFile(probedStepFile(probe, 1.26e9), { kind }); });
+        await waitFor(() => !!document.querySelector('[role="alertdialog"]'), 'memory consent opens before any source allocation');
+        assert.deepEqual(probe, { arrayBuffer: 0, stream: 0 });
+        assert.deepEqual(fileSized(sizes), []);
+        const dialog = document.querySelector('[role="alertdialog"]')!;
+        assert.match(dialog.textContent ?? '', /about 9.9 GiB/);
+        const buttons = dialog.querySelectorAll('button');
+        click(buttons[proceed ? 1 : 0]);
+        await act(async () => { await pending; });
+        assert.equal(probe.stream, proceed ? 1 : 0);
+        assert.equal(fileSized(sizes).length, proceed ? 1 : 0);
+        if (!proceed) {
+          assert.deepEqual([...useViewerStore.getState().models], [...before], 'Cancel preserves the loaded scene');
+          assert.equal(useViewerStore.getState().error, null, 'Cancel is not a load failure');
+        }
+      });
+    } finally {
+      if (memory) Object.defineProperty(navigator, 'deviceMemory', memory);
+      else Reflect.deleteProperty(navigator, 'deviceMemory');
+    }
+  });
 }

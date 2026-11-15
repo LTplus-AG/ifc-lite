@@ -669,6 +669,40 @@ export function useIfcLoader() {
         activity.published = true;
         modelCompletion?.settleModel();
       };
+      const tryServer = async (source: Pick<ArrayBuffer, 'byteLength'>): Promise<boolean> => {
+        loadStage = 'server-fetch';
+        return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId), isStale, async () => {
+          if (!modelSourceIdentity) {
+            const fingerprint = await computeSourceFingerprintFromBlob(file);
+            if (isStale()) return;
+            modelSourceIdentity = `${file.name}:${fingerprint.hex}`;
+            updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
+            placementIdentity = startLoadSourceIdentity(modelId, file, () => isStale());
+          }
+          const state = useViewerStore.getState();
+          await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
+          if (isStale()) return;
+          const serverTotalMs = trace.finish({ loadPath: 'server' });
+          console.log(`[useIfc] TOTAL LOAD TIME (server): ${serverTotalMs.toFixed(0)}ms`);
+          // Geometry attribution (#2388), server row: `is_resource_retry` and
+          // ONLY that. The retry re-enters `loadFile`, so a first attempt that
+          // fell through to WASM because the server was momentarily down, then
+          // OOMed, then retried into a recovered server, lands HERE — and
+          // without the flag that row is indistinguishable from a normal load.
+          //
+          // The two fidelity fields are deliberately NOT reported here. They
+          // describe LOCAL-WASM tessellation; the server produces canonical
+          // full-fidelity geometry under its own cache key and applies neither
+          // (see the comment on the branch condition above). Spreading
+          // `buildModelLoadedGeometryProps` would state `tessellation_tier`
+          // and `skip_small_cuts` values this load never applied — a
+          // fabricated attribution of exactly the kind #2388 exists to
+          // prevent. Absent stays absent; `is_resource_retry` is the one fact
+          // that is true on this path.
+          captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad }, snapshotFromGeometry(fileSizeMB, state.geometryResult), trace);
+          settleLoadUi(LOAD_COMPLETE);
+        });
+      };
       if (!USE_SERVER && /\.ifc$/i.test(file.name)) assertLocalIfcAdmission(file.size);
       const headBuf = await file.slice(0, 4096).arrayBuffer();
       if (isStale()) return;
@@ -707,7 +741,18 @@ export function useIfcLoader() {
         return;
       }
 
-      if (!pointCloudFormat && !USE_SERVER && detectFormat(headBuf) === 'ifc') assertLocalIfcAdmission(file.size);
+      if (!pointCloudFormat && detectFormat(headBuf) === 'ifc') {
+        try { assertLocalIfcAdmission(file.size); } catch (refusal) {
+          // #10264: server upload consumes the File, never a locally acquired buffer.
+          // Refuse an unavailable/ineligible server before allocating local source bytes.
+          format = 'ifc';
+          if (target.kind === 'primary' && !useViewerStore.getState().mergeLayers && USE_SERVER && SERVER_URL && geometryKernel.serverEnabled) {
+            loadedBufferByteLength = file.size;
+            if (await tryServer({ byteLength: file.size })) return;
+          }
+          throw refusal;
+        }
+      }
       const fileReadStart = performance.now();
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
@@ -1212,57 +1257,9 @@ export function useIfcLoader() {
         trace.milestone('cache.miss'); // Looked up, not served. Gap to geometry.pool includes server, init and source copy.
       }
 
-      // Try server parsing first (enabled by default for multi-core performance)
-      // Only for IFC4 STEP files (server doesn't support IFCX). Native
-      // file handles (Tauri) don't have an HTTP-uploadable body, so skip
-      // the server path and fall through to the WASM loader.
-      // Skip it when merge-layers is on: the server tessellates without that
-      // flag and its cache key ignores it, so a toggle+reload would still return
-      // non-merged geometry (issue #1107). Merge-layers is opt-in, so the common
-      // load keeps the server fast path.
-      //
-      // The geometry-fidelity mode (skip-small-cuts / auto-low tier) is a
-      // LOCAL-WASM display optimization and does NOT gate the server here. The
-      // server produces canonical full-fidelity geometry and caches it under its
-      // OWN key (useIfcServer: streamResult.cache_key) — it never writes the
-      // local `-sc/-tlow` cacheKey, so there is no key/geometry mismatch. Gating
-      // the server on the default-on `fast` mode would disable the multi-core
-      // server fast-path for every primary IFC load (the cause of an "overall
-      // slower" regression on server-enabled deploys); fast mode still applies on
-      // every local-path load (IFCX, merge-layers, Tauri, or server-off).
-      // A .ifcZIP source is fine on the server path: loadFromServer uploads the
-      // original `file` object (still zipped) and the server unwraps the
-      // container itself (apps/server extract_file, issue #1494) before parsing.
-      // EXCEPT texture-carrying containers (#1781): the server mesh wire format
-      // doesn't transport UVs/texture refs yet, so the server fast-path would
-      // silently render the model untextured — route those through local WASM.
+      // Native server eligibility excludes local-only fidelity modes and textured archives.
       if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '' && geometryKernel.serverEnabled) {
-        // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
-        loadStage = 'server-fetch';
-        if (await handleServerLoadAttempt(() => loadFromServer(file, buffer, () => isStale(), metadataAbort.signal, modelId), isStale, async () => {
-          const state = useViewerStore.getState();
-          await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
-          if (isStale()) return;
-          const serverTotalMs = trace.finish({ loadPath: 'server' });
-          console.log(`[useIfc] TOTAL LOAD TIME (server): ${serverTotalMs.toFixed(0)}ms`);
-          // Geometry attribution (#2388), server row: `is_resource_retry` and
-          // ONLY that. The retry re-enters `loadFile`, so a first attempt that
-          // fell through to WASM because the server was momentarily down, then
-          // OOMed, then retried into a recovered server, lands HERE — and
-          // without the flag that row is indistinguishable from a normal load.
-          //
-          // The two fidelity fields are deliberately NOT reported here. They
-          // describe LOCAL-WASM tessellation; the server produces canonical
-          // full-fidelity geometry under its own cache key and applies neither
-          // (see the comment on the branch condition above). Spreading
-          // `buildModelLoadedGeometryProps` would state `tessellation_tier`
-          // and `skip_small_cuts` values this load never applied — a
-          // fabricated attribution of exactly the kind #2388 exists to
-          // prevent. Absent stays absent; `is_resource_retry` is the one fact
-          // that is true on this path.
-          captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad }, snapshotFromGeometry(fileSizeMB, state.geometryResult), trace);
-          settleLoadUi(LOAD_COMPLETE);
-        })) return;
+        if (await tryServer(buffer)) return;
         // Server not available - continue with local WASM (no error logging needed)
       } else if (format === 'unknown') {
       }

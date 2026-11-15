@@ -137,3 +137,50 @@ it('#9538 geometry completes and load finally leaves the model property poll ali
     assert.equal(pollSignal?.aborted, false, 'the load finally must not abort model-owned properties');
   } finally { release(); await pending; }
 });
+
+for (const scenario of ['unavailable', 'ineligible', 'success'] as const) {
+  it(`#10264 server ${scenario} does not allocate an oversized local source`, async () => {
+    const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 8 });
+    const source = file('oversized-server.ifc');
+    Object.defineProperty(source, 'size', { value: 1.26e9 });
+    let fullReads = 0, largeAllocations = 0, attempts = 0;
+    Object.defineProperty(source, 'arrayBuffer', { value: async () => {
+      fullReads++; throw new Error('unexpected whole-source read #10264');
+    } });
+    const realSab = globalThis.SharedArrayBuffer;
+    globalThis.SharedArrayBuffer = new Proxy(realSab, { construct(target, args: [number]) {
+      if (args[0] >= 1e9) { largeAllocations++; throw new Error('unexpected source allocation #10264'); }
+      return Reflect.construct(target, args);
+    } });
+    mock.method(IfcServerClient.prototype, 'parseParquetStream', async (_file, onBatch) => {
+      attempts++;
+      if (scenario !== 'success') throw new Error('unavailable server #10264');
+      onBatch({ meshes: PARQUET_RESULT.meshes, batch_number: 1, decode_time_ms: 0 });
+      return { cache_key: PARQUET_RESULT.cache_key, total_meshes: 1,
+        stats: PARQUET_RESULT.stats, metadata: PARQUET_RESULT.metadata };
+    });
+    useViewerStore.setState({ mergeLayers: scenario === 'ineligible' });
+    const errors: string[] = [];
+    try {
+      await act(async () => { await api!.loadFile(source, undefined, { onLoadError: message => errors.push(message) }); });
+      assert.equal(fullReads, 0, 'no whole-file ArrayBuffer acquisition');
+      assert.equal(largeAllocations, 0, 'no file-sized shared allocation before server/fallback decision');
+      assert.equal(engineInits, 0, 'never starts an oversized local fallback');
+      assert.equal(attempts, scenario === 'ineligible' ? 0 : 1, 'eligible server upload is still attempted');
+      assert.equal(useViewerStore.getState().loading, false);
+      if (scenario === 'success') {
+        assert.deepEqual(errors, []);
+        assert.equal(useViewerStore.getState().models.values().next().value?.loadState, 'complete');
+        assert.equal(useViewerStore.getState().geometryResult?.meshes.length, 1);
+      } else {
+        assert.equal(errors.length, 1);
+        assert.match(errors[0], /local processing memory budget/);
+      }
+    } finally {
+      globalThis.SharedArrayBuffer = realSab;
+      if (memory) Object.defineProperty(navigator, 'deviceMemory', memory);
+      else Reflect.deleteProperty(navigator, 'deviceMemory');
+    }
+  });
+}

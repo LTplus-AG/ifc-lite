@@ -17,7 +17,7 @@
 //!
 //! This test DENSELY samples the WHOLE footprint on BOTH cut planes of each real
 //! opening and asserts NO output host triangle aligned with that plane covers an
-//! interior sample, plus no hairline needle and a watertight rim. It MUST FAIL on
+//! interior sample, plus no sliver, no tilted rim flap and a watertight rim. It MUST FAIL on
 //! the pre-fix tree and PASS after. Runs under `--no-default-features` (pure-Rust
 //! kernel, NO Manifold).
 
@@ -111,45 +111,74 @@ fn covers(p: [f64; 3], t: &[[f64; 3]; 3], band: f64) -> bool {
     (s0 > eps && s1 > eps && s2 > eps) || (s0 < -eps && s1 < -eps && s2 < -eps)
 }
 
-fn tri_aspect(t: &[[f64; 3]; 3]) -> f64 {
-    let d = |p: [f64; 3], q: [f64; 3]| norm(sub(p, q));
-    let (e0, e1, e2) = (d(t[0], t[1]), d(t[1], t[2]), d(t[2], t[0]));
-    let mn = e0.min(e1).min(e2);
-    let mx = e0.max(e1).max(e2);
-    if mn > 1e-9 {
-        mx / mn
-    } else {
-        f64::INFINITY
-    }
+/// Longest edge over the altitude onto it: the mesh census's aspect.
+fn census_aspect(t: &[[f64; 3]; 3]) -> f64 {
+    let longest = [sub(t[1], t[0]), sub(t[2], t[1]), sub(t[0], t[2])].iter().map(|e| dot(*e, *e)).fold(0.0, f64::max);
+    longest / norm(cross(sub(t[1], t[0]), sub(t[2], t[0])))
 }
 
-fn worst_aspect(tris: &[[[f64; 3]; 3]]) -> f64 {
-    let mut worst = 0.0_f64;
-    for t in tris {
-        let a = tri_aspect(t);
-        if a.is_finite() {
-            worst = worst.max(a);
-        }
-    }
-    worst
-}
+/// Normals closer than this are one plane to the flap oracle: a split leaves
+/// its pieces this close, well under the 0.0002 degrees #1112's roof facets
+/// now lie apart.
+const COPLANAR_DEG: f64 = 1.0e-5;
 
-/// Worst aspect among output triangles INCIDENT to an opening-rim vertex. This
-/// targets the #1007 rim-corner CHAMFER directly: a thin roof-slope flap fanned
-/// from a far corner to two rim points a few cm apart. It sits on the host roof
-/// plane OUTSIDE the cap footprint, so the footprint-bridge sampling structurally
-/// cannot see it — but it touches a rim vertex. `rim` is the set of opening cut
-/// vertices; a triangle is rim-incident if any of its vertices coincides with one.
-fn worst_rim_incident_aspect(tris: &[[[f64; 3]; 3]], rim: &[[f64; 3]]) -> f64 {
+/// The #1007 rim-corner CHAMFER, measured as what made it show: a thin flap
+/// fanned from a far roof corner to two rim points, lying in a plane of its
+/// own. It sat alone in its plane bucket, a fraction of a degree off the roof
+/// slope around it, and shaded as a facet. The footprint-bridge sampling cannot
+/// see it (it lies outside the cap footprint), but it touches a rim vertex.
+///
+/// Returns the largest tilt, in degrees, of a thin triangle touching `rim`
+/// against the neighbour it lies flattest with, outside the triangles in its
+/// own plane (within [`COPLANAR_DEG`]). A thin triangle that is part of a flat
+/// face reads 0 whatever its shape, and so does a split one. Thin is past 8:1
+/// by the census aspect. A plane with nothing outside it reads 0, a triangle
+/// with no neighbour at all 180.
+fn worst_rim_flap_tilt_deg(tris: &[[[f64; 3]; 3]], rim: &[[f64; 3]]) -> f64 {
     let near = |p: [f64; 3]| rim.iter().any(|r| norm(sub(p, *r)) < 5e-3);
-    let mut worst = 0.0_f64;
-    for t in tris {
-        if t.iter().any(|p| near(*p)) {
-            let a = tri_aspect(t);
-            if a.is_finite() {
-                worst = worst.max(a);
-            }
+    let key = |p: [f64; 3]| [0, 1, 2].map(|k| (p[k] * 1.0e4).round() as i64);
+    let edges = |t: &[[f64; 3]; 3]| {
+        [0, 1, 2].map(|i| {
+            let (u, v) = (key(t[i]), key(t[(i + 1) % 3]));
+            if u < v { (u, v) } else { (v, u) }
+        })
+    };
+    let mut by_edge: BTreeMap<_, Vec<usize>> = BTreeMap::new();
+    for (i, t) in tris.iter().enumerate() {
+        for e in edges(t) {
+            by_edge.entry(e).or_default().push(i);
         }
+    }
+    let mut worst = 0.0_f64;
+    for (i, t) in tris.iter().enumerate() {
+        if !t.iter().any(|p| near(*p)) || !(census_aspect(t) > 8.0) {
+            continue;
+        }
+        let n = tri_normal(t);
+        let angle = |j: usize| dot(n, tri_normal(&tris[j])).clamp(-1.0, 1.0).acos().to_degrees();
+        // The triangles in its own plane, as a split leaves its pieces: a
+        // piece is measured against what lies around the group, not against
+        // a sibling.
+        let mut group = vec![i];
+        let mut k = 0;
+        while k < group.len() {
+            for &j in edges(&tris[group[k]]).iter().flat_map(|e| by_edge[e].iter()) {
+                if !group.contains(&j) && angle(j) < COPLANAR_DEG {
+                    group.push(j);
+                }
+            }
+            k += 1;
+        }
+        let flattest = group
+            .iter()
+            .flat_map(|&g| edges(&tris[g]).into_iter())
+            .flat_map(|e| by_edge[&e].iter())
+            .filter(|j| !group.contains(j))
+            .map(|&j| angle(j))
+            .reduce(f64::min)
+            // Nothing outside its plane: a flat surface, unless it is alone.
+            .unwrap_or(if group.len() > 1 { 0.0 } else { 180.0 });
+        worst = worst.max(flattest);
     }
     worst
 }
@@ -205,11 +234,13 @@ fn worst_bridged_samples(path: &str, host_id: u32) -> Option<usize> {
     let out_tris = mesh_tris(&out);
     assert!(!out_tris.is_empty(), "cut host #{host_id} produced an empty mesh");
 
-    // No hairline needle flap anywhere in the cut.
-    let wa = worst_aspect(&out_tris);
-    assert!(
-        wa < 1.0e4,
-        "host #{host_id}: an opening-spanning needle survived (worst aspect {wa:.0}:1)",
+    // No sliver anywhere in the cut, by the mesh census's measure (longest edge
+    // over altitude past 50:1). The cut reads 41:1 at worst.
+    let shape = ifc_lite_testkit::mesh::triangle_shape(&out.positions, &out.indices);
+    assert_eq!(
+        shape.slivers, 0,
+        "host #{host_id}: the cut left {} sliver(s), worst {:.0}:1",
+        shape.slivers, shape.max_aspect,
     );
     // Non-regression on torn rim: this BREP host leaves ~41–44 open facet-seam
     // edges either way; a broken cut that tears the opening rim open balloons this
@@ -234,26 +265,27 @@ fn worst_bridged_samples(path: &str, host_id: u32) -> Option<usize> {
             }
         }
     }
-    // RIM-CORNER CHAMFER guard (#1007): a thin roof-slope flap fanned from a far
-    // corner to two rim points a few cm apart. It lies on the host roof plane
-    // OUTSIDE the cap footprint, so the footprint-bridge sampling can never catch
-    // it — but it touches a rim vertex and renders as a visible chamfer. History:
-    // 74:1 (flush-pad under-tune) → 25:1 (pad 0.30, still visible) → 7.74:1 after
-    // the root fix (facet_weld pre-cut jitter weld + CDT-refined consolidate +
-    // post-cut >8:1 bisection, which targets aspect ≤8 by construction). The
-    // 10:1 bound sits just above the construction target and far below the 25:1
-    // defect, so any regression of the far-corner fan fails clearly.
-    let wri = worst_rim_incident_aspect(&out_tris, &rim);
+    // RIM-CORNER CHAMFER guard (#1007): see `worst_rim_flap_tilt_deg`. The roof
+    // slope came back from the f32 import with facets about 0.09 degrees apart,
+    // and the far-corner fan was emitted alone in its plane
+    // (`strategy/inner.rs`). Today the fan lies in the slope's plane, 0.0002
+    // degrees off its neighbours; the bound sits between the two.
+    //
+    // This used to bound the longest-over-shortest edge ratio of rim triangles
+    // at 10:1, which the post-cut bisection met by splitting the fan. Splitting
+    // a triangle at a point on its own edge leaves the surface where it was, so
+    // that bound measured the bisection and not the flap.
+    let tilt = worst_rim_flap_tilt_deg(&out_tris, &rim);
     eprintln!(
-        "[1007-metrics] host #{host_id}: worst_rim_incident_aspect={wri:.2} \
-         worst_aspect={wa:.2} open_boundary_edges={ob} out_tris={}",
+        "[1007-metrics] host #{host_id}: rim_flap_tilt_deg={tilt:.5} worst_aspect={:.2} \
+         open_boundary_edges={ob} out_tris={}",
+        shape.max_aspect,
         out_tris.len()
     );
     assert!(
-        wri < 10.0,
-        "host #{host_id}: a rim-corner chamfer/flap survived on the roof slope \
-         (worst rim-incident aspect {wri:.1}:1) — the opening cut leaves a thin tab \
-         at the opening corner",
+        tilt < 0.02,
+        "host #{host_id}: a thin triangle at the opening rim is tilted {tilt:.3} degrees out of \
+         the face around it: the rim-corner flap is back",
     );
 
     let mut worst = 0usize;
@@ -365,6 +397,33 @@ fn real_1112_roof_openings_have_no_bridging_triangle() {
         "a host triangle bridges a real #1112 opening footprint ({worst} interior samples covered) \
          — the exact-kernel opening cut still leaves a flap over the hole",
     );
+}
+
+/// The flap oracle reads what it is meant to: a thin triangle fanned from a far
+/// corner to two rim points reads 0 while it lies in the face around it, and
+/// its tilt once one rim point leaves that plane far enough to turn it by the
+/// 0.09 degrees the #1112 facets were apart.
+#[test]
+fn rim_flap_oracle_reads_a_tilted_fan_and_not_a_flat_one() {
+    let far = [0.0, 5.0, 0.0];
+    let fan = |lift: f64| {
+        let rim = [[0.0, 0.0, 0.0], [0.2, 0.0, lift]];
+        // The thin fan, and the slope either side of it.
+        (vec![[rim[0], rim[1], far], [rim[1], [4.0, 0.0, 0.0], far], [[-4.0, 0.0, 0.0], rim[0], far]], rim)
+    };
+    let (flat, rim) = fan(0.0);
+    assert!(census_aspect(&flat[0]) > 8.0, "the fixture's fan must be thin");
+    assert!(worst_rim_flap_tilt_deg(&flat, &rim) < 1e-9);
+    let (tilted, rim) = fan(0.2 * 0.09_f64.to_radians().tan());
+    let read = worst_rim_flap_tilt_deg(&tilted, &rim);
+    assert!(read > 0.08 && read < 0.1, "tilt read {read}");
+    // Split at the middle of its edge to the far corner, with the slope
+    // triangle across that edge, the tilted fan reads the same.
+    let (t, right) = (tilted[0], tilted[1]);
+    let mid = [0, 1, 2].map(|k| 0.5 * (t[1][k] + t[2][k]));
+    let split = vec![[t[0], t[1], mid], [t[0], mid, t[2]], [right[0], right[1], mid], [mid, right[1], right[2]], tilted[2]];
+    let read_split = worst_rim_flap_tilt_deg(&split, &rim);
+    assert!((read_split - read).abs() < 1e-6, "split tilt read {read_split}, unsplit {read}");
 }
 
 /// Schependomlaan window opening — same strict assertion, SKIP-IF-ABSENT. Models a

@@ -16,10 +16,10 @@ use super::frame::{obb_overlaps, PrismFrame};
 use super::kit::{dot, V3};
 use super::opening_prism::prepare_prism;
 use super::ptri::{mesh_from_ptris, ptris_from_mesh, PTri};
-use super::{defer, finish, finish_cut_verdict, record_cut, tjunction_close};
+use super::{defer, finish, finish_cut_verdict, reconsolidate, record_cut, tjunction_close};
 use crate::math::aabb::Aabb3;
 use crate::mesh::Mesh;
-use crate::mesh_check::{closed_enough_to_emit, ClosureVerdict};
+use crate::mesh_check::closed_enough_to_emit;
 use crate::program::openings::execute::Execution;
 
 // ─────────────────────────────── the driver ─────────────────────────────────
@@ -223,10 +223,10 @@ impl Execution {
         // watertight-preserving), collapsing each planar face back to a few
         // large triangles — 2-3x fewer output triangles on the advanced_model
         // walls, matching the exact kernel's tessellation density.
-        let consolidated = crate::csg::ClippingProcessor::consolidate_prism_cut(out, mesh);
+        let (consolidated, consolidated_closure) =
+            reconsolidate::consolidate(out, mesh, || mesh_from_ptris(&tris, mesh));
         let boundary = consolidated.boundary;
         out = consolidated.mesh;
-        let consolidated_closure = ClosureVerdict::for_mesh(&out);
         if consolidated_closure.closed_enough_to_emit()
             && !consolidated_change_is_measurable(mesh, &out)
         {
@@ -250,7 +250,7 @@ impl Execution {
         // one side of an overlapping chain pair and amplify the sub-grid
         // mismatch, and the split slivers can fall below the clean-degenerate
         // grid — so accept the refined mesh only when it is STRICTLY closed
-        // and a cleaned probe stays at least hairline-closed.
+        // and stays so once cleaned (`finish::can_adopt_refinement`).
         if residual_idx.is_empty() && consolidated_closure.is_directed_closed() {
             // SCOPED to the committed cutters' padded AABBs: #1007's target is
             // the high-aspect corner sliver the CUT emits at an opening rim, and
@@ -282,9 +282,7 @@ impl Execution {
                     }
                     refined = next;
                 }
-                let mut probe = refined.clone();
-                probe.clean_degenerate();
-                if finish::can_adopt_refinement(boundary, &refined, &probe) {
+                if finish::can_adopt_refinement(boundary, &refined) {
                     out = refined;
                 }
             }

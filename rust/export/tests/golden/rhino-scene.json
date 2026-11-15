@@ -19,11 +19,11 @@
       "bytes": 4872
     },
     "duplex/blob": {
-      "fnv1a64": "cfc0e0027a835651",
-      "bytes": 1524880
+      "fnv1a64": "001db0078ff655bb",
+      "bytes": 1524888
     },
     "duplex/manifest": {
-      "fnv1a64": "88d522c57dcfd869",
+      "fnv1a64": "2c004105ef086f0f",
       "bytes": 1104157
     },
     "mapped_instances_multi_item/blob": {

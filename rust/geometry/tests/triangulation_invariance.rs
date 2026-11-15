@@ -1489,7 +1489,14 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
         // closes and is the result: 7552 -> 5884 triangles, closed both ways,
         // volume 1437.0998 m3 and area 2905.754 m2 unchanged, triangles past
         // 50:1 down from 2339 to 849.
-        [(12381, 0, 0, 0, 5884), (32810, 3, 3, 3, 3207)]
+        //
+        // Prism finish: #32810's three open edges were one T-junction. The
+        // final cleanup dropped a sub-grid sliver whose apex the neighbouring
+        // faces end at, and the hairline bar let that through. The sliver
+        // came from the rim refinement, which is now adopted only when its
+        // cleanup stays closed: 3/3/3 -> 0/0/0 and 3207 -> 3064 triangles,
+        // volume 881.2597 m3 against IfcOpenShell 0.8.2's 881.3038 (-0.005%).
+        [(12381, 0, 0, 0, 5884), (32810, 0, 0, 0, 3064)]
     };
     for &alt in triangulators {
         set_alt(alt);
@@ -2045,7 +2052,12 @@ const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
 // (11 -> 414, 0 -> 274) when a noise-level fold made consolidation stop
 // restoring the closed kernel output; #7949 is the fix, so #54549 stays on its
 // clean row.
-const ISSUE_068_KNOWN_TORN_HOSTS: usize = 13;
+// Prism finish: 13 -> 2. Eleven hosts whose only defect was a T-junction the
+// prism cut's final cleanup opened now close: #349479 (open 12 -> 0), #351103
+// (7 -> 0), #349767, #358944, #360795, #628727, #639525, #642493, #886572 and
+// #923985 (6 -> 0 each) and #638255 (3 -> 0). Their volumes agree with
+// IfcOpenShell 0.8.2 to 0.005% or better (worst: #358944, +220 cm3 of 4.156 m3).
+const ISSUE_068_KNOWN_TORN_HOSTS: usize = 2;
 
 /// Coverage floors, one per heavy fixture, bounding BOTH the checked-in golden
 /// and every sweep that gates or blesses against it. [`MIN_VOID_HOSTS`]'s job,

@@ -8,6 +8,14 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Gaussian capture memory ownership (#9018, #10401)
+
+**Accepted: the M5 memory budgets (peak 3x, retained 2x the file size) are met only by three changes together.** The dropped file is the only full copy of the splats, streamed in bounded slices. The CPU keeps just the depth-sort and clip columns. Higher-order SH is stored as float16 on the GPU. Measured on Pop with the round-6 harness unchanged; numbers are in the PR.
+- **Removing the CPU copy alone was not enough.** The viewer baseline, render targets and float32 GPU splats already exceed the retained budget. Float16 SH (with a float32 fallback when a coefficient would overflow) is the remaining lever. It changes pixels within a small envelope, and the maintainer approved that trade on 2026-11-15.
+- **The decode worker must not read the file whole.** It held the file bytes plus a materialized table, invisible to the page-heap metric. It now range-reads chunks through upstream's lazy reader. Measure memory across all isolates (page and workers) as well as the page heap. Otherwise moving work into a worker can fake a pass.
+- **The retained budget is sampled before GC.** Per-slice garbage counted against it until the decoded buffers were recycled back to the worker, normalization was done in place and staging was kept small.
+- **The trade:** placement edits, device-loss recovery and SH-layout changes re-read the source instead of reusing a CPU copy. A validating summary pass precedes streaming. It runs in parallel helper workers owned by the decode worker, so the first visible frame did not regress.
+
 ## Reopen interactive mark with a geometry-restore gate (#10218, merged)
 
 **Accepted: a reopened model counts as interactive when its stored scene is shown and metadata is published, while geometry-dependent input waits for geometry restore.**

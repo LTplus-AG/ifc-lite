@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
+import type { GaussianRowSource } from './gaussian-rows.js';
 import type { GaussianComposition, GaussianCompositionMode, GaussianCompositionReport } from './gaussian-composition.js';
 
 /**
@@ -14,9 +15,18 @@ export interface GaussianSplatPlacement {
   readonly matrix: Float64Array | readonly number[];
 }
 
-/** One normalized capture. Ownership of `attributes` transfers to the renderer on a successful add. */
-export interface GaussianSplatAssetInput {
-  readonly attributes: NormalizedGaussianAttributes;
+/**
+ * One asset to add. `rows` is its canonical, re-readable source: the renderer keeps
+ * no CPU copy of the rows and reads them again for every re-placement, repack and
+ * device recovery (#9018). `attributes` is shorthand for `gaussianRowsFromAttributes`,
+ * which keeps the caller's arrays alive for those re-reads.
+ */
+export type GaussianSplatAssetInput = GaussianSplatAssetCommon & (
+  | { readonly rows: GaussianRowSource; readonly attributes?: never }
+  | { readonly attributes: NormalizedGaussianAttributes; readonly rows?: never }
+);
+
+export interface GaussianSplatAssetCommon {
   readonly placement: GaussianSplatPlacement;
   /** The caller's reserved federation slot; used only for the scene model translation and ownership. */
   readonly modelIndex: number;

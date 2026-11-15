@@ -15,3 +15,4 @@ export type {
 } from './gaussian-types.js';
 
 export { positionedGaussianChunks } from './gaussian-export.js';
+export { gaussianRowsFromAttributes, type GaussianRowSource } from './gaussian-rows.js';

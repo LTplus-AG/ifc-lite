@@ -10,9 +10,9 @@ export type {
   GaussianComposition, GaussianCompositionFallback, GaussianCompositionMode, GaussianCompositionReport, GaussianTransparentLayers,
 } from './gaussian-composition.js';
 export type {
-  GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetCommon, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle,
+  GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle,
   GaussianSplatPlacement, GaussianSplatState, GaussianSplatStats,
 } from './gaussian-types.js';
 
 export { positionedGaussianChunks } from './gaussian-export.js';
-export { gaussianRowsFromAttributes, effectiveShDegree, type GaussianRowSource, type GaussianShDegree } from './gaussian-rows.js';
+export { gaussianRowsFromAttributes, type GaussianRowSource } from './gaussian-rows.js';

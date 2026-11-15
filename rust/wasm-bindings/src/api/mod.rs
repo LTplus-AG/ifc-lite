@@ -30,6 +30,7 @@ mod content_caches;
 mod content_install;
 mod content_lazy;
 mod extrusion_definitions;
+#[cfg(feature = "export")] mod export_cityjson;
 #[cfg(feature = "export")] mod export_data;
 #[cfg(feature = "export")] mod export_dfjson;
 #[cfg(feature = "export")] mod export_glb;

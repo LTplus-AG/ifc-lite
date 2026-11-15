@@ -14,6 +14,7 @@ import type { KmzAltitudeMode, TessellationQuality } from './types.js';
 import type { RtcFrame } from './rtc-frame.js';
 import type { HbjsonStats } from './hbjson-stats.js';
 import * as energyExport from './energy-export-bridge.js';
+import { callExportCityJson, type CityJsonExport, type CityJsonExportOptions } from './cityjson-export.js';
 import { callExportLandXmlTerrain, type LandXmlTerrainExport, type LandXmlTerrainExportOptions } from './landxml-terrain-export.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
 import { readNodeWasmBytes } from './node-wasm-bytes.js';
@@ -691,6 +692,11 @@ export class IfcLiteBridge {
     return this.runExport('exportHbjsonWithStats', content, (api) =>
       energyExport.callExportHbjsonWithStats(api, content, name),
     );
+  }
+
+  /** IFC → CityJSON 2.0; see `cityjson-export.ts`. Refusals throw `CITYJSON_REFUSED:`. */
+  exportCityJson(content: Uint8Array, options: CityJsonExportOptions): CityJsonExport {
+    return this.runExport('exportCityJson', content, (api) => callExportCityJson(api, content, options));
   }
 
   /** IFC terrain → LandXML 1.2; see `landxml-terrain-export.ts`. Refusals throw `TERRAIN_REFUSED:`. */

@@ -35,7 +35,8 @@ export { mergeGeometryDiagnostics } from './diagnostics.js';
 export type { HbjsonStats } from './hbjson-stats.js'; // consumed by the CLI + viewer energy-export UI
 
 // Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
-export { NO_RENDER_GEOMETRY, isNoRenderGeometryError, TERRAIN_REFUSED, terrainRefusalReason } from './export-errors.js';
+export { NO_RENDER_GEOMETRY, isNoRenderGeometryError, TERRAIN_REFUSED, terrainRefusalReason, CITYJSON_REFUSED, cityJsonRefusalReason } from './export-errors.js';
+export type { CityJsonExport, CityJsonExportOptions } from './cityjson-export.js';
 export type { LandXmlTerrainExport, LandXmlTerrainExportOptions, LandXmlTerrainSurface } from './landxml-terrain-export.js';
 
 // The index-parallel layouts the geometry-hash pass emits — six values per id
@@ -106,6 +107,7 @@ import type { GeometryMeshingSettings } from './meshing-settings.js';
 import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
 import type { HbjsonStats } from './hbjson-stats.js';
 import type { LandXmlTerrainExport, LandXmlTerrainExportOptions } from './landxml-terrain-export.js';
+import type { CityJsonExport, CityJsonExportOptions } from './cityjson-export.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
@@ -1458,6 +1460,16 @@ export class GeometryProcessor {
   /** Export the `IfcSpace` volumes in `buffer` as Honeybee HBJSON. Null if not initialized. */
   exportHbjson(buffer: Uint8Array, name: string): Uint8Array | null {
     return this.bridge?.isInitialized() ? this.bridge.exportHbjson(buffer, name) : null;
+  }
+
+  /**
+   * Export the model as CityJSON 2.0 (or CityJSONSeq with `sequence`). Null if
+   * not initialized; a model with no `IfcBuilding` throws `CITYJSON_REFUSED:`.
+   * Unresolvable georeferencing is not an error: the result is local and
+   * `warnings` says why.
+   */
+  exportCityJson(buffer: Uint8Array, options: CityJsonExportOptions = {}): CityJsonExport | null {
+    return this.bridge?.isInitialized() ? this.bridge.exportCityJson(buffer, options) : null;
   }
 
   /** Export terrain products (express ids) as LandXML 1.2. Null if not initialized; a refusal throws `TERRAIN_REFUSED:`. */

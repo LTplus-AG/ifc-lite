@@ -11,6 +11,9 @@ description = "Domain-format exporters for ifc-lite (HBJSON, OBJ, glTF/GLB, CSV,
 [dependencies]
 ifc-lite-core = { workspace = true }
 ifc-lite-geometry = { workspace = true }
+# 2D polygon union of per-element footprint outlines (CityJSON LoD0/LoD1);
+# the version `ifc-lite-geometry` already builds with.
+i_overlay = "8.0"
 geometry-predicates.workspace = true
 ifc-lite-processing = { workspace = true }
 rustc-hash.workspace = true

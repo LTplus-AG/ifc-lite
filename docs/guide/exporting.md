@@ -209,6 +209,7 @@ flowchart LR
         JSON["JSON-LD"]
         CSV["CSV"]
         LandXML["LandXML (terrain)"]
+        CityJSON["CityJSON 2.0"]
     end
 
     subgraph Uses["Use Cases"]
@@ -218,6 +219,7 @@ flowchart LR
         Linked["Linked Data"]
         Spreadsheet["Spreadsheets"]
         Civil["Civil / Survey Tools"]
+        GIS["City Models / GIS"]
     end
 
     GLBIn --> Viewer
@@ -227,6 +229,7 @@ flowchart LR
     IFC --> JSON --> Linked
     IFC --> CSV --> Spreadsheet
     IFC --> LandXML --> Civil
+    IFC --> CityJSON --> GIS
 ```
 
 ## glTF / GLB Export
@@ -1040,6 +1043,109 @@ or scale. The mapping table and the full list of refusals are in the
 [LandXML guide](landxml.md#ifc-terrain-landxml). The map conversion is interpreted the same way
 as in [map units](#map-units-for-interoperability) and
 [map rotation and scale](#map-rotation-and-scale-for-interoperability).
+
+## CityJSON Export
+
+A model's buildings can be exported as [CityJSON 2.0](https://www.cityjson.org/specs/2.0.1/),
+the JSON encoding of the OGC CityGML 3.0 data model that city-model tools read (3DBAG serves
+it; cjio and the QGIS CityJSON loader open it). CityJSONSeq (`.city.jsonl`, one `CityJSONFeature` per
+building) is written with `sequence`.
+
+```bash
+ifc-lite export model.ifc --format cityjson --out model.city.json
+ifc-lite export model.ifc --format cityjsonseq --out model.city.jsonl
+# buildings only (LoD0 + LoD1), 1 cm grid
+ifc-lite export model.ifc --format cityjson --blocks-only --scale 0.01 --out blocks.city.json
+```
+
+```typescript
+import { cityJsonRefusalReason } from '@ifc-lite/geometry';
+
+try {
+  const city = gp.exportCityJson(bytes, { scale: 0.001, elementGeometry: true }); // null before init()
+  if (city) {
+    await saveFile('model.city.json', city.text);
+    console.log(city.referenceSystem ?? 'local coordinates', city.warnings);
+  }
+} catch (error) {
+  const reason = cityJsonRefusalReason(error); // null for anything but a refusal
+  if (reason === null) throw error;
+  console.warn(`Not exported: ${reason}`); // e.g. the model has no IfcBuilding
+}
+```
+
+### Mapping
+
+| IFC | CityJSON City Object | Geometry |
+|-----|----------------------|----------|
+| `IfcBuilding` | `Building` | LoD0 footprint (`MultiSurface`), LoD1 block (`Solid`) |
+| `IfcBuilding` decomposing another `IfcBuilding` | `BuildingPart` (parent: that building) | LoD0, LoD1 |
+| `IfcBuildingStorey` | `BuildingStorey` (parent: building) | none |
+| `IfcSpace` | `BuildingRoom` (parent: building) | LoD3 IFC body (`MultiSurface`) |
+| `IfcBuildingElement` / `IfcBuiltElement` subtypes (walls, slabs, roofs, beams, columns, doors, windows, stairs, coverings, curtain walls, …), `IfcElementAssembly`, `IfcElementComponent` | `BuildingConstructiveElement` | LoD3 IFC body |
+| `IfcDistributionElement` subtypes, `IfcRailing`, `IfcShadingDevice`, `IfcChimney`, `IfcTransportElement`, `IfcBuildingElementProxy`, other `IfcElement` | `BuildingInstallation` | LoD3 IFC body |
+| `IfcFurnishingElement` subtypes | `BuildingFurniture` | LoD3 IFC body |
+| `IfcOpeningElement` and other `IfcFeatureElement`, `IfcVirtualElement` | not written (they cut or annotate, they are not building parts) | |
+| elements outside every `IfcBuilding` (site elements) | not written; a warning counts them | |
+
+CityJSON 2.0 lets an installation, constructive element, piece of furniture or storey have only a
+`Building`, `BuildingPart` or `BuildingRoom` as parent, so elements hang off their building (or the
+room that contains them), not off their storey, and IFC decomposition below an element (stair
+flights, curtain-wall panels) is flattened to the element's parent. Storey membership is kept as
+the `ifcBuildingStorey` attribute (the storey's City Object id).
+
+City Object ids are the IFC `GlobalId` (`ifc-<express id>` when it is missing or not unique).
+Attributes: `GlobalId`, `Name`, `Description`, `ObjectType`, `LongName`, `PredefinedType` and the
+storey `Elevation` (metres) under their EXPRESS names; `ifcClass`; `ifcPropertySets` (every set of a
+building, the `Pset_*Common` set of rooms and elements); CityGML's `measuredHeight` (the LoD1 block
+height) and `yearOfConstruction` (`Pset_BuildingCommon.YearOfConstruction`). A Swiss federal building
+identifier `EGID` in any property set of the building, and a parcel identifier `EGRID` in the
+building's or its site's, are surfaced as top-level `EGID` / `EGRID` attributes.
+
+### Levels of detail
+
+- **LoD0**: the footprint, at the lowest point of the building's constructive elements and
+  installations. It is the exact outline of their vertical projection (the union of every element's
+  projected triangles, the same i_overlay path the plan drawings use), so it follows overhangs: the
+  maximal horizontal extent, which CityGML 3.0 allows as LoD0 (footprint or roof-edge
+  representation). No generalisation beyond dropping vertices within half a grid step of a line. An
+  element with more than 50,000 projected triangles is outlined by its convex hull, with a warning.
+- **LoD1**: that outline extruded from the lowest to the highest point of the same elements, one
+  flat roof: the CityGML block model. A closed, outward-oriented `Solid` when the outline is one
+  polygon (holes become inner walls), a `MultiSurface` of the same faces when the building has
+  several disjoint parts. Its faces carry `GroundSurface`, `RoofSurface` and `WallSurface` semantics,
+  which the construction makes unambiguous.
+- **LoD3**: rooms and elements carry their IFC body tessellated by the ifc-lite geometry pipeline
+  (openings cut), as triangles. It is design geometry, not generalised, so it claims CityGML 3.0's most
+  detailed LoD. No `Solid` is claimed for it. CityJSON forbids semantic surfaces on
+  `BuildingConstructiveElement`, so the element class travels in `ifcClass` instead.
+
+The older `generateLod0` / `generateLod1` helpers are not used: their LOD0 is a per-element
+bounding box (a 0.2 m cube where the element has no `IfcBoundingBox` representation), not a
+footprint.
+
+### Georeferencing
+
+When the model has exactly one `IfcMapConversion` (or `IfcMapConversionScaled`) for its 3D `Model`
+context, to an `IfcProjectedCRS` whose `Name` is an EPSG code (`EPSG:2056`, an OGC URN or URL), every
+vertex is taken through the full conversion: eastings, northings, orthogonal height, rotation, scale
+and the IFC4X3 per-axis factors, by the same code as the [LandXML terrain export](#landxml-terrain-export)
+and the same rules as [map units](#map-units-for-interoperability). Coordinates are written in metres
+for a metric map unit (in the map unit itself, with a warning, otherwise) and
+`metadata.referenceSystem` is `https://www.opengis.net/def/crs/EPSG/0/<code>`. A compound name
+(`EPSG:2056+5728`) writes its horizontal code with a warning.
+
+Without a resolvable conversion (none, several, a CRS name that is not an EPSG code, a unit that
+cannot be converted exactly) the model is written in local IFC world coordinates in metres, Z up,
+without a reference system, and `warnings` says why. A CRS is never guessed.
+
+### Vertices
+
+Vertices are integers on the `scale` grid (default `0.001`: millimetres) with
+`transform.translate` at the grid minimum, deduplicated on the grid; vertices left unused by a ring
+that collapses on the grid are dropped. A model with no `IfcBuilding` in its spatial structure is
+refused (`CITYJSON_REFUSED:`) rather than written as an empty city model. Output validates against
+the official CityJSON 2.0.2 schemas (`packages/cli/src/commands/export-cityjson.test.ts`).
 
 ## Other Formats via GeometryProcessor
 

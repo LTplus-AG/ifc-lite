@@ -6718,6 +6718,9 @@
   "@ifc-lite/geometry": [
     "AABB: interface",
     "BufferBuilder: class",
+    "CITYJSON_REFUSED: const",
+    "CityJsonExport: interface",
+    "CityJsonExportOptions: interface",
     "CoordinateHandler: class",
     "CoordinateInfo: interface",
     "DEFAULT_GEOM_HASH_TOLERANCE: const",
@@ -6800,6 +6803,7 @@
     "WorkerCountInputs: interface",
     "WorkerCountResult: interface",
     "applySpatialPlacement: function",
+    "cityJsonRefusalReason: function",
     "compileSharedWasmModule: function",
     "computeWorkerCount: function",
     "createPlatformBridge: function",

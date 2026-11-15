@@ -17,17 +17,20 @@ use crate::step_map_transform::preflight;
 
 /// The target CRS a terrain's coordinates are written in.
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct Crs {
+pub(crate) struct Crs {
     pub name: String,
     pub geodetic_datum: Option<String>,
     pub vertical_datum: Option<String>,
 }
 
 /// Local (project-unit) coordinates to map metres for one context.
-pub(super) struct MapFrame {
+pub(crate) struct MapFrame {
     georef: GeoReference,
     /// Metres per map unit (`IfcProjectedCRS.MapUnit`, else the project unit).
     map_metres: f64,
+    /// The map unit is an `IfcSIUnit` (a metre, possibly prefixed), not a
+    /// conversion-based unit such as a foot.
+    map_unit_si: bool,
     pub crs: Crs,
 }
 
@@ -37,13 +40,31 @@ impl MapFrame {
         let (e, n, h) = self.georef.local_to_map(x, y, z);
         [n * self.map_metres, e * self.map_metres, h * self.map_metres]
     }
+
+    /// `(easting, northing, height)` in map units, from local project-unit
+    /// coordinates.
+    pub fn to_map(&self, x: f64, y: f64, z: f64) -> [f64; 3] {
+        let (e, n, h) = self.georef.local_to_map(x, y, z);
+        [e, n, h]
+    }
+
+    /// Metres per map unit.
+    pub fn map_metres(&self) -> f64 {
+        self.map_metres
+    }
+
+    /// Whether the map unit is a (prefixed) SI metre.
+    pub fn map_unit_si(&self) -> bool {
+        self.map_unit_si
+    }
 }
 
 /// What a whole-file scan has to find once, whatever terrains are selected.
-pub(super) struct ModelFacts {
+pub(crate) struct ModelFacts {
     /// `(id, type, SourceCRS)` of every `IfcMapConversion` / `…Scaled`.
     conversions: Vec<(u32, IfcType, Option<u32>)>,
     project_metres: f64,
+    project_unit_si: bool,
     pub project_name: Option<String>,
 }
 
@@ -63,14 +84,24 @@ impl ModelFacts {
             return Err(format!("the model has {} IfcProject entities; exactly one is required to resolve its length unit", projects.len()));
         };
         let project = decode(decoder, project_id)?;
-        let project_metres = project_length_metres(&project, decoder)?;
+        let (project_metres, project_unit_si) = project_length_metres(&project, decoder)?;
         let project_name = text(&project, slot::IfcProject::NAME).or_else(|| text(&project, slot::IfcProject::LONG_NAME));
         let mut conversions = Vec::with_capacity(conversion_ids.len());
         for (id, kind) in conversion_ids {
             let source = decode(decoder, id)?.ref_at(slot::IfcMapConversion::SOURCE_CRS);
             conversions.push((id, kind, source));
         }
-        Ok(Self { conversions, project_metres, project_name })
+        Ok(Self { conversions, project_metres, project_unit_si, project_name })
+    }
+
+    /// Metres per project length unit.
+    pub fn project_metres(&self) -> f64 {
+        self.project_metres
+    }
+
+    /// The `IfcMapConversion` operations found, as `(id, SourceCRS)`.
+    pub fn conversion_sources(&self) -> impl Iterator<Item = (u32, Option<u32>)> + '_ {
+        self.conversions.iter().map(|(id, _, source)| (*id, *source))
     }
 
     /// The map frame for a representation authored in `context`: the one
@@ -113,9 +144,12 @@ impl ModelFacts {
             vertical_datum: text(&target, slot::IfcProjectedCRS::VERTICAL_DATUM),
         };
         // IFC: an omitted MapUnit is the project length unit.
-        let map_metres = match target.ref_at(slot::IfcProjectedCRS::MAP_UNIT) {
-            Some(unit) => length_unit_metres(&decode(decoder, unit)?)?,
-            None => self.project_metres,
+        let (map_metres, map_unit_si) = match target.ref_at(slot::IfcProjectedCRS::MAP_UNIT) {
+            Some(unit) => {
+                let unit = decode(decoder, unit)?;
+                (length_unit_metres(&unit)?, unit.ifc_type == IfcType::IfcSIUnit)
+            }
+            None => (self.project_metres, self.project_unit_si),
         };
         // Scale is the combined local-to-map unit conversion. Defaulting it to
         // 1 across a unit change would misplace every vertex by that ratio.
@@ -127,23 +161,24 @@ impl ModelFacts {
             .map_err(|error| error.to_string())?
             .filter(|georef| georef.has_map_conversion)
             .ok_or_else(|| format!("IfcMapConversion #{conversion_id} cannot be resolved exactly"))?;
-        Ok(MapFrame { georef, map_metres, crs })
+        Ok(MapFrame { georef, map_metres, map_unit_si, crs })
     }
 }
 
-pub(super) fn decode(decoder: &mut EntityDecoder, id: u32) -> Result<DecodedEntity, String> {
+pub(crate) fn decode(decoder: &mut EntityDecoder, id: u32) -> Result<DecodedEntity, String> {
     decoder.decode_by_id(id).map_err(|_| format!("entity #{id} does not exist"))
 }
 
 /// A non-blank IFC string attribute with its STEP escapes decoded.
-pub(super) fn text(entity: &DecodedEntity, at: impl Into<slot::SlotIx<slot::kind::Text>>) -> Option<String> {
+pub(crate) fn text(entity: &DecodedEntity, at: impl Into<slot::SlotIx<slot::kind::Text>>) -> Option<String> {
     // `string_at` is already decoded; decoding again read an escaped backslash
     // as the escape it spells (CORE-16).
     let value = entity.string_at(at)?.trim().to_string();
     (!value.is_empty()).then_some(value)
 }
 
-fn project_length_metres(project: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<f64, String> {
+/// Metres per project length unit, and whether that unit is an `IfcSIUnit`.
+fn project_length_metres(project: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(f64, bool), String> {
     let assignment = project.ref_at(slot::IfcProject::UNITS_IN_CONTEXT).ok_or("IfcProject has no UnitsInContext; the exporter will not assume metres")?;
     let assignment = decode(decoder, assignment)?;
     let mut length_units = Vec::new();
@@ -154,7 +189,7 @@ fn project_length_metres(project: &DecodedEntity, decoder: &mut EntityDecoder) -
         }
     }
     match &length_units[..] {
-        [unit] => length_unit_metres(unit),
+        [unit] => Ok((length_unit_metres(unit)?, unit.ifc_type == IfcType::IfcSIUnit)),
         units => Err(format!("IfcProject.UnitsInContext defines {} length units; exactly one is required", units.len())),
     }
 }

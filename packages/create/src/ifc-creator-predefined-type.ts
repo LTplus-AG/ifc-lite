@@ -75,3 +75,25 @@ export function classificationToken(schema: CreatorSchema, request: Classificati
   }
   return `.${token}.`;
 }
+
+/**
+ * The attributes after `Tag` for a generic element writer (`addElement`,
+ * `addAxisElement`), shaped by `schema`: `,.TOKEN.` where the entity has a
+ * PredefinedType slot, `,$` for IFC2X3's optional `CompositionType` on
+ * IfcBuildingElementProxy (whose enum has no NOTDEFINED), and `''` where the
+ * entity ends at `Tag` (IFC2X3 IfcMember, IfcPlate, IfcFlowSegment, …).
+ * Entities the schema does not know keep the historical `,.TOKEN.` tail.
+ */
+export function genericElementTail(schema: CreatorSchema, ifcTypeUpper: string, predefinedType: string | undefined): string {
+  const token = `,.${predefinedType ?? 'NOTDEFINED'}.`;
+  const registry = getSchemaRegistryForVersion(schema);
+  const entity = Object.keys(registry.entities).find((name) => name.toUpperCase() === ifcTypeUpper);
+  const slot = entity ? registry.entities[entity].allAttributes?.[8] : undefined;
+  if (!entity) return token;
+  if (!slot) {
+    if (predefinedType !== undefined) throw new Error(`${entity} has no PredefinedType attribute in ${schema}`);
+    return '';
+  }
+  if (slot.name === 'CompositionType') return predefinedType !== undefined ? `,.${predefinedType}.` : ',$';
+  return token;
+}

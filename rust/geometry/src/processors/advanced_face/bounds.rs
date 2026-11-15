@@ -284,7 +284,7 @@ fn outer_bound_regions(rings: &[&Vec<Point3<f64>>]) -> Option<Vec<FaceBounds>> {
         .collect();
     let mut regions: Vec<(usize, FaceBounds)> = Vec::new();
     for i in 0..live.len() {
-        if containers[i].len() % 2 == 0 {
+        if containers[i].len().is_multiple_of(2) {
             regions.push((i, FaceBounds { outer: Some(live[i].clone()), holes: Vec::new() }));
         }
     }

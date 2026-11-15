@@ -24,6 +24,7 @@ import { isolateModelsPatch, modelFieldPatch, modelsVisibilityPatch } from './mo
 import { upsertModelPatch } from './modelSlice.upsert.js';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { endChartVisibilityPresentation } from '@/lib/charts/visibility-ownership';
+import { resetStructuralModeWithoutData } from '@/lib/visibility/structural-view';
 import { toPublishedGlobalIdFromState } from '../federation-overlay-publication.js';
 
 export interface ModelSlice {
@@ -381,7 +382,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // through `withVisibilityOwnershipInvalidation`.
     const state = get();
     set(viewerTeardown(modelRemovedScope(state, modelId), state));
-    releaseRemovedModelSession(modelId);
+    releaseRemovedModelSession(modelId); resetStructuralModeWithoutData(get()); // #9957
   },
 
   clearAllModels: () => {

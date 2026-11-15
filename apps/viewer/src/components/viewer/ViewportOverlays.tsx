@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { SiteContextAttribution } from './site-context/SiteContextAttribution';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   Home,
@@ -180,6 +181,7 @@ export function ViewportOverlays({
       <FlySpeedIndicator />
       <WalkIndicator />
       <OrbitPivotMarker />
+      <SiteContextAttribution />
       {/* Touch navigation stays available on mobile. The desktop ribbon
           carries zoom and Home from the camera command list
           (`toolbar/CameraCommands`). */}

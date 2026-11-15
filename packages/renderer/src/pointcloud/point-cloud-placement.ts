@@ -89,7 +89,7 @@ export function originMatrix(origin: readonly [number, number, number]): Float64
 /** Whether an inline cloud's optional origin can cross the GPU boundary.
  * Shared by upload, pick identity and the viewer's class histogram (#10094). */
 export function hasRenderablePointCloudOrigin(asset: { origin?: readonly number[] }): boolean {
-  return !asset.origin || renderableCoordinates(asset.origin);
+  return asset.origin == null || renderableCoordinates(asset.origin);
 }
 
 /**
@@ -123,7 +123,7 @@ export function withPointCloudOrigins(
   upload: (asset: PointCloudAsset, origin: Float64Array | undefined) => void,
 ): void {
   for (const asset of assets) {
-    const origin = asset.origin && originMatrix(asset.origin);
+    const origin = asset.origin == null ? undefined : originMatrix(asset.origin);
     if (origin === null) {
       console.warn(`[PointCloudRenderer] point cloud ${asset.expressId} skipped: origin ${asset.origin!.join(', ')} is not renderable`);
       continue;
@@ -134,7 +134,7 @@ export function withPointCloudOrigins(
 
 /** Single-asset uploads retain the throwing validation contract. */
 export function requirePointCloudOrigin(asset: PointCloudAsset): Float64Array | undefined {
-  const origin = asset.origin && originMatrix(asset.origin);
+  const origin = asset.origin == null ? undefined : originMatrix(asset.origin);
   if (origin === null) throw new Error('Pointcloud origin needs three finite coordinates in the renderable range.');
   return origin;
 }

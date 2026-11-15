@@ -80,7 +80,8 @@ export function usePointCloudSync(params: UsePointCloudSyncParams): void {
     const counts: Record<number, number> = {};
     let sawClassifications = false;
     for (const asset of assets) {
-      if (!hasRenderablePointCloudOrigin(asset)) continue;
+      // Count what the renderer uploads: no zero-point descriptor, no skipped origin.
+      if (asset.chunk.pointCount === 0 || !hasRenderablePointCloudOrigin(asset)) continue;
       const classes = asset.chunk.classifications;
       if (!classes) continue;
       sawClassifications = true;

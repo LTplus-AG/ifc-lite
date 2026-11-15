@@ -111,7 +111,7 @@ export async function runIdsBcfExport({
 
   const exportOptions: IDSBCFExportOptions = {
     author: bcfAuthor || document?.info.author || 'ids-validator@ifc-lite',
-    projectName: `IDS Report - ${document?.info.title ?? 'Untitled'}`,
+    projectName: `IDS Report${report.targetScope ? ` (filtered, ${report.targetScope.entityCount} candidates)` : ''} - ${document?.info.title ?? 'Untitled'}`,
     topicGrouping,
     includePassingEntities,
     maxTopics: IDS_BCF_MAX_TOPICS,
@@ -127,6 +127,10 @@ export async function runIdsBcfExport({
     },
     exportOptions,
   );
+  if (report.targetScope) {
+    const note = `Filtered population: ${report.targetScope.entityCount} candidates. This is not a whole-model validation.`;
+    for (const topic of bcfProject.topics.values()) topic.description = [note, topic.description].filter(Boolean).join('\n\n');
+  }
   await completeIdsBcfViewpoints(
     bcfProject, report, entityBounds, getGlobalRenderer(), toViewerGlobalId,
     useViewerStore.getState().cameraCallbacks.resolveHighlightIds,

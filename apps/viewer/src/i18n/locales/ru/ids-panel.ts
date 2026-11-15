@@ -5,6 +5,11 @@
 import type { Catalogue } from '../../registry';
 
 export const idsPanelRu = {
+  "idsPanel.targetFilter.title": "Объекты для проверки",
+  "idsPanel.targetFilter.enabled": "Фильтровать объекты перед проверкой",
+  "idsPanel.targetFilter.nextRun": "Эти фильтры применяются к следующей проверке выбранной модели. Область существующих результатов остаётся прежней.",
+  "idsPanel.targetFilter.wholeModel": "Проверить всю выбранную модель по правилам применимости IDS.",
+  "idsPanel.targetFilter.result": "После фильтрации: {countDisplay} объектов-кандидатов. Эта проверка не охватывает всю модель.",
   "idsPanel.title": "Проверка IDS",
   "idsPanel.status.passed": "Пройдено",
   "idsPanel.status.failed": "Не пройдено",

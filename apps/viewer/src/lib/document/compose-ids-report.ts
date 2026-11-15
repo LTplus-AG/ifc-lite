@@ -158,6 +158,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   const stamp = reportStamp(block);
   const stampHeight = stamp ? DATE_HEIGHT : 0;
   const scopeLines = wrappedReportProvenance(stamp?.models ? t('validationPanel.history.models', { models: stamp.models }) : '', contentW, wrap ?? ((text) => [text]));
+  if (block.targetScope) scopeLines.push(...wrappedReportProvenance(t('idsPanel.targetFilter.result', { countDisplay: fmt(t, block.targetScope.entityCount) }), contentW, wrap ?? ((text) => [text])));
   const checksCount = t.formatNumber ? t(reportItemsCountKey(block), { count: block.checks.length, countDisplay: fmt(t, block.checks.length) }) : undefined;
   const keepAfter = firstRowHeight + firstChildHeight + (checksCount ? DATE_HEIGHT : 0);
   const ringSize = 44;

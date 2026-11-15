@@ -126,6 +126,7 @@ export function IDSPanelResults({
         summaryClassName="p-3 bg-muted/30"
         summaryProps={tourAnchor(TOUR_ANCHORS.idsSummary)}
         summary={<>
+        {report.targetScope && <p className="mb-2 text-xs font-medium" role="note">{t('idsPanel.targetFilter.result', { countDisplay: formatLocaleNumber(locale, report.targetScope.entityCount) })}</p>}
         {idsMultiModel && !isRules && (
           <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground min-w-0">
             <span className="shrink-0">{t('idsPanel.validate')}</span>

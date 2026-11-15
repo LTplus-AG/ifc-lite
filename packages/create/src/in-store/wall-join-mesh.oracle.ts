@@ -44,7 +44,8 @@ export async function newStorey(schema: Schema = 'IFC4') {
 
 /** The storey's model as STEP text, edits applied. */
 export function exportText(s: { store: IfcDataStore; view: MutablePropertyView; schema: Schema }): string {
-  return new TextDecoder().decode(new StepExporter(s.store, s.view).export({ schema: s.schema, applyMutations: true }).content);
+  // #9352: pin the volatile header for whole-export atomicity comparisons.
+  return new TextDecoder().decode(new StepExporter(s.store, s.view).export({ schema: s.schema, applyMutations: true, timeStamp: '2026-11-15T00:00:00' }).content);
 }
 
 export function meshWalls(api: IfcAPI, text: string): Map<number, Mesh[]> {

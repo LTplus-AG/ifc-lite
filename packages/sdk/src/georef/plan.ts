@@ -113,20 +113,23 @@ export function requireAnchor(facts: GeorefModelFacts, storage: GeorefStorage): 
     }
     return facts.contexts[0];
   }
-  if (facts.sites.length === 0) {
+  // IFC2X3: the buildingSMART "User Guide for Geo-referencing in IFC" (v2.0,
+  // §5.1) links the convention sets to IfcProject, and IfcOpenShell writes
+  // and reads them only there.
+  if (facts.projects.length === 0) {
     throw new GeoreferencingError(
       'NO_ANCHOR',
-      'The model has no IfcSite to carry the IFC2X3 ePSet_MapConversion/ePSet_ProjectedCRS property sets. Nothing was written.',
-      ['IfcSite'],
+      'The model has no IfcProject to carry the IFC2X3 ePSet_MapConversion/ePSet_ProjectedCRS property sets. Nothing was written.',
+      ['IfcProject'],
     );
   }
-  if (facts.sites.length > 1) {
+  if (facts.projects.length > 1) {
     throw new GeoreferencingError(
       'AMBIGUOUS',
-      `The model has ${facts.sites.length} IfcSites (${idList(facts.sites)}); the IFC2X3 property-set convention names one. Nothing was written.`,
+      `The model has ${facts.projects.length} IfcProjects (${idList(facts.projects)}); the IFC2X3 property-set convention names one. Nothing was written.`,
     );
   }
-  return facts.sites[0];
+  return facts.projects[0];
 }
 
 /** The georeferencing records a `set --replace` or `remove` deletes. */
@@ -170,7 +173,7 @@ function contextNotes(facts: GeorefModelFacts): string[] {
 
 export function siteNotes(facts: GeorefModelFacts): string[] {
   return facts.sitesWithLatLong.length === 0 ? [] : [
-    `IfcSite ${idList(facts.sitesWithLatLong)} also carries RefLatitude/RefLongitude. They were left as they are, and ifc-lite does not check them against the map position (no reprojection here).`,
+    `IfcSite ${idList(facts.sitesWithLatLong)} also carries RefLatitude/RefLongitude. They were left as they are; \`bim.georef.check()\` (CLI \`georef check\`) compares them with the map position.`,
   ];
 }
 

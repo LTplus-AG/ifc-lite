@@ -23,7 +23,8 @@ import { CRS_FIELDS, MC_FIELDS, planRemove, planSet, stateAfter, type GeorefWrit
 import { withAttributeEdits } from './attribute-overlay.js';
 import { planUpdate } from './plan-update.js';
 import { readSourceGeoreferencing, readWithoutGeoreferencing } from './read.js';
-import type { GeorefMapConversionAttributes, GeorefProjectedCRSAttributes, GeoreferencingState, GeoreferencingWriteRequest, GeoreferencingWriteResult } from './types.js';
+import { planSiteWrite, withSiteEdits } from './site-write.js';
+import type { GeorefSiteInput, GeorefSiteWriteResult, GeorefMapConversionAttributes, GeorefProjectedCRSAttributes, GeoreferencingState, GeoreferencingWriteRequest, GeoreferencingWriteResult } from './types.js';
 
 export interface GeoreferencingSessionDeps {
   store: IfcDataStore;
@@ -55,8 +56,30 @@ export class GeoreferencingSession {
 
   constructor(private readonly deps: GeoreferencingSessionDeps) {}
 
-  /** The effective georeferencing: this session's latest write, or the source minus its deletions. */
+  /** The effective georeferencing: this session's latest write, or the source minus its deletions; IfcSite edits applied. */
   get(): GeoreferencingState {
+    return withSiteEdits(this.getGeoreference(), this.deps.store, this.deps.view());
+  }
+
+  /** IfcSite RefLatitude/RefLongitude/RefElevation, as one compound mutation (one undo step). */
+  writeSite(input: GeorefSiteInput): GeorefSiteWriteResult {
+    this.deps.editor();
+    const view = this.deps.view();
+    if (!view) throw new Error('georef: the session has no mutation view to record the write in');
+    const plan = planSiteWrite(this.deps.store, view, input);
+    recordCompoundMutation(view, (draft) => {
+      for (const [slot, value] of plan.edits) draft.setPositionalAttribute(plan.siteId, slot, value);
+      return recordSessionMutation(draft, plan.siteId, GEOREF_SESSION_KIND);
+    });
+    return plan.result;
+  }
+
+  /** Throws what `writeSite(input)` would, without writing. */
+  validateSite(input: GeorefSiteInput): void {
+    planSiteWrite(this.deps.store, this.deps.view(), input);
+  }
+
+  private getGeoreference(): GeoreferencingState {
     const top = this.current();
     const view = this.deps.view();
     if (top) {
@@ -82,7 +105,7 @@ export class GeoreferencingSession {
       getForEntity: (id) => view.getForEntity(id),
     });
     const ctx = {
-      modelId: this.deps.modelId, facts, current: this.get(), pending: prior?.pending ?? null,
+      modelId: this.deps.modelId, facts, current: this.getGeoreference(), pending: prior?.pending ?? null,
       afterRemove: (withPropertySets: boolean) => readWithoutGeoreferencing(store, modelId, withPropertySets),
     };
     const plan: GeorefWritePlan = request.action === 'set' ? planSet(request.input, ctx)

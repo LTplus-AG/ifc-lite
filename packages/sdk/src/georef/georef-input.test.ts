@@ -155,6 +155,24 @@ describe('bim.georef IFC2X3 convention property sets', () => {
     } finally { model.close(); }
   });
 
+  it('an update moves sets found on IfcSite to the IfcProject, values and TargetCRS kept (bSI user guide v2.0 §5.1)', async () => {
+    const model = await open(IFC2X3_GEOREFERENCED, 'IFC2X3');
+    try {
+      const result = model.bim.georef.update({ MapConversion: { OrthogonalHeight: 401 } });
+      expect(result.notes.join('\n')).toMatch(/Moved ePSet_MapConversion\/ePSet_ProjectedCRS from #6 to IfcProject #1/);
+      const text = String(model.bim.export.ifc());
+      expect(text).not.toMatch(/IFCRELDEFINESBYPROPERTIES\([^;]*\(#6\),/);
+      expect(text.match(/IFCRELDEFINESBYPROPERTIES\([^;]*\(#1\),/g)).toHaveLength(2);
+      const reopened = await openModel(new TextEncoder().encode(text), { disableWorkerScan: true });
+      try {
+        const state = reopened.bim.georef.get();
+        expect(state.MapConversion).toMatchObject({ Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 401 });
+        expect(state.ProjectedCRS).toMatchObject({ Name: 'EPSG:2056', MapUnit: 'METRE' });
+      } finally { reopened.close(); }
+      expect(text).toMatch(/IFCPROPERTYSINGLEVALUE\('TargetCRS',\$,IFCLABEL\('EPSG:2056'\),\$\)/);
+    } finally { model.close(); }
+  });
+
   it('writes ePSet_ProjectedCRS.Description as IfcText, as the convention types it', async () => {
     const model = await open(BASE, 'IFC2X3');
     try {
@@ -266,7 +284,7 @@ describe('bim.georef second review follow-ups', () => {
         ProjectedCRS: { Name: 'EPSG:2056', MapUnit: 'METRE' },
         MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 },
       });
-      model.bim.mutate.setProperty({ modelId: 'model', expressId: 6 }, 'ePSet_MapConversion', 'Eastings', 2600001, 'IfcLengthMeasure');
+      model.bim.mutate.setProperty({ modelId: 'model', expressId: 1 }, 'ePSet_MapConversion', 'Eastings', 2600001, 'IfcLengthMeasure');
       const text = String(model.bim.export.ifc());
       const reopened = await openModel(new TextEncoder().encode(text), { disableWorkerScan: true });
       try {
@@ -291,7 +309,7 @@ describe('bim.georef second review follow-ups', () => {
       const before = model.bim.georef.get();
       expect(before.source).toBe('ePSet_MapConversion');
       expect(before.MapConversion?.Eastings).toBe(2600000);
-      model.bim.mutate.setProperty({ modelId: 'model', expressId: 6 }, 'ePSet_MapConversion', 'Eastings', 2600001, 'IfcLengthMeasure');
+      model.bim.mutate.setProperty({ modelId: 'model', expressId: 1 }, 'ePSet_MapConversion', 'Eastings', 2600001, 'IfcLengthMeasure');
       const reopened = await openModel(new TextEncoder().encode(String(model.bim.export.ifc())), { disableWorkerScan: true });
       try {
         expect(reopened.bim.georef.get().MapConversion?.Eastings).toBe(2600001);
@@ -317,7 +335,7 @@ describe('bim.georef second review follow-ups', () => {
       const id = Number(/#(\d+)=IFCPROPERTYSET\([^\n]*'ePSet_MapConversion'/i.exec(text)?.[1]);
       expect(Number.isInteger(id)).toBe(true);
       // An earlier ordinary edit of the same set must not bring the deleted set back.
-      model.bim.mutate.setProperty({ modelId: 'model', expressId: 6 }, 'ePSet_MapConversion', 'Eastings', 2600005, 'IfcLengthMeasure');
+      model.bim.mutate.setProperty({ modelId: 'model', expressId: 1 }, 'ePSet_MapConversion', 'Eastings', 2600005, 'IfcLengthMeasure');
       expect(model.bim.georef.get().MapConversion?.Eastings).toBe(2600005);
       expect(model.bim.store.removeEntity({ modelId: 'model', expressId: id })).toBe(true);
       const exported = String(model.bim.export.ifc());

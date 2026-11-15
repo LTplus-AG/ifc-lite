@@ -27,6 +27,7 @@ export type {
   GeorefLevel,
   GeorefReport,
   GeoreferenceSourceFact,
+  GeorefSiteWriteInput,
   GeorefWriteInput,
   OperationFact,
   PointFamilyStats,

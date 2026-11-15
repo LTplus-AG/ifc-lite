@@ -48,6 +48,8 @@ export interface GeorefModelFacts {
    */
   preferredContext: number | null;
   sites: number[];
+  /** IfcProject ids: the IFC2X3 convention sets are written on the (one) IfcProject. */
+  projects: number[];
   /** `sourceCrs`: the conversion's SourceCRS reference (a representation context). */
   mapConversions: Array<{ id: number; scaled: boolean; sourceCrs: number | null }>;
   rigidOperations: number[];
@@ -118,6 +120,7 @@ export function collectGeorefModelFacts(store: IfcDataStore, overlay: GeorefOver
     contextTypes,
     preferredContext: model3d ?? first3d ?? contexts[0] ?? null,
     sites,
+    projects: live('IFCPROJECT'),
     mapConversions: [
       ...live('IFCMAPCONVERSION').map((id) => ({ id, scaled: false, sourceCrs: sourceCrsOf(id) })),
       ...live('IFCMAPCONVERSIONSCALED').map((id) => ({ id, scaled: true, sourceCrs: sourceCrsOf(id) })),
@@ -140,10 +143,12 @@ export function collectGeorefModelFacts(store: IfcDataStore, overlay: GeorefOver
   };
 
   if (facts.storage === 'propertySets' && overlay) {
-    // The convention sets hang off IfcSite in practice; IfcProject and
-    // IfcBuilding are searched too so an edit never misses one and then
-    // writes a second, contradicting copy.
-    const hosts = [...sites, ...live('IFCPROJECT'), ...live('IFCBUILDING')];
+    // The convention attaches the sets to IfcProject (bSI user guide v2.0
+    // §5.1; IfcOpenShell reads them only there), and that is where they are
+    // written. Files in the wild also carry them on IfcSite or IfcBuilding,
+    // so those are searched too: an edit never misses one and then writes a
+    // second, contradicting copy.
+    const hosts = [...facts.projects, ...sites, ...live('IFCBUILDING')];
     const mc = findEPSets(overlay, hosts, EPSET_MAP_CONVERSION);
     const crs = findEPSets(overlay, hosts, EPSET_PROJECTED_CRS);
     facts.ePSetMapConversion = mc[0] ?? null;

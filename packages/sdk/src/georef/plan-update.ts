@@ -16,11 +16,13 @@ import {
   CRS_FIELDS,
   MC_FIELDS,
   ePSetValues,
+  replaceEPSetOps,
   requireAnchor,
   requireStorage,
   siteNotes,
   stateAfter,
   toExporterMutations,
+  type EPSetDataType,
   type GeorefWritePlan,
   type PlanContext,
   type PropertySetOp,
@@ -158,6 +160,8 @@ export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): 
   const base = { action: 'update' as const, storage, tombstone: [], removed: [], next, mapUnit, notes };
 
   if (storage === 'propertySets') {
+    const moved = moveEPSetsToProject(ctx, mergedCrs, mergedMc);
+    if (moved) return { ...base, notes: [...notes, moved.note], georefMutations: null, propertySetOps: moved.ops };
     const ops: PropertySetOp[] = [];
     const write = (location: typeof ctx.facts.ePSetMapConversion, canonical: string, changes: Attrs, fields: readonly string[]) => {
       if (given(changes).length === 0) return;
@@ -191,4 +195,34 @@ export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): 
     ...(prior.mapConversion || changes.mapConversion ? { mapConversion: { ...prior.mapConversion, ...changes.mapConversion } } : {}),
   };
   return { ...base, georefMutations, propertySetOps: [] };
+}
+
+/**
+ * A file whose convention sets sit on IfcSite (or IfcBuilding) has them
+ * rewritten whole on IfcProject by any update, where the convention and
+ * IfcOpenShell expect them; the old copies are deleted. Undefined when they
+ * are on IfcProject already, or the model has no single IfcProject.
+ */
+function moveEPSetsToProject(
+  ctx: PlanContext,
+  crs: GeorefProjectedCRSAttributes | null,
+  mc: GeorefMapConversionAttributes | null,
+): { ops: PropertySetOp[]; note: string } | undefined {
+  const { facts } = ctx;
+  const located = [facts.ePSetMapConversion, facts.ePSetProjectedCRS].filter((l): l is NonNullable<typeof l> => l !== null);
+  if (facts.projects.length !== 1 || located.length === 0) return undefined;
+  const project = facts.projects[0];
+  if (located.every((l) => l.hostId === project)) return undefined;
+  // Properties outside the convention's fields (the TargetCRS some tools add)
+  // travel with the set; a renamed CRS renames TargetCRS too.
+  const extras = (location: typeof facts.ePSetMapConversion, fields: readonly string[]): Array<[string, string | number, EPSetDataType]> =>
+    Object.entries(location?.values ?? {})
+      .filter((entry): entry is [string, string | number] => !fields.includes(entry[0]) && (typeof entry[1] === 'string' || typeof entry[1] === 'number'))
+      .map(([prop, value]) => [prop, prop === 'TargetCRS' && crs?.Name ? crs.Name : value, typeof value === 'number' ? 'IfcReal' : 'IfcLabel']);
+  const ops: PropertySetOp[] = [
+    ...(mc ? replaceEPSetOps(facts.ePSetMapConversion, EPSET_MAP_CONVERSION, project, [...ePSetValues(mc as unknown as Attrs, MC_FIELDS), ...extras(facts.ePSetMapConversion, MC_FIELDS)]) : []),
+    ...(crs ? replaceEPSetOps(facts.ePSetProjectedCRS, EPSET_PROJECTED_CRS, project, [...ePSetValues(crs as unknown as Attrs, CRS_FIELDS), ...extras(facts.ePSetProjectedCRS, CRS_FIELDS)]) : []),
+  ];
+  const from = [...new Set(located.filter((l) => l.hostId !== project).map((l) => `#${l.hostId}`))].join(', ');
+  return { ops, note: `Moved ePSet_MapConversion/ePSet_ProjectedCRS from ${from} to IfcProject #${project}, where the IFC2X3 convention (bSI user guide v2.0) and IfcOpenShell expect them.` };
 }

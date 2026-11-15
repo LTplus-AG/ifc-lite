@@ -78,10 +78,12 @@ export function buildHelp(version: string): string {
               constrain --element ID --top fixed|storeyAbove|storey|slab|roof [--target ID]
               copy --ids ID,... --to S [--to S ...]
               delete --storey S [--move-to S | --delete-contents]  Each writes --out F; --dry-run writes nothing
-    georef    show|set|update|remove <file.ifc>  Read and write georeferencing ("georef --help" for every option)
+    georef    show|set|update|remove|check|fix <file.ifc>  Read, write, check and fix georeferencing ("georef --help")
               show [--json]                       IfcMapConversion/IfcProjectedCRS (IFC2X3: ePSet_MapConversion), rotation, units
               set --out F (--crs N|--epsg C) --map-unit U --eastings E --northings N --height H [--rotation DEG] [--replace]
               update --out F [--eastings E ...] | remove --out F  Fail closed: nothing is guessed, nothing written on refusal
+              check [--json] [--fail-on L] [--allow-network]  Diagnose: finding codes, fixes, LoGeoRef; exit 1 on errors
+              fix --out F [--apply ID] [--value PATH=V] [--dry-run]  Apply the safe fixes, write F, check it again
     ask       <file.ifc> "<question>"            Natural language BIM queries
     view      <file.ifc> [--port N]              Interactive 3D viewer in browser
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results
@@ -190,6 +192,8 @@ export function buildHelp(version: string): string {
     ifc-lite mcp arch.ifc struct.ifc --federate
     ifc-lite mcp model.ifc --transport http --port 8765 --token abc
     ifc-lite georef show model.ifc --json
+    ifc-lite georef check model.ifc
+    ifc-lite georef fix model.ifc --out fixed.ifc
     ifc-lite georef set model.ifc --epsg 2056 --map-unit METRE --eastings 2600000 --northings 1200000 --height 400 --rotation 12.5 --out geo.ifc
     ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc
     ifc-lite ref create main

@@ -4,11 +4,19 @@
 
 import type { BimBackend } from '../types.js';
 import type {
+  GeorefCheckOptions,
+  GeorefCheckReport,
+  GeorefFixPlan,
+  GeorefFixPlanOptions,
+  GeorefFixResult,
+  GeorefSiteInput,
+  GeorefSiteWriteResult,
   GeoreferencingSetInput,
   GeoreferencingState,
   GeoreferencingUpdateInput,
   GeoreferencingWriteResult,
 } from '../georef/types.js';
+import { planGeorefFixes } from '../georef/doctor/plan.js';
 
 /**
  * `bim.georef` — read and write a model's georeferencing.
@@ -16,12 +24,13 @@ import type {
  * IFC4 and IFC4X3 write `IfcProjectedCRS` + `IfcMapConversion` (IFC4X3:
  * `IfcMapConversionScaled` when FactorX/Y/Z are given); IFC2X3 writes the
  * `ePSet_MapConversion` / `ePSet_ProjectedCRS` property sets the readers
- * already understand. Writes are held in the session and land in the file
+ * already understand, on the IfcProject (buildingSMART user guide v2.0;
+ * sets found on IfcSite are moved there by the next update). Writes are held in the session and land in the file
  * with the next `bim.export.ifc()`.
  *
  * Writes fail closed and throw a `GeoreferencingError` naming the missing
  * input: no CRS, map unit, scale or factor is ever assumed; a model without
- * a representation context (IFC2X3: without an IfcSite) is refused; an
+ * a representation context (IFC2X3: without an IfcProject) is refused; an
  * existing georeferencing is replaced only with `replace: true`; and values
  * that would contradict each other (an angle and a vector that disagree, a
  * CRS renamed while keeping the old datum) are refused.
@@ -68,5 +77,47 @@ export class GeorefNamespace {
   /** Remove the georeferencing (map conversions, CRSs, IFC2X3 ePSets). */
   remove(modelId?: string): GeoreferencingWriteResult {
     return this.impl().write({ action: 'remove' }, modelId);
+  }
+
+  /**
+   * Write IfcSite RefLatitude / RefLongitude (decimal degrees, WGS84) and
+   * RefElevation (project length units). One undo step.
+   *
+   * @example
+   * bim.georef.setSite({ RefLatitude: 46.94809, RefLongitude: 7.44744, RefElevation: 540 });
+   */
+  setSite(input: GeorefSiteInput, modelId?: string): GeorefSiteWriteResult {
+    const impl = this.impl();
+    if (!impl.writeSite) throw new Error('georef.setSite: not available on this backend.');
+    return impl.writeSite(input, modelId);
+  }
+
+  /**
+   * Diagnose the georeferencing (`@ifc-lite/georef-check`) with the EPSG
+   * catalogue and CRS engine wired in. Offline unless `allowNetwork`; the
+   * checks a missing capability prevented are in `skipped`. A session with
+   * unsaved edits is checked as it would be exported.
+   *
+   * @example
+   * const report = await bim.georef.check();
+   * const plan = bim.georef.planFixes(report);
+   * bim.georef.fix(plan); // the `ready` fixes only
+   */
+  check(options: GeorefCheckOptions = {}, modelId?: string): Promise<GeorefCheckReport> {
+    const impl = this.impl();
+    if (!impl.check) throw new Error('georef.check: not available on this backend.');
+    return impl.check(options, modelId);
+  }
+
+  /** Which of a report's fixes can be applied, which need a value, and why the rest cannot. Pure. */
+  planFixes(report: GeorefCheckReport, options: GeorefFixPlanOptions = {}): GeorefFixPlan {
+    return planGeorefFixes(report, options);
+  }
+
+  /** Apply a plan's `ready` fixes (re-checked: write API only, nothing user-supplied left open, no checker caveat). */
+  fix(plan: GeorefFixPlan, modelId?: string): GeorefFixResult {
+    const impl = this.impl();
+    if (!impl.fix) throw new Error('georef.fix: not available on this backend.');
+    return impl.fix(plan, modelId);
   }
 }

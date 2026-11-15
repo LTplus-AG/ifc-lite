@@ -155,6 +155,7 @@ nav:
     - Images and PDF Appearance: guide/appearance.md
     - Exporting Data: guide/exporting.md
     - Multi-Model Federation: guide/federation.md
+    - Georeferencing: guide/georeferencing.md
     - LandXML: guide/landxml.md
     - Rhino .3dm: guide/rhino-3dm.md
     - Gaussian Splat Captures: guide/gaussian-captures.md

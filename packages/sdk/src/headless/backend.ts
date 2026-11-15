@@ -45,6 +45,7 @@ import { createQueryAdapter } from './backend-query.js';
 import { overlayFromView, type PendingOverlay } from './overlay.js';
 import { assertGeorefWritten, GeoreferencingSession } from '../georef/session.js';
 import type { GeoreferencingBackendMethods } from '../georef/types.js';
+import { createGeorefBackendMethods } from '../georef/doctor/backend.js';
 
 
 export class HeadlessBackend implements BimBackend {
@@ -144,10 +145,10 @@ export class HeadlessBackend implements BimBackend {
       view: () => this.mutationView,
       editor: () => this.getOrCreateStoreEditor(),
     });
-    this.georef = {
-      get: (m) => { if (m) this.assertKnownModelId(m); return this.georefSession.get(); },
-      write: (request, m) => { if (m) this.assertKnownModelId(m); return this.georefSession.write(request); },
-    };
+    this.georef = createGeorefBackendMethods({
+      session: this.georefSession, store, assertKnownModelId: (m) => this.assertKnownModelId(m),
+      hasPendingChanges: () => this.hasPendingChanges(), exportIfc: () => this.export.ifc(undefined, {}) as string,
+    });
     const storeAdapter = createHeadlessStoreAdapter(store, modelId, () => this.getOrCreateStoreEditor(), id => this.assertKnownModelId(id), () => this.peerScopes(), options);
     this.store = storeAdapter;
     this.disposeRoomCommands = storeAdapter.disposeRooms;

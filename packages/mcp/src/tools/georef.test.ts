@@ -205,3 +205,49 @@ describe('georeferencing_write', () => {
     expect(err.details).toMatchObject({ georefCode: 'INVALID_INPUT', missing: ['MapConversion.Rotation'] });
   });
 });
+
+describe('georeferencing_check / georeferencing_fix', () => {
+  type Plan = { fixes: Array<{ id: string; status: string; needs?: Array<{ path: string }> }> };
+  type Check = { report: { findings: Array<{ code: string }>; skipped: unknown[] }; plan: Plan };
+
+  it('checks, refuses to apply what needs a value, applies it once supplied, and the saved file checks clean', async () => {
+    await writeFile(join(tmp, 'zone.ifc'), header('IFC4') + BODY.replace('ENDSEC;', `#50= IFCPROJECTEDCRS('EPSG:25832',$,$,$,$,$,#31);
+#51= IFCMAPCONVERSION(#20,#50,32461000.,5481000.,100.,$,$,$);
+ENDSEC;`), 'utf-8');
+    await session('zone.ifc');
+    const check = await structured<Check>('georeferencing_check', {});
+    expect(check.report.findings.map((f) => f.code)).toContain('EASTING_ZONE_PREFIX');
+    expect(check.plan.fixes.find((f) => f.id === 'EASTING_ZONE_PREFIX.1')?.status).toBe('ready');
+
+    const fixed = await structured<{ applied: string[]; after: Check }>('georeferencing_fix', {});
+    expect(fixed.applied).toContain('EASTING_ZONE_PREFIX.1');
+    expect(fixed.after.report.findings.map((f) => f.code)).not.toContain('EASTING_ZONE_PREFIX');
+
+    await structured('model_save', { file_path: join(tmp, 'zone-fixed.ifc') });
+    await session('zone-fixed.ifc');
+    const reread = await structured<Check>('georeferencing_check', {});
+    expect(reread.report.findings.map((f) => f.code)).not.toContain('EASTING_ZONE_PREFIX');
+  });
+
+  it('a fix waiting for a value is not applied until values carries it', async () => {
+    await writeFile(join(tmp, 'crs-only.ifc'), header('IFC4') + BODY.replace('ENDSEC;', `#50= IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#31);
+ENDSEC;`), 'utf-8');
+    await session('crs-only.ifc');
+    const nothing = await structured<{ applied: string[]; plan: Plan }>('georeferencing_fix', {});
+    expect(nothing.applied).toEqual([]);
+    expect(nothing.plan.fixes.find((f) => f.id === 'CRS_WITHOUT_OPERATION.1')?.needs?.map((n) => n.path)).toEqual(['MapConversion.Eastings', 'MapConversion.Northings', 'MapConversion.OrthogonalHeight']);
+    const done = await structured<{ applied: string[]; after: Check }>('georeferencing_fix', {
+      values: { 'MapConversion.Eastings': 2600000, 'MapConversion.Northings': 1199650, 'MapConversion.OrthogonalHeight': 540 },
+    });
+    expect(done.applied).toEqual(['CRS_WITHOUT_OPERATION.1']);
+    expect(done.after.report.findings.map((f) => f.code)).not.toContain('CRS_WITHOUT_OPERATION');
+  });
+
+  it('georeferencing_write action "site" writes the IfcSite position', async () => {
+    await session('ifc4.ifc');
+    const written = await structured<{ site: { siteId: number; after: { RefLatitude: number } } }>('georeferencing_write', { action: 'site', Site: { RefLatitude: 46.948, RefLongitude: 7.4474 } });
+    expect(written.site).toMatchObject({ siteId: 40, after: { RefLatitude: 46.948 } });
+    const read = await structured<{ georef: GeoreferencingState }>('georeferencing', {});
+    expect(read.georef.site).toMatchObject({ expressId: 40 });
+  });
+});

@@ -169,20 +169,33 @@ describe('bim.georef refusals', () => {
     } finally { model.close(); }
   });
 
-  it('refuses an IFC2X3 write when there are two IfcSites to choose from', async () => {
+  // The IFC2X3 convention sets go on the IfcProject (bSI user guide v2.0 §5.1, IfcOpenShell).
+  it('refuses an IFC2X3 write when there are two IfcProjects to choose from', async () => {
     const model = await open('IFC2X3', `${WITH_CONTEXT}
-#7=IFCSITE('2Pbuu0tu59NfhrTsztVBK1',$,'Site 2',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);`);
+#7=IFCPROJECT('2YvCT2_$X3_xJG3rzD8L_8',$,'P2',$,$,$,$,(#5),#91);`);
     try {
       expect(refusedCleanly(model, () => model.bim.georef.set(VALID)).code).toBe('AMBIGUOUS');
     } finally { model.close(); }
   });
 
-  it('refuses an IFC2X3 write when there is no IfcSite', async () => {
-    const model = await open('IFC2X3', NO_CONTEXT);
+  it('refuses an IFC2X3 write when there is no IfcProject, even with an IfcSite', async () => {
+    const model = await open('IFC2X3', `#6=IFCSITE('1Pbuu0tu59NfhrTsztVBK1',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);
+${UNITS}`);
     try {
       const err = refusedCleanly(model, () => model.bim.georef.set(VALID));
       expect(err.code).toBe('NO_ANCHOR');
-      expect(err.missing).toEqual(['IfcSite']);
+      expect(err.missing).toEqual(['IfcProject']);
+    } finally { model.close(); }
+  });
+
+  it('an IFC2X3 set with two IfcSites is not ambiguous: the sets go on the one IfcProject', async () => {
+    const model = await open('IFC2X3', `${WITH_CONTEXT}
+#7=IFCSITE('2Pbuu0tu59NfhrTsztVBK1',$,'Site 2',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);`);
+    try {
+      model.bim.georef.set(VALID);
+      const text = String(model.bim.export.ifc());
+      expect(text).toMatch(/IFCRELDEFINESBYPROPERTIES\([^;]*\(#1\),#\d+\);/);
+      expect(text).not.toMatch(/IFCRELDEFINESBYPROPERTIES\([^;]*\(#[67]\),/);
     } finally { model.close(); }
   });
 

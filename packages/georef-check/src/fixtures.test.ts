@@ -115,6 +115,8 @@ const EXPECTED: Record<string, string[]> = {
   'site-vs-false-origin-3857': ['warning:SITE_LOCATION_CONTRADICTS_OPERATION'],
   // Finding 9: an address is not nothing.
   'no-georef-address': ['warning:NO_GEOREFERENCE'],
+  // The IFC2X3 convention sets hang off IfcSite instead of IfcProject (bSI user guide v2.0 §5.1).
+  'epset-on-site': ['warning:EPSET_NOT_ON_PROJECT'],
 };
 
 describe('fixtures through the real parser', () => {
@@ -214,5 +216,12 @@ describe('suggested fixes are applicable values', () => {
     const [lat, lon] = finding.fixes[0].changes.map((c) => c.value as number);
     expect(lat).toBeCloseTo(46.949, 2);
     expect(lon).toBeCloseTo(7.4396, 3);
+  });
+
+  it('IFC2X3 sets on IfcSite: an update that rewrites them, values unchanged', async () => {
+    const [finding] = (await diagnose('epset-on-site')).findings;
+    expect(finding.evidence.hosts).toBe('IfcSite');
+    expect(finding.fixes[0].apply).toEqual({ via: 'georef.update', input: { MapConversion: { Eastings: 2_600_000 } }, userSupplied: [] });
+    expect((await diagnose('clean-ifc2x3-epset')).findings.some((f) => f.code === 'EPSET_NOT_ON_PROJECT')).toBe(false);
   });
 });

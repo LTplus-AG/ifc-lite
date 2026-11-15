@@ -5,6 +5,7 @@
 use super::*;
 use crate::{Mesh, Point3, Vector3};
 use crate::csg::{ClippingProcessor, Plane};
+use crate::mesh_check::{Degenerate, EdgeLedger, VertexKey};
 
 /// Outward-wound watertight unit cube, one face per quad → two triangles,
 /// vertices duplicated per triangle (as the clipper itself emits them).
@@ -620,5 +621,139 @@ fn issue_5314_weld_collapsed_slivers_do_not_mask_section_edges() {
                 }
             }
         }
+    }
+}
+
+/// A plane a hair above the base of a finely faceted wall. Each side quad is
+/// two triangles, and the plane crosses the quad's diagonal a fraction of a
+/// millimetre from the quad's corner: two section vertices 0.1 mm apart on
+/// every facet. The cap welds its section on a grid of 1e-5 of the mesh
+/// diagonal, 0.35 mm here, so most pairs became one cap vertex while the cut
+/// wall kept both, and the cap no longer met the wall (ISSUE_129 #61300, a
+/// curved wall clipped 1.6 mm above its base: 18 open edges before any
+/// opening is cut).
+#[test]
+fn a_section_with_vertices_inside_one_weld_cell_is_capped_closed() {
+    const FACETS: usize = 400;
+    const RADIUS: f64 = 12.5;
+    const HEIGHT: f32 = 3.2;
+    let ring: Vec<[f32; 2]> = (0..FACETS)
+        .map(|i| {
+            let a = std::f64::consts::TAU * i as f64 / FACETS as f64;
+            [(RADIUS * a.cos()) as f32, (RADIUS * a.sin()) as f32]
+        })
+        .collect();
+    let prism = extrude_profile(&ring, 0.0, HEIGHT);
+    // Every edge used once each way on the 10 um grid. At exact positions 12
+    // edges stay unbalanced: section pairs that straddle a weld cell.
+    let paired =
+        |m: &Mesh| EdgeLedger::build(m, VertexKey::GridMul(1.0e5), Degenerate::SkipTriangle).strictly_paired();
+    assert!(paired(&prism), "the faceted prism is watertight");
+
+    let clip_normal = Vector3::new(0.0, 0.0, 1.0);
+    let plane_point = Point3::new(0.0, 0.0, 0.0016);
+    let mut clipped =
+        ClippingProcessor::new().clip_mesh(&prism, &Plane::new(plane_point, clip_normal)).unwrap();
+    assert!(cap_half_space_clip(&mut clipped, plane_point, clip_normal));
+    assert!(paired(&clipped), "the cap must meet the cut wall at every section vertex");
+}
+
+fn faceted_prism(offset: [f32; 2]) -> Mesh {
+    let ring: Vec<[f32; 2]> = (0..400)
+        .map(|i| {
+            let a = std::f64::consts::TAU * i as f64 / 400.0;
+            [offset[0] + (12.5 * a.cos()) as f32, offset[1] + (12.5 * a.sin()) as f32]
+        })
+        .collect();
+    extrude_profile(&ring, 0.0, 3.2)
+}
+
+/// The section weld moves the cut wall only for a cap that closes: a cap
+/// with a ring whose CDT fails returns false with every vertex of the cut
+/// wall where the clip left it, whether no region was built or one was.
+#[test]
+fn a_refused_cap_leaves_the_section_where_it_was() {
+    let mut two = faceted_prism([0.0, 0.0]);
+    let second = faceted_prism([40.0, 0.0]);
+    let base = (two.positions.len() / 3) as u32;
+    two.positions.extend_from_slice(&second.positions);
+    two.normals.extend_from_slice(&second.normals);
+    two.indices.extend(second.indices.iter().map(|i| i + base));
+    for (host, failing) in [(faceted_prism([0.0, 0.0]), 0), (two, 1)] {
+        let clip_normal = Vector3::new(0.0, 0.0, 1.0);
+        let plane_point = Point3::new(0.0, 0.0, 0.0016);
+        let clipped =
+            ClippingProcessor::new().clip_mesh(&host, &Plane::new(plane_point, clip_normal)).unwrap();
+        let mut refused = clipped.clone();
+        force_cdt_fail_on_ring_for_test(Some(failing));
+        let capped = cap_half_space_clip(&mut refused, plane_point, clip_normal);
+        force_cdt_fail_on_ring_for_test(None);
+        assert!(!capped);
+        let wall = clipped.positions.len();
+        let kept = refused.positions[..wall] == clipped.positions[..];
+        assert!(kept, "ring {failing}: no wall vertex may move");
+    }
+}
+
+/// The faceted wall cut by an oblique plane a hair above its base, near the
+/// origin: closed on the 1 mm grid the census reads. Far from the origin an
+/// oblique section is not (see the PR's known limits): the cap lifts its
+/// vertices back from 2D in f32.
+#[test]
+fn an_oblique_section_with_vertices_inside_one_weld_cell_is_capped_closed() {
+    let r = *nalgebra::Rotation3::from_euler_angles(0.37, 0.81, 1.23).matrix();
+    let mut host = faceted_prism([0.0, 0.0]);
+    for c in host.positions.chunks_exact_mut(3) {
+        let p = r * Vector3::new(c[0] as f64, c[1] as f64, c[2] as f64);
+        c.copy_from_slice(&[p.x as f32, p.y as f32, p.z as f32]);
+    }
+    let clip_normal = r * Vector3::new(0.0, 0.0, 1.0);
+    let plane_point = Point3::from(r * Vector3::new(0.0, 0.0, 0.0016));
+    let mut clipped =
+        ClippingProcessor::new().clip_mesh(&host, &Plane::new(plane_point, clip_normal)).unwrap();
+    assert!(cap_half_space_clip(&mut clipped, plane_point, clip_normal));
+    let ledger = EdgeLedger::build(&clipped, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle);
+    let open = ledger.unbalanced().count();
+    assert_eq!(open, 0, "open edges on the 1 mm grid");
+}
+
+/// A thin part kept whole above the plane, one corner in the same weld cell
+/// as a section vertex of the wall being capped. The weld moves section
+/// vertices only, and never onto that corner: the part keeps every corner
+/// where it was and the cap still meets the wall, whichever of the two comes
+/// first in the mesh and with the model 1 km from the origin.
+#[test]
+fn a_part_above_the_plane_keeps_its_corners_beside_a_welded_section() {
+    for (offset, plate_first) in [(0.0_f32, false), (0.0, true), (1000.0, false), (1000.0, true)] {
+        let ring: Vec<[f32; 2]> = (0..400)
+            .map(|i| {
+                let a = std::f64::consts::TAU * i as f64 / 400.0;
+                [offset + (12.5 * a.cos()) as f32, (12.5 * a.sin()) as f32]
+            })
+            .collect();
+        let wall = extrude_profile(&ring, 0.0, 3.2);
+        // Outside the wall at its (12.5, 0) corner, 0.05 mm above the cut plane.
+        let x = offset + 12.5;
+        let footprint = [[x, 0.0], [x, -0.001], [x + 0.001, -0.001], [x + 0.001, 0.0]];
+        let plate = extrude_profile(&footprint, 0.00165, 0.0025);
+        let (first, second) = if plate_first { (&plate, &wall) } else { (&wall, &plate) };
+        let mut host = first.clone();
+        let base = (host.positions.len() / 3) as u32;
+        host.positions.extend_from_slice(&second.positions);
+        host.normals.extend_from_slice(&second.normals);
+        host.indices.extend(second.indices.iter().map(|i| i + base));
+
+        let clip_normal = Vector3::new(0.0, 0.0, 1.0);
+        let plane_point = Point3::new(0.0, 0.0, 0.0016);
+        let mut clipped =
+            ClippingProcessor::new().clip_mesh(&host, &Plane::new(plane_point, clip_normal)).unwrap();
+        assert!(cap_half_space_clip(&mut clipped, plane_point, clip_normal));
+        let corners: Vec<&[f32]> = clipped.positions.chunks_exact(3).collect();
+        for corner in plate.positions.chunks_exact(3) {
+            let tag = format!("offset {offset}, plate first {plate_first}");
+            assert!(corners.contains(&corner), "{tag}: {corner:?} moved");
+        }
+        let ledger = EdgeLedger::build(&clipped, VertexKey::GridMul(1.0e5), Degenerate::SkipTriangle);
+        assert!(ledger.strictly_paired(), "offset {offset}, plate first {plate_first}: the cap must meet the wall");
     }
 }

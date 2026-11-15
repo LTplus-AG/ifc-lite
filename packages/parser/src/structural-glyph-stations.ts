@@ -103,8 +103,8 @@ function interiorPoint(poly: Flat, holes: readonly Flat[]): readonly [number, nu
   return mostOpenPoint(scanlinePoint(poly, holes), poly, holes);
 }
 
-/** Cells the refinement may look at, so a long thin face costs a bounded amount. */
-const POLE_CELL_BUDGET = 2048;
+/** Cells whose openness the refinement may evaluate (each is one pass over the face's edges), so a long thin face costs a bounded amount. */
+const POLE_CELL_BUDGET = 8192;
 
 /** Distance to the nearest edge of the face, positive on it and negative off it. */
 const openness = (p: readonly [number, number], poly: Flat, holes: readonly Flat[]): number => {
@@ -117,7 +117,7 @@ const openness = (p: readonly [number, number], poly: Flat, holes: readonly Flat
  * point farthest from every edge. Rectangular cells of a 16 x 16 grid over the bounds are searched best first, each
  * bounded by its centre's openness plus its half diagonal, and a cell replaces the candidate only when
  * it is more than 0.1% of its openness better, so a candidate already on a plateau (the centre of a
- * band) stays exactly where it is. At most {@link POLE_CELL_BUDGET} cells are looked at.
+ * band) stays exactly where it is. At most {@link POLE_CELL_BUDGET} cells are evaluated.
  */
 function mostOpenPoint(seed: readonly [number, number], poly: Flat, holes: readonly Flat[]): readonly [number, number] {
   let best = seed;
@@ -130,14 +130,17 @@ function mostOpenPoint(seed: readonly [number, number], poly: Flat, holes: reado
   // Rectangular cells, a 16 x 16 grid over the bounds: a long thin face gets cells as thin as itself, so the
   // budget is not spent on cells far outside it.
   type Cell = { x: number; y: number; hx: number; hy: number; open: number; bound: number };
+  let evaluated = 0;
   const cell = (x: number, y: number, hx: number, hy: number): Cell => {
+    evaluated++;
     const open = openness([x, y], poly, holes);
     return { x, y, hx, hy, open, bound: open + Math.hypot(hx, hy) };
   };
   const [hx0, hy0] = [(x1 - x0) / 32, (y1 - y0) / 32];
   const queue: Cell[] = [];
   for (let i = 0; i < 16; i++) for (let j = 0; j < 16; j++) queue.push(cell(x0 + hx0 * (2 * i + 1), y0 + hy0 * (2 * j + 1), hx0, hy0));
-  for (let looked = 0; queue.length && looked < POLE_CELL_BUDGET; looked++) {
+  // Children are evaluated when made, so the budget counts evaluations (four per cell looked at), not cells looked at.
+  while (queue.length && evaluated + 4 <= POLE_CELL_BUDGET) {
     // Best first; ties by position so the result does not depend on insertion order.
     let top = 0;
     for (let i = 1; i < queue.length; i++) {

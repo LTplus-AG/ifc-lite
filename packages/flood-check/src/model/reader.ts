@@ -45,6 +45,7 @@ export class ModelReader {
     if (typeof id !== 'number') return null;
     const hit = this.cache.get(id);
     if (hit !== undefined) return hit;
+    // @raw-entity-enumeration-ok The flood check reads a freshly parsed, immutable store (no live session or mutation overlay).
     const ref = this.store.entityIndex.byId.get(id) ?? this.store.deferredEntityIndex?.get(id);
     const decoded = ref ? this.extractor.extractEntity(ref) : null;
     const entity = decoded ? { expressId: id, type: decoded.type.toUpperCase(), attributes: decoded.attributes } : null;
@@ -53,6 +54,7 @@ export class ModelReader {
   }
 
   idsOfType(upperType: string): readonly number[] {
+    // @raw-entity-enumeration-ok The flood check reads a freshly parsed, immutable store (no live session or mutation overlay).
     return this.store.entityIndex.byType.get(upperType) ?? [];
   }
 

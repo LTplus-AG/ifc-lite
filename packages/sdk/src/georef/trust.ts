@@ -28,7 +28,6 @@ import { EntityExtractor } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { CRS_TEXT_FIELDS, numberOf } from './attribute-overlay.js';
 import { exporterKey, MC_FIELDS } from './plan.js';
-import { EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS } from './model-facts.js';
 import { GeoreferencingError } from './types.js';
 
 export type GeorefPart = 'MapConversion' | 'ProjectedCRS' | 'MapUnit' | 'RigidOperation' | 'site';
@@ -48,7 +47,6 @@ const CLASS_PART: Record<string, GeorefPart> = {
 const UNIT_REFS: Record<string, number[]> = {
   IFCCONVERSIONBASEDUNIT: [0, 3], IFCCONVERSIONBASEDUNITWITHOFFSET: [0, 3], IFCMEASUREWITHUNIT: [1], IFCSIUNIT: [], IFCDIMENSIONALEXPONENTS: [],
 };
-const CONVENTION_SETS = [EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS].map((n) => n.toLowerCase());
 const NO_TRUST: GeorefTrust = { reasons: {}, foreign: [] };
 
 /** The entities the georeferencing state is read from, by part, with their STEP class. */
@@ -61,6 +59,9 @@ function readEntities(store: IfcDataStore): Map<number, { part: GeorefPart; type
     const ref = store.entityIndex.byId.get(id);
     return (ref && extractor?.extractEntity(ref)?.attributes) || [];
   };
+  // @raw-entity-enumeration-ok membership test of one referenced source id; deletions of the unit records are read from the mutation view
+  const exists = (id: number): boolean => store.entityIndex.byId.has(id);
+  // @raw-entity-enumeration-ok point read of the class of one source record already selected as a georeferencing read target
   const typeOf = (id: number): string => String(store.entityIndex.byId.get(id)?.type ?? '').toUpperCase();
   for (const [type, part] of Object.entries(CLASS_PART)) {
     // @raw-entity-enumeration-ok source ids of the georeferencing classes; the session's deletions are read from the mutation view below
@@ -79,7 +80,7 @@ function readEntities(store: IfcDataStore): Map<number, { part: GeorefPart; type
     out.set(id, { part: 'MapUnit', type });
     const attrs = attributes(id);
     const known = UNIT_REFS[type];
-    for (const v of known ? known.map((at) => attrs[at]) : attrs.flat()) if (typeof v === 'number' && store.entityIndex.byId.has(v)) queue.push(v);
+    for (const v of known ? known.map((at) => attrs[at]) : attrs.flat()) if (typeof v === 'number' && exists(v)) queue.push(v);
   }
   return out;
 }

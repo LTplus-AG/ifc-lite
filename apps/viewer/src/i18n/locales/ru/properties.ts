@@ -209,6 +209,7 @@ export const propertiesRu = {
   "properties.modelMetadata.notAvailable": "Н/Д",
   "properties.modelMetadata.buildingStoreys": "Этажи зданий",
   "properties.modelMetadata.elementsWithGeometry": "Элементы с геометрией",
+  "properties.modelMetadata.triangles": "Треугольники",
   "properties.modelMetadata.maxExpressId": "Макс. Express ID",
   "properties.modelMetadata.classificationSystemsHeading": "Системы классификации",
   "properties.modelMetadata.classificationUnresolved": "Системы классификации присутствуют, но недоступны в данном источнике данных",

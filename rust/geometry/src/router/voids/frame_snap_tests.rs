@@ -32,3 +32,21 @@ fn tolerance_is_capped_far_from_the_origin() {
     assert!(frame_snap_tolerance(100_000.0) <= 1e-4);
     assert!(frame_snap_tolerance(60.0) < 1e-4);
 }
+
+/// An opening beside a 96 mm post, in the post's frame, at the 0.1 mm
+/// tolerance the frame has 260 m from the origin.
+#[test]
+fn an_opening_touches_the_host_only_within_the_tolerance() {
+    let mut host = Mesh::new();
+    host.positions = vec![-0.048, -1.1, -0.06, 0.048, 1.1, 0.06];
+    let beside = |x0: f64| [CutterKind::Rectangular(Point3::new(x0, -1.1, -1.2), Point3::new(1.9, 1.12, 1.8), None)];
+    let tol = 1.0e-4;
+    let touches = |host: &Mesh, openings: &[CutterKind], tol| !touching_openings(host, openings, tol).is_empty();
+    assert!(touches(&host, &beside(0.048 - 13.0e-6), tol), "13 um inside the end face");
+    assert!(touches(&host, &beside(0.048 + 7.0e-6), tol), "7 um short of it");
+    assert!(!touches(&host, &beside(0.048 - 5.0e-3), tol), "5 mm in is a cut");
+    assert!(!touches(&host, &beside(0.048 + 5.0e-3), tol), "5 mm away is a miss");
+    assert!(!touches(&host, &beside(-0.5), tol), "through the post");
+    let slot = [CutterKind::Rectangular(Point3::new(-0.01, -1.2, -0.04), Point3::new(-0.01 + 80.0e-6, 1.2, 0.04), None)];
+    assert!(!touches(&host, &slot, tol), "an 80 um slot through the post is a cut");
+}

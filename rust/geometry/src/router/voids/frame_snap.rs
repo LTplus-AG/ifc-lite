@@ -17,8 +17,9 @@
 //! coordinate of the host and its cutters within the world quantum of another
 //! is moved to one shared value. Coordinates that differ by more than that are
 //! untouched, so real features are never merged. It is a RETRY: the caller
-//! runs it only when the unsnapped cut came back open, and keeps it only when
-//! it is closed and consistently wound, so every already-clean cut stays
+//! runs it only when the unsnapped cut came back open, or closed with slivers
+//! from an opening that only touches the host ([`touching_openings`]), and keeps
+//! it only when it is closed and consistently wound, so every clean cut stays
 //! byte-identical (snapping unconditionally regressed the geometry census,
 //! #5905).
 
@@ -88,8 +89,10 @@ impl AxisClusters {
 
 /// Move every coordinate of `host` and of each opening's cutter mesh and
 /// bounds, per frame axis, onto the shared representative of its cluster.
-/// All operands are expressed in the same wall frame.
-pub(super) fn snap_to_frame_planes(host: &mut Mesh, openings: &mut [CutterKind], tol: f64) {
+/// All operands are expressed in the same wall frame. With `only`, the
+/// openings at those indices are the only ones read or moved.
+pub(super) fn snap_to_frame_planes(host: &mut Mesh, openings: &mut [CutterKind], only: Option<&[usize]>, tol: f64) {
+    let picked = |i: &usize| only.is_none_or(|only| only.contains(i));
     let mut per_axis: [Vec<f64>; 3] = Default::default();
     let collect_mesh = |m: &Mesh, per_axis: &mut [Vec<f64>; 3]| {
         for c in m.positions.chunks_exact(3) {
@@ -99,7 +102,7 @@ pub(super) fn snap_to_frame_planes(host: &mut Mesh, openings: &mut [CutterKind],
         }
     };
     collect_mesh(host, &mut per_axis);
-    for op in openings.iter() {
+    for (_, op) in openings.iter().enumerate().filter(|(i, _)| picked(i)) {
         let cutter = op.cutter();
         let (mesh, (lo, hi)) = (cutter.mesh(), cutter.bounds());
         if let Some(m) = mesh {
@@ -125,7 +128,7 @@ pub(super) fn snap_to_frame_planes(host: &mut Mesh, openings: &mut [CutterKind],
         }
     };
     snap_mesh(host);
-    for op in openings.iter_mut() {
+    for (_, op) in openings.iter_mut().enumerate().filter(|(i, _)| picked(i)) {
         match op {
             CutterKind::Rectangular(lo, hi, _) => {
                 snap_point(lo);
@@ -139,6 +142,25 @@ pub(super) fn snap_to_frame_planes(host: &mut Mesh, openings: &mut [CutterKind],
             CutterKind::DiagonalRectangular(m, _) => snap_mesh(m),
         }
     }
+}
+
+/// The openings that only touch the host, by index: bounds that meet the host's on
+/// every frame axis, and on one of them they end within `tol` of a host face,
+/// entering by no more than that or stopping short by no more. `tol` is
+/// [`frame_snap_tolerance`], so such an opening is one whose face the author
+/// put ON a host face and f32 world storage moved off it. Cut as stored it
+/// shaves the host or chips its corners; the snap puts the two faces back on
+/// one plane and the opening then cuts nothing. An opening thinner than `tol`
+/// inside the host is a cut, not a touch.
+pub(super) fn touching_openings(host: &Mesh, openings: &[CutterKind], tol: f64) -> Vec<usize> {
+    let (host_lo, host_hi) = host.bounds();
+    let (host_lo, host_hi) = (host_lo.map(f64::from), host_hi.map(f64::from));
+    let touches = |op: &CutterKind| {
+        let (lo, hi) = op.cutter().bounds();
+        (0..3).all(|k| hi[k].min(host_hi[k]) - lo[k].max(host_lo[k]) >= -tol)
+            && (0..3).any(|k| (hi[k] - host_lo[k]).abs() <= tol || (host_hi[k] - lo[k]).abs() <= tol)
+    };
+    (0..openings.len()).filter(|&i| touches(&openings[i])).collect()
 }
 
 /// Every undirected edge is used exactly once in each direction (closed,

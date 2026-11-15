@@ -35,7 +35,7 @@ export function processedModelFromQuery(search: string): (ProcessedModelRef & { 
   const sha256 = normalizeProcessedModelHash(raw);
   if (sha256 === null) return 'malformed';
   const bytes = params.get('bytes') ?? '';
-  return { sha256, bytes: /^\d+$/.test(bytes) ? processedModelSize(Number(bytes)) : 0, name: params.get('name') || 'model.ifc' }; // digits only: no hex, exponent or padding
+  return { sha256, bytes: processedModelSize(/^\d+$/.test(bytes) ? Number(bytes) : 0), name: params.get('name') || 'model.ifc' }; // digits only: no hex, exponent or padding
 }
 
 export function useProcessedModelAutoload(): void {

@@ -116,7 +116,9 @@ describe('a reference without a size', () => {
   it('is asked for the same way: the size is never sent', async () => {
     fetchMock.mockResolvedValueOnce(streamResponse());
     await client().parseParquetStream({ sha256 }, () => {});
-    expect(new URLSearchParams(calls()[0][0].split('?')[1]).get('sha256')).toBe(sha256);
+    const query = new URLSearchParams(calls()[0][0].split('?')[1]);
+    expect(query.get('sha256')).toBe(sha256);
+    expect([...query.keys()].some(key => /bytes|size/i.test(key))).toBe(false);
     fetchMock.mockResolvedValueOnce(new Response('', { status: 404 }));
     await expect(client().parseParquet({ sha256 })).rejects.toMatchObject({ status: 404 });
   });

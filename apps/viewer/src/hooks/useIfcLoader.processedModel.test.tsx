@@ -28,7 +28,7 @@ import { useViewerStore } from '@/store';
 import { waitFor } from '@/test/render.js';
 import { propertyModelBuffer } from '../../../../packages/server-client/test/fixtures/property-model.js';
 const { useIfcLoader } = await import('./useIfcLoader.js');
-const { useProcessedModelAutoload } = await import('./useProcessedModelAutoload.js');
+const { processedModelFromQuery, useProcessedModelAutoload } = await import('./useProcessedModelAutoload.js');
 const { isStepSourceModel } = await import('@/components/viewer/step-export-source');
 const { getReportPrompt, clearLoadReport } = await import('@/lib/error-reports/context');
 
@@ -215,7 +215,13 @@ it('?processed= accepts the hash in upper case and asks for it in lower case', a
   assert.deepEqual(asked, [{ sha256, bytes: 10 }]);
 });
 
-for (const bad of ['abc', '0x9502F900', '1.6e8', '-5']) it(`?processed= with size ${bad} opens the model as unknown size`, async () => {
+it('?processed= reads a size that is not plain digits as unknown', () => {
+  for (const bad of ['abc', '0x9502F900', '1.6e8', '-5', ' 12', '']) {
+    assert.equal((processedModelFromQuery(`?processed=${sha256}&bytes=${encodeURIComponent(bad)}`) as ProcessedModelRef).bytes, 0, bad);
+  }
+});
+
+it('?processed= with a bad size opens the model as unknown size', async () => {
   stubWebGpu();
   let streamed: unknown;
   mock.method(IfcServerClient.prototype, 'parseParquetStream', async (source: unknown, onBatch: (batch: { meshes: ParquetParseResponse['meshes'] }) => void) => {
@@ -223,7 +229,7 @@ for (const bad of ['abc', '0x9502F900', '1.6e8', '-5']) it(`?processed= with siz
     const { meshes: _meshes, parquet_stats: _stats, data_model: _dataModel, ...rest } = stored();
     return rest;
   });
-  window.history.replaceState(null, '', `/?processed=${sha256}&bytes=${encodeURIComponent(bad)}`);
+  window.history.replaceState(null, '', `/?processed=${sha256}&bytes=abc`);
   await act(async () => { root.render(<Probe fromUrl />); });
   await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the URL entry loads the model'); });
   assert.deepEqual(streamed, { sha256, bytes: 0 });

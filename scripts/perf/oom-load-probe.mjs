@@ -45,11 +45,11 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { writeDenseIfc } from './gen-dense-ifc.mjs';
-import { EXPECTATIONS, MEMORY_WARNING, classify, parseSize, phaseOf, verdict } from './oom-load-probe-lib.mjs';
+import { DIALOG_BUTTONS, MEMORY_WARNING, classify, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
 import { GPU_ARGS } from './retained-qual-browser.mjs';
 import { chromePids, memoryOf } from './scenoptic-bench-sampling.mjs';
 import { openAndWaitInteractive, openViewerPage, startViewerServer } from './viewer-load-probe.mjs';
@@ -135,40 +135,71 @@ const PAGE_PROBE = () => {
     openSpans: l ? l.spans.filter((sp) => sp.end === null).slice(0, 8).map((sp) => sp.name) : [] };
 };
 
+/** Chrome process type of `pid` from its command line ('renderer', 'gpu-process', 'utility', 'browser'). */
+function processType(pid) {
+  try { return /--type=([a-z-]+)/.exec(readFileSync(`/proc/${pid}/cmdline`, 'utf8'))?.[1] ?? 'browser'; } catch { return null; }
+}
+
+/** In page: text of dialogs, alerts and toasts (not the whole page). */
+const NOTICES = () => [...document.querySelectorAll('[role=dialog],[role=alertdialog],[role=alert],[role=status],[data-sonner-toast]')]
+  .map((e) => e.innerText.trim()).filter(Boolean).slice(0, 20);
+
+const scopeStop = (unit) => {
+  // The scope ends on its own when Chrome exits; stop only a leftover one, then clear a failed record.
+  if (scopeProp(unit, 'ActiveState') === 'active') execFileSync('systemctl', ['--user', 'stop', `${unit}.scope`], { stdio: 'ignore' });
+  if (scopeProp(unit, 'ActiveState') === 'failed') execFileSync('systemctl', ['--user', 'reset-failed', `${unit}.scope`], { stdio: 'ignore' });
+};
+
 export async function runProbe(opts) {
   const outDir = opts.out ?? mkdtempSync(join(tmpdir(), 'oom-load-probe-'));
   mkdirSync(outDir, { recursive: true });
+  rmSync(join(outDir, 'result.json'), { force: true });
+  writeFileSync(join(outDir, 'samples.ndjson'), '');
   const log = (o) => appendFileSync(join(outDir, 'samples.ndjson'), `${JSON.stringify(o)}\n`);
   const result = { tool: 'oom-load-probe', issue: 10264, expect: opts.expect, gl: opts.gl, capBytes: parseSize(opts.cap),
-    cpuQuota: opts.cpuQuota, deviceMemory: opts.deviceMemory, cores: opts.cores, dist: opts.dist };
+    cpuQuota: opts.cpuQuota, deviceMemory: opts.deviceMemory, cores: opts.cores, dist: relative(ROOT, opts.dist) || '.' };
+  const cleanup = [];
+  const finish = async () => { const f = await runCleanup(cleanup); if (f.length) result.cleanupFailures = (result.cleanupFailures ?? []).concat(f); };
+  const onSignal = (sig) => { finish().finally(() => process.exit(sig === 'SIGINT' ? 130 : 143)); };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
+  cleanup.push({ name: 'signal handlers', fn: () => { process.off('SIGINT', onSignal); process.off('SIGTERM', onSignal); } });
 
-  let fixture = opts.fixture, generated = false;
-  if (!fixture) {
-    fixture = join(outDir, `${opts.kind}-${opts.targetMb}.ifc`);
-    const t0 = Date.now();
-    result.generator = writeDenseIfc(fixture, { kind: opts.kind, targetBytes: Math.round(opts.targetMb * 1e6), seed: opts.seed });
-    result.generator.genSeconds = (Date.now() - t0) / 1000;
-    generated = true;
-  }
-  result.fixtureBytes = statSync(fixture).size;
-
-  const { chromium } = createRequire(join(ROOT, 'package.json'))('@playwright/test');
-  const unit = `oom-load-probe-${process.pid}-${Date.now()}`;
-  result.unit = unit;
-  const launcher = join(outDir, 'chrome-capped.sh');
-  writeFileSync(launcher, `#!/bin/sh\nexec systemd-run --user --scope --quiet --unit=${unit} -p MemoryMax=${result.capBytes} `
-    + `-p MemorySwapMax=0 -p CPUQuota=${opts.cpuQuota} -p OOMPolicy=continue -- '${chromium.executablePath()}' "$@"\n`);
-  chmodSync(launcher, 0o755);
-
-  const { server, baseUrl } = await startViewerServer(() => resolve(opts.dist));
-  const profileDir = mkdtempSync(join(tmpdir(), 'oom-load-probe-profile-'));
-  const obs = { oomKills: 0, pageCrashed: false, browserGone: false, interactive: false, storeError: null, pageText: '', timedOut: false,
-    warningShown: false, decision: 'none' };
+  const obs = { oomKills: 0, killedTypes: [], pageCrashed: false, browserGone: false, interactive: false, storeError: null, notices: [],
+    loadStarted: false, timedOut: false, warningShown: false, decision: 'none' };
   const peak = { pssMiB: 0, cgroupMiB: 0 };
+  const unit = `oom-load-probe-${process.pid}-${Date.now()}`;
   let last = null, context, sampler, cg = null, verdictReady = false;
   try {
+    let fixture = opts.fixture;
+    if (!fixture) {
+      fixture = join(outDir, `${opts.kind}-${opts.targetMb}.ifc`);
+      if (!opts.keepFixture) cleanup.push({ name: 'fixture', fn: () => rmSync(fixture, { force: true }) });
+      const t0 = Date.now();
+      const stats = writeDenseIfc(fixture, { kind: opts.kind, targetBytes: Math.round(opts.targetMb * 1e6), seed: opts.seed });
+      delete stats.out; // absolute local path; result.fixture keeps the base name
+      result.generator = { ...stats, genSeconds: (Date.now() - t0) / 1000 };
+    }
+    result.fixture = basename(fixture);
+    result.fixtureBytes = statSync(fixture).size;
+
+    const { chromium } = createRequire(join(ROOT, 'package.json'))('@playwright/test');
+    result.unit = unit;
+    const launcher = join(outDir, 'chrome-capped.sh');
+    // Only validated numbers reach the script; the Chrome path arrives through the environment.
+    writeFileSync(launcher, `#!/bin/sh\nexec systemd-run --user --scope --quiet --unit=${unit} -p MemoryMax=${result.capBytes} `
+      + `-p MemorySwapMax=0 -p CPUQuota=${opts.cpuQuota} -p OOMPolicy=continue -- "$OOM_PROBE_CHROME" "$@"\n`);
+    chmodSync(launcher, 0o755);
+    const { server, baseUrl } = await startViewerServer(() => opts.dist);
+    cleanup.push({ name: 'server', fn: () => server.close() });
+    const profileDir = mkdtempSync(join(tmpdir(), 'oom-load-probe-profile-'));
+    cleanup.push({ name: 'profile dir', fn: () => rmSync(profileDir, { recursive: true, force: true }) });
+    cleanup.push({ name: 'scope', fn: () => scopeStop(unit) });
+
     context = await chromium.launchPersistentContext(profileDir, { executablePath: launcher, headless: opts.gl !== 'hardware',
+      env: { ...process.env, OOM_PROBE_CHROME: chromium.executablePath() },
       viewport: { width: 1600, height: 1000 }, args: [...GPU_ARGS[opts.gl], '--no-first-run', '--enable-precise-memory-info'] });
+    cleanup.push({ name: 'browser', fn: () => withTimeout(context.close(), 10_000, () => scopeStop(unit)) });
     context.on('close', () => { if (!verdictReady) obs.browserGone = true; });
     await context.addInitScript(({ dm, hc }) => {
       if (dm !== null) Object.defineProperty(Navigator.prototype, 'deviceMemory', { get: () => dm, configurable: true });
@@ -181,15 +212,25 @@ export async function runProbe(opts) {
     page.on('crash', () => { obs.pageCrashed = true; });
     result.navigator = await page.evaluate(() => ({ deviceMemory: navigator.deviceMemory ?? null, cores: navigator.hardwareConcurrency }));
     const t0 = Date.now();
+    let types = new Map();
     sampler = setInterval(() => {
-      const m = memoryOf(chromePids(profileDir));
+      const pids = chromePids(profileDir);
+      const now = new Map(pids.map((pid) => [pid, types.get(pid) ?? processType(pid)]));
+      const m = memoryOf(pids);
       const cur = readNum(`${cg}/memory.current`);
       const ev = readKV(`${cg}/memory.events`);
-      obs.oomKills = Math.max(obs.oomKills, ev.oom_kill ?? 0);
+      const kills = ev.oom_kill ?? 0;
+      if (kills > obs.oomKills) {
+        // Which processes vanished since the last sample: what the OOM killer took.
+        for (const [pid, type] of types) if (!now.has(pid) && type) obs.killedTypes.push(type);
+        obs.oomKills = kills;
+      }
+      types = now;
       peak.pssMiB = Math.max(peak.pssMiB, m.pssMiB);
       if (cur !== null) peak.cgroupMiB = Math.max(peak.cgroupMiB, cur / MiB);
-      log({ t: (Date.now() - t0) / 1000, pssMiB: Math.round(m.pssMiB), cgroupMiB: cur === null ? null : Math.round(cur / MiB), oomKill: ev.oom_kill ?? null });
+      log({ t: (Date.now() - t0) / 1000, pssMiB: Math.round(m.pssMiB), cgroupMiB: cur === null ? null : Math.round(cur / MiB), oomKill: kills });
     }, 500);
+    cleanup.push({ name: 'sampler', fn: () => clearInterval(sampler) });
 
     let done = false;
     const interactive = openAndWaitInteractive(page, [fixture], { timeoutMs: opts.limitMin * 60_000 })
@@ -198,8 +239,8 @@ export async function runProbe(opts) {
       while (!done) {
         await new Promise((r) => setTimeout(r, 2000));
         if (done || obs.pageCrashed || obs.browserGone || obs.oomKills > 0) return;
-        const st = await Promise.race([page.evaluate(PAGE_PROBE), new Promise((r) => setTimeout(() => r(null), 15000))]).catch(() => null);
-        if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
+        const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 15000, () => null);
+        if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); if (st.tris > 0) obs.loadStarted = true; }
         if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? 'model load error'; return; }
         if (obs.decision === 'none') {
           const dialog = page.getByRole('dialog').filter({ hasText: MEMORY_WARNING });
@@ -208,8 +249,7 @@ export async function runProbe(opts) {
             result.memoryWarning = { text: (await dialog.first().innerText().catch(() => '')).slice(0, 500), trisBefore: st?.tris ?? null };
             last = { ...(st ?? {}), warning: true };
             if (opts.onMemoryDialog === 'wait') return;
-            const name = opts.onMemoryDialog === 'cancel' ? /^cancel$/i : /continue loading/i;
-            await dialog.first().getByRole('button', { name }).click({ timeout: 10000 });
+            await dialog.first().getByRole('button', { name: DIALOG_BUTTONS[opts.onMemoryDialog] }).click({ timeout: 10000 });
             obs.decision = opts.onMemoryDialog;
             log({ t: (Date.now() - t0) / 1000, clicked: opts.onMemoryDialog });
             if (opts.onMemoryDialog === 'cancel') { await new Promise((r) => setTimeout(r, 3000)); return; }
@@ -222,10 +262,11 @@ export async function runProbe(opts) {
     result.wallSeconds = (Date.now() - t0) / 1000;
     await new Promise((r) => setTimeout(r, 1500)); // let a pending OOM kill / crash land before the verdict
     if (!obs.pageCrashed && !obs.browserGone) {
-      obs.pageText = await Promise.race([page.evaluate(() => document.body?.innerText ?? ''), new Promise((r) => setTimeout(() => r(''), 5000))]).catch(() => '');
-      result.sourceReads = await page.evaluate(() => globalThis.__oomProbeReads ?? null).catch(() => null);
-      if (obs.interactive) last = { ...(await page.evaluate(PAGE_PROBE).catch(() => last)), interactive: true };
-      await page.screenshot({ path: join(outDir, 'end.png') }).catch(() => {});
+      obs.notices = await withTimeout(page.evaluate(NOTICES).catch(() => []), 5000, () => []);
+      result.sourceReads = await withTimeout(page.evaluate(() => globalThis.__oomProbeReads ?? null).catch(() => null), 5000, () => null);
+      if ((result.sourceReads?.reads ?? 0) > 0) obs.loadStarted = true;
+      if (obs.interactive) last = { ...(await withTimeout(page.evaluate(PAGE_PROBE).catch(() => last), 5000, () => last)), interactive: true };
+      await page.screenshot({ path: join(outDir, 'end.png'), timeout: 10000 }).catch(() => {});
     }
   } finally {
     clearInterval(sampler);
@@ -237,18 +278,13 @@ export async function runProbe(opts) {
     result.scopeResult = scopeProp(unit, 'Result');
     if (result.scopeResult === 'oom-kill' && obs.oomKills === 0) obs.oomKills = 1;
     verdictReady = true;
-    await context?.close().catch(() => {});
-    // The scope ends on its own when Chrome exits; stop only a leftover one.
-    if (scopeProp(unit, 'ActiveState') === 'active') execFileSync('systemctl', ['--user', 'stop', `${unit}.scope`], { stdio: 'ignore' });
-    if (scopeProp(unit, 'ActiveState') === 'failed') execFileSync('systemctl', ['--user', 'reset-failed', `${unit}.scope`], { stdio: 'ignore' });
-    server.close();
-    rmSync(profileDir, { recursive: true, force: true });
-    if (generated && !opts.keepFixture) rmSync(fixture, { force: true });
+    await finish();
   }
   result.memoryDialogPolicy = opts.onMemoryDialog;
   result.memoryDialogDecision = obs.decision;
+  result.notices = obs.notices;
   Object.assign(result, classify(obs), { phase: phaseOf(last), last, peakPssMiB: Math.round(peak.pssMiB),
-    peakCgroupMiB: Math.round(peak.cgroupMiB), oomKills: obs.oomKills });
+    peakCgroupMiB: Math.round(peak.cgroupMiB), oomKills: obs.oomKills, killedTypes: obs.killedTypes });
   const v = verdict(result.outcome, opts.expect);
   Object.assign(result, { pass: v.pass, verdict: v.message });
   writeFileSync(join(outDir, 'result.json'), `${JSON.stringify(result, null, 1)}\n`);
@@ -264,23 +300,21 @@ function cli() {
   } });
   const fail = (m) => { console.error(`oom-load-probe: ${m}`); process.exit(2); };
   if (!v.dist || !existsSync(join(v.dist, 'index.html'))) fail('--dist must point at a built viewer (apps/viewer/dist)');
-  if (!v.expect || !EXPECTATIONS[v.expect]) fail(`--expect is required: ${Object.keys(EXPECTATIONS).join(' | ')}`);
-  if (!v.cap) fail('--cap is required (e.g. 3G)');
-  if (!v.fixture && !(v.kind && v['target-mb'])) fail('give --fixture or --kind and --target-mb');
+  const errors = optionErrors(v);
+  if (errors.length) fail(errors.join('; '));
   const gl = v.gl ?? 'swiftshader';
-  if (!GPU_ARGS[gl]) fail('--gl must be swiftshader or hardware');
   if (gl === 'hardware' && !process.env.DISPLAY) fail('--gl hardware needs a $DISPLAY (headed Chrome, e.g. a private Xvfb)');
-  const onMemoryDialog = v['on-memory-dialog'] ?? 'wait';
-  if (!['wait', 'cancel', 'continue'].includes(onMemoryDialog)) fail('--on-memory-dialog must be wait, cancel or continue');
+  if (v.fixture && !existsSync(v.fixture)) fail(`--fixture ${v.fixture} does not exist`);
   const cores = v.cores ? Number(v.cores) : null;
   const opts = { dist: resolve(v.dist), fixture: v.fixture && resolve(v.fixture), kind: v.kind, targetMb: Number(v['target-mb']),
     seed: v.seed ? Number(v.seed) : 1, cap: v.cap, deviceMemory: v['device-memory'] ? Number(v['device-memory']) : null, cores,
     cpuQuota: v['cpu-quota'] ?? `${(cores ?? 4) * 100}%`, gl, expect: v.expect, out: v.out && resolve(v.out),
-    limitMin: Number(v['limit-min'] ?? 10), keepFixture: Boolean(v['keep-fixture']), onMemoryDialog };
+    limitMin: Number(v['limit-min'] ?? 10), keepFixture: Boolean(v['keep-fixture']), onMemoryDialog: v['on-memory-dialog'] ?? 'wait' };
   try { preflight(); } catch (err) { fail(err.message); }
   runProbe(opts).then(({ result, outDir }) => {
     console.log(`outcome=${result.outcome} phase="${result.phase}" peakPssMiB=${result.peakPssMiB} peakCgroupMiB=${result.peakCgroupMiB} `
       + `oomKills=${result.oomKills} sourceReads=${JSON.stringify(result.sourceReads ?? null)} reason="${result.reason}" -> ${result.verdict} [${outDir}/result.json]`);
+    if (result.cleanupFailures) console.error(`oom-load-probe: cleanup failures: ${result.cleanupFailures.join('; ')}`);
     process.exit(result.pass ? 0 : 1);
   }, (err) => {
     console.error(`oom-load-probe: ${err instanceof EnvError ? '' : 'driver error: '}${err.stack ?? err}`);

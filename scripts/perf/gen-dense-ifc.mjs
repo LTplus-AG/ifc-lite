@@ -30,7 +30,7 @@
  * Prints one JSON line: elements, triangles, entities, bytes, per-MB rates.
  */
 
-import { closeSync, openSync, renameSync, rmSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, openSync, renameSync, rmSync, statSync, writeSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
@@ -187,8 +187,10 @@ export function generateDenseIfc(sink, options) {
 
 /** Write to `out` through a 4 MiB buffer; rename into place when complete. */
 export function writeDenseIfc(out, options) {
+  if (existsSync(out) && statSync(out).isDirectory()) throw new Error(`${out} is a directory`);
   const tmp = `${out}.tmp`, fd = openSync(tmp, 'w');
-  let buf = [], len = 0;
+  let buf = [], len = 0, open = true;
+  const close = () => { if (open) { open = false; closeSync(fd); } };
   const flush = () => {
     if (!len) return;
     const bytes = Buffer.from(buf.join(''), 'latin1');
@@ -199,11 +201,11 @@ export function writeDenseIfc(out, options) {
   try {
     const stats = generateDenseIfc((s) => { buf.push(s); len += s.length; if (len >= 1 << 22) flush(); }, options);
     flush();
-    closeSync(fd);
+    close();
     renameSync(tmp, out);
     return { out, ...stats };
   } catch (err) {
-    closeSync(fd);
+    close();
     rmSync(tmp, { force: true });
     throw err;
   }
@@ -218,6 +220,10 @@ function main() {
       seed: { type: 'string' }, schema: { type: 'string' }, grid: { type: 'string' },
     },
   });
+  // Plain decimal strings only: Number('') is 0 and Number('0x4') is 4, both silently wrong.
+  const bad = [...['elements', 'rings', 'segs', 'psets', 'seed'].filter((k) => values[k] !== undefined && !/^\d+$/.test(values[k])),
+    ...['target-mb', 'grid'].filter((k) => values[k] !== undefined && !/^\d+(\.\d+)?$/.test(values[k]))];
+  if (bad.length) { console.error(`gen-dense-ifc: not a plain non-negative number: ${bad.map((k) => `--${k} '${values[k]}'`).join(', ')}`); process.exit(2); }
   const out = positionals[0];
   if (!out || (!values['target-mb'] && !values.elements)) {
     console.error('usage: gen-dense-ifc.mjs OUT.ifc (--target-mb N | --elements N) [--kind tfs|brep] [--rings 24] [--segs 48] [--psets 0] [--seed 1] [--schema IFC4|IFC2X3] [--grid 3]');

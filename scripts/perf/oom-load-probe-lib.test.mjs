@@ -8,7 +8,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, parseSize, phaseOf, verdict } from './oom-load-probe-lib.mjs';
+import { classify, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
 
 test('#10264 an OOM kill wins over every other signal', () => {
   assert.equal(classify({ oomKills: 1, interactive: true }).outcome, 'killed');
@@ -17,13 +17,40 @@ test('#10264 an OOM kill wins over every other signal', () => {
   assert.equal(classify({ browserGone: true }).outcome, 'killed');
 });
 
-test('#10264 memory messages are refusals: main\'s OOM text and a pre-read budget refusal', () => {
-  // apps/viewer/src/lib/load-error-message.ts (out_of_memory)
-  assert.equal(classify({ storeError: 'Ran out of memory while processing big.ifc. This usually means the model is too large for this device\'s available memory.' }).outcome, 'refused');
-  // Pre-read refusal wording proposed for #10264
-  const r = classify({ storeError: null, pageText: 'Open\nThis IFC file exceeds this tab\'s local processing memory budget (6.0 GiB budget).\nOK' });
+test('#10264 only a pre-read refusal, or an OOM message before any processing, is `refused`', () => {
+  const r = classify({ notices: ["This IFC file exceeds this tab's local processing memory budget (6.0 GiB budget)."] });
   assert.equal(r.outcome, 'refused');
   assert.match(r.reason, /local processing memory budget/);
+  assert.equal(classify({ storeError: "This IFC file exceeds this tab's local processing memory budget" }).outcome, 'refused');
+  // Main's out_of_memory text (load-error-message.ts) is an after-the-fact failure once processing ran.
+  const oom = 'Ran out of memory while processing big.ifc. This usually means the model is too large for this device\'s available memory.';
+  assert.equal(classify({ storeError: oom, loadStarted: true }).outcome, 'error');
+  assert.equal(classify({ storeError: oom, loadStarted: false }).outcome, 'refused');
+});
+
+test('#10264 crash messages that leave the tab alive are `error`, never `refused`', () => {
+  // geometry_worker_crash and wasm_runtime_crashed in apps/viewer/src/lib/load-error-message.ts
+  const worker = 'A geometry worker stopped unexpectedly while processing big.ifc. This usually means the model is too large for this device\'s available memory.';
+  const runtime = "The 3D geometry engine crashed and can't restart in this tab. If it happens again on the same model, it is likely too large for this device's memory.";
+  for (const storeError of [worker, runtime]) {
+    assert.equal(classify({ storeError, loadStarted: true }).outcome, 'error');
+    assert.equal(verdict(classify({ storeError }).outcome, 'not-killed').pass, false);
+  }
+});
+
+test('#10264 a finished load is `loaded` whatever text is on the page', () => {
+  assert.equal(classify({ interactive: true, notices: ['Your memory budget settings'] }).outcome, 'loaded');
+  assert.equal(classify({ interactive: true, storeError: null, notices: ["exceeds this tab's local processing memory budget"] }).outcome, 'loaded');
+});
+
+test('#10264 an OOM kill counts as `killed` unless only a non-tab process died and the page finished', () => {
+  assert.equal(classify({ oomKills: 1, killedTypes: ['renderer'], interactive: true }).outcome, 'killed');
+  assert.equal(classify({ oomKills: 1, killedTypes: ['gpu-process'] }).outcome, 'killed');
+  assert.equal(classify({ oomKills: 1, killedTypes: [], interactive: true }).outcome, 'killed', 'unknown victim stays killed');
+  const gpu = classify({ oomKills: 1, killedTypes: ['gpu-process'], interactive: true });
+  assert.equal(gpu.outcome, 'loaded');
+  assert.match(gpu.reason, /OOM-killed gpu-process \(not the tab\)/);
+  assert.match(classify({ oomKills: 1, killedTypes: ['renderer'] }).reason, /\(renderer\)/);
 });
 
 test('#10264 other outcomes: loaded, non-memory error, timeout', () => {
@@ -48,6 +75,7 @@ test('#10264 acceptance mode passes on loaded or refused, never on killed/error/
   assert.equal(verdict('refused', 'not-killed').pass, true);
   for (const bad of ['killed', 'error', 'timeout']) assert.equal(verdict(bad, 'not-killed').pass, false);
   assert.throws(() => verdict('loaded', 'whatever'), /--expect must be one of/);
+  assert.throws(() => verdict('loaded', 'constructor'), /--expect must be one of/);
 });
 
 test('#10264 cap sizes and phase labels', () => {
@@ -83,4 +111,37 @@ test('#10264 killed-after-continue fails acceptance; passes only the explicit wa
   // The known-issue run fails once a warning appears instead of the kill.
   assert.equal(verdict('awaiting-decision', 'killed').pass, false);
   assert.equal(phaseOf({ warning: true, tris: 0 }), 'memory warning (load not started)');
+});
+
+test('#10264 CLI options are validated before anything runs', () => {
+  const ok = { expect: 'killed', cap: '3G', kind: 'tfs', 'target-mb': '300', cores: '4', 'device-memory': '4', 'cpu-quota': '400%' };
+  assert.deepEqual(optionErrors(ok), []);
+  const bad = (patch) => optionErrors({ ...ok, ...patch });
+  assert.match(bad({ expect: 'constructor' }).join(), /--expect is required/);
+  assert.match(bad({ kind: '../x' }).join(), /--kind must be tfs or brep/);
+  for (const k of ['target-mb', 'cores', 'device-memory', 'limit-min']) {
+    for (const v of ['', 'abc', '-1', '0', '0x4']) assert.match(bad({ [k]: v }).join(), new RegExp(`--${k} must be a positive number`));
+  }
+  assert.match(bad({ 'cpu-quota': "400%' ; rm -rf ~ '" }).join(), /--cpu-quota must look like 400%/);
+  assert.match(bad({ cap: '3 GB' }).join(), /--cap/);
+  assert.match(bad({ gl: 'vulkan' }).join(), /--gl/);
+  assert.match(bad({ 'on-memory-dialog': 'yes' }).join(), /--on-memory-dialog/);
+});
+
+test('#10264 cleanup runs every step even when one throws, last registered first', async () => {
+  const ran = [];
+  const steps = [
+    { name: 'fixture', fn: () => ran.push('fixture') },
+    { name: 'scope', fn: () => { ran.push('scope'); throw new Error('systemctl failed'); } },
+    { name: 'browser', fn: async () => { ran.push('browser'); } },
+  ];
+  const failures = await runCleanup(steps);
+  assert.deepEqual(ran, ['browser', 'scope', 'fixture']);
+  assert.deepEqual(failures, ['scope: systemctl failed']);
+  assert.equal(steps.length, 0, 'a second run (signal after finish) does nothing');
+});
+
+test('#10264 withTimeout falls back when a close hangs', async () => {
+  assert.equal(await withTimeout(new Promise(() => {}), 20, () => 'forced'), 'forced');
+  assert.equal(await withTimeout(Promise.resolve('closed'), 1000, () => 'forced'), 'closed');
 });

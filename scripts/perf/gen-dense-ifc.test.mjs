@@ -9,7 +9,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateDenseIfc, writeDenseIfc, real, guid } from './gen-dense-ifc.mjs';
@@ -121,4 +122,30 @@ test('#10264 rejects arguments that cannot produce a valid file', () => {
   assert.throws(() => render({ kind: 'tfs', elements: 1, grid: NaN }), /grid must be a positive number/);
   assert.throws(() => render({ kind: 'tfs', elements: 1, rings: 2.5 }), /rings must be an integer/);
   assert.throws(() => render({ kind: 'tfs', targetBytes: NaN, elements: 1 }), /targetBytes must be a positive number/);
+});
+
+test('#10264 an existing directory as output fails cleanly and leaves no .tmp', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gen-dense-ifc-'));
+  try {
+    const target = join(dir, 'sub');
+    mkdirSync(target);
+    assert.throws(() => writeDenseIfc(target, { kind: 'tfs', elements: 1 }), /is a directory/);
+    assert.equal(existsSync(`${target}.tmp`), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('#10264 the CLI rejects numbers that are not plain decimals', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gen-dense-ifc-'));
+  try {
+    for (const args of [['--elements', ''], ['--elements', '1', '--rings', '0x4'], ['--elements', '1', '--psets', 'abc'], ['--target-mb', '1e3']]) {
+      const r = spawnSync(process.execPath, [join(import.meta.dirname, 'gen-dense-ifc.mjs'), join(dir, 'x.ifc'), ...args], { encoding: 'utf8' });
+      assert.equal(r.status, 2, `${args.join(' ')}: ${r.stderr}`);
+      assert.match(r.stderr, /not a plain non-negative number/);
+      assert.equal(existsSync(join(dir, 'x.ifc')), false);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -55,6 +55,7 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "SPEC.md"
   ]
 }

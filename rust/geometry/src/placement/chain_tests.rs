@@ -271,6 +271,17 @@ fn a_placement_cycle_is_refused_counted_and_not_memoised() {
     );
 }
 
+/// A placement with no readable `RelativePlacement` is refused relative to
+/// itself, as `resolve_chain` refuses it, not read as the identity.
+#[test]
+fn an_unreadable_placement_is_refused_relative_to_itself() {
+    let file = CYCLE.replace("#13=IFCLOCALPLACEMENT(#10,#1);", "#14=IFCLOCALPLACEMENT($,$);");
+    let mut decoder = EntityDecoder::new(&file);
+    let own = decoder.decode_by_id(14).expect("placement");
+    assert!(resolve_chain(&own, &mut decoder).is_err());
+    assert!(super::resolve_chain_relative(&own, &own, &mut decoder).is_err());
+}
+
 #[test]
 fn the_router_refuses_a_cyclic_placement() {
     let mut decoder = EntityDecoder::new(CYCLE);

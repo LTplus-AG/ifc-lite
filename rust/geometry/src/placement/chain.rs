@@ -93,9 +93,14 @@ pub fn resolve_chain_relative(
     base: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> PlacementResult<Matrix4<f64>> {
-    // Climbed first, so a cyclic placement is refused even as its own base.
+    // Climbed first, so a cyclic placement is refused even as its own base;
+    // as its own base its own frame is read too, as the path below reads the
+    // frames below the shared one, and an unreadable one is refused.
     let target = full_climb(placement, decoder)?;
     if placement.id == base.id {
+        if let Some(own) = target.frames.first() {
+            frame_matrix(own, decoder)?;
+        }
         return Ok(Matrix4::identity());
     }
     let origin = full_climb(base, decoder)?;

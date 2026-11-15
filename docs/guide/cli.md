@@ -406,6 +406,10 @@ ifc-lite export model.ifc --format 3dm --out model.3dm
 # OpenUSD (.usda) — a real Z-up USD stage (whole model; opens in usdview/Blender/Omniverse)
 ifc-lite export model.ifc --format usd --out model.usda
 
+# CityJSON 2.0 (.city.json) or CityJSONSeq (.city.jsonl) — buildings for city models / GIS,
+# in the model's EPSG CRS when its IfcMapConversion resolves (whole model)
+ifc-lite export model.ifc --format cityjson --out model.city.json
+
 # Limit results
 ifc-lite export model.ifc --format csv --type IfcWall --limit 50
 
@@ -417,7 +421,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 | Flag | Description |
 |------|-------------|
-| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, `3dm`, `hbjson`, or `dfjson` |
+| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, `3dm`, `hbjson`, `dfjson`, `cityjson`, or `cityjsonseq` |
 | `--type <T>` | Filter entities by type |
 | `--where <filter>` | Property filter: `PsetName.PropName=Value` |
 | `--storey <name>` | Filter to elements in a storey |
@@ -427,8 +431,13 @@ ifc-lite export model.ifc --format csv --out walls.csv
 | `--name <str>` | Model name for geometry exports |
 | `--limit <N>` | Limit result count |
 | `--diagnostics` | Print a geometry summary after mesh-based exports |
+| `--scale <step>` | `cityjson`/`cityjsonseq`: vertex grid in output units (default `0.001`, millimetres) |
+| `--blocks-only` | `cityjson`/`cityjsonseq`: buildings as LoD0/LoD1 only; rooms and elements keep their attributes but no geometry |
 | `--name-by-global-id` | `gltf`/`glb`: make each element one node named by its `GlobalId`, with its mesh parts as children |
 | `--out <file>` | Write to file instead of stdout |
+
+The CityJSON mapping, LoD claims and georeferencing rules are in the
+[exporting guide](exporting.md#cityjson-export).
 
 #### Rhino export options
 
@@ -1907,7 +1916,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `query` | Query entities by type/properties/quantities |
 | `structural` | Read analysis models, members, connections, loads, reactions and physical links |
 | `props` | All properties for a single entity |
-| `export` | Export data / geometry / energy model |
+| `export` | Export data / geometry / energy / city model |
 | `schedule` | Tabular schedule of one class (csv/json/md/html) |
 | `diagnose-geometry` | CSG / opening diagnostics (failures, classification) |
 | `extract-entities` | Isolate entities into a small, viewable standalone IFC |

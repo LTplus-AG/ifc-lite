@@ -205,8 +205,10 @@ entities, properties and containment from the parsed store. No meshing.
   never is.
 - A position read from a clipped body's outer operand is marked uncertain
   (`positionIsUncertain`), as are positions read from part of a body.
-- An arc in a profile or curve is traced so that no chord lies more than
-  5e-5 × its radius inside it (1 mm on a 20 m radius), in any frame.
+- An arc in a profile or curve is traced by points on it alternating with
+  tangent corners just outside it: within 5e-5 × its radius (1 mm on a 20 m
+  radius), and its extent is reached in every direction, in any frame, so a
+  bound read from it is never short.
 - A slab body extruded obliquely (an `ExtrudedDirection` not along the
   profile's normal) is not read as an outline: the footprint is partial.
 - A body read through the first operand of a Boolean DIFFERENCE or clipping

@@ -73,7 +73,7 @@ describe('the audit: no reader stops at the first item or match', () => {
           b.contain(b.storeys.og.id, w);
         }
       },
-    })), { expectedCrs: 'EPSG:2056' });
+    })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' }); // stated, so a wrong bound would exclude it (a guessed storey keeps everything)
     expect(facts.candidates.find((c) => c.name === 'Öffnung doppelt')).toMatchObject({ levelIsUpperEstimate: true });
   });
 });

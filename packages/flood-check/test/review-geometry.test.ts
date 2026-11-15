@@ -44,6 +44,18 @@ describe('an arc is traced along its whole length, not only at its axis extremes
       worst = Math.max(worst, toPolyline([10 + 10 * Math.cos(t), 10 * Math.sin(t)], pts));
     }
     expect(worst).toBeLessThan(1e-3);
+    // Conservative in every frame (CodeRabbit's follow-up: on-arc points alone fell 0.49 mm short after a 45° turn): in each
+    // of 32 directions the points reach at least as far as the arc does.
+    for (let k = 0; k < 32; k++) {
+      const u = [Math.cos((2 * Math.PI * k) / 32), Math.sin((2 * Math.PI * k) / 32)];
+      let arc = -Infinity;
+      for (let j = 0; j <= 2000; j++) {
+        const t = Math.PI + (Math.PI / 2) * (j / 2000);
+        arc = Math.max(arc, (10 + 10 * Math.cos(t)) * u[0] + 10 * Math.sin(t) * u[1]);
+      }
+      const reach = Math.max(...[[0, 0] as [number, number], ...pts].map((p) => p[0] * u[0] + p[1] * u[1]));
+      expect(reach, `direction ${k}`).toBeGreaterThanOrEqual(arc - 1e-9);
+    }
   });
 });
 

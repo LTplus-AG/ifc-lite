@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { curvePoints } from '../src/model/outline.js';
+import { ARC_SAGITTA, curvePoints } from '../src/model/outline.js';
 import type { ModelReader } from '../src/model/reader.js';
 
 /** A reader over hand-written decoded entities (typed values decode to [TYPE, value]). */
@@ -25,7 +25,7 @@ describe('IfcIndexedPolyCurve outline', () => {
     expect(curvePoints(curve(segments), 1)).toEqual([[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]);
   });
 
-  it('an arc segment keeps its circle\'s axis-aligned extremes, in order, and every point it adds lies on the circle (audit finding 9)', () => {
+  it('an arc segment keeps its circle\'s axis-aligned extremes, in order, and every point it adds lies on the circle or just outside it (audit finding 9)', () => {
     // The arc through (10, 0), (10, 10), (0, 10): centre (5, 5), radius 5√2; its rightmost (east) and topmost (north) points lie on it.
     // Since the CodeRabbit review it is also traced between them (review-geometry.test.ts), so the list is longer than these.
     const r = 5 * Math.SQRT2;
@@ -37,7 +37,11 @@ describe('IfcIndexedPolyCurve outline', () => {
       expect(i, `${x},${y}`).toBeGreaterThanOrEqual(from);
       from = i + 1;
     }
-    for (const [x, y] of pts.slice(2)) expect(Math.hypot(x - 5, y - 5)).toBeCloseTo(r, 9);
+    for (const [x, y] of pts.slice(2)) {
+      const off = Math.hypot(x - 5, y - 5) - r;
+      expect(off).toBeGreaterThanOrEqual(-1e-9);
+      expect(off).toBeLessThanOrEqual(ARC_SAGITTA * r + 1e-9);
+    }
   });
 
   it('an out-of-range or malformed segment makes the outline unreadable, never a guess', () => {

@@ -63,7 +63,7 @@ export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | nul
     const segments = e.attributes[1];
     if (segments === null || segments === undefined) return pts; // no Segments: the points in list order
     // Segments name the points of the curve and their order (1-based; a line, or an arc through three points, traced along
-    // its length). A point the segments omit is not on the curve, and a malformed segment makes the whole outline unreadable.
+    // its length so that its extent holds in any frame, see arcPoints). A point the segments omit is not on the curve, and a malformed segment makes the whole outline unreadable.
     if (!Array.isArray(segments) || segments.length === 0) return null;
     const out: Pt2[] = [];
     let last = -1;
@@ -86,16 +86,18 @@ export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | nul
   return null;
 }
 
-/** Largest gap between an arc and its chords, as a fraction of the radius (1 mm on a 20 m radius). */
+/** Largest gap between an arc and its outline, either way, as a fraction of the radius (1 mm on a 20 m radius). */
 export const ARC_SAGITTA = 5e-5;
 
 /**
- * The points of an arc from `a` through `b` to `c`, after `a`, in order along
- * it: `b`, `c`, every axis-aligned extreme of their circle on the arc, and
- * points close enough that no chord lies more than `ARC_SAGITTA` × radius
- * inside the arc. Its extent then holds in any frame the outline is later
- * turned into (a placement or the map rotation), not only the local one.
- * Three collinear points are a straight line (`b`, `c`).
+ * The points of an arc from `a` through `b` to `c`, after `a`: points on the
+ * arc (its circle's axis-aligned extremes among them) alternating with the
+ * corners where the tangents at neighbouring arc points meet, which lie just
+ * outside the circle. The on-arc points bound a concave arc, the tangent
+ * corners a convex one, so the extent of these points reaches the arc's in
+ * every direction, in any frame the outline is later turned into (a
+ * placement, a tilt, the map rotation), and lies within `ARC_SAGITTA` × radius
+ * of it. Three collinear points are a straight line (`b`, `c`).
  */
 function arcPoints(a: Pt2, b: Pt2, c: Pt2): Pt2[] {
   const d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
@@ -110,19 +112,31 @@ function arcPoints(a: Pt2, b: Pt2, c: Pt2): Pt2[] {
   const ccw = norm(ang(b) - ta) < norm(ang(c) - ta);
   const along = (t: number) => (ccw ? norm(t - ta) : norm(ta - t));
   const sweep = along(ang(c));
-  const out: Array<[number, Pt2]> = [[along(ang(b)), b], [sweep, c]];
-  const at = (off: number): Pt2 => {
+  const at = (off: number, radius = r): Pt2 => {
     const t = ccw ? ta + off : ta - off;
-    return [ux + r * Math.cos(t), uy + r * Math.sin(t)];
+    return [ux + radius * Math.cos(t), uy + radius * Math.sin(t)];
   };
+  // Tangent points: both ends, the file's middle point, and every axis extreme on the arc, refined so that each piece spans at most 2h, where the
+  // tangent corner (radius r / cos h) and the chord (r cos h from the centre) each stay within ARC_SAGITTA × r.
+  const h = Math.acos(1 / (1 + ARC_SAGITTA));
+  const marks = [0, along(ang(b)), sweep];
   for (const e of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
     const off = along(e);
-    if (off > 1e-9 && off < sweep - 1e-9) out.push([off, [ux + r * Math.cos(e), uy + r * Math.sin(e)]]);
+    if (off > 1e-9 && off < sweep - 1e-9) marks.push(off);
   }
-  const step = 2 * Math.acos(1 - ARC_SAGITTA);
-  const n = Math.ceil(sweep / step);
-  for (let k = 1; k < n; k++) out.push([(sweep * k) / n, at((sweep * k) / n)]);
-  return out.sort((x, y) => x[0] - y[0]).map(([, p]) => p);
+  marks.sort((x, y) => x - y);
+  const out: Pt2[] = [];
+  for (let i = 1; i < marks.length; i++) {
+    const [t0, t1] = [marks[i - 1], marks[i]];
+    const n = Math.max(1, Math.ceil((t1 - t0) / (2 * h)));
+    for (let k = 1; k <= n; k++) {
+      const s0 = t0 + ((t1 - t0) * (k - 1)) / n;
+      const s1 = t0 + ((t1 - t0) * k) / n;
+      out.push(at((s0 + s1) / 2, r / Math.cos((s1 - s0) / 2)));
+      out.push(k < n ? at(s1) : i === marks.length - 1 ? c : marks[i] === along(ang(b)) ? b : at(s1));
+    }
+  }
+  return out;
 }
 
 /** Outer boundary of a profile definition, in the profile's own 2D coordinates. */

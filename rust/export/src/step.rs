@@ -200,7 +200,8 @@ fn emit<W: std::io::Write>(
         owner_histories.into_iter().find(|id| included.contains(id)),
     );
     // IFC4-required `$` slots (#5307) and enum members the target lacks (#5365).
-    let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_schema, &schema, opts, true, |id, start| index.is_kept(id, start));
+    let mut ids = crate::step_ids::IdAllocator::after(max_id);
+    let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_schema, &schema, opts, true, |id, start| index.is_kept(id, start), || ids.allocate());
     // The synthesized property sets below are filled whenever the OUTPUT is
     // IFC2X3, not only when a conversion runs: an IFC2X3 source needs no
     // conversion, and the records this exporter writes for it still have to be
@@ -226,8 +227,7 @@ fn emit<W: std::io::Write>(
     // repointed referrers both go through it. Its own module: the pass has four
     // rules now and every one of them is a file that came out wrong without it.
     // One allocator for the copies and the property sets after them
-    // (#7682, EXPORT-STEP-9).
-    let mut ids = crate::step_ids::IdAllocator::after(max_id);
+    // (#7682, EXPORT-STEP-9), the one `checks` drew from above.
     let resolved = crate::step_cow::resolve(&opts.copy_on_write, content, line_of, &included, &muts_by_id, &mut ids);
     let copies_refused = resolved.refused;
     let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id); flatten.retain_grids(|id| included.contains(&id));
@@ -245,7 +245,7 @@ fn emit<W: std::io::Write>(
 
     let mut written = 0usize;
     for id in order {
-        if included.contains(id) && !flatten.drops(*id) {
+        if included.contains(id) && !flatten.drops(*id) && !checks.drops(*id) {
             if let Some(&(s, e)) = line_of.get(id) {
                 let raw = String::from_utf8_lossy(&content[s..e]);
                 // Apply root-attribute edits first (original-schema positions), then convert.
@@ -345,7 +345,7 @@ fn emit<W: std::io::Write>(
         written += 2;
     }
 
-    written = written.checked_add_signed(body.finish()?).unwrap_or(written);
+    written = written.checked_add_signed(checks.finish(body)?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     Ok((StepStats {

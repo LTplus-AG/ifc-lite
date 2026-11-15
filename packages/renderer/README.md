@@ -37,6 +37,10 @@ without point-cloud rendering and scan deviation, so those pipelines and
 shaders stay out of the bundle. Its point-cloud and deviation methods throw.
 See [Rendering](https://ifclite.dev/docs/guide/rendering/#mesh-only-pages-ifc-literenderercore).
 
+`hasRenderablePointCloudOrigin(asset)` checks whether an inline cloud's optional origin
+contains three finite coordinates within float32 range. Bulk uploads skip invalid
+origins; use this predicate when counting the clouds that can render.
+
 ## Inspect GPU pass timing
 
 Timestamp queries are opt-in. Enable them before rendering, then read resolved

@@ -9792,6 +9792,7 @@
     "expandAppearanceCorners: function",
     "federationRegistry: const",
     "frameTotalMs: function",
+    "hasRenderablePointCloudOrigin: function",
     "hasTimestampQueryFeature: function",
     "hostsOtherEntities: function",
     "invertAppearancePartition: function",

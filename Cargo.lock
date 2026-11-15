@@ -1633,6 +1633,7 @@ dependencies = [
  "arrow",
  "bytemuck",
  "geometry-predicates",
+ "i_overlay",
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-landxml",

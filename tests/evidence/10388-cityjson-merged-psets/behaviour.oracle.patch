@@ -1,0 +1,12 @@
+--- a/rust/export/src/cityjson/attributes.rs
++++ b/rust/export/src/cityjson/attributes.rs
+@@ -42,8 +42,7 @@
+ fn merged_sets<'a>(sets: impl IntoIterator<Item = &'a PropertySet>, conflicts: &mut Vec<String>) -> Map<String, Value> {
+     let mut out: Map<String, Value> = Map::new();
+     for ps in sets {
+-        out.insert(ps.name.clone(), Value::Object(Map::new()));
+-        let Some(Value::Object(target)) = out.get_mut(&ps.name) else { continue };
++        let Value::Object(target) = out.entry(ps.name.clone()).or_insert_with(|| Value::Object(Map::new())) else { continue };
+         for p in &ps.properties {
+             let value = json_value(p);
+             match target.get(&p.name) {

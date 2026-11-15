@@ -13,8 +13,9 @@
 //! it closes. Any drift in mesh order, grouping, the cap-closed chunk order,
 //! the totals, the bounds or the spool copy shows up here as a byte diff.
 //!
-//! The committed viewer samples always run; the catalogued fixtures skip with
-//! a `pnpm fixtures` message when absent.
+//! The committed viewer samples always run; the catalogued fixtures are read
+//! through `ifc_lite_testkit::fixture_bytes`, so they skip locally when absent
+//! and fail in CI, where the fixtures are required.
 
 use std::path::{Path, PathBuf};
 
@@ -77,12 +78,13 @@ fn issue_9584_catalogued_fixtures_stream_byte_identical() {
     let dir = scratch("catalogued");
     // A real authoring-tool house, and a CSG/void-heavy model whose chunks
     // deflate (the AGENTS.md perf fixtures).
+    // Gated reads: absent skips locally, but fails under IFC_LITE_REQUIRE_FIXTURES (CI).
     for path in [
-        "tests/models/ara3d/AC20-FZK-Haus.ifc",
-        "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "ara3d/AC20-FZK-Haus.ifc",
+        "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
     ] {
-        let Ok(source) = std::fs::read(workspace(path)) else {
-            eprintln!("SKIP: {path} absent; run `pnpm fixtures`");
+        let Some(source) = ifc_lite_testkit::fixture_bytes(path) else {
+            eprintln!("SKIP: tests/models/{path} absent; run `pnpm fixtures`");
             continue;
         };
         assert_identical(path, &source, CacheOptions::default(), &dir);

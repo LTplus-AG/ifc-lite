@@ -164,6 +164,9 @@ it does where no runoff is mapped. So:
   (`CONFIRMATION_MAX_AGE_MS`; the service may stop rendering at any time): the
   provider reuses a positive answer for at most 5 minutes and asks again after
   any negative or failed one, and the check compares the two retrieval times.
+  Concurrent checks share one reference request, which runs under no caller's
+  signal; each caller waits under its own, so one caller's abort neither
+  cancels nor poisons another's confirmation.
   Without such a confirmation, transparent samples are `unclassified`
   (`layer-not-confirmed`) rather than `no-runoff-mapped`. The result records
   the reference's retrieval time (`provenance.renderingCheckedAt`,
@@ -217,6 +220,12 @@ entities, properties and containment from the parsed store. No meshing.
   a Boolean UNION) while others do, the footprint misses its area:
   `footprint.partial` is set, the slab is in `skipped`, a warning says so and
   no element gets a reassuring outcome (`partial-footprint`).
+  **Every geometry reader reports what it could not read**
+  (`src/model/outline.ts`): bodies, slab outlines and wall axes are read item
+  by item, every item, and each read returns the items present and the items
+  read; a slab whose body holds two extrusions gives two rings, and one with
+  an unreadable item is `partial`. A Boolean DIFFERENCE is read through its
+  outer operand and marks a slab outline as voids-filled.
   **The footprint's quality is one record that only accumulates**
   (`src/model/footprint.ts`, `footprint.quality`): every source tried that
   could not be read, or only in part (a slab, an external wall's placement

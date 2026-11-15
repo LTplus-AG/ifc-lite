@@ -19,7 +19,7 @@ import type { MapPoint } from '../types.js';
 import { isExternal } from './candidate-base.js';
 import { FOOTPRINT_QUALITY_ORDER, type FootprintFact, type FootprintQuality, type FootprintQualityRecord, type ModelFacts } from './facts.js';
 import type { ModelGeoreference } from './georef.js';
-import { slabOutline, slabOutlineHasVoids, toWorld, wallAxis } from './outline.js';
+import { completeness, readSlabOutline, readWallAxis, toWorld } from './outline.js';
 import type { PlacementResolver } from './placement.js';
 import { asEnum, type ModelReader } from './reader.js';
 
@@ -134,16 +134,21 @@ function fromModel(input: FootprintInput, log: QualityLog): FootprintFact | null
     const kind = asEnum(reader.attr(reader.entity(id), 'PredefinedType'));
     if (kind && !['FLOOR', 'BASESLAB', 'NOTDEFINED', 'USERDEFINED'].includes(kind)) continue;
     const frame = placements.ofProduct(id);
-    const outline = frame ? slabOutline(reader, id) : null;
-    if (!frame || !outline) {
-      log.unread(id, reader.className(reader.entity(id)!), 'ground-storey floor slab whose outline cannot be read');
+    const outline = frame ? readSlabOutline(reader, id) : null;
+    const state = outline ? completeness(outline) : 'unreadable';
+    const cls = reader.className(reader.entity(id)!);
+    if (!frame || !outline || state === 'none' || state === 'unreadable') {
+      log.unread(id, cls, 'ground-storey floor slab whose outline cannot be read');
       continue;
     }
-    const ring = toRing(toWorld(frame, outline));
-    if (ringArea(ring) < 1) continue;
-    rings.push(ring);
+    // Every ring the slab gives (one per extrusion or curve); a part not read leaves the outline partial.
+    if (state === 'partial') log.unread(id, cls, `ground-storey floor slab whose outline can be read only in part (${outline.readable} of ${outline.items} items)`);
+    for (const r of outline.rings) {
+      const ring = toRing(toWorld(frame, r));
+      if (ringArea(ring) >= 1) rings.push(ring);
+    }
     from.push(id);
-    if (slabOutlineHasVoids(reader, id)) log.mark('voids-filled');
+    if (outline.voids) log.mark('voids-filled');
   }
   if (rings.length > 0) return seal(rings, log.record().conditions.includes('voids-filled') ? 'slab-outline-voids-filled' : 'slab-outline', from, log);
 
@@ -161,14 +166,21 @@ function fromModel(input: FootprintInput, log: QualityLog): FootprintFact | null
         log.unread(id, reader.className(wall), 'external wall in the ground storey whose placement cannot be read');
         continue;
       }
-      const axis = wallAxis(reader, id);
-      if (!axis || axis.length < 2) {
+      const axis = readWallAxis(reader, id);
+      const state = completeness(axis);
+      if (state !== 'complete') {
         everyAxisRead = false;
-        log.unread(id, reader.className(wall), 'external wall in the ground storey whose axis cannot be read');
+        log.unread(id, reader.className(wall), state === 'partial'
+          ? `external wall in the ground storey whose axis can be read only in part (${axis.readable} of ${axis.items} curves)`
+          : 'external wall in the ground storey whose axis cannot be read');
       }
-      const line = toRing(toWorld(frame, axis ?? [[0, 0, 0]]));
-      points.push(...line);
-      axes.push(line);
+      for (const l of axis.lines) {
+        const line = toRing(toWorld(frame, l));
+        points.push(...line);
+        axes.push(line);
+      }
+      // With no axis read, the wall's placement origin is the one point of it known: it still widens the hull.
+      if (axis.lines.length === 0) points.push(...toRing(toWorld(frame, [[0, 0, 0]])));
       walls.push(id);
     }
   }

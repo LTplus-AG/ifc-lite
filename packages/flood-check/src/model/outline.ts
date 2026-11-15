@@ -3,12 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Plan outlines read straight from representation entities, without meshing:
- * a slab's `FootPrint` curve or the swept profile of its `Body` extrusion, and
- * a wall's `Axis` curve. Arcs in indexed poly-curves are taken through their
- * stored points (chord approximation), which is fine at footprint scale.
- * Anything else (B-reps, mapped items, composite curves) yields null and the
- * caller falls back.
+ * The one module that reads geometry from representation entities, without
+ * meshing. Every exported reader returns what it read TOGETHER with how many
+ * items were present and how many of them were readable ({@link Reading}),
+ * and reads every item, never only the first: a multi-item representation
+ * yields all readable items, and a caller can tell "nothing there"
+ * (`items === 0`) from "partly read" (`0 < readable < items`) and "unreadable"
+ * (`readable === 0 < items`). No reader returns geometry without that record.
+ *
+ * Readable: extrusions of rectangle and arbitrary closed profiles, polylines
+ * and indexed poly-curves (arcs through their stored points); a Boolean
+ * DIFFERENCE or INTERSECTION is bounded by its first operand (flagged
+ * `subtracted`), a UNION is unreadable. Everything else (B-reps, mapped items,
+ * composite curves) counts as an unreadable item.
  */
 
 import { applyFrame, axisPlacementFrame, IDENTITY, type Frame, type Vec3 } from './placement.js';
@@ -35,7 +42,8 @@ function pointList(reader: ModelReader, id: number | null): Pt2[] | null {
   return null;
 }
 
-/** Points of a planar bounded curve in its own coordinates. */
+/** Points of a planar bounded curve in its own coordinates; null when it cannot be read. */
+/** Per-item primitive (one curve: points, or null when that item cannot be read); production callers use the readers below. */
 export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | null {
   const e = reader.entity(id);
   if (!e) return null;
@@ -114,81 +122,106 @@ function representationItems(reader: ModelReader, productId: number, identifier:
 /**
  * Follow IfcBooleanClippingResult / IfcBooleanResult first operands down to
  * the solid they cut. A DIFFERENCE or INTERSECTION lies within its first
- * operand, so that operand bounds it; a UNION does not (its second operand is
- * dropped), so it is unreadable (null).
+ * operand, so that operand bounds it (`subtracted`: the solid is smaller than
+ * what is read); a UNION does not (its second operand would be dropped), so it
+ * is unreadable (null).
  */
-function unwrapClipping(reader: ModelReader, id: number): number | null {
+function unwrapClipping(reader: ModelReader, id: number): { solid: number; subtracted: boolean } | null {
   const seen = new Set<number>();
   let current: number | null = id;
+  let subtracted = false;
   while (current !== null && !seen.has(current)) {
     seen.add(current);
     const e = reader.entity(current);
     if (!e) return null;
-    if (e.type !== 'IFCBOOLEANCLIPPINGRESULT' && e.type !== 'IFCBOOLEANRESULT') return current;
+    if (e.type !== 'IFCBOOLEANCLIPPINGRESULT' && e.type !== 'IFCBOOLEANRESULT') return { solid: current, subtracted };
     if (e.type === 'IFCBOOLEANRESULT' && asEnum(reader.attr(e, 'Operator')) === 'UNION') return null;
+    subtracted = true;
     current = asRef(reader.attr(e, 'FirstOperand'));
   }
   return null;
 }
 
+/** How many items a representation had, and how many of them were read. */
+export interface Reading {
+  /** Items present. 0: there is nothing of this kind. */
+  items: number;
+  /** Of those, the items read. */
+  readable: number;
+}
+
+export type Completeness = 'none' | 'complete' | 'partial' | 'unreadable';
+
+export function completeness(r: Reading): Completeness {
+  if (r.items === 0) return 'none';
+  if (r.readable === 0) return 'unreadable';
+  return r.readable < r.items ? 'partial' : 'complete';
+}
+
+/** A slab's plan outline: one ring per readable item, in object coordinates (raw file units). */
+export interface OutlineReading extends Reading {
+  rings: Vec3[][];
+  /**
+   * The rings fill something the slab does not cover: inner boundaries that
+   * are not kept (a profile with voids, a `FootPrint` of several curves), or an
+   * outline read from the outer operand of a Boolean DIFFERENCE.
+   */
+  voids: boolean;
+}
+
 /**
- * A slab's plan outline in object coordinates (raw file units): its
- * `FootPrint` curve if present, else the profile of a near-vertical `Body`
- * extrusion. Null when neither can be read.
+ * Every ring of a slab's plan outline: its `FootPrint` curves when they can
+ * all be read, else every near-horizontal extrusion of its `Body`. Each item
+ * read gives its own ring; an item that cannot be read is counted, not dropped.
  */
-export function slabOutline(reader: ModelReader, slabId: number): Vec3[] | null {
-  for (const item of representationItems(reader, slabId, 'FootPrint')) {
+export function readSlabOutline(reader: ModelReader, slabId: number): OutlineReading {
+  const footprint = representationItems(reader, slabId, 'FootPrint');
+  const fromFootprint: OutlineReading = { rings: [], items: footprint.length, readable: 0, voids: footprint.length > 1 };
+  for (const item of footprint) {
     const pts = curvePoints(reader, item);
-    if (pts && pts.length >= 3) return pts.map(([x, y]) => [x, y, 0]);
+    if (!pts || pts.length < 3) continue;
+    fromFootprint.rings.push(pts.map(([x, y]) => [x, y, 0]));
+    fromFootprint.readable++;
   }
-  for (const item of representationItems(reader, slabId, 'Body')) {
-    const solidId = unwrapClipping(reader, item);
-    const solid = reader.entity(solidId);
-    if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') continue;
-    const profile = profilePoints(reader, asRef(reader.attr(solid, 'SweptArea')));
+  if (footprint.length > 0 && completeness(fromFootprint) === 'complete') return fromFootprint;
+  const body = representationItems(reader, slabId, 'Body');
+  const fromBody: OutlineReading = { rings: [], items: body.length, readable: 0, voids: false };
+  for (const item of body) {
+    const unwrapped = unwrapClipping(reader, item);
+    const solid = reader.entity(unwrapped?.solid);
+    if (!unwrapped || !solid || solid.type !== 'IFCEXTRUDEDAREASOLID') continue;
+    const profileId = asRef(reader.attr(solid, 'SweptArea'));
+    const profile = profilePoints(reader, profileId);
     if (!profile || profile.length < 3) continue;
-    const position = reader.attr(solid, 'Position') == null
-      ? IDENTITY
-      : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
-    if (!position) continue;
+    const position = reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
     // A profile only stands for the plan outline when it lies in a horizontal plane.
-    if (Math.abs(position.z[2]) < 0.99) continue;
-    return profile.map(([x, y]) => applyFrame(position, [x, y, 0]));
+    if (!position || Math.abs(position.z[2]) < 0.99) continue;
+    fromBody.rings.push(profile.map(([x, y]) => applyFrame(position, [x, y, 0])));
+    fromBody.readable++;
+    const profileEntity = reader.entity(profileId);
+    const inner = profileEntity?.type === 'IFCARBITRARYPROFILEDEFWITHVOIDS' ? reader.attr(profileEntity, 'InnerCurves') : null;
+    if (unwrapped.subtracted || (Array.isArray(inner) && inner.length > 0)) fromBody.voids = true;
   }
-  return null;
+  // The body when it was read in full, or when the footprint gave nothing better; else the partly read footprint.
+  if (completeness(fromBody) === 'complete' || footprint.length === 0 || fromBody.readable > fromFootprint.readable) return fromBody;
+  return fromFootprint;
 }
 
-/**
- * Whether the slab's outline has inner boundaries that {@link slabOutline}
- * drops: an `IfcArbitraryProfileDefWithVoids` body profile with inner curves,
- * or a `FootPrint` with more than one curve. The outline then fills the
- * courtyards those voids stand for.
- */
-export function slabOutlineHasVoids(reader: ModelReader, slabId: number): boolean {
-  let footprintCurves = 0;
-  for (const item of representationItems(reader, slabId, 'FootPrint')) {
-    const pts = curvePoints(reader, item);
-    if (pts && pts.length >= 3) footprintCurves++;
-  }
-  if (footprintCurves > 1) return true;
-  for (const item of representationItems(reader, slabId, 'Body')) {
-    const solid = reader.entity(unwrapClipping(reader, item));
-    if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') continue;
-    const profile = reader.entity(asRef(reader.attr(solid, 'SweptArea')));
-    if (profile?.type !== 'IFCARBITRARYPROFILEDEFWITHVOIDS') continue;
-    const inner = reader.attr(profile, 'InnerCurves');
-    if (Array.isArray(inner) && inner.length > 0) return true;
-  }
-  return false;
+/** A wall's `Axis`: one polyline per readable curve, in object coordinates (raw file units). */
+export interface AxisReading extends Reading {
+  lines: Vec3[][];
 }
 
-/** A wall's `Axis` curve points in object coordinates (raw file units). */
-export function wallAxis(reader: ModelReader, wallId: number): Vec3[] | null {
-  for (const item of representationItems(reader, wallId, 'Axis')) {
+export function readWallAxis(reader: ModelReader, wallId: number): AxisReading {
+  const items = representationItems(reader, wallId, 'Axis');
+  const out: AxisReading = { lines: [], items: items.length, readable: 0 };
+  for (const item of items) {
     const pts = curvePoints(reader, item);
-    if (pts) return pts.map(([x, y]) => [x, y, 0]);
+    if (!pts || pts.length < 2) continue;
+    out.lines.push(pts.map(([x, y]) => [x, y, 0]));
+    out.readable++;
   }
-  return null;
+  return out;
 }
 
 /** Points given in a product's object coordinates, carried to its world frame. */
@@ -199,12 +232,8 @@ export function toWorld(frame: Frame, points: readonly Vec3[]): Vec3[] {
 /** Representations that carry no solid: they say nothing about where a body ends. */
 const NON_SOLID = new Set(['Axis', 'FootPrint', 'Profile', 'Annotation', 'Reference', 'CoG', 'Clearance', 'Lighting', 'Box', 'Surface']);
 
-/** What could be read of a product's body. */
-export interface BodyReading {
-  /** Items of its solid representations (`Body`, or a representation with no identifier). 0: it has no body. */
-  items: number;
-  /** Of those, the items read as extrusions. */
-  readable: number;
+/** What could be read of a product's body: items of its solid representations (`Body`, or one with no identifier). */
+export interface BodyReading extends Reading {
   /** Corners of the readable items, top and bottom, in the product's object coordinates. */
   corners: Vec3[];
 }
@@ -236,7 +265,8 @@ export function readBody(reader: ModelReader, productId: number): BodyReading {
 }
 
 function readExtrusion(reader: ModelReader, item: number, out: Vec3[]): void {
-  const solid = reader.entity(unwrapClipping(reader, item));
+  // A DIFFERENCE's first operand bounds the solid from outside: its lowest point is no higher than the solid's.
+  const solid = reader.entity(unwrapClipping(reader, item)?.solid);
   if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') return;
   const profile = profilePoints(reader, asRef(reader.attr(solid, 'SweptArea')));
   const depth = asNumber(reader.attr(solid, 'Depth'));

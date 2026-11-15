@@ -182,6 +182,25 @@ async function fetchBytes(url: string, fetchImpl: typeof fetch, signal: AbortSig
   }
 }
 
+/** `shared`, or the caller's own abort reason as soon as its signal aborts, whichever comes first. */
+function waitUnder<T>(shared: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    shared.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 /** Largest cell size a request may use: half the 1 m model raster. */
 const MAX_CELL_SIZE = 0.5;
 
@@ -319,23 +338,30 @@ export function createBafuRunoffProvider(options: BafuProviderOptions = {}): Haz
       return raster(b, cellSize, request.signal ?? new AbortController().signal);
     },
     /**
-     * One 9 x 9 px request at the documented reference location. A positive
-     * answer is reused while its reference response is at most 5 minutes old
-     * (`CONFIRMATION_MAX_AGE_MS`); after that, and after any negative or
-     * failed answer, the next check asks again.
+     * One 9 x 9 px request at the documented reference location, shared by
+     * concurrent callers. It runs under no caller's signal (its own timeout
+     * bounds it), and each caller waits under its own: one caller's abort
+     * releases that caller only and neither cancels nor poisons the others'
+     * confirmation. A positive answer is reused while its reference response
+     * is at most 5 minutes old (`CONFIRMATION_MAX_AGE_MS`); after that, and
+     * after any negative or failed answer, the next check asks again.
      */
     confirmRendering(signal?: AbortSignal): Promise<RenderingConfirmation> {
       if (confirmed && age(confirmed.retrievedAt) <= CONFIRMATION_MAX_AGE_MS) return Promise.resolve(confirmed);
       confirmed = null;
-      pending ??= confirm(signal ?? new AbortController().signal)
-        .then((r) => {
-          if (r.confirmed) confirmed = r;
-          return r;
-        })
-        .finally(() => {
-          pending = null;
-        });
-      return pending;
+      if (!pending) {
+        pending = confirm(new AbortController().signal)
+          .then((r) => {
+            if (r.confirmed) confirmed = r;
+            return r;
+          })
+          .finally(() => {
+            pending = null;
+          });
+        // Every caller may have stopped waiting; the shared request must not end in an unhandled rejection.
+        pending.catch(() => {});
+      }
+      return signal ? waitUnder(pending, signal) : pending;
     },
   };
 }

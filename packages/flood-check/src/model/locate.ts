@@ -227,10 +227,13 @@ export function readSources(ctx: CandidateContext, entity: DecodedEntity, kind: 
     s.overallHeight = overallHeight(ctx, entity.expressId);
   }
   if (kind === 'opening' || kind === 'slab-opening') {
-    const filling = ctx.reader.related(entity.expressId, RelationshipType.FillsElement, 'forward')[0];
-    const fillingFrame = filling === undefined ? null : ctx.placements.ofProduct(filling);
-    const h = filling === undefined ? null : overallHeight(ctx, filling);
-    s.fillingLowest = fillingFrame && h !== null ? ctx.georef.toMap(fillingFrame.origin)[2] - h : null;
+    // Every filling (a door with a sidelight fills one opening twice): the lowest of their bounds, none if any has none.
+    const bounds = ctx.reader.related(entity.expressId, RelationshipType.FillsElement, 'forward').map((filling) => {
+      const frame = ctx.placements.ofProduct(filling);
+      const h = overallHeight(ctx, filling);
+      return frame && h !== null ? ctx.georef.toMap(frame.origin)[2] - h : null;
+    });
+    s.fillingLowest = bounds.length > 0 && bounds.every((b) => b !== null) ? Math.min(...(bounds as number[])) : null;
   }
   if (kind === 'slab-opening' && host) {
     const hostFrame = ctx.placements.ofProduct(host.expressId);

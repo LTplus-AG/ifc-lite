@@ -72,8 +72,9 @@ export const NO_PLACEMENT = 'no readable IfcLocalPlacement chain';
 export function isExternal(reader: ModelReader, entity: DecodedEntity): boolean | null {
   const pset = COMMON_PSET[entity.type];
   if (!pset) return null;
-  const v = reader.property(entity.expressId, pset, 'IsExternal');
-  return typeof v === 'boolean' ? v : null;
+  // Several same-named sets may disagree: any `true` keeps the element in the façade (an exclusion needs every set to say false).
+  const values = reader.propertyValues(entity.expressId, pset, 'IsExternal').filter((v): v is boolean => typeof v === 'boolean');
+  return values.length === 0 ? null : values.includes(true);
 }
 
 export function predefinedType(reader: ModelReader, entity: DecodedEntity): string | null {

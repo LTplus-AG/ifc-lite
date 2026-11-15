@@ -88,21 +88,22 @@ export class ModelReader {
     return this.store.relationships?.getRelated(id, rel, direction) ?? [];
   }
 
-  /** A property value from the element's own sets, else from its type's. */
-  property(id: number, psetName: string, propName: string): unknown {
-    const own = extractPropertiesOnDemand(this.store, id);
-    for (const set of own) {
-      if (set.name !== psetName) continue;
-      const prop = set.properties.find((p) => p.name === propName);
-      if (prop) return prop.value;
-    }
-    const typed = extractTypePropertiesOnDemand(this.store, id);
-    for (const set of typed?.properties ?? []) {
-      if (set.name !== psetName) continue;
-      const prop = set.properties.find((p) => p.name === propName);
-      if (prop) return prop.value;
-    }
-    return undefined;
+  /**
+   * Every value of a property in the element's own sets of that name, else in
+   * its type's (the occurrence overrides its type). Several sets of the same
+   * name may disagree; a caller decides how (see `isExternal`).
+   */
+  propertyValues(id: number, psetName: string, propName: string): unknown[] {
+    const collect = (sets: ReadonlyArray<{ name: string; properties: ReadonlyArray<{ name: string; value: unknown }> }>) => {
+      const out: unknown[] = [];
+      for (const set of sets) {
+        if (set.name !== psetName) continue;
+        for (const p of set.properties) if (p.name === propName) out.push(p.value);
+      }
+      return out;
+    };
+    const own = collect(extractPropertiesOnDemand(this.store, id));
+    return own.length > 0 ? own : collect(extractTypePropertiesOnDemand(this.store, id)?.properties ?? []);
   }
 }
 

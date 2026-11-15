@@ -43,7 +43,7 @@ import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { createStructuralAdapter } from './headless-backend-structural.js';
 import { createQueryAdapter } from './backend-query.js';
 import { overlayFromView, type PendingOverlay } from './overlay.js';
-import { GeoreferencingSession } from '../georef/session.js';
+import { assertGeorefWritten, GeoreferencingSession } from '../georef/session.js';
 import type { GeoreferencingBackendMethods } from '../georef/types.js';
 
 
@@ -365,12 +365,7 @@ export class HeadlessBackend implements BimBackend {
         if (this.mutationView || georefMutations) {
           const exporter = new StepExporter(store, this.mutationView ?? undefined);
           const result = exporter.export({ schema, ...exportOpts, ...(georefMutations ? { georefMutations } : {}) });
-          // A georeferencing write the exporter refused or wrote only in part
-          // must not come back as a file that silently lacks it.
-          const refused = result.stats.georeferencingWarnings ?? [];
-          if (refused.length > 0) {
-            throw new Error(`export.ifc: this session's georeferencing write cannot be written to this ${schema} file as given, so no file was produced:\n- ${refused.join('\n- ')}`);
-          }
+          assertGeorefWritten(result.stats.georeferencingWarnings, schema);
           return new TextDecoder().decode(result.content);
         }
         return exportToStep(store, exportOpts);

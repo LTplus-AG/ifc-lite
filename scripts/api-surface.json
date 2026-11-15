@@ -6028,6 +6028,7 @@
     "countStepEntities: function",
     "countUsdMeshes: function",
     "csvCellOf: function",
+    "declaresMapConversionScaled: function",
     "describeConversion: function",
     "editOwnershipRefusal: function",
     "effectiveCreatedRecord: function",

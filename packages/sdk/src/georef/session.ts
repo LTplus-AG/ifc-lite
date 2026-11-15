@@ -123,6 +123,16 @@ export class GeoreferencingSession {
   }
 }
 
+/**
+ * A georeferencing write the exporter refused or wrote only in part
+ * (`stats.georeferencingWarnings`) must not come back as a file that
+ * silently lacks it: throw instead of returning that file.
+ */
+export function assertGeorefWritten(warnings: readonly string[] | undefined, schema: string): void {
+  if (!warnings?.length) return;
+  throw new Error(`export.ifc: this session's georeferencing write cannot be written to this ${schema} file as given, so no file was produced:\n- ${warnings.join('\n- ')}`);
+}
+
 /** A positive entity for the history marker: the anchor the write concerns. */
 function historyEntity(facts: GeorefModelFacts, plan: GeorefWritePlan): number {
   const id = plan.storage === 'propertySets'

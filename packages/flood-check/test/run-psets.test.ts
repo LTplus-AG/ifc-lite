@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { prepareFootprint } from '../src/region.js';
 import { describe, expect, it } from 'vitest';
 import {
   BAFU_ATTRIBUTION,
@@ -59,7 +60,7 @@ describe('runFloodCheck', () => {
     );
     // Both candidates share one anchor, so one set of 12 ring points, plus the outline samples of the height test.
     const s = resolveSampling();
-    const distinct = new Set([...planSamples(door(500), facts.footprint, s).points.map((p) => p.point), ...outlineTerrainPoints(facts.footprint, s)].map(pointKey));
+    const distinct = new Set([...planSamples(door(500), prepareFootprint(facts.footprint), s).points.map((p) => p.point), ...outlineTerrainPoints(prepareFootprint(facts.footprint), s)].map(pointKey));
     expect(asked).toHaveLength(distinct.size);
     expect(new Set(asked.map(pointKey)).size).toBe(asked.length);
     expect(result.results.map((r) => r.outcome)).toEqual(['exposed', 'above-mapped-class-range']);

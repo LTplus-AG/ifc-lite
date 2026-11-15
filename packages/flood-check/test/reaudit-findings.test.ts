@@ -13,7 +13,7 @@ import { BAFU_CLASSES } from '../src/bafu/dataset.js';
 import { checkFloodExposure } from '../src/check/check.js';
 import { normalizeCrs } from '../src/crs.js';
 import { FloodCheckRefusal } from '../src/errors.js';
-import { nestedRings } from '../src/geom.js';
+import { prepareFootprint } from '../src/region.js';
 import { extractModelFacts } from '../src/model/extract.js';
 import type { CandidateFact, FootprintFact } from '../src/model/facts.js';
 import { toPropertySets } from '../src/psets.js';
@@ -115,7 +115,7 @@ describe('N3: the courtyard guard tests the ring the anchor was taken on; a slab
     const tall = [P(0, 0), P(10, 0), P(10, 20), P(0, 20)];
     const top = [P(0, 10), P(20, 10), P(20, 20), P(0, 20)];
     const D = [P(8, 2), P(9, 2), P(18, 18), P(8, 18)];
-    expect(nestedRings([tall, top, D]).has(2)).toBe(false);
+    expect(prepareFootprint({ rings: [tall, top, D], source: 'given' }).courtyards.has(2)).toBe(false);
     const inside = (p: MapPoint) => [tall, top, D].some((r) => p.x >= r[0].x && p.x <= r[1].x && p.y >= r[0].y && p.y <= r[2].y && r !== D);
     const door = candidate({ position: P(12.6, 8.4), level: 500 });
     const r = checkFloodExposure(boxFacts([door], { footprint: footprint([tall, top, D]) }), ras((p) => (inside(p) ? CELL_NO_RUNOFF : deep)), flatTerrain(499.95), opts);

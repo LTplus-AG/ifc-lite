@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { prepareFootprint } from '../src/region.js';
 import { describe, expect, it } from 'vitest';
 import { checkFloodExposure, type CheckOptions } from '../src/check/check.js';
 import { planSamples, resolveSampling } from '../src/check/sampling.js';
@@ -58,7 +59,7 @@ function refusalOf(f: () => unknown): FloodCheckRefusal {
 
 describe('ground sampling', () => {
   it('reads only ring points clearly outside the footprint, around the façade', () => {
-    const plan = planSamples(door(500), boxFacts([]).footprint, resolveSampling());
+    const plan = planSamples(door(500), prepareFootprint(boxFacts([]).footprint), resolveSampling());
     expect(plan.points.length).toBe(12);
     expect(plan.points.every(({ point }) => point.y <= N0 - 1)).toBe(true);
     expect(plan.rejected).toBe(20);

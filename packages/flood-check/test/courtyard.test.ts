@@ -12,7 +12,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { checkFloodExposure } from '../src/check/check.js';
-import { nestedRings } from '../src/geom.js';
+import { prepareFootprint } from '../src/region.js';
+
+const nestedRings = (rings: MapPoint[][]) => prepareFootprint({ rings, source: 'given' }).courtyards;
 import type { FootprintSource } from '../src/model/facts.js';
 import { CELL_NO_RUNOFF, type MapPoint } from '../src/types.js';
 import { boxFacts, candidate, CODE, CONFIRMED, E0, flatTerrain, N0, syntheticRaster, NO_OTHER_BUILDINGS } from './helpers.js';
@@ -65,7 +67,7 @@ describe('a given footprint with a courtyard ring', () => {
     expect(door.favourableWithheldBecause.join()).toMatch(/fills courtyards/);
   });
 
-  it('nestedRings finds a ring inside another, not side-by-side or overlapping ones', () => {
+  it('a given footprint\'s courtyards: a ring inside another, not side-by-side or overlapping ones', () => {
     expect([...nestedRings([sq(0, 0, 30, 30), sq(10, 10, 20, 20)])]).toEqual([1]);
     expect([...nestedRings([sq(0, 0, 10, 10), sq(20, 0, 30, 10)])]).toEqual([]);
     expect([...nestedRings([sq(0, 0, 10, 10), sq(5, 5, 15, 15)])]).toEqual([]);

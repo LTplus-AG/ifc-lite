@@ -19,8 +19,8 @@
  * would start reading flow paths that do not touch the façade.
  */
 
-import { closestBoundaryPoint, closestOutlinePoint, footprintCourtyards, outlineDistance, signedDistance } from '../geom.js';
-import type { CandidateFact, ModelFacts } from '../model/facts.js';
+import { closestOutlinePoint, nearestRing, outsideBy, signedDistance, type PreparedFootprint } from '../region.js';
+import type { CandidateFact } from '../model/facts.js';
 import {
   CELL_NO_RUNOFF,
   CELL_UNCLASSIFIED,
@@ -57,9 +57,8 @@ export function resolveSampling(): ResolvedSampling {
  * sees the uphill and the downhill side of the building whichever side the
  * candidate elements are on.
  */
-export function outlineTerrainPoints(footprint: ModelFacts['footprint'], s: ResolvedSampling): MapPoint[] {
-  const rings = footprint.rings;
-  const courtyards = footprintCourtyards(footprint.source, rings);
+export function outlineTerrainPoints(fp: PreparedFootprint, s: ResolvedSampling): MapPoint[] {
+  const rings = fp.rings;
   let perimeter = 0;
   for (const ring of rings) {
     for (let i = 0; i < ring.length; i++) {
@@ -84,7 +83,7 @@ export function outlineTerrainPoints(footprint: ModelFacts['footprint'], s: Reso
         const m = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
         for (const sign of [1, -1]) {
           const p = { x: m.x + sign * nx * s.outlineOffset, y: m.y + sign * ny * s.outlineOffset };
-          if (signedDistance(p, rings, courtyards) >= s.minOutsideDistance) {
+          if (outsideBy(fp, p, s.minOutsideDistance)) {
             out.push(p);
             break;
           }
@@ -109,21 +108,18 @@ export interface SamplePlan {
 }
 
 
-export function planSamples(candidate: CandidateFact, footprint: ModelFacts['footprint'], s: ResolvedSampling): SamplePlan {
-  const rings = footprint.rings;
-  // Computed from the rings as they are now: facts are plain data and may change between checks.
-  // A courtyard (a given footprint's inner ring) is open ground for the anchor, the samples and the guard alike.
-  const nested = footprintCourtyards(footprint.source, rings);
-  const nearestRing = closestBoundaryPoint(candidate.position, rings)?.ring;
-  let anchorRing = nearestRing;
-  // One outline for anchor, guard and façade test (geom.ts): a seam, or a gap between slabs too narrow to be open ground,
-  // is inside, so an element there is moved to the real façade, and the anchor-offset guard sees how far.
-  const d = outlineDistance(candidate.position, rings, nested);
+/** Plan the samples of one candidate on the prepared footprint (`region.ts`: prepared once per check, from the facts as they are). */
+export function planSamples(candidate: CandidateFact, fp: PreparedFootprint, s: ResolvedSampling): SamplePlan {
+  const near = nearestRing(fp, candidate.position);
+  let anchorRing = near;
+  // The same footprint as every other question: inside (a seam, a gap too narrow to be open ground, a ring) moves the
+  // anchor to the real outline, and the anchor-offset guard sees how far; a courtyard is open ground.
+  const d = signedDistance(fp, candidate.position);
   let anchor = candidate.position;
   let anchorBasis: SamplePlan['anchorBasis'] = 'element';
   let anchorOffset = 0;
   if (d <= 0) {
-    const nearest = closestOutlinePoint(candidate.position, rings, nested);
+    const nearest = closestOutlinePoint(fp, candidate.position);
     if (nearest) {
       anchor = nearest.point;
       anchorBasis = 'nearest-outline-point';
@@ -137,11 +133,11 @@ export function planSamples(candidate: CandidateFact, footprint: ModelFacts['foo
     for (let k = 0; k < s.directions; k++) {
       const a = (2 * Math.PI * k) / s.directions;
       const p = { x: anchor.x + ring * Math.cos(a), y: anchor.y + ring * Math.sin(a) };
-      if (signedDistance(p, rings, nested) >= s.minOutsideDistance) points.push({ point: p, ring });
+      if (outsideBy(fp, p, s.minOutsideDistance)) points.push({ point: p, ring });
       else rejected++;
     }
   }
-  return { anchor, anchorBasis, anchorOffset, points, rejected, nearestBoundaryNested: [nearestRing, anchorRing].some((r) => r !== undefined && nested.has(r)) };
+  return { anchor, anchorBasis, anchorOffset, points, rejected, nearestBoundaryNested: [near, anchorRing].some((r) => r !== undefined && fp.courtyards.has(r)) };
 }
 
 /** What a raster says at a point. `outside-coverage`: outside (or too near) the perimeter the map covers. */

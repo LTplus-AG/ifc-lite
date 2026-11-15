@@ -4,6 +4,7 @@
 
 /** Fetch what the pure check needs (one hazard raster, terrain) and run it. */
 
+import { prepareFootprint } from '../region.js';
 import { FloodCheckRefusal } from '../errors.js';
 import { normalizeCrs, sameCrs } from '../crs.js';
 import { bboxOf, expandBBox } from '../geom.js';
@@ -105,9 +106,10 @@ async function terrainFor(
   if (!source.heightAt) throw new TypeError('the terrain source offers neither heightAt nor grid');
   const s = resolveSampling();
   const heights = new Map<string, number | null>();
+  const region = prepareFootprint(facts.footprint);
   const points = [
-    ...facts.candidates.flatMap((candidate) => planSamples(candidate, facts.footprint, s).points.map((p) => p.point)),
-    ...outlineTerrainPoints(facts.footprint, s),
+    ...facts.candidates.flatMap((candidate) => planSamples(candidate, region, s).points.map((p) => p.point)),
+    ...outlineTerrainPoints(region, s),
   ];
   for (const point of points) {
     const key = pointKey(point);

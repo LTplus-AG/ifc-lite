@@ -11,7 +11,7 @@
  * the stated `extent`: a transparent sample outside it proves nothing.
  */
 
-import { closestBoundaryPoint, insideAny, ringArea } from '../geom.js';
+import { closestBoundaryPoint, insideRing, ringArea } from '../geom.js';
 import type { MapBBox, MapPoint, OtherBuildingFootprints } from '../types.js';
 
 export interface ResolvedOtherBuildings {
@@ -74,5 +74,5 @@ export function insideExtent(p: MapPoint, e: MapBBox | null): boolean {
  * there is the building's own (raised, transparent).
  */
 export function insideOtherBuilding(p: MapPoint, rings: readonly (readonly MapPoint[])[]): boolean {
-  return insideAny(p, rings) || (closestBoundaryPoint(p, rings)?.distance ?? Infinity) <= 1e-6;
+  return rings.some((ring) => insideRing(p, ring)) || (closestBoundaryPoint(p, rings)?.distance ?? Infinity) <= 1e-6;
 }

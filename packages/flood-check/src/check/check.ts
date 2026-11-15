@@ -23,6 +23,7 @@
 
 import { FloodCheckRefusal } from '../errors.js';
 import { normalizeCrs, sameCrs, verticalCrsIdentifier } from '../crs.js';
+import { prepareFootprint } from '../region.js';
 import { resolveOtherBuildings } from './other-buildings.js';
 import { assertCompatible } from './compat.js';
 import { footprintConcerns, type FootprintQuality, type BuildingScope, type CandidateFact, type ModelFacts } from '../model/facts.js';
@@ -229,7 +230,9 @@ export function checkWith(
   }
 
   // Terrain at every ring point of every candidate and along the whole outline: the height tests need all of it.
-  const plans = facts.candidates.map((c) => planSamples(c, facts.footprint, s));
+  // One prepared footprint for the whole check, from the facts as they are now (they are plain data and may change).
+  const region = prepareFootprint(facts.footprint);
+  const plans = facts.candidates.map((c) => planSamples(c, region, s));
   const heights = new Map<string, number | null>();
   const seen: Array<{ point: MapPoint; height: number }> = [];
   const read = (point: MapPoint) => {
@@ -241,7 +244,7 @@ export function checkWith(
     if (v !== null) seen.push({ point, height: v });
   };
   for (const plan of plans) for (const { point } of plan.points) read(point);
-  for (const point of outlineTerrainPoints(facts.footprint, s)) read(point);
+  for (const point of outlineTerrainPoints(region, s)) read(point);
   const heightPlausibility = assessHeightReference(facts.groundStorey.level, seen, options.heightPlausibility);
   const heightAt = (p: MapPoint) => heights.get(pointKey(p)) ?? null;
   // One record decides what the footprint can support (`footprintConcerns`, from `footprint.ts`).

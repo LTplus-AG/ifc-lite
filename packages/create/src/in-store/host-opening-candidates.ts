@@ -33,6 +33,7 @@ export function hostOpeningCandidates(store: IfcDataStore, host: number, view?: 
   const ranks = new Map<number, number>();
   const matches: number[] = [];
   for (const id of candidates) {
+    if (view.isDeleted(id)) continue;
     const row = reader.entity(id);
     if (row && row.type.toUpperCase() !== TYPE) continue;
     const target = refId(row?.attributes[4]);

@@ -5,6 +5,11 @@
 import type { Catalogue } from '../../registry';
 
 export const idsPanelDe = {
+  "idsPanel.targetFilter.title": "Zu prüfende Objekte",
+  "idsPanel.targetFilter.enabled": "Objekte vor der Validierung filtern",
+  "idsPanel.targetFilter.nextRun": "Diese Filter gelten für den nächsten Prüflauf im ausgewählten Modell. Vorhandene Ergebnisse behalten ihren ursprünglichen Prüfumfang.",
+  "idsPanel.targetFilter.wholeModel": "Das gesamte ausgewählte Modell anhand der IDS-Anwendbarkeitsregeln prüfen.",
+  "idsPanel.targetFilter.result": "Gefilterte Grundgesamtheit: {countDisplay} Kandidaten. Dies ist keine Validierung des gesamten Modells.",
   'idsPanel.title': 'IDS-Validierung',
   'idsPanel.status.passed': 'Bestanden',
   'idsPanel.status.failed': 'Nicht bestanden',

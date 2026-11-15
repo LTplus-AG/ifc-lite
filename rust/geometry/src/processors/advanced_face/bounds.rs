@@ -107,14 +107,6 @@ pub(super) fn refuse_unreadable(
     })
 }
 
-pub(super) fn extract_face_bounds(
-    face: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    quality: TessellationQuality,
-) -> Result<FaceBounds> {
-    Ok(classify_bounds(read_bounds(face, decoder, quality)?))
-}
-
 /// One outer ring and its holes: the last `IfcFaceOuterBound` (earlier ones
 /// become holes), else the largest unclassified bound.
 fn classify_bounds(bounds: Vec<(bool, Vec<Point3<f64>>)>) -> FaceBounds {
@@ -156,7 +148,7 @@ pub(super) fn face_regions(
 ) -> Result<Vec<FaceBounds>> {
     let bounds = read_bounds(face, decoder, quality)?;
     if bounds.len() > 1 && bounds.iter().all(|(is_outer, _)| *is_outer) {
-        let rings: Vec<Vec<Point3<f64>>> = bounds.iter().map(|(_, points)| points.clone()).collect();
+        let rings: Vec<&Vec<Point3<f64>>> = bounds.iter().map(|(_, points)| points).collect();
         if let Some(regions) = outer_bound_regions(&rings) {
             return Ok(regions);
         }
@@ -225,8 +217,8 @@ fn interior_point_2d(ring: &[Point2<f64>]) -> Point2<f64> {
 /// the ring lies in the other and none of its vertices lie outside it. `None`
 /// when the rings do not share a plane, so the caller keeps the single-ring
 /// reading. Mirrors `faceRegionsOfOuterBounds` in `structural-face-regions.ts`.
-fn outer_bound_regions(rings: &[Vec<Point3<f64>>]) -> Option<Vec<FaceBounds>> {
-    let live: Vec<&Vec<Point3<f64>>> = rings.iter().filter(|ring| projected_area(ring) > 1e-12).collect();
+fn outer_bound_regions(rings: &[&Vec<Point3<f64>>]) -> Option<Vec<FaceBounds>> {
+    let live: Vec<&Vec<Point3<f64>>> = rings.iter().copied().filter(|ring| projected_area(ring) > 1e-12).collect();
     if live.is_empty() {
         return None;
     }

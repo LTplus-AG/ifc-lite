@@ -75,6 +75,7 @@ export function useIfcServer() {
     isStale: (() => boolean) | undefined,
     signal: AbortSignal | undefined,
     modelId: string,
+    requestServerUrl?: string,
   ): Promise<boolean> => {
     cancelProperties(modelId);
     const { setProgress, setGeometryResult } = useViewerStore.getState();
@@ -84,7 +85,7 @@ export function useIfcServer() {
     try {
       setProgress({ phase: 'Connecting to server', percent: 5 });
 
-      const serverUrl = getProcessingServerUrl(); // read per load: a host may set it at runtime
+      const serverUrl = processed ? requestServerUrl ?? getProcessingServerUrl() : getProcessingServerUrl();
       const client = new IfcServerClient({ baseUrl: serverUrl });
 
       // Silent server availability check (cached, no error logging). A processed model skips the

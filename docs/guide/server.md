@@ -1105,14 +1105,17 @@ server at runtime instead of at build time:
 ```typescript
 import { openProcessedModel } from '@/lib/processed-model';
 
+// Only this request and its Retry use /ifc; local uploads keep the global server.
 openProcessedModel({ sha256, bytes, name }, { serverUrl: '/ifc' });
 ```
 
 The call may come before the viewer mounts; the request waits for it, and a
 `?processed=` or `?model=` in the page URL is then ignored (each logged once), so the host's model wins.
-A collaboration link (`?room=`) is refused the same way, when the call comes before the viewer
-mounts: the viewer does not join the room. A call after mount does not leave a room already joined.
-`setProcessingServerUrl(url)` sets the server alone. A runtime URL replaces
+A collaboration link (`?room=`) is refused the same way. If its join is still in progress,
+the viewer leaves it before it can hydrate or seed the host's model.
+The `serverUrl` option applies only to this request and its Retry; it does not redirect local uploads.
+Omitting it captures the global server when the request is filed, also for Retry.
+`setProcessingServerUrl(url)` explicitly sets the global server. This URL replaces
 `VITE_IFC_SERVER_URL` for every server request, so in a build with
 `VITE_USE_SERVER=true` it also receives the uploads of IFC files opened from
 disk. `VITE_USE_SERVER` still decides whether such uploads happen at all.

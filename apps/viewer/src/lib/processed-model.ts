@@ -27,12 +27,13 @@ export interface ProcessedModelRequest extends ProcessedModelRef {
 }
 
 export interface OpenProcessedModelOptions {
-  /** Processing server for this and later requests: an absolute URL or a same-origin path. Omitted: unchanged. */
+  /** Processing server for this request and Retry only. Omitted: snapshot the current global server. */
   serverUrl?: string;
 }
 
 let serverUrl: string = cleanServerUrl(SERVER_URL);
-let pending: ProcessedModelRequest | null = null;
+export type FiledProcessedModelRequest = ProcessedModelRequest & { readonly serverUrl: string };
+let pending: FiledProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();
 /** A host asked for a model (`openProcessedModel`); a model named in the page URL then yields. */
 let hostRequested = false;
@@ -70,8 +71,7 @@ export function serverUploadsEnabled(): boolean {
  * SHA-256, before anything is asked of the server.
  */
 export function openProcessedModel(model: ProcessedModelRequest, options?: OpenProcessedModelOptions): void {
-  const request = normalizedRequest(model);
-  if (options?.serverUrl !== undefined) setProcessingServerUrl(options.serverUrl);
+  const request = { ...normalizedRequest(model), serverUrl: cleanServerUrl(options?.serverUrl ?? serverUrl) };
   hostRequested = true;
   fileRequest(request);
 }
@@ -82,7 +82,7 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
  * `openProcessedModel` it does not count as a host request.
  */
 export function openProcessedModelFromUrl(model: ProcessedModelRequest): void {
-  if (pageUrlModelAllowed('processed')) fileRequest(normalizedRequest(model));
+  if (pageUrlModelAllowed('processed')) fileRequest({ ...normalizedRequest(model), serverUrl });
 }
 
 /**
@@ -113,13 +113,13 @@ function normalizedRequest(model: ProcessedModelRequest): ProcessedModelRequest 
   return { sha256, bytes: processedModelSize(model.bytes), name: model.name || 'model.ifc' };
 }
 
-function fileRequest(request: ProcessedModelRequest): void {
+function fileRequest(request: FiledProcessedModelRequest): void {
   pending = request;
   for (const listener of [...listeners]) listener();
 }
 
 /** The mounted viewer's side: take the waiting request, once. */
-export function takeProcessedModelRequest(): ProcessedModelRequest | null {
+export function takeProcessedModelRequest(): FiledProcessedModelRequest | null {
   const request = pending;
   pending = null;
   return request;

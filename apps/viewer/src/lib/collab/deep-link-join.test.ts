@@ -41,23 +41,23 @@ afterEach(() => {
 });
 
 it('joins the linked room when no host asked for a model', () => {
-  joinRoomFromPageUrl(link, start);
+  joinRoomFromPageUrl(link, start, () => {});
   assert.deepEqual(joins, [{ roomId: 'r1', role: 'viewer', token: 'tok' }]);
   assert.deepEqual(infos, []);
 });
 
 it('refuses the room once a host asked for its model, logging it once', () => {
   openProcessedModel({ sha256: 'a'.repeat(64), bytes: 0, name: 'host.ifc' });
-  joinRoomFromPageUrl(link, start);
-  joinRoomFromPageUrl(link, start);
+  joinRoomFromPageUrl(link, start, () => {});
+  joinRoomFromPageUrl(link, start, () => {});
   assert.deepEqual(joins, [], 'no join attempt: the viewer stays on the host model');
   assert.equal(infos.length, 1);
   assert.match(infos[0], /\?room= in the page URL is ignored/);
 });
 
 it('does nothing without a room or with collaboration off', () => {
-  joinRoomFromPageUrl('?t=tok', start);
+  joinRoomFromPageUrl('?t=tok', start, () => {});
   setCollabEnabledOverride(false);
-  joinRoomFromPageUrl(link, start);
+  joinRoomFromPageUrl(link, start, () => {});
   assert.deepEqual(joins, []);
 });

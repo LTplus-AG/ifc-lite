@@ -65,12 +65,12 @@ export function useProcessedModelAutoload(): void {
     const loadWaiting = () => {
       const request = takeProcessedModelRequest();
       if (!request) return;
-      const { sha256, bytes, name } = request;
+      const { sha256, bytes, name, serverUrl } = request;
       const attempt = () => {
         markLoadIntent();
         // Replay-safe (a request, no user gesture): Retry on the unsupported card may re-run it.
         if (!guardWebGpu(attempt, { replay: 'free' })) return;
-        void loadFile(new File([], name), { kind: 'primary' }, { processedModel: { sha256, bytes } });
+        void loadFile(new File([], name), { kind: 'primary' }, { processedModel: { sha256, bytes, serverUrl } });
       };
       attempt();
     };

@@ -8,16 +8,26 @@
  */
 
 import type { StartCollabOptions } from '@/store/slices/collabSlice';
-import { pageUrlModelAllowed } from '@/lib/processed-model';
+import { onProcessedModelRequest, pageUrlModelAllowed } from '@/lib/processed-model';
 import { isCollabEnabled } from './config';
 import { parseRoleFromToken } from './share-link';
 
-export function joinRoomFromPageUrl(search: string, startCollab: (opts: StartCollabOptions) => unknown): void {
+export function joinRoomFromPageUrl(search: string, startCollab: (opts: StartCollabOptions) => unknown, stopCollab: () => void): void {
   if (!isCollabEnabled()) return;
   const params = new URLSearchParams(search);
   const roomId = params.get('room');
   if (!roomId || !pageUrlModelAllowed('room')) return;
   const token = params.get('t') ?? undefined;
   const role = (token && parseRoleFromToken(token)) || 'viewer';
-  void startCollab({ roomId, role, token });
+  // Retire a pending page-link join before it can hydrate or seed the host's model.
+  // stopCollab also cancels a session still being created or waiting for sync.
+  const unsubscribe = onProcessedModelRequest(() => {
+    if (!pageUrlModelAllowed('room')) stopCollab();
+  });
+  try {
+    void Promise.resolve(startCollab({ roomId, role, token })).finally(unsubscribe);
+  } catch (error) {
+    unsubscribe();
+    throw error;
+  }
 }

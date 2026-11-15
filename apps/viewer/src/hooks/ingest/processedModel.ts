@@ -18,8 +18,8 @@ import { formatLoadError } from '@/lib/load-error-message';
 import { messageOf } from '@/lib/load-errors';
 
 /** `ref` with its hash lowercased, so the model record holds one spelling; a hash that is not a SHA-256 is kept for the client to refuse. A size that is not a positive integer becomes 0, unknown. */
-export function normalizedProcessedModel(ref: ProcessedModelRef): ProcessedModelRef & { bytes: number } {
-  return { sha256: normalizeProcessedModelHash(ref.sha256) ?? ref.sha256, bytes: processedModelSize(ref.bytes) };
+export function normalizedProcessedModel(ref: ProcessedModelRef & { serverUrl?: string }): ProcessedModelRef & { bytes: number; serverUrl?: string } {
+  return { ...ref, sha256: normalizeProcessedModelHash(ref.sha256) ?? ref.sha256, bytes: processedModelSize(ref.bytes) };
 }
 
 /** A cause found in the viewer, before or instead of a server answer. */

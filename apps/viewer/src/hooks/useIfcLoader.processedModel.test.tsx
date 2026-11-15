@@ -209,7 +209,7 @@ it('?processed= opens the named result with the size and name from the URL', asy
   window.history.replaceState(null, '', `/?processed=${sha256}&bytes=1234567&name=${encodeURIComponent('Haus A.ifc')}`);
   await act(async () => { root.render(<Probe fromUrl />); });
   await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the URL entry loads the model'); });
-  assert.deepEqual(asked, [{ sha256, bytes: 1234567 }]);
+  assert.deepEqual(asked, [{ sha256, bytes: 1234567, serverUrl: 'http://localhost:9999' }]);
   assert.equal(model()?.name, 'Haus A.ifc');
   assert.equal(model()?.fileSize, 1234567);
   assert.equal(engineInits, 0);
@@ -220,7 +220,7 @@ it('?processed= accepts the hash in upper case and asks for it in lower case', a
   window.history.replaceState(null, '', `/?processed=${sha256.toUpperCase()}&bytes=10`);
   await act(async () => { root.render(<Probe fromUrl />); });
   await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the URL entry loads the model'); });
-  assert.deepEqual(asked, [{ sha256, bytes: 10 }]);
+  assert.deepEqual(asked, [{ sha256, bytes: 10, serverUrl: 'http://localhost:9999' }]);
 });
 
 it('?processed= reads a size that is not plain digits as unknown', () => {
@@ -240,7 +240,7 @@ it('?processed= with a bad size opens the model as unknown size', async () => {
   window.history.replaceState(null, '', `/?processed=${sha256}&bytes=abc`);
   await act(async () => { root.render(<Probe fromUrl />); });
   await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the URL entry loads the model'); });
-  assert.deepEqual(streamed, { sha256, bytes: 0 });
+  assert.deepEqual(streamed, { sha256, bytes: 0, serverUrl: 'http://localhost:9999' });
 });
 
 it('?processed= with something that is not a SHA-256 asks the server nothing and says so', async () => {
@@ -263,7 +263,7 @@ for (const when of ['before the viewer mounts', 'after the viewer mounted'] as c
     await act(async () => { root.render(<Probe fromUrl />); });
     if (when === 'after the viewer mounted') await act(async () => { open(); });
     await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the host request loads the model'); });
-    assert.deepEqual(asked, [{ sha256, bytes: 7_000_000 }]);
+    assert.deepEqual(asked, [{ sha256, bytes: 7_000_000, serverUrl }]);
     assert.deepEqual(servers, [serverUrl], 'the runtime URL replaces the build-time one for this request');
     assert.equal(model()?.name, 'From the host.ifc');
     assert.equal(model()?.fileSize, 7_000_000);
@@ -298,7 +298,7 @@ it("a host request filed before the viewer mounts wins over ?processed= in the p
   openProcessedModel({ sha256, bytes: 7_000_000, name: 'From the host.ifc' });
   await act(async () => { root.render(<Probe fromUrl />); });
   await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the host model loads'); });
-  assert.deepEqual(asked, [{ sha256, bytes: 7_000_000 }], "only the host's model is asked for");
+  assert.deepEqual(asked, [{ sha256, bytes: 7_000_000, serverUrl: 'http://localhost:9999' }], "only the host's model is asked for");
   assert.equal(model()?.name, 'From the host.ifc');
   assert.equal(infos.filter((args) => /ignored/.test(String(args[0]))).length, 1, 'the ignored URL is logged once');
 });
@@ -316,9 +316,31 @@ it("a host request filed before the viewer mounts also wins over ?model= in the 
     openProcessedModel({ sha256, bytes: 7_000_000, name: 'From the host.ifc' });
     await act(async () => { root.render(<><Probe fromUrl /><ModelUrlEntry /></>); });
     await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the host model loads'); });
-    assert.deepEqual(asked, [{ sha256, bytes: 7_000_000 }]);
+    assert.deepEqual(asked, [{ sha256, bytes: 7_000_000, serverUrl: 'http://localhost:9999' }]);
     assert.deepEqual(fetched.filter((url) => url.includes('other.ifc')), [], '?model= is not fetched');
     assert.equal(infos.filter((args) => /\?model= .*ignored/.test(String(args[0]))).length, 1, 'logged once');
   } finally { globalThis.fetch = realFetch; }
 });
 
+
+for (const override of [undefined, '/host-processor']) {
+  it(`keeps the filed server through a global change and Retry (override ${override})`, async () => {
+    stubWebGpu();
+    mock.method(console, 'error', () => {});
+    setProcessingServerUrl('/filed-processor');
+    openProcessedModel({ sha256, bytes: 7_000_000, name: 'host.ifc' }, { serverUrl: override });
+    setProcessingServerUrl(''); // would fail reachability if read at load time
+    let attempts = 0;
+    mock.method(IfcServerClient.prototype, 'parseParquet', async function (this: IfcServerClient) {
+      servers.push((this as unknown as { baseUrl: string }).baseUrl);
+      if (++attempts === 1) throw new IfcServerError('temporary', 503, 'OVERLOADED');
+      return stored();
+    });
+    await act(async () => { root.render(<Probe fromUrl />); });
+    await act(async () => { await waitFor(() => !!useViewerStore.getState().lastLoadRetry, 'Retry appears'); });
+    setProcessingServerUrl('/changed-again');
+    await act(async () => { useViewerStore.getState().lastLoadRetry!(); });
+    await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'Retry completes'); });
+    assert.deepEqual(servers, [override ?? '/filed-processor', override ?? '/filed-processor']);
+  });
+}

@@ -48,7 +48,7 @@ export function fastPathSwitch(): unknown {
 }
 
 /** The features that each open a model in the browser (a federation setup has its own file picker). */
-export const MODEL_SOURCES = ['files.local', 'files.samples', 'files.sources', 'files.federation-setup'] as const satisfies readonly FeatureId[];
+const MODEL_SOURCES = ['files.local', 'files.samples', 'files.sources', 'files.federation-setup'] as const satisfies readonly FeatureId[];
 
 /**
  * Whether this page can open a model at all. A host can switch off every

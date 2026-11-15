@@ -13,6 +13,7 @@
  * A commit runs through `runTransaction`, so it is one undo step.
  */
 
+import { isGeometryRestoreHeld } from '@/lib/pick-gating';
 import { useSyncExternalStore } from 'react';
 import { toast } from '@/components/ui/toast';
 import { resolve as translate } from '@/i18n/registry';
@@ -112,6 +113,7 @@ export function beginCommandRuntime(
   store = access;
   hooks = runtimeHooks;
   unbindKeys = bindCommandKeys(command, {
+    isHeld: () => { const current = store?.getState(); return current ? isGeometryRestoreHeld(current) : false; },
     isActive: () => state.command === command,
     commit: commitCommand,
     cancel: cancelCommand,

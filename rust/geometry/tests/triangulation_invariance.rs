@@ -1557,7 +1557,10 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // #5410: 19 open / 139 tris until a plan-rotated host whose
                 // cutters author no depth took the wall-local frame; now closed
                 // (enclosed volume 0.01972 -> 0.01967 m3, IfcOpenShell 0.01752).
-                (11690, 0, 0, 144, 0),
+                // 144 -> 148 triangles: the cut keeps the 1 mm skin behind an
+                // 11 mm recess (0.019668 -> 0.019679 m3, 3.3707 -> 3.3907 m2;
+                // IfcOpenShell 0.8.2 reads 0.019690 m3 and 3.3908 m2).
+                (11690, 0, 0, 148, 0),
                 (31156, 0, 0, 198, 0),
                 (17553, 0, 0, 116, 0),
                 (17615, 0, 0, 244, 0),

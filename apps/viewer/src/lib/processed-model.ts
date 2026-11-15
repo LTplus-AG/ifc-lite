@@ -31,7 +31,7 @@ export interface OpenProcessedModelOptions {
   serverUrl?: string;
 }
 
-let serverUrl: string = SERVER_URL;
+let serverUrl: string = cleanServerUrl(SERVER_URL);
 let pending: ProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();
 /** A host asked for a model (`openProcessedModel`); a model named in the page URL then yields. */
@@ -50,9 +50,13 @@ export function getProcessingServerUrl(): string {
  * routes them to the server (`VITE_USE_SERVER=true`).
  */
 export function setProcessingServerUrl(url: string): void {
-  const trimmed = typeof url === 'string' ? url.trim() : ''; // a host config value may carry spaces, or be missing
+  serverUrl = cleanServerUrl(url);
+}
+
+function cleanServerUrl(url: unknown): string {
+  const trimmed = typeof url === 'string' ? url.trim() : ''; // a config value may carry spaces, or be missing
   // Trailing slashes go, unless nothing would be left: '/' is the page's own origin, a valid server URL.
-  serverUrl = trimmed.replace(/\/+$/, '') || (trimmed.startsWith('/') ? '/' : '');
+  return trimmed.replace(/\/+$/, '') || (trimmed.startsWith('/') ? '/' : '');
 }
 
 /** Whether a locally opened IFC is sent to the processing server: the build flag, and a server to send it to. */

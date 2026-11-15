@@ -12,7 +12,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { executeList, type ListDefinition } from '@ifc-lite/lists';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { appearanceInstanceScene } from '@/test/appearance-instance-scene';
 import { cleanup, render } from '@/test/render';
@@ -42,6 +42,42 @@ const geometry: GeometryResult = { meshes: [], totalTriangles: 0, totalVertices:
     originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
     shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } } } };
 afterEach(() => { cleanup(); clearGlobalRefs(); federationRegistry.clear(); });
+
+it('keeps partial geometry unavailable in inspector and list output until explicit completion (#10370 review)', async () => {
+  const bytes = new TextEncoder().encode(IFC);
+  const model = fixtureModel('A', { idOffset: federationRegistry.registerModel('A', 3) });
+  model.maxExpressId = 3;
+  model.ifcDataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+  model.geometryResult = { ...geometry, meshes: [triangle(2)], totalTriangles: 1, totalVertices: 3 };
+  useViewerStore.setState({ ...fixtureModels(model), geometryResult: model.geometryResult });
+  const scene = new Scene();
+  scene.queueMeshes([triangle(2)]); // The first real chunk exists, but need not be the whole model.
+  setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer });
+  const modelRow = render(<TriangleCountRow modelId="A" />);
+  const objectRow = render(<TriangleCountRow modelId="A" globalId={2} />);
+  const value = (ui: HTMLElement) => ui.querySelector('span[title]:not([title="Triangles"])')?.textContent;
+  const cases: Array<{ label: string; flags: Pick<FederatedModel, 'loadState' | 'geometryLoadState' | 'geometryRestorePending'>; count: number | null }> = [
+    { label: 'geometry-only pending', flags: { geometryLoadState: 'pending' }, count: null },
+    { label: 'geometry-only streaming', flags: { geometryLoadState: 'streaming' }, count: null },
+    { label: 'interactive is still partial', flags: { geometryLoadState: 'interactive' }, count: null },
+    { label: 'explicit geometry outranks old complete load', flags: { loadState: 'complete', geometryLoadState: 'streaming' }, count: null },
+    { label: 'geometry failure is not a completed count', flags: { loadState: 'complete', geometryLoadState: 'error' }, count: null },
+    { label: 'completed geometry can precede metadata', flags: { loadState: 'hydrating-metadata', geometryLoadState: 'complete' }, count: 1 },
+    { label: 'explicit legacy load pending', flags: { loadState: 'loading-geometry' }, count: null },
+    { label: 'explicit legacy load complete', flags: { loadState: 'complete' }, count: 1 },
+    { label: 'legacy geometry-only compatibility', flags: {}, count: 1 },
+    { label: 'cache geometry not restored yet', flags: { geometryLoadState: 'complete', geometryRestorePending: true }, count: null },
+  ];
+  for (const entry of cases) {
+    await act(async () => { useViewerStore.setState({ models: new Map([['A', {
+      ...model, loadState: undefined, geometryLoadState: undefined, geometryRestorePending: false, ...entry.flags,
+    }]]) }); });
+    assert.equal(value(modelRow), entry.count === null ? '—' : '1', entry.label);
+    assert.equal(value(objectRow), entry.count === null ? '—' : '1', entry.label);
+    const provider = prepareListProviders(useViewerStore.getState(), {}).pairs[0].provider;
+    assert.equal(provider.getTriangleCount?.(2), entry.count, entry.label);
+  }
+});
 
 it('shows own model/object counts, live changes, and numeric list sorting across federation (#10370)', async () => {
   const bytes = new TextEncoder().encode(IFC);

@@ -7,7 +7,9 @@ import { hasPendingInstancedShards } from '@/store/instancedShardQueue';
 export function modelTrianglesReady(state: Pick<ViewerState, 'models' | 'geometryResult'>, modelId: string): boolean {
   const model = state.models.get(modelId);
   const complete = model
-    ? model.loadState === 'complete' || model.geometryLoadState === 'complete' || (!model.loadState && !!model.geometryResult)
+    ? !model.geometryRestorePending && (
+      model.geometryLoadState !== undefined ? model.geometryLoadState === 'complete'
+        : model.loadState !== undefined ? model.loadState === 'complete' : !!model.geometryResult)
     : state.models.size === 0 && !!state.geometryResult;
   return complete && !hasPendingInstancedShards(modelId);
 }

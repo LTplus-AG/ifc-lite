@@ -7,6 +7,7 @@ import type { EntityRef, FederatedModel, ViewerState } from '@/store';
 import { collectIfcBuildingStoreyElementsWithIfcSpace, collectSpatialSubtreeElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import { containerVisibilityTargets, ownStateRevision, setOwnState, type ContainerVisibilityPlan } from '@/lib/container-visibility';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { resolveTreeGlobalId } from './productTree';
 import { effectiveRowType, overlayViewFor, type TreeOverlay } from './treeOverlay';
 import type { TreeNode } from './types';
@@ -55,10 +56,12 @@ function planRowTargets(node: TreeNode, models: Map<string, FederatedModel>, act
   const key = `${modelId}\u0000${action}\u0000${row}`;
   let targets = cache.targets.get(key);
   if (!targets) {
-    targets = containerVisibilityTargets(plan, row, action).map((id) => resolveTreeGlobalId(modelId, id, models));
+    targets = containerVisibilityTargets(plan, row, action).map((id) => toGlobalIdFromModels(models, modelId, id));
     cache.targets.set(key, targets);
   }
-  return targets;
+  // Nothing to bring back (a row that is an object hidden on its own, holding
+  // nothing else that is on): the row acts on what it holds directly.
+  return targets.length > 0 ? targets : null;
 }
 
 /** The global ids a row's eye acts on. A row of a model that states how its
@@ -77,16 +80,13 @@ export function hierarchyToggleTargets(
 }
 
 /** After a row's eye: the toggled row or object keeps that as its own state,
- *  so a later toggle of its parent respects it, as in Rhino. Own states are the
- *  layer tree's, so a row of another grouping, or of a model without a plan,
- *  records nothing. */
+ *  so a later toggle of its parent respects it, as in Rhino. A no-op for a row
+ *  whose model has no plan. */
 export function recordHierarchyOwnState(
   node: TreeNode,
   action: HierarchyVisibilityAction,
   models: Map<string, FederatedModel>,
-  groupingMode: string,
 ): void {
-  if (groupingMode !== 'spatial') return;
   const plan = rowPlan(node, models);
   if (plan) setOwnState(plan, node.expressIds[0], action === 'show');
 }

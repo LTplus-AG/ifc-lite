@@ -203,11 +203,15 @@ export function HierarchyPanel() {
     isMultiModel: isMultiModel && groupingMode === 'spatial', storeysVirtualizer, modelsVirtualizer, virtualizer, container: parentRef, setSearchQuery, searchQuery, groupingReady,
   });
 
+  // A source's container plan (a Rhino layer, #10214) is the layer tree's: only
+  // the spatial grouping's rows follow it, and only they record own states.
+  const planModels = groupingMode === 'spatial' ? models : undefined;
+
   // Toggle visibility for a node
   const handleVisibilityToggle = useCallback((node: TreeNode) => {
     const elements = getNodeElements(node);
-    const { visibilityAction } = hierarchyNodeVisibility(node, elements, hiddenEntities, models);
-    const targets = hierarchyToggleTargets(node, elements, visibilityAction, models);
+    const { visibilityAction } = hierarchyNodeVisibility(node, elements, hiddenEntities, planModels);
+    const targets = planModels ? hierarchyToggleTargets(node, elements, visibilityAction, planModels) : [...elements];
     if (targets.length === 0) return;
 
     if (visibilityAction === 'hide') {
@@ -221,8 +225,8 @@ export function HierarchyPanel() {
     } else {
       showEntities(targets);
     }
-    recordHierarchyOwnState(node, visibilityAction, models, groupingMode);
-  }, [getNodeElements, hiddenEntities, hideEntities, showEntities, clearSelection, models, groupingMode]);
+    if (planModels) recordHierarchyOwnState(node, visibilityAction, planModels);
+  }, [getNodeElements, hiddenEntities, hideEntities, showEntities, clearSelection, planModels]);
 
   // Handle model visibility toggle
   const handleModelVisibilityToggle = useCallback((modelId: string, e: React.MouseEvent) => {
@@ -384,7 +388,7 @@ export function HierarchyPanel() {
     const isSelected = rows.length > 0 && rows.every(({ globalId }) =>
       selectedEntityId === globalId || selectedEntityIds.has(globalId));
 
-    const appearance = hierarchyNodeAppearance(node, getNodeElements(node), hiddenEntities, viewportIsolation, spatialSubtreeOf, models);
+    const appearance = hierarchyNodeAppearance(node, getNodeElements(node), hiddenEntities, viewportIsolation, spatialSubtreeOf, planModels);
 
     // Model visibility for model-header nodes
     let modelVisible: boolean | undefined;
@@ -394,7 +398,7 @@ export function HierarchyPanel() {
     }
 
     return { isSelected, ...appearance, modelVisible };
-  }, [selectedEntityId, selectedEntityIds, hiddenEntities, viewportIsolation, getNodeElements, models, spatialSubtreeOf]);
+  }, [selectedEntityId, selectedEntityIds, hiddenEntities, viewportIsolation, getNodeElements, models, planModels, spatialSubtreeOf]);
 
   // Every branch carries the tour anchor: the welcome tour's "Browse the
   // structure" step must find the panel while a model is absent or loading.

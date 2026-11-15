@@ -1,16 +1,28 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Matches rust/export/src/schema_structural_diagnostics.rs (#9668). */
-import { getSchemaRegistryForVersion, getCanonicalEntityName } from '@ifc-lite/parser';
+import { getSchemaRegistryForVersion, getCanonicalEntityName, type IfcDataStore } from '@ifc-lite/parser';
 import { convertEntityType } from './schema-converter.js';
-import { isStructuralAssignmentConversion } from './schema-converter-structural.js';
+import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
+import { StructuralVarying } from './schema-converter-structural-varying.js';
 import { readStepSlots } from './step-argument-parser.js';
+import { referencesAnyExpressId } from './step-ref-scan.js';
+
+const LINK = 'IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link';
 
 export class StructuralDiagnostics {
   readonly axes = new StructuralAxes();
   readonly links = new StructuralLinks();
+  readonly varying = new StructuralVarying();
   private readonly losses = new Map<string, number>();
+
+  /** The source prepasses for an IFC2X3 <-> IFC4 export; the caller arms them only for an unedited full export. */
+  fromStore(store: IfcDataStore, from: string, to: string): void {
+    if (from === 'IFC2X3') this.axes.fromStore(store);
+    else this.links.fromStore(store);
+    this.varying.fromStore(store, from, to);
+  }
 
   inspect(line: string, from: string, to: string): void {
     const assignment = /^\s*#\d+\s*=\s*IFCRELCONNECTSSTRUCTURALELEMENT\s*\(/i.test(line) ? readStepSlots(line) : null;
@@ -39,7 +51,7 @@ export class StructuralDiagnostics {
       if (attr.name === 'PredefinedType' && rec.slots[i]?.trim() === '.CONST.'
         && ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION'].includes(rec.type)) return;
       if (attr.name === 'DestabilizingLoad' && rec.slots[i]?.trim() === '$' && to === 'IFC2X3')
-        this.record(`${rec.type}.DestabilizingLoad is unknown; IFC2X3 requires a boolean, so the writer substitutes .F.`);
+        this.record(destabilizingUnknown(rec.type));
       if (!tgt.includes(attr.name) && rec.slots[i] && !['$', '*', ''].includes(rec.slots[i].trim())) {
         const effect = attr.name === 'ConditionCoordinateSystem' ? '; restraint directions in that coordinate system are not preserved' : '';
         this.record(`${rec.type}.${attr.name} has no slot in ${to}; its value is omitted${effect}`);
@@ -50,12 +62,18 @@ export class StructuralDiagnostics {
       this.record(`${rec.type}.Axis is required by IFC4 but unknown; output does not conform until the model's section orientation is resolved`);
   }
 
-  /** IFC4 -> IFC2X3 link restoration (`StructuralLinks`, armed only for that pair): the record body, reported because the class changes. */
-  restoredLink(entity: string, args: readonly string[]): string | undefined {
+  /**
+   * A record written as another entity from source-derived facts (`StructuralLinks`,
+   * `StructuralVarying`, each armed only for its schema pair): the target record body,
+   * reported because the class changes. A body still naming a `withheld` id is
+   * refused, and then nothing is reported.
+   */
+  rewrite(entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | undefined {
     const attrs = this.links.link(entity, args);
-    if (!attrs) return undefined;
-    this.record('IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link');
-    return `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`;
+    const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] } : this.varying.rewrite(entity, args);
+    if (!rewrite || (withheld && referencesAnyExpressId(rewrite.body, withheld))) return undefined;
+    rewrite.losses.forEach((loss) => this.record(loss));
+    return rewrite.body;
   }
 
   private record(message: string): void { this.losses.set(message, (this.losses.get(message) ?? 0) + 1); }

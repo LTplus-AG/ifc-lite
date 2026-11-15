@@ -531,7 +531,8 @@ On sloping ground this band spans the whole slope, so it only catches gross
 errors: on a 10 m slope, a model up to about 12 m too high passes it.
 
 **Entry level: no favourable outcome without a plausible entry.** Each
-ground-storey door on the outline must sit at most `entryAbove` (2.5 m; may
+ground-storey door with an exact level at a proven position (not an upper
+estimate, a lower bound or an uncertain position) on the outline must sit at most `entryAbove` (2.5 m; may
 only be lowered) above the terrain next to it (the median of its own ground
 samples). If one does not, there is no such door, the ground storey is not
 identified or was not stated by the caller (**guessed**: by the ±0.00

@@ -241,7 +241,9 @@ describe('CodeRabbit: a sample on another building\'s boundary is inside it', ()
 
 describe('the automated review of 0b30b84, check side', () => {
   it('an uncertain position (positionIsUncertain) never gets a favourable outcome, even with an exact level', () => {
-    const r = checkFloodExposure(boxFacts([candidate({ position: P(10, 0), level: 500, positionIsUncertain: true })]), ras(() => CELL_NO_RUNOFF), flatTerrain(499.95), opts);
+    // An exact door elsewhere confirms the height reference (an uncertain door no longer may: review of a46ce9cb0).
+    const front = candidate({ expressId: 7, position: P(5, 10), level: 500 });
+    const r = checkFloodExposure(boxFacts([candidate({ position: P(10, 0), level: 500, positionIsUncertain: true }), front]), ras(() => CELL_NO_RUNOFF), flatTerrain(499.95), opts);
     expect(r.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'position-uncertain' });
     const control = checkFloodExposure(boxFacts([candidate({ position: P(10, 0), level: 500 })]), ras(() => CELL_NO_RUNOFF), flatTerrain(499.95), opts);
     expect(control.results[0].outcome).toBe('no-runoff-mapped');
@@ -254,5 +256,18 @@ describe('the automated review of 0b30b84, check side', () => {
     const facts = boxFacts([candidate({ position: P(15, 5), level: 500 })], { footprint: footprint([outer, court], 'given') });
     const r = checkFloodExposure(facts, syntheticRaster(E0 - 10, N0 - 10, 100, 100, 0.5, (p) => (inCourt(p) ? deep : CELL_NO_RUNOFF)), flatTerrain(499.95), opts);
     expect(r.results[0].outcome).toBe('exposed');
+  });
+});
+
+describe('the automated review of a46ce9cb0, check side: only exact, certain door levels confirm the height reference', () => {
+  it.each([
+    ['a lower-bound level (read from a clipped body)', { levelIsLowerBound: true }],
+    ['an uncertain position', { positionIsUncertain: true }],
+  ])('a ground-storey door with %s does not confirm it', (_l, over) => {
+    const door = candidate({ position: P(10, 0), level: 500, storeyId: 10, ...over });
+    const r = checkFloodExposure(boxFacts([door]), ras(() => CELL_NO_RUNOFF), flatTerrain(499.95), opts);
+    expect(r.heightReference.status).toBe('unconfirmed');
+    const control = checkFloodExposure(boxFacts([candidate({ position: P(10, 0), level: 500, storeyId: 10 })]), ras(() => CELL_NO_RUNOFF), flatTerrain(499.95), opts);
+    expect(control.heightReference.status).toBe('confirmed');
   });
 });

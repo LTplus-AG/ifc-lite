@@ -254,7 +254,8 @@ export function checkWith(
   const heightReference = confirmEntries(
     facts,
     (i) => plans[i].points.map(({ point }) => heightAt(point)).filter((h): h is number => h !== null),
-    (c, i) => !c.levelIsUpperEstimate && plans[i].anchorOffset <= anchorTolerance && !hull && !plans[i].nearestBoundaryNested,
+    // Only an exact level at a proven position stands for an entry: not an upper estimate, a lower bound or an uncertain position.
+    (c, i) => !c.levelIsUpperEstimate && !c.levelIsLowerBound && !c.positionIsUncertain && plans[i].anchorOffset <= anchorTolerance && !hull && !plans[i].nearestBoundaryNested,
     heightPlausibility,
     options.heightPlausibility,
     unconfirmedBecause,

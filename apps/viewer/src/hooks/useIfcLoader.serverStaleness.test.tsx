@@ -244,7 +244,7 @@ for (const publishes of [false, true]) it(`#10264 server failure ${publishes ? '
       assert.equal(engineInits, 0);
       return;
     }
-    assert.equal(dialog, null, 'no consent whose Cancel could no longer preserve the prior scene');
+    assert.equal(dialog !== null, false, 'no consent whose Cancel could no longer preserve the prior scene');
     await pending;
     assert.equal(completed, true, 'post-publication failure settles without waiting for consent');
     assert.equal(errors.length, 1);

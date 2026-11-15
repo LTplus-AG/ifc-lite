@@ -498,9 +498,13 @@ export class SVGExporter {
         const lines = text.text.split('\n');
         const content = lines
           .map((line, i) => `<tspan x="${svgNum(anchor.x)}" y="${svgNum(anchor.y
-            + dxfTextLineOffset(i, lines.length, text.valign, heightMm))}">${this.escapeXml(line)}</tspan>`)
+            + dxfTextLineOffset(i, lines.length, text.valign, heightMm, text.lineSpacingFactor))}">${this.escapeXml(line)}</tspan>`)
           .join('');
-        layer += `      <text x="${svgNum(anchor.x)}" y="${svgNum(anchor.y)}" font-family="Arial, sans-serif" font-size="${svgNum(heightMm)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}" transform="rotate(${svgNum(angle, 2)} ${svgNum(anchor.x)} ${svgNum(anchor.y)})">${content}</text>\n`;
+        // Aligned/fit text carries its exact span (the browser measures via textLength); else the width factor stretches about the anchor.
+        const fitLength = lines.length === 1 && text.fitWidth && text.fitWidth > 0 ? text.fitWidth * placement.scale * transform.scale : 0; // exact span; Aligned keeps its estimated height
+        const stretch = fitLength ? '' : text.widthScale && text.widthScale !== 1
+          ? ` translate(${svgNum(anchor.x)} ${svgNum(anchor.y)}) scale(${svgNum(text.widthScale, 4)} 1) translate(${svgNum(-anchor.x)} ${svgNum(-anchor.y)})` : '';
+        layer += `      <text x="${svgNum(anchor.x)}" y="${svgNum(anchor.y)}" font-family="Arial, sans-serif" font-size="${svgNum(heightMm)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}"${fitLength ? ` textLength="${svgNum(fitLength)}" lengthAdjust="spacingAndGlyphs"` : ''} transform="rotate(${svgNum(angle, 2)} ${svgNum(anchor.x)} ${svgNum(anchor.y)})${stretch}">${content}</text>\n`;
       }
 
       layer += '    </g>\n';

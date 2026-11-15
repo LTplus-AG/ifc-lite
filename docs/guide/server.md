@@ -1075,7 +1075,7 @@ only wants a browser to show the result has no file to hash or upload. It
 passes a `ProcessedModelRef` in place of the file:
 
 ```typescript
-// The SHA-256 of the source file names the stored result; `bytes` is its size (optional, not sent; the viewer streams a model of unknown size).
+// The SHA-256 of the IFC bytes the server parsed names the stored result (for .ifcZIP or gzip, the unpacked IFC, not the archive); `bytes` is its size (optional, not sent; the viewer streams a model of unknown size).
 const stored = { sha256: 'c0ffee…', bytes: 46_000_000 };
 const result = await client.parseParquetStream(stored, (batch) => {
   console.log(`${batch.meshes.length} meshes`);
@@ -1098,7 +1098,28 @@ URL, or a same-origin path such as `/ifc` behind a reverse proxy), it opens
 ```
 
 from the server alone: no IFC is requested, and there is no local fallback.
-Embedders call `loadFile(new File([], name), { kind: 'primary' }, { processedModel })`.
+A host that builds its own entry does the same without a URL, and can name the
+server at runtime instead of at build time:
+
+<!-- docs-check: skip -->
+```typescript
+import { openProcessedModel } from '@/lib/processed-model';
+
+// Only this request and its Retry use /ifc; local uploads keep the global server.
+openProcessedModel({ sha256, bytes, name }, { serverUrl: '/ifc' });
+```
+
+The call may come before the viewer mounts; the request waits for it, and a
+`?processed=` or `?model=` in the page URL is then ignored (each logged once), so the host's model wins.
+A collaboration link (`?room=`) is refused the same way. If its join is still in progress,
+the viewer leaves it before it can hydrate or seed the host's model. A call after the join
+has finished does not leave the room.
+The `serverUrl` option applies only to this request and its Retry; it does not redirect local uploads.
+Without it, the load asks the global server as it stands when the load runs.
+`setProcessingServerUrl(url)` explicitly sets the global server. This URL replaces
+`VITE_IFC_SERVER_URL` for every server request, so in a build with
+`VITE_USE_SERVER=true` it also receives the uploads of IFC files opened from
+disk. `VITE_USE_SERVER` still decides whether such uploads happen at all.
 The hash selects a result; it is not a credential. Decide who may read a result
 where the server is served, with its token or the proxy in front of it.
 

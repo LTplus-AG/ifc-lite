@@ -10,7 +10,8 @@
  * "could not be opened" leaves a host with nothing to fix.
  */
 
-import { IfcServerError, normalizeProcessedModelHash, processedModelSize, type ProcessedModelRef } from '@ifc-lite/server-client';
+import { IfcServerError, normalizeProcessedModelHash, processedModelSize } from '@ifc-lite/server-client';
+import type { ProcessedModelSource } from '@/lib/processed-model';
 import { resolve as translate } from '@/i18n/registry';
 import type { TranslationKey } from '@/i18n';
 import { isNetworkUnavailableError } from '@/lib/cancelled-and-network-errors';
@@ -18,8 +19,8 @@ import { formatLoadError } from '@/lib/load-error-message';
 import { messageOf } from '@/lib/load-errors';
 
 /** `ref` with its hash lowercased, so the model record holds one spelling; a hash that is not a SHA-256 is kept for the client to refuse. A size that is not a positive integer becomes 0, unknown. */
-export function normalizedProcessedModel(ref: ProcessedModelRef): ProcessedModelRef & { bytes: number } {
-  return { sha256: normalizeProcessedModelHash(ref.sha256) ?? ref.sha256, bytes: processedModelSize(ref.bytes) };
+export function normalizedProcessedModel(ref: ProcessedModelSource): ProcessedModelSource & { bytes: number } {
+  return { ...ref, sha256: normalizeProcessedModelHash(ref.sha256) ?? ref.sha256, bytes: processedModelSize(ref.bytes) };
 }
 
 /** A cause found in the viewer, before or instead of a server answer. */

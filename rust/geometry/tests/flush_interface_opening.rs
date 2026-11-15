@@ -246,14 +246,16 @@ fn a_recess_ending_on_an_interface_a_kilometre_out_stays_closed() {
                     let content = wall([1000.0, 800.0, 0.0], 0.0, wall_turn, wall_y, recess, host);
                     let voids = build_void_index_like_production(&content);
                     let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
-                    let (open, volume) = (open_edges(&mesh), mesh_volume(&mesh));
+                    let (open, volume, surface) = (open_edges(&mesh), mesh_volume(&mesh), area(&mesh));
                     // main already gives the split host up to 1.4 litres
                     // too much at some offsets: only closure is held there.
-                    let volume_ok = matches!(host, Host::SplitUnderRecess) || (volume - analytic_volume()).abs() <= 5.0e-4;
-                    if open != 0 || !volume_ok {
+                    let solid_ok = matches!(host, Host::SplitUnderRecess)
+                        || ((volume - analytic_volume()).abs() <= 5.0e-4
+                            && (surface - analytic_area(recess)).abs() <= 5.0e-3);
+                    if open != 0 || !solid_ok {
                         failures.push(format!(
                             "{host:?} {recess:?} wall turn {wall_turn} y {wall_y:.3}: \
-                             {open} open edges, volume {volume:.6} m3 (analytic {:.6})",
+                             {open} open edges, volume {volume:.6} m3 (analytic {:.6}), surface {surface:.4} m2",
                             analytic_volume(),
                         ));
                     }

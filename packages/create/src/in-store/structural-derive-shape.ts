@@ -152,6 +152,24 @@ const PARAMETERISED: Record<string, (a: readonly unknown[]) => { size: [unknown,
   IFCCSHAPEPROFILEDEF: (a) => ({ size: [a[4], a[3]], exact: false }),
 };
 
+/**
+ * An L profile's stated `CentreOfGravityInX/Y` (#10377), which carries the fillets the sharp-cornered shape lacks. EXPRESS
+ * gives only a non-negative distance, with no origin or direction; AxisVM states the distance from the bounds centre
+ * toward the legs (the centroid of its 75 x 75 x 6 angle with 10 mm fillets is 17.085 mm off in IfcOpenShell, the file
+ * states 17.07184). So the stated value is used only when its magnitude is within 10% of the computed offset, with the
+ * computed sign, and only when that reading is distinguishable from a distance measured from the outer edge (on a thin
+ * angle the two are within 20%): a value measured from another origin disagrees by far more and is ignored. T, U and C are not read:
+ * no authoring file in the repository states them.
+ */
+function statedOffset(stated: unknown, computed: number, halfExtent: number): number {
+  const value = num(stated);
+  const offset = Math.abs(computed);
+  // Measured from the outer edge instead, the same centroid is `halfExtent - offset` away. On a thin angle the two
+  // readings are within 20% of each other, so a stated value cannot say which one it is: keep the computed offset.
+  if (value === null || value <= 0 || Math.abs(halfExtent - offset - offset) <= 0.2 * offset) return computed;
+  return Math.abs(value - offset) <= 0.1 * offset ? Math.sign(computed) * value : computed;
+}
+
 /** A rectangle of a compound profile: its centre in the profile frame and its area. */
 type Part = [cx: number, cy: number, w: number, h: number];
 
@@ -186,7 +204,8 @@ function sectionCentroidOffset(type: string, a: readonly unknown[], x: number, y
   })();
   if (!parts || parts.some(([, , w, h]) => !(w > 0) || !(h > 0)) || !(x > 0) || !(y > 0)) return null;
   const area = parts.reduce((sum, [, , w, h]) => sum + w * h, 0);
-  return [parts.reduce((sum, [cx, , w, h]) => sum + cx * w * h, 0) / area, parts.reduce((sum, [, cy, w, h]) => sum + cy * w * h, 0) / area];
+  const offset: Flat = [parts.reduce((sum, [cx, , w, h]) => sum + cx * w * h, 0) / area, parts.reduce((sum, [, cy, w, h]) => sum + cy * w * h, 0) / area];
+  return type === 'IFCLSHAPEPROFILEDEF' ? [statedOffset(a[9], offset[0], x / 2), statedOffset(a[10], offset[1], y / 2)] : offset;
 }
 
 /** A closed ring's points from a polyline, composite or indexed poly curve; a reason when the curve is not read. */

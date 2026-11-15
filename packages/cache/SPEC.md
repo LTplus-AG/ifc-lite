@@ -384,7 +384,7 @@ Per-mesh record (`:40-67`): `u8 mode`, then:
 | Mode | Meaning | Payload |
 |---|---|---|
 | 0 | no provenance | — |
-| 1 | canonical identity: source indices equal the mesh indices | — |
+| 1 | canonical identity: source indices equal the mesh indices **and** no corner map (`:31`); with a corner map the mesh is mode 3 or 5 even when the indices are equal | — |
 | 2 | inline source indices | `u32 n`, `u32[n]` |
 | 3 | inline source + corner map | `u32 n`, `u32[n]`, `u32[indexCount]` |
 | 4 | pooled source | `u32 poolIndex` |

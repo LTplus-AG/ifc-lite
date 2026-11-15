@@ -81,7 +81,7 @@ export function beamTopAttachment(s: State, modelId: string, storeyId: number | 
   const storeys = modelStoreys(s, modelId);
   const index = storeys.findIndex((storey) => storey.expressId === storeyId);
   const above = index >= 0 ? storeys[index + 1] : undefined;
-  if (!above || Math.abs(above.elevation - storeys[index].elevation - topZ) > 1e-3) return null;
+  if (!above || !(Math.abs(above.elevation - storeys[index].elevation - topZ) <= 1e-3)) return null;
   return storeyGlobalId(s, modelId, above.expressId);
 }
 

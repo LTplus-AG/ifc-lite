@@ -51,11 +51,12 @@ it('placement and spatial reads avoid enumerating unrelated creations #8452', as
   const axis = view.createEntity('IfcAxis2Placement3D', [`#${point.expressId}`, null, null]);
   const placement = view.createEntity('IfcLocalPlacement', [null, `#${axis.expressId}`]);
   view.createEntity('IfcRelAggregates', ['guid', null, null, null, '#1', [`#${placement.expressId}`]]);
-  const enumerations = vi.spyOn(view, 'getNewEntities');
+  const enumerations = vi.spyOn(view, 'getNewEntities'), borrowed = vi.spyOn(view, 'readNewEntities');
   try {
     expect(readOwnPlacementFrame(store, extractor, view, placement.expressId)?.origin).toEqual([8, 9]);
     const lookup = createOverlayLookup(view);
     expect(buildRelatingChildrenIndex(store, extractor, lookup, 'IFCRELAGGREGATES', 4, 5).get(1)).toEqual([placement.expressId]);
     expect(enumerations).not.toHaveBeenCalled();
-  } finally { enumerations.mockRestore(); }
+    expect(borrowed).not.toHaveBeenCalled();
+  } finally { enumerations.mockRestore(); borrowed.mockRestore(); }
 });

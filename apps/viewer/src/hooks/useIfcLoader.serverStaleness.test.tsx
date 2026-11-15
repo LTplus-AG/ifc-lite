@@ -16,8 +16,8 @@ import { GeometryProcessor } from '@ifc-lite/geometry';
 import { IfcServerClient, type HealthResponse, type ParquetParseResponse } from '@ifc-lite/server-client';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
-import { getProcessingServerUrl, setProcessingServerUrl } from '@/lib/processed-model';
 const { useIfcLoader } = await import('./useIfcLoader.js');
+const { getProcessingServerUrl, setProcessingServerUrl } = await import('@/lib/processed-model');
 
 const PARQUET_RESULT: ParquetParseResponse = {
   meshes: [
@@ -163,7 +163,7 @@ for (const archive of [false, true]) for (const scenario of ['unavailable', 'ine
       if (args[0] >= 1e9) { largeAllocations++; throw new Error('unexpected source allocation #10264'); }
       return Reflect.construct(target, args);
     } });
-    mock.method(IfcServerClient.prototype, 'parseParquetStream', async function (this: IfcServerClient, _file: Parameters<IfcServerClient['parseParquetStream']>[0], onBatch: Parameters<IfcServerClient['parseParquetStream']>[1]) => {
+    mock.method(IfcServerClient.prototype, 'parseParquetStream', async function (this: IfcServerClient, _file: Parameters<IfcServerClient['parseParquetStream']>[0], onBatch: Parameters<IfcServerClient['parseParquetStream']>[1]) {
       attempts++;
       servers.push((this as unknown as { baseUrl: string }).baseUrl);
       if (scenario !== 'success') throw new Error('unavailable server #10264');

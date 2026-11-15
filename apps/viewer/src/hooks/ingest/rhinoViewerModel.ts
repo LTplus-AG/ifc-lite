@@ -34,7 +34,7 @@ import { calculateMeshBounds, createCoordinateInfo, expandBoundsForPointClouds }
 import { sourceArrayBuffer } from './sourceBuffers.js';
 import { rebuildSpatialHierarchy } from '../../utils/spatialHierarchy.js';
 import { applyStatedStoreyElevations } from '../../utils/statedStoreyElevations.js';
-import { planRhinoTree, type RhinoTreePlan } from './rhinoLayerTree.js';
+import { planRhinoContainerVisibility, planRhinoTree, type RhinoTreePlan } from './rhinoLayerTree.js';
 import { buildTabularDataStore, type TabularStoreTables } from './tabularDataStore.js';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
@@ -354,6 +354,7 @@ export function rhinoViewerModel(result: RhinoImport, buffer: ArrayBuffer, parse
     },
     schemaVersion: 'IFC4',
     hiddenExpressIds: hiddenOf(result, tree),
+    containerVisibility: planRhinoContainerVisibility(result, tree, expressIdOf),
   };
 }
 

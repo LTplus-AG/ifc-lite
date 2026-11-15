@@ -240,6 +240,10 @@ test.describe('Rhino .3dm import in the built viewer', () => {
     for (const child of model.rootChildren) {
       await expect(page.locator('[data-hierarchy-node-type="IfcSpatialZone"]').filter({ hasText: child.name }).first()).toBeVisible();
     }
+    // The load puts the layer rows' hide/show plan on the model, which the eye reads (#10214).
+    const layerRows = await page.evaluate(() =>
+      [...globalThis.__ifc_lite_viewer_store__.getState().models.values()][0].containerVisibility?.rows.size ?? 0);
+    expect(layerRows, 'a plan row for the root and every layer row').toBeGreaterThanOrEqual(model.rootChildren.length + 1);
 
     // Rhino's layer colour reaches the renderer's own `MeshData.color`, on the
     // mesh and on the point cloud alike, rather than a viewer default.

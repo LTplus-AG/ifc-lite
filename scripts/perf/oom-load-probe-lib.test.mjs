@@ -8,12 +8,27 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { existsSync } from 'node:fs';
+
+// Guarded load, not a static import: the revert oracle removes this PR's production files, and a
+// static import of a removed module fails the whole file at LOAD, which the oracle cannot tell
+// from a broken test. With the guard, every test fails by an ordinary assertion instead.
+const LIB = new URL('./oom-load-probe-lib.mjs', import.meta.url);
+const libModule = existsSync(LIB) ? await import(LIB.href) : null;
+function lib() { assert.ok(libModule, 'scripts/perf/oom-load-probe-lib.mjs does not exist'); return libModule; }
+const classify = (...a) => lib().classify(...a);
+const optionErrors = (...a) => lib().optionErrors(...a);
+const parseSize = (...a) => lib().parseSize(...a);
+const phaseOf = (...a) => lib().phaseOf(...a);
+const runCleanup = (...a) => lib().runCleanup(...a);
+const verdict = (...a) => lib().verdict(...a);
+const withTimeout = (...a) => lib().withTimeout(...a);
 
 test('#10264 a tab death wins over every other signal', () => {
-  assert.equal(classify({ oomKills: 1, killedTypes: ['renderer'], interactive: true }).outcome, 'killed');
-  assert.equal(classify({ oomKills: 2, killedTypes: ['renderer'], storeError: 'Ran out of memory while processing x' }).outcome, 'killed');
+  assert.equal(classify({ oomKills: 1, killedTypes: ['renderer'], pageCrashed: true }).outcome, 'killed');
+  assert.equal(classify({ oomKills: 2, killedTypes: ['renderer'], pageCrashed: true, storeError: 'Ran out of memory while processing x' }).outcome, 'killed');
   assert.equal(classify({ pageCrashed: true }).outcome, 'killed');
+  assert.equal(classify({ pageClosed: true }).outcome, 'killed');
   assert.equal(classify({ browserGone: true }).outcome, 'killed');
 });
 
@@ -50,10 +65,12 @@ test('#10264 a finished load is `loaded` whatever text is on the page', () => {
   assert.equal(classify({ interactive: true, storeError: null, notices: ["exceeds this tab's local processing memory budget"] }).outcome, 'loaded');
 });
 
-test('#10264 an OOM kill of the renderer or browser is `killed` at once', () => {
-  assert.equal(classify({ oomKills: 1, killedTypes: ['renderer'], interactive: true }).outcome, 'killed');
-  assert.equal(classify({ oomKills: 1, killedTypes: ['browser'] }).outcome, 'killed');
-  assert.match(classify({ oomKills: 1, killedTypes: ['renderer'] }).reason, /renderer OOM-killed \(cgroup oom_kill=1\)/);
+test('#10264 killed rests on evidence about this tab: its renderer crashed, its page closed, or the browser exited', () => {
+  assert.equal(classify({ oomKills: 1, killedTypes: ['renderer'], pageCrashed: true }).outcome, 'killed');
+  assert.equal(classify({ browserGone: true }).outcome, 'killed');
+  assert.match(classify({ oomKills: 1, killedTypes: ['renderer'], pageCrashed: true }).reason, /page crashed \(its renderer died\) \(cgroup oom_kill=1; vanished: renderer\)/);
+  // A vanished renderer TYPE alone is not this tab: with no tab evidence it never decides killed.
+  assert.notEqual(classify({ oomKills: 1, killedTypes: ['renderer'] }).outcome, 'killed');
   assert.equal(classify({ pageCrashed: true }).outcome, 'killed');
 });
 
@@ -64,8 +81,8 @@ test('#10264 GPU-only OOM kill, then the load finishes: `loaded` with a note', (
   assert.equal(verdict(r.outcome, 'killed').pass, false);
 });
 
-test('#10264 GPU-only OOM kill, then the renderer dies: `killed`', () => {
-  assert.equal(classify({ oomKills: 2, killedTypes: ['gpu-process', 'renderer'] }).outcome, 'killed');
+test('#10264 GPU-only OOM kill, then the page crashes: `killed`', () => {
+  assert.equal(classify({ oomKills: 2, killedTypes: ['gpu-process', 'renderer'], pageCrashed: true }).outcome, 'killed');
   assert.equal(classify({ oomKills: 1, killedTypes: ['gpu-process'], pageCrashed: true }).outcome, 'killed');
 });
 
@@ -127,7 +144,7 @@ test('#10264 a pre-load memory warning: waiting, cancelling and continuing are d
   assert.equal(classify({ warningShown: true, decision: 'cancel' }).outcome, 'cancelled');
   assert.equal(classify({ warningShown: true, decision: 'continue', interactive: true }).outcome, 'loaded');
   // A kill after the user accepted the warning is reported on its own, never as plain `killed`.
-  assert.equal(classify({ warningShown: true, decision: 'continue', oomKills: 1, killedTypes: ['renderer'] }).outcome, 'killed-after-continue');
+  assert.equal(classify({ warningShown: true, decision: 'continue', oomKills: 1, killedTypes: ['renderer'], pageCrashed: true }).outcome, 'killed-after-continue');
   assert.equal(classify({ warningShown: true, decision: 'continue', pageCrashed: true }).outcome, 'killed-after-continue');
   // An outright refusal below the warning threshold is still `refused`.
   assert.equal(classify({ storeError: "This IFC file exceeds this tab's local processing memory budget" }).outcome, 'refused');
@@ -299,7 +316,7 @@ test('#10353 server proof: a blob: URL of the source before the decision makes t
 });
 
 test('#10264 the final snapshot decides, not which promise settled first (review on #10415)', async () => {
-  const { mergeFinalSnapshot } = await import('./oom-load-probe-lib.mjs');
+  const { mergeFinalSnapshot } = lib();
   const refusal = "Failed to load \"x.ifc\": This IFC file exceeds this tab's local processing memory budget (3.0 GiB estimated, 3.0 GiB budget).";
   // The wait rejected before the first poll: obs has no storeError yet.
   const rejected = { oomKills: 0, killedTypes: [], interactive: false, storeError: null, notices: [], timedOut: false, warningShown: false, decision: 'none' };
@@ -328,7 +345,7 @@ const REFUSAL_TEXT = "This IFC file exceeds this tab's local processing memory b
 const OOM_TEXT = 'Ran out of memory while processing x.ifc.';
 
 test('precedence: the table order is pinned', async () => {
-  const { PRECEDENCE } = await import('./oom-load-probe-lib.mjs');
+  const { PRECEDENCE } = lib();
   assert.deepEqual(PRECEDENCE.map((r) => r.outcome), ['killed', 'error', 'loaded', 'refused', 'error', 'error', 'cancelled', 'awaiting-decision', 'timeout', 'error']);
 });
 
@@ -400,12 +417,14 @@ test('precedence 2 (review on #10415): two OOM kills with one identified GPU vic
   for (const e of ['killed', 'not-killed', 'warned', 'loaded']) assert.equal(verdict(r.outcome, e).pass, false);
   // Every kill accounted for by a non-tab victim: the live, interactive load is loaded with a note.
   assert.equal(classify({ ...base, oomKills: 2, killedTypes: ['gpu-process', 'utility'], interactive: true }).outcome, 'loaded');
-  // 1>2 still holds: a renderer among the victims is killed even if another kill is unidentified.
-  assert.equal(classify({ ...base, oomKills: 3, killedTypes: ['gpu-process', 'renderer'] }).outcome, 'killed');
+  // 1>2 still holds: a crashed page is killed even if another kill is unidentified; without tab
+  // evidence an unidentified kill is error, never killed.
+  assert.equal(classify({ ...base, oomKills: 3, killedTypes: ['gpu-process', 'renderer'], pageCrashed: true }).outcome, 'killed');
+  assert.equal(classify({ ...base, oomKills: 3, killedTypes: ['gpu-process', 'renderer'] }).outcome, 'error');
 });
 
 test('final snapshot (review on #10415): an explicit refusal replaces the poll\'s generic model error', async () => {
-  const { mergeFinalSnapshot, GENERIC_MODEL_ERROR } = await import('./oom-load-probe-lib.mjs');
+  const { mergeFinalSnapshot, GENERIC_MODEL_ERROR } = lib();
   const polled = { ...base, storeError: GENERIC_MODEL_ERROR };
   const refusal = `Failed to load "x.ifc": ${REFUSAL_TEXT}`;
   const merged = mergeFinalSnapshot(polled, { error: refusal, modelStates: ['error'], warningVisible: false, notices: [] });
@@ -476,7 +495,7 @@ test('#10353 server proof: the attempt and request counts survive a log filled b
 });
 
 test('OOM accounting per event (review on #10415): an extra vanished process in one interval cannot cover a missing victim in another', async () => {
-  const { oomAccounting } = await import('./oom-load-probe-lib.mjs');
+  const { oomAccounting } = lib();
   // Interval A: one kill, two processes vanished (one was a normal exit). Interval B: one kill, nothing vanished.
   const events = [{ added: 1, types: ['gpu-process', 'utility'] }, { added: 1, types: [] }];
   assert.equal(oomAccounting(events, 2).unidentified, 1, 'the aggregate count (2 kills, 2 types) would have hidden it');
@@ -487,26 +506,27 @@ test('OOM accounting per event (review on #10415): an extra vanished process in 
 });
 
 test('OOM accounting per event: two kills in one interval with one vanished process leave one unidentified', async () => {
-  const { oomAccounting } = await import('./oom-load-probe-lib.mjs');
+  const { oomAccounting } = lib();
   assert.equal(oomAccounting([{ added: 2, types: ['gpu-process'] }], 2).unidentified, 1);
   assert.equal(classify({ ...base, oomKills: 2, killEvents: [{ added: 2, types: ['gpu-process'] }], interactive: true }).outcome, 'error');
 });
 
 test('OOM accounting per event: the same process type killed twice in two intervals is fully identified', async () => {
-  const { oomAccounting } = await import('./oom-load-probe-lib.mjs');
+  const { oomAccounting } = lib();
   const events = [{ added: 1, types: ['gpu-process'] }, { added: 1, types: ['gpu-process'] }];
-  assert.deepEqual(oomAccounting(events, 2), { kills: 2, types: ['gpu-process', 'gpu-process'], unidentified: 0 });
+  assert.deepEqual(oomAccounting(events, 2), { kills: 2, types: ['gpu-process', 'gpu-process'], unidentified: 0, ambiguous: 0 });
   const r = classify({ ...base, oomKills: 2, killEvents: events, interactive: true });
   assert.equal(r.outcome, 'loaded');
   assert.match(r.reason, /OOM-killed gpu-process\+gpu-process \(not the tab\)/);
 });
 
 test('OOM accounting per event: kills the sampler never saw (counter read only at the end) are unidentified', async () => {
-  const { oomAccounting } = await import('./oom-load-probe-lib.mjs');
+  const { oomAccounting } = lib();
   assert.equal(oomAccounting([{ added: 1, types: ['gpu-process'] }], 3).unidentified, 2);
   assert.equal(classify({ ...base, oomKills: 1, killEvents: [], interactive: true }).outcome, 'error');
-  // A renderer victim in any interval is still a tab death (row 1 beats row 2).
-  assert.equal(classify({ ...base, oomKills: 2, killEvents: [{ added: 1, types: ['renderer'] }, { added: 1, types: [] }] }).outcome, 'killed');
+  // A crashed page is a tab death (row 1 beats row 2); a vanished renderer type alone is not.
+  assert.equal(classify({ ...base, pageCrashed: true, oomKills: 2, killEvents: [{ added: 1, types: ['renderer'] }, { added: 1, types: [] }] }).outcome, 'killed');
+  assert.equal(classify({ ...base, oomKills: 2, killEvents: [{ added: 1, types: ['renderer'] }, { added: 1, types: [] }] }).outcome, 'error');
 });
 
 test('withTimeout (review on #10415): a fallback that throws rejects, so cleanup records it and runs the remaining steps', async () => {
@@ -519,4 +539,36 @@ test('withTimeout (review on #10415): a fallback that throws rejects, so cleanup
   ]);
   assert.deepEqual(ran, ['fixture'], 'the step after the failing fallback still ran');
   assert.deepEqual(failures, ['browser: systemctl stop failed']);
+});
+
+test('tab evidence (review on #10415): a GPU kill and an unrelated renderer exiting in one interval leave an interactive tab loaded, with a note', () => {
+  const r = classify({ ...base, oomKills: 1, killEvents: [{ added: 1, types: ['gpu-process', 'renderer'] }], interactive: true });
+  assert.equal(r.outcome, 'loaded');
+  assert.equal(r.rule, 3);
+  assert.match(r.reason, /1 interval\(s\) with more vanished processes than kills \(victim ambiguous\)/);
+  assert.equal(verdict(r.outcome, 'killed').pass, false, '--expect killed must not pass for a tab that stayed interactive');
+});
+
+test('tab evidence: this page\'s renderer crashing is killed', () => {
+  const r = classify({ ...base, oomKills: 1, killEvents: [{ added: 1, types: ['renderer'] }], pageCrashed: true });
+  assert.equal(r.outcome, 'killed');
+  assert.equal(r.rule, 1);
+  assert.equal(classify({ ...base, pageClosed: true }).outcome, 'killed');
+});
+
+test('tab evidence: a kill with no vanished process and an alive interactive tab is error, as before', () => {
+  const r = classify({ ...base, oomKills: 1, killEvents: [{ added: 1, types: [] }], interactive: true });
+  assert.equal(r.outcome, 'error');
+  assert.equal(r.rule, 2);
+});
+
+test('TAB_ALIVE_INVARIANT: no kill accounting makes an alive, interactive tab killed', () => {
+  const typeSets = [[], ['renderer'], ['browser'], ['gpu-process'], ['renderer', 'renderer'], ['gpu-process', 'renderer', 'utility']];
+  for (const types of typeSets) {
+    for (const added of [1, 2, 3]) {
+      const r = classify({ ...base, oomKills: added, killEvents: [{ added, types }], killedTypes: types, interactive: true });
+      assert.notEqual(r.outcome, 'killed', `${added} kill(s), vanished ${types.join('+') || 'none'}`);
+      assert.ok(['loaded', 'error'].includes(r.outcome));
+    }
+  }
 });

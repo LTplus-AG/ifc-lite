@@ -13,7 +13,17 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:f
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { generateDenseIfc, writeDenseIfc, real, guid } from './gen-dense-ifc.mjs';
+
+// Guarded load, not a static import: the revert oracle removes this PR's production files, and a
+// static import of a removed module fails the whole file at LOAD, which the oracle cannot tell
+// from a broken test. With the guard, every test fails by an ordinary assertion instead.
+const GEN = new URL('./gen-dense-ifc.mjs', import.meta.url);
+const genModule = existsSync(GEN) ? await import(GEN.href) : null;
+function gen() { assert.ok(genModule, 'scripts/perf/gen-dense-ifc.mjs does not exist'); return genModule; }
+const generateDenseIfc = (...a) => gen().generateDenseIfc(...a);
+const writeDenseIfc = (...a) => gen().writeDenseIfc(...a);
+const real = (...a) => gen().real(...a);
+const guid = (...a) => gen().guid(...a);
 
 const render = (options) => {
   const parts = [];
@@ -137,6 +147,7 @@ test('#10264 an existing directory as output fails cleanly and leaves no .tmp', 
 });
 
 test('#10264 the CLI rejects numbers that are not plain decimals', () => {
+  gen();
   const dir = mkdtempSync(join(tmpdir(), 'gen-dense-ifc-'));
   try {
     for (const args of [['--elements', ''], ['--elements', '1', '--rings', '0x4'], ['--elements', '1', '--psets', 'abc'], ['--target-mb', '1e3']]) {
@@ -151,6 +162,7 @@ test('#10264 the CLI rejects numbers that are not plain decimals', () => {
 });
 
 test('#10264 an unsupported --schema is rejected for both kinds before anything is written (review on #10415)', () => {
+  gen();
   for (const kind of ['tfs', 'brep']) assert.throws(() => render({ kind, elements: 1, schema: 'IFC9' }), /unsupported schema IFC9/);
   const dir = mkdtempSync(join(tmpdir(), 'gen-dense-ifc-'));
   try {

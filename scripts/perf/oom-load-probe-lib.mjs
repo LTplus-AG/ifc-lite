@@ -55,20 +55,23 @@ export const MEMORY_WARNING = /may exceed available memory/i;
 /** Accessible names of that warning's buttons (#10353). */
 export const DIALOG_BUTTONS = Object.freeze({ cancel: /^cancel$/i, continue: /^continue loading$/i });
 
-/** Chrome process types whose death is the tab dying. A GPU or utility process can be restarted. */
-const TAB_PROCESSES = new Set(['renderer', 'browser']);
 
 /**
  * Outcome precedence: one table, applied top to bottom, first match wins. Every adjacent pair
  * has a unit test (oom-load-probe-lib.test.mjs, "precedence:"), so a reorder cannot go unnoticed.
  *
  *  #  outcome                        when                                                  why it outranks the rows below
- *  1  killed / killed-after-continue the renderer or browser vanished at an OOM kill, the  a dead tab is the defect under test;
- *                                    page crashed, or the browser exited                    nothing a dead page showed can override it
+ *  1  killed / killed-after-continue positive evidence about THIS tab: the page reported a   a dead tab is the defect under test; nothing a
+ *                                    renderer crash (Playwright 'crash', raised when this   dead page showed can override it. Process TYPES
+ *                                    page's renderer dies), the page target closed, or     never decide this row: an unrelated renderer or a
+ *                                    the browser exited                                    GPU process vanishing is not this tab (review #10415)
+ *  -  (invariant)                    an alive, positively interactive tab is never killed, whatever the kill accounting says;
+ *                                    classify() asserts it (TAB_ALIVE_INVARIANT)
  *  2  error                          any OOM kill whose victim was not identified in its   cannot be called killed or alive: never a pass,
  *                                    own sample interval (per event), with the page alive   even when the page is interactive (review #10415)
  *  3  loaded                         the load reached full interactivity (positively       a finished model beats any text elsewhere on
- *                                    observed); a GPU/utility OOM kill is noted            the page, including a stale or later error
+ *                                    observed); OOM kills of other processes and ambiguous  the page, including a stale or later error
+ *                                    victims (more vanished processes than kills) are noted
  *  4  refused                        the explicit pre-read refusal text (store load        the refusal IS a load error; it must be read
  *                                    error or a dialog/notice)                             before the generic error row
  *  5  error                          any other load error (store error or a model in       a failed load is never a pass, even with a
@@ -78,14 +81,15 @@ const TAB_PROCESSES = new Set(['renderer', 'browser']);
  *  8  timeout                        the time limit passed with none of the above          no verdict reached in time
  *  9  error                          nothing at all was observed                           never a pass
  */
-const TAB_DEATH = (o, k) => [...k.types.filter((t) => TAB_PROCESSES.has(t)).map((t) => `${t} OOM-killed`), o.pageCrashed && 'page crashed', o.browserGone && 'browser exited'].filter(Boolean);
+const TAB_DEATH = (o) => [o.pageCrashed && 'page crashed (its renderer died)', o.pageClosed && 'page target closed', o.browserGone && 'browser exited'].filter(Boolean);
+const tabAlive = (o) => TAB_DEATH(o).length === 0;
 const texts = (o) => [o.storeError, ...(o.otherErrors ?? []), ...(o.notices ?? [])].filter(Boolean).map(String);
 
 /** What a poll records when a model is in error before the store has its message. */
 export const GENERIC_MODEL_ERROR = 'model load error';
 export const PRECEDENCE = Object.freeze([
-  { outcome: 'killed', when: (o, k) => TAB_DEATH(o, k).length > 0,
-    reason: (o, k) => `${TAB_DEATH(o, k).join(', ')}${k.kills ? ` (cgroup oom_kill=${k.kills})` : ''}` },
+  { outcome: 'killed', when: (o) => !tabAlive(o),
+    reason: (o, k) => `${TAB_DEATH(o).join(', ')}${k.kills ? ` (cgroup oom_kill=${k.kills}${k.types.length ? `; vanished: ${k.types.join('+')}` : ''})` : ''}` },
   { outcome: 'error', when: (o, k) => k.unidentified > 0,
     reason: (o, k) => `cgroup oom_kill=${k.kills} with ${k.unidentified} kill(s) whose victim was not identified${k.types.length ? ` (identified: ${k.types.join('+')})` : ''}; the page stayed alive` },
   { outcome: 'loaded', when: (o) => Boolean(o.interactive), reason: () => 'interactive' },
@@ -108,6 +112,7 @@ export const PRECEDENCE = Object.freeze([
  * @param {{added: number, types: string[]}[]} [o.killEvents] per increase of oom_kill: kills added, types vanished.
  * @param {boolean} [o.pageCrashed]    Playwright page 'crash'.
  * @param {boolean} [o.browserGone]    Playwright context 'close' before the verdict.
+ * @param {boolean} [o.pageClosed]     the page under test closed (its target is gone) before the verdict.
  * @param {boolean} [o.interactive]    openAndWaitInteractive resolved.
  * @param {string|null} [o.storeError] the viewer store's load error (or GENERIC_MODEL_ERROR).
  * @param {string[]} [o.otherErrors]   later, different load errors kept beside storeError.
@@ -122,14 +127,21 @@ export function classify(o) {
   // the aggregate form, which is equivalent when every kill came from one interval.
   const k = o.killEvents
     ? oomAccounting(o.killEvents, o.oomKills ?? 0)
-    : { kills: o.oomKills ?? 0, types: o.killedTypes ?? [], unidentified: Math.max(0, (o.oomKills ?? 0) - (o.killedTypes ?? []).length) };
+    : { kills: o.oomKills ?? 0, types: o.killedTypes ?? [], unidentified: Math.max(0, (o.oomKills ?? 0) - (o.killedTypes ?? []).length), ambiguous: 0 };
   const index = PRECEDENCE.findIndex((r) => r.when(o, k));
   const rule = PRECEDENCE[index];
   let outcome = rule.outcome;
   if (outcome === 'killed' && o.decision === 'continue') outcome = 'killed-after-continue';
   let reason = rule.reason(o, k);
-  // Rows 3+ are a live tab: note a GPU/utility OOM kill that did not end it.
-  if (index >= 2 && k.kills > 0) reason += `; note: cgroup OOM-killed ${k.types.join('+')} (not the tab)`;
+  // Rows 3+ are a live tab: note OOM kills of other processes, and ambiguous victims.
+  if (index >= 2 && k.kills > 0) {
+    reason += `; note: cgroup OOM-killed ${k.types.join('+')} (not the tab)`;
+    if (k.ambiguous) reason += `; ${k.ambiguous} interval(s) with more vanished processes than kills (victim ambiguous)`;
+  }
+  // TAB_ALIVE_INVARIANT: an alive, positively interactive tab is never killed.
+  if ((outcome === 'killed' || outcome === 'killed-after-continue') && o.interactive && tabAlive(o)) {
+    throw new Error('TAB_ALIVE_INVARIANT violated: an alive, interactive tab was classified killed');
+  }
   return { outcome, reason, rule: index + 1 };
 }
 
@@ -267,9 +279,11 @@ export function withTimeout(promise, ms, onTimeout) {
 export function oomAccounting(events, totalKills = 0) {
   const types = events.flatMap((e) => e.types);
   let unidentified = events.reduce((n, e) => n + Math.max(0, e.added - e.types.length), 0);
+  // More vanished processes than kills in one interval: which one was the victim is ambiguous.
+  const ambiguous = events.filter((e) => e.types.length > e.added).length;
   const seen = events.reduce((n, e) => n + e.added, 0);
   if (totalKills > seen) unidentified += totalKills - seen;
-  return { kills: Math.max(totalKills, seen), types, unidentified };
+  return { kills: Math.max(totalKills, seen), types, unidentified, ambiguous };
 }
 
 /**

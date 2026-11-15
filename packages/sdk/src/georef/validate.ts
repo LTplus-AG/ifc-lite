@@ -108,6 +108,11 @@ export function resolveRotation(
     );
   }
   const angle = rotationDegrees === undefined ? undefined : requireNumber(rotationDegrees, 'rotationDegrees');
+  // A full turn either way covers every rotation; a larger angle is a typo or
+  // an overflow risk (1e308 * pi turns the axis into NaN), never a survey value.
+  if (angle !== undefined && Math.abs(angle) > 360) {
+    throw new GeoreferencingError('INVALID_INPUT', `rotationDegrees must lie between -360 and 360, got ${angle}.`, ['rotationDegrees']);
+  }
   if (!hasA) {
     if (angle === undefined) return { given: 'none' };
     const rad = (angle * Math.PI) / 180;

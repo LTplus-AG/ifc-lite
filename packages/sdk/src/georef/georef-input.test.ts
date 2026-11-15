@@ -240,3 +240,35 @@ describe('bim.georef IFC2X3 review follow-ups', () => {
     } finally { model.close(); }
   });
 });
+
+describe('bim.georef second review follow-ups', () => {
+  it('get() follows an ordinary property edit of an IFC2X3 convention set it wrote', async () => {
+    const model = await open(BASE, 'IFC2X3');
+    try {
+      model.bim.georef.set({
+        ProjectedCRS: { Name: 'EPSG:2056', MapUnit: 'METRE' },
+        MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 },
+      });
+      model.bim.mutate.setProperty({ modelId: 'model', expressId: 6 }, 'ePSet_MapConversion', 'Eastings', 2600001, 'IfcLengthMeasure');
+      const text = String(model.bim.export.ifc());
+      const reopened = await openModel(new TextEncoder().encode(text), { disableWorkerScan: true });
+      try {
+        expect(reopened.bim.georef.get().MapConversion?.Eastings).toBe(2600001);
+        expect(model.bim.georef.get().MapConversion?.Eastings).toBe(2600001);
+      } finally { reopened.close(); }
+    } finally { model.close(); }
+  });
+
+  it.each([1e308, -1e308, 361])('refuses rotationDegrees %s instead of writing a NaN axis', async (rotationDegrees) => {
+    const model = await open(BASE);
+    try {
+      const err = refusal(() => model.bim.georef.set({
+        ProjectedCRS: { Name: 'EPSG:2056', MapUnit: 'METRE' },
+        MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 },
+        rotationDegrees,
+      }));
+      expect(err.code).toBe('INVALID_INPUT');
+      expect(err.missing).toEqual(['rotationDegrees']);
+    } finally { model.close(); }
+  });
+});

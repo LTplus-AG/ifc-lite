@@ -249,7 +249,7 @@ export function resolveFullInput(
 
 /** The state a plan leaves behind. */
 export function stateAfter(
-  ctx: PlanContext,
+  ctx: Pick<PlanContext, 'modelId' | 'facts'>,
   storage: GeorefStorage,
   crs: GeorefProjectedCRSAttributes | null,
   mc: GeorefMapConversionAttributes | null,

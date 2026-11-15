@@ -19,10 +19,10 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import { recordCompoundMutation, recordSessionMutation, StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import { collectGeorefModelFacts, type GeorefModelFacts } from './model-facts.js';
-import { planRemove, planSet, type GeorefWritePlan, type PropertySetOp, type StepGeorefMutations } from './plan.js';
+import { CRS_FIELDS, MC_FIELDS, planRemove, planSet, stateAfter, type GeorefWritePlan, type PropertySetOp, type StepGeorefMutations } from './plan.js';
 import { planUpdate } from './plan-update.js';
 import { readSourceGeoreferencing, readWithoutGeoreferencing } from './read.js';
-import type { GeoreferencingState, GeoreferencingWriteRequest, GeoreferencingWriteResult } from './types.js';
+import type { GeorefMapConversionAttributes, GeorefProjectedCRSAttributes, GeoreferencingState, GeoreferencingWriteRequest, GeoreferencingWriteResult } from './types.js';
 
 export interface GeoreferencingSessionDeps {
   store: IfcDataStore;
@@ -57,7 +57,7 @@ export class GeoreferencingSession {
   /** The effective georeferencing: this session's latest write, or the source minus its deletions. */
   get(): GeoreferencingState {
     const top = this.current();
-    if (top) return top.state;
+    if (top) return top.state.storage === 'propertySets' && top.state.hasGeoreference ? this.liveEPSetState(top.state) : top.state;
     const view = this.deps.view();
     return readSourceGeoreferencing(this.deps.store, this.deps.modelId, view ? (id) => view.isDeleted(id) : undefined);
   }
@@ -95,6 +95,23 @@ export class GeoreferencingSession {
       mapUnit: plan.mapUnit,
       notes: plan.notes,
     };
+  }
+
+  /**
+   * An IFC2X3 write lives in ordinary property sets, which any later property
+   * edit can change; read them back from the overlay so `get()` stays what
+   * the export will say.
+   */
+  private liveEPSetState(written: GeoreferencingState): GeoreferencingState {
+    const view = this.deps.view();
+    if (!view) return written;
+    const facts = collectGeorefModelFacts(this.deps.store, { isDeleted: (id) => view.isDeleted(id), getForEntity: (id) => view.getForEntity(id) });
+    const pick = (loc: GeorefModelFacts['ePSetMapConversion'], fields: readonly string[]) =>
+      loc ? Object.fromEntries(fields.filter((f) => loc.values[f] != null).map((f) => [f, loc.values[f]])) : null;
+    const mc = pick(facts.ePSetMapConversion, MC_FIELDS);
+    const crs = pick(facts.ePSetProjectedCRS, CRS_FIELDS);
+    if (!mc && !crs) return written;
+    return stateAfter({ modelId: this.deps.modelId, facts }, 'propertySets', crs as GeorefProjectedCRSAttributes | null, mc as GeorefMapConversionAttributes | null);
   }
 
   /** `StepExportOptions.georefMutations` for an export of this session, if any. */

@@ -1,7 +1,7 @@
 --- a/apps/viewer/src/hooks/useIfcLoader.ts
 +++ b/apps/viewer/src/hooks/useIfcLoader.ts
-@@ -282,7 +282,7 @@
-       if (target.kind === 'primary' && initialized && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
+@@ -285,7 +285,7 @@
+       if (target.kind === 'primary' && primaryCommitted && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
        metadataAbort.abort();
        abortGeometry?.();
 -    }, () => cancelOwnedStream, activity, () => initialized, false); // #5849: federated cancellation preserves loaded models

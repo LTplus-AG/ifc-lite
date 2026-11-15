@@ -8,6 +8,8 @@ import { createListDataProvider } from './index';
 import type { ModelProviderPair } from './run-list';
 import { makeWorldPositionGetter } from '../geo/entity-world-position';
 import { zoneVolumeSiScale } from '../units/zone-volume-scale';
+import { readSceneTriangleCounts } from '@/hooks/useSceneTriangleCounts';
+import { modelTrianglesReady } from '../model-triangle-counts';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 
 export type ListProviderState = Pick<ViewerState,
@@ -30,6 +32,10 @@ export function prepareListProviders(state: ListProviderState, renderFrame: Rend
     const zoneContext = {
       zoneSets: state.zoneSets, zoneAssignments: state.zoneAssignments, apportionment: state.zoneApportionment,
       volumeSiScale: store.source.length > 0 ? zoneVolumeSiScale(units) : 1, toGlobalId,
+      getTriangleCount: (expressId: number) => {
+        const counts = readSceneTriangleCounts();
+        return counts && modelTrianglesReady(state, modelId, counts) ? counts.get(toGlobalId(expressId)) ?? 0 : null;
+      },
       getWorldPosition: makeWorldPositionGetter(store, geometry, renderFrame, toGlobalId),
     };
     pairs.push({ modelId, store, mutationView: view, provider: createListDataProvider(store, name, zoneContext, view) });

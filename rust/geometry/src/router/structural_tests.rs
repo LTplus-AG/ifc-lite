@@ -786,7 +786,8 @@ fn a_tile_across_a_slot_of_a_concave_loop_is_a_region_issue_9945() {
     ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
     let mesh = meshed(&proxy_with(&source), 18);
     assert!(covers(&mesh, 3.1, 2.4), "the triangle is a region: its part inside the slot is meshed");
-    assert!(covers(&mesh, 8.0, 5.0), "the square is meshed");
+    // (8, 9) is in the square but outside the thin triangle, so only the square covers it.
+    assert!(covers(&mesh, 8.0, 9.0), "the square is meshed");
 }
 
 #[test]

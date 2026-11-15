@@ -186,10 +186,13 @@ fn edge_distance_2d(p: &Point2<f64>, ring: &[Point2<f64>]) -> f64 {
 
 /// Whether segments `ab` and `cd` cross at a point interior to both (touching and overlapping do not count).
 fn segments_cross(a: &Point2<f64>, b: &Point2<f64>, c: &Point2<f64>, d: &Point2<f64>) -> bool {
-    // 0 for a point on the line: `f64::signum` would call 0.0 positive, and a touch is no crossing.
+    // 0 for a point on the line (`f64::signum` would call 0.0 positive, and a touch is no crossing). The test is
+    // the sine of the angle at `p`, so it does not depend on the units: a tiny fixture crosses as surely as a large one.
     let side = |p: &Point2<f64>, q: &Point2<f64>, r: &Point2<f64>| {
-        let cross = (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
-        if cross > 1e-12 { 1.0 } else if cross < -1e-12 { -1.0 } else { 0.0 }
+        let (e, f) = (q - p, r - p);
+        let reach = e.norm() * f.norm();
+        let sine = if reach > 0.0 { (e.x * f.y - e.y * f.x) / reach } else { 0.0 };
+        if sine > 1e-9 { 1.0 } else if sine < -1e-9 { -1.0 } else { 0.0 }
     };
     let (s1, s2, s3, s4) = (side(a, b, c), side(a, b, d), side(c, d, a), side(c, d, b));
     s1 * s2 < 0.0 && s3 * s4 < 0.0
@@ -385,6 +388,11 @@ mod region_tests {
         assert!(!segments_cross(&p(5., 0.), &p(7., 3.), &p(0., 0.), &p(10., 0.)));
         assert!(!segments_cross(&p(5., 0.), &p(7., 3.), &p(10., 0.), &p(0., 0.)));
         assert!(!segments_cross(&p(7., 3.), &p(5., 0.), &p(10., 0.), &p(0., 0.)));
+        // The same segments at 1e-7 scale (a tiny fixture) still cross or touch exactly as before.
+        let k = 1e-7;
+        assert!(!segments_cross(&p(5. * k, 0.), &p(7. * k, 3. * k), &p(0., 0.), &p(10. * k, 0.)));
+        assert!(segments_cross(&p(5. * k, -k), &p(7. * k, 3. * k), &p(0., 0.), &p(10. * k, 0.)));
+        assert!(segments_cross(&p(5. * k, -k), &p(7. * k, 3. * k), &p(10. * k, 0.), &p(0., 0.)));
         // A real crossing is one in every direction.
         assert!(segments_cross(&p(5., -1.), &p(7., 3.), &p(0., 0.), &p(10., 0.)));
         assert!(segments_cross(&p(5., -1.), &p(7., 3.), &p(10., 0.), &p(0., 0.)));

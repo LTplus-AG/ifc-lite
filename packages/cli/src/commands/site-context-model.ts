@@ -38,6 +38,10 @@ export interface ModelCentre {
   verticalDatum: string | null;
   /** The model's own rotation, reported only: it is not applied to the context. */
   rotationDegrees: number | null;
+  /** IfcMapConversion Eastings/Northings in metres, in EPSG:2056 (the reprojected point for another CRS). */
+  conversionOrigin: { x: number; y: number };
+  /** IfcMapConversion.Scale as stated (absent: IFC's default 1). */
+  conversionScale: number | null;
   /** Things the user should know that did not stop the run. */
   warnings: string[];
 }
@@ -86,7 +90,15 @@ export async function siteCentreFromModel(store: IfcDataStore): Promise<ModelCen
   if (unit.source === 'project length unit') warnings.push(`IfcProjectedCRS has no MapUnit; the project length unit (${unit.scale} m) was applied to Eastings/Northings`);
   const e = mc.Eastings * unit.scale;
   const n = mc.Northings * unit.scale;
-  const base = { mapUnitToMetres: unit.scale, mapUnitSource: unit.source, verticalDatum: vertical, rotationDegrees: state.rotationDegrees, warnings };
+  const base = {
+    mapUnitToMetres: unit.scale,
+    mapUnitSource: unit.source,
+    verticalDatum: vertical,
+    rotationDegrees: state.rotationDegrees,
+    conversionOrigin: { x: e, y: n },
+    conversionScale: mc.Scale ?? null,
+    warnings,
+  };
 
   if (/^EPSG:\s*2056$/i.test(name)) {
     return { ...base, centre: { x: e, y: n }, crs: { name, matched: 'literal', epsg: 2056 } };
@@ -107,5 +119,5 @@ export async function siteCentreFromModel(store: IfcDataStore): Promise<ModelCen
     `the model's CRS "${name}" (EPSG:${t.epsg ?? '?'}) is not EPSG:2056; only the centre point was reprojected (datum shift: ${t.datumShift}), ` +
       'the model itself must still be placed by its own georeferencing',
   );
-  return { ...base, centre: { x: p[0], y: p[1] }, crs: { name, matched: 'reprojected', epsg: t.epsg, datumShift: t.datumShift } };
+  return { ...base, conversionOrigin: { x: p[0], y: p[1] }, centre: { x: p[0], y: p[1] }, crs: { name, matched: 'reprojected', epsg: t.epsg, datumShift: t.datumShift } };
 }

@@ -42,6 +42,8 @@ export interface SiteContextGlbLayerMeta {
   complete: boolean;
   /** Index of the layer's group node; its children are the feature nodes. */
   node: number;
+  /** The layer's provenance, when it has one (format 1 files from before it was added have none). */
+  provenance?: { [key: string]: JsonValue };
 }
 
 /** `asset.extras.ifcLiteSiteContext`. */
@@ -62,6 +64,13 @@ export interface SiteContextGlbNodeExtras {
   origin: [number, number, number];
   attributes: { [key: string]: JsonValue };
   provenance: { [key: string]: JsonValue };
+  /** Present (and `true`) only on the subject building. */
+  subject?: true;
+}
+
+/** A mesh's `extras.ifcLiteSiteContext`: named index ranges of its one primitive (see `SiteContextMesh.parts`). */
+export interface SiteContextGlbMeshExtras {
+  parts: Array<{ name: string; firstIndex: number; indexCount: number }>;
 }
 
 export interface GltfAccessor {
@@ -93,7 +102,7 @@ export interface GltfJson {
   scene?: number;
   scenes?: Array<{ name?: string; nodes: number[] }>;
   nodes?: GltfNode[];
-  meshes?: Array<{ name?: string; primitives: GltfPrimitive[] }>;
+  meshes?: Array<{ name?: string; primitives: GltfPrimitive[]; extras?: { [EXTRAS_KEY]?: SiteContextGlbMeshExtras } }>;
   materials?: unknown[];
   accessors?: GltfAccessor[];
   bufferViews?: Array<{ buffer: number; byteOffset?: number; byteLength: number; target?: number }>;
@@ -104,5 +113,6 @@ export interface GltfJson {
 export const LAYER_MATERIALS: Record<SiteContextLayerKind, { name: string; color: [number, number, number, number]; doubleSided: boolean }> = {
   terrain: { name: 'site-context terrain', color: [0.62, 0.6, 0.52, 1], doubleSided: false },
   parcel: { name: 'site-context parcel', color: [0.85, 0.16, 0.1, 1], doubleSided: true },
+  // Single-sided: the buildings layer makes winding consistent and outward.
   buildings: { name: 'site-context buildings', color: [0.8, 0.8, 0.8, 1], doubleSided: false },
 };

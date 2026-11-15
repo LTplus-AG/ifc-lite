@@ -1,15 +1,16 @@
 # Site Context (Switzerland)
 
-Real terrain and the cadastral parcel around a georeferenced Swiss building
-model, as one GLB in a frame stated in **EPSG:2056 (LV95)** with **LN02
-(EPSG:5728)** heights, plus a JSON summary. The data comes from the federal
-geodata services through `@ifc-lite/geodata-ch`: **swissALTI3D** terrain
-read straight from the cloud-optimised tiles, and the cantonal cadastral web
-map for the parcel, with its ÖREB extract link.
+Real terrain, the cadastral parcel and the neighbouring buildings around a
+georeferenced Swiss building model, as one GLB in a frame stated in
+**EPSG:2056 (LV95)** with **LN02 (EPSG:5728)** heights, plus a JSON summary.
+The data comes from the federal geodata services: **swissALTI3D** terrain
+read straight from the cloud-optimised tiles and the cantonal cadastral web
+map for the parcel, with its ÖREB extract link, through
+`@ifc-lite/geodata-ch`; and **swissBUILDINGS3D** buildings from swisstopo's
+3D Tiles through `@ifc-lite/tiles3d`.
 
-This is the headless core. Showing the context in the viewer, neighbouring
-buildings, and writing it into IFC come later and build on the same document
-and GLB format.
+This is the headless core. Showing the context in the viewer and writing it
+into IFC build on the same document and GLB format.
 
 ## Attribution is required
 
@@ -18,6 +19,8 @@ summary and inside the GLB. Show it wherever the context is shown:
 
 - Terrain: **© swisstopo** (swisstopo open data: free use including
   commercial, source reference mandatory).
+- Buildings: **© swisstopo (swissBUILDINGS3D)** (swisstopo open data, as
+  terrain).
 - Parcel: **© Cadastral surveying (CS) and the cantons**. These terms are
   **not verified**: the cantons own the data, and the terms page the
   catalogue points to is gone. Check the canton's terms before
@@ -27,7 +30,7 @@ summary and inside the GLB. Show it wherever the context is shown:
 ## From the CLI
 
 ```bash
-ifc-lite site-context model.ifc --radius 300 --layers terrain,parcel --resolution auto --out context.glb --json
+ifc-lite site-context model.ifc --radius 300 --layers terrain,parcel,buildings --resolution auto --out context.glb --json
 ```
 
 The centre is the model's `IfcMapConversion` origin (Eastings/Northings,
@@ -55,11 +58,13 @@ ifc-lite site-context --egrid CH294676423526 --radius 150 --out context.glb
 | Option | Default | Meaning |
 |---|---|---|
 | `--radius M` | 150 | Half the side of the square site, metres (max 5000) |
-| `--layers L,...` | `terrain,parcel` | `buildings` is accepted and reported as not implemented yet |
+| `--layers L,...` | `terrain,parcel` | Any of `terrain`, `parcel`, `buildings` |
+| `--subject-egid N` | | The model's own building among the neighbours, by EGID |
+| `--tile-requests N` | 64 | Request budget of the buildings tile read; cache hits are free |
 | `--resolution R\|auto` | `auto` | Terrain node spacing: `max(0.5, 2·radius/500)` m, rounded up to 1/16 m |
 | `--out F` | required | The GLB to write |
 | `--json` | | Print the summary as JSON |
-| `--cache-dir D` | `$XDG_CACHE_HOME/ifc-lite/geodata` | Response cache on disk, keyed by URL and Range |
+| `--cache-dir D` | `$XDG_CACHE_HOME/ifc-lite/geodata` | Response cache on disk, keyed by URL and Range; building tiles go in its `tiles3d` folder |
 | `--offline` | | Answer only from the cache; nothing is sent |
 | `--rate R` | 5 | Requests per second per host |
 
@@ -74,11 +79,24 @@ there reaches beyond the 200 m site, so its ribbon breaks where the terrain
 ends and the layer reports `parcel-undraped-vertices`. These are numbers from
 one run, not a benchmark.
 
+With `--layers buildings`, a run of `--centre 2600423,1199521 --radius 300`
+(Bundesplatz, Bern, live tileset release 20260520) found 420 buildings, 390
+with an EGID, in 57 tile requests and 19.3 MB, most of it the 5–12 MB index
+JSON files the cache then keeps; the building meshes came to 169 966
+triangles and a 15 MB GLB, and a re-run from the cache took about 3 s. With
+`--subject-egid 2242547` the Parliament Building was marked as the subject.
+One run, not a benchmark. For a 1 km urban site, raise `--tile-requests`:
+when the budget stops the read, the layer is marked incomplete and says how
+many tiles were left.
+
 The JSON summary has the document origin and CRS, per layer the feature,
 triangle and vertex counts, completeness, attribution and issues, plus the
 GLB size, the requests made, the cache use, the parcel's EGRID, number and
 ÖREB link, and, from a model, which CRS form matched, the map unit and the
-model's rotation (with `rotationApplied: false`).
+model's rotation (with `rotationApplied: false`). With buildings it adds
+`buildings`: the count, how many have an EGID, the subject and how it was
+matched, the tile requests, bytes and cache hits, the triangles per part,
+the model footprint used for matching, and the layer's issues.
 
 ## From TypeScript
 
@@ -116,6 +134,24 @@ for (const layer of summarizeSiteContext(doc).layers) {
   `LandTitleID` = parcel number), the computed area, canton, source layer and
   the ÖREB extract link. A failed ÖREB lookup is an issue on the layer, not a
   failed run.
+- **Buildings**, one `IfcBuilding` feature per swissBUILDINGS3D building
+  whose footprint touches the site square, kept whole (never cut at the
+  boundary). Each mesh has a `roof` and a `wall` part (the tiles' red and
+  beige materials), outward winding and flat normals, so it renders
+  single-sided and casts shadows. Attributes are in the
+  `IfcLite_SiteContextBuilding` set: `EGID` (where the canton's tiles have
+  it, else `null`), `UUID`, `ObjectType`, `TotalHeight`, `RoofMin`,
+  `RoofMax`, `TerrainPoint`, `DatasetRelease`, `SourceTile`. The model's own
+  building is marked `subject: true`, matched by `--subject-egid`, else by
+  overlap of at least half the smaller footprint with the plan rectangle
+  spanned by the model's element placements (LOD0 boxes: an element's
+  `IfcBoundingBox` where it has one, else its placement point), carried
+  through the map conversion, rotation included. That rectangle is coarse; a
+  wall placed at one end can leave it short of the outline. When the
+  buildings layer is built from a model, the parcel is looked up at that
+  rectangle's centre instead of the map conversion origin. The subject is
+  kept: a viewer decides to hide it. Buildings without EGID or heights, and
+  anything capped, are counted in the issues.
 - **Honesty.** A layer that could not be completed says `complete: false`
   and lists its issues. A centre outside Switzerland is refused.
 

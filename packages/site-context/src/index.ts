@@ -10,11 +10,21 @@
  */
 
 export { buildSiteContext } from './build.js';
+export { BUILDING_SET } from './buildings-layer.js';
+export { SUBJECT_MIN_OVERLAP } from './buildings-footprint.js';
 export { SiteContextCoverageError } from './frame.js';
 export { encodeSiteContextGlb } from './glb-encode.js';
 export { decodeSiteContextGlb, SiteContextFormatError } from './glb-decode.js';
-export { summarizeSiteContext, type SiteContextLayerSummary, type SiteContextParcelSummary, type SiteContextSummary } from './summary.js';
+export {
+  summarizeSiteContext,
+  type SiteContextBuildingsSummary,
+  type SiteContextLayerSummary,
+  type SiteContextParcelSummary,
+  type SiteContextSummary,
+} from './summary.js';
 export type {
+  BuildingsOptions,
+  BuildingsReader,
   BuildSiteContextOptions,
   JsonValue,
   MapPoint,
@@ -26,5 +36,6 @@ export type {
   SiteContextLayer,
   SiteContextLayerKind,
   SiteContextMesh,
+  SiteContextMeshPart,
   SiteContextProgress,
 } from './types.js';

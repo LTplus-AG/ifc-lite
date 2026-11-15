@@ -67,11 +67,14 @@ describe('refusals', () => {
 });
 
 describe('layers', () => {
-  it('reports the buildings layer as unsupported, incomplete and empty', async () => {
-    const doc = await buildSiteContext({ centre: { x: 2_600_000, y: 1_200_000 }, radius: 20, layers: ['buildings'], geodata: stubGeodata() });
+  it('turns a buildings read that throws into an empty, incomplete layer with an error, not a failed build', async () => {
+    const reader = async () => {
+      throw new Error('root tileset unreachable');
+    };
+    const doc = await buildSiteContext({ centre: { x: 2_600_000, y: 1_200_000 }, radius: 20, layers: ['buildings'], geodata: stubGeodata(), buildings: { reader } });
     expect(doc.layers).toHaveLength(1);
     expect(doc.layers[0]).toMatchObject({ kind: 'buildings', features: [], complete: false });
-    expect(doc.layers[0].issues[0].code).toBe('layer-unsupported');
+    expect(doc.layers[0].issues).toEqual([expect.objectContaining({ code: 'buildings-fetch-failed', severity: 'error', message: expect.stringContaining('root tileset unreachable') })]);
   });
 
   it('emits layers in the requested order through onLayer', async () => {

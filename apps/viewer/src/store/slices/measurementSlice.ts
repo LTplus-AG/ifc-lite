@@ -36,7 +36,7 @@ import { EDGE_LOCK_DEFAULTS } from '../constants.js';
 import { createMeasurePointSlice, NO_MEASURE_POINT, type MeasurePointSlice } from './measurePointSlice.js';
 import { getDefaultEdgeLockState, gestureReset, snapStateReset } from './measureGesture.js';
 import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
-import { isDuplicateClickPoint } from '@/components/viewer/measureHandlers.js';
+import { isDuplicateClickPoint } from '@/components/viewer/measureClickPoint.js';
 import { MIN_RADIUS_POINTS } from '@/components/viewer/tools/measure-modes/radius.js';
 
 // Monotonic counter to prevent ID collisions under rapid measurement creation

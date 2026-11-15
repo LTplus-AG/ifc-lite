@@ -75,7 +75,6 @@
    659 apps/viewer/src/components/viewer/LensPanel.tsx
    908 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    467 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
-   594 apps/viewer/src/components/viewer/measureHandlers.ts
    522 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    589 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
    777 apps/viewer/src/components/viewer/properties/LocationMap.tsx

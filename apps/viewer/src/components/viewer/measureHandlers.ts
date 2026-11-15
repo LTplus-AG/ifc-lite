@@ -18,6 +18,8 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { measureSnapOptions, updateSnapViz } from './measurePick.js';
 import { pressPastClickSlop } from './pointerGesture.js';
 import { measureCursor, noteMeasureCursor } from './measureCursor.js';
+import { isGeometryHeld } from '@/lib/pick-gating';
+import { useViewerStore } from '@/store';
 
 /**
  * Projects a world position onto the closest orthogonal constraint axis.
@@ -92,6 +94,7 @@ export function getApproximateWorldPosition(
  * Returns true if the event was handled (caller should early-return).
  */
 export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: number, y: number): boolean {
+  if (isGeometryHeld(useViewerStore.getState())) return true;
   const { mouseState } = ctx;
 
   // Check if shift is held for orthogonal constraint
@@ -108,6 +111,7 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
     ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
+      if (isGeometryHeld(useViewerStore.getState())) return;
       // Shift can change while a view change prevents its immediate re-pick (#9242).
       moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint);
     });
@@ -247,6 +251,7 @@ export function handleMeasureHover(
   y: number,
   pick?: (ctx: MouseHandlerContext, x: number, y: number) => void,
 ): boolean {
+  if (isGeometryHeld(useViewerStore.getState())) return true;
   const { renderer } = ctx;
 
   // Throttle hover snap detection more aggressively (100ms) to avoid performance issues
@@ -263,6 +268,7 @@ export function handleMeasureHover(
     ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
+      if (isGeometryHeld(useViewerStore.getState())) return;
       if (pick) { pick(ctx, x, y); return; }
 
       // Use magnetic snap for hover preview
@@ -331,6 +337,7 @@ export interface PolylinePickResult {
  * `addPolylinePoint` / `finishPolyline` calls.
  */
 export function raycastForPolylinePoint(ctx: MouseHandlerContext, x: number, y: number): PolylinePickResult | null {
+  if (isGeometryHeld(useViewerStore.getState())) return null;
   const { canvas, renderer, camera } = ctx;
   const currentLock = ctx.edgeLockStateRef.current;
 
@@ -362,70 +369,9 @@ export function raycastForPolylinePoint(ctx: MouseHandlerContext, x: number, y: 
   };
 }
 
-/** Screen-space distance (CSS px) between two points. Used by both the
- *  close-loop check and the double-click duplicate-point check below —
- *  screen space, not world space, so either tolerance feels the same at any
- *  zoom level, the same reasoning `screenSnapRadius` uses for vertex
- *  snapping above. */
-function screenDistance(
-  a: { screenX: number; screenY: number },
-  b: { screenX: number; screenY: number },
-): number {
-  return Math.hypot(a.screenX - b.screenX, a.screenY - b.screenY);
-}
-
-/** Screen-space radius (CSS px) within which a click on the polyline's first
- *  point closes the loop instead of appending a new (near-duplicate) point. */
-export const CLOSE_LOOP_SCREEN_RADIUS_PX = 14;
-
-/**
- * Whether `candidate` landed close enough to `first` (in screen space) that
- * the click should close the polyline loop rather than add a new point.
- */
-export function isNearPolylineStart(
-  candidate: { screenX: number; screenY: number },
-  first: { screenX: number; screenY: number },
-  radiusPx: number = CLOSE_LOOP_SCREEN_RADIUS_PX,
-): boolean {
-  return screenDistance(candidate, first) <= radiusPx;
-}
-
-/**
- * Screen-space radius (CSS px) below which two consecutive polyline points
- * are treated as the same physical click, not two deliberate placements.
- *
- * Browsers dispatch `click`, `click`, `dblclick` for one physical
- * double-click gesture — never just `dblclick` (MDN). `handlePolylineClick`
- * runs on both leading `click`s, so a double-click meant to "place the last
- * point and finish" appends it twice, a couple px apart (often the exact
- * same reported coordinate), before the `dblclick` handler's
- * `finishPolyline` call ever runs.
- *
- * Deliberately much smaller than {@link CLOSE_LOOP_SCREEN_RADIUS_PX}: that
- * radius means "click intentionally near the loop's start", this one means
- * "these two clicks were actually one gesture" — conflating them would make
- * a legitimate short segment swallow a real vertex (a 3-4-5 triangle's
- * shortest edges are 3px/4px in `selectionHandlers.polyline.test.ts`'s
- * screen-equals-world fixture, so this must stay well under that).
- */
-export const DUPLICATE_POINT_SCREEN_RADIUS_PX = 2;
-
-/**
- * Whether `a` and `b` are close enough (screen space) to be the two leading
- * `click` events of one physical double-click, per
- * {@link DUPLICATE_POINT_SCREEN_RADIUS_PX}.
- *
- * Only meaningful on the double-click finish path. Placed points are
- * reprojected on every camera move (`updateMeasurementScreenCoords`), so two
- * genuinely distinct vertices can satisfy this after an orbit — see
- * `finishPolyline`'s `fromDoubleClick` option in measurementSlice.ts.
- */
-export function isDuplicateClickPoint(
-  a: { screenX: number; screenY: number },
-  b: { screenX: number; screenY: number },
-): boolean {
-  return screenDistance(a, b) <= DUPLICATE_POINT_SCREEN_RADIUS_PX;
-}
+// Pure screen-space click helpers live in measureClickPoint.ts (no store import), so measurementSlice can use them
+// without importing this module, which reads the store.
+export { CLOSE_LOOP_SCREEN_RADIUS_PX, DUPLICATE_POINT_SCREEN_RADIUS_PX, isDuplicateClickPoint, isNearPolylineStart } from './measureClickPoint.js';
 
 /** Drop a queued rubber-band or hover raycast, so it cannot land after the press or gesture it served. */
 export function cancelMeasureRaycast(ctx: MouseHandlerContext): void {

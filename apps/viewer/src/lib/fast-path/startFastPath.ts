@@ -12,7 +12,7 @@ import { compileSharedWasmModule, DEFAULT_GEOM_HASH_TOLERANCE } from '@ifc-lite/
 import { hasSpareParserWorker, isSpareParserWorkerWarming, prepareSpareParser, releaseSpareParserWorker } from '@ifc-lite/parser/browser';
 import { useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier } from '@/store/constants';
-import { USE_SERVER } from '@/utils/ifcConfig';
+import { serverUploadsEnabled } from '@/lib/processed-model';
 import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
 import { mayWarmUp, scheduleWhenIdle } from '@/lib/warm-runtime-gate';
 import { registerPickStarter } from '@/hooks/ingest/pickStart';
@@ -52,7 +52,7 @@ export function startFastPath(): boolean {
   if (typeof Worker === 'undefined' || typeof document === 'undefined') return false;
   runtime = createFastPathRuntime({
     // A server-backed build meshes on the server; nothing to prepare here.
-    allowed: () => !USE_SERVER && mayWarmUp(fastPathSwitch()),
+    allowed: () => !serverUploadsEnabled() && mayWarmUp(fastPathSwitch()),
     // Measurement only: `?perf.fastPath=parser` or `=geometry` prepares one spare alone.
     parts: { parser: fastPathSwitch() !== 'geometry', geometry: fastPathSwitch() !== 'parser' },
     whenIdle: scheduleWhenIdle,

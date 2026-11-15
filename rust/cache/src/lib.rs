@@ -109,6 +109,13 @@ pub enum CacheError {
     /// Section offsets are u32: a cache this large cannot be addressed.
     #[error("cache would be {0} bytes; the format addresses at most 4 GiB")]
     TooLarge(u64),
+    /// EntityIndex spans are u32 offsets into the source: a larger source
+    /// cannot be indexed without wrapping.
+    #[error("source is {0} bytes; the entity index addresses at most 4 GiB")]
+    SourceTooLarge(u64),
+    /// EntityIndex type indices are u16 (the TS writer refuses the same).
+    #[error("source has {0} distinct entity type names; the entity index holds at most 65536")]
+    TooManyTypeNames(usize),
 }
 
 /// Build a complete `.ifclite` cache for `source` (the IFC STEP bytes).

@@ -46,7 +46,7 @@ pub(crate) fn build(source: &[u8], options: &CacheOptions) -> Result<(Vec<u8>, C
         (SectionType::Properties, EMPTY_TABLE.to_vec()),
         (SectionType::Quantities, EMPTY_TABLE.to_vec()),
         (SectionType::Relationships, relationships::write_relationships(&model.relationships)),
-        (SectionType::EntityIndex, entity_index::write_entity_index(source)),
+        (SectionType::EntityIndex, entity_index::write_entity_index(source)?),
     ];
 
     let mut stats = CacheStats {

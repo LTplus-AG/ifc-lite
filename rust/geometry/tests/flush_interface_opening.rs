@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! A recess that ends on the interface between two bodies of its host.
+//! A recess that ends on the interface between two bodies of its host (#10346).
 //!
 //! The wall is a 200 mm core with a 12 mm finish body on one face, authored
 //! as two extrusions that touch. The recess removes the finish over one

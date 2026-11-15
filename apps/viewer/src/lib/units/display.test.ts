@@ -143,6 +143,19 @@ describe('resolveMeasureDisplay', () => {
     assert.strictEqual(disp.converted, null);
   });
 
+  // #9958: a declared unit whose scale cannot be read (#4690) must not be taken
+  // for the SI default; the raw value stays unconverted and unlabelled.
+  it('does not convert a value whose declared unit scale is unreadable', () => {
+    const units = new ProjectUnits(new Map([['FORCEUNIT', null]]), null);
+    assert.deepStrictEqual(resolveMeasureDisplay(1000, 'IFCFORCEMEASURE', units, { FORCEUNIT: 'kn' }), { unit: null, converted: null });
+  });
+
+  it('still converts from the SI default when the file declares no unit for the type', () => {
+    const disp = resolveMeasureDisplay(1000, 'IFCFORCEMEASURE', ProjectUnits.empty(), { FORCEUNIT: 'kn' });
+    assert.strictEqual(disp.unit, 'kN');
+    assert.strictEqual(disp.converted, 1);
+  });
+
   it('adds the offset when overriding a temperature measure to Kelvin', () => {
     const disp = resolveMeasureDisplay(0, 'IFCTHERMODYNAMICTEMPERATUREMEASURE', ProjectUnits.empty(), { THERMODYNAMICTEMPERATUREUNIT: 'k' });
     // The file default for THERMODYNAMICTEMPERATUREMEASURE is K, and ProjectUnits.empty()

@@ -91,7 +91,11 @@ export function resolveMeasureDisplay(
     const optionId = overrides[m.unitType];
     const option = optionId ? alternativesForUnitType(m.unitType).find((o) => o.id === optionId) : undefined;
     if (option) {
-      const fileUnit = projectUnits.unitForMeasure(dataType!) ?? { symbol: m.defaultSymbol, siScale: 1.0 };
+      // A typed measure resolves to the SI default when the file declares nothing,
+      // so null here is a declared unit with an unreadable scale (#4690): leave the
+      // value unconverted and unlabelled rather than treat it as SI (#9958).
+      const fileUnit = projectUnits.unitForMeasure(dataType!);
+      if (!fileUnit) return { unit: null, converted: null };
       const from = resolveFromUnit(m.unitType, fileUnit);
       return { unit: option.symbol, converted: convertValue(value, from, option) };
     }

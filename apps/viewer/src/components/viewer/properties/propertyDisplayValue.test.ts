@@ -42,6 +42,15 @@ describe('the cards give the same value the same text', () => {
     assert.equal(quantityDisplayValue(length, units, {}, 'en'), '0.0125 m');
   });
 
+  it('formats an unconverted measure property by the same rule and locale', () => {
+    const big = { name: 'Span', value: 1234.56789, dataType: 'IfcLengthMeasure' };
+    assert.equal(propertyDisplayValue(big, units, {}, true, 'en').value, '1,234.568');
+    assert.equal(propertyDisplayValue(big, units, {}, true, 'de').value, '1.234,568');
+    assert.equal(propertyDisplayValue(big, units, {}, true, 'de').full, '1.234,568 m');
+    // Text and unit-less values keep their parsed display.
+    assert.equal(propertyDisplayValue({ name: 'Mark', value: 'A-12', dataType: 'IfcLabel' }, units, {}, true, 'de').value, 'A-12');
+  });
+
   it('follows the locale in a converted property too', () => {
     const big = { name: 'Span', value: 1.2345, dataType: 'IfcLengthMeasure' };
     assert.equal(propertyDisplayValue(big, units, { LENGTHUNIT: 'mm' }, true, 'de').value, '1.234,5');

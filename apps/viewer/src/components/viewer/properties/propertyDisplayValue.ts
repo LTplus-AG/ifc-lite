@@ -10,7 +10,10 @@ import { parsePropertyValue, type PropertySet, type QuantitySet } from './encodi
 export function propertyDisplayValue(property: PropertySet['properties'][number], units: ProjectUnits, overrides: Record<string, string>, projectUnitsAvailable = true, locale = 'en') {
   const parsed = parsePropertyValue(property.value);
   const display = resolveMeasureDisplay(property.value, property.dataType, units, overrides, projectUnitsAvailable);
-  const value = display.converted !== null ? formatMeasureNumber(locale, display.converted) : parsed.displayValue;
+  // A number with a unit prints by the one measure rule whether or not it was converted (#9950); text,
+  // booleans and unit-less numbers keep their parsed display.
+  const measured = display.converted ?? (display.unit && typeof property.value === 'number' && Number.isFinite(property.value) ? property.value : null);
+  const value = measured !== null ? formatMeasureNumber(locale, measured) : parsed.displayValue;
   const unit = display.unit && parsed.displayValue !== '\u2014' ? display.unit : null;
   return { parsed, value, unit, full: unit ? `${value} ${unit}` : value };
 }

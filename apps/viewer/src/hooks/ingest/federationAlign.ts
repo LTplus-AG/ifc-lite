@@ -233,7 +233,7 @@ function applyAlignmentTransformAndUpdateBounds(
   // coords, hence the offset strip/re-apply, and the reference offset is the
   // one the model now carries (set on `coordinateInfo` below).
   const referenceOffset = totalYupOffset(referenceInfo);
-  const stagedClouds = stageInlineClouds(geometry.pointClouds, (x, y, z) => applyAffineTransform(transform, x, y, z),
+  const stagedClouds = stageInlineClouds(geometry.pointClouds, transform,
     (x, y, z) => { found = updateBounds(bounds, x, y, z) || found; });
   if (!stagedClouds) {
     restoreSourceFrame();
@@ -415,13 +415,13 @@ async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source:
   }
 
   const stagedClouds = stageInlineClouds(geometry.pointClouds, toReferenceFrame,
-    (x, y, z) => { found = updateBounds(bounds, x, y, z) || found; });
+    (x, y, z) => { found = updateBounds(bounds, x, y, z) || found; },
+    (succeeded) => { attempts += 1; if (!succeeded) projFailures += 1; });
   if (!stagedClouds) {
     restoreSourceFrame();
-    console.warn('[ifc-lite] Cross-CRS alignment refused: an inline point cloud could not be reprojected.', pointMap.firstError());
+    console.warn(`[ifc-lite] Cross-CRS alignment refused: an inline point cloud's origin or a point could not be reprojected, or its f32 residual would overflow (${projFailures}/${attempts} vertex transforms failed).`, pointMap.firstError());
     return false;
   }
-
   if (!found) {
     if (allowEmptyGeometry && attempts === 0) {
       geometry.coordinateInfo = emptyAlignedCoordinateInfo(originalCoordinateInfo, reference.coordinateInfo);

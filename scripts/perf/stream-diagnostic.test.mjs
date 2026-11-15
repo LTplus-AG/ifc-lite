@@ -9,9 +9,9 @@ import { test } from 'node:test';
 // must fail an assertion here, rather than prevent this test file from loading.
 function profileSummary(profile) {
   const run = spawnSync(process.execPath, ['--input-type=module', '-e', `
-    import { readFileSync } from 'node:fs';
+    import { readStdinUtf8 } from ${JSON.stringify(new URL('../lib/read-stdin.mjs', import.meta.url).href)};
     import { profileSummary } from ${JSON.stringify(new URL('./stream-diagnostic.mjs', import.meta.url).href)};
-    console.log(JSON.stringify(profileSummary(JSON.parse(readFileSync(0, 'utf8')))));
+    console.log(JSON.stringify(profileSummary(JSON.parse(readStdinUtf8()))));
   `], { input: JSON.stringify(profile), encoding: 'utf8', timeout: 10_000 });
   assert.ifError(run.error);
   assert.equal(run.status, 0, 'CPU diagnostic must finish successfully in a fresh Node process');

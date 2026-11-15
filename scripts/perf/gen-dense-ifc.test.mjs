@@ -149,3 +149,19 @@ test('#10264 the CLI rejects numbers that are not plain decimals', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('#10264 an unsupported --schema is rejected for both kinds before anything is written (review on #10415)', () => {
+  for (const kind of ['tfs', 'brep']) assert.throws(() => render({ kind, elements: 1, schema: 'IFC9' }), /unsupported schema IFC9/);
+  const dir = mkdtempSync(join(tmpdir(), 'gen-dense-ifc-'));
+  try {
+    for (const kind of ['tfs', 'brep']) {
+      const r = spawnSync(process.execPath, [join(import.meta.dirname, 'gen-dense-ifc.mjs'), join(dir, 'x.ifc'), '--kind', kind, '--schema', 'IFC9', '--elements', '1'], { encoding: 'utf8' });
+      assert.equal(r.status, 2, `${kind}: ${r.stderr}`);
+      assert.match(r.stderr, /unsupported --schema 'IFC9'/);
+      assert.equal(existsSync(join(dir, 'x.ifc')), false);
+      assert.equal(existsSync(join(dir, 'x.ifc.tmp')), false);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

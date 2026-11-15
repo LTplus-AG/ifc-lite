@@ -204,8 +204,9 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
   // is a real dependency of the recompute below, not a one-shot read.
   const alignmentEnabled = useViewerStore((st) => st.pointCloudAlignmentEnabled);
   const placementRevision = useViewerStore((st) => st.modelPlacement.revision);
-  // The RTC re-base moves inline cloud origins in place and bumps this (#10029).
-  const geometryContentVersion = useViewerStore((st) => st.geometryContentVersion);
+  // Re-render to observe in-place alignment/re-base commits, but only restart
+  // the point scan when its cloud inputs changed (#10094, 3b).
+  useViewerStore((st) => st.geometryContentVersion);
 
   // Fold every dependency the computation reads into one key so the
   // debounce timer restarts exactly when something relevant changed —
@@ -214,20 +215,41 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
   const customKey = sectionPlane.custom
     ? `${sectionPlane.custom.normal.join(',')}|${sectionPlane.custom.distance}|${sectionPlane.custom.tangent.join(',')}|${sectionPlane.custom.bitangent.join(',')}`
     : '';
-  // Includes the inline point-cloud count so a federated IFCx model whose
-  // `geometryResult.pointClouds` populates AFTER registration (same
-  // id/visible/handleId) still retriggers the recompute below.
-  const modelsKey = Array.from(models.entries())
-    .map(([id, m]) => `${id}:${m.visible ? 1 : 0}:${m.pointCloudHandleId ?? ''}:${m.geometryResult?.pointClouds?.length ?? 0}`)
-    .join('|');
+  // Compare references, not model/Map identity: alignment and RTC re-base
+  // replace origin/chunk while unrelated mesh edits leave them intact.
+  const cloudInputs: unknown[] = [];
+  const addCloud = (cloud: PointCloudAsset) => cloudInputs.push(cloud, cloud.origin, cloud.chunk);
+  if (models.size > 0) {
+    for (const [id, model] of models) {
+      if (!model.visible) continue;
+      const clouds = model.geometryResult?.pointClouds ?? [];
+      if (clouds.length === 0 && typeof model.pointCloudHandleId !== 'number') continue;
+      cloudInputs.push(id, model.pointCloudHandleId);
+      if (typeof model.pointCloudHandleId === 'number') {
+        const cached = getPointCloudScanSample(model.pointCloudHandleId);
+        cloudInputs.push(cached, cached?.seen);
+      }
+      clouds.forEach(addCloud);
+    }
+  } else {
+    legacyPointClouds?.forEach(addCloud);
+  }
+  const previousCloudInputs = useRef<unknown[]>([]);
+  const cloudRevision = useRef(0);
+  if (cloudInputs.length !== previousCloudInputs.current.length
+    || cloudInputs.some((input, i) => !Object.is(input, previousCloudInputs.current[i]))) {
+    previousCloudInputs.current = cloudInputs;
+    cloudRevision.current += 1;
+  }
+  const modelsKey = cloudRevision.current;
 
   // Cheap presence check (map lookups, no O(n) point scan) — independent of
   // `enabled` so the UI can report "a scan is loaded, just hidden".
   const hasPointCloud = useMemo(
     () => collectScanSources(models, legacyPointClouds).length > 0,
-    // Keyed on `modelsKey` (a stable string), not `models` identity, since
+    // Keyed on the cloud revision, not `models` identity, since
     // the Map reference can change without any visible-content change.
-    [modelsKey, legacyPointClouds, alignmentEnabled],
+    [modelsKey, alignmentEnabled],
   );
 
   useEffect(() => {
@@ -294,11 +316,9 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     thickness,
     classMask,
     modelsKey,
-    legacyPointClouds,
     maxRendered,
     alignmentEnabled,
     placementRevision,
-    geometryContentVersion,
     outlineEnabled,
     outlineMaxGap,
   ]);

@@ -215,6 +215,8 @@ function sourceModules(dir) {
 const REVIEWED_PURE = new Map([
   ['packages/ai/src/request-digest.ts', 'a module-local TextEncoder'],
   ['packages/create/src/in-store/wall-join-mesh.oracle.ts', 'test-only oracle (only *.test.ts import it); a normalised ray constant'],
+  ['packages/geo/src/engine-state.ts', 'createEngineState builds the default engine\'s empty caches; nothing is registered'],
+  ['packages/geo/src/precision-grid-table.ts', 'gridSpec/utm build the EPSG-to-grid table from literals; nothing is registered'],
   ['packages/ids-agent/src/sandbox/handles.ts', 'a module-local RegExp'],
   ['packages/ids-agent/src/tools/act-tools.ts', 'defineTool/objectSchema return plain objects; nothing is registered'],
   ['packages/ids-agent/src/tools/ask-user.ts', 'defineTool returns a plain object; nothing is registered'],

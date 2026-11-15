@@ -8,7 +8,7 @@ import { localViewerToProjected, projectedToLocalViewer, type CoordinateInfo, ty
 import proj4 from 'proj4';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
 import { resolveProjectionId } from '../../lib/geo/reproject.js';
-import { projectedUnitToMetres } from './projected-units.js';
+import { projectedUnitToMetres } from '@ifc-lite/geo/proj4';
 import { planPolyline } from './landXmlPlanGeometry.js';
 import type {
   LandXmlAlignmentSegment, LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPolyline, LandXmlResolvedGeometry,

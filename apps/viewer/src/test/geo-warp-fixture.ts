@@ -9,7 +9,7 @@
 
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import PROJ_ORACLE from '../lib/geo/__fixtures__/proj-oracle.json' with { type: 'json' };
+import PROJ_ORACLE from './proj-oracle.js';
 import type { EnuFrame } from '../lib/geo/geo-ecef.js';
 import { createGeoMapping, type GeoMapping, type GeoWarpOrigin } from '../lib/geo/geo-warp.js';
 

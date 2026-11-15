@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
 import type { ProjectedCRS } from '@ifc-lite/parser';
-import PROJ_ORACLE from '@/lib/geo/__fixtures__/proj-oracle.json' with { type: 'json' };
+import PROJ_ORACLE from '@/test/proj-oracle.js';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
 import type { GlobePlacementMode } from '@/lib/geo/globe-placement';
 import { clearTerrainElevationCache } from '@/lib/geo/terrain-elevation';

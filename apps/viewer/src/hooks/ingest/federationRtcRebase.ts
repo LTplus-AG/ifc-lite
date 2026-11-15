@@ -17,9 +17,9 @@
  */
 
 import {
-  carriesGpuInstancedGeometry,
   convergeGeometryOntoRtcAnchor,
   isOnRtcAnchor,
+  rtcConvergeAction,
   rebaseCoordinateInfoOntoRtcAnchor,
   rebaseOriginByRtcDelta,
   rtcRebaseDeltaFor,
@@ -110,13 +110,11 @@ export function convergeFederationRtcFrame(): void {
     return;
   }
 
-  // Refuse up front per model, so the spatial index of a model that will
-  // not move is never withdrawn.
   const instancedIds = new Set(settled.filter(([id]) => hasInstancedShards(id)).map(([, model]) => model.geometryResult!));
-  const movable = settled.filter(([, model]) => {
-    const geometry = model.geometryResult!;
-    return !isOnRtcAnchor(geometry.coordinateInfo, anchor) && !carriesGpuInstancedGeometry(geometry) && !instancedIds.has(geometry);
-  });
+  // Decide up front with the re-base's own rule, so a model it leaves (a
+  // streamed scan, or one on the anchor) or refuses never has its index withdrawn.
+  const movable = settled.filter(([, model]) =>
+    rtcConvergeAction(model.geometryResult!, anchor, (geometry) => instancedIds.has(geometry)) === 'move');
   // Captured BEFORE the move, while each model's `CoordinateInfo` still
   // records the frame it is leaving: everything recorded in that frame outside
   // the geometry has to be shifted by the same vector.

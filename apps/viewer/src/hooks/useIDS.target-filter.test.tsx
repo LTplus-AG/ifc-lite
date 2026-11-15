@@ -77,3 +77,36 @@ it('refuses an empty editor definition rather than silently widening scope (#103
     [{ combinator: 'AND', rules: [Rule.name('eq', 'Missing wall')] }]);
   assert.deepEqual(ids, [], 'a valid filter with no matches stays an explicit empty subset');
 });
+
+it('keeps filtered IDs model-local in a federation and validates the requested model (#10371)', async () => {
+  const data = await seed();
+  const b = fixtureModel('B', { idOffset: 1_000_000 }); b.ifcDataStore = data; b.maxExpressId = 107;
+  await act(async () => {
+    useViewerStore.setState(state => ({ models: new Map([...state.models, ['B', b]]) }));
+    useViewerStore.getState().setIdsTargetFilter(() => ({ activeGroup: 0,
+      groups: [{ combinator: 'AND', rules: [Rule.name('eq', 'New wall')] }] }));
+  });
+  const groups = useViewerStore.getState().idsTargetFilter!.groups;
+  assert.deepEqual(await resolveIdsTargetFilter(useViewerStore.getState(), 'B', data, groups), [104], 'the worker receives local IDs rather than renderer offsets');
+  const outcome: { report?: IDSValidationReport | null } = {};
+  await act(async () => { outcome.report = await api!.runValidation('B'); });
+  assert.equal(outcome.report?.modelInfo[0].modelId, 'B');
+  assert.equal(outcome.report?.summary.totalEntitiesPassed, 1);
+  assert.deepEqual(outcome.report?.targetScope, { kind: 'subset', entityCount: 1 });
+});
+it('does not publish a run after its object filter changes during the paint yield (#10371)', async () => {
+  await seed();
+  const run: { pending?: Promise<IDSValidationReport | null> } = {};
+  act(() => { run.pending = api!.runValidation('M'); });
+  assert.ok(useViewerStore.getState().idsLoading);
+  const outcome: { report?: IDSValidationReport | null } = {};
+  await act(async () => {
+    useViewerStore.getState().setIdsTargetFilter(() => ({ activeGroup: 0,
+      groups: [{ combinator: 'AND', rules: [Rule.name('eq', 'New wall')] }] }));
+    outcome.report = await run.pending;
+  });
+  assert.equal(outcome.report, null);
+  assert.equal(useViewerStore.getState().idsValidationReport, null);
+  assert.equal(useViewerStore.getState().idsLoading, false);
+  assert.equal(useViewerStore.getState().idsProgress, null);
+});

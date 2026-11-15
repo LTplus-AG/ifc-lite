@@ -130,3 +130,45 @@ describe('bim.georef unknown keys', () => {
     } finally { model.close(); }
   });
 });
+
+describe('bim.georef IFC2X3 convention property sets', () => {
+  // ePSet_MapConversion with the TargetCRS some tools add, naming the CRS.
+  const IFC2X3_GEOREFERENCED = `${BASE}
+#40=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(2600000.),$);
+#41=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(1200000.),$);
+#42=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(400.),$);
+#43=IFCPROPERTYSINGLEVALUE('TargetCRS',$,IFCLABEL('EPSG:2056'),$);
+#44=IFCPROPERTYSET('3Pbuu0tu59NfhrTsztVBK1',$,'ePSet_MapConversion',$,(#40,#41,#42,#43));
+#45=IFCRELDEFINESBYPROPERTIES('4Pbuu0tu59NfhrTsztVBK1',$,$,$,(#6),#44);
+#46=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);
+#47=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('METRE'),$);
+#48=IFCPROPERTYSET('5Pbuu0tu59NfhrTsztVBK1',$,'ePSet_ProjectedCRS',$,(#46,#47));
+#49=IFCRELDEFINESBYPROPERTIES('6Pbuu0tu59NfhrTsztVBK1',$,$,$,(#6),#48);`;
+
+  it('renaming the CRS also renames ePSet_MapConversion.TargetCRS, so the two never disagree', async () => {
+    const model = await open(IFC2X3_GEOREFERENCED, 'IFC2X3');
+    try {
+      model.bim.georef.update({ ProjectedCRS: { Name: 'EPSG:21781', MapUnit: 'METRE' } });
+      const text = String(model.bim.export.ifc());
+      expect(text).toMatch(/IFCPROPERTYSINGLEVALUE\('TargetCRS',\$,IFCLABEL\('EPSG:21781'\),\$\)/);
+      expect(text).not.toContain("'EPSG:2056'");
+    } finally { model.close(); }
+  });
+
+  it('writes ePSet_ProjectedCRS.Description as IfcText, as the convention types it', async () => {
+    const model = await open(BASE, 'IFC2X3');
+    try {
+      model.bim.georef.set({
+        ProjectedCRS: { Name: 'EPSG:2056', Description: 'CH1903+ / LV95', MapUnit: 'METRE' },
+        MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 },
+      });
+      const text = String(model.bim.export.ifc());
+      expect(text).toMatch(/IFCPROPERTYSINGLEVALUE\('Description',\$,IFCTEXT\('CH1903\+ \/ LV95'\),\$\)/);
+      // The reader takes it back either way.
+      const reopened = await openModel(new TextEncoder().encode(text), { disableWorkerScan: true });
+      try {
+        expect(reopened.bim.georef.get().ProjectedCRS?.Description).toBe('CH1903+ / LV95');
+      } finally { reopened.close(); }
+    } finally { model.close(); }
+  });
+});

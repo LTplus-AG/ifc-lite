@@ -138,7 +138,8 @@ function applyPropertySetOp(view: MutablePropertyView, op: PropertySetOp): void 
   } else if (op.op === 'deleteProperty') {
     view.deleteProperty(op.hostId, op.pset, op.prop);
   } else {
-    const valueType = typeof op.value === 'number' ? PropertyValueType.Real : PropertyValueType.Label;
+    const valueType = typeof op.value === 'number' ? PropertyValueType.Real
+      : op.dataType === 'IfcText' ? PropertyValueType.Text : PropertyValueType.Label;
     view.setProperty(op.hostId, op.pset, op.prop, op.value, valueType, undefined, false, op.dataType);
   }
 }

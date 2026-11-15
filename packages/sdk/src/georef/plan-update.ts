@@ -164,6 +164,13 @@ export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): 
     };
     write(ctx.facts.ePSetMapConversion, EPSET_MAP_CONVERSION, mcChanges, MC_FIELDS);
     write(ctx.facts.ePSetProjectedCRS, EPSET_PROJECTED_CRS, crsChanges, CRS_FIELDS);
+    // Some tools also name the CRS in ePSet_MapConversion.TargetCRS (the
+    // reader falls back to it). A rename must carry it along, or the file
+    // would name two CRSs.
+    const mcSet = ctx.facts.ePSetMapConversion;
+    if (crsChanges.Name !== undefined && mcSet && mcSet.values.TargetCRS !== undefined) {
+      ops.push({ op: 'set', hostId: mcSet.hostId, pset: mcSet.name, prop: 'TargetCRS', value: String(crsChanges.Name), dataType: 'IfcLabel' });
+    }
     return { ...base, georefMutations: null, propertySetOps: ops };
   }
 

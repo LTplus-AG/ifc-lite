@@ -35,10 +35,18 @@ import {
 
 export type StepGeorefMutations = NonNullable<StepExportOptions['georefMutations']>;
 
+/**
+ * The measure types the convention gives its properties (buildingSMART
+ * "User Guide for Geo-referencing in IFC" 2020, and IfcOpenShell's
+ * `ePSet_Georeferencing.ifc` template): lengths, reals, IfcText for
+ * Description, IfcLabel for the CRS name and the rest of the CRS text.
+ */
+export type EPSetDataType = 'IfcLengthMeasure' | 'IfcReal' | 'IfcLabel' | 'IfcText';
+
 /** One IFC2X3 convention-set edit, applied through the mutation view. */
 export type PropertySetOp =
   | { op: 'deleteSet'; hostId: number; pset: string }
-  | { op: 'set'; hostId: number; pset: string; prop: string; value: string | number; dataType: 'IfcLengthMeasure' | 'IfcReal' | 'IfcLabel' }
+  | { op: 'set'; hostId: number; pset: string; prop: string; value: string | number; dataType: EPSetDataType }
   | { op: 'deleteProperty'; hostId: number; pset: string; prop: string };
 
 export interface GeorefWritePlan {
@@ -247,7 +255,7 @@ export function replaceEPSetOps(
   location: GeorefModelFacts['ePSetMapConversion'],
   canonical: string,
   hostId: number,
-  values: Array<[string, string | number, 'IfcLengthMeasure' | 'IfcReal' | 'IfcLabel']>,
+  values: Array<[string, string | number, EPSetDataType]>,
 ): PropertySetOp[] {
   const ops: PropertySetOp[] = [];
   let pset = canonical;
@@ -264,12 +272,13 @@ export function replaceEPSetOps(
   return ops;
 }
 
-export const EPSET_DATA_TYPES: Record<string, 'IfcLengthMeasure' | 'IfcReal' | 'IfcLabel'> = {
+export const EPSET_DATA_TYPES: Record<string, EPSetDataType> = {
   Eastings: 'IfcLengthMeasure', Northings: 'IfcLengthMeasure', OrthogonalHeight: 'IfcLengthMeasure',
   XAxisAbscissa: 'IfcReal', XAxisOrdinate: 'IfcReal', Scale: 'IfcReal',
+  Description: 'IfcText',
 };
 
-export function ePSetValues(src: Record<string, unknown>, fields: readonly string[]): Array<[string, string | number, 'IfcLengthMeasure' | 'IfcReal' | 'IfcLabel']> {
+export function ePSetValues(src: Record<string, unknown>, fields: readonly string[]): Array<[string, string | number, EPSetDataType]> {
   return fields
     .filter((f) => src[f] !== undefined)
     .map((f) => [f, src[f] as string | number, EPSET_DATA_TYPES[f] ?? 'IfcLabel']);

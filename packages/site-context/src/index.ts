@@ -14,6 +14,7 @@ export { BUILDING_SET } from './buildings-layer.js';
 export { SUBJECT_MIN_OVERLAP } from './buildings-footprint.js';
 export { SiteContextCoverageError } from './frame.js';
 export { encodeSiteContextGlb } from './glb-encode.js';
+export { isAllowedSwisstopoUrl, SiteContextHostRefused, swisstopoOnlyFetch, SWISSTOPO_HOSTS } from './host-allowlist.js';
 export { decodeSiteContextGlb, SiteContextFormatError } from './glb-decode.js';
 export {
   summarizeSiteContext,

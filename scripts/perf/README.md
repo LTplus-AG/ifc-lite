@@ -8,6 +8,94 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Capped-memory load test and synthetic dense IFC (#10264, known issue)
+
+Reproduces "a large IFC kills the tab instead of being refused" without private files.
+Two tools:
+
+- `gen-dense-ifc.mjs` writes a deterministic synthetic model (same arguments, same bytes;
+  `gen-dense-ifc.test.mjs` pins that). Every element is a unique jittered ellipsoid, so
+  nothing instances away. Never commit the output.
+
+  | `--kind` | schema / geometry | triangles per MB | entities per MB | reproduces |
+  |---|---|---:|---:|---|
+  | `tfs` | IFC4 `IfcTriangulatedFaceSet` | ~40.6 k | ~150 | mode B: killed mid-stream by geometry the main thread keeps (84 B/triangle) |
+  | `brep` | IFC2X3 `IfcFacetedBrep`, one face per triangle | ~6.1–7.1 k | ~21–25 k | mode A: killed before geometry, while the entity pre-pass overlaps worker source copies |
+
+  Default mesh 24×48: 2×48×(24−1) = 2,208 triangles per element. Densities are a little higher
+  on small files (fixed header) and lower on large brep files (longer ids): measured 5–300 MB,
+  plus the attribution's 1.2 GB brep. Generation runs at 15–75 MB/s on one core (tfs slower).
+  Only `tfs` has measured thresholds below; the `brep` mode-A sizes come from the #10264
+  attribution on other hardware and were not re-measured here.
+- `oom-load-probe.mjs` opens one file in a built viewer (`apps/viewer/dist`) with
+  `navigator.deviceMemory` / `hardwareConcurrency` overridden, and runs only Chrome inside
+  `systemd-run --user --scope -p MemoryMax=CAP -p MemorySwapMax=0 -p CPUQuota=…`. It reports
+  `loaded` (checked first), `refused` (only the explicit pre-read "local processing memory
+  budget" refusal; the probe never infers a refusal from a read it did not see), `killed` (the tab died: the renderer or browser
+  was seen vanishing at an OOM kill, the page crashed, or the browser exited). An OOM kill of only
+  a GPU or utility process does not end the run: the probe keeps watching and reports what the
+  load then did (`loaded` with a note, `killed` if the renderer dies later, or `timeout`). An OOM
+  kill whose victim it could not identify, with the page alive, is `error`. `error` also covers
+  any other load error, including main's "Ran out of memory while processing", always, and the
+  worker/runtime crash messages that leave the tab alive. Messages are read from the store's load error and dialogs/alerts/toasts, never the whole
+  page. It also reports peak summed Chrome PSS, the cgroup peak, the phase reached and which process
+  types an OOM kill took.
+  Needs Linux with cgroup v2 and the memory controller delegated to the systemd user manager;
+  anything missing exits 2, never skips.
+
+`--expect` is required. Today the issue is open, so the minimal case runs with
+`--expect killed`: it passes only while the tab is still killed and **fails once the load is
+loaded or refused**, telling you to switch to `--expect not-killed` (the #10264 acceptance:
+the tab is never killed). `error` and `timeout` never pass.
+
+A viewer may instead warn before an oversized load (a dialog "This model may exceed available
+memory" with Continue loading / Cancel). `--on-memory-dialog wait` (default) reports
+`awaiting-decision`, `cancel` reports `cancelled`, and `continue` clicks Continue loading and
+then reports `loaded` or `killed-after-continue`. `--expect not-killed` accepts `loaded`,
+`refused`, `awaiting-decision` and `cancelled`; a kill after an explicit Continue passes only
+`--expect warned`, and its verdict says so. The warning title, its button names and the refusal
+text come from draft PR #10353 and may drift; they live together in `oom-load-probe-lib.mjs`.
+
+```bash
+pnpm install && pnpm build:wasm && pnpm turbo build --filter=@ifc-lite/viewer   # or any built apps/viewer/dist
+npx playwright install chromium                            # once
+node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect killed \
+  --kind tfs --target-mb 300 --device-memory 4 --cores 4 --cap 3G   # swiftshader, headless
+# Hardware GL: headed on a private Xvfb, e.g. DISPLAY=:181 ... --gl hardware
+```
+
+Measured 2026-11-15 on one Linux laptop (32 logical CPUs, NVIDIA RTX 4000 Ada laptop GPU, driver
+595.104, kernel 7.2.15, CPU held at a 65 W package limit and a 60% frequency ceiling), Chrome for
+Testing 156, viewer built from main `5db30f9a6b`, generator seed 1, device memory 4, 4 cores,
+3 GiB cap with no swap, CPU quota 400%. Peak PSS is summed over all Chrome processes; the cgroup
+peak is what the cap charges (3,072 MiB = the cap). Untimed; the seconds only place the kill.
+
+| file | GL | runs | outcome | peak PSS MiB | cgroup peak MiB | where it ended |
+|---|---|---:|---|---:|---:|---|
+| tfs-100 (100 MB, 4.06 M tris) | swiftshader | 1 | loaded | 2,143 | 1,976 | interactive after ~5 min |
+| tfs-150 (150 MB, 6.10 M tris) | swiftshader | 1 | timeout | 2,537 | 2,427 | all geometry streamed, never interactive in 8 min |
+| tfs-225 (225 MB, 9.15 M tris) | swiftshader | 1 | timeout | 3,219 | 3,029 | all geometry streamed at ~78 s, never interactive in 8 min |
+| **tfs-300** (300 MB, 12.19 M tris) | swiftshader | 3 | **killed 3/3** | 3,202–3,271 | 3,072 | OOM kill at ~36 s, 9.0 M tris streamed |
+| tfs-225 | NVIDIA Vulkan, headed Xvfb | 3 | loaded 3/3 | 3,086–3,116 | 2,938–2,987 | interactive at ~12 s |
+| **tfs-300** | NVIDIA Vulkan, headed Xvfb | 3 | **killed 3/3** | 3,313–3,320 | 3,072 | OOM kill at ~10 s, 7.9 M tris streamed |
+
+Every `killed` row is a tab death: each of those six runs ended with Playwright's "Target
+crashed" (the renderer died) at the OOM kill. They ran before the probe recorded the killed
+process type, so the renderer evidence is that message.
+
+The minimal reproducer is the same on both backends: tfs-300 at device memory 4 / 3 GiB. Under
+swiftshader the GPU buffers count against the cap, but rendering is slow enough that geometry
+streams more slowly, so the peak is not lower than on hardware. A 150-225 MB file under
+swiftshader survives its peak but takes longer than the 8 minute limit to render the
+scene, so treat it as a `timeout`, not a pass. These numbers are not comparable with earlier
+campaign runs that put the driver process inside the cap as well: there tfs-225 was killed on
+hardware, here it loads with about 90 MiB to spare.
+
+CI: not wired. Per-PR CI is too heavy (a viewer build plus a ~1 min browser run). The proposed
+home is a `workflow_dispatch`/nightly job, added only once the cap is verified on a GitHub-hosted
+runner: that needs `systemd-run --user` with a delegated memory controller there, or the job run
+inside a container with `--memory=3g --memory-swap=3g`. Neither was verified from here.
+
 ## Gaussian capture memory ownership (#9018, #10401)
 
 **Accepted: the M5 memory budgets (peak 3x, retained 2x the file size) are met only by three changes together.** The dropped file is the only full copy of the splats, streamed in bounded slices. The CPU keeps just the depth-sort and clip columns. Higher-order SH is stored as float16 on the GPU. Measured on Pop with the round-6 harness unchanged; numbers are in the PR.

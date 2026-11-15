@@ -15,6 +15,7 @@ interface Entry {
   readonly deleted: Set<number>;
   graph?: SpatialGraph;
   signature?: string;
+  sourceSignature?: readonly unknown[];
   revision: number;
   /** A separate reader is used by each request; cached data contains IDs only. */
   planner?: object;
@@ -43,6 +44,14 @@ export function storeyInventoryCache(
         signature: parent.signature, placementParents: parent.placementParents });
     }
   }
+  // Parsed/deferred tables may finish streaming without an overlay write.
+  // Invalidate on the same source identities/revisions used by indexed reads.
+  const sourceSignature = [store.source, store.entityIndex, store.entityIndex.byType, store.entityIndex.byId.size,
+    store.deferredEntityIndex, store.deferredEntityIndex?.size, store.entities?.typeRevision, store.entities?.expressId?.length];
+  if (entry.sourceSignature && sourceSignature.some((value, i) => value !== entry.sourceSignature![i])) {
+    entry.graph = undefined; entry.planner = undefined; entry.dirty.clear();
+  }
+  entry.sourceSignature = sourceSignature;
   const dirty = entry.changes.take();
   if (dirty === null) {
     entry.graph = undefined; entry.planner = undefined; entry.dirty.clear(); entry.deleted.clear();

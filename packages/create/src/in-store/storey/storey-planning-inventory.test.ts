@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest';
 import { StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from '../resolve-anchor.js';
 import { parse, session, THIRD_PARTY } from '../__test__/storey-fixtures.oracle.js';
-import { readStoreyInventory } from './storey-model.js';
+import { readStoreyInventory, storeyContents } from './storey-model.js';
 import { planStoreyLevelEdit } from './storey-level-plan.js';
 import { storeyPlanningWork } from './storey-planning-diagnostics.js';
 import { applyStoreyLevelEdit } from './storey-level-apply.js';
@@ -27,6 +27,20 @@ it('#8452 a lazy relationship read materializes at first use even when a prior i
   const product = s.view.createEntity('IfcColumn', ['new', null, null, null, null, '#44', null, null, null]).expressId;
   s.view.createEntity('IfcRelContainedInSpatialStructure', ['rel', null, null, null, [`#${product}`], '#42']);
   expect(lazy.incoming.get(product)?.some(rel => rel.parent === 42)).toBe(true);
+});
+
+it('#8452 a parsed relationship arriving without an overlay edit invalidates the cached spatial inventory', async () => {
+  const full = await parse(THIRD_PARTY);
+  const original = session(full);
+  const relation = readStoreyInventory(full, original.view).relationships.find(rel => rel.parent === 42 && rel.children.includes(60))!;
+  const byId = new Map(full.entityIndex.byId);
+  byId.delete(relation.id);
+  const partial = { ...full, entityIndex: { ...full.entityIndex, byType: full.entityIndex.byType, byId } };
+  const s = session(partial), revision = s.view.getMutationRevision();
+  expect(storeyContents(readStoreyInventory(partial, s.view), 42).has(60)).toBe(false);
+  byId.set(relation.id, full.entityIndex.byId.get(relation.id)!);
+  expect(s.view.getMutationRevision()).toBe(revision);
+  expect(storeyContents(readStoreyInventory(partial, s.view), 42).has(60)).toBe(true);
 });
 
 it('#8452 inherited products remain in moved IDs without repeated payload planning, including apply and undo', async () => {

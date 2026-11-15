@@ -8,7 +8,7 @@
  * placed in it, or big numbers in the placements.
  */
 
-import { MAP_MAGNITUDE_METRES, atMapMagnitude, farGeometry, isIfc2x3, round, type DiagnosisContext } from '../context.js';
+import { MAP_MAGNITUDE_METRES, atMapMagnitude, crsChange, farGeometry, isIfc2x3, operationChange, round, type DiagnosisContext } from '../context.js';
 import { makeFix, newMapConversionChanges, newMapConversionFix, siteMoveChange } from '../fixes.js';
 import { matchSiteDefault } from '../site-defaults.js';
 import type { CrsFact, GeorefFinding, SuggestedFix, Vec2 } from '../types.js';
@@ -171,5 +171,32 @@ export function detectPresence(ctx: DiagnosisContext): GeorefFinding[] {
     });
   }
 
+  const hostFinding = ifc2x3 ? ePSetHostFinding(ctx) : undefined;
+  if (hostFinding) findings.push(hostFinding);
+
   return findings;
+}
+
+/**
+ * IFC2X3 convention sets attached to something other than IfcProject. The
+ * buildingSMART user guide (v2.0, §5.1) links them to IfcProject and
+ * IfcOpenShell reads them only there, so a set on IfcSite is invisible to
+ * those tools. The fix is an update that rewrites them: the write layer moves
+ * the sets to IfcProject whenever it writes them.
+ */
+function ePSetHostFinding(ctx: DiagnosisContext): GeorefFinding | undefined {
+  const hosts = ctx.facts.ePSetHosts;
+  const op = ctx.facts.ePSet?.operation;
+  if (!hosts || hosts.length === 0 || hosts.includes('IfcProject') || !op) return undefined;
+  const crs = ctx.facts.ePSet?.crs;
+  const changes = [operationChange(op, 'Eastings', op.eastings)];
+  // The write API refuses to write a map conversion without a stated MapUnit.
+  if (!crs?.mapUnit) changes.push(crsChange(crs, 'MapUnit', null, true));
+  return {
+    code: 'EPSET_NOT_ON_PROJECT',
+    severity: 'warning',
+    message: `ePSet_MapConversion${crs ? ' and ePSet_ProjectedCRS are' : ' is'} attached to ${hosts.join(' and ')}, but the buildingSMART convention attaches them to IfcProject, and IfcOpenShell-based tools read them only there: move them to IfcProject.`,
+    evidence: { hosts: hosts.join(', ') },
+    fixes: [makeFix(ctx, 'Rewrite the convention sets on IfcProject (the write API moves them there; values unchanged).', changes)],
+  };
 }

@@ -141,6 +141,12 @@ export interface GeorefFacts {
   /** `ePSet_MapConversion` / `ePSet_ProjectedCRS`. */
   ePSet?: GeoreferenceSourceFact;
   /**
+   * IfcPascalCase classes the `ePSet` sets are attached to (via
+   * IfcRelDefinesByProperties), when known. The convention puts them on
+   * IfcProject; IfcOpenShell reads them only there.
+   */
+  ePSetHosts?: string[];
+  /**
    * Every IfcMapConversion in the file, each with its own TargetCRS, when
    * there is more than one (only the first is applied).
    */
@@ -235,22 +241,34 @@ export interface GeorefWriteInput {
   MapConversion?: Record<string, number | null>;
 }
 
+/** The fields `bim.georef.setSite` takes: decimal degrees, RefElevation in project length units; `null` where only the user can supply it. */
+export interface GeorefSiteWriteInput {
+  /** Express id of the IfcSite; absent when the model has one. */
+  siteId?: number;
+  RefLatitude?: number | null;
+  RefLongitude?: number | null;
+  RefElevation?: number | null;
+}
+
 /**
  * How a fix can be applied.
  * - `georef.update`: one `bim.georef.update(input)` call on the model's
  *   georeferencing (the write API addresses it, not entity ids).
  * - `georef.set`: one grouped `bim.georef.set(input)`, for a model with no
  *   map conversion and no CRS yet.
- * - `manual`: the georeferencing write API cannot do it (IfcSite latitude and
- *   longitude, IfcRigidOperation, placements, a non-winning record), or it
- *   would refuse it; `reason` says which.
+ * - `georef.site`: one `bim.georef.setSite(input)` call: IfcSite
+ *   RefLatitude/RefLongitude (decimal degrees) and RefElevation.
+ * - `manual`: the georeferencing write API cannot do it (IfcRigidOperation,
+ *   placements, a non-winning record), or it would refuse it; `reason` says which.
  *
- * `userSupplied` lists `ProjectedCRS.Name`-style paths whose value is `null`
- * in `input`: only the user can supply them, and the write fails until they do.
+ * `userSupplied` lists `ProjectedCRS.Name`-style paths (`IfcSite.RefLatitude`
+ * for a site write) whose value is `null` in `input`: only the user can supply
+ * them, and the write fails until they do.
  */
 export type FixApplication =
   | { via: 'georef.update'; input: GeorefWriteInput; userSupplied: string[] }
   | { via: 'georef.set'; input: GeorefWriteInput; userSupplied: string[] }
+  | { via: 'georef.site'; input: GeorefSiteWriteInput; userSupplied: string[] }
   | { via: 'manual'; reason: string };
 
 export interface SuggestedFix {
@@ -336,4 +354,5 @@ export type GeorefFindingCode =
   | 'TRUE_NORTH_CONTRADICTS_ROTATION'
   | 'ORTHOGONAL_HEIGHT_IMPLAUSIBLE'
   | 'SOURCES_DISAGREE'
-  | 'IFC2X3_NO_EPSET';
+  | 'IFC2X3_NO_EPSET'
+  | 'EPSET_NOT_ON_PROJECT';

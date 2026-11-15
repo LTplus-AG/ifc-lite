@@ -36,6 +36,7 @@ if (facts) {
 | `lengthUnitScale`, `lengthUnitDeclared` | project length unit in metres; whether the file declares it |
 | `entities` | IfcMapConversion(Scaled) or IfcRigidOperation, and its target CRS, as authored |
 | `ePSet` | the IFC2X3 `ePSet_MapConversion` / `ePSet_ProjectedCRS` convention, read even when the IFC4 entities win |
+| `ePSetHosts` | IfcPascalCase classes the ePSet sets are attached to (IfcProject, IfcSite, IfcBuilding), when the store maps entities to property sets |
 | `additionalMapConversions` | every IfcMapConversion, each with its own TargetCRS, when there is more than one |
 | `siteLocation` | IfcSite RefLatitude/RefLongitude in decimal degrees, read even when another source wins |
 | `hasPostalAddress`, `contextOrigin`, `trueNorth`, `rootSpatialPlacements` | LoGeoRef 10, 40 and 30 inputs |
@@ -92,7 +93,8 @@ Each fix also carries `apply`, a machine-readable statement of how it can be app
 |---|---|---|
 | `georef.update` | the changes edit the model's effective IfcMapConversion / IfcProjectedCRS (or IFC2X3 ePSets), including adding a conversion beside an existing CRS | `input: { ProjectedCRS?, MapConversion? }` with EXPRESS attribute names; `userSupplied` lists the `null` fields. A CRS rename also lists the old CRS's other fields, which the write API makes the caller restate |
 | `georef.set` | the model has no map conversion and no CRS: one grouped write of the whole georeferencing | as above; `userSupplied` names what only the user can supply (the EPSG code, the map position) |
-| `manual` | IfcSite latitude/longitude, IfcRigidOperation, placements, an IfcGeographicCRS, a record that is not the effective one, a CRS defined by WKT, or a file with several IfcMapConversions (the write API refuses those) | `reason` |
+| `georef.site` | the changes are only IfcSite RefLatitude / RefLongitude / RefElevation of one site: one `bim.georef.setSite(input)` | `input: { siteId?, RefLatitude?, RefLongitude?, RefElevation? }` (decimal degrees); `userSupplied` lists the `null` fields as `IfcSite.<attribute>` |
+| `manual` | an IfcSite change mixed with other changes, IfcRigidOperation, placements, an IfcGeographicCRS, a record that is not the effective one, a CRS defined by WKT, or a file with several IfcMapConversions (the write API refuses those) | `reason` |
 
 ## Levels of Georeferencing
 
@@ -138,6 +140,7 @@ The course column refers to chapter 2 of *How IFC Works*, "Why the model lands i
 | `ORTHOGONAL_HEIGHT_IMPLAUSIBLE` | warning | \|OrthogonalHeight\| implausible under every map-unit reading; usually millimetres | (2) |
 | `SOURCES_DISAGREE` | warning | the IFC4 entity and the ePSet, or two IfcMapConversions (each in its own TargetCRS), differ in offset, turn, Scale or EPSG code | IFC2x3 note |
 | `IFC2X3_NO_EPSET` | info | IFC2X3 without `ePSet_MapConversion` | IFC2x3 note |
+| `EPSET_NOT_ON_PROJECT` | warning | IFC2X3 convention sets attached (per `facts.ePSetHosts`) to IfcSite or IfcBuilding and not IfcProject, where the buildingSMART user guide (v2.0, §5.1) puts them and IfcOpenShell reads them. The fix is an update restating the Eastings: the write layer moves the sets to IfcProject whenever it writes them | IFC2x3 note |
 
 **When MapUnit is unset**, readers disagree: some use the project length unit, others the CRS's own unit. The diagnosis keeps both readings. A position defect (out of area, implausible height) must hold under both. A match (zone prefix, double application) may hold under either, because coincidence with a 100 km anchor is not chance.
 

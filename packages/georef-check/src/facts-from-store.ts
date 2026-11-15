@@ -19,6 +19,7 @@ import {
   type MapConversion,
   type ProjectedCRS,
 } from '@ifc-lite/parser';
+import { ePSetHostTypes } from './epset-hosts.js';
 import { coordinateMagnitudes, hasPostalAddress, modelContextFacts, rootSpatialPlacements, type EntityReader } from './coordinates.js';
 import type { CrsFact, GeorefFacts, GeoreferenceSourceFact, OperationFact } from './types.js';
 
@@ -142,7 +143,11 @@ export function collectGeorefFacts(store: IfcDataStore, options: CollectGeorefFa
   const entities = entitySource(candidates.entities);
   if (entities) facts.entities = entities;
   const ePSet = ePSetSource(candidates.ePSetMapConversion);
-  if (ePSet) facts.ePSet = ePSet;
+  if (ePSet) {
+    facts.ePSet = ePSet;
+    const hosts = ePSetHostTypes(store, reader, [ePSet.operation?.entityId, ePSet.crs?.entityId].filter((id): id is number => id !== undefined));
+    if (hosts) facts.ePSetHosts = hosts;
+  }
   if (candidates.mapConversions.length > 1) {
     facts.additionalMapConversions = candidates.mapConversions.map(({ conversion, targetCRS }) => {
       const source: GeoreferenceSourceFact = { operation: operationFact(conversion, 'IfcMapConversion') };

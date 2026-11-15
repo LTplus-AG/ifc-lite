@@ -26,7 +26,8 @@ import { withAttributeEdits } from './attribute-overlay.js';
 import { assertWritable, assessTrust } from './trust.js';
 import { planUpdate } from './plan-update.js';
 import { compact, readSourceGeoreferencing, readWithoutGeoreferencing, rotationOf } from './read.js';
-import { GeoreferencingError, type GeorefMapConversionAttributes, type GeorefProjectedCRSAttributes, type GeoreferencingState, type GeoreferencingWriteRequest, type GeoreferencingWriteResult } from './types.js';
+import { planSiteWrite, withSiteEdits } from './site-write.js';
+import { GeoreferencingError, type GeorefSiteInput, type GeorefSiteWriteResult, type GeorefMapConversionAttributes, type GeorefProjectedCRSAttributes, type GeoreferencingState, type GeoreferencingWriteRequest, type GeoreferencingWriteResult } from './types.js';
 
 export interface GeoreferencingSessionDeps {
   store: IfcDataStore;
@@ -58,10 +59,10 @@ export class GeoreferencingSession {
 
   constructor(private readonly deps: GeoreferencingSessionDeps) {}
 
-  /** The effective georeferencing: this session's latest write, or the source minus its deletions. */
+  /** The effective georeferencing: this session's latest write, or the source minus its deletions; IfcSite edits applied. */
   get(): GeoreferencingState {
     // A snapshot: the caller may change what it gets without changing the session's own record of its writes.
-    const state = structuredClone(this.read());
+    const state = withSiteEdits(structuredClone(this.read()), this.deps.store, this.deps.view());
     const view = this.deps.view();
     if (!view) {
       const native = (state.MapConversion && state.MapConversion.type !== 'ePSet_MapConversion') || state.RigidOperation;
@@ -87,6 +88,24 @@ export class GeoreferencingSession {
     // An IfcMapConversion or IfcRigidOperation governs: the reader never reaches the sets.
     if (why.length > 0 && !(state.MapConversion && state.MapConversion.type !== 'ePSet_MapConversion') && !state.RigidOperation) trust.reasons.ePSet = why;
     return trust;
+  }
+
+  /** IfcSite RefLatitude/RefLongitude/RefElevation, as one compound mutation (one undo step). */
+  writeSite(input: GeorefSiteInput): GeorefSiteWriteResult {
+    this.deps.editor();
+    const view = this.deps.view();
+    if (!view) throw new Error('georef: the session has no mutation view to record the write in');
+    const plan = planSiteWrite(this.deps.store, view, input);
+    recordCompoundMutation(view, (draft) => {
+      for (const [slot, value] of plan.edits) draft.setPositionalAttribute(plan.siteId, slot, value);
+      return recordSessionMutation(draft, plan.siteId, GEOREF_SESSION_KIND);
+    });
+    return plan.result;
+  }
+
+  /** Throws what `writeSite(input)` would, without writing. */
+  validateSite(input: GeorefSiteInput): void {
+    planSiteWrite(this.deps.store, this.deps.view(), input);
   }
 
   private read(): GeoreferencingState {

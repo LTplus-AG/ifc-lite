@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "why": "#10264: The real mounted consent host must show cancellable admission before server publication, but must not offer a misleading local Cancel after server geometry already replaced the prior scene. Removing only the post-publication guard must fail a visible-dialog assertion without hanging.",
-  "key": "apps/viewer/src/hooks/useIfcServer.ts",
-  "mutation": "tests/evidence/10264-post-server-dialog/behaviour.oracle.patch",
-  "test": "apps/viewer/src/hooks/useIfcLoader.serverStaleness.test.tsx"
-}

@@ -11045,9 +11045,14 @@
     "withNarrowedCoordinateSpace: function"
   ],
   "@ifc-lite/site-context": [
+    "BUILDING_SET: const",
     "BuildSiteContextOptions: interface",
+    "BuildingsOptions: interface",
+    "BuildingsReader: type",
     "JsonValue: type",
     "MapPoint: interface",
+    "SUBJECT_MIN_OVERLAP: const",
+    "SiteContextBuildingsSummary: interface",
     "SiteContextCoverageError: class",
     "SiteContextDocument: interface",
     "SiteContextFeature: interface",
@@ -11059,6 +11064,7 @@
     "SiteContextLayerKind: type",
     "SiteContextLayerSummary: interface",
     "SiteContextMesh: interface",
+    "SiteContextMeshPart: interface",
     "SiteContextParcelSummary: interface",
     "SiteContextProgress: interface",
     "SiteContextSummary: interface",

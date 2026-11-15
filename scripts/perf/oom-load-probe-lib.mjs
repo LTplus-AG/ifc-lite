@@ -242,6 +242,16 @@ export function serverAttemptSummary(timeline, { watching, tracker }) {
     const v = before(ms, trackerReported);
     if (v === null || v === true) return v;
     if (!tracker.sourceMarked) { unknown[name] = 'the picked file was never marked (no file-input change event)'; return null; }
+    const scan = facts?.firstIncompleteScan;
+    if (name === 'sourcePostBeforeDecision' && before(scan?.ms ?? null, true) !== false) {
+      unknown[name] = `a message to ${scan.worker} at ${Math.round(scan.ms)} ms was too large to scan for the source`;
+      return null;
+    }
+    const objectUrl = facts?.firstSourceObjectUrl;
+    if (name === 'sourcePostBeforeDecision' && before(objectUrl?.ms ?? null, true) !== false) {
+      unknown[name] = `a blob: URL of the source was created at ${Math.round(objectUrl.ms)} ms; a worker could fetch it unseen`;
+      return null;
+    }
     if (before(other?.ms ?? null, true) !== false) {
       unknown[name] = `${otherWhat} of ${other.bytes} bytes at ${Math.round(other.ms)} ms before the decision may be the source`;
       return null;
@@ -264,6 +274,8 @@ export function serverAttemptSummary(timeline, { watching, tracker }) {
     unattributedReadBeforeDecision: before(facts?.firstUnattributedRead?.ms ?? null, trackerReported),
     sourcePostBeforeDecision: identity('sourcePostBeforeDecision', facts?.firstSourcePost?.ms ?? null, facts?.firstOtherPost, 'a worker post of another Blob'),
     logTruncated: trackerReported ? tracker.truncated : null,
+    // A false source-post verdict means: every channel listed as instrumented reported none.
+    channels: trackerReported ? tracker.channels ?? null : null,
   };
   if (Object.keys(unknown).length) result.unknownBecause = unknown;
   return result;

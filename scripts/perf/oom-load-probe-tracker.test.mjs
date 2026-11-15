@@ -115,3 +115,74 @@ test('#10353 worker-post overflow keeps the first source post and exact counts',
   assert.deepEqual(s.facts.firstSourcePost, { ms: 301, bytes: 64, worker: '/identity.js' });
   assert.deepEqual(s.facts.firstOtherPost, { ms: 1, bytes: 16, worker: '/other.js' });
 });
+
+test('#10353 a source nested anywhere in a worker or port message, or in its transfer list, is recorded (review on #10415)', (t) => {
+  const saved = Object.fromEntries(['arrayBuffer', 'text', 'bytes', 'stream', 'slice'].map((m) => [m, Blob.prototype[m]]));
+  t.after(() => { for (const [m, f] of Object.entries(saved)) Blob.prototype[m] = f; });
+  class FakeWorker { postMessage() {} }
+  class FakePort { postMessage() {} }
+  let clock = 0;
+  const target = {};
+  const tracker = installSourceTracker({ Blob, Worker: FakeWorker, MessagePort: FakePort, target, now: () => ++clock, minBytes: 8 });
+  const source = new Blob([new Uint8Array(64)]);
+  tracker.markSource(source);
+  const w = new target.Worker('/deep.js');
+  w.postMessage({ payload: { file: source } });
+  w.postMessage({ a: [{ b: new Map([['k', new Set([source.slice(0, 16)])]]) }] });
+  new FakePort().postMessage({ deep: { deeper: { file: source } } });
+  const cyclic = { self: null }; cyclic.self = cyclic;
+  w.postMessage(cyclic);
+  const buf = new ArrayBuffer(8);
+  w.postMessage({ x: { y: { z: { file: source } } } }, [buf]); // three levels deep
+  w.postMessage({ note: 'transfer' }, { transfer: [source] }); // in the transfer list (Blobs are not transferable; the scan still looks)
+  const s = trackerSummary(tracker.report(), 0);
+  assert.equal(s.sourcePosts, 5);
+  const posts = s.events.filter((e) => e.event === 'worker-post');
+  assert.deepEqual(posts.map((e) => e.worker), ['/deep.js', '/deep.js', 'MessagePort', '/deep.js', '/deep.js']);
+  assert.deepEqual(posts.map((e) => e.path), ['message.payload.file', 'message.a[0].b.get(0).<set 0>', 'message.deep.deeper.file', 'message.x.y.z.file', 'transfer[0]']);
+  assert.ok(posts.every((e) => e.scanTruncated === false));
+  assert.equal(s.incompleteScans, 0);
+  assert.deepEqual(s.events.filter((e) => e.event === 'worker-created').map((e) => [e.url, e.blobUrl]), [['/deep.js', false]]);
+});
+
+test('#10353 BroadcastChannel posts, blob: URLs of the source and blob-URL workers are recorded; unwatched channels are listed', (t) => {
+  const saved = Object.fromEntries(['arrayBuffer', 'text', 'bytes', 'stream', 'slice'].map((m) => [m, Blob.prototype[m]]));
+  t.after(() => { for (const [m, f] of Object.entries(saved)) Blob.prototype[m] = f; });
+  class FakeWorker { postMessage() {} }
+  class FakeChannel { constructor(name) { this.name = name; } postMessage() {} }
+  const fakeUrl = { createObjectURL: () => 'blob:http://x/1' };
+  const target = {};
+  const tracker = installSourceTracker({ Blob, Worker: FakeWorker, BroadcastChannel: FakeChannel, URL: fakeUrl, target, now: () => 7 });
+  const source = new Blob([new Uint8Array(4)]);
+  tracker.markSource(source);
+  new FakeChannel('ifc').postMessage({ file: source });
+  const url = fakeUrl.createObjectURL(source);
+  new target.Worker(url);
+  const s = trackerSummary(tracker.report(), 0);
+  assert.equal(s.sourcePosts, 1);
+  assert.equal(s.events.find((e) => e.event === 'worker-post').worker, 'BroadcastChannel ifc');
+  assert.equal(s.sourceObjectUrls, 1);
+  assert.deepEqual(s.facts.firstSourceObjectUrl, { ms: 7, url: 'blob:http://x/1' });
+  assert.equal(s.events.find((e) => e.event === 'worker-created').blobUrl, true);
+  assert.ok(s.channels.instrumented.includes('BroadcastChannel.postMessage'));
+  assert.ok(s.channels.notInstrumented.some((c) => /MessagePort/.test(c)), 'no MessagePort given: listed as not watched');
+  assert.ok(s.channels.notInstrumented.some((c) => /ReadableStream/.test(c)));
+});
+
+test('#10353 a message beyond the scan budget is an incomplete scan, not "no source"', async (t) => {
+  const saved = Object.fromEntries(['arrayBuffer', 'text', 'bytes', 'stream', 'slice'].map((m) => [m, Blob.prototype[m]]));
+  t.after(() => { for (const [m, f] of Object.entries(saved)) Blob.prototype[m] = f; });
+  class FakeWorker { postMessage() {} }
+  const target = {};
+  const tracker = installSourceTracker({ Blob, Worker: FakeWorker, target, now: () => 5, scanBudget: 10 });
+  tracker.markSource(new Blob([new Uint8Array(4)]));
+  new target.Worker('/big.js').postMessage({ list: Array.from({ length: 50 }, (_, i) => ({ i })) });
+  const s = trackerSummary(tracker.report(), 0);
+  assert.equal(s.incompleteScans, 1);
+  assert.deepEqual(s.facts.firstIncompleteScan, { ms: 5, worker: '/big.js' });
+  assert.equal(s.events.filter((e) => e.event === 'worker-post').length, 0, 'nothing found in the part scanned');
+  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
+  const v = serverAttemptSummary([{ ms: 1, event: 'request' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }], { watching: true, tracker: s });
+  assert.equal(v.sourcePostBeforeDecision, null);
+  assert.match(v.unknownBecause.sourcePostBeforeDecision, /too large to scan/);
+});

@@ -59,8 +59,15 @@ Source tracking (`oom-load-probe-tracker.mjs`, injected into the page) identifie
 by object identity: the `File` a file `<input>` delivers, and every `Blob.slice` of it. Only reads
 of those count as source reads (with bytes; "large" means the whole file or at least 1 MiB). A read
 of any other Blob of 1 MiB or more is reported as an unattributed read, never as a source read.
-Every worker `postMessage` that carries or transfers a Blob is recorded with its time, the worker's
-script URL and whether the Blob was the source. Reads inside workers are not visible.
+Every `postMessage` to a worker, a `MessagePort` or a `BroadcastChannel` is scanned whole (nested
+objects, arrays, Maps, Sets and the transfer list, cycle-safe, up to 50,000 objects per message);
+each Blob found is recorded with its time, the receiver (worker script URL), its path in the
+message and whether it was the source. A message beyond the budget is marked `scanTruncated` and
+makes the post verdict `null`. `URL.createObjectURL` of the source and every `new Worker` (with a
+`blob:` flag) are recorded too. The result lists the channels that are not watched
+(`channels.notInstrumented`: copies of the source as ArrayBuffer or stream, whose producing read
+is counted as a source read; reads and fetches inside workers; SharedWorker/ServiceWorker;
+IndexedDB/Cache API), so a `false` means only that every listed instrumented channel reported none.
 Counts and the facts the verdicts use (first and largest source read, first large source read,
 first unattributed read, first source post) are kept for every event; only the detailed event log
 is bounded (first and last 100 per kind, with `truncated` and the number dropped), and no flag is

@@ -211,7 +211,7 @@ export async function runProbe(opts) {
       if (hc !== null) Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => hc, configurable: true });
     }, { dm: opts.deviceMemory, hc: opts.cores });
     // Source identity, reads and worker posts (oom-load-probe-tracker.mjs), injected as source text.
-    await context.addInitScript({ content: `(${installSourceTracker})({ Blob, FileReader, Worker: globalThis.Worker, target: globalThis, document, now: Date.now });` });
+    await context.addInitScript({ content: `(${installSourceTracker})({ Blob, FileReader, Worker: globalThis.Worker, MessagePort: globalThis.MessagePort, BroadcastChannel: globalThis.BroadcastChannel, URL, target: globalThis, document, now: Date.now });` });
     await context.addInitScript(DIALOG_MARKS);
     if (watchOrigin) {
       const sameOrigin = (url) => { try { return new URL(url).origin === watchOrigin; } catch { return false; } };

@@ -190,7 +190,7 @@ test('#10353 server proof: a failed server attempt before the warning, no read o
     { ms: 60, event: 'dialog', text: 'This model may exceed available memory\nThis model may need about 6.0 GiB' },
   ], { watching: true, tracker: facts() });
   assert.deepEqual(s, { watched: true, trackerReported: true, sourceMarked: true, attempts: 1, failures: 1, startupRequests: { count: 0, ms: [] }, firstAttemptMs: 40, firstDecisionMs: 60, decisionWindowMs: 0,
-    attemptBeforeDecision: true, readBeforeDecision: false, unattributedReadBeforeDecision: false, sourcePostBeforeDecision: false, logTruncated: false });
+    attemptBeforeDecision: true, readBeforeDecision: false, unattributedReadBeforeDecision: false, sourcePostBeforeDecision: false, logTruncated: false, channels: null });
   assert.equal(expectFlags(s, SERVER_FIRST).pass, true);
 });
 
@@ -283,4 +283,12 @@ test('#10353 server proof: an unmarked source or an unattributed large event bef
   assert.equal(later.unknownBecause, undefined);
   // A positive source event is still true even when the source was not marked by the input.
   assert.equal(serverAttemptSummary(tl, { watching: true, tracker: facts({ firstLargeSourceRead: { ms: 10, bytes: 1e6 } }, { sourceMarked: false }) }).readBeforeDecision, true);
+});
+
+test('#10353 server proof: a blob: URL of the source before the decision makes the post verdict null', async () => {
+  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
+  const v = serverAttemptSummary([{ ms: 1, event: 'request' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }],
+    { watching: true, tracker: facts({ firstSourceObjectUrl: { ms: 20, url: 'blob:x' } }) });
+  assert.equal(v.sourcePostBeforeDecision, null);
+  assert.match(v.unknownBecause.sourcePostBeforeDecision, /blob: URL of the source/);
 });

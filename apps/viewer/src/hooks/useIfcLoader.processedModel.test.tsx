@@ -215,7 +215,7 @@ it('?processed= accepts the hash in upper case and asks for it in lower case', a
   assert.deepEqual(asked, [{ sha256, bytes: 10 }]);
 });
 
-it('?processed= with a size that is not a positive integer opens the model as unknown size', async () => {
+for (const bad of ['abc', '0x9502F900', '1.6e8', '-5']) it(`?processed= with size ${bad} opens the model as unknown size`, async () => {
   stubWebGpu();
   let streamed: unknown;
   mock.method(IfcServerClient.prototype, 'parseParquetStream', async (source: unknown, onBatch: (batch: { meshes: ParquetParseResponse['meshes'] }) => void) => {
@@ -223,7 +223,7 @@ it('?processed= with a size that is not a positive integer opens the model as un
     const { meshes: _meshes, parquet_stats: _stats, data_model: _dataModel, ...rest } = stored();
     return rest;
   });
-  window.history.replaceState(null, '', `/?processed=${sha256}&bytes=abc`);
+  window.history.replaceState(null, '', `/?processed=${sha256}&bytes=${encodeURIComponent(bad)}`);
   await act(async () => { root.render(<Probe fromUrl />); });
   await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the URL entry loads the model'); });
   assert.deepEqual(streamed, { sha256, bytes: 0 });

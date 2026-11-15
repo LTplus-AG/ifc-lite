@@ -112,6 +112,16 @@ describe('normalizeProcessedModelHash', () => {
   });
 });
 
+describe('a reference without a size', () => {
+  it('is asked for the same way: the size is never sent', async () => {
+    fetchMock.mockResolvedValueOnce(streamResponse());
+    await client().parseParquetStream({ sha256 }, () => {});
+    expect(new URLSearchParams(calls()[0][0].split('?')[1]).get('sha256')).toBe(sha256);
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 404 }));
+    await expect(client().parseParquet({ sha256 })).rejects.toMatchObject({ status: 404 });
+  });
+});
+
 describe('an upper-case hash', () => {
   it('is asked for in lower case, the form the server keys results by', async () => {
     fetchMock.mockResolvedValueOnce(streamResponse());

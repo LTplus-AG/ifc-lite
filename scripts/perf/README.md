@@ -61,6 +61,13 @@ of those count as source reads (with bytes; "large" means the whole file or at l
 of any other Blob of 1 MiB or more is reported as an unattributed read, never as a source read.
 Every worker `postMessage` that carries or transfers a Blob is recorded with its time, the worker's
 script URL and whether the Blob was the source. Reads inside workers are not visible.
+Counts and the facts the verdicts use (first and largest source read, first large source read,
+first unattributed read, first source post) are kept for every event; only the detailed event log
+is bounded (first and last 100 per kind, with `truncated` and the number dropped), and no flag is
+computed from it. Dialogs, alerts and toasts are stamped every time their text changes, and the
+store's load error by a subscription the moment it is set. If a decision was only seen by the
+probe's 2 s poll, an event inside that window has unknown order (`null`). Peak summed PSS is
+sampled every 500 ms; the cgroup peak is the kernel's exact high-water mark.
 
 `--watch-url URL` records every request to that origin (and its failure or response), and the
 probe builds a timeline relative to the file pick: server attempts, dialogs (stamped when they

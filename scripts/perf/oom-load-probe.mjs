@@ -93,16 +93,36 @@ const scopeProp = (unit, prop) => {
   try { return execFileSync('systemctl', ['--user', 'show', `${unit}.scope`, '-p', prop, '--value'], { encoding: 'utf8' }).trim(); } catch { return null; }
 };
 
-/** Init script: stamp (wall clock) each dialog when its text first appears. */
+/**
+ * Init script: stamp (wall clock) every dialog, alert, status or toast each time its text
+ * changes (a reused element with new text is a new event; no first-match-wins), and the
+ * viewer store's load error the moment it is set (a subscription, not the 2 s poll).
+ */
 const DIALOG_MARKS = () => {
-  const marks = (globalThis.__oomProbeDialogs = []), seen = new WeakSet();
+  const marks = (globalThis.__oomProbeDialogs = []), lastText = new WeakMap();
+  const SEL = '[role=dialog],[role=alertdialog],[role=alert],[role=status],[data-sonner-toast]';
   const scan = () => {
-    for (const el of document.querySelectorAll('[role=dialog],[role=alertdialog]')) {
+    for (const el of document.querySelectorAll(SEL)) {
       const text = el.innerText?.trim();
-      if (text && !seen.has(el)) { seen.add(el); marks.push({ t: Date.now(), text: text.slice(0, 300) }); }
+      if (text && lastText.get(el) !== text) {
+        lastText.set(el, text);
+        const kind = /dialog/.test(el.getAttribute('role') ?? '') ? 'dialog' : 'notice';
+        marks.push({ t: Date.now(), kind, text: text.slice(0, 4000) });
+      }
     }
   };
   new MutationObserver(scan).observe(document, { subtree: true, childList: true, characterData: true });
+  const hook = setInterval(() => {
+    const store = globalThis.__ifc_lite_viewer_store__;
+    if (!store?.subscribe) return;
+    clearInterval(hook);
+    let prev = store.getState().error ?? null;
+    store.subscribe((st) => {
+      const err = st.error ?? null;
+      if (err && err !== prev) marks.push({ t: Date.now(), kind: 'store-error', text: String(err).slice(0, 4000) });
+      prev = err;
+    });
+  }, 25);
 };
 
 /** In page: what the load has reached. */
@@ -125,7 +145,7 @@ function processType(pid) {
 
 /** In page: text of dialogs, alerts and toasts (not the whole page). */
 const NOTICES = () => [...document.querySelectorAll('[role=dialog],[role=alertdialog],[role=alert],[role=status],[data-sonner-toast]')]
-  .map((e) => e.innerText.trim()).filter(Boolean).slice(0, 20);
+  .map((e) => e.innerText.trim().slice(0, 4000)).filter(Boolean);
 
 const scopeStop = (unit) => {
   // The scope ends on its own when Chrome exits; stop only a leftover one, then clear a failed record.
@@ -289,8 +309,9 @@ export async function runProbe(opts) {
     result.sourceTracking = trackedCounts;
     result.timeline = [
       ...netEvents.map(({ t, ...e }) => ({ ms: ms(t), ...e })),
-      ...dialogs.map((d) => ({ ms: ms(d.t), event: 'dialog', text: d.text })),
-      ...storeErrors.map((e) => ({ ms: ms(e.t), event: 'store-error', text: e.text })),
+      ...dialogs.map((d) => ({ ms: ms(d.t), event: d.kind ?? 'dialog', text: d.text })),
+      // The probe's own 2 s poll: the error appeared at some point in the 2 s before it was seen.
+      ...storeErrors.map((e) => ({ ms: ms(e.t), event: 'store-error', text: e.text, windowMs: 2000 })),
       ...trackedEvents,
     ].sort((a, b) => a.ms - b.ms);
     result.serverAttempts = serverAttemptSummary(result.timeline, { watching: Boolean(watchOrigin), tracker: tracked });

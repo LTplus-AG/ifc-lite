@@ -205,7 +205,9 @@ export function withTimeout(promise, ms, onTimeout) {
  * Order of events in one load, relative to the file pick (#10353 server proof).
  * `timeline` entries are `{ ms, event, ... }`: 'request' | 'requestfailed' | 'response'
  * (network to the watched origin), 'dialog' (a dialog appeared, with its text),
- * 'store-error' (the viewer's load error, polled), and from the source tracker
+ * 'notice' (an alert/status/toast appeared or changed text), 'store-error' (the viewer's
+ * load error: stamped by a store subscription, or seen by the 2 s poll with `windowMs`), and
+ * from the source tracker
  * 'source-read' (with `large`), 'unattributed-read' and 'worker-post' (with `source`).
  *
  * Every derived flag is three-valued: `true`, `false` only when the instrument
@@ -215,16 +217,21 @@ export function withTimeout(promise, ms, onTimeout) {
  * read/post flag null.
  */
 export function serverAttemptSummary(timeline, { watching, tracker }) {
-  const at = (pred) => timeline.filter(pred).map((e) => e.ms).sort((a, b) => a - b)[0] ?? null;
-  const firstDecisionMs = at((e) => (e.event === 'dialog' && (MEMORY_WARNING.test(e.text ?? '') || REFUSAL_MESSAGE.test(e.text ?? '')))
-    || (e.event === 'store-error' && REFUSAL_MESSAGE.test(e.text ?? '')));
-  const before = (pred, observed) => {
+  const first = (pred) => timeline.filter(pred).sort((a, b) => a.ms - b.ms)[0] ?? null;
+  const decision = first((e) => (e.event === 'dialog' && (MEMORY_WARNING.test(e.text ?? '') || REFUSAL_MESSAGE.test(e.text ?? '')))
+    || ((e.event === 'notice' || e.event === 'store-error') && REFUSAL_MESSAGE.test(e.text ?? '')));
+  const firstDecisionMs = decision?.ms ?? null;
+  // A decision seen only by a periodic poll happened at some point in (ms - windowMs, ms].
+  const windowMs = decision?.windowMs ?? 0;
+  /** true / false / null for "observed event at `ms` happened before the decision". */
+  const before = (ms, observed) => {
     if (!observed || firstDecisionMs === null) return null;
-    const first = at(pred);
-    return first !== null && first < firstDecisionMs;
+    if (ms === null || ms === undefined || ms >= firstDecisionMs) return false;
+    return ms < firstDecisionMs - windowMs ? true : null;
   };
   const trackerReported = tracker?.reported === true;
-  const firstAttemptMs = watching ? at((e) => e.event === 'request') : null;
+  const facts = trackerReported ? tracker.facts : null;
+  const firstAttemptMs = watching ? (first((e) => e.event === 'request')?.ms ?? null) : null;
   return {
     watched: Boolean(watching),
     trackerReported,
@@ -232,10 +239,13 @@ export function serverAttemptSummary(timeline, { watching, tracker }) {
     failures: watching ? timeline.filter((e) => e.event === 'requestfailed').length : null,
     firstAttemptMs,
     firstDecisionMs,
-    attemptBeforeDecision: before((e) => e.event === 'request', watching),
-    readBeforeDecision: before((e) => e.event === 'source-read' && e.large, trackerReported),
-    unattributedReadBeforeDecision: before((e) => e.event === 'unattributed-read', trackerReported),
-    sourcePostBeforeDecision: before((e) => e.event === 'worker-post' && e.source, trackerReported),
+    decisionWindowMs: decision ? windowMs : null,
+    attemptBeforeDecision: before(firstAttemptMs, watching),
+    // From the tracker's kept facts (uncapped), never from its possibly truncated event log.
+    readBeforeDecision: before(facts?.firstLargeSourceRead?.ms ?? null, trackerReported),
+    unattributedReadBeforeDecision: before(facts?.firstUnattributedRead?.ms ?? null, trackerReported),
+    sourcePostBeforeDecision: before(facts?.firstSourcePost?.ms ?? null, trackerReported),
+    logTruncated: trackerReported ? tracker.truncated : null,
   };
 }
 

@@ -62,6 +62,15 @@ describe('faceRegionsOfOuterBounds', () => {
     expect(faceRegionsOfOuterBounds([slotted, tile])).toEqual([{ polygon: slotted, innerBounds: [] }, { polygon: tile, innerBounds: [] }]);
   });
 
+  it('reads a loop whose first vertex is repeated, and keeps a tiny loop as a region', () => {
+    const repeated: Vec3[] = [[0, 0, 0], [0, 0, 0], [2, 0, 0], [0, 2, 0]];
+    const apart = square(10, 0, 1);
+    expect(faceRegionsOfOuterBounds([repeated, apart])).toEqual([{ polygon: repeated, innerBounds: [] }, { polygon: apart, innerBounds: [] }]);
+    // 0.5 micrometre square in metres: an area of 2.5e-13, far below any absolute cut-off, beside a 10 m loop.
+    const tiny: Vec3[] = [[20, 0, 0], [20.0000005, 0, 0], [20.0000005, 0.0000005, 0], [20, 0.0000005, 0]];
+    expect(faceRegionsOfOuterBounds([square(0, 0, 10), tiny])).toEqual([{ polygon: square(0, 0, 10), innerBounds: [] }, { polygon: tiny, innerBounds: [] }]);
+  });
+
   it('reads loops in different planes as no regions of one face', () => {
     const wall: Vec3[] = [[0, 0, 0], [10, 0, 0], [10, 0, 10], [0, 0, 10]];
     const floorPatch: Vec3[] = [[4, 0, 4], [6, 0, 4], [6, 2, 4], [4, 2, 4]]; // projects inside the wall loop but lies in another plane

@@ -98,8 +98,12 @@ const area = (poly: Flat): number => {
  * (or the largest has none), which no planar face does, so the caller keeps its single-polygon reading.
  */
 export function faceRegionsOfOuterBounds(allRings: readonly Vec3[][]): FaceRegion[] | null {
-  // A loop with no area (collinear points) bounds nothing and is no region.
-  const rings = allRings.filter((ring) => ringArea(ring) > 1e-12);
+  // A loop with no area (collinear points) bounds nothing; judged against its own extent, so a tiny loop is still a loop.
+  const rings = allRings.filter((ring) => {
+    const lo = [0, 1, 2].map((k) => Math.min(...ring.map((p) => p[k])));
+    const hi = [0, 1, 2].map((k) => Math.max(...ring.map((p) => p[k])));
+    return ringArea(ring) > 1e-9 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) ** 2;
+  });
   if (rings.length === 0) return null;
   if (rings.length < 2) return rings.map((polygon) => ({ polygon, innerBounds: [] }));
   const reference = rings.reduce((best, ring) => (ringArea(ring) > ringArea(best) ? ring : best), rings[0]);
@@ -107,7 +111,8 @@ export function faceRegionsOfOuterBounds(allRings: readonly Vec3[][]): FaceRegio
   for (let i = 1; i + 1 < reference.length && !normal; i++) {
     normal = normalize(cross(sub(reference[i], reference[0]), sub(reference[i + 1], reference[0])));
   }
-  const x = normal && normalize(sub(reference[1], reference[0]));
+  // The x axis runs to the first vertex that differs from the origin (a repeated first vertex gives a zero edge).
+  const x = normal && normalize(sub(reference.find((p) => p[0] !== reference[0][0] || p[1] !== reference[0][1] || p[2] !== reference[0][2]) ?? reference[0], reference[0]));
   if (!normal || !x) return null;
   // Every loop must lie in the plane of the reference loop; a loop in another plane would be projected onto it wrongly.
   const extent = Math.max(...reference.map((p) => Math.hypot(...sub(p, reference[0]))), 1e-9);

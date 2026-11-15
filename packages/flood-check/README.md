@@ -396,7 +396,7 @@ open-ended class and watercourses):
 | `above-mapped-class-range` | every sample has `z > Ti + Ui + m + a` (`a`: the height-reference allowance), and no condition below withholds it |
 | `within-class-range` | otherwise: the class ranges cannot decide it |
 | `no-runoff-mapped` | every ground sample is transparent, and no condition below withholds it. **Not "safe"**: the publisher states areas shown unaffected may still be affected |
-| `unclassified` | `map-edge-blend`, `outside-raster`, `outside-coverage`, `layer-not-confirmed`, `no-ground-sample`, `excluded-area`, `no-terrain`, or a withheld `no-runoff-mapped`: `anchor-moved`, `hull-footprint`, `courtyard-ring`, `partial-footprint`, `height-reference-unconfirmed`, `level-upper-estimate`, `margin-not-sized`, `other-building`, `other-buildings-unknown` |
+| `unclassified` | `map-edge-blend`, `outside-raster`, `outside-coverage`, `layer-not-confirmed`, `no-ground-sample`, `excluded-area`, `no-terrain`, or a withheld `no-runoff-mapped`: `anchor-moved`, `hull-footprint`, `courtyard-ring`, `partial-footprint`, `height-reference-unconfirmed`, `level-upper-estimate`, `margin-not-sized`, `other-building`, `other-buildings-unknown`, `position-uncertain` |
 
 `above-mapped-class-range` states only that: the element level is above the
 range of every class the map shows next to it, with the margin to spare. It
@@ -415,6 +415,7 @@ and `open-ended-class` are never withheld (they are the conservative side);
 | --- | --- | --- |
 | terrain source states no vertical accuracy | `within-class-range` | `unclassified` (`margin-not-sized`) |
 | level is an upper estimate | `within-class-range` | `unclassified` (`level-upper-estimate`) |
+| the position is uncertain (`positionIsUncertain`: read from part of a body, or from a clipped body's outer operand) | `within-class-range` | `unclassified` (`position-uncertain`) |
 | a ground sample is an antialiased edge pixel | `within-class-range` | `unclassified` (`map-edge-blend`) |
 | a ground sample is off the raster | `within-class-range` | `unclassified` (`outside-raster`) |
 | a ground sample is outside (or too near) the coverage perimeter | `within-class-range` | `unclassified` (`outside-coverage`) |
@@ -422,7 +423,7 @@ and `open-ended-class` are never withheld (they are the conservative side);
 | the element was moved more than `anchorTolerance` (1 m) to reach the outline | `within-class-range` | `unclassified` (`anchor-moved`) |
 | the footprint fills courtyards (`external-wall-hull`, `candidate-hull`, `slab-outline-voids-filled`) or reaches beyond the building's external walls (`oversized`: a podium or forecourt slab) | `within-class-range` | `unclassified` (`hull-footprint`) |
 | the footprint is partial: a footprint source tried could not be read (a ground-storey floor slab's outline, an external wall's placement or axis), even when a fallback supplied the outline, or an external wall or a façade element stands more than 1 m outside it, or (hand-built facts) the footprint has no rings, so an element in the missing area reads as outside and is sampled inside the building | `within-class-range` | `unclassified` (`partial-footprint`) |
-| the anchor was taken on, or the element's nearest footprint boundary is, a ring whose whole boundary lies inside the union of the other rings (a courtyard drawn as its own ring, for example in a given footprint): a point inside any ring counts as inside, so the courtyard is filled and its ground is not sampled | `within-class-range` | `unclassified` (`courtyard-ring`) |
+| the anchor was taken on, or the element's nearest footprint boundary is, a courtyard ring (a given footprint's ring whose whole boundary lies inside the union of the others): the courtyard is open ground and is sampled, so a mapped class there flags the element; when it shows none the ground in front may still be a narrow light shaft or a ring the caller meant otherwise | `within-class-range` | `unclassified` (`courtyard-ring`) |
 | height reference unconfirmed (see below) | `within-class-range` | `unclassified` (`height-reference-unconfirmed`) |
 | no cell of the raster shows a mapped class and the layer is not confirmed to render (no positive confirmation fetched within 5 minutes of the raster) | (no class to compare) | `unclassified` (`layer-not-confirmed`) |
 | a classified sample has no terrain height | `within-class-range` | (no classified sample) |

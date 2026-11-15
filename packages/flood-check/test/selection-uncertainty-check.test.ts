@@ -27,7 +27,9 @@ describe('the courtyard guard', () => {
     checkFloodExposure(facts, raster, flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
     rings.push(sq(2, 2, 28, 28)); // the courtyard, added in place
     const r = checkFloodExposure(facts, raster, flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
-    expect(r.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'courtyard-ring' });
+    // The courtyard is recognised, so its ground (the deep class) is sampled: exposed. Unrecognised, the door would be anchored
+    // on the outer façade 1+ m away (anchor-moved). Before the automated review of 0b30b84 a courtyard was filled: courtyard-ring.
+    expect(r.results[0].outcome).toBe('exposed');
   });
 
   it('recognises a courtyard ring that two overlapping rings cover only together', () => {
@@ -37,7 +39,9 @@ describe('the courtyard guard', () => {
     const facts = boxFacts([door], { footprint: { rings, source: 'given', fromElements: [] } });
     const raster = syntheticRaster(E0 - 10, N0 - 10, 60, 60, 0.5, (p) => (inBox(p, 2, 1, 8, 9) ? deep : CELL_NO_RUNOFF));
     const r = checkFloodExposure(facts, raster, flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
-    expect(r.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'courtyard-ring' });
+    // The courtyard is recognised, so its ground (the deep class) is sampled: exposed. Unrecognised, the door would be anchored
+    // on the outer façade 1+ m away (anchor-moved). Before the automated review of 0b30b84 a courtyard was filled: courtyard-ring.
+    expect(r.results[0].outcome).toBe('exposed');
   });
 });
 

@@ -35,23 +35,28 @@ describe('a given footprint with a courtyard ring', () => {
     const inCourt = (p: MapPoint) => p.x > E0 + wing && p.x < E0 + 30 - wing && p.y > N0 + wing && p.y < N0 + 30 - wing;
     const inOuter = (p: MapPoint) => p.x >= E0 && p.x <= E0 + 30 && p.y >= N0 && p.y <= N0 + 30;
     it(`${wing} m wings: the courtyard door is never reassuring, and stays exposed by a deep class on its sampled side`, () => {
-      for (const paint of [(p: MapPoint) => (inCourt(p) ? deep : CELL_NO_RUNOFF), () => CELL_NO_RUNOFF]) {
-        const door = run(wing, 'given', paint).results[0];
-        expect(door.outcome).toBe('unclassified');
-        expect(['courtyard-ring', 'no-ground-sample']).toContain(door.unclassifiedReason);
-      }
+      // A courtyard is open ground (since the automated review of 0b30b84): a deep class in it is sampled, so the door is
+      // exposed; with the courtyard transparent the courtyard guard still withholds.
+      expect(run(wing, 'given', (p: MapPoint) => (inCourt(p) ? deep : CELL_NO_RUNOFF)).results[0].outcome).toBe('exposed');
+      const clear = run(wing, 'given', () => CELL_NO_RUNOFF).results[0];
+      expect(clear.outcome).toBe('unclassified');
+      expect(['courtyard-ring', 'no-ground-sample']).toContain(clear.unclassifiedReason);
       const outside = run(wing, 'given', (p) => (inOuter(p) ? CELL_NO_RUNOFF : deep)).results[0];
       // The thin wing's 3 m ring reaches the street; 10 m wings leave no sample at all.
       expect(outside.outcome).toBe(wing === 2 ? 'exposed' : 'unclassified');
     });
   }
 
-  it('the thin wing, deep class in the courtyard only: withheld as courtyard-ring with the reason stated', () => {
+  it('the thin wing, deep class in the courtyard only: the courtyard is sampled, so the door is exposed; transparent, it is withheld with the reason stated', () => {
     const r = run(2, 'given', (p) => (p.x > E0 + 2 && p.x < E0 + 28 && p.y > N0 + 2 && p.y < N0 + 28 ? deep : CELL_NO_RUNOFF));
-    expect(r.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'courtyard-ring' });
-    expect(r.results[0].favourableWithheldBecause.join()).toMatch(/ring lying inside another ring \(a courtyard\)/);
-    // The street door faces the outer ring: unaffected.
-    expect(r.results[1].outcome).toBe('no-runoff-mapped');
+    expect(r.results[0].outcome).toBe('exposed');
+    const clear = run(2, 'given', () => CELL_NO_RUNOFF).results[0];
+    expect(clear).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'courtyard-ring' });
+    expect(clear.favourableWithheldBecause.join()).toMatch(/ring lying inside another ring \(a courtyard\)/);
+    // The street door's 2-3 m rings cross the 2 m wing into the courtyard, which is now sampled as open ground: exposed. Samples
+    // across a wing can only add readings, never make an outcome more favourable; with the courtyard clear it is no runoff.
+    expect(r.results[1].outcome).toBe('exposed');
+    expect(run(2, 'given', () => CELL_NO_RUNOFF).results[1].outcome).toBe('no-runoff-mapped');
   });
 
   it('as before for a slab outline whose void was filled: the courtyard door is withheld (anchor moved, hull footprint)', () => {

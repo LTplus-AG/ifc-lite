@@ -19,7 +19,7 @@
  * would start reading flow paths that do not touch the façade.
  */
 
-import { closestBoundaryPoint, closestOutlinePoint, nestedRings, outlineDistance, signedDistance } from '../geom.js';
+import { closestBoundaryPoint, closestOutlinePoint, footprintCourtyards, outlineDistance, signedDistance } from '../geom.js';
 import type { CandidateFact, ModelFacts } from '../model/facts.js';
 import {
   CELL_NO_RUNOFF,
@@ -59,6 +59,7 @@ export function resolveSampling(): ResolvedSampling {
  */
 export function outlineTerrainPoints(footprint: ModelFacts['footprint'], s: ResolvedSampling): MapPoint[] {
   const rings = footprint.rings;
+  const courtyards = footprintCourtyards(footprint.source, rings);
   let perimeter = 0;
   for (const ring of rings) {
     for (let i = 0; i < ring.length; i++) {
@@ -83,7 +84,7 @@ export function outlineTerrainPoints(footprint: ModelFacts['footprint'], s: Reso
         const m = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
         for (const sign of [1, -1]) {
           const p = { x: m.x + sign * nx * s.outlineOffset, y: m.y + sign * ny * s.outlineOffset };
-          if (signedDistance(p, rings) >= s.minOutsideDistance) {
+          if (signedDistance(p, rings, courtyards) >= s.minOutsideDistance) {
             out.push(p);
             break;
           }
@@ -111,7 +112,8 @@ export interface SamplePlan {
 export function planSamples(candidate: CandidateFact, footprint: ModelFacts['footprint'], s: ResolvedSampling): SamplePlan {
   const rings = footprint.rings;
   // Computed from the rings as they are now: facts are plain data and may change between checks.
-  const nested = nestedRings(rings);
+  // A courtyard (a given footprint's inner ring) is open ground for the anchor, the samples and the guard alike.
+  const nested = footprintCourtyards(footprint.source, rings);
   const nearestRing = closestBoundaryPoint(candidate.position, rings)?.ring;
   let anchorRing = nearestRing;
   // One outline for anchor, guard and façade test (geom.ts): a seam, or a gap between slabs too narrow to be open ground,
@@ -135,7 +137,7 @@ export function planSamples(candidate: CandidateFact, footprint: ModelFacts['foo
     for (let k = 0; k < s.directions; k++) {
       const a = (2 * Math.PI * k) / s.directions;
       const p = { x: anchor.x + ring * Math.cos(a), y: anchor.y + ring * Math.sin(a) };
-      if (signedDistance(p, rings) >= s.minOutsideDistance) points.push({ point: p, ring });
+      if (signedDistance(p, rings, nested) >= s.minOutsideDistance) points.push({ point: p, ring });
       else rejected++;
     }
   }

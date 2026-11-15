@@ -97,14 +97,18 @@ describe('N3: the courtyard guard tests the ring the anchor was taken on; a slab
   const B = [P(10, 0), P(20, 0), P(20, 12), P(10, 12)];
   const C = [P(10.15, 1), P(14, 1), P(14, 6), P(10.15, 6)];
   const inC = (p: MapPoint) => p.x > E0 + 10.15 && p.x < E0 + 14 && p.y > N0 + 1 && p.y < N0 + 6;
-  const run = (at: MapPoint) =>
-    checkFloodExposure(boxFacts([candidate({ position: at, level: 500 })], { footprint: footprint([A, B, C]) }), ras((p) => (inC(p) ? deep : CELL_NO_RUNOFF)), flatTerrain(499.95), opts).results[0];
+  // A courtyard exists only in a given footprint (slab rings are material), and is open ground (automated review of 0b30b84):
+  // the deep class in it is sampled. Transparent, the courtyard guard withholds.
+  const run = (at: MapPoint, paint: (p: MapPoint) => number = (p) => (inC(p) ? deep : CELL_NO_RUNOFF)) =>
+    checkFloodExposure(boxFacts([candidate({ position: at, level: 500 })], { footprint: footprint([A, B, C], 'given') }), ras(paint), flatTerrain(499.95), opts).results[0];
 
-  it('repro C1: a door on the seam 0.15 m from the courtyard is anchored on the courtyard and withheld (courtyard-ring)', () => {
-    expect(run(P(10, 1.5))).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'courtyard-ring' });
+  it('repro C1: a door on the seam 0.15 m from the courtyard is anchored on the courtyard: exposed by its deep class, withheld when it is clear', () => {
+    expect(run(P(10, 1.5))).toMatchObject({ outcome: 'exposed', anchorOffset: expect.closeTo(0.15, 3) });
+    expect(run(P(10, 1.5), () => CELL_NO_RUNOFF)).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'courtyard-ring' });
   });
   it('control: the door on the courtyard edge itself', () => {
-    expect(run(P(10.15, 1.5))).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'courtyard-ring' });
+    expect(run(P(10.15, 1.5)).outcome).toBe('exposed');
+    expect(run(P(10.15, 1.5), () => CELL_NO_RUNOFF)).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'courtyard-ring' });
   });
 
   it('a slab whose vertices lie in two others but whose edge crosses the notch between them keeps its exposure flag', () => {
@@ -232,5 +236,23 @@ describe('CodeRabbit: a sample on another building\'s boundary is inside it', ()
       otherBuildings: { ...NO_OTHER_BUILDINGS, rings: [shed] },
     });
     expect(r.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'other-building' });
+  });
+});
+
+describe('the automated review of 0b30b84, check side', () => {
+  it('an uncertain position (positionIsUncertain) never gets a favourable outcome, even with an exact level', () => {
+    const r = checkFloodExposure(boxFacts([candidate({ position: P(10, 0), level: 500, positionIsUncertain: true })]), ras(() => CELL_NO_RUNOFF), flatTerrain(499.95), opts);
+    expect(r.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'position-uncertain' });
+    const control = checkFloodExposure(boxFacts([candidate({ position: P(10, 0), level: 500 })]), ras(() => CELL_NO_RUNOFF), flatTerrain(499.95), opts);
+    expect(control.results[0].outcome).toBe('no-runoff-mapped');
+  });
+
+  it('a given courtyard is open ground for sampling too: a deep class in it makes the courtyard door exposed', () => {
+    const outer = [P(0, 0), P(30, 0), P(30, 30), P(0, 30)];
+    const court = [P(5, 5), P(25, 5), P(25, 25), P(5, 25)];
+    const inCourt = (p: MapPoint) => p.x > E0 + 5 && p.x < E0 + 25 && p.y > N0 + 5 && p.y < N0 + 25;
+    const facts = boxFacts([candidate({ position: P(15, 5), level: 500 })], { footprint: footprint([outer, court], 'given') });
+    const r = checkFloodExposure(facts, syntheticRaster(E0 - 10, N0 - 10, 100, 100, 0.5, (p) => (inCourt(p) ? deep : CELL_NO_RUNOFF)), flatTerrain(499.95), opts);
+    expect(r.results[0].outcome).toBe('exposed');
   });
 });

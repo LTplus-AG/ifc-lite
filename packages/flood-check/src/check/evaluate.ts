@@ -48,6 +48,7 @@
  *   a sample lies inside another building       -> within-class-range      -> unclassified (other-building)
  *   a transparent sample, and no complete       -> within-class-range      -> unclassified (other-buildings-unknown)
  *     source of other buildings' footprints
+ *   the position is uncertain                   -> within-class-range      -> unclassified (position-uncertain)
  *
  * "Layer unconfirmed": no rendering confirmation, a negative one, or a
  * positive one whose reference was fetched more than 5 minutes apart from the
@@ -318,6 +319,12 @@ function conditionsWithholding(
       text:
         `${byReading['no-runoff']} transparent ground sample(s) may lie inside another building (an attached garage, a neighbour not in the model), ` +
         'which the hazard model raised; no complete source of other buildings\' footprints was supplied, so transparency there does not show open ground',
+    });
+  }
+  if (candidate.positionIsUncertain) {
+    out.push({
+      reason: 'position-uncertain',
+      text: 'the element\'s position is not proven (read from part of a body, or from a clipped body\'s outer operand), so the ground sampled may not be the ground in front of it',
     });
   }
   return out;

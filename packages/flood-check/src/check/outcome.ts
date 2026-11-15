@@ -59,6 +59,8 @@ export type UnclassifiedReason =
   | 'other-building'
   /** Transparent samples, but no complete source of other buildings' footprints was supplied: they may lie inside one. */
   | 'other-buildings-unknown'
+  /** The element's position is not proven (`CandidateFact.positionIsUncertain`), so the ground sampled may not be in front of it. */
+  | 'position-uncertain'
   /** Every sample is transparent, but the model's height reference (and so its georeference) could not be confirmed. */
   | 'height-reference-unconfirmed'
   /** Every sample is transparent, but the element's level is only an upper estimate. */

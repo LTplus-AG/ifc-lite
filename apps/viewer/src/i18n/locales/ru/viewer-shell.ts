@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const viewerShellRu = {
+  "viewerShell.localIfcMemory.title": "Для этой модели может не хватить доступной памяти",
+  "viewerShell.localIfcMemory.continue": "Продолжить загрузку",
+  "viewerShell.localIfcMemory.description": "Для этой модели может потребоваться около {estimated} ГиБ памяти. Браузер сообщает не более 8 ГиБ, поэтому фактически доступной памяти может быть больше. Продолжение загрузки на устройстве с недостаточным объёмом памяти может привести к сбою этой вкладки. Отмените загрузку либо используйте модель меньшего размера или нативный CLI/сервер.",
+
   "viewerShell.chunkError.loadFailed": "{label} не удалось загрузить",
   "viewerShell.chunkError.crashed": "{label} больше не работает",
   "viewerShell.chunkError.loadFailedDetail": "Обычно это означает, что приложение было обновлено, пока ваша вкладка была открыта.",

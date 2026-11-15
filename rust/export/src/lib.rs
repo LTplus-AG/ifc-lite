@@ -12,9 +12,9 @@
 mod test_support;
 
 mod adjacency;
-// CityJSON 2.0 writer: behind the default-on `cityjson` feature, which the
-// default engine wasm (built without default features) does not enable.
-#[cfg(feature = "cityjson")]
+// CityJSON 2.0 writer: compiled only with the default-on `cityjson` feature
+// (the module gates itself with an inner `#![cfg]`), which the default engine
+// wasm, built without default features, does not enable.
 mod cityjson;
 mod collada;
 mod collada_document;

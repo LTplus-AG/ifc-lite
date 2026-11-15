@@ -14,6 +14,12 @@
 //! `IfcMapConversion` resolves exactly (see [`georef`]), local IFC world
 //! metres otherwise, with a warning and no `referenceSystem`. Vertices are
 //! integers on a `scale` grid (default 1 mm), deduplicated on that grid.
+//!
+//! The whole module is compiled only with the `cityjson` feature. The gate is
+//! this inner attribute rather than a `cfg` on `mod cityjson;` in `lib.rs`, so
+//! tooling that follows plain `mod` declarations (the revert oracle) still
+//! reaches the tests below; for the compiler the two are the same.
+#![cfg(feature = "cityjson")]
 
 mod attributes;
 mod footprint;

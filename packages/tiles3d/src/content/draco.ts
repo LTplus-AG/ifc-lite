@@ -2,15 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { tooLarge } from '../limits.js';
+
 /**
  * KHR_draco_mesh_compression decoding via Google's `draco3d` (Apache-2.0)
- * decoder build (about 59 KB of JS plus a 286 KB wasm). It is imported lazily
- * on the first Draco primitive, so a caller that never meets Draco content
- * never loads it.
+ * decoder build (about 59 KB of JS plus a 286 KB wasm). Only the decoder
+ * module (`draco3d/draco_decoder_nodejs.js`, an emscripten build that runs in
+ * Node and in browsers) is imported, never the package entry that also pulls
+ * the 49 KB encoder. It is imported lazily on the first Draco primitive, so a
+ * caller that never meets Draco content never loads it.
  *
- * Node resolves the wasm next to the package. In a browser bundle, pass
- * `dracoModuleOptions` (for example `{ locateFile: () => wasmUrl }` or
- * `{ wasmBinary }`) or a custom `loadDraco` to the reader.
+ * Node resolves the wasm next to the decoder. A browser bundle must say where
+ * the wasm is: this package exports it as `@ifc-lite/tiles3d/draco_decoder.wasm`
+ * (see the README for the two-line Vite usage), passed through
+ * `dracoModuleOptions: { locateFile: () => url }`, or `{ wasmBinary }`.
  */
 
 /** The subset of the emscripten decoder module this reader calls. */
@@ -46,30 +51,49 @@ interface DracoDecoder {
 
 export type DracoLoader = () => Promise<DracoDecoderModule>;
 
-const NO_OPTIONS: Record<string, unknown> = {};
-const modules = new WeakMap<object, Promise<DracoDecoderModule>>();
+type DecoderFactory = (options: Record<string, unknown>) => Promise<unknown>;
+
+let shared: { promise: Promise<DracoDecoderModule>; failed: boolean } | undefined;
 
 /**
- * Default loader: lazily import `draco3d` and instantiate its decoder once per
- * `moduleOptions` object (emscripten options such as `locateFile` or `wasmBinary`).
+ * Forget the shared decoder module, including a cached load failure, so the
+ * next Draco primitive loads it again (for example with different
+ * `dracoModuleOptions`, or after fixing a wasm URL).
  */
-export function defaultDracoLoader(moduleOptions: Record<string, unknown> = NO_OPTIONS): DracoLoader {
+export function resetDracoDecoder(): void {
+  shared = undefined;
+}
+
+/**
+ * Default loader: lazily import the `draco3d` decoder module and instantiate
+ * it once per process. Every query shares that one instance whatever options
+ * object it passes; the options of the first load apply until
+ * `resetDracoDecoder()`. A failed load is cached too, so a missing wasm is
+ * reported for each Draco tile without being fetched again for each one.
+ */
+export function defaultDracoLoader(moduleOptions: Record<string, unknown> = {}): DracoLoader {
   return () => {
-    let p = modules.get(moduleOptions);
-    if (!p) {
-      p = import('draco3d').then((m) => {
-        // CommonJS package: native ESM puts module.exports on `default`, bundlers may not.
-        type Api = { createDecoderModule(o: Record<string, unknown>): Promise<unknown> };
-        const ns = m as unknown as Api & { default?: Api };
-        const api = ns.default ?? ns;
-        return api.createDecoderModule(moduleOptions) as Promise<DracoDecoderModule>;
+    if (!shared) {
+      const promise = import('draco3d/draco_decoder_nodejs.js').then((m) => {
+        // CommonJS module: native ESM puts module.exports on `default`, bundlers may not.
+        const ns = m as unknown as { default?: unknown; DracoDecoderModule?: unknown };
+        const factory = typeof ns.default === 'function' ? ns.default : ns.DracoDecoderModule;
+        if (typeof factory !== 'function') throw new Error('draco3d decoder module has no factory export');
+        return (factory as DecoderFactory)({ ...moduleOptions }) as Promise<DracoDecoderModule>;
       });
-      // A failed load must not poison later attempts.
-      p.catch(() => modules.delete(moduleOptions));
-      modules.set(moduleOptions, p);
+      const entry = { promise, failed: false };
+      promise.catch(() => { entry.failed = true; });
+      shared = entry;
     }
-    return p;
+    return shared.promise.catch((err: unknown) => {
+      throw new Error(`Draco decoder failed to load (cached until resetDracoDecoder()): ${err instanceof Error ? err.message : String(err)}`);
+    });
   };
+}
+
+/** True when the shared default decoder load has failed and is cached as failed. */
+export function dracoDecoderLoadFailed(): boolean {
+  return shared?.failed === true;
 }
 
 export interface DecodedDraco {
@@ -79,11 +103,20 @@ export interface DecodedDraco {
   attributes: Map<string, { values: Float32Array; size: number }>;
 }
 
-/** Decode one Draco-compressed primitive; `attributeIds` maps glTF semantics to Draco unique ids. */
+/**
+ * Decode one Draco-compressed primitive; `attributeIds` maps glTF semantics to
+ * Draco unique ids. The decoded point and face counts are checked against
+ * `maxPoints` / `maxIndices` (the glTF-declared counts, already within the
+ * caller's budget) before any output is allocated. Draco's own allocation
+ * during `DecodeBufferToMesh` happens inside the wasm heap, which draco3d caps
+ * at 2 GiB; a failure there is a decode error, not a process crash.
+ */
 export function decodeDracoPrimitive(
   M: DracoDecoderModule,
   bytes: Uint8Array,
   attributeIds: Record<string, number>,
+  maxPoints: number,
+  maxIndices: number,
 ): DecodedDraco {
   const decoder = new M.Decoder();
   const buffer = new M.DecoderBuffer();
@@ -95,8 +128,11 @@ export function decodeDracoPrimitive(
     if (!status.ok()) throw new Error(`Draco decode failed: ${status.error_msg()}`);
     const faces = mesh.num_faces();
     const pointCount = mesh.num_points();
-
     const indexCount = faces * 3;
+    if (pointCount > maxPoints || indexCount > maxIndices) {
+      throw tooLarge(`Draco payload decoded to ${pointCount} points / ${indexCount} indices, more than the ${maxPoints} / ${maxIndices} the glTF accessors declare or the limit allows`);
+    }
+
     const ip = M._malloc(indexCount * 4);
     let indices: Uint32Array;
     try {

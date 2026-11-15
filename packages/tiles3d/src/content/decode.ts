@@ -5,6 +5,7 @@
 /** Tile content sniffing and decoding into feature meshes. */
 
 import { magicAt } from '../bytes.js';
+import type { ContentBudget } from '../limits.js';
 import type { Mat4 } from '../matrix.js';
 import type { TileProvenance } from '../traverse.js';
 import { parseB3dm } from './b3dm.js';
@@ -50,7 +51,6 @@ const UNSUPPORTED: Partial<Record<ContentKind, string>> = {
   pnts: 'Point Cloud (pnts) content is not supported',
   cmpt: 'Composite (cmpt) content is not supported',
   subtree: 'implicit tiling subtree content is not supported',
-  tileset: 'external tileset without a .json URI is not followed',
   unknown: 'unrecognised tile content',
 };
 
@@ -59,8 +59,11 @@ export async function decodeTileContent(
   tile: TileProvenance,
   tileTransform: Mat4,
   loadDraco: DracoLoader,
+  budget: ContentBudget,
 ): Promise<DecodedContent> {
   const kind = detectContentKind(bytes);
+  // External tilesets are detected by content too, but traversal follows them; reaching here is a caller bug.
+  if (kind === 'tileset') throw new Error('external tileset content must be traversed, not decoded');
   const warnings: string[] = [];
   const warn = (m: string): void => {
     if (!warnings.includes(m)) warnings.push(m);
@@ -72,11 +75,11 @@ export async function decodeTileContent(
     const b3dm = parseB3dm(bytes);
     warnings.push(...b3dm.warnings);
     const features = await buildFeatureMeshes(parseGlb(b3dm.glb), {
-      tile, tileTransform, rtcCenter: b3dm.rtcCenter, attributes: b3dm.attributes, loadDraco, warn,
+      tile, tileTransform, rtcCenter: b3dm.rtcCenter, attributes: b3dm.row, loadDraco, warn, budget,
     });
     return { kind, features, batchLength: b3dm.batchLength, attributeNames: b3dm.attributeNames, rtcCenter: b3dm.rtcCenter, warnings };
   }
   const gltf = kind === 'glb' ? parseGlb(bytes) : parseGltfJson(bytes);
-  const features = await buildFeatureMeshes(gltf, { tile, tileTransform, loadDraco, warn });
+  const features = await buildFeatureMeshes(gltf, { tile, tileTransform, loadDraco, warn, budget });
   return { kind, features, warnings };
 }

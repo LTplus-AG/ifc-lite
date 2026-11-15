@@ -8,7 +8,8 @@
  * embedded binary glTF. Layout per 3D Tiles 1.0 TileFormats/Batched3DModel.
  */
 
-import { dataView, magicAt, parseJsonChunk } from '../bytes.js';
+import { dataView, isCount, magicAt, own, parseJsonChunk } from '../bytes.js';
+import { invalid, tooLarge } from '../limits.js';
 
 export interface B3dm {
   version: number;
@@ -16,8 +17,16 @@ export interface B3dm {
   /** ECEF (or root-frame) offset all vertices are relative to, after the y-up to z-up step. */
   rtcCenter?: [number, number, number];
   featureTable: Record<string, unknown>;
-  /** One attribute record per batch id. */
-  attributes: Array<Record<string, unknown>>;
+  /** Batch table columns by name, each read for at most `batchLength` rows. */
+  columns: Map<string, unknown[]>;
+  /**
+   * The batch table row of one batch id, built on demand so that a large
+   * declared BATCH_LENGTH allocates nothing; undefined outside [0, batchLength).
+   * Column names from the file become own data properties, so a column named
+   * `__proto__`, `constructor` or `prototype` is kept as data and never touches
+   * a prototype.
+   */
+  row(batchId: number): Record<string, unknown> | undefined;
   /** Batch table property names in file order. */
   attributeNames: string[];
   /** Embedded binary glTF. */
@@ -59,13 +68,14 @@ function isBinaryRef(v: unknown): v is BinaryRef {
   return typeof v === 'object' && v !== null && !Array.isArray(v) && typeof (v as BinaryRef).byteOffset === 'number';
 }
 
-/** Read `count` elements of a binary table property. */
+/** Read `count` elements of a binary table property; the byte range is checked before anything is allocated. */
 function readBinary(body: Uint8Array, ref: BinaryRef, count: number, defaultType: string): Array<number | number[]> {
-  const size = COMPONENT_SIZE[ref.componentType];
-  const n = TYPE_COUNT[ref.type ?? defaultType];
-  if (!size || !n) throw new Error(`unsupported binary property ${ref.componentType}/${ref.type}`);
-  if (ref.byteOffset < 0 || ref.byteOffset + size * n * count > body.byteLength) {
-    throw new Error('binary property extends past its table body');
+  const size = own(COMPONENT_SIZE, ref.componentType);
+  const n = own(TYPE_COUNT, ref.type ?? defaultType);
+  if (!size || !n) throw invalid(`unsupported binary property ${String(ref.componentType)}/${String(ref.type)}`);
+  if (!isCount(ref.byteOffset)) throw invalid(`binary property byteOffset ${ref.byteOffset} is not a non-negative integer`);
+  if (ref.byteOffset + size * n * count > body.byteLength) {
+    throw invalid('binary property extends past its table body');
   }
   const view = dataView(body);
   const out: Array<number | number[]> = [];
@@ -82,7 +92,7 @@ export function isB3dm(bytes: Uint8Array): boolean {
 }
 
 export function parseB3dm(bytes: Uint8Array): B3dm {
-  if (bytes.byteLength < HEADER || !isB3dm(bytes)) throw new Error('not a b3dm tile');
+  if (bytes.byteLength < HEADER || !isB3dm(bytes)) throw invalid('not a b3dm tile');
   const view = dataView(bytes);
   const version = view.getUint32(4, true);
   const byteLength = view.getUint32(8, true);
@@ -94,7 +104,7 @@ export function parseB3dm(bytes: Uint8Array): B3dm {
   let legacyBatchLength: number | undefined;
   const warnings: string[] = [];
   if (version !== 1) warnings.push(`b3dm version ${version} (expected 1)`);
-  if (byteLength > bytes.byteLength) throw new Error(`b3dm byteLength ${byteLength} exceeds the ${bytes.byteLength} bytes received`);
+  if (byteLength > bytes.byteLength) throw invalid(`b3dm byteLength ${byteLength} exceeds the ${bytes.byteLength} bytes received`);
 
   if (btJsonLen >= LEGACY_THRESHOLD) {
     // Legacy 20-byte header: [magic, version, byteLength, batchLength, batchTableByteLength].
@@ -118,7 +128,7 @@ export function parseB3dm(bytes: Uint8Array): B3dm {
 
   const end = Math.min(byteLength || bytes.byteLength, bytes.byteLength);
   const take = (len: number): Uint8Array => {
-    if (offset + len > end) throw new Error('b3dm section extends past the tile');
+    if (offset + len > end) throw invalid('b3dm section extends past the tile');
     const s = bytes.subarray(offset, offset + len);
     offset += len;
     return s;
@@ -129,11 +139,19 @@ export function parseB3dm(bytes: Uint8Array): B3dm {
   const btBody = take(btBinLen);
   const glb = bytes.subarray(offset, end);
 
-  const featureTable = (ftJsonLen > 0 ? parseJsonChunk(ftJsonBytes, 0, ftJsonLen) : undefined) as Record<string, unknown> | undefined ?? {};
+  const featureTable = asObject(ftJsonLen > 0 ? parseJsonChunk(ftJsonBytes, 0, ftJsonLen) : undefined, 'feature table');
   let batchLength = legacyBatchLength ?? 0;
   const bl = featureTable.BATCH_LENGTH;
   if (typeof bl === 'number') batchLength = bl;
   else if (isBinaryRef(bl)) batchLength = readBinary(ftBody, { byteOffset: bl.byteOffset, componentType: 'UNSIGNED_INT', type: 'SCALAR' }, 1, 'SCALAR')[0] as number;
+  else if (bl !== undefined) throw invalid('BATCH_LENGTH is neither a number nor a binary reference');
+  if (!isCount(batchLength)) throw invalid(`BATCH_LENGTH ${batchLength} is not a non-negative integer`);
+  // Every feature needs at least one byte somewhere in the tile (a batch table
+  // entry or a vertex), so a BATCH_LENGTH above the tile's byte length cannot
+  // describe real features; refusing it keeps a 1 KB tile from declaring 2^32 rows.
+  if (batchLength > bytes.byteLength) {
+    throw tooLarge(`BATCH_LENGTH ${batchLength} exceeds what a ${bytes.byteLength}-byte tile can hold`);
+  }
 
   let rtcCenter: [number, number, number] | undefined;
   const rtc = featureTable.RTC_CENTER;
@@ -143,12 +161,14 @@ export function parseB3dm(bytes: Uint8Array): B3dm {
     rtcCenter = readBinary(ftBody, { byteOffset: rtc.byteOffset, componentType: 'FLOAT', type: 'VEC3' }, 1, 'VEC3')[0] as [number, number, number];
   }
 
-  const batchJson = (btJsonLen > 0 ? parseJsonChunk(btJsonBytes, 0, btJsonLen) : undefined) as Record<string, unknown> | undefined ?? {};
-  const attributes: Array<Record<string, unknown>> = Array.from({ length: batchLength }, () => ({}));
+  if (rtcCenter && !rtcCenter.every(Number.isFinite)) throw invalid('RTC_CENTER is not three finite numbers');
+
+  const batchJson = asObject(btJsonLen > 0 ? parseJsonChunk(btJsonBytes, 0, btJsonLen) : undefined, 'batch table');
+  const columns = new Map<string, unknown[]>();
   const attributeNames: string[] = [];
   for (const [name, value] of Object.entries(batchJson)) {
     if (name === 'extensions') {
-      for (const ext of Object.keys(value as object)) warnings.push(`batch table extension ${ext} not read`);
+      if (value && typeof value === 'object') for (const ext of Object.keys(value)) warnings.push(`batch table extension ${ext} not read`);
       continue;
     }
     if (name === 'extras') continue;
@@ -167,7 +187,21 @@ export function parseB3dm(bytes: Uint8Array): B3dm {
     }
     if (column.length !== batchLength) warnings.push(`batch table property ${name} has ${column.length} values for BATCH_LENGTH ${batchLength}`);
     attributeNames.push(name);
-    for (let i = 0; i < batchLength && i < column.length; i++) attributes[i][name] = column[i];
+    columns.set(name, column.length > batchLength ? column.slice(0, batchLength) : column);
   }
-  return { version, batchLength, rtcCenter, featureTable, attributes, attributeNames, glb, warnings };
+  const row = (batchId: number): Record<string, unknown> | undefined => {
+    if (!Number.isInteger(batchId) || batchId < 0 || batchId >= batchLength) return undefined;
+    const out: Record<string, unknown> = {};
+    for (const [name, column] of columns) {
+      if (batchId < column.length) Object.defineProperty(out, name, { value: column[batchId], enumerable: true, writable: true, configurable: true });
+    }
+    return out;
+  };
+  return { version, batchLength, rtcCenter, featureTable, columns, row, attributeNames, glb, warnings };
+}
+
+function asObject(v: unknown, what: string): Record<string, unknown> {
+  if (v === undefined) return {};
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) throw invalid(`${what} JSON is not an object`);
+  return v as Record<string, unknown>;
 }

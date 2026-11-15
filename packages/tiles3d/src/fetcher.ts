@@ -4,11 +4,23 @@
 
 /** Budgeted, cache-aware, abortable byte fetching shared by traversal and content loading. */
 
-/** Minimal response surface the reader needs; the global `fetch` satisfies it. */
+import type { UrlPolicy } from './url-policy.js';
+
+/**
+ * Minimal response surface the reader needs; the global `fetch` satisfies it.
+ * `body` is read as a stream and stopped at the remaining byte budget; a
+ * response without `body` is read whole with `arrayBuffer()`, so only a
+ * streaming body bounds the memory a single response can take.
+ */
 export interface FetchResponseLike {
   ok: boolean;
   status: number;
   arrayBuffer(): Promise<ArrayBuffer>;
+  body?: { getReader(): ReadableStreamDefaultReader<Uint8Array>; cancel?(reason?: unknown): Promise<void> } | null;
+  /** Used for `Content-Length`, which refuses an oversized response before its body is read. */
+  headers?: { get(name: string): string | null };
+  /** Final URL after redirects; re-checked against the URL policy when it differs from the requested one. */
+  url?: string;
 }
 
 export type FetchLike = (
@@ -28,12 +40,16 @@ export interface TilesCache {
 export interface FetchStats {
   /** Network requests issued (cache hits excluded). */
   requests: number;
-  /** Bytes received from the network (after transport decompression). */
+  /**
+   * Bytes received from the network, counted after transport decompression
+   * (what `fetch` hands over), so a gzip-encoded tileset counts at its
+   * decompressed size. Never exceeds `maxBytes`.
+   */
   bytes: number;
   cacheHits: number;
 }
 
-/** Thrown internally when the next request would exceed the budget. */
+/** Thrown internally when the next request, or the rest of a response, would exceed the budget. */
 export class BudgetExhaustedError extends Error {
   constructor(readonly reason: 'requests' | 'bytes') {
     super(`3D Tiles request budget exhausted (${reason})`);
@@ -65,6 +81,17 @@ export interface FetcherOptions {
   headers?: Record<string, string>;
 }
 
+function concat(chunks: Uint8Array[], total: number): Uint8Array {
+  if (chunks.length === 1) return chunks[0];
+  const out = new Uint8Array(total);
+  let o = 0;
+  for (const c of chunks) {
+    out.set(c, o);
+    o += c.byteLength;
+  }
+  return out;
+}
+
 export const DEFAULT_MAX_REQUESTS = 200;
 export const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -75,6 +102,10 @@ export class BudgetedFetcher {
   private readonly maxRequests: number;
   private readonly maxBytes: number;
   private readonly timeoutMs: number;
+  /** Set once a response was refused for bytes: no further request is issued. */
+  private bytesRefused = false;
+  /** URL policy applied to every requested URL and redirect target; set by the reader. */
+  policy?: UrlPolicy;
 
   constructor(private readonly opts: FetcherOptions) {
     const f = opts.fetch ?? (globalThis.fetch as unknown as FetchLike | undefined);
@@ -97,12 +128,13 @@ export class BudgetedFetcher {
   /** True when no further network request may be issued. */
   exhausted(): 'requests' | 'bytes' | undefined {
     if (this.stats.requests >= this.maxRequests) return 'requests';
-    if (this.stats.bytes >= this.maxBytes) return 'bytes';
+    if (this.bytesRefused || this.stats.bytes >= this.maxBytes) return 'bytes';
     return undefined;
   }
 
   async get(url: string): Promise<Uint8Array> {
     this.throwIfAborted();
+    this.policy?.check(url);
     const cached = await this.opts.cache?.get(url);
     if (cached) {
       this.stats.cacheHits++;
@@ -123,9 +155,12 @@ export class BudgetedFetcher {
     }, this.timeoutMs);
     try {
       const res = await this.fetchImpl(url, { signal: controller.signal, headers: this.opts.headers });
-      if (!res.ok) throw new HttpError(url, res.status);
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      this.stats.bytes += bytes.byteLength;
+      if (!res.ok) {
+        await res.body?.cancel?.().catch(() => undefined);
+        throw new HttpError(url, res.status);
+      }
+      if (res.url && res.url !== url) this.policy?.check(res.url);
+      const bytes = await this.readBody(res);
       await this.opts.cache?.set(url, bytes);
       return bytes;
     } catch (err) {
@@ -136,5 +171,42 @@ export class BudgetedFetcher {
       clearTimeout(timer);
       outer?.removeEventListener('abort', onAbort);
     }
+  }
+
+  private refuse(): never {
+    this.bytesRefused = true;
+    throw new BudgetExhaustedError('bytes');
+  }
+
+  /** Read a response body, stopping as soon as it would cross the remaining byte budget. */
+  private async readBody(res: FetchResponseLike): Promise<Uint8Array> {
+    const remaining = (): number => this.maxBytes - this.stats.bytes;
+    const declared = res.headers?.get('content-length');
+    // Content-Length is the encoded size; the decoded body is at least as large, so it can only refuse early, never admit.
+    if (declared && /^\d+$/.test(declared) && Number(declared) > remaining()) {
+      await res.body?.cancel?.().catch(() => undefined);
+      this.refuse();
+    }
+    if (!res.body || typeof res.body.getReader !== 'function') {
+      const whole = new Uint8Array(await res.arrayBuffer());
+      if (whole.byteLength > remaining()) this.refuse();
+      this.stats.bytes += whole.byteLength;
+      return whole;
+    }
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value.byteLength > remaining()) {
+        await reader.cancel().catch(() => undefined);
+        this.refuse();
+      }
+      this.stats.bytes += value.byteLength;
+      total += value.byteLength;
+      chunks.push(value);
+    }
+    return concat(chunks, total);
   }
 }

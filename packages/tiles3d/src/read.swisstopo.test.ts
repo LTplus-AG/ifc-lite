@@ -176,10 +176,11 @@ describe('budget, cache, abort and timeout', () => {
     expect(res.features).toEqual([]);
   });
 
-  it('stops on the byte budget after the response that crossed it', async () => {
+  it('refuses the response that would cross the byte budget and keeps the bytes count within it', async () => {
     const res = await readTilesetRegion({ url: SWISS_ROOT, region: INSIDE_LEAF, fetch: swissFixtureFetch(), maxBytes: 3000 });
     expect(res.truncation?.reason).toBe('bytes');
-    expect(res.stats.bytes).toBeGreaterThanOrEqual(3000);
+    expect(res.stats.bytes).toBeGreaterThan(0);
+    expect(res.stats.bytes).toBeLessThanOrEqual(3000);
   });
 
   it('serves tileset JSON and content from the cache without spending budget', async () => {
@@ -229,6 +230,17 @@ describe('swisstopo preset', () => {
     expect(res.attribution).toContain('swisstopo');
     expect(res.features.length).toBeGreaterThan(0);
     expect(res.features.every((f) => typeof f.attributes.EGID === 'number')).toBe(true);
+  });
+
+  it('warns per tile that lacks EGID or the height columns (#10404 review, item 10)', async () => {
+    const geneva = await readSwisstopoBuildings({ region: { west: 6.1435, east: 6.1450, south: 46.1986, north: 46.1992 }, fetch: swissFixtureFetch(), release: '20260520' });
+    const genevaTile = `${SWISS_BASE}20260520/11/83/393.b3dm`;
+    expect(geneva.features.length).toBeGreaterThan(0);
+    expect(geneva.issues.filter((i) => i.code === 'missing-attributes')).toEqual([
+      { url: genevaTile, severity: 'warning', code: 'missing-attributes', message: 'batch table has no EGID, GELAENDEPUNKT, DACH_MIN, DACH_MAX (building id / height columns absent in this tile)' },
+    ]);
+    const bern = await readSwisstopoBuildings({ region: INSIDE_LEAF, fetch: swissFixtureFetch(), release: '20260520' });
+    expect(bern.issues.filter((i) => i.code === 'missing-attributes')).toEqual([]);
   });
 
   it('validates the release string', async () => {

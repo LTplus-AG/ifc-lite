@@ -96,9 +96,14 @@ describe('transforms and content', () => {
     expect(res.issues.map((i) => i.message)).toEqual([expect.stringContaining('EXT_structural_metadata')]);
   });
 
-  it('carries the parent query string to relative child URIs', () => {
+  it('carries the parent query parameters to same-origin child URIs, the child winning on conflict (as CesiumJS does)', () => {
     expect(resolveUri('sub/t.json', 'https://h/a/tileset.json?key=1')).toBe('https://h/a/sub/t.json?key=1');
-    expect(resolveUri('sub/t.json?v=2', 'https://h/a/tileset.json?key=1')).toBe('https://h/a/sub/t.json?v=2');
+    // #10404 review item 4: a child with its own query string used to lose key=.
+    expect(resolveUri('files/x.glb?session=S', 'https://h/a/root.json?key=K')).toBe('https://h/a/files/x.glb?session=S&key=K');
+    expect(resolveUri('x.glb?key=child&v=2', 'https://h/a/root.json?key=K&lang=de')).toBe('https://h/a/x.glb?key=child&v=2&lang=de');
+    expect(resolveUri('https://h/b/x.glb', 'https://h/a/root.json?key=K')).toBe('https://h/b/x.glb?key=K');
+    expect(resolveUri('x.glb?sig=a%2Bb', 'https://h/a/root.json?key=K%20L')).toBe('https://h/a/x.glb?sig=a%2Bb&key=K%20L');
+    // Never to another origin: an API key in the root URL stays with its host.
     expect(resolveUri('https://o/t.json', 'https://h/a/tileset.json?key=1')).toBe('https://o/t.json');
   });
 });

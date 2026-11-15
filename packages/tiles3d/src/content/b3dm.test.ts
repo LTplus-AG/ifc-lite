@@ -13,8 +13,8 @@ describe('parseB3dm', () => {
     expect(t.batchLength).toBe(4);
     expect(t.rtcCenter).toEqual([4324927.635372528, 564663.3368981095, 4638082.479673291]);
     expect(t.attributeNames).toContain('EGID');
-    expect(t.attributes[2].UUID).toBe('9B6C1122-A443-4128-8B35-7171EA6BD829');
-    expect(t.attributes[3].DACH_MAX).toBe(573.91);
+    expect(t.row(2)?.UUID).toBe('9B6C1122-A443-4128-8B35-7171EA6BD829');
+    expect(t.row(3)?.DACH_MAX).toBe(573.91);
     expect(t.glb.byteLength).toBeGreaterThan(0);
   });
 
@@ -47,7 +47,7 @@ describe('parseB3dm', () => {
     }));
     expect(t.batchLength).toBe(2);
     expect(t.rtcCenter).toEqual([100.5, -200.25, 300]);
-    expect(t.attributes).toEqual([{ height: 1.5, pair: [7, 8], name: 'a' }, { height: -2.5, pair: [9, 10], name: 'b' }]);
+    expect([t.row(0), t.row(1)]).toEqual([{ height: 1.5, pair: [7, 8], name: 'a' }, { height: -2.5, pair: [9, 10], name: 'b' }]);
     expect(t.warnings).toEqual(['batch table extension 3DTILES_batch_table_hierarchy not read']);
   });
 
@@ -64,7 +64,7 @@ describe('parseB3dm', () => {
     const legacy20 = new Uint8Array([...new Uint8Array(h20.buffer), ...json, ...glb]);
     const a = parseB3dm(legacy20);
     expect(a.batchLength).toBe(2);
-    expect(a.attributes).toEqual([{ id: 5 }, { id: 6 }]);
+    expect([a.row(0), a.row(1)]).toEqual([{ id: 5 }, { id: 6 }]);
     expect(a.warnings).toContain('legacy 20-byte b3dm header');
 
     // 24-byte: magic, version, byteLength, batchTableJsonByteLength, batchTableBinaryByteLength, batchLength.
@@ -77,7 +77,7 @@ describe('parseB3dm', () => {
     h24.setUint32(20, 2, true);
     const b = parseB3dm(new Uint8Array([...new Uint8Array(h24.buffer), ...json, ...glb]));
     expect(b.batchLength).toBe(2);
-    expect(b.attributes[1]).toEqual({ id: 6 });
+    expect(b.row(1)).toEqual({ id: 6 });
     expect(b.warnings).toContain('legacy 24-byte b3dm header');
   });
 

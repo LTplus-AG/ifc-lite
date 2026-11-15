@@ -8,9 +8,14 @@
  * use with a mandatory source reference; excessive use may be restricted, so
  * keep request budgets small.
  *
- * Heights: measured tiles store Swiss LN02 heights in the slot 3D Tiles
- * reserves for WGS84 ellipsoidal height (see the package README). The reader
- * does not reinterpret them; convert in the caller with a CRS package.
+ * Heights, an observed property of this dataset rather than of 3D Tiles:
+ * every tile measured on release 20260520 stores the same heights as its
+ * `DACH_MAX` attribute (Swiss national heights, LN02) in the slot 3D Tiles
+ * reserves for WGS84 ellipsoidal height. Evidence: each tile's `RTC_CENTER`
+ * lies at ellipsoidal height 0, and each building's decoded top equals its
+ * `DACH_MAX` to 0.01 m, where a true ellipsoidal height would be about 50 m
+ * higher. The reader does not reinterpret them; convert in the caller with a
+ * CRS package.
  */
 
 import { readTilesetRegion, type ReadTilesetRegionOptions, type RegionReadResult } from './read.js';
@@ -67,14 +72,24 @@ export interface SwisstopoBuildingsResult extends RegionReadResult {
 }
 
 /**
- * Margin the preset culls tiles with. Leaf tiles hold every building whose
- * centre falls inside them, and buildings overhang their tile region by up to
- * 84 m in measured tiles (Zurich main station), so a smaller margin can miss a
- * building that reaches into the query region.
+ * Margin the preset culls tiles with: a measured value, not a bound. Leaf
+ * tiles hold every building whose centre falls inside them, and buildings
+ * overhang their tile region by up to 84 m in the tiles measured (Zurich main
+ * station). A building larger than about 200 m across can overhang by more
+ * than 100 m and be missed without any issue; pass a larger
+ * `tileCullMarginMetres` where such buildings matter.
  */
 export const SWISSTOPO_TILE_CULL_MARGIN_METRES = 100;
 
-/** Read swisstopo buildings in a WGS84 region with conservative default budgets. */
+/** Columns a caller typically relies on; a tile without them gets a `missing-attributes` warning. */
+export const SWISSTOPO_EXPECTED_COLUMNS = ['EGID', 'GELAENDEPUNKT', 'DACH_MIN', 'DACH_MAX'] as const;
+
+/**
+ * Read swisstopo buildings in a WGS84 region with conservative default budgets.
+ * Each tile whose batch table lacks `EGID` or the height columns
+ * (`GELAENDEPUNKT`, `DACH_MIN`, `DACH_MAX`) adds a warning issue with code
+ * `missing-attributes`: measured Geneva and Lugano tiles have none of them.
+ */
 export async function readSwisstopoBuildings(
   options: Omit<ReadTilesetRegionOptions, 'url'> & { release?: string },
 ): Promise<SwisstopoBuildingsResult> {
@@ -86,5 +101,13 @@ export async function readSwisstopoBuildings(
     ...rest,
     url: swisstopoBuildingsTilesetUrl(release),
   });
+  for (const tile of result.tiles) {
+    if (tile.kind !== 'b3dm') continue;
+    const names = new Set(tile.attributeNames ?? []);
+    const missing = SWISSTOPO_EXPECTED_COLUMNS.filter((c) => !names.has(c));
+    if (missing.length > 0) {
+      result.issues.push({ url: tile.url, severity: 'warning', code: 'missing-attributes', message: `batch table has no ${missing.join(', ')} (building id / height columns absent in this tile)` });
+    }
+  }
   return { ...result, features: result.features as SwissBuildingFeature[], attribution: SWISSTOPO_BUILDINGS_ATTRIBUTION };
 }

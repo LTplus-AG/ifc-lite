@@ -10,9 +10,11 @@
  */
 
 import { type Mat4, Y_UP_TO_Z_UP, IDENTITY, multiply, nodeMatrix, normalMatrix, translation } from '../matrix.js';
+import { isCount } from '../bytes.js';
+import { type ContentBudget, invalid } from '../limits.js';
 import type { TileProvenance } from '../traverse.js';
 import { type DracoLoader, decodeDracoPrimitive } from './draco.js';
-import { bufferViewBytes, type Gltf, type GltfPrimitive, readAccessor } from './gltf.js';
+import { accessorCount, bufferViewBytes, type Gltf, type GltfPrimitive, readAccessor, readIndices } from './gltf.js';
 
 /** One primitive's triangle range inside a feature mesh, so callers can tell primitives (e.g. wall vs roof material) apart. */
 export interface PrimitiveGroup {
@@ -50,8 +52,11 @@ export interface BuildContext {
   tileTransform: Mat4;
   /** b3dm RTC_CENTER; glTF CESIUM_RTC is read from the document. */
   rtcCenter?: [number, number, number];
-  attributes?: Array<Record<string, unknown>>;
+  /** Batch table row of a batch id (b3dm); undefined when the id has no row. */
+  attributes?: (batchId: number) => Record<string, unknown> | undefined;
   loadDraco: DracoLoader;
+  /** Decoded vertex/index budget of this content; charged before anything is decoded. */
+  budget: ContentBudget;
   warn(message: string): void;
 }
 
@@ -72,67 +77,122 @@ interface PrimitiveData {
   normals?: ArrayLike<number>;
   featureIds?: ArrayLike<number>;
   vertexCount: number;
-  indices: ArrayLike<number>;
+  /** Triangle list (mode already applied). */
+  triangles: Uint32Array;
 }
 
 function featureIdSemantic(prim: GltfPrimitive, ctx: BuildContext): string | undefined {
-  if ('_BATCHID' in prim.attributes) return '_BATCHID';
-  if ('BATCHID' in prim.attributes) return 'BATCHID';
+  if (Object.hasOwn(prim.attributes, '_BATCHID')) return '_BATCHID';
+  if (Object.hasOwn(prim.attributes, 'BATCHID')) return 'BATCHID';
   const ext = prim.extensions?.EXT_mesh_features as { featureIds?: Array<{ attribute?: number; texture?: unknown }> } | undefined;
-  const first = ext?.featureIds?.[0];
+  const first = Array.isArray(ext?.featureIds) ? ext.featureIds[0] : undefined;
   if (first) {
-    if (typeof first.attribute === 'number') return `_FEATURE_ID_${first.attribute}`;
+    if (isCount(first.attribute)) return `_FEATURE_ID_${first.attribute}`;
     ctx.warn(first.texture ? 'EXT_mesh_features texture feature ids are not supported; primitive has no feature ids' : 'EXT_mesh_features implicit (per-vertex) feature ids are not supported; primitive has no feature ids');
   }
   return undefined;
 }
 
-async function primitiveData(gltf: Gltf, prim: GltfPrimitive, ctx: BuildContext): Promise<PrimitiveData> {
-  const fidSemantic = featureIdSemantic(prim, ctx);
-  const draco = prim.extensions?.KHR_draco_mesh_compression as { bufferView: number; attributes: Record<string, number> } | undefined;
-  if (draco) {
-    const wanted: Record<string, number> = {};
-    for (const s of ['POSITION', 'NORMAL', fidSemantic]) if (s && draco.attributes[s] !== undefined) wanted[s] = draco.attributes[s];
-    const decoded = decodeDracoPrimitive(await ctx.loadDraco(), bufferViewBytes(gltf, draco.bufferView), wanted);
-    const pos = decoded.attributes.get('POSITION');
-    if (!pos) throw new Error('Draco primitive has no POSITION');
-    // A batch id stored outside the Draco payload is still a plain accessor.
-    let featureIds: ArrayLike<number> | undefined = fidSemantic ? decoded.attributes.get(fidSemantic)?.values : undefined;
-    if (fidSemantic && !featureIds && prim.attributes[fidSemantic] !== undefined) featureIds = readAccessor(gltf, prim.attributes[fidSemantic]).values;
-    return { positions: pos.values, normals: decoded.attributes.get('NORMAL')?.values, featureIds, vertexCount: decoded.pointCount, indices: decoded.indices };
-  }
-  if (prim.attributes.POSITION === undefined) throw new Error('primitive has no POSITION');
-  const pos = readAccessor(gltf, prim.attributes.POSITION);
-  const normals = prim.attributes.NORMAL !== undefined ? readAccessor(gltf, prim.attributes.NORMAL).values : undefined;
-  const featureIds = fidSemantic && prim.attributes[fidSemantic] !== undefined ? readAccessor(gltf, prim.attributes[fidSemantic]).values : undefined;
-  const indices = prim.indices !== undefined ? readAccessor(gltf, prim.indices).values : Array.from({ length: pos.count }, (_, i) => i);
-  return { positions: pos.values, normals, featureIds, vertexCount: pos.count, indices };
+function attributeIndex(prim: GltfPrimitive, semantic: string | undefined): number | undefined {
+  return semantic !== undefined && Object.hasOwn(prim.attributes, semantic) ? prim.attributes[semantic] : undefined;
+}
+
+/** Number of triangle-list indices a primitive with `n` indices in `mode` yields. */
+function triangleIndexCount(mode: number, n: number): number {
+  if (mode === 4) return n - (n % 3);
+  return n >= 3 ? (n - 2) * 3 : 0;
 }
 
 /** Triangle list from TRIANGLES (4) / TRIANGLE_STRIP (5) / TRIANGLE_FAN (6). */
-function triangleList(mode: number, idx: ArrayLike<number>): ArrayLike<number> {
-  if (mode === 4) return idx;
-  const out: number[] = [];
+function triangleList(mode: number, idx: Uint32Array): Uint32Array {
+  if (mode === 4) return idx.length % 3 === 0 ? idx : idx.subarray(0, idx.length - (idx.length % 3));
+  const out = new Uint32Array(triangleIndexCount(mode, idx.length));
+  let o = 0;
   if (mode === 5) {
     for (let i = 0; i + 2 < idx.length; i++) {
-      if (i % 2 === 0) out.push(idx[i], idx[i + 1], idx[i + 2]);
-      else out.push(idx[i + 1], idx[i], idx[i + 2]);
+      if (i % 2 === 0) { out[o++] = idx[i]; out[o++] = idx[i + 1]; out[o++] = idx[i + 2]; }
+      else { out[o++] = idx[i + 1]; out[o++] = idx[i]; out[o++] = idx[i + 2]; }
     }
-    return out;
-  }
-  if (mode === 6) {
-    for (let i = 1; i + 1 < idx.length; i++) out.push(idx[0], idx[i], idx[i + 1]);
+  } else {
+    for (let i = 1; i + 1 < idx.length; i++) { out[o++] = idx[0]; out[o++] = idx[i]; out[o++] = idx[i + 1]; }
   }
   return out;
 }
 
-/** Scene nodes with their world matrices; iterative, each node visited once. */
+function sequence(n: number): Uint32Array {
+  const out = new Uint32Array(n);
+  for (let i = 0; i < n; i++) out[i] = i;
+  return out;
+}
+
+/**
+ * Declared vertex and triangle-index counts of a primitive, from its glTF
+ * accessors alone (Draco primitives declare them too), so the content budget
+ * is charged before anything is decoded or allocated.
+ */
+function declaredCounts(gltf: Gltf, prim: GltfPrimitive, mode: number, budget: ContentBudget): { vertices: number; indices: number } {
+  const posIndex = attributeIndex(prim, 'POSITION');
+  if (posIndex === undefined) throw invalid('primitive has no POSITION');
+  const vertices = accessorCount(gltf, posIndex, { maxCount: budget.maxVertices, what: 'POSITION' });
+  const n = prim.indices !== undefined ? accessorCount(gltf, prim.indices, { maxCount: budget.maxIndices, what: 'indices' }) : vertices;
+  return { vertices, indices: triangleIndexCount(mode, n) };
+}
+
+async function primitiveData(gltf: Gltf, prim: GltfPrimitive, mode: number, declared: { vertices: number }, ctx: BuildContext): Promise<PrimitiveData> {
+  const fidSemantic = featureIdSemantic(prim, ctx);
+  const draco = prim.extensions?.KHR_draco_mesh_compression as { bufferView: number; attributes: Record<string, number> } | undefined;
+  const vertexAccessor = (semantic: string, types: string[]): Float64Array | undefined => {
+    const index = attributeIndex(prim, semantic);
+    if (index === undefined) return undefined;
+    const acc = readAccessor(gltf, index, { maxCount: ctx.budget.maxVertices, types, what: semantic });
+    if (acc.count !== declared.vertices) throw invalid(`${semantic} has ${acc.count} elements for ${declared.vertices} vertices`);
+    return acc.values;
+  };
+  if (draco) {
+    if (!draco.attributes || typeof draco.attributes !== 'object') throw invalid('KHR_draco_mesh_compression has no attributes');
+    const wanted: Record<string, number> = {};
+    for (const s of ['POSITION', 'NORMAL', fidSemantic]) if (s && Object.hasOwn(draco.attributes, s) && isCount(draco.attributes[s])) wanted[s] = draco.attributes[s];
+    const maxIndices = prim.indices !== undefined ? accessorCount(gltf, prim.indices, { maxCount: ctx.budget.maxIndices, what: 'indices' }) : ctx.budget.maxIndices;
+    const decoded = decodeDracoPrimitive(await ctx.loadDraco(), bufferViewBytes(gltf, draco.bufferView), wanted, declared.vertices, maxIndices);
+    const pos = decoded.attributes.get('POSITION');
+    if (!pos) throw invalid('Draco primitive has no POSITION');
+    // A batch id stored outside the Draco payload is still a plain accessor.
+    let featureIds: ArrayLike<number> | undefined = fidSemantic ? decoded.attributes.get(fidSemantic)?.values : undefined;
+    if (fidSemantic && !featureIds && attributeIndex(prim, fidSemantic) !== undefined) {
+      featureIds = readAccessor(gltf, prim.attributes[fidSemantic], { maxCount: ctx.budget.maxVertices, types: ['SCALAR'], what: fidSemantic }).values;
+      if (featureIds.length !== decoded.pointCount) throw invalid(`${fidSemantic} has ${featureIds.length} elements for ${decoded.pointCount} vertices`);
+    }
+    return { positions: pos.values, normals: decoded.attributes.get('NORMAL')?.values, featureIds, vertexCount: decoded.pointCount, triangles: triangleList(mode, decoded.indices) };
+  }
+  const positions = vertexAccessor('POSITION', ['VEC3'])!;
+  const normals = vertexAccessor('NORMAL', ['VEC3']);
+  const featureIds = vertexAccessor(fidSemantic ?? '', ['SCALAR']);
+  // No indices: vertices are drawn in order. Built as a typed array from the validated count.
+  const indices = prim.indices !== undefined ? readIndices(gltf, prim.indices, ctx.budget.maxIndices) : sequence(declared.vertices);
+  return { positions, normals, featureIds, vertexCount: declared.vertices, triangles: triangleList(mode, indices) };
+}
+
+/**
+ * Scene nodes with their world matrices; iterative, each node visited once.
+ * Without a usable scene, the roots are the nodes no other node lists as a
+ * child, so a child listed before its parent still gets the parent transform.
+ */
 function sceneNodes(gltf: Gltf): Array<[number, number[]]> {
-  const nodes = gltf.json.nodes ?? [];
-  const roots = gltf.json.scenes?.[gltf.json.scene ?? 0]?.nodes ?? nodes.map((_, i) => i);
+  const nodes = Array.isArray(gltf.json.nodes) ? gltf.json.nodes : [];
+  const childList = (i: number): number[] => {
+    const c = nodes[i]?.children;
+    return Array.isArray(c) ? c.filter((x): x is number => isCount(x) && x < nodes.length) : [];
+  };
+  let roots = gltf.json.scenes?.[gltf.json.scene ?? 0]?.nodes;
+  if (!Array.isArray(roots)) {
+    const isChild = new Uint8Array(nodes.length);
+    for (let i = 0; i < nodes.length; i++) for (const c of childList(i)) isChild[c] = 1;
+    roots = [];
+    for (let i = 0; i < nodes.length; i++) if (!isChild[i]) roots.push(i);
+  }
   const out: Array<[number, number[]]> = [];
   const seen = new Set<number>();
-  const stack: Array<[number, Mat4]> = roots.map((r) => [r, IDENTITY] as [number, Mat4]).reverse();
+  const stack: Array<[number, Mat4]> = roots.filter(isCount).map((r) => [r, IDENTITY] as [number, Mat4]).reverse();
   while (stack.length) {
     const [i, parent] = stack.pop()!;
     const node = nodes[i];
@@ -140,16 +200,18 @@ function sceneNodes(gltf: Gltf): Array<[number, number[]]> {
     seen.add(i);
     const world = multiply(parent, nodeMatrix(node));
     out.push([i, world]);
-    for (const c of [...(node.children ?? [])].reverse()) stack.push([c, world]);
+    const children = childList(i);
+    for (let k = children.length - 1; k >= 0; k--) stack.push([children[k], world]);
   }
   return out;
 }
 
 export async function buildFeatureMeshes(gltf: Gltf, ctx: BuildContext): Promise<FeatureMesh[]> {
-  for (const ext of gltf.json.extensionsRequired ?? []) {
-    if (!HANDLED.has(ext) && !ext.startsWith('KHR_materials_')) throw new Error(`glTF requires unsupported extension ${ext}`);
+  const required = Array.isArray(gltf.json.extensionsRequired) ? gltf.json.extensionsRequired : [];
+  for (const ext of required) {
+    if (typeof ext !== 'string' || (!HANDLED.has(ext) && !ext.startsWith('KHR_materials_'))) throw new Error(`glTF requires unsupported extension ${String(ext)}`);
   }
-  if (gltf.json.extensionsUsed?.includes('EXT_structural_metadata')) {
+  if (Array.isArray(gltf.json.extensionsUsed) && gltf.json.extensionsUsed.includes('EXT_structural_metadata')) {
     ctx.warn('EXT_structural_metadata property tables are not read; features carry no 3D Tiles 1.1 metadata properties');
   }
   const cesiumRtc = (gltf.json.extensions?.CESIUM_RTC as { center?: number[] } | undefined)?.center;
@@ -166,22 +228,29 @@ export async function buildFeatureMeshes(gltf: Gltf, ctx: BuildContext): Promise
     return b;
   };
 
+  // A mesh used by several nodes is decoded once and appended per node; each instance is charged to the budget.
+  const decodedPrimitives = new Map<string, PrimitiveData>();
   for (const [nodeIndex, world] of sceneNodes(gltf)) {
     const meshIndex = gltf.json.nodes?.[nodeIndex]?.mesh;
-    if (meshIndex === undefined) continue;
+    if (!isCount(meshIndex)) continue;
     const mesh = gltf.json.meshes?.[meshIndex];
-    if (!mesh) continue;
+    if (!mesh || !Array.isArray(mesh.primitives)) continue;
     const m = multiply(base, world);
     const nm = normalMatrix(m);
     for (let p = 0; p < mesh.primitives.length; p++) {
       const prim = mesh.primitives[p];
+      if (!prim || typeof prim !== 'object' || !prim.attributes || typeof prim.attributes !== 'object') throw invalid(`mesh ${meshIndex} primitive ${p} has no attributes`);
       const mode = prim.mode ?? 4;
-      if (mode < 4 || mode > 6) {
+      if (mode !== 4 && mode !== 5 && mode !== 6) {
         ctx.warn(`mesh ${meshIndex} primitive ${p}: mode ${prim.mode} (points/lines) skipped`);
         continue;
       }
-      const data = await primitiveData(gltf, prim, ctx);
-      appendPrimitive(data, triangleList(mode, data.indices), m, nm, builderFor, {
+      const declared = declaredCounts(gltf, prim, mode, ctx.budget);
+      ctx.budget.charge(declared.vertices, declared.indices, `mesh ${meshIndex} primitive ${p}`);
+      const key = `${meshIndex}/${p}`;
+      let data = decodedPrimitives.get(key);
+      if (!data) decodedPrimitives.set(key, (data = await primitiveData(gltf, prim, mode, declared, ctx)));
+      appendPrimitive(data, m, nm, builderFor, {
         node: nodeIndex, mesh: meshIndex, primitive: p, ...materialTag(gltf, prim.material),
       });
     }
@@ -189,7 +258,7 @@ export async function buildFeatureMeshes(gltf: Gltf, ctx: BuildContext): Promise
 
   const out: FeatureMesh[] = [];
   for (const [fid, b] of features) {
-    const attrs = fid !== null && ctx.attributes ? ctx.attributes[fid] : undefined;
+    const attrs = fid !== null && ctx.attributes ? ctx.attributes(fid) : undefined;
     if (fid !== null && ctx.attributes && !attrs) ctx.warn(`feature id ${fid} has no batch table row`);
     out.push({
       featureId: fid,
@@ -197,7 +266,7 @@ export async function buildFeatureMeshes(gltf: Gltf, ctx: BuildContext): Promise
       normals: !b.partialNormals && b.normals.length ? Float32Array.from(b.normals) : undefined,
       indices: Uint32Array.from(b.indices),
       groups: b.groups,
-      attributes: attrs ? { ...attrs } : {},
+      attributes: attrs ?? {},
       tile: ctx.tile,
     });
   }
@@ -206,7 +275,7 @@ export async function buildFeatureMeshes(gltf: Gltf, ctx: BuildContext): Promise
 }
 
 function materialTag(gltf: Gltf, material: number | undefined): Partial<PrimitiveGroup> {
-  if (material === undefined) return {};
+  if (!isCount(material)) return {};
   const mat = gltf.json.materials?.[material];
   const f = mat?.pbrMetallicRoughness?.baseColorFactor;
   return {
@@ -216,48 +285,73 @@ function materialTag(gltf: Gltf, material: number | undefined): Partial<Primitiv
   };
 }
 
+/**
+ * Append one primitive instance to the feature builders. One pass with memory
+ * linear in vertices: `owner[v]` is the first feature that used vertex v and
+ * `local[v]` its index there; only a vertex that a second feature also uses
+ * gets a map entry for that feature, and is copied into it.
+ */
 function appendPrimitive(
   data: PrimitiveData,
-  tris: ArrayLike<number>,
   m: Mat4,
   nm: number[] | null,
   builderFor: (fid: number | null) => Builder,
   tag: Omit<PrimitiveGroup, 'start' | 'count'>,
 ): void {
-  const { positions: P, normals: N, featureIds: F, vertexCount } = data;
+  const { positions: P, normals: N, featureIds: F, vertexCount, triangles: tris } = data;
   const hasNormals = N !== undefined && nm !== null;
-  // Per-primitive vertex remap; a vertex shared by triangles of two features is copied into each.
-  const remap = new Map<number | null, Int32Array>();
-  const open = new Map<Builder, number>();
+  const owner = new Int32Array(vertexCount).fill(-1);
+  const local = new Int32Array(vertexCount);
+  const slots: Builder[] = [];
+  const slotOf = new Map<Builder, number>();
+  const sharedBySlot = new Map<number, Map<number, number>>();
+  const starts: number[] = [];
+  const emit = (b: Builder, v: number): number => {
+    const index = b.positions.length / 3;
+    const x = P[v * 3], y = P[v * 3 + 1], z = P[v * 3 + 2];
+    b.positions.push(m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]);
+    if (hasNormals) {
+      const nx = N![v * 3], ny = N![v * 3 + 1], nz = N![v * 3 + 2];
+      const ox = nm![0] * nx + nm![3] * ny + nm![6] * nz;
+      const oy = nm![1] * nx + nm![4] * ny + nm![7] * nz;
+      const oz = nm![2] * nx + nm![5] * ny + nm![8] * nz;
+      const len = Math.hypot(ox, oy, oz) || 1;
+      b.normals.push(ox / len, oy / len, oz / len);
+    }
+    return index;
+  };
   for (let t = 0; t + 2 < tris.length; t += 3) {
-    const fid = F ? Math.round(F[tris[t]]) : null;
+    for (let k = 0; k < 3; k++) {
+      if (tris[t + k] >= vertexCount) throw invalid(`index ${tris[t + k]} out of range (${vertexCount} vertices)`);
+    }
+    const raw = F ? F[tris[t]] : undefined;
+    const fid = raw === undefined ? null : Number.isFinite(raw) ? Math.round(raw) : null;
     const b = builderFor(fid);
-    if (!open.has(b)) {
-      open.set(b, b.indices.length);
+    let slot = slotOf.get(b);
+    if (slot === undefined) {
+      slot = slots.length;
+      slots.push(b);
+      slotOf.set(b, slot);
+      starts.push(b.indices.length);
       if (!hasNormals) b.partialNormals = true;
     }
-    let map = remap.get(fid);
-    if (!map) remap.set(fid, (map = new Int32Array(vertexCount).fill(-1)));
     for (let k = 0; k < 3; k++) {
       const v = tris[t + k];
-      if (v >= vertexCount) throw new Error(`index ${v} out of range (${vertexCount} vertices)`);
-      let local = map[v];
-      if (local < 0) {
-        local = b.positions.length / 3;
-        map[v] = local;
-        const x = P[v * 3], y = P[v * 3 + 1], z = P[v * 3 + 2];
-        b.positions.push(m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]);
-        if (hasNormals) {
-          const nx = N![v * 3], ny = N![v * 3 + 1], nz = N![v * 3 + 2];
-          const ox = nm![0] * nx + nm![3] * ny + nm![6] * nz;
-          const oy = nm![1] * nx + nm![4] * ny + nm![7] * nz;
-          const oz = nm![2] * nx + nm![5] * ny + nm![8] * nz;
-          const len = Math.hypot(ox, oy, oz) || 1;
-          b.normals.push(ox / len, oy / len, oz / len);
-        }
+      let index: number;
+      if (owner[v] === -1) {
+        owner[v] = slot;
+        index = local[v] = emit(b, v);
+      } else if (owner[v] === slot) {
+        index = local[v];
+      } else {
+        let shared = sharedBySlot.get(slot);
+        if (!shared) sharedBySlot.set(slot, (shared = new Map()));
+        let s = shared.get(v);
+        if (s === undefined) shared.set(v, (s = emit(b, v)));
+        index = s;
       }
-      b.indices.push(local);
+      b.indices.push(index);
     }
   }
-  for (const [b, start] of open) b.groups.push({ start, count: b.indices.length - start, ...tag });
+  for (let i = 0; i < slots.length; i++) slots[i].groups.push({ start: starts[i], count: slots[i].indices.length - starts[i], ...tag });
 }

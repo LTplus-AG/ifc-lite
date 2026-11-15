@@ -16,7 +16,9 @@ export {
 } from './read.js';
 export type { FeatureMesh, PrimitiveGroup } from './content/features.js';
 export type { ContentKind } from './content/decode.js';
-export type { DracoLoader, DracoDecoderModule } from './content/draco.js';
+export { resetDracoDecoder, type DracoLoader, type DracoDecoderModule } from './content/draco.js';
+export { DEFAULT_DECODE_LIMITS, type DecodeLimits, type ReaderIssueCode } from './limits.js';
+export type { UrlPolicyOptions } from './url-policy.js';
 export type { FetchLike, FetchResponseLike, TilesCache, FetchStats } from './fetcher.js';
 export type { GeoRegion } from './volume.js';
 export type { ReaderIssue, TileProvenance, Truncation, TraversalOptions } from './traverse.js';
@@ -28,6 +30,7 @@ export {
   SWISSTOPO_BUILDINGS_TILESET_URL,
   SWISSTOPO_BUILDINGS_ATTRIBUTION,
   SWISSTOPO_TILE_CULL_MARGIN_METRES,
+  SWISSTOPO_EXPECTED_COLUMNS,
   type SwissBuildingAttributes,
   type SwissBuildingFeature,
   type SwisstopoBuildingsResult,

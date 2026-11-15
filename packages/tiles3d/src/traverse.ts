@@ -13,6 +13,9 @@ import { IDENTITY, type Mat4, maxScale, multiply, transformPoint } from './matri
 import type { BoundingVolumeJson, ContentJson, TileJson, TilesetJson } from './tileset-types.js';
 import { type PreparedRegion, volumeIntersects } from './volume.js';
 import { decodeUtf8 } from './bytes.js';
+import type { ReaderIssueCode } from './limits.js';
+import { UrlPolicyError } from './url-policy.js';
+import { detectContentKind } from './content/decode.js';
 
 /** Where a selected content came from. */
 export interface TileProvenance {
@@ -36,6 +39,10 @@ export interface SelectedContent extends TileProvenance {
   /** Depth in the combined tree (external roots continue their parent's depth). */
   depth: number;
   boundingVolume: BoundingVolumeJson;
+  /** Where a tileset found at this URL by its content would hang. */
+  parent: TilesetParent;
+  /** Bytes already fetched during traversal (a `.json` URI that held tile content, not a tileset). */
+  bytes?: Uint8Array;
 }
 
 export interface ReaderIssue {
@@ -43,11 +50,14 @@ export interface ReaderIssue {
   /** `error`: a request or decode failed; `unsupported`: recognised but not read; `warning`: read with a caveat. */
   severity: 'error' | 'unsupported' | 'warning';
   message: string;
+  /** Machine-readable reason for refused input: limits, malformed content, the URL policy, missing columns. */
+  code?: ReaderIssueCode;
 }
 
-/** Set when the request budget (or the node budget) stopped the query early. */
+/** Set when a budget stopped the query early. */
 export interface Truncation {
-  reason: 'requests' | 'bytes' | 'nodes';
+  /** `decoded`: the decoded vertex/index limits (`maxVerticesPerContent`, `maxDecodedVertices`, ...). */
+  reason: 'requests' | 'bytes' | 'nodes' | 'decoded';
   /** URLs (external tilesets or contents) that were selected but not fetched. */
   pendingUrls: string[];
 }
@@ -71,6 +81,8 @@ export interface TraversalOptions {
   maxGeometricError?: number;
   /** Bound on visited tile nodes across all tilesets; default 1,000,000. */
   maxNodes?: number;
+  /** Bound on tile depth across external tilesets; deeper subtrees are skipped with a `limit` issue. Default 256. */
+  maxDepth?: number;
 }
 
 interface TilesetCtx {
@@ -88,17 +100,32 @@ interface WorkItem {
   depth: number;
 }
 
-/** Resolve a content URI against its tileset URL, carrying the parent's query string to relative URIs without one. */
+/**
+ * Resolve a content URI against its tileset URL and carry the parent's query
+ * parameters, as CesiumJS does (`Resource.getDerivedResource` with
+ * `preserveQueryParameters: false`): the child's own parameters win, parent
+ * parameters the child lacks are appended. Unlike CesiumJS, parameters are
+ * carried only to a URL on the parent's origin, so an API key in the root URL
+ * never reaches a third-party host. Raw parameter text is kept as written.
+ */
 export function resolveUri(uri: string, base: string): string {
   const resolved = new URL(uri, base);
   const baseUrl = new URL(base);
-  const isRelative = !/^[a-z][a-z0-9+.-]*:/i.test(uri) && !uri.startsWith('//');
-  if (isRelative && !resolved.search && baseUrl.search) resolved.search = baseUrl.search;
+  if (!baseUrl.search || resolved.origin !== baseUrl.origin) return resolved.href;
+  const childKeys = new Set(resolved.searchParams.keys());
+  const extra = baseUrl.search.slice(1).split('&').filter((pair) => {
+    if (!pair) return false;
+    const key = new URLSearchParams(pair).keys().next().value;
+    return key !== undefined && !childKeys.has(key);
+  });
+  if (extra.length === 0) return resolved.href;
+  resolved.search = resolved.search ? `${resolved.search.slice(1)}&${extra.join('&')}` : extra.join('&');
   return resolved.href;
 }
 
 function contentUri(c: ContentJson): string | undefined {
-  return c.uri ?? c.url;
+  const uri = c.uri ?? c.url;
+  return typeof uri === 'string' && uri.length > 0 ? uri : undefined;
 }
 
 function isTilesetUri(url: string): boolean {
@@ -107,70 +134,125 @@ function isTilesetUri(url: string): boolean {
 
 export function parseTilesetJson(bytes: Uint8Array, url: string): TilesetJson {
   const json = JSON.parse(decodeUtf8(bytes)) as TilesetJson;
-  if (!json || typeof json !== 'object' || !json.root || !json.asset) {
+  if (!json || typeof json !== 'object' || !json.root || typeof json.root !== 'object' || !json.asset || typeof json.asset !== 'object') {
     throw new Error(`${url} is not a 3D Tiles tileset (missing asset or root)`);
   }
+  if (typeof json.asset.version !== 'string') throw new Error(`${url} has no asset.version string`);
   return json;
-}
-
-async function loadTileset(fetcher: BudgetedFetcher, url: string): Promise<TilesetJson> {
-  return parseTilesetJson(await fetcher.get(url), url);
 }
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export async function traverseTileset(
-  fetcher: BudgetedFetcher,
-  rootUrl: string,
-  query: PreparedRegion,
-  options: TraversalOptions = {},
-): Promise<TraversalResult> {
-  const target = options.maxGeometricError ?? 0;
-  const maxNodes = options.maxNodes ?? 1_000_000;
-  const selected: SelectedContent[] = [];
-  const issues: ReaderIssue[] = [];
-  const pending = new Set<string>();
-  let truncationReason: Truncation['reason'] | undefined;
-  let nodesVisited = 0;
-  let tilesetsLoaded = 0;
-  const stack: WorkItem[] = [];
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
 
-  const pushTileset = (ts: TilesetJson, ctx: TilesetCtx, parent: Mat4, depth: number, refine: 'ADD' | 'REPLACE'): void => {
-    tilesetsLoaded++;
-    for (const ext of ts.extensionsRequired ?? []) {
-      issues.push({ url: ctx.url, severity: 'unsupported', message: `tileset requires extension ${ext}` });
+/** Where an external tileset hangs in the combined tree. */
+export interface TilesetParent {
+  chain: string[];
+  tilesetVersion?: string;
+  transform: Mat4;
+  depth: number;
+  refine: 'ADD' | 'REPLACE';
+}
+
+/**
+ * Incremental traversal. `run()` drains the work stack and returns the
+ * contents it selected; `addExternalTileset()` adds a tileset found by content
+ * (a child URI whose bytes turned out to be tileset JSON), and the next
+ * `run()` continues there. Node, depth and request budgets span the whole query.
+ */
+export class Traverser {
+  readonly issues: ReaderIssue[] = [];
+  readonly pending = new Set<string>();
+  truncationReason: Truncation['reason'] | undefined;
+  nodesVisited = 0;
+  tilesetsLoaded = 0;
+  private readonly stack: WorkItem[] = [];
+  private readonly target: number;
+  private readonly maxNodes: number;
+  private readonly maxDepth: number;
+  private georefChecked = false;
+
+  constructor(private readonly fetcher: BudgetedFetcher, private readonly query: PreparedRegion, options: TraversalOptions = {}) {
+    this.target = options.maxGeometricError ?? 0;
+    this.maxNodes = options.maxNodes ?? 1_000_000;
+    this.maxDepth = options.maxDepth ?? 256;
+  }
+
+  /** Load the root tileset; a failure here is not a partial result and throws. */
+  async loadRoot(url: string): Promise<void> {
+    const ts = parseTilesetJson(await this.fetcher.get(url), url);
+    this.push(ts, url, { chain: [], transform: IDENTITY, depth: 0, refine: 'REPLACE' });
+  }
+
+  /** Add an external tileset whose bytes were already fetched; malformed JSON or a cycle becomes an issue. */
+  addExternalTileset(url: string, bytes: Uint8Array, parent: TilesetParent): void {
+    if (parent.chain.includes(url)) {
+      this.issues.push({ url, severity: 'error', message: `external tileset cycle via ${parent.chain[parent.chain.length - 1]}` });
+      return;
     }
-    stack.push({ tile: ts.root, ctx, parent, refine, depth });
-  };
+    try {
+      this.push(parseTilesetJson(bytes, url), url, parent);
+    } catch (err) {
+      this.issues.push({ url, severity: 'error', message: `external tileset: ${message(err)}`, code: 'invalid-content' });
+    }
+  }
 
-  // The root tileset failing to load is not a partial result: let it throw.
-  const rootTs = await loadTileset(fetcher, rootUrl);
-  pushTileset(rootTs, { url: rootUrl, chain: [rootUrl], assetVersion: rootTs.asset.version, tilesetVersion: rootTs.asset.tilesetVersion }, IDENTITY, 0, 'REPLACE');
-  let georefChecked = false;
+  private push(ts: TilesetJson, url: string, parent: TilesetParent): void {
+    this.tilesetsLoaded++;
+    const required = Array.isArray(ts.extensionsRequired) ? ts.extensionsRequired : [];
+    for (const ext of required) this.issues.push({ url, severity: 'unsupported', message: `tileset requires extension ${String(ext)}` });
+    const ctx: TilesetCtx = { url, chain: [...parent.chain, url], assetVersion: ts.asset.version, tilesetVersion: ts.asset.tilesetVersion ?? parent.tilesetVersion };
+    this.stack.push({ tile: ts.root, ctx, parent: parent.transform, refine: parent.refine, depth: parent.depth });
+  }
 
-  while (stack.length > 0) {
-    fetcher.throwIfAborted();
-    const item = stack.pop()!;
+  /** Drain the stack; returns the contents selected by this call. */
+  async run(): Promise<SelectedContent[]> {
+    const selected: SelectedContent[] = [];
+    while (this.stack.length > 0) {
+      this.fetcher.throwIfAborted();
+      const item = this.stack.pop()!;
+      const { tile, ctx } = item;
+      if (!isObject(tile) || !isObject(tile.boundingVolume) || typeof tile.geometricError !== 'number' || !(tile.geometricError >= 0)) {
+        this.issues.push({ url: ctx.url, severity: 'error', message: 'tile without a boundingVolume object or a non-negative geometricError; subtree skipped', code: 'invalid-content' });
+        continue;
+      }
+      if (this.nodesVisited >= this.maxNodes) {
+        this.truncationReason ??= 'nodes';
+        // The tile was never visited: what it would have fetched is its own content (its children are unknown).
+        for (const c of tileContents(tile)) {
+          const uri = contentUri(c);
+          if (uri) this.pending.add(resolveUri(uri, ctx.url));
+        }
+        continue;
+      }
+      if (item.depth > this.maxDepth) {
+        this.issues.push({ url: ctx.url, severity: 'error', message: `tile depth ${item.depth} exceeds maxDepth ${this.maxDepth}; subtree skipped`, code: 'limit' });
+        continue;
+      }
+      this.nodesVisited++;
+      await this.visit(item, selected);
+    }
+    return selected;
+  }
+
+  private async visit(item: WorkItem, selected: SelectedContent[]): Promise<void> {
     const { tile, ctx } = item;
-    if (nodesVisited >= maxNodes) {
-      truncationReason ??= 'nodes';
-      pending.add(ctx.url);
-      continue;
-    }
-    nodesVisited++;
-    const toRoot = tile.transform && tile.transform.length === 16 ? multiply(item.parent, tile.transform) : item.parent;
+    const issues = this.issues;
+    const toRoot = Array.isArray(tile.transform) && tile.transform.length === 16 ? multiply(item.parent, tile.transform) : item.parent;
     const refine: 'ADD' | 'REPLACE' = tile.refine === 'ADD' || tile.refine === 'REPLACE' ? tile.refine : item.refine;
     if (tile.refine !== undefined && tile.refine !== 'ADD' && tile.refine !== 'REPLACE') {
-      issues.push({ url: ctx.url, severity: 'warning', message: `unknown refine "${tile.refine}", inherited ${item.refine}` });
+      issues.push({ url: ctx.url, severity: 'warning', message: `unknown refine "${String(tile.refine)}", inherited ${item.refine}` });
     }
 
-    if (!georefChecked) {
-      georefChecked = true;
+    if (!this.georefChecked) {
+      this.georefChecked = true;
       const bv = tile.boundingVolume;
       const c = bv.box ?? bv.sphere;
-      if (!bv.region && c) {
+      if (!bv.region && Array.isArray(c) && c.length >= 3) {
         const [x, y, z] = transformPoint(toRoot, c[0], c[1], c[2]);
         if (Math.hypot(x, y, z) < 6_000_000) {
           issues.push({ url: ctx.url, severity: 'warning', message: 'root bounding volume is not near the WGS84 ellipsoid: the tileset may not be georeferenced (culling assumes an ECEF root frame)' });
@@ -178,54 +260,32 @@ export async function traverseTileset(
       }
     }
 
-    const hit = volumeIntersects(query, tile.boundingVolume, toRoot);
+    const hit = volumeIntersects(this.query, tile.boundingVolume, toRoot);
     if (hit === undefined) {
       issues.push({ url: ctx.url, severity: 'unsupported', message: 'tile bounding volume has no region, box or sphere; kept without culling' });
     } else if (!hit) {
-      continue;
+      return;
     }
     if (tile.implicitTiling) {
       issues.push({ url: ctx.url, severity: 'unsupported', message: 'implicit tiling (3D Tiles 1.1 implicitTiling) is not supported; subtree skipped' });
-      continue;
+      return;
     }
 
     const scale = ctx.assetVersion.startsWith('1.0') ? 1 : maxScale(toRoot);
     const error = tile.geometricError * scale;
-    const children = tile.children ?? [];
-    const refineFurther = children.length > 0 && error > target;
+    const children = Array.isArray(tile.children) ? tile.children : [];
+    const refineFurther = children.length > 0 && error > this.target;
     const wantContent = refine === 'ADD' || !refineFurther;
 
     if (wantContent) {
-      const contents = tile.contents ?? (tile.content ? [tile.content] : []);
-      for (const c of contents) {
+      for (const c of tileContents(tile)) {
         const uri = contentUri(c);
         if (!uri) continue;
-        if (c.boundingVolume && volumeIntersects(query, c.boundingVolume, toRoot) === false) continue;
-        const url = resolveUri(uri, ctx.url);
-        if (isTilesetUri(url)) {
-          if (ctx.chain.includes(url)) {
-            issues.push({ url, severity: 'error', message: `external tileset cycle via ${ctx.url}` });
-            continue;
-          }
-          if (truncationReason) {
-            pending.add(url);
-            continue;
-          }
-          try {
-            const ext = await loadTileset(fetcher, url);
-            pushTileset(ext, { url, chain: [...ctx.chain, url], assetVersion: ext.asset.version, tilesetVersion: ext.asset.tilesetVersion ?? ctx.tilesetVersion }, toRoot, item.depth + 1, refine);
-          } catch (err) {
-            if (err instanceof BudgetExhaustedError) {
-              truncationReason = err.reason;
-              pending.add(url);
-            } else {
-              fetcher.throwIfAborted();
-              issues.push({ url, severity: 'error', message: `external tileset: ${message(err)}` });
-            }
-          }
-          continue;
-        }
-        selected.push({
+        if (isObject(c.boundingVolume) && volumeIntersects(this.query, c.boundingVolume, toRoot) === false) continue;
+        const url = this.childUrl(uri, ctx.url);
+        if (url === undefined) continue;
+        const parent: TilesetParent = { chain: ctx.chain, tilesetVersion: ctx.tilesetVersion, transform: toRoot, depth: item.depth + 1, refine };
+        const sel: SelectedContent = {
           url,
           tilesetUrl: ctx.url,
           tilesetChain: ctx.chain,
@@ -236,21 +296,81 @@ export async function traverseTileset(
           refine,
           depth: item.depth,
           boundingVolume: c.boundingVolume ?? tile.boundingVolume,
-        });
+          parent,
+        };
+        // A `.json` child is fetched now and followed when it is tileset JSON; any other
+        // URI is selected as content and recognised as a tileset by its bytes later.
+        if (!isTilesetUri(url)) {
+          selected.push(sel);
+          continue;
+        }
+        if (ctx.chain.includes(url)) {
+          issues.push({ url, severity: 'error', message: `external tileset cycle via ${ctx.url}` });
+          continue;
+        }
+        if (this.truncationReason) {
+          this.pending.add(url);
+          continue;
+        }
+        try {
+          const bytes = await this.fetcher.get(url);
+          if (detectContentKind(bytes) === 'tileset') this.addExternalTileset(url, bytes, parent);
+          else selected.push({ ...sel, bytes });
+        } catch (err) {
+          if (err instanceof BudgetExhaustedError) {
+            this.truncationReason = err.reason;
+            this.pending.add(url);
+          } else {
+            this.fetcher.throwIfAborted();
+            issues.push({ url, severity: 'error', message: `external tileset: ${message(err)}`, code: err instanceof UrlPolicyError ? 'url-policy' : undefined });
+          }
+        }
       }
     }
     if (refineFurther) {
       for (let i = children.length - 1; i >= 0; i--) {
-        stack.push({ tile: children[i], ctx, parent: toRoot, refine, depth: item.depth + 1 });
+        this.stack.push({ tile: children[i], ctx, parent: toRoot, refine, depth: item.depth + 1 });
       }
     }
   }
 
-  return {
-    selected,
-    issues,
-    truncation: truncationReason ? { reason: truncationReason, pendingUrls: [...pending] } : undefined,
-    nodesVisited,
-    tilesetsLoaded,
-  };
+  /** Resolve a child URI and apply the URL policy; a refusal or an unparsable URI becomes an issue. */
+  private childUrl(uri: string, base: string): string | undefined {
+    let url: string;
+    try {
+      url = resolveUri(uri, base);
+    } catch (err) {
+      this.issues.push({ url: base, severity: 'error', message: `child URI ${JSON.stringify(uri)} cannot be resolved: ${message(err)}`, code: 'invalid-content' });
+      return undefined;
+    }
+    try {
+      this.fetcher.policy?.check(url);
+    } catch (err) {
+      this.issues.push({ url, severity: 'error', message: message(err), code: err instanceof UrlPolicyError ? 'url-policy' : 'invalid-content' });
+      return undefined;
+    }
+    return url;
+  }
+
+  truncation(): Truncation | undefined {
+    return this.truncationReason ? { reason: this.truncationReason, pendingUrls: [...this.pending] } : undefined;
+  }
+}
+
+function tileContents(tile: TileJson): ContentJson[] {
+  const list = Array.isArray(tile.contents) ? tile.contents : isObject(tile.content) ? [tile.content] : [];
+  return list.filter(isObject) as ContentJson[];
+}
+
+/** Traverse a whole tileset (following `.json` external tilesets) and return its selection. */
+export async function traverseTileset(
+  fetcher: BudgetedFetcher,
+  rootUrl: string,
+  query: PreparedRegion,
+  options: TraversalOptions = {},
+): Promise<TraversalResult> {
+  const t = new Traverser(fetcher, query, options);
+  await t.loadRoot(rootUrl);
+  const selected = await t.run();
+  return { selected, issues: t.issues, truncation: t.truncation(), nodesVisited: t.nodesVisited, tilesetsLoaded: t.tilesetsLoaded };
 }

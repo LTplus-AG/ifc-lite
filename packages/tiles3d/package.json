@@ -9,10 +9,12 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./draco_decoder.wasm": "./dist/draco_decoder.wasm"
   },
+  "sideEffects": false,
   "scripts": {
-    "build": "pnpm exec tsc",
+    "build": "pnpm exec tsc && node scripts/copy-draco-wasm.mjs",
     "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run",
@@ -51,5 +53,8 @@
   "files": [
     "dist",
     "README.md"
-  ]
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

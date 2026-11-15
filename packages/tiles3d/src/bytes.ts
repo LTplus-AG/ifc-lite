@@ -14,11 +14,31 @@ export function decodeUtf8(bytes: Uint8Array, start = 0, end = bytes.byteLength)
   return decoder.decode(shared ? view.slice() : view);
 }
 
-/** Parse a JSON chunk, tolerating the trailing space and NUL padding 3D Tiles and glTF allow. */
+/** True for the padding bytes writers put after a JSON chunk: space, tab, CR, LF and NUL. */
+function isPadding(b: number): boolean {
+  return b === 0x20 || b === 0x00 || b === 0x0a || b === 0x0d || b === 0x09;
+}
+
+/**
+ * Parse a JSON chunk, tolerating the trailing space and NUL padding 3D Tiles
+ * and glTF allow. The padding is trimmed by a single backwards byte scan: a
+ * trailing-whitespace regex backtracks quadratically over a long whitespace
+ * run that is not at the end (1 MiB of spaces then one byte took minutes).
+ */
 export function parseJsonChunk(bytes: Uint8Array, start: number, end: number): unknown {
-  // eslint-disable-next-line no-control-regex -- strip NUL padding that some writers use instead of spaces
-  const text = decodeUtf8(bytes, start, end).replace(/[\u0000\s]+$/, '');
-  return text.length === 0 ? undefined : JSON.parse(text);
+  let e = end;
+  while (e > start && isPadding(bytes[e - 1])) e--;
+  return e === start ? undefined : JSON.parse(decodeUtf8(bytes, start, e));
+}
+
+/** Own-property lookup in a constant table, so a file-supplied key such as `constructor` cannot hit `Object.prototype`. */
+export function own<T>(table: Readonly<Record<string, T>>, key: unknown): T | undefined {
+  return typeof key === 'string' && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+}
+
+/** A non-negative safe integer, as every count, length and offset read from a file must be. */
+export function isCount(v: unknown): v is number {
+  return typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
 }
 
 export function dataView(bytes: Uint8Array): DataView {

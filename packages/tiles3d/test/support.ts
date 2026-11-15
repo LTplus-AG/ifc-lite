@@ -22,6 +22,48 @@ function response(bytes: Uint8Array | undefined): FetchResponseLike {
   return { ok: true, status: 200, arrayBuffer: async () => bytes.slice().buffer };
 }
 
+/**
+ * A streaming response: `chunks` yields the body piece by piece (it may be
+ * endless). `arrayBuffer()` is deliberately unusable, so a reader that ignores
+ * the stream fails loudly. `pulled` counts chunks handed out.
+ */
+export function streamResponse(
+  chunks: () => Iterator<Uint8Array>,
+  init: { contentLength?: number; url?: string } = {},
+): FetchResponseLike & { pulled: () => number; readerOpened: () => boolean } {
+  let pulled = 0;
+  let opened = false;
+  const it = chunks();
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const next = it.next();
+      if (next.done) controller.close();
+      else {
+        pulled++;
+        controller.enqueue(next.value);
+      }
+    },
+  });
+  return {
+    ok: true,
+    status: 200,
+    url: init.url,
+    headers: { get: (name: string) => (name.toLowerCase() === 'content-length' && init.contentLength !== undefined ? String(init.contentLength) : null) },
+    body: {
+      getReader: () => {
+        opened = true;
+        return body.getReader();
+      },
+      cancel: (reason?: unknown) => body.cancel(reason),
+    },
+    arrayBuffer: async () => {
+      throw new Error('arrayBuffer() must not be used when a body stream is present');
+    },
+    pulled: () => pulled,
+    readerOpened: () => opened,
+  };
+}
+
 /** Fetch that serves the recorded swisstopo fixtures (404 for anything trimmed away) and logs every URL. */
 export function swissFixtureFetch(): FetchLike & { urls: string[] } {
   const urls: string[] = [];

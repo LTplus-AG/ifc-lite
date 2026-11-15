@@ -45,3 +45,38 @@ describe('extractGeoreferencingOnDemand — conversion-based MapUnit', () => {
     expect(georef?.projectedCRS?.mapUnitScale).toBeCloseTo(factor, 12);
   });
 });
+
+/**
+ * `mapUnitResolved` says whether `mapUnit` was read or is the METRE default
+ * the reader reports for a unit it cannot resolve. `bim.georef` carries a
+ * unit into a write only when it was read (#10382 review).
+ */
+describe('extractGeoreferencingOnDemand — mapUnitResolved', () => {
+  const crsWith = (unit: string | null) => `${header}
+#10=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);
+#11=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#12=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#11);
+${unit ? `#13=${unit};` : ''}
+#20=IFCPROJECTEDCRS('EPSG:2227',$,'NAD83',$,$,$,${unit ? '#13' : '$'});
+#21=IFCMAPCONVERSION(#5,#20,6000000.,2100000.,12.,$,$,$);`;
+
+  it.each([
+    ['an IfcSIUnit metre', 'IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)', 'METRE', 1, true],
+    ['an IfcSIUnit millimetre', 'IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)', 'MILLIMETRE', 0.001, true],
+    ['an IfcConversionBasedUnitWithOffset foot (zero offset)', "IFCCONVERSIONBASEDUNITWITHOFFSET(#10,.LENGTHUNIT.,'FOOT',#12,0.)", 'FOOT', 0.3048, true],
+    ['an IfcConversionBasedUnitWithOffset with a non-zero offset', "IFCCONVERSIONBASEDUNITWITHOFFSET(#10,.LENGTHUNIT.,'FOOT',#12,5.)", 'METRE', 1, false],
+    ['an IfcContextDependentUnit (no factor)', "IFCCONTEXTDEPENDENTUNIT(#10,.LENGTHUNIT.,'CHAIN')", 'METRE', 1, false],
+    ['an IfcSIUnit that is not a length', 'IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.)', 'METRE', 1, false],
+  ] as const)('%s', async (_name, unit, mapUnit, scale, resolved) => {
+    const crs = extractGeoreferencingOnDemand(await storeFromIfc(crsWith(unit)))?.projectedCRS;
+    expect(crs?.mapUnit).toBe(mapUnit);
+    expect(crs?.mapUnitScale).toBeCloseTo(scale, 12);
+    expect(crs?.mapUnitResolved).toBe(resolved);
+  });
+
+  it('is absent when the CRS has no MapUnit', async () => {
+    const crs = extractGeoreferencingOnDemand(await storeFromIfc(crsWith(null)))?.projectedCRS;
+    expect(crs?.mapUnit).toBeUndefined();
+    expect(crs && 'mapUnitResolved' in crs).toBe(false);
+  });
+});

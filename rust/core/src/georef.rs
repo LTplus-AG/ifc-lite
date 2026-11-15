@@ -643,9 +643,15 @@ impl GeoRefExtractor {
                             }
                         }
                     }
-                    IfcType::IfcConversionBasedUnit => {
+                    IfcType::IfcConversionBasedUnit | IfcType::IfcConversionBasedUnitWithOffset => {
                         // IFCCONVERSIONBASEDUNIT: [0] Dimensions, [1] UnitType,
-                        // [2] Name, [3] ConversionFactor (IfcMeasureWithUnit)
+                        // [2] Name, [3] ConversionFactor (IfcMeasureWithUnit);
+                        // the …WITHOFFSET subtype adds [4] ConversionOffset.
+                        // Only a zero offset is a ratio scale; any other stays
+                        // at the METRE default (TS parity:
+                        // packages/parser/src/georef-projected-crs.ts).
+                        let zero_offset = unit_entity.ifc_type != IfcType::IfcConversionBasedUnitWithOffset
+                            || unit_entity.real_at(slot::IfcConversionBasedUnitWithOffset::CONVERSION_OFFSET) == Some(0.0);
                         let name = unit_entity
                             .string_at(slot::IfcConversionBasedUnit::NAME)
                             .map(|n| n.trim_matches('\'').trim().to_ascii_uppercase());
@@ -660,7 +666,7 @@ impl GeoRefExtractor {
                             .or_else(|| {
                                 resolve_measure_with_unit(decoder, &unit_entity)
                             });
-                        if let Some(scale) = scale {
+                        if let Some(scale) = scale.filter(|_| zero_offset) {
                             if scale.is_finite() && scale > 0.0 {
                                 unit_scale = scale;
                                 if let Some(name) = name {

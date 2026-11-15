@@ -70,50 +70,60 @@ export function extractProjectedCRS(
   // Resolve MapUnit reference to determine actual unit + scale
   let mapUnit: string | undefined;
   let mapUnitScale: number | undefined;
+  let mapUnitResolved: boolean | undefined;
   const mapUnitRef = getReference(entity.attributes[6]);
   if (mapUnitRef) {
-    mapUnit = 'METRE'; // default if we can't resolve
+    // Reported when the unit cannot be resolved, for consumers that need a
+    // scale; `mapUnitResolved: false` says it is a default, not a reading.
+    mapUnit = 'METRE';
     mapUnitScale = 1;
-    if (resolveEntity) {
-      const unitEntity = resolveEntity(mapUnitRef);
-      if (unitEntity) {
-        // MapUnit is an IfcNamedUnit, which is IfcSIUnit OR
-        // IfcConversionBasedUnit. Attribute 2 means something different in
-        // each: `Prefix` on the SI unit, `Name` on the conversion-based one.
-        // Reading slot 2 as a prefix unconditionally means a foot-based
-        // MapUnit ('FOOT' is not an SI prefix) misses every lookup and falls
-        // through to the METRE/1.0 default — so a georeference in feet reads
-        // back 3.28x wrong, silently. ifc-lite's own exporter writes exactly
-        // that IFCCONVERSIONBASEDUNIT form for FOOT and US SURVEY FOOT
-        // (packages/export/src/step-georeferencing.ts), and no fixture ever
-        // set a non-metre map unit, so the round trip only ever saw METRE.
-        if ((unitEntity.type ?? '').toUpperCase() === 'IFCCONVERSIONBASEDUNIT') {
-          // IFCCONVERSIONBASEDUNIT: [0] Dimensions, [1] UnitType, [2] Name,
-          // [3] ConversionFactor (IfcMeasureWithUnit)
-          const rawName = getString(unitEntity.attributes?.[2]);
-          const name = rawName?.replace(/^'|'$/g, '').trim().toUpperCase();
-          // The name table first (it carries the exact defined ratios, e.g.
-          // the US survey foot's 1200/3937), then the file's own declared
-          // conversion factor for a unit name we do not know.
-          const scale = (name ? CONVERSION_BASED_UNIT_FACTORS[name] : undefined)
-            ?? resolveMeasureWithUnit(unitEntity.attributes?.[3], resolveEntity);
-          if (scale !== undefined && Number.isFinite(scale) && scale > 0) {
-            mapUnitScale = scale;
-            if (name) mapUnit = name;
-          }
-        } else {
-          // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
-          const prefix = unitEntity.attributes?.[2];
-          if (prefix != null && prefix !== '$' && typeof prefix === 'string') {
-            const prefixStr = prefix.replace(/\./g, '').toUpperCase();
-            const prefixScale = SI_PREFIX_MULTIPLIERS[prefixStr];
-            if (prefixScale !== undefined) {
-              mapUnitScale = prefixScale;
-              mapUnit = prefixStr === 'MILLI' ? 'MILLIMETRE' : prefixStr + 'METRE';
-            }
-          }
-          // No prefix → base METRE → scale = 1
+    mapUnitResolved = false;
+    const unitEntity = resolveEntity?.(mapUnitRef);
+    const unitType = (unitEntity?.type ?? '').toUpperCase();
+    if (unitEntity && (unitType === 'IFCCONVERSIONBASEDUNIT' || unitType === 'IFCCONVERSIONBASEDUNITWITHOFFSET')) {
+      // MapUnit is an IfcNamedUnit, which is IfcSIUnit OR
+      // IfcConversionBasedUnit (or its …WithOffset subtype). Attribute 2
+      // means something different in each: `Prefix` on the SI unit, `Name`
+      // on the conversion-based ones. Reading slot 2 as a prefix
+      // unconditionally means a foot-based MapUnit ('FOOT' is not an SI
+      // prefix) misses every lookup and falls through to the METRE/1.0
+      // default, so a georeference in feet reads back 3.28x wrong. ifc-lite's
+      // own exporter writes the IFCCONVERSIONBASEDUNIT form for FOOT and US
+      // SURVEY FOOT (packages/export/src/step-georeferencing.ts).
+      // IFCCONVERSIONBASEDUNIT: [0] Dimensions, [1] UnitType, [2] Name,
+      // [3] ConversionFactor (IfcMeasureWithUnit); …WITHOFFSET adds
+      // [4] ConversionOffset. A length with a non-zero offset is not a
+      // ratio scale, so it stays unresolved.
+      const offset = unitType === 'IFCCONVERSIONBASEDUNITWITHOFFSET' ? unitEntity.attributes?.[4] : 0;
+      const rawName = getString(unitEntity.attributes?.[2]);
+      const name = rawName?.replace(/^'|'$/g, '').trim().toUpperCase();
+      // The name table first (it carries the exact defined ratios, e.g.
+      // the US survey foot's 1200/3937), then the file's own declared
+      // conversion factor for a unit name we do not know.
+      const scale = (name ? CONVERSION_BASED_UNIT_FACTORS[name] : undefined)
+        ?? resolveMeasureWithUnit(unitEntity.attributes?.[3], resolveEntity!);
+      if (offset === 0 && scale !== undefined && Number.isFinite(scale) && scale > 0) {
+        mapUnitScale = scale;
+        if (name) {
+          mapUnit = name;
+          mapUnitResolved = true;
         }
+      }
+    } else if (unitEntity && unitType === 'IFCSIUNIT') {
+      // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
+      const prefix = unitEntity.attributes?.[2];
+      const siName = getString(unitEntity.attributes?.[3])?.replace(/\./g, '').toUpperCase();
+      if (prefix != null && prefix !== '$' && typeof prefix === 'string') {
+        const prefixStr = prefix.replace(/\./g, '').toUpperCase();
+        const prefixScale = SI_PREFIX_MULTIPLIERS[prefixStr];
+        if (prefixScale !== undefined) {
+          mapUnitScale = prefixScale;
+          mapUnit = prefixStr === 'MILLI' ? 'MILLIMETRE' : prefixStr + 'METRE';
+          mapUnitResolved = siName === 'METRE';
+        }
+      } else {
+        // No prefix → base METRE → scale = 1
+        mapUnitResolved = siName === 'METRE';
       }
     }
   }
@@ -130,5 +140,6 @@ export function extractProjectedCRS(
     mapZone: getString(entity.attributes[5]),
     mapUnit,
     mapUnitScale,
+    ...(mapUnitResolved === undefined ? {} : { mapUnitResolved }),
   };
 }

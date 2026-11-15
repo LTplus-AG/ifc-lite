@@ -135,6 +135,7 @@ function fromGeoreferenceInfo(state: GeoreferencingState, info: GeoreferenceInfo
       MapZone: crs.mapZone,
       MapUnit: crs.mapUnit,
       wellKnownText: crs.wellKnownText,
+      mapUnitResolved: crs.mapUnit === undefined ? undefined : crs.mapUnitResolved !== false,
     });
   }
 

@@ -57,6 +57,12 @@ export interface GeorefProjectedCRSState extends Partial<GeorefProjectedCRSAttri
   expressId?: number;
   /** `IfcWellKnownText` attached to this CRS, when there is one. */
   wellKnownText?: string;
+  /**
+   * Whether `MapUnit` was read from the file. `false` when the CRS names a
+   * unit the reader could not resolve and `MapUnit` is the reader's METRE
+   * default; such a unit is never carried into a write. Absent with MapUnit.
+   */
+  mapUnitResolved?: boolean;
 }
 
 export interface GeorefMapConversionState extends GeorefMapConversionAttributes {

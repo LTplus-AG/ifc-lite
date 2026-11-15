@@ -356,7 +356,7 @@ jobs:
               # must run it too (it needs cargo, which this filter arms).
               - 'packages/cache/src/**'
               - 'scripts/cache-native-conformance.mjs'
-              - 'scripts/lib/cache-native-decoded.mjs'
+              - 'scripts/lib/cache-native-*.mjs'
             # AGENTS.md is the instruction file every agent reads, and
             # scripts/check-agents-md-size.mjs gates its size and line length.
             # It gets its OWN output rather than joining `frontend`: the gate is
@@ -916,12 +916,17 @@ jobs:
       # Self-reproducible bytes across RAYON_NUM_THREADS, scalar sections
       # byte-identical to the TS writer's for the same model, geometry equal
       # after inflating every chunk, and the TS reader's acceptance and
-      # refusals. Needs cargo (armed by the rust filter, which lists the TS
-      # cache sources and this script) and the packages built above; the
-      # committed viewer samples mean it never runs empty.
+      # refusals; then two independent oracles: the data model against a TS
+      # parse of the same IFC, the meshes and CoordinateInfo against the
+      # canonical processing output. Needs cargo (armed by the rust filter,
+      # which lists the TS cache sources and these scripts) and the packages
+      # built above; committed fixtures mean it never runs empty, and the
+      # catalogued ones fetched above must be present.
       - name: Native .ifclite writer conformance against @ifc-lite/cache
         if: needs.changes.outputs.rust == 'true'
         timeout-minutes: 15
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
         run: node scripts/cache-native-conformance.mjs
 
       # Keep the score ratchet in build, not node-tests (skipped by fast PRs).

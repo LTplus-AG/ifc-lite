@@ -30,8 +30,26 @@
  * `relationshipTypeName`) and the source spans, so a value both writers
  * would encode identically but that is wrong still fails.
  *
- * Needs cargo and a built `@ifc-lite/cache` (`pnpm build`). Runs in the
- * Build job of `.github/workflows/test.yml`.
+ * Because 2 and 3 hand the TS writer the native model, a value dropped before
+ * encoding would survive them. Two independent oracles close that:
+ *
+ *  5. Data model: the same IFC parsed by the TS parser
+ *     (`lib/cache-native-model-oracle.mjs`): attributes per express id
+ *     (absent vs empty), types, every relationship edge, schema, units, and
+ *     the row-set difference as an asserted rule.
+ *  6. Geometry: the canonical `ifc_lite_processing::process` output, dumped
+ *     by `--example processing_oracle` (no writer code), converted to the
+ *     viewer frame here (`lib/cache-native-geometry-oracle.mjs`): every mesh
+ *     field, world coordinates, CoordinateInfo against the browser
+ *     pre-pass's resolvers.
+ *
+ * Neither claims browser equivalence for what the native cache leaves absent;
+ * those are printed as limitations on every run.
+ *
+ * Needs cargo and built `@ifc-lite/cache`, `@ifc-lite/data` and
+ * `@ifc-lite/parser` (`pnpm build`). Runs in the Build job of
+ * `.github/workflows/test.yml`, where the catalogued fixtures are fetched and
+ * `IFC_LITE_REQUIRE_FIXTURES=1` makes an absent one a failure.
  */
 
 import assert from 'node:assert/strict';
@@ -41,34 +59,56 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compareDecodedModel } from './lib/cache-native-decoded.mjs';
+import { compareGeometryOracle, LIMITATIONS } from './lib/cache-native-geometry-oracle.mjs';
+import { compareModelOracle } from './lib/cache-native-model-oracle.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE_DIST = join(ROOT, 'packages/cache/dist/index.js');
 const DATA_DIST = join(ROOT, 'packages/data/dist/index.js');
+const PARSER_DIST = join(ROOT, 'packages/parser/dist/index.js');
+const REQUIRE_FIXTURES = process.env.IFC_LITE_REQUIRE_FIXTURES === '1';
 
 const FIXTURES = [
   // Committed, so the gate never runs empty.
   { path: 'apps/viewer/public/samples/hello-wall.ifc', committed: true },
   { path: 'apps/viewer/public/samples/building-architecture.ifc', committed: true },
   { path: 'apps/viewer/public/samples/infra-bridge.ifc', committed: true },
+  // Committed, for mesh fields the samples above leave unset: an authored
+  // finish (rev-b), material-layer slices (materialId, geometryClass 3) and an
+  // orphan type-map mesh (geometryClass 1).
+  { path: 'apps/viewer/public/samples/building-architecture-rev-b.ifc', committed: true },
+  { path: 'tests/fixtures/synthetic-retained/f-g-layers.ifc', committed: true },
+  { path: 'tests/fixtures/synthetic-retained/f-m11a-appearance.ifc', committed: true },
+  // Committed and georeferenced, so CoordinateInfo is exercised on every run:
+  // an IFC2X3 slab ~8,000 km out in a rotated IfcSite (RTC on, rotated site
+  // frame), and a millimetre wall in a site placed off the origin.
+  { path: 'rust/processing/tests/fixtures/issue_8190_slab_12381.ifc', committed: true },
+  { path: 'rust/processing/tests/fixtures/issue_8156_wall_43810.ifc', committed: true },
   // Catalogued: a real authoring-tool model, with chunks large enough to deflate.
   { path: 'tests/models/ara3d/AC20-FZK-Haus.ifc', committed: false },
+  // Catalogued georeferenced models: IfcMapConversion + IfcProjectedCRS.
+  { path: 'tests/models/georeferencer/MiniBIM-3.1-DO_01_VORM.ifc', committed: false },
+  { path: 'tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc', committed: false },
 ];
 
-if (!existsSync(CACHE_DIST) || !existsSync(DATA_DIST)) {
-  console.error('@ifc-lite/cache or @ifc-lite/data is not built: run `pnpm build` first.');
+if (![CACHE_DIST, DATA_DIST, PARSER_DIST].every(existsSync)) {
+  console.error('@ifc-lite/cache, @ifc-lite/data or @ifc-lite/parser is not built: run `pnpm build` first.');
   process.exit(1);
 }
 const cache = await import(CACHE_DIST);
 const data = await import(DATA_DIST);
+const parser = await import(PARSER_DIST);
 
-const build = spawnSync('cargo', ['build', '--locked', '-p', 'ifc-lite-cache', '--example', 'conformance_writer'], {
+const examples = ['conformance_writer', 'processing_oracle'];
+const build = spawnSync('cargo', ['build', '--locked', '-p', 'ifc-lite-cache', ...examples.flatMap((e) => ['--example', e])], {
   cwd: ROOT,
   stdio: 'inherit',
 });
 if (build.status !== 0) process.exit(build.status ?? 1);
 const targetDir = process.env.CARGO_TARGET_DIR || join(ROOT, 'target');
-const writerBin = join(targetDir, 'debug/examples', process.platform === 'win32' ? 'conformance_writer.exe' : 'conformance_writer');
+const exampleBin = (name) => join(targetDir, 'debug/examples', process.platform === 'win32' ? `${name}.exe` : name);
+const writerBin = exampleBin('conformance_writer');
+const oracleBin = exampleBin('processing_oracle');
 
 const work = mkdtempSync(join(tmpdir(), 'cache-native-'));
 let checked = 0;
@@ -77,6 +117,7 @@ try {
     const source = join(ROOT, fixture.path);
     if (!existsSync(source)) {
       assert.ok(!fixture.committed, `${fixture.path} is committed and must exist`);
+      assert.ok(!REQUIRE_FIXTURES, `${fixture.path} is absent and IFC_LITE_REQUIRE_FIXTURES=1; run \`pnpm fixtures\``);
       console.log(`SKIP ${fixture.path}: absent; run \`pnpm fixtures\``);
       continue;
     }
@@ -86,8 +127,10 @@ try {
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
-assert.ok(checked >= 3, 'the committed fixtures always run');
+assert.ok(checked >= FIXTURES.filter((f) => f.committed).length, 'the committed fixtures always run');
 console.log(`native cache conformance: ${checked} fixture(s) passed`);
+console.log('Not claimed (absent from every native cache; no check above asserts browser equivalence for them):');
+for (const limitation of LIMITATIONS) console.log(`  - ${limitation}`);
 
 function writeNative(source, threads) {
   const out = join(work, `native-${threads ?? 'default'}.ifclite`);
@@ -127,14 +170,22 @@ async function checkFixture(label, sourcePath) {
   await assert.rejects(reader.read(nativeBuffer, { sourceBuffer: toArrayBuffer(Buffer.from(changed)) }), /source file has changed/);
   await checkRefusals(label, native.bytes);
 
-  // 2 + 3. The TS writer over the same model.
+  // 6. The geometry against the canonical pipeline output. It also yields the
+  // decoded meshes in the pipeline's emit order, which the TS writer is given
+  // below: grouping is not idempotent on chunk-ordered input (a cell closed
+  // by the byte cap can be listed before cells first seen earlier), so only
+  // the emit order lets the two writers' chunk order be compared at all.
+  const pipeline = compareGeometryOracle(label, { dump: processingDump(sourcePath), decoded, header });
+
+  // 2 + 3. The TS writer over the same model, meshes in emit order.
   const entityIndex = decoded.entityIndex;
   assert.ok(entityIndex, `${label}: EntityIndex section read back`);
   const dataStore = {
     ...decoded.dataStore,
     entityIndex: { byId: borrowedColumns(entityIndex) },
   };
-  const tsBytes = Buffer.from(await new cache.BinaryCacheWriter().write(dataStore, decoded.geometry, sourceBuffer));
+  const geometryInEmitOrder = { ...decoded.geometry, meshes: pipeline.emitOrder };
+  const tsBytes = Buffer.from(await new cache.BinaryCacheWriter().write(dataStore, geometryInEmitOrder, sourceBuffer));
   const nativeSections = sections(native.bytes);
   const tsSections = sections(tsBytes);
   assert.ok(native.bytes.subarray(0, 64).equals(tsBytes.subarray(0, 64)), `${label}: 64-byte header`);
@@ -156,6 +207,19 @@ async function checkFixture(label, sourcePath) {
   compareDecodedModel(label, { decoded, sourceBytes, data });
   console.log(`ok ${label}: ${native.stats.entityRows} rows, ${native.stats.meshCount} meshes, ` +
     `${storage.chunks} chunks (${storage.compressed} deflated natively, ${storage.flagDiffers} with a different storage flag)`);
+
+  // 5. The data model against an independent TS parse of the same IFC.
+  const model = await compareModelOracle(label, { sourceBytes, decoded, parser, cache });
+  console.log(`   model oracle: ${model}`);
+  console.log(`   geometry oracle: ${pipeline.meshes} meshes equal to the pipeline's (${pipeline.dropped} dropped by validateMeshes)`);
+  for (const line of pipeline.limitations) console.log(`   limitation: ${line}`);
+}
+
+function processingDump(source) {
+  const out = join(work, 'processing.json');
+  const run = spawnSync(oracleBin, [source, out], { encoding: 'utf8' });
+  assert.equal(run.status, 0, `processing_oracle failed: ${run.stderr}`);
+  return JSON.parse(readFileSync(out, 'utf8'));
 }
 
 /** `CacheEntityIndex.byId` over decoded columns: the borrowed-columns path. */

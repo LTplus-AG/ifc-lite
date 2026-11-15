@@ -158,6 +158,8 @@ test('#10264 CLI options are validated before anything runs', () => {
   assert.match(bad({ cap: '3 GB' }).join(), /--cap/);
   assert.match(bad({ gl: 'vulkan' }).join(), /--gl/);
   assert.match(bad({ 'on-memory-dialog': 'yes' }).join(), /--on-memory-dialog/);
+  assert.deepEqual(bad({ 'watch-url': 'http://127.0.0.1:9' }), []);
+  assert.match(bad({ 'watch-url': '127.0.0.1:9' }).join(), /--watch-url must be an http\(s\) URL/);
 });
 
 test('#10264 cleanup runs every step even when one throws, last registered first', async () => {
@@ -176,4 +178,31 @@ test('#10264 cleanup runs every step even when one throws, last registered first
 test('#10264 withTimeout falls back when a close hangs', async () => {
   assert.equal(await withTimeout(new Promise(() => {}), 20, () => 'forced'), 'forced');
   assert.equal(await withTimeout(Promise.resolve('closed'), 1000, () => 'forced'), 'closed');
+});
+
+test('#10353 server proof: a failed server attempt before the warning, no read before it', async () => {
+  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
+  const s = serverAttemptSummary([
+    { ms: 40, event: 'request', url: 'http://127.0.0.1:9/api/v1/health' },
+    { ms: 42, event: 'requestfailed', failure: 'net::ERR_CONNECTION_REFUSED' },
+    { ms: 60, event: 'dialog', text: 'This model may exceed available memory\nThis model may need about 6.0 GiB' },
+  ], { watching: true });
+  assert.deepEqual(s, { watched: true, attempts: 1, failures: 1, firstAttemptMs: 40, firstDecisionMs: 60, attemptBeforeDecision: true, readBeforeDecision: false });
+});
+
+test('#10353 server proof: a read or a missing attempt before the decision is reported, unobserved is null', async () => {
+  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
+  const late = serverAttemptSummary([
+    { ms: 10, event: 'first-read' },
+    { ms: 50, event: 'store-error', text: "This IFC file exceeds this tab's local processing memory budget" },
+    { ms: 70, event: 'request', url: 'http://127.0.0.1:9/api/v1/health' },
+  ], { watching: true });
+  assert.equal(late.attemptBeforeDecision, false);
+  assert.equal(late.readBeforeDecision, true);
+  const none = serverAttemptSummary([{ ms: 5, event: 'dialog', text: 'This model may exceed available memory' }], { watching: true });
+  assert.equal(none.attempts, 0);
+  assert.equal(none.attemptBeforeDecision, null, 'no attempt observed is unknown order, not a pass');
+  assert.equal(serverAttemptSummary([], { watching: false }).attemptBeforeDecision, null);
+  // A privacy banner or other dialog is not the decision.
+  assert.equal(serverAttemptSummary([{ ms: 1, event: 'dialog', text: 'IFClite stores an action log' }], { watching: true }).firstDecisionMs, null);
 });

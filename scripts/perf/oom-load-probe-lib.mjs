@@ -173,6 +173,11 @@ export function optionErrors(v) {
   if (v['cpu-quota'] !== undefined && !/^\d+%$/.test(v['cpu-quota'])) errors.push(`--cpu-quota must look like 400%, got '${v['cpu-quota']}'`);
   if (v.gl !== undefined && !['swiftshader', 'hardware'].includes(v.gl)) errors.push('--gl must be swiftshader or hardware');
   if (v['on-memory-dialog'] !== undefined && !['wait', 'cancel', 'continue'].includes(v['on-memory-dialog'])) errors.push('--on-memory-dialog must be wait, cancel or continue');
+  if (v['watch-url'] !== undefined) {
+    let ok = false;
+    try { ok = ['http:', 'https:'].includes(new URL(v['watch-url']).protocol); } catch { ok = false; }
+    if (!ok) errors.push(`--watch-url must be an http(s) URL, got '${v['watch-url']}'`);
+  }
   return errors;
 }
 
@@ -194,4 +199,29 @@ export async function runCleanup(steps) {
 export function withTimeout(promise, ms, onTimeout) {
   let timer;
   return Promise.race([promise.finally(() => clearTimeout(timer)), new Promise((r) => { timer = setTimeout(() => r(onTimeout()), ms); })]);
+}
+
+/**
+ * Order of events in one load, relative to the file pick (#10353 server proof).
+ * `timeline` entries are `{ ms, event, ... }` with event 'request' | 'requestfailed' |
+ * 'response' (network to the watched origin), 'dialog' (a dialog appeared, with its text),
+ * 'store-error' (the viewer's load error, polled) or 'first-read' (first large source read).
+ * Returns what a reviewer needs: was the watched server tried, did it fail, and did that
+ * happen before the warning dialog or refusal and before any source read. A field the probe
+ * could not observe is null, never a passing value.
+ */
+export function serverAttemptSummary(timeline, { watching }) {
+  if (!watching) return { watched: false, attempts: null, failures: null, firstAttemptMs: null, firstDecisionMs: null, attemptBeforeDecision: null, readBeforeDecision: null };
+  const at = (pred) => timeline.filter(pred).map((e) => e.ms).sort((a, b) => a - b)[0] ?? null;
+  const attempts = timeline.filter((e) => e.event === 'request').length;
+  const failures = timeline.filter((e) => e.event === 'requestfailed').length;
+  const firstAttemptMs = at((e) => e.event === 'request');
+  const firstDecisionMs = at((e) => (e.event === 'dialog' && (MEMORY_WARNING.test(e.text ?? '') || REFUSAL_MESSAGE.test(e.text ?? '')))
+    || (e.event === 'store-error' && REFUSAL_MESSAGE.test(e.text ?? '')));
+  const firstReadMs = at((e) => e.event === 'first-read');
+  return {
+    watched: true, attempts, failures, firstAttemptMs, firstDecisionMs,
+    attemptBeforeDecision: firstAttemptMs === null || firstDecisionMs === null ? null : firstAttemptMs < firstDecisionMs,
+    readBeforeDecision: firstDecisionMs === null ? null : firstReadMs !== null && firstReadMs < firstDecisionMs,
+  };
 }

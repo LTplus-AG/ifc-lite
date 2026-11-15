@@ -55,6 +55,11 @@ then reports `loaded` or `killed-after-continue`. `--expect not-killed` accepts 
 `refused`, `awaiting-decision` and `cancelled`; a kill after an explicit Continue passes only
 `--expect warned`, and its verdict says so. The warning title, its button names and the refusal
 text come from draft PR #10353 and may drift; they live together in `oom-load-probe-lib.mjs`.
+`--watch-url URL` records every request to that origin (and its failure or response) and builds a
+timeline relative to the file pick: server attempts, dialogs (stamped when they appear), the
+store's load error and the first main-thread source read. It reports whether the server was tried
+before the warning or refusal, and whether anything read the source before it. Anything the probe
+could not observe is `null`, never a pass.
 
 ```bash
 pnpm install && pnpm build:wasm && pnpm turbo build --filter=@ifc-lite/viewer   # or any built apps/viewer/dist

@@ -26,7 +26,7 @@ it('reads the registered viewer store without importing the store entry', () => 
 
   const state = { marker: 'fake viewer state' };
   const fake = { getState: () => state };
-  registerViewerStore(fake as Parameters<typeof registerViewerStore>[0]);
+  registerViewerStore(fake as unknown as Parameters<typeof registerViewerStore>[0]);
 
   assert.equal(peekViewerStore(), fake);
   assert.equal(getViewerState(), state);

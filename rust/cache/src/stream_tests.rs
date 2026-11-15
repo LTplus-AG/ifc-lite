@@ -76,6 +76,25 @@ fn issue_9584_an_injected_mid_geometry_failure_leaves_no_output_temp_or_spool() 
     fs::remove_dir_all(dir).unwrap();
 }
 
+/// #9584: atomic finalize, the other half. A failure inside the commit, after
+/// the temporary file is fully written, removes that file too. A directory at
+/// the output path makes the final rename fail; the mid-geometry case above
+/// fails before any temporary file exists, so it cannot observe this.
+#[test]
+fn issue_9584_a_failed_rename_removes_the_written_temp_file() {
+    let source = sample("hello-wall.ifc");
+    let dir = scratch("failed-rename");
+    let output = dir.join("model.ifclite");
+    fs::create_dir(&output).unwrap();
+    match build(&source, &output, Limits::FORMAT, 7) {
+        Err(CacheError::Io { context, .. }) => assert!(context.starts_with("rename "), "failed at {context}"),
+        other => panic!("expected the rename to fail, got {other:?}"),
+    }
+    assert_eq!(listing(&dir), vec!["model.ifclite".to_owned()], "only the blocking directory is left");
+    assert!(output.is_dir());
+    fs::remove_dir_all(dir).unwrap();
+}
+
 /// #9584: the u32 bound, end to end through the streaming writer, with an
 /// injected limit instead of a 4 GiB model: refused with `TooLarge`, and
 /// cleaned up like any other failure.

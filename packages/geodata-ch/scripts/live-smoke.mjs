@@ -105,15 +105,16 @@ await step('swissBUILDINGS3D tiles', async () => {
 
 await step('roads in a 1 km box (cell splitting)', async () => {
   const r = await geo.features(VECTOR_LAYERS.roads, { minX: 2_600_000, minY: 1_199_000, maxX: 2_601_000, maxY: 1_200_000 });
-  expect(r.features.length > 200 && r.truncatedCells.length === 0, `${r.features.length} features, ${r.truncatedCells.length} truncated`);
-  return `${r.features.length} features in ${r.requests} requests`;
+  // `truncated` covers both causes: cells still full at the depth limit and a spent request budget.
+  expect(r.features.length > 200 && !r.truncated, `${r.features.length} features, truncated ${r.truncated} (${r.truncatedCells.length} capped cells, ${r.unqueriedCells.length} unqueried)`);
+  return `${r.features.length} features in ${r.requests} queries, ${r.networkRequests} network requests`;
 });
 
 await step('building register points in a polygon', async () => {
   const tri = { type: 'Polygon', coordinates: [[[2_600_300, 1_199_400], [2_600_700, 1_199_400], [2_600_300, 1_199_800], [2_600_300, 1_199_400]]] };
   const r = await geo.features(VECTOR_LAYERS.buildingRegister, tri);
-  expect(r.features.length > 0, 'no GWR points');
-  return `${r.features.length} GWR entries in ${r.requests} requests`;
+  expect(r.features.length > 0 && !r.truncated, `${r.features.length} GWR entries, truncated ${r.truncated}`);
+  return `${r.features.length} GWR entries in ${r.requests} queries`;
 });
 
 console.log(`\n${results.filter((r) => r.ok).length}/${results.length} passed, ${geo.requestCount} network requests`);

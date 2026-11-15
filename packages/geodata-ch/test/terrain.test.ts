@@ -57,16 +57,20 @@ function item(year: number, ekm: number, nkm: number): StacItem {
 }
 
 function terrainServer(cogs: Record<string, ArrayBuffer>, items: StacItem[]) {
-  return mockFetch(
+  /** The `Range` header of every request that reached a COG (`undefined`: a whole-file read). */
+  const cogRanges: Array<string | undefined> = [];
+  const server = mockFetch(
     (url) =>
       url.pathname.endsWith('/collections/ch.swisstopo.swissalti3d/items')
         ? json({ type: 'FeatureCollection', features: items, links: [] })
         : undefined,
     (url, init) => {
       const cog = cogs[url.href];
+      if (cog) cogRanges.push((init?.headers as Record<string, string> | undefined)?.Range);
       return cog ? rangeResponse(cog, init) : undefined;
     },
   );
+  return { ...server, cogRanges };
 }
 
 const BOX: BBox = { minX: 2_600_200, minY: 1_199_200, maxX: 2_601_700, maxY: 1_199_800 };
@@ -100,8 +104,16 @@ describe('elevationGrid', () => {
     // Newest acquisition per tile; full-resolution level (62.5 m ≤ 100 m).
     expect(grid.sources.map((s) => s.id).sort()).toEqual(['swissalti3d_2025_2600-1199', 'swissalti3d_2025_2601-1199']);
     expect(grid.sources.every((s) => s.gsd === 62.5)).toBe(true);
-    // Range requests only: no request asked for a whole file.
-    expect(server.calls.filter((u) => u.host === 'cog.test').length).toBeGreaterThan(0);
+    // Range requests only: every request that reached a COG carried a byte range.
+    expect(server.cogRanges.length).toBeGreaterThan(0);
+    expect(server.cogRanges.every((r) => r !== undefined && /^bytes=\d+-\d+$/.test(r))).toBe(true);
+  });
+
+  it('the Range recording sees a whole-file read when one is made', async () => {
+    const url = 'https://cog.test/swissalti3d_2025_2600-1199_2.tif';
+    const server = terrainServer({ [url]: tile(2_600_000, 1_199_000, plane) }, []);
+    await testClient(server.fetch).get(url);
+    expect(server.cogRanges).toEqual([undefined]);
   });
 
   it('reads the internal overview when the requested spacing allows it', async () => {

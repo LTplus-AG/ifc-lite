@@ -61,6 +61,22 @@ const fireRating: ColumnDefinition = {
 
 For `quantity` columns, `psetName` holds the quantity set name (e.g. `Qto_DoorBaseQuantities`).
 
+### Triangle counts
+
+Choose **Triangles** to add a numeric geometry column (`source: 'geometry'`,
+`propertyName: 'TriangleCount'`). Sort it descending to find heavily triangulated
+objects, or use the geometry filter to select objects above a count. Providers
+implement the optional `getTriangleCount(expressId)` accessor; absent or
+unavailable geometry produces a blank cell, while a known empty object reports
+zero. After renderer replacement, viewer counts remain unavailable until the viewport
+has supplied its complete source snapshot; a first mesh does not establish a
+complete model count. Counts have no length unit.
+
+The viewer counts each occurrence of instanced geometry and every mesh piece
+belonging to an object. It also shows the model total in project information and
+an object's own count in its information palette. These are geometry counts,
+independent of camera position, visibility and rendering detail level.
+
 ### Zone columns
 
 `psetName` holds the **zone-set id** (durable; the set's display name is not unique). `propertyName` is the mode:

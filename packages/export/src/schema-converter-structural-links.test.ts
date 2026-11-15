@@ -25,6 +25,26 @@ describe('physical-to-analytical link IFC4 -> IFC2X3 #9668', () => {
     expect(result.stats.warnings.join('\n')).toContain('1 structural conversion record(s): IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement');
   });
 
+  // #10248: a STEP comment in a link slot must not change which entity the link becomes.
+  it('restores the IFC2X3 link when its slots carry STEP comments', async () => {
+    const ifc4 = model('IFC4', `#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
+#10=IFCBEAM('2O2Fr$t4X7Zf8NOew3FLOH',$,'Beam',$,$,$,$,$,$);
+#20=IFCSTRUCTURALCURVEMEMBER('1kTvXnbbzCWw8lcMd1dR4o',$,'Member',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
+#30=IFCRELASSIGNSTOPRODUCT('3KIbrf6nfOzPbzsemNGvi0',$,$,$,/* related */(/* the member */#20/* end */),$/* unset */,/* beam */#10 /* tail */);`);
+    const out = exportToStep(await parse(ifc4), { schema: 'IFC2X3' });
+    expect(lines(out, /^#30=/)).toEqual(["#30=IFCRELCONNECTSSTRUCTURALELEMENT('3KIbrf6nfOzPbzsemNGvi0',$,$,$,#10,#20);"]);
+  });
+
+  it('still keeps an assignment whose discriminator is set, even beside comments', async () => {
+    const ifc4 = model('IFC4', `#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
+#10=IFCBEAM('2O2Fr$t4X7Zf8NOew3FLOH',$,'Beam',$,$,$,$,$,$);
+#20=IFCSTRUCTURALCURVEMEMBER('1kTvXnbbzCWw8lcMd1dR4o',$,'Member',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
+#30=IFCRELASSIGNSTOPRODUCT('3KIbrf6nfOzPbzsemNGvi0',$,$,$,(#20/* m */),/* set */.PRODUCT.,#10);`);
+    const out = exportToStep(await parse(ifc4), { schema: 'IFC2X3' });
+    expect(lines(out, /IFCRELCONNECTSSTRUCTURALELEMENT/)).toEqual([]);
+    expect(lines(out, /^#30=IFCRELASSIGNSTOPRODUCT\(/)).toHaveLength(1);
+  });
+
   it('keeps every other IfcRelAssignsToProduct as it is', async () => {
     const ifc4 = model('IFC4', `#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
 #10=IFCBEAM('2O2Fr$t4X7Zf8NOew3FLOH',$,'Beam',$,$,$,$,$,$);

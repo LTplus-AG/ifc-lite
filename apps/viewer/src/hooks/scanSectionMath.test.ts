@@ -539,27 +539,29 @@ describe('collectScanBandPlaneXY (#6871 outline input)', () => {
   const plane: ScanSectionPlane = { axis: 'y', position: 5, flipped: true };
 
   it('returns every in-band point undecimated, where the capped dot layer strides', () => {
-    const xy = collectScanBandPlaneXY({ sample, coordinateInfo: undefined, plane, thickness: 0.2 });
+    const { planeXY: xy, anchor } = collectScanBandPlaneXY({ sample, coordinateInfo: undefined, plane, thickness: 0.2 });
     const capped = selectScanBand({ sample, coordinateInfo: undefined, plane, thickness: 0.2, maxRendered: 100 });
+    assert.deepEqual(anchor, capped.points[0].point);
     assert.strictEqual(xy.length / 2, capped.totalInBand);
     assert.strictEqual(capped.totalInBand, 3000);
     assert.ok(capped.renderedCount <= 100, 'the dot layer did decimate');
   });
 
   it('projects exactly as the dot layer does, in the same order', () => {
-    const xy = collectScanBandPlaneXY({ sample, coordinateInfo: undefined, plane, thickness: 0.2 });
+    const { planeXY: xy, anchor } = collectScanBandPlaneXY({ sample, coordinateInfo: undefined, plane, thickness: 0.2 });
     const all = selectScanBand({ sample, coordinateInfo: undefined, plane, thickness: 0.2, maxRendered: 1e9 });
     all.points.forEach((p, i) => {
-      assert.strictEqual(xy[i * 2], Math.fround(p.point.x));
-      assert.strictEqual(xy[i * 2 + 1], Math.fround(p.point.y));
+      assert.ok(Math.abs(xy[i * 2] + anchor.x - p.point.x) < 0.00001);
+      assert.ok(Math.abs(xy[i * 2 + 1] + anchor.y - p.point.y) < 0.00001);
     });
   });
 
   it('honours the class mask like the dot layer', () => {
     // Hide class 7 (every 8th point): word 0, bit 7 cleared.
     const classMask = [0xffffffff & ~(1 << 7), 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff];
-    const xy = collectScanBandPlaneXY({ sample, coordinateInfo: undefined, plane, thickness: 0.2, classMask });
+    const { planeXY: xy, anchor } = collectScanBandPlaneXY({ sample, coordinateInfo: undefined, plane, thickness: 0.2, classMask });
     const dots = selectScanBand({ sample, coordinateInfo: undefined, plane, thickness: 0.2, classMask });
+    assert.deepEqual(anchor, dots.points[0].point);
     assert.strictEqual(xy.length / 2, dots.totalInBand);
     assert.strictEqual(dots.totalInBand, 3000 - 500);
   });

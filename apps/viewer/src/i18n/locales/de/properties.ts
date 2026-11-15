@@ -210,6 +210,7 @@ export const propertiesDe = {
   "properties.modelMetadata.notAvailable": "Nicht verfügbar",
   "properties.modelMetadata.buildingStoreys": "Gebäudegeschosse",
   "properties.modelMetadata.elementsWithGeometry": "Bauteile mit Geometrie",
+  "properties.modelMetadata.triangles": "Dreiecke",
   "properties.modelMetadata.maxExpressId": "Höchste Express-ID",
   "properties.modelMetadata.classificationSystemsHeading": "Klassifikationssysteme",
   "properties.modelMetadata.classificationUnresolved": "Klassifikationssysteme vorhanden, aber in dieser Datenquelle nicht verfügbar",

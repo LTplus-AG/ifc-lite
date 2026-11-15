@@ -54,6 +54,15 @@ describe('faceRegionsOfOuterBounds', () => {
     expect(faceRegionsOfOuterBounds([l, triangle])).toEqual([{ polygon: l, innerBounds: [] }, { polygon: triangle, innerBounds: [] }]);
   });
 
+  it('keeps a rectangle over a V-dip as a region although its edge runs exactly through the slot vertices', () => {
+    // A 10 x 10 square with a slot from the top (x 3 to 3.2, down to y 2) ending in a V-dip to (3.1, 1). The rectangle
+    // (1,0.5)-(9,2) has every vertex and edge midpoint in the square and only touches the slot's lower vertices, so
+    // neither the crossing nor the midpoint test sees the dip; the dip's apex (3.1, 1) lies strictly inside the rectangle.
+    const square10: Vec3[] = [[0, 0, 0], [10, 0, 0], [10, 10, 0], [3.2, 10, 0], [3.2, 2, 0], [3.1, 1, 0], [3, 2, 0], [3, 10, 0], [0, 10, 0]];
+    const rectangle: Vec3[] = [[1, 0.5, 0], [9, 0.5, 0], [9, 2, 0], [1, 2, 0]];
+    expect(faceRegionsOfOuterBounds([square10, rectangle])).toEqual([{ polygon: square10, innerBounds: [] }, { polygon: rectangle, innerBounds: [] }]);
+  });
+
   it('keeps a tile whose edge cuts across a thin notch off its midpoint as a region', () => {
     // A square with a thin slot cut in from the top at x = 3..3.2; the tile's long edge from (0,0) to
     // (10,9) passes through the slot while its midpoint (5,4.5) and endpoints lie in the square.

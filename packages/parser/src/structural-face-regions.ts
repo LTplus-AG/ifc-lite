@@ -120,13 +120,14 @@ export function faceRegionsOfOuterBounds(allRings: readonly Vec3[][]): FaceRegio
   const y = cross(normal, x);
   const flat = rings.map((ring): Flat => ring.map((p) => [dot(sub(p, reference[0]), x), dot(sub(p, reference[0]), y)] as const));
   const areas = flat.map(area);
-  // The loops each loop lies in: a larger loop that holds a point inside this one and has no vertex of it outside and no edge of
-  // it leaving it (a chord between two points of a concave loop can leave it). The interior point (not the vertex average, which can fall in a notch of a concave
+  // The loops each loop lies in: a larger loop that holds a point inside this one and has no vertex of it outside, no edge of
+  // it leaving it, and no vertex of the larger loop strictly inside it (a chord between two points of a concave
+  // loop can leave it, even through two of its vertices exactly). The interior point (not the vertex average, which can fall in a notch of a concave
   // loop) rules out a tile that fills a notch of a concave loop with all its vertices on that loop's edge.
   const middle = flat.map(interiorPoint);
   const containers = flat.map((ring, i) => flat.map((_, j) => j).filter((j) => j !== i && areas[j] > areas[i]
     && inside(middle[i], flat[j]) && ring.every((p) => inside(p, flat[j]) || onBoundary(p, flat[j]))
-    && stays(ring, flat[j])));
+    && stays(ring, flat[j]) && flat[j].every((v) => !inside(v, ring) || onBoundary(v, ring))));
   const regions = new Map<number, FaceRegion>();
   rings.forEach((polygon, i) => { if (containers[i].length % 2 === 0) regions.set(i, { polygon, innerBounds: [] }); });
   rings.forEach((polygon, i) => {

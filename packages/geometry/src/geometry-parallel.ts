@@ -519,10 +519,10 @@ export async function* processParallel(
   // to replace a worker regardless of whether #4884's in-call recovery is
   // enabled, and replaying this log is how a replacement reaches the same
   // state every other worker is in.
-  const setupLog = new PoolSetupBroadcast(workers, holdsPoolUntilPrepassEnds(sharedBuffer.byteLength)); const workerSetup = setupLog.log;
+  const setupLog = new PoolSetupBroadcast(workers, holdsPoolUntilPrepassEnds(sharedBuffer.byteLength));
   const broadcastSetup = (setup: (w: Worker) => void) => setupLog.broadcast(setup); // held until the pre-pass ends on large files (#10264)
   const postInitMessages = (worker: Worker) => postGeometryWorkerInit(worker, options, sharedWasmModule);
-  workerSetup.push(postInitMessages);
+  setupLog.record(postInitMessages);
   // This loop runs BEFORE the try/finally below (which owns teardown for the
   // rest of the pipeline), so it needs its own: `postInitMessages` can throw
   // (e.g. a `wasmModule` structured-clone failure — the same class of error
@@ -551,7 +551,7 @@ export async function* processParallel(
    * `workersCompleted` would never reach `workers.length`. None of the three
    * bounds fires after any `stream-chunk` has reached a worker (they all sit
    * strictly before `dispatchJobsChunk`'s gate can open), so there is no
-   * in-flight slice to replay — replaying `workerSetup` alone brings the
+   * in-flight slice to replay — replaying the setup log alone brings the
    * replacement to the same state every other worker is in.
    */
   function replacePreWorkerPhaseWorker(index: number, reason: string): void {
@@ -560,7 +560,7 @@ export async function* processParallel(
     workers[index] = replacement; // swap first — the stale-worker guard then drops anything the hung one flushes
     terminateWorkerQuietly(hung, `process worker (${reason})`);
     installWorkerHandlers(replacement, index);
-    for (const setup of workerSetup) setup(replacement);
+    setupLog.replayTo(replacement); // released setups only; held ones arrive with release() (#10264)
     if (endSentToWorkers) replacement.postMessage({ type: 'stream-end' });
     console.warn(`[stream] worker[${index}] replaced: silent past its #4902 ${reason} bound`);
   }
@@ -752,13 +752,13 @@ export async function* processParallel(
       sendStreamEnd();
     }
     // Every pre-worker gate is open, so no #4902 phase-bound timeout can still
-    // need `workerSetup` to replace a worker (each of the three settles at or
+    // need the setup log to replace a worker (each of the three settles at or
     // before this point — see stall-phase.ts). With #4884 in-call recovery
     // OFF, nothing else ever replays it either: release the closures (styles/
     // prepass-columns retain the large prepass arrays) instead of holding them
     // for the rest of the load. Recovery ON still needs the full log to bring
     // a LATER in-call replacement up to date, so it is left alone.
-    if (!(hungJobTimeoutMs > 0)) workerSetup.length = 0;
+    if (!(hungJobTimeoutMs > 0)) setupLog.clear();
   };
 
   // Step-by-step timing so we can tell exactly where time goes.
@@ -768,7 +768,7 @@ export async function* processParallel(
   const overrideNote = options?.workerCountOverride != null
     ? ` (override=${options.workerCountOverride}, bound=${workerCountResult.reason})`
     : ` (cores=${cores}, bound=${workerCountResult.reason})`;
-  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${overrideNote}${setupLog.holding ? " pool held until pre-pass ends (#10264)" : ""}`);
+  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${overrideNote}${setupLog.holding ? ' pool held until pre-pass ends (#10264)' : ''}`);
 
   /**
    * Deliver a built entity index to every geometry worker (via a shared SAB
@@ -1078,7 +1078,7 @@ export async function* processParallel(
   else options?.signal?.addEventListener('abort', onAbort, { once: true });
   stopHungJobMonitor = startHungJobMonitor({
     workers, ledger, makeWorker: makeGeometryWorker, installHandlers: installWorkerHandlers,
-    setup: workerSetup, postChunk, streamEndSent: () => endSentToWorkers,
+    replaySetup: (w) => setupLog.replayTo(w), postChunk, streamEndSent: () => endSentToWorkers,
     terminate: terminateWorkerQuietly, source: new Uint8Array(sharedBuffer), skipped: skippedHungElements,
     isLive: () => !aborted && !workerError && !prepassError,
     onLiveness: () => { eventQueue.push({ type: 'progress', phase: 'workers' }); wake(); },

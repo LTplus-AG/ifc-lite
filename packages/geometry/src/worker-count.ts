@@ -16,8 +16,6 @@
  * headroom and the main-thread budget.
  */
 
-import { holdsPoolUntilPrepassEnds } from './prepass-overlap-gate.js';
-
 export interface WorkerCountInputs {
   /** File size in megabytes. */
   fileSizeMB: number;
@@ -156,16 +154,12 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
 
   // Memory budget. Reserve 25% of reported RAM (or 1 GB, whichever is larger)
   // for the OS, browser, GPU pool, and other tabs. Subtract main-thread cost
-  // (`fileSize × 2.5`) and, below the overlap gate, the pre-pass worker
-  // (`fileSize × 1.25` at its peak, #10264), which then runs beside the pool;
-  // at and above the gate the pool waits for it to end (prepass-overlap-gate.ts).
-  // Whatever remains funds workers at `fileSize × 1.5`.
+  // (`fileSize × 2.5`). Whatever remains funds workers at `fileSize × 1.5`.
   const totalRAMmb = deviceMemoryGB * 1024;
   const reservedHeadroomMB = Math.max(1024, totalRAMmb * 0.25);
   const mainBudgetMB = fileSizeMB * 2.5;
-  const prepassOverlapMB = holdsPoolUntilPrepassEnds(fileSizeMB * 1024 * 1024) ? 0 : fileSizeMB * 1.25;
   const perWorkerMB = Math.max(64, fileSizeMB * 1.5);
-  const remaining = totalRAMmb - reservedHeadroomMB - mainBudgetMB - prepassOverlapMB;
+  const remaining = totalRAMmb - reservedHeadroomMB - mainBudgetMB;
   const memoryCap = remaining > 0
     ? Math.max(1, Math.floor(remaining / perWorkerMB))
     : 1;

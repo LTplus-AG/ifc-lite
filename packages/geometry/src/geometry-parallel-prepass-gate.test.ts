@@ -175,4 +175,96 @@ describe('processParallel pre-pass overlap gate (#10264)', () => {
     expect(types(created[2])).not.toContain('prepass-streaming-sharded');
     expect(events.at(-1)?.type).toBe('complete');
   });
+
+  it('gated, three workers: nothing before the pre-pass ends, then every worker gets the full sequence', async () => {
+    gate.minBytes = 1024 * 1024;
+    const { beforeComplete, events } = await runLoad(3);
+    for (let i = 0; i < 3; i++) {
+      const before = beforeComplete.filter((t) => t.startsWith(`geom${i}:`)).map((t) => t.slice(`geom${i}:`.length));
+      expect(before).toEqual(CONFIG);
+      expect(types(created[i])).toEqual([...CONFIG, ...LOAD]);
+    }
+    expect(events.at(-1)?.type).toBe('complete');
+  });
+});
+
+/** Starts a gated load and pumps it until the pool is holding (pre-pass has
+ *  sent meta, entity-index, styles and jobs, but not `complete`). */
+async function startHeldLoad(workerCount: number, signal?: AbortSignal) {
+  gate.minBytes = 1024 * 1024;
+  installFakeWorkers(workerCount);
+  const shared = new SharedArrayBuffer(SOURCE_BYTES);
+  new Uint8Array(shared).set(new TextEncoder().encode(SOURCE));
+  const gen = processParallel(new Uint8Array(shared), new CoordinateHandler(), undefined, shared, {
+    workerCountOverride: workerCount, signal,
+  });
+  const events: StreamingGeometryEvent[] = [];
+  let error: unknown = null;
+  const drain = (async () => {
+    try {
+      for await (const event of gen) events.push(event);
+    } catch (err) {
+      error = err;
+    }
+  })();
+  for (let i = 0; i < 5; i++) await settle();
+  const settled = () => Promise.race([
+    drain,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMED_OUT: load never settled')), 1_000)),
+  ]);
+  return { events, error: () => error, settled, prepass: created[workerCount] };
+}
+
+/** No held message reached any process worker, and every worker was terminated. */
+function expectNothingReleasedAndAllTerminated(workerCount: number): void {
+  for (let i = 0; i < workerCount; i++) {
+    expect(types(created[i])).toEqual(CONFIG);
+    expect(created[i].terminate).toHaveBeenCalled();
+  }
+  expect(created[workerCount].terminate).toHaveBeenCalled();
+}
+
+describe('processParallel pre-pass overlap gate: ending a load during the hold (#10264)', () => {
+  it('abort during the hold', async () => {
+    const controller = new AbortController();
+    const load = await startHeldLoad(2, controller.signal);
+    expect(types(created[0])).toEqual(CONFIG); // holding
+    controller.abort();
+    await load.settled();
+    expect(load.events.some((e) => e.type === 'complete')).toBe(false);
+    expectNothingReleasedAndAllTerminated(2);
+  });
+
+  it('pre-pass reports an error during the hold', async () => {
+    const load = await startHeldLoad(2);
+    load.prepass.reply({ type: 'error', message: 'boom' });
+    await load.settled();
+    expect(String(load.error())).toMatch(/Pre-pass worker error: boom/);
+    expectNothingReleasedAndAllTerminated(2);
+  });
+
+  it('pre-pass worker crashes during the hold', async () => {
+    const load = await startHeldLoad(2);
+    load.prepass.onerror?.({ message: 'worker crashed', filename: 'geometry.worker.js', lineno: 1 });
+    await load.settled();
+    expect(String(load.error())).toMatch(/Pre-pass worker failed/);
+    expectNothingReleasedAndAllTerminated(2);
+  });
+
+  it('consumer stops at the rtcOffset event, which arrives during the hold', async () => {
+    gate.minBytes = 1024 * 1024;
+    installFakeWorkers(2);
+    const shared = new SharedArrayBuffer(SOURCE_BYTES);
+    new Uint8Array(shared).set(new TextEncoder().encode(SOURCE));
+    const gen = processParallel(new Uint8Array(shared), new CoordinateHandler(), undefined, shared, { workerCountOverride: 2 });
+    let sawRtc = false;
+    const consume = (async () => {
+      for await (const event of gen) {
+        if (event.type === 'rtcOffset') { sawRtc = true; break; }
+      }
+    })();
+    await Promise.race([consume, new Promise((_, reject) => setTimeout(() => reject(new Error('TIMED_OUT')), 1_000))]);
+    expect(sawRtc).toBe(true);
+    expectNothingReleasedAndAllTerminated(2);
+  });
 });

@@ -41,7 +41,6 @@ describe('PoolSetupBroadcast (#10264)', () => {
     expect(b.holding).toBe(false);
     b.broadcast(setupNamed(seen, 'stream-start'));
     expect(seen).toEqual(['w0:stream-start', 'w1:stream-start']);
-    expect(b.log).toHaveLength(1);
   });
 
   it('holds every setup until release, then posts them in their original order', () => {
@@ -50,8 +49,6 @@ describe('PoolSetupBroadcast (#10264)', () => {
     for (const name of ['stream-start', 'set-entity-index', 'set-styles']) b.broadcast(setupNamed(seen, name));
     expect(b.holding).toBe(true);
     expect(seen).toEqual([]);
-    // The replay log still records them, for a replacement worker.
-    expect(b.log).toHaveLength(3);
 
     b.release();
     expect(b.holding).toBe(false);
@@ -80,5 +77,38 @@ describe('PoolSetupBroadcast (#10264)', () => {
     b.broadcast(setupNamed(seen, 'stream-start'));
     b.release();
     expect(seen).toEqual(['w0:stream-start']);
+  });
+
+  it('replays only released setups to a replacement, so release never delivers one twice', () => {
+    const workers: Worker[] = [{ name: 'w0' } as unknown as Worker];
+    const seen: string[] = [];
+    const b = new PoolSetupBroadcast(workers, true);
+    b.record(setupNamed(seen, 'init'));
+    b.broadcast(setupNamed(seen, 'stream-start'));
+    b.broadcast(setupNamed(seen, 'set-entity-index'));
+
+    // A replacement joins the pool while it holds (the pool swaps it in place).
+    const replacement = { name: 'r0' } as unknown as Worker;
+    workers[0] = replacement;
+    b.replayTo(replacement);
+    expect(seen).toEqual(['r0:init']);
+
+    b.release();
+    expect(seen).toEqual(['r0:init', 'r0:stream-start', 'r0:set-entity-index']);
+
+    // After release, a later replacement gets the whole log exactly once.
+    const late = { name: 'r1' } as unknown as Worker;
+    workers[0] = late;
+    b.replayTo(late);
+    expect(seen.filter((e) => e.startsWith('r1:'))).toEqual(['r1:init', 'r1:stream-start', 'r1:set-entity-index']);
+  });
+
+  it('replays nothing after clear()', () => {
+    const seen: string[] = [];
+    const b = new PoolSetupBroadcast([], false);
+    b.record(setupNamed(seen, 'init'));
+    b.clear();
+    b.replayTo({ name: 'w0' } as unknown as Worker);
+    expect(seen).toEqual([]);
   });
 });

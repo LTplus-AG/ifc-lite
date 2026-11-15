@@ -48,10 +48,13 @@ type WorkerSetup = (worker: Worker) => void;
  * replayed to replacement workers) and posts it to every worker, unless the
  * broadcaster is holding, in which case the setup waits for `release`, which
  * posts all held setups in their original order. Releasing twice is a no-op.
+ * `replayTo` brings a replacement worker up to date with the RELEASED setups
+ * only: a replacement that joins the pool while it holds receives the held
+ * ones from `release`, like every other worker, and so never receives any
+ * setup twice.
  */
 export class PoolSetupBroadcast {
-  /** Every setup in order, for replay to a replacement worker. */
-  readonly log: WorkerSetup[] = [];
+  private readonly log: WorkerSetup[] = [];
   private held: WorkerSetup[] | null;
 
   constructor(private readonly workers: readonly Worker[], hold: boolean) {
@@ -60,6 +63,11 @@ export class PoolSetupBroadcast {
 
   get holding(): boolean {
     return this.held !== null;
+  }
+
+  /** Record a setup the caller posts itself (worker init), for replay only. */
+  record(setup: WorkerSetup): void {
+    this.log.push(setup);
   }
 
   broadcast(setup: WorkerSetup): void {
@@ -78,5 +86,16 @@ export class PoolSetupBroadcast {
     for (const setup of held) {
       for (const worker of this.workers) setup(worker);
     }
+  }
+
+  /** Post every released setup, in order, to one (replacement) worker. */
+  replayTo(worker: Worker): void {
+    const released = this.log.length - (this.held?.length ?? 0);
+    for (let i = 0; i < released; i++) this.log[i](worker);
+  }
+
+  /** Drop the replay log (no replacement can need it any more). */
+  clear(): void {
+    this.log.length = 0;
   }
 }

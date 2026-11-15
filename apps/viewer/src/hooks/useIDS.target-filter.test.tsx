@@ -142,7 +142,10 @@ it('offers filter options from the displayed report model instead of a different
   const controls = panel.querySelector('section[aria-label="Objects to validate"]')!;
   assert.ok(controls);
   const pick = [...controls.querySelectorAll('button')].find(button => button.textContent?.includes('Pick values'));
-  assert.ok(pick); click(pick);
+  assert.ok(pick);
+  act(() => { pick.dispatchEvent(new window.PointerEvent('pointerdown', {
+    bubbles: true, cancelable: true, button: 0,
+  })); });
   const menu = document.querySelector('[role="menu"]');
   assert.ok(menu);
   assert.match(menu.textContent ?? '', /IfcWall/);

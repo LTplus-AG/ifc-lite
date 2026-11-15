@@ -212,7 +212,13 @@ describe('files and samples off have no other door', () => {
     render(<PanelModelGate id="lens" mode="takeover" onClose={() => {}}><span /></PanelModelGate>);
     assert.equal(buttonsNamed('Load demo project'), 0);
     assert.equal(buttonsNamed('Open'), 0);
-    assert.match(document.body.textContent ?? '', /from the page that brought you here/, 'says where the model comes from');
+    assert.doesNotMatch(document.body.textContent ?? '', /from the page that brought you here/, 'Cloud Sources still opens one (#10176)');
+  });
+
+  it('an empty panel says the page opens the model only when no picker is left (#10176)', () => {
+    resetFeaturesForTest({ default: 'none' });
+    render(<PanelModelGate id="lens" mode="takeover" onClose={() => {}}><span /></PanelModelGate>);
+    assert.match(document.body.textContent ?? '', /from the page that brought you here/);
   });
 
   it('the open and add-model handlers do not show a picker with local files off', async () => {

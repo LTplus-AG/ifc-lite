@@ -27,6 +27,7 @@
  */
 
 import { isFeatureEnabled } from '@/lib/features';
+import { hostOpensModel } from './ViewportWelcomeCard';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Building2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -118,13 +119,13 @@ function useNoModelActions(id: WorkspacePanelId) {
     window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
   };
   // A host can switch sample models and local files off (`lib/features`).
-  return { loading, loadSample, openFile, samples: isFeatureEnabled('files.samples'), local: isFeatureEnabled('files.local') };
+  return { loading, loadSample, openFile, samples: isFeatureEnabled('files.samples'), local: isFeatureEnabled('files.local'), hostOpens: hostOpensModel() };
 }
 
 function NoModelPanelState({ id, onClose }: { id: WorkspacePanelId; onClose: () => void }) {
   const { t } = useTranslation();
   const isMobile = useViewerStore((s) => s.isMobile);
-  const { loading, loadSample, openFile, samples, local } = useNoModelActions(id);
+  const { loading, loadSample, openFile, samples, local, hostOpens } = useNoModelActions(id);
   const def = getPanelDef(id);
   const Icon = def?.Icon ?? Building2;
   return (
@@ -156,7 +157,7 @@ function NoModelPanelState({ id, onClose }: { id: WorkspacePanelId; onClose: () 
               {t('viewportLighting.container.emptyState.openButton.open')}
             </Button>}
             {local && <p className="max-w-[240px] text-2xs text-muted-foreground">{t('panelNoModel.dropHint')}</p>}
-            {!samples && !local && <p className="max-w-[240px] text-2xs text-muted-foreground">{t('viewportLighting.container.emptyState.hostOpens.lead')}</p>}
+            {hostOpens && <p className="max-w-[240px] text-2xs text-muted-foreground">{t('viewportLighting.container.emptyState.hostOpens.lead')}</p>}
           </div>
         }
       />
@@ -167,7 +168,7 @@ function NoModelPanelState({ id, onClose }: { id: WorkspacePanelId; onClose: () 
 /** One muted line with two text links: the panel's own work stays primary. */
 function NoModelBanner({ id }: { id: WorkspacePanelId }) {
   const { t } = useTranslation();
-  const { loading, loadSample, openFile, samples, local } = useNoModelActions(id);
+  const { loading, loadSample, openFile, samples, local, hostOpens } = useNoModelActions(id);
   const link = 'font-medium text-foreground underline underline-offset-2 hover:text-primary disabled:opacity-60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
   return (
     <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
@@ -179,7 +180,7 @@ function NoModelBanner({ id }: { id: WorkspacePanelId }) {
       {local && <button type="button" className={link} onClick={openFile}>
         {t('viewportLighting.container.emptyState.openButton.open')}
       </button>}
-      {!samples && !local && t('viewportLighting.container.emptyState.hostOpens.lead')}
+      {hostOpens && t('viewportLighting.container.emptyState.hostOpens.lead')}
     </p>
   );
 }

@@ -64,6 +64,12 @@ export interface ViewportWelcomeCardProps {
   loadFile: (file: File) => Promise<void>;
 }
 
+/** No way to pick a model on this page (`lib/features`): the page that embeds the viewer opens one. */
+export function hostOpensModel(): boolean {
+  return !isFeatureEnabled('files.local') && !isFeatureEnabled('files.samples') && !isPanelAvailable('sources')
+    && !isSurfaceCommandAvailable(surfaceCommand('file:new-blank', 'palette'));
+}
+
 export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentFiles, loadFile }: ViewportWelcomeCardProps) {
   const { t } = useTranslation();
   const actionsDisabled = !webgpu.supported || webgpu.checking;
@@ -120,8 +126,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   const sources = isPanelAvailable('sources');
   const blank = isSurfaceCommandAvailable(surfaceCommand('file:new-blank', 'palette'));
   const hasRecent = local && recentFiles.length > 0;
-  // No way to pick a model here: the page that embeds the viewer opens one.
-  const hostOpens = !local && !sources && !samples && !blank;
+  const hostOpens = hostOpensModel();
 
   return (
     <div {...tourAnchor(TOUR_ANCHORS.emptyStateCard)} className="flex w-full max-w-[500px] flex-col">

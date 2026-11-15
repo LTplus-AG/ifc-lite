@@ -77,7 +77,7 @@ export function useIfcServer() {
     /** Replace the prior scene only once server geometry is available. */
     beforePublish?: () => void,
   ): Promise<boolean> => {
-    cancelProperties(modelId);
+    if (!beforePublish) cancelProperties(modelId);
     const { setProgress, setGeometryResult } = useViewerStore.getState();
     // A processed model has no fallback, so its failures reach the caller to be worded; an
     // upload's stay silent here and fall back to local processing.
@@ -89,6 +89,7 @@ export function useIfcServer() {
         beforePublish();
         setProgress(progress);
       }
+      if (!published) cancelProperties(modelId);
       published = true;
       setGeometryResult(result);
     };

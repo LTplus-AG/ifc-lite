@@ -364,7 +364,7 @@ for (const phase of ['header', 'dialog']) it(`#10264 loading-card Cancel during 
   }
 });
 
-for (const outcome of ['refusal', 'dialog-cancel', 'loading-cancel', 'replacement']) it(`#10264 pending displayed-model properties survive candidate ${outcome} until replacement commits`, async () => {
+for (const outcome of ['refusal', 'same-id-refusal', 'dialog-cancel', 'loading-cancel', 'replacement']) it(`#10264 pending displayed-model properties survive candidate ${outcome} until replacement commits`, async () => {
   const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
   let deliver: ((bytes: ArrayBuffer) => void) | undefined, propertySignal: AbortSignal | undefined;
   let polls = 0;
@@ -389,13 +389,14 @@ for (const outcome of ['refusal', 'dialog-cancel', 'loading-cancel', 'replacemen
       assert.equal(useViewerStore.getState().models.has('replacement'), true);
       return;
     }
-    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: outcome === 'refusal' ? 4 : 8 });
-    useViewerStore.setState({ mergeLayers: true }); // configured server cannot accept this candidate
+    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: outcome.endsWith('refusal') ? 4 : 8 });
+    useViewerStore.setState({ mergeLayers: outcome !== 'same-id-refusal' });
+    if (outcome === 'same-id-refusal') mock.method(IfcServerClient.prototype, 'parseParquetStream', async () => { throw new Error('candidate server unavailable'); });
     const source = file('unadmitted-candidate.ifc'), blob = new Blob([source]);
     Object.defineProperty(source, 'size', { value: 1.05e9 });
     Object.defineProperty(source, 'slice', { value: blob.slice.bind(blob) });
-    await act(async () => { candidate = api!.loadFile(source); });
-    if (outcome !== 'refusal') {
+    await act(async () => { candidate = api!.loadFile(source, outcome === 'same-id-refusal' ? { kind: 'primary', modelId: 'hydration-prior' } : undefined); });
+    if (!outcome.endsWith('refusal')) {
       await waitFor(() => !!document.querySelector('[role="alertdialog"]'), 'candidate awaits admission');
       if (outcome === 'dialog-cancel') click(document.querySelector('[role="alertdialog"] button')!);
       else await act(async () => { useViewerStore.getState().activeLoadCanceller?.(); });

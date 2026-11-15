@@ -293,7 +293,8 @@ pub(crate) fn cap_half_space_clip(
         // The first cap region: the cut wall takes the weld the caps are
         // built on. A cap that builds no region leaves the mesh as it came in.
         if outer_filled == 0 {
-            snap_to_section(mesh, &pos, &on_plane, &welded);
+            let on_section = section_vertices(mesh, &welded, &on_plane, plane_point, n);
+            snap_to_section(mesh, &pos, &welded, &on_section);
         }
         outer_filled += 1;
         let verts3d: Vec<Point3<f64>> = verts2d.iter().map(lift).collect();
@@ -353,7 +354,31 @@ fn weld_section(
     (pos, on_plane, welded)
 }
 
-/// Move every mesh vertex that welds to a section vertex onto it.
+/// The mesh vertices of the cut section: in an on-plane weld cell, and on
+/// the plane themselves to a few f32 steps of the mesh's largest coordinate,
+/// as the clipper leaves every copy of a section vertex. A vertex that only
+/// shares a weld cell with the section, such as a corner of a thin part just
+/// above the plane, is not one.
+fn section_vertices(
+    mesh: &Mesh,
+    welded: &[u32],
+    on_plane: &[bool],
+    plane_point: Point3<f64>,
+    n: Vector3<f64>,
+) -> Vec<bool> {
+    let reach = mesh.positions.iter().fold(1.0_f64, |m, &c| m.max(f64::from(c.abs())));
+    let tol = 8.0 * f64::from(f32::EPSILON) * reach;
+    welded
+        .iter()
+        .zip(mesh.positions.as_chunks::<3>().0)
+        .map(|(&id, p)| {
+            let p = Point3::new(f64::from(p[0]), f64::from(p[1]), f64::from(p[2]));
+            on_plane[id as usize] && (p - plane_point).dot(&n).abs() <= tol
+        })
+        .collect()
+}
+
+/// Move every section vertex ([`section_vertices`]) onto its weld position.
 ///
 /// The cap is triangulated over the welded section. Left where they were,
 /// two section vertices in one cell stay two vertices of the cut wall and one
@@ -361,9 +386,9 @@ fn weld_section(
 /// cell where the two are not in line. A plane 1.6 mm above the base of a
 /// finely faceted arc wall leaves such pairs 0.11 mm apart, one where each
 /// quad's diagonal crosses the plane (ISSUE_129 #61300, 0.17 mm cells).
-fn snap_to_section(mesh: &mut Mesh, pos: &[Point3<f64>], on_plane: &[bool], welded: &[u32]) {
+fn snap_to_section(mesh: &mut Mesh, pos: &[Point3<f64>], welded: &[u32], on_section: &[bool]) {
     for (i, &id) in welded.iter().enumerate() {
-        if on_plane[id as usize] {
+        if on_section[i] {
             let p = pos[id as usize];
             mesh.positions[i * 3..i * 3 + 3].copy_from_slice(&[p.x as f32, p.y as f32, p.z as f32]);
         }

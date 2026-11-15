@@ -39,7 +39,7 @@ Two tools:
   any other load error, including main's "Ran out of memory while processing", always, and the
   worker/runtime crash messages that leave the tab alive. Messages are read from the store's load error and dialogs/alerts/toasts, never the whole
   page. It also reports peak summed Chrome PSS, the cgroup peak, the phase reached, which process
-  types an OOM kill took, and main-thread reads of the source file.
+  types an OOM kill took, and source tracking (below).
   Needs Linux with cgroup v2 and the memory controller delegated to the systemd user manager;
   anything missing exits 2, never skips.
 
@@ -55,11 +55,21 @@ then reports `loaded` or `killed-after-continue`. `--expect not-killed` accepts 
 `refused`, `awaiting-decision` and `cancelled`; a kill after an explicit Continue passes only
 `--expect warned`, and its verdict says so. The warning title, its button names and the refusal
 text come from draft PR #10353 and may drift; they live together in `oom-load-probe-lib.mjs`.
-`--watch-url URL` records every request to that origin (and its failure or response) and builds a
-timeline relative to the file pick: server attempts, dialogs (stamped when they appear), the
-store's load error and the first main-thread source read. It reports whether the server was tried
-before the warning or refusal, and whether anything read the source before it. Anything the probe
-could not observe is `null`, never a pass.
+Source tracking (`oom-load-probe-tracker.mjs`, injected into the page) identifies the picked file
+by object identity: the `File` a file `<input>` delivers, and every `Blob.slice` of it. Only reads
+of those count as source reads (with bytes; "large" means the whole file or at least 1 MiB). A read
+of any other Blob of 1 MiB or more is reported as an unattributed read, never as a source read.
+Every worker `postMessage` that carries or transfers a Blob is recorded with its time, the worker's
+script URL and whether the Blob was the source. Reads inside workers are not visible.
+
+`--watch-url URL` records every request to that origin (and its failure or response), and the
+probe builds a timeline relative to the file pick: server attempts, dialogs (stamped when they
+appear), the store's load error, source reads, unattributed reads and worker posts. Each derived
+flag (`attemptBeforeDecision`, `readBeforeDecision`, `unattributedReadBeforeDecision`,
+`sourcePostBeforeDecision`) is `true`, `false` only when the instrument that would have seen the
+event was installed and reported, or `null`. `--expect-server-first` additionally requires a
+server attempt before the warning or refusal and no large source read or source post before it;
+a `null` fails it.
 
 ```bash
 pnpm install && pnpm build:wasm && pnpm turbo build --filter=@ifc-lite/viewer   # or any built apps/viewer/dist

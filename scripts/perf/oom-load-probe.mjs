@@ -49,7 +49,8 @@ import { basename, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { writeDenseIfc } from './gen-dense-ifc.mjs';
-import { DIALOG_BUTTONS, MEMORY_WARNING, classify, optionErrors, parseSize, phaseOf, runCleanup, serverAttemptSummary, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { DIALOG_BUTTONS, MEMORY_WARNING, SERVER_FIRST, classify, expectFlags, optionErrors, parseSize, phaseOf, runCleanup, serverAttemptSummary, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { installSourceTracker, trackerSummary } from './oom-load-probe-tracker.mjs';
 import { GPU_ARGS } from './retained-qual-browser.mjs';
 import { chromePids, memoryOf } from './scenoptic-bench-sampling.mjs';
 import { openAndWaitInteractive, openViewerPage, startViewerServer } from './viewer-load-probe.mjs';
@@ -90,37 +91,6 @@ function cgroupOf(unit) {
 }
 const scopeProp = (unit, prop) => {
   try { return execFileSync('systemctl', ['--user', 'show', `${unit}.scope`, '-p', prop, '--value'], { encoding: 'utf8' }).trim(); } catch { return null; }
-};
-
-/**
- * Init script: count reads of large Blobs/Files on the page's main thread
- * (arrayBuffer/text/bytes/stream, FileReader, and slices over 1 MiB), so a
- * cancelled load can show it never read its source. Reads inside workers are
- * not seen; a File posted to a worker is counted as `postedToWorker`.
- */
-const COUNT_SOURCE_READS = () => {
-  const MIN = 1 << 20, c = (globalThis.__oomProbeReads = { reads: 0, bytes: 0, slices: 0, postedToWorker: 0, firstReadAt: null });
-  const big = (b) => b && b.size >= MIN;
-  const read = (b) => { c.reads++; c.bytes += b.size; c.firstReadAt ??= Date.now(); };
-  for (const m of ['arrayBuffer', 'text', 'bytes', 'stream']) {
-    const orig = Blob.prototype[m];
-    if (orig) Blob.prototype[m] = function (...a) { if (big(this)) read(this); return orig.apply(this, a); };
-  }
-  const slice = Blob.prototype.slice;
-  Blob.prototype.slice = function (start = 0, end = this.size, ...rest) {
-    const part = slice.call(this, start, end, ...rest);
-    if (big(part)) c.slices++;
-    return part;
-  };
-  for (const m of ['readAsArrayBuffer', 'readAsText', 'readAsBinaryString', 'readAsDataURL']) {
-    const orig = FileReader.prototype[m];
-    FileReader.prototype[m] = function (b, ...a) { if (big(b)) read(b); return orig.call(this, b, ...a); };
-  }
-  const post = Worker.prototype.postMessage;
-  Worker.prototype.postMessage = function (msg, ...a) {
-    try { if (msg instanceof Blob ? big(msg) : msg && typeof msg === 'object' && Object.values(msg).some((v) => v instanceof Blob && big(v))) c.postedToWorker++; } catch { /* exotic message */ }
-    return post.call(this, msg, ...a);
-  };
 };
 
 /** Init script: stamp (wall clock) each dialog when its text first appears. */
@@ -182,7 +152,7 @@ export async function runProbe(opts) {
     timedOut: false, warningShown: false, decision: 'none' };
   const peak = { pssMiB: 0, cgroupMiB: 0 };
   const unit = `oom-load-probe-${process.pid}-${Date.now()}`;
-  let last = null, context, sampler, cg = null, verdictReady = false, pickAt = null, dialogs = [];
+  let last = null, context, sampler, cg = null, verdictReady = false, pickAt = null, dialogs = [], trackerReport = null;
   const netEvents = [], storeErrors = [];
   const watchOrigin = opts.watchUrl ? new URL(opts.watchUrl).origin : null;
   try {
@@ -220,7 +190,8 @@ export async function runProbe(opts) {
       if (dm !== null) Object.defineProperty(Navigator.prototype, 'deviceMemory', { get: () => dm, configurable: true });
       if (hc !== null) Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => hc, configurable: true });
     }, { dm: opts.deviceMemory, hc: opts.cores });
-    await context.addInitScript(COUNT_SOURCE_READS);
+    // Source identity, reads and worker posts (oom-load-probe-tracker.mjs), injected as source text.
+    await context.addInitScript({ content: `(${installSourceTracker})({ Blob, FileReader, Worker: globalThis.Worker, target: globalThis, document, now: Date.now });` });
     await context.addInitScript(DIALOG_MARKS);
     if (watchOrigin) {
       const sameOrigin = (url) => { try { return new URL(url).origin === watchOrigin; } catch { return false; } };
@@ -292,7 +263,7 @@ export async function runProbe(opts) {
     if (!obs.pageCrashed && !obs.browserGone) {
       obs.notices = await withTimeout(page.evaluate(NOTICES).catch(() => []), 5000, () => []);
       dialogs = await withTimeout(page.evaluate(() => globalThis.__oomProbeDialogs ?? []).catch(() => []), 5000, () => []);
-      result.sourceReads = await withTimeout(page.evaluate(() => globalThis.__oomProbeReads ?? null).catch(() => null), 5000, () => null);
+      trackerReport = await withTimeout(page.evaluate(() => globalThis.__oomProbeTracker?.report() ?? null).catch(() => null), 5000, () => null);
       if (obs.interactive) last = { ...(await withTimeout(page.evaluate(PAGE_PROBE).catch(() => last), 5000, () => last)), interactive: true };
       await page.screenshot({ path: join(outDir, 'end.png'), timeout: 10000 }).catch(() => {});
     }
@@ -313,18 +284,25 @@ export async function runProbe(opts) {
   result.notices = obs.notices;
   if (pickAt !== null) {
     const ms = (t) => t - pickAt;
+    const tracked = trackerSummary(trackerReport, pickAt);
+    const { events: trackedEvents, ...trackedCounts } = tracked;
+    result.sourceTracking = trackedCounts;
     result.timeline = [
       ...netEvents.map(({ t, ...e }) => ({ ms: ms(t), ...e })),
       ...dialogs.map((d) => ({ ms: ms(d.t), event: 'dialog', text: d.text })),
       ...storeErrors.map((e) => ({ ms: ms(e.t), event: 'store-error', text: e.text })),
-      ...(result.sourceReads?.firstReadAt ? [{ ms: ms(result.sourceReads.firstReadAt), event: 'first-read' }] : []),
+      ...trackedEvents,
     ].sort((a, b) => a.ms - b.ms);
-    result.serverAttempts = serverAttemptSummary(result.timeline, { watching: Boolean(watchOrigin) });
+    result.serverAttempts = serverAttemptSummary(result.timeline, { watching: Boolean(watchOrigin), tracker: tracked });
   }
   Object.assign(result, classify(obs), { phase: phaseOf(last), last, peakPssMiB: Math.round(peak.pssMiB),
     peakCgroupMiB: Math.round(peak.cgroupMiB), oomKills: obs.oomKills, killedTypes: obs.killedTypes });
   const v = verdict(result.outcome, opts.expect);
   Object.assign(result, { pass: v.pass, verdict: v.message });
+  if (opts.expectServerFirst) {
+    const f = expectFlags(result.serverAttempts, SERVER_FIRST);
+    Object.assign(result, { pass: result.pass && f.pass, verdict: `${result.verdict}; ${f.message}` });
+  }
   writeFileSync(join(outDir, 'result.json'), `${JSON.stringify(result, null, 1)}\n`);
   return { result, outDir };
 }
@@ -335,7 +313,7 @@ function cli() {
     seed: { type: 'string' }, cap: { type: 'string' }, 'device-memory': { type: 'string' }, cores: { type: 'string' },
     'cpu-quota': { type: 'string' }, gl: { type: 'string' }, expect: { type: 'string' }, out: { type: 'string' },
     'limit-min': { type: 'string' }, 'keep-fixture': { type: 'boolean' }, 'on-memory-dialog': { type: 'string' },
-    'watch-url': { type: 'string' },
+    'watch-url': { type: 'string' }, 'expect-server-first': { type: 'boolean' },
   } });
   const fail = (m) => { console.error(`oom-load-probe: ${m}`); process.exit(2); };
   if (!v.dist || !existsSync(join(v.dist, 'index.html'))) fail('--dist must point at a built viewer (apps/viewer/dist)');
@@ -349,11 +327,12 @@ function cli() {
     seed: v.seed ? Number(v.seed) : 1, cap: v.cap, deviceMemory: v['device-memory'] ? Number(v['device-memory']) : null, cores,
     cpuQuota: v['cpu-quota'] ?? `${(cores ?? 4) * 100}%`, gl, expect: v.expect, out: v.out && resolve(v.out),
     limitMin: Number(v['limit-min'] ?? 10), keepFixture: Boolean(v['keep-fixture']), onMemoryDialog: v['on-memory-dialog'] ?? 'wait',
-    watchUrl: v['watch-url'] };
+    watchUrl: v['watch-url'], expectServerFirst: Boolean(v['expect-server-first']) };
+  if (opts.expectServerFirst && !opts.watchUrl) fail('--expect-server-first needs --watch-url');
   try { preflight(); } catch (err) { fail(err.message); }
   runProbe(opts).then(({ result, outDir }) => {
     console.log(`outcome=${result.outcome} phase="${result.phase}" peakPssMiB=${result.peakPssMiB} peakCgroupMiB=${result.peakCgroupMiB} `
-      + `oomKills=${result.oomKills} sourceReads=${JSON.stringify(result.sourceReads ?? null)} reason="${result.reason}" `
+      + `oomKills=${result.oomKills} sourceTracking=${JSON.stringify(result.sourceTracking ?? null)} reason="${result.reason}" `
       + `${result.serverAttempts?.watched ? `server=${JSON.stringify(result.serverAttempts)} ` : ''}-> ${result.verdict} [${outDir}/result.json]`);
     if (result.cleanupFailures) console.error(`oom-load-probe: cleanup failures: ${result.cleanupFailures.join('; ')}`);
     process.exit(result.pass ? 0 : 1);

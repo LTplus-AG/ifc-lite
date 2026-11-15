@@ -203,25 +203,51 @@ export function withTimeout(promise, ms, onTimeout) {
 
 /**
  * Order of events in one load, relative to the file pick (#10353 server proof).
- * `timeline` entries are `{ ms, event, ... }` with event 'request' | 'requestfailed' |
- * 'response' (network to the watched origin), 'dialog' (a dialog appeared, with its text),
- * 'store-error' (the viewer's load error, polled) or 'first-read' (first large source read).
- * Returns what a reviewer needs: was the watched server tried, did it fail, and did that
- * happen before the warning dialog or refusal and before any source read. A field the probe
- * could not observe is null, never a passing value.
+ * `timeline` entries are `{ ms, event, ... }`: 'request' | 'requestfailed' | 'response'
+ * (network to the watched origin), 'dialog' (a dialog appeared, with its text),
+ * 'store-error' (the viewer's load error, polled), and from the source tracker
+ * 'source-read' (with `large`), 'unattributed-read' and 'worker-post' (with `source`).
+ *
+ * Every derived flag is three-valued: `true`, `false` only when the instrument
+ * that would have seen the event was installed and reported (network listener
+ * for attempts, the source tracker for reads and posts), `null` otherwise.
+ * `tracker` is `trackerSummary(...)`; `reported: false` there makes every
+ * read/post flag null.
  */
-export function serverAttemptSummary(timeline, { watching }) {
-  if (!watching) return { watched: false, attempts: null, failures: null, firstAttemptMs: null, firstDecisionMs: null, attemptBeforeDecision: null, readBeforeDecision: null };
+export function serverAttemptSummary(timeline, { watching, tracker }) {
   const at = (pred) => timeline.filter(pred).map((e) => e.ms).sort((a, b) => a - b)[0] ?? null;
-  const attempts = timeline.filter((e) => e.event === 'request').length;
-  const failures = timeline.filter((e) => e.event === 'requestfailed').length;
-  const firstAttemptMs = at((e) => e.event === 'request');
   const firstDecisionMs = at((e) => (e.event === 'dialog' && (MEMORY_WARNING.test(e.text ?? '') || REFUSAL_MESSAGE.test(e.text ?? '')))
     || (e.event === 'store-error' && REFUSAL_MESSAGE.test(e.text ?? '')));
-  const firstReadMs = at((e) => e.event === 'first-read');
+  const before = (pred, observed) => {
+    if (!observed || firstDecisionMs === null) return null;
+    const first = at(pred);
+    return first !== null && first < firstDecisionMs;
+  };
+  const trackerReported = tracker?.reported === true;
+  const firstAttemptMs = watching ? at((e) => e.event === 'request') : null;
   return {
-    watched: true, attempts, failures, firstAttemptMs, firstDecisionMs,
-    attemptBeforeDecision: firstAttemptMs === null || firstDecisionMs === null ? null : firstAttemptMs < firstDecisionMs,
-    readBeforeDecision: firstDecisionMs === null ? null : firstReadMs !== null && firstReadMs < firstDecisionMs,
+    watched: Boolean(watching),
+    trackerReported,
+    attempts: watching ? timeline.filter((e) => e.event === 'request').length : null,
+    failures: watching ? timeline.filter((e) => e.event === 'requestfailed').length : null,
+    firstAttemptMs,
+    firstDecisionMs,
+    attemptBeforeDecision: before((e) => e.event === 'request', watching),
+    readBeforeDecision: before((e) => e.event === 'source-read' && e.large, trackerReported),
+    unattributedReadBeforeDecision: before((e) => e.event === 'unattributed-read', trackerReported),
+    sourcePostBeforeDecision: before((e) => e.event === 'worker-post' && e.source, trackerReported),
   };
 }
+
+/**
+ * Strict check of derived flags: passes only when every wanted flag has exactly the
+ * wanted boolean. `null` (not observed) fails, whatever was wanted.
+ */
+export function expectFlags(summary, wanted) {
+  const misses = Object.entries(wanted).filter(([k, v]) => summary?.[k] !== v)
+    .map(([k, v]) => `${k}=${summary?.[k] === null || summary?.[k] === undefined ? 'unknown' : summary[k]} (wanted ${v})`);
+  return { pass: misses.length === 0, message: misses.length ? `FAIL: ${misses.join(', ')}` : 'PASS (server tried first, no large source read or source post before the decision)' };
+}
+
+/** What `--expect-server-first` requires. */
+export const SERVER_FIRST = Object.freeze({ attemptBeforeDecision: true, readBeforeDecision: false, sourcePostBeforeDecision: false });

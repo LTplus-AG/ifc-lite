@@ -180,29 +180,55 @@ test('#10264 withTimeout falls back when a close hangs', async () => {
   assert.equal(await withTimeout(Promise.resolve('closed'), 1000, () => 'forced'), 'closed');
 });
 
-test('#10353 server proof: a failed server attempt before the warning, no read before it', async () => {
-  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
+test('#10353 server proof: a failed server attempt before the warning, no read or post before it', async () => {
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
   const s = serverAttemptSummary([
     { ms: 40, event: 'request', url: 'http://127.0.0.1:9/api/v1/health' },
     { ms: 42, event: 'requestfailed', failure: 'net::ERR_CONNECTION_REFUSED' },
+    { ms: 50, event: 'source-read', bytes: 4096, large: false },
     { ms: 60, event: 'dialog', text: 'This model may exceed available memory\nThis model may need about 6.0 GiB' },
-  ], { watching: true });
-  assert.deepEqual(s, { watched: true, attempts: 1, failures: 1, firstAttemptMs: 40, firstDecisionMs: 60, attemptBeforeDecision: true, readBeforeDecision: false });
+  ], { watching: true, tracker: { reported: true } });
+  assert.deepEqual(s, { watched: true, trackerReported: true, attempts: 1, failures: 1, firstAttemptMs: 40, firstDecisionMs: 60,
+    attemptBeforeDecision: true, readBeforeDecision: false, unattributedReadBeforeDecision: false, sourcePostBeforeDecision: false });
+  assert.equal(expectFlags(s, SERVER_FIRST).pass, true);
 });
 
-test('#10353 server proof: a read or a missing attempt before the decision is reported, unobserved is null', async () => {
-  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
-  const late = serverAttemptSummary([
-    { ms: 10, event: 'first-read' },
+test('#10353 server proof: a source read or post before the decision is reported', async () => {
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
+  const s = serverAttemptSummary([
+    { ms: 10, event: 'worker-post', source: true, worker: 'w.js' },
+    { ms: 20, event: 'source-read', bytes: 340e6, large: true },
+    { ms: 30, event: 'unattributed-read', bytes: 2e6 },
     { ms: 50, event: 'store-error', text: "This IFC file exceeds this tab's local processing memory budget" },
     { ms: 70, event: 'request', url: 'http://127.0.0.1:9/api/v1/health' },
-  ], { watching: true });
-  assert.equal(late.attemptBeforeDecision, false);
-  assert.equal(late.readBeforeDecision, true);
-  const none = serverAttemptSummary([{ ms: 5, event: 'dialog', text: 'This model may exceed available memory' }], { watching: true });
-  assert.equal(none.attempts, 0);
-  assert.equal(none.attemptBeforeDecision, null, 'no attempt observed is unknown order, not a pass');
-  assert.equal(serverAttemptSummary([], { watching: false }).attemptBeforeDecision, null);
+  ], { watching: true, tracker: { reported: true } });
+  assert.equal(s.attemptBeforeDecision, false);
+  assert.equal(s.readBeforeDecision, true);
+  assert.equal(s.unattributedReadBeforeDecision, true);
+  assert.equal(s.sourcePostBeforeDecision, true);
+  assert.match(expectFlags(s, SERVER_FIRST).message, /attemptBeforeDecision=false.*readBeforeDecision=true.*sourcePostBeforeDecision=true/);
+});
+
+test('#10353 server proof: unreported instrumentation gives null, and null never passes', async () => {
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
+  const dialog = { ms: 5, event: 'dialog', text: 'This model may exceed available memory' };
+  const noTracker = serverAttemptSummary([{ ms: 1, event: 'request' }, dialog], { watching: true, tracker: { reported: false } });
+  assert.equal(noTracker.readBeforeDecision, null, 'no tracker report is unknown, not "no read"');
+  assert.equal(noTracker.sourcePostBeforeDecision, null);
+  assert.equal(noTracker.unattributedReadBeforeDecision, null);
+  assert.equal(noTracker.attemptBeforeDecision, true);
+  assert.match(expectFlags(noTracker, SERVER_FIRST).message, /readBeforeDecision=unknown/);
+  assert.equal(expectFlags(noTracker, SERVER_FIRST).pass, false);
+  const unwatched = serverAttemptSummary([dialog], { watching: false, tracker: { reported: true } });
+  assert.equal(unwatched.attempts, null);
+  assert.equal(unwatched.attemptBeforeDecision, null);
+  // A watched origin with no request seen: the listener was there, so "not before" is a positive false.
+  assert.equal(serverAttemptSummary([dialog], { watching: true, tracker: { reported: true } }).attemptBeforeDecision, false);
+  // No decision observed: every order is unknown.
+  const noDecision = serverAttemptSummary([{ ms: 1, event: 'request' }], { watching: true, tracker: { reported: true } });
+  assert.equal(noDecision.firstDecisionMs, null);
+  assert.equal(noDecision.attemptBeforeDecision, null);
+  assert.equal(noDecision.readBeforeDecision, null);
   // A privacy banner or other dialog is not the decision.
-  assert.equal(serverAttemptSummary([{ ms: 1, event: 'dialog', text: 'IFClite stores an action log' }], { watching: true }).firstDecisionMs, null);
+  assert.equal(serverAttemptSummary([{ ms: 1, event: 'dialog', text: 'IFClite stores an action log' }], { watching: true, tracker: { reported: true } }).firstDecisionMs, null);
 });

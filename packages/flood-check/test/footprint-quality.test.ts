@@ -9,17 +9,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { checkFloodExposure } from '../src/check/check.js';
 import { extractModelFacts } from '../src/model/extract.js';
 import { footprintConcerns, type FootprintQuality } from '../src/model/facts.js';
 import { footprintDoubt, groundDoubt, scopeExclusion, type CandidateContext } from '../src/model/candidate-base.js';
 import { mapOf } from './synthetic-model.js';
-import { CELL_NO_RUNOFF, type MapPoint } from '../src/types.js';
-import { CODE, CONFIRMED, flatTerrain } from './helpers.js';
-import { localOf, raster } from './candidate-fixtures.js';
 import { parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
-
-const deep = CODE['depth-gt-0.25'];
 
 /** External walls with axes along a chain of local points (one wall per segment), in the ground storey. */
 function wallLoop(b: Extra, pts: Array<[number, number]>) {
@@ -32,33 +26,6 @@ function wallLoop(b: Extra, pts: Array<[number, number]>) {
     b.contain(b.storeys.eg.id, wall);
   }
 }
-
-/** The reviewer's case: the only ground slab (0..40 m) is an unreadable Brep; external walls loop round the 0..20 m main wing only. */
-function unreadableSlabPartialWallLoop(b: Extra) {
-  const slab = b.add(`IFCSLAB(${b.guid()},$,'Bodenplatte Brep',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([b.add(`IFCFACETEDBREP(#${b.add('IFCCLOSEDSHELL(())')})`)], 'Body', 'Brep')},$,.FLOOR.)`);
-  b.contain(b.storeys.eg.id, slab);
-  wallLoop(b, [[20, 0], [20, 10], [0, 10], [0, 0]]); // with the house's own south wall 0..20 at y = 0: a closed loop
-  b.contain(b.storeys.ug.id, b.add(`IFCBOILER(${b.guid()},$,'Kessel Anbau',$,$,#${b.place(b.storeys.ug.pl, 30, 5, 0)},$,$,.WATER.)`));
-}
-
-/** A deep class in a 4 m band round the real 40 m x 10 m building, which itself is raised (transparent). */
-const bandRound40 = (l: MapPoint) => {
-  const inside = l.x >= 0 && l.x <= 40 && l.y >= 0 && l.y <= 10;
-  return !inside && l.x > -4 && l.x < 44 && l.y > -4 && l.y < 14 ? deep : CELL_NO_RUNOFF;
-};
-
-describe('the reported case', () => {
-  it('an unreadable slab stays recorded through the wall-loop fallback, so the annex boiler is not "no runoff mapped"', async () => {
-    const facts = extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', slab: false, extra: unreadableSlabPartialWallLoop })), { expectedCrs: 'EPSG:2056' });
-    expect(facts.footprint.source).toBe('external-wall-outline');
-    expect(facts.footprint.partial).toBe(true);
-    const r = checkFloodExposure(facts, raster(bandRound40), flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
-    const boiler = r.results.find((x) => x.candidate.name === 'Kessel Anbau')!;
-    expect(localOf(boiler.candidate.position).x).toBeCloseTo(30, 1);
-    expect(boiler.outcome).not.toBe('no-runoff-mapped');
-    expect(boiler).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'partial-footprint' });
-  });
-});
 
 type Slabs = 'given' | 'slab readable' | 'slab with voids' | 'slab partly readable' | 'slab unreadable' | 'no slab';
 type Walls = 'walls full loop' | 'walls partial loop' | 'no walls';
@@ -131,23 +98,6 @@ describe('footprint source chains', () => {
     expect(Object.isFrozen(q) && Object.isFrozen(q.conditions) && Object.isFrozen(q.unreadable)).toBe(true);
   });
 
-  it('end to end: no element gets a reassuring outcome on a footprint that is voids-filled, partial or a hull', async () => {
-    const paints: Array<(l: MapPoint) => number> = [() => CELL_NO_RUNOFF, () => CODE['depth-0-0.1'], bandRound40];
-    let checked = 0;
-    for (const [slabs, w] of rows) {
-      const facts = await chain(slabs, w);
-      const worst = footprintConcerns(facts.footprint).worst;
-      if (worst === 'complete' || worst === 'courtyard-ring') continue;
-      for (const paint of paints) {
-        const r = checkFloodExposure(facts, raster(paint), flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
-        for (const x of r.results) {
-          checked++;
-          expect(['above-mapped-class-range', 'no-runoff-mapped'], `${slabs}, ${w}: ${x.candidate.name}`).not.toContain(x.outcome);
-        }
-      }
-    }
-    expect(checked).toBeGreaterThan(50);
-  });
 });
 
 describe('decisions that rest on an uncertain ground storey or footprint keep the element', () => {

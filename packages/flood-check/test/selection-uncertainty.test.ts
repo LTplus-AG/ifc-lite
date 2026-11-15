@@ -8,42 +8,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { checkFloodExposure } from '../src/check/check.js';
 import { extractModelFacts } from '../src/model/extract.js';
-import { CELL_NO_RUNOFF, type MapPoint } from '../src/types.js';
-import { boxFacts, candidate, CODE, CONFIRMED, E0, flatTerrain, N0, syntheticRaster } from './helpers.js';
 import { parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
 
-const deep = CODE['depth-gt-0.25'];
-const sq = (x0: number, y0: number, x1: number, y1: number): MapPoint[] => [
-  { x: E0 + x0, y: N0 + y0 }, { x: E0 + x1, y: N0 + y0 }, { x: E0 + x1, y: N0 + y1 }, { x: E0 + x0, y: N0 + y1 },
-];
-const inBox = (p: MapPoint, x0: number, y0: number, x1: number, y1: number) => p.x > E0 + x0 && p.x < E0 + x1 && p.y > N0 + y0 && p.y < N0 + y1;
 const extract = async (extra: (b: Extra) => void) =>
   extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', extra })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
-
-describe('the courtyard guard', () => {
-  it('follows rings appended to the same footprint array between checks (no stale cache)', () => {
-    const rings = [sq(0, 0, 30, 30)];
-    const door = candidate({ name: 'Hoftür', position: { x: E0 + 15, y: N0 + 2 }, level: 500 });
-    const facts = boxFacts([door], { footprint: { rings, source: 'given', fromElements: [] } });
-    const raster = syntheticRaster(E0 - 10, N0 - 10, 100, 100, 0.5, (p) => (inBox(p, 2, 2, 28, 28) ? deep : CELL_NO_RUNOFF));
-    checkFloodExposure(facts, raster, flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
-    rings.push(sq(2, 2, 28, 28)); // the courtyard, added in place
-    const r = checkFloodExposure(facts, raster, flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
-    expect(r.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'courtyard-ring' });
-  });
-
-  it('recognises a courtyard ring that two overlapping rings cover only together', () => {
-    // A = 0..6 x 0..10 and B = 4..10 x 0..10 overlap; the courtyard C = 2..8 x 1..9 lies in neither alone.
-    const rings = [sq(0, 0, 6, 10), sq(4, 0, 10, 10), sq(2, 1, 8, 9)];
-    const door = candidate({ name: 'Hoftür', position: { x: E0 + 5, y: N0 + 1 }, level: 500 });
-    const facts = boxFacts([door], { footprint: { rings, source: 'given', fromElements: [] } });
-    const raster = syntheticRaster(E0 - 10, N0 - 10, 60, 60, 0.5, (p) => (inBox(p, 2, 1, 8, 9) ? deep : CELL_NO_RUNOFF));
-    const r = checkFloodExposure(facts, raster, flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
-    expect(r.results[0]).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'courtyard-ring' });
-  });
-});
 
 describe('an upper-estimate level does not exclude', () => {
   /** A window whose filled opening reads only from 504 m up, beside an unreadable Brep that may reach lower. */

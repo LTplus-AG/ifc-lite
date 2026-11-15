@@ -689,7 +689,7 @@ export function useIfcLoader() {
         loadStage = 'server-fetch';
         // The replay writes the active model slot, which only a primary load owns.
         let failure: unknown = target.kind === 'primary' ? null : new ProcessedModelUnavailable('not-primary');
-        if (failure === null && await handleServerLoadAttempt(() => loadFromServer(processedModel, new ArrayBuffer(0), () => isStale(), metadataAbort.signal, modelId, processedModel.serverUrl).catch((error: unknown) => { failure = error; return false; }), isStale, completeServerLoad)) return;
+        if (failure === null && await handleServerLoadAttempt(() => loadFromServer(processedModel, new ArrayBuffer(0), () => isStale(), metadataAbort.signal, modelId).catch((error: unknown) => { failure = error; return false; }), isStale, completeServerLoad)) return;
         const { message, code, retryable } = describeProcessedModelFailure(failure);
         updateModel(modelId, { loadState: 'error', loadError: message }); showLoadError(message, code, retryable ? undefined : null); settleLoadUi();
         return;

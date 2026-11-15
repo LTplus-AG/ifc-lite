@@ -32,7 +32,9 @@ export interface OpenProcessedModelOptions {
 }
 
 let serverUrl: string = cleanServerUrl(SERVER_URL);
-export type FiledProcessedModelRequest = ProcessedModelRequest & { readonly serverUrl: string };
+/** A stored result and, when a request picked one, the processing server to ask for it (also on Retry). */
+export type ProcessedModelSource = ProcessedModelRef & { readonly serverUrl?: string };
+export type FiledProcessedModelRequest = ProcessedModelRequest & Required<Pick<ProcessedModelSource, 'serverUrl'>>;
 let pending: FiledProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();
 /** A host asked for a model (`openProcessedModel`); a model named in the page URL then yields. */

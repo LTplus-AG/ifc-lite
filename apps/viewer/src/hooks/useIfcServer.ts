@@ -19,7 +19,6 @@ import {
   decodeDataModel,
   isProcessedModelRef,
   processedModelSize,
-  type ProcessedModelRef,
   type ParquetBatch,
   type ParquetParseResponse,
   type ParquetStreamResult,
@@ -28,7 +27,7 @@ import {
   type ProcessingStats,
 } from '@ifc-lite/server-client';
 
-import { getProcessingServerUrl } from '../lib/processed-model.js';
+import { getProcessingServerUrl, type ProcessedModelSource } from '../lib/processed-model.js';
 import { isServerAvailable, isServerReachable } from './ingest/serverAvailability.js';
 import { ProcessedModelUnavailable } from './ingest/processedModel.js';
 import {
@@ -63,7 +62,7 @@ export function useIfcServer() {
    */
   const loadFromServer = useCallback(async (
     /** The IFC to upload, or a model the server already processed (then `buffer` is unused: there are no bytes here). */
-    file: File | ProcessedModelRef,
+    file: File | ProcessedModelSource,
     buffer: ArrayBuffer | SharedArrayBuffer,
     /**
      * Optional staleness check — returns true if this load has been
@@ -75,7 +74,6 @@ export function useIfcServer() {
     isStale: (() => boolean) | undefined,
     signal: AbortSignal | undefined,
     modelId: string,
-    requestServerUrl?: string,
   ): Promise<boolean> => {
     cancelProperties(modelId);
     const { setProgress, setGeometryResult } = useViewerStore.getState();
@@ -85,7 +83,7 @@ export function useIfcServer() {
     try {
       setProgress({ phase: 'Connecting to server', percent: 5 });
 
-      const serverUrl = processed ? requestServerUrl ?? getProcessingServerUrl() : getProcessingServerUrl();
+      const serverUrl = (processed ? file.serverUrl : undefined) ?? getProcessingServerUrl();
       const client = new IfcServerClient({ baseUrl: serverUrl });
 
       // Silent server availability check (cached, no error logging). A processed model skips the

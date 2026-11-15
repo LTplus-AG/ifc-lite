@@ -243,7 +243,8 @@ fn interior_point_2d(ring: &[Point2<f64>]) -> Point2<f64> {
 fn outer_bound_regions(rings: &[&Vec<Point3<f64>>]) -> Option<Vec<FaceBounds>> {
     // A ring with no area (collinear points) bounds nothing; judged against its own extent, so a tiny ring is still a ring.
     let has_area = |ring: &Vec<Point3<f64>>| {
-        let (mut lo, mut hi) = (ring[0].coords, ring[0].coords);
+        let Some(first) = ring.first() else { return false };
+        let (mut lo, mut hi) = (first.coords, first.coords);
         for p in ring.iter() {
             lo = lo.inf(&p.coords);
             hi = hi.sup(&p.coords);

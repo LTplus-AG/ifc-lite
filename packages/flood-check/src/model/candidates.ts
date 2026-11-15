@@ -41,7 +41,7 @@ import { RelationshipType } from '@ifc-lite/data';
 import type { CandidateFact } from './facts.js';
 import { EQUIPMENT_OCCURRENCES, EQUIPMENT_TYPES, GENERIC_OCCURRENCES } from './equipment.js';
 import type { DecodedEntity } from './reader.js';
-import { NO_PLACEMENT, predefinedType, type CandidateContext } from './candidate-base.js';
+import { predefinedType, type CandidateContext } from './candidate-base.js';
 import {
   descentVerdict,
   elementLabel,

@@ -93,6 +93,23 @@ export {
   lookupProj4,
   searchEpsgIndex,
 } from './epsg-index.js';
+export {
+  createEpsgCrsCatalog,
+  getEpsgAreaOfUse,
+  getEpsgAreasOfUse,
+  getEpsgCompoundComponents,
+  getEpsgUnit,
+  isLonLatInAreaOfUse,
+  isLonLatInEpsgAreaOfUse,
+  loadEpsgExtentsFetchedDate,
+} from './epsg-extents.js';
+export type {
+  EpsgAreaOfUse,
+  EpsgCompoundComponents,
+  EpsgCrsCatalog,
+  EpsgCrsKind,
+  EpsgUnit,
+} from './epsg-extents.js';
 
 // Entity name mapping (UPPERCASE → PascalCase)
 export { IFC_ENTITY_NAMES } from './ifc-entity-names.js';

@@ -10,6 +10,8 @@ import { parseIDS } from '@ifc-lite/ids';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { Rule, type RuleSetFile } from '@ifc-lite/rules';
+import { scopedIdsAccessor } from '@/lib/ids/scoped-accessor';
+import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import { runIdsCheck } from './run-ids-check';
 import { runInformationCheck } from './run-information-check';
 
@@ -142,6 +144,8 @@ describe('shared native check execution (#6612)', () => {
 it('IDS scopes candidate scans while preserving referenced property definitions (#10371)', async () => {
   const { dataStore, mutationView } = await fixture();
   const input = { document, modelId: 'M', dataStore, mutationView, locale: 'en' as const, models };
+  const scoped = scopedIdsAccessor(createDataAccessor(dataStore, 'M', mutationView), [100]);
+  assert.equal(scoped.getPropertyValue(100, 'Pset_WallCommon', 'FireRating')?.value, 'NONE', 'referenced pset and property entities remain readable outside the subset');
   const empty = await runIdsCheck({ ...input, entityIds: [] });
   assert.equal(empty.report.summary.totalEntitiesChecked, 0, 'an empty subset never becomes the whole model');
   const selected = await runIdsCheck({ ...input, entityIds: [100] });

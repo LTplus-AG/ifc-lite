@@ -38,7 +38,7 @@
  *   anchor moved > anchorTolerance              -> within-class-range      -> unclassified (anchor-moved)
  *   footprint fills courtyards (hull, voids)    -> within-class-range      -> unclassified (hull-footprint)
  *   nearest boundary is a nested (courtyard) ring -> within-class-range    -> unclassified (courtyard-ring)
- *   footprint partial (unreadable slab, no rings) -> within-class-range    -> unclassified (partial-footprint)
+ *   footprint partial (a source unreadable)    -> within-class-range      -> unclassified (partial-footprint)
  *   height reference unconfirmed                -> within-class-range      -> unclassified (height-reference-unconfirmed)
  *   raster shows no class, layer unconfirmed    (no class to compare)      -> unclassified (layer-not-confirmed)
  *   a classified sample has no terrain          -> within-class-range      (no classified sample)
@@ -97,7 +97,9 @@ export interface EvaluationContext {
   allowance: number | null;
   anchorTolerance: number;
   footprintSource: ModelFacts['footprint']['source'];
-  /** A ground-storey slab had no readable outline, so the footprint may miss part of the building. */
+  /** From the footprint's quality record (`footprintConcerns`): it fills courtyards or notches (a hull, filled voids). */
+  footprintHull?: boolean;
+  /** From the same record: the footprint may miss part of the building. */
   footprintPartial?: boolean;
   /** No cell of the raster shows a mapped class and no positive confirmation fetched within 5 min of the raster vouches for it (`layer.ts`). */
   emptyRasterUnconfirmed: boolean;
@@ -263,7 +265,7 @@ function conditionsWithholding(
         'at the outline may not be the ground in front of it (courtyard, notch or interior element)',
     });
   }
-  if (fillsCourtyards(ctx.footprintSource)) {
+  if (ctx.footprintHull ?? fillsCourtyards(ctx.footprintSource)) {
     out.push({
       reason: 'hull-footprint',
       text: `the footprint is a ${ctx.footprintSource}, which fills courtyards or notches, so the ground sampled may not be in front of the element`,
@@ -272,7 +274,7 @@ function conditionsWithholding(
   if (ctx.footprintPartial) {
     out.push({
       reason: 'partial-footprint',
-      text: 'the footprint may miss part of the building (a ground-storey floor slab without a readable outline, or no outline at all), so the ground sampled may lie inside it',
+      text: 'the footprint may miss part of the building (a ground-storey slab or external wall that cannot be read, or no outline at all), so the ground sampled may lie inside it',
     });
   }
   if (plan.nearestBoundaryNested) {

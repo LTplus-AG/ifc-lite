@@ -12,16 +12,15 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
-import { chainIntoRing, convexHull, ringArea } from '../geom.js';
 import type { MapPoint } from '../types.js';
-import { isExternal, selectCandidates } from './candidates.js';
+import { selectCandidates } from './candidates.js';
 import { NO_PLACEMENT } from './candidate-base.js';
 import { FloodCheckRefusal } from '../errors.js';
-import { buildingLabel, type BuildingRef, type BuildingScope, type FootprintFact, type ModelFacts, type SpaceFact, type StoreyFact } from './facts.js';
+import { buildingLabel, footprintConcerns, type BuildingRef, type BuildingScope, type ModelFacts, type SpaceFact, type StoreyFact } from './facts.js';
+import { resolveFootprint } from './footprint.js';
 import { georeferenceData, resolveModelGeoreference, type GeoreferenceOptions, type ModelGeoreference } from './georef.js';
-import { slabOutline, slabOutlineHasVoids, toWorld, wallAxis } from './outline.js';
 import { PlacementResolver } from './placement.js';
-import { asEnum, asString, ModelReader } from './reader.js';
+import { asString, ModelReader } from './reader.js';
 
 export interface ExtractOptions extends GeoreferenceOptions {
   /** The ground storey, by express id, GlobalId or Name. Default: the storey at project ±0.00 (see README). */
@@ -44,8 +43,6 @@ export interface ExtractOptions extends GeoreferenceOptions {
 }
 
 const MAX_SPATIAL_HOPS = 16;
-/** Wall axes meeting at a butt joint stop about half a wall thickness short of each other. */
-const WALL_JOIN_TOLERANCE = 0.5;
 
 function storeyResolver(reader: ModelReader, storeys: ReadonlySet<number>): (id: number) => number | null {
   const memo = new Map<number, number | null>();
@@ -163,80 +160,6 @@ function atLeast(name: string, value: number | undefined, fallback: number): num
   return value;
 }
 
-function deriveFootprint(
-  reader: ModelReader,
-  placements: PlacementResolver,
-  georef: ModelGeoreference,
-  storeyOf: (id: number) => number | null,
-  ground: ModelFacts['groundStorey'],
-  skipped: ModelFacts['skipped'],
-  warnings: string[],
-): FootprintFact | null {
-  const toRing = (pts: [number, number, number][]): MapPoint[] => pts.map((p) => {
-    const [x, y] = georef.toMap(p);
-    return { x, y };
-  });
-  const rings: MapPoint[][] = [];
-  const from: number[] = [];
-  let voids = false;
-  const unread: number[] = [];
-  // Ids are keyed by the raw STEP name: the standard and elemented cases are separate keys.
-  for (const id of [...reader.idsOfType('IFCSLAB'), ...reader.idsOfType('IFCSLABSTANDARDCASE'), ...reader.idsOfType('IFCSLABELEMENTEDCASE')]) {
-    if (ground.expressId !== null && storeyOf(id) !== ground.expressId) continue;
-    const kind = asEnum(reader.attr(reader.entity(id), 'PredefinedType'));
-    if (kind && !['FLOOR', 'BASESLAB', 'NOTDEFINED', 'USERDEFINED'].includes(kind)) continue;
-    const frame = placements.ofProduct(id);
-    const outline = frame ? slabOutline(reader, id) : null;
-    if (!frame || !outline) {
-      unread.push(id);
-      continue;
-    }
-    const ring = toRing(toWorld(frame, outline));
-    if (ringArea(ring) < 1) continue;
-    rings.push(ring);
-    from.push(id);
-    if (slabOutlineHasVoids(reader, id)) voids = true;
-  }
-  if (rings.length > 0) {
-    const fact: FootprintFact = { rings, source: voids ? 'slab-outline-voids-filled' : 'slab-outline', fromElements: from };
-    if (unread.length > 0) {
-      // The outline misses those slabs' area: an element there would read as outside and be sampled inside the building.
-      fact.partial = true;
-      for (const id of unread) skipped.push({ expressId: id, ifcClass: reader.className(reader.entity(id)!), reason: 'ground-storey floor slab whose outline cannot be read' });
-      warnings.push(
-        `the footprint covers only part of the ground storey: ${unread.length} floor slab(s) there have no readable outline (#${unread.join(', #')}); ` +
-          'no element gets a reassuring outcome — pass a footprint (for example the cadastral outline)',
-      );
-    }
-    return fact;
-  }
-
-  const points: MapPoint[] = [];
-  const axes: MapPoint[][] = [];
-  let everyAxisRead = true;
-  for (const type of ['IFCWALL', 'IFCWALLSTANDARDCASE']) {
-    for (const id of reader.idsOfType(type)) {
-      const wall = reader.entity(id);
-      if (!wall || isExternal(reader, wall) !== true) continue;
-      if (ground.expressId !== null && storeyOf(id) !== ground.expressId) continue;
-      const frame = placements.ofProduct(id);
-      if (!frame) continue;
-      const axis = wallAxis(reader, id);
-      if (!axis || axis.length < 2) everyAxisRead = false;
-      const line = toRing(toWorld(frame, axis ?? [[0, 0, 0]]));
-      points.push(...line);
-      axes.push(line);
-      from.push(id);
-    }
-  }
-  // A real outline first: the external walls' axes chained into one closed ring keeps courtyards and notches.
-  const chained = everyAxisRead ? chainIntoRing(axes, WALL_JOIN_TOLERANCE) : null;
-  if (chained && ringArea(chained) >= 1) return { rings: [chained], source: 'external-wall-outline', fromElements: from };
-  const hull = convexHull(points);
-  if (hull.length >= 3 && ringArea(hull) >= 1) return { rings: [hull], source: 'external-wall-hull', fromElements: from };
-  return null;
-}
-
 /** Read the model facts the flood check needs. Throws {@link FloodCheckRefusal} when georeferencing does not allow it. */
 export function extractModelFacts(store: IfcDataStore, options: ExtractOptions = {}): ModelFacts {
   const georef = resolveModelGeoreference(store, options);
@@ -271,13 +194,9 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
   const storeyOf = storeyResolver(reader, new Set(storeys.map((s) => s.expressId)));
   const groundStorey = pickGroundStorey(storeys, localLevels, reader, georef, options.groundStorey, warnings);
 
-  // An empty or degenerate given footprint would be trusted as an outline with no inside: refused, not read as ground.
-  if (options.footprint && (options.footprint.length === 0 || options.footprint.some((ring) => ring.length < 3 || ringArea(ring) < 1 || ring.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))))) {
-    throw new RangeError('footprint must have at least one ring, each of at least 3 finite points enclosing at least 1 m²');
-  }
-  let footprint: FootprintFact | null = options.footprint
-    ? { rings: options.footprint, source: 'given', fromElements: [] }
-    : deriveFootprint(reader, placements, georef, storeyOf, groundStorey, skipped, warnings);
+  // The footprint and its accumulated quality (`footprint.ts`): one record, never upgraded by a fallback.
+  const resolution = resolveFootprint({ reader, placements, georef, storeyOf, ground: groundStorey, given: options.footprint, skipped, warnings });
+  const derived = resolution.fact;
 
   const buildings = scopeToBuilding(reader, groundStorey.expressId, storeys.length);
   const notChecked = new Map(buildings.others.map((b) => [b.expressId, { ...b, candidatesNotChecked: 0 }]));
@@ -289,8 +208,9 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
       storeyOf,
       storeyLevel: new Map(storeys.map((s) => [s.expressId, s.level])),
       groundLevel: groundStorey.level,
-      footprint: footprint?.rings ?? [],
-      footprintPartial: footprint?.partial === true,
+      footprint: derived?.rings ?? [],
+      footprintQuality: derived ? footprintConcerns(derived) : null,
+      groundUncertain: groundStorey.basis === 'lowest-storey' || groundStorey.basis === 'none',
       aboveGroundScope: atLeast('aboveGroundScope', options.aboveGroundScope, 3),
       boundaryTolerance: atLeast('boundaryTolerance', options.boundaryTolerance, 1),
     },
@@ -327,14 +247,8 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
     );
   }
 
-  if (!footprint) {
-    const hull = convexHull(candidates.map((c) => c.position));
-    footprint = { rings: hull.length >= 3 ? [hull] : [], source: 'candidate-hull', fromElements: [] };
-    warnings.push(
-      'no slab outline or external wall could be read in the ground storey; the footprint is the hull of the candidates and ' +
-        'ground samples near interior elements may fall inside the real building',
-    );
-  }
+  const footprint = resolution.finish(candidates.map((c) => c.position));
+
 
   const spaces: SpaceFact[] = [];
   for (const id of reader.idsOfType('IFCSPACE')) {

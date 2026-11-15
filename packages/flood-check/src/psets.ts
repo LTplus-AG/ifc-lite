@@ -116,6 +116,7 @@ export function sitePropertySet(result: FloodCheckResult, classes: readonly Haza
     .label('VerticalDatumBasis', result.verticalDatum.basis)
     .label('FootprintSource', result.footprintSource)
     .bool('FootprintPartial', result.footprintPartial)
+    .label('FootprintQuality', result.footprintQuality)
     .label('CheckedBuilding', result.buildingScope.checked ? buildingLabel(result.buildingScope.checked) : null)
     .text('BuildingsNotChecked', result.buildingScope.notChecked.map((b) => `${buildingLabel(b)}: ${b.candidatesNotChecked}`).join(' | '))
     .int('CountElementsNotChecked', result.buildingScope.notChecked.reduce((n, b) => n + b.candidatesNotChecked, 0))

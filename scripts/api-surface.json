@@ -6485,6 +6485,8 @@
     "FloodPropertySet: interface",
     "FloodPropertyType: type",
     "FootprintFact: interface",
+    "FootprintQuality: type",
+    "FootprintQualityRecord: interface",
     "FootprintSource: type",
     "GeoreferenceOptions: interface",
     "HazardCellCounts: interface",

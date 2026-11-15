@@ -18,6 +18,8 @@ import {
   base,
   belowGround,
   facadeReason,
+  footprintDoubt,
+  groundDoubt,
   hostOfOpening,
   isExternal,
   NO_PLACEMENT,
@@ -86,7 +88,7 @@ export function openingVerdict(ctx: CandidateContext, entity: DecodedEntity, fil
   if (!loc) return skip(NO_PLACEMENT);
   if (inSlab) {
     // An unplaced host slab may be at or below the ground storey: kept, as an upper estimate (`locate`).
-    if (loc.basis === 'host-slab-top' && loc.level > ctx.groundLevel + 0.01) return skip(`in a slab above the ground storey (${loc.level.toFixed(3)} m)`);
+    if (loc.basis === 'host-slab-top' && loc.level > ctx.groundLevel + 0.01 && !groundDoubt(ctx)) return skip(`in a slab above the ground storey (${loc.level.toFixed(3)} m)`);
     const because = loc.basis === 'host-slab-top' ? 'unfilled opening in a slab at or below the ground storey' : 'unfilled opening in a slab whose placement cannot be read (kept conservatively)';
     const fact = at(ctx, entity, 'slab-opening', loc, because);
     fact.host = { expressId: host!.expressId, ifcClass: r.className(host!) };
@@ -151,14 +153,17 @@ export function descentVerdict(ctx: CandidateContext, entity: DecodedEntity, cat
     : body.points.some((p) => signedDistance({ x: p[0], y: p[1] }, ctx.footprint) > 0) ? 'its body reaches outside the footprint'
     : !body.complete && Math.abs(d) <= ctx.boundaryTolerance ? `placed within ${ctx.boundaryTolerance} m of the outline and its body cannot be fully read`
     : null;
-  if (!external && !outside) {
+  // Inside a footprint that fills courtyards proves nothing: such a stair is kept.
+  const doubt = footprintDoubt(ctx, d);
+  if (!external && !outside && !doubt) {
     return skip(`interior ${category}: placed ${Math.abs(d).toFixed(2)} m inside the footprint${body.complete ? ' and its body lies inside it' : ''}${external === false ? '; IsExternal = false' : ''}`);
   }
   // Below ground by its storey, else by its placement height.
   const evidence = descentEvidence(ctx, entity, sources.placement!.level, body);
-  if (!evidence.keep) return skip(`external ${category}: ${evidence.why}`);
-  const why = external ? 'IsExternal' : `${outside}${external === false ? ' (despite IsExternal = false)' : ''}`;
-  return candidate(at(ctx, entity, category, loc, `${why}; ${evidence.why}; entry at the terrain`));
+  if (!evidence.keep && !groundDoubt(ctx)) return skip(`external ${category}: ${evidence.why}`);
+  const why = external ? 'IsExternal' : `${outside ?? doubt}${external === false ? ' (despite IsExternal = false)' : ''}`;
+  const evidenceWhy = evidence.keep ? evidence.why : `${evidence.why}, but ${groundDoubt(ctx)}`;
+  return candidate(at(ctx, entity, category, loc, `${why}; ${evidenceWhy}; entry at the terrain`));
 }
 
 function inLowestStoreys(ctx: CandidateContext, id: number, level: number): boolean {
@@ -187,6 +192,7 @@ export function equipmentVerdict(ctx: CandidateContext, entity: DecodedEntity, b
   }
   const loc = where(ctx, entity, 'equipment');
   if (!loc) return skip(NO_PLACEMENT);
-  if (!inLowestStoreys(ctx, entity.expressId, loc.level)) return skip('equipment above the ground storey');
-  return candidate(at(ctx, entity, 'equipment', loc, `${why} in the ground storey or below`));
+  const lowest = inLowestStoreys(ctx, entity.expressId, loc.level);
+  if (!lowest && !groundDoubt(ctx)) return skip('equipment above the ground storey');
+  return candidate(at(ctx, entity, 'equipment', loc, lowest ? `${why} in the ground storey or below` : `${why}; ${groundDoubt(ctx)}`));
 }

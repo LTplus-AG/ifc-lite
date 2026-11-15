@@ -23,7 +23,7 @@
 
 import { FloodCheckRefusal } from '../errors.js';
 import { normalizeCrs, sameCrs, verticalCrsIdentifier } from '../crs.js';
-import { fillsCourtyards, type BuildingScope, type CandidateFact, type ModelFacts } from '../model/facts.js';
+import { footprintConcerns, type FootprintQuality, type BuildingScope, type CandidateFact, type ModelFacts } from '../model/facts.js';
 import { reachableSpaces, type ReachableSpace } from './reachable.js';
 import {
   type ClassifiedHazardRaster,
@@ -147,6 +147,7 @@ export interface FloodCheckResult {
   layerCheck: LayerCheck;
   footprintSource: ModelFacts['footprint']['source'];
   footprintPartial: boolean; // see FootprintFact.partial
+  footprintQuality: FootprintQuality; // the worst condition of the footprint's quality record
   groundStorey: ModelFacts['groundStorey'];
   buildingScope: BuildingScope; // see BuildingScope; empty for hand-built facts without it
   /** The screening caveat every result carries. */
@@ -256,7 +257,9 @@ export function checkWith(
   for (const point of outlineTerrainPoints(facts.footprint, s)) read(point);
   const heightPlausibility = assessHeightReference(facts.groundStorey.level, seen, options.heightPlausibility);
   const heightAt = (p: MapPoint) => heights.get(pointKey(p)) ?? null;
-  const hull = fillsCourtyards(facts.footprint.source) || facts.footprint.partial === true;
+  // One record decides what the footprint can support (`footprintConcerns`, from `footprint.ts`).
+  const footprint = footprintConcerns(facts.footprint);
+  const hull = footprint.hullLike || footprint.partial;
   const heightReference = confirmEntries(
     facts,
     (i) => plans[i].points.map(({ point }) => heightAt(point)).filter((h): h is number => h !== null),
@@ -281,8 +284,8 @@ export function checkWith(
       allowance: heightReference.allowance,
       anchorTolerance,
       footprintSource: facts.footprint.source,
-      // No rings at all (hand-built facts) misses the whole building.
-      footprintPartial: facts.footprint.partial === true || facts.footprint.rings.length === 0,
+      footprintHull: footprint.hullLike,
+      footprintPartial: footprint.partial,
       emptyRasterUnconfirmed: rasterEmpty && !applies,
     });
     return {
@@ -370,7 +373,8 @@ export function checkWith(
     heightReference,
     layerCheck: { rasterEmpty, confirmation, confirmationApplies: applies },
     footprintSource: facts.footprint.source,
-    footprintPartial: facts.footprint.partial === true,
+    footprintPartial: footprint.partial,
+    footprintQuality: footprint.worst,
     groundStorey: facts.groundStorey,
     buildingScope: facts.buildingScope ?? { checked: null, notChecked: [] },
     caveat,

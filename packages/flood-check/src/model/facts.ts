@@ -97,6 +97,42 @@ export function fillsCourtyards(source: FootprintSource): boolean {
   return source === 'external-wall-hull' || source === 'candidate-hull' || source === 'slab-outline-voids-filled';
 }
 
+/**
+ * How far the footprint can be trusted, worst last. `voids-filled` and `hull`
+ * fill courtyards or notches; `partial` misses part of the building;
+ * `courtyard-ring` has a courtyard drawn as its own ring, which the footprint
+ * fills (elements facing it are withheld individually).
+ */
+export type FootprintQuality = 'complete' | 'voids-filled' | 'courtyard-ring' | 'partial' | 'hull';
+export const FOOTPRINT_QUALITY_ORDER: readonly FootprintQuality[] = ['complete', 'voids-filled', 'courtyard-ring', 'partial', 'hull'];
+
+/**
+ * The footprint's quality as accumulated through every source tried
+ * (`footprint.ts`): conditions and unreadable sources are only ever added,
+ * so a later fallback cannot upgrade it.
+ */
+export interface FootprintQualityRecord {
+  /** The worst condition met. */
+  readonly worst: FootprintQuality;
+  /** Every condition met, in the order encountered. */
+  readonly conditions: readonly Exclude<FootprintQuality, 'complete'>[];
+  /** Every source tried that could not be read, or only in part. */
+  readonly unreadable: ReadonlyArray<{ expressId: number; ifcClass: string; reason: string }>;
+}
+
+/**
+ * What the check needs to know about a footprint: from its quality record
+ * when it has one (extracted facts), else from its source (hand-built facts).
+ * No rings at all misses the whole building.
+ */
+export function footprintConcerns(fp: FootprintFact): { hullLike: boolean; partial: boolean; worst: FootprintQuality } {
+  const conditions = new Set<FootprintQuality>(fp.quality?.conditions ?? []);
+  if (fillsCourtyards(fp.source)) conditions.add(fp.source === 'slab-outline-voids-filled' ? 'voids-filled' : 'hull');
+  if (fp.partial || fp.rings.length === 0) conditions.add('partial');
+  const worst = FOOTPRINT_QUALITY_ORDER.reduce<FootprintQuality>((w, q) => (conditions.has(q) ? q : w), 'complete');
+  return { hullLike: conditions.has('hull') || conditions.has('voids-filled'), partial: conditions.has('partial'), worst };
+}
+
 export interface FootprintFact {
   /**
    * Rings in map coordinates; a point inside any ring is inside the building,
@@ -105,8 +141,10 @@ export interface FootprintFact {
    */
   rings: MapPoint[][];
   source: FootprintSource;
-  /** Some ground-storey floor slab had no readable outline, so the rings may miss part of the building: no reassuring outcome. */
+  /** The rings may miss part of the building (mirrors `quality.conditions` containing `partial`): no reassuring outcome. */
   partial?: boolean;
+  /** The quality accumulated through every source tried; absent on hand-built facts. */
+  quality?: FootprintQualityRecord;
   /** Slabs or walls the rings were read from. */
   fromElements: number[];
 }

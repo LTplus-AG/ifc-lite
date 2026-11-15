@@ -65,6 +65,8 @@ export type {
   CandidateCategory,
   CandidateFact,
   FootprintFact,
+  FootprintQuality,
+  FootprintQualityRecord,
   FootprintSource,
   LevelBasis,
   ModelFacts,

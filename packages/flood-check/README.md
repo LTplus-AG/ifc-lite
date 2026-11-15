@@ -216,7 +216,16 @@ entities, properties and containment from the parsed store. No meshing.
   has none. When a ground-storey floor slab has no readable outline (a Brep,
   a Boolean UNION) while others do, the footprint misses its area:
   `footprint.partial` is set, the slab is in `skipped`, a warning says so and
-  no element gets a reassuring outcome (`partial-footprint`). A given
+  no element gets a reassuring outcome (`partial-footprint`).
+  **The footprint's quality is one record that only accumulates**
+  (`src/model/footprint.ts`, `footprint.quality`): every source tried that
+  could not be read, or only in part (a slab, an external wall's placement
+  or axis), and every condition met (filled voids, a courtyard ring, a
+  partial outline, a hull) stays recorded through every later fallback, and
+  the worst of them is `quality.worst` (`complete` < `voids-filled` <
+  `courtyard-ring` < `partial` < `hull`; site set `FootprintQuality`). A
+  fallback supplies geometry but cannot upgrade the quality: a wall loop
+  round part of a building whose slab cannot be read is still `partial`. A given
   `footprint` must have at least one ring of 3 or more points enclosing at
   least 1 m² (`RangeError` otherwise).
 - **Building**: the footprint is one building's outline, so only the
@@ -344,12 +353,35 @@ and `open-ended-class` are never withheld (they are the conservative side);
 | a ground sample lies in an area the map did not model (glacier) | `within-class-range` | `unclassified` (`excluded-area`) |
 | the element was moved more than `anchorTolerance` (1 m) to reach the outline | `within-class-range` | `unclassified` (`anchor-moved`) |
 | the footprint fills courtyards (`external-wall-hull`, `candidate-hull`, `slab-outline-voids-filled`) | `within-class-range` | `unclassified` (`hull-footprint`) |
-| the footprint is partial: a ground-storey floor slab has no readable outline, or (hand-built facts) the footprint has no rings, so an element in the missing area reads as outside and is sampled inside the building | `within-class-range` | `unclassified` (`partial-footprint`) |
+| the footprint is partial: a footprint source tried could not be read (a ground-storey floor slab's outline, an external wall's placement or axis), even when a fallback supplied the outline, or (hand-built facts) the footprint has no rings, so an element in the missing area reads as outside and is sampled inside the building | `within-class-range` | `unclassified` (`partial-footprint`) |
 | the element's nearest footprint boundary is a ring lying inside the other rings (every vertex inside one of them, also when two overlapping rings cover it only together; a courtyard drawn as its own ring, for example in a given footprint): a point inside any ring counts as inside, so the courtyard is filled and its ground is not sampled | `within-class-range` | `unclassified` (`courtyard-ring`) |
 | height reference unconfirmed (see below) | `within-class-range` | `unclassified` (`height-reference-unconfirmed`) |
 | no cell of the raster shows a mapped class and the layer is not confirmed to render (no positive confirmation fetched within 5 minutes of the raster) | (no class to compare) | `unclassified` (`layer-not-confirmed`) |
 | a classified sample has no terrain height | `within-class-range` | (no classified sample) |
 | clearance exceeds `m` but not `m + a` | `within-class-range` | (no comparison) |
+
+**Every decision and the completeness it consults.** Each place where an
+element is excluded, classed as interior or out of scope, or given a
+reassuring outcome, with the completeness facts it reads. The standing rule:
+an exclusion whose input is incomplete keeps the element (as an
+upper-estimate candidate where its level is in doubt); a reassuring outcome
+whose input is incomplete is withheld with the reason.
+
+| Decision | Where | Consults |
+| --- | --- | --- |
+| not placed (skipped, named in a warning) | `locate` | the element's placement |
+| out of scope (`aboveGroundScope` above the ground storey) | `scopeExclusion` | level quality (`locate`), the element's storey, the ground storey's basis (a guessed one excludes nothing) |
+| not in the façade (no `IsExternal`, beyond 1 m of the outline) | `facadeReason` | `IsExternal` of element and host, the footprint's quality (hull, filled voids: kept; partial: kept outside the readable rings), no footprint at all (kept) |
+| interior stair or ramp | `descentVerdict` | `IsExternal`, placement and every body corner, body completeness, the footprint's quality (hull, filled voids: kept; partial: outside counts as outside) |
+| a stair or ramp leads up (skipped) | `descentEvidence` | body completeness (a complete body only), the ground storey's basis (a guessed one excludes nothing) |
+| a slab opening above the ground storey | `openingVerdict` | the host slab's placement (unplaced: kept, upper estimate), the ground storey's basis |
+| equipment above the ground storey | `equipmentVerdict` | the element's storey, else its level (`locate`), the ground storey's basis |
+| a transport element of another kind | `equipmentVerdict` | its stated kind (an unstated kind is kept) |
+| RECESS opening | `openingVerdict` | its stated predefined type |
+| reported through its door, window or stair | `selectCandidates` | that element's verdict (only a candidate reports for another) |
+| in a building that is not checked | `selectCandidates`, `scopeToBuilding` | the ground storey's building (several buildings and none placed: refused); named and counted in the result |
+| `above-mapped-class-range`, `no-runoff-mapped` | `evaluateCandidate` | every condition of the withhold table above: terrain accuracy, level quality, edge / off-raster / out-of-coverage / excluded samples, anchor offset, the footprint's quality record (hull, filled voids, partial) and courtyard rings, the height reference, the layer confirmation and its age, terrain at classified samples, the clearance allowance |
+
 
 The sample that decides the outcome is reported with its numbers
 (`drivingSample`: point, class, `Ti`, the level compared and the comparison;
@@ -502,7 +534,7 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
   `Licence`, `Attribution`, `LimitsDE/EN`, `DisclaimerDE/EN`, `CaveatDE/EN`,
   `CoordinateReferenceSystem`, `TerrainVerticalReference`,
   `TerrainVerticalCrs`, `VerticalDatumBasis`, `FootprintSource`,
-  `FootprintPartial`,
+  `FootprintPartial`, `FootprintQuality`,
   `CheckedBuilding`, `BuildingsNotChecked` (each with its count of candidate
   elements), `CountElementsNotChecked`,
   `GroundStoreyBasis`, `GroundStoreyLevel`, `HeightPlausibilityStatus`,

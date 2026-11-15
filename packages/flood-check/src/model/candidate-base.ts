@@ -42,8 +42,29 @@ export interface CandidateContext {
   footprint: readonly (readonly MapPoint[])[];
   aboveGroundScope: number;
   boundaryTolerance: number;
-  /** The footprint misses part of the building (an unreadable ground-storey slab): being outside it proves nothing. */
-  footprintPartial?: boolean;
+  /**
+   * The footprint's accumulated quality (`footprint.ts`); null when no
+   * footprint is known yet. A hull or voids-filled footprint fills courtyards,
+   * a partial one misses part of the building: neither proves an element
+   * interior.
+   */
+  footprintQuality?: { hullLike: boolean; partial: boolean } | null;
+  /** The ground storey was guessed (lowest storey, or none): a rule that rests on its level does not exclude. */
+  groundUncertain?: boolean;
+}
+
+/** Why an exclusion that rests on the footprint does not hold, or null when the footprint is complete enough. */
+export function footprintDoubt(ctx: CandidateContext, d: number): string | null {
+  const q = ctx.footprintQuality;
+  if (q?.hullLike) return 'the footprint fills courtyards or notches (a hull, or a slab with filled voids), so being inside it proves nothing (kept conservatively)';
+  // Outside a footprint known to miss part of the building, the element may stand in that part.
+  if (q?.partial && d > 0) return 'outside the readable footprint, and the footprint is partial (kept conservatively)';
+  return null;
+}
+
+/** Why an exclusion that rests on the ground storey's level does not hold, or null when that level is known. */
+export function groundDoubt(ctx: CandidateContext): string | null {
+  return ctx.groundUncertain ? 'the ground storey was guessed, so its level does not decide (kept conservatively)' : null;
 }
 
 export const NO_PLACEMENT = 'no readable IfcLocalPlacement chain';
@@ -105,7 +126,7 @@ export function outOfScopeReason(ctx: CandidateContext, level: number): string {
  * its storey shows it is above the ground storey.
  */
 export function scopeExclusion(ctx: CandidateContext, id: number, level: number, upperEstimate: boolean): string | null {
-  if (inScope(ctx, level)) return null;
+  if (inScope(ctx, level) || groundDoubt(ctx)) return null;
   if (!upperEstimate) return outOfScopeReason(ctx, level);
   const storey = ctx.storeyOf(id);
   const storeyLevel = storey === null ? undefined : ctx.storeyLevel.get(storey);
@@ -140,7 +161,7 @@ export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host:
   if (ctx.footprint.length === 0) return 'IsExternal not stated and no footprint to test against (kept conservatively)';
   const d = signedDistance(at, ctx.footprint);
   if (Number.isFinite(d) && Math.abs(d) <= ctx.boundaryTolerance) return `within ${ctx.boundaryTolerance} m of the footprint outline (IsExternal not stated)`;
-  // Outside a footprint known to miss part of the building, the element may stand in that part's façade.
-  if (ctx.footprintPartial && d > 0) return 'IsExternal not stated, outside the readable footprint, and the footprint is partial (kept conservatively)';
+  const doubt = footprintDoubt(ctx, d);
+  if (doubt) return `IsExternal not stated, ${doubt}`;
   return { not: `not in the façade: IsExternal not stated and ${Math.abs(d).toFixed(2)} m from the footprint outline (more than ${ctx.boundaryTolerance} m)` };
 }

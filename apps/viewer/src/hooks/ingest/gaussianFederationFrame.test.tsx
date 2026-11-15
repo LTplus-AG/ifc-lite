@@ -316,13 +316,18 @@ it('an upload waits behind a pending adapter translation and lands in the IFC-fi
       addIfc();
       for (let i = 0; i < 100 && !entered; i++) await tick();
       assert.ok(entered, 'the old capture has a pending frame translation');
-      const decodedBefore = worker.stats.terminated;
+      const validatedBefore = worker.stats.validated;
+      const endedBefore = worker.stats.terminated;
       const pending = loader.loadFile(gaussianPly('concurrent.ply', [WORLD]), { kind: 'federated', modelId: 'concurrent' });
-      for (let i = 0; i < 100 && worker.stats.terminated === decodedBefore; i++) await tick();
-      assert.ok(worker.stats.terminated > decodedBefore, 'the new capture decoded while translation was held');
+      for (let i = 0; i < 100 && worker.stats.validated === validatedBefore; i++) await tick();
+      // #9018: the decode worker validates and summarizes the capture without waiting for the frame,
+      // then stays open: the upload that streams its rows is what waits behind the translation.
+      assert.ok(worker.stats.validated > validatedBefore, 'the new capture decoded while translation was held');
       assert.equal(splats.getStats().assets, 1, 'the new upload waits for the adapter frame');
+      assert.equal(worker.stats.terminated, endedBefore, 'its rows are not streamed until the frame is released');
       release();
       await pending;
+      assert.equal(worker.stats.terminated, endedBefore + 1, 'the worker ends once the upload has read its rows');
       await settled(BOUNDS);
       const next = useViewerStore.getState().models.get('concurrent')!.gaussianSplat!;
       assert.deepEqual(splats.getBounds(next.handle), BOUNDS, 'new upload and IFC-first ordering agree');

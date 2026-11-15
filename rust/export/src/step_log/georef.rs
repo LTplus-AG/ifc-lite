@@ -22,6 +22,7 @@ use super::wire::GeorefMutations;
 
 const WITHOUT_CONTEXT: &str = "Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.";
 const WITHOUT_CRS: &str = "Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.";
+const INCOMPLETE_MAP_CONVERSION: &str = "Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight must all be given, and the file has no IfcMapConversion to edit (it may have been deleted). Nothing was written.";
 const PARTIAL_FACTORS: &str = "Cannot write IfcMapConversionScaled: FactorX, FactorY and FactorZ are all mandatory and only some were given. The factors were not written.";
 const FACTORS_ON_UNSCALED: &str = "Cannot write FactorX/FactorY/FactorZ onto an existing IfcMapConversion: they exist only on IfcMapConversionScaled, and this edit does not change the class. The factors were not written.";
 
@@ -205,6 +206,12 @@ fn map_unit_token(pass: &mut Pass<'_, '_>, unit: &Value) -> Result<String, Unwri
 /// Create the `IfcMapConversion` from the preferred context to `crs_id`, or
 /// report that no context exists.
 fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, Value>, file_schema: &str) -> Result<(), Unwritable> {
+    // A create needs the whole position: a partial edit whose record was deleted is refused, never written as 0.
+    let given = |k: &str| mc.get(k).is_some_and(|v| !v.is_null() && !js_to_number(v).is_nan());
+    if !(given("eastings") && given("northings") && given("orthogonalHeight")) {
+        pass.warnings.push(INCOMPLETE_MAP_CONVERSION.to_string());
+        return Ok(());
+    }
     match preferred_context(pass) {
         Some(context) => {
             let mc_id = pass.allocate()?;
@@ -267,7 +274,6 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
         edit_existing(pass, id, edits);
     }
 
-    let empty = Map::new();
     if let (Some(crs), true) = (&g.projected_crs, crs_ids.is_empty()) {
         let crs_id = pass.allocate()?;
         let text = |key: &str| match crs.get(key).filter(|v| truthy(v)) {
@@ -281,7 +287,9 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
         };
         pass.georef_lines.push((crs_id, format!("#{crs_id}=IFCPROJECTEDCRS({},{unit_ref});", fields.join(","))));
         pass.new_entity_count += 1;
-        create_map_conversion(pass, crs_id, g.map_conversion.as_ref().unwrap_or(&empty), file_schema)?;
+        if let Some(mc) = &g.map_conversion {
+            create_map_conversion(pass, crs_id, mc, file_schema)?;
+        }
     } else if let (Some(mc), true, Some(&crs_id)) = (&g.map_conversion, mc_ids.is_empty(), crs_ids.first()) {
         create_map_conversion(pass, crs_id, mc, file_schema)?;
     } else if g.map_conversion.is_some() && mc_ids.is_empty() && crs_ids.is_empty() {

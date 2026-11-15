@@ -228,26 +228,10 @@ export function applyGeoreferencingMutations(
     pass.newGeorefLines.push(`#${crsId}=IFCPROJECTEDCRS(${name},${desc},${datum},${vDatum},${proj},${zone},${mapUnitRef});`);
     pass.newEntityCount++;
 
-    // Find IfcGeometricRepresentationContext as SourceCRS for MapConversion
-    const contextId = findPreferredGeometricRepresentationContextId(pass.effective, ctx);
-
-    if (contextId) {
-      const mcId = ctx.allocateExpressId();
-      pass.newGeorefLines.push(mapConversionLine(mcId, contextId, crsId, gm.mapConversion || {}, pass.warnings, pass.schemaToken));
-      pass.newEntityCount++;
-    } else {
-      reportMapConversionRefused(pass.warnings);
-    }
+    if (gm.mapConversion) createMapConversion(pass, ctx, crsId, gm.mapConversion);
   } else if (gm.mapConversion && !existingMcIds?.length && existingCrsIds?.length) {
     // CRS exists but no MapConversion — create just the conversion
-    const contextId = findPreferredGeometricRepresentationContextId(pass.effective, ctx);
-    if (contextId) {
-      const mcId = ctx.allocateExpressId();
-      pass.newGeorefLines.push(mapConversionLine(mcId, contextId, existingCrsIds[0], gm.mapConversion, pass.warnings, pass.schemaToken));
-      pass.newEntityCount++;
-    } else {
-      reportMapConversionRefused(pass.warnings);
-    }
+    createMapConversion(pass, ctx, existingCrsIds[0], gm.mapConversion);
   } else if (gm.mapConversion && !existingMcIds?.length && !existingCrsIds?.length) {
     // A map conversion was requested, but there is no IfcProjectedCRS to
     // reference as TargetCRS: none was requested (the first branch above
@@ -291,6 +275,24 @@ const FACTORS_ON_UNSCALED_WARNING =
 type MapConversionRequest = NonNullable<NonNullable<StepExportOptions['georefMutations']>['mapConversion']>;
 
 /**
+ * Create an IfcMapConversion from a request. A create needs the whole position
+ * (Eastings, Northings, OrthogonalHeight): a partial edit whose target record
+ * no longer exists (deleted since) is refused with a warning, never written
+ * with the missing fields guessed as 0.
+ */
+function createMapConversion(pass: ExportPass, ctx: GeorefContext, crsId: number, mc: MapConversionRequest): void {
+  const given = (v: unknown) => v !== undefined && v !== null && !Number.isNaN(Number(v));
+  if (![mc.eastings, mc.northings, mc.orthogonalHeight].every(given)) {
+    reportGeorefWarning(pass.warnings, MAP_CONVERSION_INCOMPLETE_WARNING);
+    return;
+  }
+  const contextId = findPreferredGeometricRepresentationContextId(pass.effective, ctx);
+  if (!contextId) return reportMapConversionRefused(pass.warnings);
+  pass.newGeorefLines.push(mapConversionLine(ctx.allocateExpressId(), contextId, crsId, mc, pass.warnings, pass.schemaToken));
+  pass.newEntityCount++;
+}
+
+/**
  * The requested FactorX/Y/Z, or `null` when none was asked for. A partial
  * triple is reported and treated as none: IfcMapConversionScaled has no
  * optional factor, and filling the gap with 1.0 would be a guessed scale.
@@ -328,6 +330,9 @@ function mapConversionLine(id: number, contextId: number, crsId: number, mc: Map
     ? `#${id}=IFCMAPCONVERSIONSCALED(${head},${factors.map(toStepReal).join(',')});`
     : `#${id}=IFCMAPCONVERSION(${head});`;
 }
+
+const MAP_CONVERSION_INCOMPLETE_WARNING =
+  'Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight must all be given, and the file has no IfcMapConversion to edit (it may have been deleted). Nothing was written.';
 
 function reportGeorefWarning(warnings: string[], message: string): void {
   warnings.push(message);

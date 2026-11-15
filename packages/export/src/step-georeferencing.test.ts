@@ -1027,13 +1027,34 @@ describe('StepExporter georeferencing — IfcMapConversionScaled', () => {
     const result = new StepExporter(dataStore).export({
       schema: 'IFC4',
       applyMutations: true,
-      georefMutations: { mapConversion: { eastings: 9999, northings: 8888 } },
+      georefMutations: { mapConversion: { eastings: 9999, northings: 8888, orthogonalHeight: 7 } },
     });
     const content = decode(result.content);
 
-    expect(content).toMatch(/=IFCMAPCONVERSION\(/);
+    expect(content).toMatch(/=IFCMAPCONVERSION\(#20,#40,9999\.,8888\.,7\.,/);
     expect(findDanglingRefs(content)).toEqual([]);
     expect(duplicateDefinedIds(content)).toEqual([]);
+  });
+
+  it('refuses to create a conversion from a partial edit instead of writing the missing fields as 0', () => {
+    // What is left of an `update` of one value once the record it edited has been deleted:
+    // there is nothing to edit, and Eastings/Northings/OrthogonalHeight were never supplied.
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+      [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+',$,$,$,#2);"],
+    ]);
+    for (const mapConversion of [{ orthogonalHeight: 11 }, { eastings: 1, northings: 2 }, { eastings: 1, northings: null, orthogonalHeight: 3 }]) {
+      const result = new StepExporter(dataStore).export({ schema: 'IFC4', applyMutations: true, georefMutations: { mapConversion } as never });
+      expect(decode(result.content)).not.toMatch(/=IFCMAPCONVERSION/);
+      expect(result.stats.georeferencingWarnings?.join('\n')).toMatch(/Cannot create IfcMapConversion from a partial edit/);
+    }
   });
 });
 

@@ -166,6 +166,19 @@ describe('bim.georef writes are atomic under undo', () => {
     await consistent();
   });
 
+  it('a conversion deleted after a partial update is not reported, and no 0/0 conversion is exported', async () => {
+    const { bim, backend } = await session('IFC4', GEOREFERENCED);
+    bim.georef.update({ MapConversion: { OrthogonalHeight: 11 } });
+    expect(bim.georef.get().MapConversion).toMatchObject({ Eastings: 1, Northings: 2, OrthogonalHeight: 11 });
+    expect(bim.store.removeEntity({ modelId: 'model', expressId: 21 })).toBe(true);
+    expect(backend.getMutationView()!.isDeleted(21)).toBe(true);
+    // (a) get() does not keep the deleted record's coordinates.
+    expect(bim.georef.get().MapConversion).toBeNull();
+    // (b) The pending height-only edit has no record to edit and is not a complete conversion:
+    // the export is refused with the cause named, never written with Eastings/Northings 0.
+    expect(() => bim.export.ifc()).toThrow(/Cannot create IfcMapConversion from a partial edit/);
+  });
+
   it('bim.mutate.undo / redo (no history on this backend) leave a georeferencing write in place', async () => {
     const { bim, consistent } = await session('IFC4', GEOREFERENCED);
     bim.georef.set(NEW);

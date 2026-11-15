@@ -21,6 +21,7 @@ import {
   siteNotes,
   stateAfter,
   toExporterMutations,
+  withSourceCrs,
   type GeorefWritePlan,
   type PlanContext,
   type PropertySetOp,
@@ -71,6 +72,9 @@ export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): 
   }
   if (storage === 'propertySets' && ctx.facts.ePSets.length > [ctx.facts.ePSetMapConversion, ctx.facts.ePSetProjectedCRS].filter(Boolean).length) {
     throw new GeoreferencingError('AMBIGUOUS', `The model carries more than one copy of the convention sets (${ctx.facts.ePSets.map((p) => `${p.name} on #${p.hostId}`).join(', ')}); update would not know which to edit. Use set with replace.`);
+  }
+  if (storage === 'entities' && ctx.facts.ePSets.length > 0 && ctx.facts.mapConversions.length === 0 && ctx.facts.projectedCRS.length === 0) {
+    throw new GeoreferencingError('UNSUPPORTED_RECORD', `This ${ctx.facts.schema} model is georeferenced by convention property sets (${ctx.facts.ePSets.map((p) => `${p.name} on #${p.hostId}`).join(', ')}), which update does not edit in an IFC4+ file. Use set with replace to write IfcMapConversion and replace them.`, ['replace']);
   }
   if (storage === 'entities' && (ctx.facts.mapConversions.length > 1 || ctx.facts.projectedCRS.length > 1)) {
     throw new GeoreferencingError('AMBIGUOUS', `The model has ${ctx.facts.mapConversions.length} IfcMapConversion and ${ctx.facts.projectedCRS.length} IfcProjectedCRS records; update would not know which to edit. Use set with replace.`);
@@ -136,6 +140,11 @@ export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): 
     requireAnchor(ctx.facts, storage);
   }
   const mergedMc = curMc || creatingMc ? { ...curMc, ...mcChanges } as unknown as GeorefMapConversionAttributes : null;
+  // An existing conversion whose coordinate is unset (an edit of the file) reads back as 0: update does not keep that, it asks.
+  if (mergedMc && !creatingMc) {
+    const absent = ['Eastings', 'Northings', 'OrthogonalHeight'].filter((f) => typeof (mergedMc as unknown as Attrs)[f] !== 'number');
+    if (absent.length > 0) throw new GeoreferencingError('MISSING_INPUT', `The IfcMapConversion has no ${absent.join(', ')} (unset in the file); update would keep a value it does not know. Pass ${absent.map((f) => `MapConversion.${f}`).join(', ')}.`, absent.map((f) => `MapConversion.${f}`));
+  }
 
   // ---- MapUnit: explicit or kept, never assumed ----
   let mapUnit: GeorefMapUnitDecision;
@@ -182,7 +191,7 @@ export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): 
   // carrying earlier edits of this session forward.
   const sessionCreated = ctx.facts.mapConversions.length === 0 && ctx.facts.projectedCRS.length === 0;
   if (sessionCreated) {
-    return { ...base, georefMutations: toExporterMutations(mergedCrs, mergedMc), propertySetOps: [] };
+    return { ...base, georefMutations: withSourceCrs(toExporterMutations(mergedCrs, mergedMc), ctx.facts), propertySetOps: [] };
   }
   const changes = toExporterMutations(crsChanges as Partial<GeorefProjectedCRSAttributes>, (creatingMc ? mergedMc : mcChanges) as Partial<GeorefMapConversionAttributes>);
   const prior = ctx.pending ?? {};
@@ -190,5 +199,5 @@ export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): 
     ...(prior.projectedCRS || changes.projectedCRS ? { projectedCRS: { ...prior.projectedCRS, ...changes.projectedCRS } } : {}),
     ...(prior.mapConversion || changes.mapConversion ? { mapConversion: { ...prior.mapConversion, ...changes.mapConversion } } : {}),
   };
-  return { ...base, georefMutations, propertySetOps: [] };
+  return { ...base, georefMutations: withSourceCrs(georefMutations, ctx.facts), propertySetOps: [] };
 }

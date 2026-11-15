@@ -26,11 +26,12 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { EntityExtractor } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { CRS_TEXT_FIELDS, numberOf } from './attribute-overlay.js';
+import { CRS_TEXT_FIELDS, interpretsMcEdit } from './attribute-overlay.js';
 import { exporterKey, MC_FIELDS } from './plan.js';
+import { EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS, storageForSchema } from './model-facts.js';
 import { GeoreferencingError } from './types.js';
 
-export type GeorefPart = 'MapConversion' | 'ProjectedCRS' | 'MapUnit' | 'RigidOperation' | 'site';
+export type GeorefPart = 'MapConversion' | 'ProjectedCRS' | 'MapUnit' | 'RigidOperation' | 'site' | 'ePSet';
 
 export interface GeorefTrust {
   /** Why each part is untrusted. */
@@ -98,12 +99,29 @@ export function assessTrust(store: IfcDataStore, view: MutablePropertyView, writ
   const flag = (part: GeorefPart, why: string) => { (trust.reasons[part] ??= []).push(why); };
   const covered = (part: GeorefPart, name: string) =>
     exporterKey(name) in ((part === 'MapConversion' ? written?.mapConversion : written?.projectedCRS) ?? {});
+  const conventionSet = (name?: string) => !!name && [EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS].some((n) => n.toLowerCase() === name.toLowerCase());
+  const entities = storageForSchema(String(store.schemaVersion ?? '')) === 'entities';
   for (const c of changes) {
+    // A retype is judged by the class the entity becomes (a created entity's own class says nothing): into a
+    // georeferencing class it is a record nobody read, however it started.
+    if (c.kind === 'type') {
+      const into = CLASS_PART[String(c.newValue).toUpperCase()];
+      if (into) {
+        flag(into, `#${c.entityId} was retyped to ${c.newValue} outside bim.georef`);
+        if (into !== 'site') trust.foreign.push(`${c.newValue} #${c.entityId}`);
+        continue;
+      }
+    }
     if (c.kind === 'entity-added') {
       const part = CLASS_PART[String(c.newValue).toUpperCase()];
       if (!part) continue;
       flag(part, `${c.newValue} #${c.entityId} was created outside bim.georef`);
       if (part !== 'site') trust.foreign.push(`${c.newValue} #${c.entityId}`);
+      continue;
+    }
+    // IFC4+ files carry their sets only as a reader fallback, which is not read back live: an edit is not reflected.
+    if (entities && conventionSet(c.setName) && (c.kind === 'property' || c.kind === 'pset-added' || c.kind === 'pset-deleted')) {
+      flag('ePSet', `${c.setName} on #${c.entityId} was changed outside bim.georef`);
       continue;
     }
     const read = reads.get(c.entityId);
@@ -116,7 +134,7 @@ export function assessTrust(store: IfcDataStore, view: MutablePropertyView, writ
       case 'attribute': {
         const name = c.name ?? '';
         const interpreted = !name.startsWith('@') && (
-          (part === 'MapConversion' && (MC_FIELDS as readonly string[]).includes(name) && (covered(part, name) || numberOf(c.newValue ?? '') !== undefined))
+          (part === 'MapConversion' && (MC_FIELDS as readonly string[]).includes(name) && (covered(part, name) || interpretsMcEdit(name, c.newValue ?? '', type === 'IFCMAPCONVERSIONSCALED')))
           || (type === 'IFCPROJECTEDCRS' && (CRS_TEXT_FIELDS.includes(name) || (name === 'MapUnit' && covered(part, name)))));
         if (!interpreted) flag(part, `${name.startsWith('@') ? `attribute ${name.slice(1)} (by position)` : `attribute ${name}`} of ${what} was edited outside bim.georef`);
         break;
@@ -138,7 +156,7 @@ export function assertWritable(action: 'set' | 'update' | 'remove', trust: Geore
     );
   }
   if (action !== 'update') return;
-  const stale = (['MapConversion', 'ProjectedCRS', 'MapUnit', 'RigidOperation'] as const).flatMap((p) => trust.reasons[p] ?? []);
+  const stale = (['MapConversion', 'ProjectedCRS', 'MapUnit', 'RigidOperation', 'ePSet'] as const).flatMap((p) => trust.reasons[p] ?? []);
   if (stale.length > 0) {
     throw new GeoreferencingError(
       'UNSUPPORTED_RECORD',

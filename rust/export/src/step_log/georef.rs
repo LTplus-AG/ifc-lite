@@ -16,7 +16,7 @@ use crate::step_text::quoted;
 
 use super::jsval::{js_to_number, json_to_js_string, to_step_real, JsVal};
 use super::pass::Pass;
-use super::units::{find_length_unit_reference, normalize_map_unit_name};
+use super::units::normalize_map_unit_name;
 use super::values::Unwritable;
 use super::wire::GeorefMutations;
 
@@ -52,12 +52,9 @@ pub(crate) fn requests_anything(g: &GeorefMutations) -> bool {
     g.projected_crs.as_ref().is_some_and(|m| !m.is_empty()) || g.map_conversion.as_ref().is_some_and(|m| !m.is_empty())
 }
 
-/// `resolveMapUnitReference`: a project length unit, else a new one.
+/// `resolveMapUnitReference`: always a new unit, never an existing entity (one the generic API may have edited).
 fn map_unit(pass: &mut Pass<'_, '_>, name: &str) -> Result<Option<u32>, Unwritable> {
     let normalized = normalize_map_unit_name(name);
-    if let Some(existing) = find_length_unit_reference(&normalized, pass.src, &|id| pass.is_deleted(id)) {
-        return Ok(Some(existing));
-    }
     let prefix = if normalized == "METRE" {
         Some(None)
     } else {
@@ -199,14 +196,19 @@ fn map_unit_token(pass: &mut Pass<'_, '_>, unit: &Value) -> Result<String, Unwri
 
 /// Create the `IfcMapConversion` from the preferred context to `crs_id`, or
 /// report that no context exists.
-fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, Value>, file_schema: &str) -> Result<(), Unwritable> {
+fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, Value>, source_crs: Option<u32>, file_schema: &str) -> Result<(), Unwritable> {
     // A create needs the whole position (`+ 0.0` below folds -0 to 0): a partial edit whose record was deleted is refused, never written as 0.
     let pos = ["eastings", "northings", "orthogonalHeight"].map(|k| mc.get(k).filter(|v| !v.is_null()).map_or(f64::NAN, js_to_number));
     if pos.iter().any(|n| n.is_nan()) {
         pass.warnings.push(INCOMPLETE_MAP_CONVERSION.to_string());
         return Ok(());
     }
-    match preferred_context(pass) {
+    // The planner names the SourceCRS; a host that does not plan leaves the choice to the file's own contexts.
+    let context = match source_crs {
+        Some(id) => pass.of_type("IFCGEOMETRICREPRESENTATIONCONTEXT").contains(&id).then_some(id),
+        None => preferred_context(pass),
+    };
+    match context {
         Some(context) => {
             let mc_id = pass.allocate()?;
             let line = map_conversion_line(mc_id, context, crs_id, mc, pos, &mut pass.warnings, file_schema)?;
@@ -228,7 +230,8 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
     mc_ids.extend(pass.of_type("IFCMAPCONVERSIONSCALED"));
 
     if let (Some(crs), Some(&id)) = (&g.projected_crs, crs_ids.first()) {
-        let mut edits = named_edits(
+        // Text is text (`$`, `*`, `#12` stay strings, as on the create path); only an empty value clears the slot.
+        let mut edits: Vec<(String, String)> = named_edits(
             crs,
             &[
                 ("name", "Name"),
@@ -238,7 +241,10 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
                 ("mapProjection", "MapProjection"),
                 ("mapZone", "MapZone"),
             ],
-        );
+        )
+        .into_iter()
+        .map(|(attr, text)| if text.is_empty() { (attr, "$".to_string()) } else { (attr, format!("\0{text}")) })
+        .collect();
         if let Some(unit) = crs.get("mapUnit") {
             let value = map_unit_token(pass, unit)?;
             edits.push(("MapUnit".to_string(), value));
@@ -282,10 +288,10 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
         pass.georef_lines.push((crs_id, format!("#{crs_id}=IFCPROJECTEDCRS({},{unit_ref});", fields.join(","))));
         pass.new_entity_count += 1;
         if let Some(mc) = &g.map_conversion {
-            create_map_conversion(pass, crs_id, mc, file_schema)?;
+            create_map_conversion(pass, crs_id, mc, g.source_crs, file_schema)?;
         }
     } else if let (Some(mc), true, Some(&crs_id)) = (&g.map_conversion, mc_ids.is_empty(), crs_ids.first()) {
-        create_map_conversion(pass, crs_id, mc, file_schema)?;
+        create_map_conversion(pass, crs_id, mc, g.source_crs, file_schema)?;
     } else if g.map_conversion.is_some() && mc_ids.is_empty() && crs_ids.is_empty() {
         pass.warnings.push(WITHOUT_CRS.to_string());
     }

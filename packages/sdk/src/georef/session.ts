@@ -62,12 +62,19 @@ export class GeoreferencingSession {
     const state = this.read();
     const view = this.deps.view();
     if (!view) return state;
-    const { reasons, foreign } = assessTrust(this.deps.store, view, this.current()?.pending ?? null);
+    const { reasons, foreign } = this.trust(state, view);
     const untrusted = Object.entries(reasons).filter(([part]) => part !== 'site' || state.site).flatMap(([, why]) => why);
     if (untrusted.length === 0) return state;
     // A unit read from an untrusted CRS (or unit record) is not carried into a write: the existing unresolved-unit refusal applies.
-    const unitUnsettled = !!(reasons.ProjectedCRS || reasons.MapUnit || foreign.length) && state.ProjectedCRS?.MapUnit !== undefined;
+    const unitUnsettled = !!(reasons.ProjectedCRS || reasons.MapUnit || reasons.ePSet || foreign.length) && state.ProjectedCRS?.MapUnit !== undefined;
     return { ...state, untrusted, ...(unitUnsettled && state.ProjectedCRS ? { ProjectedCRS: { ...state.ProjectedCRS, mapUnitResolved: false } } : {}) };
+  }
+
+  /** Trust in what `state` is read from. A change to a convention set only matters while the state is read from one. */
+  private trust(state: GeoreferencingState, view: MutablePropertyView) {
+    const trust = assessTrust(this.deps.store, view, this.current()?.pending ?? null);
+    if (state.MapConversion?.type !== 'ePSet_MapConversion' && state.ProjectedCRS?.type !== 'ePSet_ProjectedCRS') delete trust.reasons.ePSet;
+    return trust;
   }
 
   private read(): GeoreferencingState {
@@ -101,9 +108,10 @@ export class GeoreferencingSession {
     if (facts.unknown.length > 0) {
       throw new GeoreferencingError('UNSUPPORTED_RECORD', `The model's entities that georeferencing is planned from cannot be read reliably after the session's generic edits (${facts.unknown.join('; ')}), so nothing was written.`);
     }
-    assertWritable(request.action, assessTrust(store, view, prior?.pending ?? null));
+    const current = this.get();
+    assertWritable(request.action, this.trust(current, view));
     const ctx = {
-      modelId: this.deps.modelId, facts, current: this.get(), pending: prior?.pending ?? null,
+      modelId: this.deps.modelId, facts, current, pending: prior?.pending ?? null,
       afterRemove: (withPropertySets: boolean) => readWithoutGeoreferencing(store, modelId, withPropertySets, (id) => view.isDeleted(id)),
     };
     const plan: GeorefWritePlan = request.action === 'set' ? planSet(request.input, ctx)

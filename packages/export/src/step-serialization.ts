@@ -236,6 +236,12 @@ export function tokenIsRealLiteral(token: string): boolean {
  * Serialize a root attribute value for STEP, inferring the format from the
  * existing token (enum, boolean, number, string, etc.).
  */
+/**
+ * Leads a named-edit value the georeferencing writer wants written as a quoted string whatever it looks like
+ * (`$`, `*`, `#12`): an internal channel, never produced by the generic attribute API.
+ */
+export const TEXT_EDIT_MARK = '\u0000';
+
 export function serializeAttributeValue(value: string, currentToken: string): string {
   const trimmed = value.trim();
   const current = currentToken.trim();

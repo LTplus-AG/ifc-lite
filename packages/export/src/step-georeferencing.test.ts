@@ -1036,6 +1036,54 @@ describe('StepExporter georeferencing — IfcMapConversionScaled', () => {
     expect(duplicateDefinedIds(content)).toEqual([]);
   });
 
+  describe('the exporter takes no georeferencing decision the planner already made (audit)', () => {
+    const store = () => buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20,#25),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [25, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#25=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',3,1.E-05,#21,$);"],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+    ]);
+    const mc = { eastings: 1, northings: 2, orthogonalHeight: 3 };
+    const run = (georefMutations: object) => new StepExporter(store()).export({ schema: 'IFC4', applyMutations: true, georefMutations: georefMutations as never });
+
+    it('writes a fresh unit for the map unit, never the project unit entity', () => {
+      const text = decode(run({ projectedCRS: { name: 'X', mapUnit: 'METRE' }, mapConversion: mc }).content);
+      const crs = /IFCPROJECTEDCRS\('X',\$,\$,\$,\$,\$,#(\d+)\)/.exec(text);
+      expect(crs).not.toBeNull();
+      expect(Number(crs![1])).not.toBe(2);
+      expect(text).toMatch(new RegExp(`#${crs![1]}=IFCSIUNIT\\(\\*,\\.LENGTHUNIT\\.,\\$,\\.METRE\\.\\);`));
+    });
+
+    it('converts from the SourceCRS the planner named, not the one the file would pick', () => {
+      const text = decode(run({ projectedCRS: { name: 'X', mapUnit: 'METRE' }, mapConversion: mc, sourceCrs: 25 }).content);
+      expect(text).toMatch(/IFCMAPCONVERSION\(#25,#/);
+    });
+
+    it('refuses a named SourceCRS that is not a representation context, writing no conversion', () => {
+      const result = run({ projectedCRS: { name: 'X', mapUnit: 'METRE' }, mapConversion: mc, sourceCrs: 2 });
+      expect(decode(result.content)).not.toMatch(/=IFCMAPCONVERSION/);
+      expect(result.stats.georeferencingWarnings?.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('writes CRS text as text on an in-place edit: `$`, `*` and `#12` stay strings, only empty clears the slot', () => {
+    const dataStore = buildMockDataStore([
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056','keep',$,$,$,$,#2);"],
+    ]);
+    const result = new StepExporter(dataStore).export({
+      schema: 'IFC4', applyMutations: true,
+      georefMutations: { projectedCRS: { geodeticDatum: '$', mapProjection: '*', verticalDatum: '#12', mapZone: '.X.', description: '' } },
+    });
+    expect(decode(result.content)).toContain("#40=IFCPROJECTEDCRS('EPSG:2056',$,'$',");
+    expect(decode(result.content)).toMatch(/IFCPROJECTEDCRS\('EPSG:2056',\$,'\$','#12','\*','\.X\.',#2\)/);
+  });
+
   it('refuses to create a conversion from a partial edit instead of writing the missing fields as 0', () => {
     // What is left of an `update` of one value once the record it edited has been deleted:
     // there is nothing to edit, and Eastings/Northings/OrthogonalHeight were never supplied.
@@ -1109,7 +1157,7 @@ describe('IfcProjectedCRS.MapUnit carries the unit that was asked for (#3274)', 
     // contain. A metre-scaled MapUnit on a millimetre map is a 1000x error in
     // the attribute the whole georeference hangs on.
     expect(crsMapUnitLine(decode(exportWithMapUnit('MILLIMETRE').content)))
-      .toBe('#31=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);');
+      .toMatch(/^#\d+=IFCSIUNIT\(\*,\.LENGTHUNIT\.,\.MILLI\.,\.METRE\.\);$/);
     expect(crsMapUnitLine(decode(exportWithMapUnit('CENTIMETRE').content)))
       .toMatch(/^#\d+=IFCSIUNIT\(\*,\.LENGTHUNIT\.,\.CENTI\.,\.METRE\.\);$/);
     expect(crsMapUnitLine(decode(exportWithMapUnit('KILOMETRE').content)))
@@ -1120,16 +1168,12 @@ describe('IfcProjectedCRS.MapUnit carries the unit that was asked for (#3274)', 
       .toMatch(/^#\d+=IFCSIUNIT\(\*,\.LENGTHUNIT\.,\$,\.METRE\.\);$/);
   });
 
-  it('reuses the file’s own unit when the prefixes match, and synthesises one when they do not', () => {
-    // `#31` is the store's own millimetre unit. Reuse is observable as the id.
+  it('never reuses the file’s own unit entity: every map unit is written fresh', () => {
+    // `#31` is the store's own millimetre unit. A unit entity the generic API can edit (or re-point) after the
+    // planner decided must not become the CRS unit, so a matching one is not reused either (audit finding 1).
     const millis = decode(exportWithMapUnit('MILLIMETRE').content);
-    expect(crsMapUnitLine(millis)).toContain('#31=');
-    // …and not by accident: nothing new was written for it.
-    expect(millis.match(/=IFCSIUNIT\(\*,\.LENGTHUNIT\.,\.MILLI\.,\.METRE\.\)/g)).toHaveLength(1);
-
-    // The negative control for that reuse: a request the file cannot satisfy
-    // gets a NEW id, so "reuse" is a decision and not the only outcome.
-    expect(crsMapUnitLine(decode(exportWithMapUnit('METRE').content))).not.toContain('#31=');
+    expect(crsMapUnitLine(millis)).not.toContain('#31=');
+    expect(millis.match(/=IFCSIUNIT\(\*,\.LENGTHUNIT\.,\.MILLI\.,\.METRE\.\)/g)).toHaveLength(2);
   });
 
   it('refuses a unit it cannot express rather than calling it metres', () => {

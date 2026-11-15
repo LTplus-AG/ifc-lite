@@ -14,6 +14,7 @@ import { declaresMapConversionScaled } from '@ifc-lite/export';
 import { parseSourceHeader, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveEntities } from './effective-entities.js';
+import { strayConventionSets } from './epset-locator.js';
 import type { GeorefStorage } from './types.js';
 
 /** The two IFC2X3 convention property sets, matched case-insensitively like the reader. */
@@ -143,11 +144,13 @@ export function collectGeorefModelFacts(store: IfcDataStore, view: MutableProper
     unknown,
   };
 
-  if (facts.storage === 'propertySets' && view) {
+  // Every schema: the reader falls back to the convention sets whatever the file's schema, so a writer must know them.
+  if (view) {
     // The convention sets hang off IfcSite in practice; IfcProject and
     // IfcBuilding are searched too so an edit never misses one and then
-    // writes a second, contradicting copy.
+    // writes a second, contradicting copy. A set anywhere else is refused (`unknown`), not left behind.
     const hosts = [...sites, ...live('IFCPROJECT'), ...live('IFCBUILDING')];
+    unknown.push(...strayConventionSets(store, view, effective, new Set(hosts)));
     const mc = findEPSets(view, hosts, EPSET_MAP_CONVERSION);
     const crs = findEPSets(view, hosts, EPSET_PROJECTED_CRS);
     facts.ePSetMapConversion = mc[0] ?? null;

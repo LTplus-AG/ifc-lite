@@ -106,7 +106,10 @@ export function extractProjectedCRS(
         mapUnitScale = scale;
         if (name) {
           mapUnit = name;
-          mapUnitResolved = true;
+          // A name the table knows, but a factor the file declares differently (a survey foot named FOOT): the
+          // name no longer says which unit this is, so it is a reading nobody may carry into a write.
+          const declared = resolveMeasureWithUnit(unitEntity.attributes?.[3], resolveEntity!);
+          mapUnitResolved = !(declared !== undefined && Math.abs(declared - scale) / scale > 1e-7);
         }
       }
     } else if (unitEntity && unitType === 'IFCSIUNIT') {

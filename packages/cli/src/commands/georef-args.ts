@@ -74,7 +74,8 @@ export function parseGeorefArgs(args: string[], allowed: { values: boolean; out:
 }
 
 function number(flag: string, raw: string): number {
-  const n = raw.trim() === '' ? Number.NaN : Number(raw);
+  // Decimal notation only: `Number()` also takes 0x10, 0b11 and 0o17, which nobody means as a coordinate.
+  const n = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(raw.trim()) ? Number(raw) : Number.NaN;
   if (!Number.isFinite(n)) throw new GeorefUsageError(`${flag} must be a number, got ${JSON.stringify(raw)}`);
   return n;
 }

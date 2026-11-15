@@ -23,16 +23,31 @@ import type { GeoreferencingState } from './types.js';
 /** `CRS_FIELDS` without `MapUnit` (a reference attribute); a literal so the module does no work at import. */
 export const CRS_TEXT_FIELDS: readonly string[] = ['Name', 'Description', 'GeodeticDatum', 'VerticalDatum', 'MapProjection', 'MapZone'];
 
+/** The three coordinates an IfcMapConversion cannot do without: an unset one reads back as 0. */
+export const MANDATORY_MC_FIELDS: readonly string[] = ['Eastings', 'Northings', 'OrthogonalHeight'];
+/** Attributes only IfcMapConversionScaled has; the exporter drops a named edit of them on a plain conversion. */
+export const SCALED_ONLY_MC_FIELDS: readonly string[] = ['FactorX', 'FactorY', 'FactorZ'];
+
 /**
- * The exporter's reading of a numeric edit (`serializeAttributeValue`): empty or `$` is unset, an
- * overflowing literal is written as `$`, a finite number is a number, anything else is not stated here.
+ * The exporter's reading of a numeric edit of a REAL slot (`serializeNamedAttribute`): empty is unset (`$`), a
+ * finite number is a number, and anything else (`$`, `Infinity`, an overflowing literal, text) is DECLINED: the
+ * file keeps its own value and the exporter warns. `undefined` is that decline: this overlay cannot state it.
  */
 export function numberOf(raw: string): number | null | undefined {
   const text = raw.trim();
-  if (text === '' || text === '$') return null;
+  if (text === '') return null;
   const n = Number(text);
-  if (Number.isNaN(n)) return undefined;
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * Whether an edit of conversion attribute `name` to `raw` is one `get()` can state: the attribute exists on the
+ * record's class, and the value is one the exporter writes verbatim (an unset mandatory coordinate is not: it reads as 0).
+ */
+export function interpretsMcEdit(name: string, raw: string, scaled: boolean): boolean {
+  if (SCALED_ONLY_MC_FIELDS.includes(name) && !scaled) return false;
+  const n = numberOf(raw);
+  return n !== undefined && !(n === null && MANDATORY_MC_FIELDS.includes(name));
 }
 
 /** A text edit is the plain text (the exporter quotes and escapes it); empty is unset. */
@@ -53,8 +68,8 @@ export function withAttributeEdits(
     const fields: Record<string, unknown> = { ...mc };
     for (const { name, value } of view.getAttributeMutationsForEntity(mc.expressId)) {
       if (!MC_FIELDS.includes(name as (typeof MC_FIELDS)[number]) || exporterKey(name) in (written?.mapConversion ?? {})) continue;
-      const n = numberOf(value);
-      if (n === undefined) continue;
+      if (!interpretsMcEdit(name, value, mc.type === 'IfcMapConversionScaled')) continue;
+      const n = numberOf(value) as number | null;
       if (n === null) delete fields[name]; else fields[name] = n;
       changed = true;
     }

@@ -114,7 +114,9 @@ pub(crate) fn is_real_slot(upper: &str, index: usize, schema: &str) -> bool {
 
 /// `serializeStringSlot`.
 pub(crate) fn string_slot(value: &str) -> String {
-    if value == "$" || value == "*" {
+    if let Some(text) = value.strip_prefix('\0') {
+        quoted(text)
+    } else if value == "$" || value == "*" {
         value.to_string()
     } else {
         quoted(value)

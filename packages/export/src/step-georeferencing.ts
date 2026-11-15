@@ -27,6 +27,7 @@ import type { EffectiveEntityIndex } from './effective-index.js';
 import { escapeStepString, toStepReal } from './step-serialization.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
 import { reportMapUnitUnsupported, resolveMapUnitReference } from './step-map-unit.js';
+import { TEXT_EDIT_MARK } from './step-serialization.js';
 
 /**
  * Message for the one refusal `export()` can report, shared by the returned
@@ -124,14 +125,14 @@ export function applyGeoreferencingMutations(
     const attrMap = pass.modifiedAttributes.get(entityId)!;
     const crs = gm.projectedCRS;
     let changed = false;
-    if (crs.name !== undefined) { attrMap.set('Name', String(crs.name)); changed = true; }
-    if (crs.description !== undefined) { attrMap.set('Description', String(crs.description)); changed = true; }
-    if (crs.geodeticDatum !== undefined) { attrMap.set('GeodeticDatum', String(crs.geodeticDatum)); changed = true; }
-    if (crs.verticalDatum !== undefined) { attrMap.set('VerticalDatum', String(crs.verticalDatum)); changed = true; }
-    if (crs.mapProjection !== undefined) { attrMap.set('MapProjection', String(crs.mapProjection)); changed = true; }
-    if (crs.mapZone !== undefined) { attrMap.set('MapZone', String(crs.mapZone)); changed = true; }
+    if (crs.name !== undefined) { attrMap.set('Name', textEdit(crs.name)); changed = true; }
+    if (crs.description !== undefined) { attrMap.set('Description', textEdit(crs.description)); changed = true; }
+    if (crs.geodeticDatum !== undefined) { attrMap.set('GeodeticDatum', textEdit(crs.geodeticDatum)); changed = true; }
+    if (crs.verticalDatum !== undefined) { attrMap.set('VerticalDatum', textEdit(crs.verticalDatum)); changed = true; }
+    if (crs.mapProjection !== undefined) { attrMap.set('MapProjection', textEdit(crs.mapProjection)); changed = true; }
+    if (crs.mapZone !== undefined) { attrMap.set('MapZone', textEdit(crs.mapZone)); changed = true; }
     if (crs.mapUnit !== undefined) {
-      const mapUnitRef = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, pass.effective, ctx);
+      const mapUnitRef = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, ctx);
       // A refused unit clears MapUnit rather than leaving the file's own in
       // place: the caller asked for a DIFFERENT unit, so the one already
       // there is known to be wrong, and `$` is the only honest answer this
@@ -221,17 +222,17 @@ export function applyGeoreferencingMutations(
     // a unit this exporter cannot express, not an absent request, and the caller
     // has to be told so rather than quietly getting `$`.
     if (crs.mapUnit !== undefined) {
-      const resolved = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, pass.effective, ctx);
+      const resolved = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, ctx);
       if (resolved === null) reportMapUnitUnsupported(pass.warnings, String(crs.mapUnit));
       else mapUnitRef = `#${resolved}`;
     }
     pass.newGeorefLines.push(`#${crsId}=IFCPROJECTEDCRS(${name},${desc},${datum},${vDatum},${proj},${zone},${mapUnitRef});`);
     pass.newEntityCount++;
 
-    if (gm.mapConversion) createMapConversion(pass, ctx, crsId, gm.mapConversion);
+    if (gm.mapConversion) createMapConversion(pass, ctx, crsId, gm.mapConversion, gm.sourceCrs);
   } else if (gm.mapConversion && !existingMcIds?.length && existingCrsIds?.length) {
     // CRS exists but no MapConversion — create just the conversion
-    createMapConversion(pass, ctx, existingCrsIds[0], gm.mapConversion);
+    createMapConversion(pass, ctx, existingCrsIds[0], gm.mapConversion, gm.sourceCrs);
   } else if (gm.mapConversion && !existingMcIds?.length && !existingCrsIds?.length) {
     // A map conversion was requested, but there is no IfcProjectedCRS to
     // reference as TargetCRS: none was requested (the first branch above
@@ -275,18 +276,30 @@ const FACTORS_ON_UNSCALED_WARNING =
 type MapConversionRequest = NonNullable<NonNullable<StepExportOptions['georefMutations']>['mapConversion']>;
 
 /**
+ * A CRS text value as an in-place edit: text is text (`$`, `*`, `#12` stay quoted strings, as on the create path)
+ * and only an empty value clears the slot, with the `$` token the create path writes for it.
+ */
+function textEdit(value: unknown): string {
+  const text = String(value);
+  return text === '' ? '$' : TEXT_EDIT_MARK + text;
+}
+
+/**
  * Create an IfcMapConversion from a request. A create needs the whole position
  * (Eastings, Northings, OrthogonalHeight): a partial edit whose target record
  * no longer exists (deleted since) is refused with a warning, never written
  * with the missing fields guessed as 0.
  */
-function createMapConversion(pass: ExportPass, ctx: GeorefContext, crsId: number, mc: MapConversionRequest): void {
+function createMapConversion(pass: ExportPass, ctx: GeorefContext, crsId: number, mc: MapConversionRequest, sourceCrs: number | undefined): void {
   const given = (v: unknown) => v !== undefined && v !== null && !Number.isNaN(Number(v));
   if (![mc.eastings, mc.northings, mc.orthogonalHeight].every(given)) {
     reportGeorefWarning(pass.warnings, MAP_CONVERSION_INCOMPLETE_WARNING);
     return;
   }
-  const contextId = findPreferredGeometricRepresentationContextId(pass.effective, ctx);
+  // The planner names the SourceCRS (it saw the session's creations, deletions and edits); a host that does not plan
+  // (the viewer) leaves the choice to the file's own contexts.
+  const contextId = sourceCrs === undefined ? findPreferredGeometricRepresentationContextId(pass.effective, ctx)
+    : pass.effective.typeOf(sourceCrs) === 'IFCGEOMETRICREPRESENTATIONCONTEXT' ? sourceCrs : null;
   if (!contextId) return reportMapConversionRefused(pass.warnings);
   pass.newGeorefLines.push(mapConversionLine(ctx.allocateExpressId(), contextId, crsId, mc, pass.warnings, pass.schemaToken));
   pass.newEntityCount++;

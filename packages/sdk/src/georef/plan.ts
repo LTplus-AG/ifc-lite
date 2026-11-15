@@ -81,6 +81,11 @@ export function exporterKey(attr: string): string {
   return attr.charAt(0).toLowerCase() + attr.slice(1);
 }
 
+/** The context the planner chose for a created conversion travels with the mutations; the exporter does not choose. */
+export function withSourceCrs(m: StepGeorefMutations, facts: GeorefModelFacts): StepGeorefMutations {
+  return facts.preferredContext === null ? m : { ...m, sourceCrs: facts.preferredContext };
+}
+
 export function toExporterMutations(
   crs: Partial<GeorefProjectedCRSAttributes> | null,
   mc: Partial<GeorefMapConversionAttributes> | null,
@@ -315,7 +320,8 @@ export function planSet(input: GeoreferencingSetInput, ctx: PlanContext): Georef
   const storage = requireStorage(ctx.facts);
   const anchor = requireAnchor(ctx.facts, storage);
   const records = storage === 'entities' ? existingRecords(ctx.facts) : [];
-  const epsets = storage === 'propertySets' ? existingEPSets(ctx.facts) : [];
+  // Convention sets are read from every schema (the reader's fallback), so they count as existing whatever the storage.
+  const epsets = existingEPSets(ctx.facts);
   const sessionOnly = ctx.current.pending && ctx.current.hasGeoreference && records.length === 0 && epsets.length === 0;
   const existing = [...records.map((r) => r.label), ...epsets, ...(sessionOnly ? ['the georeferencing set earlier in this session'] : [])];
   if (existing.length > 0 && input.replace !== true) {
@@ -335,7 +341,9 @@ export function planSet(input: GeoreferencingSetInput, ctx: PlanContext): Georef
     removed: [...records.map((r) => r.label), ...epsets],
   };
   if (storage === 'entities') {
-    return { ...base, tombstone: records.map((r) => r.id), georefMutations: toExporterMutations(crs, mc), propertySetOps: [] };
+    // Sets in an IFC4+ file would shadow nothing the reader prefers, but a third-party reader could still pick them up: replaced means gone.
+    const sets = ctx.facts.ePSets.map((p) => ({ op: 'deleteSet' as const, hostId: p.hostId, pset: p.name }));
+    return { ...base, tombstone: records.map((r) => r.id), georefMutations: withSourceCrs(toExporterMutations(crs, mc), ctx.facts), propertySetOps: sets };
   }
   return {
     ...base,
@@ -352,7 +360,7 @@ export function planSet(input: GeoreferencingSetInput, ctx: PlanContext): Georef
 export function planRemove(ctx: PlanContext): GeorefWritePlan {
   const storage = requireStorage(ctx.facts);
   const records = storage === 'entities' ? existingRecords(ctx.facts) : [];
-  const sets = storage === 'propertySets' ? ctx.facts.ePSets : [];
+  const sets = ctx.facts.ePSets;
   if (records.length === 0 && sets.length === 0 && !(ctx.current.pending && ctx.current.hasGeoreference)) {
     throw new GeoreferencingError('NOT_GEOREFERENCED', 'The model carries no IfcMapConversion, IfcRigidOperation, CRS or IFC2X3 ePSet_MapConversion to remove.');
   }
@@ -363,7 +371,7 @@ export function planRemove(ctx: PlanContext): GeorefWritePlan {
     removed: [...records.map((r) => r.label), ...sets.map((p) => `${p.name} on #${p.hostId}`)],
     georefMutations: null,
     propertySetOps: sets.map((p) => ({ op: 'deleteSet' as const, hostId: p.hostId, pset: p.name })),
-    next: { ...ctx.afterRemove(storage === 'propertySets'), pending: true },
+    next: { ...ctx.afterRemove(storage === 'propertySets' || sets.length > 0), pending: true },
     mapUnit: null,
     notes: siteNotes(ctx.facts),
   };

@@ -54,6 +54,14 @@ describe('faceRegionsOfOuterBounds', () => {
     expect(faceRegionsOfOuterBounds([l, triangle])).toEqual([{ polygon: l, innerBounds: [] }, { polygon: triangle, innerBounds: [] }]);
   });
 
+  it('keeps a rectangle around a thin slit whose ends touch its edges as a region', () => {
+    // A square with a thin slit from the top down to (3.1, 2). The rectangle (1,2)-(9,9) has the slit's ends on its own
+    // edges, so no vertex of the square is strictly inside it, yet the whole slit is: it is not inside the square.
+    const square10: Vec3[] = [[0, 0, 0], [10, 0, 0], [10, 10, 0], [3.2, 10, 0], [3.2, 9, 0], [3.1, 2, 0], [3, 9, 0], [3, 10, 0], [0, 10, 0]];
+    const rectangle: Vec3[] = [[1, 2, 0], [9, 2, 0], [9, 9, 0], [1, 9, 0]];
+    expect(faceRegionsOfOuterBounds([square10, rectangle])).toEqual([{ polygon: square10, innerBounds: [] }, { polygon: rectangle, innerBounds: [] }]);
+  });
+
   it('keeps a rectangle over a V-dip as a region although its edge runs exactly through the slot vertices', () => {
     // A 10 x 10 square with a slot from the top (x 3 to 3.2, down to y 2) ending in a V-dip to (3.1, 1). The rectangle
     // (1,0.5)-(9,2) has every vertex and edge midpoint in the square and only touches the slot's lower vertices, so

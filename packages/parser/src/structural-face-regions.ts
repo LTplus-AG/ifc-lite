@@ -69,6 +69,17 @@ function stays(ring: Flat, outer: Flat): boolean {
   });
 }
 
+/** Whether no part of `outer`'s boundary enters the interior of `ring`: each outer edge has its endpoint and midpoint
+ *  outside or on `ring` (a proper crossing is refused by `stays`, and crossing is symmetric). A ring inside the outer loop
+ *  cannot contain a piece of it, whether a vertex or a thin slit whose ends touch the ring's boundary. */
+function clear(outer: Flat, ring: Flat): boolean {
+  const strictlyInside = (p: readonly [number, number]) => inside(p, ring) && !onBoundary(p, ring);
+  return outer.every((v, k) => {
+    const w = outer[(k + 1) % outer.length];
+    return !strictlyInside(v) && !strictlyInside([(v[0] + w[0]) / 2, (v[1] + w[1]) / 2]);
+  });
+}
+
 /** A point inside a simple polygon: the midpoint of the first span of a scanline between two vertex heights (even-odd). */
 function interiorPoint(poly: Flat): readonly [number, number] {
   const heights = [...new Set(poly.map((p) => p[1]))].sort((a, b) => a - b);
@@ -121,13 +132,13 @@ export function faceRegionsOfOuterBounds(allRings: readonly Vec3[][]): FaceRegio
   const flat = rings.map((ring): Flat => ring.map((p) => [dot(sub(p, reference[0]), x), dot(sub(p, reference[0]), y)] as const));
   const areas = flat.map(area);
   // The loops each loop lies in: a larger loop that holds a point inside this one and has no vertex of it outside, no edge of
-  // it leaving it, and no vertex of the larger loop strictly inside it (a chord between two points of a concave
+  // it leaving it, and no part of the larger loop's boundary inside it (a chord between two points of a concave
   // loop can leave it, even through two of its vertices exactly). The interior point (not the vertex average, which can fall in a notch of a concave
   // loop) rules out a tile that fills a notch of a concave loop with all its vertices on that loop's edge.
   const middle = flat.map(interiorPoint);
   const containers = flat.map((ring, i) => flat.map((_, j) => j).filter((j) => j !== i && areas[j] > areas[i]
     && inside(middle[i], flat[j]) && ring.every((p) => inside(p, flat[j]) || onBoundary(p, flat[j]))
-    && stays(ring, flat[j]) && flat[j].every((v) => !inside(v, ring) || onBoundary(v, ring))));
+    && stays(ring, flat[j]) && clear(flat[j], ring)));
   const regions = new Map<number, FaceRegion>();
   rings.forEach((polygon, i) => { if (containers[i].length % 2 === 0) regions.set(i, { polygon, innerBounds: [] }); });
   rings.forEach((polygon, i) => {

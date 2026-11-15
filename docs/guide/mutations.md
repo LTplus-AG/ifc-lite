@@ -1380,7 +1380,7 @@ preserved.
 
 `view.getNewEntityReferenceSlotIds(type, slot, target)` projects a raw authored positional scalar reference. A `null` target includes absent and malformed values. First use indexes that class; later writes maintain the projection, including nested drafts and exposed-array edits. Combine candidates with attribute overrides and verify effective values before using them. This is a raw creation index, not an effective-record reader.
 
-`trackEntityChanges(view)` supplies a disposable invalidation cursor for derived
+`view.trackEntityChanges()` supplies a disposable invalidation cursor for derived
 inventories. `take()` returns changed entity IDs since the previous call, or
 `null` after a full restoration or more than 65,536 distinct changes. It includes
 skip-history writes, atomic publication and undo. Escaped mutable creation arrays

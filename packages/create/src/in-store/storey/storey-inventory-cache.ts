@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { trackEntityChanges, type EntityChangeTracker, type MutablePropertyView } from '@ifc-lite/mutations';
+import type { EntityChangeTracker, MutablePropertyView } from '@ifc-lite/mutations';
 import type { AnchorEntityReader } from '../resolve-anchor.js';
 import type { StoreyInventory, StoreyRelationship } from './storey-model.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -32,7 +32,7 @@ export function storeyInventoryCache(
   let entry = entries.get(view);
   if (entry?.store !== store) { entry?.changes.dispose(); entry = undefined; }
   if (!entry) {
-    const changes = trackEntityChanges(view);
+    const changes = view.trackEntityChanges();
     entry = { store, changes, deleted: new Set(view.getTombstones()), revision: view.getMutationRevision(), dirty: new Set() };
     entries.set(view, entry);
     const origin = changes.origin;

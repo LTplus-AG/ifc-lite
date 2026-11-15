@@ -8241,7 +8241,6 @@
     "setEntityTypeNormalizer: function",
     "snapshotOverlay: function",
     "storeHasSourceEntity: function",
-    "trackEntityChanges: function",
     "undoRecordedMutationOperations: function"
   ],
   "@ifc-lite/oauth-pkce": [

@@ -4,7 +4,7 @@
 
 /** Mutable overlay over immutable or on-demand properties; changes apply on reads. */
 
-import { registerOverlayOrigin } from './overlay-change-tracker.js';
+import { registerOverlayOrigin, trackEntityChanges, type EntityChangeTracker } from './overlay-change-tracker.js';
 import { historyForEntity, purgeEntityHistory } from './indexed-mutation-history.js';
 import { runSparseAtomic } from './sparse-atomic.js';
 import { readEntitySnapshot } from './entity-read-barrier.js';
@@ -42,6 +42,8 @@ export type QuantityExtractor = (entityId: number, view: MutablePropertyView, oc
 export type QuantityBaseRevision = { readonly entityId: number; readonly setName: string };
 
 export class MutablePropertyView extends MutableOverlayState {
+  /** Bound to this instance's mutation registry, including across module copies. */
+  trackEntityChanges(): EntityChangeTracker { return trackEntityChanges(this); }
   private baseTable: PropertyTable | null;
   private onDemandExtractor: PropertyExtractor | null = null;
   private quantityExtractor: QuantityExtractor | null = null;

@@ -276,6 +276,31 @@ describe('bim.georef second review follow-ups', () => {
     } finally { model.close(); }
   });
 
+  it('get() follows an ordinary property edit of a convention set the file already had, with no georef write', async () => {
+    const author = await open(BASE, 'IFC2X3');
+    let text: string;
+    try {
+      author.bim.georef.set({
+        ProjectedCRS: { Name: 'EPSG:2056', MapUnit: 'METRE' },
+        MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 },
+      });
+      text = String(author.bim.export.ifc());
+    } finally { author.close(); }
+    const model = await openModel(new TextEncoder().encode(text), { disableWorkerScan: true });
+    try {
+      const before = model.bim.georef.get();
+      expect(before.source).toBe('ePSet_MapConversion');
+      expect(before.MapConversion?.Eastings).toBe(2600000);
+      model.bim.mutate.setProperty({ modelId: 'model', expressId: 6 }, 'ePSet_MapConversion', 'Eastings', 2600001, 'IfcLengthMeasure');
+      const reopened = await openModel(new TextEncoder().encode(String(model.bim.export.ifc())), { disableWorkerScan: true });
+      try {
+        expect(reopened.bim.georef.get().MapConversion?.Eastings).toBe(2600001);
+        expect(model.bim.georef.get().MapConversion?.Eastings).toBe(2600001);
+        expect(model.bim.georef.get().MapConversion?.Northings).toBe(1200000);
+      } finally { reopened.close(); }
+    } finally { model.close(); }
+  });
+
   it.each([1e308, -1e308, 361])('refuses rotationDegrees %s instead of writing a NaN axis', async (rotationDegrees) => {
     const model = await open(BASE);
     try {

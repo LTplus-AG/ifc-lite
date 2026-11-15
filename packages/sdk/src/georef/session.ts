@@ -18,7 +18,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import { recordCompoundMutation, recordSessionMutation, StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
-import { collectGeorefModelFacts, type GeorefModelFacts } from './model-facts.js';
+import { collectGeorefModelFacts, EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS, type GeorefModelFacts } from './model-facts.js';
 import { CRS_FIELDS, MC_FIELDS, planRemove, planSet, stateAfter, type GeorefWritePlan, type PropertySetOp, type StepGeorefMutations } from './plan.js';
 import { planUpdate } from './plan-update.js';
 import { readSourceGeoreferencing, readWithoutGeoreferencing } from './read.js';
@@ -59,7 +59,12 @@ export class GeoreferencingSession {
     const top = this.current();
     if (top) return top.state.storage === 'propertySets' && top.state.hasGeoreference ? this.liveEPSetState(top.state) : top.state;
     const view = this.deps.view();
-    return readSourceGeoreferencing(this.deps.store, this.deps.modelId, view ? (id) => view.isDeleted(id) : undefined);
+    const source = readSourceGeoreferencing(this.deps.store, this.deps.modelId, view ? (id) => view.isDeleted(id) : undefined);
+    // No georeferencing write, but an ordinary property edit of an IFC2X3 convention set
+    // changes what the export says: read the sets back from the overlay, as after a write.
+    return view && source.storage === 'propertySets' && conventionSetsEdited(view)
+      ? this.liveEPSetState(source, readWithoutGeoreferencing(this.deps.store, this.deps.modelId, true))
+      : source;
   }
 
   write(request: GeoreferencingWriteRequest): GeoreferencingWriteResult {
@@ -102,7 +107,7 @@ export class GeoreferencingSession {
    * edit can change; read them back from the overlay so `get()` stays what
    * the export will say.
    */
-  private liveEPSetState(written: GeoreferencingState): GeoreferencingState {
+  private liveEPSetState(written: GeoreferencingState, whenEmpty: GeoreferencingState = written): GeoreferencingState {
     const view = this.deps.view();
     if (!view) return written;
     const facts = collectGeorefModelFacts(this.deps.store, { isDeleted: (id) => view.isDeleted(id), getForEntity: (id) => view.getForEntity(id) });
@@ -110,7 +115,7 @@ export class GeoreferencingSession {
       loc ? Object.fromEntries(fields.filter((f) => loc.values[f] != null).map((f) => [f, loc.values[f]])) : null;
     const mc = pick(facts.ePSetMapConversion, MC_FIELDS);
     const crs = pick(facts.ePSetProjectedCRS, CRS_FIELDS);
-    if (!mc && !crs) return written;
+    if (!mc && !crs) return whenEmpty;
     return stateAfter({ modelId: this.deps.modelId, facts }, 'propertySets', crs as GeorefProjectedCRSAttributes | null, mc as GeorefMapConversionAttributes | null);
   }
 
@@ -152,6 +157,12 @@ export class GeoreferencingSession {
 export function assertGeorefWritten(warnings: readonly string[] | undefined, schema: string): void {
   if (!warnings?.length) return;
   throw new Error(`export.ifc: this session's georeferencing write cannot be written to this ${schema} file as given, so no file was produced:\n- ${warnings.join('\n- ')}`);
+}
+
+/** Whether any ordinary mutation in the view touched one of the two IFC2X3 convention sets (any casing). */
+function conventionSetsEdited(view: MutablePropertyView): boolean {
+  const names = [EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS].map((n) => n.toLowerCase());
+  return view.getMutations().some((m) => m.psetName !== undefined && names.includes(m.psetName.toLowerCase()));
 }
 
 /** A positive entity for the history marker: the anchor the write concerns. */

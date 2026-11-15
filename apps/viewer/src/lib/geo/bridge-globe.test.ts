@@ -12,7 +12,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { ProjectedCRS } from '@ifc-lite/parser';
-import PROJ_ORACLE from './__fixtures__/proj-oracle.json' with { type: 'json' };
+import PROJ_ORACLE from '../../test/proj-oracle.js';
 import { loadCesium } from '@/components/viewer/cesium/cesium-module';
 import { createExactCameraFrame } from './bridge-globe.js';
 import { createCesiumBridge } from './cesium-bridge.js';

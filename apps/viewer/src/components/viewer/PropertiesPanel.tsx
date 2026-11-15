@@ -58,6 +58,7 @@ import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
 import { isFeatureEnabled } from '@/lib/features';
 import { RawStepCard } from './properties/RawStepCard';
+import { TriangleCountRow } from './properties/TriangleCountRow';
 import { EntityHeader } from './properties/EntityHeader';
 import { UnitDisplayControl } from './properties/UnitDisplayControl';
 import { EntityPositionSection } from './properties/EntityPositionSection';
@@ -1159,6 +1160,7 @@ export function PropertiesPanel() {
         globalId={entityGlobalId}
       >
         <SpatialLocationBadge spatialInfo={renderedSpatialInfo} />
+        {selectedEntityId !== null && <TriangleCountRow modelId={model?.id ?? selectedEntity?.modelId ?? 'legacy'} globalId={selectedEntityId} />}
         {selectedEntity && <PresentationLayersSection entityRef={selectedEntity} />}
         {/* Part of Assembly (#3620) */}
         <AssemblyBadge assembly={assemblyParent} onSelect={handleSelectAssembly} />

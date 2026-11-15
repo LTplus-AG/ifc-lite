@@ -56,9 +56,6 @@ patchedDependencies:
   vite-plugin-top-level-await@1.6.0:
     hash: 623974a52d27420c80972a0c5b93427d3208cc4bc31d93b1505d3fc59fb430ce
     path: patches/vite-plugin-top-level-await@1.6.0.patch
-  wkt-parser@1.6.0:
-    hash: c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e
-    path: patches/wkt-parser@1.6.0.patch
 
 importers:
 
@@ -296,6 +293,9 @@ importers:
       '@ifc-lite/flow-nodes':
         specifier: workspace:^
         version: link:../../packages/flow-nodes
+      '@ifc-lite/geo':
+        specifier: workspace:^
+        version: link:../../packages/geo
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -504,8 +504,8 @@ importers:
         specifier: ^1.440.0
         version: 1.444.0(@types/react@19.3.0)(react@19.3.1)
       proj4:
-        specifier: ^2.22.0
-        version: 2.22.0(geotiff@3.0.5)
+        specifier: ^2.23.0
+        version: 2.23.0(geotiff@3.0.5)
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -539,9 +539,6 @@ importers:
       three:
         specifier: ^0.186.1
         version: 0.186.1
-      wkt-parser:
-        specifier: 1.6.0
-        version: 1.6.0(patch_hash=c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e)
       zustand:
         specifier: ^5.0.16
         version: 5.0.16(@types/react@19.3.0)(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1))
@@ -675,6 +672,9 @@ importers:
       '@ifc-lite/flow-nodes':
         specifier: workspace:^
         version: link:../../packages/flow-nodes
+      '@ifc-lite/geo':
+        specifier: workspace:^
+        version: link:../../packages/geo
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -1238,6 +1238,9 @@ importers:
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
+      ajv:
+        specifier: ^8.17.1
+        version: 8.20.0
       rhino3dm:
         specifier: 8.35.0
         version: 8.35.0
@@ -1428,8 +1431,8 @@ importers:
         specifier: ^0.28.1
         version: 0.28.2
       proj4:
-        specifier: ^2.22.0
-        version: 2.22.0(geotiff@3.0.5)
+        specifier: ^2.23.0
+        version: 2.23.0(geotiff@3.0.5)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1708,6 +1711,31 @@ importers:
       vitest:
         specifier: ^5.0.3
         version: 5.0.5(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/geo:
+    dependencies:
+      '@ifc-lite/data':
+        specifier: workspace:^
+        version: link:../data
+      geotiff:
+        specifier: ^3.0.5
+        version: 3.0.5
+      proj4:
+        specifier: ^2.23.0
+        version: 2.23.0(geotiff@3.0.5)
+      wkt-parser:
+        specifier: ^1.9.0
+        version: 1.9.0
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.6
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/geodata-ch:
     dependencies:
@@ -2208,6 +2236,9 @@ importers:
 
   packages/pointcloud:
     dependencies:
+      '@ifc-lite/geo':
+        specifier: workspace:^
+        version: link:../geo
       '@ifc-lite/wasm-lifecycle':
         specifier: workspace:^
         version: link:../wasm-lifecycle
@@ -6915,8 +6946,8 @@ packages:
     resolution: {integrity: sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A==}
     engines: {node: '>= 0.6.0'}
 
-  proj4@2.22.0:
-    resolution: {integrity: sha512-MVvH09QrYm3A235rcX39WDiCKanrBiblu28l0KYIn/B2DofmYhvP/LLS43kE66jNDfx/P1l/nah3JmsAq8UgbQ==}
+  proj4@2.23.0:
+    resolution: {integrity: sha512-vb1Z/dOztEyXg5JC2LgKc2ye+md4qUdwH/RLS0EUUMKzoIsAC2PT1IGKPIDv9qg51p7uONn93qTh9gtfh+GmOQ==}
     peerDependencies:
       geotiff: '*'
     peerDependenciesMeta:
@@ -7669,8 +7700,8 @@ packages:
     engines: {node: '>=20.11'}
     hasBin: true
 
-  wkt-parser@1.6.0:
-    resolution: {integrity: sha512-O2WMUagkdOKkgcfqZBUauysHVeifCwcs+zUd2QG7UIzVljLwK9g5xHUfL/TkQFwmQ3eF7oHFKGnMcb/kZdvbaw==}
+  wkt-parser@1.9.0:
+    resolution: {integrity: sha512-0muBykCBpbUgMPqmH+2rlvFlFwwH1kdgIMa0YbaQ/JZAlyWCv8Fa4HFSbEvZs2gYRaqJP/0D8xSI1G7Z4tn0vw==}
 
   wordwrapjs@5.1.1:
     resolution: {integrity: sha512-0yweIbkINJodk27gX9LBGMzyQdBDan3s/dEAiwBOj+Mf0PPyWL6/rikalkv8EeD0E8jm4o5RXEOrFTP3NXbhJg==}
@@ -12033,10 +12064,10 @@ snapshots:
 
   process@0.11.10: {}
 
-  proj4@2.22.0(geotiff@3.0.5):
+  proj4@2.23.0(geotiff@3.0.5):
     dependencies:
       mgrs: 1.0.0
-      wkt-parser: 1.6.0(patch_hash=c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e)
+      wkt-parser: 1.9.0
     optionalDependencies:
       geotiff: 3.0.5
 
@@ -12840,7 +12871,7 @@ snapshots:
 
   why-is-node-running@3.2.1: {}
 
-  wkt-parser@1.6.0(patch_hash=c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e): {}
+  wkt-parser@1.9.0: {}
 
   wordwrapjs@5.1.1: {}
 

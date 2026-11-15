@@ -17,6 +17,7 @@ import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, type CameraSlice } from './slices/cameraSlice.js';
 import { createSectionSlice, type SectionSlice } from './slices/sectionSlice.js';
 import { registerMutationViewStoreBinding } from './mutation-view-store-binding.js';
+import { peekViewerStore, registerViewerStore, type ViewerStoreApi } from './viewerStoreHandle.js';
 export { customPlaneCenter } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
 import { createDataSlice, type DataSlice } from './slices/dataSlice.js';
@@ -267,16 +268,11 @@ const createViewerStore = () => create<ViewerState>()(withStoreChurnCounters(wit
   ...createViewerActions(...args),
 })))));
 
-const STORE_SINGLETON_KEY = '__ifc_lite_viewer_store__';
-const globalStoreRegistry = globalThis as typeof globalThis & {
-  [STORE_SINGLETON_KEY]?: ReturnType<typeof createViewerStore>;
-};
-
-export function getViewerStoreApi() {
-  const existing = globalStoreRegistry[STORE_SINGLETON_KEY];
+export function getViewerStoreApi(): ViewerStoreApi {
+  const existing = peekViewerStore();
   if (existing) return existing;
   const store = createViewerStore();
-  globalStoreRegistry[STORE_SINGLETON_KEY] = store;
+  registerViewerStore(store);
   registerSidebarExclusivity(store);
   registerHierarchyLeftSync(store);
   registerDrawingInspectorSheetSync(store);

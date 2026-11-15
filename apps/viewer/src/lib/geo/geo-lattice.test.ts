@@ -11,7 +11,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import PROJ_ORACLE from './__fixtures__/proj-oracle.json' with { type: 'json' };
+import PROJ_ORACLE from '../../test/proj-oracle.js';
 import { enuFrameAt } from './geo-ecef.js';
 import { createGeoMapping, type GeoMapping } from './geo-warp.js';
 import { createLatticeWarp, type ViewerBounds } from './geo-lattice.js';

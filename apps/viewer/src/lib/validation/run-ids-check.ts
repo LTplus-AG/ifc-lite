@@ -5,6 +5,7 @@
 import { createTranslationService, validateIDS, type IDSDocument, type IDSValidationReport, type SupportedLocale, type ValidationProgress } from '@ifc-lite/ids';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { scopedIdsAccessor } from '@/lib/ids/scoped-accessor';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import { canUseIdsWorker } from '@/hooks/ids/canUseIdsWorker';
 import { runValidationInWorker } from '@/hooks/ids/idsWorkerClient';
@@ -22,6 +23,8 @@ export interface RunIdsCheckOptions {
   signal?: AbortSignal;
   onProgress?: (progress: ValidationProgress) => void;
   snapshotId?: string;
+  /** Model-local candidate IDs captured for a filtered run; undefined is the whole model. */
+  entityIds?: readonly number[];
 }
 
 export function throwIfCheckAborted(signal?: AbortSignal): void {
@@ -34,6 +37,7 @@ export function throwIfCheckAborted(signal?: AbortSignal): void {
 export async function runIdsCheck(options: RunIdsCheckOptions) {
   const { document, modelId, dataStore, mutationView, locale, signal } = options;
   throwIfCheckAborted(signal);
+  const entityIds = options.entityIds?.slice();
   const reportModels = new Map([...options.models].map(([id, model]) => [id, { ...model }]));
   const evaluatedModel = reportModels.get(modelId);
   if (evaluatedModel) reportModels.set(modelId, { ...evaluatedModel, ifcDataStore: dataStore });
@@ -47,7 +51,7 @@ export async function runIdsCheck(options: RunIdsCheckOptions) {
       const editedView = mutationView?.hasPendingChanges() ? mutationView : undefined;
       report = await runValidationInWorker({
         source: getWholeSourceForWorker(dataStore), document, schemaVersion, modelId, locale,
-        includePassingEntities: true,
+        includePassingEntities: true, entityIds,
         propertyOverlay: editedView ? snapshotPropertyOverlay(editedView) : undefined,
         entityVisibility: editedView ? snapshotEntityVisibility(editedView) : undefined,
         signal, onProgress,
@@ -61,11 +65,12 @@ export async function runIdsCheck(options: RunIdsCheckOptions) {
   }
   throwIfCheckAborted(signal);
   if (!report) {
-    const accessor = createDataAccessor(dataStore, modelId, mutationView);
+    const accessor = scopedIdsAccessor(createDataAccessor(dataStore, modelId, mutationView), entityIds);
     report = await validateIDS(document, accessor, {
-      modelId, schemaVersion, entityCount: dataStore.entityCount || accessor.getAllEntityIds().length,
+      modelId, schemaVersion, entityCount: entityIds === undefined ? dataStore.entityCount || accessor.getAllEntityIds().length : accessor.getAllEntityIds().length,
     }, { translator: createTranslationService(locale), onProgress, includePassingEntities: true });
   }
   throwIfCheckAborted(signal);
+  if (entityIds !== undefined) report.targetScope = { kind: 'subset', entityCount: report.modelInfo.find(model => model.modelId === modelId)?.entityCount ?? 0 };
   return { report, snapshot: validationReportSnapshot(report, reportModels, options.snapshotId ?? 'run') };
 }

@@ -33,6 +33,7 @@
 
 import { isSpatialStructureTypeName } from '@ifc-lite/data';
 import type { RhinoImport } from '@ifc-lite/rhino3dm';
+import type { ContainerVisibilityPlan } from '@/lib/container-visibility';
 
 /** One spatial container: a Rhino layer, or the root that stands for the file. */
 export interface RhinoContainer {
@@ -55,6 +56,8 @@ export interface RhinoContainer {
   elevation: number | null;
   /** The containing container's express id; null for the root. */
   parent: number | null;
+  /** The layer this row stands for, by index; null for a root that stands for the file. */
+  layer: number | null;
   /** The layer is off in Rhino, itself or through an ancestor. */
   hidden: boolean;
 }
@@ -174,7 +177,7 @@ export function planRhinoTree(
       containers.push({
         expressId, fromEntity: true,
         ifcClass: result.entities[entity].ifcClass, globalId: spatial.globalId,
-        name: result.entities[entity].name, elevation: spatial.elevation, parent,
+        name: result.entities[entity].name, elevation: spatial.elevation, parent, layer: index,
         // The entity carries its own hidden flag, which the reader already
         // folded its layer path into.
         hidden: false,
@@ -184,7 +187,7 @@ export function planRhinoTree(
     containers.push({
       expressId: nextExpressId, fromEntity: false, ifcClass: spatial.ifcClass,
       globalId: entity === undefined ? spatial.globalId : '',
-      name: layers[index].name, elevation: spatial.elevation, parent, hidden: off[index],
+      name: layers[index].name, elevation: spatial.elevation, parent, layer: index, hidden: off[index],
     });
     return nextExpressId++;
   };
@@ -193,7 +196,7 @@ export function planRhinoTree(
   const addFileRoot = (): number => {
     containers.push({
       expressId: nextExpressId, fromEntity: false, ifcClass: 'IfcProject',
-      globalId: '', name: fileName, elevation: null, parent: null, hidden: false,
+      globalId: '', name: fileName, elevation: null, parent: null, layer: null, hidden: false,
     });
     return nextExpressId++;
   };
@@ -202,7 +205,7 @@ export function planRhinoTree(
   const addLayerZone = (index: number, parent: number): number => {
     containers.push({
       expressId: nextExpressId, fromEntity: false, ifcClass: LAYER_CLASS,
-      globalId: '', name: layers[index].name, elevation: null, parent, hidden: off[index],
+      globalId: '', name: layers[index].name, elevation: null, parent, layer: index, hidden: off[index],
     });
     return nextExpressId++;
   };
@@ -243,4 +246,78 @@ export function planRhinoTree(
     // no layer at all puts them on the root.
     containerEntities.has(index) ? null : containerOfLayer[entity.layer] ?? root);
   return { containers, containerOfEntity, root, firstFreeExpressId: nextExpressId };
+}
+
+/**
+ * How the tree's layer rows hide and show their subtree, as Rhino does
+ * (#10214): turning a layer off hides everything under it, and turning it on
+ * brings back each sub-layer and object whose own state is on. A sub-layer's
+ * own state starts off when its own layer, or a transparent layer between it
+ * and its parent row (a transparent layer has no row), is off. An object's
+ * starts off when it is hidden on its own or such a layer is off; a merged
+ * object whose parts Rhino hides for different causes starts off too. A row
+ * that stands for an object comes back without that object when the object is
+ * hidden on its own or an off layer on its own path, other than the row's
+ * layer and those above it, hides it.
+ */
+export function planRhinoContainerVisibility(
+  result: RhinoImport,
+  tree: RhinoTreePlan,
+  entityExpressId: (entityIndex: number) => number,
+): ContainerVisibilityPlan {
+  const layers = result.layers;
+  const layerOfRow = new Map(tree.containers.map((container) => [container.expressId, container.layer]));
+  // Whether every layer from `from` up to, not including, `stop` is on. The
+  // reader hands layers parent first, so the walk climbs and ends.
+  const layersOn = (from: number, stop: number | null): boolean => {
+    for (let index: number | null = from; index !== null && index !== stop; index = layers[index]?.parent ?? null) {
+      if (layers[index]?.visible === false) return false; // a file with no layer table has none to be off
+    }
+    return true;
+  };
+
+  // Whether an off layer on an object's own path keeps it hidden when its row
+  // is shown. The row's layer and the layers above it are the row's own state
+  // and its parents'; every other layer on the path counts, since an object a
+  // row stands for is a member of no row that could show it.
+  const offOnObjectPath = (from: number, rowLayer: number | null): boolean => {
+    const rowChain = new Set<number>();
+    for (let index: number | null = rowLayer; index !== null; index = layers[index]?.parent ?? null) rowChain.add(index);
+    for (let index: number | null = from; index !== null && !rowChain.has(index); index = layers[index]?.parent ?? null) {
+      if (layers[index]?.visible === false) return true;
+    }
+    return false;
+  };
+
+  const rows = new Map<number, { children: number[]; members: number[] }>(
+    tree.containers.map((container) => [container.expressId, { children: [], members: [] }]));
+  const ownOff = new Set<number>();
+  const selfOff = new Set<number>();
+  // `hidden` with neither cause set is a merged entity whose parts are hidden for different causes.
+  const mixedCauses = (entity: RhinoImport['entities'][number]) => entity.hidden && !entity.hiddenByObject && !entity.hiddenByLayer;
+  // One pass: which objects are hidden on their own, and the object each object-backed row stands for.
+  const objectRows = new Set(tree.containers.filter((container) => container.fromEntity).map((container) => container.expressId));
+  const hiddenOnItsOwn = new Set<number>();
+  const objectOfRow = new Map<number, RhinoImport['entities'][number]>();
+  result.entities.forEach((entity, index) => {
+    const id = entityExpressId(index);
+    if (entity.hiddenByObject || mixedCauses(entity)) hiddenOnItsOwn.add(id);
+    if (objectRows.has(id)) objectOfRow.set(id, entity);
+  });
+  for (const container of tree.containers) {
+    // A row that stands for an object: that object's own layer may be a sublayer of the row's.
+    const object = objectOfRow.get(container.expressId);
+    if (object && (hiddenOnItsOwn.has(container.expressId) || offOnObjectPath(object.layer, container.layer))) selfOff.add(container.expressId);
+    if (container.parent === null) continue;
+    rows.get(container.parent)?.children.push(container.expressId);
+    if (container.layer !== null && !layersOn(container.layer, layerOfRow.get(container.parent) ?? null)) ownOff.add(container.expressId);
+  }
+  tree.containerOfEntity.forEach((row, index) => {
+    if (row === null) return;
+    const entity = result.entities[index];
+    const id = entityExpressId(index);
+    rows.get(row)?.members.push(id);
+    if (hiddenOnItsOwn.has(id) || !layersOn(entity.layer, layerOfRow.get(row) ?? null)) ownOff.add(id);
+  });
+  return { rows, ownOff, selfOff };
 }

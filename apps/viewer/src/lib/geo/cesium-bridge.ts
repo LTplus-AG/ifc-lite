@@ -26,8 +26,8 @@
  */
 
 import proj4 from 'proj4';
-import { computeGridFrame, isGeographicProj4, projectedDefinitionInMetres } from './proj4-utils';
-export { computeGridConvergence } from './proj4-utils';
+import { computeGridFrame, isGeographicProj4, projectedDefinitionInMetres } from '@ifc-lite/geo/proj4';
+export { computeGridConvergence } from '@ifc-lite/geo/proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry, reprojectPointToLatLon, resolveProjection } from './reproject';
@@ -40,7 +40,7 @@ import {
 } from './terrain-elevation';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { shouldApplyGeoidUndulation } from './cesium-placement';
-import { egm96Undulation } from './egm96-undulation';
+import { egm96Undulation } from '@ifc-lite/geo';
 import { viewerToEnuRotation, type ViewerToEnuRotation } from './viewer-enu-rotation';
 import { ecefCameraFrame } from './ecef-camera-frame';
 import { viewBasis } from '@ifc-lite/renderer';

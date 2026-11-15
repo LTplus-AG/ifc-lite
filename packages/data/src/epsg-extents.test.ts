@@ -151,6 +151,11 @@ describe('isLonLatInAreaOfUse', () => {
     expect(isLonLatInAreaOfUse(lv95, 10.51, 46.95)).toBe(false);
     expect(isLonLatInAreaOfUse(fiji, -179 + 720, -16.5)).toBe(true);
     expect(isLonLatInAreaOfUse(fiji, 0 - 720, -16.5)).toBe(false);
+    // A negative longitude whose equivalent sits two revolutions up: box 170..10 spans 170..370.
+    const wide = { west: 170, south: -10, east: 10, north: 10 };
+    for (const lon of [5, -355, -715, 365, 725, 175, -185, -545]) expect(isLonLatInAreaOfUse(wide, lon, 0), String(lon)).toBe(true);
+    for (const lon of [100, -260, -620, 460, 20, -340]) expect(isLonLatInAreaOfUse(wide, lon, 0), String(lon)).toBe(false);
+    expect(isLonLatInAreaOfUse(wide, -355, 0, 0)).toBe(true);
   });
 
   it('treats a world box as everywhere and rejects non-finite input', () => {

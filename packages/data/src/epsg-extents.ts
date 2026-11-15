@@ -135,7 +135,9 @@ export function isLonLatInAreaOfUse(
   // `%` is exact in floating point, so a longitude within one revolution is compared untouched
   // (box edges stay exact) and one beyond it is first reduced to the equivalent in (-360, 360).
   const lon = Math.abs(longitude) >= 360 ? longitude % 360 : longitude;
-  return [lon, lon + 360, lon - 360].some(l => l >= lo && l <= hi);
+  // lon is in (-360, 360) and the box lies in (-360, 540) (a margin of 180 or more returned above),
+  // so the equivalent copy can be at most two revolutions up: -355 lands in 170..370 only as 365.
+  return [lon, lon + 360, lon - 360, lon + 720].some(l => l >= lo && l <= hi);
 }
 
 /** Primary area of use (the first current usage in the registry) of an EPSG code. */

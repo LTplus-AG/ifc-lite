@@ -57,7 +57,7 @@ pub(crate) struct StructuralVarying {
 #[derive(Default)]
 struct Source {
     /// IfcProductDefinitionShape id -> the IfcShapeAspects naming it as PartOfProductDefinitionShape.
-    aspects: HashMap<u32, Vec<u32>>,
+    aspects: HashMap<u32, Vec<(u32, Option<usize>)>>,
     /// Types of the loads IFC2X3 also has, the only values a varying action can hold.
     loads: HashMap<u32, String>,
     /// IFC4 IfcStructuralLoadConfiguration id -> its values.
@@ -101,7 +101,7 @@ impl Source {
             if !(shape || kind.is_some() || config) { continue; }
             let Some(args) = record(content, start, end) else { continue };
             if shape {
-                if let Some(of) = ref_id(args.get(4).map(String::as_str)) { source.aspects.entry(of).or_default().push(id); }
+                if let Some(of) = ref_id(args.get(4).map(String::as_str)) { source.aspects.entry(of).or_default().push((id, args.first().and_then(|a| list_items(a)).map(|r| r.len()))); }
             } else if config {
                 if let Some(values) = args.get(1).and_then(|v| refs(v)).filter(|v| !v.is_empty()) { source.configs.insert(id, values); }
             } else if let Some(kind) = kind {
@@ -115,8 +115,8 @@ impl Source {
     /// one aspect of its representation (and `location`, when IFC2X3 names
     /// one), enough loads, all of one type that the IFC2X3 WR61 admits.
     fn convertible(&self, kind: &Kind, representation: &str, loads: &[u32], location: Option<u32>) -> Option<u32> {
-        let Some(&[aspect]) = ref_id(Some(representation)).and_then(|r| self.aspects.get(&r)).map(Vec::as_slice) else { return None };
-        if location.is_some_and(|l| l != aspect) || loads.len() < kind.min { return None; }
+        let Some(&[(aspect, representations)]) = ref_id(Some(representation)).and_then(|r| self.aspects.get(&r)).map(Vec::as_slice) else { return None };
+        if location.is_some_and(|l| l != aspect) || loads.len() < kind.min || representations != Some(loads.len()) { return None; }
         let first = self.loads.get(&loads[0]).filter(|t| kind.first.contains(&t.as_str()))?;
         loads.iter().all(|l| self.loads.get(l) == Some(first)).then_some(aspect)
     }
@@ -209,10 +209,12 @@ mod tests {
 #5=IFCVERTEXPOINT(#3);
 #6=IFCTOPOLOGYREPRESENTATION(#2,'Reference','Vertex',(#5));
 #7=IFCTOPOLOGYREPRESENTATION(#2,'Reference','Vertex',(#5));
+#8=IFCTOPOLOGYREPRESENTATION(#2,'Reference','Vertex',(#5));
+#9=IFCTOPOLOGYREPRESENTATION(#2,'Reference','Vertex',(#5));
 #10=IFCPRODUCTDEFINITIONSHAPE($,$,(#6));
-#11=IFCSHAPEASPECT((#7),$,$,.U.,#10);
+#11=IFCSHAPEASPECT((#7,#8),$,$,.U.,#10);
 #12=IFCPRODUCTDEFINITIONSHAPE($,$,(#6));
-#13=IFCSHAPEASPECT((#7),$,$,.U.,#12);
+#13=IFCSHAPEASPECT((#7,#8,#9),$,$,.U.,#12);
 #20=IFCSTRUCTURALLOADLINEARFORCE('start',0.,0.,-5.,0.,0.,0.);
 #21=IFCSTRUCTURALLOADLINEARFORCE('end',0.,0.,-9.,0.,0.,0.);
 #22=IFCSTRUCTURALLOADPLANARFORCE('a',0.,0.,-1.);
@@ -227,6 +229,28 @@ mod tests {
     fn to(schema: &str) -> StepOptions { StepOptions { schema: Some(schema.into()), ..StepOptions::default() } }
     fn record(out: &str, id: &str) -> String { out.lines().find(|l| l.starts_with(id)).unwrap_or_default().to_string() }
     fn configs(out: &str) -> Vec<&str> { out.lines().filter(|l| l.contains("=IFCSTRUCTURALLOADCONFIGURATION(")).collect() }
+
+    #[test]
+    fn shared_configuration_linear_and_sinus_is_refused_a() {
+        let source = model("IFC4", "#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);\n#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,.GLOBAL_COORDS.,.F.,$,.LINEAR.);\n#31=IFCSTRUCTURALCURVEACTION('1d2HL$ILbNDhwyUI0qw12$',$,'Sinus',$,$,$,#10,#25,.GLOBAL_COORDS.,.F.,$,.SINUS.);");
+        let result = export_step_with_stats(source.as_bytes(), &to("IFC2X3"));
+        assert!(result.err().unwrap().to_string().contains("IFCSTRUCTURALLOADCONFIGURATION"));
+    }
+
+    #[test]
+    fn aspect_representation_count_matches_loads_b() {
+        let source = model("IFC2X3", &format!("{LINE}\n{AREA}"));
+        let (ifc4, _) = export_step_with_stats(source.as_bytes(), &to("IFC4")).unwrap();
+        for (old, new, id) in [
+            ("(#7,#8)", "(#7)", "#30="), ("(#7,#8)", "(#7,#8,#9)", "#30="),
+            ("(#7,#8,#9)", "(#7,#8)", "#31="), ("(#7,#8,#9)", "(#7,#8,#9,#6)", "#31="),
+        ] {
+            let change = |s: &str| s.replace(&format!("IFCSHAPEASPECT({old},"), &format!("IFCSHAPEASPECT({new},"));
+            let (out, _) = export_step_with_stats(change(&source).as_bytes(), &to("IFC4")).unwrap();
+            assert_eq!(record(&out, id), if id == "#30=" { LINE } else { AREA });
+            assert!(export_step_with_stats(change(&ifc4).as_bytes(), &to("IFC2X3")).is_err());
+        }
+    }
 
     #[test]
     fn varying_actions_round_trip_through_ifc4_9668() {

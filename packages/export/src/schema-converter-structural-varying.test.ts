@@ -18,10 +18,12 @@ const SHARED = `#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
 #5=IFCVERTEXPOINT(#3);
 #6=IFCTOPOLOGYREPRESENTATION(#2,'Reference','Vertex',(#5));
 #7=IFCTOPOLOGYREPRESENTATION(#2,'Reference','Vertex',(#5));
+#8=IFCTOPOLOGYREPRESENTATION(#2,'Reference','Vertex',(#5));
+#9=IFCTOPOLOGYREPRESENTATION(#2,'Reference','Vertex',(#5));
 #10=IFCPRODUCTDEFINITIONSHAPE($,$,(#6));
-#11=IFCSHAPEASPECT((#7),$,$,.U.,#10);
+#11=IFCSHAPEASPECT((#7,#8),$,$,.U.,#10);
 #12=IFCPRODUCTDEFINITIONSHAPE($,$,(#6));
-#13=IFCSHAPEASPECT((#7),$,$,.U.,#12);
+#13=IFCSHAPEASPECT((#7,#8,#9),$,$,.U.,#12);
 #20=IFCSTRUCTURALLOADLINEARFORCE('start',0.,0.,-5.,0.,0.,0.);
 #21=IFCSTRUCTURALLOADLINEARFORCE('end',0.,0.,-9.,0.,0.,0.);
 #22=IFCSTRUCTURALLOADPLANARFORCE('a',0.,0.,-1.);
@@ -35,6 +37,29 @@ const IFC2X3 = model('IFC2X3', `${SHARED}
 // #9668: IFC4 has no varying actions. It holds the loads in an
 // IfcStructuralLoadConfiguration on a curve or surface action.
 describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
+  it('refuses a configuration shared by convertible LINEAR and non-convertible SINUS actions (A)', async () => {
+    const source = model('IFC4', `${SHARED}
+#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);
+#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,.GLOBAL_COORDS.,.F.,$,.LINEAR.);
+#31=IFCSTRUCTURALCURVEACTION('1d2HL$ILbNDhwyUI0qw12$',$,'Sinus',$,$,$,#10,#25,.GLOBAL_COORDS.,.F.,$,.SINUS.);`);
+    const awaitedStore = await parse(source);
+    expect(() => exportToStep(awaitedStore, { schema: 'IFC2X3' })).toThrow(/IFCSTRUCTURALLOADCONFIGURATION/);
+  });
+
+  it('requires one aspect representation per load in both directions (B)', async () => {
+    const validIfc4 = exportToStep(await parse(IFC2X3), { schema: 'IFC4' });
+    for (const [representations, replacement, id] of [
+      ['(#7,#8)', '(#7)', 30], ['(#7,#8)', '(#7,#8,#9)', 30],
+      ['(#7,#8,#9)', '(#7,#8)', 31], ['(#7,#8,#9)', '(#7,#8,#9,#6)', 31],
+    ] as const) {
+      const change = (source: string) => source.replace(`IFCSHAPEASPECT(${representations},`, `IFCSHAPEASPECT(${replacement},`);
+      const upgraded = exportToStep(await parse(change(IFC2X3)), { schema: 'IFC4' });
+      expect(line(upgraded, id)).toContain(id === 30 ? '=IFCSTRUCTURALLINEARACTIONVARYING(' : '=IFCSTRUCTURALPLANARACTIONVARYING(');
+      const downgraded = exportToStep(await parse(change(validIfc4)), { schema: 'IFC2X3' });
+      expect(line(downgraded, id)).toMatch(new RegExp(`^#${id}=IFCPROXY\\(`));
+    }
+  });
+
   it('writes an IFC2X3 varying action as an IFC4 action with a load configuration', async () => {
     const result = new StepExporter(await parse(IFC2X3)).export({ schema: 'IFC4' });
     const ifc4 = new TextDecoder().decode(result.content);

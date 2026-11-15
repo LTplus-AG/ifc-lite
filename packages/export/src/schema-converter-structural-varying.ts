@@ -5,6 +5,7 @@ import { destabilizingUnknown } from './schema-converter-structural.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { decodeRange } from './source-ref-bounds.js';
+import { referencesAnyExpressId } from './step-ref-scan.js';
 import { readStepSlots } from './step-argument-parser.js';
 
 /**
@@ -48,7 +49,7 @@ export class StructuralVarying {
   /** IFC4 IfcStructuralLoadConfiguration id -> its values. */
   private readonly configs = new Map<number, number[]>();
   /** IfcProductDefinitionShape id -> the IfcShapeAspects naming it as PartOfProductDefinitionShape. */
-  private readonly aspects = new Map<number, number[]>();
+  private readonly aspects = new Map<number, { id: number; representations: number }[]>();
 
   fromStore(store: IfcDataStore, from: string, to: string): void {
     const mode = from === 'IFC2X3' && to === 'IFC4' ? 'upgrade' : from === 'IFC4' && to === 'IFC2X3' ? 'downgrade' : null;
@@ -63,10 +64,11 @@ export class StructuralVarying {
       return entry ? readStepSlots(decodeRange(store.source, entry.byteOffset, entry.byteOffset + entry.byteLength))?.slots : undefined;
     };
     for (const id of byType.get('IFCSHAPEASPECT') ?? []) {
-      const shape = refId(slots(id)?.[4]);
+      const args = slots(id);
+      const shape = refId(args?.[4]);
       if (shape === null) continue;
       const list = this.aspects.get(shape) ?? [];
-      list.push(id);
+      list.push({ id, representations: listItems(args?.[0] ?? '')?.length ?? -1 });
       this.aspects.set(shape, list);
     }
     for (const id of mode === 'downgrade' ? byType.get('IFCSTRUCTURALLOADCONFIGURATION') ?? [] : []) {
@@ -75,6 +77,32 @@ export class StructuralVarying {
     }
     this.mode = mode;
     this.byId = byId;
+    if (mode === 'downgrade') this.checkSharedConfigurations(slots);
+  }
+
+  /** Rust scan_ifc4 keeps configurations referenced by any record that is not converted.
+   * They have no IFC2X3 form, so refuse the export instead of silently proxying a referrer.
+   */
+  private checkSharedConfigurations(slots: (id: number) => readonly string[] | undefined): void {
+    const candidates = new Set<number>();
+    const consumed = new Set<number>();
+    const configs = new Set(this.configs.keys());
+    for (const [id, entry] of this.byId) {
+      if (!KINDS.some((k) => k.ifc4 === entry.type.toUpperCase())) continue;
+      const args = slots(id);
+      if (!args || args.some((a, i) => i !== 7 && referencesAnyExpressId(a, configs))) continue;
+      if (this.toIfc2x3(entry.type.toUpperCase(), args)) {
+        candidates.add(id);
+        consumed.add(refId(args[7])!);
+      }
+    }
+    if (!consumed.size) return;
+    for (const [id] of this.byId) {
+      if (candidates.has(id)) continue;
+      if (slots(id)?.some((a) => referencesAnyExpressId(a, consumed))) {
+        throw new Error('IFCSTRUCTURALLOADCONFIGURATION shared with a non-converted referrer has no representation in IFC2X3');
+      }
+    }
   }
 
   private typeOf(id: number): string { return this.byId.get(id)?.type.toUpperCase() ?? ''; }
@@ -94,10 +122,10 @@ export class StructuralVarying {
    */
   private convertible(kind: Kind, representation: string, loads: readonly (number | null)[], location?: number | null): number | undefined {
     const found = this.aspects.get(refId(representation) ?? -1);
-    if (found?.length !== 1 || (location !== undefined && found[0] !== location) || loads.length < kind.min) return undefined;
+    if (found?.length !== 1 || (location !== undefined && found[0].id !== location) || loads.length < kind.min || found[0].representations !== loads.length) return undefined;
     const type = loads[0] === null ? '' : this.typeOf(loads[0]);
     const first: readonly string[] = kind.first;
-    return first.includes(type) && loads.every((l) => l !== null && this.typeOf(l) === type) ? found[0] : undefined;
+    return first.includes(type) && loads.every((l) => l !== null && this.typeOf(l) === type) ? found[0].id : undefined;
   }
 
   private toIfc4(entity: string, args: readonly string[]): Rewrite | undefined {

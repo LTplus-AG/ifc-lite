@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { detectFormat } from '@ifc-lite/parser';
+import { headIsZip } from './sourceBuffers';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { resolve as t } from '@/i18n/registry';
 import { inspectLocalIfcAdmission } from './localIfcAdmission';
@@ -38,12 +39,12 @@ export function createLocalIfcAdmission(options: {
 
 /** Inspect only the header before a primary scene reset or a cold-tier change. */
 export async function preflightLocalIfcSource(file: File, options: {
-  admit: (bytes: number) => Promise<boolean>; isCurrent: () => boolean;
+  admit: (bytes: number, head: ArrayBuffer) => Promise<boolean>; isCurrent: () => boolean;
   onFailure: (error: unknown) => void; finish: () => void;
 }): Promise<ArrayBuffer | null> {
   try {
     const head = await file.slice(0, 4096).arrayBuffer();
-    if (!options.isCurrent() || (detectFormat(head) === 'ifc' && !await options.admit(file.size))) {
+    if (!options.isCurrent() || ((detectFormat(head) === 'ifc' || headIsZip(head)) && !await options.admit(file.size, head))) {
       options.finish(); return null;
     }
     return head;
@@ -55,20 +56,25 @@ export async function preflightLocalIfcSource(file: File, options: {
 
 /** Keep the loader's pre-reset and server-fallback phases on one decision owner. */
 export function createLocalIfcLoadAdmission(file: File, options: {
-  serverEligible: () => boolean; isCurrent: () => boolean; signal: AbortSignal;
+  isCurrent: () => boolean; signal: AbortSignal;
   onCancel: () => void; onFailure: (error: unknown) => void; finish: () => void;
 }) {
   let server = async () => false;
-  const admit = createLocalIfcAdmission({ ...options, tryServer: () => server() });
+  let sourceAllowsServer = true;
+  const admit = createLocalIfcAdmission({ ...options, tryServer: () => sourceAllowsServer ? server() : Promise.resolve(false) });
   return {
     admit,
     setServer: (attempt: () => Promise<boolean>) => { server = attempt; },
     preflight: () => {
-      if (options.serverEligible()) return undefined;
       // Ordinary files keep the loader's existing first-read/error lifecycle.
       // Only a potentially refused or consent-requiring source needs a read
       // before scene replacement; the header still decides whether it is IFC.
-      const inspectHeader = () => preflightLocalIfcSource(file, { ...options, admit });
+      const inspectHeader = () => preflightLocalIfcSource(file, { ...options, admit: (bytes, head) => {
+        // Archive resources are not known until unwrap; do not lose textures by
+        // sending an uninspected archive through the plain-IFC server route.
+        sourceAllowsServer = !headIsZip(head);
+        return admit(bytes);
+      } });
       try { return inspectLocalIfcAdmission(file.size) ? inspectHeader() : undefined; }
       catch (error) { if (error instanceof RangeError) return inspectHeader(); throw error; }
     },

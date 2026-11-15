@@ -286,11 +286,8 @@ export function useIfcLoader() {
     const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
     const showLoadError = loadFailureReporter(processedModel ? undefined : file, activity, retryThisLoad, options?.onLoadError);
     const localAdmission = createLocalIfcLoadAdmission(file, { isCurrent, signal: metadataAbort.signal, onCancel: () => settleLoadUi(),
-      serverEligible: () => target.kind === 'primary' && !useViewerStore.getState().mergeLayers && USE_SERVER && !!SERVER_URL && geometryKernel.serverEnabled,
       onFailure: error => { showLoadError(formatLoadError(error, file.name, 'ifc_model_load'), classifyLoadError(error, 'ifc_model_load')); settleLoadUi(); },
       finish: () => { metadataAbort.abort(); releaseCanceller(); } });
-    const preflight = processedModel ? undefined : localAdmission.preflight(), preflightHead = preflight && await preflight;
-    if (preflightHead === null) return;
 
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
     // the previous entry-backed provider — a primary load replaces the model,
@@ -322,7 +319,7 @@ export function useIfcLoader() {
         scene.setColdGeometryProvider(null);
       }
     }
-    runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
+
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
     const trace = loadTracer.startLoad(modelId, { journey: target.kind === 'federated' ? 'J4' : 'J1', modelKind: target.kind }, totalStartTime); // #6956
@@ -436,28 +433,6 @@ export function useIfcLoader() {
 
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
     try {
-      // Reset all viewer state before loading new file — PRIMARY ONLY. A
-      // federated add must never wipe model #1; it joins the existing map.
-      if (target.kind === 'primary') {
-        resetViewerState();
-        clearAllModels();
-        // A non-federated load has no layer stack behind it (#1717).
-        useViewerStore.getState().clearLayerStack();
-      }
-      const shardGeneration = instancedShardGeneration(); // after our own reset: a later one supersedes our shards
-
-      // Reset memory accounting so per-load summaries don't accumulate across files.
-      memoryAccounting.reset();
-      memoryAccounting.recordPhase({ phase: 'load-start' });
-
-      setLoading(true);
-      useViewerStore.getState().setLoadingFileName(file.name); // #5849: the loading card's title
-      setError(null);
-      // #5175: a fresh load attempt (including the retry a refusal prompt
-      // triggers) always supersedes whatever refusal prompted it.
-      clearLandXmlRefusalPrompts();
-      setProgress({ phase: 'Loading file', percent: 0 });
-
       const fileName = file.name;
       const fileSize = processedModel?.bytes ?? file.size; // a processed model's File carries its name only
       const fileSizeMB = fileSize / (1024 * 1024);
@@ -468,42 +443,71 @@ export function useIfcLoader() {
       // #7022: one full-source hash, awaited only for publication/cache.
       let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined);
 
-      // Primary creates its placeholder; federation registers atomically at finalize
-      // so existing active-model/UI slots and collapsed defaults remain untouched.
-      if (target.kind === 'primary') {
-        setGeometryStreamingActive(false);
-        setBoundedGeometryMode(false);
-        setGeometryProgress(null);
-        setMetadataProgress(null);
+      let initialized = false;
+      let shardGeneration = instancedShardGeneration();
+      const initializeModel = () => {
+        if (initialized) return;
+        initialized = true;
+        // Reset all viewer state before loading new file — PRIMARY ONLY. A
+        // federated add must never wipe model #1; it joins the existing map.
+        if (target.kind === 'primary') {
+          resetViewerState();
+          clearAllModels();
+          // A non-federated load has no layer stack behind it (#1717).
+          useViewerStore.getState().clearLayerStack();
+        }
+        shardGeneration = instancedShardGeneration(); // after our own reset: a later one supersedes our shards
 
-        upsertModel({
-          id: modelId,
-          name: fileName,
-          ifcDataStore: null,
-          geometryResult: null,
-          visible: true,
-          collapsed: false,
-          schemaVersion: 'IFC4',
-          loadedAt: Date.now(),
-          fileSize,
-          ...(processedModel ? { processedModel } : { sourceFile: file }),
-          sourceHandle: options?.sourceHandle,
-          idOffset: 0,
-          maxExpressId: 0,
-          loadState: 'pending',
-          geometryLoadState: 'pending',
-          metadataLoadState: 'idle',
-          interactiveReady: false,
-          cacheState: 'none',
-          loadError: null,
-        });
-        updateModel(modelId, {
-          loadState: 'streaming-geometry',
-          geometryLoadState: 'opening',
-          metadataLoadState: 'idle',
-          interactiveReady: false,
-        });
-      }
+        // Reset memory accounting so per-load summaries don't accumulate across files.
+        memoryAccounting.reset();
+        memoryAccounting.recordPhase({ phase: 'load-start' });
+
+        setLoading(true);
+        useViewerStore.getState().setLoadingFileName(file.name); // #5849: the loading card's title
+        setError(null);
+        // #5175: a fresh load attempt (including the retry a refusal prompt
+        // triggers) always supersedes whatever refusal prompted it.
+        clearLandXmlRefusalPrompts();
+        setProgress({ phase: 'Loading file', percent: 0 });
+
+        // Primary creates its placeholder; federation registers atomically at finalize
+        // so existing active-model/UI slots and collapsed defaults remain untouched.
+        if (target.kind === 'primary') {
+          setGeometryStreamingActive(false);
+          setBoundedGeometryMode(false);
+          setGeometryProgress(null);
+          setMetadataProgress(null);
+
+          upsertModel({
+            id: modelId,
+            name: fileName,
+            ifcDataStore: null,
+            geometryResult: null,
+            visible: true,
+            collapsed: false,
+            schemaVersion: 'IFC4',
+            loadedAt: Date.now(),
+            fileSize,
+            ...(processedModel ? { processedModel } : { sourceFile: file }),
+            sourceHandle: options?.sourceHandle,
+            idOffset: 0,
+            maxExpressId: 0,
+            loadState: 'pending',
+            geometryLoadState: 'pending',
+            metadataLoadState: 'idle',
+            interactiveReady: false,
+            cacheState: 'none',
+            loadError: null,
+          });
+          updateModel(modelId, {
+            loadState: 'streaming-geometry',
+            geometryLoadState: 'opening',
+            metadataLoadState: 'idle',
+            interactiveReady: false,
+          });
+        }
+
+      };
 
       // The ONE finalizer for every format/platform/role. Primary keeps the
       // historical updateModel-only behaviour; federated runs the georef-align
@@ -699,6 +703,7 @@ export function useIfcLoader() {
         settleLoadUi(LOAD_COMPLETE);
       };
       if (processedModel) { // no source bytes here: nothing below (sniffing, local cache, WASM fallback) applies
+        initializeModel();
         loadStage = 'server-fetch';
         // The replay writes the active model slot, which only a primary load owns.
         let failure: unknown = target.kind === 'primary' ? null : new ProcessedModelUnavailable('not-primary');
@@ -712,10 +717,14 @@ export function useIfcLoader() {
         serverAttempted = true;
         loadedBufferByteLength = source.byteLength;
         loadStage = 'server-fetch';
-        return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId), isStale, completeServerLoad);
+        return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId, initializeModel), isStale, completeServerLoad);
       };
       localAdmission.setServer(async () => !serverAttempted && target.kind === 'primary' && !useViewerStore.getState().mergeLayers && USE_SERVER && !!SERVER_URL && geometryKernel.serverEnabled
         ? tryServer({ byteLength: file.size }) : false);
+      const preflight = localAdmission.preflight(), preflightHead = preflight && await preflight;
+      if (preflightHead === null || isStale()) return;
+      runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
+      initializeModel();
       const headBuf = preflightHead ?? await file.slice(0, 4096).arrayBuffer();
 
       if (isStale()) return;
@@ -754,7 +763,7 @@ export function useIfcLoader() {
         return;
       }
 
-      if (!pointCloudFormat && detectFormat(headBuf) === 'ifc') {
+      if (!pointCloudFormat && (detectFormat(headBuf) === 'ifc' || headIsZip(headBuf))) {
         format = 'ifc';
         if (!await localAdmission.admit(file.size)) return;
       }

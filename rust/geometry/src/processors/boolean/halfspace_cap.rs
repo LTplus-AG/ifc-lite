@@ -109,8 +109,6 @@ pub(crate) fn cap_half_space_clip(
     // feature) snaps the ULP-twins into one bucket so the loop closes.
     // Single-plane callers (opening cuts) have no such twins, so genuinely
     // distinct corners stay in distinct buckets.
-    // The mesh's own section vertices are moved onto the weld, so the cut wall
-    // and the cap agree on it (`weld_section`).
     let (pos, on_plane, welded) = weld_section(mesh, plane_point, n, on_plane_eps);
 
     // Directed half-edges; an undirected edge with no twin is on the open
@@ -201,6 +199,9 @@ pub(crate) fn cap_half_space_clip(
     if loops.is_empty() {
         return false;
     }
+    // A cap follows: the cut wall takes the weld the cap is built on. Every
+    // refusal above leaves the mesh as it came in.
+    snap_to_section(mesh, &pos, &on_plane, &welded);
 
     // Project every loop into one shared 2D basis whose +w faces the cap's
     // outward normal (-clip_normal), so a CCW triangulated ring lifts to a
@@ -318,17 +319,9 @@ pub(crate) fn cap_half_space_clip(
 }
 
 /// Weld the mesh's vertices on a grid of `weld_eps`, as (position, on the cut
-/// plane, per mesh vertex id), and move every vertex that welds to a section
-/// vertex onto it.
-///
-/// The cap is triangulated over the welded section. Left where they were,
-/// two section vertices in one cell stay two vertices of the cut wall and one
-/// of the cap: a T-junction along the section, or a hole the width of the
-/// cell where the two are not in line. A plane 1.6 mm above the base of a
-/// finely faceted arc wall leaves such pairs 0.11 mm apart, one where each
-/// quad's diagonal crosses the plane (ISSUE_129 #61300, 0.17 mm cells).
+/// plane, per mesh vertex id). The first vertex in a cell stands for it.
 fn weld_section(
-    mesh: &mut Mesh,
+    mesh: &Mesh,
     plane_point: Point3<f64>,
     n: Vector3<f64>,
     weld_eps: f64,
@@ -343,28 +336,34 @@ fn weld_section(
     for i in 0..vcount {
         let at = i * 3;
         let key = (quant(mesh.positions[at]), quant(mesh.positions[at + 1]), quant(mesh.positions[at + 2]));
-        let id = match weld.get(&key) {
-            Some(&id) => {
-                if on_plane[id as usize] {
-                    let p = pos[id as usize];
-                    mesh.positions[at..at + 3].copy_from_slice(&[p.x as f32, p.y as f32, p.z as f32]);
-                }
-                id
-            }
-            None => {
-                let p = Point3::new(
-                    mesh.positions[at] as f64,
-                    mesh.positions[at + 1] as f64,
-                    mesh.positions[at + 2] as f64,
-                );
-                let id = pos.len() as u32;
-                on_plane.push((p - plane_point).dot(&n).abs() <= weld_eps);
-                pos.push(p);
-                weld.insert(key, id);
-                id
-            }
-        };
+        let id = *weld.entry(key).or_insert_with(|| {
+            let p = Point3::new(
+                mesh.positions[at] as f64,
+                mesh.positions[at + 1] as f64,
+                mesh.positions[at + 2] as f64,
+            );
+            on_plane.push((p - plane_point).dot(&n).abs() <= weld_eps);
+            pos.push(p);
+            (pos.len() - 1) as u32
+        });
         welded.push(id);
     }
     (pos, on_plane, welded)
+}
+
+/// Move every mesh vertex that welds to a section vertex onto it.
+///
+/// The cap is triangulated over the welded section. Left where they were,
+/// two section vertices in one cell stay two vertices of the cut wall and one
+/// of the cap: a T-junction along the section, or a hole the width of the
+/// cell where the two are not in line. A plane 1.6 mm above the base of a
+/// finely faceted arc wall leaves such pairs 0.11 mm apart, one where each
+/// quad's diagonal crosses the plane (ISSUE_129 #61300, 0.17 mm cells).
+fn snap_to_section(mesh: &mut Mesh, pos: &[Point3<f64>], on_plane: &[bool], welded: &[u32]) {
+    for (i, &id) in welded.iter().enumerate() {
+        if on_plane[id as usize] {
+            let p = pos[id as usize];
+            mesh.positions[i * 3..i * 3 + 3].copy_from_slice(&[p.x as f32, p.y as f32, p.z as f32]);
+        }
+    }
 }

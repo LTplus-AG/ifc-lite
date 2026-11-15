@@ -19,11 +19,10 @@ import {
   belowGround,
   facadeReason,
   hostOfOpening,
-  inScope,
   isExternal,
   NO_PLACEMENT,
-  outOfScopeReason,
   predefinedType,
+  scopeExclusion,
   type CandidateContext,
 } from './candidate-base.js';
 import { locate, readDescentBody, readSources, type LocateKind, type Location } from './locate.js';
@@ -62,7 +61,8 @@ export function fillingVerdict(ctx: CandidateContext, entity: DecodedEntity): Ve
   const isWindow = WINDOW_TYPES.includes(entity.type);
   const loc = where(ctx, entity, isWindow ? 'window' : 'door');
   if (!loc) return skip(NO_PLACEMENT);
-  if (!inScope(ctx, loc.level)) return skip(outOfScopeReason(ctx, loc.level));
+  const outOfScope = scopeExclusion(ctx, entity.expressId, loc.level, loc.quality === 'upper-estimate');
+  if (outOfScope) return skip(outOfScope);
   const opening = r.related(entity.expressId, RelationshipType.FillsElement, 'inverse')[0];
   const host = opening === undefined ? null : hostOfOpening(ctx, opening);
   const reason = facadeReason(ctx, entity, host, loc.position);
@@ -92,7 +92,8 @@ export function openingVerdict(ctx: CandidateContext, entity: DecodedEntity, fil
     fact.host = { expressId: host!.expressId, ifcClass: r.className(host!) };
     return candidate(fact);
   }
-  if (!inScope(ctx, loc.level)) return skip(outOfScopeReason(ctx, loc.level));
+  const outOfScope = scopeExclusion(ctx, entity.expressId, loc.level, loc.quality === 'upper-estimate');
+  if (outOfScope) return skip(outOfScope);
   // With no host, the opening itself is tested against the outline.
   const reason = facadeReason(ctx, host ?? entity, null, loc.position);
   if (typeof reason !== 'string') return skip(reason.not);
@@ -111,7 +112,8 @@ export function openingVerdict(ctx: CandidateContext, entity: DecodedEntity, fil
 export function lightWellVerdict(ctx: CandidateContext, entity: DecodedEntity): Verdict {
   const loc = where(ctx, entity, 'light-well');
   if (!loc) return skip(NO_PLACEMENT);
-  if (!inScope(ctx, loc.level)) return skip(outOfScopeReason(ctx, loc.level));
+  const outOfScope = scopeExclusion(ctx, entity.expressId, loc.level, loc.quality === 'upper-estimate');
+  if (outOfScope) return skip(outOfScope);
   return candidate(at(ctx, entity, 'light-well', loc, `Name/ObjectType "${elementLabel(ctx, entity).trim()}"`));
 }
 

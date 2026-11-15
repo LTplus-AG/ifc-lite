@@ -28,14 +28,16 @@ export function insideAny(p: MapPoint, rings: readonly (readonly MapPoint[])[]):
 }
 
 /**
- * Indices of rings lying wholly inside another ring (every vertex inside it):
+ * Indices of rings lying inside the other rings (every vertex inside one of
+ * them, so also a courtyard that two overlapping rings cover only together):
  * a courtyard drawn as its own ring, which {@link insideAny} fills, so the
  * ground in front of an element facing it is not sampled.
  */
 export function nestedRings(rings: readonly (readonly MapPoint[])[]): Set<number> {
   const out = new Set<number>();
   rings.forEach((ring, j) => {
-    if (ring.length > 0 && rings.some((other, i) => i !== j && ring.every((p) => insideRing(p, other)))) out.add(j);
+    const others = rings.filter((_, i) => i !== j);
+    if (ring.length > 0 && others.length > 0 && ring.every((p) => insideAny(p, others))) out.add(j);
   });
   return out;
 }

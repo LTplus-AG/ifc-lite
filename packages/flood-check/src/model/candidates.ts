@@ -16,11 +16,9 @@
  *    from its own data: a candidate, or a skip with the reason.
  * 3. Then, from those verdicts only: an element of a building that is not
  *    checked is skipped as such; an opening whose door or window IS a
- *    candidate is reported through it; a flight whose stair or ramp was
- *    decided (candidate, or skipped for a reason other than no placement) is
- *    reported or assessed through it. These steps only ever turn a verdict
- *    into a skip that names a candidate or a decided element, never the
- *    other way round.
+ *    candidate is reported through it; a flight whose stair or ramp is a
+ *    candidate is reported through it. These steps only ever turn a verdict
+ *    into a skip that names a candidate, never the other way round.
  * 4. The candidate and skipped lists are built in one place from the one
  *    verdict per element, so every covered element is in exactly one of them.
  *
@@ -145,10 +143,10 @@ export function selectCandidates(ctx: CandidateContext, notChecked: (id: number)
         own.candidate.notes = [`its filling ${r.className(filling)} #${filling.expressId} is not a candidate (see skipped), so the hole is checked itself`, ...(own.candidate.notes ?? [])];
       }
     } else if (role === 'flight') {
+      // Reported through its stair or ramp only when that is a candidate; otherwise the flight's own verdict stands
+      // (a stair skipped as interior or unplaceable says nothing about a flight that reaches outside).
       const container = r.related(id, RelationshipType.Aggregates, 'inverse')[0];
-      const decided = container === undefined ? undefined : verdicts.get(container);
-      if (!decided || decided.skip === NO_PLACEMENT) continue; // no decided stair or ramp: the flight's own verdict stands
-      verdicts.set(id, { skip: decided.candidate ? `part of #${container}, which is reported for it` : `part of #${container}, assessed with it (${decided.skip})` });
+      if (container !== undefined && isCandidate(container)) verdicts.set(id, { skip: `part of #${container}, which is reported for it` });
     }
   }
   // The single place the two lists are built: each covered element lands in exactly one.

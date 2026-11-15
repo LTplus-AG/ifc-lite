@@ -42,6 +42,8 @@ export interface CandidateContext {
   footprint: readonly (readonly MapPoint[])[];
   aboveGroundScope: number;
   boundaryTolerance: number;
+  /** The footprint misses part of the building (an unreadable ground-storey slab): being outside it proves nothing. */
+  footprintPartial?: boolean;
 }
 
 export const NO_PLACEMENT = 'no readable IfcLocalPlacement chain';
@@ -97,6 +99,21 @@ export function outOfScopeReason(ctx: CandidateContext, level: number): string {
   return `level ${level.toFixed(3)} m is more than ${ctx.aboveGroundScope} m above the ground storey (out of scope)`;
 }
 
+/**
+ * Why the element is out of scope, or null when it is in scope. An upper
+ * estimate above the scope does not prove the element is: it is kept unless
+ * its storey shows it is above the ground storey.
+ */
+export function scopeExclusion(ctx: CandidateContext, id: number, level: number, upperEstimate: boolean): string | null {
+  if (inScope(ctx, level)) return null;
+  if (!upperEstimate) return outOfScopeReason(ctx, level);
+  const storey = ctx.storeyOf(id);
+  const storeyLevel = storey === null ? undefined : ctx.storeyLevel.get(storey);
+  return storeyLevel !== undefined && storeyLevel > ctx.groundLevel + 0.01
+    ? `${outOfScopeReason(ctx, level)}; its level is an upper estimate, but its storey lies above the ground storey`
+    : null;
+}
+
 export function belowGround(ctx: CandidateContext, id: number, level: number): boolean {
   const storey = ctx.storeyOf(id);
   const storeyLevel = storey === null ? undefined : ctx.storeyLevel.get(storey);
@@ -122,7 +139,8 @@ export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host:
   // No outline to test against (no slab, no external wall): keep it rather than lose every façade element.
   if (ctx.footprint.length === 0) return 'IsExternal not stated and no footprint to test against (kept conservatively)';
   const d = signedDistance(at, ctx.footprint);
-  return Number.isFinite(d) && Math.abs(d) <= ctx.boundaryTolerance
-    ? `within ${ctx.boundaryTolerance} m of the footprint outline (IsExternal not stated)`
-    : { not: `not in the façade: IsExternal not stated and ${Math.abs(d).toFixed(2)} m from the footprint outline (more than ${ctx.boundaryTolerance} m)` };
+  if (Number.isFinite(d) && Math.abs(d) <= ctx.boundaryTolerance) return `within ${ctx.boundaryTolerance} m of the footprint outline (IsExternal not stated)`;
+  // Outside a footprint known to miss part of the building, the element may stand in that part's façade.
+  if (ctx.footprintPartial && d > 0) return 'IsExternal not stated, outside the readable footprint, and the footprint is partial (kept conservatively)';
+  return { not: `not in the façade: IsExternal not stated and ${Math.abs(d).toFixed(2)} m from the footprint outline (more than ${ctx.boundaryTolerance} m)` };
 }

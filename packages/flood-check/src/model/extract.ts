@@ -290,6 +290,7 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
       storeyLevel: new Map(storeys.map((s) => [s.expressId, s.level])),
       groundLevel: groundStorey.level,
       footprint: footprint?.rings ?? [],
+      footprintPartial: footprint?.partial === true,
       aboveGroundScope: atLeast('aboveGroundScope', options.aboveGroundScope, 3),
       boundaryTolerance: atLeast('boundaryTolerance', options.boundaryTolerance, 1),
     },

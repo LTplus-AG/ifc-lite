@@ -108,12 +108,11 @@ export interface SamplePlan {
   nearestBoundaryNested: boolean;
 }
 
-const nestedCache = new WeakMap<object, Set<number>>();
 
 export function planSamples(candidate: CandidateFact, footprint: ModelFacts['footprint'], s: ResolvedSampling): SamplePlan {
   const rings = footprint.rings;
-  let nested = nestedCache.get(rings);
-  if (!nested) nestedCache.set(rings, (nested = nestedRings(rings)));
+  // Computed from the rings as they are now: facts are plain data and may change between checks.
+  const nested = nestedRings(rings);
   const nearestRing = closestBoundaryPoint(candidate.position, rings)?.ring;
   const d = signedDistance(candidate.position, rings);
   let anchor = candidate.position;

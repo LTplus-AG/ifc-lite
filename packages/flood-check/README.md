@@ -262,7 +262,11 @@ entities, properties and containment from the parsed store. No meshing.
 
   Doors, windows and openings more than `aboveGroundScope` (3 m) above the
   ground storey are out of scope, judged by their corrected level (a window
-  placed at its head is in scope when its opening reaches down into it).
+  placed at its head is in scope when its opening reaches down into it). An
+  upper-estimate level above the scope does not exclude: such an element is
+  kept unless its storey lies above the ground storey. With a partial
+  footprint, an element that states no `IsExternal` and lies outside the
+  readable rings is kept (it may stand in the missing part's façade).
   Interior stairs are not entry points.
 
   **How they are selected** (`src/model/candidates.ts`): one walk lists every
@@ -276,9 +280,8 @@ entities, properties and containment from the parsed store. No meshing.
   naming that building; an opening is reported through its door or window
   only when that door or window **is** a candidate (otherwise, for example
   when the door cannot be placed or is a proxy, the hole keeps its own
-  verdict); a flight is reported or assessed through its stair or ramp only
-  when that was decided, and keeps its own verdict when the stair cannot be
-  placed. The candidate and skipped lists are built in one place from the
+  verdict); a flight is reported through its stair or ramp only when that
+  stair or ramp **is** a candidate, and otherwise keeps its own verdict. The candidate and skipped lists are built in one place from the
   one verdict per element, so every element is in exactly one of them; the
   facts record the count walked (`coverage`), and both the extraction and the
   check fail loudly if candidates plus skipped stop adding up to it.
@@ -342,7 +345,7 @@ and `open-ended-class` are never withheld (they are the conservative side);
 | the element was moved more than `anchorTolerance` (1 m) to reach the outline | `within-class-range` | `unclassified` (`anchor-moved`) |
 | the footprint fills courtyards (`external-wall-hull`, `candidate-hull`, `slab-outline-voids-filled`) | `within-class-range` | `unclassified` (`hull-footprint`) |
 | the footprint is partial: a ground-storey floor slab has no readable outline, or (hand-built facts) the footprint has no rings, so an element in the missing area reads as outside and is sampled inside the building | `within-class-range` | `unclassified` (`partial-footprint`) |
-| the element's nearest footprint boundary is a ring lying wholly inside another ring (a courtyard drawn as its own ring, for example in a given footprint): a point inside any ring counts as inside, so the courtyard is filled and its ground is not sampled | `within-class-range` | `unclassified` (`courtyard-ring`) |
+| the element's nearest footprint boundary is a ring lying inside the other rings (every vertex inside one of them, also when two overlapping rings cover it only together; a courtyard drawn as its own ring, for example in a given footprint): a point inside any ring counts as inside, so the courtyard is filled and its ground is not sampled | `within-class-range` | `unclassified` (`courtyard-ring`) |
 | height reference unconfirmed (see below) | `within-class-range` | `unclassified` (`height-reference-unconfirmed`) |
 | no cell of the raster shows a mapped class and the layer is not confirmed to render (no positive confirmation fetched within 5 minutes of the raster) | (no class to compare) | `unclassified` (`layer-not-confirmed`) |
 | a classified sample has no terrain height | `within-class-range` | (no classified sample) |

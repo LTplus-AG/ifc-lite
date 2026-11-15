@@ -247,8 +247,8 @@ fn a_recess_ending_on_an_interface_a_kilometre_out_stays_closed() {
                     let voids = build_void_index_like_production(&content);
                     let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
                     let (open, volume) = (open_edges(&mesh), mesh_volume(&mesh));
-                    // The split host's volume is off by up to 1.4 litres at
-                    // some offsets on main too; only closure is held there.
+                    // main already gives the split host up to 1.4 litres
+                    // too much at some offsets: only closure is held there.
                     let volume_ok = matches!(host, Host::SplitUnderRecess) || (volume - analytic_volume()).abs() <= 5.0e-4;
                     if open != 0 || !volume_ok {
                         failures.push(format!(

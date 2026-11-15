@@ -330,8 +330,8 @@ export class StoreEditor {
       || type;
     const retype = this.view.getEntityTypeMutation(expressId);
     if (retype) return canonical(retype.newType);
-    const created = this.view.getNewEntity(expressId);
-    if (created) return canonical(created.type);
+    const created = this.view.getNewEntityType(expressId);
+    if (created) return canonical(created);
     // Both halves of the source index, like `hasEntity` (#5222).
     const sourceType = sourceEntityRef(this.store, expressId)?.type;
     return sourceType ? canonical(sourceType) : undefined;

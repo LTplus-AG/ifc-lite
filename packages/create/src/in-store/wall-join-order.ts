@@ -34,6 +34,14 @@ export function orderedWallJoinCandidates(
   const overlay = view ?? new MutablePropertyView(null, 'wall-join-read');
   const referencing = effectiveReferencers(store, overlay);
   const candidates = [...new Set([...walls].flatMap(id => referencing(id)))];
+  return orderEntityCandidates(store, overlay, reader, type, candidates) ?? reader.ids(type);
+}
+
+/** Preserve effective class order when a caller already has a bounded ID set.
+ * Undefined asks the caller to enumerate the class for source retype order. */
+export function orderEntityCandidates(
+  store: IfcDataStore, overlay: MutablePropertyView, reader: AnchorEntityReader, type: string, candidates: Iterable<number>,
+): number[] | undefined {
   const source = sourceOrder(store, type), ranks = new Map<number, readonly [number, number]>();
   const paths: number[] = [];
   for (const id of candidates) {
@@ -44,7 +52,7 @@ export function orderedWallJoinCandidates(
       const rank = source.get(id);
       // A source record retyped into this class follows the original source
       // bucket in retype insertion order. Preserve the canonical legacy walk.
-      if (rank === undefined) return reader.ids(type);
+      if (rank === undefined) return undefined;
       ranks.set(id, [0, rank]);
     }
     paths.push(id);

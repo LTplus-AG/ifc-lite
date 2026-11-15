@@ -38,13 +38,13 @@ it('#8452 inherited products remain in moved IDs without repeated payload planni
     s.view.createEntity('IfcRelContainedInSpatialStructure', [`rel-${i}`, null, null, null, [`#${product}`], '#42']);
   }
   const edit = { kind: 'elevation' as const, storeyId: 42, Elevation: 3.5 };
-  const cold = planStoreyLevelEdit(readStoreyInventory(s.store, s.view), edit, { dryRun: false });
+  const cold = planStoreyLevelEdit(readStoreyInventory(s.store, s.view), edit);
   expect(cold.refusals).toEqual([]);
   expect(cold.moved.filter(id => products.has(id))).toHaveLength(1000);
   const reads = new Set<number>();
   const read = s.view.readNewEntity.bind(s.view);
   const spy = vi.spyOn(s.view, 'readNewEntity').mockImplementation(id => { if (products.has(id)) reads.add(id); return read(id); });
-  const warm = planStoreyLevelEdit(readStoreyInventory(s.store, s.view), edit, { dryRun: false });
+  const warm = planStoreyLevelEdit(readStoreyInventory(s.store, s.view), edit);
   expect(warm).toEqual(cold);
   expect(storeyPlanningWork(cold)?.inventoryProducts).toBeGreaterThanOrEqual(1000);
   expect(storeyPlanningWork(warm)).toEqual({ inventoryProducts: 0, detailedProducts: 2 });

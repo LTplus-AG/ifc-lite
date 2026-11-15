@@ -30,6 +30,8 @@ export class StoreyPlanningInventory {
   private readonly aliases = new Map<number, Set<number>>();
   private readonly aliasSources = new Map<number, number>();
   private readonly specialDependents = new Set<number>();
+  private readonly elementTargets = new Map<number, Set<number>>();
+  private readonly elementTargetOf = new Map<number, number>();
   private revision = 0;
   private sequence = 0;
 
@@ -102,6 +104,15 @@ export class StoreyPlanningInventory {
       || this.owners.get(placement)?.length !== 1;
     const kind = attachedKind(type);
     const { attachment, problem } = kind ? attachedTopDependency(inventory, id) : { attachment: null, problem: null };
+    const oldTarget = this.elementTargetOf.get(id);
+    if (oldTarget !== undefined) this.elementTargets.get(oldTarget)?.delete(id);
+    this.elementTargetOf.delete(id);
+    const target = attachment?.targetElementId;
+    if (target !== undefined) {
+      let products = this.elementTargets.get(target);
+      if (!products) this.elementTargets.set(target, products = new Set());
+      products.add(id); this.elementTargetOf.set(id, target);
+    }
     if (type === 'IFCSTAIR' || problem || this.multipleHomes.has(id)) this.specialDependents.add(id); else this.specialDependents.delete(id);
     if (type === 'IFCRAILING') for (const home of this.multipleHomes.get(id)?.keys() ?? [storey]) {
       let railings = this.railingsByStorey.get(home);
@@ -140,6 +151,13 @@ export class StoreyPlanningInventory {
       queue.push(...this.children.get(id) ?? []);
     }
     return [...products];
+  }
+  /** A placement-only floor edit can refit only these element-bound tops. */
+  refreshCandidates(moved: Iterable<number>, refit: Iterable<number>): ReadonlyMap<number, number> {
+    const result = new Map<number, number>();
+    for (const target of moved) for (const product of this.elementTargets.get(target) ?? []) result.set(product, target);
+    for (const product of refit) { const target = this.elementTargetOf.get(product); if (target !== undefined) result.set(product, target); }
+    return result;
   }
   dependentCandidates(inventory: StoreyInventory, deltas: ReadonlyMap<number, number>): Map<number, number[]> {
     const selected = this.index.heightCandidates(deltas);

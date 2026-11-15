@@ -35,6 +35,7 @@ import {
   STOREY_CONTENT_LIMIT, type StoreyInventory, type StoreyRecord,
 } from './storey-model.js';
 import { recordStoreyPlanningWork } from './storey-planning-diagnostics.js';
+import { recordStoreyPlanAttachments } from './storey-plan-attachments.js';
 import { storeyStateFingerprint } from './storey-fingerprint.js';
 import { storeyPlanningInventory } from './storey-planning-inventory.js';
 import { readPlacementLeaf, worldLiftInParent, type PlacementLeaf } from './storey-placement.js';
@@ -303,6 +304,9 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
       placements.map(({ leaf }) => leaf.placementId),
     ),
   };
+  const refresh = planning.refreshCandidates(moved, dependents.walls.map(wall => wall.wallId));
+  for (const id of refresh.keys()) detailed.add(id);
+  recordStoreyPlanAttachments(plan, refresh);
   if (refusals.length === 0 && options.dryRun !== false) {
     const late = dryRunRefusal(inventory, plan);
     if (late) refusals.push(late);

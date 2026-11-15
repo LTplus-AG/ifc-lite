@@ -82,6 +82,50 @@ fn shape(mesh: &Mesh) -> ifc_lite_testkit::mesh::TriangleShape {
     ifc_lite_testkit::mesh::triangle_shape(&mesh.positions, &mesh.indices)
 }
 
+/// Aspect ratio of the worst triangle in a mesh (longest edge / shortest
+/// edge). Slivers from BSP plane-splitting at host face diagonals can hit
+/// 50:1 or higher; a clean mesh of building geometry sits comfortably
+/// under 20:1.
+fn worst_aspect_ratio(mesh: &Mesh) -> (f32, usize) {
+    let mut worst: f32 = 0.0;
+    let mut spike_count = 0usize;
+    for tri in mesh.indices.chunks_exact(3) {
+        let p: [[f32; 3]; 3] = [
+            [
+                mesh.positions[tri[0] as usize * 3],
+                mesh.positions[tri[0] as usize * 3 + 1],
+                mesh.positions[tri[0] as usize * 3 + 2],
+            ],
+            [
+                mesh.positions[tri[1] as usize * 3],
+                mesh.positions[tri[1] as usize * 3 + 1],
+                mesh.positions[tri[1] as usize * 3 + 2],
+            ],
+            [
+                mesh.positions[tri[2] as usize * 3],
+                mesh.positions[tri[2] as usize * 3 + 1],
+                mesh.positions[tri[2] as usize * 3 + 2],
+            ],
+        ];
+        let d = |a: [f32; 3], b: [f32; 3]| -> f32 {
+            ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+        };
+        let e0 = d(p[0], p[1]);
+        let e1 = d(p[1], p[2]);
+        let e2 = d(p[2], p[0]);
+        let mn = e0.min(e1).min(e2);
+        let mx = e0.max(e1).max(e2);
+        if mn > 1.0e-6 {
+            let ratio = mx / mn;
+            worst = worst.max(ratio);
+            if ratio > 50.0 {
+                spike_count += 1;
+            }
+        }
+    }
+    (worst, spike_count)
+}
+
 fn assert_no_spikes(mesh: &Mesh, label: &str) {
     assert!(!mesh.indices.is_empty(), "{}: empty mesh", label);
     let shape = shape(mesh);
@@ -226,6 +270,10 @@ fn advanced_model_wall_553010_no_spike_triangles() {
         return;
     };
     assert_cut_adds_no_spikes(&content, 553010, "advanced_model wall #553010");
+    // And the original bar, by edge ratio: none past 50:1 (worst 41.7:1).
+    let mesh = process(&content, 553010, true).expect("process wall #553010");
+    let (worst, spikes) = worst_aspect_ratio(&mesh);
+    assert_eq!(spikes, 0, "advanced_model wall #553010: {spikes} triangles past 50:1 by edge ratio, worst {worst:.1}:1");
 }
 
 /// advanced_model wall #612315 — 23 spike tris with worst ratio

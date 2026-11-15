@@ -127,15 +127,16 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
       const actionTypes = old ? ['POINTACTION','LINEARACTION','LINEARACTIONVARYING','PLANARACTION','PLANARACTIONVARYING'] : ['POINTACTION','CURVEACTION','LINEARACTION','SURFACEACTION','PLANARACTION'];
       const reactionTypes = old ? ['POINTREACTION'] : ['POINTREACTION','CURVEREACTION','SURFACEREACTION'];
       const out = await extract(schema, [
-        ...actionTypes.map((type, i) => `#${10+i}=IFCSTRUCTURAL${type}('a${i}',$,$,$,$,$,$,#100,.LOCAL_COORDS.,.T.${type === 'POINTACTION' && !old ? '' : ','}${type === 'POINTACTION' ? (old ? '#200' : '') : (old ? '#200,.PROJECTED_LENGTH.' : '.TRUE_LENGTH.,.CONST.')}${type.endsWith('VARYING') ? ',#201,(#100,#100)' : ''});`),
+        ...actionTypes.map((type, i) => `#${10+i}=IFCSTRUCTURAL${type}('a${i}',$,$,$,$,$,$,#100,.LOCAL_COORDS.,.T.${type === 'POINTACTION' && !old ? '' : ','}${type === 'POINTACTION' ? (old ? '#200' : '') : (old ? '#200,.PROJECTED_LENGTH.' : '.TRUE_LENGTH.,.CONST.')}${type.endsWith('VARYING') ? ',#201,(#101,#100,#100)' : ''});`),
         ...reactionTypes.map((type, i) => `#${30+i}=IFCSTRUCTURAL${type}('r${i}',$,$,$,$,$,$,#100,.GLOBAL_COORDS.${type === 'POINTREACTION' ? '' : ',.CONST.'});`),
         "#100=IFCSTRUCTURALLOADTEMPERATURE('T',1.,2.,3.);",
+        "#101=IFCSTRUCTURALLOADTEMPERATURE('T2',4.,5.,6.);",
       ]);
       for (const a of out.activities.filter(a => a.kind === 'Action')) {
         // #9668: IFC2X3 action subtype references must retain their own slots.
         expect(a.CausedBy).toBe(old ? 200 : undefined);
         expect(a.VaryingAppliedLoadLocation).toBe(a.type.endsWith('Varying') ? 201 : undefined);
-        expect(a.SubsequentAppliedLoads).toEqual(a.type.endsWith('Varying') ? [100,100] : undefined);
+        expect(a.SubsequentAppliedLoads).toEqual(a.type.endsWith('Varying') ? [101,100,100] : undefined);
         expect(a.globalOrLocal).toBe('LOCAL_COORDS');
         expect(a.destabilizingLoad).toBe(true);
         expect(a.ProjectedOrTrue).toBe(a.type === 'IfcStructuralPointAction' ? undefined : old ? 'PROJECTED_LENGTH' : 'TRUE_LENGTH');

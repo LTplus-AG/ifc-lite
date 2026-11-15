@@ -199,7 +199,7 @@ fn segments_cross(a: &Point2<f64>, b: &Point2<f64>, c: &Point2<f64>, d: &Point2<
 }
 
 /// Whether every edge of `ring` stays in `outer`: its midpoint is in or on `outer`
-/// it crosses no edge of `outer`, and no vertex of `outer` lies strictly inside `ring` (a chord between
+/// it crosses no edge of `outer`, and no part of `outer`'s boundary enters `ring` ([`outer_clear_of`]; a chord between
 /// two points of a concave loop can leave it, even through two of its vertices exactly).
 fn ring_stays_in(ring: &[Point2<f64>], outer: &[Point2<f64>], tolerance: f64) -> bool {
     (0..ring.len()).all(|k| {
@@ -207,7 +207,21 @@ fn ring_stays_in(ring: &[Point2<f64>], outer: &[Point2<f64>], tolerance: f64) ->
         let mid = Point2::new((p.x + q.x) / 2.0, (p.y + q.y) / 2.0);
         (inside_2d(&mid, outer) || edge_distance_2d(&mid, outer) <= tolerance)
             && (0..outer.len()).all(|m| !segments_cross(&p, &q, &outer[m], &outer[(m + 1) % outer.len()]))
-    }) && outer.iter().all(|v| !inside_2d(v, ring) || edge_distance_2d(v, ring) <= tolerance)
+    }) && outer_clear_of(outer, ring, tolerance)
+}
+
+/// Whether no part of `outer`'s boundary enters the interior of `ring`: each outer edge has its endpoints and midpoint
+/// outside or on `ring`, and crosses none of its edges. A ring inside the outer loop cannot contain a piece of it
+/// (a vertex, or a thin slit whose ends touch the ring's boundary).
+fn outer_clear_of(outer: &[Point2<f64>], ring: &[Point2<f64>], tolerance: f64) -> bool {
+    let strictly_inside = |p: &Point2<f64>| inside_2d(p, ring) && edge_distance_2d(p, ring) > tolerance;
+    (0..outer.len()).all(|k| {
+        let (v, w) = (outer[k], outer[(k + 1) % outer.len()]);
+        let mid = Point2::new((v.x + w.x) / 2.0, (v.y + w.y) / 2.0);
+        !strictly_inside(&v)
+            && !strictly_inside(&mid)
+            && (0..ring.len()).all(|m| !segments_cross(&v, &w, &ring[m], &ring[(m + 1) % ring.len()]))
+    })
 }
 
 /// A point inside a simple polygon: the midpoint of the first span of a
@@ -394,6 +408,18 @@ mod region_tests {
         let regions = outer_bound_regions(&[&outer, &rectangle]).unwrap();
         assert_eq!(regions.len(), 2, "the rectangle is a region of its own, not the square's opening");
         assert!(regions.iter().all(|region| region.holes.is_empty()));
+    }
+
+    #[test]
+    fn a_rectangle_around_a_thin_slit_whose_ends_touch_its_edges_is_a_region_issue_9945() {
+        // A 10 x 10 square with a thin slit from the top down to (3.1, 2). The rectangle (1,2)-(9,9) has the slit's
+        // ends on its own edges (3,9), (3.2,9) on the top and (3.1,2) on the bottom, so no vertex of the square is
+        // strictly inside it, yet the whole slit is: it is not inside the square.
+        let p3 = |x: f64, y: f64| Point3::new(x, y, 0.);
+        let outer = vec![p3(0., 0.), p3(10., 0.), p3(10., 10.), p3(3.2, 10.), p3(3.2, 9.), p3(3.1, 2.), p3(3., 9.), p3(3., 10.), p3(0., 10.)];
+        let rectangle = vec![p3(1., 2.), p3(9., 2.), p3(9., 9.), p3(1., 9.)];
+        let regions = outer_bound_regions(&[&outer, &rectangle]).unwrap();
+        assert_eq!(regions.len(), 2, "the rectangle is a region of its own, not the square's opening");
     }
 
     #[test]

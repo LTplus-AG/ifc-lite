@@ -8,41 +8,70 @@
  * Every per-element comparison is an absolute height against terrain, so a
  * wrong `OrthogonalHeight`, a wrong vertical datum or a wrong ground storey
  * shifts every result the same way: 500 m too low makes everything
- * `exposed`, 40 m too high makes everything look favourable. Neither is flood
- * information, so the check refuses instead of reporting.
+ * `exposed`, a few metres too high makes elements look favourable. The hazard
+ * map carries no heights, so the model's height reference CANNOT be verified
+ * from it; the check can only catch errors large enough to contradict the
+ * terrain. Two tests, one coarse and one fine:
  *
- * The test: with `Tmin` and `Tmax` the lowest and highest terrain sampled on
- * the rings around every candidate, the ground storey level `g` must satisfy
+ * 1. Building level (refusal, {@link assessHeightReference}). With `Tmin` and
+ *    `Tmax` the lowest and highest terrain sampled along the WHOLE footprint
+ *    outline (and on the rings around every candidate), the ground storey
+ *    level `g` must satisfy
  *
- *   Tmin - below <= g <= Tmax + above        (defaults below = 1.5 m, above = 2.5 m)
+ *      Tmin - below <= g <= Tmax + above        (defaults below = 1.5 m, above = 2.5 m)
  *
- * Why this band. On a hillside the rings see both the uphill and the downhill
- * terrain, so `Tmin..Tmax` already spans the slope: a walk-out basement (ground
- * floor at the uphill grade, basement at the downhill grade) has `g` near
- * `Tmax` and several metres above `Tmin`, inside the band. `above = 2.5 m`
- * allows a raised ground floor (Hochparterre, typically up to about 1.5 m above
- * grade) plus 1 m for terrain error and sampling; `below = 1.5 m` allows a
- * ground floor sunk below the lowest adjacent grade (a souterrain entrance or
- * a building in a hollow) by up to about 1 m, plus 0.5 m of terrain error. A
- * ground floor wholly below every surrounding grade by more than that, or
- * floating above the highest by more than that, is a height-reference error.
+ *    The outline samples make `Tmin..Tmax` span the slope on a hillside
+ *    whichever side the candidates are on, so a walk-out basement (ground
+ *    floor at the uphill grade) and a ground floor at the downhill grade both
+ *    pass. `above = 2.5 m` allows a raised ground floor (Hochparterre, up to
+ *    about 1.5 m) plus 1 m for terrain error; `below = 1.5 m` allows a ground
+ *    floor sunk about 1 m below the lowest grade plus 0.5 m terrain error.
+ *    Outside that the check refuses. On sloping ground this band is wide (it
+ *    spans the whole slope), so it only catches gross errors.
+ *
+ * 2. Entry level (withholds favourable outcomes, {@link confirmEntries}). Each
+ *    ground-storey door must sit at most `entryAbove` (default 2.5 m) above the
+ *    terrain next to it (the median of its own ground samples). If any does
+ *    not, or there is no such door to check, the height reference is
+ *    UNCONFIRMED and no element anywhere gets a favourable outcome. If all do,
+ *    the height of the lowest ground-storey door above its adjacent terrain
+ *    is an error the check cannot tell from a raised threshold: it is added to
+ *    the clearance every favourable outcome needs (the "allowance"). A model
+ *    placed too high by more than the allowance then needs every ground-storey
+ *    door to really lie below its adjacent terrain, which is stated as the
+ *    residual risk in every result.
  */
 
 import { FloodCheckRefusal } from '../errors.js';
+import type { CandidateFact, ModelFacts } from '../model/facts.js';
+import type { LocalizedText, MapPoint } from '../types.js';
 
 export interface PlausibilityOptions {
-  /** Metres the ground storey may lie below the lowest sampled terrain. Default 1.5. */
+  /**
+   * Metres the ground storey may lie below the lowest sampled terrain. Default
+   * 1.5. A wider value turns a refusal into results, but then the height
+   * reference counts as unconfirmed and no element gets a favourable outcome.
+   */
   below?: number;
-  /** Metres the ground storey may lie above the highest sampled terrain. Default 2.5. */
+  /** Metres the ground storey may lie above the highest sampled terrain. Default 2.5. Wider: as for `below`. */
   above?: number;
+  /**
+   * Metres a ground-storey door may sit above the terrain next to it before
+   * the height reference counts as unconfirmed. Default 2.5; may only be
+   * lowered.
+   */
+  entryAbove?: number;
 }
 
+export const PLAUSIBILITY_DEFAULTS = { below: 1.5, above: 2.5, entryAbove: 2.5 } as const;
+
 export interface HeightPlausibility {
-  status: 'within-band' | 'not-checked-no-terrain';
+  /** `within-widened-band`: outside the default band, inside the caller's wider one. */
+  status: 'within-band' | 'within-widened-band' | 'not-checked-no-terrain';
   groundStoreyLevel: number;
   terrainMin: number | null;
   terrainMax: number | null;
-  /** Ring points with a terrain height. */
+  /** Terrain samples with a height (footprint outline plus candidate rings). */
   terrainSamples: number;
   below: number;
   above: number;
@@ -51,17 +80,20 @@ export interface HeightPlausibility {
 }
 
 const f = (v: number) => v.toFixed(2);
+const at = (p: MapPoint) => `E ${p.x.toFixed(1)}, N ${p.y.toFixed(1)}`;
+
+function nonNegative(name: string, v: number): number {
+  if (!(v >= 0) || !Number.isFinite(v)) throw new RangeError(`heightPlausibility.${name} must be a finite number >= 0, got ${v}`);
+  return v;
+}
 
 export function assessHeightReference(
   groundStoreyLevel: number,
-  terrain: readonly number[],
+  terrain: ReadonlyArray<{ point: MapPoint; height: number }>,
   options: PlausibilityOptions = {},
 ): HeightPlausibility {
-  const below = options.below ?? 1.5;
-  const above = options.above ?? 2.5;
-  for (const [name, v] of [['below', below], ['above', above]] as const) {
-    if (!(v >= 0) || !Number.isFinite(v)) throw new RangeError(`heightPlausibility.${name} must be a finite number >= 0, got ${v}`);
-  }
+  const below = nonNegative('below', options.below ?? PLAUSIBILITY_DEFAULTS.below);
+  const above = nonNegative('above', options.above ?? PLAUSIBILITY_DEFAULTS.above);
   if (terrain.length === 0) {
     return {
       status: 'not-checked-no-terrain',
@@ -71,29 +103,173 @@ export function assessHeightReference(
       terrainSamples: 0,
       below,
       above,
-      statement: 'not checked: no terrain height at any ground sample',
+      statement: 'not checked: no terrain height along the footprint outline or at any ground sample',
     };
   }
-  let min = Infinity;
-  let max = -Infinity;
+  let min = terrain[0];
+  let max = terrain[0];
   for (const t of terrain) {
-    min = Math.min(min, t);
-    max = Math.max(max, t);
+    if (t.height < min.height) min = t;
+    if (t.height > max.height) max = t;
   }
+  const g = groundStoreyLevel;
   const statement =
-    `ground storey ${f(groundStoreyLevel)} m within [${f(min)} - ${below}, ${f(max)} + ${above}] m ` +
-    `(lowest and highest of ${terrain.length} terrain samples next to the building)`;
-  if (groundStoreyLevel < min - below || groundStoreyLevel > max + above) {
+    `ground storey ${f(g)} m within [${f(min.height)} - ${below}, ${f(max.height)} + ${above}] m ` +
+    `(lowest at ${at(min.point)} and highest at ${at(max.point)} of ${terrain.length} terrain samples along the footprint outline and next to the elements)`;
+  if (g < min.height - below || g > max.height + above) {
     const side =
-      groundStoreyLevel < min - below
-        ? `${f(min - groundStoreyLevel)} m below the lowest terrain next to the building (${f(min)} m; band ${below} m)`
-        : `${f(groundStoreyLevel - max)} m above the highest terrain next to the building (${f(max)} m; band ${above} m)`;
+      g < min.height - below
+        ? `${f(min.height - g)} m below the lowest terrain sampled around the building (${f(min.height)} m at ${at(min.point)}; ` +
+          `${f(max.height)} m is the highest), more than the ${below} m allowed`
+        : `${f(g - max.height)} m above the highest terrain sampled around the building (${f(max.height)} m at ${at(max.point)}; ` +
+          `${f(min.height)} m is the lowest), more than the ${above} m allowed`;
     throw new FloodCheckRefusal(
       'georeference-implausible',
-      `the ground storey level is ${f(groundStoreyLevel)} m, ${side}. This indicates a height-reference error in the model ` +
-        "(its OrthogonalHeight, its vertical datum, or the storey taken as ground storey), not flood exposure; " +
-        'no element results are reported. Fix the georeferencing or pass groundStorey, or widen heightPlausibility if the building really sits so.',
+      `the ground storey level is ${f(g)} m, ${side}. The terrain was sampled ${terrain.length} times along the whole footprint ` +
+        'outline and next to every element, so this is not a hillside sampled on one side only. It indicates a height-reference ' +
+        "error in the model, not flood exposure; no element results are reported. Check, in this order: the map conversion's " +
+        'OrthogonalHeight against the surveyed height of the project origin, the vertical datum (LN02 / LHN95), and which storey ' +
+        'is taken as ground storey (pass groundStorey). If the building really sits so (for example in a pit), pass a wider ' +
+        'heightPlausibility; results are then reported, but none as favourable.',
     );
   }
-  return { status: 'within-band', groundStoreyLevel, terrainMin: min, terrainMax: max, terrainSamples: terrain.length, below, above, statement };
+  const widened = g < min.height - PLAUSIBILITY_DEFAULTS.below || g > max.height + PLAUSIBILITY_DEFAULTS.above;
+  return {
+    status: widened ? 'within-widened-band' : 'within-band',
+    groundStoreyLevel: g,
+    terrainMin: min.height,
+    terrainMax: max.height,
+    terrainSamples: terrain.length,
+    below,
+    above,
+    statement,
+  };
+}
+
+/** One ground-storey door, compared with the terrain next to it. */
+export interface EntryCheck {
+  expressId: number;
+  level: number;
+  /** Median terrain height of the door's own ground samples; null when none has a height. */
+  adjacentTerrain: number | null;
+  /** `level - adjacentTerrain`. */
+  heightAboveTerrain: number | null;
+}
+
+export interface HeightReference {
+  /** `unconfirmed`: no element gets a favourable outcome. */
+  status: 'confirmed' | 'unconfirmed';
+  entryAbove: number;
+  entries: EntryCheck[];
+  /**
+   * Extra clearance every favourable outcome needs: the height of the lowest
+   * ground-storey door above its adjacent terrain (0 when it is at or below).
+   * Null when unconfirmed.
+   */
+  allowance: number | null;
+  unconfirmedBecause: string[];
+  /** What this run cannot detect about the height reference, with its numbers. */
+  residualRisk: LocalizedText;
+}
+
+function median(values: number[]): number {
+  const v = [...values].sort((a, b) => a - b);
+  const m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+/**
+ * The entry-level test (module docs, test 2). `adjacent(i)` returns the terrain
+ * heights at candidate `i`'s own ground samples; `extraReasons` are
+ * building-level reasons that make the reference unconfirmed anyway (a widened
+ * band, a widened plan extent).
+ */
+export function confirmEntries(
+  facts: Pick<ModelFacts, 'candidates' | 'groundStorey'>,
+  adjacent: (index: number) => number[],
+  eligible: (c: CandidateFact, index: number) => boolean,
+  band: HeightPlausibility,
+  options: PlausibilityOptions = {},
+  extraReasons: readonly string[] = [],
+): HeightReference {
+  const entryAbove = nonNegative('entryAbove', options.entryAbove ?? PLAUSIBILITY_DEFAULTS.entryAbove);
+  if (entryAbove > PLAUSIBILITY_DEFAULTS.entryAbove) {
+    throw new RangeError(
+      `heightPlausibility.entryAbove may only be lowered (default ${PLAUSIBILITY_DEFAULTS.entryAbove} m), got ${entryAbove}: ` +
+        'a wider tolerance would let a model placed too high pass as a raised entrance',
+    );
+  }
+  const reasons = [...extraReasons];
+  if (band.status === 'not-checked-no-terrain') reasons.push('no terrain height was available around the building');
+  if (band.status === 'within-widened-band') {
+    reasons.push(`the ground storey lies outside the default height band and was accepted only by a widened heightPlausibility (${band.statement})`);
+  }
+  const entries: EntryCheck[] = [];
+  const g = facts.groundStorey.expressId;
+  if (g === null) {
+    reasons.push('no ground storey is identified, so no ground-storey door can be checked against the terrain');
+  } else {
+    facts.candidates.forEach((c, i) => {
+      if (c.category !== 'door' || c.storeyId !== g || !eligible(c, i)) return;
+      const heights = adjacent(i);
+      const t = heights.length > 0 ? median(heights) : null;
+      entries.push({ expressId: c.expressId, level: c.level, adjacentTerrain: t, heightAboveTerrain: t === null ? null : c.level - t });
+    });
+    if (entries.length === 0) reasons.push('the ground storey has no door on the footprint outline to check the height reference against');
+    for (const e of entries) {
+      if (e.heightAboveTerrain === null) reasons.push(`ground-storey door #${e.expressId} has no terrain height next to it`);
+      else if (e.heightAboveTerrain > entryAbove) {
+        reasons.push(
+          `ground-storey door #${e.expressId} sits ${f(e.heightAboveTerrain)} m above the terrain next to it (${f(e.adjacentTerrain!)} m), ` +
+            `more than ${entryAbove} m: the model may be placed too high`,
+        );
+      }
+    }
+  }
+  const bandNote =
+    band.terrainMin !== null && band.terrainMax !== null
+      ? `a ground storey between ${f(band.terrainMin - band.below)} and ${f(band.terrainMax + band.above)} m passes the building-level test`
+      : 'the building-level test could not be made';
+  if (reasons.length > 0) {
+    return {
+      status: 'unconfirmed',
+      entryAbove,
+      entries,
+      allowance: null,
+      unconfirmedBecause: reasons,
+      residualRisk: {
+        en:
+          'The height reference of the model cannot be verified from the hazard map, and it could not be confirmed against the terrain ' +
+          `next to the ground-storey doors (${reasons.join('; ')}). No element is reported above the mapped class range or as no runoff mapped. ` +
+          `Only gross errors are caught: ${bandNote}.`,
+        de:
+          'Der Höhenbezug des Modells lässt sich aus der Gefährdungskarte nicht prüfen, und er konnte am Gelände neben den Türen des ' +
+          `Erdgeschosses nicht bestätigt werden (${reasons.join('; ')}). Kein Element wird als über dem kartierten Klassenbereich oder als ` +
+          `ohne kartierten Abfluss ausgewiesen. Erkannt werden nur grobe Fehler: ${bandNote}.`,
+      },
+    };
+  }
+  const lowest = Math.min(...entries.map((e) => e.heightAboveTerrain!));
+  const allowance = Math.max(0, lowest);
+  return {
+    status: 'confirmed',
+    entryAbove,
+    entries,
+    allowance,
+    unconfirmedBecause: [],
+    residualRisk: {
+      en:
+        `The height reference of the model cannot be verified from the hazard map. It was cross-checked only against the terrain next to ` +
+        `${entries.length} ground-storey door(s): a height error of up to ${entryAbove} m relative to that terrain is not detectable. ` +
+        `Every favourable outcome therefore needs ${f(allowance)} m more clearance (the height of the lowest ground-storey door above its ` +
+        `adjacent terrain); it is still wrong if the model is placed too high by more than that, which requires every ground-storey door ` +
+        `to really lie below the terrain next to it.`,
+      de:
+        `Der Höhenbezug des Modells lässt sich aus der Gefährdungskarte nicht prüfen. Er wurde nur am Gelände neben ${entries.length} ` +
+        `Tür(en) des Erdgeschosses plausibilisiert: ein Höhenfehler bis ${entryAbove} m gegenüber diesem Gelände ist nicht erkennbar. ` +
+        `Jedes günstige Ergebnis verlangt deshalb ${f(allowance)} m zusätzlichen Abstand (die Höhe der tiefsten Erdgeschosstür über dem ` +
+        `Gelände daneben); es ist dennoch falsch, wenn das Modell um mehr als das zu hoch liegt, was voraussetzt, dass jede ` +
+        `Erdgeschosstür tatsächlich unter dem Gelände daneben liegt.`,
+    },
+  };
 }

@@ -7,20 +7,40 @@
  * is compared with its OWN terrain height and class, because a shallower class
  * on higher ground can put the water surface higher than a deeper class lower
  * down (a façade along a sloping street). With `z` the element level and, per
- * sample `i`, terrain `Ti` and class `(Li, Ui]`:
+ * sample `i`, terrain `Ti` and class `(Li, Ui]`, margin `m` and height-reference
+ * allowance `a` (`plausibility.ts`):
  *
  *   exposed                   some sample has z <= Ti + Li
  *   open-ended-class          none is exposed and some open-ended sample has z > Ti + Li
- *   above-mapped-class-range  every sample has z > Ti + Ui + m
+ *   above-mapped-class-range  every sample has z > Ti + Ui + m + a
  *   within-class-range        otherwise
+ *   no-runoff-mapped          no sample shows a class (every one is transparent)
  *
  * The sample that decides the outcome is reported with its numbers: the most
  * deeply exposed one, the open-ended one closest to `z`, or the one with the
- * least room above its class. The favourable outcome is further withheld
- * (reported as `within-class-range`, with the reason) when the margin cannot
- * be sized, the level is an upper estimate, samples are unreadable or lie in an
- * area the map did not model, a classified sample has no terrain, the element had to be moved to reach the
- * footprint outline, or the footprint is only a hull.
+ * least room above its class.
+ *
+ * The two reassuring outcomes, `above-mapped-class-range` and
+ * `no-runoff-mapped`, are guarded by the same list of conditions
+ * ({@link GUARDS}). Any one of them downgrades `above-mapped-class-range` to
+ * `within-class-range` and `no-runoff-mapped` to `unclassified` with the
+ * condition's reason; the conditions are listed in `favourableWithheldBecause`.
+ * `exposed` and `open-ended-class` are never withheld: they are the
+ * conservative side. `within-class-range` is not reassuring and stays.
+ *
+ *   condition                                   above-mapped-class-range   no-runoff-mapped
+ *   terrain states no vertical accuracy         -> within-class-range      -> unclassified (margin-not-sized)
+ *   level is an upper estimate                  -> within-class-range      -> unclassified (level-upper-estimate)
+ *   a sample is an edge pixel                   -> within-class-range      -> unclassified (map-edge-blend)
+ *   a sample is off the raster                  -> within-class-range      -> unclassified (outside-raster)
+ *   a sample is outside the map's coverage      -> within-class-range      -> unclassified (outside-coverage)
+ *   a sample is in an area the map excluded     -> within-class-range      -> unclassified (excluded-area)
+ *   anchor moved > anchorTolerance              -> within-class-range      -> unclassified (anchor-moved)
+ *   footprint is a hull                         -> within-class-range      -> unclassified (hull-footprint)
+ *   height reference unconfirmed                -> within-class-range      -> unclassified (height-reference-unconfirmed)
+ *   whole raster transparent, layer unconfirmed (no class to compare)      -> unclassified (layer-not-confirmed)
+ *   a classified sample has no terrain          -> within-class-range      (no classified sample)
+ *   clearance short of m + a, not of m          -> within-class-range      (no comparison)
  */
 
 import type { CandidateFact, ModelFacts } from '../model/facts.js';
@@ -67,7 +87,8 @@ export interface EvaluationContext {
   covers?: CoverageTest;
   /** Null when the margin cannot be sized. */
   margin: number | null;
-  edgePolicy: 'cannot-clear' | 'note';
+  /** Height-reference allowance added to the margin for the favourable outcome; null when the reference is unconfirmed. */
+  allowance: number | null;
   anchorTolerance: number;
   footprintSource: ModelFacts['footprint']['source'];
   /** The whole raster is transparent and the provider did not confirm the layer renders. */
@@ -124,16 +145,29 @@ export function evaluateCandidate(candidate: CandidateFact, plan: SamplePlan, ct
     result.unclassifiedReason = 'no-ground-sample';
     return result;
   }
+
+  const unreadable = byReading.unclassified + byReading.outside + byReading['outside-coverage'];
+  const excludedSamples = raster.classes.filter((c) => c.kind === 'excluded').reduce((n, c) => n + byReading[c.id], 0);
+  const guards = conditionsWithholding(candidate, plan, ctx, byReading, excludedSamples);
+  if (unreadable > 0) {
+    result.notes.push(`${unreadable} ground sample(s) unreadable (edge pixels, outside the raster or the map's coverage); a deeper class may lie there`);
+  }
+
   if (classified.length === 0) {
-    if (excluded) result.unclassifiedReason = 'excluded-area';
-    else if (byReading.unclassified > 0) result.unclassifiedReason = 'map-edge-blend';
-    else if (byReading.outside > 0) result.unclassifiedReason = 'outside-raster';
-    else if (byReading['outside-coverage'] > 0) result.unclassifiedReason = 'outside-coverage';
-    else if (ctx.emptyRasterUnconfirmed) result.unclassifiedReason = 'layer-not-confirmed';
-    else result.outcome = 'no-runoff-mapped';
+    // Every sample is transparent, unreadable or excluded: "no runoff mapped" unless a guard applies.
+    const first = guards[0];
+    if (first) {
+      result.unclassifiedReason = first.reason;
+      result.favourableWithheldBecause = guards.map((g) => g.text);
+      for (const g of guards) result.notes.push(`not reported as no runoff mapped: ${g.text}`);
+    } else {
+      result.outcome = 'no-runoff-mapped';
+    }
     return result;
   }
+
   const entryAtTerrain = candidate.levelBasis === 'ground-storey-or-terrain';
+  const required = ctx.margin === null ? Infinity : ctx.margin + (ctx.allowance ?? 0);
   const evaluated: DrivingSample[] = [];
   for (const c of classified) {
     if (c.terrain === null) continue;
@@ -143,7 +177,7 @@ export function evaluateCandidate(candidate: CandidateFact, plan: SamplePlan, ct
       hazardClass: c.cls,
       terrainHeight: c.terrain,
       level,
-      comparison: compareLevel(level, c.terrain, c.cls, ctx.margin ?? Infinity),
+      comparison: compareLevel(level, c.terrain, c.cls, required),
     });
   }
   if (evaluated.length === 0) {
@@ -164,26 +198,21 @@ export function evaluateCandidate(candidate: CandidateFact, plan: SamplePlan, ct
     result.notes.push('the entry is at terrain, which lies below the ground storey here, so the terrain is the level compared');
   }
 
-  const withheld: string[] = [];
-  if (ctx.margin === null) withheld.push('the terrain source states no vertical accuracy, so the clearance margin cannot be sized');
-  if (candidate.levelIsUpperEstimate) withheld.push('the level is an upper estimate (no lower edge could be read), so it can flag but not clear');
-  const unreadable = byReading.unclassified + byReading.outside + byReading['outside-coverage'];
-  if (unreadable > 0) {
-    result.notes.push(`${unreadable} ground sample(s) unreadable (edge pixels, outside the raster or the map's coverage); a deeper class may lie there`);
-    if (ctx.edgePolicy === 'cannot-clear') withheld.push(`${unreadable} ground sample(s) are unreadable`);
-  }
-  const excludedSamples = raster.classes.filter((c) => c.kind === 'excluded').reduce((n, c) => n + byReading[c.id], 0);
-  if (excludedSamples > 0) withheld.push(`${excludedSamples} ground sample(s) lie in an area the map did not model (for example glacier)`);
+  const withheld = guards.map((g) => g.text);
   const noTerrain = classified.length - evaluated.length;
   if (noTerrain > 0) withheld.push(`${noTerrain} classified ground sample(s) have no terrain height`);
-  if (plan.anchorOffset > ctx.anchorTolerance) {
+  const m = ctx.margin;
+  const a = ctx.allowance ?? 0;
+  if (
+    result.outcome === 'within-class-range' &&
+    m !== null &&
+    a > 0 &&
+    evaluated.every((e) => e.comparison.levelAboveSurfaceUpperBound !== null && e.comparison.levelAboveSurfaceUpperBound > m)
+  ) {
     withheld.push(
-      `the element lies ${plan.anchorOffset.toFixed(2)} m inside the footprint outline (more than ${ctx.anchorTolerance} m), so the ground sampled ` +
-        'at the outline may not be the ground in front of it (courtyard, notch or interior element)',
+      `the element clears the mapped class range by the ${m.toFixed(3)} m margin but not by the further ${a.toFixed(2)} m height-reference ` +
+        'allowance (the height of the lowest ground-storey door above its adjacent terrain, which could be a height error)',
     );
-  }
-  if (ctx.footprintSource === 'external-wall-hull' || ctx.footprintSource === 'candidate-hull') {
-    withheld.push(`the footprint is a ${ctx.footprintSource}, which fills courtyards and notches, so the ground sampled may not be in front of the element`);
   }
   if (result.outcome === 'above-mapped-class-range' && withheld.length > 0) result.outcome = 'within-class-range';
   if (result.outcome === 'within-class-range' && withheld.length > 0) {
@@ -191,4 +220,55 @@ export function evaluateCandidate(candidate: CandidateFact, plan: SamplePlan, ct
     for (const w of withheld) result.notes.push(`not reported above the mapped class range: ${w}`);
   }
   return result;
+}
+
+interface Guard {
+  reason: UnclassifiedReason;
+  text: string;
+}
+
+/** Every condition of the module table that applies to this element, in the order their reasons take precedence. */
+function conditionsWithholding(
+  candidate: CandidateFact,
+  plan: SamplePlan,
+  ctx: EvaluationContext,
+  byReading: Record<string, number>,
+  excludedSamples: number,
+): Guard[] {
+  const out: Guard[] = [];
+  if (excludedSamples > 0) {
+    out.push({ reason: 'excluded-area', text: `${excludedSamples} ground sample(s) lie in an area the map did not model (for example glacier)` });
+  }
+  if (byReading.unclassified > 0) out.push({ reason: 'map-edge-blend', text: `${byReading.unclassified} ground sample(s) are unreadable edge pixels` });
+  if (byReading.outside > 0) out.push({ reason: 'outside-raster', text: `${byReading.outside} ground sample(s) lie outside the retrieved raster` });
+  if (byReading['outside-coverage'] > 0) {
+    out.push({ reason: 'outside-coverage', text: `${byReading['outside-coverage']} ground sample(s) lie outside, or too near the edge of, the area the map covers` });
+  }
+  if (ctx.emptyRasterUnconfirmed) {
+    out.push({ reason: 'layer-not-confirmed', text: 'the whole raster is transparent and the layer could not be confirmed to render' });
+  }
+  if (plan.anchorOffset > ctx.anchorTolerance) {
+    out.push({
+      reason: 'anchor-moved',
+      text:
+        `the element lies ${plan.anchorOffset.toFixed(2)} m inside the footprint outline (more than ${ctx.anchorTolerance} m), so the ground sampled ` +
+        'at the outline may not be the ground in front of it (courtyard, notch or interior element)',
+    });
+  }
+  if (ctx.footprintSource === 'external-wall-hull' || ctx.footprintSource === 'candidate-hull') {
+    out.push({
+      reason: 'hull-footprint',
+      text: `the footprint is a ${ctx.footprintSource}, which fills courtyards and notches, so the ground sampled may not be in front of the element`,
+    });
+  }
+  if (ctx.allowance === null) {
+    out.push({ reason: 'height-reference-unconfirmed', text: 'the height reference of the model could not be confirmed against the terrain next to its ground-storey doors' });
+  }
+  if (candidate.levelIsUpperEstimate) {
+    out.push({ reason: 'level-upper-estimate', text: 'the level is an upper estimate (no lower edge could be read), so it can flag but not clear' });
+  }
+  if (ctx.margin === null) {
+    out.push({ reason: 'margin-not-sized', text: 'the terrain source states no vertical accuracy, so the clearance margin cannot be sized' });
+  }
+  return out;
 }

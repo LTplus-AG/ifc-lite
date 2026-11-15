@@ -252,3 +252,12 @@ describe('refusals', () => {
     expect(explicit.candidates.find((c) => c.name === 'Haustür')!.position.y).toBeCloseTo(mapOf(10, 0).y, 6);
   });
 });
+
+// Second-round finding 4: a smaller listing scope would leave elements out, which reads as nothing found.
+describe('listing options may only widen what is listed', () => {
+  it('refuses a smaller aboveGroundScope or boundaryTolerance', async () => {
+    await expect(facts({}, { expectedCrs: 'EPSG:2056', aboveGroundScope: 1 })).rejects.toThrow(/aboveGroundScope may only be raised/);
+    await expect(facts({}, { expectedCrs: 'EPSG:2056', boundaryTolerance: 0.2 })).rejects.toThrow(/boundaryTolerance may only be raised/);
+    await expect(facts({}, { expectedCrs: 'EPSG:2056', aboveGroundScope: 4, boundaryTolerance: 1.5 })).resolves.toBeDefined();
+  });
+});

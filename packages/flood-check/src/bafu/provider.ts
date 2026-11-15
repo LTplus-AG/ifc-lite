@@ -66,7 +66,7 @@ export interface BafuProviderOptions {
   /** Per-request timeout in milliseconds. Default 20 000. */
   timeoutMs?: number;
   cache?: HazardResponseCache;
-  /** Default cell size in metres. Default 0.5 (half the 1 m model raster). */
+  /** Default cell size in metres. Default 0.5 (half the 1 m model raster), which is also the largest allowed. */
   cellSize?: number;
   /** Largest image side in pixels before a request is refused. Default 4096. */
   maxPixels?: number;
@@ -167,6 +167,9 @@ async function fetchBytes(url: string, fetchImpl: typeof fetch, signal: AbortSig
   }
 }
 
+/** Largest cell size a request may use: half the 1 m model raster. */
+const MAX_CELL_SIZE = 0.5;
+
 /** Create the BAFU surface-runoff provider. */
 export function createBafuRunoffProvider(options: BafuProviderOptions = {}): HazardProvider {
   const fetchImpl = options.fetch ?? globalThis.fetch;
@@ -257,7 +260,13 @@ export function createBafuRunoffProvider(options: BafuProviderOptions = {}): Haz
       if (b.maxX < BAFU_EXTENT.minX || b.minX > BAFU_EXTENT.maxX || b.maxY < BAFU_EXTENT.minY || b.minY > BAFU_EXTENT.maxY) {
         throw new FloodCheckRefusal('outside-provider-extent', `the requested box lies outside the BAFU layer extent`);
       }
-      return raster(b, request.cellSize ?? defaultCell, request.signal ?? new AbortController().signal);
+      const cellSize = request.cellSize ?? defaultCell;
+      if (!(cellSize > 0 && cellSize <= MAX_CELL_SIZE)) {
+        throw new RangeError(
+          `cellSize must be > 0 and at most ${MAX_CELL_SIZE} m (half the 1 m model raster; coarser cells can drop a thin flow path), got ${cellSize}`,
+        );
+      }
+      return raster(b, cellSize, request.signal ?? new AbortController().signal);
     },
     /** One 9 x 9 px request at the documented reference location, made once per provider and cached like any other. */
     confirmRendering(signal?: AbortSignal): Promise<RenderingConfirmation> {

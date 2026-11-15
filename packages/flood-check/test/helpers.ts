@@ -159,8 +159,8 @@ export function syntheticRaster(
 
 /** swissALTI3D's stated 1-sigma accuracy for new LiDAR, used as the default stated accuracy in tests. */
 export const TEST_ACCURACY = 0.3;
-/** The margin that accuracy yields: max(0.5, 2 * sqrt(0.3^2 + 0.25^2 + 0.1^2)). */
-export const TEST_MARGIN = 2 * Math.sqrt(0.3 ** 2 + 0.25 ** 2 + 0.1 ** 2);
+/** The margin that accuracy yields with the default georeferencing term: max(0.5, 2 * sqrt(0.3^2 + 0.25^2 + 0.5^2)). */
+export const TEST_MARGIN = 2 * Math.sqrt(0.3 ** 2 + 0.25 ** 2 + 0.5 ** 2);
 
 export function flatTerrain(
   height: number,

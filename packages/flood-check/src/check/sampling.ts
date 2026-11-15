@@ -31,27 +31,68 @@ import {
   type TerrainSampler,
 } from '../types.js';
 
-export interface SamplingOptions {
-  /** Ring radii around the anchor, metres. Default [2, 3]. */
-  ringDistances?: readonly number[];
-  /** Directions per ring. Default 16. */
-  directions?: number;
-  /** A sample must lie at least this far outside the footprint, metres. Default 1.0. */
-  minOutsideDistance?: number;
-}
-
+/**
+ * The sampling geometry. Fixed, not caller options: fewer directions, other
+ * rings or a larger distance from the footprint can each drop the sample that
+ * shows a class, which would make an outcome more favourable without any new
+ * information. The values are recorded in every result.
+ */
 export interface ResolvedSampling {
   ringDistances: readonly number[];
   directions: number;
   minOutsideDistance: number;
+  /** Outward offset of the terrain samples taken along the footprint outline for the building-level height test, metres. */
+  outlineOffset: number;
+  /** Largest spacing of those outline samples, metres. */
+  outlineSpacing: number;
 }
 
-export function resolveSampling(options: SamplingOptions = {}): ResolvedSampling {
-  return {
-    ringDistances: options.ringDistances ?? [2, 3],
-    directions: options.directions ?? 16,
-    minOutsideDistance: options.minOutsideDistance ?? 1,
-  };
+export function resolveSampling(): ResolvedSampling {
+  return { ringDistances: [2, 3], directions: 16, minOutsideDistance: 1, outlineOffset: 2, outlineSpacing: 2 };
+}
+
+/**
+ * Terrain sample points along the whole footprint outline, `outlineOffset`
+ * outside it, at most `outlineSpacing` apart (wider for a very long outline,
+ * so at most 400 points). The building-level height test reads these, so it
+ * sees the uphill and the downhill side of the building whichever side the
+ * candidate elements are on.
+ */
+export function outlineTerrainPoints(footprint: ModelFacts['footprint'], s: ResolvedSampling): MapPoint[] {
+  const rings = footprint.rings;
+  let perimeter = 0;
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      perimeter += Math.hypot(b.x - a.x, b.y - a.y);
+    }
+  }
+  const spacing = Math.max(s.outlineSpacing, perimeter / 400);
+  const out: MapPoint[] = [];
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (!(len > 0)) continue;
+      const nx = (b.y - a.y) / len;
+      const ny = -(b.x - a.x) / len;
+      const steps = Math.max(1, Math.ceil(len / spacing));
+      for (let k = 0; k < steps; k++) {
+        const t = (k + 0.5) / steps;
+        const m = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+        for (const sign of [1, -1]) {
+          const p = { x: m.x + sign * nx * s.outlineOffset, y: m.y + sign * ny * s.outlineOffset };
+          if (signedDistance(p, rings) >= s.minOutsideDistance) {
+            out.push(p);
+            break;
+          }
+        }
+      }
+    }
+  }
+  return out;
 }
 
 export interface SamplePlan {

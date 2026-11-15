@@ -30,12 +30,12 @@ export interface ExtractOptions extends GeoreferenceOptions {
    * ground-floor slab outline: a hull fills courtyards and notches.
    */
   footprint?: MapPoint[][];
-  /** Doors, windows and openings higher than this above the ground storey are not listed. Default 3.0 m. */
+  /** Doors, windows and openings higher than this above the ground storey are not listed. Default 3.0 m; may only be raised. */
   aboveGroundScope?: number;
   /**
    * Distance from the outline within which an element without `IsExternal`
-   * counts as façade. Default 1.0 m. Pass the same value as the check's
-   * `anchorTolerance`.
+   * counts as façade. Default 1.0 m; may only be raised (a smaller value
+   * would leave façade elements unlisted, which reads as nothing found).
    */
   boundaryTolerance?: number;
 }
@@ -107,6 +107,15 @@ function pickGroundStorey(
     `no storey sits at project ±0.00; the lowest storey "${lowest.name ?? lowest.expressId}" is taken as ground storey — pass groundStorey to override`,
   );
   return { expressId: lowest.expressId, level: lowest.level, basis: 'lowest-storey' };
+}
+
+/** Options that only widen what is listed: a smaller value would leave elements out without saying so. */
+function atLeast(name: string, value: number | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (!(value >= fallback) || !Number.isFinite(value)) {
+    throw new RangeError(`${name} may only be raised (default ${fallback} m), got ${value}: a smaller value would leave elements unlisted`);
+  }
+  return value;
 }
 
 function deriveFootprint(
@@ -204,8 +213,8 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
     storeyLevel: new Map(storeys.map((s) => [s.expressId, s.level])),
     groundLevel: groundStorey.level,
     footprint: footprint?.rings ?? [],
-    aboveGroundScope: options.aboveGroundScope ?? 3,
-    boundaryTolerance: options.boundaryTolerance ?? 1,
+    aboveGroundScope: atLeast('aboveGroundScope', options.aboveGroundScope, 3),
+    boundaryTolerance: atLeast('boundaryTolerance', options.boundaryTolerance, 1),
     skip: (expressId, ifcClass, reason) => skipped.push({ expressId, ifcClass, reason }),
   });
 

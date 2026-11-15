@@ -103,8 +103,11 @@ describe('synthetic EPSG:2056 house through the BAFU provider', () => {
     expect(byName['Kellerfenster'].outcome).toBe('exposed');
     expect(byName['Lichtschacht 1'].outcome).toBe('exposed');
     expect(byName['Heizkessel']).toMatchObject({ outcome: 'exposed', anchorBasis: 'nearest-outline-point' });
-    // West of the house nothing is mapped.
-    expect(byName['Hauptverteilung'].outcome).toBe('no-runoff-mapped');
+    // West of the house nothing is mapped, but the distribution board stands 2 m inside the outline: the ground
+    // sampled at the outline may not be in front of it, so "no runoff mapped" is withheld (second-round finding 3).
+    expect(byName['Hauptverteilung']).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'anchor-moved' });
+    expect(result.heightReference).toMatchObject({ status: 'confirmed', entries: [{ level: 500 }] });
+    expect(result.heightReference.allowance).toBeCloseTo(0.05, 3);
     // External stair east of the house, class > 0.25 m: its upper-estimate top edge 500.00 <= 500.20 → exposed.
     expect(byName['Kellertreppe aussen']).toMatchObject({ outcome: 'exposed', hazardClass: { id: 'depth-gt-0.25' } });
     expect(result.reachableBelowGround.map((r) => r.space.name)).toEqual(['Keller']);
@@ -146,7 +149,13 @@ describe('a wholly transparent answer through the BAFU provider', () => {
     const ok = await runFloodCheck(facts, createBafuRunoffProvider({ fetch: up.fetchImpl }), flatGrid(499.95, 'EPSG:5728', 'EPSG:2056'));
     expect(up.urls).toHaveLength(2);
     expect(ok.layerCheck.confirmation?.confirmed).toBe(true);
-    expect(new Set(ok.results.map((r) => r.outcome))).toEqual(new Set(['no-runoff-mapped']));
+    // Every element not withheld is "no runoff mapped"; interior equipment (anchor moved) and the external stair
+    // (upper-estimate level) are withheld by the same conditions that withhold "above the mapped class range".
+    expect(new Set(ok.results.map((r) => r.outcome))).toEqual(new Set(['no-runoff-mapped', 'unclassified']));
+    expect(new Set(ok.results.filter((r) => r.outcome === 'unclassified').map((r) => r.unclassifiedReason))).toEqual(
+      new Set(['anchor-moved', 'level-upper-estimate']),
+    );
+    expect(ok.results.find((r) => r.candidate.name === 'Haustür')?.outcome).toBe('no-runoff-mapped');
 
     const down = wms(rgbaPng(9, 9, () => CLEAR));
     const outage = await runFloodCheck(facts, createBafuRunoffProvider({ fetch: down.fetchImpl }), flatGrid(499.95, 'EPSG:5728', 'EPSG:2056'));

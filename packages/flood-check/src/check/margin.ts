@@ -15,9 +15,13 @@
  *   (0 to 0.25 m in two steps): the map cannot say more finely where in that
  *   range the water stands, and its 2 m smoothed terrain is not the terrain
  *   sampled here.
- * - `sigmaGeoreference`: vertical error of the model's height reference
- *   (`OrthogonalHeight`, the ground storey, the threshold), default 0.1 m for
- *   a surveyed map conversion; raise it for an estimated one.
+ * - `sigmaGeoreference`: 1-sigma vertical error of the model's height
+ *   reference (`OrthogonalHeight`, the ground storey, the threshold). Nothing
+ *   in a model shows whether its height reference was surveyed, so the
+ *   default is a conservative 0.5 m (an estimated map conversion). A caller
+ *   who knows the height reference is surveyed states it with
+ *   `georeferenceVerticalUncertainty` (for example 0.05 m): that is supplying
+ *   information, and the basis is recorded as `stated-by-caller`.
  * - `floor`: 0.5 m, or the caller's `clearanceMargin` when larger. A caller
  *   can raise the margin, never lower it below the derived value.
  *
@@ -29,9 +33,13 @@
 export interface MarginOptions {
   /** Minimum clearance margin in metres; raises the floor of 0.5 m, never lowers it. */
   clearanceMargin?: number;
-  /** Depth resolution of the map's classes, metres. Default 0.25. */
+  /** Depth resolution of the map's classes, metres. Default 0.25; may only be raised. */
   classResolution?: number;
-  /** 1-sigma vertical error of the model's height reference, metres. Default 0.1. */
+  /**
+   * 1-sigma vertical error of the model's height reference, metres, as the
+   * caller knows it (for example 0.05 for a surveyed map conversion).
+   * Default 0.5 when not stated: nothing in the model shows it was surveyed.
+   */
   georeferenceVerticalUncertainty?: number;
 }
 
@@ -42,6 +50,8 @@ export interface MarginBasis {
   terrainAccuracy: number | null;
   classResolution: number;
   georeferenceVerticalUncertainty: number;
+  /** Whether the georeferencing term was stated by the caller or is the conservative default. */
+  georeferenceBasis: 'stated-by-caller' | 'default-not-surveyed';
   /** `2 * sqrt(...)`; null without a terrain accuracy. */
   twoSigma: number | null;
   /** The formula with its numbers, for property sets and reports. */
@@ -49,6 +59,9 @@ export interface MarginBasis {
 }
 
 export const MARGIN_FLOOR = 0.5;
+export const CLASS_RESOLUTION = 0.25;
+/** The georeferencing term when the caller states none: an estimated, not a surveyed, height reference. */
+export const DEFAULT_GEOREFERENCE_UNCERTAINTY = 0.5;
 
 function nonNegative(name: string, value: number): number {
   if (!(value >= 0) || !Number.isFinite(value)) throw new RangeError(`${name} must be a finite number >= 0, got ${value}`);
@@ -57,8 +70,14 @@ function nonNegative(name: string, value: number): number {
 
 export function deriveClearanceMargin(terrainAccuracy: number | undefined, options: MarginOptions = {}): MarginBasis {
   const floor = Math.max(MARGIN_FLOOR, nonNegative('clearanceMargin', options.clearanceMargin ?? MARGIN_FLOOR));
-  const classResolution = nonNegative('classResolution', options.classResolution ?? 0.25);
-  const geo = nonNegative('georeferenceVerticalUncertainty', options.georeferenceVerticalUncertainty ?? 0.1);
+  const classResolution = nonNegative('classResolution', options.classResolution ?? CLASS_RESOLUTION);
+  if (classResolution < CLASS_RESOLUTION) {
+    throw new RangeError(`classResolution may only be raised (default ${CLASS_RESOLUTION} m), got ${classResolution}`);
+  }
+  const stated = options.georeferenceVerticalUncertainty;
+  const geo = nonNegative('georeferenceVerticalUncertainty', stated ?? DEFAULT_GEOREFERENCE_UNCERTAINTY);
+  const georeferenceBasis: MarginBasis['georeferenceBasis'] = stated === undefined ? 'default-not-surveyed' : 'stated-by-caller';
+  const geoWords = georeferenceBasis === 'stated-by-caller' ? 'georeferencing as stated by the caller' : 'georeferencing, default for a height reference not stated to be surveyed';
   if (terrainAccuracy === undefined || !Number.isFinite(terrainAccuracy) || terrainAccuracy < 0) {
     return {
       margin: null,
@@ -66,6 +85,7 @@ export function deriveClearanceMargin(terrainAccuracy: number | undefined, optio
       terrainAccuracy: null,
       classResolution,
       georeferenceVerticalUncertainty: geo,
+      georeferenceBasis,
       twoSigma: null,
       statement:
         'not sized: the terrain source states no vertical accuracy, so no element is reported above the mapped class range',
@@ -80,9 +100,10 @@ export function deriveClearanceMargin(terrainAccuracy: number | undefined, optio
     terrainAccuracy,
     classResolution,
     georeferenceVerticalUncertainty: geo,
+    georeferenceBasis,
     twoSigma,
     statement:
       `max(${f(floor)}, 2 * sqrt(${f(terrainAccuracy)}^2 + ${f(classResolution)}^2 + ${f(geo)}^2)) = ` +
-      `max(${f(floor)}, ${f(twoSigma)}) = ${f(margin)} m (terrain accuracy, class resolution, georeferencing; 1 sigma)`,
+      `max(${f(floor)}, ${f(twoSigma)}) = ${f(margin)} m (terrain accuracy, class resolution, ${geoWords}; 1 sigma)`,
   };
 }

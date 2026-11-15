@@ -46,7 +46,17 @@ export type UnclassifiedReason =
   /** Every readable ground sample lies outside, or too close to, the perimeter the map covers: transparent there means no data. */
   | 'outside-coverage'
   /** The whole raster is transparent and the provider could not confirm that the layer is rendering. */
-  | 'layer-not-confirmed';
+  | 'layer-not-confirmed'
+  /** Every sample is transparent, but the element had to be moved further than the anchor tolerance to reach the outline. */
+  | 'anchor-moved'
+  /** Every sample is transparent, but the footprint is a hull, so the ground sampled may not be in front of the element. */
+  | 'hull-footprint'
+  /** Every sample is transparent, but the model's height reference (and so its georeference) could not be confirmed. */
+  | 'height-reference-unconfirmed'
+  /** Every sample is transparent, but the element's level is only an upper estimate. */
+  | 'level-upper-estimate'
+  /** Every sample is transparent, but the terrain source states no vertical accuracy, so no reassuring outcome is given. */
+  | 'margin-not-sized';
 
 export interface LevelComparison {
   outcome: 'above-mapped-class-range' | 'exposed' | 'within-class-range' | 'open-ended-class';

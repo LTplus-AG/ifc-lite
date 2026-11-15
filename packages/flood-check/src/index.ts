@@ -79,9 +79,9 @@ export {
   type SampleCounts,
 } from './check/check.js';
 export type { MarginBasis, MarginOptions } from './check/margin.js';
-export type { HeightPlausibility, PlausibilityOptions } from './check/plausibility.js';
+export type { EntryCheck, HeightPlausibility, HeightReference, PlausibilityOptions } from './check/plausibility.js';
 export { compareLevel, type LevelComparison, type Outcome, type UnclassifiedReason } from './check/outcome.js';
-export { terrainSamplerFromGrid, type SamplingOptions } from './check/sampling.js';
+export { terrainSamplerFromGrid, type ResolvedSampling } from './check/sampling.js';
 export { runFloodCheck, type RunOptions } from './check/run.js';
 export {
   ELEMENT_PSET,

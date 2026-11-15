@@ -17,8 +17,9 @@ import {
   type TerrainSampler,
   type TerrainSource,
 } from '../types.js';
-import { assertCompatible, checkFloodExposure, type CheckOptions, type FloodCheckResult } from './check.js';
+import { assertCompatible, checkWith, type CheckOptions, type FloodCheckResult } from './check.js';
 import {
+  outlineTerrainPoints,
   planSamples,
   pointKey,
   resolveSampling,
@@ -27,15 +28,20 @@ import {
 } from './sampling.js';
 
 export interface RunOptions extends Omit<CheckOptions, 'coverage' | 'renderingConfirmation'> {
-  /** Hazard raster cell size, metres. The provider's default when omitted. */
+  /**
+   * Hazard raster cell size, metres. The provider's default when omitted. May
+   * not exceed half the provider's model cell: coarser cells can drop a thin
+   * flow path.
+   */
   cellSize?: number;
-  /** Terrain grid resolution when the source offers grids, metres. Default 0.5. */
+  /** Terrain grid resolution when the source offers grids, metres. Default 0.5; may only be made finer. */
   terrainResolution?: number;
   /**
    * Largest plan extent, metres, that the candidates, footprint and rings may
    * span before the check refuses (`georeference-implausible`): a building's
    * elements spread over kilometres means a wrong length unit or map scale.
-   * Default 1000.
+   * Default 1000. A larger value yields results for a large site, but then the
+   * georeference counts as unconfirmed and no element gets a favourable outcome.
    */
   maxPlanExtent?: number;
   signal?: AbortSignal;
@@ -43,7 +49,7 @@ export interface RunOptions extends Omit<CheckOptions, 'coverage' | 'renderingCo
 
 /** The box covering the footprint, every candidate and every ring, plus two raster cells. */
 export function checkBBox(facts: ModelFacts, options: RunOptions = {}): MapBBox {
-  const s = resolveSampling(options);
+  const s = resolveSampling();
   const points: MapPoint[] = [...facts.candidates.map((c) => c.position), ...facts.footprint.rings.flat()];
   const box = bboxOf(points);
   if (!box) throw new FloodCheckRefusal('no-candidates', 'the model facts list no candidates and no footprint');
@@ -55,8 +61,12 @@ function overlaps(a: MapBBox, b: MapBBox): boolean {
 }
 
 /** Refuse when the elements spread further than one building can: a wrong unit or scale reading. */
-function assertPlausibleExtent(bbox: MapBBox, options: RunOptions): void {
-  const limit = options.maxPlanExtent ?? 1000;
+const DEFAULT_MAX_PLAN_EXTENT = 1000;
+const DEFAULT_TERRAIN_RESOLUTION = 0.5;
+
+/** Returns a reason the georeference is unconfirmed when the extent passes only a raised limit. */
+function assertPlausibleExtent(bbox: MapBBox, options: RunOptions): string | null {
+  const limit = options.maxPlanExtent ?? DEFAULT_MAX_PLAN_EXTENT;
   const w = bbox.maxX - bbox.minX;
   const h = bbox.maxY - bbox.minY;
   if (w > limit || h > limit) {
@@ -67,6 +77,10 @@ function assertPlausibleExtent(bbox: MapBBox, options: RunOptions): void {
         'length unit), not flood exposure; no element results are reported. Pass mapScale or fix the model, or raise maxPlanExtent for a large site.',
     );
   }
+  if (w > DEFAULT_MAX_PLAN_EXTENT || h > DEFAULT_MAX_PLAN_EXTENT) {
+    return `the elements span ${w.toFixed(0)} m x ${h.toFixed(0)} m, more than the default ${DEFAULT_MAX_PLAN_EXTENT} m, and were accepted only by a raised maxPlanExtent`;
+  }
+  return null;
 }
 
 async function terrainFor(
@@ -76,7 +90,7 @@ async function terrainFor(
   options: RunOptions,
 ): Promise<TerrainSampler> {
   if (source.grid) {
-    const grid = await source.grid(bbox, { resolution: options.terrainResolution ?? 0.5, signal: options.signal });
+    const grid = await source.grid(bbox, { resolution: options.terrainResolution ?? DEFAULT_TERRAIN_RESOLUTION, signal: options.signal });
     const gridVertical = normalizeCrs(grid.verticalCrs);
     if (!gridVertical || gridVertical !== normalizeCrs(source.verticalCrs) || !sameCrs(grid.crs, source.crs)) {
       throw new FloodCheckRefusal(
@@ -87,15 +101,17 @@ async function terrainFor(
     return terrainSamplerFromGrid(grid, { verticalAccuracy: source.verticalAccuracy });
   }
   if (!source.heightAt) throw new TypeError('the terrain source offers neither heightAt nor grid');
-  const s = resolveSampling(options);
+  const s = resolveSampling();
   const heights = new Map<string, number | null>();
-  for (const candidate of facts.candidates) {
-    for (const { point } of planSamples(candidate, facts.footprint, s).points) {
-      const key = pointKey(point);
-      if (heights.has(key)) continue;
-      options.signal?.throwIfAborted();
-      heights.set(key, await source.heightAt(point, options.signal));
-    }
+  const points = [
+    ...facts.candidates.flatMap((candidate) => planSamples(candidate, facts.footprint, s).points.map((p) => p.point)),
+    ...outlineTerrainPoints(facts.footprint, s),
+  ];
+  for (const point of points) {
+    const key = pointKey(point);
+    if (heights.has(key)) continue;
+    options.signal?.throwIfAborted();
+    heights.set(key, await source.heightAt(point, options.signal));
   }
   return terrainSamplerFromPoints(source, heights);
 }
@@ -113,6 +129,14 @@ export async function runFloodCheck(
   options: RunOptions = {},
 ): Promise<FloodCheckResult> {
   assertCompatible(facts, provider.crs, terrain);
+  if (options.cellSize !== undefined && !(options.cellSize > 0 && options.cellSize <= provider.modelCellSize / 2)) {
+    throw new RangeError(
+      `cellSize must be > 0 and at most ${provider.modelCellSize / 2} m (half the ${provider.modelCellSize} m model raster), got ${options.cellSize}`,
+    );
+  }
+  if (options.terrainResolution !== undefined && !(options.terrainResolution > 0 && options.terrainResolution <= DEFAULT_TERRAIN_RESOLUTION)) {
+    throw new RangeError(`terrainResolution must be > 0 and at most ${DEFAULT_TERRAIN_RESOLUTION} m, got ${options.terrainResolution}`);
+  }
   if (facts.candidates.length === 0) {
     throw new FloodCheckRefusal('no-candidates', 'the model has no candidate elements (doors, windows, openings, light wells, ramps, equipment) in scope');
   }
@@ -123,12 +147,12 @@ export async function runFloodCheck(
       `the model lies at E ${bbox.minX.toFixed(0)}, N ${bbox.minY.toFixed(0)}, outside the extent of ${provider.id}; check the georeferencing`,
     );
   }
-  assertPlausibleExtent(bbox, options);
+  const extentReason = assertPlausibleExtent(bbox, options);
   const raster = await provider.fetchRaster({ bbox, crs: provider.crs, cellSize: options.cellSize, signal: options.signal });
   let renderingConfirmation: RenderingConfirmation | undefined;
   if (provider.confirmRendering && raster.cells.every((c) => c === CELL_NO_RUNOFF)) {
     renderingConfirmation = await provider.confirmRendering(options.signal);
   }
   const sampler = await terrainFor(facts, terrain, bbox, options);
-  return checkFloodExposure(facts, raster, sampler, { ...options, coverage: provider.covers, renderingConfirmation });
+  return checkWith(facts, raster, sampler, { ...options, coverage: provider.covers, renderingConfirmation }, extentReason ? [extentReason] : []);
 }

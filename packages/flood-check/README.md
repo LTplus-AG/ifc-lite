@@ -17,9 +17,12 @@ interfaces the caller injects.
 > `BAFU_ATTRIBUTION` with every result. Every result object and every element
 > property set also carries a screening caveat (`caveat`), what its outcome
 > establishes and what it does not (`meaning`), the attribution and the
-> dataset date. The check never reports a favourable outcome the data does not
-> support, and refuses outright when the model's height reference is
-> implausible.
+> dataset date. The check withholds every favourable outcome the data does not
+> support. **The model's height reference cannot be verified from the hazard
+> map**: the check refuses only gross height errors, withholds favourable
+> outcomes when the ground-storey doors do not sit plausibly on the terrain
+> next to them, and states in every result and in the site property set the
+> height error it cannot detect (see [Height reference](#height-reference)).
 
 ## Usage
 
@@ -228,23 +231,38 @@ open-ended class and watercourses):
 | --- | --- |
 | `exposed` | some sample has `z ≤ Ti + Li`: the water surface there is above `z` for any depth in the class |
 | `open-ended-class` | none is exposed, and some open-ended sample has `z > Ti + Li`: no level can be shown above it |
-| `above-mapped-class-range` | every sample has `z > Ti + Ui + m`, and nothing below withholds it |
+| `above-mapped-class-range` | every sample has `z > Ti + Ui + m + a` (`a`: the height-reference allowance), and no condition below withholds it |
 | `within-class-range` | otherwise: the class ranges cannot decide it |
-| `no-runoff-mapped` | every ground sample is transparent, inside the coverage perimeter, and the layer is known to render. **Not "safe"**: the publisher states areas shown unaffected may still be affected |
-| `unclassified` | `map-edge-blend`, `outside-raster`, `outside-coverage`, `layer-not-confirmed`, `no-ground-sample`, `excluded-area` or `no-terrain` |
+| `no-runoff-mapped` | every ground sample is transparent, and no condition below withholds it. **Not "safe"**: the publisher states areas shown unaffected may still be affected |
+| `unclassified` | `map-edge-blend`, `outside-raster`, `outside-coverage`, `layer-not-confirmed`, `no-ground-sample`, `excluded-area`, `no-terrain`, or a withheld `no-runoff-mapped`: `anchor-moved`, `hull-footprint`, `height-reference-unconfirmed`, `level-upper-estimate`, `margin-not-sized` |
 
 `above-mapped-class-range` states only that: the element level is above the
 range of every class the map shows next to it, with the margin to spare. It
-says nothing about rarer events or runoff the map does not show. It is
-**withheld** (reported as `within-class-range`, the reasons listed in
-`favourableWithheldBecause`) when the terrain source states no vertical
-accuracy, the level is an upper estimate, any ground sample is unreadable
-(default `edgePolicy: 'cannot-clear'`) or lies in an area the map did not
-model (glacier), a classified sample has no terrain,
-the element had to be moved more than `anchorTolerance` (default 1 m) to
-reach the outline (courtyards, notches, interior elements), or the footprint
-is a hull. For an entry at terrain (`ground-storey-or-terrain`), `z` is the
-lower of the ground storey level and `Ti`.
+says nothing about rarer events or runoff the map does not show. For an entry
+at terrain (`ground-storey-or-terrain`), `z` is the lower of the ground storey
+level and `Ti`.
+
+**The two reassuring outcomes are guarded by the same conditions.** Any one of
+them downgrades `above-mapped-class-range` to `within-class-range` and
+`no-runoff-mapped` to `unclassified` with the condition's reason; every
+condition that applies is listed in `favourableWithheldBecause`. `exposed`
+and `open-ended-class` are never withheld (they are the conservative side);
+`within-class-range` is not reassuring. The same table is in `evaluate.ts`.
+
+| Condition | `above-mapped-class-range` becomes | `no-runoff-mapped` becomes |
+| --- | --- | --- |
+| terrain source states no vertical accuracy | `within-class-range` | `unclassified` (`margin-not-sized`) |
+| level is an upper estimate | `within-class-range` | `unclassified` (`level-upper-estimate`) |
+| a ground sample is an antialiased edge pixel | `within-class-range` | `unclassified` (`map-edge-blend`) |
+| a ground sample is off the raster | `within-class-range` | `unclassified` (`outside-raster`) |
+| a ground sample is outside (or too near) the coverage perimeter | `within-class-range` | `unclassified` (`outside-coverage`) |
+| a ground sample lies in an area the map did not model (glacier) | `within-class-range` | `unclassified` (`excluded-area`) |
+| the element was moved more than `anchorTolerance` (1 m) to reach the outline | `within-class-range` | `unclassified` (`anchor-moved`) |
+| the footprint is a hull (`external-wall-hull`, `candidate-hull`) | `within-class-range` | `unclassified` (`hull-footprint`) |
+| height reference unconfirmed (see below) | `within-class-range` | `unclassified` (`height-reference-unconfirmed`) |
+| the whole raster is transparent and the layer is not confirmed to render | (no class to compare) | `unclassified` (`layer-not-confirmed`) |
+| a classified sample has no terrain height | `within-class-range` | (no classified sample) |
+| clearance exceeds `m` but not `m + a` | `within-class-range` | (no comparison) |
 
 The sample that decides the outcome is reported with its numbers
 (`drivingSample`: point, class, `Ti`, the level compared and the comparison;
@@ -264,13 +282,14 @@ m = max(0.5 m, 2 · sqrt(σT² + c² + σG²))
 | Input | Value | Source |
 | --- | --- | --- |
 | `σT` terrain, 1 sigma | `TerrainSource.verticalAccuracy` as the source states it. swissALTI3D: 0.3 m (new generation of LiDAR data), 0.5 m (previous generation of LiDAR data, below 2,000 m a.s.l.), 1 to 3 m (stereo correlation, above 2,000 m) | swisstopo, swissALTI3D product page, "Quality" (accuracies are 1 sigma in all three dimensions): https://www.swisstopo.admin.ch/en/height-model-swissalti3d, read 2026-11-15 |
-| `c` class resolution | 0.25 m (`classResolution`) | the bounded BAFU depth classes span 0–0.25 m (0–0.1, 0.1–0.25 m; legend and technical report) |
-| `σG` georeferencing, 1 sigma | 0.1 m default (`georeferenceVerticalUncertainty`) | a surveyed `OrthogonalHeight` and ground storey are good to a few centimetres; raise it for an estimated one |
+| `c` class resolution | 0.25 m (`classResolution`; may only be raised) | the bounded BAFU depth classes span 0–0.25 m (0–0.1, 0.1–0.25 m; legend and technical report) |
+| `σG` georeferencing, 1 sigma | `georeferenceVerticalUncertainty` as the caller states it; **0.5 m when not stated** | nothing in a model shows whether its `OrthogonalHeight` was surveyed, so the default assumes an estimated one (decimetres to metres). A caller who knows the map conversion is surveyed states it, for example 0.05 m; `result.margin.georeferenceBasis` records `stated-by-caller` or `default-not-surveyed` |
 | floor | 0.5 m, or `clearanceMargin` when larger | a caller can raise the margin, never lower it below the derived value |
 
 Twice the root-sum-square is a two-sigma bound for independent errors. With
-swissALTI3D's 0.5 m: `2 · sqrt(0.25 + 0.0625 + 0.01) = 1.136 m`; with 0.3 m:
-`0.806 m`; above 2,000 m with 3 m: `6.03 m`. When the terrain source states no
+the default `σG = 0.5 m`: swissALTI3D's 0.5 m gives `2 · sqrt(0.25 + 0.0625 +
+0.25) = 1.5 m`, 0.3 m gives `1.269 m`, 3 m above 2,000 m gives `6.10 m`. With a
+stated surveyed `σG = 0.1 m`: `1.136 m` and `0.806 m`. When the terrain source states no
 accuracy, the margin is not sized (`clearanceMargin: null`) and nothing is
 reported `above-mapped-class-range`. `result.margin` records the inputs and
 `statement` the formula with its numbers.
@@ -279,26 +298,63 @@ reported `above-mapped-class-range`. `result.margin` records the inputs and
 
 Every comparison is absolute, so a wrong `OrthogonalHeight`, vertical datum or
 ground storey shifts every result the same way (500 m too low makes everything
-`exposed`; 40 m too high makes everything look favourable). The check reads
-the terrain at **every** ring point of every candidate, and with `Tmin`/`Tmax`
-the lowest and highest of those heights it requires the ground storey level
-`g` to satisfy
+`exposed`; a few metres too high makes elements look favourable). **The hazard
+map carries no heights, so the model's height reference cannot be verified
+from it.** The check catches what contradicts the terrain, in two steps.
+
+**Building level: refusal for gross errors.** The terrain is read along the
+**whole footprint outline** (2 m outside it, every 2 m) and at every ring point
+of every candidate. With `Tmin`/`Tmax` the lowest and highest of those heights
+the ground storey level `g` must satisfy
 
 ```
 Tmin − 1.5 m ≤ g ≤ Tmax + 2.5 m        (heightPlausibility: { below, above })
 ```
 
-On a hillside the rings see both the uphill and the downhill terrain, so a
-walk-out basement (ground floor at the uphill grade, `g` near `Tmax` and
-metres above `Tmin`) passes. 2.5 m above allows a raised ground floor
-(Hochparterre, up to about 1.5 m) plus 1 m for terrain error; 1.5 m below
-allows a ground floor sunk below the lowest adjacent grade by about 1 m plus
-0.5 m. Outside the band the check **refuses** with `georeference-implausible`,
-stating the numbers and that this indicates a height-reference error in the
-model, not flood exposure. The basis is recorded in `result.heightPlausibility`
-and the site property set. `runFloodCheck` also refuses
-(`georeference-implausible`) when candidates, footprint and rings span more
-than `maxPlanExtent` (default 1,000 m): a wrong length unit or map scale.
+Because the outline is sampled all round, a hillside building is judged
+against its uphill and downhill terrain whichever side its candidates are on:
+a walk-out basement and a ground floor at the downhill grade both pass. 2.5 m
+above allows a raised ground floor (Hochparterre, up to about 1.5 m) plus 1 m
+for terrain error; 1.5 m below allows a ground floor sunk about 1 m below the
+lowest grade plus 0.5 m. Outside the band the check **refuses** with
+`georeference-implausible`, giving `g`, the lowest and highest terrain with
+their positions, and what to check (the map conversion's `OrthogonalHeight`
+against the surveyed height of the project origin, the vertical datum, the
+storey taken as ground storey). A wider `heightPlausibility` turns a refusal
+into results, but then the height reference counts as unconfirmed.
+
+On sloping ground this band spans the whole slope, so it only catches gross
+errors: on a 10 m slope, a model up to about 12 m too high passes it.
+
+**Entry level: no favourable outcome without a plausible entry.** Each
+ground-storey door on the outline must sit at most `entryAbove` (2.5 m; may
+only be lowered) above the terrain next to it (the median of its own ground
+samples). If one does not, there is no such door, the ground storey is not
+identified, no terrain was found, or a refusal band or `maxPlanExtent` was
+widened, the height reference is **unconfirmed**: no element anywhere is
+reported `above-mapped-class-range` or `no-runoff-mapped`
+(`result.heightReference.unconfirmedBecause` says why). Elements on upper
+storeys are always far above the terrain, so they never confirm the
+reference; they depend on the ground-storey doors like every other element.
+
+If every door passes, the height of the lowest ground-storey door above its
+adjacent terrain is the **allowance** `a`: a raised threshold and a model
+placed that much too high look the same, so every favourable outcome needs `a`
+more clearance than the margin. A door at grade gives `a ≈ 0`; a model placed
+2.4 m too high on flat ground gives `a = 2.4 m`.
+
+**Residual risk**, stated in words with this run's numbers in every result
+(`residualRisk`), in `result.heightReference.residualRisk`, in the warnings
+and in the site set (`ResidualRiskEN/DE`): a height error of up to `entryAbove`
+relative to the terrain next to the ground-storey doors is not detectable; the
+allowance covers a model placed too high by up to `a`; a larger error goes
+undetected only if every ground-storey door really lies below the terrain next
+to it. When the reference is unconfirmed, the statement says so and gives the
+building-level band that was applied.
+
+`runFloodCheck` also refuses (`georeference-implausible`) when candidates,
+footprint and rings span more than `maxPlanExtent` (default 1,000 m): a wrong
+length unit or map scale.
 
 ### Uncertainty budget
 
@@ -309,12 +365,42 @@ than `maxPlanExtent` (default 1,000 m): a wrong length unit or map scale.
   coarser than the façade-level reading done here. The class is a range, not
   a depth, and the open-ended class has no upper bound at all.
 - **Model georeferencing**: a few centimetres for a surveyed
-  `IfcMapConversion`; decimetres to metres for an estimated one. Rotation
-  errors grow with distance from the origin. The vertical datum, when the
-  model does not state it, is assumed equal to the terrain's.
+  `IfcMapConversion`; decimetres to metres for an estimated one, and nothing
+  in the model says which. The margin assumes 0.5 m (1 sigma) unless the caller
+  states the uncertainty. Errors the terrain cannot reveal (up to `entryAbove`,
+  2.5 m, relative to the terrain next to the ground-storey doors) remain; see
+  [Height reference](#height-reference) for what the allowance covers and what
+  it does not. Rotation errors grow with distance from the origin. The
+  vertical datum, when the model does not state it, is assumed equal to the
+  terrain's.
 - **Levels**: doors and windows take the lower of their placement origin and
   the bottom of the filled opening where the opening's body is readable;
   without it, a tool that places windows at the head or centre reads high.
+
+### Options
+
+No option makes an outcome more favourable than the default, except by
+supplying information the check cannot get itself. Checked:
+
+| Option | Effect | Allowed |
+| --- | --- | --- |
+| `edgePolicy` | used to let unreadable samples count as clear | **removed** |
+| `ringDistances`, `directions`, `minOutsideDistance` | fewer or other samples can miss a class | **removed**: fixed, recorded in `parameters` |
+| `anchorTolerance` | larger: elements away from the outline become favourable | lower only (≤ 1 m) |
+| `heightPlausibility.entryAbove` | larger: a model placed too high passes as a raised entrance | lower only (≤ 2.5 m) |
+| `heightPlausibility.below/above` | wider: a refusal becomes results | wider allowed, but the height reference is then unconfirmed |
+| `clearanceMargin` | smaller: thinner margin | raise only (unchanged) |
+| `classResolution` | smaller: thinner margin | raise only (≥ 0.25 m) |
+| `georeferenceVerticalUncertainty` | smaller: thinner margin | allowed: it is the caller's statement about the model (default 0.5 m, basis recorded) |
+| `coverage`, `renderingConfirmation` (check) | add information | allowed; without them nothing is assumed beyond the default |
+| `cellSize` (run, provider) | coarser cells can drop a thin flow path | ≤ 0.5 m (half the model raster) |
+| `terrainResolution` (run) | coarser grid smooths the terrain | ≤ 0.5 m |
+| `maxPlanExtent` (run) | larger: a scale error becomes results | larger allowed, but then unconfirmed |
+| `aboveGroundScope`, `boundaryTolerance` (extract) | smaller: elements left unlisted | raise only (≥ 3 m, ≥ 1 m) |
+| `groundStorey`, `footprint`, `mapScale`, `expectedCrs` (extract) | supply or restrict information | allowed |
+| provider `style` (`maxUnexplainedShare`, `maxUnexplainedPixels`, `blendTolerance`) | turns a style-change refusal into results; unexplained pixels stay unreadable and withhold | allowed |
+| provider `maxPixels`, `timeoutMs` | can only refuse | allowed |
+| provider `fetch`, `baseUrl`, `cache`, `now` | the source of the data, recorded in provenance | allowed |
 
 ## Property sets
 
@@ -332,9 +418,13 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
   `GroundStoreyBasis`, `GroundStoreyLevel`, `HeightPlausibilityStatus`,
   `HeightPlausibilityBasis`, `TerrainMinNearBuilding`,
   `TerrainMaxNearBuilding`, `HeightPlausibilityBelow/Above`,
+  `HeightReferenceStatus`, `HeightReferenceUnconfirmedBecause`,
+  `HeightReferenceEntryTolerance`, `HeightReferenceAllowance`,
+  `HeightReferenceEntriesChecked`, `ResidualRiskEN/DE`,
   `ClearanceMargin` (absent when not sized), `ClearanceMarginBasis`,
+  `GeoreferenceVerticalUncertainty` and its `...Basis`,
   `TerrainVerticalAccuracy`, `RasterCellSize`, `RingDistances`,
-  `MinOutsideDistance`, `AnchorTolerance`, `EdgePolicy`, `RasterEmpty`,
+  `MinOutsideDistance`, `AnchorTolerance`, `RasterEmpty`,
   `LayerRenderingConfirmed` / `LayerRenderingCheck` (when a check was made),
   `Count_<Outcome>`, `CountReachableBelowGroundSpaces`.
 - **`IfcLite_SurfaceRunoffExposure`** (per element): `Outcome`,
@@ -348,7 +438,7 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
   `LevelAboveSurfaceLowerBound`, `LevelAboveSurfaceUpperBound`,
   `ClearanceMargin`, `DrivingSample`, `SamplesCompared`,
   `SamplesOutsideFootprint`, `SamplesUnreadable`, `AnchorOffset`,
-  `FavourableWithheldBecause`, `Notes`, `Dataset`, `DatasetDate`,
+  `FavourableWithheldBecause`, `ResidualRiskEN/DE`, `Notes`, `Dataset`, `DatasetDate`,
   `RetrievedAt`, `Attribution`, `SitePropertySet`. A payload read on its own
   therefore still carries the caveat, the source and the dataset date.
 

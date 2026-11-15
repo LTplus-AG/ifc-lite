@@ -12,7 +12,7 @@ import {
 } from '../src/bafu/dataset.js';
 import { checkFloodExposure } from '../src/check/check.js';
 import { checkBBox, runFloodCheck } from '../src/check/run.js';
-import { planSamples, resolveSampling, terrainSamplerFromGrid } from '../src/check/sampling.js';
+import { outlineTerrainPoints, planSamples, pointKey, resolveSampling, terrainSamplerFromGrid } from '../src/check/sampling.js';
 import { ELEMENT_PSET, SITE_PSET, toPropertySets } from '../src/psets.js';
 import type { HazardProvider, MapPoint, TerrainSource } from '../src/types.js';
 import { boxFacts, candidate, CODE, E0, flatTerrain, N0, syntheticRaster, TEST_ACCURACY } from './helpers.js';
@@ -47,7 +47,7 @@ function stubProvider(): HazardProvider & { requests: unknown[] } {
 describe('runFloodCheck', () => {
   it('fetches heights only for the distinct sample points when the terrain offers points', async () => {
     const asked: MapPoint[] = [];
-    const facts = boxFacts([door(500), candidate({ expressId: 2, position: { x: E0 + 10, y: N0 }, level: 501 })]);
+    const facts = boxFacts([door(500), candidate({ expressId: 2, position: { x: E0 + 10, y: N0 }, level: 502 })]);
     const result = await runFloodCheck(
       facts,
       stubProvider(),
@@ -56,8 +56,11 @@ describe('runFloodCheck', () => {
         return 500;
       }),
     );
-    // Both candidates share one anchor, so one set of 12 ring points.
-    expect(asked).toHaveLength(planSamples(door(500), facts.footprint, resolveSampling()).points.length);
+    // Both candidates share one anchor, so one set of 12 ring points, plus the outline samples of the height test.
+    const s = resolveSampling();
+    const distinct = new Set([...planSamples(door(500), facts.footprint, s).points.map((p) => p.point), ...outlineTerrainPoints(facts.footprint, s)].map(pointKey));
+    expect(asked).toHaveLength(distinct.size);
+    expect(new Set(asked.map(pointKey)).size).toBe(asked.length);
     expect(result.results.map((r) => r.outcome)).toEqual(['exposed', 'above-mapped-class-range']);
   });
 
@@ -93,7 +96,17 @@ describe('runFloodCheck', () => {
     await expect(refused).rejects.toMatchObject({ code: 'georeference-implausible' });
     await expect(refused).rejects.toThrow(/span 10010 m x 5010 m, more than the 1000 m.*wrong length unit or map scale/);
     expect(provider.requests).toHaveLength(0);
-    await expect(runFloodCheck(spread, provider, pointTerrain(() => 500), { maxPlanExtent: 20_000 })).resolves.toBeDefined();
+    // A raised limit yields results, but the georeference counts as unconfirmed: nothing is favourable.
+    const large = await runFloodCheck(spread, provider, pointTerrain(() => 500), { maxPlanExtent: 20_000 });
+    expect(large.heightReference.status).toBe('unconfirmed');
+    expect(large.heightReference.unconfirmedBecause.join()).toMatch(/accepted only by a raised maxPlanExtent/);
+  });
+
+  // Second-round finding 4: options that would coarsen what is read are refused.
+  it('refuses a hazard cell coarser than half the model raster and a coarser terrain grid', async () => {
+    const facts = boxFacts([door(500)]);
+    await expect(runFloodCheck(facts, stubProvider(), pointTerrain(() => 500), { cellSize: 2 })).rejects.toThrow(/at most 0\.5 m/);
+    await expect(runFloodCheck(facts, stubProvider(), pointTerrain(() => 500), { terrainResolution: 2 })).rejects.toThrow(/terrainResolution/);
   });
 
   it('refuses an implausible ground storey even when the terrain comes as points', async () => {
@@ -197,7 +210,9 @@ describe('property-set payloads', () => {
 
   // Review finding 3: an element set read on its own must carry the caveat, the source and the dataset date.
   it('gives every element payload the meaning, the caveat, attribution, dataset date and the site set', () => {
-    const result = checkFloodExposure(boxFacts([door(503)]), southRaster(CODE['depth-0-0.1']), flatTerrain(500));
+    const atGrade = candidate({ expressId: 99, position: { x: E0 + 10, y: N0 + 10 }, level: 500 });
+    const window = candidate({ category: 'window', ifcClass: 'IfcWindow', storeyId: 11, position: { x: E0 + 10, y: N0 }, level: 503 });
+    const result = checkFloodExposure(boxFacts([window, atGrade]), southRaster(CODE['depth-0-0.1']), flatTerrain(500));
     const set = toPropertySets(result, BAFU_CLASSES).elements[0].propertySet;
     const props = Object.fromEntries(set.Properties.map((p) => [p.Name, p.NominalValue]));
     expect(props.Outcome).toBe('above-mapped-class-range');
@@ -207,6 +222,12 @@ describe('property-set payloads', () => {
     expect(props.Attribution).toBe('test attribution');
     expect(props.DatasetDate).toBe('2018-05-22');
     expect(props.SitePropertySet).toBe(SITE_PSET);
+    expect(props.ResidualRiskEN).toMatch(/cannot be verified from the hazard map.*up to 2\.5 m.*0\.00 m more clearance/);
+    expect(props.ResidualRiskDE).toMatch(/aus der Gefährdungskarte nicht prüfen/);
+    const site = Object.fromEntries(toPropertySets(result, BAFU_CLASSES).site.Properties.map((p) => [p.Name, p.NominalValue]));
+    expect(site.ResidualRiskEN).toBe(props.ResidualRiskEN);
+    expect(site).toMatchObject({ HeightReferenceStatus: 'confirmed', HeightReferenceAllowance: 0, HeightReferenceEntryTolerance: 2.5 });
+    expect(site.EdgePolicy).toBeUndefined();
     expect(props.DrivingSample).toMatch(/^E 2600\d+\.\d\d, N 1199\d+\.\d\d \(EPSG:2056\)$/);
     expect(Object.values(props)).not.toContain('clear');
   });

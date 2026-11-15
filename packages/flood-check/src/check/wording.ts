@@ -45,8 +45,12 @@ export const OUTCOME_MEANING: Readonly<Record<Outcome, LocalizedText>> = {
       'gemäss Herausgeber können als nicht betroffen dargestellte Flächen dennoch betroffen sein.',
   },
   unclassified: {
-    en: 'The map or the terrain could not be read next to the element; nothing is established.',
-    de: 'Karte oder Gelände konnten neben dem Element nicht gelesen werden; es ist nichts festgestellt.',
+    en:
+      'Nothing is established for the element: the map or the terrain could not be read next to it, or a condition named in the ' +
+      'reason (for example an unconfirmed height reference) withholds what the map shows there.',
+    de:
+      'Für das Element ist nichts festgestellt: Karte oder Gelände konnten daneben nicht gelesen werden, oder eine im Grund genannte ' +
+      'Bedingung (zum Beispiel ein nicht bestätigter Höhenbezug) hält zurück, was die Karte dort zeigt.',
   },
 };
 

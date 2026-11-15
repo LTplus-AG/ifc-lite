@@ -8,9 +8,17 @@
  * `run.ts` does the fetching and then calls this.
  *
  * Order: refuse on CRS / vertical CRS mismatch; plan the ground samples of
- * every candidate and read the terrain at all of them; refuse when the ground
- * storey is implausible against that terrain (`plausibility.ts`); size the
- * clearance margin (`margin.ts`); evaluate each candidate (`evaluate.ts`).
+ * every candidate and read the terrain at all of them and along the whole
+ * footprint outline; refuse when the ground storey is implausible against that
+ * terrain, and confirm the height reference against the ground-storey doors
+ * (`plausibility.ts`); size the clearance margin (`margin.ts`); evaluate each
+ * candidate (`evaluate.ts`).
+ *
+ * No option makes an outcome more favourable than the default, except by
+ * supplying information (a stated terrain accuracy, a stated georeferencing
+ * uncertainty, a real footprint, a rendering confirmation): tolerances can
+ * only be tightened, and widening a refusal band yields results but no
+ * favourable outcome.
  */
 
 import { FloodCheckRefusal } from '../errors.js';
@@ -30,26 +38,27 @@ import {
 import { evaluateCandidate, type DrivingSample, type SampleCounts } from './evaluate.js';
 import { deriveClearanceMargin, type MarginBasis, type MarginOptions } from './margin.js';
 import type { LevelComparison, Outcome, UnclassifiedReason } from './outcome.js';
-import { assessHeightReference, type HeightPlausibility, type PlausibilityOptions } from './plausibility.js';
-import { planSamples, pointKey, resolveSampling, type ResolvedSampling, type SamplingOptions } from './sampling.js';
+import {
+  assessHeightReference,
+  confirmEntries,
+  type HeightPlausibility,
+  type HeightReference,
+  type PlausibilityOptions,
+} from './plausibility.js';
+import { outlineTerrainPoints, planSamples, pointKey, resolveSampling, type ResolvedSampling } from './sampling.js';
 import { OUTCOME_MEANING, screeningCaveat } from './wording.js';
 
 export type { DrivingSample, SampleCounts } from './evaluate.js';
 
-export interface CheckOptions extends SamplingOptions, MarginOptions {
-  /**
-   * When some ground samples are unreadable edge pixels next to a class, a
-   * deeper class may hide there. `'cannot-clear'` (default) withholds the
-   * favourable outcome in that case; `'note'` only records it.
-   */
-  edgePolicy?: 'cannot-clear' | 'note';
+export interface CheckOptions extends MarginOptions {
   /**
    * An element whose position lies further than this inside the footprint
    * outline (metres) is anchored on the outline, but the ground there may not
-   * be the ground in front of it: no favourable outcome. Default 1.0.
+   * be the ground in front of it: no favourable outcome. Default 1.0; may
+   * only be lowered.
    */
   anchorTolerance?: number;
-  /** The band the ground storey must lie in around the sampled terrain; see `plausibility.ts`. */
+  /** The band the ground storey must lie in, and the entry tolerance; see `plausibility.ts`. */
   heightPlausibility?: PlausibilityOptions;
   /** The provider's coverage perimeter; samples outside it are no data. Without it every sample on the raster counts as covered. */
   coverage?: CoverageTest;
@@ -87,8 +96,14 @@ export interface CandidateResult {
   /** Metres the anchor was moved from the element's position to reach the outline. */
   anchorOffset: number;
   samples: SampleCounts;
-  /** Why the favourable outcome was not given, when the outcome is `within-class-range` for one of these reasons. */
+  /**
+   * Why a favourable outcome was not given: set when the outcome is
+   * `within-class-range` instead of `above-mapped-class-range`, or
+   * `unclassified` instead of `no-runoff-mapped`.
+   */
   favourableWithheldBecause: string[];
+  /** What this run cannot detect about the model's height reference, with its numbers (same for every element). */
+  residualRisk: LocalizedText;
   notes: string[];
 }
 
@@ -121,12 +136,13 @@ export interface FloodCheckResult {
   };
   parameters: ResolvedSampling & {
     clearanceMargin: number | null;
-    edgePolicy: 'cannot-clear' | 'note';
     anchorTolerance: number;
     rasterCellSize: number;
   };
   margin: MarginBasis;
   heightPlausibility: HeightPlausibility;
+  /** The entry-level check of the height reference and the residual risk it leaves. */
+  heightReference: HeightReference;
   layerCheck: LayerCheck;
   footprintSource: ModelFacts['footprint']['source'];
   groundStorey: ModelFacts['groundStorey'];
@@ -206,26 +222,57 @@ export function checkFloodExposure(
   terrain: TerrainSampler,
   options: CheckOptions = {},
 ): FloodCheckResult {
-  assertCompatible(facts, raster.crs, terrain);
-  const s = resolveSampling(options);
-  const edgePolicy = options.edgePolicy ?? 'cannot-clear';
-  const anchorTolerance = options.anchorTolerance ?? 1;
+  return checkWith(facts, raster, terrain, options, []);
+}
 
-  // Terrain at every ring point of every candidate: the plausibility test needs all of it.
+export const DEFAULT_ANCHOR_TOLERANCE = 1;
+
+/**
+ * {@link checkFloodExposure} plus building-level reasons, found while
+ * fetching, that make the reference unconfirmed (used by `run.ts`).
+ */
+export function checkWith(
+  facts: ModelFacts,
+  raster: ClassifiedHazardRaster,
+  terrain: TerrainSampler,
+  options: CheckOptions,
+  unconfirmedBecause: readonly string[],
+): FloodCheckResult {
+  assertCompatible(facts, raster.crs, terrain);
+  const s = resolveSampling();
+  const anchorTolerance = options.anchorTolerance ?? DEFAULT_ANCHOR_TOLERANCE;
+  if (!(anchorTolerance >= 0) || anchorTolerance > DEFAULT_ANCHOR_TOLERANCE) {
+    throw new RangeError(
+      `anchorTolerance may only be lowered (0 to ${DEFAULT_ANCHOR_TOLERANCE} m), got ${anchorTolerance}: ` +
+        'a larger value would report elements away from the outline as favourable on ground that may not be in front of them',
+    );
+  }
+
+  // Terrain at every ring point of every candidate and along the whole outline: the height tests need all of it.
   const plans = facts.candidates.map((c) => planSamples(c, facts.footprint, s));
   const heights = new Map<string, number | null>();
-  const seen: number[] = [];
-  for (const plan of plans) {
-    for (const { point } of plan.points) {
-      const key = pointKey(point);
-      if (heights.has(key)) continue;
-      const h = terrain.heightAt(point);
-      const v = h !== null && Number.isFinite(h) ? h : null;
-      heights.set(key, v);
-      if (v !== null) seen.push(v);
-    }
-  }
+  const seen: Array<{ point: MapPoint; height: number }> = [];
+  const read = (point: MapPoint) => {
+    const key = pointKey(point);
+    if (heights.has(key)) return;
+    const h = terrain.heightAt(point);
+    const v = h !== null && Number.isFinite(h) ? h : null;
+    heights.set(key, v);
+    if (v !== null) seen.push({ point, height: v });
+  };
+  for (const plan of plans) for (const { point } of plan.points) read(point);
+  for (const point of outlineTerrainPoints(facts.footprint, s)) read(point);
   const heightPlausibility = assessHeightReference(facts.groundStorey.level, seen, options.heightPlausibility);
+  const heightAt = (p: MapPoint) => heights.get(pointKey(p)) ?? null;
+  const hull = facts.footprint.source === 'external-wall-hull' || facts.footprint.source === 'candidate-hull';
+  const heightReference = confirmEntries(
+    facts,
+    (i) => plans[i].points.map(({ point }) => heightAt(point)).filter((h): h is number => h !== null),
+    (c, i) => !c.levelIsUpperEstimate && plans[i].anchorOffset <= anchorTolerance && !hull,
+    heightPlausibility,
+    options.heightPlausibility,
+    unconfirmedBecause,
+  );
   const margin = deriveClearanceMargin(terrain.verticalAccuracy, options);
   const rasterEmpty = rasterIsEmpty(raster);
   const confirmation = options.renderingConfirmation ?? null;
@@ -235,10 +282,10 @@ export function checkFloodExposure(
     const plan = plans[i];
     const e = evaluateCandidate(candidate, plan, {
       raster,
-      heightAt: (p) => heights.get(pointKey(p)) ?? null,
+      heightAt,
       covers: options.coverage,
       margin: margin.margin,
-      edgePolicy,
+      allowance: heightReference.allowance,
       anchorTolerance,
       footprintSource: facts.footprint.source,
       emptyRasterUnconfirmed: rasterEmpty && confirmation?.confirmed !== true,
@@ -261,6 +308,7 @@ export function checkFloodExposure(
       anchorOffset: plan.anchorOffset,
       samples: e.samples,
       favourableWithheldBecause: e.favourableWithheldBecause,
+      residualRisk: heightReference.residualRisk,
       notes: e.notes,
     };
   });
@@ -287,6 +335,18 @@ export function checkFloodExposure(
   if (heightPlausibility.status === 'not-checked-no-terrain') {
     warnings.push('No terrain height was available next to the building, so the model height reference could not be checked.');
   }
+  if (heightReference.status === 'unconfirmed') {
+    warnings.push(
+      `Height reference unconfirmed (${heightReference.unconfirmedBecause.join('; ')}): no element is reported above the mapped class range or as no runoff mapped.`,
+    );
+  }
+  warnings.push(heightReference.residualRisk.en);
+  if (margin.georeferenceBasis === 'default-not-surveyed') {
+    warnings.push(
+      `The model's height reference is not stated to be surveyed, so the margin assumes ${margin.georeferenceVerticalUncertainty} m (1 sigma) for it; ` +
+        'pass georeferenceVerticalUncertainty when it is known.',
+    );
+  }
   if (margin.margin === null) warnings.push(`Clearance margin ${margin.statement}.`);
   if (rasterEmpty) {
     warnings.push(
@@ -307,9 +367,10 @@ export function checkFloodExposure(
       terrainCrs,
       basis: stated ? 'stated-and-equal' : 'not-stated-assumed-equal',
     },
-    parameters: { ...s, clearanceMargin: margin.margin, edgePolicy, anchorTolerance, rasterCellSize: raster.cellSize },
+    parameters: { ...s, clearanceMargin: margin.margin, anchorTolerance, rasterCellSize: raster.cellSize },
     margin,
     heightPlausibility,
+    heightReference,
     layerCheck: { rasterEmpty, confirmation },
     footprintSource: facts.footprint.source,
     groundStorey: facts.groundStorey,

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/lib/processed-model.ts",
+  "mutation": "tests/evidence/10142-host-request-wins/behaviour.oracle.patch",
+  "test": "apps/viewer/src/hooks/useIfcLoader.processedModel.test.tsx",
+  "why": "Reverse application keeps every export the tests import but never records a host request, so ?processed= and ?model= in the page URL load over the host's model and the host-wins cases go red."
+}

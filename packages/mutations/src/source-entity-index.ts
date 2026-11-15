@@ -31,3 +31,15 @@ export function sourceEntityRef(store: MutationStoreShape, expressId: number): M
   // @raw-entity-enumeration-ok same primitive as storeHasSourceEntity, returning the record instead of a boolean
   return store.entityIndex.byId.get(expressId) ?? store.deferredEntityIndex?.get(expressId);
 }
+
+/** A bounded source record, with offsets rebased to those returned bytes. */
+export function sourceEntityData(store: MutationStoreShape, expressId: number): { source: Uint8Array; ref: MutationEntityRef } | null {
+  const source = store.source, ref = sourceEntityRef(store, expressId);
+  if (!source || !ref || ref.byteOffset < 0 || ref.byteLength <= 0
+    || ref.byteOffset + ref.byteLength > source.byteLength) return null;
+  const bytes = source.slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
+  return bytes.byteLength === ref.byteLength ? { source: bytes, ref: {
+    expressId: ref.expressId, type: ref.type, byteOffset: 0,
+    byteLength: ref.byteLength, lineNumber: ref.lineNumber,
+  } } : null;
+}

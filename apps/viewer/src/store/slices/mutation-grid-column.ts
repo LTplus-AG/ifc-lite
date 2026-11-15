@@ -8,6 +8,7 @@ import {
   addColumnOnGridToStore, applyNewElementTop, resolveSpatialAnchor, type TopConstraint,
   type ColumnInStoreParams, type ProfiledColumnInStoreParams, type GridColumnBinding,
 } from '@ifc-lite/create';
+import { readAttachedTop } from '../../../../../packages/create/src/in-store/storey/storey-attached.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
 import { mutationDenial } from '../mutation-permission.js';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from './mutation-modelling-records.js';
@@ -30,13 +31,15 @@ export function addGridColumnIn(
     const build = recordModellingEdit(store, modelId, (_methods, draft) => {
       const column = addColumnOnGridToStore(draft, target.dataStore, resolveSpatialAnchor(target.dataStore, storeyId, draft.getMutationView()), params, binding);
       if (top !== undefined) applyNewElementTop(target.dataStore, draft, column.columnId, top, storeyId);
-      return column;
+      const height = readAttachedTop({ dataStore: target.dataStore, view: draft.getMutationView(), editor: draft }, column.columnId, 'column');
+      if (height === null) throw new Error('The grid column height cannot be read after fitting its top');
+      return { ...column, height };
     });
     if (target.dataStore.spatialHierarchy) {
       const name = target.view.getNewEntity(build.columnId)?.attributes[2];
       registerAuthoredElement(target.dataStore.spatialHierarchy, storeyId, build.columnId, 'IFCCOLUMN', typeof name === 'string' ? name : '');
     }
-    completeAuthoredGeometry(store.getState, modelId, target.dataStore, storeyId, build.columnId, { kind: 'column', params });
+    completeAuthoredGeometry(store.getState, modelId, target.dataStore, storeyId, build.columnId, { kind: 'column', params: { ...params, Height: build.height } });
     return { expressId: build.columnId };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };

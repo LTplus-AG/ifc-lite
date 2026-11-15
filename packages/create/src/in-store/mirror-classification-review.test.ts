@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { newStorey, exportText, parse } from './wall-join-mesh.oracle.js';
@@ -34,11 +34,19 @@ for (const copy of [false, true]) it(`#9409 refuses grid mirroring atomically (c
   const grid = addGridToStore(s.editor, s.anchor, { Position: [3, 0, 0],
     ...rectangularGridAxes({ UOffsets: [2, 5], VOffsets: [0, 4] }),
   });
-  const before = exportText(s), next = s.view.peekNextExpressId(), journal = s.view.getMutations();
-  expect(() => mirrorElementsInStore(s.store, s.editor, [grid.gridId], { axis: [[0, 0], [0, 10]], copy })).toThrow(/mirror.*grids/i);
-  expect(exportText(s)).toBe(before);
-  expect(s.view.getMutations()).toEqual(journal);
-  expect(s.view.peekNextExpressId()).toBe(next);
+  // #9352: cross a clock second so the atomicity oracle cannot depend on test speed.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    vi.setSystemTime(new Date('2026-11-15T12:00:00Z'));
+    const before = exportText(s), next = s.view.peekNextExpressId(), journal = s.view.getMutations();
+    expect(() => mirrorElementsInStore(s.store, s.editor, [grid.gridId], { axis: [[0, 0], [0, 10]], copy })).toThrow(/mirror.*grids/i);
+    vi.setSystemTime(new Date('2026-11-15T12:00:02Z'));
+    expect(exportText(s)).toBe(before);
+    expect(s.view.getMutations()).toEqual(journal);
+    expect(s.view.peekNextExpressId()).toBe(next);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 for (const schema of ['IFC2X3', 'IFC4'] as const) it(`#9409 mirrors door ${schema === 'IFC2X3' ? 'styles' : 'types'} without changing unselected users (${schema})`, async () => {

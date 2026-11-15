@@ -4,11 +4,14 @@
 
 //! Same-bucket contour context for guarded collinear simplification.
 use nalgebra::Point2;
-use super::{ring_is_noise,simplify_with_guard,topology,weld_near_coincident_2d};
+use super::{ring_is_noise,simplify_with_guard,topology,weld_near_coincident_2d_tracked,Welded};
 type Ring=Vec<Point2<f64>>;
 pub(in crate::csg::consolidate) struct CleanShape {
     pub outer:Ring,
     pub holes:Vec<Ring>,
+    /// What the weld merged away from `outer` and from each of `holes`.
+    pub outer_welded:Vec<Welded>,
+    pub holes_welded:Vec<Vec<Welded>>,
 }
 
 /// The pure existing weld is evaluated first for all contour context. The old
@@ -17,11 +20,11 @@ pub(in crate::csg::consolidate) struct CleanShape {
 pub(in crate::csg::consolidate) fn clean_shapes(
     shapes:&[Vec<Vec<[f64;2]>>],area:f64,scale:f64,
 )->Vec<CleanShape> {
-    let mut rings=Vec::new();let mut indices=Vec::new();
+    let mut rings=Vec::new();let mut indices=Vec::new();let mut merged=Vec::new();
     for shape in shapes {
         indices.push(shape.iter().map(|r|{
             let id=rings.len();let p:Vec<_>=r.iter().map(|p|Point2::new(p[0],p[1])).collect();
-            rings.push(weld_near_coincident_2d(&p));id
+            let (ring,gone)=weld_near_coincident_2d_tracked(&p);rings.push(ring);merged.push(gone);id
         }).collect::<Vec<_>>());
     }
     // Retain original source footprints while cleaning adjacent regions; earlier
@@ -48,11 +51,13 @@ pub(in crate::csg::consolidate) fn clean_shapes(
     for (ids,valid) in indices.into_iter().zip(shape_active) {
         if !valid {continue;}
         let outer_id=ids[0];let outer=std::mem::take(&mut rings[outer_id]);
-        let mut holes=Vec::new();
+        let outer_welded=std::mem::take(&mut merged[outer_id]);
+        let (mut holes,mut holes_welded)=(Vec::new(),Vec::new());
         for id in ids.into_iter().skip(1).filter(|&id|active[id]) {
             holes.push(std::mem::take(&mut rings[id]));
+            holes_welded.push(std::mem::take(&mut merged[id]));
         }
-        out.push(CleanShape{outer,holes});
+        out.push(CleanShape{outer,holes,outer_welded,holes_welded});
     }
     out
 }
@@ -61,6 +66,7 @@ impl super::super::conform::PlanRegion {
     pub(in crate::csg::consolidate) fn from_shapes(shapes:&[Vec<Vec<[f64;2]>>],area:f64,scale:f64)->Vec<Self>{
         clean_shapes(shapes,area,scale).into_iter().map(|s|Self{
             outer_conformed:s.outer.clone(),holes_conformed:s.holes.clone(),
-            outer:s.outer,holes:s.holes,changed:false,cached:None}).collect()
+            outer:s.outer,holes:s.holes,outer_welded:s.outer_welded,holes_welded:s.holes_welded,
+            changed:false,cached:None}).collect()
     }
 }

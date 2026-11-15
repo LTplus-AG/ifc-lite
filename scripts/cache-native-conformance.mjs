@@ -1,0 +1,309 @@
+#!/usr/bin/env node
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+/**
+ * Cross-language conformance of the native `.ifclite` writer (`rust/cache`,
+ * #9584) against `@ifc-lite/cache`, the format's TypeScript reader and writer.
+ *
+ * Per fixture, the Rust writer builds the cache (`--example
+ * conformance_writer`) and this script asserts the four agreed properties:
+ *
+ *  1. Self-reproducible: the native bytes are identical under
+ *     RAYON_NUM_THREADS=1 and the default pool.
+ *  2. Scalar sections: the TS writer, handed the SAME model (the one the
+ *     native cache encodes, as the TS reader decodes it), emits the header
+ *     and Strings / Entities / Properties / Quantities / Relationships /
+ *     EntityIndex byte-identical to the native writer.
+ *  3. Geometry: every directory field but the stored byteOffset/byteLength
+ *     equal, every chunk's uncompressed payload byte-identical, every decoded
+ *     mesh record equal. The deflate streams differ (miniz_oxide vs node
+ *     zlib); each side's storage is checked against the inflated payload,
+ *     and a DeflateRaw flag that differs is allowed only where both sides
+ *     followed the store-iff-strictly-smaller rule.
+ *  4. The TS reader accepts the native cache, including `read({ sourceBuffer
+ *     })` hash validation, and refuses truncated, bad-magic, wrong-version
+ *     and corrupt-chunk-length variants of it.
+ *
+ * Besides byte equality, the decoded values are checked against the TS
+ * libraries' own tables (`IfcTypeEnumFromString`, `IFC_ENTITY_NAMES`,
+ * `relationshipTypeName`) and the source spans, so a value both writers
+ * would encode identically but that is wrong still fails.
+ *
+ * Needs cargo and a built `@ifc-lite/cache` (`pnpm build`). Runs in the
+ * Build job of `.github/workflows/test.yml`.
+ */
+
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { compareDecodedModel } from './lib/cache-native-decoded.mjs';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const CACHE_DIST = join(ROOT, 'packages/cache/dist/index.js');
+const DATA_DIST = join(ROOT, 'packages/data/dist/index.js');
+
+const FIXTURES = [
+  // Committed, so the gate never runs empty.
+  { path: 'apps/viewer/public/samples/hello-wall.ifc', committed: true },
+  { path: 'apps/viewer/public/samples/building-architecture.ifc', committed: true },
+  { path: 'apps/viewer/public/samples/infra-bridge.ifc', committed: true },
+  // Catalogued: a real authoring-tool model, with chunks large enough to deflate.
+  { path: 'tests/models/ara3d/AC20-FZK-Haus.ifc', committed: false },
+];
+
+if (!existsSync(CACHE_DIST) || !existsSync(DATA_DIST)) {
+  console.error('@ifc-lite/cache or @ifc-lite/data is not built: run `pnpm build` first.');
+  process.exit(1);
+}
+const cache = await import(CACHE_DIST);
+const data = await import(DATA_DIST);
+
+const build = spawnSync('cargo', ['build', '--locked', '-p', 'ifc-lite-cache', '--example', 'conformance_writer'], {
+  cwd: ROOT,
+  stdio: 'inherit',
+});
+if (build.status !== 0) process.exit(build.status ?? 1);
+const targetDir = process.env.CARGO_TARGET_DIR || join(ROOT, 'target');
+const writerBin = join(targetDir, 'debug/examples', process.platform === 'win32' ? 'conformance_writer.exe' : 'conformance_writer');
+
+const work = mkdtempSync(join(tmpdir(), 'cache-native-'));
+let checked = 0;
+try {
+  for (const fixture of FIXTURES) {
+    const source = join(ROOT, fixture.path);
+    if (!existsSync(source)) {
+      assert.ok(!fixture.committed, `${fixture.path} is committed and must exist`);
+      console.log(`SKIP ${fixture.path}: absent; run \`pnpm fixtures\``);
+      continue;
+    }
+    await checkFixture(fixture.path, source);
+    checked++;
+  }
+} finally {
+  rmSync(work, { recursive: true, force: true });
+}
+assert.ok(checked >= 3, 'the committed fixtures always run');
+console.log(`native cache conformance: ${checked} fixture(s) passed`);
+
+function writeNative(source, threads) {
+  const out = join(work, `native-${threads ?? 'default'}.ifclite`);
+  const env = { ...process.env };
+  if (threads) env.RAYON_NUM_THREADS = String(threads);
+  else delete env.RAYON_NUM_THREADS;
+  const run = spawnSync(writerBin, [source, out], { env, encoding: 'utf8' });
+  assert.equal(run.status, 0, `conformance_writer failed: ${run.stderr}`);
+  return { bytes: readFileSync(out), stats: JSON.parse(run.stdout) };
+}
+
+function toArrayBuffer(buf) {
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+}
+
+async function checkFixture(label, sourcePath) {
+  const sourceBytes = readFileSync(sourcePath);
+  const sourceBuffer = toArrayBuffer(sourceBytes);
+
+  // 1. Byte self-reproducibility across thread counts.
+  const native = writeNative(sourcePath);
+  const single = writeNative(sourcePath, 1);
+  assert.ok(native.bytes.equals(single.bytes), `${label}: RAYON_NUM_THREADS=1 and default differ`);
+  assert.ok(native.stats.meshCount > 0, `${label}: produced meshes`);
+
+  // 4. Acceptance, with source-hash validation.
+  const nativeBuffer = toArrayBuffer(native.bytes);
+  const reader = new cache.BinaryCacheReader();
+  const header = reader.readHeader(nativeBuffer);
+  assert.equal(header.version, cache.FORMAT_VERSION);
+  assert.equal(header.hasSourceHash, true);
+  assert.equal(header.sourceHash, cache.xxhash64(sourceBuffer), `${label}: header hash is xxhash64(source)`);
+  assert.equal(reader.validate(nativeBuffer, sourceBuffer), true);
+  const decoded = await reader.read(nativeBuffer, { sourceBuffer });
+  const changed = new Uint8Array(sourceBytes);
+  changed[changed.length - 2] ^= 0xff;
+  await assert.rejects(reader.read(nativeBuffer, { sourceBuffer: toArrayBuffer(Buffer.from(changed)) }), /source file has changed/);
+  await checkRefusals(label, native.bytes);
+
+  // 2 + 3. The TS writer over the same model.
+  const entityIndex = decoded.entityIndex;
+  assert.ok(entityIndex, `${label}: EntityIndex section read back`);
+  const dataStore = {
+    ...decoded.dataStore,
+    entityIndex: { byId: borrowedColumns(entityIndex) },
+  };
+  const tsBytes = Buffer.from(await new cache.BinaryCacheWriter().write(dataStore, decoded.geometry, sourceBuffer));
+  const nativeSections = sections(native.bytes);
+  const tsSections = sections(tsBytes);
+  assert.ok(native.bytes.subarray(0, 64).equals(tsBytes.subarray(0, 64)), `${label}: 64-byte header`);
+  assert.deepEqual(tsSections.map((s) => s.type), nativeSections.map((s) => s.type), `${label}: section order`);
+  for (let i = 0; i < nativeSections.length; i++) {
+    const n = nativeSections[i];
+    const t = tsSections[i];
+    assert.equal(t.offset, n.offset, `${label}: section ${n.type} offset`);
+    if (n.type === cache.SectionType.Geometry) continue;
+    assert.ok(n.bytes.equals(t.bytes), `${label}: section ${n.type} bytes (native ${n.size}, TS ${t.size})`);
+  }
+  const geometry = nativeSections.find((s) => s.type === cache.SectionType.Geometry);
+  const tsGeometry = tsSections.find((s) => s.type === cache.SectionType.Geometry);
+  assert.ok(geometry && tsGeometry, `${label}: both caches carry geometry`);
+  assert.ok(!nativeSections.some((s) => s.type === cache.SectionType.InstancedShards), 'native writes no shards');
+  const storage = await compareGeometry(label, native.bytes, geometry, tsBytes, tsGeometry);
+
+  // Decoded values against the TS libraries' own tables.
+  compareDecodedModel(label, { decoded, sourceBytes, data });
+  console.log(`ok ${label}: ${native.stats.entityRows} rows, ${native.stats.meshCount} meshes, ` +
+    `${storage.chunks} chunks (${storage.compressed} deflated natively, ${storage.flagDiffers} with a different storage flag)`);
+}
+
+/** `CacheEntityIndex.byId` over decoded columns: the borrowed-columns path. */
+function borrowedColumns(columns) {
+  const byId = {
+    *[Symbol.iterator]() {
+      for (let i = 0; i < columns.ids.length; i++) {
+        yield [columns.ids[i], {
+          expressId: columns.ids[i],
+          type: columns.typeNames[columns.typeIndices[i]],
+          byteOffset: columns.byteOffsets[i],
+          byteLength: columns.byteLengths[i],
+        }];
+      }
+    },
+    getColumns: () => ({
+      expressIds: columns.ids,
+      byteOffsets: columns.byteOffsets,
+      byteLengths: columns.byteLengths,
+      typeIndices: columns.typeIndices,
+      typeStrings: columns.typeNames,
+    }),
+  };
+  return byId;
+}
+
+function sections(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = view.getUint16(29, true);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const at = 64 + i * 16;
+    const type = view.getUint16(at, true);
+    const offset = view.getUint32(at + 4, true);
+    const size = view.getUint32(at + 8, true);
+    out.push({ type, offset, size, bytes: bytes.subarray(offset, offset + size) });
+  }
+  return out;
+}
+
+async function compareGeometry(label, nativeBytes, native, tsBytes, ts) {
+  const head = (bytes, section) => {
+    const reader = new cache.BufferReader(toArrayBuffer(bytes));
+    reader.position = section.offset;
+    return cache.readGeometryHeadV13(reader, cache.FORMAT_VERSION);
+  };
+  const n = head(nativeBytes, native);
+  const t = head(tsBytes, ts);
+  assert.equal(t.headLength, n.headLength, `${label}: headLength`);
+  // Everything before the directory: counts, CoordinateInfo, source pool, chunkCount.
+  const directoryAt = 4 + n.headLength - n.chunks.length * 44;
+  assert.ok(native.bytes.subarray(0, directoryAt).equals(ts.bytes.subarray(0, directoryAt)), `${label}: geometry head`);
+  assert.equal(t.chunks.length, n.chunks.length, `${label}: chunk count`);
+  let compressed = 0;
+  let flagDiffers = 0;
+  for (let i = 0; i < n.chunks.length; i++) {
+    const at = directoryAt + i * 44;
+    const where = `${label}: chunk ${i}`;
+    // AABB (f32 bits), uncompressedLength, meshCount: equal as stored.
+    assert.ok(native.bytes.subarray(at, at + 24).equals(ts.bytes.subarray(at, at + 24)), `${where} AABB`);
+    assert.equal(t.chunks[i].uncompressedLength, n.chunks[i].uncompressedLength, `${where} uncompressedLength`);
+    assert.equal(t.chunks[i].meshCount, n.chunks[i].meshCount, `${where} meshCount`);
+    const payloadN = await payload(native.bytes, n.chunks[i], where + ' (native)');
+    const payloadT = await payload(ts.bytes, t.chunks[i], where + ' (TS)');
+    assert.ok(payloadN.equals(payloadT), `${where}: uncompressed payload differs from byte ${firstDifference(payloadN, payloadT)}`);
+    if (n.chunks[i].flags & cache.GeometryChunkFlags.DeflateRaw) compressed++;
+    if (n.chunks[i].flags !== t.chunks[i].flags) flagDiffers++;
+    // A standalone copy: `Buffer#slice` is a view, which the decoder would read past.
+    const meshesN = await cache.decodeGeometryChunk(new Uint8Array(stored(native.bytes, n.chunks[i])), n.chunks[i], cache.FORMAT_VERSION);
+    const meshesT = await cache.decodeGeometryChunk(new Uint8Array(stored(ts.bytes, t.chunks[i])), t.chunks[i], cache.FORMAT_VERSION);
+    assert.deepEqual(meshRecords(meshesN), meshRecords(meshesT), `${where}: decoded mesh records`);
+  }
+  return { chunks: n.chunks.length, compressed, flagDiffers };
+}
+
+function stored(sectionBytes, info) {
+  return sectionBytes.subarray(info.byteOffset, info.byteOffset + info.byteLength);
+}
+
+/**
+ * The uncompressed chunk record, after checking the storage representation
+ * against it: raw storage is the payload itself; deflated storage inflates to
+ * exactly `uncompressedLength` bytes, is strictly smaller, and was only
+ * chosen above the 64 KiB floor.
+ */
+async function payload(sectionBytes, info, where) {
+  const bytes = Buffer.from(stored(sectionBytes, info));
+  if (!(info.flags & cache.GeometryChunkFlags.DeflateRaw)) {
+    assert.equal(info.flags, 0, `${where}: unknown chunk flags`);
+    assert.equal(bytes.length, info.uncompressedLength, `${where}: raw chunk stores its payload`);
+    return bytes;
+  }
+  assert.ok(bytes.length < info.uncompressedLength, `${where}: deflate kept only when strictly smaller`);
+  assert.ok(info.uncompressedLength >= cache.GEOMETRY_CHUNK_COMPRESS_MIN_BYTES, `${where}: deflate only above the floor`);
+  const inflated = Buffer.from(await cache.inflateRaw(bytes));
+  assert.equal(inflated.length, info.uncompressedLength, `${where}: inflates to uncompressedLength`);
+  return inflated;
+}
+
+/** Every mesh field as exact bits, so a NaN or -0 cannot compare loosely. */
+function meshRecords(meshes) {
+  const bits = (array) => (array ? Array.from(new Uint32Array(Float32Array.from(array).buffer)) : undefined);
+  const bits64 = (array) => (array ? Array.from(array, (v) => Buffer.from(new Float64Array([v]).buffer).toString('hex')) : undefined);
+  return meshes.map((m) => ({
+    expressId: m.expressId,
+    ifcType: m.ifcType,
+    geometryClass: m.geometryClass,
+    geometryItemId: m.geometryItemId,
+    materialId: m.materialId,
+    color: bits(m.color),
+    origin: bits64(m.origin),
+    positions: bits(m.positions),
+    normals: bits(m.normals),
+    indices: Array.from(m.indices),
+    material: m.material,
+    shadingColor: bits(m.shadingColor),
+    localBounds: m.localBounds && [bits(m.localBounds.min), bits(m.localBounds.max)],
+    localToWorld: bits64(m.localToWorld),
+    appearanceSource: m.appearanceSource,
+  }));
+}
+
+/** Truncated, bad magic, a newer version and a corrupt chunk length all refuse. */
+async function checkRefusals(label, bytes) {
+  const reader = new cache.BinaryCacheReader();
+  const variant = (mutate) => {
+    const copy = Buffer.from(bytes);
+    return toArrayBuffer(mutate(copy) ?? copy);
+  };
+  await assert.rejects(reader.read(variant((b) => b.subarray(0, Math.floor(b.length / 2)))), Error, `${label}: truncated`);
+  await assert.rejects(reader.read(variant((b) => { b.writeUInt32LE(0x46494c43, 0); })), /Invalid magic/, `${label}: bad magic`);
+  await assert.rejects(reader.read(variant((b) => { b.writeUInt16LE(cache.FORMAT_VERSION + 1, 4); })), /Unsupported format version/, `${label}: version`);
+  // Chunk 0's byteLength sits 28 bytes into its 44-byte directory entry; the
+  // directory ends where the head does, so count back from there.
+  const geometry = sections(bytes).find((s) => s.type === cache.SectionType.Geometry);
+  const headReader = new cache.BufferReader(toArrayBuffer(bytes));
+  headReader.position = geometry.offset;
+  const head = cache.readGeometryHeadV13(headReader, cache.FORMAT_VERSION);
+  const firstEntry = geometry.offset + 4 + head.headLength - head.chunks.length * 44;
+  await assert.rejects(
+    reader.read(variant((b) => { b.writeUInt32LE(b.readUInt32LE(firstEntry + 28) + 1, firstEntry + 28); })),
+    /Invalid cache/,
+    `${label}: corrupt chunk length`,
+  );
+}
+
+function firstDifference(a, b) {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) if (a[i] !== b[i]) return `${i} (native ${a[i]}, TS ${b[i]})`;
+  return `${n} (lengths ${a.length} vs ${b.length})`;
+}

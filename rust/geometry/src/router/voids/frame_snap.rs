@@ -142,9 +142,9 @@ pub(super) fn snap_to_frame_planes(host: &mut Mesh, openings: &mut [CutterKind],
     }
 }
 
-/// Whether an opening only touches the host: on some frame axis its bounds
-/// enter the host's by no more than `tol`, or stop short of them by no more
-/// than that. `tol` is [`frame_snap_tolerance`], so such an opening is one
+/// Whether an opening only touches the host: on the frame axis where its
+/// bounds overlap the host's least, they enter the host's by no more than
+/// `tol`, or stop short of them by no more than that. `tol` is [`frame_snap_tolerance`], so such an opening is one
 /// whose face the author put ON a host face and f32 world storage moved off
 /// it. Cut as stored it shaves the host or chips its corners; the snap puts
 /// the two faces back on one plane and the opening then cuts nothing.

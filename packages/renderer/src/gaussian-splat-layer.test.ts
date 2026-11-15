@@ -123,6 +123,10 @@ const add = (layer: GaussianSplatLayer, count = 4, matrix = IDENTITY, extra: { s
   layer.add({ attributes: attributes(count), placement: { matrix }, modelIndex: extra.modelIndex ?? 0 }, { ...OPT_IN, signal: extra.signal });
 const code = (expected: string) => (error: unknown) => error instanceof GaussianSplatError && error.code === expected;
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 0)); };
+/** Turn the event loop until `done` holds; a re-placement streams its rows over many turns (#9018). */
+const until = async (done: () => boolean, turns = 2_000) => {
+  for (let i = 0; i < turns && !done(); i++) await new Promise((resolve) => setTimeout(resolve, 0));
+};
 
 test('#8564 add needs the explicit internal opt-in and never makes readiness ready', async () => {
   const { layer } = harness();
@@ -381,7 +385,7 @@ test('#8564 a model translation during an in-flight add is applied after commit'
   h.translations.set(3, [0, 0, 7]);
   h.layer.setModelTranslation(3);
   const handle = await pending;
-  await settle();
+  await until(() => Math.abs(h.layer.getBounds(handle)!.min[2] - 5) < 1e-6);
   assert.ok(Math.abs(h.layer.getBounds(handle)!.min[2] - 5) < 1e-6, 'z = -2 + 7');
 });
 

@@ -22,8 +22,12 @@ import type { GaussianSplatBounds } from './gaussian-types.js';
 export const MAX_GAUSSIAN_ANCHOR_EXTENT_METRES = 8_192;
 /** Rows past this are rejected before allocation; GPU binding limits usually bind first. */
 export const MAX_GAUSSIAN_PACKED_ROWS = 1 << 24;
-/** Staging rows per GPU write; even, so float16x2 coefficient words never straddle two writes. */
-export const STAGING_ROWS = 32_768;
+/**
+ * Staging rows per GPU write; even, so float16x2 coefficient words never straddle two writes.
+ * Small on purpose: the staging set is garbage after each repack, and the retained-memory
+ * budget is sampled before the browser collects it (#9018).
+ */
+export const STAGING_ROWS = 8_192;
 /** Largest |coefficient| a float16 holds (65504), divided by the worst band-rotation growth, sqrt(7). */
 const MAX_HALF_SH_SOURCE = 65_504 / Math.sqrt(7);
 

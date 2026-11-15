@@ -14,8 +14,8 @@ export type GaussianDecodeRequest =
   | { type: 'open'; file: File; summary?: GaussianCaptureSummary }
   | { type: 'rows'; start: number; count: number; recycle?: Record<string, Float32Array> };
 
-/** Rows per `rows` request, and the worker's decode window. */
-export const GAUSSIAN_STREAM_ROWS = 32_768;
+/** Rows per `rows` request, and the worker's decode window (one window is normalized on the main thread at a time). */
+export const GAUSSIAN_STREAM_ROWS = 16_384;
 
 export interface GaussianCaptureSummary extends Pick<GaussianDecoded, 'count' | 'shDegree' | 'centerBounds' | 'decodeOrigin'> {
   /** Highest SH band holding a non-zero coefficient. */

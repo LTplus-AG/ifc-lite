@@ -23,7 +23,8 @@
 
 import { FloodCheckRefusal } from '../errors.js';
 import { normalizeCrs, sameCrs, verticalCrsIdentifier } from '../crs.js';
-import { fillsCourtyards, type BuildingScope, type CandidateFact, type ModelFacts, type SpaceFact } from '../model/facts.js';
+import { fillsCourtyards, type BuildingScope, type CandidateFact, type ModelFacts } from '../model/facts.js';
+import { reachableSpaces, type ReachableSpace } from './reachable.js';
 import {
   type ClassifiedHazardRaster,
   type CoverageTest,
@@ -109,11 +110,7 @@ export interface CandidateResult {
   notes: string[];
 }
 
-export interface ReachableSpace {
-  space: SpaceFact;
-  /** Exposed candidates above it whose water can reach it. Flagged, not sized. */
-  via: number[];
-}
+export type { ReachableSpace } from './reachable.js';
 
 export interface LayerCheck {
   /** No cell of the raster carries a mapped class (every cell is transparent or an unreadable edge pixel). */
@@ -193,26 +190,6 @@ export function assertCompatible(facts: ModelFacts, rasterCrs: string, terrain: 
   }
 }
 
-/** Categories through which water can enter; equipment is damaged by water but is not a way in. */
-const ENTRY_CATEGORIES: ReadonlySet<string> = new Set([
-  'door', 'window', 'basement-window', 'wall-opening', 'slab-opening', 'light-well', 'stair', 'ramp',
-]);
-
-function reachableSpaces(facts: ModelFacts, results: readonly CandidateResult[]): ReachableSpace[] {
-  const out = new Map<number, ReachableSpace>();
-  for (const r of results) {
-    if (r.outcome !== 'exposed' || r.terrainHeight === null || !ENTRY_CATEGORIES.has(r.candidate.category)) continue;
-    const below = Math.min(r.candidate.level, r.terrainHeight);
-    for (const space of facts.spaces) {
-      if (space.floorLevel >= below) continue;
-      const entry = out.get(space.expressId) ?? { space, via: [] };
-      entry.via.push(r.candidate.expressId);
-      out.set(space.expressId, entry);
-    }
-  }
-  return [...out.values()].sort((a, b) => a.space.floorLevel - b.space.floorLevel);
-}
-
 export { rasterShowsNoClass } from './layer.js';
 
 /**
@@ -242,6 +219,10 @@ export function checkWith(
   unconfirmedBecause: readonly string[],
 ): FloodCheckResult {
   assertCompatible(facts, raster.crs, terrain);
+  // Every covered element extraction walked is a candidate or skipped; fewer candidates now means one went missing.
+  if (facts.coverage && facts.coverage.walked !== facts.candidates.length + facts.coverage.skipped) {
+    throw new Error(`candidate selection walked ${facts.coverage.walked} elements; ${facts.candidates.length} candidates + ${facts.coverage.skipped} skipped do not add up`);
+  }
   // A level that is not a finite height compares true or false by accident; refuse before any of it can read as evidence.
   const unusable = facts.candidates.find((c) => !Number.isFinite(c.level));
   if (unusable) {
@@ -393,7 +374,7 @@ export function checkWith(
     buildingScope: facts.buildingScope ?? { checked: null, notChecked: [] },
     caveat,
     results,
-    reachableBelowGround: reachableSpaces(facts, results),
+    reachableBelowGround: reachableSpaces(facts.spaces, results),
     summary,
     warnings,
   };

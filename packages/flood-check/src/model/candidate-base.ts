@@ -4,8 +4,8 @@
 
 /**
  * Shared reading for candidate selection (`candidates.ts`): placements,
- * opening bodies, façade tests and levels. None of these records a skip; the
- * collectors decide, so every element is recorded exactly once.
+ * opening bodies, façade tests and levels. None of these records a skip: the
+ * rules in `candidate-rules.ts` return one verdict per element.
  */
 
 import { RelationshipType } from '@ifc-lite/data';
@@ -44,7 +44,6 @@ export interface CandidateContext {
   footprint: readonly (readonly MapPoint[])[];
   aboveGroundScope: number;
   boundaryTolerance: number;
-  skip(id: number, ifcClass: string, reason: string): void;
 }
 
 export const NO_PLACEMENT = 'no readable IfcLocalPlacement chain';

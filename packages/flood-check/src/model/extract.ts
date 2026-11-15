@@ -14,7 +14,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
 import { chainIntoRing, convexHull, ringArea } from '../geom.js';
 import type { MapPoint } from '../types.js';
-import { collectCandidates, isExternal } from './candidates.js';
+import { isExternal, selectCandidates } from './candidates.js';
 import { NO_PLACEMENT } from './candidate-base.js';
 import { FloodCheckRefusal } from '../errors.js';
 import { buildingLabel, type BuildingRef, type BuildingScope, type FootprintFact, type ModelFacts, type SpaceFact, type StoreyFact } from './facts.js';
@@ -276,29 +276,34 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
     : deriveFootprint(reader, placements, georef, storeyOf, groundStorey, skipped, warnings);
 
   const buildings = scopeToBuilding(reader, groundStorey.expressId, storeys.length);
-  const collected = collectCandidates({
-    reader,
-    placements,
-    georef,
-    storeyOf,
-    storeyLevel: new Map(storeys.map((s) => [s.expressId, s.level])),
-    groundLevel: groundStorey.level,
-    footprint: footprint?.rings ?? [],
-    aboveGroundScope: atLeast('aboveGroundScope', options.aboveGroundScope, 3),
-    boundaryTolerance: atLeast('boundaryTolerance', options.boundaryTolerance, 1),
-    skip: (expressId, ifcClass, reason) => skipped.push({ expressId, ifcClass, reason }),
-  });
   const notChecked = new Map(buildings.others.map((b) => [b.expressId, { ...b, candidatesNotChecked: 0 }]));
-  const candidates = collected.filter((c) => {
-    const building = buildings.buildingOf(c.expressId);
-    if (buildings.inScope(building)) return true;
-    const other = building === null ? undefined : notChecked.get(building);
-    if (other) {
+  const selection = selectCandidates(
+    {
+      reader,
+      placements,
+      georef,
+      storeyOf,
+      storeyLevel: new Map(storeys.map((s) => [s.expressId, s.level])),
+      groundLevel: groundStorey.level,
+      footprint: footprint?.rings ?? [],
+      aboveGroundScope: atLeast('aboveGroundScope', options.aboveGroundScope, 3),
+      boundaryTolerance: atLeast('boundaryTolerance', options.boundaryTolerance, 1),
+    },
+    (id) => {
+      const building = buildings.buildingOf(id);
+      if (buildings.inScope(building)) return null;
+      const other = building === null ? undefined : notChecked.get(building);
+      if (!other) return null;
       other.candidatesNotChecked++;
-      skipped.push({ expressId: c.expressId, ifcClass: c.ifcClass, reason: `in building ${buildingLabel(other)}, which was not checked` });
-    }
-    return false;
-  });
+      return buildingLabel(other);
+    },
+  );
+  // Every covered element walked is a candidate or skipped: a third way out would fail here, not go missing.
+  if (selection.walked !== selection.candidates.length + selection.skipped.length) {
+    throw new Error(`candidate selection walked ${selection.walked} elements but listed ${selection.candidates.length} candidates and ${selection.skipped.length} skipped`);
+  }
+  const candidates = selection.candidates;
+  skipped.push(...selection.skipped);
   const buildingScope: BuildingScope = { checked: buildings.checked, notChecked: [...notChecked.values()] };
   const unplaced = skipped.filter((e) => e.reason === NO_PLACEMENT && e.ifcClass !== 'IfcBuildingStorey');
   if (unplaced.length > 0) {
@@ -340,5 +345,5 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
     });
   }
 
-  return { georeference: georeferenceData(georef), footprint, storeys, groundStorey, candidates, spaces, buildingScope, skipped, warnings };
+  return { georeference: georeferenceData(georef), footprint, storeys, groundStorey, candidates, spaces, buildingScope, coverage: { walked: selection.walked, skipped: selection.skipped.length }, skipped, warnings };
 }

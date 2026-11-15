@@ -245,18 +245,32 @@ entities, properties and containment from the parsed store. No meshing.
   Doors, windows and openings more than `aboveGroundScope` (3 m) above the
   ground storey are out of scope, judged by their corrected level (a window
   placed at its head is in scope when its opening reaches down into it).
-  **Every element of these classes ends up as a candidate or in `skipped`
-  with a reason** (interior, out of scope, leads up, filled by a door or
-  window, RECESS, a transport element of another kind, no placement, another
-  building), never neither. An exclusion that would rest on unreadable data
-  keeps the element instead, and one element's exclusion never takes a
-  checkable neighbour with it: an opening is reported through its door or
-  window only when that is a candidate (else, for example when the door
-  cannot be placed or is a proxy, the hole is checked itself), a flight is
-  checked on its own when its stair cannot be placed, an `IfcTransportElement` with no stated kind is
-  kept, an opening with no host is tested against the outline, and an
-  opening or filled opening whose body is only partly readable gets an
-  upper-estimate level. Elements that cannot be placed are named in a warning. Interior stairs are not entry points.
+  Interior stairs are not entry points.
+
+  **How they are selected** (`src/model/candidates.ts`): one walk lists every
+  element of these classes (doors, windows, openings, light wells, stairs,
+  ramps and their flights, equipment), and each gets exactly **one verdict**
+  from its rule (`src/model/candidate-rules.ts`), from its own data only: a
+  candidate, or a skip with the reason (interior, out of scope, leads up,
+  RECESS, a transport element of another kind, no placement). Relations are
+  then resolved from those verdicts, never by one rule deciding for another
+  element: a candidate in a building that is not checked becomes a skip
+  naming that building; an opening is reported through its door or window
+  only when that door or window **is** a candidate (otherwise, for example
+  when the door cannot be placed or is a proxy, the hole keeps its own
+  verdict); a flight is reported or assessed through its stair or ramp only
+  when that was decided, and keeps its own verdict when the stair cannot be
+  placed. The candidate and skipped lists are built in one place from the
+  one verdict per element, so every element is in exactly one of them; the
+  facts record the count walked (`coverage`), and both the extraction and the
+  check fail loudly if candidates plus skipped stop adding up to it.
+
+  A rule that would rest on unreadable data keeps the element instead: an
+  opening filled by something other than a door or window is a hole, an
+  `IfcTransportElement` with no stated kind is kept, an opening with no host
+  is tested against the outline, and an opening or filled opening whose body
+  is only partly readable gets an upper-estimate level. Elements that cannot
+  be placed are named in a warning.
 
 ## The check
 

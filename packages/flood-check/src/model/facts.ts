@@ -140,6 +140,12 @@ export interface ModelFacts {
   groundStorey: { expressId: number | null; level: number; basis: 'given' | 'project-zero' | 'lowest-storey' | 'none' };
   candidates: CandidateFact[];
   spaces: SpaceFact[];
+  /**
+   * The covered elements candidate selection walked, and how many of them it
+   * skipped: `walked === candidates.length + skipped` (checked again by the
+   * check). Absent on hand-built facts.
+   */
+  coverage?: { walked: number; skipped: number };
   /** Absent on hand-built facts: then every candidate is taken to belong to the footprint's building. */
   buildingScope?: BuildingScope;
   /** Elements skipped (no readable placement, or in a building that was not checked), with the reason. */

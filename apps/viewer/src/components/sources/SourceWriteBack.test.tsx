@@ -21,7 +21,7 @@ async function setup(upload: NonNullable<FileSourceProvider['uploadFile']>) {
   useViewerStore.setState({...fixtureModels({...fixtureModel('m'),name:'House.ifc',ifcDataStore:store}),mutationViews:new Map(),sourceTags:new Map([['m',{provider:'writeback-ui',projectId:'project',containerId:'folder',fileId:'file',revisionId:'v1',loadedAt:1}]])});
   const source:FileSourceProvider={manifest:{name:'writeback-ui',title:'UI source',api:PLUGIN_API_VERSION,auth:'preferences',permissions:{network:['source.example']},preferences:[],contributes:{fileSources:['./provider.ts']},capabilities:{containerListing:'direct-children',listFilesIsRecursive:false,revisionHistory:true,downloadHistoricalRevisions:false,changeDetection:false,search:false,writeBack:['new-version','new-file','new-location']}},
     listProjects:async()=>({items:[]}),listContainers:async()=>({items:[{id:'destination',name:'Chosen folder'}]}),listFiles:async()=>({items:[]}),download:async()=>{throw Error('No implicit download');},uploadFile:upload,
-    listRevisions:async()=>({items:[{id:'v2',label:'Uploaded revision',createdAt:'2026-11-15'},{id:'v1',label:'Loaded revision',createdAt:'2026-11-14'}]})};
+    listRevisions:async()=>({items:[{id:'v2',label:'Uploaded revision',createdAt:'2026-11-15'},{id:'v1',label:'Older history entry',createdAt:'2026-11-14'}]})};
   return source;
 }
 async function flush() { await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));}); }
@@ -46,7 +46,7 @@ it('#9522 opening a dialog never writes; confirmation sends once and shows the c
   render(<SourceHostProvider additionalProviders={[()=>source]}><SourceWriteBackDialog modelId="m" onClose={()=>{}} /></SourceHostProvider>);
   assert.equal(writes,0);assert.equal(button('Confirm and save').disabled,true);
   confirm();click(button('Confirm and save'));await flush();
-  assert.equal(writes,1);assert.match(document.body.textContent??'',/Uploaded revision/);assert.match(document.body.textContent??'',/Loaded revision/);
+  assert.equal(writes,1);assert.match(document.body.textContent??'',/Uploaded revision/);assert.match(document.body.textContent??'',/Older history entry/);
   assert.equal(useViewerStore.getState().sourceTags.get('m')?.revisionId,'v2');
 });
 it('#9522 exposes a stale-base conflict without a retry or provenance change',async()=>{
@@ -71,4 +71,13 @@ it('#9522 new-location requires an actual chosen provider folder and renewed con
   assert.equal(button('Confirm and save').disabled,true);
   click(button('Chosen folder'));await flush();click(button('Use this folder'));confirm();click(button('Confirm and save'));await flush();
   assert.deepEqual(target,{mode:'new-location',projectId:'project',containerId:'destination',fileName:'House-edited.ifc'});
+});
+
+it('#9522 the loaded-model action opens the global dialog through the real source host',async()=>{
+  let writes=0;const source=await setup(async()=>{writes++;return result;});
+  const ui=render(<SourceHostProvider additionalProviders={[()=>source]}><SourceWriteBackModels /></SourceHostProvider>);
+  const action=ui.querySelector('button');assert.ok(action);click(action);
+  for(let attempt=0;attempt<100&&!document.querySelector('[role="dialog"]');attempt++)await flush();
+  assert.ok(document.querySelector('[role="dialog"]'),'The actual model action opens Save to source');
+  assert.equal(button('Confirm and save').disabled,true);assert.equal(writes,0);
 });

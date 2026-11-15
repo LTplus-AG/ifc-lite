@@ -7,7 +7,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { loadResolvedSourcePrefs } from '@/lib/sources/preferences';
-import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
+import { clearSourceCatalogCache, recordDownloadedSourceFile } from '@/lib/sources/persistence';
+import { notifySourceWriteBackSaved } from './source-writeback-command';
 import type { SourceHost } from './source-host';
 import { sanitizeFilename } from '@/lib/export/download';
 
@@ -76,5 +77,7 @@ export async function saveSourceModel(
     useViewerStore.getState().setSourceTag(binding.modelId, nextTag);
     recordDownloadedSourceFile(nextTag, result.file);
   }
+  clearSourceCatalogCache(tag.provider);
+  notifySourceWriteBackSaved(tag.provider, tag.projectId);
   return { kind: 'saved', result, linked };
 }

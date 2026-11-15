@@ -9,6 +9,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PLUGIN_API_VERSION, type FileSourceProvider, type SourceTag, type UploadTarget, type UploadResult } from '@ifc-lite/plugin-api';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { saveSourceCatalogCache, loadSourceCatalogCache } from '@/lib/sources/persistence';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { SourceHost } from './source-host';
@@ -92,4 +93,13 @@ it('#9522 applies declared capability and destination guards before any upload',
   assert.deepEqual(await saveSourceModel(s.host,s.binding,{mode:'new-file',containerId:'folder',fileName:'../Bad.ifc'}),{kind:'invalid-destination'});
   s.provider.uploadFile=undefined;
   assert.deepEqual(await saveSourceModel(s.host,s.binding,destination),{kind:'unavailable'});assert.equal(writes,0);
+});
+
+it('#9522 successful writes invalidate their cached catalog without clearing another source',async()=>{
+  const s=await setup(async()=>success);
+  const files=[{id:'file',name:'House.ifc',containerId:'folder',currentRevisionId:'v1'}];
+  saveSourceCatalogCache(tag.provider,'project','area',[],files);saveSourceCatalogCache('other','project','area',[],files);
+  assert.ok(loadSourceCatalogCache(tag.provider,'project','area'));
+  await saveSourceModel(s.host,s.binding,destination);
+  assert.equal(loadSourceCatalogCache(tag.provider,'project','area'),null);assert.ok(loadSourceCatalogCache('other','project','area'));
 });

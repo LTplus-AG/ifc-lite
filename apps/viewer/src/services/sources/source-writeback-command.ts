@@ -6,3 +6,8 @@ export function openSourceWriteBack(modelId: string): void {
   window.dispatchEvent(new CustomEvent<string>(SOURCE_WRITEBACK_EVENT, { detail: modelId }));
 }
 
+
+export const SOURCE_WRITEBACK_SAVED_EVENT = 'ifc-lite:source-file-saved';
+export function notifySourceWriteBackSaved(providerId: string, projectId: string): void {
+  window.dispatchEvent(new CustomEvent(SOURCE_WRITEBACK_SAVED_EVENT, { detail: { providerId, projectId } }));
+}

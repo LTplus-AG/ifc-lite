@@ -55,6 +55,11 @@ pub(crate) fn is_assignment_conversion(entity: &str, from: &str, to: &str) -> bo
     entity == "IFCRELCONNECTSSTRUCTURALELEMENT" && from == "IFC2X3" && matches!(to, "IFC4" | "IFC4X3" | "IFC5")
 }
 
+/// The loss reported when IFC2X3's required DestabilizingLoad is written as .F. for an unknown value.
+pub(crate) fn destabilizing_unknown(entity: &str) -> String {
+    format!("{entity}.DestabilizingLoad is unknown; IFC2X3 requires a boolean, so the writer substitutes .F.")
+}
+
 pub(crate) fn attributes(entity: &str, args: &[String], from: &str, to: &str) -> Option<String> {
     if is_assignment_conversion(entity, from, to) && args.len() == 6 {
         // IFC4 expresses the physical product's analytical assignment as an

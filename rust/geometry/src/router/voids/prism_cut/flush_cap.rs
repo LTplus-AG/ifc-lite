@@ -26,7 +26,9 @@
 //! it and the moved cap.
 //!
 //! A cap with only its floor in its plane removes nothing there: an opening
-//! the host already has. It keeps the plain cut.
+//! the host already has. Nor is a cap seated where a host face runs through
+//! its plane over the footprint: material continues past the cap there with
+//! no floor face, and a moved cap would cut into it. Both keep the plain cut.
 
 use super::extension::{extend_prism_caps, tri_touches_slab_footprint};
 use super::frame::PrismFrame;
@@ -116,21 +118,37 @@ pub(super) fn extend_and_seat_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[
     extend_prism_caps(pf, tris, aabbs);
     let allowance = rounding_allowance(pf);
     let pad = footprint_pad(pf);
-    // The footprint clip does not depend on the cap: once per triangle.
-    let depths: Vec<_> = tris.iter().map(|t| depths_over_footprint(t, pf, pad)).collect();
+    // The footprint clip does not depend on the cap: once per triangle, and
+    // only for one whose vertex depths reach a cap's band, which bound the
+    // clipped depths.
+    let caps = [pf.d0(), pf.d1()];
+    let near_a_cap = |t: &PTri| {
+        let w = t.p.map(|p| dot(p, pf.d));
+        let (lo, hi) = (w[0].min(w[1]).min(w[2]), w[0].max(w[1]).max(w[2]));
+        caps.iter().any(|&plane| lo <= plane + allowance && hi >= plane - allowance)
+    };
+    let depths: Vec<_> =
+        tris.iter().map(|t| if near_a_cap(t) { depths_over_footprint(t, pf, pad) } else { None }).collect();
     let mut seats = FlushSeats::default();
     for high in [false, true] {
         let (plane, slab) = if high { (pf.d1(), pf.profiles.len() - 1) } else { (pf.d0(), 0) };
         let mut reach = plane;
         let mut floor = Vec::new();
         let mut removes = false;
+        let mut crossed = false;
         for (t, depth) in tris.iter().zip(&depths) {
             let Some((lo, hi)) = *depth else { continue };
-            if lo < plane - allowance
-                || hi > plane + allowance
+            // Reaching past the band on one side only: neither flush nor
+            // through the plane.
+            let (below, above) = (lo < plane - allowance, hi > plane + allowance);
+            if below != above
                 || !tri_touches_slab_footprint(t, pf, &pf.profiles[slab], f64::NEG_INFINITY, f64::INFINITY, pad)
             {
                 continue;
+            }
+            if below {
+                crossed = true;
+                break;
             }
             // Facing the prism: along +d at the low cap, against it at the high.
             match faces_along(t, pf.d) {
@@ -141,8 +159,11 @@ pub(super) fn extend_and_seat_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[
             reach = if high { reach.max(hi) } else { reach.min(lo) };
         }
         // A cap with only its floor in its plane removes nothing there: an
-        // opening the host already has. That case keeps the plain cut.
-        if !removes {
+        // opening the host already has. A host face through the cap plane
+        // over the footprint means material runs on past the cap where no
+        // floor face covers it: a moved cap would cut into it and leave the
+        // step to the floored part open. Both keep the plain cut.
+        if !removes || crossed {
             continue;
         }
         // Past the farthest flush face by a fraction of an f32 step: far

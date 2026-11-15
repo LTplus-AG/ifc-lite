@@ -44,7 +44,18 @@ enum Recess {
     ToInterfaceAtTop,
 }
 
-fn wall(site_at: [f64; 3], site_turn_deg: f64, wall_turn_deg: f64, wall_y: f64, recess: Recess) -> String {
+/// How the wall's bodies are laid out.
+#[derive(Clone, Copy, Debug)]
+enum Host {
+    /// A core and a finish body over the whole wall length.
+    CoreAndFinish,
+    /// Core and finish up to the middle of the recess, then one body of the
+    /// full thickness: past the interface under half the recess there is
+    /// material and no floor face.
+    SplitUnderRecess,
+}
+
+fn wall(site_at: [f64; 3], site_turn_deg: f64, wall_turn_deg: f64, wall_y: f64, recess: Recess, host: Host) -> String {
     let (site_sin, site_cos) = site_turn_deg.to_radians().sin_cos();
     let (wall_sin, wall_cos) = wall_turn_deg.to_radians().sin_cos();
     let [sx, sy, sz] = site_at;
@@ -90,7 +101,7 @@ DATA;
 #45=IFCRECTANGLEPROFILEDEF(.AREA.,'Finish',#44,{WALL_LENGTH:?},{FINISH:?});
 #46=IFCEXTRUDEDAREASOLID(#42,#11,#14,{WALL_HEIGHT:?});
 #47=IFCEXTRUDEDAREASOLID(#45,#11,#14,{WALL_HEIGHT:?});
-#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#46,#47));
+{bodies}
 #51=IFCPRODUCTDEFINITIONSHAPE($,$,(#50));
 #100=IFCWALL('0FlushInterface0000004',$,'Wall',$,$,#33,#51,$,$);
 #110=IFCCARTESIANPOINT((1.,{start:?},2.));
@@ -110,6 +121,37 @@ END-ISO-10303-21;
         half_length = WALL_LENGTH * 0.5,
         core_mid = CORE * 0.5,
         half_recess = RECESS * 0.5,
+        bodies = match host {
+            Host::CoreAndFinish => "#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#46,#47));".to_string(),
+            Host::SplitUnderRecess => split_bodies(),
+        },
+    )
+}
+
+/// Core and finish over `x` in [0, 1.5], one full-thickness body over
+/// [1.5, 4]. The recess spans [1, 2].
+fn split_bodies() -> String {
+    let rect = |id: u32, x0: f64, x1: f64, y0: f64, y1: f64| {
+        format!(
+            "#{p}=IFCCARTESIANPOINT(({:?},{:?}));\n#{a}=IFCAXIS2PLACEMENT2D(#{p},$);\n\
+             #{r}=IFCRECTANGLEPROFILEDEF(.AREA.,$,#{a},{:?},{:?});\n\
+             #{e}=IFCEXTRUDEDAREASOLID(#{r},#11,#14,{WALL_HEIGHT:?});\n",
+            (x0 + x1) * 0.5,
+            (y0 + y1) * 0.5,
+            x1 - x0,
+            y1 - y0,
+            p = id,
+            a = id + 1,
+            r = id + 2,
+            e = id + 3,
+        )
+    };
+    let total = CORE + FINISH;
+    format!(
+        "{}{}{}#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#63,#67,#71));",
+        rect(60, 0.0, 1.5, 0.0, CORE),
+        rect(64, 0.0, 1.5, CORE, total),
+        rect(68, 1.5, WALL_LENGTH, 0.0, total),
     )
 }
 
@@ -164,7 +206,7 @@ fn a_recess_ending_on_a_body_interface_cuts_the_same_wherever_the_wall_sits() {
                 // to f32 on either side of the cutter's f64 plane.
                 for step in 0..12 {
                     let wall_y = 2.0 + 0.137 * f64::from(step);
-                    let content = wall(site_at, site_turn, wall_turn, wall_y, recess);
+                    let content = wall(site_at, site_turn, wall_turn, wall_y, recess, Host::CoreAndFinish);
                     let voids = build_void_index_like_production(&content);
                     let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
                     let (open, volume, surface) = (open_edges(&mesh), mesh_volume(&mesh), area(&mesh));
@@ -185,4 +227,39 @@ fn a_recess_ending_on_a_body_interface_cuts_the_same_wherever_the_wall_sits() {
         }
     }
     assert!(failures.is_empty(), "{} of 192 placements are wrong:\n{}", failures.len(), failures.join("\n"));
+}
+
+/// A kilometre from the origin the rounding allowance is about 0.5 mm. Where
+/// material runs on past the interface under part of the recess, seating the
+/// cap there cut into that material and left the step to the floored part
+/// open: 18 of these placements came back with 4 to 6 open edges (#10346
+/// review). Such a cap keeps the plain cut; the plain two-body wall is still
+/// seated.
+#[test]
+fn a_recess_ending_on_an_interface_a_kilometre_out_stays_closed() {
+    let mut failures = Vec::new();
+    for host in [Host::CoreAndFinish, Host::SplitUnderRecess] {
+        for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
+            for wall_turn in [0.0, 90.0] {
+                for step in 0..6 {
+                    let wall_y = 2.0 + 0.137 * f64::from(step);
+                    let content = wall([1000.0, 800.0, 0.0], 0.0, wall_turn, wall_y, recess, host);
+                    let voids = build_void_index_like_production(&content);
+                    let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
+                    let (open, volume) = (open_edges(&mesh), mesh_volume(&mesh));
+                    // The split host's volume is off by up to 1.4 litres at
+                    // some offsets on main too; only closure is held there.
+                    let volume_ok = matches!(host, Host::SplitUnderRecess) || (volume - analytic_volume()).abs() <= 5.0e-4;
+                    if open != 0 || !volume_ok {
+                        failures.push(format!(
+                            "{host:?} {recess:?} wall turn {wall_turn} y {wall_y:.3}: \
+                             {open} open edges, volume {volume:.6} m3 (analytic {:.6})",
+                            analytic_volume(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} of 48 placements are wrong:\n{}", failures.len(), failures.join("\n"));
 }

@@ -152,8 +152,43 @@ const PARAMETERISED: Record<string, (a: readonly unknown[]) => { size: [unknown,
   IFCCSHAPEPROFILEDEF: (a) => ({ size: [a[4], a[3]], exact: false }),
 };
 
-/** A profile's outline in its own 2D frame, exact or as bounds. */
-function profileOutline(reader: GeometryEntityReader, profile: Entity | null): { points: Flat[]; exact: boolean } | string {
+/** A rectangle of a compound profile: its centre in the profile frame and its area. */
+type Part = [cx: number, cy: number, w: number, h: number];
+
+/**
+ * Where the centroid of an asymmetric steel section lies from the centre of its bounds, in the
+ * profile's own frame (x along the width, y along the depth), from its sharp-cornered shape (fillets
+ * move it by well under a millimetre). Orientations follow the IFC profile definitions: an L has its
+ * legs left and bottom, a T its flange on top, a U and C their web on the left. Null for a section
+ * whose centroid is its bounds centre or that is not read.
+ */
+function sectionCentroidOffset(type: string, a: readonly unknown[], x: number, y: number): Flat | null {
+  const [p3, p4, p5, p6] = [num(a[3]), num(a[4]), num(a[5]), num(a[6])];
+  const parts = ((): Part[] | null => {
+    if (type === 'IFCLSHAPEPROFILEDEF' && p3 !== null && p4 !== null && p5 !== null) {
+      return [[0, -p3 / 2 + p5 / 2, p4, p5], [-p4 / 2 + p5 / 2, p5 / 2, p5, p3 - p5]];
+    }
+    if (type === 'IFCTSHAPEPROFILEDEF' && p3 !== null && p4 !== null && p5 !== null && p6 !== null) {
+      return [[0, p3 / 2 - p6 / 2, p4, p6], [0, -p6 / 2, p5, p3 - p6]];
+    }
+    if (type === 'IFCUSHAPEPROFILEDEF' && p3 !== null && p4 !== null && p5 !== null && p6 !== null) {
+      const flange = (y0: number): Part => [p5 / 2, y0, p4 - p5, p6];
+      return [[-p4 / 2 + p5 / 2, 0, p5, p3], flange(p3 / 2 - p6 / 2), flange(-p3 / 2 + p6 / 2)];
+    }
+    if (type === 'IFCCSHAPEPROFILEDEF' && p3 !== null && p4 !== null && p5 !== null && p6 !== null && p6 > p5) {
+      const flange = (y0: number): Part => [p5 / 2, y0, p4 - p5, p5];
+      const lip = (sign: number): Part => [p4 / 2 - p5 / 2, sign * (p3 / 2 - p5 - (p6 - p5) / 2), p5, p6 - p5];
+      return [[-p4 / 2 + p5 / 2, 0, p5, p3], flange(p3 / 2 - p5 / 2), flange(-p3 / 2 + p5 / 2), lip(1), lip(-1)];
+    }
+    return null;
+  })();
+  if (!parts || parts.some(([, , w, h]) => !(w > 0) || !(h > 0)) || !(x > 0) || !(y > 0)) return null;
+  const area = parts.reduce((sum, [, , w, h]) => sum + w * h, 0);
+  return [parts.reduce((sum, [cx, , w, h]) => sum + cx * w * h, 0) / area, parts.reduce((sum, [, cy, w, h]) => sum + cy * w * h, 0) / area];
+}
+
+/** A profile's outline in its own 2D frame, exact or as bounds, and its centroid when that is not the bounds centre. */
+function profileOutline(reader: GeometryEntityReader, profile: Entity | null): { points: Flat[]; exact: boolean; centroid?: Flat } | string {
   const type = upper(profile);
   const a = profile?.attributes ?? [];
   if (type === 'IFCARBITRARYCLOSEDPROFILEDEF' || type === 'IFCARBITRARYPROFILEDEFWITHVOIDS') {
@@ -183,8 +218,9 @@ function profileOutline(reader: GeometryEntityReader, profile: Entity | null): {
   if (!position) return 'profile position is unreadable';
   const { o, x: dir } = position;
   const corners: Flat[] = [[-x / 2, -y / 2], [x / 2, -y / 2], [x / 2, y / 2], [-x / 2, y / 2]];
-  const points = corners.map(([px, py]): Flat => [o[0] + dir[0] * px - dir[1] * py, o[1] + dir[1] * px + dir[0] * py]);
-  return { points, exact: parameterised!.exact };
+  const toPlane = ([px, py]: Flat): Flat => [o[0] + dir[0] * px - dir[1] * py, o[1] + dir[1] * px + dir[0] * py];
+  const offset = sectionCentroidOffset(type, a, x, y);
+  return { points: corners.map(toPlane), exact: parameterised!.exact, ...(offset ? { centroid: toPlane(offset) } : {}) };
 }
 
 function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placement: Frame3, metres: number): PrismFact | string {
@@ -207,6 +243,7 @@ function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placem
     outline: outline.points.map(([x, y]) => toWorld([x, y, 0])),
     extrusion: sub(toWorld(scale(unitDir, depth)), toWorld([0, 0, 0])),
     outlineExact: outline.exact,
+    ...(outline.centroid ? { centroid: toWorld([outline.centroid[0], outline.centroid[1], 0]) } : {}),
   };
 }
 

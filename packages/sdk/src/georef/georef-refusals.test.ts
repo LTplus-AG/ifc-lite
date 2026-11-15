@@ -186,6 +186,27 @@ describe('bim.georef refusals', () => {
     } finally { model.close(); }
   });
 
+  it.each(['IFC4X3_RC4', 'IFC4X3_RC1', 'IFC4'])('refuses FactorX/Y/Z on a %s file, whose schema does not declare IfcMapConversionScaled', async (fileSchema) => {
+    const model = await open(fileSchema, WITH_CONTEXT);
+    try {
+      const err = refusedCleanly(model, () => model.bim.georef.set({
+        ...VALID,
+        MapConversion: { ...VALID.MapConversion, FactorX: 1, FactorY: 1, FactorZ: 1 },
+      }));
+      expect(err.code).toBe('UNSUPPORTED_SCHEMA');
+      expect(err.message).toContain(fileSchema);
+      expect(err.missing).toEqual(['MapConversion.FactorX', 'MapConversion.FactorY', 'MapConversion.FactorZ']);
+    } finally { model.close(); }
+  });
+
+  it('accepts FactorX/Y/Z on an IFC4X3_ADD2 file', async () => {
+    const model = await open('IFC4X3_ADD2', WITH_CONTEXT);
+    try {
+      model.bim.georef.set({ ...VALID, MapConversion: { ...VALID.MapConversion, FactorX: 1, FactorY: 1, FactorZ: 1 } });
+      expect(String(model.bim.export.ifc())).toMatch(/=IFCMAPCONVERSIONSCALED\(/);
+    } finally { model.close(); }
+  });
+
   it('is not available on a backend without store access', async () => {
     const bim = new BimContext({ backend: {} as never });
     expect(() => bim.georef.get()).toThrow(/not available on this backend/);

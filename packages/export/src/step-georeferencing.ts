@@ -233,7 +233,7 @@ export function applyGeoreferencingMutations(
 
     if (contextId) {
       const mcId = ctx.allocateExpressId();
-      pass.newGeorefLines.push(mapConversionLine(mcId, contextId, crsId, gm.mapConversion || {}, pass.warnings));
+      pass.newGeorefLines.push(mapConversionLine(mcId, contextId, crsId, gm.mapConversion || {}, pass.warnings, pass.schemaToken));
       pass.newEntityCount++;
     } else {
       reportMapConversionRefused(pass.warnings);
@@ -243,7 +243,7 @@ export function applyGeoreferencingMutations(
     const contextId = findPreferredGeometricRepresentationContextId(pass.effective, ctx);
     if (contextId) {
       const mcId = ctx.allocateExpressId();
-      pass.newGeorefLines.push(mapConversionLine(mcId, contextId, existingCrsIds[0], gm.mapConversion, pass.warnings));
+      pass.newGeorefLines.push(mapConversionLine(mcId, contextId, existingCrsIds[0], gm.mapConversion, pass.warnings, pass.schemaToken));
       pass.newEntityCount++;
     } else {
       reportMapConversionRefused(pass.warnings);
@@ -258,6 +258,27 @@ export function applyGeoreferencingMutations(
   }
 }
 
+
+/**
+ * FILE_SCHEMA identifiers whose schema declares `IfcMapConversionScaled`.
+ * Of the schemas bundled in `packages/codegen/schemas/`, only `IFC4X3.exp`
+ * (`IFC4X3_DEV_923b0514`, a post-RC4 development snapshot of what was
+ * released as IFC4X3_ADD2) declares it; `IFC4_ADD2_TC1`, `IFC4X1` and
+ * `IFC4X2` do not, and no `IFC4X3_RC*` schema is bundled to say otherwise.
+ * `IFC4X3` is the bare family identifier, which this exporter writes as
+ * `IFC4X3_ADD2` (#5351). Anything else, the RC identifiers among them, fails
+ * closed.
+ */
+const SCALED_FILE_SCHEMAS: ReadonlySet<string> = new Set(['IFC4X3', 'IFC4X3_ADD2']);
+
+/** Whether a file declaring FILE_SCHEMA `fileSchema` may contain `IfcMapConversionScaled`. */
+export function declaresMapConversionScaled(fileSchema: string): boolean {
+  return SCALED_FILE_SCHEMAS.has(fileSchema.trim().toUpperCase());
+}
+
+function scaledUndeclaredWarning(fileSchema: string): string {
+  return `Cannot write IfcMapConversionScaled into a file declaring FILE_SCHEMA ${fileSchema}: that schema does not declare it (only IFC4X3 / IFC4X3_ADD2 do). FactorX/FactorY/FactorZ were not written, and the IfcMapConversion was written without them.`;
+}
 
 /** A partial factor triple: IfcMapConversionScaled declares all three as mandatory. */
 const PARTIAL_FACTORS_WARNING =
@@ -289,7 +310,7 @@ function requestedFactors(mc: MapConversionRequest, warnings?: string[]): [numbe
  * three factors were requested (its first eight attributes are the
  * supertype's, FactorX/Y/Z follow).
  */
-function mapConversionLine(id: number, contextId: number, crsId: number, mc: MapConversionRequest, warnings: string[]): string {
+function mapConversionLine(id: number, contextId: number, crsId: number, mc: MapConversionRequest, warnings: string[], fileSchema: string): string {
   const eastings = toStepReal(Number(mc.eastings) || 0);
   const northings = toStepReal(Number(mc.northings) || 0);
   const height = toStepReal(Number(mc.orthogonalHeight) || 0);
@@ -298,7 +319,11 @@ function mapConversionLine(id: number, contextId: number, crsId: number, mc: Map
   const scale = mc.scale !== undefined ? toStepReal(Number(mc.scale)) : '$';
   // IfcMapConversion(SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight, XAxisAbscissa, XAxisOrdinate, Scale)
   const head = `#${contextId},#${crsId},${eastings},${northings},${height},${abscissa},${ordinate},${scale}`;
-  const factors = requestedFactors(mc, warnings);
+  let factors = requestedFactors(mc, warnings);
+  if (factors && !declaresMapConversionScaled(fileSchema)) {
+    reportGeorefWarning(warnings, scaledUndeclaredWarning(fileSchema));
+    factors = null;
+  }
   return factors
     ? `#${id}=IFCMAPCONVERSIONSCALED(${head},${factors.map(toStepReal).join(',')});`
     : `#${id}=IFCMAPCONVERSION(${head});`;

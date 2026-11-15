@@ -212,7 +212,7 @@ export function resolveFullInput(
     mc.XAxisOrdinate = rotation.XAxisOrdinate;
   }
   if (mcIn.Scale !== undefined) mc.Scale = requireNumber(mcIn.Scale, 'MapConversion.Scale', { positive: true });
-  const factors = resolveFactors(mcIn, ctx.facts.schema, ctx.facts.supportsScaled && ctx.facts.storage === 'entities');
+  const factors = resolveFactors(mcIn, ctx.facts.fileSchema, ctx.facts.supportsScaled && ctx.facts.storage === 'entities');
   if (factors) [mc.FactorX, mc.FactorY, mc.FactorZ] = factors;
   return { crs, mc, mapUnit, notes };
 }

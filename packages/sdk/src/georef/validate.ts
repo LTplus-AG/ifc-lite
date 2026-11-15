@@ -136,8 +136,9 @@ export function resolveRotation(
 }
 
 /**
- * FactorX/Y/Z: all three or none, each > 0, and only where the schema
- * declares `IfcMapConversionScaled` (IFC4X3).
+ * FactorX/Y/Z: all three or none, each > 0, and only where the file's
+ * FILE_SCHEMA declares `IfcMapConversionScaled` (IFC4X3 / IFC4X3_ADD2).
+ * `schema` is that identifier, for the message.
  */
 export function resolveFactors(
   mc: Partial<GeorefMapConversionAttributes>,
@@ -153,7 +154,7 @@ export function resolveFactors(
   if (!supportsScaled) {
     throw new GeoreferencingError(
       'UNSUPPORTED_SCHEMA',
-      `FactorX/FactorY/FactorZ are written as IfcMapConversionScaled, which only IFC4X3 declares; this model is ${schema || 'of unknown schema'}. Leave the factors out (Scale is available in every schema) or convert the model to IFC4X3 first.`,
+      `FactorX/FactorY/FactorZ are written as IfcMapConversionScaled, which only FILE_SCHEMA IFC4X3 / IFC4X3_ADD2 declare (not the IFC4X3 release candidates, IFC4 or IFC2X3); this model is ${schema || 'of unknown schema'}. Leave the factors out (Scale is available in every schema) or convert the model to IFC4X3_ADD2 first.`,
       given.filter(([, v]) => v !== undefined).map(([k]) => k),
     );
   }

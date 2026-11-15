@@ -10,7 +10,8 @@
  * `ePSet_MapConversion` / `ePSet_ProjectedCRS` convention sets live.
  */
 
-import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
+import { declaresMapConversionScaled } from '@ifc-lite/export';
+import { EntityExtractor, parseSourceHeader, type IfcDataStore } from '@ifc-lite/parser';
 import type { GeorefStorage } from './types.js';
 
 /** The two IFC2X3 convention property sets, matched case-insensitively like the reader. */
@@ -28,8 +29,14 @@ export interface EPSetLocation {
 
 export interface GeorefModelFacts {
   schema: string;
+  /** The source FILE_SCHEMA identifier (`IFC4X3_ADD2`, `IFC4X3_RC4`, …), kept verbatim by the exporter. */
+  fileSchema: string;
   storage: GeorefStorage | null;
-  /** IFC4X3 declares `IfcMapConversionScaled`; earlier schemas do not. */
+  /**
+   * The file's FILE_SCHEMA declares `IfcMapConversionScaled` (IFC4X3 /
+   * IFC4X3_ADD2; not the IFC4X3 RCs, IFC4 or earlier). Shared with the
+   * exporter's own gate (`declaresMapConversionScaled`).
+   */
   supportsScaled: boolean;
   contexts: number[];
   sites: number[];
@@ -72,10 +79,13 @@ export function collectGeorefModelFacts(store: IfcDataStore, overlay: GeorefOver
   };
 
   const sites = live('IFCSITE');
+  const header = store.sourceHeader ?? (store.source?.length ? parseSourceHeader(store.source) : undefined);
+  const fileSchema = header?.schemaIdentifiers?.[0] || schema;
   const facts: GeorefModelFacts = {
     schema,
+    fileSchema,
     storage: storageForSchema(schema),
-    supportsScaled: schema === 'IFC4X3',
+    supportsScaled: schema === 'IFC4X3' && declaresMapConversionScaled(fileSchema),
     contexts: live('IFCGEOMETRICREPRESENTATIONCONTEXT'),
     sites,
     mapConversions: [

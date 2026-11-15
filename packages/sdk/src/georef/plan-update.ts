@@ -118,7 +118,7 @@ export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): 
     }
     const factors = resolveFactors(
       { FactorX: (mcIn.FactorX ?? curMc?.FactorX) as number, FactorY: (mcIn.FactorY ?? curMc?.FactorY) as number, FactorZ: (mcIn.FactorZ ?? curMc?.FactorZ) as number },
-      ctx.facts.schema,
+      ctx.facts.fileSchema,
       ctx.facts.supportsScaled && storage === 'entities',
     );
     if (factors) [mcChanges.FactorX, mcChanges.FactorY, mcChanges.FactorZ] = factors;

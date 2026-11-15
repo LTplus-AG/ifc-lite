@@ -10,9 +10,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classify, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
 
-test('#10264 an OOM kill wins over every other signal', () => {
-  assert.equal(classify({ oomKills: 1, interactive: true }).outcome, 'killed');
-  assert.equal(classify({ oomKills: 2, storeError: 'Ran out of memory while processing x' }).outcome, 'killed');
+test('#10264 a tab death wins over every other signal', () => {
+  assert.equal(classify({ oomKills: 1, killedTypes: ['renderer'], interactive: true }).outcome, 'killed');
+  assert.equal(classify({ oomKills: 2, killedTypes: ['renderer'], storeError: 'Ran out of memory while processing x' }).outcome, 'killed');
   assert.equal(classify({ pageCrashed: true }).outcome, 'killed');
   assert.equal(classify({ browserGone: true }).outcome, 'killed');
 });
@@ -50,14 +50,39 @@ test('#10264 a finished load is `loaded` whatever text is on the page', () => {
   assert.equal(classify({ interactive: true, storeError: null, notices: ["exceeds this tab's local processing memory budget"] }).outcome, 'loaded');
 });
 
-test('#10264 an OOM kill counts as `killed` unless only a non-tab process died and the page finished', () => {
+test('#10264 an OOM kill of the renderer or browser is `killed` at once', () => {
   assert.equal(classify({ oomKills: 1, killedTypes: ['renderer'], interactive: true }).outcome, 'killed');
-  assert.equal(classify({ oomKills: 1, killedTypes: ['gpu-process'] }).outcome, 'killed');
-  assert.equal(classify({ oomKills: 1, killedTypes: [], interactive: true }).outcome, 'killed', 'unknown victim stays killed');
-  const gpu = classify({ oomKills: 1, killedTypes: ['gpu-process'], interactive: true });
-  assert.equal(gpu.outcome, 'loaded');
-  assert.match(gpu.reason, /OOM-killed gpu-process \(not the tab\)/);
-  assert.match(classify({ oomKills: 1, killedTypes: ['renderer'] }).reason, /\(renderer\)/);
+  assert.equal(classify({ oomKills: 1, killedTypes: ['browser'] }).outcome, 'killed');
+  assert.match(classify({ oomKills: 1, killedTypes: ['renderer'] }).reason, /renderer OOM-killed \(cgroup oom_kill=1\)/);
+  assert.equal(classify({ pageCrashed: true }).outcome, 'killed');
+});
+
+test('#10264 GPU-only OOM kill, then the load finishes: `loaded` with a note', () => {
+  const r = classify({ oomKills: 1, killedTypes: ['gpu-process'], interactive: true });
+  assert.equal(r.outcome, 'loaded');
+  assert.match(r.reason, /OOM-killed gpu-process \(not the tab\)/);
+  assert.equal(verdict(r.outcome, 'killed').pass, false);
+});
+
+test('#10264 GPU-only OOM kill, then the renderer dies: `killed`', () => {
+  assert.equal(classify({ oomKills: 2, killedTypes: ['gpu-process', 'renderer'] }).outcome, 'killed');
+  assert.equal(classify({ oomKills: 1, killedTypes: ['gpu-process'], pageCrashed: true }).outcome, 'killed');
+});
+
+test('#10264 GPU-only OOM kill, then the time limit: `timeout`, a pass for neither expectation', () => {
+  const r = classify({ oomKills: 1, killedTypes: ['utility'], timedOut: true });
+  assert.equal(r.outcome, 'timeout');
+  assert.match(r.reason, /OOM-killed utility/);
+  for (const e of ['killed', 'not-killed']) assert.equal(verdict(r.outcome, e).pass, false);
+});
+
+test('#10264 OOM kill with an unidentified victim and a live page: `error`, a pass for neither expectation', () => {
+  for (const extra of [{}, { interactive: true }, { timedOut: true }]) {
+    const r = classify({ oomKills: 1, killedTypes: [], ...extra });
+    assert.equal(r.outcome, 'error');
+    assert.match(r.reason, /could not tell which process died/);
+    for (const e of ['killed', 'not-killed', 'warned']) assert.equal(verdict(r.outcome, e).pass, false);
+  }
 });
 
 test('#10264 other outcomes: loaded, non-memory error, timeout', () => {
@@ -102,7 +127,7 @@ test('#10264 a pre-load memory warning: waiting, cancelling and continuing are d
   assert.equal(classify({ warningShown: true, decision: 'cancel' }).outcome, 'cancelled');
   assert.equal(classify({ warningShown: true, decision: 'continue', interactive: true }).outcome, 'loaded');
   // A kill after the user accepted the warning is reported on its own, never as plain `killed`.
-  assert.equal(classify({ warningShown: true, decision: 'continue', oomKills: 1 }).outcome, 'killed-after-continue');
+  assert.equal(classify({ warningShown: true, decision: 'continue', oomKills: 1, killedTypes: ['renderer'] }).outcome, 'killed-after-continue');
   assert.equal(classify({ warningShown: true, decision: 'continue', pageCrashed: true }).outcome, 'killed-after-continue');
   // An outright refusal below the warning threshold is still `refused`.
   assert.equal(classify({ storeError: "This IFC file exceeds this tab's local processing memory budget" }).outcome, 'refused');

@@ -238,7 +238,9 @@ export async function runProbe(opts) {
     const watch = (async () => {
       while (!done) {
         await new Promise((r) => setTimeout(r, 2000));
-        if (done || obs.pageCrashed || obs.browserGone || obs.oomKills > 0) return;
+        // Stop at a tab death. A GPU/utility OOM kill (or an unidentified one with the page alive)
+        // does not end the load: keep watching until interactive, a renderer death or the limit.
+        if (done || obs.pageCrashed || obs.browserGone || obs.killedTypes.some((t) => t === 'renderer' || t === 'browser')) return;
         const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 15000, () => null);
         if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
         if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? 'model load error'; return; }

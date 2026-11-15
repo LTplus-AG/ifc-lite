@@ -19,9 +19,14 @@
  *            warning (Continue loading / Cancel) and the load had not started;
  *            the probe was told to leave it there (--on-memory-dialog wait).
  *   cancelled the probe clicked Cancel on that warning (--on-memory-dialog cancel).
- *   killed   the renderer or browser was OOM-killed inside the cap or crashed,
- *            or any Chrome process was OOM-killed and the page did not finish,
- *            with no warning accepted.
+ *   killed   the tab died, with no warning accepted: the renderer or browser
+ *            was OOM-killed inside the cap (seen vanishing at the kill), the
+ *            page crashed, or the browser exited. An OOM kill of only a GPU or
+ *            utility process is not a tab death: the probe keeps watching and
+ *            classifies what the load then did (loaded with a note, killed if
+ *            the renderer dies later, timeout). An OOM kill whose victim the
+ *            probe could not identify, with the page still alive, is `error`:
+ *            never `killed`, never a pass.
  *   killed-after-continue  the same, after the probe clicked Continue loading
  *            (--on-memory-dialog continue): the user was warned. Reported on
  *            its own, never folded into a pass or into plain `killed`.
@@ -71,16 +76,19 @@ const TAB_PROCESSES = new Set(['renderer', 'browser']);
 export function classify(o) {
   const killed = o.decision === 'continue' ? 'killed-after-continue' : 'killed';
   const types = o.killedTypes ?? [];
-  if ((o.oomKills ?? 0) > 0) {
-    const which = types.length ? types.join('+') : 'unknown process';
-    const tabDied = o.pageCrashed || o.browserGone || types.some((t) => TAB_PROCESSES.has(t));
-    if (o.interactive && !tabDied && types.length) {
-      return { outcome: 'loaded', reason: `interactive; note: cgroup OOM-killed ${which} (not the tab)` };
-    }
-    return { outcome: killed, reason: `cgroup oom_kill=${o.oomKills} (${which})` };
-  }
-  if (o.pageCrashed) return { outcome: killed, reason: 'renderer crashed' };
-  if (o.browserGone) return { outcome: killed, reason: 'browser process exited' };
+  const kills = o.oomKills ?? 0;
+  const tabTypes = types.filter((t) => TAB_PROCESSES.has(t));
+  const evidence = [...tabTypes.map((t) => `${t} OOM-killed`), o.pageCrashed && 'page crashed', o.browserGone && 'browser exited'].filter(Boolean);
+  if (evidence.length) return { outcome: killed, reason: `${evidence.join(', ')}${kills ? ` (cgroup oom_kill=${kills})` : ''}` };
+  if (kills > 0 && !types.length) return { outcome: 'error', reason: `cgroup oom_kill=${kills} but the probe could not tell which process died; the page stayed alive` };
+  // Only GPU/utility processes died (or none): classify by what the surviving tab did.
+  const note = kills > 0 ? `; note: cgroup OOM-killed ${types.join('+')} (not the tab)` : '';
+  const r = classifyAlive(o);
+  return note ? { outcome: r.outcome, reason: `${r.reason}${note}` } : r;
+}
+
+/** Outcome of a load whose tab is still alive. */
+function classifyAlive(o) {
   if (o.interactive) return { outcome: 'loaded', reason: 'interactive' };
   if (o.warningShown && o.decision === 'cancel') return { outcome: 'cancelled', reason: 'memory warning, probe clicked Cancel' };
   if (o.warningShown && (o.decision ?? 'none') === 'none') return { outcome: 'awaiting-decision', reason: 'memory warning shown, load not started' };

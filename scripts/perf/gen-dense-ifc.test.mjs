@@ -95,7 +95,7 @@ test('#10264 brep output is well-formed IFC2X3, one face per triangle', () => {
 
 test('#10264 --target-mb stops just past the target at the documented density', () => {
   // Default mesh (24x48). Documented: tfs ~40.6 k triangles/MB, ~150 entities/MB;
-  // brep ~6.1-6.7 k triangles/MB, ~21-23.5 k entities/MB (higher on small files).
+  // brep ~6.1-7.1 k triangles/MB, ~21-25 k entities/MB (higher on small files).
   const tfs = render({ kind: 'tfs', targetBytes: 2e6 }).stats;
   assert.ok(tfs.bytes >= 2e6 && tfs.bytes < 2e6 + 60e3, `tfs bytes ${tfs.bytes}`);
   assert.ok(tfs.trianglesPerMB > 39e3 && tfs.trianglesPerMB < 42e3, `tfs ${tfs.trianglesPerMB} tri/MB`);

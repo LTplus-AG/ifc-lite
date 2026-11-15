@@ -20,20 +20,24 @@ Two tools:
   | `--kind` | schema / geometry | triangles per MB | entities per MB | reproduces |
   |---|---|---:|---:|---|
   | `tfs` | IFC4 `IfcTriangulatedFaceSet` | ~40.6 k | ~150 | mode B: killed mid-stream by geometry the main thread keeps (84 B/triangle) |
-  | `brep` | IFC2X3 `IfcFacetedBrep`, one face per triangle | ~6.1–6.7 k | ~21–23.5 k | mode A: killed before geometry, while the entity pre-pass overlaps worker source copies |
+  | `brep` | IFC2X3 `IfcFacetedBrep`, one face per triangle | ~6.1–7.1 k | ~21–25 k | mode A: killed before geometry, while the entity pre-pass overlaps worker source copies |
 
-  Default mesh 24×48 (2,256 triangles per element); about 30 MB/s on one core.
+  Default mesh 24×48: 2×48×(24−1) = 2,208 triangles per element. Densities are a little higher
+  on small files (fixed header) and lower on large brep files (longer ids): measured 5–300 MB,
+  plus the attribution's 1.2 GB brep. Generation runs at 15–75 MB/s on one core (tfs slower).
   Only `tfs` has measured thresholds below; the `brep` mode-A sizes come from the #10264
   attribution on other hardware and were not re-measured here.
 - `oom-load-probe.mjs` opens one file in a built viewer (`apps/viewer/dist`) with
   `navigator.deviceMemory` / `hardwareConcurrency` overridden, and runs only Chrome inside
   `systemd-run --user --scope -p MemoryMax=CAP -p MemorySwapMax=0 -p CPUQuota=…`. It reports
   `loaded` (checked first), `refused` (only the explicit pre-read "local processing memory
-  budget" refusal; the probe never infers a refusal from a read it did not see), `killed` (the renderer or browser was OOM-killed or
-  crashed, or any Chrome process was OOM-killed and the page did not finish; a GPU or utility
-  kill under a finished load is `loaded` with a note) or `error` (any other load error, including
-  main's "Ran out of memory while processing", always, and the worker/runtime crash messages that
-  leave the tab alive). Messages are read from the store's load error and dialogs/alerts/toasts, never the whole
+  budget" refusal; the probe never infers a refusal from a read it did not see), `killed` (the tab died: the renderer or browser
+  was seen vanishing at an OOM kill, the page crashed, or the browser exited). An OOM kill of only
+  a GPU or utility process does not end the run: the probe keeps watching and reports what the
+  load then did (`loaded` with a note, `killed` if the renderer dies later, or `timeout`). An OOM
+  kill whose victim it could not identify, with the page alive, is `error`. `error` also covers
+  any other load error, including main's "Ran out of memory while processing", always, and the
+  worker/runtime crash messages that leave the tab alive. Messages are read from the store's load error and dialogs/alerts/toasts, never the whole
   page. It also reports peak summed Chrome PSS, the cgroup peak, the phase reached, which process
   types an OOM kill took, and main-thread reads of the source file.
   Needs Linux with cgroup v2 and the memory controller delegated to the systemd user manager;
@@ -74,6 +78,10 @@ peak is what the cap charges (3,072 MiB = the cap). Untimed; the seconds only pl
 | **tfs-300** (300 MB, 12.19 M tris) | swiftshader | 3 | **killed 3/3** | 3,202–3,271 | 3,072 | OOM kill at ~36 s, 9.0 M tris streamed |
 | tfs-225 | NVIDIA Vulkan, headed Xvfb | 3 | loaded 3/3 | 3,086–3,116 | 2,938–2,987 | interactive at ~12 s |
 | **tfs-300** | NVIDIA Vulkan, headed Xvfb | 3 | **killed 3/3** | 3,313–3,320 | 3,072 | OOM kill at ~10 s, 7.9 M tris streamed |
+
+Every `killed` row is a tab death: each of those six runs ended with Playwright's "Target
+crashed" (the renderer died) at the OOM kill. They ran before the probe recorded the killed
+process type, so the renderer evidence is that message.
 
 The minimal reproducer is the same on both backends: tfs-300 at device memory 4 / 3 GiB. Under
 swiftshader the GPU buffers count against the cap, but rendering is slow enough that geometry

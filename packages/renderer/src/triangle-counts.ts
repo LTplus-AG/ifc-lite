@@ -37,6 +37,9 @@ interface TriangleCountHost {
  * Instance counts come from live slots without materializing vertices. */
 export class SceneTriangleCounts {
   private sourceKnown = false;
+  private replayComplete = false;
+  isReplayComplete(): boolean { return this.replayComplete; }
+  setReplayComplete(complete: boolean): boolean { const changed = this.replayComplete !== complete; if (complete) this.sourceKnown = true; this.replayComplete = complete; return changed; }
   private flat = new TriangleCounts();
   private queued = new TriangleCounts();
   private revision = -1;
@@ -44,6 +47,7 @@ export class SceneTriangleCounts {
 
   noteSources(meshes: readonly MeshData[], queued = false): void {
     this.sourceKnown = true;
+    this.replayComplete = false;
     const added = new TriangleCounts();
     for (const mesh of meshes) added.addMesh(mesh);
     for (const [id, count] of added.byEntity) {
@@ -86,5 +90,5 @@ export class SceneTriangleCounts {
     else this.flat.byEntity.delete(id);
     this.cached = undefined;
   }
-  clear(): void { this.sourceKnown = false; this.flat = new TriangleCounts(); this.queued = new TriangleCounts(); this.cached = undefined; this.revision = -1; }
+  clear(): void { this.sourceKnown = false; this.replayComplete = false; this.flat = new TriangleCounts(); this.queued = new TriangleCounts(); this.cached = undefined; this.revision = -1; }
 }

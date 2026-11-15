@@ -159,6 +159,8 @@ export class Scene {
   onGeometryChange(listener: () => void): () => void { return this.geometryChanges.subscribe(listener); }
   private triangleCountHost() { return { instances: this.instancedEntityMap, templates: this.instancedTemplates }; }
   getTriangleCounts(): ReadonlyMap<number, number> | null { return this.triangleCounts.read(this.triangleCountHost(), this.pickGeometryRevision, this.snapshots.hydrating); }
+  isTriangleCountReplayComplete(): boolean { return this.triangleCounts.isReplayComplete(); }
+  setTriangleCountReplayComplete(complete: boolean): void { if (this.triangleCounts.setReplayComplete(complete)) this.geometryChanges.changed(); }
   private authoredPreparations = new AuthoredPreparationRegistry();
   private appearanceAccess(device: GPUDevice, pipeline: RenderPipeline): SceneAppearanceAccess {
     return {

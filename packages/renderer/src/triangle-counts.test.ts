@@ -126,3 +126,19 @@ it('removes uploaded contributions while retaining later queued pieces of the sa
   scene.removeMeshesForEntity(7);
   assert.equal(scene.getTriangleCounts()?.has(7), false, 'flushed pieces no longer count as queued');
 });
+
+
+it('requires a fresh explicit replay completion after source append or scene reset (#10370 review)', () => {
+  const scene = new CpuScene();
+  scene.queueMeshes([sourceTriangle(7)]);
+  assert.equal(scene.isTriangleCountReplayComplete(), false);
+  scene.setTriangleCountReplayComplete(true);
+  assert.equal(scene.isTriangleCountReplayComplete(), true);
+  scene.queueMeshes([sourceTriangle(8)]);
+  assert.equal(scene.isTriangleCountReplayComplete(), false, 'new source invalidates an earlier receipt');
+  scene.setTriangleCountReplayComplete(true);
+  scene.clearFlatGeometry();
+  scene.queueMeshes([sourceTriangle(7)]);
+  assert.equal(scene.isTriangleCountReplayComplete(), false, 'one replayed object is not completion');
+  assert.equal(scene.getTriangleCounts()?.get(7), 1, 'raw source metadata is separate from replay completion');
+});

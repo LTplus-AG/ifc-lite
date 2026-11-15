@@ -14,7 +14,7 @@ import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-
 
 export type ListProviderState = Pick<ViewerState,
   'models' | 'ifcDataStore' | 'geometryResult' | 'zoneSets' | 'zoneAssignments' |
-  'zoneApportionment' | 'toGlobalId' | 'mutationViews' | 'resolveGlobalIdInModel'>;
+  'zoneApportionment' | 'toGlobalId' | 'mutationViews'>;
 
 /** The provider inputs are explicit so document export does not depend on mounted panels. */
 export function prepareListProviders(state: ListProviderState, renderFrame: RenderFrameOffsets) {

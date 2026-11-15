@@ -132,6 +132,9 @@ export interface SceneContents {
    * Null while a cached scene still awaits source-geometry hydration. */
   onGeometryChange?(listener: () => void): () => void;
   getTriangleCounts?(): ReadonlyMap<number, number> | null;
+  /** The viewport has supplied the complete flat-source snapshot for this Scene. */
+  isTriangleCountReplayComplete?(): boolean;
+  setTriangleCountReplayComplete?(complete: boolean): void;
   getBounds(): {
     min: { x: number; y: number; z: number };
     max: { x: number; y: number; z: number };

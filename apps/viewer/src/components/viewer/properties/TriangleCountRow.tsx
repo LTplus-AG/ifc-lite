@@ -17,7 +17,7 @@ export function TriangleCountRow({ modelId, globalId }: { modelId: string; globa
   useViewerStore(state => state.mutationVersion);
   const counts = useSceneTriangleCounts();
   const state = useViewerStore.getState();
-  const ready = modelTrianglesReady({ models, geometryResult, resolveGlobalIdInModel: state.resolveGlobalIdInModel }, modelId, counts);
+  const ready = modelTrianglesReady({ models, geometryResult }, modelId, counts);
   const count = globalId === undefined ? modelTriangleCount(state, modelId, counts)
     : counts && ready ? counts.get(globalId) ?? 0 : null;
   return <InspectorRow label={t('properties.modelMetadata.triangles')}

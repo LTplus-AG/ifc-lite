@@ -5,7 +5,8 @@ import { useSyncExternalStore } from 'react';
 import { getGlobalRenderer, subscribeGlobalRenderer } from './useBCF';
 
 export function readSceneTriangleCounts(): ReadonlyMap<number, number> | null {
-  return getGlobalRenderer()?.getScene().getTriangleCounts?.() ?? null;
+  const scene = getGlobalRenderer()?.getScene();
+  return scene?.isTriangleCountReplayComplete?.() ? scene.getTriangleCounts?.() ?? null : null;
 }
 function subscribe(listener: () => void): () => void {
   let releaseScene: (() => void) | undefined;

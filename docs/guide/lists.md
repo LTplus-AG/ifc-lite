@@ -68,7 +68,9 @@ Choose **Triangles** to add a numeric geometry column (`source: 'geometry'`,
 objects, or use the geometry filter to select objects above a count. Providers
 implement the optional `getTriangleCount(expressId)` accessor; absent or
 unavailable geometry produces a blank cell, while a known empty object reports
-zero. Counts have no length unit.
+zero. After renderer replacement, viewer counts remain unavailable until the viewport
+has supplied its complete source snapshot; a first mesh does not establish a
+complete model count. Counts have no length unit.
 
 The viewer counts each occurrence of instanced geometry and every mesh piece
 belonging to an object. It also shows the model total in project information and

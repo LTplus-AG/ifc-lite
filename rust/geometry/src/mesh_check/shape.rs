@@ -28,7 +28,8 @@ pub struct TriangleShape {
 /// a vertex the mesh does not have are left out, as there.
 pub fn triangle_shape(mesh: &Mesh) -> TriangleShape {
     let point = |i: u32| -> Option<[f64; 3]> {
-        let p = mesh.positions.get(i as usize * 3..i as usize * 3 + 3)?;
+        let start = (i as usize).checked_mul(3)?;
+        let p = mesh.positions.get(start..start.checked_add(3)?)?;
         Some([f64::from(p[0]), f64::from(p[1]), f64::from(p[2])])
     };
     let mut shape = TriangleShape { slivers: 0, max_aspect: 0.0 };

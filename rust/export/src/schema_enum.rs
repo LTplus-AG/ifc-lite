@@ -173,19 +173,37 @@ impl ConversionChecks {
         Self::default()
     }
 
-    /// Source-derived orientations and link types are safe only for an unedited full export.
-    pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool, kept: impl Fn(u32, usize) -> bool) -> Self {
+    /// Source-derived orientations, link types and varying actions are safe only
+    /// for an unedited full export. `allocate` is the writer's express-id allocator.
+    pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool, kept: impl Fn(u32, usize) -> bool, allocate: impl FnMut() -> Option<u32>) -> Self {
         let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
         let mut checks = Self::new();
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
             return checks;
         }
         match (from, to) {
-            ("IFC2X3", "IFC4") => checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept),
-            ("IFC4", "IFC2X3") => checks.structural.links = crate::schema_structural_links::StructuralLinks::scan(content, kept),
+            ("IFC2X3", "IFC4") => {
+                checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, &kept);
+                checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc2x3(content, &kept, allocate);
+            }
+            ("IFC4", "IFC2X3") => {
+                checks.structural.links = crate::schema_structural_links::StructuralLinks::scan(content, &kept);
+                checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc4(content, &kept);
+            }
             _ => {}
         }
         checks
+    }
+
+    /// Whether the writer leaves out this source record: a conversion consumed it.
+    pub(crate) fn drops(&self, id: u32) -> bool { self.structural.varying.drops(id) }
+
+    /// Append the records a conversion created, then finish `body`; the change in record count.
+    pub(crate) fn finish(&mut self, mut body: crate::schema_ifc2x3_body::Body<'_>) -> std::io::Result<isize> {
+        use std::io::Write as _;
+        let added = self.structural.varying.added();
+        for record in &added { writeln!(body, "{record}")?; }
+        Ok(added.len() as isize + body.finish()?)
     }
 
     /// Both checks' warnings, IFC4 slots first.

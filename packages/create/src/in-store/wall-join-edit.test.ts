@@ -251,3 +251,20 @@ it('#8452 selected relationship reads preserve creation order after endpoint ret
   s.editor.setPositionalAttribute(later, 6, `#${b}`);
   expect(readWallJoinRels(s.store, s.view, new Set([a])).map(rel => rel.relId)).toEqual([first, later]);
 });
+
+it('#8452 opening candidates avoid unrelated void payloads and preserve malformed-host refusals', async () => {
+  const s = await room();
+  const { addHostedElementInStore, readHostOpeningExtents } = await import('./hosted-element.js');
+  addHostedElementInStore(s.store, s.editor, s.ids[0], { kind: 'opening', params: { Offset: 2, Sill: 1, Width: 0.5, Height: 1 } });
+  const unrelated = new Set<number>();
+  for (let i = 0; i < 1000; i++) unrelated.add(s.editor.addEntity('IfcRelVoidsElement', [null, null, null, null, '#999999', `#${800000 + i}`]).expressId);
+  const spy = vi.spyOn(s.view, 'readNewEntity');
+  expect(readHostOpeningExtents(s.store, s.ids[0], s.view).cuts).toHaveLength(1);
+  expect(spy.mock.calls.filter(([id]) => unrelated.has(id))).toHaveLength(0);
+  spy.mockRestore();
+  const invalid = [...unrelated][0];
+  s.editor.setPositionalAttribute(invalid, 4, null);
+  expect(readHostOpeningExtents(s.store, s.ids[0], s.view).unreadable).toContain(invalid);
+  s.editor.setPositionalAttribute(invalid, 4, '#999999');
+  expect(readHostOpeningExtents(s.store, s.ids[0], s.view).unreadable).toEqual([]);
+});

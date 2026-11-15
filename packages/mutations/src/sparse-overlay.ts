@@ -77,6 +77,16 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
       while (next !== null && !has(next as K)) next = base.successorOf(next);
       return next ?? (inserted.values().next().value as number | undefined) ?? null;
     };
+    if (name === 'referenceSlotIds' && base instanceof NewEntityMap) return function* (type: string, slot: number, target: number | null) {
+      const seen = new Set<number>();
+      for (const id of base.referenceSlotIds(type, slot, target)) {
+        if (removed.has(id as K) || reads.has(id as K)) continue;
+        seen.add(id); yield id;
+      }
+      for (const id of localEntities!.referenceSlotIds(type, slot, target)) {
+        if (!seen.has(id) && has(id as K)) yield id;
+      }
+    };
     if (name === 'watchAttributeExposure' && localEntities) return (listener: (id: number) => void) => localEntities.watchAttributeExposure(listener);
     if (name === 'get') return get;
     if (name === 'peek' && localEntities) return peek;

@@ -1377,3 +1377,5 @@ preserved.
 ### Ordering a bounded set of authored records
 
 `view.getNewEntityCreationOrder(expressId)` reads a live creation's relative insertion order without enumerating the session. It returns `null` for an ID that is not a live creation. Compare these numbers only within the current view order; atomic publication, undo and snapshot restoration may renumber them. Nested atomic drafts include their own new records.
+
+`view.getNewEntityReferenceSlotIds(type, slot, target)` projects a raw authored positional scalar reference. A `null` target includes absent and malformed values. First use indexes that class; later writes maintain the projection, including nested drafts and exposed-array edits. Combine candidates with attribute overrides and verify effective values before using them. This is a raw creation index, not an effective-record reader.

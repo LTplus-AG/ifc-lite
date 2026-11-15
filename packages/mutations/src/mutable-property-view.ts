@@ -1272,6 +1272,12 @@ export class MutablePropertyView extends MutableOverlayState {
   /** Relative order of a live creation; do not persist across undo/restoration. */
   getNewEntityCreationOrder(id: number): number | null { if (!this.newEntities.has(id)) return null; const order = this.newEntities.positionOf(id); return Number.isFinite(order) ? order : null; }
 
+  /** Exact positional scalar-reference projection; null includes malformed values.
+   * First use indexes this class; subsequent writes maintain it, including drafts. */
+  getNewEntityReferenceSlotIds(type: string, slot: number, target: number | null): number[] {
+    return [...this.newEntities.referenceSlotIds(type, slot, target)];
+  }
+
   getNewEntity(expressId: number): NewEntity | null {
     return this.newEntities.get(expressId) ?? null;
   }

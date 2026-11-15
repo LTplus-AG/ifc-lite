@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { ReferenceSlotIndex } from './reference-slot-index.js';
 import type { NewEntity } from './types.js';
 import { observeEntityAttributes, withoutEntityExposure } from './entity-read-barrier.js';
 import { restoreEntityOrder } from './restore-entity-order.js';
@@ -30,6 +31,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
   declare private exposed?: Set<number>;
   declare private exposureCallback?: (entity: NewEntity) => void;
   declare private weakSelf?: WeakRef<NewEntityMap>;
+  declare private slots?: ReferenceSlotIndex;
   declare private exposureListeners?: Set<(id: number) => void>;
 
   override set(expressId: number, entity: NewEntity): this {
@@ -79,6 +81,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
         for (const listener of map.exposureListeners ?? []) listener(id);
       };
     }
+    this.slots?.update(entity);
     observeEntityAttributes(entity, this.exposureCallback);
     return this;
   }
@@ -90,6 +93,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
       if (position.next !== null) this.positions!.get(position.next)!.previous = position.previous;
       else this.tailId = position.previous ?? undefined;
     }
+    this.slots?.delete(expressId);
     this.positions?.delete(expressId);
     this.exposed?.delete(expressId);
     this.unindexReferences(expressId);
@@ -99,6 +103,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
   }
 
   override clear(): void {
+    this.slots?.clear();
     this.positions?.clear();
     this.tailId = undefined;
     this.byType?.clear();
@@ -122,6 +127,11 @@ export class NewEntityMap extends Map<number, NewEntity> {
   peekValues(): IterableIterator<NewEntity> { return super.values(); }
   peekOfType(type: string): IterableIterator<NewEntity> { return this.ofType(type); }
   peekReferencing(id: number): IterableIterator<NewEntity> { return this.referencing(id); }
+
+  referenceSlotIds(type: string, slot: number, target: number | null): Iterable<number> {
+    this.refreshReferences();
+    return (this.slots ??= new ReferenceSlotIndex()).ids(type, slot, target, () => this.ofType(type));
+  }
 
   /** Created entities authored as `type` (case-insensitive), in creation order. */
   ofType(type: string): IterableIterator<NewEntity> {

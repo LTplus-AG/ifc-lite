@@ -9,3 +9,5 @@ Reduce per-record attribute observer allocations and remove replaced authored ge
 Enumerate created IDs without materializing attribute snapshots during export index and collision checks.
 
 Add a constant-time relative creation-order query so bounded relationship lookups preserve canonical order after retargeting and inside nested drafts.
+
+Index requested positional reference slots with an unresolved bucket, and narrow opening host/fill reads while preserving conservative malformed-host refusals.

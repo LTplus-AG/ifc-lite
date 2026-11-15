@@ -296,3 +296,22 @@ it('#8452 nested ID-only readers do not materialize unrelated parent-draft paylo
   expect(payloadReads).toBe(0);
   expect(view.getNewEntityCount()).toBe(201);
 });
+
+it('#8452 exact reference-slot projections track unresolved hosts, drafts, aliases and undo', () => {
+  const v = new MutablePropertyView(null, 'slots');
+  const rel = v.createEntity('IfcRelVoidsElement', [null, null, null, null, '#40', '#50']);
+  const ids = (target: number | null) => v.getNewEntityReferenceSlotIds('IFCRELVOIDSELEMENT', 4, target);
+  expect(ids(40)).toEqual([rel.expressId]);
+  const attributes = rel.attributes;
+  attributes[4] = '$';
+  expect(ids(null)).toEqual([rel.expressId]);
+  expect(ids(40)).toEqual([]);
+  v.runAtomic(outer => outer.runAtomic(inner => {
+    inner.setPositionalAttribute(rel.expressId, 4, '#60');
+    // Raw creations remain separate from positional overrides, as with reference candidates.
+    expect(inner.getNewEntityReferenceSlotIds('IFCRELVOIDSELEMENT', 4, null)).toEqual([rel.expressId]);
+    inner.deleteEntity(rel.expressId);
+    expect(inner.getNewEntityReferenceSlotIds('IFCRELVOIDSELEMENT', 4, null)).toEqual([]);
+  }));
+  expect(ids(null)).toEqual([]);
+});

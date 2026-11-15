@@ -6808,6 +6808,7 @@
     "computeWorkerCount: function",
     "createPlatformBridge: function",
     "decodeInstancedShard: function",
+    "exportCityJson: function",
     "exportRhinoScene: function",
     "geometryAabbAt: function",
     "geometryVolumeAt: function",
@@ -11387,11 +11388,13 @@
     "loadRetainedEngine: function"
   ],
   "@ifc-lite/wasm/rhino": [
+    "CityJsonExportJs: interface",
     "InitInput: type",
     "InitOutput: interface",
     "RhinoSceneJs: class",
     "SyncInitInput: type",
     "default: function",
+    "exportCityJson: function",
     "exportRhinoScene: function",
     "initSync: function"
   ],

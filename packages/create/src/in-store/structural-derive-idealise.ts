@@ -23,22 +23,6 @@ export function areaVector(polygon: readonly Vec3[]): Vec3 {
   return area;
 }
 
-/** The area centroid of a simple planar polygon (signed fan triangles, so concave outlines are fine). */
-function polygonCentroid(polygon: readonly Vec3[]): Vec3 {
-  const n = areaVector(polygon);
-  const twice = dot(n, n) ** 0.5;
-  if (!(twice > 0)) return polygon[0];
-  const unit = scale(n, 1 / twice);
-  let sum: Vec3 = [0, 0, 0];
-  let area = 0;
-  for (let i = 1; i + 1 < polygon.length; i++) {
-    const a = dot(cross(sub(polygon[i], polygon[0]), sub(polygon[i + 1], polygon[0])), unit) / 2;
-    sum = add(sum, scale(add(sub(polygon[i], polygon[0]), sub(polygon[i + 1], polygon[0])), a / 3));
-    area += a;
-  }
-  return add(polygon[0], scale(sum, 1 / area));
-}
-
 /** Below this |cos| between extrusion and outline normal the prism is oblique (about 2.6 degrees). */
 const PERPENDICULAR_COS = 0.999;
 /** A profile filling at least this share of its bounds counts as a rectangle (mitred wall ends pass). */
@@ -103,7 +87,7 @@ export function idealiseLine(prism: PrismFact): LineIdealisation {
   const f = prismFrame(prism);
   if (typeof f === 'string') return { issue: f };
   if (f.depth >= f.long) {
-    const start = prism.centroid ?? (prism.outlineExact ? polygonCentroid(prism.outline) : f.centre);
+    const start = prism.centroid ?? f.centre;
     return { start, end: add(start, prism.extrusion), source: 'extrusion' };
   }
   if (f.nearRectangle && !f.oblique) {

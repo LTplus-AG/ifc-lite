@@ -37,6 +37,16 @@ DATA;
 #63=IFCCARTESIANPOINT((0.006,0.1));
 #64=IFCCARTESIANPOINT((0.,0.1));
 #65=IFCPOLYLINE((#45,#60,#61,#62,#63,#64,#45));
+#70=IFCCARTESIANPOINT((-0.05,-0.05));
+#71=IFCCARTESIANPOINT((0.05,-0.05));
+#72=IFCCARTESIANPOINT((0.05,0.05));
+#73=IFCCARTESIANPOINT((-0.05,0.05));
+#74=IFCPOLYLINE((#70,#71,#72,#73,#70));
+#75=IFCCARTESIANPOINT((0.005,-0.02));
+#76=IFCCARTESIANPOINT((0.045,-0.02));
+#77=IFCCARTESIANPOINT((0.045,0.02));
+#78=IFCCARTESIANPOINT((0.005,0.02));
+#79=IFCPOLYLINE((#75,#76,#77,#78,#75));
 ${beam(11, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.075,0.006,$,$,$)')}
 ${beam(12, 'IFCTSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.08,0.006,0.01,$,$,$,$,$)')}
 ${beam(13, 'IFCUSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.05,0.006,0.008,$,$,$)')}
@@ -44,6 +54,8 @@ ${beam(14, 'IFCCSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.05,0.004,0.015,$)')}
 ${beam(15, 'IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#65)')}
 ${beam(16, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#48,0.1,0.075,0.006,$,$,$)')}
 ${beam(17, 'IFCISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.1,0.006,0.01,$)')}
+${beam(18, 'IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#74,(#79))')}
+${beam(19, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.1,$,0.006,$,$,$)')}
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -56,6 +68,8 @@ const ORACLE: Record<number, [number, number]> = {
   154: [-19.189, -19.189], // arbitrary closed L polygon, bounds 75 x 100
   164: [19.189, -19.189], // the L with its profile Position rotated 90 degrees
   174: [0, 0], // IfcIShapeProfileDef is symmetric
+  184: [-4.762, 0], // 100 x 100 rectangle with a 40 x 40 void centred 25 mm right of the centre
+  194: [-22.773, -22.773], // IfcLShapeProfileDef 100 x (Width omitted = Depth) x 6
 };
 // Bounds centre of each profile in the profile frame (mm): the polygon's lower-left corner is the origin.
 const BOUNDS_CENTRE: Record<number, [number, number]> = { 154: [37.5, 50] };

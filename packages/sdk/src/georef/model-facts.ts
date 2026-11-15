@@ -104,17 +104,18 @@ export function collectGeorefModelFacts(store: IfcDataStore, view: MutableProper
   const sites = live('IFCSITE');
   const contexts = live('IFCGEOMETRICREPRESENTATIONCONTEXT');
   const contextTypes = new Map<number, string>();
-  let model3d: number | null = null;
-  let first3d: number | null = null;
+  // The planner's preference, applied to every candidate: a 3D 'Model' context, then any other 3D one, then the rest
+  // (in file order within each tier), so what is left after a later deletion is what a fresh plan would pick.
+  const tier = new Map<number, number>();
   for (const id of contexts) {
     const attrs = attributes(id);
     const type = typeof attrs[1] === 'string' ? attrs[1] : '';
     contextTypes.set(id, type);
     if (attrs[2] === 3) {
-      first3d ??= id;
-      if (model3d === null && type.trim().toUpperCase() === 'MODEL') model3d = id;
+      tier.set(id, type.trim().toUpperCase() === 'MODEL' ? 0 : 1);
     }
   }
+  const ranked = [...contexts].sort((a, b) => (tier.get(a) ?? 2) - (tier.get(b) ?? 2));
   const sourceCrsOf = (id: number): number | null => {
     const ref = attributes(id)[0];
     return typeof ref === 'number' ? ref : null;
@@ -128,8 +129,8 @@ export function collectGeorefModelFacts(store: IfcDataStore, view: MutableProper
     supportsScaled: schema === 'IFC4X3' && declaresMapConversionScaled(fileSchema),
     contexts,
     contextTypes,
-    preferredContext: model3d ?? first3d ?? contexts[0] ?? null,
-    rankedContexts: [...new Set([model3d, first3d, ...contexts].filter((id): id is number => id !== null))],
+    preferredContext: ranked[0] ?? null,
+    rankedContexts: ranked,
     sites,
     mapConversions: [
       ...live('IFCMAPCONVERSION').map((id) => ({ id, scaled: false, sourceCrs: sourceCrsOf(id) })),

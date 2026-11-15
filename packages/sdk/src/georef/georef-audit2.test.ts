@@ -176,6 +176,29 @@ describe('F7. a deleted or retyped SourceCRS is replaced by the planner\'s next 
     m.view().setEntityType(5, 'IfcSite');
     expect(sourceContextOf(String(m.bim.export.ifc()))).toBe(7);
   });
+  const MIXED = BASE.replace("#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#3,$);", '').replace("#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#3,$);", "#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#3,$);\n#7=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-5,#3,$);\n#8=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Detail',3,1.E-5,#3,$);");
+  it('the fallback is what a fresh plan would pick among the survivors: another 3D context before a 2D one', async () => {
+    const m = await open('IFC4', MIXED);
+    m.bim.georef.set(SET);
+    expect(sourceContextOf(String(m.bim.export.ifc()))).toBe(5);
+    m.bim.store.removeEntity({ modelId: 'model', expressId: 5 });
+    expect(sourceContextOf(String(m.bim.export.ifc()))).toBe(8);
+    m.bim.store.removeEntity({ modelId: 'model', expressId: 8 });
+    expect(sourceContextOf(String(m.bim.export.ifc()))).toBe(7);
+  });
+  it('a Model 3D context later in the file beats an earlier non-Model one after the first choice goes', async () => {
+    const m = await open('IFC4', MIXED.replace("'Detail',3", "'Model',3"));
+    m.bim.georef.set(SET);
+    m.view().setEntityType(5, 'IfcSite');
+    expect(sourceContextOf(String(m.bim.export.ifc()))).toBe(8);
+  });
+  it('a sub-context is never the SourceCRS, and losing its parent is the typed refusal, not the sub-context', async () => {
+    const m = await open('IFC4', `${BASE}\n#9=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#5,$,.MODEL_VIEW.,$);`);
+    m.bim.georef.set(SET);
+    expect(sourceContextOf(String(m.bim.export.ifc()))).toBe(5);
+    m.bim.store.removeEntity({ modelId: 'model', expressId: 5 });
+    expect(() => m.bim.export.ifc()).toThrow(/IfcGeometricRepresentationContext/);
+  });
   it('no context left: the typed refusal stays', async () => {
     const m = await open('IFC4', BASE);
     m.bim.georef.set(SET);

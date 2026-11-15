@@ -292,3 +292,26 @@ test('#10353 server proof: a blob: URL of the source before the decision makes t
   assert.equal(v.sourcePostBeforeDecision, null);
   assert.match(v.unknownBecause.sourcePostBeforeDecision, /blob: URL of the source/);
 });
+
+test('#10264 the final snapshot decides, not which promise settled first (review on #10415)', async () => {
+  const { mergeFinalSnapshot } = await import('./oom-load-probe-lib.mjs');
+  const refusal = "Failed to load \"x.ifc\": This IFC file exceeds this tab's local processing memory budget (3.0 GiB estimated, 3.0 GiB budget).";
+  // The wait rejected before the first poll: obs has no storeError yet.
+  const rejected = { oomKills: 0, killedTypes: [], interactive: false, storeError: null, notices: [], timedOut: false, warningShown: false, decision: 'none' };
+  assert.equal(classify(mergeFinalSnapshot(rejected, { error: refusal, modelStates: ['error'], warningVisible: false, notices: [] })).outcome, 'refused');
+  assert.equal(classify(mergeFinalSnapshot(rejected, { error: null, modelStates: [], warningVisible: false, notices: [] })).outcome, 'error', 'no refusal anywhere: error');
+  assert.equal(classify(mergeFinalSnapshot(rejected, { error: 'Unsupported schema', modelStates: ['error'], warningVisible: false, notices: [] })).outcome, 'error');
+  // Refusal shown only as an error card (notice), not yet in the store sample.
+  assert.equal(classify(mergeFinalSnapshot(rejected, { error: null, modelStates: [], warningVisible: false, notices: [refusal] })).outcome, 'refused');
+  // The warning dialog appeared just before a rejection: awaiting-decision.
+  assert.equal(classify(mergeFinalSnapshot(rejected, { error: null, modelStates: [], warningVisible: true, notices: [] })).outcome, 'awaiting-decision');
+  // After Cancel the dialog is gone; the decision recorded earlier still gives cancelled.
+  assert.equal(classify(mergeFinalSnapshot({ ...rejected, warningShown: true, decision: 'cancel' }, { error: null, modelStates: [], warningVisible: false, notices: [] })).outcome, 'cancelled');
+  // A timeout with a refusal in the store is a refusal, and a finished load stays loaded.
+  assert.equal(classify(mergeFinalSnapshot({ ...rejected, timedOut: true }, { error: refusal, modelStates: [], warningVisible: false, notices: [] })).outcome, 'refused');
+  assert.equal(classify(mergeFinalSnapshot({ ...rejected, interactive: true }, { error: null, modelStates: ['complete'], warningVisible: false, notices: [] })).outcome, 'loaded');
+  // Page gone (crash): no snapshot; the kill evidence decides.
+  assert.equal(classify(mergeFinalSnapshot({ ...rejected, pageCrashed: true }, null)).outcome, 'killed');
+  // An earlier poll's storeError is never overwritten.
+  assert.equal(mergeFinalSnapshot({ ...rejected, storeError: 'first' }, { error: 'second', modelStates: [], notices: [] }).storeError, 'first');
+});

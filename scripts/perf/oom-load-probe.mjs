@@ -49,7 +49,7 @@ import { basename, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { writeDenseIfc } from './gen-dense-ifc.mjs';
-import { DIALOG_BUTTONS, MEMORY_WARNING, SERVER_FIRST, classify, expectFlags, optionErrors, parseSize, phaseOf, runCleanup, serverAttemptSummary, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { DIALOG_BUTTONS, MEMORY_WARNING, SERVER_FIRST, classify, expectFlags, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, serverAttemptSummary, verdict, withTimeout } from './oom-load-probe-lib.mjs';
 import { installSourceTracker, trackerSummary } from './oom-load-probe-tracker.mjs';
 import { GPU_ARGS } from './retained-qual-browser.mjs';
 import { chromePids, memoryOf } from './scenoptic-bench-sampling.mjs';
@@ -281,7 +281,18 @@ export async function runProbe(opts) {
     result.wallSeconds = (Date.now() - t0) / 1000;
     await new Promise((r) => setTimeout(r, 1500)); // let a pending OOM kill / crash land before the verdict
     if (!obs.pageCrashed && !obs.browserGone) {
-      obs.notices = await withTimeout(page.evaluate(NOTICES).catch(() => []), 5000, () => []);
+      // One final observation on every exit path (interactive, rejection, timeout, poll stop):
+      // the 2 s poll is only a progress sampler, never the source of the verdict.
+      const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 5000, () => null);
+      if (st) { last = { ...last, ...st }; log({ t: (Date.now() - t0) / 1000, final: st }); }
+      const warningLocator = page.locator('[role=dialog],[role=alertdialog]').filter({ hasText: MEMORY_WARNING });
+      const warningVisible = obs.decision === 'none' && (await warningLocator.count().catch(() => 0)) > 0;
+      if (warningVisible && !result.memoryWarning) {
+        result.memoryWarning = { text: (await warningLocator.first().innerText().catch(() => '')).slice(0, 500), trisBefore: st?.tris ?? null };
+        last = { ...last, warning: true };
+      }
+      const notices = await withTimeout(page.evaluate(NOTICES).catch(() => null), 5000, () => null);
+      Object.assign(obs, mergeFinalSnapshot(obs, st ? { error: st.error, modelStates: st.modelStates, warningVisible, notices } : (notices ? { notices } : null)));
       dialogs = await withTimeout(page.evaluate(() => globalThis.__oomProbeDialogs ?? []).catch(() => []), 5000, () => []);
       trackerReport = await withTimeout(page.evaluate(() => globalThis.__oomProbeTracker?.report() ?? null).catch(() => null), 5000, () => null);
       if (obs.interactive) last = { ...(await withTimeout(page.evaluate(PAGE_PROBE).catch(() => last), 5000, () => last)), interactive: true };

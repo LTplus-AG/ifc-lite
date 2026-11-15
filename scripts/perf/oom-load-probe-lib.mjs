@@ -102,6 +102,22 @@ function classifyAlive(o) {
   return { outcome: 'error', reason: 'no verdict observed' };
 }
 
+/**
+ * Fold one final page snapshot into the observations, so classification never depends on
+ * which promise (the interactive wait, a rejection, the 2 s poll) settled first.
+ * `snap` is `{ error, modelStates, warningVisible, warningText, notices }` read from the page
+ * after the wait ended on any path; `null` when the page is gone (crash or browser exit,
+ * which the kill evidence covers).
+ */
+export function mergeFinalSnapshot(obs, snap) {
+  if (!snap) return obs;
+  const out = { ...obs };
+  if (!out.storeError && (snap.error || snap.modelStates?.includes('error'))) out.storeError = snap.error ?? 'model load error';
+  if (snap.warningVisible && !out.warningShown) out.warningShown = true;
+  if (Array.isArray(snap.notices)) out.notices = snap.notices;
+  return out;
+}
+
 /** Accepted values of `--expect`. */
 export const EXPECTATIONS = Object.freeze({
   // Known-issue mode: today the minimal case is killed. A run that no longer

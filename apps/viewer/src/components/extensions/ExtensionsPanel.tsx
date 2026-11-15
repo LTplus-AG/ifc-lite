@@ -18,6 +18,7 @@
  * separate components landing later.
  */
 
+import { isAiChatAvailable } from '@/components/viewer/surface-command-features';
 import { useBundleReview } from './useBundleReview';
 import { useEffect, useRef, useState } from 'react';
 import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
@@ -65,6 +66,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const { pending, setPending, handleFiles, handleApprove, busy } = useBundleReview(host);
   const [dragOver, setDragOver] = useState(false);
   const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair'>('installed');
+  // Ideas, chat authoring and forks land in the AI chat; a host can switch it off (`lib/features`).
+  const ai = isAiChatAvailable();
   /** Deep-link entry point (Command Palette "Author an extension…"). */
   const extensionsRequestedView = useViewerStore((s) => s.extensionsRequestedView);
   const setExtensionsRequestedView = useViewerStore((s) => s.setExtensionsRequestedView);
@@ -154,7 +157,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
             { id: 'repair', label: t('extensionsFlavors.extensionsPanel.tab.repair'), Icon: Wrench },
             { id: 'audit', label: t('extensionsFlavors.extensionsPanel.tab.audit'), Icon: FileText },
           ] as const
-        ).map(({ id, label, Icon }) => {
+        ).filter(({ id }) => id !== 'ideas' || ai).map(({ id, label, Icon }) => {
           return (
             <TabsTrigger
               key={id}
@@ -174,7 +177,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
       <TabsContent value={view} className="mt-0 flex-1 min-h-0 flex flex-col">
       {view === 'audit' ? (
         <AuditLogPanel />
-      ) : view === 'ideas' ? (
+      ) : view === 'ideas' && ai ? (
         <IdeasPanel />
       ) : view === 'repair' ? (
         <RepairQueuePanel />
@@ -205,7 +208,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
 
             <div className="flex flex-col gap-2 w-full max-w-sm mt-2">
               {/* 1. Author via chat — most discoverable for new users. */}
-              <Button
+              {ai && <Button
                 variant="default"
                 size="sm"
                 onClick={() => {
@@ -216,17 +219,17 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
               >
                 <Sparkles className="mr-2 h-3.5 w-3.5" />
                 {t('extensionsFlavors.extensionsPanel.emptyState.describeInChat')}
-              </Button>
+              </Button>}
 
               {/* 2. Browse curated starter ideas. */}
-              <Button
+              {ai && <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setView('ideas')}
               >
                 <Lightbulb className="mr-2 h-3.5 w-3.5" />
                 {t('extensionsFlavors.extensionsPanel.emptyState.browseIdeas')}
-              </Button>
+              </Button>}
 
               {/* 3. Drop / import an .iflx file from elsewhere. */}
               <Button
@@ -260,13 +263,13 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <IconButton
+                    {ai && <IconButton
                       label={t('extensionsFlavors.extensionsPanel.row.forkAriaLabel', { id: record.id })}
                       tooltip={t('extensionsFlavors.extensionsPanel.row.forkTitle')}
                       onClick={() => handleFork(record.id)}
                     >
                       <GitFork className="h-3.5 w-3.5" />
-                    </IconButton>
+                    </IconButton>}
                     <IconButton
                       label={t('extensionsFlavors.extensionsPanel.row.runTestsAriaLabel', { id: record.id })}
                       disabled={isRunning(record.id)}

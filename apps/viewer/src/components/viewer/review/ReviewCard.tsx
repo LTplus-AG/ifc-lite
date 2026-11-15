@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -101,7 +102,7 @@ export function ReviewCard({ card, titles, decision, expanded, selected, onToggl
           <div className="flex flex-wrap gap-1.5">
             <Button size="sm" variant="outline" disabled={card.identity !== 'validated'} onClick={() => selectCardElements(card)}
               title={card.identity === 'validated' ? undefined : t('reviewWorkspace.selectIn3dNone')}>{t('reviewWorkspace.selectIn3d')}</Button>
-            <Button size="sm" variant="outline" onClick={ask}><Sparkles className="mr-1 h-3.5 w-3.5" aria-hidden="true" />{t('reviewWorkspace.ask')}</Button>
+            {isFeatureEnabled('ai.assistant') && <Button size="sm" variant="outline" onClick={ask}><Sparkles className="mr-1 h-3.5 w-3.5" aria-hidden="true" />{t('reviewWorkspace.ask')}</Button>}
             <Button size="sm" variant="outline" onClick={onDraft}>{t('reviewWorkspace.draftOne')}</Button>
           </div>
           <ReviewDecision key={card.key} cardKey={card.key} decision={decision} />

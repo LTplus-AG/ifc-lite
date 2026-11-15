@@ -7,6 +7,7 @@
  * open / add / refresh, the exporter fleet, and link-based sharing.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import React from 'react';
 import { AddFile, CloudSources, Loading, OpenFile, SaveFederationSetup, Refresh, Share, CollabsRoom } from '@/icons';
 import { useViewerStore } from '@/store';
@@ -100,9 +101,13 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
         ))}
       </RibbonGroup>
 
-      <RibbonGroupDivider />
+      {isFeatureEnabled('export.files') && (
+        <>
+          <RibbonGroupDivider />
 
-      <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
+          <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
+        </>
+      )}
 
       {collabEnabled && (
         <>

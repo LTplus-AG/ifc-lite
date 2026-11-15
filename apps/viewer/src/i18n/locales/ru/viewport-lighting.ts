@@ -15,6 +15,8 @@ export const viewportLightingRu = {
   "viewportLighting.container.emptyState.heading": "Откройте модель",
   "viewportLighting.container.emptyState.lead.returning": "Выберите файл на компьютере или продолжите с того места, где остановились.",
   "viewportLighting.container.emptyState.lead.firstVisit": "Выберите файл на компьютере или начните с одного из примеров ниже.",
+  "viewportLighting.container.emptyState.hostOpens.heading": "Модель не открыта",
+  "viewportLighting.container.emptyState.hostOpens.lead": "Откройте модель со страницы, с которой вы сюда перешли.",
   "viewportLighting.container.emptyState.recentFiles.reopen": "Открыть",
   "viewportLighting.container.emptyState.recentFiles.locate": "Найти…",
   "viewportLighting.container.emptyState.recentFiles.locateHint": "Файл слишком большой, чтобы хранить его в браузере. Выберите его снова, чтобы открыть.",

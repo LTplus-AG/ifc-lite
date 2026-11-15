@@ -9,6 +9,7 @@
  * formatted for the platform the viewer runs on.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
 import { ALT_SHORTCUT_PANELS, altShortcutDigit } from '@/lib/panels/registry';
 import { isPanelAvailable } from '@/lib/panels/availability';
@@ -73,7 +74,7 @@ export function ShortcutsTab() {
       {/* Learn-more row: drives discovery to the marketing site and the github.io
           docs. Sits above the shortcut groups so it's the first thing users hunting
           for help see, without crowding the keyboard reference itself. */}
-      <div className="rounded border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      {isFeatureEnabled('help.product-links') && <div className="rounded border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{t('keyboardShortcuts.shortcuts.learnMore')}</span>
         <a
           href="https://ifclite.dev"
@@ -92,7 +93,7 @@ export function ShortcutsTab() {
         >
           {t('keyboardShortcuts.shortcuts.docsLink')}
         </a>
-      </div>
+      </div>}
       {groups.map(({ category, rows }) => (
         <div key={category}>
           <h3 className="text-sm font-medium text-muted-foreground mb-2">

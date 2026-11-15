@@ -125,6 +125,7 @@ export function assembleExportResult(pass: ExportPass): StepExportResult {
       modifiedEntityCount,
       fileSize: content.byteLength,
       warnings: pass.warnings,
+      georeferencingWarnings: pass.georeferencingWarnings,
     },
   };
 }

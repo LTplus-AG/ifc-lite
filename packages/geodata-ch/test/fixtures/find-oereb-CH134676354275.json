@@ -1,0 +1,26 @@
+{
+ "results": [
+  {
+   "layerBodId": "ch.swisstopo-vd.stand-oerebkataster",
+   "layerName": "Verfügbarkeit des ÖREB-Katasters",
+   "featureId": 847176,
+   "id": 847176,
+   "attributes": {
+    "fid": "351",
+    "number": "816",
+    "gemeindename": "Bern",
+    "kanton": "Bern",
+    "oereb_status_de": "ÖREB-Kataster eingeführt",
+    "bfs_nr": 351,
+    "url_oereb": "http://www.be.ch/oerebk",
+    "oereb_webservice": "https://www.oereb2.apps.be.ch",
+    "bgdi_status": 0,
+    "egris_egrid": "CH134676354275",
+    "oereb_extract_pdf": "https://www.oereb2.apps.be.ch/extract/pdf/?EGRID=CH134676354275",
+    "oereb_extract_url": "https://www.oereb2.apps.be.ch/extract/url/?EGRID=CH134676354275",
+    "realestate_type": "Liegenschaft",
+    "label": "Bern"
+   }
+  }
+ ]
+}

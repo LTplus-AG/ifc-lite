@@ -51,7 +51,25 @@ export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | nul
   }
   if (e.type === 'IFCINDEXEDPOLYCURVE') {
     const pts = pointList(reader, asRef(e.attributes[0]));
-    return pts && pts.length >= 2 ? pts : null;
+    if (!pts || pts.length < 2) return null;
+    const segments = e.attributes[1];
+    if (segments === null || segments === undefined) return pts; // no Segments: the points in list order
+    // Segments name the points of the curve and their order (1-based; a line or an arc through three points, taken as
+    // chords). A point the segments omit is not on the curve, and a malformed segment makes the whole outline unreadable.
+    if (!Array.isArray(segments) || segments.length === 0) return null;
+    const out: Pt2[] = [];
+    let last = -1;
+    for (const seg of segments) {
+      const indices = Array.isArray(seg) && typeof seg[0] === 'string' && Array.isArray(seg[1]) ? seg[1] : null;
+      if (!indices || indices.length < 2) return null;
+      for (const i of indices) {
+        if (typeof i !== 'number' || !Number.isInteger(i) || i < 1 || i > pts.length) return null;
+        if (i === last) continue;
+        out.push(pts[i - 1]);
+        last = i;
+      }
+    }
+    return out.length >= 2 ? out : null;
   }
   return null;
 }

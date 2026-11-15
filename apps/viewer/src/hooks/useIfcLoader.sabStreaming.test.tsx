@@ -257,7 +257,7 @@ for (const kind of ['primary', 'federated'] as const) {
     try {
       await withRecordedSharedArrayBuffer(sizes, async () => {
         let pending: Promise<void> | undefined;
-        await act(async () => { pending = hookApi!.loadFile(probedStepFile(probe, 1.26e9), { kind }); });
+        await act(async () => { pending = hookApi!.loadFile(probedStepFile(probe, 1.26e9), { kind, modelId: 'memory-consent' }); });
         await waitFor(() => !!document.querySelector('[role="alertdialog"]'), 'memory consent opens before any source allocation');
         assert.deepEqual(probe, { arrayBuffer: 0, stream: 0 });
         assert.deepEqual(fileSized(sizes), []);

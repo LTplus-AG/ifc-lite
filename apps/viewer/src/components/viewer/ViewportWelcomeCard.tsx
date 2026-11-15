@@ -67,6 +67,7 @@ export interface ViewportWelcomeCardProps {
 /** No way to pick a model on this page (`lib/features`): the page that embeds the viewer opens one. */
 export function hostOpensModel(): boolean {
   return !isFeatureEnabled('files.local') && !isFeatureEnabled('files.samples') && !isPanelAvailable('sources')
+    && !isFeatureEnabled('files.federation-setup')
     && !isSurfaceCommandAvailable(surfaceCommand('file:new-blank', 'palette'));
 }
 

@@ -25,6 +25,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { GeoreferenceTab } from '@/components/viewer/placement/GeoreferenceTab';
 import { PositionedDownload } from '@/components/viewer/PositionedDownload';
+import { ViewportWelcomeCard } from '@/components/viewer/ViewportWelcomeCard';
 import { PanelModelGate } from '@/components/viewer/PanelModelGate';
 import { AboutTab } from '@/components/viewer/KeyboardShortcutsDialogTabs';
 import { ShortcutsTab } from '@/components/viewer/ShortcutsTab';
@@ -220,6 +221,23 @@ describe('files and samples off have no other door', () => {
     render(<PanelModelGate id="lens" mode="takeover" onClose={() => {}}><span /></PanelModelGate>);
     assert.match(document.body.textContent ?? '', /from the page that brought you here/);
   });
+
+  for (const surface of ['welcome', 'panel'] as const) {
+    for (const federationPicker of [false, true]) {
+      it(`${surface} counts the federation-setup picker before referring to the host (#10176): ${federationPicker}`, () => {
+        resetFeaturesForTest({ default: 'none', enable: federationPicker ? ['files.federation-setup'] : [] });
+        if (surface === 'welcome') {
+          render(<ViewportWelcomeCard webgpu={{ supported: true, checking: false }}
+            onOpenClick={() => {}} onStartBlank={() => {}} recentFiles={[]} loadFile={async () => {}} />);
+        } else {
+          render(<PanelModelGate id="lens" mode="takeover" onClose={() => {}}><span /></PanelModelGate>);
+        }
+        const referringPage = /from the page that brought you here/;
+        if (federationPicker) assert.doesNotMatch(document.body.textContent ?? '', referringPage);
+        else assert.match(document.body.textContent ?? '', referringPage);
+      });
+    }
+  }
 
   it('the open and add-model handlers do not show a picker with local files off', async () => {
     resetFeaturesForTest({ default: 'all', disable: ['files.local'] });

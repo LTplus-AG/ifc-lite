@@ -65,8 +65,14 @@ export function equipment2x3(): string {
   const rep = add(`IFCSHAPEREPRESENTATION(#${body},'Body','SweptSolid',(#${solid}))`);
   contained[eg.id].push(add(`IFCSLAB(${g()},$,'Bodenplatte',$,$,#${place(eg.pl, 0, 0, 0)},#${add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${rep}))`)},$,.FLOOR.)`));
 
+  // Equipment carries its own extruded body (0.5 m x 0.5 m x 1 m from its base up), as a real export does.
+  const box = () => {
+    const p = add(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${add(`IFCAXIS2PLACEMENT2D(#${add('IFCCARTESIANPOINT((0.,0.))')},$)`)},0.5,0.5)`);
+    const s = add(`IFCEXTRUDEDAREASOLID(#${p},#${axis(0, 0, 0)},#${add('IFCDIRECTION((0.,0.,1.))')},1.)`);
+    return add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${add(`IFCSHAPEREPRESENTATION(#${body},'Body','SweptSolid',(#${s}))`)}))`);
+  };
   const typed = (storeyRef: { pl: number; id: number }, occurrence: string, name: string, type: string, predefined: string) => {
-    const o = add(`${occurrence}(${g()},$,'${name}',$,$,#${place(storeyRef.pl, 5, 5, 0)},$,$)`);
+    const o = add(`${occurrence}(${g()},$,'${name}',$,$,#${place(storeyRef.pl, 5, 5, 0)},#${box()},$)`);
     const t = add(`${type}(${g()},$,'${name} Typ',$,$,$,$,$,$,.${predefined}.)`);
     add(`IFCRELDEFINESBYTYPE(${g()},$,$,$,(#${o}),#${t})`);
     contained[storeyRef.id].push(o);
@@ -78,7 +84,7 @@ export function equipment2x3(): string {
   typed(eg, 'IFCFLOWCONTROLLER', 'Hauptschalter', 'IFCSWITCHINGDEVICETYPE', 'SWITCHDISCONNECTOR');
   typed(ug, 'IFCFLOWTERMINAL', 'Lavabo', 'IFCSANITARYTERMINALTYPE', 'WASHHANDBASIN');
   typed(og, 'IFCFLOWMOVINGDEVICE', 'Pumpe OG', 'IFCPUMPTYPE', 'CIRCULATOR');
-  contained[eg.id].push(add(`IFCELECTRICDISTRIBUTIONPOINT(${g()},$,'Hauptverteilung',$,$,#${place(eg.pl, 2, 5, 0)},$,$,.DISTRIBUTIONBOARD.,$)`));
+  contained[eg.id].push(add(`IFCELECTRICDISTRIBUTIONPOINT(${g()},$,'Hauptverteilung',$,$,#${place(eg.pl, 2, 5, 0)},#${box()},$,.DISTRIBUTIONBOARD.,$)`));
 
   for (const [storeyId, ids] of Object.entries(contained)) {
     add(`IFCRELCONTAINEDINSPATIALSTRUCTURE(${g()},$,$,$,(${ids.map((i) => `#${i}`).join(',')}),#${storeyId})`);

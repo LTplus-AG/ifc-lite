@@ -134,7 +134,9 @@ export function syntheticHouse(o: SyntheticOptions = {}): string {
   contained[eg.id].push(wall);
 
   // Door in it: the door says IsExternal = false, the host wall says true.
-  const doorOpening = add(`IFCOPENINGELEMENT(${g()},$,'Öffnung Tür',$,$,#${place(wallPl, 10, 0, 0)},$,$,.OPENING.)`);
+  // As a real export has it: the opening's extruded body, 1 m x 2.1 m through the wall (x 9.5..10.5, z 0..2.1).
+  const doorHole = rectExtrusion(0, 0, 1, 2.1, 0.4, axis(0, -0.2, 1.05, dir(0, 1, 0), dir(1, 0, 0)), dir(0, 0, 1));
+  const doorOpening = add(`IFCOPENINGELEMENT(${g()},$,'Öffnung Tür',$,$,#${place(wallPl, 10, 0, 0)},#${shape([doorHole])},$,.OPENING.)`);
   add(`IFCRELVOIDSELEMENT(${g()},$,$,$,#${wall},#${doorOpening})`);
   const door = add(`IFCDOOR(${g()},$,'Haustür',$,$,#${place(eg.pl, 10, 0, 0)},$,$,2.1,1.,.DOOR.,$,$)`);
   pset(door, 'Pset_DoorCommon', 'IsExternal', 'IFCBOOLEAN(.F.)');
@@ -147,20 +149,23 @@ export function syntheticHouse(o: SyntheticOptions = {}): string {
   add(`IFCRELVOIDSELEMENT(${g()},$,$,$,#${wall},#${hole})`);
 
   // Basement window, light well, boiler, interior and exterior stair, a basement space.
-  const win = add(`IFCWINDOW(${g()},$,'Kellerfenster',$,$,#${place(ug.pl, 5, 0, 2)},$,$,0.5,0.8,.WINDOW.,$,$)`);
+  // Doors and windows carry their own extruded body from their placement up, as a real export does.
+  const leaf = (w: number, h: number) => shape([rectExtrusion(0, 0, w, 0.1, h, axis(0, 0, 0), dir(0, 0, 1))]);
+  const win = add(`IFCWINDOW(${g()},$,'Kellerfenster',$,$,#${place(ug.pl, 5, 0, 2)},#${leaf(0.8, 0.5)},$,0.5,0.8,.WINDOW.,$,$)`);
   pset(win, 'Pset_WindowCommon', 'IsExternal', 'IFCBOOLEAN(.T.)');
   contained[ug.id].push(win);
   contained[ug.id].push(add(`IFCBUILDINGELEMENTPROXY(${g()},$,'Lichtschacht 1',$,$,#${place(ug.pl, 5, -1, 1.8)},$,$,$)`));
-  contained[ug.id].push(add(`IFCBOILER(${g()},$,'Heizkessel',$,$,#${place(ug.pl, 12, 4, 0)},$,$,.WATER.)`));
-  contained[eg.id].push(add(`IFCELECTRICDISTRIBUTIONBOARD(${g()},$,'Hauptverteilung',$,$,#${place(eg.pl, 2, 5, 0)},$,$,.DISTRIBUTIONBOARD.)`));
-  contained[og.id].push(add(`IFCPUMP(${g()},$,'Pumpe OG',$,$,#${place(og.pl, 2, 5, 0)},$,$,.CIRCULATOR.)`));
+  // Equipment carries its own extruded body from its base up, as a real export does.
+  contained[ug.id].push(add(`IFCBOILER(${g()},$,'Heizkessel',$,$,#${place(ug.pl, 12, 4, 0)},#${leaf(0.5, 1)},$,.WATER.)`));
+  contained[eg.id].push(add(`IFCELECTRICDISTRIBUTIONBOARD(${g()},$,'Hauptverteilung',$,$,#${place(eg.pl, 2, 5, 0)},#${leaf(0.5, 1)},$,.DISTRIBUTIONBOARD.)`));
+  contained[og.id].push(add(`IFCPUMP(${g()},$,'Pumpe OG',$,$,#${place(og.pl, 2, 5, 0)},#${leaf(0.5, 1)},$,.CIRCULATOR.)`));
   contained[ug.id].push(add(`IFCSTAIR(${g()},$,'Kellertreppe aussen',$,$,#${place(ug.pl, 25, 5, 0)},$,$,.STRAIGHT_RUN_STAIR.)`));
   contained[ug.id].push(add(`IFCSTAIR(${g()},$,'Innentreppe',$,$,#${place(ug.pl, 15, 5, 0)},$,$,.STRAIGHT_RUN_STAIR.)`));
   const space = add(`IFCSPACE(${g()},$,'U01',$,$,#${place(ug.pl, 0, 0, 0)},$,'Keller',.ELEMENT.,.SPACE.,$)`);
   add(`IFCRELAGGREGATES(${g()},$,$,$,#${ug.id},(#${space}))`);
 
   // An upper-floor door in an external wall: out of scope (4 m above the ground storey).
-  const ogDoor = add(`IFCDOOR(${g()},$,'Balkontür',$,$,#${place(og.pl, 10, 0, 0)},$,$,2.1,1.,.DOOR.,$,$)`);
+  const ogDoor = add(`IFCDOOR(${g()},$,'Balkontür',$,$,#${place(og.pl, 10, 0, 0)},#${leaf(1, 2.1)},$,2.1,1.,.DOOR.,$,$)`);
   pset(ogDoor, 'Pset_DoorCommon', 'IsExternal', 'IFCBOOLEAN(.T.)');
   contained[og.id].push(ogDoor);
 

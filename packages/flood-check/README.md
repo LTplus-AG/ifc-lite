@@ -266,8 +266,13 @@ entities, properties and containment from the parsed store. No meshing.
   defines the level (an opening without a body; a light well without one).
   Stairs and ramps are always upper estimates (entry at the terrain). An
   element with no readable placement is not placed: it is skipped and named
-  in a warning. A door or window placed by its placement alone stays exact,
-  since the schema places it at its threshold or sill.
+  in a warning. **A placement alone is never exact**: a door or window is
+  `exact` only when its own body or the body of the opening it fills was read
+  (a tool may place it at its head), and equipment only when its body was;
+  with neither, the level is an upper estimate and the position uncertain. A
+  model whose doors have no readable geometry therefore cannot confirm its
+  height reference, so nothing in it is reassured; it can still be flagged
+  as exposed.
 
   Doors, windows and openings more than `aboveGroundScope` (3 m) above the
   ground storey are out of scope, judged by their corrected level (a window
@@ -376,7 +381,7 @@ whose input is incomplete is withheld with the reason.
 | --- | --- | --- |
 | not placed (skipped, named in a warning) | `locate` | the element's placement |
 | out of scope (`aboveGroundScope` above the ground storey) | `scopeExclusion` | the proven lower bound (`locate`'s `lowest`: the exact level, placement minus `OverallHeight` for a door or window, the filling's bound for an opening; none: kept), the ground storey's basis (a guessed one excludes nothing); never the storey |
-| not in the façade (no `IsExternal`, beyond 1 m of the outline) | `facadeReason` | `IsExternal` of element and host, the position's certainty (`locate`: read from part of a body, or a placement standing in for a hole: kept), the footprint's quality (hull, filled voids: kept; partial: kept outside the readable rings), no footprint at all (kept) |
+| not in the façade (no `IsExternal`, beyond 1 m of the outline) | `facadeReason` | `IsExternal` of element and host, the position's certainty (`locate`: read from part of a body, a placement standing in for a hole, or a door or window placement with no readable geometry: kept), the footprint's quality (hull, filled voids: kept; partial: kept outside the readable rings), no footprint at all (kept) |
 | interior stair or ramp | `descentVerdict` | `IsExternal`, placement and every body corner, body completeness, the footprint's quality (hull, filled voids: kept; partial: outside counts as outside) |
 | a stair or ramp leads up (skipped) | `descentEvidence` | body completeness (a complete body only), the ground storey's basis (a guessed one excludes nothing) |
 | a slab opening above the ground storey | `openingVerdict` | the host slab's placement (unplaced: kept, upper estimate), the ground storey's basis |

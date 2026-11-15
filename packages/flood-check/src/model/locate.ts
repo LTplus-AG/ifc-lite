@@ -15,8 +15,11 @@
  * - `upper-estimate` whenever a body that could do so (the element's own, or
  *   the opening it fills) exists but could not be read, in whole or in part,
  *   or is absent where the element's level is only defined by it (an opening
- *   is its body; a light well's placement has no defined height); the level
- *   can then flag but never clear (`level-upper-estimate`);
+ *   is its body; a light well's placement has no defined height), and
+ *   whenever a placement alone would have to stand for the level: a door or
+ *   window with no readable body and no readable filled opening, equipment
+ *   with no readable body. The level can then flag but never clear
+ *   (`level-upper-estimate`);
  * - a refusal when the element has no readable placement: no position.
  *
  * Unreadable never counts as "nothing there": a body is described by how many
@@ -124,8 +127,8 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
   let position = at.position;
   const filling = kind === 'door' || kind === 'window';
   const bodyDefined = kind === 'opening' || kind === 'slab-opening' || kind === 'light-well';
-  let positionCertain = !bodyDefined || own === 'readable';
-  if (filling && s.filled) positionCertain = filled === 'readable';
+  // A door's or window's position is certain only from geometry actually read: the hole it fills, else its own body.
+  let positionCertain = filling ? (filledRead ? filled === 'readable' : own === 'readable') : kind === 'equipment' ? own === 'readable' : !bodyDefined || own === 'readable';
   if (filling && filledRead) {
     position = centre(s.filled!);
     const apart = Math.hypot(position.x - at.position.x, position.y - at.position.y);
@@ -175,6 +178,11 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
   if ((kind === 'opening' || kind === 'slab-opening') && own === 'none') doubts.push('it has no body, so its placement stands for the hole, which may lie lower or elsewhere');
   if (kind === 'light-well' && own === 'none') doubts.push('it has no body, and a light well\'s placement has no defined height');
   if (kind === 'slab-opening' && s.hostLevel === null) doubts.push('the slab it cuts cannot be placed');
+  // A placement alone is never exact (a door or window may be placed at its head, equipment anywhere on its body): it needs
+  // geometry actually read. A body that exists but cannot be read is already a doubt above.
+  if ((filling || kind === 'equipment') && own === 'none' && (!filling || filled === 'none')) {
+    doubts.push(filling ? 'no readable body or filled opening corroborates its placement, which may be at its head' : 'no body corroborates its placement');
+  }
   for (const d of doubts) notes.push(`${d}: the level is an upper estimate`);
   const quality: LevelQuality = doubts.length > 0 ? 'upper-estimate' : 'exact';
   let lowest: number | null = null;

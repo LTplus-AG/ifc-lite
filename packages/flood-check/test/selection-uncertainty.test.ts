@@ -94,7 +94,7 @@ describe('a partial footprint does not exclude façade elements', () => {
       b.contain(b.storeys.eg.id, slab);
       b.contain(b.storeys.eg.id, b.add(`IFCWINDOW(${b.guid()},$,'Fenster Anbau',$,$,#${b.place(b.storeys.eg.pl, 40, 5, 1)},$,$,1.,1.,.WINDOW.,$,$)`));
       // Control: an interior door inside the readable part stays interior.
-      b.contain(b.storeys.eg.id, b.add(`IFCDOOR(${b.guid()},$,'Innentür',$,$,#${b.place(b.storeys.eg.pl, 10, 5, 0)},$,$,2.1,1.,.DOOR.,$,$)`));
+      b.contain(b.storeys.eg.id, b.add(`IFCDOOR(${b.guid()},$,'Innentür',$,$,#${b.place(b.storeys.eg.pl, 10, 5, 0)},#${b.shape([b.rectExtrusion(0, 0, 1, 0.1, 2.1, b.axis(0, 0, 0), b.dir(0, 0, 1))])},$,2.1,1.,.DOOR.,$,$)`));
     });
     expect(facts.footprint.partial).toBe(true);
     expect(facts.candidates.find((c) => c.name === 'Fenster Anbau')?.selectedBecause).toMatch(/footprint is partial/);

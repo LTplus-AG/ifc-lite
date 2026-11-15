@@ -44,6 +44,9 @@ function expected(kind: LocateKind, placed: boolean, own: Body, filled: Body | '
   const unreadable = (b: Body | 'n/a') => b === 'partly readable' || b === 'wholly unreadable';
   if (unreadable(own) || unreadable(filled)) return 'upper-estimate';
   if ((kind === 'opening' || kind === 'slab-opening' || kind === 'light-well') && own === 'none') return 'upper-estimate';
+  // A placement alone is never exact: a door or window needs its own readable body or a readable filled opening, equipment its body.
+  if ((kind === 'door' || kind === 'window') && own !== 'readable' && filled !== 'readable') return 'upper-estimate';
+  if (kind === 'equipment' && own !== 'readable') return 'upper-estimate';
   return 'exact';
 }
 
@@ -70,6 +73,8 @@ describe('the readability matrix', () => {
     if (own === 'partly readable' || own === 'wholly unreadable' || filled === 'partly readable' || filled === 'wholly unreadable') {
       expect(quality).not.toBe('exact');
     }
+    // No row yields `exact` without a readable body or a readable filled opening.
+    if (own !== 'readable' && filled !== 'readable') expect(quality).not.toBe('exact');
     if (quality === 'upper-estimate' && !('refused' in loc) && kind !== 'stair' && kind !== 'ramp') {
       expect(loc.notes.join()).toMatch(/upper estimate/);
     }
@@ -108,9 +113,9 @@ describe('the earlier instances, as rows of the same table', () => {
     expect('refused' in loc ? '' : loc.notes.join()).toMatch(/hole it fills/);
   });
 
-  it('a placement-only door (its placement is its threshold by the schema) stays exact; a placement-only opening does not', () => {
-    expect(locate('door', { placement: placement(500), own: body('none'), filled: null })).toMatchObject({ quality: 'exact' });
-    expect(locate('door', { placement: placement(500), own: body('none'), filled: body('none') })).toMatchObject({ quality: 'exact' });
+  it('a placement-only door or opening is an upper estimate (a placement alone is never exact)', () => {
+    expect(locate('door', { placement: placement(500), own: body('none'), filled: null })).toMatchObject({ quality: 'upper-estimate' });
+    expect(locate('door', { placement: placement(500), own: body('none'), filled: body('none') })).toMatchObject({ quality: 'upper-estimate' });
     expect(locate('opening', { placement: placement(500), own: body('none') })).toMatchObject({ quality: 'upper-estimate' });
   });
 });

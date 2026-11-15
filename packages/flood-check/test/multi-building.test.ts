@@ -42,10 +42,10 @@ function secondBuilding(gap: number) {
     b.add(`IFCRELAGGREGATES(${b.guid()},$,$,$,#${bld},(#${ug},#${eg}))`);
     const slabSolid = b.rectExtrusion(10, 5, 20, 10, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
     const slab = b.add(`IFCSLAB(${b.guid()},$,'B Bodenplatte',$,$,#${b.place(egPl, 0, 0, 0)},#${b.shape([slabSolid])},$,.FLOOR.)`);
-    const door = b.add(`IFCDOOR(${b.guid()},$,'B Tür',$,$,#${b.place(egPl, 10, 0, 0)},$,$,2.1,1.,.DOOR.,$,$)`);
+    const door = b.add(`IFCDOOR(${b.guid()},$,'B Tür',$,$,#${b.place(egPl, 10, 0, 0)},#${b.shape([b.rectExtrusion(0, 0, 1, 0.1, 2.1, b.axis(0, 0, 0), b.dir(0, 0, 1))])},$,2.1,1.,.DOOR.,$,$)`);
     b.pset(door, 'Pset_DoorCommon', 'IsExternal', 'IFCBOOLEAN(.T.)');
-    const plain = b.add(`IFCDOOR(${b.guid()},$,'B Tür ohne Pset',$,$,#${b.place(egPl, 15, 0, 0)},$,$,2.1,1.,.DOOR.,$,$)`);
-    const win = b.add(`IFCWINDOW(${b.guid()},$,'B Kellerfenster',$,$,#${b.place(ugPl, 5, 0, 2)},$,$,0.5,0.8,.WINDOW.,$,$)`);
+    const plain = b.add(`IFCDOOR(${b.guid()},$,'B Tür ohne Pset',$,$,#${b.place(egPl, 15, 0, 0)},#${b.shape([b.rectExtrusion(0, 0, 1, 0.1, 2.1, b.axis(0, 0, 0), b.dir(0, 0, 1))])},$,2.1,1.,.DOOR.,$,$)`);
+    const win = b.add(`IFCWINDOW(${b.guid()},$,'B Kellerfenster',$,$,#${b.place(ugPl, 5, 0, 2)},#${b.shape([b.rectExtrusion(0, 0, 0.8, 0.1, 0.5, b.axis(0, 0, 0), b.dir(0, 0, 1))])},$,0.5,0.8,.WINDOW.,$,$)`);
     b.pset(win, 'Pset_WindowCommon', 'IsExternal', 'IFCBOOLEAN(.T.)');
     const boiler = b.add(`IFCBOILER(${b.guid()},$,'B Heizkessel',$,$,#${b.place(ugPl, 10, 5, 0)},$,$,.WATER.)`);
     b.add(`IFCRELCONTAINEDINSPATIALSTRUCTURE(${b.guid()},$,$,$,(#${door},#${plain},#${slab}),#${eg})`);

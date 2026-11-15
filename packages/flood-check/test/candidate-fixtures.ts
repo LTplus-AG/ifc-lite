@@ -95,7 +95,7 @@ export function zooForFixtures(b: Extra) {
   rampPlacedInside(b);
   const { eg, og, ug } = b.storeys;
   // Interior door, no pset, deep inside; and one explicitly not external.
-  b.contain(eg.id, b.add(`IFCDOOR(${b.guid()},$,'Innentür',$,$,#${b.place(eg.pl, 10, 5, 0)},$,$,2.1,1.,.DOOR.,$,$)`));
+  b.contain(eg.id, b.add(`IFCDOOR(${b.guid()},$,'Innentür',$,$,#${b.place(eg.pl, 10, 5, 0)},#${b.shape([b.rectExtrusion(0, 0, 1, 0.1, 2.1, b.axis(0, 0, 0), b.dir(0, 0, 1))])},$,2.1,1.,.DOOR.,$,$)`));
   const notExt = b.add(`IFCDOOR(${b.guid()},$,'Zimmertür',$,$,#${b.place(eg.pl, 8, 5, 0)},$,$,2.1,1.,.DOOR.,$,$)`);
   b.pset(notExt, 'Pset_DoorCommon', 'IsExternal', 'IFCBOOLEAN(.F.)');
   b.contain(eg.id, notExt);

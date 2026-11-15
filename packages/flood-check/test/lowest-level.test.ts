@@ -71,6 +71,34 @@ describe('locate returns the lowest possible level with the level', () => {
     expect(locate('window', { placement: at, own: { ...NO_BODY }, filled: body(1, 0, 0) })).toMatchObject({ quality: 'upper-estimate', lowest: null });
     expect(locate('opening', { placement: at, own: body(1, 0, 0), fillingLowest: 502 })).toMatchObject({ quality: 'upper-estimate', lowest: 502 });
     expect(locate('light-well', { placement: at, own: body(2, 1, 503) })).toMatchObject({ quality: 'upper-estimate', lowest: null });
-    expect(locate('equipment', { placement: at, own: { ...NO_BODY } })).toMatchObject({ quality: 'exact', lowest: 504 });
+    expect(locate('equipment', { placement: at, own: { ...NO_BODY } })).toMatchObject({ quality: 'upper-estimate', lowest: null });
+    expect(locate('equipment', { placement: at, own: body(1, 1, 504) })).toMatchObject({ quality: 'exact', lowest: 504 });
+  });
+});
+
+describe('RULE: a door or window placement alone never yields an exact level (review round on head e4f49ac7)', () => {
+  it('the reported case: a window placed at its head 3.5 m up, OverallHeight 1 m, no body, no opening, is kept with its sill as the bound', async () => {
+    const facts = await extract((b) => {
+      const win = b.add(`IFCWINDOW(${b.guid()},$,'Fenster Kopf',$,$,#${b.place(b.storeys.eg.pl, 20, 5, 3.5)},$,$,1.,1.,.WINDOW.,$,$)`);
+      b.pset(win, 'Pset_WindowCommon', 'IsExternal', 'IFCBOOLEAN(.T.)');
+      b.contain(b.storeys.eg.id, win);
+    });
+    expect(facts.candidates.find((c) => c.name === 'Fenster Kopf')).toMatchObject({ levelIsUpperEstimate: true });
+  });
+
+  it('for doors and windows, no body and no (or no readable) filled opening gives an upper estimate for every OverallHeight state', () => {
+    const at = { position: { x: 0.5, y: 0.5 }, level: 503.5 };
+    for (const kind of ['door', 'window'] as const) {
+      for (const filled of [null, { ...NO_BODY }]) {
+        for (const overallHeight of [undefined, null, 1, 3.8]) {
+          const loc = locate(kind, { placement: at, own: { ...NO_BODY }, filled, overallHeight });
+          expect(loc, `${kind}, filled ${filled ? 'without body' : 'none'}, OverallHeight ${overallHeight}`).toMatchObject({
+            quality: 'upper-estimate',
+            positionCertain: false,
+            lowest: typeof overallHeight === 'number' ? 503.5 - overallHeight : null,
+          });
+        }
+      }
+    }
   });
 });

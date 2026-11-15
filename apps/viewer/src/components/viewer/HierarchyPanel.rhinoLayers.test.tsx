@@ -73,6 +73,8 @@ describe('HierarchyPanel: a .3dm layer row hides and shows its sub-layers (#1021
     const container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
     click(eye(container, 'Hide', 'layers.3dm'));
     assert.ok(hiddenNames().includes('Terrain'), 'the root row stands for the file');
+    // The root holds no object directly; it still reads as hidden once nothing under it is drawn.
+    assert.ok(eye(container, 'Show', 'layers.3dm').closest('[class*="grayscale"]'), 'the root row is styled hidden');
     click(eye(container, 'Show', 'layers.3dm'));
     // Site is on; Frame is off itself, so its subtree stays as Rhino had it.
     assert.deepEqual(hiddenNames(), ['Beam', 'Bolt', 'Bolts', 'Brace', 'Bracing', 'Column', 'Columns', 'Frame', 'Spare beam']);

@@ -748,11 +748,16 @@ transparency rule [test].
   `containerVisibility`, which the load puts on the model; the tree reads it
   for a model that has one, and every other model's rows act on what they
   hold directly, as for IFC. A row offers Show while anything that comes back
-  with it is hidden. Not covered: a storey row merged across models, which
-  acts on direct members, and hiding from the viewport, which does not change
+  with it is hidden, and reads as hidden once nothing that comes back is
+  drawn. A row that stands for an object hidden on its own comes back without
+  that object. Not covered: a storey row merged across models, which acts on
+  direct members; Isolate, which still takes a row's direct members; the
+  file root and stamped site and building rows, which have no eye once a
+  second model is loaded; and hiding from the viewport, which does not change
   an own state [crafted test: an off layer with a sub-layer that is on, one
   that is off and an object hidden on its own; a stamped storey whose class
-  sublayer is off; a stamped storey whose own object is hidden] (#10214).
+  sublayer is off; a stamped storey whose own object is hidden; a merged
+  object hidden for two causes] (#10214).
 - Layers are reordered parent first, keeping file order among siblings. A
   layer whose parent is missing becomes a root; so does a layer in a parent
   cycle, with a warning. An object whose layer index is outside the table

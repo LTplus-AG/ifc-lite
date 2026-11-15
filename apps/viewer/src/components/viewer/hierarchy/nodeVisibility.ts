@@ -6,7 +6,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { EntityRef, FederatedModel, ViewerState } from '@/store';
 import { collectIfcBuildingStoreyElementsWithIfcSpace, collectSpatialSubtreeElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import { ownedAggregationRelationships } from '@/utils/entity-ownership';
-import { containerVisibilityTargets, withOwnState, type ContainerVisibilityPlan } from '@/lib/container-visibility';
+import { containerVisibilityTargets, ownStateRevision, setOwnState, type ContainerVisibilityPlan } from '@/lib/container-visibility';
 import { resolveTreeGlobalId } from './productTree';
 import { effectiveRowType, overlayViewFor, type TreeOverlay } from './treeOverlay';
 import type { TreeNode } from './types';
@@ -23,20 +23,25 @@ export function hierarchyNodeVisibility(
   models?: Map<string, FederatedModel>,
 ): { nodeHidden: boolean; visibilityAction: HierarchyVisibilityAction } {
   const targets = node.assemblyChildGlobalIds?.length ? node.assemblyChildGlobalIds : elements;
-  // A row with a container plan offers Show while something that comes back with it is hidden.
-  const decidedBy = (models && planRowTargets(node, models, 'show')) ?? elements;
+  // A row with a container plan reads as hidden when nothing that comes back
+  // with it is drawn, and offers Show while any of that is hidden.
+  const comesBack = models ? planRowTargets(node, models, 'show') : null;
   return {
-    nodeHidden: targets.length > 0 && targets.every((id) => hidden.has(id)),
-    visibilityAction: decidedBy.some((id) => hidden.has(id)) ? 'show' : 'hide',
+    nodeHidden: comesBack ? comesBack.every((id) => hidden.has(id)) : targets.length > 0 && targets.every((id) => hidden.has(id)),
+    visibilityAction: (comesBack ?? elements).some((id) => hidden.has(id)) ? 'show' : 'hide',
   };
 }
 
-/** Global targets per plan, row and action; a new plan (an own state changed) starts afresh. */
-const planTargetCache = new WeakMap<ContainerVisibilityPlan, { show: Map<number, number[]>; hide: Map<number, number[]> }>();
+/** Global targets per plan for its current own-state revision, by model, action and row. */
+const planTargetCache = new WeakMap<ContainerVisibilityPlan, { revision: number; targets: Map<string, number[]> }>();
 
-/** The row's model plan, when it has one and the row is a single model's row. */
+/** Grouping rows (type, class, material, group, layer, unified storey, model header) never follow a container plan. */
+const GROUPING_ROWS = new Set(['type-group', 'ifc-type', 'material-group', 'group', 'presentation-layer', 'group-member', 'unified-storey', 'model-header']);
+
+/** The plan of a single model's spatial or element row, when its model has one. */
 function rowPlan(node: TreeNode, models: Map<string, FederatedModel>): ContainerVisibilityPlan | undefined {
-  return node.expressIds.length === 1 ? models.get(node.modelIds[0])?.containerVisibility : undefined;
+  if (node.expressIds.length !== 1 || GROUPING_ROWS.has(node.type)) return undefined;
+  return models.get(node.modelIds[0])?.containerVisibility;
 }
 
 /** A row's subtree as global ids, when its model states how its containers
@@ -45,12 +50,15 @@ function planRowTargets(node: TreeNode, models: Map<string, FederatedModel>, act
   const plan = rowPlan(node, models);
   const row = node.expressIds[0];
   if (!plan?.rows.has(row)) return null;
+  const modelId = node.modelIds[0];
+  const revision = ownStateRevision(plan);
   let cache = planTargetCache.get(plan);
-  if (!cache) planTargetCache.set(plan, cache = { show: new Map(), hide: new Map() });
-  let targets = cache[action].get(row);
+  if (cache?.revision !== revision) planTargetCache.set(plan, cache = { revision, targets: new Map() });
+  const key = `${modelId}\u0000${action}\u0000${row}`;
+  let targets = cache.targets.get(key);
   if (!targets) {
-    targets = containerVisibilityTargets(plan, row, action).map((id) => resolveTreeGlobalId(node.modelIds[0], id, models));
-    cache[action].set(row, targets);
+    targets = containerVisibilityTargets(plan, row, action).map((id) => resolveTreeGlobalId(modelId, id, models));
+    cache.targets.set(key, targets);
   }
   return targets;
 }
@@ -70,18 +78,16 @@ export function hierarchyToggleTargets(
   return action === 'hide' ? [...new Set([...elements, ...targets])] : [...targets];
 }
 
-/** The plan after a row's eye: the toggled row or object keeps that as its own
- *  state, so a later toggle of its parent respects it, as in Rhino. Null when
- *  the row's model has no plan or nothing changed. */
-export function hierarchyOwnStateAfterToggle(
+/** After a row's eye: the toggled row or object keeps that as its own state,
+ *  so a later toggle of its parent respects it, as in Rhino. A no-op for a row
+ *  whose model has no plan. */
+export function recordHierarchyOwnState(
   node: TreeNode,
   action: HierarchyVisibilityAction,
   models: Map<string, FederatedModel>,
-): ContainerVisibilityPlan | null {
+): void {
   const plan = rowPlan(node, models);
-  if (!plan) return null;
-  const next = withOwnState(plan, node.expressIds[0], action === 'show');
-  return next === plan ? null : next;
+  if (plan) setOwnState(plan, node.expressIds[0], action === 'show');
 }
 
 /** Storey rows: a single storey, a unified storey across models, and one

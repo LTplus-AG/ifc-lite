@@ -44,7 +44,7 @@ import { ModelsSectionHeader } from './hierarchy/ModelsSectionHeader';
 import { StoreyDisplayControls, StoreyFloorplanButton } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { hierarchyRowSelection } from './hierarchy/rowSelection';
-import { createSpatialSubtreeResolver, hierarchyNodeAppearance, hierarchyNodeVisibility, hierarchyOwnStateAfterToggle, hierarchyToggleTargets } from './hierarchy/nodeVisibility';
+import { createSpatialSubtreeResolver, hierarchyNodeAppearance, hierarchyNodeVisibility, hierarchyToggleTargets, recordHierarchyOwnState } from './hierarchy/nodeVisibility';
 import { hierarchyRowActions, type HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
@@ -218,8 +218,7 @@ export function HierarchyPanel() {
     } else {
       showEntities(targets);
     }
-    const ownState = hierarchyOwnStateAfterToggle(node, visibilityAction, models);
-    if (ownState) useViewerStore.getState().updateModel(node.modelIds[0], { containerVisibility: ownState });
+    recordHierarchyOwnState(node, visibilityAction, models);
   }, [getNodeElements, hiddenEntities, hideEntities, showEntities, selectedEntityId, clearSelection, models]);
 
   // Handle model visibility toggle

@@ -272,7 +272,18 @@ describe('rhinoViewerModel, a layer row hides and shows its sub-layers as Rhino 
   });
 
   it('brings a layer row back with its parent when only the object it stands for is hidden on its own', async () => {
-    assert.ok((await eye(await craftRhinoHiddenStoreyObject(), 'Project', 'show')).includes('Wall'), 'the wall under the storey comes back');
+    const shown = await eye(await craftRhinoHiddenStoreyObject(), 'Project', 'show');
+    assert.ok(shown.includes('Wall'), 'the wall under the storey comes back');
+    assert.ok(!shown.includes('Storey object'), 'the storey object Rhino hides on its own stays hidden');
+  });
+
+  it('keeps a merged object hidden whose parts Rhino hides for different causes', async () => {
+    const { containerVisibility, dataStore } = await payloadOf(await craftRhinoMergedParts([
+      { name: 'Own', kind: 'mesh', hidden: true }, { name: 'Layer', kind: 'mesh', layerOff: true },
+    ]), 'merged.3dm');
+    const merged = [...containerVisibility!.rows.values()].flatMap((row) => row.members);
+    assert.equal(merged.length, 1, 'one merged entity');
+    assert.ok(containerVisibility!.ownOff.has(merged[0]), `${dataStore.entities.getName(merged[0])} starts with its own state off`);
   });
 
   it('keeps an object hidden when a layer between it and its row is off, though that layer has no row', async () => {

@@ -16,8 +16,22 @@
 export interface ContainerVisibilityPlan {
   /** Every row by express id: the rows and members it holds directly. */
   readonly rows: ReadonlyMap<number, { readonly children: readonly number[]; readonly members: readonly number[] }>;
-  /** Rows and members whose own state is off, so a parent's Show leaves them hidden. */
-  readonly ownOff: ReadonlySet<number>;
+  /**
+   * Rows and members whose own state is off, so a parent's Show leaves them
+   * (and, for a row, its subtree) hidden. `setOwnState` updates it in place:
+   * recording a choice must not replace the model record, which would rebuild
+   * the whole tree on every click.
+   */
+  readonly ownOff: Set<number>;
+  /** Rows whose own object stays hidden when they come back with a parent: the object a stamped row stands for, hidden on its own. */
+  readonly selfOff: Set<number>;
+}
+
+const revisions = new WeakMap<ContainerVisibilityPlan, number>();
+
+/** Bumped by every `setOwnState` that changes something, so a cache of targets knows to start afresh. */
+export function ownStateRevision(plan: ContainerVisibilityPlan): number {
+  return revisions.get(plan) ?? 0;
 }
 
 /**
@@ -32,7 +46,7 @@ export function containerVisibilityTargets(plan: ContainerVisibilityPlan, row: n
   const pending = [row];
   while (pending.length > 0) {
     const id = pending.pop()!;
-    targets.push(id);
+    if (id === row || action === 'hide' || !plan.selfOff.has(id)) targets.push(id);
     const { children, members } = plan.rows.get(id)!;
     for (const child of children) if (comesBack(child)) pending.push(child);
     for (const member of members) if (comesBack(member)) targets.push(member);
@@ -40,11 +54,16 @@ export function containerVisibilityTargets(plan: ContainerVisibilityPlan, row: n
   return targets;
 }
 
-/** The plan after the user turned `id`'s own state on or off from the tree; the same plan when it already was. */
-export function withOwnState(plan: ContainerVisibilityPlan, id: number, on: boolean): ContainerVisibilityPlan {
-  if (plan.ownOff.has(id) !== on) return plan;
-  const ownOff = new Set(plan.ownOff);
-  if (on) ownOff.delete(id);
-  else ownOff.add(id);
-  return { rows: plan.rows, ownOff };
+/** Record that the user turned `id`'s own state on or off from the tree. Returns whether anything changed. */
+export function setOwnState(plan: ContainerVisibilityPlan, id: number, on: boolean): boolean {
+  let changed: boolean;
+  if (on) {
+    const wasOff = plan.ownOff.delete(id);
+    changed = plan.selfOff.delete(id) || wasOff;
+  } else {
+    changed = !plan.ownOff.has(id);
+    plan.ownOff.add(id);
+  }
+  if (changed) revisions.set(plan, ownStateRevision(plan) + 1);
+  return changed;
 }

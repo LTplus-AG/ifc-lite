@@ -159,10 +159,23 @@ it does where no runoff is mapped. So:
   calls `confirmRendering()`: one 9 × 9 px request (about 80 bytes) at a
   reference box in Bern, E 2,599,560–2,599,569, N 1,199,720–1,199,729, where
   the map shows flow depth 0–0.1 m in all 81 pixels, and all 81 must come back classified to confirm (a partially rendered reference does not) (recorded 2026-11-15 as
-  `test/fixtures/bafu/bern-uniform-9px.png`). It goes through the same cache
-  and is made once per provider; a negative answer is not kept. Without a
-  confirmation, transparent samples are `unclassified` (`layer-not-confirmed`)
-  rather than `no-runoff-mapped`.
+  `test/fixtures/bafu/bern-uniform-9px.png`). A confirmation vouches only for
+  a raster fetched **within 5 minutes** of its reference response
+  (`CONFIRMATION_MAX_AGE_MS`; the service may stop rendering at any time): the
+  provider reuses a positive answer for at most 5 minutes and asks again after
+  any negative or failed one, and the check compares the two retrieval times.
+  Without such a confirmation, transparent samples are `unclassified`
+  (`layer-not-confirmed`) rather than `no-runoff-mapped`. The result records
+  the reference's retrieval time (`provenance.renderingCheckedAt`,
+  `layerCheck.confirmation.retrievedAt`).
+- The `cache` hook stores a response only once it decodes at the requested
+  size and shows a mapped class, and serves only such entries: a transparent
+  answer may be an outage and is always fetched again, and a malformed one is
+  never kept. A cached reference response is used only within 5 minutes of
+  its retrieval, so a caller's long-lived cache cannot keep an old
+  confirmation alive; a building raster that shows classes is served from it
+  with its first retrieval time, as before. `timeoutMs`, `maxPixels` and
+  `cellSize` must be finite and positive (`RangeError` otherwise).
 
 ## Model facts
 
@@ -278,7 +291,7 @@ and `open-ended-class` are never withheld (they are the conservative side);
 | the element was moved more than `anchorTolerance` (1 m) to reach the outline | `within-class-range` | `unclassified` (`anchor-moved`) |
 | the footprint fills courtyards (`external-wall-hull`, `candidate-hull`, `slab-outline-voids-filled`) | `within-class-range` | `unclassified` (`hull-footprint`) |
 | height reference unconfirmed (see below) | `within-class-range` | `unclassified` (`height-reference-unconfirmed`) |
-| no cell of the raster shows a mapped class and the layer is not confirmed to render | (no class to compare) | `unclassified` (`layer-not-confirmed`) |
+| no cell of the raster shows a mapped class and the layer is not confirmed to render (no positive confirmation fetched within 5 minutes of the raster) | (no class to compare) | `unclassified` (`layer-not-confirmed`) |
 | a classified sample has no terrain height | `within-class-range` | (no classified sample) |
 | clearance exceeds `m` but not `m + a` | `within-class-range` | (no comparison) |
 
@@ -445,7 +458,9 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
   `GeoreferenceVerticalUncertainty` and its `...Basis`,
   `TerrainVerticalAccuracy`, `RasterCellSize`, `RingDistances`,
   `MinOutsideDistance`, `AnchorTolerance`, `RasterEmpty`,
-  `LayerRenderingConfirmed` / `LayerRenderingCheck` (when a check was made),
+  `LayerRenderingConfirmed` (a positive confirmation that vouches for the
+  raster) / `LayerRenderingCheck` / `LayerRenderingCheckedAt` (when a check
+  was made),
   `Count_<Outcome>`, `CountReachableBelowGroundSpaces`.
 - **`IfcLite_SurfaceRunoffExposure`** (per element): `Outcome`,
   `OutcomeMeaningEN/DE`, `CaveatEN/DE` (screening result from a map not

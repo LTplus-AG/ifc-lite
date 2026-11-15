@@ -16,6 +16,7 @@ import {
   E0,
   flatTerrain,
   N0,
+  PROVENANCE,
   syntheticRaster,
   terrainFn,
   TEST_MARGIN,
@@ -151,7 +152,7 @@ describe('outcomes', () => {
     const r = run(499.5, () => CELL_NO_RUNOFF);
     expect(r).toMatchObject({ outcome: 'unclassified', unclassifiedReason: 'layer-not-confirmed' });
     const failed = checkFloodExposure(withRef([door(499.5)]), raster(() => CELL_NO_RUNOFF), flatTerrain(500), {
-      renderingConfirmation: { confirmed: false, requestUrl: 'x', detail: 'reference came back empty' },
+      renderingConfirmation: { confirmed: false, requestUrl: 'x', detail: 'reference came back empty', retrievedAt: PROVENANCE.retrievedAt },
     });
     expect(failed.results[0].unclassifiedReason).toBe('layer-not-confirmed');
     expect(failed.warnings.join()).toMatch(/could not be confirmed to render \(reference came back empty\)/);

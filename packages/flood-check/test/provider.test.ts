@@ -125,6 +125,16 @@ describe('BAFU provider', () => {
     await expect(provider.fetchRaster({ bbox: huge, crs: 'EPSG:2056' })).rejects.toMatchObject({ code: 'request-too-large' });
   });
 
+  it('rejects non-finite or non-positive numeric options instead of letting every guard pass', () => {
+    for (const bad of [NaN, Infinity, -Infinity, 0, -1]) {
+      expect(() => createBafuRunoffProvider({ maxPixels: bad })).toThrow(RangeError);
+      expect(() => createBafuRunoffProvider({ timeoutMs: bad })).toThrow(RangeError);
+      expect(() => createBafuRunoffProvider({ cellSize: bad })).toThrow(RangeError);
+    }
+    expect(() => createBafuRunoffProvider({ cellSize: 0.6 })).toThrow(RangeError);
+    expect(() => createBafuRunoffProvider({ maxPixels: 100, timeoutMs: 1000, cellSize: 0.25 })).not.toThrow();
+  });
+
   // Review finding 10.
   describe('no data versus no runoff', () => {
     const transparent = rgbaPng(9, 9, () => [0, 0, 0, 0]);

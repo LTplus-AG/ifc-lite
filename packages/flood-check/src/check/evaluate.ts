@@ -41,6 +41,10 @@
  *   raster shows no class, layer unconfirmed    (no class to compare)      -> unclassified (layer-not-confirmed)
  *   a classified sample has no terrain          -> within-class-range      (no classified sample)
  *   clearance short of m + a, not of m          -> within-class-range      (no comparison)
+ *
+ * "Layer unconfirmed": no rendering confirmation, a negative one, or a
+ * positive one whose reference was fetched more than 5 minutes apart from the
+ * raster (`layer.ts`).
  */
 
 import { fillsCourtyards, type CandidateFact, type ModelFacts } from '../model/facts.js';
@@ -91,7 +95,7 @@ export interface EvaluationContext {
   allowance: number | null;
   anchorTolerance: number;
   footprintSource: ModelFacts['footprint']['source'];
-  /** No cell of the raster shows a mapped class and the provider did not confirm the layer renders. */
+  /** No cell of the raster shows a mapped class and no positive confirmation fetched within 5 min of the raster vouches for it (`layer.ts`). */
   emptyRasterUnconfirmed: boolean;
 }
 

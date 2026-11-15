@@ -144,8 +144,9 @@ export function sitePropertySet(result: FloodCheckResult, classes: readonly Haza
     .length('AnchorTolerance', result.parameters.anchorTolerance)
     .bool('RasterEmpty', result.layerCheck.rasterEmpty);
   if (result.layerCheck.confirmation) {
-    b.bool('LayerRenderingConfirmed', result.layerCheck.confirmation.confirmed)
-      .text('LayerRenderingCheck', `${result.layerCheck.confirmation.detail} (${result.layerCheck.confirmation.requestUrl})`);
+    b.bool('LayerRenderingConfirmed', result.layerCheck.confirmationApplies)
+      .text('LayerRenderingCheck', `${result.layerCheck.confirmation.detail} (${result.layerCheck.confirmation.requestUrl})`)
+      .label('LayerRenderingCheckedAt', result.layerCheck.confirmation.retrievedAt);
   }
   for (const [outcome, count] of Object.entries(result.summary)) {
     b.int(`Count_${outcome.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()).replace(/^./, (c) => c.toUpperCase())}`, count);

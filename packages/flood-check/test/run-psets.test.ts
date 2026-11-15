@@ -15,7 +15,7 @@ import { checkBBox, runFloodCheck } from '../src/check/run.js';
 import { outlineTerrainPoints, planSamples, pointKey, resolveSampling, terrainSamplerFromGrid } from '../src/check/sampling.js';
 import { ELEMENT_PSET, SITE_PSET, toPropertySets } from '../src/psets.js';
 import type { HazardProvider, MapPoint, TerrainSource } from '../src/types.js';
-import { boxFacts, candidate, CODE, E0, flatTerrain, N0, syntheticRaster, TEST_ACCURACY } from './helpers.js';
+import { boxFacts, candidate, CODE, E0, flatTerrain, N0, PROVENANCE, syntheticRaster, TEST_ACCURACY } from './helpers.js';
 
 const pointTerrain = (heightAt: (p: MapPoint) => number | null): TerrainSource => ({
   crs: 'EPSG:2056',
@@ -129,7 +129,7 @@ describe('runFloodCheck', () => {
       },
       async confirmRendering() {
         asked++;
-        return { confirmed: true, requestUrl: 'ref', detail: '81 of 81' };
+        return { confirmed: true, requestUrl: 'ref', detail: '81 of 81', retrievedAt: PROVENANCE.retrievedAt };
       },
     };
     const result = await runFloodCheck(boxFacts([door(500)]), empty, pointTerrain(() => 500));

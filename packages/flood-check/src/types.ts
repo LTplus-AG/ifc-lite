@@ -61,6 +61,8 @@ export interface HazardProvenance {
   metadataUpdated?: string;
   /** When this raster was retrieved (or first retrieved, when served from a cache), ISO 8601. */
   retrievedAt: string;
+  /** On a result: when the reference response of its rendering check was fetched, when one was made. */
+  renderingCheckedAt?: string;
   /** The exact request the raster was decoded from. */
   requestUrl: string;
   /** The mandatory source reference: author, title, link. */
@@ -142,6 +144,12 @@ export interface RenderingConfirmation {
   requestUrl: string;
   /** What was found, in words. */
   detail: string;
+  /**
+   * ISO 8601 time the reference response was fetched from the service (the
+   * attempt time when it failed). It vouches only for rasters fetched within
+   * 5 minutes of it (`CONFIRMATION_MAX_AGE_MS`).
+   */
+  retrievedAt: string;
 }
 
 /** A source of classified hazard rasters in one projected CRS. */

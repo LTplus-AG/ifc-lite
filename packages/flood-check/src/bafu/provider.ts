@@ -17,6 +17,7 @@ import { classifyRgba, type StyleCheckOptions } from '../legend.js';
 import { decodePng } from '../png.js';
 import { HazardRequestError, HazardResponseError, FloodCheckRefusal } from '../errors.js';
 import { sameCrs } from '../crs.js';
+import { CONFIRMATION_MAX_AGE_MS, rasterShowsNoClass } from '../check/layer.js';
 import {
   CELL_NO_RUNOFF,
   CELL_UNCLASSIFIED,
@@ -54,7 +55,13 @@ export interface CachedHazardResponse {
   retrievedAt: string;
 }
 
-/** Cache hook, keyed by the exact request URL. Errors from it propagate. */
+/**
+ * Cache hook, keyed by the exact request URL. Errors from it propagate. Only
+ * responses that decode, have the requested size and show a mapped class are
+ * stored, and only such entries are served: a response with no mapped class
+ * may come from an outage and is always fetched again. A cached reference
+ * response (rendering check) is served only within 5 minutes of its retrieval.
+ */
 export interface HazardResponseCache {
   get(key: string): CachedHazardResponse | undefined | Promise<CachedHazardResponse | undefined>;
   set(key: string, value: CachedHazardResponse): void | Promise<void>;
@@ -63,12 +70,12 @@ export interface HazardResponseCache {
 export interface BafuProviderOptions {
   /** Defaults to the global `fetch`. */
   fetch?: typeof fetch;
-  /** Per-request timeout in milliseconds. Default 20 000. */
+  /** Per-request timeout in milliseconds, finite and positive. Default 20 000. */
   timeoutMs?: number;
   cache?: HazardResponseCache;
   /** Default cell size in metres. Default 0.5 (half the 1 m model raster), which is also the largest allowed. */
   cellSize?: number;
-  /** Largest image side in pixels before a request is refused. Default 4096. */
+  /** Largest image side in pixels before a request is refused, finite and positive. Default 4096. */
   maxPixels?: number;
   /** Base URL of the WMS. Default https://wms.geo.admin.ch/. */
   baseUrl?: string;
@@ -173,13 +180,32 @@ const MAX_CELL_SIZE = 0.5;
 /** Create the BAFU surface-runoff provider. */
 export function createBafuRunoffProvider(options: BafuProviderOptions = {}): HazardProvider {
   const fetchImpl = options.fetch ?? globalThis.fetch;
+  // NaN or Infinity would pass every comparison guard (a NaN pixel limit lets any request through).
+  for (const [name, value] of [['timeoutMs', options.timeoutMs], ['maxPixels', options.maxPixels], ['cellSize', options.cellSize]] as const) {
+    if (value !== undefined && !(Number.isFinite(value) && value > 0)) throw new RangeError(`${name} must be a finite positive number, got ${value}`);
+  }
+  if (options.cellSize !== undefined && options.cellSize > MAX_CELL_SIZE) {
+    throw new RangeError(`cellSize must be at most ${MAX_CELL_SIZE} m (half the 1 m model raster), got ${options.cellSize}`);
+  }
   const timeoutMs = options.timeoutMs ?? 20_000;
   const defaultCell = options.cellSize ?? 0.5;
   const maxPixels = options.maxPixels ?? 4096;
   const now = options.now ?? (() => new Date());
-  let rendering: Promise<RenderingConfirmation> | null = null;
+  /** The last positive confirmation, reused while its reference is at most {@link CONFIRMATION_MAX_AGE_MS} old. */
+  let confirmed: RenderingConfirmation | null = null;
+  let pending: Promise<RenderingConfirmation> | null = null;
+  const age = (iso: string) => now().getTime() - Date.parse(iso);
 
-  async function raster(bbox: MapBBox, cellSize: number, signal: AbortSignal): Promise<ClassifiedHazardRaster> {
+  /** Decode a response and check its size; throws {@link HazardResponseError} when it cannot be used. */
+  function decode(bytes: Uint8Array, width: number, height: number) {
+    const image = decodePng(bytes);
+    if (image.width !== width || image.height !== height) {
+      throw new HazardResponseError(`hazard image is ${image.width} x ${image.height} px; ${width} x ${height} px were requested`);
+    }
+    return { image, decoded: classifyRgba(image.rgba, BAFU_LEGEND, BAFU_CLASSES, options.style) };
+  }
+
+  async function raster(bbox: MapBBox, cellSize: number, signal: AbortSignal, cacheMaxAgeMs = Infinity): Promise<ClassifiedHazardRaster> {
     if (!(cellSize > 0)) throw new RangeError('cellSize must be positive');
     const snapped = snapRequestBox(bbox, cellSize);
     if (snapped.width > maxPixels || snapped.height > maxPixels) {
@@ -190,20 +216,26 @@ export function createBafuRunoffProvider(options: BafuProviderOptions = {}): Haz
       );
     }
     const url = bafuGetMapUrl(snapped.bbox, snapped.width, snapped.height, options.baseUrl);
+    const showsClass = (d: ReturnType<typeof decode>) => !rasterShowsNoClass({ cells: d.decoded.cells, classes: BAFU_CLASSES });
     let cached = await options.cache?.get(url);
-    if (!cached) {
+    let read: ReturnType<typeof decode> | null = null;
+    if (cached && age(cached.retrievedAt) <= cacheMaxAgeMs) {
+      try {
+        read = decode(cached.bytes, snapped.width, snapped.height);
+      } catch {
+        read = null; // an unusable entry is fetched again
+      }
+      if (read && !showsClass(read)) read = null;
+    }
+    if (!read) {
       if (!fetchImpl) throw new HazardRequestError('no fetch implementation is available');
       const bytes = await fetchBytes(url, fetchImpl, signal, timeoutMs);
       cached = { bytes, retrievedAt: now().toISOString() };
-      await options.cache?.set(url, cached);
+      read = decode(bytes, snapped.width, snapped.height);
+      // Stored only once it decodes and shows a mapped class: an outage answer must not be served later.
+      if (showsClass(read)) await options.cache?.set(url, cached);
     }
-    const image = decodePng(cached.bytes);
-    if (image.width !== snapped.width || image.height !== snapped.height) {
-      throw new HazardResponseError(
-        `hazard image is ${image.width} x ${image.height} px; ${snapped.width} x ${snapped.height} px were requested`,
-      );
-    }
-    const decoded = classifyRgba(image.rgba, BAFU_LEGEND, BAFU_CLASSES, options.style);
+    const { image, decoded } = read;
     return {
       crs: BAFU_CRS,
       width: image.width,
@@ -219,7 +251,7 @@ export function createBafuRunoffProvider(options: BafuProviderOptions = {}): Haz
         datasetTitle: BAFU_TITLE,
         datasetDate: BAFU_DATASET_DATE,
         metadataUpdated: BAFU_METADATA_UPDATED,
-        retrievedAt: cached.retrievedAt,
+        retrievedAt: cached!.retrievedAt,
         requestUrl: url,
         attribution: BAFU_ATTRIBUTION,
         licence: BAFU_LICENCE,
@@ -234,22 +266,24 @@ export function createBafuRunoffProvider(options: BafuProviderOptions = {}): Haz
     const snapped = snapRequestBox(BAFU_REFERENCE_BOX, BAFU_REFERENCE_CELL_SIZE);
     const url = bafuGetMapUrl(snapped.bbox, snapped.width, snapped.height, options.baseUrl);
     try {
-      const reference = await raster(BAFU_REFERENCE_BOX, BAFU_REFERENCE_CELL_SIZE, signal);
+      const reference = await raster(BAFU_REFERENCE_BOX, BAFU_REFERENCE_CELL_SIZE, signal, CONFIRMATION_MAX_AGE_MS);
+      const retrievedAt = reference.provenance.retrievedAt;
       const classified = reference.cells.filter((c) => c !== CELL_NO_RUNOFF && c !== CELL_UNCLASSIFIED).length;
       // The reference box is uniform: every pixel shows a mapped class. A partially rendered response (some pixels
       // classified, the rest transparent) must not confirm a layer whose building raster may be just as incomplete.
       return classified === reference.cells.length && classified > 0
-        ? { confirmed: true, requestUrl: url, detail: `${classified} of ${reference.cells.length} reference pixels show a mapped class` }
+        ? { confirmed: true, requestUrl: url, retrievedAt, detail: `${classified} of ${reference.cells.length} reference pixels show a mapped class` }
         : {
             confirmed: false,
             requestUrl: url,
+            retrievedAt,
             detail: classified === 0
               ? 'the reference area, where the map shows runoff, came back without any mapped class'
               : `the reference area, where the map shows a mapped class in every pixel, came back with only ${classified} of ${reference.cells.length} pixels classified`,
           };
     } catch (error) {
       if (!(error instanceof HazardRequestError || error instanceof HazardResponseError)) throw error;
-      return { confirmed: false, requestUrl: url, detail: `the reference request failed: ${error.message}` };
+      return { confirmed: false, requestUrl: url, retrievedAt: now().toISOString(), detail: `the reference request failed: ${error.message}` };
     }
   }
 
@@ -276,18 +310,24 @@ export function createBafuRunoffProvider(options: BafuProviderOptions = {}): Haz
       }
       return raster(b, cellSize, request.signal ?? new AbortController().signal);
     },
-    /** One 9 x 9 px request at the documented reference location, made once per provider and cached like any other. */
+    /**
+     * One 9 x 9 px request at the documented reference location. A positive
+     * answer is reused while its reference response is at most 5 minutes old
+     * (`CONFIRMATION_MAX_AGE_MS`); after that, and after any negative or
+     * failed answer, the next check asks again.
+     */
     confirmRendering(signal?: AbortSignal): Promise<RenderingConfirmation> {
-      if (!rendering) {
-        rendering = confirm(signal ?? new AbortController().signal);
-        // A failed or negative answer is not kept: the next check asks again.
-        void rendering.then((r) => {
-          if (!r.confirmed) rendering = null;
-        }, () => {
-          rendering = null;
+      if (confirmed && age(confirmed.retrievedAt) <= CONFIRMATION_MAX_AGE_MS) return Promise.resolve(confirmed);
+      confirmed = null;
+      pending ??= confirm(signal ?? new AbortController().signal)
+        .then((r) => {
+          if (r.confirmed) confirmed = r;
+          return r;
+        })
+        .finally(() => {
+          pending = null;
         });
-      }
-      return rendering;
+      return pending;
     },
   };
 }

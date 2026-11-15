@@ -81,6 +81,7 @@ export {
   type ReachableSpace,
   type SampleCounts,
 } from './check/check.js';
+export { CONFIRMATION_MAX_AGE_MS } from './check/layer.js';
 export type { MarginBasis, MarginOptions } from './check/margin.js';
 export type { EntryCheck, HeightPlausibility, HeightReference, PlausibilityOptions } from './check/plausibility.js';
 export { compareLevel, type LevelComparison, type Outcome, type UnclassifiedReason } from './check/outcome.js';

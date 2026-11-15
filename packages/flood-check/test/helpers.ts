@@ -177,7 +177,7 @@ export function terrainFn(heightAt: (p: MapPoint) => number | null, verticalAccu
 }
 
 /** The rendering confirmation a provider would give for a layer that renders. */
-export const CONFIRMED = { confirmed: true, requestUrl: 'https://example.invalid/reference', detail: 'test' } as const;
+export const CONFIRMED = { confirmed: true, requestUrl: 'https://example.invalid/reference', detail: 'test', retrievedAt: PROVENANCE.retrievedAt } as const;
 
 /** A 20 m x 10 m box building at (E0, N0)-(E0+20, N0+10), ground storey at `ground`. */
 export const E0 = 2_600_000;

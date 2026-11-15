@@ -25,8 +25,6 @@ import { FloodCheckRefusal } from '../errors.js';
 import { normalizeCrs, sameCrs, verticalCrsIdentifier } from '../crs.js';
 import { fillsCourtyards, type BuildingScope, type CandidateFact, type ModelFacts, type SpaceFact } from '../model/facts.js';
 import {
-  CELL_NO_RUNOFF,
-  CELL_UNCLASSIFIED,
   type ClassifiedHazardRaster,
   type CoverageTest,
   type HazardClassDefinition,
@@ -36,6 +34,7 @@ import {
   type RenderingConfirmation,
   type TerrainSampler,
 } from '../types.js';
+import { confirmationVouches, msBetween, rasterShowsNoClass } from './layer.js';
 import { evaluateCandidate, type DrivingSample, type SampleCounts } from './evaluate.js';
 import { deriveClearanceMargin, type MarginBasis, type MarginOptions } from './margin.js';
 import type { LevelComparison, Outcome, UnclassifiedReason } from './outcome.js';
@@ -66,7 +65,9 @@ export interface CheckOptions extends MarginOptions {
   /**
    * The provider's answer to a rendering check. Required for a
    * `no-runoff-mapped` outcome when the whole raster is transparent; without
-   * a confirmation such elements are `unclassified` (`layer-not-confirmed`).
+   * a confirmation such elements are `unclassified` (`layer-not-confirmed`),
+   * and so they are when its reference was fetched more than 5 minutes apart
+   * from the raster (`layer.ts`).
    */
   renderingConfirmation?: RenderingConfirmation;
 }
@@ -119,6 +120,8 @@ export interface LayerCheck {
   rasterEmpty: boolean;
   /** The provider's rendering check, when one was made. */
   confirmation: RenderingConfirmation | null;
+  /** The confirmation is positive and its reference was fetched within 5 minutes of the raster, so it vouches for it. */
+  confirmationApplies: boolean;
 }
 
 export interface FloodCheckResult {
@@ -209,16 +212,7 @@ function reachableSpaces(facts: ModelFacts, results: readonly CandidateResult[])
   return [...out.values()].sort((a, b) => a.space.floorLevel - b.space.floorLevel);
 }
 
-/**
- * True when no cell carries a mapped class. Transparent and unreadable
- * (edge-blend) cells alone do not show that the layer renders, so such a
- * raster needs the provider's rendering confirmation like a wholly
- * transparent one.
- */
-export function rasterShowsNoClass(raster: Pick<ClassifiedHazardRaster, 'cells' | 'classes'>): boolean {
-  for (const c of raster.cells) if (c !== CELL_NO_RUNOFF && c !== CELL_UNCLASSIFIED && c <= raster.classes.length) return false;
-  return true;
-}
+export { rasterShowsNoClass } from './layer.js';
 
 /**
  * Check every candidate. Throws {@link FloodCheckRefusal} when CRS or vertical
@@ -292,6 +286,7 @@ export function checkWith(
   const margin = deriveClearanceMargin(terrain.verticalAccuracy, options);
   const rasterEmpty = rasterShowsNoClass(raster);
   const confirmation = options.renderingConfirmation ?? null;
+  const applies = confirmationVouches(confirmation, raster.provenance.retrievedAt);
   const caveat = screeningCaveat(raster.provenance);
 
   const results: CandidateResult[] = facts.candidates.map((candidate, i) => {
@@ -304,7 +299,7 @@ export function checkWith(
       allowance: heightReference.allowance,
       anchorTolerance,
       footprintSource: facts.footprint.source,
-      emptyRasterUnconfirmed: rasterEmpty && confirmation?.confirmed !== true,
+      emptyRasterUnconfirmed: rasterEmpty && !applies,
     });
     return {
       candidate,
@@ -366,14 +361,16 @@ export function checkWith(
   if (margin.margin === null) warnings.push(`Clearance margin ${margin.statement}.`);
   if (rasterEmpty) {
     warnings.push(
-      confirmation?.confirmed
-        ? `No cell of the raster shows a mapped class; the layer was confirmed to render at a reference location (${confirmation.requestUrl}).`
-        : `No cell of the raster shows a mapped class and the layer could not be confirmed to render${confirmation ? ` (${confirmation.detail})` : ''}; ` +
+      applies
+        ? `No cell of the raster shows a mapped class; the layer was confirmed to render at a reference location (${confirmation!.requestUrl}) at ${confirmation!.retrievedAt}.`
+        : `No cell of the raster shows a mapped class and the layer could not be confirmed to render${!confirmation ? '' : confirmation.confirmed
+          ? ` (its confirmation was fetched ${(msBetween(confirmation.retrievedAt, raster.provenance.retrievedAt) / 60000).toFixed(1)} min apart from the raster, more than 5 min)`
+          : ` (${confirmation.detail})`}; ` +
             'transparent samples are not reported as "no runoff mapped".',
     );
   }
   return {
-    provenance: raster.provenance,
+    provenance: confirmation ? { ...raster.provenance, renderingCheckedAt: confirmation.retrievedAt } : raster.provenance,
     crs: facts.georeference.crs,
     lengthUnitScale: facts.georeference.lengthUnitScale,
     terrainVerticalReference: terrain.verticalReference ?? terrainCrs,
@@ -387,7 +384,7 @@ export function checkWith(
     margin,
     heightPlausibility,
     heightReference,
-    layerCheck: { rasterEmpty, confirmation },
+    layerCheck: { rasterEmpty, confirmation, confirmationApplies: applies },
     footprintSource: facts.footprint.source,
     groundStorey: facts.groundStorey,
     buildingScope: facts.buildingScope ?? { checked: null, notChecked: [] },

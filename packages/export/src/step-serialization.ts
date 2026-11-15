@@ -237,10 +237,11 @@ export function tokenIsRealLiteral(token: string): boolean {
  * existing token (enum, boolean, number, string, etc.).
  */
 /**
- * Leads a named-edit value the georeferencing writer wants written as a quoted string whatever it looks like
- * (`$`, `*`, `#12`): an internal channel, never produced by the generic attribute API.
+ * A named-edit value the georeferencing writer has decided is TEXT, whatever it looks like (`$`, `*`, `#12`). It is a
+ * distinct object, not a spelling inside a string: no user string can be one, and no string is ever inspected for a
+ * prefix to tell.
  */
-export const TEXT_EDIT_MARK = '\u0000';
+export class TextEditValue extends String {}
 
 /**
  * A CRS text value as an in-place edit: text is text (`$`, `*`, `#12` stay quoted strings, as on the create path)
@@ -248,7 +249,7 @@ export const TEXT_EDIT_MARK = '\u0000';
  */
 export function textEdit(value: unknown): string {
   const text = String(value);
-  return text === '' ? '$' : TEXT_EDIT_MARK + text;
+  return text === '' ? '$' : (new TextEditValue(text) as unknown as string);
 }
 
 export function serializeAttributeValue(value: string, currentToken: string): string {

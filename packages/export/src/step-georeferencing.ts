@@ -288,7 +288,7 @@ function createMapConversion(pass: ExportPass, ctx: GeorefContext, crsId: number
   }
   // The planner names the SourceCRS (it saw the session's creations, deletions and edits); a host that does not plan
   // (the viewer) leaves the choice to the file's own contexts.
-  const contextId = sourceCrs === undefined ? findPreferredGeometricRepresentationContextId(pass.effective, ctx)
+  const contextId = sourceCrs === undefined || sourceCrs.length === 0 ? findPreferredGeometricRepresentationContextId(pass.effective, ctx)
     : sourceCrs.find((id) => pass.effective.typeOf(id) === 'IFCGEOMETRICREPRESENTATIONCONTEXT') ?? null;
   if (!contextId) return reportMapConversionRefused(pass.warnings);
   pass.newGeorefLines.push(mapConversionLine(ctx.allocateExpressId(), contextId, crsId, mc, pass.warnings, pass.schemaToken));
@@ -302,8 +302,9 @@ function createMapConversion(pass: ExportPass, ctx: GeorefContext, crsId: number
  */
 function requestedFactors(mc: MapConversionRequest, warnings?: string[]): [number, number, number] | null {
   const given = [mc.factorX, mc.factorY, mc.factorZ];
-  if (given.every((f) => f === undefined)) return null;
-  if (given.some((f) => f === undefined)) {
+  // A null is a factor nobody gave: `Number(null)` is 0, which would write a mandatory FactorX of 0.
+  if (given.every((f) => f == null)) return null;
+  if (given.some((f) => f == null)) {
     if (warnings) reportGeorefWarning(warnings, PARTIAL_FACTORS_WARNING);
     return null;
   }

@@ -50,6 +50,11 @@ export function interpretsMcEdit(name: string, raw: string, scaled: boolean): bo
   return n !== undefined && !(n === null && MANDATORY_MC_FIELDS.includes(name));
 }
 
+/** Whether `get()` can state an edit of CRS text attribute `name` to `raw`: `Name` is mandatory, and an unset one reads back as ''. */
+export function interpretsCrsEdit(name: string, raw: string): boolean {
+  return CRS_TEXT_FIELDS.includes(name) && !(name === 'Name' && raw === '$');
+}
+
 /** A text edit as `serializeStringSlot` writes it: `$` is unset, `''` stays an empty string, anything else is itself. */
 function textOf(raw: string): string | null {
   return raw === '$' ? null : raw;
@@ -80,7 +85,7 @@ export function withAttributeEdits(
   if (crs?.expressId !== undefined && crs.type !== 'ePSet_ProjectedCRS') {
     const fields: Record<string, unknown> = { ...crs };
     for (const { name, value } of view.getAttributeMutationsForEntity(crs.expressId)) {
-      if (!CRS_TEXT_FIELDS.includes(name) || exporterKey(name) in (written?.projectedCRS ?? {})) continue;
+      if (!interpretsCrsEdit(name, value) || exporterKey(name) in (written?.projectedCRS ?? {})) continue;
       const t = textOf(value);
       if (t === null) delete fields[name]; else fields[name] = t;
       changed = true;

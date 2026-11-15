@@ -1069,6 +1069,17 @@ describe('StepExporter georeferencing — IfcMapConversionScaled', () => {
       expect(text).toMatch(/IFCMAPCONVERSION\(#25,#/);
     });
 
+    it('an empty SourceCRS list is no list: the file\'s own pick is used, as in the Rust writer', () => {
+      const text = decode(run({ projectedCRS: { name: 'X', mapUnit: 'METRE' }, mapConversion: mc, sourceCrs: [] }).content);
+      expect(text).toMatch(/IFCMAPCONVERSION\(#20,#/);
+    });
+
+    it('a null factor is a factor nobody gave: partial triple, no Factor written as 0', () => {
+      const result = run({ projectedCRS: { name: 'X', mapUnit: 'METRE' }, mapConversion: { ...mc, factorX: null, factorY: 1, factorZ: 1 } });
+      expect(decode(result.content)).not.toMatch(/IFCMAPCONVERSIONSCALED/);
+      expect(result.stats.georeferencingWarnings?.join('\n')).toMatch(/mandatory/);
+    });
+
     it('refuses a named SourceCRS that is not a representation context, writing no conversion', () => {
       const result = run({ projectedCRS: { name: 'X', mapUnit: 'METRE' }, mapConversion: mc, sourceCrs: [2] });
       expect(decode(result.content)).not.toMatch(/=IFCMAPCONVERSION/);

@@ -40,6 +40,8 @@ export function effectiveEntities(store: IfcDataStore, view: MutablePropertyView
     const attributes = new EntityExtractor(bytes).extractEntity({ expressId: id, type, byteOffset: 0, byteLength: bytes.length, lineNumber: 0 })?.attributes;
     return attributes ? { attributes } : { unknown: `#${id} (${type}) does not parse` };
   };
+  // A record the extractor cannot read is not an empty one: the fact built from it is unknown, never a guess.
+  const read = (id: number, type: string, attributes: unknown[] | undefined): EffectiveAttributes => (attributes ? { attributes } : { unknown: `#${id} (${type}) could not be read` });
   return {
     idsOf(type) {
       const want = type.toUpperCase();
@@ -54,7 +56,7 @@ export function effectiveEntities(store: IfcDataStore, view: MutablePropertyView
       if (!view) {
         // @raw-entity-enumeration-ok point read of one source record, for a session without a mutation view
         const ref = store.entityIndex?.byId.get(id);
-        return ref && extractor ? { attributes: extractor.extractEntity(ref)?.attributes ?? [] } : { unknown: `#${id} is not in the file` };
+        return ref && extractor ? read(id, ref.type, extractor.extractEntity(ref)?.attributes) : { unknown: `#${id} is not in the file` };
       }
       if (view.getNewEntity(id)) {
         const record = effectiveCreatedRecord(view, id, schema);
@@ -66,7 +68,7 @@ export function effectiveEntities(store: IfcDataStore, view: MutablePropertyView
       if (!ref || !extractor) return { unknown: `#${id} is not in the file` };
       if (view.getEntityTypeMutation(id)) return { unknown: `#${id} (${ref.type}) was retyped, so its attributes follow another layout` };
       const edited = (view.getPositionalMutationsForEntity(id)?.size ?? 0) > 0 || view.getAttributeMutationsForEntity(id).length > 0;
-      if (!edited) return { attributes: extractor.extractEntity(ref)?.attributes ?? [] };
+      if (!edited) return read(id, ref.type, extractor.extractEntity(ref)?.attributes);
       const text = new TextDecoder().decode(store.source.slice(ref.byteOffset, ref.byteOffset + ref.byteLength));
       const record = effectiveSourceRecord(view, id, text, ref.type, schema);
       return record.notWritten.length > 0 ? { unknown: `#${id} (${ref.type}): ${record.notWritten.join('; ')}` } : parse(id, ref.type, record.text);

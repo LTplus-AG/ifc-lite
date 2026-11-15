@@ -26,7 +26,7 @@ export function requireNumber(value: unknown, path: string, opts: { positive?: b
 }
 
 export function requireText(value: unknown, path: string): string {
-  if (typeof value !== 'string' || value.trim() === '' || value.charCodeAt(0) === 0) {
+  if (typeof value !== 'string' || value.trim() === '') {
     throw new GeoreferencingError('INVALID_INPUT', `${path} must be a non-empty string, got ${JSON.stringify(value)}.`, [path]);
   }
   return value;
@@ -54,6 +54,10 @@ export function requireMapUnit(value: unknown, path = 'ProjectedCRS.MapUnit'): s
  * the key in the message and in `missing`; '' for the top level.
  */
 export function rejectUnknownKeys(obj: object | undefined, fields: readonly string[], path: string): void {
+  // `Object.keys(42)` is empty, so a number, text or list would pass for "nothing to refuse" and be dropped silently.
+  if (obj !== undefined && obj !== null && (typeof obj !== 'object' || Array.isArray(obj))) {
+    throw new GeoreferencingError('INVALID_INPUT', `${path || 'the input'} must be an object, got ${JSON.stringify(obj)}.`, [path]);
+  }
   for (const key of Object.keys(obj ?? {})) {
     if (!fields.includes(key)) {
       const at = path ? `${path}.${key}` : key;

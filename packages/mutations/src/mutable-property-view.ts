@@ -946,8 +946,6 @@ export class MutablePropertyView extends MutableOverlayState {
     oldValue?: string,
     skipHistory: boolean = false,
   ): Mutation {
-    // U+0000 leads the values the exporter's georeferencing writer marks as plain text: user text may not collide with it.
-    if (value.charCodeAt(0) === 0) throw new Error('setAttribute: a value may not start with NUL (reserved for the exporter)');
     const key = attributeKey(entityId, attrName);
 
     this.setAttributeMutation(entityId, key, {

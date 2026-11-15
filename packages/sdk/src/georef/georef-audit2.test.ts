@@ -154,11 +154,14 @@ describe('F6. CRS text edited through the generic API', () => {
     m.bim.mutate.setAttribute({ modelId: 'model', expressId: 20 }, 'Description', value);
     await trueOrUntrusted(m.bim);
   });
-  it('NUL-led text can neither be set through the generic API nor through georef: it would collide with the exporter\'s marker', async () => {
+  it.each(['\u0000#5', '^', '^@', '\u0000'])('text %j is text on both paths: nothing is read as a marker', async (value) => {
     const m = await open('IFC4', GEO);
-    expect(() => m.bim.mutate.setAttribute({ modelId: 'model', expressId: 20 }, 'Description', '\u0000#5')).toThrow(/NUL/);
-    expect(refusal(() => m.bim.georef.update({ ProjectedCRS: { Description: '\u0000#5' } })).code).toBe('INVALID_INPUT');
+    m.bim.mutate.setAttribute({ modelId: 'model', expressId: 20 }, 'Description', value);
     await trueOrUntrusted(m.bim);
+    const n = await open('IFC4', GEO);
+    n.bim.georef.update({ ProjectedCRS: { Description: value === '\u0000' ? 'x\u0000' : value } });
+    await trueOrUntrusted(n.bim);
+    expect((await reparsed(n.bim)).ProjectedCRS?.Description).toBe(value === '\u0000' ? 'x\u0000' : value);
   });
 });
 

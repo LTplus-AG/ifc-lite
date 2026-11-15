@@ -122,7 +122,8 @@ fn scaled_undeclared_warning(file_schema: &str) -> String {
 /// for. A partial triple is reported and treated as none (all three are
 /// mandatory on `IfcMapConversionScaled`; 1.0 for a gap would be a guess).
 fn requested_factors<'a>(mc: &'a Map<String, Value>, warnings: &mut Vec<String>) -> Option<[&'a Value; 3]> {
-    match [mc.get("factorX"), mc.get("factorY"), mc.get("factorZ")] {
+    // A null is a factor nobody gave, as in the TypeScript writer.
+    match ["factorX", "factorY", "factorZ"].map(|k| mc.get(k).filter(|v| !v.is_null())) {
         [Some(x), Some(y), Some(z)] => Some([x, y, z]),
         [None, None, None] => None,
         _ => {
@@ -245,13 +246,18 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
             ],
         )
         .into_iter()
-        .map(|(attr, text)| if text.is_empty() { (attr, "$".to_string()) } else { (attr, format!("\0{text}")) })
+        .map(|(attr, text)| if text.is_empty() { (attr, "$".to_string()) } else { (attr, text) })
         .collect();
+        let text_attrs: Vec<String> = edits.iter().filter(|(_, v)| v != "$").map(|(a, _)| a.clone()).collect();
         if let Some(unit) = crs.get("mapUnit") {
             let value = map_unit_token(pass, unit)?;
             edits.push(("MapUnit".to_string(), value));
         }
         edit_existing(pass, id, edits);
+        // Text is text (`$`, `*`, `#12` stay quoted strings): carried as a decision of this writer, not inside the value.
+        for attr in text_attrs {
+            pass.text_edits.insert((id, attr));
+        }
     }
 
     if let (Some(mc), Some(&id)) = (&g.map_conversion, mc_ids.first()) {

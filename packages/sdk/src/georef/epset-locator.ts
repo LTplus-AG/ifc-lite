@@ -22,11 +22,21 @@ import { effectiveEntities, type EffectiveEntities } from './effective-entities.
 import type { EPSetLocation } from './model-facts.js';
 
 const NAMES = ['epset_mapconversion', 'epset_projectedcrs'];
+const NUMERIC = ['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 'XAxisOrdinate', 'Scale'];
+/** A number as the reader reads one: a finite number, or text that is one (some writers store Eastings as text). */
+export function decodeNumber(value: unknown): number | undefined {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : undefined;
+}
 const isConvention = (name: string | undefined) => !!name && NAMES.includes(name.toLowerCase());
 
 interface SourceSets {
   /** Source property sets that carry a convention name. */
   named: Map<number, string>;
+  /** Their GlobalIds: the view's entries name the set they come from by it, whatever order it lists them in. */
+  byGlobalId: Map<string, number>;
+  /** The IfcPropertySingleValue records those sets list: a rename of one changes what the reader finds. */
+  atoms: Set<number>;
   /** Source IfcRelDefinesByProperties: the objects each relates to the set it names. */
   rels: Array<{ id: number; hosts: number[]; set: number }> | null;
 }
@@ -38,13 +48,17 @@ const sourceRef = (store: IfcDataStore, id: number) => store.entityIndex?.byId.g
 function sourceSets(store: IfcDataStore): SourceSets {
   let sets = cache.get(store);
   if (sets) return sets;
-  sets = { named: new Map(), rels: null };
+  sets = { named: new Map(), byGlobalId: new Map(), atoms: new Set(), rels: null };
   const extractor = store.source?.length ? new EntityExtractor(store.source) : null;
   // @raw-entity-enumeration-ok immutable source membership, cached per store; tombstones and creations are applied by the caller
   for (const id of store.entityIndex?.byType.get('IFCPROPERTYSET') ?? []) {
     const ref = sourceRef(store, id);
-    const name = ref && extractor?.extractEntity(ref)?.attributes?.[2];
-    if (typeof name === 'string' && isConvention(name)) sets.named.set(id, name);
+    const attrs = ref && extractor?.extractEntity(ref)?.attributes;
+    if (attrs && typeof attrs[2] === 'string' && isConvention(attrs[2])) {
+      sets.named.set(id, attrs[2]);
+      if (typeof attrs[0] === 'string') sets.byGlobalId.set(attrs[0], id);
+      for (const atom of Array.isArray(attrs[4]) ? attrs[4] : []) if (typeof atom === 'number') sets.atoms.add(atom);
+    }
   }
   cache.set(store, sets);
   return sets;
@@ -104,71 +118,71 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
   for (const id of renamed) {
     if (view.isDeleted(id)) continue;
     const name = effectiveName(id);
-    if (sets.named.has(id) && !isConvention(name)) renamedOut.add(id);
-    else if (!sets.named.has(id) && isConvention(name)) renamedIn.set(id, name!);
+    const was = sets.named.get(id);
+    if (was !== undefined && !isConvention(name)) renamedOut.add(id);
+    else if (was !== undefined && name!.toLowerCase() !== was.toLowerCase()) { renamedOut.add(id); renamedIn.set(id, name!); }
+    else if (was === undefined && isConvention(name)) renamedIn.set(id, name!);
   }
 
   // Source and created property sets by id, and the objects each hangs off.
   const named = new Map<number, string>();
   for (const [id, name] of sets.named) if (!view.isDeleted(id) && !renamedOut.has(id)) named.set(id, name);
   for (const [id, name] of renamedIn) named.set(id, name);
-  for (const id of effective.idsOf('IFCPROPERTYSET')) {
-    if (named.has(id) || sets.named.has(id) || renamedIn.has(id)) continue;
+  // Only what the session created is scanned here: the source's sets and relationships are cached, and walking every
+  // set and relationship of a large model on each call would make this cost grow with the model.
+  const created = (type: string) => view.getNewEntities().filter((e) => !view.isDeleted(e.expressId) && (view.getEntityTypeMutation(e.expressId)?.newType ?? e.type).toUpperCase() === type).map((e) => e.expressId);
+  for (const id of created('IFCPROPERTYSET')) {
     const name = effectiveName(id);
-    if (typeof name === 'string' && isConvention(name)) named.set(id, name);
+    if (!named.has(id) && typeof name === 'string' && isConvention(name)) named.set(id, name);
   }
   const rels: Array<{ hosts: number[]; set: number }> = [];
   if (named.size > 0 || renamedOut.size > 0) {
     for (const r of sourceRels(store, sets)) if (!view.isDeleted(r.id)) rels.push(r);
-    for (const id of effective.idsOf('IFCRELDEFINESBYPROPERTIES')) {
+    for (const id of created('IFCRELDEFINESBYPROPERTIES')) {
       const read = effective.attributesOf(id);
-      if ('attributes' in read && typeof read.attributes[5] === 'number' && !sets.rels?.some((r) => r.id === id)) {
+      if ('attributes' in read && typeof read.attributes[5] === 'number') {
         rels.push({ hosts: (Array.isArray(read.attributes[4]) ? read.attributes[4] : []).filter((h): h is number => typeof h === 'number'), set: read.attributes[5] });
       }
     }
   }
 
   const hosts = new Set<number>([...managedHosts, ...changes.map((c) => c.entityId)]);
-  const sourceIdsOn = new Map<string, number[]>();
   const attached = new Set<number>();
-  // The view lists a host's source sets under the names the file gave them, in source order: a set renamed out is still
-  // in that list, and its slot is skipped below so that the copies line up with the records the file will contain.
-  for (const [id, name] of [...sets.named, ...renamedIn].sort((a, b) => a[0] - b[0])) {
-    if (view.isDeleted(id)) continue;
-    for (const host of new Set(rels.filter((r) => r.set === id).flatMap((r) => r.hosts))) {
+  for (const r of rels) {
+    for (const host of new Set(r.hosts)) {
       hosts.add(host);
-      attached.add(id);
-      const key = `${host}|${name.toLowerCase()}`;
-      sourceIdsOn.set(key, [...(sourceIdsOn.get(key) ?? []), id]);
+      if (named.has(r.set)) attached.add(r.set);
     }
   }
+  // The exporter writes the records in id order, so the first set of a name in the exported file is the lowest id; a
+  // reader of the SOURCE meets them in file order. Both ranks are kept: where they disagree the answer differs by file.
+  const rank = new Map([...sets.named.keys()].map((id, i) => [id, i] as const));
 
-  const copies: Array<EPSetLocation & { order: number }> = [];
+  const copies: Array<EPSetLocation & { order: number; fileRank: number }> = [];
   for (const host of hosts) {
-    const seen = new Map<string, number>();
     for (const pset of view.getForEntity(host)) {
       const key = `${host}|${pset.name.toLowerCase()}`;
       if (!isConvention(pset.name)) continue;
-      const n = seen.get(key) ?? 0;
-      seen.set(key, n + 1);
       const values: Record<string, unknown> = {};
       for (const prop of pset.properties) values[prop.name] = prop.value;
-      const backing = sourceIdsOn.get(key)?.[n];
-      if (backing !== undefined && renamedOut.has(backing)) continue;
+      // The set this entry comes from, by its GlobalId (the view's order is not the file's): a set renamed out is still
+      // listed, and is skipped so that the copies are the records the file will contain.
+      const backing = pset.globalId ? sets.byGlobalId.get(pset.globalId) : undefined;
+      if (backing !== undefined && (renamedOut.has(backing) || view.isDeleted(backing))) continue;
       const wasEdited = edited.has(key);
-      copies.push({ hostId: host, name: pset.name, values, managed: managedHosts.has(host), edited: wasEdited, order: wasEdited ? Infinity : (backing ?? Infinity) });
+      copies.push({ hostId: host, name: pset.name, values, managed: managedHosts.has(host), edited: wasEdited, order: wasEdited || backing === undefined ? Infinity : backing, fileRank: backing === undefined ? Infinity : (rank.get(backing) ?? Infinity) });
     }
   }
   // A set renamed into a convention name: the view still lists it under its old name, so it is read from its record.
   for (const [id, name] of renamedIn) {
     const on = [...new Set(rels.filter((r) => r.set === id).flatMap((r) => r.hosts))];
     for (const host of on.length > 0 ? on : [0]) {
-      copies.push({ hostId: host, ...(on.length === 0 ? { orphan: id } : {}), name, values: sourceValues(store, id), managed: managedHosts.has(host), edited: true, order: Infinity });
+      copies.push({ hostId: host, ...(on.length === 0 ? { orphan: id } : {}), name, values: sourceValues(store, id), managed: managedHosts.has(host), edited: true, order: Infinity, fileRank: Infinity });
     }
   }
   // A set no relationship attaches to anything: the reader still takes it.
   for (const [id, name] of named) {
-    if (!attached.has(id) && !renamedIn.has(id)) copies.push({ hostId: 0, orphan: id, name, values: sourceValues(store, id), managed: false, edited: false, order: id });
+    if (!attached.has(id) && !renamedIn.has(id)) copies.push({ hostId: 0, orphan: id, name, values: sourceValues(store, id), managed: false, edited: false, order: sets.named.has(id) ? id : Infinity, fileRank: rank.get(id) ?? Infinity });
   }
 
   const ambiguous: string[] = [];
@@ -177,11 +191,31 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
     if (of.length > 1 && of.some((c) => c.edited || c.order === Infinity)) {
       ambiguous.push(`${of.length} copies of ${of[0].name} (${of.map(describeSet).join(', ')}) and one was edited or created, so which one the file reads first is not known`);
     }
+    const byFile = [...of].sort((a, b) => a.fileRank - b.fileRank);
+    if (of.length > 1 && byFile[0] !== of[0] && Number.isFinite(byFile[0].fileRank) && Number.isFinite(of[0].order)) {
+      ambiguous.push(`${of.length} copies of ${of[0].name} (${of.map(describeSet).join(', ')}) sit in the file in a different order than their ids, and the exporter writes them by id: which one is read first differs between this file and its export`);
+    }
     return of[0] ?? null;
   };
   const mapConversion = pick(NAMES[0]);
   const projectedCRS = pick(NAMES[1]);
-  return { copies, mapConversion, projectedCRS, ambiguous, touched: changes.length > 0 || renamedOut.size > 0 || renamedIn.size > 0 };
+  // A value the reader would not read as a number (`abc` where Eastings belongs) is not a state anyone can state.
+  for (const [field, value] of Object.entries(mapConversion?.values ?? {})) {
+    if (NUMERIC.includes(field) && decodeNumber(value) === undefined) ambiguous.push(`${field} of ${describeSet(mapConversion!)} is ${JSON.stringify(value)}, which is not a number`);
+  }
+  // A property record of a convention set renamed, retyped or deleted through the generic API is not a property edit.
+  // The rest of the subgraph the export of a convention set serializes, none of which is interpreted: a set's class,
+  // its membership (`HasProperties`) and other attributes, its properties' records, and the relationships that attach it.
+  // (A set's NAME is read from its record above, and a deleted set's copies are skipped.)
+  const relIds = new Set(sets.named.size > 0 ? sourceRels(store, sets).filter((r) => sets.named.has(r.set)).map((r) => r.id) : []);
+  const subgraphEdits = allChanges.filter((c) => {
+    if (c.kind === 'property' || c.kind === 'quantity' || c.kind === 'pset-added' || c.kind === 'pset-deleted' || c.kind === 'qset-added' || c.kind === 'qset-deleted') return false;
+    if (sets.atoms.has(c.entityId) || relIds.has(c.entityId)) return true;
+    if (!sets.named.has(c.entityId) && !renamedIn.has(c.entityId)) return false;
+    return c.kind === 'type' || (c.kind === 'attribute' && c.name !== 'Name' && c.name !== '@2');
+  });
+  if (subgraphEdits.length > 0) ambiguous.push(`record(s) ${[...new Set(subgraphEdits.map((c) => `#${c.entityId}`))].join(', ')} of a convention set (its class, members, properties or relationships) were changed outside bim.georef`);
+  return { copies, mapConversion, projectedCRS, ambiguous, touched: changes.length > 0 || renamedOut.size > 0 || renamedIn.size > 0 || subgraphEdits.length > 0 };
 }
 
 /** `ePSet_MapConversion on #8` / `ePSet_MapConversion #103 (not attached to any object)`. */
@@ -196,4 +230,11 @@ export function conventionSetsOf(store: IfcDataStore, view: MutablePropertyView)
   if (sourceSets(store).named.size === 0 && !view.hasPendingChanges()) return NONE;
   const effective = effectiveEntities(store, view);
   return locateConventionSets(store, view, effective, new Set(['IFCSITE', 'IFCPROJECT', 'IFCBUILDING'].flatMap((t) => effective.idsOf(t))));
+}
+
+/** Names with several source copies whose file order is not their id order (see `locateConventionSets`), for a session with no view yet. */
+export function sourceOrderConflicts(store: IfcDataStore): string[] {
+  const byName = new Map<string, number[]>();
+  for (const [id, name] of sourceSets(store).named) byName.set(name.toLowerCase(), [...(byName.get(name.toLowerCase()) ?? []), id]);
+  return [...byName].filter(([, ids]) => ids.length > 1 && ids[0] !== Math.min(...ids)).map(([name, ids]) => `${ids.length} copies of ${name} (${ids.map((id) => `#${id}`).join(', ')}) sit in the file in a different order than their ids, and the exporter writes them by id: which one is read first differs between this file and its export`);
 }

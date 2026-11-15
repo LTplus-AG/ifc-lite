@@ -117,7 +117,8 @@
     "well_known_text_attaches_only_to_its_crs",
     "well_known_text_only_crs_without_operation_falls_back_to_site",
     "epset_lowercase_ePset_names",
-    "projected_crs_conversion_based_unknown_through_foot_unresolved"
+    "projected_crs_conversion_based_unknown_through_foot_unresolved",
+    "projected_crs_conversion_based_missing_component_unresolved"
   ],
   "cases": [
     {
@@ -1267,6 +1268,18 @@
       "name": "projected_crs_conversion_based_unknown_through_foot_unresolved",
       "_note": "A unit named CHAIN defined as 66 of a conversion-based FOOT: the component's own factor is not applied, so the factor is not stated and the unit stays the unresolved METRE default (never 66).",
       "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.30480000000000002),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#6);\n#7=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(66.),#4);\n#8=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'CHAIN',#7);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#8);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnit": "METRE",
+        "mapUnitScale": 1.0
+      }
+    },
+    {
+      "name": "projected_crs_conversion_based_missing_component_unresolved",
+      "_note": "The measure names a component unit that is not in the file: its factor is not stated, the unit stays the unresolved METRE default (never 66).",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.30480000000000002),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#6);\n#7=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(66.),#999);\n#8=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'CHAIN',#7);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#8);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
       "expect": {
         "hasGeoreference": true,
         "source": "mapConversion",

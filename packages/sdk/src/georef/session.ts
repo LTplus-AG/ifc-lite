@@ -20,12 +20,12 @@ import { isExpressibleMapUnit } from '@ifc-lite/export';
 import { PropertyValueType } from '@ifc-lite/data';
 import { recordCompoundMutation, recordSessionMutation, StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import { collectGeorefModelFacts, storageForSchema, type GeorefModelFacts } from './model-facts.js';
-import { conventionSetsOf } from './epset-locator.js';
-import { CRS_FIELDS, MC_FIELDS, planRemove, planSet, stateAfter, type GeorefWritePlan, type PropertySetOp, type StepGeorefMutations } from './plan.js';
+import { conventionSetsOf, decodeNumber, sourceOrderConflicts } from './epset-locator.js';
+import { CRS_FIELDS, MC_FIELDS, exporterKey, planRemove, planSet, stateAfter, type GeorefWritePlan, type PropertySetOp, type StepGeorefMutations } from './plan.js';
 import { withAttributeEdits } from './attribute-overlay.js';
 import { assertWritable, assessTrust } from './trust.js';
 import { planUpdate } from './plan-update.js';
-import { readSourceGeoreferencing, readWithoutGeoreferencing } from './read.js';
+import { compact, readSourceGeoreferencing, readWithoutGeoreferencing, rotationOf } from './read.js';
 import { GeoreferencingError, type GeorefMapConversionAttributes, type GeorefProjectedCRSAttributes, type GeoreferencingState, type GeoreferencingWriteRequest, type GeoreferencingWriteResult } from './types.js';
 
 export interface GeoreferencingSessionDeps {
@@ -63,7 +63,7 @@ export class GeoreferencingSession {
     // A snapshot: the caller may change what it gets without changing the session's own record of its writes.
     const state = structuredClone(this.read());
     const view = this.deps.view();
-    if (!view) return state;
+    if (!view) { const why = sourceOrderConflicts(this.deps.store); return why.length > 0 ? { ...state, untrusted: why } : state; }
     const { reasons, foreign } = this.trust(state, view);
     const untrusted = Object.entries(reasons).filter(([part]) => part !== 'site' || state.site).flatMap(([, why]) => why);
     if (untrusted.length === 0) return state;
@@ -78,7 +78,7 @@ export class GeoreferencingSession {
     // The convention sets are read back live for IFC2X3 only; elsewhere an edited or created copy is not reflected.
     // Which copy the reader takes is known only while the session left the copies alone.
     const sets = conventionSetsOf(this.deps.store, view);
-    const why = [...sets.ambiguous, ...(storageForSchema(String(this.deps.store.schemaVersion ?? '')) === 'entities' && sets.copies.some((c) => c.edited) ? ['convention sets were edited outside bim.georef, which is not reflected in this schema'] : [])];
+    const why = [...sets.ambiguous, ...(storageForSchema(String(this.deps.store.schemaVersion ?? '')) === 'entities' && sets.touched ? ['convention sets were changed outside bim.georef, which is not read back in this schema'] : [])];
     // An IfcMapConversion or IfcRigidOperation governs: the reader never reaches the sets.
     if (why.length > 0 && !(state.MapConversion && state.MapConversion.type !== 'ePSet_MapConversion') && !state.RigidOperation) trust.reasons.ePSet = why;
     return trust;
@@ -95,7 +95,7 @@ export class GeoreferencingSession {
       // cache describes a file the export will not write, so report the source minus deletions.
       // The pending edit still stands (the exporter refuses to create from it), hence `pending`.
       if (view && [top.state.ProjectedCRS, top.state.MapConversion, top.state.RigidOperation, top.state.site].some((r) => r?.expressId !== undefined && view.isDeleted(r.expressId))) {
-        return { ...readSourceGeoreferencing(this.deps.store, this.deps.modelId, (id) => view.isDeleted(id)), pending: true };
+        return { ...withPendingFields(readSourceGeoreferencing(this.deps.store, this.deps.modelId, (id) => view.isDeleted(id)), top.pending), pending: true };
       }
       return view ? withAttributeEdits(top.state, view, top.pending) : top.state;
     }
@@ -156,9 +156,9 @@ export class GeoreferencingSession {
     const none = () => readWithoutGeoreferencing(this.deps.store, this.deps.modelId, true, view ? (id) => view.isDeleted(id) : undefined);
     if (!view) return none();
     const facts = collectGeorefModelFacts(this.deps.store, view);
-    const pick = (loc: GeorefModelFacts['ePSetMapConversion'], fields: readonly string[]) =>
-      loc ? Object.fromEntries(fields.filter((f) => loc.values[f] != null).map((f) => [f, loc.values[f]])) : null;
-    const mc = pick(facts.ePSetMapConversion, MC_FIELDS);
+    const pick = (loc: GeorefModelFacts['ePSetMapConversion'], fields: readonly string[], numeric = false) =>
+      loc ? Object.fromEntries(fields.filter((f) => loc.values[f] != null && (!numeric || decodeNumber(loc.values[f]) !== undefined)).map((f) => [f, numeric ? decodeNumber(loc.values[f]) : loc.values[f]])) : null;
+    const mc = pick(facts.ePSetMapConversion, MC_FIELDS, true);
     const crs = pick(facts.ePSetProjectedCRS, CRS_FIELDS);
     if (!mc) return none();
     const state = stateAfter({ modelId: this.deps.modelId, facts }, 'propertySets', crs as GeorefProjectedCRSAttributes | null, mc as unknown as GeorefMapConversionAttributes);
@@ -200,6 +200,14 @@ export class GeoreferencingSession {
     while (this.writes.length > 0 && !inHistory(this.writes[this.writes.length - 1].marker)) this.writes.pop();
     return this.writes[this.writes.length - 1] ?? null;
   }
+}
+
+/** The fields this session's write still holds for the records that survive: the export applies them to those. */
+function withPendingFields(state: GeoreferencingState, pending: StepGeorefMutations | null): GeoreferencingState {
+  const over = <T extends object>(record: T | null, fields: readonly string[], changes: object | undefined): T | null =>
+    record && changes ? compact({ ...record, ...Object.fromEntries(fields.filter((f) => (changes as Record<string, unknown>)[exporterKey(f)] !== undefined).map((f) => [f, (changes as Record<string, unknown>)[exporterKey(f)]])) }) as T : record;
+  const MapConversion = over(state.MapConversion, MC_FIELDS, pending?.mapConversion);
+  return { ...state, MapConversion, ProjectedCRS: over(state.ProjectedCRS, CRS_FIELDS.filter((f) => f !== 'MapUnit'), pending?.projectedCRS), rotationDegrees: MapConversion ? rotationOf(MapConversion) : state.rotationDegrees };
 }
 
 /**

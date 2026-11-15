@@ -26,7 +26,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { EntityExtractor } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { CRS_TEXT_FIELDS, interpretsMcEdit } from './attribute-overlay.js';
+import { interpretsCrsEdit, interpretsMcEdit } from './attribute-overlay.js';
 import { exporterKey, MC_FIELDS } from './plan.js';
 import { GeoreferencingError } from './types.js';
 
@@ -127,7 +127,7 @@ export function assessTrust(store: IfcDataStore, view: MutablePropertyView, writ
         const name = c.name ?? '';
         const interpreted = !name.startsWith('@') && (
           (part === 'MapConversion' && (MC_FIELDS as readonly string[]).includes(name) && (covered(part, name) || interpretsMcEdit(name, c.newValue ?? '', type === 'IFCMAPCONVERSIONSCALED')))
-          || (type === 'IFCPROJECTEDCRS' && (CRS_TEXT_FIELDS.includes(name) || (name === 'MapUnit' && covered(part, name)))));
+          || (type === 'IFCPROJECTEDCRS' && (interpretsCrsEdit(name, c.newValue ?? '') || (name === 'MapUnit' && covered(part, name)))));
         if (!interpreted) flag(part, `${name.startsWith('@') ? `attribute ${name.slice(1)} (by position)` : `attribute ${name}`} of ${what} was edited outside bim.georef`);
         break;
       }

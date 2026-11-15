@@ -47,8 +47,8 @@ pub(crate) fn disabled() -> bool {
 /// inverted shells (negative signed volume, dozens of open edges).
 ///
 /// A watertight host clipped by a plane has exactly one open boundary — the
-/// section, lying on the cut plane. We weld coincident vertices on a grid far
-/// finer than any feature ([`weld_section`]), move the mesh's own section
+/// section, lying on the cut plane. We weld coincident vertices on a grid of
+/// 1e-5 of the mesh diagonal ([`weld_section`]), move the mesh's own section
 /// vertices onto the weld, chain the on-plane boundary half-edges into loops,
 /// classify them into outer rings and holes by even-odd nesting, triangulate
 /// each region with the kernel's CDT, and append the result wound to face

@@ -60,10 +60,11 @@ describe('faceRegionsOfOuterBounds', () => {
     expect(faceRegionsOfOuterBounds([big, opening])).toEqual([{ polygon: big, innerBounds: [opening] }]);
   });
 
-  it('keeps a collinear loop as its own region and a single loop as one', () => {
+  it('drops a collinear loop, which bounds nothing, and keeps a single loop as one', () => {
     const line: Vec3[] = [[0, 0, 0], [1, 0, 0], [2, 0, 0]];
-    expect(faceRegionsOfOuterBounds([line, square(5, 5, 1)])).toHaveLength(2);
+    expect(faceRegionsOfOuterBounds([line, square(5, 5, 1)])).toEqual([{ polygon: square(5, 5, 1), innerBounds: [] }]);
     expect(faceRegionsOfOuterBounds([square(0, 0, 1)])).toHaveLength(1);
+    expect(faceRegionsOfOuterBounds([line, line])).toBeNull();
   });
 });
 
@@ -128,14 +129,14 @@ describe('the item reader keeps the regions of an IfcFaceSurface (#9945)', () =>
 #43=IFCSTRUCTURALSURFACEMEMBER('0Slab000000000000000a',$,'Slab',$,$,#20,#42,.SHELL.,0.2);
 ENDSEC;END-ISO-10303-21;`;
 
-  it('uses the largest region as the face polygon, so a sliver first in the file does not lose the face', async () => {
+  it('drops a degenerate loop first in the file instead of letting it decide the face frame', async () => {
     const withSliver = STEP.replace('#36=IFCPOLYLOOP((#30,#31,#32));', '#36=IFCPOLYLOOP((#30,#31,#31));').replace('#37=IFCPOLYLOOP((#33,#34,#35));', '#37=IFCPOLYLOOP((#33,#34,#35));');
     const store = await new IfcParser().parseColumnar(new TextEncoder().encode(withSliver).buffer as ArrayBuffer);
     const shape = new ItemGeometryReader(store).shape(43);
     expect(shape?.kind).toBe('face');
     if (shape?.kind !== 'face') return;
     expect(shape.polygon).toEqual([[10, 0, 0], [12, 0, 0], [10, 2, 0]]);
-    expect(shape.regions).toEqual([{ polygon: [[0, 0, 0], [2, 0, 0], [2, 0, 0]], innerBounds: [] }]);
+    expect(shape.regions).toBeUndefined();
     expect(onShape(shape, [10.5, 0.5, 0])).toBe(true);
   });
 

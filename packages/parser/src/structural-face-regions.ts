@@ -81,7 +81,10 @@ const area = (poly: Flat): number => {
  * region. Rings are projected on the plane of the largest one; null when they do not share a plane
  * (or the largest has none), which no planar face does, so the caller keeps its single-polygon reading.
  */
-export function faceRegionsOfOuterBounds(rings: readonly Vec3[][]): FaceRegion[] | null {
+export function faceRegionsOfOuterBounds(allRings: readonly Vec3[][]): FaceRegion[] | null {
+  // A loop with no area (collinear points) bounds nothing and is no region.
+  const rings = allRings.filter((ring) => ringArea(ring) > 1e-12);
+  if (rings.length === 0) return null;
   if (rings.length < 2) return rings.map((polygon) => ({ polygon, innerBounds: [] }));
   const reference = rings.reduce((best, ring) => (ringArea(ring) > ringArea(best) ? ring : best), rings[0]);
   let normal: Vec3 | null = null;

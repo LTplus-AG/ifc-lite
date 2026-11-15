@@ -81,8 +81,9 @@ it('shows own model/object counts, live changes, and numeric list sorting across
   assert.equal(value(ownObject), '—');
   assert.equal(value(otherModel), '—');
   assert.equal(providers.pairs.find(pair => pair.modelId === 'A')!.provider.getTriangleCount?.(2), null);
-  await act(async () => { replacement.queueMeshes([triangle(2)]); await Promise.resolve(); });
+  await act(async () => { replacement.queueMeshes([triangle(2), triangle(federationRegistry.toGlobalId('B', 2))]); await Promise.resolve(); });
   assert.equal(value(ownModel), '1', 'the row recovers when source geometry is replayed');
   assert.equal(value(ownObject), '1');
+  assert.equal(value(otherModel), '1');
   assert.equal(providers.pairs.find(pair => pair.modelId === 'A')!.provider.getTriangleCount?.(2), 1);
 });

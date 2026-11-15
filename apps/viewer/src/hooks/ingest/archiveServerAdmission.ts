@@ -25,8 +25,16 @@ export async function archiveAllowsServer(file: File): Promise<boolean> {
   for (let entry = 0; entry < entries; entry++) {
     if (cursor + 46 > bytes || view.getUint32(cursor, true) !== 0x02014b50) return false;
     const nameLength = view.getUint16(cursor + 28, true);
-    const next = cursor + 46 + nameLength + view.getUint16(cursor + 30, true) + view.getUint16(cursor + 32, true);
+    const extraEnd = cursor + 46 + nameLength + view.getUint16(cursor + 30, true);
+    const next = extraEnd + view.getUint16(cursor + 32, true);
     if (next > bytes || view.getUint16(cursor + 34, true) !== 0) return false;
+    // JSZip can replace the raw name from a Unicode Path extra field. Keep
+    // those archives local rather than certify an image-free raw-name list.
+    for (let extra = cursor + 46 + nameLength; extra < extraEnd;) {
+      if (extra + 4 > extraEnd || view.getUint16(extra, true) === 0x7075) return false;
+      extra += 4 + view.getUint16(extra + 2, true);
+      if (extra > extraEnd) return false;
+    }
     const name = new TextDecoder().decode(directory.subarray(cursor + 46, cursor + 46 + nameLength));
     // Match the viewer parser's sibling-image and AppleDouble model policies.
     if (/\.(png|jpe?g)$/i.test(name)) return false;

@@ -746,13 +746,26 @@ fn curve_bounded_plane_face_on_another_product_stays_empty_issue_9668() {
 }
 
 #[test]
-fn two_outer_bounds_on_another_product_keep_main_rule_issue_9668() {
-    // Main keeps the last outer bound as the ring and makes the earlier one a
-    // hole, so only the 2 x 2 square meshes (area 4, measured on main).
+fn disjoint_outer_bounds_on_another_product_are_regions_issue_9945() {
+    // The generic pipeline reads the same face the same way: two disjoint
+    // outer-bound triangles of a square are two regions, 100, where main kept the
+    // last as the ring and made the first a hole (one triangle, 50).
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#1,#2,#3));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#1,#3,#4));#21=IFCFACEOUTERBOUND(#20,.T.);",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    assert!((signed_xy_area(&meshed(&proxy_with(&source), 18)) - 100.0).abs() < 1e-5);
+}
+
+#[test]
+fn an_opening_tagged_as_an_outer_bound_is_an_opening_on_every_product_issue_9945() {
+    // A 2 x 2 loop tagged IfcFaceOuterBound inside the 10 x 10 loop is that loop's
+    // opening: 100 - 4 = 96, on a proxy and on a structural member alike. Main
+    // meshed only the small square on a proxy (4), and the member counted the
+    // overlap twice (104).
     let face = surface_member(true, true).replace("#12=IFCFACEBOUND(#11,.T.);", "#12=IFCFACEOUTERBOUND(#11,.T.);");
-    assert!((signed_xy_area(&meshed(&proxy_with(&face), 18)) - 4.0).abs() < 1e-5);
-    // The same face on a structural member is two regions, 100 + 4 (AxisVM writes slabs so).
-    assert!((signed_xy_area(&meshed(&face, 18)) - 104.0).abs() < 1e-5);
+    assert!((signed_xy_area(&meshed(&proxy_with(&face), 18)) - 96.0).abs() < 1e-5);
+    assert!((signed_xy_area(&meshed(&face, 18)) - 96.0).abs() < 1e-5);
 }
 
 #[test]

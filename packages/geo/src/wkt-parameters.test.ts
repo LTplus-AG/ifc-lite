@@ -106,6 +106,9 @@ describe('a parse without the parameters its projection needs', () => {
     assert.deepEqual(missingProjectionParameters(unpatched), ['long0', 'k0']);
     assert.deepEqual(missingProjectionParameters(parseWkt(withImpliedParameterUnits(TM_WKT1_NAMES))), []);
     assert.deepEqual(missingProjectionParameters({ projName: 'Krovak' }), [], 'an unlisted method is not checked');
+    // #10385 review: the second parallel of a 2SP, the scale factor of a 1SP.
+    assert.deepEqual(missingProjectionParameters({ projName: 'Lambert Conic Conformal (2SP)', long0: 0.05, lat0: 0.8, lat1: 0.85 }), ['lat2']);
+    assert.deepEqual(missingProjectionParameters({ projName: 'Lambert_Conformal_Conic_1SP', long0: 0.04, lat0: 0.86 }), ['k0']);
   });
 
   it('refuses the CRS rather than placing it on the wrong meridian, and says why', async () => {
@@ -115,6 +118,18 @@ describe('a parse without the parameters its projection needs', () => {
     const messages = await diagnosticsOf(async () => { resolved = await resolveCrs({ wkt: unrecognised }); });
     assert.equal(resolved, null);
     assert.ok(messages.some((message) => message.includes('without long0')), messages.join('\n'));
+  });
+
+  it('refuses a 2SP whose second parallel the reader did not recognise (#10385 review)', async () => {
+    const wkt = 'PROJCRS["x",' + WGS84_BASE + ',CONVERSION["c",METHOD["Lambert Conic Conformal (2SP)"],'
+      + 'PARAMETER["Latitude of false origin",46.5],PARAMETER["Longitude of false origin",3],'
+      + 'PARAMETER["Latitude of 1st standard parallel",49],PARAMETER["SecondParallelNorth",44],'
+      + 'PARAMETER["Easting at false origin",700000],PARAMETER["Northing at false origin",6600000]],'
+      + 'CS[Cartesian,2],AXIS["E",east],AXIS["N",north],LENGTHUNIT["metre",1]]';
+    let resolved: Awaited<ReturnType<typeof resolveCrs>> | undefined;
+    const messages = await diagnosticsOf(async () => { resolved = await resolveCrs({ wkt }); });
+    assert.equal(resolved, null);
+    assert.ok(messages.some((message) => message.includes('without lat2')), messages.join('\n'));
   });
 
   // Each checked method, in WKT1 and in WKT2 with EPSG names, must still

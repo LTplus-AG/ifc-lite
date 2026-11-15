@@ -187,3 +187,37 @@ describe('replacing the loaders while a grid is loading', () => {
     }
   });
 });
+
+describe('a transformer keeps its grid when the default engine is reconfigured (#10385 review)', () => {
+  it('is not switched to grid bytes a later loader returns for the same file', async () => {
+    const shifted = (): ArrayBuffer => writeArrayBuffer(new Float32Array(8).fill(10), {
+      width: 2, height: 2, SamplesPerPixel: [2],
+      ModelPixelScale: [2, 2, 0], ModelTiepoint: [0, 0, 0, 4, 54, 0],
+      GeographicTypeGeoKey: 4326,
+    }) as ArrayBuffer;
+    const previous = configureCrsLoaders({ gridFile: async () => zeroGrid() });
+    try {
+      const first = await resolveCrs({ epsg: 28992 });
+      assert.equal(first?.datumShift, 'as-defined');
+      const before = first.toWgs84([155000, 463000]);
+      configureCrsLoaders({ gridFile: async () => shifted() });
+      const second = await resolveCrs({ epsg: 28992 });
+      assert.equal(second?.datumShift, 'as-defined');
+      const moved = second.toWgs84([155000, 463000]);
+      assert.ok(before && moved && Math.abs(moved[0] - before[0]) > 1e-4, 'the second grid really shifts');
+      assert.deepEqual(first.toWgs84([155000, 463000]), before, 'the earlier transformer kept its own grid');
+    } finally {
+      configureCrsLoaders(previous);
+    }
+  });
+});
+
+describe('a non-finite height (#10385 review)', () => {
+  it('is refused in both directions, like a non-finite x or y', async () => {
+    const crs = await resolveCrs({ epsg: 32632 });
+    assert.ok(crs);
+    assert.equal(crs.toWgs84([500000, 5200000, Number.NaN]), null);
+    assert.equal(crs.fromWgs84([9, 47, Number.POSITIVE_INFINITY]), null);
+    assert.equal((await resolveCrs({ epsg: 4326 }))?.toWgs84([8, 47, Number.NaN]), null);
+  });
+});

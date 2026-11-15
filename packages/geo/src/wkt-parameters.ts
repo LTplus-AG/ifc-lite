@@ -102,8 +102,10 @@ export function withImpliedParameterUnits(wkt: string): string {
 const REQUIRED_PARAMETERS: readonly [RegExp, readonly string[]][] = [
   [/^(?:transversemercator|gausskruger|tmerc)$/, ['long0', 'k0']],
   [/^(?:obliquestereographic|doublestereographic|sterea)$/, ['long0', 'lat0', 'k0']],
-  [/^(?:lambertconicconformal1sp|lambertconformalconic1sp)$/, ['long0', 'lat0']],
-  [/^(?:lambertconicconformal2sp|lambertconformalconic2sp|lambertconformalconic|lcc)$/, ['long0', 'lat1']],
+  [/^(?:lambertconicconformal1sp|lambertconformalconic1sp)$/, ['long0', 'lat0', 'k0']],
+  [/^(?:lambertconicconformal2sp|lambertconformalconic2sp)$/, ['long0', 'lat1', 'lat2']],
+  // Without a 1SP/2SP suffix a WKT may state one parallel or two.
+  [/^(?:lambertconformalconic|lcc)$/, ['long0', 'lat1']],
   [/^(?:mercator|mercator1sp|mercator2sp|mercatorvarianta|mercatorvariantb)$/, ['long0']],
 ];
 

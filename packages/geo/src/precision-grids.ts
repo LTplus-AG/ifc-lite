@@ -160,8 +160,7 @@ export async function resolvePrecisionDef(
   incompatibleCodes.delete(epsgCode);
   const loaded = await loadPrecisionGrid(spec, state);
   if (!loaded) return null;
-  const name = state.gridName(spec.key);
-  return name === spec.key ? spec.proj4 : spec.proj4.replace(`+nadgrids=${spec.key}`, `+nadgrids=${name}`);
+  return spec.proj4.replace(`+nadgrids=${spec.key}`, `+nadgrids=${state.gridName(spec.key)}`);
 }
 
 /**

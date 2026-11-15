@@ -18,13 +18,13 @@ export interface ContainerVisibilityPlan {
   readonly rows: ReadonlyMap<number, { readonly children: readonly number[]; readonly members: readonly number[] }>;
   /**
    * Rows and members whose own state is off, so a parent's Show leaves them
-   * (and, for a row, its subtree) hidden. `setOwnState` updates it in place:
-   * recording a choice must not replace the model record, which would rebuild
-   * the whole tree on every click.
+   * (and, for a row, its subtree) hidden. Only `setOwnState` changes it, in
+   * place: recording a choice must not replace the model record, which would
+   * rebuild the whole tree on every click.
    */
-  readonly ownOff: Set<number>;
+  readonly ownOff: ReadonlySet<number>;
   /** Rows that are also an object of their own whose own state is off, so they come back with a parent without that object. */
-  readonly selfOff: Set<number>;
+  readonly selfOff: ReadonlySet<number>;
 }
 
 const revisions = new WeakMap<ContainerVisibilityPlan, number>();
@@ -56,13 +56,15 @@ export function containerVisibilityTargets(plan: ContainerVisibilityPlan, row: n
 
 /** Record that the user turned `id`'s own state on or off from the tree. */
 export function setOwnState(plan: ContainerVisibilityPlan, id: number, on: boolean): void {
+  // The plan's sets are read-only to everyone else, so the revision cannot be skipped.
+  const ownOff = plan.ownOff as Set<number>, selfOff = plan.selfOff as Set<number>;
   let changed: boolean;
   if (on) {
-    const wasOff = plan.ownOff.delete(id);
-    changed = plan.selfOff.delete(id) || wasOff;
+    const wasOff = ownOff.delete(id);
+    changed = selfOff.delete(id) || wasOff;
   } else {
-    changed = !plan.ownOff.has(id);
-    plan.ownOff.add(id);
+    changed = !ownOff.has(id);
+    ownOff.add(id);
   }
   if (changed) revisions.set(plan, ownStateRevision(plan) + 1);
 }

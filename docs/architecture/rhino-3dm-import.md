@@ -753,8 +753,11 @@ transparency rule [test].
   that object. Not covered: a storey row merged across models, which acts on
   direct members; Isolate, which still takes a row's direct members; the
   file root and stamped site and building rows, which have no eye once a
-  second model is loaded; and hiding from the viewport, which does not change
-  an own state [crafted test: an off layer with a sub-layer that is on, one
+  second model is loaded; and hiding from anywhere but the layer tree's own
+  rows (the viewport, a class or group row), which does not change an own
+  state. A child layer's own state is its saved `visible` flag: openNURBS
+  writes a layer's persistent visibility there (`ON_Layer::Write`), so a
+  sub-layer Rhino turned off with its parent is saved as on [crafted test: an off layer with a sub-layer that is on, one
   that is off and an object hidden on its own; a stamped storey whose class
   sublayer is off; a stamped storey whose own object is hidden; a merged
   object hidden for two causes] (#10214).

@@ -1186,6 +1186,8 @@ WebAssembly bindings (the `IfcAPI` class and mesh/profile/clash types). See the 
 `@ifc-lite/wasm/rhino` holds the Rhino .3dm scene builder (`exportRhinoScene`)
 outside the default engine. `@ifc-lite/geometry`'s `exportRhinoScene` loads it on
 first use; `@ifc-lite/rhino3dm` writes the returned scene to a .3dm archive.
+It also holds the CityJSON 2.0 writer (`exportCityJson`), which
+`@ifc-lite/geometry`'s `exportCityJson` loads the same way.
 
 ### Independent diff WASM module
 

@@ -36,6 +36,7 @@ export type { HbjsonStats } from './hbjson-stats.js'; // consumed by the CLI + v
 
 // Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
 export { NO_RENDER_GEOMETRY, isNoRenderGeometryError, TERRAIN_REFUSED, terrainRefusalReason } from './export-errors.js';
+export { exportCityJson, CITYJSON_REFUSED, cityJsonRefusalReason, type CityJsonExport, type CityJsonExportOptions } from './cityjson-export.js';
 export type { LandXmlTerrainExport, LandXmlTerrainExportOptions, LandXmlTerrainSurface } from './landxml-terrain-export.js';
 
 // The index-parallel layouts the geometry-hash pass emits — six values per id

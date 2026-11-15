@@ -69,7 +69,12 @@ async function loadPrecisionGrid(spec: PrecisionGridSpec, state: EngineState): P
   const promise = (async (): Promise<boolean> => {
     try {
       const buffer = await loadGridFile(spec.filename);
-      if (!buffer) return false;
+      if (!buffer) {
+        // Not available right now: the next resolution asks the loader again,
+        // but until then the grid reads as failed rather than still loading.
+        state.grids.unavailable.add(spec.key);
+        return false;
+      }
       const { fromArrayBuffer } = await import('geotiff');
       const tiff = await fromArrayBuffer(buffer);
 
@@ -121,6 +126,7 @@ async function loadPrecisionGrid(spec: PrecisionGridSpec, state: EngineState): P
         await ready;
       }
       loadedGrids.add(spec.key);
+      state.grids.unavailable.delete(spec.key);
       return true;
     } catch (error) {
       reportCrsDiagnostic(`[precision-grid] ${spec.key}: load failed, falling back to +towgs84`, error);
@@ -180,6 +186,6 @@ export function hasLoadedPrecisionGrid(epsgCode: string): boolean {
  */
 export function hasFailedPrecisionGrid(epsgCode: string): boolean {
   const spec = PRECISION_GRIDS[epsgCode];
-  const { incompatible, failed } = defaultEngineState().grids;
-  return spec ? incompatible.has(epsgCode) || failed.has(spec.key) : false;
+  const { incompatible, failed, unavailable } = defaultEngineState().grids;
+  return spec ? incompatible.has(epsgCode) || failed.has(spec.key) || unavailable.has(spec.key) : false;
 }

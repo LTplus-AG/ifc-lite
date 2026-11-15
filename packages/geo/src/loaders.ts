@@ -25,8 +25,9 @@ export type EpsgDefinitionLoader = (epsgCode: string) => Promise<string | null>;
 /**
  * Fetches one datum-shift grid by its PROJ-data filename (for example
  * `ch_swisstopo_CHENyx06_ETRS.tif`) and resolves to the GeoTIFF bytes.
- * `null` means "not available right now" and may be retried; a rejection
- * marks the grid failed for the session.
+ * `null` means "not available right now": the grid reads as failed
+ * (`hasFailedPrecisionGrid`) and the next resolution asks again. A rejection
+ * marks the grid failed for the engine's lifetime.
  */
 export type GridFileLoader = (filename: string) => Promise<ArrayBuffer | null>;
 

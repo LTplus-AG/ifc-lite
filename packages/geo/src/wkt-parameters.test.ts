@@ -120,6 +120,16 @@ describe('a parse without the parameters its projection needs', () => {
     assert.ok(messages.some((message) => message.includes('without long0')), messages.join('\n'));
   });
 
+  it('does not fall back to an EPSG code given beside a refused WKT (#10385 review)', async () => {
+    const unrecognised = TM_WKT1_NAMES.replace('central_meridian', 'CentralMeridianOfZone');
+    let resolved: Awaited<ReturnType<typeof resolveCrs>> | undefined;
+    await diagnosticsOf(async () => { resolved = await resolveCrs({ wkt: unrecognised, epsg: 32632 }); });
+    assert.equal(resolved, null, 'the custom CRS is not replaced by UTM 32N');
+    // An unreadable WKT still falls back, as documented.
+    await diagnosticsOf(async () => { resolved = await resolveCrs({ wkt: 'VERTCRS["height only"]', epsg: 32632 }); });
+    assert.equal(resolved?.epsg, 32632);
+  });
+
   it('refuses a 2SP whose second parallel the reader did not recognise (#10385 review)', async () => {
     const wkt = 'PROJCRS["x",' + WGS84_BASE + ',CONVERSION["c",METHOD["Lambert Conic Conformal (2SP)"],'
       + 'PARAMETER["Latitude of false origin",46.5],PARAMETER["Longitude of false origin",3],'

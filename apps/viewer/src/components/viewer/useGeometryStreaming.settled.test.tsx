@@ -151,10 +151,12 @@ it('an ordinary streamed load settles after its finalize, as before', async () =
   for (let end = 2; end <= all.length; end += 2) {
     await act(async () => { useViewerStore.setState({ models: new Map([['ifc', model('ifc', all.slice(0, end))]]) }); });
     flushPlacementGeometry(native.scene, native.device, native.pipeline, false);
+    assert.equal(native.scene.isTriangleCountReplayComplete(), false, 'a partial viewport stream is not a triangle-count receipt (#10370)');
   }
   const release = holdZeroTimers();
   try {
     await act(async () => { setStreaming(false); });
+    assert.equal(native.scene.isTriangleCountReplayComplete(), true, 'the production viewport marks the complete queued snapshot (#10370)');
     assert.equal(isSceneSettled(), false);
   } finally {
     release();

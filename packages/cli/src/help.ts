@@ -21,7 +21,7 @@ export function buildHelp(version: string): string {
               [--select "IfcWall, Pset_WallCommon.FireRating=2HR"]  IfcOpenShell-style selector (classes union with --type; properties AND with --where)
     structural <file.ifc> [--json]                Read analysis models, members, connections, loads, reactions and physical links
     props     <file.ifc> --id <N>                 All properties for a single entity
-    export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjson  Export data / geometry / energy model
+    export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjson|cityjson|cityjsonseq  Export data / geometry / energy / city model
               3dm: --units source|meters|millimeters|centimeters|feet|inches
                    --coordinates local|world --layers spatial-class|class|presentation
                    --properties all|attributes|none --3dm-version 7|8
@@ -130,6 +130,7 @@ export function buildHelp(version: string): string {
     ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
     ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
     ifc-lite export model.ifc --format glb --name-by-global-id --out model.glb
+    ifc-lite export model.ifc --format cityjson --out model.city.json
     ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Mark=Pset_DoorCommon.Reference"
     ifc-lite schedule model.ifc --type IfcWall --columns "Name,Qto_WallBaseQuantities.NetVolume" --where Pset_WallCommon.IsExternal=true --format json
     ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Fire=Pset_DoorCommon.FireRating, Area=Qto_DoorBaseQuantities.Area" --group-by Fire --sort "Area:desc" --subtotals "count, sum:Area"
@@ -291,6 +292,9 @@ export function buildCommandHelp(version: string, command: string): string | nul
     ``,
     ...rows,
     ...(command === 'export' ? [
+      '', '  CityJSON (--format cityjson|cityjsonseq):',
+      '    --scale STEP                 Vertex grid in output units (default 0.001)',
+      '    --blocks-only                Buildings as LoD0/LoD1 only; no room/element geometry',
       '', '  Experimental:',
       '    --kernel exact|retained       Geometry kernel (default: exact)',
       '    --retained-engine DIR        Staged engine; or IFCLITE_RETAINED_ENGINE (Node >=20.6)',

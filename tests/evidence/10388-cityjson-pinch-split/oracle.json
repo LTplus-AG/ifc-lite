@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "rust/export/src/cityjson/vertices.rs",
+  "mutation": "tests/evidence/10388-cityjson-pinch-split/behaviour.oracle.patch",
+  "test": "rust/export/src/cityjson_tests.rs",
+  "why": "Reverse application restores dropping a ring that revisits a vertex, so the pinched footprint loses its exterior, lod0 returns None and a_pinched_footprint_ring_is_split_not_dropped goes red."
+}

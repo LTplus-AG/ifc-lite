@@ -12,7 +12,7 @@ import { localViewerToProjected } from '@ifc-lite/geometry';
 import proj4 from 'proj4';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { projectedDefinitionInMetres } from '@/lib/geo/proj4-utils';
+import { projectedDefinitionInMetres } from '@ifc-lite/geo/proj4';
 
 const reference = spatialReferenceFromIfc({
   mapConversion: { id: 1, sourceCRS: 1, targetCRS: 2, eastings: 2600000, northings: 1200000,

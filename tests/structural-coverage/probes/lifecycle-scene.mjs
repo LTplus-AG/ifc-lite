@@ -7,6 +7,9 @@ import { parseStore } from '../lib/packages.mjs';
 import { readStep } from '../lib/step.mjs';
 import { blankModel, stepsFor } from './create-scene.mjs';
 
+/** The FILE_NAME timestamp every scene export carries. */
+const EXPORT_TIMESTAMP = '2026-11-15T00:00:00';
+
 /** Isolated builder occurrence with valid prerequisites. The count snapshot
  * excludes prerequisites but includes every resource the occurrence authors. */
 export async function lifecycleScene(pkgs, schema, stepId) {
@@ -52,7 +55,8 @@ export async function lifecycleScene(pkgs, schema, stepId) {
   for (const need of step.needs ?? []) build(steps.find(s => s.id === need));
   if (needsHelper(step)) helper();
   if (needsGroup(step)) groupActivity();
-  const exportText = () => new TextDecoder().decode(new pkgs.exporter.StepExporter(store, view).export({ schema, applyMutations: true }).content);
+  // A pinned FILE_NAME timestamp: two exports of an unchanged scene are byte-identical whatever the clock says (a second boundary between them used to differ).
+  const exportText = () => new TextDecoder().decode(new pkgs.exporter.StepExporter(store, view).export({ schema, applyMutations: true, timeStamp: EXPORT_TIMESTAMP }).content);
   if (step.id === 'action-to-connection') {
     const activity = done.get('point-action');
     for (const entity of editor.getNewEntities()) {

@@ -31,7 +31,9 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/encoding`](#ifc-liteencoding) | IFC string encoding/decoding and property value parsing for IFC-Lite |
 | [`@ifc-lite/cache`](#ifc-litecache) | Binary cache format for IFC-Lite - fast model loading |
 | [`@ifc-lite/pointcloud`](#ifc-litepointcloud) | Point cloud decoders and types for IFC-Lite |
+| [`@ifc-lite/geo`](#ifc-litegeo) | Headless CRS engine for IFC-Lite: resolve a CRS, reproject to and from WGS84, grid convergence and scale factors, EGM96 undulation |
 | [`@ifc-lite/solar`](#ifc-litesolar) | Solar position, sunrise/sunset and 3D sun-path geometry for IFC-Lite |
+| [`@ifc-lite/tiles3d`](#ifc-litetiles3d) | Headless OGC 3D Tiles reader: region queries over tilesets, b3dm/glb decoding (incl. Draco) into per-feature ECEF meshes with attributes |
 | [`@ifc-lite/sdk`](#ifc-litesdk) | Scripting SDK for ifc-lite — the bim.* API for BIM automation |
 | [`@ifc-lite/sandbox`](#ifc-litesandbox) | QuickJS-in-WASM sandboxed script execution for ifc-lite |
 | [`@ifc-lite/extensions`](#ifc-liteextensions) | Extension manifest, capability grammar, and slot registry for ifc-lite user customization |
@@ -54,6 +56,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/flow`](https://www.npmjs.com/package/@ifc-lite/flow) | Keyed-data graph runtime for BIM workflows: typed ports, item/list/group lifting, memoised evaluation, and element tracking for re-runnable graphs |
 | [`@ifc-lite/flow-nodes`](https://www.npmjs.com/package/@ifc-lite/flow-nodes) | Standard node library for @ifc-lite/flow over the ifc-lite SDK: model reads and writes, tables, viewer, and a sandboxed Script node |
 | [`@ifc-lite/geodata-ch`](https://www.npmjs.com/package/@ifc-lite/geodata-ch) | Typed headless client for Swiss federal geodata (address search, parcels, swissALTI3D terrain, swissBUILDINGS3D tiles, swissTLM3D features, ÖREB) as site context in LV95 |
+| [`@ifc-lite/georef-check`](https://www.npmjs.com/package/@ifc-lite/georef-check) | Diagnose IFC georeferencing: Levels of Georeferencing found, and findings with plain-language explanations and structured fixes (double map position, scale slips, zone prefixes, LV03/LV95, tool-default site locations) |
 | [`@ifc-lite/ids-agent`](https://www.npmjs.com/package/@ifc-lite/ids-agent) | Headless IDS authoring agent: a tool-calling loop over the IDS Studio op vocabulary, grounded by the gate, producing reviewable proposals |
 | [`@ifc-lite/ids-authoring`](https://www.npmjs.com/package/@ifc-lite/ids-authoring) | Headless IDS authoring core: Studio document with stable node ids, typed invertible operations, a grounding gate against the IFC schema tables, history, sidecar and re-identification |
 | [`@ifc-lite/load-trace`](https://www.npmjs.com/package/@ifc-lite/load-trace) | Dependency-free load-trace spans: performance.measure plus a per-load, cross-thread span tree with worker clock alignment and Chrome-trace export |
@@ -1106,9 +1109,17 @@ Binary cache format for fast model loading: `BinaryCacheWriter`, `BinaryCacheRea
 
 Point cloud decoders and types: `decodePcd`, LAS/LAZ support including `LasStreamingSource` for chunked streaming, and `decompressLZF`.
 
+## @ifc-lite/geo
+
+Headless CRS engine: `resolveCrs({ epsg, name, wkt })` returns a transformer with `toWgs84` / `fromWgs84` (projected coordinates in metres even for a foot-based CRS, whose own unit is reported as `linearUnit`; longitude first) and `gridFactors` (grid convergence and point scale factor). Also `egm96Undulation`; `configureCrsLoaders` for the optional epsg.io and cdn.proj.org lookups (one configuration per process) and `createCrsEngine` for an engine with loaders and caches of its own; `configureCrsDiagnostics` for its warnings, silent by default. Nothing reaches the network unless a loader is installed. There is no vertical transformation, and the datum shift in use is reported per transformer; see the package README for the accuracy notes. `@ifc-lite/geo/wkt` reads what a CRS WKT states without resolving it.
+
 ## @ifc-lite/solar
 
 Solar position, sunrise/sunset, and 3D sun-path geometry: `sunPosition`, `sunTimes`, and the sun-path dome builders (day paths, hourly analemmas). Renderer-agnostic.
+
+## @ifc-lite/tiles3d
+
+Headless OGC 3D Tiles reader: `readTilesetRegion` returns the features of a tileset inside a WGS84 region as float64 meshes (tileset frame / ECEF) with batch table attributes, primitive groups and tile provenance. It handles b3dm and glb content (with Draco), budgets and explicit truncation, and has a `readSwisstopoBuildings` preset. `ecefToGeodetic` / `geodeticToEcef` convert positions.
 
 ## @ifc-lite/sdk
 
@@ -1180,6 +1191,8 @@ WebAssembly bindings (the `IfcAPI` class and mesh/profile/clash types). See the 
 `@ifc-lite/wasm/rhino` holds the Rhino .3dm scene builder (`exportRhinoScene`)
 outside the default engine. `@ifc-lite/geometry`'s `exportRhinoScene` loads it on
 first use; `@ifc-lite/rhino3dm` writes the returned scene to a .3dm archive.
+It also holds the CityJSON 2.0 writer (`exportCityJson`), which
+`@ifc-lite/geometry`'s `exportCityJson` loads the same way.
 
 ### Independent diff WASM module
 

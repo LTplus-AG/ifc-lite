@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as create from '../index.js';
 import * as parser from '@ifc-lite/parser';
 import * as mutations from '@ifc-lite/mutations';
@@ -22,7 +22,7 @@ async function editScene(schema: Schema, storage: 'source' | 'overlay', step: st
   const store = storage === 'source' ? await parse(created) : scene.store;
   const view = storage === 'source' ? new mutations.MutablePropertyView(null, 'load-source') : scene.view;
   const editor = storage === 'source' ? new mutations.StoreEditor(store, view) : scene.editor;
-  const exportText = () => new TextDecoder().decode(new exporter.StepExporter(store, view).export({ schema, applyMutations: true }).content);
+  const exportText = () => new TextDecoder().decode(new exporter.StepExporter(store, view).export({ schema, applyMutations: true, timeStamp: '2026-11-15T00:00:00' }).content);
   return { id: scene.id, created, store, view, editor, exportText };
 }
 
@@ -88,5 +88,23 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('%s connection eccentricity
     // Its relationship requires it, so removal goes through that relationship.
     expect(() => create.removeStructuralEntityInStore(scene.store, scene.editor, expressId)).toThrow(/remove the relationship that owns it/);
     expect(scene.exportText()).toBe(edited);
+  });
+});
+
+// The atomic-refusal assertions compare whole exports, so an export must not depend on the clock: the FILE_NAME
+// timestamp is pinned, and a second boundary between two exports of an unchanged scene changes nothing.
+describe('structural scene exports do not depend on the clock', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it.each(['IFC2X3', 'IFC4'] as const)('%s: two exports across a second boundary are byte-identical (source edit scene and lifecycle scene)', async schema => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-15T17:41:19.999Z'));
+    const edit = await editScene(schema, 'source', 'IfcFailureConnectionCondition');
+    const lifecycle = await lifecycleScene(pkgs, schema, 'point-action');
+    const [editBefore, lifecycleBefore] = [edit.exportText(), lifecycle.exportText()];
+    vi.setSystemTime(new Date('2026-11-15T17:41:21.001Z'));
+    expect(edit.exportText()).toBe(editBefore);
+    expect(lifecycle.exportText()).toBe(lifecycleBefore);
+    expect(editBefore).toContain("'2026-11-15T00:00:00'");
   });
 });

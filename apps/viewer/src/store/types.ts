@@ -546,6 +546,7 @@ export interface FederatedModel extends ModelLoadReportFields {
   ifcDataStore: IfcDataStore | null;
   /** Non-IFC source semantics, kept outside the IFC data store by design; `terrainImagery` is imagery draped on it (#5942), provenance only. */
   landXmlDocument?: LandXmlTinDocument; terrainImagery?: import('../lib/terrain-imagery/drape-state.js').TerrainImageryDrape;
+  /** How container rows hide/show their subtree (a Rhino layer, #10214); absent: rows act on direct members. */ containerVisibility?: import('../lib/container-visibility').ContainerVisibilityPlan;
   /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
   sourceSchema?: LandXmlSchema;
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */
@@ -586,7 +587,7 @@ export interface FederatedModel extends ModelLoadReportFields {
    */
   sourceHandle?: FileSystemFileHandle;
   /** A model the processing server already processed: opened by reference, so there are no source bytes and no `sourceFile`. */
-  processedModel?: import('@ifc-lite/server-client').ProcessedModelRef;
+  processedModel?: import('@/lib/processed-model').ProcessedModelSource;
   /** ID offset for this model (from FederationRegistry).
    * All mesh expressIds are globalIds = originalExpressId + idOffset
    * Use this to convert back to original IDs for property lookup

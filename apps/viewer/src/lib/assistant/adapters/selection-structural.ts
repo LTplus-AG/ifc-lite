@@ -4,7 +4,7 @@
 
 import { getAttributeTypeForSchema, measureUnit, type ProjectUnits, type StructuralExtraction, type StructuralLoadInfo,
   type BoundaryConditionInfo } from '@ifc-lite/parser';
-import { selectedStructuralMember, structuralRelatedRows } from '@/components/viewer/properties/selectedStructuralMember';
+import { selectedStructuralMember, structuralRecord, structuralRelatedRows } from '@/components/viewer/properties/selectedStructuralMember';
 const bounded = (value: string | undefined) => value === undefined || value === '' ? null : value.length > 240 ? `${value.slice(0, 240)}…` : value;
 function components(record: StructuralLoadInfo | BoundaryConditionInfo, limit: number, units: ProjectUnits, schema: string | undefined) {
   const all = Object.entries(record.components);
@@ -46,11 +46,53 @@ function loadEvidence(load: StructuralLoadInfo, limit: number, units: ProjectUni
     configurations, nativeTruncated, evidenceTruncated, configurationNodeBudget: 64 };
 }
 
-/** Only the existing native selected-member StructuralCard section, no new structural feature. */
+type Connection = StructuralExtraction['connections'][number];
+type Activity = StructuralExtraction['activities'][number];
+type AnalysisModel = StructuralExtraction['analysisModels'][number];
+
+const connectionRow = (connection: Connection, valueLimit: number, units: ProjectUnits, schema: string | undefined) => ({ expressId: connection.expressId,
+  type: connection.type, GlobalId: bounded(connection.globalId), Name: bounded(connection.name), AppliedCondition: connection.appliedCondition ? {
+    expressId: connection.appliedCondition.expressId, type: connection.appliedCondition.type, Name: bounded(connection.appliedCondition.name),
+    ...components(connection.appliedCondition, valueLimit, units, schema) } : null });
+const activityRow = (activity: Activity, valueLimit: number, units: ProjectUnits, schema: string | undefined) => ({ expressId: activity.expressId,
+  type: activity.type, GlobalId: bounded(activity.globalId), Name: bounded(activity.name), GlobalOrLocal: bounded(activity.globalOrLocal),
+  DestabilizingLoad: activity.destabilizingLoad ?? null, AppliedLoad: activity.appliedLoad ? loadEvidence(activity.appliedLoad, valueLimit, units, schema) : null });
+const modelRow = (model: AnalysisModel, limit: number, count: (value: number) => number | null) => ({ expressId: model.expressId,
+  GlobalId: bounded(model.globalId), Name: bounded(model.name), PredefinedType: bounded(model.predefinedType), loadGroupCount: count(model.loadGroupGlobalIds.length),
+  resultGroupCount: count(model.resultGroupGlobalIds.length), loadGroupGlobalIds: model.loadGroupGlobalIds.slice(0, limit), resultGroupGlobalIds: model.resultGroupGlobalIds.slice(0, limit) });
+
+/** The scalar fields of a load group, load case, combination or result group, bounded; held records and large lists are not expanded. */
+function groupRow(record: { type: string; info: object }, valueLimit: number, sourceAvailable: boolean) {
+  const info = record.info as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(info)) {
+    if (key === 'expressId' || key === 'type' || value === undefined || value === null) continue;
+    if (typeof value === 'string') fields[key] = bounded(value);
+    else if (typeof value === 'number' || typeof value === 'boolean') fields[key] = value;
+    else if (Array.isArray(value) && value.every((v) => typeof v === 'string' || typeof v === 'number')) {
+      // Assignments are read from the source file; without it an empty list is unknown, not zero.
+      fields[key] = { count: key.endsWith('GlobalIds') && !sourceAvailable ? null : value.length, values: value.slice(0, valueLimit) };
+    }
+  }
+  return { expressId: info.expressId, type: record.type, ...fields };
+}
+
+/** The native StructuralCard content: member evidence for a member, else the record itself for any other structural record (connection, action, reaction, load group or case, result group, analysis model). */
 export function structuralEvidence(data: StructuralExtraction | null, expressId: number, globalId: string | undefined,
   limit: number, valueLimit: number, units: ProjectUnits, schema: string | undefined, sourceAvailable: boolean) {
   const member = selectedStructuralMember(data, expressId, globalId);
-  if (!member || !data) return null;
+  if (!data) return null;
+  if (!member) {
+    const found = structuralRecord(data, expressId, globalId);
+    if (!found) return null;
+    const info = found.info;
+    const count = (value: number) => sourceAvailable ? value : null;
+    const row = found.type === 'IfcStructuralAnalysisModel' ? { type: found.type, ...modelRow(info as AnalysisModel, limit, count) }
+      : data.activities.includes(info as Activity) ? activityRow(info as Activity, valueLimit, units, schema)
+      : data.connections.includes(info as Connection) ? connectionRow(info as Connection, valueLimit, units, schema)
+      : groupRow(found, valueLimit, sourceAvailable);
+    return { record: row };
+  }
   const connectionRows = structuralRelatedRows(data.connections, member.connectionGlobalIds);
   const activityRows = structuralRelatedRows(data.activities, member.activityGlobalIds);
   const modelRows = structuralRelatedRows(data.analysisModels, member.analysisModelGlobalIds);
@@ -64,14 +106,7 @@ export function structuralEvidence(data: StructuralExtraction | null, expressId:
     nativeResolvedConnectionCount: count(connections.length, connectionRows.unavailable), nativeResolvedActivityCount: count(activities.length, activityRows.unavailable), nativeResolvedAnalysisModelCount: count(models.length, modelRows.unavailable),
     relationshipTargetsUnavailable: connectionRows.unavailable || activityRows.unavailable || modelRows.unavailable,
     modelNativeLoadsTruncated: data.loadsTruncated,
-    connections: connections.slice(0, limit).map(connection => ({ expressId: connection.expressId, type: connection.type,
-      GlobalId: bounded(connection.globalId), Name: bounded(connection.name), AppliedCondition: connection.appliedCondition ? {
-        expressId: connection.appliedCondition.expressId, type: connection.appliedCondition.type, Name: bounded(connection.appliedCondition.name),
-        ...components(connection.appliedCondition, valueLimit, units, schema) } : null })),
-    activities: activities.slice(0, limit).map(activity => ({ expressId: activity.expressId, type: activity.type, GlobalId: bounded(activity.globalId),
-      Name: bounded(activity.name), GlobalOrLocal: bounded(activity.globalOrLocal), DestabilizingLoad: activity.destabilizingLoad ?? null,
-      AppliedLoad: activity.appliedLoad ? loadEvidence(activity.appliedLoad, valueLimit, units, schema) : null })),
-    analysisModels: models.slice(0, limit).map(model => ({ expressId: model.expressId, GlobalId: bounded(model.globalId), Name: bounded(model.name),
-      PredefinedType: bounded(model.predefinedType), loadGroupCount: count(model.loadGroupGlobalIds.length), resultGroupCount: count(model.resultGroupGlobalIds.length),
-      loadGroupGlobalIds: model.loadGroupGlobalIds.slice(0, limit), resultGroupGlobalIds: model.resultGroupGlobalIds.slice(0, limit) })) };
+    connections: connections.slice(0, limit).map(connection => connectionRow(connection, valueLimit, units, schema)),
+    activities: activities.slice(0, limit).map(activity => activityRow(activity, valueLimit, units, schema)),
+    analysisModels: models.slice(0, limit).map(model => modelRow(model, limit, count)) };
 }

@@ -288,7 +288,8 @@ function compoundPlaneAngleToDecimalDegrees(value: unknown): number | undefined 
   return sign * (degrees + (minutes / 60) + ((seconds + (millionths / 1_000_000)) / 3600));
 }
 
-function extractLegacySiteGeoreference(
+/** The IfcSite RefLatitude/RefLongitude reading; exported for `georef-candidates.ts`, not from the package. */
+export function extractLegacySiteGeoreference(
   entities: Map<number, IfcEntity>,
   entitiesByType: Map<string, number[]>,
 ): GeoreferenceInfo | null {

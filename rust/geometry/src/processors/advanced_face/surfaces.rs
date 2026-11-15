@@ -5,7 +5,6 @@
 //! Source admission for planar boundaries and cylindrical patches.
 
 use super::analytic_plan::{CylinderPlan, PlanarPlan};
-use super::bounds::extract_face_bounds;
 use super::edge_loop::extract_edge_loop_points_for_bounds;
 use super::plan::FaceGeometry;
 use crate::math::tol;
@@ -31,27 +30,29 @@ use nalgebra::Matrix4;
 /// triangulated once.
 pub(super) fn lower_planar(face: &DecodedEntity, decoder: &mut EntityDecoder,
     quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>) -> Result<FaceGeometry> {
-    let bounds = extract_face_bounds(face, decoder, quality)?;
-    let Some(outer) = bounds.outer else {
-        return Ok(FaceGeometry::Empty);
-    };
-    let hole_points = bounds.holes;
-
-    Ok(FaceGeometry::Planar(PlanarPlan { outer, hole_points,
-        rtc: rtc_file_units.unwrap_or((0.0, 0.0, 0.0)) }))
+    let mut plans = planar_plans(face, decoder, quality, rtc_file_units)?;
+    // One region is the face as before; several are the disjoint outer bounds of one face (#9945).
+    Ok(match plans.len() {
+        0 => FaceGeometry::Empty,
+        1 => FaceGeometry::Planar(plans.remove(0)),
+        _ => FaceGeometry::PlanarRegions(plans),
+    })
 }
 
-/// A planar face as one plan per region ([`super::bounds::face_regions`]).
-pub(super) fn lower_planar_regions(face: &DecodedEntity, decoder: &mut EntityDecoder,
-    quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>) -> Result<Vec<FaceGeometry>> {
+/// A planar face as one plan per region ([`super::bounds::face_regions`]); regions with no outer ring are dropped.
+fn planar_plans(face: &DecodedEntity, decoder: &mut EntityDecoder, quality: TessellationQuality,
+    rtc_file_units: Option<(f64, f64, f64)>) -> Result<Vec<PlanarPlan>> {
     let rtc = rtc_file_units.unwrap_or((0.0, 0.0, 0.0));
     Ok(super::bounds::face_regions(face, decoder, quality)?
         .into_iter()
-        .map(|bounds| match bounds.outer {
-            Some(outer) => FaceGeometry::Planar(PlanarPlan { outer, hole_points: bounds.holes, rtc }),
-            None => FaceGeometry::Empty,
-        })
+        .filter_map(|bounds| bounds.outer.map(|outer| PlanarPlan { outer, hole_points: bounds.holes, rtc }))
         .collect())
+}
+
+/// A planar face as one plan per region, an empty plan for a region with no outer ring.
+pub(super) fn lower_planar_regions(face: &DecodedEntity, decoder: &mut EntityDecoder,
+    quality: TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>) -> Result<Vec<FaceGeometry>> {
+    Ok(planar_plans(face, decoder, quality, rtc_file_units)?.into_iter().map(FaceGeometry::Planar).collect())
 }
 
 #[cfg(test)]

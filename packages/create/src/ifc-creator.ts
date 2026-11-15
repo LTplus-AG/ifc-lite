@@ -32,8 +32,8 @@ import type {
 } from './types-cost.js';
 import { esc, stepLine, num, vecLen, vecNorm, vecCross, optStr, optEnum,
   NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3, completePlacementAxes } from './ifc-creator-math.js';
-import { classificationToken } from './ifc-creator-predefined-type.js';
-import { emitWorkCalendar, emitTaskTime } from './ifc-creator-scheduling.js';
+import { classificationToken, genericElementTail } from './ifc-creator-predefined-type.js';
+import { emitWorkCalendar, emitTaskTime, workControlAttrs, ifc2x3Unsupported } from './ifc-creator-scheduling.js';
 import {
   assertCostSchema, emitCostItem, emitCostSchedule, emitCostValue,
   emitMeasureWithUnit, emitMonetaryUnit, emitPhysicalQuantity,
@@ -85,6 +85,7 @@ export class IfcCreator {
   private projectId = 0;
   private siteId = 0;
   private buildingId = 0;
+  private buildingPlacementId = 0; // IFC2X3: the building's own placement; otherwise the world placement
   private ownerHistoryId = 0;
   private contextId = 0;
   private subContextBody = 0;
@@ -193,7 +194,7 @@ export class IfcCreator {
     const elevation = num(params.Elevation);
 
     // Create a placement at [0, 0, elevation] so child elements are offset to the correct height
-    const storeyPlacementId = this.addLocalPlacement(this.worldPlacementId, {
+    const storeyPlacementId = this.addLocalPlacement(this.buildingPlacementId, {
       Location: [0, 0, params.Elevation],
     });
 
@@ -668,7 +669,7 @@ export class IfcCreator {
     const predType = params.PredefinedType ?? 'NOTDEFINED';
 
     this.line(doorId, 'IFCDOOR',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${doorPlacementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)},.${predType}.,.${opType}.,$`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${doorPlacementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)}${this.ifc4Only(`.${predType}.,.${opType}.,$`)}`);
 
     this.addIfcRelFillsElement(openingId, doorId);
     this.elementSolids.set(doorId, [solidId]);
@@ -709,7 +710,7 @@ export class IfcCreator {
     const partType = params.PartitioningType ?? 'SINGLE_PANEL';
 
     this.line(windowId, 'IFCWINDOW',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${windowPlacementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)},.NOTDEFINED.,.${partType}.,$`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${windowPlacementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)}${this.ifc4Only(`.NOTDEFINED.,.${partType}.,$`)}`);
 
     this.addIfcRelFillsElement(openingId, windowId);
     this.elementSolids.set(windowId, [solidId]);
@@ -744,7 +745,7 @@ export class IfcCreator {
     const predType = params.PredefinedType ?? 'NOTDEFINED';
 
     this.line(doorId, 'IFCDOOR',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)},.${predType}.,.${opType}.,$`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)}${this.ifc4Only(`.${predType}.,.${opType}.,$`)}`);
 
     this.elementSolids.set(doorId, [solidId]);
     this.trackElement(storeyId, doorId);
@@ -777,7 +778,7 @@ export class IfcCreator {
     const partType = params.PartitioningType ?? 'SINGLE_PANEL';
 
     this.line(windowId, 'IFCWINDOW',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)},.NOTDEFINED.,.${partType}.,$`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${num(params.Height)},${num(params.Width)}${this.ifc4Only(`.NOTDEFINED.,.${partType}.,$`)}`);
 
     this.elementSolids.set(windowId, [solidId]);
     this.trackElement(storeyId, windowId);
@@ -933,7 +934,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(plateId, 'IFCPLATE',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(plateId, [solidId]);
     this.trackElement(storeyId, plateId);
@@ -972,7 +973,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(memberId, 'IFCMEMBER',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(memberId, [solidId]);
     this.trackElement(storeyId, memberId);
@@ -1045,7 +1046,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(pileId, 'IFCPILE',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.DRIVEN.,$`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${this.schema === 'IFC2X3' ? '.NOTDEFINED.' : '.DRIVEN.'},$`); // DRIVEN is IFC4+
 
     this.elementSolids.set(pileId, [solidId]);
     this.trackElement(storeyId, pileId);
@@ -1123,7 +1124,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(cwId, 'IFCCURTAINWALL',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(cwId, [solidId]);
     this.trackElement(storeyId, cwId);
@@ -1194,7 +1195,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(proxyId, 'IFCBUILDINGELEMENTPROXY',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objTypeStr},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objTypeStr},#${placementId},#${prodShapeId},${tag},${this.schema === 'IFC2X3' ? '$' : '.NOTDEFINED.'}`); // IFC2X3 slot is CompositionType (no NOTDEFINED)
 
     this.elementSolids.set(proxyId, [solidId]);
     this.trackElement(storeyId, proxyId);
@@ -1338,7 +1339,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(memberId, 'IFCMEMBER',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(memberId, [solidId]);
     this.trackElement(storeyId, memberId);
@@ -1395,7 +1396,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(memberId, 'IFCMEMBER',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(memberId, [solidId]);
     this.trackElement(storeyId, memberId);
@@ -1452,7 +1453,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(memberId, 'IFCMEMBER',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.NOTDEFINED.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.NOTDEFINED.')}`);
 
     this.elementSolids.set(memberId, [solidId]);
     this.trackElement(storeyId, memberId);
@@ -1662,14 +1663,14 @@ export class IfcCreator {
         const layerCategory = layer.Category ? `'${esc(layer.Category)}'` : '$';
         // IFC4: Material, LayerThickness, IsVentilated, Name, Description, Category, Priority
         this.line(layerId, 'IFCMATERIALLAYER',
-          `#${matId},${num(layer.Thickness)},${ventilated},${layerName},$,${layerCategory},$`);
+          `#${matId},${num(layer.Thickness)},${ventilated}${this.ifc4Only(`${layerName},$,${layerCategory},$`)}`);
         layerIds.push(layerId);
       }
       const layerRefs = layerIds.map(id => `#${id}`).join(',');
       materialRefId = this.id();
       // IFC4: MaterialLayers, LayerSetName, Description
       this.line(materialRefId, 'IFCMATERIALLAYERSET',
-        `(${layerRefs}),'${esc(def.Name)}',$`);
+        `(${layerRefs}),'${esc(def.Name)}'${this.ifc4Only('$')}`);
     } else {
       // Simple IfcMaterial
       materialRefId = this.getOrCreateMaterial(def.Name, def.Category);
@@ -1751,6 +1752,7 @@ export class IfcCreator {
       params.DurationType !== undefined ||
       params.Completion !== undefined;
 
+    if (this.schema === 'IFC2X3' && (hasTaskTime || params.LongDescription !== undefined || params.PredefinedType !== undefined)) throw ifc2x3Unsupported('addIfcTask', 'task times, LongDescription and PredefinedType');
     const taskTimeId = hasTaskTime ? emitTaskTime(params, this.emitEntity) : 0;
     const taskId = this.id();
     const globalId = this.newGlobalId();
@@ -1766,8 +1768,9 @@ export class IfcCreator {
     const taskTimeRef = taskTimeId > 0 ? `#${taskTimeId}` : '$';
     const predef = optEnum(params.PredefinedType);
 
-    this.line(taskId, 'IFCTASK',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},${ident},${longDesc},${status},${workMethod},${isMile},${priority},${taskTimeRef},${predef}`);
+    this.line(taskId, 'IFCTASK', this.schema === 'IFC2X3' // IFC2X3: required TaskId, no LongDescription/TaskTime/PredefinedType
+      ? `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},'${esc(params.Identification ?? name)}',${status},${workMethod},${isMile},${priority}`
+      : `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},${ident},${longDesc},${status},${workMethod},${isMile},${priority},${taskTimeRef},${predef}`);
 
     this.entities.push({ expressId: taskId, type: 'IfcTask', Name: name });
     return taskId;
@@ -1787,7 +1790,8 @@ export class IfcCreator {
     const seqType = optEnum(params.SequenceType ?? 'FINISH_START');
     const userDef = optStr(params.UserDefinedSequenceType);
 
-    let lagRef = '$';
+    if (params.TimeLag !== undefined && this.schema === 'IFC2X3') throw ifc2x3Unsupported('addIfcRelSequence', 'TimeLag durations (IfcLagTime)');
+    let lagRef = this.schema === 'IFC2X3' ? '0.' : '$'; // IFC2X3 TimeLag is a required IfcTimeMeasure
     if (params.TimeLag !== undefined) {
       const lagId = this.id();
       // IfcLagTime = IfcSchedulingTime(Name, DataOrigin, UDDataOrigin) +
@@ -1966,27 +1970,10 @@ export class IfcCreator {
     entity: 'IFCWORKSCHEDULE' | 'IFCWORKPLAN',
     params: WorkScheduleParams,
   ): number {
+    if (this.schema === 'IFC2X3') throw ifc2x3Unsupported(entity === 'IFCWORKSCHEDULE' ? 'addIfcWorkSchedule' : 'addIfcWorkPlan', 'work controls (dates are IfcDateAndTime references there)');
     const id = this.id();
-    const globalId = this.newGlobalId();
     const name = params.Name;
-    const desc = optStr(params.Description);
-    const objType = '$';
-    const ident = optStr(params.Identification);
-    const creationDate = params.CreationDate ?? new Date(this.nowMs()).toISOString().slice(0, 19);
-    const purpose = optStr(params.Purpose);
-    const duration = optStr(params.Duration);
-    const totalFloat = optStr(params.TotalFloat);
-    const startTime = params.StartTime;
-    const finishTime = optStr(params.FinishTime);
-    const predef = optEnum(params.PredefinedType);
-
-    // IFC4 IfcWorkSchedule / IfcWorkPlan (same SUPERTYPE layout via IfcWorkControl):
-    // [0] GlobalId, [1] OwnerHistory, [2] Name, [3] Description, [4] ObjectType,
-    // [5] Identification, [6] CreationDate, [7] Creators, [8] Purpose,
-    // [9] Duration, [10] TotalFloat, [11] StartTime, [12] FinishTime, [13] PredefinedType
-    this.line(id, entity,
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},${ident},'${esc(creationDate)}',$,${purpose},${duration},${totalFloat},'${esc(startTime)}',${finishTime},${predef}`);
-
+    this.line(id, entity, workControlAttrs(params, this.newGlobalId(), `#${this.ownerHistoryId}`, this.nowMs()));
     const kind = entity === 'IFCWORKSCHEDULE' ? 'IfcWorkSchedule' : 'IfcWorkPlan';
     this.entities.push({ expressId: id, type: kind, Name: name });
     return id;
@@ -2093,11 +2080,13 @@ export class IfcCreator {
       `'${siteGlobalId}',#${this.ownerHistoryId},'Site',$,$,#${this.worldPlacementId},$,$,.ELEMENT.,$,$,$,$,$`);
     this.entities.push({ expressId: this.siteId, type: 'IfcSite', Name: 'Site' });
 
-    // IfcBuilding
+    // IfcBuilding. IFC2X3 PlacesObject is [1:1], so there the building gets its own placement under the site's.
+    const buildingPlacementId = this.buildingPlacementId = this.schema === 'IFC2X3'
+      ? this.emitEntity('IFCLOCALPLACEMENT', `#${this.worldPlacementId},#${worldAxisId}`) : this.worldPlacementId;
     this.buildingId = this.id();
     const buildingGlobalId = this.newGlobalId();
     this.line(this.buildingId, 'IFCBUILDING',
-      `'${buildingGlobalId}',#${this.ownerHistoryId},'Building',$,$,#${this.worldPlacementId},$,$,.ELEMENT.,$,$,$`);
+      `'${buildingGlobalId}',#${this.ownerHistoryId},'Building',$,$,#${buildingPlacementId},$,$,.ELEMENT.,$,$,$`);
     this.entities.push({ expressId: this.buildingId, type: 'IfcBuilding', Name: 'Building' });
   }
 
@@ -2147,6 +2136,7 @@ export class IfcCreator {
   private finalizeStyles(): void {
     emitStyledItems(this.elementSolids, this.elementColors, this.defaultStyleId, {
       emit: this.emitEntity,
+      wrapStyles: this.schema === 'IFC2X3',
     });
   }
 
@@ -2161,7 +2151,7 @@ export class IfcCreator {
 
     const matId = this.id();
     const cat = category ? `'${esc(category)}'` : '$';
-    this.line(matId, 'IFCMATERIAL', `'${esc(name)}',$,${cat}`);
+    this.line(matId, 'IFCMATERIAL', `'${esc(name)}'${this.ifc4Only(`$,${cat}`)}`);
     this.materialCache.set(name, matId);
     return matId;
   }
@@ -2286,7 +2276,7 @@ export class IfcCreator {
     const id = this.id();
     const fillet = filletRadius !== undefined ? num(filletRadius) : '$';
     this.line(id, 'IFCISHAPEPROFILEDEF',
-      `.AREA.,$,#${profileAxis2dId},${num(overallWidth)},${num(overallDepth)},${num(webThickness)},${num(flangeThickness)},${fillet},$,$`);
+      `.AREA.,$,#${profileAxis2dId},${num(overallWidth)},${num(overallDepth)},${num(webThickness)},${num(flangeThickness)},${fillet}${this.ifc4Only('$,$')}`);
     return id;
   }
 
@@ -2302,7 +2292,7 @@ export class IfcCreator {
     const id = this.id();
     const fillet = filletRadius !== undefined ? num(filletRadius) : '$';
     this.line(id, 'IFCLSHAPEPROFILEDEF',
-      `.AREA.,$,#${profileAxis2dId},${num(depth)},${num(width)},${num(thickness)},${fillet},$,$`);
+      `.AREA.,$,#${profileAxis2dId},${num(depth)},${num(width)},${num(thickness)},${fillet},$,$${this.ifc2x3Only('$,$')}`);
     return id;
   }
 
@@ -2319,7 +2309,7 @@ export class IfcCreator {
     const id = this.id();
     const fillet = filletRadius !== undefined ? num(filletRadius) : '$';
     this.line(id, 'IFCTSHAPEPROFILEDEF',
-      `.AREA.,$,#${profileAxis2dId},${num(depth)},${num(flangeWidth)},${num(webThickness)},${num(flangeThickness)},${fillet},$,$,$,$`);
+      `.AREA.,$,#${profileAxis2dId},${num(depth)},${num(flangeWidth)},${num(webThickness)},${num(flangeThickness)},${fillet},$,$,$,$${this.ifc2x3Only('$')}`);
     return id;
   }
 
@@ -2336,7 +2326,7 @@ export class IfcCreator {
     const id = this.id();
     const fillet = filletRadius !== undefined ? num(filletRadius) : '$';
     this.line(id, 'IFCUSHAPEPROFILEDEF',
-      `.AREA.,$,#${profileAxis2dId},${num(depth)},${num(flangeWidth)},${num(webThickness)},${num(flangeThickness)},${fillet},$`);
+      `.AREA.,$,#${profileAxis2dId},${num(depth)},${num(flangeWidth)},${num(webThickness)},${num(flangeThickness)},${fillet},$,$${this.ifc2x3Only('$')}`);
     return id;
   }
 
@@ -2351,7 +2341,7 @@ export class IfcCreator {
 
     const id = this.id();
     this.line(id, 'IFCCSHAPEPROFILEDEF',
-      `.AREA.,$,#${profileAxis2dId},${num(depth)},${num(width)},${num(wallThickness)},${num(girth)},$`);
+      `.AREA.,$,#${profileAxis2dId},${num(depth)},${num(width)},${num(wallThickness)},${num(girth)},$${this.ifc2x3Only('$')}`);
     return id;
   }
 
@@ -2565,9 +2555,9 @@ export class IfcCreator {
         `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId}`);
     } else {
       // IfcElement subtypes: ...Tag, PredefinedType
-      const predefinedType = params.PredefinedType ? `.${params.PredefinedType}.` : '.NOTDEFINED.';
+      const tail = genericElementTail(this.schema, ifcType, params.PredefinedType);
       this.line(elementId, params.IfcType,
-        `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${predefinedType}`);
+        `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${tail}`);
     }
 
     this.elementSolids.set(elementId, [solidId]);
@@ -2641,9 +2631,9 @@ export class IfcCreator {
       this.line(elementId, params.IfcType,
         `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId}`);
     } else {
-      const predefinedType = params.PredefinedType ? `.${params.PredefinedType}.` : '.NOTDEFINED.';
+      const tail = genericElementTail(this.schema, ifcType, params.PredefinedType);
       this.line(elementId, params.IfcType,
-        `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},${predefinedType}`);
+        `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${tail}`);
     }
 
     this.elementSolids.set(elementId, [solidId]);
@@ -2697,7 +2687,7 @@ export class IfcCreator {
     const globalId = this.newGlobalId();
     const name = opening.Name ?? 'Opening';
     this.line(openingId, 'IFCOPENINGELEMENT',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',$,$,#${openingPlacementId},#${prodShapeId},$,.OPENING.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',$,$,#${openingPlacementId},#${prodShapeId},$${this.ifc4Only('.OPENING.')}`);
 
     const relId = this.id();
     const relGlobalId = this.newGlobalId();
@@ -2728,7 +2718,7 @@ export class IfcCreator {
     const globalId = this.newGlobalId();
     const name = opening.Name ?? 'Opening';
     this.line(openingId, 'IFCOPENINGELEMENT',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',$,$,#${placementId},#${prodShapeId},$,.OPENING.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',$,$,#${placementId},#${prodShapeId},$${this.ifc4Only('.OPENING.')}`);
 
     const relId = this.id();
     const relGlobalId = this.newGlobalId();
@@ -2741,6 +2731,7 @@ export class IfcCreator {
 
   // `serializePropertyValue` / `quantityValueField` moved to `ifc-creator-math.ts`.
   private ifc4Only(v: string): string { return this.schema === 'IFC2X3' ? '' : `,${v}`; } // trailing IFC4/4X3-only attribute
+  private ifc2x3Only(v: string): string { return this.schema === 'IFC2X3' ? `,${v}` : ''; } // trailing IFC2X3-only attribute (dropped in IFC4)
   /** `,.TOKEN.` for the classification enum (see ./ifc-creator-predefined-type.ts), or '' where the schema has no such attribute. */
   private classified(entity: string, op: string, p: { PredefinedType?: string; ObjectType?: string }, fallback: string, attribute?: string): string {
     const t = classificationToken(this.schema, { entity, value: p.PredefinedType, fallback, objectType: p.ObjectType, op, attribute });

@@ -4,7 +4,7 @@
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { TypeVisibility, StructuralViewMode } from '@/store/types';
-import type { RetypedClasses } from '@/store/typeVisibilityFilter';
+import { classFilterActive, isTypeVisible, type RetypedClasses, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 import type { FederatedModel, ViewerState } from '@/store';
 import { isAnalyticalProduct } from './analytical-classes.mjs';
 import { isProductClass } from '../compare/compareScope';
@@ -25,6 +25,24 @@ export function resolveViewHiddenEntities(state: StructuralVisibilityState): Set
   return structuralViewHidden(state.structuralViewMode ?? 'both', state.models,
     state.ifcDataStore, state.mutationViews,
     state.hiddenEntities, state.toGlobalId);
+}
+
+/** `hidden` plus the retyped entities a class toggle hides. Flat meshes are filtered by
+ *  effective class already; an instanced shard carries no class, so the 3D viewport
+ *  needs these in its ID mask (#10245). Returns `hidden` itself when nothing is added. */
+export function withClassHiddenRetypes(
+  state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews' | 'toGlobalId'>,
+  hidden: Set<number>,
+  typeVisibility: TypeVisibilityGate,
+): Set<number> {
+  if (!classFilterActive(typeVisibility)) return hidden;
+  let result = hidden;
+  for (const [id, type] of retypedClasses(state)) {
+    if (isTypeVisible(type, typeVisibility) || result.has(id)) continue;
+    if (result === hidden) result = new Set(hidden);
+    result.add(id);
+  }
+  return result;
 }
 
 type Views = ReadonlyMap<string, MutablePropertyView>;
@@ -59,6 +77,13 @@ export function hasStructuralData(state: { models: ReadonlyMap<string, Federated
     for (const e of view?.readNewEntityKinds() ?? []) if (analytical(effectiveTreeType(view, e.expressId, e.type))) return true;
     return false;
   });
+}
+
+/** The analytical/physical command is disabled once no structural data is left, so
+ *  a latched mode could never be switched off and would mask the next physical-only
+ *  model. Called after a model removal; `clearAllModels` resets it the same way (#9957). */
+export function resetStructuralModeWithoutData(state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews' | 'structuralViewMode' | 'setStructuralViewMode'>): void {
+  if ((state.structuralViewMode ?? 'both') !== 'both' && !hasStructuralData(state)) state.setStructuralViewMode('both');
 }
 
 /** An entity's class after the view's edits, stored or created this session; null when deleted or unknown. */

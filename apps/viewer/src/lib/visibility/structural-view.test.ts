@@ -9,7 +9,7 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import { fixtureModel } from '@/test/store-fixture';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '@/store/constants';
-import { hasStructuralData, isAnalyticalProduct, resolveViewHiddenEntities, structuralGlyphsVisible } from './structural-view';
+import { hasStructuralData, isAnalyticalProduct, resolveViewHiddenEntities, structuralGlyphsVisible, withClassHiddenRetypes } from './structural-view';
 import { useViewerStore } from '@/store';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { sceneSnapshotKey } from '@/components/viewer/sceneSnapshotOwnership';
@@ -155,3 +155,33 @@ it('#9923: both preserves main export visibility for a hidden model', () => {
   assert.deepEqual([...resolveExportVisibility(physical,'b').hiddenLocalIds],[11],
     'only the analytical product mask is added in physical mode');
 });
+
+// #10245: an instanced shard carries no class, so a retyped occurrence is gated only by this mask.
+for (const count of [1, 2]) {
+  it(`#10245: withClassHiddenRetypes hides an entity retyped into a toggled-off class (${count} models)`, () => {
+    const store = createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 0, entities: [
+      { expressId: 7, type: 'IfcWall', hasGeometry: true },
+      { expressId: 8, type: 'IfcSpace', hasGeometry: true },
+    ] });
+    const models = new Map(Array.from({ length: count }, (_, i) => {
+      const id = `m${i}`;
+      return [id, { ...fixtureModel(id, { idOffset: count === 1 ? 0 : (i + 1) * 1_000_000 }), ifcDataStore: store }];
+    }));
+    const modelId = `m${count - 1}`;
+    const view = new MutablePropertyView(null, modelId);
+    const toGlobalId = (m: string, id: number) => toGlobalIdFromModels(models, m, id);
+    const state = { models, ifcDataStore: store, mutationViews: new Map([[modelId, view]]), hiddenEntities: new Set<number>(),
+      typeVisibility: { ...TYPE_VISIBILITY_SEMANTIC_DEFAULTS, spaces: false }, structuralViewMode: 'both' as const, toGlobalId };
+    const wall = toGlobalId(modelId, 7), space = toGlobalId(modelId, 8);
+    assert.deepEqual([...withClassHiddenRetypes(state, state.hiddenEntities, state.typeVisibility)], [], 'no retype: nothing is masked');
+
+    const editor = new StoreEditor(store, view);
+    editor.setEntityType(7, 'IfcSpace');
+    editor.setEntityType(8, 'IfcWall');
+    const hidden = withClassHiddenRetypes(state, state.hiddenEntities, state.typeVisibility);
+    assert.equal(hidden.has(wall), true, 'a wall retyped to IfcSpace is masked while Spaces is off');
+    assert.equal(hidden.has(space), false, 'a space retyped to IfcWall is not masked');
+    assert.equal(withClassHiddenRetypes(state, state.hiddenEntities, { ...state.typeVisibility, spaces: true }).has(wall), false, 'Spaces on: not masked');
+    assert.equal(state.hiddenEntities.size, 0, 'the caller\'s set is not mutated');
+  });
+}

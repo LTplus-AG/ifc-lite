@@ -53,7 +53,19 @@ const RIGID = `${base(SITE_PLAIN)}
 #95=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#95);
 #21=IFCRIGIDOPERATION(#5,#20,10.,20.,5.);`;
+const EPSETS = `#30=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(2600000.),$);
+#31=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(1200000.),$);
+#32=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(400.),$);
+#33=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePSet_MapConversion',$,(#30,#31,#32));
+#34=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);
+#35=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('METRE'),$);
+#36=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePSet_ProjectedCRS',$,(#34,#35));`;
+const ATTACH = (host: number) => `#37=IFCRELDEFINESBYPROPERTIES('0cccccccccccccccccccc1',$,$,$,(#${host}),#33);
+#38=IFCRELDEFINESBYPROPERTIES('0cccccccccccccccccccc2',$,$,$,(#${host}),#36);`;
+const STOREY = "#8=IFCBUILDINGSTOREY('1Pbuu0tu59NfhrTsztVBK3',$,'L1',$,$,$,$,$,.ELEMENT.,0.);";
 const FIXTURES: Record<string, Fixture> = {
+  epset4: { schema: 'IFC4', data: `${base(SITE_PLAIN)}\n${EPSETS}\n${ATTACH(6)}` },
+  strayset: { schema: 'IFC2X3', data: `${base(SITE_PLAIN)}\n${STOREY}\n${EPSETS}\n${ATTACH(8)}` },
   plain2x3: { schema: 'IFC2X3', data: `${base(SITE_PLAIN)}\n${BUILDING}` },
   plain4: { schema: 'IFC4', data: base(SITE_PLAIN) },
   rigid: { schema: 'IFC4X3_ADD2', data: RIGID },
@@ -94,6 +106,16 @@ const ROWS: Row[] = [
   { name: 'the conversion retyped', fixture: 'crs', apply: (c) => { c.view().setEntityType(21, 'IfcMapConversionScaled'); }, trusted: false, set: 'any', update: 'refuse' },
   { name: 'a second conversion created on the same context', fixture: 'crs', apply: (c) => { c.view().createEntity('IfcMapConversion', [5, 20, 9, 9, 9, null, null, null]); }, trusted: false, set: 'refuse', update: 'refuse' },
   { name: 'positional RefLatitude of the IfcSite fallback', fixture: 'site', apply: positional(6, 9, 0), trusted: false, set: 'any', update: 'any' },
+  // Audit rows: values and records the export would not write the way get() would state them.
+  { name: 'an unset mandatory coordinate (blank Eastings)', fixture: 'crs', apply: attr(21, 'Eastings', '  '), trusted: false, set: 'any', update: 'refuse' },
+  { name: 'a `$` Eastings (declined by the exporter)', fixture: 'crs', apply: attr(21, 'Eastings', '$'), trusted: false, set: 'any', update: 'refuse' },
+  { name: 'an Infinity Eastings (declined by the exporter)', fixture: 'crs', apply: attr(21, 'Eastings', 'Infinity'), trusted: false, set: 'any', update: 'refuse' },
+  { name: 'FactorX on a plain IfcMapConversion', fixture: 'crs', apply: attr(21, 'FactorX', '2'), trusted: false, set: 'any', update: 'refuse' },
+  { name: 'a created point retyped to IfcMapConversion', fixture: 'crs', apply: (c) => { c.view().setEntityType(c.view().createEntity('IfcCartesianPoint', [[1, 2, 3]]).expressId, 'IfcMapConversion'); }, trusted: false, set: 'refuse', update: 'refuse' },
+  { name: 'a source point retyped to IfcMapConversion', fixture: 'crs', apply: (c) => { c.view().setEntityType(2, 'IfcMapConversion'); }, trusted: false, set: 'refuse', update: 'refuse' },
+  { name: 'a project unit edited (IFC4, no CRS yet)', fixture: 'plain4', apply: attr(90, 'Prefix', '.MILLI.'), trusted: true, set: 'any', update: 'any' },
+  { name: 'a property edit inside a convention set (IFC4 file)', fixture: 'epset4', apply: (c) => { c.view().setProperty(6, 'ePSet_MapConversion', 'Eastings', 2700000, PropertyValueType.Real, undefined, false, 'IfcReal'); }, trusted: false, set: 'refuse', update: 'refuse' },
+  { name: 'convention sets on an IfcBuildingStorey (IFC2X3)', fixture: 'strayset', apply: () => undefined, trusted: true, set: 'refuse', update: 'refuse', anchored: 'refuse' },
   // Facts the planners anchor on: created and deleted entities count.
   { name: 'a second IfcSite created (IFC2X3)', fixture: 'plain2x3', apply: (c) => { c.view().createEntity('IfcSite', ['2VQ9wAx1j4Bh3OB5NYQuhQ', null, 'Site2', ...Array(11).fill(null)]); }, trusted: true, set: 'refuse', update: 'any', anchored: 'refuse' },
   { name: 'the only IfcSite deleted (IFC2X3)', fixture: 'plain2x3', apply: (c) => { c.bim.store.removeEntity({ modelId: 'model', expressId: 6 }); }, trusted: true, set: 'refuse', update: 'any', anchored: 'refuse' },
@@ -118,7 +140,8 @@ async function fresh(fixture: Fixture, row: Row) {
   return { bim, ctx };
 }
 
-const dataOf = (bim: BimContext) => { const t = String(bim.export.ifc()); return t.slice(t.indexOf('DATA;')); };
+// GlobalIds the exporter generates for records it rewrites are random: compare everything else.
+const dataOf = (bim: BimContext) => { const t = String(bim.export.ifc()); return t.slice(t.indexOf('DATA;')).replace(/'[0-9A-Za-z_$]{22}'/g, "'<GUID>'"); };
 function comparable(state: GeoreferencingState) {
   const strip = <T extends object | null>(o: T) => { if (!o) return o; const { expressId: _e, ...rest } = o as Record<string, unknown>; return rest; };
   return { hasGeoreference: state.hasGeoreference, source: state.source, ProjectedCRS: strip(state.ProjectedCRS), MapConversion: strip(state.MapConversion), rotationDegrees: state.rotationDegrees };

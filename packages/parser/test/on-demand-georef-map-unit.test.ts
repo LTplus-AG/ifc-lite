@@ -56,6 +56,7 @@ describe('extractGeoreferencingOnDemand — mapUnitResolved', () => {
 #10=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);
 #11=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #12=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#11);
+#14=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048006096),#11);
 ${unit ? `#13=${unit};` : ''}
 #20=IFCPROJECTEDCRS('EPSG:2227',$,'NAD83',$,$,$,${unit ? '#13' : '$'});
 #21=IFCMAPCONVERSION(#5,#20,6000000.,2100000.,12.,$,$,$);`;
@@ -65,6 +66,7 @@ ${unit ? `#13=${unit};` : ''}
     ['an IfcSIUnit millimetre', 'IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)', 'MILLIMETRE', 0.001, true],
     ['an IfcConversionBasedUnitWithOffset foot (zero offset)', "IFCCONVERSIONBASEDUNITWITHOFFSET(#10,.LENGTHUNIT.,'FOOT',#12,0.)", 'FOOT', 0.3048, true],
     ['an IfcConversionBasedUnitWithOffset with a non-zero offset', "IFCCONVERSIONBASEDUNITWITHOFFSET(#10,.LENGTHUNIT.,'FOOT',#12,5.)", 'METRE', 1, false],
+    ['an IfcConversionBasedUnit named FOOT whose declared factor is the survey foot (0.3048006096)', "IFCCONVERSIONBASEDUNIT(#10,.LENGTHUNIT.,'FOOT',#14)", 'FOOT', 0.3048, false],
     ['an IfcContextDependentUnit (no factor)', "IFCCONTEXTDEPENDENTUNIT(#10,.LENGTHUNIT.,'CHAIN')", 'METRE', 1, false],
     ['an IfcSIUnit that is not a length', 'IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.)', 'METRE', 1, false],
   ] as const)('%s', async (_name, unit, mapUnit, scale, resolved) => {

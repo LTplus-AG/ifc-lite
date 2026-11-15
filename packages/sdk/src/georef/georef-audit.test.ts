@@ -215,7 +215,7 @@ describe('9. CRS text is written as text', () => {
     const m = await open('IFC4', GEO);
     m.bim.georef.update({ ProjectedCRS: { GeodeticDatum: '$', MapProjection: '*', VerticalDatum: '#12', MapZone: '.X.' } });
     const text = String(m.bim.export.ifc());
-    expect(text).toMatch(/IFCPROJECTEDCRS\('EPSG:2056','d','\$',(?:'#12'|\$),'\*','\.X\.',#\d+\)/);
+    expect(text).toMatch(/IFCPROJECTEDCRS\('EPSG:2056','d','\$','#12','\*','\.X\.',#\d+\)/);
     const file = await reparsed(m.bim);
     expect(file.ProjectedCRS).toMatchObject({ GeodeticDatum: '$', MapProjection: '*', VerticalDatum: '#12', MapZone: '.X.' });
     await trueOrUntrusted(m.bim);
@@ -225,5 +225,4 @@ describe('9. CRS text is written as text', () => {
     expect(refusal(() => m.bim.georef.update({ ProjectedCRS: { Description: '' } })).code).toBe('INVALID_INPUT');
     await trueOrUntrusted(m.bim);
   });
-});
 });

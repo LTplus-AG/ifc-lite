@@ -146,7 +146,7 @@ describe('#7955 M2-C Retained geometry panel', () => {
     click(reload);
     assert.deepEqual(reloads, [SOURCE], 'the same source, as a primary reload');
     assert.equal(requestedGeometryKernel(), 'exact');
-    const next = beginGeometryKernel(SOURCE, { kind: 'primary' }, () => {});
+    const next = beginGeometryKernel(SOURCE, { kind: 'primary' }, () => {}, { hasSourceBytes: true });
     assert.equal(next.kind, 'exact', 'the reload runs on the exact kernel, which writes no retained summary');
     assert.equal(next.events, undefined);
     assert.equal(panel(), null, 'the panel closes');

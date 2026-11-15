@@ -434,7 +434,7 @@ export function useIfcLoader() {
         if (target.kind === 'primary') {
           clearModelLoadedSnapshot();
           getGlobalRenderer()?.getScene()?.setColdGeometryProvider(null);
-          resetViewerState();
+          resetViewerState({ preserveLoading: true });
           clearAllModels();
           // A non-federated load has no layer stack behind it (#1717).
           useViewerStore.getState().clearLayerStack();

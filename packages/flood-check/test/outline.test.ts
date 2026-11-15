@@ -25,13 +25,19 @@ describe('IfcIndexedPolyCurve outline', () => {
     expect(curvePoints(curve(segments), 1)).toEqual([[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]);
   });
 
-  it('an arc segment adds its circle\'s axis-aligned extremes on the arc, so its extent is exact (audit finding 9)', () => {
+  it('an arc segment keeps its circle\'s axis-aligned extremes, in order, and every point it adds lies on the circle (audit finding 9)', () => {
     // The arc through (10, 0), (10, 10), (0, 10): centre (5, 5), radius 5√2; its rightmost (east) and topmost (north) points lie on it.
+    // Since the CodeRabbit review it is also traced between them (review-geometry.test.ts), so the list is longer than these.
     const r = 5 * Math.SQRT2;
     const pts = curvePoints(curve([['IFCLINEINDEX', [1, 2]], ['IFCARCINDEX', [2, 3, 5]]]), 1)!;
-    expect(pts.map(([x, y]) => [Number(x.toFixed(9)), Number(y.toFixed(9))])).toEqual([
-      [0, 0], [10, 0], [Number((5 + r).toFixed(9)), 5], [10, 10], [5, Number((5 + r).toFixed(9))], [0, 10],
-    ]);
+    const want = [[0, 0], [10, 0], [5 + r, 5], [10, 10], [5, 5 + r], [0, 10]];
+    let from = 0;
+    for (const [x, y] of want) {
+      const i = pts.findIndex((p, k) => k >= from && Math.abs(p[0] - x) < 1e-9 && Math.abs(p[1] - y) < 1e-9);
+      expect(i, `${x},${y}`).toBeGreaterThanOrEqual(from);
+      from = i + 1;
+    }
+    for (const [x, y] of pts.slice(2)) expect(Math.hypot(x - 5, y - 5)).toBeCloseTo(r, 9);
   });
 
   it('an out-of-range or malformed segment makes the outline unreadable, never a guess', () => {

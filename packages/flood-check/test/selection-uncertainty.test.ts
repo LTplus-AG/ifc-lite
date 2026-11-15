@@ -36,7 +36,7 @@ describe('an upper-estimate level does not exclude', () => {
   });
 
   it('control: the same window stating a 1 m OverallHeight is proven out of scope (it cannot reach below 503.5 m)', async () => {
-    const facts = await extract(window('og', '1.'));
+    const facts = await extract(window('eg', '1.'));
     expect(facts.candidates.map((c) => c.name)).not.toContain('Fenster hoch');
     expect(facts.skipped.find((s) => s.ifcClass === 'IfcWindow' && /out of scope/.test(s.reason))).toBeDefined();
   });

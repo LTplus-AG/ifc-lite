@@ -42,6 +42,8 @@ export interface MapBody {
   items: number;
   readable: number;
   corners: Array<[number, number, number]>;
+  /** Readable items read through a clipped solid's first operand: they bound the level, not the position. */
+  clipped?: number;
 }
 
 /** Everything {@link locate} decides from. */
@@ -127,13 +129,16 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
   const bodyDefined = kind === 'opening' || kind === 'slab-opening' || kind === 'light-well';
   // A door's or window's position is certain only from geometry actually read: the hole it fills, else its own body.
   let positionCertain = filling ? (filledRead ? filled === 'readable' : own === 'readable') : kind === 'equipment' ? own === 'readable' : !bodyDefined || own === 'readable';
+  // A clipped body's first operand bounds the solid but its centre is not the solid's (the remainder may be one end of it).
+  const clippedBody = (b: MapBody | null | undefined) => (b?.clipped ?? 0) > 0;
   if (filling && filledRead) {
     position = centre(s.filled!);
+    if (clippedBody(s.filled)) positionCertain = false;
     const apart = Math.hypot(position.x - at.position.x, position.y - at.position.y);
     if (apart > POSITION_DISAGREEMENT) notes.push(`placed ${apart.toFixed(2)} m from the hole it fills (for example at its wall's origin); the hole's position is used`);
   } else if (ownRead) {
     position = centre(s.own);
-    if (own !== 'readable') positionCertain = false;
+    if (own !== 'readable' || clippedBody(s.own)) positionCertain = false;
   }
 
   // Level: the lowest of the sources that define it for this kind.
@@ -195,7 +200,7 @@ function mapBody(ctx: CandidateContext, id: number): MapBody {
   const body = readBody(ctx.reader, id);
   // A body that cannot be placed cannot be read either.
   if (!frame) return { items: Math.max(1, body.items), readable: 0, corners: [] };
-  return { items: body.items, readable: body.readable, corners: toWorld(frame, body.corners).map((p) => ctx.georef.toMap(p) as [number, number, number]) };
+  return { items: body.items, readable: body.readable, clipped: body.clipped, corners: toWorld(frame, body.corners).map((p) => ctx.georef.toMap(p) as [number, number, number]) };
 }
 
 /** The `OverallHeight` a door or window may plausibly have, metres; outside it the attribute bounds nothing. */

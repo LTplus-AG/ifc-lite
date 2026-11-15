@@ -58,7 +58,7 @@ describe('the audit: no reader stops at the first item or match', () => {
     expect(facts.candidates.find((c) => c.name === 'Tür zwei Psets')?.selectedBecause).toMatch(/IsExternal/);
   });
 
-  it('an opening filled twice takes the lowest bound of its fillings, not the first one\'s', async () => {
+  it('an opening filled twice is kept as an upper estimate: no filling\'s OverallHeight bounds it (audit finding 8), the first one\'s least of all', async () => {
     const facts = extractModelFacts(await parseStep(syntheticHouse({
       verticalDatum: 'LN02',
       extra: (b) => {

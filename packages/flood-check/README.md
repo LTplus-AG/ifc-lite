@@ -198,6 +198,12 @@ entities, properties and containment from the parsed store. No meshing.
 
 - A footprint ring entirely covered by the others is taken for a courtyard
   (a redundant slab cannot be told from one).
+- An arc in a profile or curve is traced so that no chord lies more than
+  5e-5 × its radius inside it (1 mm on a 20 m radius), in any frame.
+- A slab body extruded obliquely (an `ExtrudedDirection` not along the
+  profile's normal) is not read as an outline: the footprint is partial.
+- A body read through the first operand of a Boolean DIFFERENCE or clipping
+  bounds the level but not the position: an element placed by it is kept.
 - A non-boolean `IsExternal` (for example the text `'true'`) reads as
   unstated.
 - `OverallHeight` bounds a door or window only between 0.1 m and 10 m after

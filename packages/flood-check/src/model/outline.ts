@@ -62,9 +62,8 @@ export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | nul
     if (!pts || pts.length < 2) return null;
     const segments = e.attributes[1];
     if (segments === null || segments === undefined) return pts; // no Segments: the points in list order
-    // Segments name the points of the curve and their order (1-based; a line, or an arc through three points, which adds
-    // the circle's axis-aligned extremes lying on it so the curve's extent is exact). A point the segments omit is not on
-    // the curve, and a malformed segment makes the whole outline unreadable.
+    // Segments name the points of the curve and their order (1-based; a line, or an arc through three points, traced along
+    // its length). A point the segments omit is not on the curve, and a malformed segment makes the whole outline unreadable.
     if (!Array.isArray(segments) || segments.length === 0) return null;
     const out: Pt2[] = [];
     let last = -1;
@@ -87,10 +86,16 @@ export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | nul
   return null;
 }
 
+/** Largest gap between an arc and its chords, as a fraction of the radius (1 mm on a 20 m radius). */
+export const ARC_SAGITTA = 5e-5;
+
 /**
- * The points of an arc from `a` through `b` to `c`, after `a`: `b`, `c`, and
- * every axis-aligned extreme of their circle that lies on the arc, in order
- * along it. Three collinear points are a straight line (`b`, `c`).
+ * The points of an arc from `a` through `b` to `c`, after `a`, in order along
+ * it: `b`, `c`, every axis-aligned extreme of their circle on the arc, and
+ * points close enough that no chord lies more than `ARC_SAGITTA` × radius
+ * inside the arc. Its extent then holds in any frame the outline is later
+ * turned into (a placement or the map rotation), not only the local one.
+ * Three collinear points are a straight line (`b`, `c`).
  */
 function arcPoints(a: Pt2, b: Pt2, c: Pt2): Pt2[] {
   const d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
@@ -106,10 +111,17 @@ function arcPoints(a: Pt2, b: Pt2, c: Pt2): Pt2[] {
   const along = (t: number) => (ccw ? norm(t - ta) : norm(ta - t));
   const sweep = along(ang(c));
   const out: Array<[number, Pt2]> = [[along(ang(b)), b], [sweep, c]];
+  const at = (off: number): Pt2 => {
+    const t = ccw ? ta + off : ta - off;
+    return [ux + r * Math.cos(t), uy + r * Math.sin(t)];
+  };
   for (const e of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
     const off = along(e);
     if (off > 1e-9 && off < sweep - 1e-9) out.push([off, [ux + r * Math.cos(e), uy + r * Math.sin(e)]]);
   }
+  const step = 2 * Math.acos(1 - ARC_SAGITTA);
+  const n = Math.ceil(sweep / step);
+  for (let k = 1; k < n; k++) out.push([(sweep * k) / n, at((sweep * k) / n)]);
   return out.sort((x, y) => x[0] - y[0]).map(([, p]) => p);
 }
 
@@ -225,8 +237,12 @@ export function readSlabOutline(reader: ModelReader, slabId: number): OutlineRea
     const profile = profilePoints(reader, profileId);
     if (!profile || profile.length < 3) continue;
     const position = reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
-    // A profile only stands for the plan outline when it lies in a horizontal plane.
+    // A profile only stands for the plan outline when it lies in a horizontal plane and is swept straight along its normal:
+    // an oblique ExtrudedDirection moves the top profile sideways, so the base alone would miss part of the slab.
     if (!position || Math.abs(position.z[2]) < 0.99) continue;
+    const dirEntity = reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection')));
+    const d = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
+    if (!d || d.some((v) => v === null) || Math.hypot(d[0] ?? 0, d[1] ?? 0) > 1e-6 * Math.hypot(...(d as number[]))) continue;
     fromBody.rings.push(profile.map(([x, y]) => applyFrame(position, [x, y, 0])));
     fromBody.readable++;
     const profileEntity = reader.entity(profileId);
@@ -267,6 +283,12 @@ const NON_SOLID = new Set(['Axis', 'FootPrint', 'Profile', 'Annotation', 'Refere
 export interface BodyReading extends Reading {
   /** Corners of the readable items, top and bottom, in the product's object coordinates. */
   corners: Vec3[];
+  /**
+   * Of the readable items, those read through the first operand of a Boolean
+   * DIFFERENCE or clipping: they bound the solid (its lowest point is no
+   * higher) but their centre is not the solid's.
+   */
+  clipped: number;
 }
 
 /**
@@ -279,7 +301,7 @@ export interface BodyReading extends Reading {
 export function readBody(reader: ModelReader, productId: number): BodyReading {
   const product = reader.entity(productId);
   const shape = reader.entity(asRef(reader.attr(product, 'Representation')));
-  const out: BodyReading = { items: 0, readable: 0, corners: [] };
+  const out: BodyReading = { items: 0, readable: 0, corners: [], clipped: 0 };
   if (!shape) return out;
   for (const repId of asRefList(reader.attr(shape, 'Representations'))) {
     const rep = reader.entity(repId);
@@ -288,29 +310,35 @@ export function readBody(reader: ModelReader, productId: number): BodyReading {
     for (const item of asRefList(reader.attr(rep, 'Items'))) {
       out.items++;
       const before = out.corners.length;
-      readExtrusion(reader, item, out.corners);
-      if (out.corners.length > before) out.readable++;
+      const clipped = readExtrusion(reader, item, out.corners);
+      if (out.corners.length > before) {
+        out.readable++;
+        if (clipped) out.clipped++;
+      }
     }
   }
   return out;
 }
 
-function readExtrusion(reader: ModelReader, item: number, out: Vec3[]): void {
+/** Reads one item's corners into `out`; true when they come from a clipped solid's first operand. */
+function readExtrusion(reader: ModelReader, item: number, out: Vec3[]): boolean {
   // A DIFFERENCE's first operand bounds the solid from outside: its lowest point is no higher than the solid's.
-  const solid = reader.entity(unwrapClipping(reader, item)?.solid);
-  if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') return;
+  const unwrapped = unwrapClipping(reader, item);
+  const solid = reader.entity(unwrapped?.solid);
+  if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') return false;
   const profile = profilePoints(reader, asRef(reader.attr(solid, 'SweptArea')));
   const depth = asNumber(reader.attr(solid, 'Depth'));
   const dirEntity = reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection')));
   const ratios = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
-  if (!profile || depth === null || !ratios || ratios.some((v) => v === null)) return;
+  if (!profile || depth === null || !ratios || ratios.some((v) => v === null)) return false;
   const n = Math.hypot(...(ratios as number[]));
-  if (!(n > 0)) return;
+  if (!(n > 0)) return false;
   const dir: Vec3 = [(ratios[0] as number) / n, (ratios[1] as number) / n, ((ratios[2] as number | undefined) ?? 0) / n];
   const position = reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
-  if (!position) return;
+  if (!position) return false;
   for (const [x, y] of profile) {
     out.push(applyFrame(position, [x, y, 0]));
     out.push(applyFrame(position, [x + dir[0] * depth, y + dir[1] * depth, dir[2] * depth]));
   }
+  return unwrapped!.subtracted;
 }

@@ -1503,7 +1503,11 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
         // came from the rim refinement, which is now adopted only when its
         // cleanup stays closed: 3/3/3 -> 0/0/0 and 3207 -> 3064 triangles,
         // volume 881.2597 m3 against IfcOpenShell 0.8.2's 881.3038 (-0.005%).
-        [(12381, 0, 0, 0, 5884), (32810, 0, 0, 0, 3064)]
+        //
+        // `facet_weld::adopt`: #12381 5884 -> 5756, volume unchanged. The
+        // sliver pass no longer keeps bisections the census measure does not
+        // improve.
+        [(12381, 0, 0, 0, 5756), (32810, 0, 0, 0, 3064)]
     };
     for &alt in triangulators {
         set_alt(alt);
@@ -2075,7 +2079,10 @@ const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
 // (7 -> 0), #349767, #358944, #360795, #628727, #639525, #642493, #886572 and
 // #923985 (6 -> 0 each) and #638255 (3 -> 0). Their volumes agree with
 // IfcOpenShell 0.8.2 to 0.005% or better (worst: #358944, +220 cm3 of 4.156 m3).
-const ISSUE_068_KNOWN_TORN_HOSTS: usize = 2;
+// 2 -> 1. #1320395 (open 13 -> 0) closed once the post-cut sliver pass stopped
+// keeping a bisection the census's sliver measure does not improve
+// (`facet_weld::adopt`): unbisected, its cut is closed.
+const ISSUE_068_KNOWN_TORN_HOSTS: usize = 1;
 
 /// Coverage floors, one per heavy fixture, bounding BOTH the checked-in golden
 /// and every sweep that gates or blesses against it. [`MIN_VOID_HOSTS`]'s job,

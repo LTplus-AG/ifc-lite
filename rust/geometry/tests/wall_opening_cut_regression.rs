@@ -62,14 +62,6 @@ fn mesh_volume(mesh: &Mesh) -> f64 {
         / 6.0
 }
 
-/// Which void path these hosts take: the analytic prism cut (default) or the
-/// exact kernel (`IFC_LITE_PRISM_CUT=0`). Both now give the same triangle
-/// counts on these walls; wall 552611's volume is the one pin that still
-/// selects per path.
-fn prism_cut_enabled() -> bool {
-    std::env::var("IFC_LITE_PRISM_CUT").as_deref() != Ok("0")
-}
-
 fn bbox(positions: &[f32]) -> Option<((f32, f32, f32), (f32, f32, f32))> {
     if positions.is_empty() {
         return None;
@@ -172,19 +164,13 @@ fn wall_552611_2_openings_matches_ios() {
     assert!((ext.0 - 0.200).abs() < tol, "ext.0 = {}", ext.0);
     assert!((ext.1 - 8.404).abs() < tol, "ext.1 = {}", ext.1);
     assert!((ext.2 - 10.506).abs() < tol, "ext.2 = {}", ext.2);
-    // VOLUME is the cut-sensitive invariant (uncut host 17.658, openings 0.353
-    // + 0.363). The pre-fix kernel lost the opening corner (5.142, 3.800) in
-    // `recover_subsegment` (its whole fan sat inside a constraint channel) and
-    // over-cut this wall to 15.872.
-    //
-    // The two void paths have always read this wall a litre apart: the exact
-    // kernel 16.94275 (the Manifold oracle gave 16.942781), the analytic prism
-    // cut 16.94173, where IfcOpenShell 0.8.2 gives 16.94174. One figure at
-    // 1e-3 held both only while the prism path's bisected mesh read 16.94182,
-    // 19 cm3 inside the bound, so each path is pinned to its own figure.
+    // VOLUME is the cut-sensitive invariant: 16.941742 by IfcOpenShell 0.8.2
+    // (uncut host 17.658, openings 0.353 + 0.363). The pre-fix kernel lost the
+    // opening corner (5.142, 3.800) in `recover_subsegment` (its whole fan sat
+    // inside a constraint channel) and over-cut this wall to 15.872. In the
+    // loader's frame the prism cut reads 16.94177 and the exact kernel 16.94151.
     let vol = mesh_volume(&mesh);
-    let expect_vol = if prism_cut_enabled() { 16.9417 } else { 16.9428 };
-    assert!((vol - expect_vol).abs() < 2e-4, "cut volume = {vol}, expected {expect_vol}");
+    assert!((vol - 16.941742).abs() < 3e-4, "cut volume = {vol}, IfcOpenShell 16.941742");
     // IfcOpenShell's count, on both paths. It read 158 (prism) and 188 (exact)
     // while the post-cut sliver pass bisected every triangle past 8:1 by edge
     // ratio; the pass now keeps a bisection only when the mesh census's sliver

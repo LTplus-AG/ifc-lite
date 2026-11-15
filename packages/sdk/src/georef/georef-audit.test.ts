@@ -123,18 +123,21 @@ describe('2. convention sets in an IFC4 / IFC4X3 file are read, edited and repla
   });
 });
 
-describe('3. convention sets the writer cannot account for are refused, not left behind', () => {
+describe('3. convention sets the writer does not manage are still copies the reader takes', () => {
   const STOREY = "#8=IFCBUILDINGSTOREY('1Pbuu0tu59NfhrTsztVBK3',$,'L1',$,$,$,$,$,.ELEMENT.,0.);";
   it.each([
     ['on another host', `${BASE}\n${STOREY}\n${EPSETS}\n${attach(8)}`],
     ['unattached', `${BASE}\n${EPSETS}`],
-  ])('IFC2X3 sets %s: get() is what the reader reads and every write refuses with a typed error', async (_n, data) => {
+  ])('IFC2X3 sets %s: get() is what the reader reads; set without replace and update refuse, set replace and remove clear them', async (_n, data) => {
     const m = await open('IFC2X3', data);
     await trueOrUntrusted(m.bim);
     refusal(() => m.bim.georef.set(SET));
-    refusal(() => m.bim.georef.set({ ...SET, replace: true }));
     refusal(() => m.bim.georef.update({ MapConversion: { OrthogonalHeight: 1 } }));
-    refusal(() => m.bim.georef.remove());
+    m.bim.georef.set({ ...SET, replace: true });
+    expect((await reparsed(m.bim)).MapConversion?.Eastings).toBe(2600000);
+    const r = await open('IFC2X3', data);
+    r.bim.georef.remove();
+    expect((await reparsed(r.bim)).hasGeoreference).toBe(false);
   });
 });
 

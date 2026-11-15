@@ -28,7 +28,6 @@ import { EntityExtractor } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { CRS_TEXT_FIELDS, interpretsMcEdit } from './attribute-overlay.js';
 import { exporterKey, MC_FIELDS } from './plan.js';
-import { EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS, storageForSchema } from './model-facts.js';
 import { GeoreferencingError } from './types.js';
 
 export type GeorefPart = 'MapConversion' | 'ProjectedCRS' | 'MapUnit' | 'RigidOperation' | 'site' | 'ePSet';
@@ -99,8 +98,6 @@ export function assessTrust(store: IfcDataStore, view: MutablePropertyView, writ
   const flag = (part: GeorefPart, why: string) => { (trust.reasons[part] ??= []).push(why); };
   const covered = (part: GeorefPart, name: string) =>
     exporterKey(name) in ((part === 'MapConversion' ? written?.mapConversion : written?.projectedCRS) ?? {});
-  const conventionSet = (name?: string) => !!name && [EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS].some((n) => n.toLowerCase() === name.toLowerCase());
-  const entities = storageForSchema(String(store.schemaVersion ?? '')) === 'entities';
   for (const c of changes) {
     // A retype is judged by the class the entity becomes (a created entity's own class says nothing): into a
     // georeferencing class it is a record nobody read, however it started.
@@ -117,11 +114,6 @@ export function assessTrust(store: IfcDataStore, view: MutablePropertyView, writ
       if (!part) continue;
       flag(part, `${c.newValue} #${c.entityId} was created outside bim.georef`);
       if (part !== 'site') trust.foreign.push(`${c.newValue} #${c.entityId}`);
-      continue;
-    }
-    // IFC4+ files carry their sets only as a reader fallback, which is not read back live: an edit is not reflected.
-    if (entities && conventionSet(c.setName) && (c.kind === 'property' || c.kind === 'pset-added' || c.kind === 'pset-deleted')) {
-      flag('ePSet', `${c.setName} on #${c.entityId} was changed outside bim.georef`);
       continue;
     }
     const read = reads.get(c.entityId);

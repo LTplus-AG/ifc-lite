@@ -19,7 +19,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { isExpressibleMapUnit } from '@ifc-lite/export';
 import { PropertyValueType } from '@ifc-lite/data';
 import { recordCompoundMutation, recordSessionMutation, StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
-import { collectGeorefModelFacts, EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS, type GeorefModelFacts } from './model-facts.js';
+import { collectGeorefModelFacts, storageForSchema, EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS, type GeorefModelFacts } from './model-facts.js';
+import { conventionSetsOf } from './epset-locator.js';
 import { CRS_FIELDS, MC_FIELDS, planRemove, planSet, stateAfter, type GeorefWritePlan, type PropertySetOp, type StepGeorefMutations } from './plan.js';
 import { withAttributeEdits } from './attribute-overlay.js';
 import { assertWritable, assessTrust } from './trust.js';
@@ -73,7 +74,12 @@ export class GeoreferencingSession {
   /** Trust in what `state` is read from. A change to a convention set only matters while the state is read from one. */
   private trust(state: GeoreferencingState, view: MutablePropertyView) {
     const trust = assessTrust(this.deps.store, view, this.current()?.pending ?? null);
-    if (state.MapConversion?.type !== 'ePSet_MapConversion' && state.ProjectedCRS?.type !== 'ePSet_ProjectedCRS') delete trust.reasons.ePSet;
+    // The convention sets are read back live for IFC2X3 only; elsewhere an edited or created copy is not reflected.
+    // Which copy the reader takes is known only while the session left the copies alone.
+    const sets = conventionSetsOf(this.deps.store, view);
+    const why = [...sets.ambiguous, ...(storageForSchema(String(this.deps.store.schemaVersion ?? '')) === 'entities' && sets.copies.some((c) => c.edited) ? ['convention sets were edited outside bim.georef, which is not reflected in this schema'] : [])];
+    // An IfcMapConversion or IfcRigidOperation governs: the reader never reaches the sets.
+    if (why.length > 0 && !(state.MapConversion && state.MapConversion.type !== 'ePSet_MapConversion') && !state.RigidOperation) trust.reasons.ePSet = why;
     return trust;
   }
 

@@ -19,7 +19,8 @@
  */
 
 import type { StepExportOptions } from '@ifc-lite/export';
-import { EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS, idList, type GeorefModelFacts } from './model-facts.js';
+import { EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS, idList, type EPSetLocation, type GeorefModelFacts } from './model-facts.js';
+import { describeSet } from './epset-locator.js';
 import { compact, emptyGeoreferencingState, rotationOf } from './read.js';
 import { rejectUnknownKeys, requireMapUnit, requireNumber, requirePresent, requireText, resolveFactors, resolveRotation } from './validate.js';
 import {
@@ -148,13 +149,16 @@ function existingRecords(facts: GeorefModelFacts): Array<{ id: number; label: st
 }
 
 function existingEPSets(facts: GeorefModelFacts): string[] {
-  return facts.ePSets.map((p) => `${p.name} on #${p.hostId}`);
+  return facts.ePSets.map(describeSet);
 }
 
-/** Every convention-set copy beyond the first of its name: a replace deletes them. */
-function extraEPSetOps(facts: GeorefModelFacts): PropertySetOp[] {
-  const first = new Set([facts.ePSetMapConversion, facts.ePSetProjectedCRS]);
-  return facts.ePSets.filter((p) => !first.has(p)).map((p) => ({ op: 'deleteSet' as const, hostId: p.hostId, pset: p.name }));
+/** Deleting every copy of the convention sets, by identity: a delete per host and name, and the unattached ones tombstoned. */
+export function deleteCopyOps(sets: readonly EPSetLocation[]): { ops: PropertySetOp[]; tombstone: number[] } {
+  const hosted = new Map(sets.filter((p) => p.orphan === undefined).map((p) => [`${p.hostId}|${p.name}`, p]));
+  return {
+    ops: [...hosted.values()].map((p) => ({ op: 'deleteSet' as const, hostId: p.hostId, pset: p.name })),
+    tombstone: sets.flatMap((p) => (p.orphan === undefined ? [] : [p.orphan])),
+  };
 }
 
 /**
@@ -277,28 +281,6 @@ export function stateAfter(
   return state;
 }
 
-/** IFC2X3: write `values` as the whole content of convention set `canonical` on `hostId`. */
-export function replaceEPSetOps(
-  location: GeorefModelFacts['ePSetMapConversion'],
-  canonical: string,
-  hostId: number,
-  values: Array<[string, string | number, EPSetDataType]>,
-): PropertySetOp[] {
-  const ops: PropertySetOp[] = [];
-  let pset = canonical;
-  if (location && location.hostId === hostId) {
-    pset = location.name;
-    const keep = new Set(values.map(([prop]) => prop));
-    for (const prop of Object.keys(location.values)) {
-      if (!keep.has(prop)) ops.push({ op: 'deleteProperty', hostId, pset, prop });
-    }
-  } else if (location) {
-    ops.push({ op: 'deleteSet', hostId: location.hostId, pset: location.name });
-  }
-  for (const [prop, value, dataType] of values) ops.push({ op: 'set', hostId, pset, prop, value, dataType });
-  return ops;
-}
-
 export const EPSET_DATA_TYPES: Record<string, EPSetDataType> = {
   Eastings: 'IfcLengthMeasure', Northings: 'IfcLengthMeasure', OrthogonalHeight: 'IfcLengthMeasure',
   XAxisAbscissa: 'IfcReal', XAxisOrdinate: 'IfcReal', Scale: 'IfcReal',
@@ -340,19 +322,36 @@ export function planSet(input: GeoreferencingSetInput, ctx: PlanContext): Georef
     next: stateAfter(ctx, storage, crs, mc),
     removed: [...records.map((r) => r.label), ...epsets],
   };
+  // A replace removes every copy of the convention sets (any host, or none). IFC2X3 then has one pair: a lone copy on
+  // the anchor is rewritten in place; otherwise a fresh pair is written. The mutation view keeps a deleted (host, set
+  // name) deleted whatever is written under it later, and the reader matches the name without case, so a pair
+  // deleted on the anchor is rewritten under the other common spelling (`ePset_`).
+  const lone = (canonical: string) => {
+    const here = ctx.facts.ePSets.filter((p) => p.orphan === undefined && p.hostId === anchor && p.name.toLowerCase() === canonical.toLowerCase());
+    return here.length === 1 ? here[0] : null;
+  };
+  const keep = storage === 'propertySets' ? [lone(EPSET_MAP_CONVERSION), lone(EPSET_PROJECTED_CRS)] : [];
+  const gone = deleteCopyOps(ctx.facts.ePSets.filter((p) => !keep.includes(p)));
   if (storage === 'entities') {
-    // Sets in an IFC4+ file would shadow nothing the reader prefers, but a third-party reader could still pick them up: replaced means gone.
-    const sets = ctx.facts.ePSets.map((p) => ({ op: 'deleteSet' as const, hostId: p.hostId, pset: p.name }));
-    return { ...base, tombstone: records.map((r) => r.id), georefMutations: withSourceCrs(toExporterMutations(crs, mc), ctx.facts), propertySetOps: sets };
+    return { ...base, tombstone: [...records.map((r) => r.id), ...gone.tombstone], georefMutations: withSourceCrs(toExporterMutations(crs, mc), ctx.facts), propertySetOps: gone.ops };
   }
+  const deletedHere = new Set(gone.ops.filter((o) => o.hostId === anchor).map((o) => o.pset));
+  const write = (canonical: string, kept: EPSetLocation | null, values: Array<[string, string | number, EPSetDataType]>): PropertySetOp[] => {
+    const pset = kept?.name ?? (deletedHere.has(canonical) ? canonical.replace('ePSet', 'ePset') : canonical);
+    const wanted = new Set(values.map(([prop]) => prop));
+    return [
+      ...Object.keys(kept?.values ?? {}).filter((prop) => !wanted.has(prop)).map((prop) => ({ op: 'deleteProperty' as const, hostId: anchor, pset, prop })),
+      ...values.map(([prop, value, dataType]) => ({ op: 'set' as const, hostId: anchor, pset, prop, value, dataType })),
+    ];
+  };
   return {
     ...base,
-    tombstone: [],
+    tombstone: gone.tombstone,
     georefMutations: null,
     propertySetOps: [
-      ...extraEPSetOps(ctx.facts),
-      ...replaceEPSetOps(ctx.facts.ePSetMapConversion, EPSET_MAP_CONVERSION, anchor, ePSetValues(mc as unknown as Record<string, unknown>, MC_FIELDS)),
-      ...replaceEPSetOps(ctx.facts.ePSetProjectedCRS, EPSET_PROJECTED_CRS, anchor, ePSetValues(crs as unknown as Record<string, unknown>, CRS_FIELDS)),
+      ...gone.ops,
+      ...write(EPSET_MAP_CONVERSION, keep[0], ePSetValues(mc as unknown as Record<string, unknown>, MC_FIELDS)),
+      ...write(EPSET_PROJECTED_CRS, keep[1], ePSetValues(crs as unknown as Record<string, unknown>, CRS_FIELDS)),
     ],
   };
 }
@@ -361,16 +360,17 @@ export function planRemove(ctx: PlanContext): GeorefWritePlan {
   const storage = requireStorage(ctx.facts);
   const records = storage === 'entities' ? existingRecords(ctx.facts) : [];
   const sets = ctx.facts.ePSets;
+  const gone = deleteCopyOps(sets);
   if (records.length === 0 && sets.length === 0 && !(ctx.current.pending && ctx.current.hasGeoreference)) {
     throw new GeoreferencingError('NOT_GEOREFERENCED', 'The model carries no IfcMapConversion, IfcRigidOperation, CRS or IFC2X3 ePSet_MapConversion to remove.');
   }
   return {
     action: 'remove',
     storage,
-    tombstone: records.map((r) => r.id),
-    removed: [...records.map((r) => r.label), ...sets.map((p) => `${p.name} on #${p.hostId}`)],
+    tombstone: [...records.map((r) => r.id), ...gone.tombstone],
+    removed: [...records.map((r) => r.label), ...sets.map(describeSet)],
     georefMutations: null,
-    propertySetOps: sets.map((p) => ({ op: 'deleteSet' as const, hostId: p.hostId, pset: p.name })),
+    propertySetOps: gone.ops,
     next: { ...ctx.afterRemove(storage === 'propertySets' || sets.length > 0), pending: true },
     mapUnit: null,
     notes: siteNotes(ctx.facts),

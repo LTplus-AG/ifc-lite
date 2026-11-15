@@ -14,7 +14,7 @@ import { declaresMapConversionScaled } from '@ifc-lite/export';
 import { parseSourceHeader, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveEntities } from './effective-entities.js';
-import { strayConventionSets } from './epset-locator.js';
+import { locateConventionSets } from './epset-locator.js';
 import type { GeorefStorage } from './types.js';
 
 /** The two IFC2X3 convention property sets, matched case-insensitively like the reader. */
@@ -28,6 +28,12 @@ export interface EPSetLocation {
   name: string;
   /** Property name → value, as the mutation view reports it. */
   values: Record<string, unknown>;
+  /** The host is an IfcSite, IfcProject or IfcBuilding, where the convention puts the sets. */
+  managed: boolean;
+  /** The session edited or created this copy, so the exported file re-emits it. */
+  edited: boolean;
+  /** Set when no relationship attaches the set to anything: its own entity id (`hostId` is then 0). */
+  orphan?: number;
 }
 
 export interface GeorefModelFacts {
@@ -147,34 +153,15 @@ export function collectGeorefModelFacts(store: IfcDataStore, view: MutableProper
     unknown,
   };
 
-  // Every schema: the reader falls back to the convention sets whatever the file's schema, so a writer must know them.
+  // Every schema: the reader falls back to the convention sets whatever the file's schema, so a writer must know
+  // every copy of them, on any host or on none (see `locateConventionSets`).
   if (view) {
-    // The convention sets hang off IfcSite in practice; IfcProject and
-    // IfcBuilding are searched too so an edit never misses one and then
-    // writes a second, contradicting copy. A set anywhere else is refused (`unknown`), not left behind.
-    const hosts = [...sites, ...live('IFCPROJECT'), ...live('IFCBUILDING')];
-    unknown.push(...strayConventionSets(store, view, effective, new Set(hosts)));
-    const mc = findEPSets(view, hosts, EPSET_MAP_CONVERSION);
-    const crs = findEPSets(view, hosts, EPSET_PROJECTED_CRS);
-    facts.ePSetMapConversion = mc[0] ?? null;
-    facts.ePSetProjectedCRS = crs[0] ?? null;
-    facts.ePSets = [...mc, ...crs];
+    const located = locateConventionSets(store, view, effective, new Set([...sites, ...live('IFCPROJECT'), ...live('IFCBUILDING')]));
+    facts.ePSetMapConversion = located.mapConversion;
+    facts.ePSetProjectedCRS = located.projectedCRS;
+    facts.ePSets = located.copies;
   }
   return facts;
-}
-
-function findEPSets(overlay: Pick<MutablePropertyView, 'getForEntity'>, hosts: number[], name: string): EPSetLocation[] {
-  const wanted = name.toLowerCase();
-  const found: EPSetLocation[] = [];
-  for (const hostId of new Set(hosts)) {
-    for (const pset of overlay.getForEntity(hostId)) {
-      if (pset.name.toLowerCase() !== wanted) continue;
-      const values: Record<string, unknown> = {};
-      for (const prop of pset.properties) values[prop.name] = prop.value;
-      found.push({ hostId, name: pset.name, values });
-    }
-  }
-  return found;
 }
 
 /** `#12, #40` for messages. */

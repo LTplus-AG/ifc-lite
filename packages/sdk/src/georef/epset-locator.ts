@@ -3,20 +3,26 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Where the convention sets (`ePSet_MapConversion` / `ePSet_ProjectedCRS`) are.
+ * Which convention sets (`ePSet_MapConversion` / `ePSet_ProjectedCRS`) the exported file will contain, and which
+ * one the reader will take. One function for facts, trust and `get()`.
  *
  * The reader (`georef-epset.ts`) takes the first property set of that name ANYWHERE in the file, on any host or
- * on none. A writer that only looks on IfcSite, IfcProject and IfcBuilding (the hosts the convention names, and
- * the ones files in the wild use) would leave such a set behind, still read as the georeferencing: so a set the
- * writer cannot account for is reported here and the write refuses naming it. Cheap by design: names and
- * relationships of source property sets are read once per store, and only when a set of that name exists.
+ * on none, in the file's own order. So every copy counts, whatever carries it: source sets (found through their
+ * relationships), sets the property API created or edited on any host, and unattached ones. A copy on an object
+ * other than IfcSite, IfcProject or IfcBuilding is not `managed`: a write replaces or removes it like any other.
+ *
+ * Order is predictable only for sets the session did not touch (the reader's file order is the source id order).
+ * An edited or created set is re-emitted with a new id, so when a name has several copies and any was edited or
+ * created, which one the reader takes is not known: that is reported in `ambiguous`, never guessed.
  */
 
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { EffectiveEntities } from './effective-entities.js';
+import { effectiveEntities, type EffectiveEntities } from './effective-entities.js';
+import type { EPSetLocation } from './model-facts.js';
 
 const NAMES = ['epset_mapconversion', 'epset_projectedcrs'];
+const isConvention = (name: string | undefined) => !!name && NAMES.includes(name.toLowerCase());
 
 interface SourceSets {
   /** Source property sets that carry a convention name. */
@@ -38,7 +44,7 @@ function sourceSets(store: IfcDataStore): SourceSets {
   for (const id of store.entityIndex?.byType.get('IFCPROPERTYSET') ?? []) {
     const ref = sourceRef(store, id);
     const name = ref && extractor?.extractEntity(ref)?.attributes?.[2];
-    if (typeof name === 'string' && NAMES.includes(name.toLowerCase())) sets.named.set(id, name);
+    if (typeof name === 'string' && isConvention(name)) sets.named.set(id, name);
   }
   cache.set(store, sets);
   return sets;
@@ -57,32 +63,108 @@ function sourceRels(store: IfcDataStore, sets: SourceSets): NonNullable<SourceSe
   return sets.rels;
 }
 
-/** Convention sets no host the writer manages carries, as messages for `facts.unknown`. */
-export function strayConventionSets(store: IfcDataStore, view: MutablePropertyView, effective: EffectiveEntities, managedHosts: ReadonlySet<number>): string[] {
+/** An unattached source set's properties, name → value, read from the file. */
+function sourceValues(store: IfcDataStore, id: number): Record<string, unknown> {
+  const extractor = store.source?.length ? new EntityExtractor(store.source) : null;
+  const props = extractor && sourceRef(store, id) ? extractor.extractEntity(sourceRef(store, id)!)?.attributes?.[4] : null;
+  const values: Record<string, unknown> = {};
+  for (const p of Array.isArray(props) ? props : []) {
+    const ref = typeof p === 'number' ? sourceRef(store, p) : undefined;
+    const attrs = ref && extractor?.extractEntity(ref)?.attributes;
+    if (attrs && typeof attrs[0] === 'string') values[attrs[0]] = Array.isArray(attrs[2]) ? attrs[2][1] : attrs[2];
+  }
+  return values;
+}
+
+export interface ConventionSets {
+  /** Every copy the exported file will contain, in the order the reader would meet them where that is known. */
+  copies: EPSetLocation[];
+  /** The copy the reader takes for each set, when it is known which. */
+  mapConversion: EPSetLocation | null;
+  projectedCRS: EPSetLocation | null;
+  /** Names with several copies where the session edited or created one: the reader's choice is not known. */
+  ambiguous: string[];
+}
+
+export function locateConventionSets(store: IfcDataStore, view: MutablePropertyView, effective: EffectiveEntities, managedHosts: ReadonlySet<number>): ConventionSets {
   const sets = sourceSets(store);
-  const candidates = new Map<number, string>();
-  for (const [id, name] of sets.named) if (!view.isDeleted(id)) candidates.set(id, name);
+  const changes = view.getEffectiveChanges().filter((c) => isConvention(c.setName));
+  const edited = new Set(changes.map((c) => `${c.entityId}|${c.setName!.toLowerCase()}`));
+
+  // Source and created property sets by id, and the objects each hangs off.
+  const named = new Map<number, string>();
+  for (const [id, name] of sets.named) if (!view.isDeleted(id)) named.set(id, name);
   for (const id of effective.idsOf('IFCPROPERTYSET')) {
-    if (sets.named.has(id) || candidates.has(id)) continue;
+    if (named.has(id) || sets.named.has(id)) continue;
     const read = effective.attributesOf(id);
     const name = 'attributes' in read ? read.attributes[2] : undefined;
-    if (typeof name === 'string' && NAMES.includes(name.toLowerCase())) candidates.set(id, name);
+    if (typeof name === 'string' && isConvention(name)) named.set(id, name);
   }
-  if (candidates.size === 0) return [];
-  const rels = sourceRels(store, sets).filter((r) => !view.isDeleted(r.id)).map(({ hosts, set }) => ({ hosts, set }));
-  for (const id of effective.idsOf('IFCRELDEFINESBYPROPERTIES')) {
-    const read = effective.attributesOf(id);
-    if ('attributes' in read && typeof read.attributes[5] === 'number' && !sets.rels?.some((r) => r.id === id)) {
-      rels.push({ hosts: (Array.isArray(read.attributes[4]) ? read.attributes[4] : []).filter((h): h is number => typeof h === 'number'), set: read.attributes[5] });
+  const rels: Array<{ hosts: number[]; set: number }> = [];
+  if (named.size > 0) {
+    for (const r of sourceRels(store, sets)) if (!view.isDeleted(r.id)) rels.push(r);
+    for (const id of effective.idsOf('IFCRELDEFINESBYPROPERTIES')) {
+      const read = effective.attributesOf(id);
+      if ('attributes' in read && typeof read.attributes[5] === 'number' && !sets.rels?.some((r) => r.id === id)) {
+        rels.push({ hosts: (Array.isArray(read.attributes[4]) ? read.attributes[4] : []).filter((h): h is number => typeof h === 'number'), set: read.attributes[5] });
+      }
     }
   }
-  const stray: string[] = [];
-  for (const [id, name] of candidates) {
-    const hosts = rels.filter((r) => r.set === id).flatMap((r) => r.hosts);
-    if (hosts.length === 0) stray.push(`${name} #${id} is not attached to any object`);
-    for (const host of new Set(hosts)) {
-      if (!managedHosts.has(host) && view.getForEntity(host).some((p) => p.name === name)) stray.push(`${name} #${id} is attached to #${host}, which is not an IfcSite, IfcProject or IfcBuilding`);
+
+  const hosts = new Set<number>([...managedHosts, ...changes.map((c) => c.entityId)]);
+  const sourceIdsOn = new Map<string, number[]>();
+  const attached = new Set<number>();
+  for (const [id, name] of [...named].sort((a, b) => a[0] - b[0])) {
+    for (const host of new Set(rels.filter((r) => r.set === id).flatMap((r) => r.hosts))) {
+      hosts.add(host);
+      attached.add(id);
+      const key = `${host}|${name.toLowerCase()}`;
+      sourceIdsOn.set(key, [...(sourceIdsOn.get(key) ?? []), id]);
     }
   }
-  return stray;
+
+  const copies: Array<EPSetLocation & { order: number }> = [];
+  for (const host of hosts) {
+    const seen = new Map<string, number>();
+    for (const pset of view.getForEntity(host)) {
+      const key = `${host}|${pset.name.toLowerCase()}`;
+      if (!isConvention(pset.name)) continue;
+      const n = seen.get(key) ?? 0;
+      seen.set(key, n + 1);
+      const values: Record<string, unknown> = {};
+      for (const prop of pset.properties) values[prop.name] = prop.value;
+      const wasEdited = edited.has(key);
+      copies.push({ hostId: host, name: pset.name, values, managed: managedHosts.has(host), edited: wasEdited, order: wasEdited ? Infinity : (sourceIdsOn.get(key)?.[n] ?? Infinity) });
+    }
+  }
+  // A set no relationship attaches to anything: the reader still takes it.
+  for (const [id, name] of named) {
+    if (!attached.has(id)) copies.push({ hostId: 0, orphan: id, name, values: sourceValues(store, id), managed: false, edited: false, order: id });
+  }
+
+  const ambiguous: string[] = [];
+  const pick = (kind: string): EPSetLocation | null => {
+    const of = copies.filter((c) => c.name.toLowerCase() === kind).sort((a, b) => a.order - b.order);
+    if (of.length > 1 && of.some((c) => c.edited || c.order === Infinity)) {
+      ambiguous.push(`${of.length} copies of ${of[0].name} (${of.map(describeSet).join(', ')}) and one was edited or created, so which one the file reads first is not known`);
+    }
+    return of[0] ?? null;
+  };
+  const mapConversion = pick(NAMES[0]);
+  const projectedCRS = pick(NAMES[1]);
+  return { copies, mapConversion, projectedCRS, ambiguous };
+}
+
+/** `ePSet_MapConversion on #8` / `ePSet_MapConversion #103 (not attached to any object)`. */
+export function describeSet(p: EPSetLocation): string {
+  return p.orphan === undefined ? `${p.name} on #${p.hostId}` : `${p.name} #${p.orphan} (not attached to any object)`;
+}
+
+const NONE: ConventionSets = { copies: [], mapConversion: null, projectedCRS: null, ambiguous: [] };
+
+/** `locateConventionSets` for a caller without facts; instant when the file has no convention set and the session touched none. */
+export function conventionSetsOf(store: IfcDataStore, view: MutablePropertyView): ConventionSets {
+  if (sourceSets(store).named.size === 0 && !(view.hasPendingChanges() && view.getEffectiveChanges().some((c) => isConvention(c.setName)))) return NONE;
+  const effective = effectiveEntities(store, view);
+  return locateConventionSets(store, view, effective, new Set(['IFCSITE', 'IFCPROJECT', 'IFCBUILDING'].flatMap((t) => effective.idsOf(t))));
 }

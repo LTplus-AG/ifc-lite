@@ -115,7 +115,7 @@ const ROWS: Row[] = [
   { name: 'a source point retyped to IfcMapConversion', fixture: 'crs', apply: (c) => { c.view().setEntityType(2, 'IfcMapConversion'); }, trusted: false, set: 'refuse', update: 'refuse' },
   { name: 'a project unit edited (IFC4, no CRS yet)', fixture: 'plain4', apply: attr(90, 'Prefix', '.MILLI.'), trusted: true, set: 'any', update: 'any' },
   { name: 'a property edit inside a convention set (IFC4 file)', fixture: 'epset4', apply: (c) => { c.view().setProperty(6, 'ePSet_MapConversion', 'Eastings', 2700000, PropertyValueType.Real, undefined, false, 'IfcReal'); }, trusted: false, set: 'refuse', update: 'refuse' },
-  { name: 'convention sets on an IfcBuildingStorey (IFC2X3)', fixture: 'strayset', apply: () => undefined, trusted: true, set: 'refuse', update: 'refuse', anchored: 'refuse' },
+  { name: 'convention sets on an IfcBuildingStorey (IFC2X3)', fixture: 'strayset', apply: () => undefined, trusted: true, set: 'any', update: 'refuse' },
   // Facts the planners anchor on: created and deleted entities count.
   { name: 'a second IfcSite created (IFC2X3)', fixture: 'plain2x3', apply: (c) => { c.view().createEntity('IfcSite', ['2VQ9wAx1j4Bh3OB5NYQuhQ', null, 'Site2', ...Array(11).fill(null)]); }, trusted: true, set: 'refuse', update: 'any', anchored: 'refuse' },
   { name: 'the only IfcSite deleted (IFC2X3)', fixture: 'plain2x3', apply: (c) => { c.bim.store.removeEntity({ modelId: 'model', expressId: 6 }); }, trusted: true, set: 'refuse', update: 'any', anchored: 'refuse' },

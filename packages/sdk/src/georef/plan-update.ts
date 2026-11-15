@@ -12,6 +12,7 @@
  */
 
 import { EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS } from './model-facts.js';
+import { describeSet } from './epset-locator.js';
 import {
   CRS_FIELDS,
   MC_FIELDS,
@@ -70,11 +71,15 @@ export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): 
   if (!cur.MapConversion && !cur.ProjectedCRS) {
     throw new GeoreferencingError('NOT_GEOREFERENCED', 'The model has no IfcMapConversion or IfcProjectedCRS (nor IFC2X3 ePSet_MapConversion) to update. Use set.');
   }
+  const strays = ctx.facts.ePSets.filter((p) => !p.managed);
+  if (storage === 'propertySets' && strays.length > 0) {
+    throw new GeoreferencingError('AMBIGUOUS', `The model carries convention sets on objects the convention does not name (${strays.map(describeSet).join(', ')}); update would not know which to edit. Use set with replace: it removes them.`, ['replace']);
+  }
   if (storage === 'propertySets' && ctx.facts.ePSets.length > [ctx.facts.ePSetMapConversion, ctx.facts.ePSetProjectedCRS].filter(Boolean).length) {
-    throw new GeoreferencingError('AMBIGUOUS', `The model carries more than one copy of the convention sets (${ctx.facts.ePSets.map((p) => `${p.name} on #${p.hostId}`).join(', ')}); update would not know which to edit. Use set with replace.`);
+    throw new GeoreferencingError('AMBIGUOUS', `The model carries more than one copy of the convention sets (${ctx.facts.ePSets.map(describeSet).join(', ')}); update would not know which to edit. Use set with replace.`);
   }
   if (storage === 'entities' && ctx.facts.ePSets.length > 0 && ctx.facts.mapConversions.length === 0 && ctx.facts.projectedCRS.length === 0) {
-    throw new GeoreferencingError('UNSUPPORTED_RECORD', `This ${ctx.facts.schema} model is georeferenced by convention property sets (${ctx.facts.ePSets.map((p) => `${p.name} on #${p.hostId}`).join(', ')}), which update does not edit in an IFC4+ file. Use set with replace to write IfcMapConversion and replace them.`, ['replace']);
+    throw new GeoreferencingError('UNSUPPORTED_RECORD', `This ${ctx.facts.schema} model is georeferenced by convention property sets (${ctx.facts.ePSets.map(describeSet).join(', ')}), which update does not edit in an IFC4+ file. Use set with replace to write IfcMapConversion and replace them.`, ['replace']);
   }
   if (storage === 'entities' && (ctx.facts.mapConversions.length > 1 || ctx.facts.projectedCRS.length > 1)) {
     throw new GeoreferencingError('AMBIGUOUS', `The model has ${ctx.facts.mapConversions.length} IfcMapConversion and ${ctx.facts.projectedCRS.length} IfcProjectedCRS records; update would not know which to edit. Use set with replace.`);

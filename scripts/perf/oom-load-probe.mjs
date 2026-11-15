@@ -206,8 +206,9 @@ export async function runProbe(opts) {
     if (result.scopeResult === 'oom-kill' && obs.oomKills === 0) obs.oomKills = 1;
     verdictReady = true;
     await context?.close().catch(() => {});
-    execFileSync('systemctl', ['--user', 'stop', `${unit}.scope`], { stdio: 'ignore' });
-    try { execFileSync('systemctl', ['--user', 'reset-failed', `${unit}.scope`], { stdio: 'ignore' }); } catch { /* not failed */ }
+    // The scope ends on its own when Chrome exits; stop only a leftover one.
+    if (scopeProp(unit, 'ActiveState') === 'active') execFileSync('systemctl', ['--user', 'stop', `${unit}.scope`], { stdio: 'ignore' });
+    if (scopeProp(unit, 'ActiveState') === 'failed') execFileSync('systemctl', ['--user', 'reset-failed', `${unit}.scope`], { stdio: 'ignore' });
     server.close();
     rmSync(profileDir, { recursive: true, force: true });
     if (generated && !opts.keepFixture) rmSync(fixture, { force: true });

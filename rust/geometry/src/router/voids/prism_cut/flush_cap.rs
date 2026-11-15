@@ -30,9 +30,10 @@
 
 use super::extension::{extend_prism_caps, tri_touches_slab_footprint};
 use super::frame::PrismFrame;
-use super::kit::{cross, dot, lerp, norm, sub, V2, V3};
+use super::kit::{dot, lerp, norm, V2, V3};
 use super::plane2::pip;
 use super::ptri::PTri;
+use crate::math::v3::tri_normal;
 
 /// One seated end cap.
 struct Seat {
@@ -104,7 +105,7 @@ fn depths_over_footprint(t: &PTri, pf: &PrismFrame, pad: f64) -> Option<(f64, f6
 /// micrometre tall lies within the allowance of a cap plane without being a
 /// face in it, and its normal is noise.
 fn faces_along(t: &PTri, d: V3) -> Option<bool> {
-    let normal = cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0]));
+    let normal = tri_normal(t.p[0], t.p[1], t.p[2]);
     let turn = dot(normal, d);
     (turn.abs() > 0.5 * norm(normal)).then_some(turn > 0.0)
 }

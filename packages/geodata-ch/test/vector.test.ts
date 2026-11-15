@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { BBox, Position } from '../src/contracts.js';
+import { geometryIntersectsPolygon } from '../src/lv95.js';
 import { VECTOR_LAYERS, featuresInArea } from '../src/vector.js';
 import { fixture, json, mockFetch, testClient } from './helpers/mock-fetch.js';
 
@@ -116,4 +117,89 @@ describe('featuresInArea', () => {
     const res = await featuresInArea(testClient(server.fetch), 'ch.example.unknown', ROOT);
     expect(res.attribution[0]).toMatchObject({ datasetId: 'ch.example.unknown', termsVerifiedOn: null });
   });
+
+  it('returns the partial result with an explicit flag when maxRequests runs out, instead of throwing it away', async () => {
+    const server = identifyServer(points(1500));
+    const res = await featuresInArea(testClient(server.fetch), LAYER, ROOT, { maxRequests: 3 });
+    expect(res.requests).toBe(3);
+    expect(res.requestLimitReached).toBe(true);
+    expect(res.truncated).toBe(true);
+    expect(res.unqueriedCells.length).toBeGreaterThan(0);
+    expect(res.features.length).toBeGreaterThan(0);
+    expect(res.features.length).toBeLessThan(1500);
+  });
+
+  it('is not truncated when complete', async () => {
+    const res = await featuresInArea(testClient(identifyServer(points(50)).fetch), LAYER, ROOT);
+    expect([res.truncated, res.requestLimitReached, res.unqueriedCells, res.bboxFallbackCells]).toEqual([false, false, [], []]);
+  });
+
+  it('flags a depth-limited result as truncated too', async () => {
+    const res = await featuresInArea(testClient(identifyServer(points(3000)).fetch), LAYER, ROOT, { maxDepth: 1 });
+    expect(res.truncated).toBe(true);
+    expect(res.requestLimitReached).toBe(false);
+  });
 });
+
+/** A many-vertex, roughly circular polygon inside ROOT. */
+function circle(n: number, cx = 2_600_500, cy = 1_199_500, r = 400): number[][] {
+  const ring = Array.from({ length: n }, (_, i) => [cx + r * Math.cos((2 * Math.PI * i) / n), cy + r * Math.sin((2 * Math.PI * i) / n)]);
+  return [...ring, ring[0]];
+}
+
+describe('featuresInArea with long polygons and MultiPolygons', () => {
+  it('keeps every request URL short: a 600-vertex polygon falls back to the bounding box, clipped client-side', async () => {
+    const pts = points(60);
+    const ring = circle(600);
+    const poly = { type: 'Polygon' as const, coordinates: [ring] };
+    const server = identifyServer(pts);
+    const res = await featuresInArea(testClient(server.fetch), LAYER, poly);
+    expect(res.bboxFallbackCells.length).toBeGreaterThan(0);
+    expect(res.requests).toBe(server.calls.length);
+    for (const c of server.calls) expect(c.href.length).toBeLessThanOrEqual(6000);
+    // Features the bounding-box query returned beside the polygon are dropped again.
+    const expected = pts.filter((p) => inRing(p, ring)).length;
+    expect(res.features).toHaveLength(expected);
+    expect(expected).toBeGreaterThan(0);
+    expect(expected).toBeLessThan(60);
+  });
+
+  it('sends the exact polygon, and reports no fallback, when the URL is short enough', async () => {
+    const server = identifyServer(points(60));
+    const tri = { type: 'Polygon' as const, coordinates: [[[2_600_100, 1_199_100], [2_600_900, 1_199_100], [2_600_100, 1_199_900], [2_600_100, 1_199_100]]] };
+    const res = await featuresInArea(testClient(server.fetch), LAYER, tri);
+    expect(res.bboxFallbackCells).toEqual([]);
+    expect(server.calls[0].searchParams.get('geometryType')).toBe('esriGeometryPolygon');
+  });
+
+  it('accepts a MultiPolygon: each member is queried, results merged without duplicates', async () => {
+    const pts = points(300);
+    const a = [[2_600_050, 1_199_050], [2_600_450, 1_199_050], [2_600_450, 1_199_450], [2_600_050, 1_199_450], [2_600_050, 1_199_050]];
+    const b = [[2_600_550, 1_199_550], [2_600_950, 1_199_550], [2_600_950, 1_199_950], [2_600_550, 1_199_950], [2_600_550, 1_199_550]];
+    const res = await featuresInArea(testClient(identifyServer(pts).fetch), LAYER, { type: 'MultiPolygon', coordinates: [[a], [b]] });
+    const expected = pts.filter((p) => inRing(p, a) || inRing(p, b)).length;
+    expect(res.features).toHaveLength(expected);
+    expect(new Set(res.features.map((f) => f.id)).size).toBe(expected);
+    expect(res.requests).toBe(2);
+  });
+
+  it('rejects an unsupported area geometry with a clear error', async () => {
+    const bad = { type: 'Point', coordinates: [2_600_000, 1_199_000] } as never;
+    await expect(featuresInArea(testClient(identifyServer([]).fetch), LAYER, bad)).rejects.toThrow(/unsupported area geometry/);
+  });
+});
+
+describe('geometryIntersectsPolygon', () => {
+  const sq = { type: 'Polygon' as const, coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] };
+  const holed = { type: 'Polygon' as const, coordinates: [sq.coordinates[0], [[4, 4], [6, 4], [6, 6], [4, 6], [4, 4]]] };
+  it('handles points, lines crossing without a vertex inside, containment both ways, and holes', () => {
+    expect(geometryIntersectsPolygon({ type: 'Point', coordinates: [5, 5] }, sq)).toBe(true);
+    expect(geometryIntersectsPolygon({ type: 'Point', coordinates: [15, 5] }, sq)).toBe(false);
+    expect(geometryIntersectsPolygon({ type: 'LineString', coordinates: [[-5, 5], [15, 5]] }, sq)).toBe(true);
+    expect(geometryIntersectsPolygon({ type: 'LineString', coordinates: [[-5, 11], [15, 11]] }, sq)).toBe(false);
+    expect(geometryIntersectsPolygon({ type: 'Polygon', coordinates: [[[-5, -5], [20, -5], [20, 20], [-5, 20], [-5, -5]]] }, sq)).toBe(true);
+    expect(geometryIntersectsPolygon({ type: 'Polygon', coordinates: [[[2, 2], [3, 2], [3, 3], [2, 2]]] }, sq)).toBe(true);
+    expect(geometryIntersectsPolygon({ type: 'Point', coordinates: [5, 5] }, holed)).toBe(false);
+  });
+});
+

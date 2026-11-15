@@ -17,6 +17,7 @@ import { attributionFor } from './attribution.js';
 import type { Attribution } from './contracts.js';
 import type { HttpClient } from './http.js';
 import { cantonOerebService, type CantonOerebService } from './oereb-cantons.js';
+import { assertLv95Point } from './lv95.js';
 import { isEgrid, parcelByEgrid } from './parcel.js';
 
 export const OEREB_REGISTER_LAYER = 'ch.swisstopo-vd.stand-oerebkataster';
@@ -118,6 +119,7 @@ export async function oerebExtractsAtPoint(
   y: number,
   options: { signal?: AbortSignal } = {},
 ): Promise<OerebExtractRef[]> {
+  assertLv95Point(x, y);
   const hits = await identify(http, {
     layer: OEREB_REGISTER_LAYER,
     geometry: { kind: 'point', x, y },

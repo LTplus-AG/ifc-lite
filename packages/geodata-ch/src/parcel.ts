@@ -15,7 +15,7 @@ import { featureProps, findExact, identify, str, type Api3Feature } from './api3
 import { attributionFor } from './attribution.js';
 import type { MultiPolygonGeometry, Parcel, PolygonGeometry } from './contracts.js';
 import type { HttpClient } from './http.js';
-import { LV95, polygonArea } from './lv95.js';
+import { assertLv95Point, LV95, polygonArea } from './lv95.js';
 
 export const PARCEL_LAYER = 'ch.kantone.cadastralwebmap-farbe';
 
@@ -88,6 +88,7 @@ export async function parcelsAtPoint(
   y: number,
   options: { signal?: AbortSignal } = {},
 ): Promise<SwissParcel[]> {
+  assertLv95Point(x, y);
   const hits = await identify(http, {
     layer: PARCEL_LAYER,
     geometry: { kind: 'point', x, y },

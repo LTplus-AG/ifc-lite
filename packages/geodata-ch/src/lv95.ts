@@ -31,6 +31,30 @@ export function isLv95Northing(y: number): boolean {
   return y >= LV95_NORTHING[0] && y <= LV95_NORTHING[1];
 }
 
+/** True when `(x, y)` fits LV95 only with the two values exchanged. */
+function looksSwapped(x: number, y: number): boolean {
+  return isLv95Easting(y) && isLv95Northing(x);
+}
+
+const SWAPPED_HINT =
+  'the arguments look swapped: LV95 easting (x, ~2.4e6-2.9e6) comes first, northing (y, ~1.03e6-1.35e6) second';
+
+/**
+ * Throws unless `(x, y)` is a plausible LV95 point, with x the easting and y
+ * the northing. Swapped arguments are the likeliest mistake and would
+ * otherwise query the wrong place and return an empty, valid-looking result.
+ */
+export function assertLv95Point(x: number, y: number): void {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new RangeError(`invalid LV95 point (${x}, ${y}): need finite easting and northing`);
+  }
+  if (isLv95Easting(x) && isLv95Northing(y)) return;
+  throw new RangeError(
+    `point (${x}, ${y}) is not in LV95 (EPSG:2056)` +
+      (looksSwapped(x, y) ? `; ${SWAPPED_HINT}` : ': eastings are ~2.4e6-2.9e6, northings ~1.03e6-1.35e6'),
+  );
+}
+
 /** Throws unless the box is well-formed and lies in the LV95 range of Switzerland. */
 export function assertLv95BBox(b: BBox): void {
   const finite = [b.minX, b.minY, b.maxX, b.maxY].every(Number.isFinite);
@@ -38,13 +62,17 @@ export function assertLv95BBox(b: BBox): void {
     throw new RangeError(`invalid bbox ${JSON.stringify(b)}: need finite minX < maxX and minY < maxY`);
   }
   if (!isLv95Easting(b.minX) || !isLv95Easting(b.maxX) || !isLv95Northing(b.minY) || !isLv95Northing(b.maxY)) {
+    const swapped = looksSwapped(b.minX, b.minY) && looksSwapped(b.maxX, b.maxY);
     throw new RangeError(
-      `bbox ${JSON.stringify(b)} is not in LV95 (EPSG:2056): eastings are ~2.4e6-2.9e6, northings ~1.03e6-1.35e6`,
+      `bbox ${JSON.stringify(b)} is not in LV95 (EPSG:2056)` +
+        (swapped
+          ? `; the axes look swapped: minX/maxX are the eastings (~2.4e6-2.9e6), minY/maxY the northings (~1.03e6-1.35e6)`
+          : ': eastings are ~2.4e6-2.9e6, northings ~1.03e6-1.35e6'),
     );
   }
 }
 
-/** Approximate LV95 → WGS84 (degrees). For query boxes only. */
+/** Approximate LV95 → WGS84 (degrees). Internal; error up to about 3 m (see the module comment). */
 export function lv95ToWgs84Approx(e: number, n: number): { lon: number; lat: number } {
   const y = (e - 2_600_000) / 1e6;
   const x = (n - 1_200_000) / 1e6;
@@ -54,7 +82,7 @@ export function lv95ToWgs84Approx(e: number, n: number): { lon: number; lat: num
   return { lon: (lon * 100) / 36, lat: (lat * 100) / 36 };
 }
 
-/** Approximate WGS84 (degrees) → LV95. For coarse extents only. */
+/** Approximate WGS84 (degrees) → LV95. Internal; error up to about 3 m (see the module comment). */
 export function wgs84ToLv95Approx(lon: number, lat: number): { e: number; n: number } {
   const p = (lat * 3600 - 169_028.66) / 10_000;
   const l = (lon * 3600 - 26_782.5) / 10_000;
@@ -65,12 +93,19 @@ export function wgs84ToLv95Approx(lon: number, lat: number): { e: number; n: num
 }
 
 /**
+ * Allowance for the formulas' error on top of the caller's padding: the
+ * worst measured error is 3.04 m (see the module comment), so 10 m is more
+ * than three times that.
+ */
+export const APPROX_ERROR_ALLOWANCE_METRES = 10;
+
+/**
  * A WGS84 `[west, south, east, north]` box that contains the LV95 box with
- * at least `padMetres` to spare on each side, plus 10 m for the error of
- * the approximate formulas.
+ * at least `padMetres` to spare on each side, plus
+ * `APPROX_ERROR_ALLOWANCE_METRES` for the error of the approximate formulas.
  */
 export function paddedWgs84BBox(b: BBox, padMetres = 50): [number, number, number, number] {
-  const pad = padMetres + 10;
+  const pad = padMetres + APPROX_ERROR_ALLOWANCE_METRES;
   const corners = [
     lv95ToWgs84Approx(b.minX - pad, b.minY - pad),
     lv95ToWgs84Approx(b.minX - pad, b.maxY + pad),
@@ -178,4 +213,81 @@ function lerpAtX(p: Position, q: Position, x: number): Position {
 function lerpAtY(p: Position, q: Position, y: number): Position {
   const t = (y - p[1]) / (q[1] - p[1]);
   return [p[0] + t * (q[0] - p[0]), y];
+}
+
+/** Even-odd containment across all rings (holes included); boundary points count as inside only by chance. */
+function pointInRings(x: number, y: number, rings: Position[][]): boolean {
+  let inside = false;
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function orient(a: Position, b: Position, c: Position): number {
+  const v = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  return v > 0 ? 1 : v < 0 ? -1 : 0;
+}
+
+function onSegment(a: Position, b: Position, p: Position): boolean {
+  return (
+    p[0] >= Math.min(a[0], b[0]) && p[0] <= Math.max(a[0], b[0]) &&
+    p[1] >= Math.min(a[1], b[1]) && p[1] <= Math.max(a[1], b[1])
+  );
+}
+
+/** Closed segments `ab` and `cd` share a point (touching counts). */
+function segmentsIntersect(a: Position, b: Position, c: Position, d: Position): boolean {
+  const o1 = orient(a, b, c);
+  const o2 = orient(a, b, d);
+  const o3 = orient(c, d, a);
+  const o4 = orient(c, d, b);
+  if (o1 !== o2 && o3 !== o4) return true;
+  return (o1 === 0 && onSegment(a, b, c)) || (o2 === 0 && onSegment(a, b, d)) ||
+    (o3 === 0 && onSegment(c, d, a)) || (o4 === 0 && onSegment(c, d, b));
+}
+
+function pathCrossesRings(path: Position[], rings: Position[][]): boolean {
+  for (let i = 1; i < path.length; i++) {
+    for (const ring of rings) {
+      for (let j = 1; j < ring.length; j++) {
+        if (segmentsIntersect(path[i - 1], path[i], ring[j - 1], ring[j])) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a feature geometry intersects a polygon (touching counts, as in
+ * the service's tolerance-0 `identify`). Used to clip results client-side
+ * when a polygon was too long to send and its bounding box was queried.
+ */
+export function geometryIntersectsPolygon(g: Geometry, poly: PolygonGeometry): boolean {
+  const gb = geometryBBox(g);
+  const pb = geometryBBox(poly);
+  if (gb.maxX < pb.minX || gb.minX > pb.maxX || gb.maxY < pb.minY || gb.minY > pb.maxY) return false;
+  const rings = poly.coordinates;
+  const pointIn = (p: Position): boolean => pointInRings(p[0], p[1], rings);
+  const lineHits = (line: Position[]): boolean => line.some(pointIn) || pathCrossesRings(line, rings);
+  const polygonHits = (fr: Position[][]): boolean =>
+    fr.some((r) => r.some(pointIn) || pathCrossesRings(r, rings)) || pointInRings(rings[0][0][0], rings[0][0][1], fr);
+  switch (g.type) {
+    case 'Point':
+      return pointIn(g.coordinates);
+    case 'MultiPoint':
+      return g.coordinates.some(pointIn);
+    case 'LineString':
+      return lineHits(g.coordinates);
+    case 'MultiLineString':
+      return g.coordinates.some(lineHits);
+    case 'Polygon':
+      return polygonHits(g.coordinates);
+    case 'MultiPolygon':
+      return g.coordinates.some(polygonHits);
+  }
 }

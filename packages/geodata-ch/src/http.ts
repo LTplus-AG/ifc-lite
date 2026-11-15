@@ -43,11 +43,22 @@ export interface HttpOptions {
   baseDelayMs?: number;
   /** Cap on one backoff delay in ms, before jitter. Default 32000. */
   maxDelayMs?: number;
-  /** Sent as `User-Agent` where the runtime allows it (not browsers). Generic by default. */
-  userAgent?: string;
-  /** Injected for tests. */
-  sleep?: (ms: number) => Promise<void>;
-  /** Injected for tests; returns ms. */
+  /**
+   * Sent as `User-Agent` only where the runtime allows it without a CORS
+   * preflight: Node, Deno and Bun. Never sent from browsers or web workers.
+   * Generic by default; `null` sends none.
+   */
+  userAgent?: string | null;
+  /**
+   * Per-attempt timeout in ms, covering headers and body. A stalled socket
+   * aborts the attempt with an `HttpTimeoutError`, which is retried like any
+   * other transient failure within `maxRetries`. Default 30 000; `0` or
+   * `Infinity` disables it.
+   */
+  timeoutMs?: number;
+  /** Injected for tests. Receives the request's abort signal. */
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  /** Injected for tests; returns epoch ms (also the reference for an HTTP-date `Retry-After`). */
   now?: () => number;
   /** Injected for tests; returns [0, 1). */
   random?: () => number;
@@ -65,6 +76,17 @@ export class HttpError extends Error {
   }
 }
 
+/** A single attempt exceeded `timeoutMs`. `status` is `null`. */
+export class HttpTimeoutError extends HttpError {
+  constructor(
+    url: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`GET ${url} timed out after ${timeoutMs} ms`, url, null);
+    this.name = 'HttpTimeoutError';
+  }
+}
+
 export interface RequestOptions {
   headers?: Record<string, string>;
   signal?: AbortSignal;
@@ -73,6 +95,7 @@ export interface RequestOptions {
 }
 
 export const DEFAULT_USER_AGENT = 'ifc-lite-geodata-ch';
+export const DEFAULT_TIMEOUT_MS = 30_000;
 
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 
@@ -102,8 +125,48 @@ function hostOf(url: string): string {
   }
 }
 
-function isBrowser(): boolean {
-  return typeof (globalThis as { document?: unknown }).document !== 'undefined';
+/**
+ * `User-Agent` may be set where the runtime is a server runtime (Node, Deno,
+ * Bun). Detected by capability, not by the absence of `document`: a web
+ * worker has no `document` yet forbids or preflights the header, so any
+ * browser-like global rules it out even when a bundler polyfills `process`.
+ */
+export function canSetUserAgent(): boolean {
+  const g = globalThis as {
+    window?: unknown;
+    document?: unknown;
+    WorkerGlobalScope?: unknown;
+    Deno?: unknown;
+    Bun?: unknown;
+    process?: { versions?: { node?: string } };
+  };
+  if (g.window !== undefined || g.document !== undefined || g.WorkerGlobalScope !== undefined) return false;
+  return g.Deno !== undefined || g.Bun !== undefined || typeof g.process?.versions?.node === 'string';
+}
+
+/** One attempt's signal: aborts on the caller's signal or on the timeout, and says which. */
+function attemptSignal(
+  caller: AbortSignal | undefined,
+  timeoutMs: number,
+): { signal: AbortSignal | undefined; timedOut: () => boolean; dispose: () => void } {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return { signal: caller, timedOut: () => false, dispose: () => {} };
+  }
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const ctl = new AbortController();
+  const onTimeout = (): void => ctl.abort(timeout.reason);
+  const onCaller = (): void => ctl.abort(caller?.reason);
+  timeout.addEventListener('abort', onTimeout, { once: true });
+  if (caller?.aborted) onCaller();
+  else caller?.addEventListener('abort', onCaller, { once: true });
+  return {
+    signal: ctl.signal,
+    timedOut: () => timeout.aborted && !caller?.aborted,
+    dispose: () => {
+      timeout.removeEventListener('abort', onTimeout);
+      caller?.removeEventListener('abort', onCaller);
+    },
+  };
 }
 
 export class HttpClient {
@@ -113,8 +176,9 @@ export class HttpClient {
   private readonly maxRetries: number;
   private readonly baseDelayMs: number;
   private readonly maxDelayMs: number;
-  private readonly userAgent: string;
-  private readonly sleepImpl?: (ms: number) => Promise<void>;
+  private readonly userAgent: string | null;
+  private readonly timeoutMs: number;
+  private readonly sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
   private readonly now: () => number;
   private readonly random: () => number;
   /** Next permitted send time per host. */
@@ -133,7 +197,9 @@ export class HttpClient {
     this.maxRetries = options.maxRetries ?? 5;
     this.baseDelayMs = options.baseDelayMs ?? 1000;
     this.maxDelayMs = options.maxDelayMs ?? 32000;
-    this.userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
+    this.userAgent = canSetUserAgent() ? (options.userAgent === undefined ? DEFAULT_USER_AGENT : options.userAgent) : null;
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!(this.timeoutMs >= 0)) throw new Error('timeoutMs must be >= 0');
     this.sleepImpl = options.sleep;
     this.now = options.now ?? (() => Date.now());
     this.random = options.random ?? Math.random;
@@ -141,7 +207,7 @@ export class HttpClient {
 
   private sleep(ms: number, signal?: AbortSignal): Promise<void> {
     if (ms <= 0) return Promise.resolve();
-    return this.sleepImpl ? this.sleepImpl(ms) : defaultSleep(ms, signal);
+    return this.sleepImpl ? this.sleepImpl(ms, signal) : defaultSleep(ms, signal);
   }
 
   /** Reserve the next send slot for `host` and wait for it. */
@@ -153,9 +219,13 @@ export class HttpClient {
   }
 
   private backoffMs(attempt: number, retryAfter: string | null): number {
-    if (retryAfter !== null) {
-      const secs = Number(retryAfter);
+    const ra = retryAfter?.trim();
+    if (ra) {
+      // Seconds form, or an HTTP-date (RFC 9110 §10.2.3); both capped like the backoff.
+      const secs = Number(ra);
       if (Number.isFinite(secs) && secs >= 0) return Math.min(secs * 1000, this.maxDelayMs);
+      const at = Date.parse(ra);
+      if (Number.isFinite(at)) return Math.min(Math.max(at - this.now(), 0), this.maxDelayMs);
     }
     const exp = Math.min(this.baseDelayMs * 2 ** attempt, this.maxDelayMs);
     return exp + this.random() * this.baseDelayMs;
@@ -170,38 +240,42 @@ export class HttpClient {
       if (hit) return hit;
     }
     const headers: Record<string, string> = { ...options.headers };
-    if (!isBrowser()) headers['User-Agent'] = this.userAgent;
+    if (this.userAgent) headers['User-Agent'] = this.userAgent;
     const host = hostOf(url);
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       options.signal?.throwIfAborted();
       await this.throttle(host, options.signal);
-      let res: Response;
+      const attemptCtl = attemptSignal(options.signal, this.timeoutMs);
+      let retryAfter: string | null = null;
       try {
         this.requestCount++;
-        res = await this.fetchImpl(url, { headers, signal: options.signal });
+        const res = await this.fetchImpl(url, { headers, signal: attemptCtl.signal });
+        if (res.ok) {
+          const out: CachedResponse = {
+            status: res.status,
+            headers: Object.fromEntries(res.headers.entries()),
+            body: await res.arrayBuffer(),
+          };
+          if (this.cache && !options.noCache) await this.cache.set(key, out);
+          return out;
+        }
+        const body = await res.text().catch((err: unknown) => `<unreadable body: ${String(err)}>`);
+        if (!RETRYABLE_STATUS.has(res.status) || attempt === this.maxRetries) {
+          throw new HttpError(`GET ${url} failed with HTTP ${res.status}`, url, res.status, body.slice(0, 500));
+        }
+        lastError = new HttpError(`HTTP ${res.status}`, url, res.status);
+        retryAfter = res.headers.get('retry-after');
       } catch (err) {
         if (options.signal?.aborted) throw err;
-        lastError = err;
-        if (attempt < this.maxRetries) await this.sleep(this.backoffMs(attempt, null), options.signal);
-        continue;
+        if (err instanceof HttpError && err.status !== null) throw err; // final non-retryable status
+        lastError = attemptCtl.timedOut() ? new HttpTimeoutError(url, this.timeoutMs) : err;
+      } finally {
+        attemptCtl.dispose();
       }
-      if (res.ok) {
-        const out: CachedResponse = {
-          status: res.status,
-          headers: Object.fromEntries(res.headers.entries()),
-          body: await res.arrayBuffer(),
-        };
-        if (this.cache && !options.noCache) await this.cache.set(key, out);
-        return out;
-      }
-      const body = await res.text().catch((err: unknown) => `<unreadable body: ${String(err)}>`);
-      if (!RETRYABLE_STATUS.has(res.status) || attempt === this.maxRetries) {
-        throw new HttpError(`GET ${url} failed with HTTP ${res.status}`, url, res.status, body.slice(0, 500));
-      }
-      lastError = new HttpError(`HTTP ${res.status}`, url, res.status);
-      await this.sleep(this.backoffMs(attempt, res.headers.get('retry-after')), options.signal);
+      if (attempt < this.maxRetries) await this.sleep(this.backoffMs(attempt, retryAfter), options.signal);
     }
+    if (lastError instanceof HttpTimeoutError) throw lastError;
     throw new HttpError(
       `GET ${url} failed after ${this.maxRetries + 1} attempts: ${String(lastError)}`,
       url,

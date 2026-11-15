@@ -139,6 +139,7 @@ describe('elevationGrid', () => {
     const box = { minX: 2_600_200, minY: 1_199_500, maxX: 2_600_600, maxY: 1_200_300 };
     const grid = await elevationGrid(testClient(server.fetch), box, { resolution: 100 });
     expect(grid.missingTiles).toEqual(['2600-1200']);
+    expect(grid.hasData).toBe(true);
     const rowOf = (y: number): number => Math.round((box.maxY - y) / 100);
     for (let col = 0; col < grid.width; col++) {
       // Nodes north of the last pixel centre of 2600-1199 have no support.
@@ -146,6 +147,16 @@ describe('elevationGrid', () => {
       expect(grid.values[rowOf(1_199_900) * grid.width + col]).toBeCloseTo(plane(box.minX + col * 100, 1_199_900), 3);
     }
     expect(grid.noDataCount).toBe(4 * grid.width);
+  });
+
+  it('gives a box wholly outside coverage as an all-NaN grid with missingTiles and hasData false', async () => {
+    const server = terrainServer({}, []);
+    const grid = await elevationGrid(testClient(server.fetch), { minX: 2_700_000, minY: 1_100_000, maxX: 2_700_300, maxY: 1_100_300 }, { resolution: 100 });
+    expect(grid.missingTiles).toContain('2700-1100');
+    expect(grid.noDataCount).toBe(grid.width * grid.height);
+    expect(Array.from(grid.values).every(Number.isNaN)).toBe(true);
+    expect(grid.hasData).toBe(false);
+    expect(grid.sources).toEqual([]);
   });
 
   it('turns NoData pixels into NaN only where they contribute', async () => {

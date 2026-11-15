@@ -14,13 +14,17 @@
  *
  * Returned geometries are whole features, not clipped to the area: a road
  * crossing the boundary comes back entire, once.
+ *
+ * Nothing is dropped silently: hitting `maxRequests`, hitting `maxDepth` and
+ * falling back from an over-long polygon to its bounding box are all reported
+ * on the result.
  */
 
-import { featureProps, identify, IDENTIFY_MAX_LIMIT, type IdentifyGeometry } from './api3.js';
+import { featureProps, identify, identifyUrl, IDENTIFY_MAX_LIMIT, type IdentifyGeometry } from './api3.js';
 import { attributionFor, type DatasetId } from './attribution.js';
-import type { Attribution, BBox, Feature, FeatureQueryResult, PolygonGeometry } from './contracts.js';
+import type { Attribution, BBox, Feature, FeatureQueryResult, Geometry, MultiPolygonGeometry, PolygonGeometry } from './contracts.js';
 import type { HttpClient } from './http.js';
-import { assertLv95BBox, clipRingToBBox, geometryBBox, LV95 } from './lv95.js';
+import { assertLv95BBox, clipRingToBBox, geometryBBox, geometryIntersectsPolygon, LV95 } from './lv95.js';
 
 /** Layers this package has checked live, with the dataset whose terms apply. */
 export const VECTOR_LAYERS = {
@@ -57,21 +61,52 @@ export interface FeatureQueryOptions {
    * are reported in `truncatedCells`.
    */
   maxDepth?: number;
-  /** Refuse to issue more requests than this. Default 500. */
+  /**
+   * Stop after this many requests. Default 500. What was collected so far is
+   * returned with `requestLimitReached` and `truncated` set and the cells
+   * never queried in `unqueriedCells`; it is not thrown away.
+   */
   maxRequests?: number;
+  /**
+   * Longest request URL to send. A polygon travels as JSON in the GET query
+   * string, so a parcel with hundreds of vertices can exceed URL limits.
+   * Above this length a cell is queried by its bounding box instead and the
+   * features are clipped to the polygon here; those cells are reported in
+   * `bboxFallbackCells`. Default 6000.
+   */
+  maxUrlLength?: number;
   signal?: AbortSignal;
 }
 
-function isPolygon(a: BBox | PolygonGeometry): a is PolygonGeometry {
-  return (a as PolygonGeometry).type === 'Polygon';
+const DEFAULT_MAX_URL_LENGTH = 6000;
+
+function polygonsOf(area: BBox | PolygonGeometry | MultiPolygonGeometry): PolygonGeometry[] | null {
+  if (!('type' in area)) return null;
+  if (area.type === 'Polygon') return [area];
+  if (area.type === 'MultiPolygon') return area.coordinates.map((coordinates) => ({ type: 'Polygon', coordinates }));
+  throw new RangeError(`unsupported area geometry ${JSON.stringify((area as { type?: unknown }).type)}: pass a bbox, Polygon or MultiPolygon`);
 }
 
-/** The query geometry for one cell: the cell itself, or the polygon clipped to it (null when empty). */
-function cellGeometry(cell: BBox, polygon: PolygonGeometry | null): IdentifyGeometry | null {
-  if (!polygon) return { kind: 'envelope', bbox: cell };
+/**
+ * The query geometry for one cell: the cell itself, or the polygon clipped to
+ * it (null when empty). `fallback` is set when the clipped polygon's URL would
+ * exceed `maxUrlLength` and the cell's envelope is used instead.
+ */
+function cellGeometry(
+  layer: string,
+  cell: BBox,
+  polygon: PolygonGeometry | null,
+  maxUrlLength: number,
+): { geometry: IdentifyGeometry; fallback: boolean } | null {
+  if (!polygon) return { geometry: { kind: 'envelope', bbox: cell }, fallback: false };
   const rings = polygon.coordinates.map((r) => clipRingToBBox(r, cell));
   if (rings[0].length === 0) return null;
-  return { kind: 'polygon', polygon: { type: 'Polygon', coordinates: rings.filter((r) => r.length > 0) } };
+  const geometry: IdentifyGeometry = {
+    kind: 'polygon',
+    polygon: { type: 'Polygon', coordinates: rings.filter((r) => r.length > 0) },
+  };
+  if (identifyUrl({ layer, geometry, limit: IDENTIFY_MAX_LIMIT }).length <= maxUrlLength) return { geometry, fallback: false };
+  return { geometry: { kind: 'envelope', bbox: cell }, fallback: true };
 }
 
 function quarters(b: BBox): BBox[] {
@@ -88,28 +123,38 @@ function quarters(b: BBox): BBox[] {
 export async function featuresInArea(
   http: HttpClient,
   layer: string,
-  area: BBox | PolygonGeometry,
+  area: BBox | PolygonGeometry | MultiPolygonGeometry,
   options: FeatureQueryOptions = {},
 ): Promise<FeatureQueryResult> {
-  const polygon = isPolygon(area) ? area : null;
-  const root = polygon ? geometryBBox(polygon) : (area as BBox);
-  assertLv95BBox(root);
+  // A MultiPolygon is queried one member at a time and merged by feature id.
+  const polygons = polygonsOf(area);
+  const roots = polygons ? polygons.map((p) => ({ polygon: p, bbox: geometryBBox(p) })) : [{ polygon: null, bbox: area as BBox }];
+  for (const r of roots) assertLv95BBox(r.bbox);
   const maxDepth = options.maxDepth ?? 6;
   const maxRequests = options.maxRequests ?? 500;
+  const maxUrlLength = options.maxUrlLength ?? DEFAULT_MAX_URL_LENGTH;
 
   const byId = new Map<string, Feature>();
   const truncatedCells: BBox[] = [];
+  const bboxFallbackCells: BBox[] = [];
+  const unqueriedCells: BBox[] = [];
   let requests = 0;
-  const queue: Array<{ cell: BBox; depth: number }> = [{ cell: root, depth: 0 }];
+  const queue: Array<{ cell: BBox; depth: number; polygon: PolygonGeometry | null }> = roots.map((r) => ({
+    cell: r.bbox,
+    depth: 0,
+    polygon: r.polygon,
+  }));
   while (queue.length > 0) {
-    const { cell, depth } = queue.shift() as { cell: BBox; depth: number };
-    const geometry = cellGeometry(cell, polygon);
-    if (!geometry) continue;
+    const { cell, depth, polygon } = queue.shift() as { cell: BBox; depth: number; polygon: PolygonGeometry | null };
+    const query = cellGeometry(layer, cell, polygon, maxUrlLength);
+    if (!query) continue;
     if (requests >= maxRequests) {
-      throw new Error(`feature query on ${layer} needs more than maxRequests=${maxRequests} requests; narrow the area`);
+      unqueriedCells.push(cell);
+      continue;
     }
+    if (query.fallback) bboxFallbackCells.push(cell);
     requests++;
-    const hits = await identify(http, { layer, geometry, limit: IDENTIFY_MAX_LIMIT, signal: options.signal });
+    const hits = await identify(http, { layer, geometry: query.geometry, limit: IDENTIFY_MAX_LIMIT, signal: options.signal });
     for (const f of hits) {
       const id = `${f.layerBodId}:${f.featureId ?? f.id}`;
       if (!byId.has(id)) {
@@ -118,16 +163,27 @@ export async function featuresInArea(
     }
     // A full page may hide more features: split. (Multi-table layers can return more than the limit.)
     if (hits.length >= IDENTIFY_MAX_LIMIT) {
-      if (depth < maxDepth) queue.push(...quarters(cell).map((c) => ({ cell: c, depth: depth + 1 })));
+      if (depth < maxDepth) queue.push(...quarters(cell).map((c) => ({ cell: c, depth: depth + 1, polygon })));
       else truncatedCells.push(cell);
     }
   }
 
+  let features = [...byId.values()];
+  // Cells queried by bounding box return features beside the polygon: clip them here.
+  if (bboxFallbackCells.length > 0 && polygons) {
+    features = features.filter((f) => !f.geometry || polygons.some((p) => geometryIntersectsPolygon(f.geometry as Geometry, p)));
+  }
+
+  const requestLimitReached = unqueriedCells.length > 0;
   const dataset = LAYER_DATASET[layer];
   return {
-    features: [...byId.values()],
+    features,
     requests,
     truncatedCells,
+    requestLimitReached,
+    unqueriedCells,
+    truncated: requestLimitReached || truncatedCells.length > 0,
+    bboxFallbackCells,
     crs: LV95,
     attribution: [dataset ? attributionFor(dataset) : unrecordedLayerAttribution(layer)],
   };

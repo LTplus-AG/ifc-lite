@@ -220,6 +220,7 @@ export async function elevationGrid(http: HttpClient, bbox: BBox, options: Terra
     height: sampled.height,
     values: sampled.values,
     noDataCount: sampled.noDataCount,
+    hasData: sampled.noDataCount < sampled.width * sampled.height,
     sources,
     missingTiles: missing.sort(),
     attribution: [attributionFor('swissalti3d')],

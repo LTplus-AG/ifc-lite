@@ -14,6 +14,7 @@ import type {
   GeocodeResult,
   Geocoder,
   MapLayerDescriptor,
+  MultiPolygonGeometry,
   ParcelProvider,
   PolygonGeometry,
   TerrainProvider,
@@ -39,7 +40,7 @@ export interface SwissGeodata
   parcelsAtPoint(x: number, y: number, options?: { signal?: AbortSignal }): Promise<SwissParcel[]>;
   elevationGrid(bbox: BBox, options: TerrainOptions): Promise<ElevationGrid>;
   buildingTiles(bbox: BBox, options?: BuildingTileOptions): Promise<BuildingTileResult>;
-  features(layer: string, area: BBox | PolygonGeometry, options?: FeatureQueryOptions): Promise<FeatureQueryResult>;
+  features(layer: string, area: BBox | PolygonGeometry | MultiPolygonGeometry, options?: FeatureQueryOptions): Promise<FeatureQueryResult>;
   /** Where the parcel's ÖREB extract lives (register first, canton table as fallback). */
   oerebExtract(egrid: string, options?: { signal?: AbortSignal }): Promise<OerebExtractRef | null>;
   oerebExtractsAtPoint(x: number, y: number, options?: { signal?: AbortSignal }): Promise<OerebExtractRef[]>;

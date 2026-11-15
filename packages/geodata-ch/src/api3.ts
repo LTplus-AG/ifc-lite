@@ -68,6 +68,25 @@ function encodeGeometry(g: IdentifyGeometry): { geometryType: string; geometry: 
 }
 
 /**
+ * The GET URL `identify` sends. Exposed so callers can measure it: a polygon
+ * travels as JSON in the query string, so many vertices make a long URL.
+ */
+export function identifyUrl(p: IdentifyParams): string {
+  return (
+    `${API3_BASE}/all/MapServer/identify?` +
+    query({
+      ...encodeGeometry(p.geometry),
+      layers: `all:${p.layer}`,
+      tolerance: 0,
+      returnGeometry: p.returnGeometry ?? true,
+      geometryFormat: 'geojson',
+      sr: 2056,
+      limit: p.limit ?? IDENTIFY_MAX_LIMIT,
+    })
+  );
+}
+
+/**
  * Features of one layer intersecting a geometry (tolerance 0, LV95, GeoJSON).
  *
  * `mapExtent` and `imageDisplay` are deliberately omitted: with them the
@@ -76,19 +95,7 @@ function encodeGeometry(g: IdentifyGeometry): { geometryType: string; geometry: 
  * without one.
  */
 export async function identify(http: HttpClient, p: IdentifyParams): Promise<Api3Feature[]> {
-  const g = encodeGeometry(p.geometry);
-  const url =
-    `${API3_BASE}/all/MapServer/identify?` +
-    query({
-      ...g,
-      layers: `all:${p.layer}`,
-      tolerance: 0,
-      returnGeometry: p.returnGeometry ?? true,
-      geometryFormat: 'geojson',
-      sr: 2056,
-      limit: p.limit ?? IDENTIFY_MAX_LIMIT,
-    });
-  const res = await http.getJson<Api3Results>(url, { signal: p.signal });
+  const res = await http.getJson<Api3Results>(identifyUrl(p), { signal: p.signal });
   return res.results ?? [];
 }
 

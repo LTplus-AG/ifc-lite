@@ -69,7 +69,9 @@ export interface Sourced {
 
 export interface GeocodeCandidate {
   label: string;
+  /** Easting in `crs` (LV95: ~2.4e6-2.9e6). Always the first coordinate, whatever order the service used. */
   x: number;
+  /** Northing in `crs` (LV95: ~1.03e6-1.35e6). */
   y: number;
   crs: string;
   /** Provider-specific origin, e.g. `address`, `parcel`, `gg25`. */
@@ -83,6 +85,11 @@ export interface GeocodeResult extends Sourced {
   candidates: GeocodeCandidate[];
 }
 
+/**
+ * Address and place search. Candidates carry `x` = easting and `y` =
+ * northing in their `crs`, the same order every other method of this package
+ * takes coordinates in (`parcelsAtPoint(x, y)`, bounding boxes).
+ */
 export interface Geocoder {
   geocode(query: string, options?: { limit?: number; signal?: AbortSignal }): Promise<GeocodeResult>;
 }
@@ -108,7 +115,12 @@ export interface Parcel extends Sourced {
 
 export interface ParcelProvider {
   parcelById(id: string, options?: { signal?: AbortSignal }): Promise<Parcel | null>;
-  /** Every parcel whose geometry contains the point (overlapping rights can yield several). */
+  /**
+   * Every parcel whose geometry contains the point (overlapping rights can
+   * yield several). `x` is the easting, `y` the northing; implementations
+   * throw on arguments that are out of range or look swapped, rather than
+   * answering with an empty list.
+   */
   parcelsAtPoint(x: number, y: number, options?: { signal?: AbortSignal }): Promise<Parcel[]>;
 }
 
@@ -116,6 +128,16 @@ export interface ParcelProvider {
  * A regular elevation grid. Values are sampled at grid NODES:
  * `x = origin.x + col * resolution`, `y = origin.y - row * resolution`,
  * row-major from north to south. Missing data is `NaN`, never a substitute.
+ *
+ * A node that sits exactly on a corner of the source raster's pixels (pixel
+ * centres lie half a pixel inside) is the bilinear mean of the four
+ * surrounding pixels at the source resolution, equally weighted; a node on a
+ * pixel centre reads that pixel. Spacing finer than the source is therefore
+ * interpolation, not new information.
+ *
+ * A box wholly outside the provider's coverage is not an error: the grid has
+ * the requested shape, every value is `NaN`, `hasData` is `false` and
+ * `missingTiles` lists what was absent. Check `hasData` before using it.
  */
 export interface ElevationGrid extends Sourced {
   /** The CRS of the heights, e.g. `EPSG:5728` (LN02). */
@@ -129,7 +151,14 @@ export interface ElevationGrid extends Sourced {
   values: Float32Array;
   /** Number of `NaN` cells. Non-zero means part of the box has no data. */
   noDataCount: number;
-  /** Source rasters used, for provenance. */
+  /** `false` when every value is `NaN` (`noDataCount === width * height`), e.g. a box outside coverage. */
+  hasData: boolean;
+  /**
+   * Source rasters used, for provenance. `gsd` is the real resolution of the
+   * raster level that was read, in metres: it can be coarser than `resolution`
+   * (a 4 m overview for a 10 m request) and is never finer than the product
+   * offers, so it states how much detail the values carry.
+   */
   sources: Array<{ id: string; url: string; acquired: string | null; gsd: number }>;
   /** Tiles the box needs that the provider does not have. */
   missingTiles: string[];
@@ -151,7 +180,12 @@ export interface BuildingAsset {
   mediaType: string;
   /** Bytes, when the provider states it; `null` otherwise. */
   size: number | null;
-  /** Extent in the provider's projected CRS. Approximate when `extentApproximate`. */
+  /**
+   * Extent in the provider's projected CRS. When `extentApproximate` (always,
+   * for swisstopo), it is derived from the item's WGS84 bbox through
+   * swisstopo's approximate formulas, so it can be off by up to about 3 m.
+   * Use it to pick tiles, not to measure.
+   */
   extent: BBox;
   extentApproximate: boolean;
   acquired: string | null;
@@ -186,12 +220,32 @@ export interface FeatureQueryResult extends Sourced {
    * means the result may be incomplete in those cells.
    */
   truncatedCells: BBox[];
+  /**
+   * The request budget (`maxRequests`) ran out before every cell was
+   * queried. `features` holds what was collected, which is NOT complete;
+   * `unqueriedCells` says where to look.
+   */
+  requestLimitReached: boolean;
+  /** Cells never queried because the request budget ran out. */
+  unqueriedCells: BBox[];
+  /**
+   * `true` when the result may be incomplete for any reason: a cell still
+   * capped at the deepest split, or the request budget reached. Check this
+   * before treating `features` as every feature in the area.
+   */
+  truncated: boolean;
+  /**
+   * Cells whose polygon was too long to send in a GET URL and were queried by
+   * their bounding box instead, with `features` clipped to the polygon
+   * afterwards. Empty when every cell was queried with the exact polygon.
+   */
+  bboxFallbackCells: BBox[];
 }
 
 export interface VectorFeatureProvider {
   features(
     layer: string,
-    area: BBox | PolygonGeometry,
+    area: BBox | PolygonGeometry | MultiPolygonGeometry,
     options?: { signal?: AbortSignal },
   ): Promise<FeatureQueryResult>;
 }

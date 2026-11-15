@@ -20,6 +20,12 @@ const SWISSTOPO_OGD = {
   termsUrl: 'https://www.swisstopo.admin.ch/en/terms-of-use-free-geodata-and-geoservices',
 };
 
+const SWISSIMAGE_PRODUCT_PAGE = 'https://www.swisstopo.admin.ch/en/orthoimage-swissimage-10';
+
+/** The OGD terms list datasets whose source line differs from "© swisstopo". */
+const TERMS_NAME_OTHER_SOURCES =
+  'The swisstopo terms name datasets that need a different source line than "© swisstopo"; the exact wording is in each dataset\'s documentation';
+
 const FSDI_FAIR_USE =
   'FSDI fair use: access may be restricted on excessive use; obtain whole datasets via the download service, not by scraping web services';
 
@@ -28,7 +34,7 @@ function swisstopo(datasetId: string, extra: string[] = []): Attribution {
     datasetId,
     text: '© swisstopo',
     ...SWISSTOPO_OGD,
-    restrictions: [FSDI_FAIR_USE, ...extra],
+    restrictions: [FSDI_FAIR_USE, ...extra, TERMS_NAME_OTHER_SOURCES],
     termsVerifiedOn: VERIFIED,
   };
 }
@@ -43,10 +49,14 @@ export const DATASETS = {
   swisstlm3d: swisstopo('swisstlm3d'),
   swissimage: {
     datasetId: 'swissimage',
-    // The layer's attribution in api3 layersConfig, which the map viewer shows.
+    // The layer-level text from the api3 layer configuration, which the map viewer shows.
     text: '© CNES, Spot Image, swisstopo, NPOC',
     ...SWISSTOPO_OGD,
-    restrictions: [FSDI_FAIR_USE],
+    restrictions: [
+      FSDI_FAIR_USE,
+      `This text is the layer-level attribution from the api3 layer configuration. The product page states the source line per vintage and is authoritative: ${SWISSIMAGE_PRODUCT_PAGE}`,
+      TERMS_NAME_OTHER_SOURCES,
+    ],
     termsVerifiedOn: VERIFIED,
   },
   pixelkarte: swisstopo('pixelkarte'),

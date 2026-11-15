@@ -30,7 +30,8 @@ export { MergedExporter, type MergeModelInput, type MergeExportOptions, type Mer
 export { collectReferencedEntityIds, getVisibleEntityIds } from './reference-collector.js';
 export { renumberStepIds, type RenumberStepIdsOptions, type RenumberStepIdsResult } from './renumber-step-ids.js';
 export { collectStyleEntities } from './style-closure.js';
-export { convertEntityType, convertStepLine, needsConversion, describeConversion, type IfcSchemaVersion } from './schema-converter.js';
+export { convertEntityType, convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
+export { describeConversion } from './schema-conversion-description.js';
 export {
   analyzeConversionLoss,
   classifyEntityTypeConversion,

@@ -28,7 +28,13 @@ export type StepValue =
   | undefined
   | StepValue[]
   | EntityRef
+  | { literal: string }
   | EnumValue;
+
+/** Quote text literally, including STEP-looking `$`, `*`, references and enums. */
+export function stepString(value: string): { literal: string } {
+  return { literal: value };
+}
 
 /**
  * Entity reference (#123)
@@ -123,6 +129,9 @@ export function formatStepReal(value: number): string {
  * Serialize a single value to STEP format
  */
 export function serializeValue(value: StepValue): string {
+  if (value && typeof value === 'object' && 'literal' in value) {
+    return "'" + escapeStepString(value.literal) + "'";
+  }
   // Null/undefined -> $
   if (value === null || value === undefined) {
     return '$';

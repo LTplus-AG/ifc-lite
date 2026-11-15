@@ -256,7 +256,8 @@ export function planRhinoTree(
  * and its parent row (a transparent layer has no row), is off. An object's
  * starts off when it is hidden on its own or such a layer is off; a merged
  * object whose parts Rhino hides for different causes starts off too. A row
- * that stands for an object hidden on its own comes back without that object.
+ * that stands for an object comes back without that object when the object is
+ * hidden on its own or sits behind an off layer below the row's own.
  */
 export function planRhinoContainerVisibility(
   result: RhinoImport,
@@ -280,13 +281,17 @@ export function planRhinoContainerVisibility(
   const selfOff = new Set<number>();
   // `hidden` with neither cause set is a merged entity whose parts are hidden for different causes.
   const mixedCauses = (entity: RhinoImport['entities'][number]) => entity.hidden && !entity.hiddenByObject && !entity.hiddenByLayer;
-  const hiddenOnItsOwn = new Set(result.entities.flatMap((entity, index) =>
-    (entity.hiddenByObject || mixedCauses(entity) ? [entityExpressId(index)] : [])));
-  // A row that stands for an object: that object's own layer may be a sublayer of the row's.
-  const objectOfRow = new Map<number, RhinoImport['entities'][number]>();
+  // One pass: which objects are hidden on their own, and the object each object-backed row stands for.
   const objectRows = new Set(tree.containers.filter((container) => container.fromEntity).map((container) => container.expressId));
-  result.entities.forEach((entity, index) => { if (objectRows.has(entityExpressId(index))) objectOfRow.set(entityExpressId(index), entity); });
+  const hiddenOnItsOwn = new Set<number>();
+  const objectOfRow = new Map<number, RhinoImport['entities'][number]>();
+  result.entities.forEach((entity, index) => {
+    const id = entityExpressId(index);
+    if (entity.hiddenByObject || mixedCauses(entity)) hiddenOnItsOwn.add(id);
+    if (objectRows.has(id)) objectOfRow.set(id, entity);
+  });
   for (const container of tree.containers) {
+    // A row that stands for an object: that object's own layer may be a sublayer of the row's.
     const object = objectOfRow.get(container.expressId);
     if (object && (hiddenOnItsOwn.has(container.expressId) || !layersOn(object.layer, container.layer))) selfOff.add(container.expressId);
     if (container.parent === null) continue;

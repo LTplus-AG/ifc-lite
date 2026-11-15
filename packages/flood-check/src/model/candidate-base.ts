@@ -43,6 +43,8 @@ export interface CandidateContext {
   storeyLevel: ReadonlyMap<number, number>;
   groundLevel: number;
   footprint: readonly (readonly MapPoint[])[];
+  /** The footprint's courtyard rings (`footprintCourtyards`): open ground, not inside the building. */
+  courtyards?: ReadonlySet<number>;
   aboveGroundScope: number;
   boundaryTolerance: number;
   /**
@@ -178,7 +180,7 @@ export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host:
   // More than the tolerance OUTSIDE the footprint, an element cannot be interior, whatever it states (the footprint is then
   // marked partial by the extraction).
   if (ctx.footprint.length > 0) {
-    const out = outlineDistance(at, ctx.footprint);
+    const out = outlineDistance(at, ctx.footprint, ctx.courtyards);
     if (Number.isFinite(out) && out > ctx.boundaryTolerance) {
       return `${out.toFixed(2)} m outside the footprint, so it cannot be interior (kept${own === false || hostExternal === false ? ' despite IsExternal = false' : ''}, and the footprint is partial: it misses this part of the building)`;
     }
@@ -186,7 +188,7 @@ export function facadeReason(ctx: CandidateContext, entity: DecodedEntity, host:
   if (own === false || hostExternal === false) return { not: `not in the façade: ${own === false ? 'it' : 'its host'} states IsExternal = false` };
   // No outline to test against (no slab, no external wall): keep it rather than lose every façade element.
   if (ctx.footprint.length === 0) return 'IsExternal not stated and no footprint to test against (kept conservatively)';
-  const d = outlineDistance(at, ctx.footprint);
+  const d = outlineDistance(at, ctx.footprint, ctx.courtyards);
   if (Number.isFinite(d) && Math.abs(d) <= ctx.boundaryTolerance) return `within ${ctx.boundaryTolerance} m of the footprint outline (IsExternal not stated)`;
   const doubt = footprintDoubt(ctx, d);
   if (doubt) return `IsExternal not stated, ${doubt}`;

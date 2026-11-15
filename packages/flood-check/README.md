@@ -58,8 +58,9 @@ entities, properties and containment from the parsed store. No meshing.
   reference stays unconfirmed and no exclusion rests on its level. The check **refuses** when it is implausible against the terrain
   (see "Height reference" below).
 - **Footprint**: `footprint` option (for example a cadastral outline; a point
-  inside any ring is inside, so a courtyard given as its own ring is filled
-  and elements facing it get no reassuring outcome, `courtyard-ring`), else
+  ring lying wholly inside the others is a courtyard, open ground for every
+  distance and outline test, and elements facing it get no reassuring
+  outcome, `courtyard-ring`), else
   the outlines of the ground storey's floor slabs (`FootPrint` curve or the
   extruded `Body` profile; `slab-outline`, or `slab-outline-voids-filled`
   when a slab profile has voids or its `FootPrint` more than one curve,
@@ -103,11 +104,14 @@ entities, properties and containment from the parsed store. No meshing.
   inside the building: an element there is anchored on the real façade, the
   offset is reported (`anchor-moved`), and the façade test measures its
   distance to that outline; a passage 1 m wide or wider stays open ground.
-  The footprint's quality notes record closed gaps. A courtyard ring is one
+  The footprint's quality notes record closed gaps. A courtyard ring exists
+  only in a given footprint (slab outlines and wall loops are material: a
+  slab lying within another, a finish on the structure, is no hole): a ring
   whose whole boundary lies inside the union of the others (its edges, not
-  only its vertices); it is treated as open ground, so a façade facing it is
-  outline, and the courtyard guard applies when the anchor is taken on it or
-  it is the nearest boundary. A given
+  only its vertices). It is open ground everywhere: for the signed distance,
+  the outline, the façade test and the descent rule, so a ramp in a courtyard
+  is outside the building; the courtyard guard applies when the anchor is
+  taken on it or it is the nearest boundary. A given
   `footprint` must have at least one ring of 3 or more points enclosing at
   least 1 m² (`RangeError` otherwise).
 - **Building**: the footprint is one building's outline, so only the
@@ -196,8 +200,11 @@ entities, properties and containment from the parsed store. No meshing.
 
 ## Limits
 
-- A footprint ring entirely covered by the others is taken for a courtyard
-  (a redundant slab cannot be told from one).
+- In a given footprint, a ring entirely covered by the others is taken for a
+  courtyard (a redundant ring cannot be told from one); in slab outlines it
+  never is.
+- A position read from a clipped body's outer operand is marked uncertain
+  (`positionIsUncertain`), as are positions read from part of a body.
 - An arc in a profile or curve is traced so that no chord lies more than
   5e-5 × its radius inside it (1 mm on a 20 m radius), in any frame.
 - A slab body extruded obliquely (an `ExtrudedDirection` not along the

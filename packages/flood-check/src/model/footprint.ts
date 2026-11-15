@@ -14,7 +14,7 @@
  * record is frozen into the footprint (`FootprintFact.quality`).
  */
 
-import { chainIntoRing, closedGaps, convexHull, nestedRings, outlineDistance, ringArea } from '../geom.js';
+import { chainIntoRing, closedGaps, convexHull, footprintCourtyards, outlineDistance, ringArea } from '../geom.js';
 import type { MapPoint } from '../types.js';
 import { isExternal } from './candidate-base.js';
 import { FOOTPRINT_QUALITY_ORDER, type FootprintFact, type FootprintQuality, type FootprintQualityRecord, type ModelFacts } from './facts.js';
@@ -114,7 +114,8 @@ const FIT_TOLERANCE = 1;
  * footprint is larger than the building (a podium or forecourt slab:
  * `oversized`, treated like a hull).
  */
-function checkAgainstWalls(rings: MapPoint[][], input: FootprintInput, log: QualityLog): void {
+function checkAgainstWalls(rings: MapPoint[][], source: FootprintFact['source'], input: FootprintInput, log: QualityLog): void {
+  const courtyards = footprintCourtyards(source, rings);
   const { reader, placements, georef, storeyOf, ground } = input;
   for (const type of ['IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE']) {
     for (const id of reader.idsOfType(type)) {
@@ -139,7 +140,7 @@ function checkAgainstWalls(rings: MapPoint[][], input: FootprintInput, log: Qual
         return line.length === 1 ? line : out;
       });
       if (points.length === 0) continue;
-      const d = points.map((p) => outlineDistance(p, rings));
+      const d = points.map((p) => outlineDistance(p, rings, courtyards));
       const out = Math.max(...d);
       if (out > FIT_TOLERANCE) log.note('partial', `external wall ${reader.className(wall)} #${id} reaches ${out.toFixed(2)} m outside the footprint`);
       else if (Math.min(...d) < -FIT_TOLERANCE) {
@@ -150,7 +151,7 @@ function checkAgainstWalls(rings: MapPoint[][], input: FootprintInput, log: Qual
 }
 
 function seal(rings: MapPoint[][], source: FootprintFact['source'], fromElements: number[], log: QualityLog): FootprintFact {
-  const courtyards = nestedRings(rings);
+  const courtyards = footprintCourtyards(source, rings);
   if (courtyards.size > 0) log.mark('courtyard-ring');
   const gaps = closedGaps(rings, courtyards);
   if (gaps > 0) log.remark(`${gaps} boundary stretch(es) face a gap between footprint rings narrower than about 0.9 m, closed as inside the building`);
@@ -174,7 +175,7 @@ export function resolveFootprint(input: FootprintInput): FootprintResolution {
     geometry = fromModel(input, log);
   }
   // Whatever its source, the footprint must fit the building's own external walls.
-  if (geometry) checkAgainstWalls(geometry.rings, input, log);
+  if (geometry) checkAgainstWalls(geometry.rings, geometry.source, input, log);
   let reported = false;
   const report = () => {
     if (reported) return;

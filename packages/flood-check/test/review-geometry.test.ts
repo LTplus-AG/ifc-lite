@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { extractModelFacts } from '../src/model/extract.js';
 import { curvePoints } from '../src/model/outline.js';
 import type { ModelReader } from '../src/model/reader.js';
-import { parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
+import { mapOf, parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
 
 const extract = async (extra: (b: Extra) => void) =>
   extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', extra })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
@@ -89,5 +89,48 @@ describe('a door nested into a curtain wall', () => {
     });
     const eg = facts.storeys.find((s) => s.name === 'EG')!;
     expect(facts.candidates.find((c) => c.name === 'Tür Glasfassade')?.storeyId).toBe(eg.expressId);
+  });
+});
+
+describe('the automated review of 0b30b84: position quality reaches the fact; a courtyard is open ground everywhere', () => {
+  it('an opening placed by a clipped body carries an uncertain position into its fact, not only into the façade test', async () => {
+    const facts = await extract((b) => {
+      const eg = b.storeys.eg;
+      const wall = b.add(`IFCWALL(${b.guid()},$,'Wand Ost',$,$,#${b.place(eg.pl, 20, 0, 0)},$,$,.STANDARD.)`);
+      b.pset(wall, 'Pset_WallCommon', 'IsExternal', 'IFCBOOLEAN(.T.)');
+      b.contain(eg.id, wall);
+      const first = b.rectExtrusion(19.8, 5, 0.4, 2, 1, b.axis(0, 0, 0.5), b.dir(0, 0, 1));
+      const cut = b.rectExtrusion(19.8, 4.5, 1, 1, 2, b.axis(0, 0, 0), b.dir(0, 0, 1));
+      const opening = b.add(`IFCOPENINGELEMENT(${b.guid()},$,'Öffnung geschnitten',$,$,#${b.place(eg.pl, 0, 0, 0)},#${b.shape([b.add(`IFCBOOLEANRESULT(.DIFFERENCE.,#${first},#${cut})`)])},$,.OPENING.)`);
+      b.add(`IFCRELVOIDSELEMENT(${b.guid()},$,$,$,#${wall},#${opening})`);
+    });
+    const o = facts.candidates.find((c) => c.name === 'Öffnung geschnitten')!;
+    expect(o).toMatchObject({ positionIsUncertain: true, levelIsUpperEstimate: false });
+    expect(o.notes?.join()).toMatch(/position/);
+  });
+
+  it('an external ramp descending inside a given courtyard ring, with no IsExternal, is kept as outside the footprint', async () => {
+    const ring = (pts: Array<[number, number]>) => pts.map(([x, y]) => mapOf(x, y));
+    const store = await parseStep(syntheticHouse({
+      verticalDatum: 'LN02',
+      extra: (b) => {
+        const body = b.shape([b.rectExtrusion(0, 0, 2, 3, 1.5, b.axis(0, 0, -1.5), b.dir(0, 0, 1))]);
+        b.contain(b.storeys.eg.id, b.add(`IFCRAMP(${b.guid()},$,'Hoframpe',$,$,#${b.place(b.storeys.eg.pl, 10, 5, 0)},#${body},$,.STRAIGHT_RUN_RAMP.)`));
+      },
+    }));
+    const facts = extractModelFacts(store, {
+      expectedCrs: 'EPSG:2056',
+      groundStorey: 'EG',
+      footprint: [ring([[0, 0], [20, 0], [20, 10], [0, 10]]), ring([[6, 2], [14, 2], [14, 8], [6, 8]])],
+    });
+    expect(facts.candidates.find((c) => c.name === 'Hoframpe')?.selectedBecause).toMatch(/placed outside the footprint/);
+  });
+
+  it('a finish slab lying within the structural slab (inset 5 cm) is not a courtyard: slabs never draw holes', async () => {
+    const facts = await extract((b) => {
+      const solid = b.rectExtrusion(10, 5, 19.9, 9.9, 0.1, b.axis(0, 0, 0.1), b.dir(0, 0, 1));
+      b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Unterlagsboden',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLOOR.)`));
+    });
+    expect(facts.footprint.quality?.conditions).not.toContain('courtyard-ring');
   });
 });

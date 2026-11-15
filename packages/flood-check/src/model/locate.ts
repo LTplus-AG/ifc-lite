@@ -133,12 +133,19 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
   const clippedBody = (b: MapBody | null | undefined) => (b?.clipped ?? 0) > 0;
   if (filling && filledRead) {
     position = centre(s.filled!);
-    if (clippedBody(s.filled)) positionCertain = false;
+    if (clippedBody(s.filled)) {
+      positionCertain = false;
+      notes.push('the hole it fills is read from a clipped body\'s outer operand, so its centre is not proven: the position is uncertain');
+    }
     const apart = Math.hypot(position.x - at.position.x, position.y - at.position.y);
     if (apart > POSITION_DISAGREEMENT) notes.push(`placed ${apart.toFixed(2)} m from the hole it fills (for example at its wall's origin); the hole's position is used`);
   } else if (ownRead) {
     position = centre(s.own);
-    if (own !== 'readable' || clippedBody(s.own)) positionCertain = false;
+    if (own !== 'readable') positionCertain = false;
+    if (clippedBody(s.own)) {
+      positionCertain = false;
+      notes.push('its body is read from a clipped solid\'s outer operand, so its centre is not proven: the position is uncertain');
+    }
   }
 
   // Level: the lowest of the sources that define it for this kind.

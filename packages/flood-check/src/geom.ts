@@ -18,21 +18,31 @@ export function insideRing(p: MapPoint, ring: readonly MapPoint[]): boolean {
 }
 
 /**
- * A point inside ANY ring is inside the footprint: rings may overlap (several
- * slabs), and even-odd across rings would turn an overlap into "outside" and
- * accept samples inside the building. So a courtyard drawn as its own ring is
- * filled; see {@link nestedRings}.
+ * A point inside ANY ring: rings may overlap (several slabs), and even-odd
+ * across rings would turn an overlap into "outside" and accept samples inside
+ * the building. The footprint functions below take the courtyard rings
+ * ({@link footprintCourtyards}) as open ground on top of this; other
+ * buildings' rings use it as it is.
  */
 export function insideAny(p: MapPoint, rings: readonly (readonly MapPoint[])[]): boolean {
   return rings.some((ring) => insideRing(p, ring));
 }
 
 /**
+ * The courtyard rings of a footprint: only a footprint the caller gives can
+ * draw a hole as its own ring. Slab outlines and wall loops are material, so a
+ * ring inside the others there is a slab lying on or within another (a finish
+ * on the structure), never open ground.
+ */
+export function footprintCourtyards(source: string, rings: readonly (readonly MapPoint[])[]): Set<number> {
+  return source === 'given' ? nestedRings(rings) : new Set();
+}
+
+/**
  * Indices of courtyard rings: a ring whose whole boundary lies inside the
  * union of the other rings (its edges, sampled every 0.25 m, not only its
  * vertices, so a slab that spans a notch between two others is not taken for
- * one). {@link insideAny} fills such a ring; the outline functions below treat
- * it as open ground, a hole of the footprint.
+ * one). Only {@link footprintCourtyards} decides whether such a ring is a hole.
  */
 export function nestedRings(rings: readonly (readonly MapPoint[])[]): Set<number> {
   const out = new Set<number>();
@@ -150,7 +160,7 @@ function isOutline(q: MapPoint, rings: Rings, courtyards: ReadonlySet<number>, r
 export function closestOutlinePoint(
   p: MapPoint,
   rings: Rings,
-  courtyards: ReadonlySet<number> = nestedRings(rings),
+  courtyards: ReadonlySet<number> = new Set(),
 ): { point: MapPoint; distance: number; ring: number } | null {
   let best: { point: MapPoint; distance: number; ring: number } | null = null;
   rings.forEach((ring, r) => {
@@ -188,10 +198,10 @@ export function closestOutlinePoint(
  * building, including a gap between slabs too narrow to be open ground and
  * the seam between them, positive outside. Infinity when there are no rings.
  */
-export function outlineDistance(p: MapPoint, rings: Rings, courtyards: ReadonlySet<number> = nestedRings(rings)): number {
+export function outlineDistance(p: MapPoint, rings: Rings, courtyards: ReadonlySet<number> = new Set()): number {
   const c = closestBoundaryPoint(p, rings);
   if (!c) return Infinity;
-  if (!insideAny(p, rings)) {
+  if (!solid(p, rings, courtyards)) {
     if (c.distance >= OUTLINE_CLEARANCE) return c.distance;
     const ring = rings[c.ring];
     let seg = 0;
@@ -207,7 +217,7 @@ export function outlineDistance(p: MapPoint, rings: Rings, courtyards: ReadonlyS
 }
 
 /** Boundary stretches facing a gap closed by {@link outlineDistance} (sampled at segment midpoints). */
-export function closedGaps(rings: Rings, courtyards: ReadonlySet<number> = nestedRings(rings)): number {
+export function closedGaps(rings: Rings, courtyards: ReadonlySet<number> = new Set()): number {
   let n = 0;
   rings.forEach((ring, r) => {
     if (courtyards.has(r)) return;
@@ -219,7 +229,7 @@ export function closedGaps(rings: Rings, courtyards: ReadonlySet<number> = neste
       const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       for (const sgn of [1, -1]) {
         const p = { x: m.x + sgn * 0.01 * u.x, y: m.y + sgn * 0.01 * u.y };
-        if (!insideAny(p, rings) && outlineDistance(p, rings, courtyards) < 0) n++;
+        if (!solid(p, rings, courtyards) && outlineDistance(p, rings, courtyards) < 0) n++;
       }
     }
   });
@@ -228,12 +238,13 @@ export function closedGaps(rings: Rings, courtyards: ReadonlySet<number> = neste
 
 /**
  * Signed distance to the footprint: positive outside, negative inside, in
- * metres. Infinity when there are no rings.
+ * metres; Infinity when there are no rings. A courtyard ring
+ * ({@link footprintCourtyards}) is open ground, so a point in it is outside.
  */
-export function signedDistance(p: MapPoint, rings: readonly (readonly MapPoint[])[]): number {
+export function signedDistance(p: MapPoint, rings: Rings, courtyards: ReadonlySet<number> = new Set()): number {
   const c = closestBoundaryPoint(p, rings);
   if (!c) return Infinity;
-  return insideAny(p, rings) ? -c.distance : c.distance;
+  return solid(p, rings, courtyards) ? -c.distance : c.distance;
 }
 
 export function ringArea(ring: readonly MapPoint[]): number {

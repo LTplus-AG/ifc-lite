@@ -52,6 +52,12 @@ export interface CandidateFact {
   levelBasis: LevelBasis;
   /** True when `level` may be higher than the real entry level, so it can flag but never be favourable. */
   levelIsUpperEstimate: boolean;
+  /**
+   * The position is not proven (`locate`): read from part of a body, from a
+   * clipped body's outer operand, or a placement standing in for a hole. The
+   * ground next to it may not be the ground in front of the element.
+   */
+  positionIsUncertain?: boolean;
   storeyId: number | null;
   /** Why the element was selected, for example `IsExternal`, `on footprint boundary`, `IfcBoiler`. */
   selectedBecause: string;

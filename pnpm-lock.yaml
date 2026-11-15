@@ -1177,6 +1177,12 @@ importers:
       '@ifc-lite/flow-nodes':
         specifier: workspace:^
         version: link:../flow-nodes
+      '@ifc-lite/geo':
+        specifier: workspace:^
+        version: link:../geo
+      '@ifc-lite/geodata-ch':
+        specifier: workspace:^
+        version: link:../geodata-ch
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry
@@ -1222,6 +1228,9 @@ importers:
       '@ifc-lite/semantic':
         specifier: workspace:^
         version: link:../semantic
+      '@ifc-lite/site-context':
+        specifier: workspace:^
+        version: link:../site-context
       '@ifc-lite/viewer-core':
         specifier: workspace:^
         version: link:../viewer

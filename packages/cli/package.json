@@ -40,6 +40,8 @@
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/flow": "workspace:^",
     "@ifc-lite/flow-nodes": "workspace:^",
+    "@ifc-lite/geo": "workspace:^",
+    "@ifc-lite/geodata-ch": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/ids-authoring": "workspace:^",
@@ -55,6 +57,7 @@
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/semantic": "workspace:^",
+    "@ifc-lite/site-context": "workspace:^",
     "@ifc-lite/viewer-core": "workspace:^",
     "@ifc-lite/wasm": "workspace:^"
   },

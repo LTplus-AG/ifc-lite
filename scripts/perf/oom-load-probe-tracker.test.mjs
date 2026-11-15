@@ -7,7 +7,23 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { installSourceTracker, trackerSummary } from './oom-load-probe-tracker.mjs';
+import { existsSync } from 'node:fs';
+
+// Guarded load, not a static import: the revert oracle removes this PR's production files, and a
+// static import of a removed module fails the whole file at LOAD, which the oracle cannot tell
+// from a broken test. With the guard, every test fails by an ordinary assertion instead.
+const TRACKER = new URL('./oom-load-probe-tracker.mjs', import.meta.url);
+const trackerModule = existsSync(TRACKER) ? await import(TRACKER.href) : null;
+function tracker() { assert.ok(trackerModule, 'scripts/perf/oom-load-probe-tracker.mjs does not exist'); return trackerModule; }
+const installSourceTracker = (...a) => tracker().installSourceTracker(...a);
+const trackerSummary = (...a) => tracker().trackerSummary(...a);
+const LIB = new URL('./oom-load-probe-lib.mjs', import.meta.url);
+const libModule = existsSync(LIB) ? await import(LIB.href) : null;
+function serverApi() {
+  assert.ok(libModule, 'scripts/perf/oom-load-probe-lib.mjs does not exist');
+  assert.ok(libModule.serverAttemptSummary !== undefined, 'oom-load-probe-lib.mjs lacks the export serverAttemptSummary');
+  return libModule;
+}
 
 /**
  * The page patches Blob.prototype itself (slices are plain Blobs), so the test does too,
@@ -181,7 +197,7 @@ test('#10353 a message beyond the scan budget is an incomplete scan, not "no sou
   assert.equal(s.incompleteScans, 1);
   assert.deepEqual(s.facts.firstIncompleteScan, { ms: 0, worker: '/big.js' });
   assert.equal(s.events.filter((e) => e.event === 'worker-post').length, 0, 'nothing found in the part scanned');
-  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
+  const { serverAttemptSummary } = serverApi();
   const v = serverAttemptSummary([{ ms: 1, event: 'request' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }], { watching: true, tracker: s });
   assert.equal(v.sourcePostBeforeDecision, null);
   assert.match(v.unknownBecause.sourcePostBeforeDecision, /too large to scan/);

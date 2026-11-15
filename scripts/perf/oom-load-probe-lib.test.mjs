@@ -23,6 +23,15 @@ const phaseOf = (...a) => lib().phaseOf(...a);
 const runCleanup = (...a) => lib().runCleanup(...a);
 const verdict = (...a) => lib().verdict(...a);
 const withTimeout = (...a) => lib().withTimeout(...a);
+/** Server-proof exports this follow-up adds to the lib; asserted, so a revert fails by assertion. */
+function serverApi() {
+  const m = lib();
+  for (const name of ['serverAttemptSummary', 'expectFlags', 'SERVER_FIRST']) assert.ok(m[name] !== undefined, `oom-load-probe-lib.mjs lacks the export ${name}`);
+  return m;
+}
+const TRACKER = new URL('./oom-load-probe-tracker.mjs', import.meta.url);
+const trackerModule = existsSync(TRACKER) ? await import(TRACKER.href) : null;
+function trackerApi() { assert.ok(trackerModule, 'scripts/perf/oom-load-probe-tracker.mjs does not exist'); return trackerModule; }
 
 test('#10264 a tab death wins over every other signal', () => {
   assert.equal(classify({ oomKills: 1, killedTypes: ['renderer'], pageCrashed: true }).outcome, 'killed');
@@ -205,7 +214,7 @@ const withRequests = ({ after = [], before = [], failures = 0 } = {}, f = {}, ex
   { requestsAfterPick: after.length, requestsBeforePick: before.length, failuresAfterPick: failures, ...extra });
 
 test('#10353 server proof: a failed server attempt before the warning, no read or post before it', async () => {
-  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
   const s = serverAttemptSummary([
     { ms: 40, event: 'request', clock: 'page', url: 'http://127.0.0.1:9/api/v1/health' },
     { ms: 42, event: 'requestfailed', clock: 'page', failure: 'net::ERR_CONNECTION_REFUSED' },
@@ -217,7 +226,7 @@ test('#10353 server proof: a failed server attempt before the warning, no read o
 });
 
 test('#10353 server proof: verdicts come from kept facts, so a truncated log cannot hide a large read', async () => {
-  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
   const dialog = { ms: 600, event: 'dialog', text: 'This model may exceed available memory' };
   const req = { ms: 10, event: 'request', clock: 'page' };
   // 500 small reads then a whole-file read before the decision; the log dropped the middle.
@@ -234,7 +243,7 @@ test('#10353 server proof: verdicts come from kept facts, so a truncated log can
 });
 
 test('#10353 server proof: a refusal seen only by the poll makes events inside its window unknown', async () => {
-  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
+  const { serverAttemptSummary } = serverApi();
   const polled = { ms: 2031, event: 'store-error', windowMs: 2000, text: "This IFC file exceeds this tab's local processing memory budget" };
   const s = serverAttemptSummary([{ ms: 155, event: 'request', clock: 'page' }, polled], { watching: true, tracker: withRequests({ after: [155] }, { firstSourcePost: { ms: 1500, worker: 'w.js' } }) });
   assert.equal(s.decisionWindowMs, 2000);
@@ -249,7 +258,7 @@ test('#10353 server proof: a refusal seen only by the poll makes events inside i
 });
 
 test('#10353 server proof: unreported instrumentation gives null, and null never passes', async () => {
-  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
   const dialog = { ms: 5, event: 'dialog', text: 'This model may exceed available memory' };
   const noTracker = serverAttemptSummary([{ ms: 1, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: { reported: false } });
   assert.equal(noTracker.readBeforeDecision, null, 'no tracker report is unknown, not "no read"');
@@ -271,7 +280,7 @@ test('#10353 server proof: unreported instrumentation gives null, and null never
 });
 
 test('#10353 server proof: a request during viewer startup is not the attempt for this load (review on #10415)', async () => {
-  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
+  const { serverAttemptSummary } = serverApi();
   const dialog = { ms: 50, event: 'dialog', text: 'This model may exceed available memory' };
   const onlyStartup = serverAttemptSummary([{ ms: -800, event: 'request', clock: 'page' }, { ms: -799, event: 'requestfailed', clock: 'page' }, dialog], { watching: true, tracker: withRequests({ before: [-800] }) });
   assert.equal(onlyStartup.attemptBeforeDecision, false, 'instrument present, no attempt for this load');
@@ -285,7 +294,7 @@ test('#10353 server proof: a request during viewer startup is not the attempt fo
 });
 
 test('#10353 server proof: an unmarked source or an unattributed large event before the decision makes identity flags null (review on #10415)', async () => {
-  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
   const tl = [{ ms: 5, event: 'request', clock: 'page' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }];
   const unmarked = serverAttemptSummary(tl, { watching: true, tracker: facts({ firstUnattributedRead: { ms: 30, bytes: 740e6 } }, { sourceMarked: false }) });
   assert.equal(unmarked.sourceMarked, false);
@@ -308,7 +317,7 @@ test('#10353 server proof: an unmarked source or an unattributed large event bef
 });
 
 test('#10353 server proof: a blob: URL of the source before the decision makes the post verdict null', async () => {
-  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
+  const { serverAttemptSummary } = serverApi();
   const v = serverAttemptSummary([{ ms: 1, event: 'request', clock: 'page' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }],
     { watching: true, tracker: facts({ firstSourceObjectUrl: { ms: 20, url: 'blob:x' } }) });
   assert.equal(v.sourcePostBeforeDecision, null);
@@ -442,7 +451,7 @@ test('final snapshot (review on #10415): an explicit refusal replaces the poll\'
 });
 
 test('#10353 server proof: a request between the driver call and the real pick is startup, after the pick it is the attempt (review on #10415)', async () => {
-  const { serverAttemptSummary } = await import('./oom-load-probe-lib.mjs');
+  const { serverAttemptSummary } = serverApi();
   const dialog = { ms: 60, event: 'dialog', text: 'This model may exceed available memory' };
   // Times are relative to the page's pick stamp; the request at -5 ms happened while the pick was pending.
   const pending = serverAttemptSummary([{ ms: -5, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: withRequests({ before: [-5] }) });
@@ -455,7 +464,7 @@ test('#10353 server proof: a request between the driver call and the real pick i
 });
 
 test('#10353 server proof: unknown pick time or driver-only requests make the order null', async () => {
-  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
   const dialog = { ms: 60, event: 'dialog', text: 'This model may exceed available memory' };
   const noPick = serverAttemptSummary([{ ms: 20, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: facts({}, { pickKnown: false }) });
   for (const k of ['attemptBeforeDecision', 'readBeforeDecision', 'unattributedReadBeforeDecision', 'sourcePostBeforeDecision']) assert.equal(noPick[k], null, k);
@@ -468,8 +477,8 @@ test('#10353 server proof: unknown pick time or driver-only requests make the or
 });
 
 test('#10353 server proof: the attempt and request counts survive a log filled by 50 startup requests (review on #10415)', async (t) => {
-  const { installSourceTracker, trackerSummary } = await import('./oom-load-probe-tracker.mjs');
-  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = await import('./oom-load-probe-lib.mjs');
+  const { installSourceTracker, trackerSummary } = trackerApi();
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
   const saved = Object.fromEntries(['arrayBuffer', 'text', 'bytes', 'stream', 'slice'].map((m) => [m, Blob.prototype[m]]));
   t.after(() => { for (const [m, f] of Object.entries(saved)) Blob.prototype[m] = f; });
   let clock = 0;

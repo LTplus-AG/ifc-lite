@@ -47,9 +47,9 @@ pub(crate) fn disabled() -> bool {
 /// inverted shells (negative signed volume, dozens of open edges).
 ///
 /// A watertight host clipped by a plane has exactly one open boundary — the
-/// section, lying on the cut plane. We weld coincident vertices (the clipper
-/// emits bit-identical coordinates for shared cut points, so an exact f32-bit
-/// key merges them without a tolerance grid that could fuse distinct corners),
+/// section, lying on the cut plane. We weld coincident vertices on a grid far
+/// finer than any feature ([`weld_section`], which also moves the mesh's own
+/// section vertices onto the weld),
 /// chain the on-plane boundary half-edges into loops, classify them into
 /// outer rings and holes by even-odd nesting, triangulate each region with the
 /// kernel's CDT, and append the result wound to face `-clip_normal` (away from
@@ -105,11 +105,12 @@ pub(crate) fn cap_half_space_clip(
     // ~1 ULP — both flagged on-plane yet left UNWELDED by an exact-bits key. That
     // 1-ULP gap breaks the boundary chain: a sub-loop dead-ends and is dropped,
     // leaving open edges (a non-watertight slab → "see inside" / no 2D fill).
-    // Quantising to weld_eps (= on_plane_eps, orders of magnitude finer than any
-    // real wall feature) snaps the ULP-twins into one bucket so the loop closes.
+    // Quantising to on_plane_eps (orders of magnitude finer than any real wall
+    // feature) snaps the ULP-twins into one bucket so the loop closes.
     // Single-plane callers (opening cuts) have no such twins, so genuinely
     // distinct corners stay in distinct buckets.
-    // The cut section itself takes the same weld (`weld_section`).
+    // The mesh's own section vertices are moved onto the weld, so the cut wall
+    // and the cap agree on it (`weld_section`).
     let (pos, on_plane, welded) = weld_section(mesh, plane_point, n, on_plane_eps);
 
     // Directed half-edges; an undirected edge with no twin is on the open
@@ -332,9 +333,10 @@ fn weld_section(
     n: Vector3<f64>,
     weld_eps: f64,
 ) -> (Vec<Point3<f64>>, Vec<bool>, Vec<u32>) {
+    use std::collections::HashMap;
     let vcount = mesh.positions.len() / 3;
     let quant = |c: f32| -> i64 { (c as f64 / weld_eps).round() as i64 };
-    let mut weld: std::collections::HashMap<(i64, i64, i64), u32> = std::collections::HashMap::new();
+    let mut weld: HashMap<(i64, i64, i64), u32> = HashMap::new();
     let mut pos: Vec<Point3<f64>> = Vec::new();
     let mut on_plane: Vec<bool> = Vec::new();
     let mut welded: Vec<u32> = Vec::with_capacity(vcount);

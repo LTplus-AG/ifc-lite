@@ -38,7 +38,9 @@ export function detectRotation(ctx: DiagnosisContext): GeorefFinding[] {
     // ordinate 0). When that gives a unit vector, (1, unset) or (unset, 0),
     // every reader agrees on "no turn" and nothing is ambiguous.
     const filled = Math.hypot(a ?? 1, b ?? 0);
-    if (Math.abs(filled - 1) <= UNIT_LENGTH_TOLERANCE) return findings;
+    // The filled-in vector is still compared with TrueNorth, exactly as the
+    // same turn written out in full.
+    if (Math.abs(filled - 1) <= UNIT_LENGTH_TOLERANCE) return detectTrueNorthContradiction(ctx, findings);
     findings.push({
       code: 'ROTATION_INVALID',
       severity: 'warning',
@@ -70,6 +72,12 @@ export function detectRotation(ctx: DiagnosisContext): GeorefFinding[] {
     });
   }
 
+  return detectTrueNorthContradiction(ctx, findings);
+}
+
+function detectTrueNorthContradiction(ctx: DiagnosisContext, findings: GeorefFinding[]): GeorefFinding[] {
+  const op = ctx.operation;
+  if (!op) return findings;
   const north = ctx.facts.trueNorth;
   const theta = rotationDegrees(op);
   if (!north || theta === undefined || Math.hypot(north.x, north.y) === 0) return findings;

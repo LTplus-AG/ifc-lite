@@ -89,6 +89,25 @@ describe(`at most ${MAX_SAMPLED_POINT_LISTS} point lists, each one bounded read`
   });
 });
 
+describe('the two point-list types are sampled separately (review)', () => {
+  it(`${MAX_SAMPLED_POINT_LISTS} 3D lists and one 2D list: the 2D list is still read`, () => {
+    const ids3d = Array.from({ length: MAX_SAMPLED_POINT_LISTS }, (_, i) => 1000 + i);
+    const reads: number[] = [];
+    const reader: EntityReader = {
+      get: () => undefined,
+      idsOfType: (type) => (type === 'IFCCARTESIANPOINTLIST3D' ? ids3d : type === 'IFCCARTESIANPOINTLIST2D' ? [5000] : []),
+      recordPrefix(id) {
+        reads.push(id);
+        return id === 5000 ? '#5000=IFCCARTESIANPOINTLIST2D(((2600000.,1200000.)),$);' : `#${id}=IFCCARTESIANPOINTLIST3D(((1.,2.,0.)),$);`;
+      },
+    };
+    const { pointLists } = samplePointFamilies(reader, 2048, new Map());
+    expect(reads).toContain(5000);
+    expect(reads.length).toBeLessThanOrEqual(MAX_SAMPLED_POINT_LISTS);
+    expect(pointLists.some((p) => p.x === 2_600_000)).toBe(true);
+  });
+});
+
 describe('tuplesFromRecordPrefix', () => {
   it('keeps the complete tuples and drops the one the prefix cut', () => {
     expect(tuplesFromRecordPrefix('#5=IFCCARTESIANPOINTLIST3D(((1.,2.,3.),(4.5E3,-6.,7.),(8.,9')).toEqual([

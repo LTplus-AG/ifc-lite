@@ -248,8 +248,13 @@ export function samplePointFamilies(
     const p = readPoint(reader, id);
     if (p) cartesianPoints.push(p);
   }
-  const listIds = [...reader.idsOfType('IFCCARTESIANPOINTLIST3D'), ...reader.idsOfType('IFCCARTESIANPOINTLIST2D')];
-  const lists = stride(listIds, MAX_SAMPLED_POINT_LISTS);
+  // The two list types are strided separately: one stride over their
+  // concatenation could skip the few lists of the minority type entirely.
+  const ids3d = reader.idsOfType('IFCCARTESIANPOINTLIST3D');
+  const ids2d = reader.idsOfType('IFCCARTESIANPOINTLIST2D');
+  const budget2d = Math.min(ids2d.length, Math.max(0, MAX_SAMPLED_POINT_LISTS - Math.min(ids3d.length, Math.floor(MAX_SAMPLED_POINT_LISTS / 2))));
+  const budget3d = Math.min(ids3d.length, MAX_SAMPLED_POINT_LISTS - budget2d);
+  const lists = [...stride(ids3d, budget3d), ...stride(ids2d, budget2d)];
   const perList = Math.max(1, Math.floor(maxPoints / Math.max(1, lists.length)));
   const pointLists: Vec3[] = [];
   for (const id of lists) pointLists.push(...stride(pointListTuples(reader, id), perList));

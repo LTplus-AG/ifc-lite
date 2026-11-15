@@ -304,6 +304,42 @@ describe('ROTATION_INVALID only when a filled-in default is still ambiguous (fin
   });
 });
 
+describe('a half-set axis that fills in to a unit vector is still compared with TrueNorth (review)', () => {
+  // XAxisAbscissa 1 turns nothing; TrueNorth pointing along +x is 90° from grid north.
+  const east = { x: 1, y: 0 };
+  it.each([[1, undefined], [1, 0], [undefined, 0]] as const)('(%s, %s) with TrueNorth (1, 0) contradicts the turn', (a, b) => {
+    const codes = run(facts({ trueNorth: east }, { xAxisAbscissa: a, xAxisOrdinate: b })).findings.map((f) => f.code);
+    expect(codes).toEqual(['TRUE_NORTH_CONTRADICTS_ROTATION']);
+  });
+});
+
+describe('a blank CRS record is not a declared CRS for LoGeoRef 50 (review)', () => {
+  it('blank Name and no WKT: error, and no level 50', () => {
+    const f = facts();
+    if (f.entities?.crs) f.entities.crs = { ...f.entities.crs, name: '  ' };
+    const report = run(f);
+    expect(report.findings.map((x) => x.code)).toContain('OPERATION_WITHOUT_CRS');
+    expect(report.levels).not.toContain(50);
+  });
+  it('a blank Name with a WKT definition still counts', () => {
+    const f = facts();
+    if (f.entities?.crs) f.entities.crs = { ...f.entities.crs, name: '', wellKnownText: 'PROJCS["x",AUTHORITY["EPSG","2056"]]' };
+    expect(run(f).levels).toContain(50);
+  });
+});
+
+describe('SITE_LOCATION_CONTRADICTS_OPERATION needs every map-unit reading resolved (review)', () => {
+  it('MapUnit unset in a millimetre project: a reading the reprojector cannot place skips instead of contradicting', () => {
+    const f = facts({ siteLocation: { siteId: 3, latitude: 10, longitude: 10 } }, { eastings: 2_600_000, northings: 1_200_000, scale: 1 });
+    if (f.entities?.crs) f.entities.crs = { ...f.entities.crs, mapUnit: undefined, mapUnitScale: undefined };
+    // Resolves only the metre reading (easting < 10 million); the millimetre reading is out of its range.
+    const reprojector: Reprojector = { toWgs84: (_c, [e]) => (e > 1_000_000 && e < 3_000_000 ? [7.44, 46.95] : undefined) };
+    const report = run(f, { reprojector });
+    expect(report.findings.map((x) => x.code)).not.toContain('SITE_LOCATION_CONTRADICTS_OPERATION');
+    expect(report.skipped.map((s) => s.code)).toContain('SITE_LOCATION_CONTRADICTS_OPERATION');
+  });
+});
+
 describe('VERTICAL_DATUM_MISSING examples follow the CRS (finding 10)', () => {
   const message = (name: string, e: number, n: number) => {
     const f = facts({ lengthUnitScale: 1 }, { eastings: e, northings: n, scale: 1 });

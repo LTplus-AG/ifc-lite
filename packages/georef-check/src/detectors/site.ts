@@ -91,10 +91,11 @@ export function detectSiteContradiction(
     // contradiction must hold under all of them.
     let best: { km: number; geo: Geo; map: Vec2; swappedKm: number } | undefined;
     let error: string | undefined;
+    let unresolved = false;
     for (const { position } of modelMapPositions(ctx, double)) {
       const geo = toWgs84(ctx, code, position.x, position.y);
-      if (!geo) continue;
-      if ('error' in geo) { error = geo.error; continue; }
+      if (!geo) { unresolved = true; continue; }
+      if ('error' in geo) { error = geo.error; unresolved = true; continue; }
       const km = haversineKm(site.latitude, site.longitude, geo.latitude, geo.longitude);
       const swappedKm = haversineKm(site.longitude, site.latitude, geo.latitude, geo.longitude);
       if (!best || km < best.km) best = { km, geo, map: position, swappedKm };
@@ -104,6 +105,12 @@ export function detectSiteContradiction(
       return undefined;
     }
     if (best.km <= SITE_CONTRADICTION_KM) return undefined;
+    if (unresolved) {
+      // A reading the reprojector could not place might be the one that
+      // agrees with the site: the contradiction is not established under all.
+      skipped.push({ code: 'SITE_LOCATION_CONTRADICTS_OPERATION', reason: error ? `The reprojector failed for EPSG:${code} under one map-unit reading: ${error}` : `The reprojector cannot place every map-unit reading under EPSG:${code}.` });
+      return undefined;
+    }
     const swapped = best.swappedKm <= SITE_CONTRADICTION_KM;
     const conversionSuspect = swapped ? undefined : conversionSuspicion(ctx, code, best.map, best.geo);
     const siteSuspect = swapped ? undefined : siteSuspicion(ctx, site);

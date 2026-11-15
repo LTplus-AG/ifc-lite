@@ -61,7 +61,10 @@ export function georeferencingLevels(facts: GeorefFacts): GeorefLevel[] {
   const origin = facts.contextOrigin;
   if (customNorth || (origin && (origin.x !== 0 || origin.y !== 0 || origin.z !== 0))) levels.push(40);
   const op = facts.entities?.operation;
-  if (!isIfc2x3(facts.schemaVersion) && op?.source === 'IfcMapConversion' && facts.entities?.crs) levels.push(50);
+  const crs = facts.entities?.crs;
+  // "Declared" as detectCrs reads it: a name or a definition, not a blank record.
+  const crsDeclared = !!crs && (crs.name.trim() !== '' || !!crs.wellKnownText);
+  if (!isIfc2x3(facts.schemaVersion) && op?.source === 'IfcMapConversion' && crsDeclared) levels.push(50);
   return levels;
 }
 

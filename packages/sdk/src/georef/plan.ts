@@ -69,6 +69,8 @@ export interface PlanContext {
   current: GeoreferencingState;
   /** This session's pending `georefMutations`, when it has written before. */
   pending: StepGeorefMutations | null;
+  /** What the reader reports once every georeferencing record and set is gone (the IfcSite fallback, if any). */
+  afterRemove(withPropertySets: boolean): GeoreferencingState;
 }
 
 export const CRS_FIELDS = ['Name', 'Description', 'GeodeticDatum', 'VerticalDatum', 'MapProjection', 'MapZone', 'MapUnit'] as const;
@@ -141,9 +143,13 @@ function existingRecords(facts: GeorefModelFacts): Array<{ id: number; label: st
 }
 
 function existingEPSets(facts: GeorefModelFacts): string[] {
-  return [facts.ePSetMapConversion, facts.ePSetProjectedCRS]
-    .filter((p) => p !== null)
-    .map((p) => `${p!.name} on #${p!.hostId}`);
+  return facts.ePSets.map((p) => `${p.name} on #${p.hostId}`);
+}
+
+/** Every convention-set copy beyond the first of its name: a replace deletes them. */
+function extraEPSetOps(facts: GeorefModelFacts): PropertySetOp[] {
+  const first = new Set([facts.ePSetMapConversion, facts.ePSetProjectedCRS]);
+  return facts.ePSets.filter((p) => !first.has(p)).map((p) => ({ op: 'deleteSet' as const, hostId: p.hostId, pset: p.name }));
 }
 
 /**
@@ -336,6 +342,7 @@ export function planSet(input: GeoreferencingSetInput, ctx: PlanContext): Georef
     tombstone: [],
     georefMutations: null,
     propertySetOps: [
+      ...extraEPSetOps(ctx.facts),
       ...replaceEPSetOps(ctx.facts.ePSetMapConversion, EPSET_MAP_CONVERSION, anchor, ePSetValues(mc as unknown as Record<string, unknown>, MC_FIELDS)),
       ...replaceEPSetOps(ctx.facts.ePSetProjectedCRS, EPSET_PROJECTED_CRS, anchor, ePSetValues(crs as unknown as Record<string, unknown>, CRS_FIELDS)),
     ],
@@ -345,9 +352,7 @@ export function planSet(input: GeoreferencingSetInput, ctx: PlanContext): Georef
 export function planRemove(ctx: PlanContext): GeorefWritePlan {
   const storage = requireStorage(ctx.facts);
   const records = storage === 'entities' ? existingRecords(ctx.facts) : [];
-  const sets = storage === 'propertySets'
-    ? [ctx.facts.ePSetMapConversion, ctx.facts.ePSetProjectedCRS].filter((p) => p !== null)
-    : [];
+  const sets = storage === 'propertySets' ? ctx.facts.ePSets : [];
   if (records.length === 0 && sets.length === 0 && !(ctx.current.pending && ctx.current.hasGeoreference)) {
     throw new GeoreferencingError('NOT_GEOREFERENCED', 'The model carries no IfcMapConversion, IfcRigidOperation, CRS or IFC2X3 ePSet_MapConversion to remove.');
   }
@@ -355,10 +360,10 @@ export function planRemove(ctx: PlanContext): GeorefWritePlan {
     action: 'remove',
     storage,
     tombstone: records.map((r) => r.id),
-    removed: [...records.map((r) => r.label), ...sets.map((p) => `${p!.name} on #${p!.hostId}`)],
+    removed: [...records.map((r) => r.label), ...sets.map((p) => `${p.name} on #${p.hostId}`)],
     georefMutations: null,
-    propertySetOps: sets.map((p) => ({ op: 'deleteSet' as const, hostId: p!.hostId, pset: p!.name })),
-    next: stateAfter(ctx, storage, null, null),
+    propertySetOps: sets.map((p) => ({ op: 'deleteSet' as const, hostId: p.hostId, pset: p.name })),
+    next: { ...ctx.afterRemove(storage === 'propertySets'), pending: true },
     mapUnit: null,
     notes: siteNotes(ctx.facts),
   };

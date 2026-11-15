@@ -91,6 +91,24 @@ function withoutDeletedGeorefRecords(store: IfcDataStore, isDeleted: (expressId:
   return view;
 }
 
+/**
+ * What the reader reports once every georeferencing record (and, for
+ * IFC2X3, every convention set) is gone: the IfcSite RefLatitude/RefLongitude fallback, or nothing.
+ * The state `remove` leaves, so `get()` agrees with the exported file.
+ */
+export function readWithoutGeoreferencing(store: IfcDataStore, modelId: string, withPropertySets: boolean): GeoreferencingState {
+  const schema = String(store.schemaVersion ?? '');
+  if (!store.entityIndex) return emptyGeoreferencingState(modelId, schema);
+  const byType = new Map(store.entityIndex.byType);
+  for (const t of withPropertySets ? [...GEOREF_RECORD_TYPES, 'IFCPROPERTYSET'] : GEOREF_RECORD_TYPES) byType.delete(t);
+  const view = Object.create(store) as IfcDataStore;
+  Object.defineProperty(view, 'georeferencing', { value: undefined, enumerable: true });
+  Object.defineProperty(view, 'entityIndex', { value: { ...store.entityIndex, byType }, enumerable: true });
+  const info = extractGeoreferencingOnDemand(view);
+  const state = emptyGeoreferencingState(modelId, schema);
+  return info ? fromGeoreferenceInfo(state, info, store) : state;
+}
+
 function sourceOf(info: GeoreferenceInfo, store: IfcDataStore): GeorefSource | null {
   switch (info.source) {
     case 'mapConversion': {

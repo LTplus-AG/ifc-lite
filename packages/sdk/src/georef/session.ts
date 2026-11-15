@@ -21,7 +21,7 @@ import { recordCompoundMutation, recordSessionMutation, StoreEditor, type Mutabl
 import { collectGeorefModelFacts, type GeorefModelFacts } from './model-facts.js';
 import { planRemove, planSet, type GeorefWritePlan, type PropertySetOp, type StepGeorefMutations } from './plan.js';
 import { planUpdate } from './plan-update.js';
-import { readSourceGeoreferencing } from './read.js';
+import { readSourceGeoreferencing, readWithoutGeoreferencing } from './read.js';
 import type { GeoreferencingState, GeoreferencingWriteRequest, GeoreferencingWriteResult } from './types.js';
 
 export interface GeoreferencingSessionDeps {
@@ -64,6 +64,7 @@ export class GeoreferencingSession {
 
   write(request: GeoreferencingWriteRequest): GeoreferencingWriteResult {
     const prior = this.current();
+    const { store, modelId } = this.deps;
     this.deps.editor();
     const view = this.deps.view();
     if (!view) throw new Error('georef: the session has no mutation view to record the write in');
@@ -71,7 +72,10 @@ export class GeoreferencingSession {
       isDeleted: (id) => view.isDeleted(id),
       getForEntity: (id) => view.getForEntity(id),
     });
-    const ctx = { modelId: this.deps.modelId, facts, current: this.get(), pending: prior?.pending ?? null };
+    const ctx = {
+      modelId: this.deps.modelId, facts, current: this.get(), pending: prior?.pending ?? null,
+      afterRemove: (withPropertySets: boolean) => readWithoutGeoreferencing(store, modelId, withPropertySets),
+    };
     const plan: GeorefWritePlan = request.action === 'set' ? planSet(request.input, ctx)
       : request.action === 'update' ? planUpdate(request.input, ctx)
         : planRemove(ctx);

@@ -196,3 +196,47 @@ describe('bim.georef replace across several representation contexts', () => {
     } finally { model.close(); }
   });
 });
+
+describe('bim.georef IFC2X3 review follow-ups', () => {
+  const sets = (host: number, base: number, name: string) => `
+#${base}=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(2600000.),$);
+#${base + 1}=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(1200000.),$);
+#${base + 2}=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(400.),$);
+#${base + 3}=IFCPROPERTYSET('${base}buu0tu59NfhrTsztVBK1'.slice(0, 22),$,'ePSet_MapConversion',$,(#${base},#${base + 1},#${base + 2}));
+#${base + 4}=IFCRELDEFINESBYPROPERTIES('${base}Pbuu0tu59NfhrTsztVBK'.slice(0, 22),$,$,$,(#${host}),#${base + 3});
+#${base + 5}=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('${name}'),$);
+#${base + 6}=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('METRE'),$);
+#${base + 7}=IFCPROPERTYSET('${base}Qbuu0tu59NfhrTsztVBK'.slice(0, 22),$,'ePSet_ProjectedCRS',$,(#${base + 5},#${base + 6}));
+#${base + 8}=IFCRELDEFINESBYPROPERTIES('${base}Rbuu0tu59NfhrTsztVBK'.slice(0, 22),$,$,$,(#${host}),#${base + 7});`;
+  const fix = (s: string) => s.replace(/'(\d+[A-Za-z0-9_$]+)'\.slice\(0, 22\)/g, (_m, g: string) => `'${g.slice(0, 22)}'`);
+
+  it('remove clears convention sets on IfcSite and IfcProject alike', async () => {
+    const model = await open(fix(`${BASE}${sets(6, 40, 'EPSG:2056')}${sets(1, 60, 'EPSG:2056')}`), 'IFC2X3');
+    try {
+      const result = model.bim.georef.remove();
+      expect(result.removed).toHaveLength(4);
+      const reopened = await openModel(new TextEncoder().encode(String(model.bim.export.ifc())), { disableWorkerScan: true });
+      try {
+        expect(reopened.bim.georef.get().hasGeoreference).toBe(false);
+      } finally { reopened.close(); }
+    } finally { model.close(); }
+  });
+
+  it('remove reports the IfcSite RefLatitude/RefLongitude fallback the file still carries', async () => {
+    const withLatLong = BASE.replace(
+      "#6=IFCSITE('1Pbuu0tu59NfhrTsztVBK1',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);",
+      "#6=IFCSITE('1Pbuu0tu59NfhrTsztVBK1',$,'Site',$,$,$,$,$,.ELEMENT.,(47,22,0),(8,32,0),400.,$,$);",
+    );
+    const model = await open(fix(`${withLatLong}${sets(6, 40, 'EPSG:2056')}`), 'IFC2X3');
+    try {
+      model.bim.georef.remove();
+      const reopened = await openModel(new TextEncoder().encode(String(model.bim.export.ifc())), { disableWorkerScan: true });
+      try {
+        const fromFile = reopened.bim.georef.get();
+        expect(fromFile.source).toBe('IfcSite');
+        const pending = model.bim.georef.get();
+        expect({ ...pending, pending: false }).toEqual(fromFile);
+      } finally { reopened.close(); }
+    } finally { model.close(); }
+  });
+});

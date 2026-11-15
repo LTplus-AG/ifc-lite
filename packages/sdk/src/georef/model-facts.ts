@@ -57,9 +57,11 @@ export interface GeorefModelFacts {
   wellKnownText: Array<{ id: number; crs: number | null }>;
   /** IfcSites with RefLatitude and RefLongitude set. */
   sitesWithLatLong: number[];
-  /** IFC2X3 only: the convention sets, when present. */
+  /** IFC2X3 only: the convention sets, when present (the first copy of each). */
   ePSetMapConversion: EPSetLocation | null;
   ePSetProjectedCRS: EPSetLocation | null;
+  /** IFC2X3 only: every copy of either set, on any host (the reader reads any of them). */
+  ePSets: EPSetLocation[];
 }
 
 /** The slice of the session's mutation view the facts read. */
@@ -134,6 +136,7 @@ export function collectGeorefModelFacts(store: IfcDataStore, overlay: GeorefOver
     }),
     ePSetMapConversion: null,
     ePSetProjectedCRS: null,
+    ePSets: [],
   };
 
   if (facts.storage === 'propertySets' && overlay) {
@@ -141,23 +144,27 @@ export function collectGeorefModelFacts(store: IfcDataStore, overlay: GeorefOver
     // IfcBuilding are searched too so an edit never misses one and then
     // writes a second, contradicting copy.
     const hosts = [...sites, ...live('IFCPROJECT'), ...live('IFCBUILDING')];
-    facts.ePSetMapConversion = findEPSet(overlay, hosts, EPSET_MAP_CONVERSION);
-    facts.ePSetProjectedCRS = findEPSet(overlay, hosts, EPSET_PROJECTED_CRS);
+    const mc = findEPSets(overlay, hosts, EPSET_MAP_CONVERSION);
+    const crs = findEPSets(overlay, hosts, EPSET_PROJECTED_CRS);
+    facts.ePSetMapConversion = mc[0] ?? null;
+    facts.ePSetProjectedCRS = crs[0] ?? null;
+    facts.ePSets = [...mc, ...crs];
   }
   return facts;
 }
 
-function findEPSet(overlay: GeorefOverlayReader, hosts: number[], name: string): EPSetLocation | null {
+function findEPSets(overlay: GeorefOverlayReader, hosts: number[], name: string): EPSetLocation[] {
   const wanted = name.toLowerCase();
-  for (const hostId of hosts) {
+  const found: EPSetLocation[] = [];
+  for (const hostId of new Set(hosts)) {
     for (const pset of overlay.getForEntity(hostId)) {
       if (pset.name.toLowerCase() !== wanted) continue;
       const values: Record<string, unknown> = {};
       for (const prop of pset.properties) values[prop.name] = prop.value;
-      return { hostId, name: pset.name, values };
+      found.push({ hostId, name: pset.name, values });
     }
   }
-  return null;
+  return found;
 }
 
 /** `#12, #40` for messages. */

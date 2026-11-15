@@ -312,7 +312,7 @@ test('an upload argument that braces the asset variable is green', () => {
 // GitHub Actions expressions used as literal mutation anchors, not JS templates.
 /* eslint-disable no-template-curly-in-string */
 const CARGO_BUILD_LINE =
-  '            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --profile server-release' +
+  '            cargo build --profile server-release' +
   ' --package ifc-lite-server --target ${{ matrix.rust-target }}';
 const CROSS_BUILD_LINE =
   '            cross build --profile server-release --package ifc-lite-server' +

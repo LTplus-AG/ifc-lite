@@ -155,7 +155,7 @@ ifc-lite georef remove geo.ifc --out plain.ifc
 
 Fails closed (exit 1, nothing written): a missing CRS/unit/offset, an existing
 georeferencing without `--replace`, no representation context (IFC2X3: no
-IfcSite), contradicting rotation values, factors outside IFC4X3. Every write is
+IfcSite), contradicting rotation values, factors outside FILE_SCHEMA IFC4X3 / IFC4X3_ADD2. Every write is
 re-read from the written bytes before it is saved. `info --json` carries the
 same `georeferencing` object.
 

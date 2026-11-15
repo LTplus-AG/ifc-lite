@@ -314,10 +314,10 @@ try {
 
 Writes fail closed and throw a `GeoreferencingError` whose `code` says why and whose `missing` names the inputs that would let it proceed:
 
-- No CRS, map unit, scale or factor is assumed. `ProjectedCRS.MapUnit` must be given, or come from an IfcProjectedCRS of the same `Name` being replaced or updated (`result.mapUnit.source` says which); the writer supports metres with any SI prefix, `FOOT` and `US SURVEY FOOT`.
+- No CRS, map unit, scale or factor is assumed. `ProjectedCRS.MapUnit` must be given, or come from an IfcProjectedCRS of the same `Name` being replaced or updated whose unit the reader resolved (`result.mapUnit.source` says which); the writer supports metres with any SI prefix, `FOOT` and `US SURVEY FOOT`.
 - A model without an `IfcGeometricRepresentationContext` (the map conversion's `SourceCRS`) is refused; for IFC2X3, a model without exactly one IfcSite.
-- `set` on a georeferenced model is refused unless `replace: true`, which removes the existing map conversions, CRSs and their `IfcWellKnownText`.
-- Contradictions are refused: an angle and an `XAxisAbscissa`/`XAxisOrdinate` vector that disagree, half a vector, factors outside IFC4X3, factors on a plain `IfcMapConversion` (use `set` with `replace`), or an `update` that renames the CRS while keeping the old datum or unit.
+- `set` on a georeferenced model is refused unless `replace: true`, which removes the existing map conversions, CRSs and their `IfcWellKnownText` and writes one map conversion (for the 3D `Model` context); `result.notes` names any other context that loses its conversion.
+- Contradictions are refused: an angle and an `XAxisAbscissa`/`XAxisOrdinate` vector that disagree, half a vector, factors outside FILE_SCHEMA `IFC4X3` / `IFC4X3_ADD2`, unknown keys, factors on a plain `IfcMapConversion` (use `set` with `replace`), or an `update` that renames the CRS while keeping the old datum or unit.
 
 `get()` reports EXPRESS attribute names plus `rotationDegrees`, `source`, `storage` and `pending`. `readGeoreferencing(store)` gives the same shape for a parsed store without a session. `bim.georef` does no reprojection and never computes latitude/longitude; IfcSite `RefLatitude`/`RefLongitude` are left untouched and reported in `notes`.
 

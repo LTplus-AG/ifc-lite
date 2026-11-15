@@ -39,7 +39,7 @@ export const GEOREF_HELP = `
     --rotation DEG                         counter-clockwise from map easting to local x
     --x-axis-abscissa A --x-axis-ordinate O   the same rotation as a vector (both, or use --rotation)
     --scale S                              > 0; left unset when not given
-    --factor-x X --factor-y Y --factor-z Z IFC4X3 only: writes IfcMapConversionScaled
+    --factor-x X --factor-y Y --factor-z Z IFC4X3 / IFC4X3_ADD2 files only: writes IfcMapConversionScaled
 
   IFC2X3 has no such entities: set/update/remove write the ePSet_MapConversion and
   ePSet_ProjectedCRS property sets on the IfcSite, which ifc-lite and other readers understand.

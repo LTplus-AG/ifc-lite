@@ -320,8 +320,8 @@ For an `IfcSlab` host, `place_opening` accepts `Position: [x, y]` (opening centr
     without an `IfcGeometricRepresentationContext` (IFC2X3: IfcSite) is
     refused; an existing georeferencing is replaced only with `replace: true`;
     contradicting values are refused. The write is saved by `export_ifc` /
-    `model_save`. `mutation_undo` of a replace's deletions drops the whole
-    georeferencing write.
+    `model_save`. Each write is one operation: `mutation_undo` takes the whole
+    write back, never part of it.
 
 !!! tip "Schema reach beyond IFC4"
     The parser's entity registry is generated from IFC4_ADD2_TC1, and both

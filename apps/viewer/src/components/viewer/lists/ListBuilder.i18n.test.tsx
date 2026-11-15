@@ -143,7 +143,7 @@ function buildStore(): IfcDataStore {
     entityCount: 1,
     parseTime: 0,
     source: new Uint8Array(0),
-    entityIndex: { byId: { ranges: new Uint32Array(0), index: new Map() }, byType: new Map([['IFCWALL', [42]]]) },
+    entityIndex: { byId: new Map(), byType: new Map([['IFCWALL', [42]]]) },
     strings,
     entities: builder.build(),
     // Empty base tables let the shared filter editor discover an empty model.

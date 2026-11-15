@@ -129,6 +129,11 @@ interface UseBCFResult {
 
 let globalCanvasRef: React.RefObject<HTMLCanvasElement | null> | null = null;
 let globalRendererRef: React.RefObject<Renderer | null> | null = null;
+const rendererRefListeners = new Set<() => void>();
+export function subscribeGlobalRenderer(listener: () => void): () => void {
+  rendererRefListeners.add(listener);
+  return () => { rendererRefListeners.delete(listener); };
+}
 
 /**
  * Set the global canvas reference (called by ViewportContainer)
@@ -142,6 +147,7 @@ export function setGlobalCanvasRef(ref: React.RefObject<HTMLCanvasElement | null
  */
 export function setGlobalRendererRef(ref: React.RefObject<Renderer | null>): void {
   globalRendererRef = ref;
+  for (const listener of rendererRefListeners) listener();
 }
 
 /**
@@ -173,6 +179,7 @@ export function getGlobalCanvas(): HTMLCanvasElement | null {
 export function clearGlobalRefs(): void {
   globalCanvasRef = null;
   globalRendererRef = null;
+  for (const listener of rendererRefListeners) listener();
 }
 
 // ============================================================================

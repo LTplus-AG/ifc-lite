@@ -46,4 +46,6 @@ fn an_opening_touches_the_host_only_within_the_tolerance() {
     assert!(!touches_host(&host, &beside(0.048 - 5.0e-3), tol), "5 mm in is a cut");
     assert!(!touches_host(&host, &beside(0.048 + 5.0e-3), tol), "5 mm away is a miss");
     assert!(!touches_host(&host, &beside(-0.5), tol), "through the post");
+    let slot = [CutterKind::Rectangular(Point3::new(-0.01, -1.2, -0.04), Point3::new(-0.01 + 80.0e-6, 1.2, 0.04), None)];
+    assert!(!touches_host(&host, &slot, tol), "an 80 um slot through the post is a cut");
 }

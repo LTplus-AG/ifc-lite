@@ -11,6 +11,7 @@ import { detectRotation } from './detectors/rotation.js';
 import { detectSiteContradiction } from './detectors/site.js';
 import { detectUnits } from './detectors/units.js';
 import type {
+  CrsFact,
   CrsRequirement,
   DiagnoseOptions,
   GeorefFacts,
@@ -29,6 +30,11 @@ const POSITION_DEFECTS: ReadonlySet<GeorefFindingCode> = new Set<GeorefFindingCo
   'LV03_LV95_MIX',
   'OUTSIDE_CRS_AREA',
 ]);
+
+/** "Declared" as detectCrs reads it: a name or a definition, not a blank record. */
+function isDeclaredCrs(crs: CrsFact | undefined): boolean {
+  return !!crs && (crs.name.trim() !== '' || !!crs.wellKnownText);
+}
 
 /**
  * Levels of Georeferencing present in the file, per their published
@@ -62,9 +68,7 @@ export function georeferencingLevels(facts: GeorefFacts): GeorefLevel[] {
   if (customNorth || (origin && (origin.x !== 0 || origin.y !== 0 || origin.z !== 0))) levels.push(40);
   const op = facts.entities?.operation;
   const crs = facts.entities?.crs;
-  // "Declared" as detectCrs reads it: a name or a definition, not a blank record.
-  const crsDeclared = !!crs && (crs.name.trim() !== '' || !!crs.wellKnownText);
-  if (!isIfc2x3(facts.schemaVersion) && op?.source === 'IfcMapConversion' && crsDeclared) levels.push(50);
+  if (!isIfc2x3(facts.schemaVersion) && op?.source === 'IfcMapConversion' && isDeclaredCrs(crs)) levels.push(50);
   return levels;
 }
 
@@ -75,7 +79,7 @@ export function georeferencingIndicators(facts: GeorefFacts, ctx: DiagnosisConte
     geometryAtMapMagnitude: farGeometry(ctx).length > 0,
     ePSetConvention: !!facts.ePSet?.operation,
     rigidOperation: facts.entities?.operation?.source === 'IfcRigidOperation',
-    crsDeclared: !!(facts.entities?.crs || facts.ePSet?.crs),
+    crsDeclared: isDeclaredCrs(facts.entities?.crs) || isDeclaredCrs(facts.ePSet?.crs),
   };
 }
 

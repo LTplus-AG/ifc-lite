@@ -15,7 +15,11 @@ import assert from 'node:assert/strict';
 import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
 import { mayWarmUp } from '@/lib/warm-runtime-gate';
 import { resetFeaturesForTest } from '@/lib/features';
-import { fastPathSwitch, MODEL_SOURCES, pageCanOpenModels, startFastPath } from './startFastPath';
+import { fastPathSwitch, pageCanOpenModels, startFastPath } from './startFastPath';
+import type { FeatureId } from '@/lib/features';
+
+// Written out here, not read from startFastPath, so a source dropped there fails these tests.
+const MODEL_SOURCES: readonly FeatureId[] = ['files.local', 'files.samples', 'files.sources', 'files.federation-setup'];
 
 const desktop = { deviceMemory: 8, connection: { saveData: false } } as unknown as Navigator;
 const setSearch = (search: string) => window.history.replaceState(null, '', `/${search}`);

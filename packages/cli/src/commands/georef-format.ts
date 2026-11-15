@@ -14,11 +14,17 @@ function ref(type: string, id: number | undefined): string {
   return id === undefined ? `${type} (new)` : `${type} #${id}`;
 }
 
+/** The CRS's MapUnit as the file states it; a unit the reader could not resolve is shown as a fallback, never as the file's unit. */
+function mapUnitText(crs: NonNullable<GeoreferencingState['ProjectedCRS']>): string | undefined {
+  if (crs.MapUnit === undefined) return undefined;
+  return crs.mapUnitResolved === false ? `${crs.MapUnit} (unresolved in the file; reader fallback, not its unit)` : crs.MapUnit;
+}
+
 /** One line for `ifc-lite info`. */
 export function georeferencingSummary(state: GeoreferencingState): string {
   if (state.RigidOperation) return `${state.ProjectedCRS?.Name || 'no CRS'} via IfcRigidOperation #${state.RigidOperation.expressId}`;
   if (state.MapConversion || state.ProjectedCRS) {
-    const crs = state.ProjectedCRS ? `${state.ProjectedCRS.Name || '(unnamed CRS)'}${state.ProjectedCRS.MapUnit ? `, ${state.ProjectedCRS.MapUnit}` : ''}` : 'no CRS';
+    const crs = state.ProjectedCRS ? `${state.ProjectedCRS.Name || '(unnamed CRS)'}${mapUnitText(state.ProjectedCRS) ? `, ${mapUnitText(state.ProjectedCRS)}` : ''}` : 'no CRS';
     const mc = state.MapConversion;
     const at = mc ? ` at E ${mc.Eastings} N ${mc.Northings} H ${mc.OrthogonalHeight}` : '';
     return `${crs}${at} (${state.source ?? state.ProjectedCRS?.type})`;
@@ -40,7 +46,7 @@ export function describeGeoreferencing(state: GeoreferencingState): string {
   if (crs) {
     lines.push(`  CRS:      ${crs.Name || '(no Name)'}${crs.Description ? ` — ${crs.Description}` : ''}`);
     for (const key of CRS_KEYS.slice(2)) {
-      lines.push(`    ${key.padEnd(15)} ${crs[key] ?? '(not set)'}`);
+      lines.push(`    ${key.padEnd(15)} ${(key === 'MapUnit' ? mapUnitText(crs) : crs[key]) ?? '(not set)'}`);
     }
     if (crs.wellKnownText) lines.push(`    WellKnownText   ${crs.wellKnownText.slice(0, 60)}${crs.wellKnownText.length > 60 ? '…' : ''}`);
   }

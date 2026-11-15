@@ -107,6 +107,22 @@ describe('ifc-lite georef', () => {
     expect(JSON.parse(stdout).georeferencing).toBeNull();
   });
 
+  it('show and info do not present the reader\'s METRE fallback as the file\'s unit when MapUnit is unresolved', async () => {
+    await writeFile(p('chain.ifc'), header('IFC4') + BODY.replace('ENDSEC;', `#60= IFCCONTEXTDEPENDENTUNIT(#61,.LENGTHUNIT.,'CHAIN');
+#61= IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);
+#50= IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#60);
+#51= IFCMAPCONVERSION(#20,#50,1.,2.,3.,$,$,$);
+ENDSEC;`));
+    const state = await show(p('chain.ifc'));
+    expect(state.ProjectedCRS?.mapUnitResolved).toBe(false);
+    capture();
+    await georefCommand(['show', p('chain.ifc')]);
+    expect(stdout).toMatch(/MapUnit\s+\S+ \(unresolved in the file; reader fallback, not its unit\)/);
+    capture();
+    await infoCommand([p('chain.ifc')]);
+    expect(stdout).toContain('(unresolved in the file; reader fallback, not its unit)');
+  });
+
   it('update changes one value and keeps the rest; remove takes it out', async () => {
     await run(['update', p('ifc4-geo.ifc'), '--x-axis-abscissa', '0', '--x-axis-ordinate', '1', '--out', p('ifc4-upd.ifc'), '--json']);
     expect(JSON.parse(stdout)).toMatchObject({ action: 'update', mapUnit: { source: 'existing' } });

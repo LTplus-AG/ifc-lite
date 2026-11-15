@@ -20,6 +20,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 import { recordCompoundMutation, recordSessionMutation, StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import { collectGeorefModelFacts, EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS, type GeorefModelFacts } from './model-facts.js';
 import { CRS_FIELDS, MC_FIELDS, planRemove, planSet, stateAfter, type GeorefWritePlan, type PropertySetOp, type StepGeorefMutations } from './plan.js';
+import { withAttributeEdits } from './attribute-overlay.js';
 import { planUpdate } from './plan-update.js';
 import { readSourceGeoreferencing, readWithoutGeoreferencing } from './read.js';
 import type { GeorefMapConversionAttributes, GeorefProjectedCRSAttributes, GeoreferencingState, GeoreferencingWriteRequest, GeoreferencingWriteResult } from './types.js';
@@ -57,14 +58,17 @@ export class GeoreferencingSession {
   /** The effective georeferencing: this session's latest write, or the source minus its deletions. */
   get(): GeoreferencingState {
     const top = this.current();
-    if (top) return top.state.storage === 'propertySets' && top.state.hasGeoreference ? this.liveEPSetState() : top.state;
     const view = this.deps.view();
+    if (top) {
+      if (top.state.storage === 'propertySets' && top.state.hasGeoreference) return this.liveEPSetState();
+      return view ? withAttributeEdits(top.state, view, top.pending) : top.state;
+    }
     const source = readSourceGeoreferencing(this.deps.store, this.deps.modelId, view ? (id) => view.isDeleted(id) : undefined);
     // No georeferencing write, but an ordinary property edit of an IFC2X3 convention set
     // changes what the export says: read the sets back from the overlay, as after a write.
     return view && source.storage === 'propertySets' && conventionSetsEdited(view)
       ? this.liveEPSetState()
-      : source;
+      : view ? withAttributeEdits(source, view) : source;
   }
 
   write(request: GeoreferencingWriteRequest): GeoreferencingWriteResult {

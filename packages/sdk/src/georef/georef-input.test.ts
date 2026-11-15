@@ -332,6 +332,45 @@ describe('bim.georef second review follow-ups', () => {
     } finally { model.close(); }
   });
 
+  it('get() follows an ordinary attribute edit of an existing IFC4 IfcMapConversion / IfcProjectedCRS', async () => {
+    const author = await open(BASE);
+    let text: string;
+    try {
+      author.bim.georef.set({
+        ProjectedCRS: { Name: 'EPSG:2056', MapUnit: 'METRE' },
+        MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 },
+      });
+      text = String(author.bim.export.ifc());
+    } finally { author.close(); }
+    const model = await openModel(new TextEncoder().encode(text), { disableWorkerScan: true });
+    try {
+      const before = model.bim.georef.get();
+      const mcId = before.MapConversion?.expressId as number;
+      const crsId = before.ProjectedCRS?.expressId as number;
+      model.bim.mutate.setAttribute({ modelId: 'model', expressId: mcId }, 'Northings', '1200005.5');
+      model.bim.mutate.setAttribute({ modelId: 'model', expressId: crsId }, 'Description', 'CH1903+ / LV95');
+      const reopened = await openModel(new TextEncoder().encode(String(model.bim.export.ifc())), { disableWorkerScan: true });
+      try {
+        const fromFile = reopened.bim.georef.get();
+        expect(fromFile.MapConversion?.Northings).toBe(1200005.5);
+        const live = model.bim.georef.get();
+        expect(live.MapConversion?.Northings).toBe(1200005.5);
+        expect(live.ProjectedCRS?.Description).toBe(fromFile.ProjectedCRS?.Description);
+        expect(live.ProjectedCRS?.Description).toBe('CH1903+ / LV95');
+        expect(live.MapConversion?.Eastings).toBe(2600000);
+      } finally { reopened.close(); }
+      // A later georef write wins over an attribute edit of the same field, as at export.
+      model.bim.georef.update({ MapConversion: { Northings: 1200010 } });
+      expect(model.bim.georef.get().MapConversion?.Northings).toBe(1200010);
+      model.bim.mutate.setAttribute({ modelId: 'model', expressId: mcId }, 'Eastings', '2600007');
+      const again = await openModel(new TextEncoder().encode(String(model.bim.export.ifc())), { disableWorkerScan: true });
+      try {
+        expect(again.bim.georef.get().MapConversion).toMatchObject({ Northings: 1200010, Eastings: 2600007 });
+        expect(model.bim.georef.get().MapConversion).toMatchObject({ Northings: 1200010, Eastings: 2600007 });
+      } finally { again.close(); }
+    } finally { model.close(); }
+  });
+
   it.each([1e308, -1e308, 361])('refuses rotationDegrees %s instead of writing a NaN axis', async (rotationDegrees) => {
     const model = await open(BASE);
     try {

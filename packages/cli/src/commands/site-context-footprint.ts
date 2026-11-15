@@ -4,9 +4,14 @@
 
 /**
  * A coarse footprint of the model in EPSG:2056, to find its own building
- * among the neighbours: the plan bounding rectangle of the model's shaped
- * elements (LOD0 boxes from `@ifc-lite/export`, no meshing), carried to the
- * map through the model's IfcMapConversion (rotation and scale applied).
+ * among the neighbours: the plan bounding rectangle of the model's placed
+ * elements, carried to the map through the model's IfcMapConversion
+ * (rotation and scale applied). The element boxes are LOD0's from
+ * `@ifc-lite/export` (no meshing): an element's `IfcBoundingBox` where the
+ * file has one, else a 0.2 m box at its placement, so for most files this is
+ * the extent of the element placements. Walls are placed at one end, so the
+ * rectangle can fall short of the true outline by up to a wall length; the
+ * overlap rule (half of the smaller area) tolerates that.
  * The site context itself never uses the model's rotation; only this
  * matching footprint does, because it describes where the model stands.
  */
@@ -18,6 +23,8 @@ export interface ModelFootprint {
   /** One ring, counter-clockwise, EPSG:2056 metres. */
   ring: Array<{ x: number; y: number }>;
   elements: number;
+  /** Elements bounded by an `IfcBoundingBox`; the rest by their placement point. */
+  shapedElements: number;
   /** Map-conversion scale applied, metres of map per metre of model. */
   scale: number;
   warnings: string[];
@@ -27,15 +34,15 @@ export interface ModelFootprint {
 const NOT_BUILDING = new Set(['IfcSite', 'IfcGeographicElement', 'IfcAnnotation', 'IfcGrid', 'IfcVirtualElement', 'IfcExternalSpatialElement', 'IfcCivilElement', 'IfcProject']);
 
 /**
- * `null` when no element has a shape to bound. `lengthUnitScale` is the
- * project's length unit in metres; the LOD0 boxes are in metres already.
+ * `null` when no element is placed. `lengthUnitScale` is the project's length
+ * unit in metres; the LOD0 boxes are in metres already.
  */
 export async function modelFootprint(bytes: Uint8Array, model: ModelCentre, lengthUnitScale: number): Promise<ModelFootprint | null> {
   const lod0 = await generateLod0(bytes);
-  const shaped = lod0.elements.filter((e) => e.bbox_source === 'shape' && !NOT_BUILDING.has(e.ifcClass));
-  if (shaped.length === 0) return null;
+  const placed = lod0.elements.filter((e) => !NOT_BUILDING.has(e.ifcClass));
+  if (placed.length === 0) return null;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const e of shaped) {
+  for (const e of placed) {
     minX = Math.min(minX, e.bbox.min[0]);
     minY = Math.min(minY, e.bbox.min[1]);
     maxX = Math.max(maxX, e.bbox.max[0]);
@@ -55,5 +62,6 @@ export async function modelFootprint(bytes: Uint8Array, model: ModelCentre, leng
     x: model.conversionOrigin.x + scale * (x * cos - y * sin),
     y: model.conversionOrigin.y + scale * (x * sin + y * cos),
   }));
-  return { ring, elements: shaped.length, scale, warnings };
+  if (maxX - minX < 1 || maxY - minY < 1) warnings.push(`the model's element placements span only ${(maxX - minX).toFixed(2)} × ${(maxY - minY).toFixed(2)} m, too little to find its building by`);
+  return { ring, elements: placed.length, shapedElements: placed.filter((e) => e.bbox_source === 'shape').length, scale, warnings };
 }

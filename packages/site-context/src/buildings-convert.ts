@@ -39,16 +39,32 @@ export function lv95Transformer(): Promise<CrsTransformer> {
   return lv95;
 }
 
-/** ECEF xyz triplets to EPSG:2056 / LN02 xyz triplets (f64). `null` when a vertex does not map. */
+/**
+ * ECEF xyz triplets to EPSG:2056 / LN02 xyz triplets (f64). `null` when a
+ * vertex does not map. Each distinct position is converted once (the tiles
+ * repeat a vertex for every triangle and primitive that uses it, about
+ * twelve times per building), keyed by its exact coordinates, so the result
+ * is the same as converting every vertex.
+ */
 export function ecefToLv95(ecef: Float64Array, t: CrsTransformer): Float64Array | null {
   const out = new Float64Array(ecef.length);
+  const seen = new Map<string, number>();
   for (let i = 0; i < ecef.length; i += 3) {
+    const key = `${ecef[i]},${ecef[i + 1]},${ecef[i + 2]}`;
+    const first = seen.get(key);
+    if (first !== undefined) {
+      out[i] = out[first];
+      out[i + 1] = out[first + 1];
+      out[i + 2] = out[first + 2];
+      continue;
+    }
     const g = ecefToGeodetic(ecef[i], ecef[i + 1], ecef[i + 2]);
     const p = t.fromWgs84([g.lon, g.lat]);
     if (!p) return null;
     out[i] = p[0];
     out[i + 1] = p[1];
     out[i + 2] = g.height;
+    seen.set(key, i);
   }
   return out;
 }

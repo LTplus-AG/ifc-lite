@@ -58,7 +58,8 @@ export const SITE_CONTEXT_HELP = `
 
   Buildings: whole swissBUILDINGS3D buildings whose footprint touches the site square, each with a
   roof and a wall part. With a model, the building it stands in is marked "subject" (by
-  --subject-egid, else by overlap with the model's plan bounding rectangle); it is kept, not removed.
+  --subject-egid, else by overlap with the plan rectangle spanned by the model's element placements);
+  it is kept, not removed.
 
   Data: swissALTI3D and swissBUILDINGS3D (© swisstopo) and the cantonal cadastral web map
   (© Cadastral surveying and the cantons; terms unverified: check the canton's terms before
@@ -175,7 +176,7 @@ async function run(args: string[], deps: SiteContextDeps): Promise<void> {
     centreSource = 'model';
     if (layers.includes('buildings')) {
       footprint = await modelFootprint(new Uint8Array(await readFile(file)), model, store.lengthUnitScale ?? 1);
-      if (!footprint) model.warnings.push('no shaped element to bound, so the model gives no footprint to find its own building by');
+      if (!footprint) model.warnings.push('no placed element, so the model gives no footprint to find its own building by');
       else model.warnings.push(...footprint.warnings);
     }
   } else if (centreArg) {
@@ -230,7 +231,14 @@ async function run(args: string[], deps: SiteContextDeps): Promise<void> {
       ? {
           buildings: {
             ...summary.buildings,
-            subjectFootprint: footprint ? { source: 'model plan bounding rectangle (LOD0 boxes, map conversion applied)', elements: footprint.elements, ring: footprint.ring } : null,
+            subjectFootprint: footprint
+              ? {
+                  source: 'plan bounding rectangle of the model element placements (LOD0 boxes), map conversion applied',
+                  elements: footprint.elements,
+                  shapedElements: footprint.shapedElements,
+                  ring: footprint.ring,
+                }
+              : null,
             issues: summary.layers.find((l) => l.kind === 'buildings')!.issues,
           },
         }

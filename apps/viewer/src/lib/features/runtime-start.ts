@@ -13,6 +13,8 @@
  */
 
 import { startAnalytics } from '@/lib/analytics';
+import { useViewerStore } from '@/store';
+import { enforcePanelAvailability } from '@/store/panel-availability-sync';
 import { applyFeatureSelection } from './index';
 import { parseViewerRuntimeConfig, type ViewerRuntimeConfig } from './runtime-config';
 
@@ -25,6 +27,8 @@ import { parseViewerRuntimeConfig, type ViewerRuntimeConfig } from './runtime-co
 export function applyRuntimeConfig(config?: unknown): ViewerRuntimeConfig | undefined {
   const checked = config === undefined ? undefined : parseViewerRuntimeConfig(config);
   applyFeatureSelection(checked?.features);
+  // The store never holds a panel the host switched off, whatever opened it.
+  enforcePanelAvailability(useViewerStore);
   startAnalytics();
   return checked;
 }

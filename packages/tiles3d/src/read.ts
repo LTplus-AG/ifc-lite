@@ -9,7 +9,7 @@ import { type DracoLoader, defaultDracoLoader } from './content/draco.js';
 import type { FeatureMesh } from './content/features.js';
 import { BudgetExhaustedError, BudgetedFetcher, type FetcherOptions, type FetchStats } from './fetcher.js';
 import { ecefToGeodetic } from './geodesy.js';
-import { ContentRejectedError, DecodeBudget, DecodeLimitError, type DecodeLimits } from './limits.js';
+import { ContentRejectedError, DecodeBudget, DecodeLimitError, type DecodeLimits, finiteNumber, positiveInteger } from './limits.js';
 import { type ReaderIssue, type SelectedContent, type TileProvenance, type TraversalOptions, Traverser, type Truncation } from './traverse.js';
 import { UrlPolicy, UrlPolicyError, type UrlPolicyOptions } from './url-policy.js';
 import { expandRegion, type GeoRegion, prepareRegion } from './volume.js';
@@ -111,18 +111,6 @@ async function pool<T>(items: T[], n: number, fn: (item: T) => Promise<void>): P
   await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, worker));
 }
 
-/** JSON content without a tileset key in its first 4 KiB may still be a tileset: decide on the full parse. */
-function isTilesetJson(bytes: Uint8Array): boolean {
-  try {
-    const json = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown> | null;
-    return !!json && typeof json === 'object' && 'root' in json && 'asset' in json && !('meshes' in json) && !('accessors' in json);
-  } catch (err) {
-    // Not JSON at all: the glTF reader reports the parse error with its context.
-    if (err instanceof SyntaxError) return false;
-    throw err;
-  }
-}
-
 /**
  * Read every feature of a tileset inside a WGS84 region as meshes with attributes.
  *
@@ -133,8 +121,11 @@ function isTilesetJson(bytes: Uint8Array): boolean {
  * region is invalid, or the caller's `signal` aborts.
  */
 export async function readTilesetRegion(options: ReadTilesetRegionOptions): Promise<RegionReadResult> {
-  prepareRegion(options.region); // validate the caller's region before any request
-  const query = prepareRegion(expandRegion(options.region, options.tileCullMarginMetres ?? 0));
+  // Every numeric option is validated before any request; invalid values throw a RangeError, never clamp.
+  prepareRegion(options.region);
+  const margin = finiteNumber(options.tileCullMarginMetres, 0, 'tileCullMarginMetres', 0);
+  const concurrency = positiveInteger(options.concurrency, 4, 'concurrency');
+  const query = prepareRegion(expandRegion(options.region, margin));
   const fetcher = new BudgetedFetcher(options);
   fetcher.policy = new UrlPolicy(options.url, options);
   const budget = new DecodeBudget(options);
@@ -173,7 +164,7 @@ export async function readTilesetRegion(options: ReadTilesetRegionOptions): Prom
     }
     const kind = detectContentKind(bytes);
     // External tilesets are identified by content (JSON with a tileset shape), not by a `.json` URI.
-    if (kind === 'tileset' || (kind === 'gltf' && isTilesetJson(bytes))) {
+    if (kind === 'tileset') {
       contentsSelected--;
       externals.push([sel, bytes]);
       return;
@@ -212,7 +203,7 @@ export async function readTilesetRegion(options: ReadTilesetRegionOptions): Prom
     const externals: Array<[SelectedContent, Uint8Array]> = [];
     const work = round.map((sel, i) => [sel, decoded.length + i] as const);
     decoded.length += round.length;
-    await pool(work, options.concurrency ?? 4, ([sel, index]) => loadContent(sel, index, externals));
+    await pool(work, concurrency, ([sel, index]) => loadContent(sel, index, externals));
     for (const [sel, bytes] of externals) traverser.addExternalTileset(sel.url, bytes, sel.parent);
   }
 

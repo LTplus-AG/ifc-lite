@@ -13,7 +13,7 @@ import { IDENTITY, type Mat4, maxScale, multiply, transformPoint } from './matri
 import type { BoundingVolumeJson, ContentJson, TileJson, TilesetJson } from './tileset-types.js';
 import { type PreparedRegion, volumeIntersects } from './volume.js';
 import { decodeUtf8 } from './bytes.js';
-import type { ReaderIssueCode } from './limits.js';
+import { limit, type ReaderIssueCode } from './limits.js';
 import { UrlPolicyError } from './url-policy.js';
 import { detectContentKind } from './content/decode.js';
 
@@ -177,9 +177,9 @@ export class Traverser {
   private georefChecked = false;
 
   constructor(private readonly fetcher: BudgetedFetcher, private readonly query: PreparedRegion, options: TraversalOptions = {}) {
-    this.target = options.maxGeometricError ?? 0;
-    this.maxNodes = options.maxNodes ?? 1_000_000;
-    this.maxDepth = options.maxDepth ?? 256;
+    this.target = limit(options.maxGeometricError, 0, 'maxGeometricError');
+    this.maxNodes = limit(options.maxNodes, 1_000_000, 'maxNodes');
+    this.maxDepth = limit(options.maxDepth, 256, 'maxDepth');
   }
 
   /** Load the root tileset; a failure here is not a partial result and throws. */

@@ -29,9 +29,21 @@ export function detectContentKind(bytes: Uint8Array): ContentKind {
   if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) i = 3;
   while (i < bytes.length && (bytes[i] === 0x20 || bytes[i] === 0x0a || bytes[i] === 0x0d || bytes[i] === 0x09)) i++;
   if (bytes[i] !== 0x7b) return 'unknown';
-  // Cheap key sniff on the head; full parsing happens in the specific reader.
-  const head = new TextDecoder().decode(bytes.subarray(i, Math.min(bytes.length, i + 4096)));
-  if (/"root"\s*:/.test(head) || /"geometricError"\s*:/.test(head)) return 'tileset';
+  // Decide on the top-level keys of the full parse: a glTF may carry "root" or
+  // "geometricError" in nested extras, which a text sniff cannot tell apart.
+  try {
+    const json = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    if (json && typeof json === 'object' && !Array.isArray(json)) {
+      const top = json as Record<string, unknown>;
+      const gltfShaped = 'meshes' in top || 'accessors' in top || 'nodes' in top || 'scenes' in top || 'buffers' in top;
+      if (!gltfShaped && ('root' in top || 'geometricError' in top)) return 'tileset';
+    }
+  } catch (err) {
+    if (!(err instanceof SyntaxError)) throw err;
+    // Unparsable: fall back to a key sniff on the head so a broken tileset is reported as one.
+    const head = new TextDecoder().decode(bytes.subarray(i, Math.min(bytes.length, i + 4096)));
+    if (/"root"\s*:/.test(head) || /"geometricError"\s*:/.test(head)) return 'tileset';
+  }
   return 'gltf';
 }
 

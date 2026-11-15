@@ -95,10 +95,11 @@ export async function readSwisstopoBuildings(
 ): Promise<SwisstopoBuildingsResult> {
   const { release, ...rest } = options;
   const result = await readTilesetRegion({
-    maxRequests: 64,
-    maxBytes: 32 * 1024 * 1024,
-    tileCullMarginMetres: SWISSTOPO_TILE_CULL_MARGIN_METRES,
     ...rest,
+    // `??` not a spread: an explicit `undefined` must keep the preset's conservative default.
+    maxRequests: rest.maxRequests ?? 64,
+    maxBytes: rest.maxBytes ?? 32 * 1024 * 1024,
+    tileCullMarginMetres: rest.tileCullMarginMetres ?? SWISSTOPO_TILE_CULL_MARGIN_METRES,
     url: swisstopoBuildingsTilesetUrl(release),
   });
   for (const tile of result.tiles) {

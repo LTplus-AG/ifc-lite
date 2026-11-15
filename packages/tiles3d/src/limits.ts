@@ -60,14 +60,27 @@ export class DecodeLimitError extends Error {
   }
 }
 
-function limit(v: number | undefined, fallback: number, name: string): number {
+/** A budget or bound: undefined takes the default; NaN, negatives and non-numbers throw (Infinity means unbounded). */
+export function limit(v: number | undefined, fallback: number, name: string): number {
   if (v === undefined) return fallback;
-  if (!isNonNegativeNumber(v)) throw new RangeError(`${name} must be a non-negative number`);
+  if (typeof v !== 'number' || Number.isNaN(v) || v < 0) throw new RangeError(`${name} must be a non-negative number`);
   return v;
 }
 
-function isNonNegativeNumber(v: unknown): v is number {
-  return typeof v === 'number' && !Number.isNaN(v) && v >= 0;
+/** A count that must be at least 1 and whole, e.g. a worker count. */
+export function positiveInteger(v: number | undefined, fallback: number, name: string): number {
+  if (v === undefined) return fallback;
+  if (!Number.isSafeInteger(v) || v < 1) throw new RangeError(`${name} must be a positive integer`);
+  return v;
+}
+
+/** A finite number of at least `min` (and at most `max` when given). */
+export function finiteNumber(v: number | undefined, fallback: number, name: string, min: number, max = Infinity): number {
+  if (v === undefined) return fallback;
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) {
+    throw new RangeError(`${name} must be a finite number${max === Infinity ? ` >= ${min}` : ` in [${min}, ${max}]`}`);
+  }
+  return v;
 }
 
 /** Decoded vertex and index budget for one query, shared by every content. */

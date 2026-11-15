@@ -4,6 +4,7 @@
 
 /** Budgeted, cache-aware, abortable byte fetching shared by traversal and content loading. */
 
+import { finiteNumber, limit } from './limits.js';
 import type { UrlPolicy } from './url-policy.js';
 
 /**
@@ -111,9 +112,10 @@ export class BudgetedFetcher {
     const f = opts.fetch ?? (globalThis.fetch as unknown as FetchLike | undefined);
     if (!f) throw new Error('No fetch implementation: pass options.fetch');
     this.fetchImpl = f;
-    this.maxRequests = opts.maxRequests ?? DEFAULT_MAX_REQUESTS;
-    this.maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
-    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.maxRequests = limit(opts.maxRequests, DEFAULT_MAX_REQUESTS, 'maxRequests');
+    this.maxBytes = limit(opts.maxBytes, DEFAULT_MAX_BYTES, 'maxBytes');
+    // setTimeout coerces NaN, Infinity and anything above 2^31-1 to ~1 ms, which would time every request out at once.
+    this.timeoutMs = finiteNumber(opts.timeoutMs, DEFAULT_TIMEOUT_MS, 'timeoutMs', 1, 2 ** 31 - 1);
   }
 
   get signal(): AbortSignal | undefined {

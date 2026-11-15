@@ -17,7 +17,7 @@ import { assertModelTranslation } from '../model-translation.js';
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { PointCloudHandleIds } from './point-cloud-handle-ids.js';
-import { exactPlacement, originMatrix, PointCloudPlacements, skipUnrenderableOrigin, unionPointCloudBounds } from './point-cloud-placement.js';
+import { exactPlacement, requirePointCloudOrigin, PointCloudPlacements, unionPointCloudBounds, withPointCloudOrigins } from './point-cloud-placement.js';
 import { PointCloudVisibility, type PointCloudEntityFilter } from './point-cloud-visibility.js';
 import { isEntityVisible } from '../entity-visibility.js';
 import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
@@ -216,10 +216,10 @@ export class PointCloudRenderer {
   }
 
   /** A bad origin skips that cloud with a warning instead of throwing halfway through the batch (#10029). */
-  addAssets(assets: ReadonlyArray<PointCloudAsset>): void { for (const asset of assets) if (!skipUnrenderableOrigin(asset)) this.addAsset(asset); }
+  addAssets(assets: ReadonlyArray<PointCloudAsset>): void { withPointCloudOrigins(assets, (asset, origin) => this.uploadAsset(asset, origin)); }
 
-  addAsset(asset: PointCloudAsset): PointCloudAssetHandle {
-    const origin = asset.origin && originMatrix(asset.origin); // f64 baseline (#10029)
+  addAsset(asset: PointCloudAsset): PointCloudAssetHandle { return this.uploadAsset(asset, requirePointCloudOrigin(asset)); }
+  private uploadAsset(asset: PointCloudAsset, origin: Float64Array | undefined): PointCloudAssetHandle {
     const node = uploadAssetToGpu(this.device, this.pipeline, asset);
     const id = this.handleIds.allocate();
     this.nodes.set(id, node);

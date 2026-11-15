@@ -4,10 +4,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { appendTelemetry, costRecord } from './lib/review-telemetry.mjs';
-import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
+import { readStdinUtf8 } from '../lib/read-stdin.mjs';
 import { redactSecrets } from './lib/redact-secrets.mjs';
 
 /**
@@ -245,7 +245,7 @@ if (isMainEntry(import.meta.url)) {
       defaults: OPENROUTER_REVIEW_MODELS_DEFAULT,
     });
     const timeoutMs = resolveTimeoutMs(process.env.OPENROUTER_TIMEOUT_MS);
-    const { text, model } = await requestOpenRouterReviewChain({ prompt: readFileSync(0, 'utf8'), apiKey, models, timeoutMs,
+    const { text, model } = await requestOpenRouterReviewChain({ prompt: readStdinUtf8(), apiKey, models, timeoutMs,
       onTelemetry: (call) => {
         if (process.env.OPENROUTER_TELEMETRY_PATH) appendTelemetry(process.env.OPENROUTER_TELEMETRY_PATH, { provider: 'openrouter-fallback', calls: [call] });
       },

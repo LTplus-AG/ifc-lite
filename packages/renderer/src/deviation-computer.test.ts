@@ -275,8 +275,93 @@ describe('DeviationComputer workspace placement (#4226)', () => {
       assert.equal(firstTriangles.destroyed, 1);
       const rebuilt = created.find((buffer) => buffer !== firstTriangles && uploads.get(buffer)?.length === 12)!;
       const triangle = uploads.get(rebuilt)!;
-      assert.equal(triangle[0], 100, 'rebuilt BVH triangle starts at the moved world position');
-      assert.equal(triangle[3], 101); assert.equal(triangle[6], 100);
+      // Triangles are uploaded relative to the mesh-anchored compute frame
+      // (#10094 item 1): world x 100 minus the new anchor, the mesh origin 100.
+      assert.equal(triangle[0], 0, 'rebuilt BVH triangle starts at the moved mesh, in the anchored frame');
+      assert.equal(triangle[3], 1); assert.equal(triangle[6], 0);
+    } finally { computer.destroy(); }
+  });
+});
+
+describe('DeviationComputer shared precision frame (#10094 item 1)', () => {
+  function fixture(offset: number) {
+    const uploads: Float32Array[] = [];
+    const device = makeFakeGpuDevice();
+    device.queue.writeBuffer = (_buffer, _offset, data) => {
+      if (data instanceof ArrayBuffer) uploads.push(new Float32Array(data).slice());
+      else if (data instanceof Float32Array || data instanceof Uint32Array) {
+        uploads.push(new Float32Array(data.buffer, data.byteOffset, data.length).slice());
+      }
+    };
+    const placement = new Float64Array([
+      0, 2, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0,
+      offset + 0.13, offset, -offset, 1,
+    ]);
+    const secondPlacement = placement.slice();
+    secondPlacement[12] += 0.003;
+    const nodes = [placement, secondPlacement].map((matrix) => ({
+      chunks: [{ vertexBuffer: fakeBuffer(), deviationBuffer: fakeBuffer(), pointCount: 1 }],
+      placement: matrix,
+      model: new Float32Array(matrix),
+    }));
+    // Face normal is +X; both query points lie inside the triangle's YZ face.
+    const mesh = {
+      ...makeMesh(1), origin: [offset + 0.12, offset, -offset],
+      positions: new Float32Array([0, -1, -1, 0, 1, -1, 0, 0, 1]),
+    };
+    const ctx = makeCtx(device);
+    ctx.scene = { forEachMeshData: (visit: (value: typeof mesh) => void) => visit(mesh) } as unknown as DeviationComputeContext['scene'];
+    ctx.pointCloudRenderer = { getInternalNodes: () => nodes.values() } as unknown as DeviationComputeContext['pointCloudRenderer'];
+    const computer = new DeviationComputer();
+    computer.init(device);
+    return { computer, ctx, uploads, placement, mesh };
+  }
+
+  // Evaluate the shader's matrix multiply with f32 rounding at each operation.
+  function transform(model: Float32Array, p: number[]): number[] {
+    const f = Math.fround;
+    return [0, 1, 2].map((a) => f(f(f(f(model[a] * f(p[0]))
+      + f(model[a + 4] * f(p[1]))) + f(model[a + 8] * f(p[2]))) + model[a + 12]));
+  }
+
+  it('keeps a 5 mm face distance within 1 mm at map scale and at small coordinates', async () => {
+    const distances: number[][] = [];
+    for (const offset of [0, 2_600_000]) {
+      const { computer, ctx, uploads, mesh } = fixture(offset);
+      try {
+        const result = await computer.compute({}, ctx);
+        const triangles = uploads.find((data) => data.length === 12)!;
+        const bounds = uploads.find((data) => data.length === 8)!;
+        const uniforms = uploads.filter((data) => data.length === 20);
+        assert.equal(uniforms.length, 2, 'each cloud gets a transform into the same BVH frame');
+        const runDistances = uniforms.map((model, i) => {
+          const p = transform(model, [0, i === 0 ? 0.005 : 0.008, 0]);
+          const distance = Math.fround(p[0] - triangles[0]) * triangles[9];
+          assert.ok(Math.abs(distance - 0.005) < 0.001, `${offset}: got ${distance} m`);
+          assert.ok(p[1] >= -0.01 && p[1] <= 0.01 && p[2] === 0, 'query lies inside face');
+          return distance;
+        });
+        assert.ok(Math.abs(bounds[0]) < 1, 'BVH bounds are small too');
+        distances.push(runDistances);
+        assert.ok(Math.abs(result.bounds!.min[0] - mesh.origin[0]) < 1e-6, 'metadata retains world coordinates');
+        assert.equal(result.bounds!.min[1], offset - 1);
+        assert.equal(result.bounds!.max[2], -offset + 1);
+      } finally { computer.destroy(); }
+    }
+    distances[0].forEach((distance, i) => {
+      assert.ok(Math.abs(distance - distances[1][i]) < 1e-7, 'distance is translation-invariant');
+    });
+  });
+
+  it('keeps the BVH when only a cloud moves, since the frame is anchored on the meshes', async () => {
+    const { computer, ctx, uploads, placement } = fixture(2_600_000);
+    try {
+      const before = await computer.compute({}, ctx);
+      uploads.length = 0;
+      placement[12] += 0.002;
+      const after = await computer.compute({}, ctx);
+      assert.equal(uploads.filter((data) => data.length === 12).length, 0, 'a cloud move reuses the cached BVH');
+      assert.deepEqual(after.bounds, before.bounds, 'world-space bounds do not move with a cloud');
     } finally { computer.destroy(); }
   });
 });

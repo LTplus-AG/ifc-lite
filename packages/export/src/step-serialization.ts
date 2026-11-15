@@ -311,6 +311,7 @@ export function serializeStepValue(value: IfcAttributeValue, forceReal = false):
  * `LIST [1:3] OF IfcLengthMeasure` (#5217). That case throws.
  */
 function serializeStepValueAt(value: IfcAttributeValue, forceReal: boolean, inList: boolean): string {
+  if (value && typeof value === 'object' && 'literal' in value) return serializeValue(value);
   if (value === null || value === undefined) return '$';
   if (typeof value === 'boolean') return value ? '.T.' : '.F.';
   if (typeof value === 'number') {

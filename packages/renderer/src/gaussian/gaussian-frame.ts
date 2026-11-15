@@ -4,10 +4,10 @@
 
 /** Pure per-frame helpers of the Gaussian layer (#8564). */
 
-import type { GaussianEncodeCamera, GaussianEncodeTarget, GaussianPackedSource, GaussianRowFilter } from './gaussian-backend.js';
+import type { GaussianEncodeCamera, GaussianEncodeTarget, GaussianRowFilter, GaussianSortColumns } from './gaussian-backend.js';
 import type { GaussianSplatBounds, GaussianSplatState, GaussianSplatStats } from './gaussian-types.js';
 import type { GaussianCompositionReport } from './gaussian-composition.js';
-import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
+import type { PackedScene } from './gaussian-pack.js';
 import { clipIsActive, pointClipped } from '../scene-raycaster.js';
 import type { PickClipState } from '../pick-types.js';
 import type { RelativeToEyeFrame } from '../relative-to-eye.js';
@@ -36,7 +36,7 @@ export function clipKey(clip: PickClipState | null): string {
  * Centre clipping: a whole Gaussian is kept or removed by its centre, using the
  * renderer's CPU mirror of the mesh fragment discard. Its footprint is not clipped.
  */
-export function centreClipFilter(clip: PickClipState | null, source: GaussianPackedSource | undefined, anchor: readonly [number, number, number] | null): GaussianRowFilter | null {
+export function centreClipFilter(clip: PickClipState | null, source: Pick<GaussianSortColumns, 'positions'> | undefined, anchor: readonly [number, number, number] | null): GaussianRowFilter | null {
   if (!clipIsActive(clip) || !clip || !source || !anchor) return null;
   const { positions } = source;
   return (_slot, row) => !pointClipped(clip, anchor[0] + positions[row * 3], anchor[1] + positions[row * 3 + 1], anchor[2] + positions[row * 3 + 2]);
@@ -61,27 +61,22 @@ export function unionBounds(bounds: readonly GaussianSplatBounds[]): GaussianSpl
   return { min, max };
 }
 
-export function packedCpuBytes(source: GaussianPackedSource | undefined): number {
-  if (!source) return 0;
-  return [source.positions, source.scales, source.rotations, source.colors, source.opacities, source.semanticIds, source.sphericalHarmonics]
-    .reduce((sum, array) => sum + (array?.byteLength ?? 0), 0);
+/** CPU bytes the layer retains for the drawn data: the sort columns only (#9018). */
+export function packedCpuBytes(packed: Pick<PackedScene, 'sort'> | null | undefined): number {
+  if (!packed) return 0;
+  return packed.sort.positions.byteLength + packed.sort.opacities.byteLength + packed.sort.semanticIds.byteLength;
 }
 
-/** CPU bytes of one retained source asset (kept for re-placement and device recovery). */
-function attributeBytes(a: NormalizedGaussianAttributes): number {
-  return a.positions.byteLength + a.scales.byteLength + a.rotations.byteLength + a.colors.byteLength + a.opacities.byteLength + a.sphericalHarmonics.byteLength;
-}
-
-/** Diagnostics; cpuBytes counts the packed copy plus every retained source asset. */
+/** Diagnostics; cpuBytes counts every CPU byte the layer retains for its assets. */
 export function layerStats(
-  live: readonly { visible: boolean; attributes: NormalizedGaussianAttributes | null }[],
-  source: GaussianPackedSource | undefined, gpuBytes: number, drawnFrames: number, lastEncodeMs: number,
+  live: readonly { visible: boolean; count: number }[],
+  packed: Pick<PackedScene, 'sort' | 'slices'> | null | undefined, gpuBytes: number, drawnFrames: number, lastEncodeMs: number,
   composition: GaussianCompositionReport,
 ): GaussianSplatStats {
   return {
-    assets: live.length, splats: source?.opacities.length ?? 0,
-    visibleAssetSplats: live.filter((r) => r.visible).reduce((sum, r) => sum + (r.attributes?.count ?? 0), 0),
-    cpuBytes: packedCpuBytes(source) + live.reduce((sum, r) => sum + (r.attributes ? attributeBytes(r.attributes) : 0), 0),
+    assets: live.length, splats: packed ? [...packed.slices.values()].reduce((sum, slice) => sum + slice.rows, 0) : 0,
+    visibleAssetSplats: live.filter((r) => r.visible).reduce((sum, r) => sum + r.count, 0),
+    cpuBytes: packedCpuBytes(packed),
     gpuBytes, drawnFrames, lastEncodeMs, composition: composition.composition, compositionReport: composition, clipping: 'centre',
   };
 }

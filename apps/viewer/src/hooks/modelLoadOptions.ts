@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { TessellationQuality } from '@ifc-lite/geometry';
-import type { ProcessedModelRef } from '@ifc-lite/server-client';
+import type { ProcessedModelSource } from '@/lib/processed-model';
 import type { LandXmlGeorefAssumptions } from './ingest/landXmlGeorefAssumptions.js';
 
 /** Terminal Gaussian load result; publication alone is not completion. */
@@ -16,7 +16,7 @@ export interface ModelLoadOptions {
    * name only: no source bytes are read, hashed, cached or uploaded, and there
    * is no local fallback. Primary target only.
    */
-  processedModel?: ProcessedModelRef;
+  processedModel?: ProcessedModelSource;
   sourceHandle?: FileSystemFileHandle;
   /** Retry the owning operation (e.g. replacement), including its commit/cleanup. */
   retryOperation?: () => void;

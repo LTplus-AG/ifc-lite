@@ -44,4 +44,9 @@ export const siteContextDe = {
   "siteContext.card.heightAssumed": "Das Ankermodell gibt kein Höhensystem an; seine Höhen wurden als LN02 (EPSG:5728) angenommen, um diese Umgebung zu platzieren.",
   "siteContext.attribution.label": "Daten der Umgebung",
   "siteContext.palette.label": "Umgebung laden",
+  "siteContext.card.subjectHidden": "Das eigene Gebäude des Modells, {name}, wurde unter den Nachbarn gefunden ({method}) und ist ausgeblendet, damit das Modell an seiner Stelle steht.",
+  "siteContext.card.subjectMatchEgid": "über seinen EGID zugeordnet",
+  "siteContext.card.subjectMatchFootprint": "sein Grundriss überdeckt das Modell zu {overlap} %",
+  "siteContext.card.showSubject": "Einblenden",
+  "siteContext.card.hideSubject": "Wieder ausblenden",
 } satisfies Catalogue;

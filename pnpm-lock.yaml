@@ -398,6 +398,9 @@ importers:
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../../packages/spatial
+      '@ifc-lite/tiles3d':
+        specifier: workspace:^
+        version: link:../../packages/tiles3d
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../../packages/wasm

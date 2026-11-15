@@ -31,6 +31,7 @@ import { LOAD_COMPLETE } from '../modelLoadCanceller.js';
 import { sourceArrayBuffer } from './sourceBuffers.js';
 import { findReferenceSpatialModel } from './federationAlign.js';
 import { siteContextHeightRefusal } from './ifcGeorefAssumptions.js';
+import { applyInitialHiddenState } from './initialHiddenState.js';
 import { siteContextViewerModel, siteContextModelName, terrainPlanBox } from '@/lib/site-context/site-context-model';
 import { parcelDisplayWidth } from '@/lib/site-context/parcel-outline';
 import { siteContextFileName, singleCategoryDocument } from '@/lib/site-context/site-context-glb';
@@ -59,6 +60,20 @@ export interface SiteContextLoadOptions {
   /** Start a federated load of another category's single-category GLB. */
   loadSibling(file: File, name: string): void;
   onError(code: string, message: string): void;
+}
+
+/**
+ * The building the core marked as the model's own (`subject`), as the record
+ * the card shows: its express ids in this model, name and how it was matched.
+ */
+export function subjectOf(layer: SiteContextLayer): { expressIds: number[]; name: string; method: string; overlap?: number } | null {
+  const index = layer.features.findIndex((feature) => feature.subject === true);
+  if (index < 0) return null;
+  const feature = layer.features[index];
+  const match = feature.provenance.subjectMatch;
+  const method = match && typeof match === 'object' && !Array.isArray(match) && typeof match.method === 'string' ? match.method : 'unknown';
+  const overlap = match && typeof match === 'object' && !Array.isArray(match) && typeof match.overlap === 'number' ? match.overlap : undefined;
+  return { expressIds: [index + 1], name: feature.name, method, ...(overlap !== undefined ? { overlap } : {}) };
 }
 
 const hasGeometry = (layer: SiteContextLayer): boolean =>
@@ -150,6 +165,7 @@ export async function loadSiteContextModel(options: SiteContextLoadOptions): Pro
     const record = state.models.get(options.modelId);
     const heightAssumed = record?.ifcSharedVerticalDatumAssumed === true;
     const planBox = plan.here.kind === 'terrain' ? terrainPlanBox(plan.here) : null;
+    const subject = plan.here.kind === 'buildings' ? subjectOf(plan.here) : null;
     state.registerSiteContextModel(options.modelId, {
       kind: plan.here.kind,
       attribution: plan.here.attribution,
@@ -158,7 +174,12 @@ export async function loadSiteContextModel(options: SiteContextLoadOptions): Pro
       origin: doc.origin,
       ...(planBox ? { planBox } : {}),
       ...(heightAssumed ? { heightAssumed } : {}),
+      ...(subject ? { hiddenSubject: subject } : {}),
     });
+    // The model's own building, as swissBUILDINGS3D has it, would stand where
+    // the model stands: it starts hidden through the ordinary per-entity hide
+    // state, so the tree and the card can show it again.
+    if (subject) applyInitialHiddenState(options.modelId, subject.expressIds);
     if (heightAssumed) {
       toast.info('The model states no vertical datum, so its heights were taken as LN02 (EPSG:5728) to place the site context.');
     }

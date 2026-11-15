@@ -29,6 +29,8 @@ export interface LoadSiteContextOptions {
   radius: SiteContextRadius;
   categories: SiteContextLayerKind[];
   imagery: boolean;
+  /** The model's own building, for the buildings layer to mark (and the viewer to hide). */
+  subject?: { egid?: string; footprint?: Array<Array<{ x: number; y: number }>> };
   addModel: SiteContextAddModel;
   /** Removes a model through the federation (`useIfc().removeModel`): a reloaded category replaces its previous model. */
   removeModel: (modelId: string) => void;
@@ -91,7 +93,7 @@ export async function loadSiteContext(options: LoadSiteContextOptions): Promise<
   let chain: Promise<void> = Promise.resolve();
   try {
     const stats = await buildSiteContextInWorker(
-      { centre: options.centre, radius: options.radius, categories: options.categories },
+      { centre: options.centre, radius: options.radius, categories: options.categories, ...(options.subject ? { subject: options.subject } : {}) },
       {
         onProgress: (progress) => { if (!abort.signal.aborted) store().setSiteContextProgress(progress); },
         onCategory: (category) => { chain = chain.then(() => loadCategory(category)); },

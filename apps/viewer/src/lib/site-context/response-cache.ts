@@ -130,3 +130,26 @@ export function createSiteContextResponseCache(options: {
     },
   };
 }
+
+/**
+ * The same store seen through the 3D Tiles reader's cache contract
+ * (`TilesCache` of `@ifc-lite/tiles3d`: raw bytes per URL). Keys get a
+ * `tiles:` prefix so they can never collide with the geodata client's
+ * URL-plus-Range keys; eviction and the size cap are shared.
+ */
+export function tilesCacheView(cache: SiteContextResponseCache): {
+  get(url: string): Promise<Uint8Array | undefined>;
+  set(url: string, bytes: Uint8Array): Promise<void>;
+} {
+  return {
+    async get(url) {
+      const hit = await cache.get(`tiles:${url}`);
+      return hit ? new Uint8Array(hit.body) : undefined;
+    },
+    async set(url, bytes) {
+      const body = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength && bytes.buffer instanceof ArrayBuffer
+        ? bytes.buffer : bytes.slice().buffer;
+      await cache.set(`tiles:${url}`, { status: 200, headers: {}, body });
+    },
+  };
+}

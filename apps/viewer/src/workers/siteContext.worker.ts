@@ -11,6 +11,9 @@
  */
 
 import type { SiteContextLayer } from '@ifc-lite/site-context';
+// Vite emits the Draco decoder wasm next to this worker and hands back its
+// URL; the 3D Tiles reader loads it lazily, the first time a Draco tile is met.
+import dracoWasmUrl from '@ifc-lite/tiles3d/draco_decoder.wasm?url';
 import type { SiteContextWorkerRequest, SiteContextWorkerResponse } from '../lib/site-context/site-context-job';
 
 /**
@@ -41,21 +44,29 @@ scope.onmessage = (event) => {
   const { id, request } = message;
   void loadModules().then(([
     { createSwissGeodata }, { buildSiteContext, encodeSiteContextGlb, SiteContextCoverageError },
-    { createSiteContextResponseCache }, { swisstopoFetch }, { categoryOrigin },
+    { createSiteContextResponseCache, tilesCacheView }, { swisstopoFetch }, { categoryOrigin },
   ]) => {
     const counting = swisstopoFetch();
     const cache = createSiteContextResponseCache();
     // Offline, a miss should become an issue now, not after a minute of backoff.
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     const geodata = createSwissGeodata({ fetch: counting.fetch, cache, ...(offline ? { maxRetries: 0, timeoutMs: 5_000 } : {}) });
-    const stats = () => ({ requests: geodata.requestCount, bytes: counting.bytes, cacheHits: cache.hits });
+    // Every network request of the build (geodata client and 3D Tiles reader) goes through `counting`.
+    const stats = () => ({ requests: counting.requests, bytes: counting.bytes, cacheHits: cache.hits });
+    const subject = request.subject || request.egrid
+      ? { subject: { ...request.subject, ...(request.egrid ? { egrid: request.egrid } : {}) } } : {};
     return buildSiteContext({
       centre: request.centre,
       radius: request.radius,
       layers: request.categories,
       resolution: 'auto',
-      ...(request.egrid ? { subject: { egrid: request.egrid } } : {}),
+      ...subject,
       geodata,
+      buildings: {
+        fetch: counting.fetch,
+        cache: tilesCacheView(cache),
+        dracoModuleOptions: { locateFile: () => dracoWasmUrl },
+      },
       onProgress: (progress) => scope.postMessage({ type: 'progress', id, progress }),
       onLayer: (layer) => {
         const bytes = encodeSiteContextGlb({

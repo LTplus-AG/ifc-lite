@@ -44,4 +44,9 @@ export const siteContextRu = {
   "siteContext.card.heightAssumed": "В опорной модели не указана система высот; для размещения окружения её высоты считались LN02 (EPSG:5728).",
   "siteContext.attribution.label": "Данные окружения участка",
   "siteContext.palette.label": "Загрузить окружение участка",
+  "siteContext.card.subjectHidden": "Собственное здание модели, {name}, найдено среди соседних ({method}) и скрыто, чтобы на его месте стояла модель.",
+  "siteContext.card.subjectMatchEgid": "сопоставлено по EGID",
+  "siteContext.card.subjectMatchFootprint": "его контур перекрывает модель на {overlap} %",
+  "siteContext.card.showSubject": "Показать",
+  "siteContext.card.hideSubject": "Скрыть снова",
 } satisfies Catalogue;

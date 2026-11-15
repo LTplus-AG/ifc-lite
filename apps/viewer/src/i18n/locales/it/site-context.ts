@@ -44,4 +44,9 @@ export const siteContextIt = {
   "siteContext.card.heightAssumed": "Il modello di ancoraggio non indica alcun sistema altimetrico; le sue quote sono state considerate LN02 (EPSG:5728) per collocare questo contesto.",
   "siteContext.attribution.label": "Dati del contesto del sito",
   "siteContext.palette.label": "Carica il contesto del sito",
+  "siteContext.card.subjectHidden": "L'edificio del modello stesso, {name}, è stato trovato tra i vicini ({method}) ed è nascosto perché il modello ne prenda il posto.",
+  "siteContext.card.subjectMatchEgid": "identificato dal suo EGID",
+  "siteContext.card.subjectMatchFootprint": "la sua impronta si sovrappone al modello per il {overlap} %",
+  "siteContext.card.showSubject": "Mostra",
+  "siteContext.card.hideSubject": "Nascondi di nuovo",
 } satisfies Catalogue;

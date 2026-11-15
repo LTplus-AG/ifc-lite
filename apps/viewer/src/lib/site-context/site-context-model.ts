@@ -58,7 +58,11 @@ const COLOURS = {
   skirt: [0.47, 0.44, 0.40, 1],
   parcel: [1.0, 0.36, 0.05, 1],
   parcelCasing: [0.10, 0.08, 0.07, 1],
-  buildings: [0.86, 0.85, 0.83, 1],
+  // Neighbours: a muted stone wall a shade darker than a typical model's
+  // white, and a dull terracotta roof that sits with the aerial image's red
+  // roofs. Neither is saturated, so the user's model stays the subject.
+  buildings: [0.79, 0.77, 0.73, 1],
+  buildingRoof: [0.60, 0.47, 0.40, 1],
 } as const satisfies Record<string, readonly [number, number, number, number]>;
 
 /** The model name a category shows in the hierarchy. */
@@ -121,6 +125,24 @@ export function siteContextMeshes(doc: Pick<SiteContextDocument, 'origin'>, laye
     const [e, n, h] = feature.origin;
     const origin: [number, number, number] = [e - e0, h - h0, -(n - n0)];
     const isParcel = layer.kind === 'parcel';
+    const parts = feature.mesh.parts;
+    if (parts && parts.length > 0) {
+      // One renderer mesh per part (roof, wall), each with its own colour; the
+      // vertex arrays are shared and the entity is the same, so the building
+      // still selects, hides and sections as one.
+      const positions = toViewerAxes(feature.mesh.positions);
+      const normals = toViewerAxes(feature.mesh.normals);
+      for (const part of parts) {
+        if (part.indexCount <= 0) continue;
+        const c = part.name === 'roof' ? COLOURS.buildingRoof : COLOURS[layer.kind];
+        meshes.push({
+          expressId: expressIdOf(index), ifcType: feature.ifcType, positions, normals,
+          indices: feature.mesh.indices.slice(part.firstIndex, part.firstIndex + part.indexCount),
+          origin, color: [c[0], c[1], c[2], c[3]],
+        });
+      }
+      return;
+    }
     meshes.push({
       expressId: expressIdOf(index),
       ifcType: feature.ifcType,

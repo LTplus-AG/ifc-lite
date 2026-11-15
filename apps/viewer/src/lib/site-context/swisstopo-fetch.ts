@@ -13,8 +13,12 @@
 
 import type { FetchLike } from '@ifc-lite/geodata-ch';
 
-/** api3 (search, parcels, ÖREB register), data (STAC + COG tiles), wms and wmts (imagery). */
-const ALLOWED_HOSTS = new Set(['api3.geo.admin.ch', 'data.geo.admin.ch', 'wms.geo.admin.ch', 'wmts.geo.admin.ch']);
+/**
+ * api3 (search, parcels, ÖREB register), data (STAC + COG tiles), wms and wmts
+ * (imagery), and 3d (swissBUILDINGS3D 3D Tiles: the root tileset, its
+ * sub-tilesets and b3dm content all live there).
+ */
+const ALLOWED_HOSTS = new Set(['api3.geo.admin.ch', 'data.geo.admin.ch', 'wms.geo.admin.ch', 'wmts.geo.admin.ch', '3d.geo.admin.ch']);
 
 export class SiteContextHostRefused extends Error {
   constructor(readonly url: string) {
@@ -37,7 +41,9 @@ export function isAllowedSwisstopoUrl(url: string): boolean {
 
 export interface CountingFetch {
   fetch: FetchLike;
-  /** Bytes of response bodies received over the network (cache hits never reach here). */
+  /** Requests sent over the network through this fetch (cache hits never reach here). */
+  readonly requests: number;
+  /** Bytes of response bodies received over the network. */
   readonly bytes: number;
 }
 
@@ -48,10 +54,13 @@ export interface CountingFetch {
  */
 export function swisstopoFetch(inner: FetchLike = (input, init) => globalThis.fetch(input, init)): CountingFetch {
   let bytes = 0;
+  let requests = 0;
   return {
     get bytes() { return bytes; },
+    get requests() { return requests; },
     fetch: async (input, init) => {
       if (!isAllowedSwisstopoUrl(input)) throw new SiteContextHostRefused(input);
+      requests += 1;
       const response = await inner(input, { ...init, redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer' });
       const body = await response.arrayBuffer();
       bytes += body.byteLength;

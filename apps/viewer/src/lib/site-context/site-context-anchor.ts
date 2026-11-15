@@ -17,6 +17,7 @@ import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { resolveProjectionId } from '@/lib/geo/reproject';
 import { extractModelSpatialPlacement, type ModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
 import { siteContextHeightRefusal } from '@/hooks/ingest/ifcGeorefAssumptions';
+import { modelEgid, modelFootprint } from './site-context-subject';
 
 /** Switzerland and Liechtenstein in LV95, generously: swisstopo's terrain and cadastre cover this. */
 const SWISS_EXTENT = { minE: 2_480_000, maxE: 2_840_000, minN: 1_070_000, maxN: 1_300_000 };
@@ -30,6 +31,8 @@ export type SiteContextAnchor =
     crsAssumedFromName?: string;
     /** The model states no vertical datum; its heights will be taken as LN02. */
     heightAssumed: boolean;
+    /** The model's own building for the buildings layer: its EGID, else its footprint in EPSG:2056. */
+    subject?: { egid?: string; footprint?: Array<Array<{ x: number; y: number }>> };
   }
   | { ok: false; reason: 'not-georeferenced' | 'unknown-crs' | 'outside-switzerland' | 'height-datum'; detail?: string };
 
@@ -93,7 +96,15 @@ export async function resolveSiteContextAnchor(modelId: string): Promise<SiteCon
   const centre = projected ? await toLv95(crs, projected[0], projected[1]) : null;
   if (!centre) return { ok: false, reason: 'unknown-crs', detail: crs };
   if (!insideSwitzerland(centre)) return { ok: false, reason: 'outside-switzerland' };
+  const egid = modelEgid(model.ifcDataStore);
+  let footprint: Array<{ x: number; y: number }> | null = null;
+  if (!egid) {
+    const ring = modelFootprint(model, frame);
+    const lv95 = ring ? await Promise.all(ring.map(([e, n]) => toLv95(crs, e, n))) : [];
+    footprint = lv95.length === 4 && lv95.every((p) => p !== null) ? lv95 as Array<{ x: number; y: number }> : null;
+  }
   return {
+    ...(egid ? { subject: { egid } } : footprint ? { subject: { footprint: [footprint] } } : {}),
     ok: true,
     centre,
     ...(own.spatialReference.confidence === 'assumed' && own.spatialReference.horizontal ? { crsAssumedFromName: own.spatialReference.horizontal.id } : {}),

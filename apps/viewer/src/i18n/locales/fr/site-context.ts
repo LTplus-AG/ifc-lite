@@ -44,4 +44,9 @@ export const siteContextFr = {
   "siteContext.card.heightAssumed": "Le modèle d’ancrage n’indique aucun système altimétrique ; ses altitudes ont été considérées comme LN02 (EPSG:5728) pour placer ce contexte.",
   "siteContext.attribution.label": "Données du contexte du site",
   "siteContext.palette.label": "Charger le contexte du site",
+  "siteContext.card.subjectHidden": "Le bâtiment du modèle lui-même, {name}, a été trouvé parmi les voisins ({method}) et il est masqué pour que le modèle prenne sa place.",
+  "siteContext.card.subjectMatchEgid": "identifié par son EGID",
+  "siteContext.card.subjectMatchFootprint": "son emprise recouvre le modèle à {overlap} %",
+  "siteContext.card.showSubject": "Afficher",
+  "siteContext.card.hideSubject": "Masquer à nouveau",
 } satisfies Catalogue;

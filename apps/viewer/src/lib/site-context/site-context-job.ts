@@ -14,6 +14,11 @@ export interface SiteContextBuildRequest {
   categories: SiteContextLayerKind[];
   /** A parcel EGRID to take instead of the parcel at the centre. */
   egrid?: string;
+  /**
+   * The model's own building, so the buildings layer can mark it: its EGID when
+   * the model states one, else its footprint (EPSG:2056 rings, outer first).
+   */
+  subject?: { egid?: string; footprint?: Array<Array<{ x: number; y: number }>> };
 }
 
 export type SiteContextWorkerRequest = { type: 'build'; id: number; request: SiteContextBuildRequest };

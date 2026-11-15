@@ -74,6 +74,11 @@ export interface SiteContextModelInfo {
   origin: [number, number, number];
   /** Terrain only: the plan box `[minE, minN, maxE, maxN]` (EPSG:2056) the meshes' UVs span, for the aerial drape. */
   planBox?: [number, number, number, number];
+  /**
+   * Buildings only: the model's own building as found among the neighbours,
+   * hidden at load so the model stands in its place (model-local express ids).
+   */
+  hiddenSubject?: { expressIds: number[]; name: string; method: string; overlap?: number };
   /** The anchor states no vertical datum, so its heights were taken as LN02 (owner's rule). */
   heightAssumed?: boolean;
   /** Set once aerial imagery is draped on this (terrain) model. */

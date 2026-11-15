@@ -67,7 +67,7 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
   // The last request's choices survive the panel closing and reopening (it remounts).
   const last = useViewerStore.getState().siteContextRequest;
   const [radius, setRadius] = useState<SiteContextRadius>(last?.radius ?? 200);
-  const [selected, setSelected] = useState<ReadonlySet<SiteContextLayerKind>>(new Set(last?.categories ?? ['terrain', 'parcel']));
+  const [selected, setSelected] = useState<ReadonlySet<SiteContextLayerKind>>(new Set(last?.categories ?? ['terrain', 'parcel', 'buildings']));
   const [imagery, setImagery] = useState(last?.imagery ?? true);
 
   // A site-context model is the context, not a site to fetch around; outside
@@ -77,7 +77,7 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
   const start = () => {
     if (!anchor.ok) return;
     void import('@/lib/site-context/site-context-fetch').then(({ loadSiteContext }) => loadSiteContext({
-      anchorModelId: modelId, centre: anchor.centre, radius, categories: SITE_CONTEXT_CATEGORIES.filter((kind) => selected.has(kind)),
+      anchorModelId: modelId, centre: anchor.centre, radius, ...(anchor.subject ? { subject: anchor.subject } : {}), categories: SITE_CONTEXT_CATEGORIES.filter((kind) => selected.has(kind)),
       imagery: imagery && selected.has('terrain'), addModel, removeModel,
     }));
   };

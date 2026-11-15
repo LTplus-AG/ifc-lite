@@ -16,6 +16,7 @@ import { Mountain } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { useViewerStore, type FederatedModel } from '@/store';
+import type { SiteContextModelInfo } from '@/store/slices/siteContextSlice';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 
@@ -33,6 +34,26 @@ const CATEGORY_KEY = {
   parcel: 'siteContext.category.parcel',
   buildings: 'siteContext.category.buildings',
 } as const;
+
+/** The model's own building found among the neighbours: hidden at load; show or hide it again. */
+function SubjectNotice({ modelId, subject }: { modelId: string; subject: NonNullable<SiteContextModelInfo['hiddenSubject']> }) {
+  const { t, locale } = useTranslation();
+  const toGlobalId = useViewerStore((s) => s.toGlobalId);
+  const ids = subject.expressIds.map((id) => toGlobalId(modelId, id));
+  const hidden = useViewerStore((s) => ids.every((id) => s.hiddenEntities.has(id)));
+  const method = subject.method === 'footprint' && subject.overlap !== undefined
+    ? t('siteContext.card.subjectMatchFootprint', { overlap: formatLocaleNumber(locale, subject.overlap * 100, { maximumFractionDigits: 0 }) })
+    : subject.method === 'egid' ? t('siteContext.card.subjectMatchEgid') : subject.method;
+  return (
+    <div className="px-3 py-2 space-y-1" data-testid="site-context-subject">
+      <p className="text-xs">{t('siteContext.card.subjectHidden', { name: subject.name, method })}</p>
+      <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-xs"
+        onClick={() => { const s = useViewerStore.getState(); if (hidden) s.showEntities(ids); else s.hideEntities(ids); }}>
+        {t(hidden ? 'siteContext.card.showSubject' : 'siteContext.card.hideSubject')}
+      </Button>
+    </div>
+  );
+}
 
 export function SiteContextCard({ model }: { model: FederatedModel }) {
   const { t, locale } = useTranslation();
@@ -82,6 +103,7 @@ export function SiteContextCard({ model }: { model: FederatedModel }) {
             </Button>
           </div>
         )}
+        {info.hiddenSubject && <SubjectNotice modelId={model.id} subject={info.hiddenSubject} />}
         {info.heightAssumed && (
           <p className="border-warn-border bg-warn-surface px-3 py-2 text-xs">{t('siteContext.card.heightAssumed')}</p>
         )}

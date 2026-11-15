@@ -41,6 +41,11 @@ export const siteContextEn = {
   'siteContext.card.drape': 'Drape aerial imagery',
   'siteContext.card.issues': 'Issues',
   'siteContext.card.heightAssumed': 'The anchor model states no vertical datum; its heights were taken as LN02 (EPSG:5728) to place this context.',
+  "siteContext.card.subjectHidden": "The model's own building, {name}, was found among the neighbours ({method}) and is hidden so the model stands in its place.",
+  "siteContext.card.subjectMatchEgid": "matched by its EGID",
+  "siteContext.card.subjectMatchFootprint": "its footprint overlaps the model by {overlap} %",
+  "siteContext.card.showSubject": "Show it",
+  "siteContext.card.hideSubject": "Hide it again",
   'siteContext.attribution.label': 'Site context data',
   'siteContext.palette.label': 'Load site context',
 } as const;

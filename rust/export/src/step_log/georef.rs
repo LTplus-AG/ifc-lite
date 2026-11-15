@@ -184,6 +184,39 @@ fn edit_existing(pass: &mut Pass<'_, '_>, id: u32, edits: Vec<(String, String)>)
     }
 }
 
+/// Named attribute edits for the keys `mc` or `crs` carries, in `pairs` order.
+fn named_edits(m: &Map<String, Value>, pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+    pairs.iter().filter_map(|&(key, attr)| m.get(key).map(|v| (attr.to_string(), json_to_js_string(v)))).collect()
+}
+
+/// `MapUnit` as a reference token: the resolved or created unit, else `$`
+/// with the unsupported-unit warning.
+fn map_unit_token(pass: &mut Pass<'_, '_>, unit: &Value) -> Result<String, Unwritable> {
+    let name = json_to_js_string(unit);
+    Ok(match map_unit(pass, &name)? {
+        Some(unit_id) => format!("#{unit_id}"),
+        None => {
+            pass.warnings.push(unit_warning(&name));
+            "$".to_string()
+        }
+    })
+}
+
+/// Create the `IfcMapConversion` from the preferred context to `crs_id`, or
+/// report that no context exists.
+fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, Value>, file_schema: &str) -> Result<(), Unwritable> {
+    match preferred_context(pass) {
+        Some(context) => {
+            let mc_id = pass.allocate()?;
+            let line = map_conversion_line(mc_id, context, crs_id, mc, &mut pass.warnings, file_schema)?;
+            pass.georef_lines.push((mc_id, line));
+            pass.new_entity_count += 1;
+        }
+        None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),
+    }
+    Ok(())
+}
+
 /// `applyGeoreferencingMutations`.
 pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &str) -> Result<(), Unwritable> {
     let crs_ids = pass.of_type("IFCPROJECTEDCRS");
@@ -194,52 +227,39 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
     mc_ids.extend(pass.of_type("IFCMAPCONVERSIONSCALED"));
 
     if let (Some(crs), Some(&id)) = (&g.projected_crs, crs_ids.first()) {
-        let mut edits = Vec::new();
-        for (key, attr) in [
-            ("name", "Name"),
-            ("description", "Description"),
-            ("geodeticDatum", "GeodeticDatum"),
-            ("verticalDatum", "VerticalDatum"),
-            ("mapProjection", "MapProjection"),
-            ("mapZone", "MapZone"),
-        ] {
-            if let Some(v) = crs.get(key) {
-                edits.push((attr.to_string(), json_to_js_string(v)));
-            }
-        }
+        let mut edits = named_edits(
+            crs,
+            &[
+                ("name", "Name"),
+                ("description", "Description"),
+                ("geodeticDatum", "GeodeticDatum"),
+                ("verticalDatum", "VerticalDatum"),
+                ("mapProjection", "MapProjection"),
+                ("mapZone", "MapZone"),
+            ],
+        );
         if let Some(unit) = crs.get("mapUnit") {
-            let name = json_to_js_string(unit);
-            let value = match map_unit(pass, &name)? {
-                Some(unit_id) => format!("#{unit_id}"),
-                None => {
-                    pass.warnings.push(unit_warning(&name));
-                    "$".to_string()
-                }
-            };
+            let value = map_unit_token(pass, unit)?;
             edits.push(("MapUnit".to_string(), value));
         }
         edit_existing(pass, id, edits);
     }
 
     if let (Some(mc), Some(&id)) = (&g.map_conversion, mc_ids.first()) {
-        let mut edits = Vec::new();
-        for (key, attr) in [
-            ("eastings", "Eastings"),
-            ("northings", "Northings"),
-            ("orthogonalHeight", "OrthogonalHeight"),
-            ("xAxisAbscissa", "XAxisAbscissa"),
-            ("xAxisOrdinate", "XAxisOrdinate"),
-            ("scale", "Scale"),
-        ] {
-            if let Some(v) = mc.get(key) {
-                edits.push((attr.to_string(), json_to_js_string(v)));
-            }
-        }
-        if let Some(factors) = requested_factors(mc, &mut pass.warnings) {
+        let mut edits = named_edits(
+            mc,
+            &[
+                ("eastings", "Eastings"),
+                ("northings", "Northings"),
+                ("orthogonalHeight", "OrthogonalHeight"),
+                ("xAxisAbscissa", "XAxisAbscissa"),
+                ("xAxisOrdinate", "XAxisOrdinate"),
+                ("scale", "Scale"),
+            ],
+        );
+        if requested_factors(mc, &mut pass.warnings).is_some() {
             if first_is_scaled {
-                for (attr, v) in ["FactorX", "FactorY", "FactorZ"].into_iter().zip(factors) {
-                    edits.push((attr.to_string(), json_to_js_string(v)));
-                }
+                edits.extend(named_edits(mc, &[("factorX", "FactorX"), ("factorY", "FactorY"), ("factorZ", "FactorZ")]));
             } else {
                 pass.warnings.push(FACTORS_ON_UNSCALED.to_string());
             }
@@ -255,36 +275,15 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
             None => "$".to_string(),
         };
         let fields = ["name", "description", "geodeticDatum", "verticalDatum", "mapProjection", "mapZone"].map(text);
-        let mut unit_ref = "$".to_string();
-        if let Some(unit) = crs.get("mapUnit") {
-            let name = json_to_js_string(unit);
-            match map_unit(pass, &name)? {
-                Some(unit_id) => unit_ref = format!("#{unit_id}"),
-                None => pass.warnings.push(unit_warning(&name)),
-            }
-        }
+        let unit_ref = match crs.get("mapUnit") {
+            Some(unit) => map_unit_token(pass, unit)?,
+            None => "$".to_string(),
+        };
         pass.georef_lines.push((crs_id, format!("#{crs_id}=IFCPROJECTEDCRS({},{unit_ref});", fields.join(","))));
         pass.new_entity_count += 1;
-        match preferred_context(pass) {
-            Some(context) => {
-                let mc_id = pass.allocate()?;
-                let mc = g.map_conversion.as_ref().unwrap_or(&empty);
-                let line = map_conversion_line(mc_id, context, crs_id, mc, &mut pass.warnings, file_schema)?;
-                pass.georef_lines.push((mc_id, line));
-                pass.new_entity_count += 1;
-            }
-            None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),
-        }
+        create_map_conversion(pass, crs_id, g.map_conversion.as_ref().unwrap_or(&empty), file_schema)?;
     } else if let (Some(mc), true, Some(&crs_id)) = (&g.map_conversion, mc_ids.is_empty(), crs_ids.first()) {
-        match preferred_context(pass) {
-            Some(context) => {
-                let mc_id = pass.allocate()?;
-                let line = map_conversion_line(mc_id, context, crs_id, mc, &mut pass.warnings, file_schema)?;
-                pass.georef_lines.push((mc_id, line));
-                pass.new_entity_count += 1;
-            }
-            None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),
-        }
+        create_map_conversion(pass, crs_id, mc, file_schema)?;
     } else if g.map_conversion.is_some() && mc_ids.is_empty() && crs_ids.is_empty() {
         pass.warnings.push(WITHOUT_CRS.to_string());
     }

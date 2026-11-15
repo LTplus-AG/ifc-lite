@@ -62,6 +62,7 @@ ${beam(19, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.1,$,0.006,$,$,$)')}
 ${beam(20, 'IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#74,(#82))')}
 ${beam(21, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.075,0.075,0.006,0.01,0.005,0.,0.01707184,0.01707184)')}
 ${beam(22, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.075,0.075,0.006,$,$,$,0.0204,0.0204)')}
+${beam(23, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.1,0.002,$,$,$,0.02574747,0.02574747)')}
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -78,6 +79,7 @@ const ORACLE: Record<number, [number, number]> = {
   194: [-22.773, -22.773], // IfcLShapeProfileDef 100 x (Width omitted = Depth) x 6
   214: [-17.085, -17.085], // the AxisVM L (75 x 75 x 6, 10 mm fillet, 5 mm edge radius) states 17.07184: IfcOpenShell measures 17.085
   224: [-16.531, -16.531], // the same angle without fillets; a stated 20.4 mm (measured from the outer edge) disagrees by 23% and is ignored
+  234: [-24.253, -24.253], // thin 100 x 100 x 2 angle stating 25.747 (the outer-edge distance), which is also within 10% of the 24.253 offset: ambiguous, so the computed one stays
   204: [-3.553, 0], // the same square with a 20 mm radius circular void 25 mm right of the centre (IfcOpenShell tessellates the circle; the exact disc gives -3.593)
 };
 // Bounds centre of each profile in the profile frame (mm): the polygon's lower-left corner is the origin.

@@ -342,10 +342,7 @@ export function selectScanBand(params: SelectScanBandParams): ScanBandSelection 
 
 /** Every in-band point, undecimated, relative to a shared drawing-space anchor.
  * The first in-band point supplies the f64 anchor unless given (#10094 item 2). */
-export function collectScanBandPlaneXY(
-  params: Omit<SelectScanBandParams, 'maxRendered'>,
-  anchor?: Point2D,
-): { planeXY: Float32Array; anchor: Point2D } {
+export function collectScanBandPlaneXY(params: Omit<SelectScanBandParams, 'maxRendered'>, anchor?: Point2D): { planeXY: Float32Array; anchor: Point2D } {
   const { sample, plane } = params;
   const { passesClassMask, readPoint, inBand } = bandReader(params);
   let n = 0;
@@ -355,9 +352,8 @@ export function collectScanBandPlaneXY(
   const out = new Float32Array(n * 2);
   let k = 0;
   for (let i = 0; i < sample.count && k < out.length; i++) {
-    if (!passesClassMask(i)) continue;
-    const rp = readPoint(i);
-    if (!inBand(rp)) continue;
+    const rp = passesClassMask(i) ? readPoint(i) : null;
+    if (!rp || !inBand(rp)) continue;
     const p = projectScanPoint(rp, plane);
     anchor ??= p;
     out[k++] = p.x - anchor.x;

@@ -65,7 +65,8 @@ export function parseGeorefArgs(args: string[], allowed: { values: boolean; out:
       parsed.booleans.add(arg);
       continue;
     }
-    if (i + 1 >= args.length) throw new GeorefUsageError(`${arg} needs a value`);
+    // A following flag is not a value: `--out --json` is a missing path, not a file named `--json`.
+    if (i + 1 >= args.length || args[i + 1].startsWith('--')) throw new GeorefUsageError(`${arg} needs a value`);
     if (parsed.values.has(arg)) throw new GeorefUsageError(`${arg} was given twice`);
     parsed.values.set(arg, args[++i]);
   }

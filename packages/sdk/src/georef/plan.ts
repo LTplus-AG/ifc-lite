@@ -159,12 +159,12 @@ function extraEPSetOps(facts: GeorefModelFacts): PropertySetOp[] {
  */
 function contextNotes(facts: GeorefModelFacts): string[] {
   const covered = [...new Set(facts.mapConversions.map((m) => m.sourceCrs).filter((id): id is number => id !== null))];
-  if (covered.length < 2) return [];
   const label = (id: number) => `#${id} '${facts.contextTypes.get(id) ?? ''}'`;
   const kept = facts.preferredContext;
   const lost = covered.filter((id) => id !== kept);
+  if (lost.length === 0) return [];
   return [
-    `The replaced map conversions covered ${covered.length} representation contexts (${covered.map(label).join(', ')}). The new IfcMapConversion is written for ${kept === null ? 'one context' : label(kept)} only, so ${lost.map(label).join(', ')} ${lost.length === 1 ? 'is' : 'are'} no longer georeferenced; ifc-lite does not write one conversion per context yet.`,
+    `The replaced map conversions covered ${covered.length} representation context${covered.length === 1 ? '' : 's'} (${covered.map(label).join(', ')}). The new IfcMapConversion is written for ${kept === null ? 'one context' : label(kept)} only, so ${lost.map(label).join(', ')} ${lost.length === 1 ? 'is' : 'are'} no longer georeferenced; ifc-lite does not write one conversion per context yet.`,
   ];
 }
 

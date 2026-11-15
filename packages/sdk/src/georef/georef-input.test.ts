@@ -197,6 +197,23 @@ describe('bim.georef replace across several representation contexts', () => {
   });
 });
 
+describe('bim.georef replace when only a non-preferred context carries the conversion', () => {
+  it('names the context that loses its conversion', async () => {
+    const model = await open(`${BASE.replace("(#5),#91", "(#5,#7),#91")}
+#7=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-5,#3,$);
+#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#90);
+#22=IFCMAPCONVERSION(#7,#20,1.,2.,3.,$,$,$);`);
+    try {
+      const result = model.bim.georef.set({
+        ProjectedCRS: { Name: 'EPSG:2056', MapUnit: 'METRE' },
+        MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 },
+        replace: true,
+      });
+      expect(result.notes.find((n) => n.includes('representation context'))).toMatch(/#7 'Plan'[^.]*no longer georeferenced/);
+    } finally { model.close(); }
+  });
+});
+
 describe('bim.georef IFC2X3 review follow-ups', () => {
   const sets = (host: number, base: number, name: string) => `
 #${base}=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(2600000.),$);

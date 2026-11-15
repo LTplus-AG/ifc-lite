@@ -143,6 +143,13 @@ describe('ifc-lite georef', () => {
     expect(existsSync(out)).toBe(false);
   });
 
+  it('refuses --out followed by another flag instead of writing a file named after it', async () => {
+    const cwdFile = '--json';
+    expect(await exitCode(['set', p('ifc4.ifc'), '--epsg', '2056', '--map-unit', 'METRE', '--eastings', '1', '--northings', '2', '--height', '3', '--out', '--json'])).toBe(1);
+    expect(stderr).toMatch(/--out needs a value/);
+    expect(existsSync(cwdFile)).toBe(false);
+  });
+
   it('show refuses --out, and an unknown subcommand is named', async () => {
     expect(await exitCode(['show', p('ifc4.ifc'), '--out', p('x.json')])).toBe(1);
     expect(await exitCode(['check', p('ifc4.ifc')])).toBe(1);

@@ -152,29 +152,125 @@ const PARAMETERISED: Record<string, (a: readonly unknown[]) => { size: [unknown,
   IFCCSHAPEPROFILEDEF: (a) => ({ size: [a[4], a[3]], exact: false }),
 };
 
-/** A profile's outline in its own 2D frame, exact or as bounds. */
-function profileOutline(reader: GeometryEntityReader, profile: Entity | null): { points: Flat[]; exact: boolean } | string {
+/** A rectangle of a compound profile: its centre in the profile frame and its area. */
+type Part = [cx: number, cy: number, w: number, h: number];
+
+/**
+ * Where the centroid of an asymmetric steel section lies from the centre of its bounds, in the
+ * profile's own frame (x along the width, y along the depth), from its sharp-cornered shape (fillets
+ * move it by well under a millimetre). Orientations follow the IFC profile definitions: an L has its
+ * legs left and bottom, a T its flange on top, a U and C their web on the left. Null for a section
+ * whose centroid is its bounds centre or that is not read.
+ */
+function sectionCentroidOffset(type: string, a: readonly unknown[], x: number, y: number): Flat | null {
+  const [p3, p4, p5, p6] = [num(a[3]), num(a[4]), num(a[5]), num(a[6])];
+  const parts = ((): Part[] | null => {
+    // An omitted Width is the Depth (IFC2X3), as the bounds already read it.
+    if (type === 'IFCLSHAPEPROFILEDEF' && p3 !== null && p5 !== null) {
+      const w = p4 ?? p3;
+      return [[0, -p3 / 2 + p5 / 2, w, p5], [-w / 2 + p5 / 2, p5 / 2, p5, p3 - p5]];
+    }
+    if (type === 'IFCTSHAPEPROFILEDEF' && p3 !== null && p4 !== null && p5 !== null && p6 !== null) {
+      return [[0, p3 / 2 - p6 / 2, p4, p6], [0, -p6 / 2, p5, p3 - p6]];
+    }
+    if (type === 'IFCUSHAPEPROFILEDEF' && p3 !== null && p4 !== null && p5 !== null && p6 !== null) {
+      const flange = (y0: number): Part => [p5 / 2, y0, p4 - p5, p6];
+      return [[-p4 / 2 + p5 / 2, 0, p5, p3], flange(p3 / 2 - p6 / 2), flange(-p3 / 2 + p6 / 2)];
+    }
+    if (type === 'IFCCSHAPEPROFILEDEF' && p3 !== null && p4 !== null && p5 !== null && p6 !== null && p6 > p5) {
+      const flange = (y0: number): Part => [p5 / 2, y0, p4 - p5, p5];
+      const lip = (sign: number): Part => [p4 / 2 - p5 / 2, sign * (p3 / 2 - p5 - (p6 - p5) / 2), p5, p6 - p5];
+      return [[-p4 / 2 + p5 / 2, 0, p5, p3], flange(p3 / 2 - p5 / 2), flange(-p3 / 2 + p5 / 2), lip(1), lip(-1)];
+    }
+    return null;
+  })();
+  if (!parts || parts.some(([, , w, h]) => !(w > 0) || !(h > 0)) || !(x > 0) || !(y > 0)) return null;
+  const area = parts.reduce((sum, [, , w, h]) => sum + w * h, 0);
+  return [parts.reduce((sum, [cx, , w, h]) => sum + cx * w * h, 0) / area, parts.reduce((sum, [, cy, w, h]) => sum + cy * w * h, 0) / area];
+}
+
+/** A closed ring's points from a polyline, composite or indexed poly curve; a reason when the curve is not read. */
+function curveRing(reader: GeometryEntityReader, curve: Entity | null): Flat[] | string {
+  let points: Flat[] | null = null;
+  if (upper(curve) === 'IFCPOLYLINE') {
+    points = polylinePoints(reader, curve!);
+  } else if (upper(curve) === 'IFCCOMPOSITECURVE') {
+    points = compositePoints(reader, curve!);
+  } else if (upper(curve) === 'IFCINDEXEDPOLYCURVE') {
+    const list = reader.entity(refId(curve!.attributes[0]) ?? 0);
+    const coords = upper(list) === 'IFCCARTESIANPOINTLIST2D' && Array.isArray(list!.attributes[0]) ? list!.attributes[0] as unknown[] : [];
+    const all = coords.every((c) => Array.isArray(c) && num(c[0]) !== null && num(c[1]) !== null) ? coords.map((c): Flat => [(c as number[])[0], (c as number[])[1]]) : null;
+    const order = segmentOrder(curve!.attributes[1], all?.length ?? 0);
+    if (typeof order === 'string') return order;
+    points = all && (order ? order.map((i) => all[i]) : all);
+  }
+  if (!points || points.length < 3) return `profile curve ${curve?.type ?? 'unreadable'} is not a polyline`;
+  const [first, last] = [points[0], points[points.length - 1]];
+  return Math.hypot(first[0] - last[0], first[1] - last[1]) < 1e-9 ? points.slice(0, -1) : points;
+}
+
+/** Area and first moments of a shape: the area, and area times centroid in x and y. */
+type Moments = { area: number; cx: number; cy: number };
+
+/** Signed area and first moments of a simple polygon (shoelace); area 0 for a line. */
+function ringMoments(ring: readonly Flat[]): Moments {
+  let area = 0, cx = 0, cy = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const cross = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+    area += cross / 2;
+    cx += (ring[j][0] + ring[i][0]) * cross / 6;
+    cy += (ring[j][1] + ring[i][1]) * cross / 6;
+  }
+  return { area, cx, cy };
+}
+
+/** The area centroid of a ring; undefined for a zero-area ring. */
+function ringCentroid(ring: readonly Flat[]): Flat | undefined {
+  const { area, cx, cy } = ringMoments(ring);
+  return Math.abs(area) > 1e-12 ? [cx / area, cy / area] : undefined;
+}
+
+/** The moments of a void curve: a polygonal ring, or an `IfcCircle` (its disc); null when it is not read. */
+function voidMoments(reader: GeometryEntityReader, curve: Entity | null): Moments | null {
+  if (upper(curve) === 'IFCCIRCLE') {
+    const position = axis2d(reader, curve!.attributes[0]);
+    const radius = num(curve!.attributes[1]);
+    if (!position || radius === null || radius <= 0) return null;
+    const area = Math.PI * radius * radius;
+    return { area, cx: position.o[0] * area, cy: position.o[1] * area };
+  }
+  const ring = curveRing(reader, curve);
+  return typeof ring === 'string' ? null : ringMoments(ring);
+}
+
+/** The centroid of an outer ring with voids removed. */
+function materialCentroid(outer: readonly Flat[], voids: readonly Moments[]): Flat | undefined {
+  const o = ringMoments(outer);
+  const sign = Math.sign(o.area) || 1;
+  let [area, cx, cy] = [o.area, o.cx, o.cy];
+  for (const v of voids) {
+    // The moments of a void subtract from the outer ring's, whatever its winding.
+    const flip = Math.sign(v.area) === sign ? -1 : 1;
+    area += flip * v.area; cx += flip * v.cx; cy += flip * v.cy;
+  }
+  return Math.abs(area) > 1e-12 ? [cx / area, cy / area] : undefined;
+}
+
+/** A profile's outline in its own 2D frame, exact or as bounds, and its centroid when that is not the bounds centre. */
+function profileOutline(reader: GeometryEntityReader, profile: Entity | null): { points: Flat[]; exact: boolean; centroid?: Flat } | string {
   const type = upper(profile);
   const a = profile?.attributes ?? [];
   if (type === 'IFCARBITRARYCLOSEDPROFILEDEF' || type === 'IFCARBITRARYPROFILEDEFWITHVOIDS') {
-    const curve = reader.entity(refId(a[2]) ?? 0);
-    let points: Flat[] | null = null;
-    if (upper(curve) === 'IFCPOLYLINE') {
-      points = polylinePoints(reader, curve!);
-    } else if (upper(curve) === 'IFCCOMPOSITECURVE') {
-      points = compositePoints(reader, curve!);
-    } else if (upper(curve) === 'IFCINDEXEDPOLYCURVE') {
-      const list = reader.entity(refId(curve!.attributes[0]) ?? 0);
-      const coords = upper(list) === 'IFCCARTESIANPOINTLIST2D' && Array.isArray(list!.attributes[0]) ? list!.attributes[0] as unknown[] : [];
-      const all = coords.every((c) => Array.isArray(c) && num(c[0]) !== null && num(c[1]) !== null) ? coords.map((c): Flat => [(c as number[])[0], (c as number[])[1]]) : null;
-      const order = segmentOrder(curve!.attributes[1], all?.length ?? 0);
-      if (typeof order === 'string') return order;
-      points = all && (order ? order.map((i) => all[i]) : all);
+    const outer = curveRing(reader, reader.entity(refId(a[2]) ?? 0));
+    if (typeof outer === 'string') return outer;
+    // A profile with voids is read by its outer outline (surface members do not carry openings), but its
+    // material centroid subtracts them. An unreadable void leaves the centroid out, not wrong.
+    let centroid: Flat | undefined = ringCentroid(outer);
+    if (type === 'IFCARBITRARYPROFILEDEFWITHVOIDS') {
+      const voids = refs(a[3]).map((id) => voidMoments(reader, reader.entity(id)));
+      centroid = voids.every((v): v is Moments => v !== null) ? materialCentroid(outer, voids) : undefined;
     }
-    if (!points || points.length < 3) return `profile curve ${curve?.type ?? 'unreadable'} is not a polyline`;
-    const [first, last] = [points[0], points[points.length - 1]];
-    if (Math.hypot(first[0] - last[0], first[1] - last[1]) < 1e-9) points = points.slice(0, -1);
-    return { points, exact: true };
+    return { points: outer, exact: true, ...(centroid ? { centroid } : {}) };
   }
   const parameterised = PARAMETERISED[type]?.(a);
   const [x, y] = parameterised ? parameterised.size.map(num) : [null, null];
@@ -183,8 +279,9 @@ function profileOutline(reader: GeometryEntityReader, profile: Entity | null): {
   if (!position) return 'profile position is unreadable';
   const { o, x: dir } = position;
   const corners: Flat[] = [[-x / 2, -y / 2], [x / 2, -y / 2], [x / 2, y / 2], [-x / 2, y / 2]];
-  const points = corners.map(([px, py]): Flat => [o[0] + dir[0] * px - dir[1] * py, o[1] + dir[1] * px + dir[0] * py]);
-  return { points, exact: parameterised!.exact };
+  const toPlane = ([px, py]: Flat): Flat => [o[0] + dir[0] * px - dir[1] * py, o[1] + dir[1] * px + dir[0] * py];
+  const offset = sectionCentroidOffset(type, a, x, y);
+  return { points: corners.map(toPlane), exact: parameterised!.exact, ...(offset ? { centroid: toPlane(offset) } : {}) };
 }
 
 function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placement: Frame3, metres: number): PrismFact | string {
@@ -207,6 +304,7 @@ function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placem
     outline: outline.points.map(([x, y]) => toWorld([x, y, 0])),
     extrusion: sub(toWorld(scale(unitDir, depth)), toWorld([0, 0, 0])),
     outlineExact: outline.exact,
+    ...(outline.centroid ? { centroid: toWorld([outline.centroid[0], outline.centroid[1], 0]) } : {}),
   };
 }
 

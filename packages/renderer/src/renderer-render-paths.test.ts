@@ -430,7 +430,7 @@ for (const action of ['hide', 'remove'] as const) {
             const layer = fields.gaussianLayer as Record<string, unknown>;
             (layer.slot as Record<string, unknown>).createBackend = async (): Promise<GaussianBackend> => ({
                 upstreamReverseZ: true,
-                createScene: () => ({ gpuBytes: 64, async replaceSource() {}, updateRows() {}, setFilter() {}, encode() {}, destroy() {} }),
+                createScene: () => ({ gpuBytes: 64, async replaceRows(_layout: unknown, fill: (writer: { write(): void; copy(): void }) => Promise<unknown>) { await fill({ write() {}, copy() {} }); }, setFilter() {}, encode() {}, destroy() {} }),
             });
             const mesh = triangle(1, GREY);
             mesh.positions = new Float32Array([0, 0, 0, 100, 0, 0, 0, 100, 100]);
@@ -3694,7 +3694,7 @@ describe('#8564 nearest-glass split in the render loop', () => {
         const layer = fields.gaussianLayer as Record<string, unknown>;
         (layer.slot as Record<string, unknown>).createBackend = async (): Promise<GaussianBackend> => ({
             upstreamReverseZ: true, upstreamDepthInterval: options.depthInterval ?? true,
-            createScene: () => ({ gpuBytes: 64, async replaceSource() {}, updateRows() {}, setFilter() {}, destroy() {},
+            createScene: () => ({ gpuBytes: 64, async replaceRows(_layout: unknown, fill: (writer: { write(): void; copy(): void }) => Promise<unknown>) { await fill({ write() {}, copy() {} }); }, setFilter() {}, destroy() {},
                 encode: (_target, _camera, interval) => { h.stats.commands.push({ op: `splats:${interval?.compare ?? 'all'}` }); } }),
         });
         const passes = h.stats.passes;

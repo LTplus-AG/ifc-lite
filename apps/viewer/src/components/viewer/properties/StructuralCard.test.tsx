@@ -330,8 +330,8 @@ describe('StructuralCard for every structural record (#9668)', () => {
   it('renders a condition both ends of a member share without a duplicate React key (#9668)', () => {
     const hinge = { expressId: 21, type: 'IfcBoundaryNodeCondition', components: { TranslationalStiffnessX: true } };
     const shared: StructuralExtraction = { ...data, members: [{ expressId: 10, globalId: 'beam', type: 'IfcStructuralCurveMember',
-      IfcRelConnectsStructuralMember: [{ expressId: 30, RelatedStructuralConnection: 20, AppliedCondition: hinge },
-        { expressId: 31, RelatedStructuralConnection: 20, AppliedCondition: hinge }],
+      IfcRelConnectsStructuralMember: [{ expressId: 30, type: 'IfcRelConnectsStructuralMember', RelatedStructuralConnection: 20, AppliedCondition: hinge },
+        { expressId: 31, type: 'IfcRelConnectsStructuralMember', RelatedStructuralConnection: 20, AppliedCondition: hinge }],
       connectionGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [] }] };
     const errors: unknown[][] = [];
     const original = console.error;

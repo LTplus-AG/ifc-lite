@@ -5,6 +5,7 @@
 import type { StoreApi } from 'zustand';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 import type { ViewerState } from './index.js';
+import { isPanelEnforcedOff } from './panel-enforced-off.js';
 
 /** Docked sidebar flags; properties is the fallback when none is on. */
 export const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspacePanelId]> = [
@@ -19,14 +20,19 @@ export const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, Wor
   ['layersPanelVisible', 'layers'],
 ];
 
+/** The docked panel that takes the sidebar when the active one goes: the next one still open, else Information. */
+export function nextOpenSidebarPanel(state: ViewerState, isOff: (id: WorkspacePanelId) => boolean): WorkspacePanelId {
+  return SIDEBAR_PANEL_FLAGS.find(([flag, id]) => state[flag] && !isOff(id))?.[1] ?? 'properties';
+}
+
 /** Keep the unified sidebar to one docked panel when flags change (#1208). */
 export function registerSidebarExclusivity(store: StoreApi<ViewerState>): void {
   store.subscribe((state, prev) => {
     let opened: WorkspacePanelId | null = null;
     for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
-      if (state[flag] && !prev[flag]) { opened = id; break; }
+      // A switched-off panel never takes the sidebar: the availability rule turns its flag back off.
+      if (state[flag] && !prev[flag] && !isPanelEnforcedOff(id)) { opened = id; break; }
     }
-
     if (opened) {
       const patch: Record<string, boolean> = {};
       for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
@@ -42,8 +48,7 @@ export function registerSidebarExclusivity(store: StoreApi<ViewerState>): void {
     if (active !== 'properties') {
       const flag = SIDEBAR_PANEL_FLAGS.find(([, id]) => id === active)?.[0];
       if (flag && !state[flag] && prev[flag]) {
-        const next = SIDEBAR_PANEL_FLAGS.find(([f]) => state[f]);
-        state.setSidebarActivePanel(next ? next[1] : 'properties');
+        state.setSidebarActivePanel(nextOpenSidebarPanel(state, isPanelEnforcedOff));
       }
     }
   });

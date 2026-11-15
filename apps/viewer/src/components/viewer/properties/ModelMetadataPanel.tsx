@@ -213,7 +213,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
             reserved for real warnings (#8802). */}
         <section className="border-b border-border pb-1">
           <InspectorHeading>{t('properties.modelMetadata.fileInformationHeading')}</InspectorHeading>
-          <InspectorRow label={t(mutationView?.hasPendingChanges() ? 'properties.modelMetadata.fileSizeAsLoaded' : 'properties.modelMetadata.fileSize')} value={formatFileSize(model.fileSize)} copy={false} />
+          <InspectorRow label={t(mutationView?.hasPendingChanges() ? 'properties.modelMetadata.fileSizeAsLoaded' : 'properties.modelMetadata.fileSize')} value={model.processedModel && model.fileSize === 0 ? t('properties.modelMetadata.notAvailable') : formatFileSize(model.fileSize)} copy={false} />
           <InspectorRow label={t('properties.modelMetadata.loadedAt')} value={formatDate(model.loadedAt)} mono copy={false} />
           {dataStore && dataStore.parseTime != null && (
             <InspectorRow label={t('properties.modelMetadata.parseTime')} value={t('properties.modelMetadata.parseTimeValue', { ms: formatLocaleNumber(locale, dataStore.parseTime, { maximumFractionDigits: 0 }) })} copy={false} />

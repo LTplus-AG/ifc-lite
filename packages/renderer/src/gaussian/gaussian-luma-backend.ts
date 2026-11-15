@@ -16,14 +16,15 @@
  * descriptor that luma owns; viewer textures are never wrapped.
  */
 
-import { Texture, type Framebuffer, type TextureFormat } from '@luma.gl/core';
+import { Buffer, Texture, type Framebuffer, type TextureFormat } from '@luma.gl/core';
 import { WebGPUDevice } from '@luma.gl/webgpu';
 import { SplatRenderer, makeGPUSplatData, type GPUSplatData } from '@luma.gl/splats';
 import { GaussianSplatError } from './gaussian-errors.js';
 import type {
   GaussianBackendFactory, GaussianBackendScene, GaussianDepthInterval, GaussianEncodeCamera, GaussianEncodeTarget,
-  GaussianPackedSource, GaussianRowFilter, GaussianRowUpdate,
+  GaussianGpuRows, GaussianPackedLayout, GaussianRowFilter, GaussianRowWriter, GaussianSortColumns,
 } from './gaussian-backend.js';
+import { shBasisCount, shWords } from './gaussian-pack.js';
 
 export const createLumaGaussianBackend: GaussianBackendFactory = async (raw, adapter, onError) => {
   const info = adapter?.info;
@@ -59,46 +60,75 @@ class LumaGaussianScene implements GaussianBackendScene {
     return this.data ? this.data.byteLength + this.data.length * Uint32Array.BYTES_PER_ELEMENT : 0;
   }
 
-  async replaceSource(source: GaussianPackedSource): Promise<void> {
-    this.raw.pushErrorScope('out-of-memory');
-    this.raw.pushErrorScope('validation');
+  async replaceRows(layout: GaussianPackedLayout, fill: (writer: GaussianRowWriter) => Promise<GaussianSortColumns>): Promise<void> {
+    const columns = new Map<GpuColumn, Buffer>();
+    const scopes: Promise<GPUError | null>[] = [];
+    const scoped = (work: () => void) => {
+      this.raw.pushErrorScope('out-of-memory');
+      this.raw.pushErrorScope('validation');
+      let thrown: unknown = null;
+      try { work(); } catch (error) { thrown = error; }
+      scopes.push(this.raw.popErrorScope(), this.raw.popErrorScope());
+      if (thrown) throw thrown;
+    };
     let data: GPUSplatData | null = null;
-    let thrown: unknown = null;
     try {
-      data = makeGPUSplatData(this.device, {
-        positions: source.positions, scales: source.scales, rotations: source.rotations, colors: source.colors,
-        opacities: source.opacities, semanticIds: source.semanticIds,
-        ...(source.sphericalHarmonicsDegree > 0
-          ? { sphericalHarmonics: source.sphericalHarmonics, sphericalHarmonicsDegree: source.sphericalHarmonicsDegree }
-          : {}),
+      // GPU-only columns: only the sort columns returned by `fill` stay on the CPU (#9018).
+      scoped(() => {
+        for (const [name, bytes] of columnBytes(layout)) {
+          columns.set(name, this.device.createBuffer({
+            id: `ifc-lite-gaussian-${name}`, byteLength: Math.max(4, bytes),
+            usage: Buffer.VERTEX | Buffer.COPY_DST | Buffer.COPY_SRC | Buffer.STORAGE,
+          }));
+        }
       });
-    } catch (error) {
-      thrown = error;
-    }
-    const validation = this.raw.popErrorScope();
-    const memory = this.raw.popErrorScope();
-    const [invalid, outOfMemory] = await Promise.all([validation, memory]);
-    if (thrown || invalid || outOfMemory || !data || this.destroyed) {
-      data?.destroy();
+      const current = this.data;
+      const writer: GaussianRowWriter = {
+        write: (row, rows) => scoped(() => writeColumns(columns, layout, row, rows)),
+        copy: (fromRow, toRow, rows) => scoped(() => {
+          if (!current || current.destroyed) throw new GaussianSplatError('lost', 'The Gaussian rows to copy were released.');
+          const encoder = this.raw.createCommandEncoder({ label: 'ifc-lite-gaussian-repack' });
+          for (const [name, buffer] of columns) {
+            const [from, to, bytes] = columnSpan(name, layout, fromRow, toRow, rows);
+            if (bytes > 0) encoder.copyBufferToBuffer(sourceBuffer(current, name).handle as GPUBuffer, from, buffer.handle as GPUBuffer, to, bytes);
+          }
+          this.raw.queue.submit([encoder.finish()]);
+        }),
+      };
+      const sort = await fill(writer);
       if (this.destroyed) throw new GaussianSplatError('lost', 'The Gaussian scene was released during upload.');
-      const reason = thrown instanceof Error ? thrown.message : (outOfMemory ?? invalid)?.message ?? 'unknown';
-      throw new GaussianSplatError('resource-limit', `Gaussian upload failed: ${reason}`);
+      scoped(() => {
+        const sh = columns.get('sphericalHarmonics');
+        data = makeGPUSplatData(this.device, {
+          positions: sort.positions, opacities: sort.opacities, semanticIds: sort.semanticIds,
+          colorFormat: 'float32x4', gpuColumns: Object.fromEntries(columns),
+          ...(sh ? { sphericalHarmonicsDegree: layout.shDegree, sphericalHarmonicsEncoding: layout.shEncoding } : {}),
+        });
+      });
+      columns.clear(); // owned by `data` now
+      const errors = (await Promise.all(scopes)).filter((error): error is GPUError => error !== null);
+      if (errors.length > 0) throw new GaussianSplatError('resource-limit', `Gaussian upload failed: ${errors[0].message}`);
+      if (this.destroyed) throw new GaussianSplatError('lost', 'The Gaussian scene was released during upload.');
+    } catch (error) {
+      (data as GPUSplatData | null)?.destroy();
+      for (const buffer of columns.values()) buffer.destroy();
+      await Promise.allSettled(scopes); // every pushed scope is popped and settled before failing
+      if (this.destroyed) throw new GaussianSplatError('lost', 'The Gaussian scene was released during upload.');
+      if (error instanceof GaussianSplatError) throw error;
+      throw new GaussianSplatError('resource-limit', `Gaussian upload failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-    this.interval?.setProps({ data });
+    const next = data as unknown as GPUSplatData;
+    this.interval?.setProps({ data: next });
     if (this.renderer) {
-      this.renderer.setProps({ data });
+      this.renderer.setProps({ data: next });
     } else {
       this.renderer = new SplatRenderer(this.device, {
-        data, depthConvention: 'reverse', depthCompare: 'greater', depthWriteEnabled: false,
+        data: next, depthConvention: 'reverse', depthCompare: 'greater', depthWriteEnabled: false,
         toneMapping: 'none', sortMode: 'global', semanticFilter: this.filter,
       });
     }
     this.data?.destroy();
-    this.data = data;
-  }
-
-  updateRows(rowOffset: number, rows: GaussianRowUpdate): void {
-    this.data?.update({ rowOffset, ...rows });
+    this.data = next;
   }
 
   setFilter(include: ReadonlySet<number>, predicate: GaussianRowFilter | null): void {
@@ -241,4 +271,43 @@ function lumaDepthFormat(format: GPUTextureFormat): TextureFormat {
     case 'depth24plus': return 'depth24plus';
     default: throw new GaussianSplatError('upstream-capability-missing', `Unsupported Gaussian depth target ${format}.`);
   }
+}
+
+type GpuColumn = 'positions' | 'scales' | 'rotations' | 'colors' | 'opacities' | 'semanticIds' | 'sphericalHarmonics';
+const ROW_BYTES: ReadonlyArray<[Exclude<GpuColumn, 'sphericalHarmonics'>, number]> = [
+  ['positions', 12], ['scales', 12], ['rotations', 16], ['colors', 16], ['opacities', 4], ['semanticIds', 4],
+];
+
+function columnBytes(layout: GaussianPackedLayout): Array<[GpuColumn, number]> {
+  const columns: Array<[GpuColumn, number]> = ROW_BYTES.map(([name, bytes]) => [name, layout.rows * bytes]);
+  if (layout.shDegree > 0) columns.push(['sphericalHarmonics', shWords(layout) * 4]);
+  return columns;
+}
+
+/** Byte offsets of `rows` rows in one column; packed halves start on even rows, so they are word aligned. */
+function columnSpan(name: GpuColumn, layout: GaussianPackedLayout, fromRow: number, toRow: number, rows: number): [number, number, number] {
+  if (name !== 'sphericalHarmonics') {
+    const bytes = ROW_BYTES.find(([column]) => column === name)![1];
+    return [fromRow * bytes, toRow * bytes, rows * bytes];
+  }
+  const coefficients = shBasisCount(layout.shDegree) * 3;
+  if (layout.shEncoding === 'float32') return [fromRow * coefficients * 4, toRow * coefficients * 4, rows * coefficients * 4];
+  if ((fromRow | toRow) & 1) throw new RangeError('Packed Gaussian coefficients must start on an even row.');
+  return [fromRow * coefficients * 2, toRow * coefficients * 2, Math.ceil((rows * coefficients) / 2) * 4];
+}
+
+function writeColumns(columns: ReadonlyMap<GpuColumn, Buffer>, layout: GaussianPackedLayout, row: number, rows: GaussianGpuRows): void {
+  const count = rows.opacities.length;
+  for (const [name, buffer] of columns) {
+    const values = rows[name];
+    if (!values) throw new RangeError(`Gaussian rows lack the ${name} column.`);
+    buffer.write(values, columnSpan(name, layout, row, row, count)[0]);
+  }
+}
+
+function sourceBuffer(data: GPUSplatData, name: GpuColumn): Buffer {
+  const vector = name === 'sphericalHarmonics' ? data.sphericalHarmonics : name === 'semanticIds' ? data.semanticIds : data[name];
+  const buffer = vector?.data[0]?.buffer;
+  if (!(buffer instanceof Buffer)) throw new GaussianSplatError('lost', `The drawn Gaussian rows lack the ${name} column.`);
+  return buffer;
 }

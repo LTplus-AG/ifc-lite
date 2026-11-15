@@ -10,7 +10,7 @@
  * downloads.
  */
 
-import { loadRhinoEngine } from './rhino-export.js';
+import { loadExportPayload } from './export-payload.js';
 
 export { CITYJSON_REFUSED, cityJsonRefusalReason } from './export-errors.js';
 
@@ -45,7 +45,7 @@ export interface CityJsonExport {
  * document is built in memory.
  */
 export async function exportCityJson(content: Uint8Array, options: CityJsonExportOptions = {}): Promise<CityJsonExport> {
-  const engine = await loadRhinoEngine();
+  const engine = await loadExportPayload();
   return engine.exportCityJson(content, JSON.stringify({
     scale: options.scale,
     elementGeometry: options.elementGeometry,

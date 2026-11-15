@@ -24,10 +24,9 @@
 
 import type { IfcDataStore, EntityExtractor } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
-import { escapeStepString, toStepReal } from './step-serialization.js';
+import { escapeStepString, textEdit, toStepReal } from './step-serialization.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
 import { reportMapUnitUnsupported, resolveMapUnitReference } from './step-map-unit.js';
-import { TEXT_EDIT_MARK } from './step-serialization.js';
 
 /**
  * Message for the one refusal `export()` can report, shared by the returned
@@ -274,15 +273,6 @@ const FACTORS_ON_UNSCALED_WARNING =
   'Cannot write FactorX/FactorY/FactorZ onto an existing IfcMapConversion: they exist only on IfcMapConversionScaled, and this edit does not change the class. The factors were not written.';
 
 type MapConversionRequest = NonNullable<NonNullable<StepExportOptions['georefMutations']>['mapConversion']>;
-
-/**
- * A CRS text value as an in-place edit: text is text (`$`, `*`, `#12` stay quoted strings, as on the create path)
- * and only an empty value clears the slot, with the `$` token the create path writes for it.
- */
-function textEdit(value: unknown): string {
-  const text = String(value);
-  return text === '' ? '$' : TEXT_EDIT_MARK + text;
-}
 
 /**
  * Create an IfcMapConversion from a request. A create needs the whole position

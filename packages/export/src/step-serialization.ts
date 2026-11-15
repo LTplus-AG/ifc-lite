@@ -242,6 +242,15 @@ export function tokenIsRealLiteral(token: string): boolean {
  */
 export const TEXT_EDIT_MARK = '\u0000';
 
+/**
+ * A CRS text value as an in-place edit: text is text (`$`, `*`, `#12` stay quoted strings, as on the create path)
+ * and only an empty value clears the slot, with the `$` token the create path writes for it.
+ */
+export function textEdit(value: unknown): string {
+  const text = String(value);
+  return text === '' ? '$' : TEXT_EDIT_MARK + text;
+}
+
 export function serializeAttributeValue(value: string, currentToken: string): string {
   const trimmed = value.trim();
   const current = currentToken.trim();

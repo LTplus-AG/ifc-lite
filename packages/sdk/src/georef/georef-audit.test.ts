@@ -50,7 +50,6 @@ async function open(schema: string, data: string) {
   const bim = new BimContext({ backend });
   return { bim, view: () => backend.ensureEditor().getMutationView() };
 }
-type Session = Awaited<ReturnType<typeof open>>;
 
 const strip = <T extends object | null>(o: T) => { if (!o) return o; const { expressId: _e, ...rest } = o as Record<string, unknown>; return rest; };
 const comparable = (s: GeoreferencingState) => ({ hasGeoreference: s.hasGeoreference, source: s.source, ProjectedCRS: strip(s.ProjectedCRS), MapConversion: strip(s.MapConversion), rotationDegrees: s.rotationDegrees });

@@ -12,7 +12,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
-import { footprintCourtyards, signedDistance } from '../geom.js';
+import { prepareFootprint, signedDistance } from '../region.js';
 import type { MapPoint } from '../types.js';
 import { selectCandidates } from './candidates.js';
 import { NO_PLACEMENT } from './candidate-base.js';
@@ -227,6 +227,8 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
   // The footprint and its accumulated quality (`footprint.ts`): one record, never upgraded by a fallback.
   const resolution = resolveFootprint({ reader, placements, georef, storeyOf, ground: groundStorey, given: options.footprint, skipped, warnings });
   const derived = resolution.fact;
+  // One prepared footprint for every selection rule and the outside check below.
+  const region = prepareFootprint(derived ?? { rings: [], source: 'candidate-hull' });
 
   const buildings = scopeToBuilding(reader, groundStorey.expressId, storeys.length);
   const notChecked = new Map(buildings.others.map((b) => [b.expressId, { ...b, candidatesNotChecked: 0 }]));
@@ -238,8 +240,7 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
       storeyOf,
       storeyLevel: new Map(storeys.map((s) => [s.expressId, s.level])),
       groundLevel: groundStorey.level,
-      footprint: derived?.rings ?? [],
-      courtyards: derived ? footprintCourtyards(derived.source, derived.rings) : new Set(),
+      footprint: region,
       footprintQuality: derived ? footprintConcerns(derived) : null,
       // Only a stated ground storey is known: the ±0.00 convention can pick the basement (re-audit N2).
       groundUncertain: groundStorey.basis !== 'given',
@@ -285,7 +286,7 @@ export function extractModelFacts(store: IfcDataStore, options: ExtractOptions =
   const outside = derived
     ? candidates
         .filter((c) => ['door', 'window', 'basement-window', 'wall-opening'].includes(c.category))
-        .map((c) => ({ expressId: c.expressId, ifcClass: c.ifcClass, distance: signedDistance(c.position, derived.rings, footprintCourtyards(derived.source, derived.rings)) }))
+        .map((c) => ({ expressId: c.expressId, ifcClass: c.ifcClass, distance: signedDistance(region, c.position) }))
         .filter((o) => o.distance > tolerance)
     : [];
   const footprint = resolution.finish(candidates.map((c) => c.position), outside);

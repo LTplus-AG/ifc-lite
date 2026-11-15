@@ -146,3 +146,15 @@ describe('the automated review of 0b30b84: position quality reaches the fact; a 
     expect(facts.footprint.quality?.conditions).not.toContain('courtyard-ring');
   });
 });
+
+describe('CodeRabbit on the tangent corners: a nearly straight arc stays nearly straight', () => {
+  it('an arc of radius 30 km spanning 624 m is traced within 5e-5 of its length (3 cm), not of its radius (1.5 m)', () => {
+    const r = 30_000;
+    const pt = (t: number): [number, number] => [r * Math.cos(t), r * Math.sin(t)];
+    const list = { type: 'IFCCARTESIANPOINTLIST2D', attributes: [[pt(0.1), pt(0.1198), pt(0.1208)], null] };
+    const reader = { entity: (id: number | null) => (id === 1 ? { type: 'IFCINDEXEDPOLYCURVE', attributes: [2, [['IFCARCINDEX', [1, 2, 3]]], null] } : id === 2 ? list : null) } as unknown as ModelReader;
+    const pts = curvePoints(reader, 1)!;
+    const length = r * (0.1208 - 0.1);
+    for (const [x, y] of pts) expect(Math.abs(Math.hypot(x, y) - r)).toBeLessThanOrEqual(5e-5 * length + 1e-6);
+  });
+});

@@ -86,7 +86,11 @@ export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | nul
   return null;
 }
 
-/** Largest gap between an arc and its outline, either way, as a fraction of the radius (1 mm on a 20 m radius). */
+/**
+ * Largest gap between an arc and its outline, either way, as a fraction of the
+ * shorter of its radius and its length: 1 mm on a 20 m radius, 3 cm on a 624 m
+ * arc of a 30 km radius (a nearly straight arc stays nearly straight).
+ */
 export const ARC_SAGITTA = 5e-5;
 
 /**
@@ -97,7 +101,8 @@ export const ARC_SAGITTA = 5e-5;
  * corners a convex one, so the extent of these points reaches the arc's in
  * every direction, in any frame the outline is later turned into (a
  * placement, a tilt, the map rotation), and lies within `ARC_SAGITTA` × radius
- * of it. Three collinear points are a straight line (`b`, `c`).
+ * of it (relative to the shorter of radius and arc length). Three collinear
+ * points are a straight line (`b`, `c`).
  */
 function arcPoints(a: Pt2, b: Pt2, c: Pt2): Pt2[] {
   const d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
@@ -117,8 +122,9 @@ function arcPoints(a: Pt2, b: Pt2, c: Pt2): Pt2[] {
     return [ux + radius * Math.cos(t), uy + radius * Math.sin(t)];
   };
   // Tangent points: both ends, the file's middle point, and every axis extreme on the arc, refined so that each piece spans at most 2h, where the
-  // tangent corner (radius r / cos h) and the chord (r cos h from the centre) each stay within ARC_SAGITTA × r.
-  const h = Math.acos(1 / (1 + ARC_SAGITTA));
+  // tangent corner (radius r / cos h) and the chord (r cos h from the centre) each stay within `tol` of the arc.
+  const tol = ARC_SAGITTA * Math.min(r, r * sweep);
+  const h = Math.acos(r / (r + tol));
   const marks = [0, along(ang(b)), sweep];
   for (const e of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
     const off = along(e);

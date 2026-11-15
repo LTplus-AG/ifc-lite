@@ -220,8 +220,8 @@ describe('footprint from external walls', () => {
     expect(ring).toHaveLength(6);
     const notch = mapOf(16, 8);
     expect(ring.some((p) => Math.hypot(p.x - mapOf(12, 6).x, p.y - mapOf(12, 6).y) < 1e-6)).toBe(true);
-    const { insideAny } = await import('../src/geom.js');
-    expect(insideAny(notch, f.footprint.rings)).toBe(false);
+    const { insideFootprint, prepareFootprint } = await import('../src/region.js');
+    expect(insideFootprint(prepareFootprint(f.footprint), notch)).toBe(false);
   });
 
   it('falls back to the hull when the walls do not close', async () => {

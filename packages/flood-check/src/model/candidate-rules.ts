@@ -10,7 +10,7 @@
  * these verdicts.
  */
 
-import { signedDistance } from '../geom.js';
+import { signedDistance } from '../region.js';
 import type { CandidateCategory, CandidateFact, LevelBasis } from './facts.js';
 import { asString, type DecodedEntity } from './reader.js';
 import {
@@ -151,12 +151,12 @@ export function descentVerdict(ctx: CandidateContext, entity: DecodedEntity, cat
   const sources = readSources(ctx, entity, category);
   const external = isExternal(ctx.reader, entity);
   const body = readDescentBody(ctx, entity);
-  const d = signedDistance(loc.position, ctx.footprint, ctx.courtyards);
+  const d = signedDistance(ctx.footprint, loc.position);
   // Outside is decisive (an explicit `false` is often an authoring default): by placement, by any body corner, or,
   // when the body cannot be read, by a placement within the boundary tolerance (it may be placed at its inner end).
   const outside =
     d > 0 ? 'placed outside the footprint'
-    : body.points.some((p) => signedDistance({ x: p[0], y: p[1] }, ctx.footprint, ctx.courtyards) > 0) ? 'its body reaches outside the footprint'
+    : body.points.some((p) => signedDistance(ctx.footprint, { x: p[0], y: p[1] }) > 0) ? 'its body reaches outside the footprint'
     : !body.complete && Math.abs(d) <= ctx.boundaryTolerance ? `placed within ${ctx.boundaryTolerance} m of the outline and its body cannot be fully read`
     : null;
   // Inside a footprint that fills courtyards proves nothing: such a stair is kept.

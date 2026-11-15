@@ -14,7 +14,8 @@
  * record is frozen into the footprint (`FootprintFact.quality`).
  */
 
-import { chainIntoRing, closedGaps, convexHull, footprintCourtyards, outlineDistance, ringArea } from '../geom.js';
+import { chainIntoRing, convexHull, ringArea } from '../geom.js';
+import { closedGaps, prepareFootprint, signedDistance } from '../region.js';
 import type { MapPoint } from '../types.js';
 import { isExternal } from './candidate-base.js';
 import { FOOTPRINT_QUALITY_ORDER, type FootprintFact, type FootprintQuality, type FootprintQualityRecord, type ModelFacts } from './facts.js';
@@ -115,7 +116,7 @@ const FIT_TOLERANCE = 1;
  * `oversized`, treated like a hull).
  */
 function checkAgainstWalls(rings: MapPoint[][], source: FootprintFact['source'], input: FootprintInput, log: QualityLog): void {
-  const courtyards = footprintCourtyards(source, rings);
+  const region = prepareFootprint({ rings, source });
   const { reader, placements, georef, storeyOf, ground } = input;
   for (const type of ['IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE']) {
     for (const id of reader.idsOfType(type)) {
@@ -140,7 +141,7 @@ function checkAgainstWalls(rings: MapPoint[][], source: FootprintFact['source'],
         return line.length === 1 ? line : out;
       });
       if (points.length === 0) continue;
-      const d = points.map((p) => outlineDistance(p, rings, courtyards));
+      const d = points.map((p) => signedDistance(region, p));
       const out = Math.max(...d);
       if (out > FIT_TOLERANCE) log.note('partial', `external wall ${reader.className(wall)} #${id} reaches ${out.toFixed(2)} m outside the footprint`);
       else if (Math.min(...d) < -FIT_TOLERANCE) {
@@ -151,9 +152,12 @@ function checkAgainstWalls(rings: MapPoint[][], source: FootprintFact['source'],
 }
 
 function seal(rings: MapPoint[][], source: FootprintFact['source'], fromElements: number[], log: QualityLog): FootprintFact {
-  const courtyards = footprintCourtyards(source, rings);
-  if (courtyards.size > 0) log.mark('courtyard-ring');
-  const gaps = closedGaps(rings, courtyards);
+  const region = prepareFootprint({ rings, source });
+  if (region.courtyards.size > 0) log.mark('courtyard-ring');
+  if (region.closedSmallRings.length > 0) {
+    log.remark(`ring(s) ${region.closedSmallRings.join(', ')} of the given footprint enclose less than 1 m², below the closing scale, and are treated as closed (inside the building)`);
+  }
+  const gaps = closedGaps(region);
   if (gaps > 0) log.remark(`${gaps} boundary stretch(es) face a gap between footprint rings narrower than about 0.9 m, closed as inside the building`);
   const quality = log.record();
   const fact: FootprintFact = { rings, source, fromElements, quality };
@@ -167,8 +171,9 @@ export function resolveFootprint(input: FootprintInput): FootprintResolution {
   let geometry: Geometry | null;
   if (input.given) {
     // An empty or degenerate given footprint would be trusted as an outline with no inside: refused, not read as ground.
-    if (input.given.length === 0 || input.given.some((ring) => ring.length < 3 || ringArea(ring) < 1 || ring.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y)))) {
-      throw new RangeError('footprint must have at least one ring, each of at least 3 finite points enclosing at least 1 m²');
+    // Every ring needs 3 finite points; at least one must enclose 1 m² (a smaller inner ring is accepted and stays closed).
+    if (input.given.length === 0 || input.given.some((ring) => ring.length < 3 || ring.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))) || !input.given.some((ring) => ringArea(ring) >= 1)) {
+      throw new RangeError('footprint must have rings of at least 3 finite points each, at least one of them enclosing at least 1 m²');
     }
     geometry = { rings: input.given, source: 'given', from: [] };
   } else {
@@ -184,7 +189,7 @@ export function resolveFootprint(input: FootprintInput): FootprintResolution {
     if (unread.length === 0) return;
     for (const u of unread) input.skipped.push({ ...u, stage: 'footprint-source' });
     input.warnings.push(
-      `the footprint covers only part of the ground storey: ${unread.length} source(s) there cannot be read (${unread.map((u) => `${u.ifcClass} #${u.expressId}`).join(', ')}); ` +
+      `the footprint covers only part of the ground storey: ${unread.length} source(s) there cannot be read or are not used (${unread.map((u) => `${u.ifcClass} #${u.expressId}`).join(', ')}); ` +
         'no element gets a reassuring outcome — pass a footprint (for example the cadastral outline)',
     );
   };
@@ -215,6 +220,12 @@ function fromModel(input: FootprintInput, log: QualityLog): Geometry | null {
     return { x, y };
   });
 
+  // Without a storey nothing says which slabs or walls are at ground level: every one is taken, so the outline may include
+  // an upper floor's projection. Never complete.
+  if (ground.expressId === null) {
+    log.note('partial', 'no storey identifies the ground level, so every floor slab and external wall was taken and the outline may include upper floors');
+  }
+
   // 1. The ground storey's floor slab outlines. Ids are keyed by the raw STEP name: the standard and elemented cases are separate keys.
   const rings: MapPoint[][] = [];
   const from: number[] = [];
@@ -232,11 +243,18 @@ function fromModel(input: FootprintInput, log: QualityLog): Geometry | null {
     }
     // Every ring the slab gives (one per extrusion or curve); a part not read leaves the outline partial.
     if (state === 'partial') log.unread(id, cls, `ground-storey floor slab whose outline can be read only in part (${outline.readable} of ${outline.items} items)`);
+    // A ring smaller than 1 m² is not used for the outline: the slab then counts as a source not used, and the outline as partial.
+    let used = 0;
     for (const r of outline.rings) {
       const ring = toRing(toWorld(frame, r));
-      if (ringArea(ring) >= 1) rings.push(ring);
+      if (ringArea(ring) >= 1) {
+        rings.push(ring);
+        used++;
+      } else {
+        log.unread(id, cls, `ground-storey floor slab ring enclosing less than 1 m² (${ringArea(ring).toFixed(2)} m²), not used in the outline`);
+      }
     }
-    from.push(id);
+    if (used > 0) from.push(id);
     if (outline.voids) log.mark('voids-filled');
   }
   if (rings.length > 0) return { rings, source: log.record().conditions.includes('voids-filled') ? 'slab-outline-voids-filled' : 'slab-outline', from };

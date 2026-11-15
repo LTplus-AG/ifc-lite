@@ -96,8 +96,13 @@ entities, properties and containment from the parsed store. No meshing.
   element is kept, never interior); an external wall axis more than 1 m
   inside it makes it `oversized` (a podium or forecourt slab), which counts
   as a hull.
-  **One outline for anchor, courtyard guard and façade test**
-  (`src/geom.ts`): a boundary point is outline only if open ground reaches
+  **One prepared footprint for every question** (`src/region.ts`): the
+  rings are prepared once (courtyards as holes, seams and narrow gaps
+  closed), and the inside test, the signed distance, the closest outline
+  point, the courtyard guard, the façade test, the descent rule, the quality
+  checks and the check's sampling are all functions of that one object;
+  `src/geom.ts` keeps only generic polygon primitives, so no caller can ask
+  raw rings a different question. A boundary point is outline only if open ground reaches
   beyond it (a disc of radius 0.38 m, 0.55 m out, outside the building, with
   open ground all the way to it). So the seam where two slabs meet, and a gap
   between slabs narrower than about 0.9 m (under an interior wall), are
@@ -111,9 +116,14 @@ entities, properties and containment from the parsed store. No meshing.
   only its vertices). It is open ground everywhere: for the signed distance,
   the outline, the façade test and the descent rule, so a ramp in a courtyard
   is outside the building; the courtyard guard applies when the anchor is
-  taken on it or it is the nearest boundary. A given
-  `footprint` must have at least one ring of 3 or more points enclosing at
-  least 1 m² (`RangeError` otherwise).
+  taken on it or it is the nearest boundary. A given `footprint` must have
+  rings of 3 or more finite points, at least one enclosing 1 m² or more
+  (`RangeError` otherwise); a smaller inner ring is accepted, and, being
+  below the closing scale, is closed, with a note.
+  A slab ring enclosing less than 1 m² is not used for the outline: the slab
+  is listed as a source not used (not in `fromElements`) and the footprint is
+  partial. With no `IfcBuildingStorey` nothing says which slabs are at ground
+  level: every one is taken and the footprint is partial, never complete.
 - **Building**: the footprint is one building's outline, so only the
   elements of the **ground storey's building** are checked (pass
   `groundStorey` to choose another). An element of another building would be
@@ -206,7 +216,8 @@ entities, properties and containment from the parsed store. No meshing.
 - A position read from a clipped body's outer operand is marked uncertain
   (`positionIsUncertain`), as are positions read from part of a body.
 - An arc in a profile or curve is traced by points on it alternating with
-  tangent corners just outside it: within 5e-5 × its radius (1 mm on a 20 m
+  tangent corners just outside it: within 5e-5 × the shorter of its radius
+  and its length (1 mm on a 20 m radius, 3 cm on a 624 m arc of a 30 km
   radius), and its extent is reached in every direction, in any frame, so a
   bound read from it is never short.
 - A slab body extruded obliquely (an `ExtrudedDirection` not along the

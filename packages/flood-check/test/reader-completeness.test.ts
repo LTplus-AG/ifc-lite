@@ -11,7 +11,32 @@
 import { describe, expect, it } from 'vitest';
 import { extractModelFacts } from '../src/model/extract.js';
 import { footprintConcerns } from '../src/model/facts.js';
-import { parseStep, syntheticHouse } from './synthetic-model.js';
+import { insideFootprint, prepareFootprint } from '../src/region.js';
+import { mapOf, parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
+
+describe('a slab body with two disjoint extrusions (model half; the check half is in reader-completeness-check)', () => {
+  it('gives an outline ring for each, so the second wing is inside a complete footprint', async () => {
+    const twoWings = (b: Extra) => {
+      const wingA = b.rectExtrusion(10, 5, 20, 10, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
+      const wingB = b.rectExtrusion(35, 5, 10, 10, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
+      b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Platte zwei Flügel',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([wingA, wingB])},$,.FLOOR.)`));
+    };
+    const facts = extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', slab: false, extra: twoWings })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
+    expect(facts.footprint.rings).toHaveLength(2);
+    expect(footprintConcerns(facts.footprint).worst).toBe('complete');
+    expect(insideFootprint(prepareFootprint(facts.footprint), mapOf(35, 5))).toBe(true);
+  });
+
+  it('a slab cut by a Boolean DIFFERENCE (a courtyard) reads as voids-filled, not as a plain outline', async () => {
+    const cut = (b: Extra) => {
+      const outer = b.rectExtrusion(15, 15, 30, 30, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
+      const court = b.rectExtrusion(15, 15, 28, 28, 1, b.axis(0, 0, 0.5), b.dir(0, 0, -1));
+      b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Platte Hof',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([b.add(`IFCBOOLEANRESULT(.DIFFERENCE.,#${outer},#${court})`)])},$,.FLOOR.)`));
+    };
+    const facts = extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', slab: false, extra: cut })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
+    expect(facts.footprint.source).toBe('slab-outline-voids-filled');
+  });
+});
 
 describe('the audit: no reader stops at the first item or match', () => {
   it('a slab body with one readable and one unreadable item is partial, with the readable ring kept', async () => {

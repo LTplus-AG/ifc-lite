@@ -269,7 +269,7 @@ export function planRhinoContainerVisibility(
   // reader hands layers parent first, so the walk climbs and ends.
   const layersOn = (from: number, stop: number | null): boolean => {
     for (let index: number | null = from; index !== null && index !== stop; index = layers[index]?.parent ?? null) {
-      if (layers[index] && !layers[index].visible) return false; // a file with no layer table has none to be off
+      if (layers[index]?.visible === false) return false; // a file with no layer table has none to be off
     }
     return true;
   };

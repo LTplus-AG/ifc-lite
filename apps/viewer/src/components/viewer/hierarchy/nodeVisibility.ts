@@ -77,13 +77,16 @@ export function hierarchyToggleTargets(
 }
 
 /** After a row's eye: the toggled row or object keeps that as its own state,
- *  so a later toggle of its parent respects it, as in Rhino. A no-op for a row
- *  whose model has no plan. */
+ *  so a later toggle of its parent respects it, as in Rhino. Own states are the
+ *  layer tree's, so a row of another grouping, or of a model without a plan,
+ *  records nothing. */
 export function recordHierarchyOwnState(
   node: TreeNode,
   action: HierarchyVisibilityAction,
   models: Map<string, FederatedModel>,
+  groupingMode: string,
 ): void {
+  if (groupingMode !== 'spatial') return;
   const plan = rowPlan(node, models);
   if (plan) setOwnState(plan, node.expressIds[0], action === 'show');
 }

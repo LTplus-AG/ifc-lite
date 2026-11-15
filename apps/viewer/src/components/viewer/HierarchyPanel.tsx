@@ -221,8 +221,7 @@ export function HierarchyPanel() {
     } else {
       showEntities(targets);
     }
-    // Own states are the layer tree's: a class or group row's eye leaves them as they are.
-    if (groupingMode === 'spatial') recordHierarchyOwnState(node, visibilityAction, models);
+    recordHierarchyOwnState(node, visibilityAction, models, groupingMode);
   }, [getNodeElements, hiddenEntities, hideEntities, showEntities, clearSelection, models, groupingMode]);
 
   // Handle model visibility toggle

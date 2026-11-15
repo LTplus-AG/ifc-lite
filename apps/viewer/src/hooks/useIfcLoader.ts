@@ -330,18 +330,9 @@ export function useIfcLoader() {
     const trace = loadTracer.startLoad(modelId, { journey: target.kind === 'federated' ? 'J4' : 'J1', modelKind: target.kind }, totalStartTime); // #6956
     publishLoadTrace(modelId, trace); // #6979: streaming upload, finalize, BVH and search spans land on this load
 
-    // Device-loss telemetry (#2624), fail-safe half: a primary load REPLACES
-    // the model, so the previous model's last-load snapshot is wrong the
-    // moment this load starts. Clear it now, before any completing path can
-    // return - a path that then records nothing (an error exit, or a future
-    // load path missing its `captureModelLoaded` call) makes a later loss
-    // report OMIT the last-load fields instead of describing a model that is
-    // no longer on the GPU. Federated adds do not clear: while the add is in
-    // flight the retained snapshot (the last COMPLETED load) is still true,
-    // and when the add completes its own `captureModelLoaded` replaces the
-    // snapshot with the added file's numbers. So `last_load_*` describes the
-    // last completed load, primary or federated - not the whole resident
-    // scene, and after a federated add not the primary model either.
+    // #2624: a primary replaces the scene, so clear device-loss telemetry now.
+    // A failure before captureModelLoaded must not describe removed geometry.
+    // Federated adds keep the last completed snapshot until their own capture.
     if (target.kind === 'primary') {
       clearModelLoadedSnapshot();
     }
@@ -360,17 +351,8 @@ export function useIfcLoader() {
     let skippedHungElements: SkippedHungElements | undefined; // hung geometry calls (#4884)
     let omittedTypeRecords: number | undefined; // undecodable type records, unknown when absent (#8341)
 
-    /**
-     * Which phase of the load was in flight, for the captured exception (#1903).
-     *
-     * A failure inside `loadFile` — 1400 lines with a single outer catch — used
-     * to reach error tracking tagged only `context: 'ifc_model_load'`. When the
-     * throwable is a bare `TypeError: Load failed` with an EMPTY stack (a fetch
-     * rejection carries no frames of ours), that context narrows nothing: it is
-     * the whole function. This is a coarse, deliberately file-name-free marker —
-     * a fixed vocabulary, never user data — so a stackless failure is still
-     * attributable to a phase.
-     */
+    // #1903: a stable, file-name-free stage makes outer load failures attributable;
+    // fetch TypeErrors otherwise share one context and have no useful stack.
     let loadStage:
       | 'read-file' | 'cache-lookup' | 'server-fetch' | 'engine-init'
       | 'parse' | 'geometry-stream' | 'finalize' = 'read-file';
@@ -513,10 +495,7 @@ export function useIfcLoader() {
 
       };
 
-      // The ONE finalizer for every format/platform/role. Primary keeps the
-      // historical updateModel-only behaviour; federated runs the georef-align
-      // → id-offset → addModel sequence lifted
-      // verbatim from the old useIfcFederation.addModel block (same order).
+      // One finalizer owns publication and georeference alignment for every load.
       const finalizeModel = async (
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,

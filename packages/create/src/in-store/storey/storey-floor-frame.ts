@@ -13,6 +13,9 @@ export function storeyFloorWorld(inventory: StoreyInventory, storey: StoreyRecor
   const saved = known.get(storey.expressId);
   if (saved !== undefined) return saved;
   const frame = storey.placementId === null ? null : placementInAncestor(inventory.reader, storey.placementId, null);
+  const objectPlacement = inventory.reader.entity(storey.expressId)?.attributes[5];
+  const supplied = storey.placementId !== null || objectPlacement !== null && objectPlacement !== undefined;
+  if (supplied && !frame) throw new Error(`The placement of storey ${storey.Name} cannot be read; repair it before fitting an attached top`);
   const world = frame ? frame.o[2] * inventory.scale : storey.elevation;
   known.set(storey.expressId, world);
   return world;

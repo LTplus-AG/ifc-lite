@@ -47,14 +47,15 @@ describe('the courtyard guard', () => {
 
 describe('an upper-estimate level does not exclude', () => {
   /** A window whose filled opening reads only from 504 m up, beside an unreadable Brep that may reach lower. */
-  const window = (storey: 'eg' | 'og') => (b: Extra) => {
+  /** `overallHeight` as written into the STEP record: '$' (none stated) leaves the level unbounded. */
+  const window = (storey: 'eg' | 'og', overallHeight = '$') => (b: Extra) => {
     const wall = b.add(`IFCWALL(${b.guid()},$,'Wand Ost',$,$,#${b.place(b.storeys.eg.pl, 20, 0, 0)},$,$,.STANDARD.)`);
     b.pset(wall, 'Pset_WallCommon', 'IsExternal', 'IFCBOOLEAN(.T.)');
     const upper = b.rectExtrusion(0, 0, 1, 1, 0.4, b.axis(-0.2, 5, 4.5, b.dir(1, 0, 0), b.dir(0, 1, 0)), b.dir(0, 0, 1));
     const brep = b.add(`IFCFACETEDBREP(#${b.add('IFCCLOSEDSHELL(())')})`);
     const opening = b.add(`IFCOPENINGELEMENT(${b.guid()},$,'Öffnung hoch',$,$,#${b.place(b.storeys.eg.pl, 20, 0, 0)},#${b.shape([upper, brep])},$,.OPENING.)`);
     b.add(`IFCRELVOIDSELEMENT(${b.guid()},$,$,$,#${wall},#${opening})`);
-    const win = b.add(`IFCWINDOW(${b.guid()},$,'Fenster hoch',$,$,#${b.place(b.storeys.eg.pl, 20, 5, 4.5)},$,$,1.,1.,.WINDOW.,$,$)`);
+    const win = b.add(`IFCWINDOW(${b.guid()},$,'Fenster hoch',$,$,#${b.place(b.storeys.eg.pl, 20, 5, 4.5)},$,$,${overallHeight},1.,.WINDOW.,$,$)`);
     b.add(`IFCRELFILLSELEMENT(${b.guid()},$,$,$,#${opening},#${win})`);
     b.contain(b.storeys.eg.id, wall);
     b.contain(b.storeys[storey].id, win);
@@ -65,8 +66,8 @@ describe('an upper-estimate level does not exclude', () => {
     expect(facts.candidates.find((c) => c.name === 'Fenster hoch')).toMatchObject({ levelIsUpperEstimate: true });
   });
 
-  it('control: the same window contained in the upper storey is out of scope', async () => {
-    const facts = await extract(window('og'));
+  it('control: the same window stating a 1 m OverallHeight is proven out of scope (it cannot reach below 503.5 m)', async () => {
+    const facts = await extract(window('og', '1.'));
     expect(facts.candidates.map((c) => c.name)).not.toContain('Fenster hoch');
     expect(facts.skipped.find((s) => s.ifcClass === 'IfcWindow' && /out of scope/.test(s.reason))).toBeDefined();
   });

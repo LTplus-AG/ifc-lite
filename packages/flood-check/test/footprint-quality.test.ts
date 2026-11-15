@@ -160,8 +160,9 @@ describe('decisions that rest on an uncertain ground storey or footprint keep th
   }) as unknown as CandidateContext;
 
   it('out of scope only when the ground storey is known', () => {
-    expect(scopeExclusion(ctx({}), 1, 505, false)).toMatch(/out of scope/);
-    expect(scopeExclusion(ctx({ groundUncertain: true }), 1, 505, false)).toBeNull();
+    expect(scopeExclusion(ctx({}), 505)).toMatch(/out of scope/);
+    expect(scopeExclusion(ctx({ groundUncertain: true }), 505)).toBeNull();
+    expect(scopeExclusion(ctx({}), null)).toBeNull(); // no proven lower bound: kept
     expect(groundDoubt(ctx({ groundUncertain: true }))).toMatch(/guessed/);
   });
 

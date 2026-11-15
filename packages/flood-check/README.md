@@ -271,9 +271,14 @@ entities, properties and containment from the parsed store. No meshing.
 
   Doors, windows and openings more than `aboveGroundScope` (3 m) above the
   ground storey are out of scope, judged by their corrected level (a window
-  placed at its head is in scope when its opening reaches down into it). An
-  upper-estimate level above the scope does not exclude: such an element is
-  kept unless its storey lies above the ground storey. With a partial
+  placed at its head is in scope when its opening reaches down into it). Only a
+  **proven lowest possible level** (`lowest`, returned by `locate` with the
+  level) above the scope excludes: the level itself when it is exact; for a
+  door or window whose level is an upper estimate, its placement minus its
+  `OverallHeight` (which covers a placement at the head); for an opening,
+  that bound of the door or window filling it. With no proven bound (an
+  unreadable body and no stated height) the element is kept. A storey is
+  never proof of height. With a partial
   footprint, an element that states no `IsExternal` and lies outside the
   readable rings is kept (it may stand in the missing part's façade).
   Interior stairs are not entry points.
@@ -370,12 +375,12 @@ whose input is incomplete is withheld with the reason.
 | Decision | Where | Consults |
 | --- | --- | --- |
 | not placed (skipped, named in a warning) | `locate` | the element's placement |
-| out of scope (`aboveGroundScope` above the ground storey) | `scopeExclusion` | level quality (`locate`), the element's storey, the ground storey's basis (a guessed one excludes nothing) |
+| out of scope (`aboveGroundScope` above the ground storey) | `scopeExclusion` | the proven lower bound (`locate`'s `lowest`: the exact level, placement minus `OverallHeight` for a door or window, the filling's bound for an opening; none: kept), the ground storey's basis (a guessed one excludes nothing); never the storey |
 | not in the façade (no `IsExternal`, beyond 1 m of the outline) | `facadeReason` | `IsExternal` of element and host, the position's certainty (`locate`: read from part of a body, or a placement standing in for a hole: kept), the footprint's quality (hull, filled voids: kept; partial: kept outside the readable rings), no footprint at all (kept) |
 | interior stair or ramp | `descentVerdict` | `IsExternal`, placement and every body corner, body completeness, the footprint's quality (hull, filled voids: kept; partial: outside counts as outside) |
 | a stair or ramp leads up (skipped) | `descentEvidence` | body completeness (a complete body only), the ground storey's basis (a guessed one excludes nothing) |
 | a slab opening above the ground storey | `openingVerdict` | the host slab's placement (unplaced: kept, upper estimate), the ground storey's basis |
-| equipment above the ground storey | `equipmentVerdict` | the element's storey, else its level and that level's quality (an upper estimate proves nothing), the ground storey's basis |
+| equipment above the ground storey | `equipmentVerdict` | its storey may include it (ground storey or below); exclusion needs the proven lower bound (`lowest`) above the scope; the ground storey's basis |
 | a transport element of another kind | `equipmentVerdict` | its stated kind (an unstated kind is kept) |
 | RECESS opening | `openingVerdict` | its stated predefined type |
 | reported through its door, window or stair | `selectCandidates` | that element's verdict (only a candidate reports for another) |

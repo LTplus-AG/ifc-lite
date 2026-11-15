@@ -27,7 +27,7 @@ import { RelationshipType } from '@ifc-lite/data';
 import type { MapPoint } from '../types.js';
 import type { LevelBasis } from './facts.js';
 import { readBody, toWorld } from './outline.js';
-import type { DecodedEntity } from './reader.js';
+import { asNumber, type DecodedEntity } from './reader.js';
 import type { CandidateContext } from './candidate-base.js';
 
 export type LocateKind = 'door' | 'window' | 'opening' | 'slab-opening' | 'light-well' | 'stair' | 'ramp' | 'equipment';
@@ -52,6 +52,10 @@ export interface LocationSources {
   hostLevel?: number | null;
   /** Stairs and ramps: their entry is at the terrain, compared from the ground storey level down. */
   groundLevel?: number;
+  /** Doors and windows: `OverallHeight` in metres, when stated (IFC2X3, IFC4, IFC4X3 all carry it). */
+  overallHeight?: number | null;
+  /** Openings: the proven lowest level of the door or window filling it (its placement minus its `OverallHeight`), when known. */
+  fillingLowest?: number | null;
 }
 
 export interface Location {
@@ -67,6 +71,15 @@ export interface Location {
    * an element's distance to the outline.
    */
   positionCertain: boolean;
+  /**
+   * The lowest level the element can reach, proven from readable data; null
+   * when nothing bounds it. `exact`: the level itself. An upper estimate: for
+   * a door or window, its placement minus its `OverallHeight` (which covers a
+   * placement at the head); for an opening, that bound of the door or window
+   * filling it; otherwise none. Only this may prove an element out of scope;
+   * a storey never stands in for it.
+   */
+  lowest: number | null;
   notes: string[];
 }
 
@@ -101,7 +114,7 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
   const notes: string[] = [];
   const own = readability(s.own);
   if (kind === 'stair' || kind === 'ramp') {
-    return { position: at.position, level: s.groundLevel ?? at.level, basis: 'ground-storey-or-terrain', quality: 'upper-estimate', positionCertain: true, notes };
+    return { position: at.position, level: s.groundLevel ?? at.level, basis: 'ground-storey-or-terrain', quality: 'upper-estimate', positionCertain: true, lowest: null, notes };
   }
   const filled = s.filled ? readability(s.filled) : 'none';
   const ownRead = s.own.readable > 0;
@@ -163,7 +176,12 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
   if (kind === 'light-well' && own === 'none') doubts.push('it has no body, and a light well\'s placement has no defined height');
   if (kind === 'slab-opening' && s.hostLevel === null) doubts.push('the slab it cuts cannot be placed');
   for (const d of doubts) notes.push(`${d}: the level is an upper estimate`);
-  return { position, level, basis, quality: doubts.length > 0 ? 'upper-estimate' : 'exact', positionCertain, notes };
+  const quality: LevelQuality = doubts.length > 0 ? 'upper-estimate' : 'exact';
+  let lowest: number | null = null;
+  if (quality === 'exact') lowest = level;
+  else if (filling && typeof s.overallHeight === 'number') lowest = Math.min(level, at.level - s.overallHeight);
+  else if ((kind === 'opening' || kind === 'slab-opening') && typeof s.fillingLowest === 'number') lowest = Math.min(level, s.fillingLowest);
+  return { position, level, basis, quality, positionCertain, lowest, notes };
 }
 
 function mapBody(ctx: CandidateContext, id: number): MapBody {
@@ -172,6 +190,19 @@ function mapBody(ctx: CandidateContext, id: number): MapBody {
   // A body that cannot be placed cannot be read either.
   if (!frame) return { items: Math.max(1, body.items), readable: 0, corners: [] };
   return { items: body.items, readable: body.readable, corners: toWorld(frame, body.corners).map((p) => ctx.georef.toMap(p) as [number, number, number]) };
+}
+
+/** A door's or window's `OverallHeight` in metres (map vertical units), or null when it states none. */
+function overallHeight(ctx: CandidateContext, id: number): number | null {
+  const e = ctx.reader.entity(id);
+  const raw = e ? asNumber(ctx.reader.attr(e, 'OverallHeight')) : null;
+  if (raw === null || !Number.isFinite(raw) || raw <= 0) return null;
+  // Through the georeference, so the project unit and the map scale apply as to every other height.
+  const frame = ctx.placements.ofProduct(id);
+  if (!frame) return null;
+  const top = ctx.georef.toMap(frame.origin)[2];
+  const below = ctx.georef.toMap([frame.origin[0], frame.origin[1], frame.origin[2] - raw])[2];
+  return top - below;
 }
 
 /** What candidate selection can read about an element (and the opening it fills, or the slab it cuts). */
@@ -185,6 +216,13 @@ export function readSources(ctx: CandidateContext, entity: DecodedEntity, kind: 
   if (kind === 'door' || kind === 'window') {
     const opening = ctx.reader.related(entity.expressId, RelationshipType.FillsElement, 'inverse')[0];
     s.filled = opening === undefined ? null : mapBody(ctx, opening);
+    s.overallHeight = overallHeight(ctx, entity.expressId);
+  }
+  if (kind === 'opening' || kind === 'slab-opening') {
+    const filling = ctx.reader.related(entity.expressId, RelationshipType.FillsElement, 'forward')[0];
+    const fillingFrame = filling === undefined ? null : ctx.placements.ofProduct(filling);
+    const h = filling === undefined ? null : overallHeight(ctx, filling);
+    s.fillingLowest = fillingFrame && h !== null ? ctx.georef.toMap(fillingFrame.origin)[2] - h : null;
   }
   if (kind === 'slab-opening' && host) {
     const hostFrame = ctx.placements.ofProduct(host.expressId);

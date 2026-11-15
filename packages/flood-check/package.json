@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/flood-check",
   "version": "0.1.0",
-  "description": "Headless check of a georeferenced building model against a surface-runoff hazard map (Swiss BAFU provider included)",
+  "description": "Reads the elements a surface-runoff check needs from a georeferenced building model: façade openings, light wells, external stairs and ramps, low technical equipment, footprint and levels",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,13 +15,11 @@
     "build": "pnpm exec tsc",
     "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
-    "test": "vitest run",
-    "smoke:live": "node ./scripts/live-smoke.mjs"
+    "test": "vitest run"
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/parser": "workspace:^",
-    "fflate": "^0.8.3"
+    "@ifc-lite/parser": "workspace:^"
   },
   "devDependencies": {
     "@mergifyio/vitest": "^2026.10.11",

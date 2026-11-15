@@ -66,8 +66,7 @@ it('#9522 new-location requires an actual chosen provider folder and renewed con
   let target:Parameters<NonNullable<FileSourceProvider['uploadFile']>>[1]|undefined;
   const source=await setup(async(_ctx,value)=>{target=value;return result;});
   render(<SourceHostProvider additionalProviders={[()=>source]}><SourceWriteBackDialog modelId="m" onClose={()=>{}} /></SourceHostProvider>);
-  confirm();const select=document.querySelector('select');assert.ok(select);
-  await act(async()=>{select.value='new-location';select.dispatchEvent(new window.Event('change',{bubbles:true}));});await flush();
+  confirm();click(button('A new file in another folder'));await flush();
   assert.equal(button('Confirm and save').disabled,true);
   click(button('Chosen folder'));await flush();click(button('Use this folder'));confirm();click(button('Confirm and save'));await flush();
   assert.deepEqual(target,{mode:'new-location',projectId:'project',containerId:'destination',fileName:'House-edited.ifc'});

@@ -10,6 +10,7 @@ import { loadResolvedSourcePrefs } from '@/lib/sources/preferences';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useTranslation } from '@/i18n';
 import { SourceWriteBackFolder } from './SourceWriteBackFolder';
 import { SourceWriteBackHistory } from './SourceWriteBackHistory';
@@ -58,11 +59,10 @@ function BoundWriteBackDialog({ binding, provider, onClose }: { binding: WriteBa
         <SourceWriteBackHistory provider={provider} ctx={ctx} projectId={binding.tag.projectId} file={saved.result.file} created={saved.result.revision} />
       </> : <form onSubmit={event => { event.preventDefault(); void submit(); }} className="space-y-3">
         <fieldset disabled={busy} className="space-y-3">
-          <label className="block space-y-1"><span>{t('sources.writeBack.mode')}</span>
-            <select className="w-full rounded border bg-background p-2" value={mode} onChange={event => {
-              const next = modes.find(item => item === event.target.value); if (next) { setMode(next); setConfirmed(false); }
-            }}>{modes.map(item => <option key={item} value={item}>{t(labels[item])}</option>)}</select>
-          </label>
+          <fieldset className="space-y-1"><legend>{t('sources.writeBack.mode')}</legend>
+            {modes.map(item => <Button key={item} type="button" variant={mode === item ? 'default' : 'outline'}
+              aria-pressed={mode === item} disabled={busy} onClick={() => { setMode(item); setConfirmed(false); }}>{t(labels[item])}</Button>)}
+          </fieldset>
           {mode !== 'new-version' && <label className="block space-y-1"><span>{t('sources.writeBack.name')}</span>
             <Input value={fileName} onChange={event => { setFileName(event.target.value); setConfirmed(false); }} required />
           </label>}
@@ -71,7 +71,7 @@ function BoundWriteBackDialog({ binding, provider, onClose }: { binding: WriteBa
             <SourceWriteBackFolder provider={provider} ctx={ctx} projectId={binding.tag.projectId} onChoose={container => { setFolder(container); setConfirmed(false); }} />
           </>}
           <p className="text-sm text-muted-foreground">{t('sources.writeBack.base', { revision: binding.tag.revisionId })}</p>
-          <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />{t('sources.writeBack.confirm')}</label>
+          <label className="flex items-start gap-2 text-sm"><Checkbox checked={confirmed} onCheckedChange={setConfirmed} />{t('sources.writeBack.confirm')}</label>
         </fieldset>
         {!current && <p role="alert">{t('sources.writeBack.modelChanged')}</p>}
         {outcome?.kind === 'conflict' && <p role="alert">{t(outcome.conflict.kind === 'stale-base' ? 'sources.writeBack.staleBase' : 'sources.writeBack.nameExists')}</p>}

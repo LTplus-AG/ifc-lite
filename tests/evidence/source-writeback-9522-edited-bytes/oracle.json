@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9522 Uploading original source instead of current edited STEP must fail the real parser roundtrip",
+  "key": "apps/viewer/src/services/sources/model-writeback.ts",
+  "mutation": "tests/evidence/source-writeback-9522-edited-bytes/behaviour.oracle.patch",
+  "test": "apps/viewer/src/services/sources/model-writeback.test.ts"
+}

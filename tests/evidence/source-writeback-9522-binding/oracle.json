@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "#9522 Changing the loaded source revision must refuse the write before any remote call",
+  "key": "apps/viewer/src/services/sources/model-writeback.ts",
+  "mutation": "tests/evidence/source-writeback-9522-binding/behaviour.oracle.patch",
+  "test": "apps/viewer/src/services/sources/model-writeback.test.ts"
+}

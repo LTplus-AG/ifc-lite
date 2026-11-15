@@ -96,6 +96,7 @@ it('shows own model/object counts, live changes, and numeric list sorting across
   const ownModel = render(<TriangleCountRow modelId="A" />);
   const otherModel = render(<TriangleCountRow modelId="B" />);
   const ownObject = render(<TriangleCountRow modelId="A" globalId={2} />);
+  const otherObject = render(<TriangleCountRow modelId="B" globalId={federationRegistry.toGlobalId('B', 2)} />);
   const value = (ui: HTMLElement) => ui.querySelector('span[title]:not([title="Triangles"])')?.textContent;
   assert.equal(value(ownModel), '14');
   assert.equal(value(otherModel), '1', 'the other model has only one instanced triangle');
@@ -118,9 +119,16 @@ it('shows own model/object counts, live changes, and numeric list sorting across
   assert.equal(value(ownObject), '—');
   assert.equal(value(otherModel), '—');
   assert.equal(providers.pairs.find(pair => pair.modelId === 'A')!.provider.getTriangleCount?.(2), null);
-  await act(async () => { replacement.queueMeshes([triangle(2), triangle(federationRegistry.toGlobalId('B', 2))]); await Promise.resolve(); });
+  await act(async () => { replacement.queueMeshes([triangle(2)]); await Promise.resolve(); });
+  assert.equal(value(ownModel), '1');
+  assert.equal(value(ownObject), '1');
+  assert.equal(value(otherModel), '—', 'A replay does not establish B source availability (#10370 review)');
+  assert.equal(value(otherObject), '—', 'an unreplayed object is unavailable, not zero');
+  assert.equal(providers.pairs.find(pair => pair.modelId === 'B')!.provider.getTriangleCount?.(2), null);
+  await act(async () => { replacement.queueMeshes([triangle(federationRegistry.toGlobalId('B', 2))]); await Promise.resolve(); });
   assert.equal(value(ownModel), '1', 'the row recovers when source geometry is replayed');
   assert.equal(value(ownObject), '1');
   assert.equal(value(otherModel), '1');
+  assert.equal(value(otherObject), '1');
   assert.equal(providers.pairs.find(pair => pair.modelId === 'A')!.provider.getTriangleCount?.(2), 1);
 });

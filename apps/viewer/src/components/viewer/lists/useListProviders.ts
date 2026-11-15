@@ -41,10 +41,11 @@ export function useListProviders(): ListProviders {
   const zoneAssignments = useViewerStore((s) => s.zoneAssignments);
   const zoneApportionment = useViewerStore((s) => s.zoneApportionment);
   const toGlobalId = useViewerStore((s) => s.toGlobalId);
+  const resolveGlobalIdInModel = useViewerStore((s) => s.resolveGlobalIdInModel);
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   return useMemo(() => prepareListProviders({ models, ifcDataStore, geometryResult, zoneSets,
-    zoneAssignments, zoneApportionment, toGlobalId, mutationViews }, renderFrame),
-  [models, ifcDataStore, geometryResult, renderFrame, zoneSets, zoneAssignments, zoneApportionment, toGlobalId, mutationViews, mutationVersion]);
+    zoneAssignments, zoneApportionment, toGlobalId, resolveGlobalIdInModel, mutationViews }, renderFrame),
+  [models, ifcDataStore, geometryResult, renderFrame, zoneSets, zoneAssignments, zoneApportionment, toGlobalId, resolveGlobalIdInModel, mutationViews, mutationVersion]);
 }

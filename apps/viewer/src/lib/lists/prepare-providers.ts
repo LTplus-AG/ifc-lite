@@ -14,7 +14,7 @@ import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-
 
 export type ListProviderState = Pick<ViewerState,
   'models' | 'ifcDataStore' | 'geometryResult' | 'zoneSets' | 'zoneAssignments' |
-  'zoneApportionment' | 'toGlobalId' | 'mutationViews'>;
+  'zoneApportionment' | 'toGlobalId' | 'mutationViews' | 'resolveGlobalIdInModel'>;
 
 /** The provider inputs are explicit so document export does not depend on mounted panels. */
 export function prepareListProviders(state: ListProviderState, renderFrame: RenderFrameOffsets) {
@@ -34,7 +34,7 @@ export function prepareListProviders(state: ListProviderState, renderFrame: Rend
       volumeSiScale: store.source.length > 0 ? zoneVolumeSiScale(units) : 1, toGlobalId,
       getTriangleCount: (expressId: number) => {
         const counts = readSceneTriangleCounts();
-        return counts && modelTrianglesReady(state, modelId) ? counts.get(toGlobalId(expressId)) ?? 0 : null;
+        return counts && modelTrianglesReady(state, modelId, counts) ? counts.get(toGlobalId(expressId)) ?? 0 : null;
       },
       getWorldPosition: makeWorldPositionGetter(store, geometry, renderFrame, toGlobalId),
     };

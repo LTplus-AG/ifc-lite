@@ -10068,6 +10068,7 @@
     "RhinoImportPointCloud: interface",
     "RhinoImportPropertySet: interface",
     "RhinoImportTextDot: interface",
+    "RhinoImportVisibility: interface",
     "RhinoLayer: interface",
     "RhinoMaterial: interface",
     "RhinoMesh: interface",

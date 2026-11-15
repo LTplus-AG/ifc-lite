@@ -116,7 +116,7 @@ export function settleUnownedLoadUi(progress: LoadProgress = null): void {
 export function settleOwnedLoadUi(release: () => void, progress: LoadProgress = null, modelId?: string): void {
   release();
   settleUnownedLoadUi(progress);
-  if (modelId !== undefined) markModelLoadEnded(modelId);
+  if (modelId !== undefined) markModelLoadEnded(modelId); // also releases the model's restore hold (geometry-restore-gate subscribes)
 }
 
 // Hook instances are independent; a replacement primary invalidates every

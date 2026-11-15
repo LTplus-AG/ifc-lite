@@ -9,7 +9,8 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
+import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { copiedProductsInStore, createCopyContext, readStoreyInventory, writeTopAttachment } from '@ifc-lite/create';
 import { createModellingStoreBackend } from './store-modelling-backend.js';
@@ -52,9 +53,17 @@ describe.skipIf(!existsSync(SAMPLE))(`bim.store copies return the whole selectio
     // Level 2 to Level 3 is 4 m: the copy needs a new height, which the file wall's body cannot take.
     const [onUpper, onTop] = backend.copyToStoreys!('m', [WALL], [upper.expressId, top.expressId]);
     expect(onUpper.refs).toEqual([{ modelId: 'm', expressId: expect.any(Number), unattachedTops: [{ expressId: onUpper.refs[0].expressId, reason: expect.stringMatching(/keeps its height and is no longer attached/) }] }]);
-    expect(onTop.refs[0].unattachedTops).toBeUndefined();
+    // #9352: no next target cannot prove this unreadable copy needs no refit.
+    expect(onTop.refs[0].unattachedTops).toEqual([{ expressId: onTop.refs[0].expressId,
+      reason: expect.stringMatching(/body cannot be read/) }]);
+    expect(view.getPropertyValue(onTop.refs[0].expressId, 'IfcLite_StoreyAttachment', 'TopConstraint')).toBeNull();
     const [copied] = backend.copyElements!('m', [WALL], [{ targetStoreyId: upper.expressId }]);
     expect(copied.unattachedTops).toHaveLength(1);
+    const saved = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+    const reopened = await new IfcParser().parseColumnar(saved.buffer.slice(saved.byteOffset, saved.byteOffset + saved.byteLength) as ArrayBuffer,
+      { disableWorkerScan: true });
+    expect(extractPropertiesOnDemand(reopened, onTop.refs[0].expressId).find(set => set.name === 'IfcLite_StoreyAttachment')?.properties
+      .find(property => property.name === 'TopConstraint')?.value).toBeUndefined();
   });
 });
 

@@ -23,6 +23,7 @@
  */
 
 import { BRIDGE_LIMITS, parseTabMessage, type BridgeCallResult, type BridgeResultMessage } from '@ifc-lite/mcp/bridge-protocol';
+import type { AgentBridgeEdit } from './state';
 
 /** A tool outcome, as `dispatchMainViewerTool` returns it. */
 export interface ToolOutcome {
@@ -31,6 +32,8 @@ export interface ToolOutcome {
   isError: boolean;
   errorCode?: string;
   hint?: string;
+  /** What an edit changed, for the activity log only; never sent (the frame carries `structured`). */
+  edit?: AgentBridgeEdit;
 }
 
 /** Room left in a frame for the envelope, the note and JSON escaping slack. */

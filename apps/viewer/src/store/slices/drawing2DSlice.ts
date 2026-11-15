@@ -801,7 +801,8 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
         set({ cloudAnnotations2D: state.cloudAnnotations2D.filter((a) => a.id !== sel.id), selectedAnnotation2D: null });
         break;
       case 'dimension':
-        set({ dimensions2D: state.dimensions2D.filter((d) => d.id !== sel.id), selectedAnnotation2D: null });
+        get().removeDimension2D(sel.id);
+        set({ selectedAnnotation2D: null });
         break;
     }
   },

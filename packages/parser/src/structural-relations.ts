@@ -93,6 +93,7 @@ function readMemberRelation(rel: RawEntity, connectionId: number, ctx: Structura
   const constraint = constraintId === undefined ? undefined : ctx.readResource(constraintId);
   return {
     expressId: rel.expressId,
+    type: rel.type,
     RelatedStructuralConnection: connectionId,
     AppliedCondition: conditionId === undefined ? undefined : ctx.boundaryCondition(conditionId),
     AdditionalConditions: additionalCondition(asRef(attr(rel, 'AdditionalConditions')), ctx),
@@ -100,6 +101,7 @@ function readMemberRelation(rel: RawEntity, connectionId: number, ctx: Structura
     ConditionCoordinateSystem: asRef(attr(rel, 'ConditionCoordinateSystem')),
     ConnectionConstraint: constraint?.type === 'IfcConnectionPointEccentricity' ? {
       expressId: constraint.expressId,
+      type: constraint.type,
       EccentricityInX: asNumber(attr(constraint, 'EccentricityInX')),
       EccentricityInY: asNumber(attr(constraint, 'EccentricityInY')),
       EccentricityInZ: asNumber(attr(constraint, 'EccentricityInZ')),

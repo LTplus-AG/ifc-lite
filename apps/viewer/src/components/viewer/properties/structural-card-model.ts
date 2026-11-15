@@ -63,16 +63,6 @@ const RENAMED: Record<string, string> = {
   // A member's ends: the inverse IfcStructuralMember.ConnectedBy.
   IfcRelConnectsStructuralMember: 'ConnectedBy',
 };
-/**
- * The EXPRESS type of a held record the read model gives no `type` field, by the
- * field that holds it: a member end is an `IfcRelConnectsWithEccentricity` when
- * it carries a constraint, and the only constraint read is an eccentricity.
- */
-const UNTYPED_CHILD: Record<string, (child: Record<string, unknown>) => string> = {
-  ConnectedBy: (child) => (child.ConnectionConstraint !== undefined ? 'IfcRelConnectsWithEccentricity' : 'IfcRelConnectsStructuralMember'),
-  ConnectionConstraint: () => 'IfcConnectionPointEccentricity',
-};
-
 /** The registry for a store's schema; IFC5 reads with IFC4X3's, as `effectiveMetadataRecord` does. */
 function registryFor(schema: string | undefined): SchemaRegistry | null {
   if (schema === 'IFC5') return getSchemaRegistryForVersion('IFC4X3');
@@ -171,8 +161,7 @@ export function structuralCardSections(data: StructuralExtraction, selection: { 
     rows.sort((a, b) => position(a.attribute) - position(b.attribute));
     sections.push({ expressId: info.expressId, type, via, depth, rows });
     for (const [childVia, child] of held) {
-      const field = childVia.replace(/\[\d+\]$/, '');
-      const childType = typeof child.type === 'string' ? child.type : UNTYPED_CHILD[field]?.(child);
+      const childType = typeof child.type === 'string' ? child.type : undefined;
       if (childType) write(childType, child, childVia, depth + 1);
     }
   };

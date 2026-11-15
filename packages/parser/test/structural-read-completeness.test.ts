@@ -68,8 +68,10 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
       const t = old ? 'Linear' : 'Translational';
       expect(relations?.[0].AppliedCondition).toEqual({expressId:55,type:'IfcBoundaryNodeCondition',name:'Release',components:{[`${t}StiffnessX`]:old ? 1 : true,[`${t}StiffnessY`]:2,[`${t}StiffnessZ`]:old ? 3 : true,RotationalStiffnessX:old ? 4 : false,RotationalStiffnessY:5,RotationalStiffnessZ:old ? 6 : false}});
       expect(relations?.[1].AppliedCondition).toBeUndefined();
+      // The relation and its constraint name their own EXPRESS type, so no reader infers it (#9949).
+      expect(relations?.map(r => r.type)).toEqual(['IfcRelConnectsStructuralMember','IfcRelConnectsWithEccentricity']);
       expect(relations?.[0].ConnectionConstraint).toBeUndefined();
-      expect(relations?.[1].ConnectionConstraint).toEqual({expressId:60,EccentricityInX:1.25,EccentricityInY:-2.5,EccentricityInZ:3.75,PointOnRelatingElement:70,PointOnRelatedElement:71});
+      expect(relations?.[1].ConnectionConstraint).toEqual({expressId:60,type:'IfcConnectionPointEccentricity',EccentricityInX:1.25,EccentricityInY:-2.5,EccentricityInZ:3.75,PointOnRelatingElement:70,PointOnRelatedElement:71});
     });
 
     it('reads edge, face and warping support component values in the declared schema', async () => {

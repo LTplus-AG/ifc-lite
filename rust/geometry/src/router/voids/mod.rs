@@ -47,6 +47,7 @@ mod batch_cutter;
 pub(crate) mod bool2d_path;
 pub(crate) mod coaxial_union;
 mod cutter;
+mod flush;
 pub(crate) mod geom;
 mod malformed_opening_repair;
 mod local_frame;

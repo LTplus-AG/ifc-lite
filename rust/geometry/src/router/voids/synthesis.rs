@@ -10,8 +10,8 @@ mod exit_cap_far_field;
 pub(super) mod host_vertices;
 mod membrane;
 
+use super::flush::recess_face_tol;
 use super::{CutterKind, GeometryRouter, NORMALIZE_EPSILON};
-use crate::csg::plane_eps::PlaneEps;
 use crate::math::aabb::Aabb3;
 use crate::{Mesh, Point3, Vector3};
 
@@ -484,19 +484,6 @@ impl GeometryRouter {
         }
         out
     }
-}
-
-/// Face-alignment tolerance of the RECESS check (#853) along the unit `dir`.
-///
-/// The relative `wall_proj_extent * 1e-5` pad keeps a tiny float-error offset
-/// from masking a flush face. The bounds are read back from f32-stored
-/// vertices, so at building scale a flush face can also sit a few ULPs off
-/// (4.3 um at 51 m, above the 2.5 um pad of a 250 mm wall, #7920). The pad is
-/// therefore floored at that f32 noise, projected onto `dir` as in
-/// [`PlaneEps::for_normal`], so a coordinate perpendicular to the extrusion
-/// cannot widen it.
-fn recess_face_tol(bounds: &[Point3<f64>], dir: &Vector3<f64>, wall_proj_extent: f64) -> f64 {
-    PlaneEps::from_points(bounds, wall_proj_extent * 1e-5).for_normal(dir)
 }
 
 #[cfg(test)]

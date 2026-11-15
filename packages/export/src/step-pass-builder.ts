@@ -328,9 +328,13 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
     styleFlatten: StyleFlatten.fromStore(dataStore, sourceSchema, schema),
   };
-  if (sourceSchema === 'IFC2X3' && schema === 'IFC4' && (!mutationView || !applyMutations) && !options.visibleOnly
-    && !options.deltaOnly && !options.subsetEntityIds && !excludeGeometry && options.includeRelationships !== false) {
-    pass.enums.structural.axes.fromStore(dataStore);
+  // Structural prepasses read source types and references, so only an unedited full export arms them.
+  // The schema pair is tested first: no other export reads the options here.
+  const prepass = sourceSchema === 'IFC2X3' && schema === 'IFC4' ? pass.enums.structural.axes
+    : sourceSchema === 'IFC4' && schema === 'IFC2X3' ? pass.enums.structural.links : null;
+  if (prepass && (!mutationView || !applyMutations) && !options.visibleOnly && !options.deltaOnly && !options.subsetEntityIds
+    && !excludeGeometry && options.includeRelationships !== false) {
+    prepass.fromStore(dataStore);
   }
   // The same object, deliberately. See the file header.
   return pass;

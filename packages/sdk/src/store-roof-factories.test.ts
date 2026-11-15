@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFileSync } from 'node:fs';
 import { it, expect } from 'vitest';
+import { getFootprintRoofPlaneParts } from '@ifc-lite/create';
 import { IfcParser } from '@ifc-lite/parser';
 import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
@@ -21,13 +22,15 @@ for (const [name, factory] of [['full', createModellingStoreBackend], ['slim', c
     const roof = createOrdinaryStoreBackend(resolve).addRoof('roof-factory', 42, {
       Position: [0,0,3], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6),
     });
-    const originalShape = editor.getNewEntity(roof.expressId)?.attributes[6];
+    const planeShapes = () => getFootprintRoofPlaneParts(store, view, roof.expressId).map(id => view.getPositionalMutationsForEntity(id)?.get(6) ?? editor.getNewEntity(id)?.attributes[6]);
+    const originalShapes = planeShapes();
     const backend = factory(resolve);
     const edit = Reflect.get(backend, 'editRoof') as RoofStoreBackendMethods['editRoof'];
     expect(edit, `${name} factory exposes the roof method`).toBeTypeOf('function');
     if (!edit) throw new Error('Missing editRoof');
     expect(edit(roof, { EdgeSlopes: [Math.PI / 6,0,Math.PI / 6,0], Overhang: .5 })).toEqual(roof);
-    expect(view.getPositionalMutationsForEntity(roof.expressId)?.get(6)).not.toEqual(originalShape);
+    expect(planeShapes()).not.toEqual(originalShapes);
+    expect(planeShapes()).toHaveLength(2);
     expect(view.getPropertyValue(roof.expressId, 'IfcLite_RoofFootprint', 'Overhang')).toBe(.5);
     const output = new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
     expect(output).toContain('.GABLE_ROOF.');

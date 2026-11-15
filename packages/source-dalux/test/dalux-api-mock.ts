@@ -33,6 +33,12 @@ export interface DaluxMockFolder {
   readonly folderId: string;
   readonly folderName: string;
   readonly parentFolderId?: string;
+  /**
+   * Names of file properties this folder requires on every new file. Served
+   * by the folder properties-mapping route as `requiredOn*: true` rows, which
+   * is what makes the provider refuse an upload it cannot satisfy.
+   */
+  readonly requiredProperties?: readonly string[];
 }
 
 export interface DaluxMockFile {
@@ -44,8 +50,10 @@ export interface DaluxMockFile {
   readonly contentHash?: string;
   readonly fileType?: string;
   readonly deleted?: boolean;
+  /** Raw `properties` array, echoed on the single-file route. */
+  readonly properties?: readonly unknown[];
   /** Body served by both the download-link and the by-revision content route. */
-  readonly content: string;
+  readonly content: string | Uint8Array;
   /**
    * Earlier revisions of this file, oldest first. Only version sets can
    * surface these — Dalux has no endpoint that lists a file's revisions —
@@ -57,7 +65,7 @@ export interface DaluxMockFile {
 /** One historical revision of a file, as a version set pins it. */
 export interface DaluxMockRevision {
   readonly fileRevisionId: string;
-  readonly content: string;
+  readonly content: string | Uint8Array;
   readonly contentHash?: string;
   /** Dalux's revision NUMBER (`File.version`), the strongest ordering signal. */
   readonly version?: string;
@@ -137,12 +145,16 @@ export interface DaluxMockOptions {
 interface MockResponseInit {
   readonly status?: number;
   readonly json?: unknown;
-  readonly body?: string;
+  readonly body?: string | Uint8Array;
+}
+
+function contentBytes(content: string | Uint8Array): Uint8Array<ArrayBuffer> {
+  return typeof content === 'string' ? new TextEncoder().encode(content) : new Uint8Array(content);
 }
 
 function mockResponse({ status = 200, json, body }: MockResponseInit): Response {
-  const text = body ?? (json === undefined ? '' : JSON.stringify(json));
-  const encoded = new TextEncoder().encode(text);
+  const encoded = contentBytes(body ?? (json === undefined ? '' : JSON.stringify(json)));
+  const text = new TextDecoder().decode(encoded);
   return {
     ok: status >= 200 && status < 300,
     status,
@@ -158,8 +170,8 @@ function mockResponse({ status = 200, json, body }: MockResponseInit): Response 
 /** Serves file bytes the way a real download does: a streamed body, split
  *  into a few chunks and with no `Content-Length`, so a download exercises
  *  `readWithProgress`'s stream path and its listing-size fallback (#6375). */
-function binaryResponse(content: string, headers: Record<string, string> = {}): Response {
-  const bytes = new TextEncoder().encode(content);
+function binaryResponse(content: string | Uint8Array, headers: Record<string, string> = {}): Response {
+  const bytes = contentBytes(content);
   const chunkSize = Math.max(1, Math.ceil(bytes.byteLength / 3));
   let offset = 0;
   const body = new ReadableStream<Uint8Array>({
@@ -228,8 +240,9 @@ function fileRow(area: DaluxMockFileArea, file: DaluxMockFile): Record<string, u
     fileRevisionId: file.fileRevisionId ?? null,
     contentHash: file.contentHash ?? null,
     fileType: file.fileType ?? null,
-    fileSize: new TextEncoder().encode(file.content).byteLength,
+    fileSize: contentBytes(file.content).byteLength,
     deleted: file.deleted ?? false,
+    ...(file.properties ? { properties: file.properties } : {}),
     ...(current?.version !== undefined ? { version: current.version } : {}),
     lastModified: current?.lastModified ?? '2026-08-06T10:00:00Z',
     lastModifiedByUserId: 'user-1',
@@ -282,7 +295,7 @@ function versionSetRevisionUrl(
 }
 
 /** The bytes of one revision, current or historical. */
-function revisionBytes(file: DaluxMockFile, revisionId: string): string | undefined {
+function revisionBytes(file: DaluxMockFile, revisionId: string): string | Uint8Array | undefined {
   if (file.fileRevisionId === revisionId) return file.content;
   return (file.revisions ?? []).find((candidate) => candidate.fileRevisionId === revisionId)?.content;
 }
@@ -292,13 +305,51 @@ function downloadLinkFor(projectId: string, fileAreaId: string, fileId: string):
   return `${DALUX_MOCK_BASE_URL}/download/${encodeURIComponent(projectId)}/${encodeURIComponent(fileAreaId)}/${encodeURIComponent(fileId)}`;
 }
 
+/** Largest part the real API accepts (spec: 104857600 bytes). */
+export const DALUX_MOCK_MAX_PART_BYTES = 104_857_600;
+
+interface UploadSlot {
+  readonly fileAreaId: string;
+  readonly parts: Uint8Array[];
+  received: number;
+  total?: number;
+}
+
+function toBytes(body: unknown): Uint8Array | undefined {
+  if (body instanceof Uint8Array) return body;
+  if (body instanceof ArrayBuffer) return new Uint8Array(body);
+  return undefined;
+}
+
+/** A request body as text, whether the caller sent a string or bytes (a
+ *  relay forwards the bytes it read, not the provider's original string). */
+function bodyText(body: unknown): string | undefined {
+  if (typeof body === 'string') return body;
+  const bytes = toBytes(body);
+  return bytes ? new TextDecoder().decode(bytes) : undefined;
+}
+
+function isUnuploadableArea(area: DaluxMockFileArea): boolean {
+  return ['shared', 'published'].includes(area.fileAreaType.toLowerCase());
+}
+
 /**
  * Builds a `fetch` serving `world` over the Dalux Build REST routes
  * `DaluxBuildProvider` actually calls. Unknown routes answer 404, so a
  * provider change that starts calling an endpoint this mock doesn't model
  * fails loudly instead of silently reading an empty listing.
  */
-export function createDaluxApiMock(world: DaluxMockWorld, options: DaluxMockOptions = {}): typeof fetch {
+export function createDaluxApiMock(initialWorld: DaluxMockWorld, options: DaluxMockOptions = {}): typeof fetch {
+  // Uploads mutate the tenant, so serve from a private copy: the caller's
+  // `world` constant is shared across tests and must stay pristine.
+  const world: DaluxMockWorld = {
+    projects: initialWorld.projects.map((project) => ({
+      ...project,
+      fileAreas: project.fileAreas.map((area) => ({ ...area, files: [...area.files] })),
+    })),
+  };
+  const slots = new Map<string, UploadSlot>();
+  let uploadCounter = 0;
   const pageSize = options.pageSize ?? 1;
   // Loudly, at construction. A `pageSize` of 0 makes `paginate` slice an empty
   // page whose bookmark equals the one it was given, so the mock advertises a
@@ -360,6 +411,142 @@ export function createDaluxApiMock(world: DaluxMockWorld, options: DaluxMockOpti
     }
 
     const area = findArea(project, segments[4] ?? '');
+
+    const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
+
+    // Upload step 1: POST /1.0/projects/{p}/file_areas/{fa}/upload
+    if (method === 'POST' && segments[0] === '1.0' && segments[5] === 'upload' && segments.length === 6) {
+      if (!area || !project) return Promise.resolve(mockResponse({ status: 404, body: 'no such file area' }));
+      if (isUnuploadableArea(area)) {
+        return Promise.resolve(mockResponse({ status: 400, body: 'file area type does not accept uploads' }));
+      }
+      uploadCounter += 1;
+      const uploadGuid = `upload-${uploadCounter}`;
+      slots.set(uploadGuid, { fileAreaId: area.fileAreaId, parts: [], received: 0 });
+      return Promise.resolve(mockResponse({ status: 201, json: { data: { uploadGuid } } }));
+    }
+
+    // Upload step 2: POST /1.0/projects/{p}/file_areas/{fa}/upload/{guid}
+    if (method === 'POST' && segments[0] === '1.0' && segments[5] === 'upload' && segments.length === 7) {
+      const slot = slots.get(segments[6]);
+      if (!area || !slot || slot.fileAreaId !== area.fileAreaId) {
+        return Promise.resolve(mockResponse({ status: 404, body: 'no such upload slot' }));
+      }
+      const headers = new Headers(init?.headers);
+      const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(headers.get('content-range') ?? '');
+      if (!range) return Promise.resolve(mockResponse({ status: 400, body: 'bad Content-Range' }));
+      if (!/filename\*=UTF-8''/.test(headers.get('content-disposition') ?? '')) {
+        return Promise.resolve(mockResponse({ status: 400, body: 'bad Content-Disposition' }));
+      }
+      const body = toBytes(init?.body);
+      const [start, end, total] = [Number(range[1]), Number(range[2]), Number(range[3])];
+      if (!body || body.byteLength !== end - start + 1 || body.byteLength > DALUX_MOCK_MAX_PART_BYTES) {
+        return Promise.resolve(mockResponse({ status: 400, body: 'part size does not match Content-Range' }));
+      }
+      if (start !== slot.received || (slot.total !== undefined && slot.total !== total)) {
+        return Promise.resolve(mockResponse({ status: 400, body: 'part out of order' }));
+      }
+      slot.parts.push(body.slice());
+      slot.received += body.byteLength;
+      slot.total = total;
+      return Promise.resolve(mockResponse({ status: 202 }));
+    }
+
+    // Upload step 3: POST /2.0/projects/{p}/file_areas/{fa}/upload/{guid}/finalize
+    if (
+      method === 'POST' &&
+      segments[0] === '2.0' &&
+      segments[5] === 'upload' &&
+      segments[7] === 'finalize' &&
+      segments.length === 8
+    ) {
+      const slot = slots.get(segments[6]);
+      if (!area || !project || !slot) return Promise.resolve(mockResponse({ status: 404, body: 'no such upload slot' }));
+      if (slot.total === undefined || slot.received !== slot.total) {
+        return Promise.resolve(mockResponse({ status: 400, body: 'upload incomplete' }));
+      }
+      const meta = JSON.parse(bodyText(init?.body) ?? '{}') as {
+        fileName?: string;
+        fileType?: string;
+        fileId?: string;
+        folderId?: string;
+        properties?: unknown[];
+      };
+      if (!meta.fileName || !['document', 'drawing', 'model'].includes(meta.fileType ?? '')) {
+        return Promise.resolve(mockResponse({ status: 400, body: 'fileName and a valid fileType are required' }));
+      }
+      if (Boolean(meta.fileId) === Boolean(meta.folderId)) {
+        return Promise.resolve(mockResponse({ status: 400, body: 'exactly one of fileId and folderId' }));
+      }
+      const bytes = new Uint8Array(slot.received);
+      let offset = 0;
+      for (const part of slot.parts) {
+        bytes.set(part, offset);
+        offset += part.byteLength;
+      }
+      const content = bytes;
+      const files = area.files as DaluxMockFile[];
+      let created: DaluxMockFile;
+      if (meta.fileId) {
+        const index = files.findIndex((candidate) => candidate.fileId === meta.fileId);
+        if (index === -1) return Promise.resolve(mockResponse({ status: 404, body: 'no such file' }));
+        const previous = files[index];
+        const previousId = previous.fileRevisionId ?? previous.contentHash;
+        const revisions = [...(previous.revisions ?? [])];
+        if (previousId && !revisions.some(revision => revision.fileRevisionId === previousId)) {
+          revisions.push({ ...previous, fileRevisionId: previousId });
+        }
+        created = {
+          ...previous,
+          revisions,
+          fileRevisionId: `rev-${segments[6]}-${slot.received}`,
+          contentHash: undefined,
+          content,
+          ...(meta.properties ? { properties: meta.properties } : {}),
+        };
+        files[index] = created;
+      } else {
+        const isRoot = meta.folderId === area.fileAreaId;
+        if (!isRoot && !area.folders.some((folder) => folder.folderId === meta.folderId)) {
+          return Promise.resolve(mockResponse({ status: 400, body: 'no such folder' }));
+        }
+        created = {
+          fileId: `file-${segments[6]}`,
+          fileName: meta.fileName,
+          ...(isRoot ? {} : { folderId: meta.folderId }),
+          fileRevisionId: `rev-${segments[6]}-${slot.received}`,
+          fileType: meta.fileType,
+          content,
+          ...(meta.properties ? { properties: meta.properties } : {}),
+        };
+        files.push(created);
+      }
+      slots.delete(segments[6]);
+      return Promise.resolve(mockResponse({ status: 201, json: { data: fileRow(area, created) } }));
+    }
+
+    // /1.1/projects/{p}/file_areas/{fa}/folders/{f}/files/properties/1.0/mappings
+    if (
+      method === 'GET' &&
+      segments[0] === '1.1' &&
+      segments[5] === 'folders' &&
+      segments[7] === 'files' &&
+      segments[10] === 'mappings'
+    ) {
+      const folder = area?.folders.find((candidate) => candidate.folderId === segments[6]);
+      if (!area || !folder) return Promise.resolve(mockResponse({ status: 404, body: 'no such folder' }));
+      const rows = (folder.requiredProperties ?? []).map((name) => ({
+        data: {
+          key: name,
+          name,
+          valueType: 'text',
+          requiredOnDocuments: true,
+          requiredOnDrawings: true,
+          requiredOnModels: true,
+        },
+      }));
+      return Promise.resolve(mockResponse({ json: paginate(rows, url, paging) }));
+    }
 
     // /5.1/projects/{p}/file_areas/{fa}/folders — every folder in the area,
     // regardless of nesting; Dalux has no parent-scoped folder endpoint.

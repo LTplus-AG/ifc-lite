@@ -2,7 +2,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
+import { resetRunOutputs } from './lib/run-output.mjs';
 /**
  * Modelling parity UI run (#9296): probes, exercise runs and council frames
  * on the real GPU.
@@ -30,6 +30,7 @@
  * @unwired-by-design needs a real GPU and Windows Chrome; run by the parity loop, not CI.
  */
 
+import { combineSourceInfo, sourceProvenance } from '../probes/sdk/run.mjs';
 import { hardwareAdapter, themedResult } from './lib/oracles.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -77,6 +78,7 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  await resetRunOutputs(args.out);
   const shots = join(args.out, 'shots');
   const frames = join(args.out, 'frames');
   await Promise.all([shots, frames].map((d) => mkdir(d, { recursive: true })));
@@ -87,7 +89,8 @@ async function main() {
     await writeFile(join(args.out, rel), bytes);
     return rel;
   };
-  const source = gitSource(ROOT);
+  const probes = gitSource(ROOT);
+  const source = args.distCommit ? combineSourceInfo({ commit: args.distCommit, dirty: false }, probes) : sourceProvenance(args.dist, ROOT);
   const distIndexSha256 = sha256(await readFile(join(args.dist, 'index.html')));
   // Machine paths stay out of results that may be committed: --dist and --out become placeholders.
   const argv = process.argv.slice(2).map((a, i, all) => (['--dist', '--out', '--cdp'].includes(all[i - 1]) ? `<${all[i - 1].slice(2)}>` : a));

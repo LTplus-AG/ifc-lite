@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "PR #9680's derived revert deletes dm-e2e-report.mjs while its test imports it (ERR_MODULE_NOT_FOUND); this keeps the module and drops only the entity_count term from identityBroken, so a #6034 count regression no longer fails the verdict and the report tests' assertions fail.",
+  "key": "scripts/perf/dm-e2e-report.mjs",
+  "mutation": "tests/evidence/dm-e2e-report-9582/behaviour.oracle.patch",
+  "test": "scripts/perf/dm-e2e-report.test.mjs"
+}

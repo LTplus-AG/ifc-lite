@@ -1,8 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
-
+import { typedRoomAxes, typedSlab } from '../lib/measured-oracles.mjs';
 import { task } from '../lib/driver.mjs';
 import { escape, hudText, oracleModel, tool, typeFields } from '../lib/model-ui.mjs';
 
@@ -33,9 +32,9 @@ export default {
       return {
         tasks, notes, evidence: [shot],
         checks: [
-          { name: 'wall lengths exactly 5, 4, 5, 4 m', ok: axes.length === 4 && axes.every((a, i) => near(a.length, want[i], 1e-3)), detail: axes.map((a) => a.length.toFixed(4)).join(', ') },
+          { name: 'wall lengths exactly 5, 4, 5, 4 m', ok: axes.length === 4 && axes.every((a, i) => near(a.length, want[i], 1e-3)) && typedRoomAxes(axes), detail: axes.map((a) => a.length.toFixed(4)).join(', ') },
           { name: 'typed chain closes on the start point', ok: axes.length === 4 && nearPt(axes[0].start, axes[3].end, 1e-3), detail: axes.length ? `${fmt(axes[0].start)} vs ${fmt(axes.at(-1).end)}` : 'no walls' },
-          { name: 'slab 5 x 4 m (GrossArea 20 m2)', ok: near(q.GrossArea ?? 0, 20, 1e-3), detail: JSON.stringify({ Length: q.Length, Depth: q.Depth, GrossArea: q.GrossArea }) },
+          { name: 'slab 5 x 4 m (GrossArea 20 m2)', ok: typedSlab(q), detail: JSON.stringify({ Length: q.Length, Depth: q.Depth, GrossArea: q.GrossArea }) },
         ],
         extra: { hud },
       };

@@ -178,12 +178,36 @@ export class ItemGeometryReader {
     return frame;
   }
 
+  /** The product's `ObjectPlacement` id: undefined when it has none (`$`), null when the product is unreadable. */
+  private placementIdOf(productId: number): number | undefined | null {
+    const product = this.entity(productId);
+    return product ? asRef(product.attributes[OBJECT_PLACEMENT]) : null;
+  }
+
   /** A product's placement frame in file units; identity when it has none (`$`). */
   productFrame(productId: number): Frame | null {
-    const product = this.entity(productId);
-    if (!product) return null;
-    const placementId = asRef(product.attributes[OBJECT_PLACEMENT]);
+    const placementId = this.placementIdOf(productId);
+    if (placementId === null) return null;
     return placementId === undefined ? IDENTITY : this.placement(placementId);
+  }
+
+  /**
+   * Maps a point in metres, given in the axes of the frame the product's own
+   * `IfcLocalPlacement` is relative to (`PlacementRelTo`), to IFC world
+   * metres. A product with no placement, or one relative to nothing, maps
+   * from world. Null when the placement chain is unreadable or not local.
+   */
+  fromPlacementParent(productId: number): ((p: Vec3) => Vec3) | null {
+    const placementId = this.placementIdOf(productId);
+    if (placementId === null) return null;
+    const placement = placementId === undefined ? null : this.entity(placementId);
+    if (placementId !== undefined && placement?.type !== 'IFCLOCALPLACEMENT') return null;
+    const parentId = placement ? asRef(placement.attributes[0]) : undefined;
+    const frame = parentId === undefined ? IDENTITY : this.placement(parentId);
+    if (!frame) return null;
+    // Frames are in file units; points arrive in metres.
+    const metric = { ...frame, origin: scale(frame.origin, this.unitScale) };
+    return (p) => apply(metric, p);
   }
 
   /**

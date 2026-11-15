@@ -1,9 +1,62 @@
 # WASM wide-arithmetic: measured win + delivery plan
 
-Status: measurement + design (2026-06-27)
+## Status: retired (2026-11-14)
+
+The weekly tripwire and the optional wide build path were removed on
+2026-11-14 by maintainer decision. Chrome users gain nothing while the feature
+is off by default; Firefox's gain on the current kernel is unknown and would
+require a second bundle, toolchain, output-identity qualification and a
+determinism ratchet extension; and kernel arithmetic no longer bounds load
+time. Revisit only if Chrome ships the feature on by default **and** a
+measurement shows a gain on the current FixedInt kernel.
+
+To recover the removed files, use the PR's parent on `main`:
+`f64111d981faa9b928b3f66c37be88c1ae16f0f9`.
+
+Flag correction: `--wasm-wide-arithmetic` exists. Node 27 alpha and Chrome 156
+accept it, and `--wasm-staging` implies it. Earlier statements below that V8
+had no dedicated flag describe the older state and are no longer current.
+
+Historical status before retirement: measurement + design (2026-06-27)
+
+Status: measurement + design (2026-06-27); **parked 2026-11-11** after re-measuring on the current kernel (next section)
 Goal: close the in-browser WASM-vs-native gap on exact-CSG/brep-heavy models
 **without an install or an upload** (the hard client-side constraint), by building
 the geometry kernel with the WASM wide-arithmetic proposal.
+
+## Parked 2026-11-11: re-measured on the FixedInt kernel, a small lever
+
+The measurements further down are historical. They predate `FixedInt`, ran on LLVM 21, and timed bnum, so they no longer describe the kernel.
+
+**Status corrections (2026-11-10/11):**
+- The proposal is phase 4.
+- Firefox 155+ runs it by default. Verified on Firefox 157.
+- V8 runs it only behind `--wasm-wide-arithmetic` or `--wasm-staging`. Verified on Chrome 156 and Node 27 alpha; Chrome stable 157 still has it off by default. The flag is not accepted in `NODE_OPTIONS`.
+- Wasmtime enables it by default.
+
+**What today's wide build does:**
+- `fixed_int/mul.rs` picks u32 digits for every `wasm32` build. A `+wide-arithmetic` build therefore still multiplies with u32 digits: `checked_mul_limbs` contains no `i64.mul_wide_u`. The roughly 1,300 wide ops in the bundle come from bnum, i128 and std.
+- Branch `perf/wide-arithmetic-u64-digits` (not merged) gates the digit choice on `not(target_feature = "wide-arithmetic")` and keeps the default bundle byte-identical.
+
+**Measured with that branch (exclusive benchmark, Pop):**
+
+| scope | result |
+|---|---|
+| kernels (V8 with the flag, SpiderMonkey) | `checked_mul` 2.2-2.7x; exact LPI `orient3d` 1.4-1.6x |
+| `processGeometryBatch`, CSG-heavy models | +2-6% |
+| `processGeometryBatch`, models without openings | 0 |
+| end to end (Chrome with the flag, browser-cold interactive, 5 paired rounds) | no significant difference |
+
+About half of the +2-6% comes from the LLVM 23 toolchain alone, which is also 2.7% slower on ISSUE_098.
+
+**Why the gain is small:**
+- Exact integer arithmetic is about 5-10% of wasm geometry time even on the heaviest CSG models.
+- BigRational was never reached on the 29-model ara3d corpus.
+- 76-95% of the predicates that fall past the interval filter are exact zeros, so a better float filter cannot remove them either.
+
+**Correctness:** output was byte-identical to the default bundle on all 29 ara3d+BWK models (Node 27 with the flag), in Firefox 157 and in Chrome 156 with the flag.
+
+**Worth revisiting when** V8 enables the feature by default *and* the u64-limb gate lands, or for a model class where exact integer work exceeds about 30% of geometry time.
 
 ## Why this exists
 
@@ -64,15 +117,17 @@ ThatOpen wins today.
 - At the kernel level there is no blocker: the win is real today on a plain
   `cdylib` (the benches above).
 
-## Delivery status: blocker 1 CLEARED, blocker 2 staged in V8, blocker 3 worked around (updated 2026-11-09)
+## Historical delivery status before retirement (updated 2026-11-09)
 
 **Update 2026-11-09.** The weekly tripwire went red on 2026-11-04 for two
 reasons at once. Neither is a kernel bug.
 
 - **Blocker 2 moved: V8 15.6 has it staged.** Node 27.0.0-alpha (V8
   15.6.75.25) and the Node 28 nightly of 2026-11-09 (V8 15.6.75.33) accept all
-  four opcodes under `--wasm-staging`, and still reject them without it. There
-  is no dedicated flag. A 200k-case fuzz of `i64.add128`, `i64.sub128`,
+  four opcodes under `--wasm-staging`, and still reject them without it. A
+  dedicated `--wasm-wide-arithmetic` flag exists; Node 27 alpha and Chrome 156
+  accept it, and `--wasm-staging` implies it. A 200k-case fuzz of
+  `i64.add128`, `i64.sub128`,
   `i64.mul_wide_s` and `i64.mul_wide_u` against a BigInt reference matched
   exactly in both Liftoff (`--liftoff-only`) and TurboFan (`--no-liftoff`).
   Staged features are not on in any browser by default, so this is still a
@@ -227,8 +282,8 @@ wired yet — see the delivery plan below.
 ## When might it ship, and can we work around it?
 
 **Timeline (engine survey researched 2026-06; V8 re-measured 2026-07-31):**
-wide-arithmetic is **Phase 3** (implementation
-phase, not yet a finished standard = Phase 4). A 2026 runtime survey found only
+wide-arithmetic was **Phase 3** then; it is **phase 4** as of 2026-11 (see the parked
+section at the top, which supersedes this timeline). A 2026 runtime survey found only
 **Wasmtime and Wasmer** run a full wide-arith build in stable releases; **no
 stable browser ships it**. Measured 2026-07-31: V8 rejects the opcodes outright
 and exposes no flag to enable them, so the earlier "prototyped behind a flag"
@@ -316,8 +371,8 @@ This reuses the exact pattern already in place for the threaded second bundle
    differs, so the JS is shared and only the chosen `.wasm` is fetched.
 
 Net: one extra `.wasm` artifact + a ~102-byte feature probe + a one-line URL
-choice. Users on engines with wide-arithmetic transparently get ~1.7x faster
-in-browser CSG; everyone else is unaffected.
+choice. Users on engines with wide-arithmetic would get faster exact CSG (re-measured
+2026-11-11: +2-6% geometry time, not the historical ~1.7x); everyone else is unaffected.
 
 ## Reproduce
 

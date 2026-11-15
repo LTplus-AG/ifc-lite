@@ -47,6 +47,11 @@ export async function markTraceWindow(page, fromAbs, toAbs, originAbs) {
   } catch (err) { return `trace marks failed: ${String(err?.message ?? err).slice(0, 200)}`; }
 }
 
+/** Epoch window of an open for the instruction counter, or null when the page cannot be read (never throws). */
+export async function epochWindow(page, fromAbs, toAbs) {
+  try { return await page.evaluate(([a, b]) => [performance.timeOrigin + a, performance.timeOrigin + b], [fromAbs, toAbs]); } catch { return null; }
+}
+
 /** Start tracing through a CDP session on `page` (tracing is browser-wide: renderer, GPU and browser processes). */
 export async function startCpuTrace(context, page) {
   const cdp = await context.newCDPSession(page);

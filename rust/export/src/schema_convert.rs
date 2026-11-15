@@ -290,6 +290,8 @@ fn convert_record(
     let axis = checks.as_ref().filter(|_| cfrom == "IFC2X3" && cto == "IFC4").and_then(|c| c.structural.axes.axis(express_id, &entity_type, &args));
     if let Some(c) = checks.as_deref_mut() { c.structural.inspect(&entity_type, &args, cfrom, cto, axis.is_some()); }
     if let Some(axis) = axis { return Ok(format!("{prefix}{entity_type}({},{});", args.join(","), axis)); }
+    let link = checks.as_deref_mut().filter(|_| cfrom == "IFC4" && cto == "IFC2X3").and_then(|c| c.structural.restored_link(&entity_type, &args));
+    if let Some(attrs) = link { return Ok(format!("{prefix}IFCRELCONNECTSSTRUCTURALELEMENT({attrs});")); }
     if let Some(attrs) = crate::schema_structural::attributes(&entity_type, &args, cfrom, cto) {
         if crate::schema_structural::constant_action(&entity_type) {
             if let (Some(c), Some(src), Some(tgt)) = (checks, schema_attribute_names(cfrom, &entity_type), schema_attribute_names(cto, &entity_type)) {

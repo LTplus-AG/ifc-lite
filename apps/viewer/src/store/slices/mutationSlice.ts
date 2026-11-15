@@ -86,7 +86,7 @@ import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
 import { withMutationBatchTags } from './mutation-batch-tags.js';
 import { canMutateData, canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
-import { syncTypeOverride } from './mutation-history-apply.js';
+import { clearViewAndTypeOverrides, syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
 import { dropFromChangeSets, newChangeSet, parseChangeSetFile, recordHistory } from './mutation-history-record.js';
 import { positionalMutations } from './mutation-positional-batch.js';
@@ -1936,10 +1936,7 @@ export const createMutationSlice: StateCreator<
 
   // Reset
   clearMutations: (modelId) => {
-    const view = get().mutationViews.get(modelId);
-    if (view) {
-      view.clear();
-    }
+    clearViewAndTypeOverrides(get, modelId);
 
     // Also discard pending schedule edits owned by this model. Done via
     // the schedule slice's own action so its invariants (range, playback,
@@ -1986,9 +1983,7 @@ export const createMutationSlice: StateCreator<
   },
 
   clearAllMutations: () => {
-    for (const view of get().mutationViews.values()) {
-      view.clear();
-    }
+    for (const modelId of get().mutationViews.keys()) clearViewAndTypeOverrides(get, modelId);
 
     // Schedule slice handles its own state transitions.
     const cross = get() as unknown as { clearGeneratedSchedule?: () => number };

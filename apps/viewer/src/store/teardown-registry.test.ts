@@ -95,7 +95,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',
   'sheetEnabled', 'sheetPanelVisible', // #6232: the Split tool's fields moved into the element.split command gesture
-  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D', // dimensions die with the session like the other markup
+  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D', 'dimension2DUndo', 'dimension2DRedo', // dimensions die with the session like the other markup
   'titleBlockEditorVisible', 'typeViewMode',
   'structuralViewMode', 'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
@@ -178,7 +178,7 @@ const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'polygonArea2DPoints', 'polygonArea2DResults',
   'selectedAnnotation2D', 'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys', 'selectionRevision',
-  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D',
+  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D', 'dimension2DUndo', 'dimension2DRedo',
 ];
 
 /**
@@ -305,7 +305,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',
   'sheetEnabled', 'sheetPanelVisible', // #6232: the Split tool's fields moved into the element.split command gesture
-  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D',
+  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D', 'dimension2DUndo', 'dimension2DRedo',
   'titleBlockEditorVisible', 'typeViewMode',
   'structuralViewMode', 'typeVisibility', 'undoStacks', 'visibilityRevision', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',

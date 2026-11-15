@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "PR #9680's derived revert removes DataModel.total_entities that retained tests construct (E0560), so no assertion ran; this keeps the scaffolding and drops only the pre-filter's keep-if-referenced rule, so non-rooted association endpoints are lost and the pre/post-filter equivalence assertions fail.",
+  "key": "rust/processing/src/data_model/scan.rs",
+  "mutation": "tests/evidence/dm-prefilter-9582/behaviour.oracle.patch",
+  "test": "rust/processing/src/data_model/rooted_tests.rs"
+}

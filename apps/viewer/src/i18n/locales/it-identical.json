@@ -1631,10 +1631,6 @@
     "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 26+",
     "reason": "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers: Browser product names and minimum version numbers identify supported products; no descriptive English text."
   },
-  "viewportLighting.container.loadingCard.phase.rendering": {
-    "value": "Rendering",
-    "reason": "Rendering is the standard Italian technical term for the rendering phase."
-  },
   "viewportLighting.overlays.mobileNav.homeTooltip": {
     "value": "Home (H)",
     "reason": "viewportLighting.overlays.mobileNav.homeTooltip: Home is the established Italian UI navigation label; the H shortcut, when present, remains the physical key."
@@ -1734,5 +1730,9 @@
   "viewportLighting.container.emptyState.formats.rhino": {
     "value": "Rhino",
     "reason": "Format family name on the welcome card: Rhino is the product name of the authoring tool behind .3dm and is not localized in any language."
+  },
+  "agentBridge.panel.editChange": {
+    "value": "{entity} · {field}: {before} → {after}",
+    "reason": "Placeholders and symbols only (middle dot, colon, arrow); no English prose."
   }
 }

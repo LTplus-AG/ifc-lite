@@ -363,25 +363,20 @@ function emitEntities(entities: DxfEntity[], ctx: RenderCtx, state: ConvertState
         const anchor = toWorld(state, ctx, entity.x * mirror, entity.y);
         const rad = (entity.rotationDeg * Math.PI) / 180;
         const tip = toWorld(state, ctx, (entity.x + Math.cos(rad)) * mirror, entity.y + Math.sin(rad));
-        let dirX = tip.x - anchor.x;
-        let dirY = tip.y - anchor.y;
-        const len = Math.hypot(dirX, dirY);
-        if (len > 1e-12) {
-          dirX /= len;
-          dirY /= len;
-        } else {
-          dirX = 1;
-          dirY = 0;
-        }
-        const scaleEstimate = Math.sqrt(Math.abs(ctx.m[0] * ctx.m[3] - ctx.m[1] * ctx.m[2]));
+        // The fit/aligned end point belongs to the extent (unit heuristic, centring).
+        if (entity.fitWidth) toWorld(state, ctx, (entity.x + Math.cos(rad) * entity.fitWidth) * mirror, entity.y + Math.sin(rad) * entity.fitWidth);
+        const len = Math.hypot(tip.x - anchor.x, tip.y - anchor.y);
+        const [dirX, dirY] = len > 1e-12 ? [(tip.x - anchor.x) / len, (tip.y - anchor.y) / len] : [1, 0];
+        const scaleEstimate = Math.sqrt(Math.abs(ctx.m[0] * ctx.m[3] - ctx.m[1] * ctx.m[2])), keepsAspect = Math.abs(len / state.unitScale - scaleEstimate) <= 1e-9 * Math.max(1, scaleEstimate);
         const text: DxfUnderlayText = {
           position: anchor,
           text: entity.text,
-          height: entity.height * scaleEstimate * state.unitScale,
+          height: entity.height * (keepsAspect || len <= 1e-12 ? scaleEstimate : scaleEstimate ** 2 / (len / state.unitScale)) * state.unitScale, // glyph height: area / baseline scale
           dirX,
           dirY,
           align: entity.hAlign,
           valign: entity.vAlign,
+          lineSpacingFactor: entity.lineSpacingFactor, widthScale: keepsAspect || scaleEstimate <= 0 ? entity.widthScale : (entity.widthScale ?? 1) * (len / state.unitScale) ** 2 / scaleEstimate ** 2, fitWidth: entity.fitWidth && entity.fitWidth * len, fitUniform: entity.fitUniform && keepsAspect, // non-uniform INSERT: fit horizontally; world length of the baseline span (exact under non-uniform scale)
           color: colorOverride,
         };
         bucket.texts.push(text);

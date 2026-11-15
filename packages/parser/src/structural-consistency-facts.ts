@@ -19,6 +19,8 @@ import {
   isA,
   LOAD_BEARING_CLASSES,
   type PhysicalElementFact,
+  type StructuralDerivationRecord,
+  type StructuralGeometryFacts,
   type StructuralConsistencyIssue,
   type StructuralConsistencyOptions,
   type StructuralLine,
@@ -27,6 +29,20 @@ import { ItemGeometryReader } from './structural-item-geometry.js';
 import { structuralCounterparts } from './structural-counterparts.js';
 import { extractStructuralOnDemand } from './structural-extractor.js';
 import type { StructuralExtraction } from './structural-types.js';
+
+/** The property set derive writes on each curve member it creates, and its properties. */
+export const STRUCTURAL_DERIVATION_PSET = 'IfcLite_StructuralDerivation';
+export const DERIVATION_ELEMENT_PROPERTY = 'PhysicalElement';
+/**
+ * The element's line in metres, in the axes of the frame the member's own
+ * placement is relative to (the storey derive placed it on): start x, y, z,
+ * then end x, y, z. A move of that frame, or of anything above it, moves the
+ * record with the member, so it is not a physical change.
+ */
+export const DERIVATION_AXIS_PROPERTIES = [
+  'PhysicalAxisStartX', 'PhysicalAxisStartY', 'PhysicalAxisStartZ',
+  'PhysicalAxisEndX', 'PhysicalAxisEndY', 'PhysicalAxisEndZ',
+] as const;
 
 type NamedPset = { name: string; properties: ReadonlyArray<{ name: string; value: unknown }> };
 
@@ -82,18 +98,34 @@ export interface StructuralConsistencyIssuesOptions extends StructuralConsistenc
 }
 
 /**
- * The edge of each curve member assigned to an element in `physicalAxes`, in
- * IFC world metres: the only members the axis-drift rule can compare.
+ * The curve members assigned to an element in `physicalAxes`, the only ones
+ * the geometry rules compare: each one's edge in IFC world metres, and the
+ * derivation record of those that carry one.
  */
-function curveMemberLines(store: IfcDataStore, structural: StructuralExtraction, physicalAxes: ReadonlyMap<number, StructuralLine>): Map<number, StructuralLine> {
+function curveMemberGeometry(store: IfcDataStore, structural: StructuralExtraction, physicalAxes: ReadonlyMap<number, StructuralLine>): StructuralGeometryFacts {
   const reader = new ItemGeometryReader(store);
-  const lines = new Map<number, StructuralLine>();
+  const memberLines = new Map<number, StructuralLine>();
+  const derivationRecords = new Map<number, StructuralDerivationRecord>();
   for (const member of structural.members) {
     if (!isA(member.type, ['IfcStructuralCurveMember']) || !structuralCounterparts(structural, member.expressId)?.expressIds.some((id) => physicalAxes.has(id))) continue;
     const shape = reader.shape(member.expressId);
-    if (shape?.kind === 'edge') lines.set(member.expressId, [shape.start, shape.end]);
+    if (shape?.kind === 'edge') memberLines.set(member.expressId, [shape.start, shape.end]);
+    const record = derivationRecord(store, reader, member.expressId);
+    if (record) derivationRecords.set(member.expressId, record);
   }
-  return lines;
+  return { physicalAxes, memberLines, derivationRecords };
+}
+
+/** The member's derivation record in IFC world metres, when it is complete (a GlobalId and six finite coordinates) and its placement readable. */
+function derivationRecord(store: IfcDataStore, reader: ItemGeometryReader, memberId: number): StructuralDerivationRecord | null {
+  const set = store.getProperties(memberId).find((pset) => pset.name === STRUCTURAL_DERIVATION_PSET);
+  if (!set) return null;
+  const value = (name: string) => set.properties.find((property) => property.name === name)?.value;
+  const elementGlobalId = value(DERIVATION_ELEMENT_PROPERTY);
+  const c = DERIVATION_AXIS_PROPERTIES.map(value);
+  if (typeof elementGlobalId !== 'string' || !c.every((v): v is number => typeof v === 'number' && Number.isFinite(v))) return null;
+  const toWorld = reader.fromPlacementParent(memberId);
+  return toWorld && { elementGlobalId, axis: [toWorld([c[0], c[1], c[2]]), toWorld([c[3], c[4], c[5]])] };
 }
 
 /** The consistency issues of a parsed file. Physical elements are read only when a rule can use them. */
@@ -101,6 +133,6 @@ export function structuralConsistencyIssues(store: IfcDataStore, options: Struct
   const { physicalAxes, ...settings } = options;
   const structural = extractStructuralOnDemand(store);
   const facts = hasAnalyticalModel(structural) ? structuralConsistencyFacts(store, structural) : [];
-  const geometry = physicalAxes && { physicalAxes, memberLines: curveMemberLines(store, structural, physicalAxes) };
+  const geometry = physicalAxes && curveMemberGeometry(store, structural, physicalAxes);
   return checkStructuralConsistency(structural, facts, settings, geometry);
 }

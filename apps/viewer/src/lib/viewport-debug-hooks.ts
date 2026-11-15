@@ -9,6 +9,7 @@ import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { useViewerStore } from '@/store';
 import { isSceneSettled } from '@/lib/scene-settled';
+import { geometryRestoreBackstopFires } from './geometry-restore-gate.js';
 
 /** One resident part of an owner as plain data: no buffers, no live objects. */
 export interface ScenePartSnapshot {
@@ -107,6 +108,8 @@ export function installViewportDebugHooks(
   annotationLineVertexCount: () => number,
 ): void {
   const host = globalThis as Record<string, unknown>;
+  const restoreHook = host.__ifc_lite_geometry_restore_test__ as { backstopFires?: number; geometryRestoreBackstopFires?: () => number } | undefined;
+  if (restoreHook) restoreHook.geometryRestoreBackstopFires = geometryRestoreBackstopFires;
   const timingFlag = readPerfFlag('gpuFrameTiming');
   // Opt-in only: a renderer starts with timing off, so the default install
   // still just stores the renderer (#5895 witness contract).

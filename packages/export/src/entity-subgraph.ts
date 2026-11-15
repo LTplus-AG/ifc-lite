@@ -35,7 +35,7 @@ import { readStepSlots } from './step-argument-parser.js';
 import { applySourceLineMutations } from './step-attribute-mutations.js';
 import { effectiveCreatedRecord } from './effective-source-record.js';
 import { contextRootsFor } from './remesh-context-roots.js';
-import { gridReferenceContext } from './grid-reference-context.js';
+import { gridReferenceContext, stepReferenceReader } from './grid-reference-context.js';
 import { collectGridPlacementDependents } from './grid-placement-dependents.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
@@ -162,6 +162,27 @@ export function gridPlacementDependents(
   const schema = (store.schemaVersion as IfcSchemaVersion | undefined) || 'IFC4';
   const writer = new LineWriter(store, view, index, schema);
   return collectGridPlacementDependents(index, (id) => writer.line(id, false), schema, gridIds);
+}
+
+/** Geometric slab parts of edited roofs, using the same effective records as
+ * mini STEP export. A saved roof may have no Body of its own (#9357). */
+export function roofPlaneDependents(
+  store: IfcDataStore, view: MutablePropertyView | null, roofIds: ReadonlySet<number>,
+): Set<number> {
+  const index = getEffectiveEntityIndex(store, view, true);
+  const schema = (store.schemaVersion as IfcSchemaVersion | undefined) || 'IFC4';
+  const writer = new LineWriter(store, view, index, schema);
+  const ref = stepReferenceReader(index, id => writer.line(id, false), schema);
+  const parts = new Set<number>();
+  for (const rel of index.byType.get('IFCRELAGGREGATES') ?? []) {
+    const parent = ref(rel, 'IFCRELAGGREGATES', 'RelatingObject');
+    if (typeof parent !== 'number' || !roofIds.has(parent) || index.typeOf(parent) !== 'IFCROOF') continue;
+    const children = ref(rel, 'IFCRELAGGREGATES', 'RelatedObjects');
+    if (Array.isArray(children)) for (const child of children) {
+      if (index.typeOf(child) === 'IFCSLAB') parts.add(child);
+    }
+  }
+  return parts;
 }
 
 function stepHeader(schema: IfcSchemaVersion): string {

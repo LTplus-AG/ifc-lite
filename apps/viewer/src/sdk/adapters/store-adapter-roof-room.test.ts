@@ -6,8 +6,9 @@ import assert from 'node:assert/strict';
 import { before, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { initSync } from '@ifc-lite/wasm';
+import { getFootprintRoofPlaneParts } from '@ifc-lite/create';
 import { IfcParser, extractQuantitiesOnDemand } from '@ifc-lite/parser';
-import { createCollabSession, createEntity, deleteEntity, setAttribute, setPropertyValue, getPropertyValue, deletePropertyValue } from '@ifc-lite/collab';
+import { createCollabSession, createEntity, deleteEntity, setAttribute, setPropertyValue, getPropertyValue, deletePropertyValue, getQuantityValue, setQuantityValue, deleteQuantityValue } from '@ifc-lite/collab';
 import { useViewerStore } from '@/store';
 import { bindRoomPropertyApi } from '@/lib/collab/room-property-api';
 import { registerStoreSlot, registerEntityPath, pathForGuid, pathForEntity } from '@/lib/collab/entity-paths';
@@ -19,11 +20,12 @@ before(() => initSync({ module: readFileSync(new URL('../../../../../packages/wa
 
 // #9453: a real publication failure must leave the shared building whole,
 // surface a notice, and never damage the previous edit's native Undo result.
-for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preserves native rooms and Undo (#9453)`, async t => {
+for (const failure of [{ kind: 'property', at: 1 }, { kind: 'property', at: 3 }, { kind: 'quantity', at: 8 }]) it(`roof room ${failure.kind} failure after ${failure.at} writes preserves native rooms and Undo (#9453, #9357)`, async t => {
   const { store, view, adapter } = await seedNativeSdkModel();
+  const failAt = failure.at;
   t.after(() => { disposeRemeshClient(); setRemeshClientFactory(null); });
-  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
-  t.after(() => bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue }));
+  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue, getQuantityValue, setQuantityValue, deleteQuantityValue });
+  t.after(() => bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue, getQuantityValue, setQuantityValue, deleteQuantityValue }));
   const session = await createCollabSession({ roomId: 'Roof review room', user: { id: 'owner', name: 'Owner' }, provider: 'memory' });
   t.after(() => session.dispose());
   const slot = { slotId: 'm0', pathPrefix: '/m0' };
@@ -56,7 +58,11 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
     },
   });
   const space = adapter.addSpace(MODEL, 42, { Position: [0,0,0], Width: 4, Depth: 3, Height: 3, Name: 'Room under roof' });
-  const roof = adapter.addRoof(MODEL, 42, { Position: [0,0,3], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6) });
+  // The quantity case also proves that a gable-to-hip edit publishes newly
+  // created slab parts before attempting to write their room quantities (#9357).
+  const startsGable = failure.kind === 'quantity';
+  const roof = adapter.addRoof(MODEL, 42, { Position: [0,0,3], Width: 10, Depth: 8, Thickness: .25,
+    EdgeSlopes: startsGable ? [Math.PI/6,0,Math.PI/6,0] : Array(4).fill(Math.PI / 6) });
   await settle();
   // Export-only sets receive fresh GlobalIds per serialization. Preserve every
   // persisted native entity, and compare virtual property/quantity values below.
@@ -77,20 +83,41 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
     return Object.fromEntries(definition.properties.map(property => [property.name,
       structuredClone(getPropertyValue(session.doc, path, definition.name, property.name)?.value)]));
   };
-  const mesh = (id: number) => structuredClone(nativeSdkMeshes().filter(part => part.expressId === id));
+  const mesh = (id: number) => {
+    const ids = new Set(id === roof.expressId ? getFootprintRoofPlaneParts(store, view, id) : [id]);
+    return structuredClone(nativeSdkMeshes().filter(part => ids.has(part.expressId)).sort((a, b) => a.expressId - b.expressId));
+  };
   const roomQuantities = async () => {
     const source = editedModelBytes(store, view);
     const parsed = await new IfcParser().parseColumnar(source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength), { disableWorkerScan: true });
     return extractQuantitiesOnDemand(parsed, space.expressId).map(({ name, quantities }) => ({ name, quantities }));
   };
   const beforeProperties = properties();
+  const initialDefinition = beforeProperties.find(set => set.name === 'IfcLite_RoofFootprint');
+  assert.ok(initialDefinition);
+  assert.deepEqual(sharedDefinitionValues(initialDefinition), Object.fromEntries(initialDefinition.properties.map(p => [p.name, p.value])),
+    'creation publishes the footprint before any edit (#9357 item 7)');
+  const initialParts = getFootprintRoofPlaneParts(store, view, roof.expressId);
+  assert.equal(initialParts.length, startsGable ? 2 : 4);
+  for (const id of initialParts) {
+    const path = pathForEntity(store, id); assert.ok(path);
+    assert.equal(getPropertyValue(session.doc, path, 'Pset_SlabCommon', 'PitchAngle')?.type, 'IfcPlaneAngleMeasure');
+    const volume = view.getQuantitiesForEntity(id).find(q => q.name === 'Qto_SlabBaseQuantities')?.quantities.find(q => q.name === 'NetVolume')?.value;
+    assert.ok(typeof volume === 'number' && Number.isFinite(volume) && volume > 0);
+    assert.equal(getQuantityValue(session.doc, path, 'Qto_SlabBaseQuantities', 'NetVolume'), volume);
+  }
+
   const before = bytes(), spaceMesh = mesh(space.expressId), roofMesh = mesh(roof.expressId), spaceQuantities = await roomQuantities();
   assert.ok(spaceMesh.length > 0 && roofMesh.length > 0, 'the real native mesher produced both roof and room');
   assert.ok(spaceQuantities.length > 0, 'the exported room has real quantities');
   const edit = adapter.editRoof; assert.ok(edit);
-  edit(roof, { EdgeSlopes: [Math.PI/6,0,Math.PI/6,0] });
+  edit(roof, { EdgeSlopes: startsGable ? Array(4).fill(Math.PI / 6) : [Math.PI/6,0,Math.PI/6,0], Overhang: .25 });
   await settle();
   const editedProperties = properties(), editedRoofMesh = mesh(roof.expressId);
+  const publishedDefinition = editedProperties.find(set => set.name === 'IfcLite_RoofFootprint'); assert.ok(publishedDefinition);
+  assert.deepEqual(sharedDefinitionValues(publishedDefinition), Object.fromEntries(publishedDefinition.properties.map(p => [p.name, p.value])),
+    'a successful edit publishes the recorded definition with its native body (#9357)');
+  assert.equal(sharedDefinitionValues(publishedDefinition).Overhang, .25);
   const edited = bytes(), peerBefore = session.snapshot().data;
   const historyState = useViewerStore.getState();
   const historyStack = historyState.undoStacks.get(MODEL) ?? [];
@@ -100,7 +127,16 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
   const historyBatchCount = historyBatchId === undefined ? 1 : historyStack.filter(mutation => historyState.mutationBatchTags.get(mutation.id) === historyBatchId).length;
   const original = useViewerStore.getState().mirrorPropertyEdit;
   let writes = 0;
-  useViewerStore.setState({ mirrorPropertyEdit: (...args) => { original(...args); if (++writes === failAt) throw new Error('Injected roof room publication failure'); } });
+  if (failure.kind === 'property') {
+    useViewerStore.setState({ mirrorPropertyEdit: (...args) => { original(...args); if (++writes === failAt) throw new Error('Injected roof room publication failure'); } });
+  } else {
+    let failed = false;
+    bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue, getQuantityValue, deleteQuantityValue,
+      setQuantityValue: (...args) => {
+        setQuantityValue(...args);
+        if (!failed && ++writes === failAt) { failed = true; throw new Error('Injected roof room publication failure'); }
+      } });
+  }
   t.after(() => useViewerStore.setState({ mirrorPropertyEdit: original }));
   assert.throws(() => edit(roof, { Overhang: .5 }), /Injected roof room publication failure/);
   assert.equal(writes, failAt, 'failure followed actual room metadata writes');
@@ -114,13 +150,14 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
   assert.match(notice ?? '', /Roof review room/);
   assert.match(notice ?? '', /roof|Roof/);
   useViewerStore.setState({ mirrorPropertyEdit: original });
+  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue, getQuantityValue, setQuantityValue, deleteQuantityValue });
   let transactions = 0;
   const observe = () => { transactions++; };
   session.doc.on('afterTransaction', observe);
   const historyWrites: Array<'undo' | 'redo'> = [];
   const failNextHistoryPublication = (direction: 'undo' | 'redo') => {
     let fail = true;
-    bindRoomPropertyApi({ getPropertyValue, deletePropertyValue,
+    bindRoomPropertyApi({ getPropertyValue, getQuantityValue, setQuantityValue, deleteQuantityValue, deletePropertyValue,
       setPropertyValue: (...args) => {
         setPropertyValue(...args);
         if (fail) { fail = false; historyWrites.push(direction); throw new Error(`Injected ${direction} roof history publication failure`); }
@@ -130,7 +167,7 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
   const sharedBeforeUndo = sharedDefinitionValues(editedDefinition);
   failNextHistoryPublication('undo');
   assert.doesNotThrow(() => useViewerStore.getState().undo(MODEL), 'Undo completes when its follow-up roof definition publish fails');
-  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
+  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue, getQuantityValue, setQuantityValue, deleteQuantityValue });
   session.doc.off('afterTransaction', observe);
   assert.deepEqual(historyWrites, ['undo'], 'the injected failure occurred during Undo publication');
   assert.equal(transactions, 1, 'Undo publishes its body and definition atomically');
@@ -152,7 +189,7 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
   session.doc.on('afterTransaction', observe);
   failNextHistoryPublication('redo');
   assert.doesNotThrow(() => useViewerStore.getState().redo(MODEL), 'Redo completes when its follow-up roof definition publish fails');
-  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
+  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue, getQuantityValue, setQuantityValue, deleteQuantityValue });
   session.doc.off('afterTransaction', observe);
   assert.deepEqual(historyWrites, ['undo', 'redo'], 'the second injected failure occurred during Redo publication');
   assert.equal(transactions, 1, 'Redo publishes its body and definition atomically');

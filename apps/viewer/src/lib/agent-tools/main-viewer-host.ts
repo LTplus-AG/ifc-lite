@@ -22,11 +22,13 @@ import { isIfcxDataStore } from '@/store/types';
 import { getAllModelEntries, type ModelLike } from '@/sdk/adapters/model-compat';
 import { getMutationViewForModel } from '@/sdk/adapters/mutation-view';
 import type { StoreApi } from '@/sdk/adapters/types';
-import type { BsddClient, ModelHandle, ModelStatus, ToolHost } from './types.js';
+import type { BsddClient, ModelEditor, ModelHandle, ModelStatus, ToolHost } from './types.js';
 
 export interface MainViewerToolHostOptions {
   /** Defaults to a client through this site's `/api/bsdd` proxy (the public endpoint fails CORS). */
   bsdd?: BsddClient;
+  /** Writes for the edit tools (`createMainViewerEditor`). Absent, every edit tool is refused. */
+  editor?: ModelEditor;
 }
 
 const LOADING_STATES = new Set<FederatedModel['loadState']>(['pending', 'streaming-geometry', 'hydrating-metadata']);
@@ -100,6 +102,7 @@ export function createMainViewerToolHost(
   const bsdd = options.bsdd ?? new BsddNamespace({ apiBase: '/api/bsdd' });
   return {
     bsdd,
+    ...(options.editor ? { editor: options.editor } : {}),
     models(): ModelHandle[] {
       const state: ViewerState = store.getState();
       const entries = getAllModelEntries(state);

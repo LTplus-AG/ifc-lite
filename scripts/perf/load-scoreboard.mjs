@@ -53,6 +53,8 @@ function parseArgs(argv) {
 /** Validate and normalize a plan; throws on anything that would make the table ambiguous. */
 export function loadPlan(path) {
   const plan = JSON.parse(readFileSync(path, 'utf8'));
+  plan.reopenVerdictMark ??= 'frame';
+  if (!['frame', 'metadata'].includes(plan.reopenVerdictMark)) throw new Error('plan.reopenVerdictMark must be frame or metadata');
   plan.lanes ??= DEFAULT_LANES;
   for (const lane of plan.lanes) if (!LANES.includes(lane)) throw new Error(`unknown lane ${lane}`);
   if (!Number.isInteger(plan.rounds) || plan.rounds < 1) throw new Error('plan.rounds must be a positive integer');
@@ -145,7 +147,7 @@ export async function recordArmLanes({ sample, plan, side, fixture, cell, missin
     const armTag = sampleTagFor(tag, armLanes, armPlan, Date.now().toString(36));
     // Each browser sample gets its own host interval, settled as soon as it ends (review #9857).
     const host = await hostQuiet();
-    const e = await sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm, cpuTrace: plan.sides[side].cpuTrace ?? plan.cpuTrace ?? false });
+    const e = await sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm, cpuTrace: plan.sides[side].cpuTrace ?? plan.cpuTrace ?? false, instructions: plan.sides[side].instructions ?? plan.instructions ?? false });
     settleHostLoad(host, { ownOutside: e.meta?.browserOutside });
     for (const lane of armLanes) {
       const { trace, ...row } = e.lanes[lane] ?? { ok: false, error: `${lane}: not produced by the ${arm} sample` };
@@ -255,7 +257,7 @@ async function run(opt) {
               if (missingDefault.length === 0) continue;
               const sampleTag = sampleTagFor(tag, missingDefault, groupLanes.filter((l) => DEFAULT_BROWSER.includes(l)), Date.now().toString(36));
               const host = await hostQuiet();
-              const s = await browser.sample({ side: plan.sides[side], fixture, tag: sampleTag, warmOpens: plan.warmOpens, pass: 'timing', cpuTrace: plan.sides[side].cpuTrace ?? plan.cpuTrace ?? false });
+              const s = await browser.sample({ side: plan.sides[side], fixture, tag: sampleTag, warmOpens: plan.warmOpens, pass: 'timing', cpuTrace: plan.sides[side].cpuTrace ?? plan.cpuTrace ?? false, instructions: plan.sides[side].instructions ?? plan.instructions ?? false });
               settleHostLoad(host, { ownOutside: s.meta.browserOutside }); // the timed opens only, not the memory pass that follows
               // H3: peak memory comes from a separate pass with the sampler on, never from the timed opens.
               const m = plan.memoryPass === false ? null : await browser.sample({ side: plan.sides[side], fixture, tag: `${sampleTag}-mem`, warmOpens: plan.warmOpens, pass: 'memory' });

@@ -21,7 +21,7 @@ export async function inspectIfcArchiveAdmission(file: File): Promise<{ modelByt
   const directory = new Uint8Array(await file.slice(start, start + bytes).arrayBuffer());
   if (directory.length !== bytes) return null;
   const view = new DataView(directory.buffer, directory.byteOffset, directory.byteLength);
-  let cursor = 0, models = 0, modelBytes = 0, hasImages = false;
+  let cursor = 0, models = 0, modelBytes = 0, hasImages = false, localBytes = 0;
   for (let entry = 0; entry < entries; entry++) {
     if (cursor + 46 > bytes || view.getUint32(cursor, true) !== 0x02014b50) return null;
     const nameLength = view.getUint16(cursor + 28, true);
@@ -35,6 +35,24 @@ export async function inspectIfcArchiveAdmission(file: File): Promise<{ modelByt
       if (extra + 4 > extraEnd || [0x0001, 0x7075].includes(view.getUint16(extra, true))) return null;
       extra += 4 + view.getUint16(extra + 2, true);
       if (extra > extraEnd) return null;
+    }
+    // JSZip uses local-header names. Certify them under a separate 1 MiB metadata budget.
+    const localStart = view.getUint32(cursor + 42, true);
+    if (localStart + 30 > start || (localBytes += 30) > 1024 * 1024) return null;
+    const localHead = await file.slice(localStart, localStart + 30).arrayBuffer();
+    if (localHead.byteLength !== 30) return null;
+    const local = new DataView(localHead), localNameLength = local.getUint16(26, true), localExtraLength = local.getUint16(28, true);
+    if (local.getUint32(0, true) !== 0x04034b50 || localNameLength !== nameLength ||
+        localStart + 30 + localNameLength + localExtraLength > start ||
+        (localBytes += localNameLength + localExtraLength) > 1024 * 1024) return null;
+    const localFields = new Uint8Array(await file.slice(localStart + 30, localStart + 30 + localNameLength + localExtraLength).arrayBuffer());
+    if (localFields.length !== localNameLength + localExtraLength ||
+        !localFields.subarray(0, nameLength).every((byte, index) => byte === directory[cursor + 46 + index])) return null;
+    const extras = new DataView(localFields.buffer, localFields.byteOffset, localFields.byteLength);
+    for (let extra = localNameLength; extra < localFields.length;) {
+      if (extra + 4 > localFields.length || [0x0001, 0x7075].includes(extras.getUint16(extra, true))) return null;
+      extra += 4 + extras.getUint16(extra + 2, true);
+      if (extra > localFields.length) return null;
     }
     const name = new TextDecoder().decode(directory.subarray(cursor + 46, cursor + 46 + nameLength));
     // Match the viewer parser's sibling-image and AppleDouble model policies.

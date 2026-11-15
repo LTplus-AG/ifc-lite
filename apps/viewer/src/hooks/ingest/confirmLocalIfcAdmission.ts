@@ -45,7 +45,9 @@ export async function preflightLocalIfcSource(file: File, options: {
 }): Promise<ArrayBuffer | null> {
   try {
     const head = await file.slice(0, 4096).arrayBuffer();
-    if (!options.isCurrent() || ((detectFormat(head) === 'ifc' || headIsZip(head)) && !await options.admit(file.size, head))) {
+    const format = detectFormat(head);
+    const unknownIfc = format === 'unknown' && (/\.(ifc|ifczip|ifcxml)$/i.test(file.name) || new TextDecoder().decode(head).trimStart().startsWith('ISO-10303-21'));
+    if (!options.isCurrent() || ((format === 'ifc' || unknownIfc || headIsZip(head)) && !await options.admit(file.size, head))) {
       options.finish(); return null;
     }
     return head;

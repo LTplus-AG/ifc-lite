@@ -4,6 +4,7 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { zipSync, strToU8 } from 'fflate';
+import JSZip from 'jszip';
 import { inspectIfcArchiveAdmission } from './archiveServerAdmission.js';
 
 for (const image of [null, 'textures/wall.png', 'textures/wall.JPG']) {
@@ -17,7 +18,8 @@ for (const image of [null, 'textures/wall.png', 'textures/wall.JPG']) {
       const part = slice(start, end); reads.push(part.size); return part;
     } });
     assert.deepEqual(await inspectIfcArchiveAdmission(file), { modelBytes: entries['model.ifc'].byteLength, allowsServer: image === null });
-    assert.equal(reads.length, 2);
+    assert.equal(reads.length, 2 + 2 * Object.keys(entries).length);
+    assert.ok(reads.slice(2).reduce((sum, size) => sum + size, 0) <= 1024 * 1024);
     assert.ok(reads[0] <= 65557 && reads[1] <= 1024 * 1024);
   });
 }
@@ -37,3 +39,17 @@ for (const fault of ['truncated', 'oversized-directory', 'zip64', 'multipart', '
     assert.equal(await inspectIfcArchiveAdmission(new File([bytes as BlobPart], 'model.ifcZIP')), null);
   });
 }
+
+it('#10264 ZIP local-header image aliases are refused before source upload', async () => {
+  const bytes = zipSync({ 'model.ifc': strToU8('ISO-10303-21;'), 'wall.txt': new Uint8Array([1, 2, 3]) });
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let cursor = view.getUint32(bytes.length - 22 + 16, true);
+  for (let i = 0; i < 2; i++) {
+    const length = view.getUint16(cursor + 28, true);
+    if (new TextDecoder().decode(bytes.subarray(cursor + 46, cursor + 46 + length)) === 'wall.txt')
+      bytes.set(strToU8('wall.png'), view.getUint32(cursor + 42, true) + 30);
+    cursor += 46 + length + view.getUint16(cursor + 30, true) + view.getUint16(cursor + 32, true);
+  }
+  assert.ok((await JSZip.loadAsync(bytes)).files['wall.png'], 'the real extractor sees the local PNG name');
+  assert.equal(await inspectIfcArchiveAdmission(new File([bytes as BlobPart], 'model.ifcZIP')), null);
+});

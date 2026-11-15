@@ -150,6 +150,7 @@ export function installModelLoadCanceller(
   supersede: () => void,
   ownedStream: () => (() => void) | null = () => null,
   activity?: LoadActivity,
+  replacementCommitted: () => boolean = () => true,
 ): () => void {
   const store = getViewerStoreApi();
   for (const [watch, scope] of [...supersessionWatches]) {
@@ -213,7 +214,7 @@ export function installModelLoadCanceller(
       cancelStream();
       state.setActiveStreamCanceller(null);
     }
-    if (kind === 'primary') {
+    if (kind === 'primary' && replacementCommitted()) {
       // The same reset a primary load starts with (useIfcLoader.loadFile).
       state.resetViewerState();
       state.clearAllModels();

@@ -308,3 +308,57 @@ it('a server URL set at runtime takes the upload of a locally opened IFC too', a
     assert.equal(engineInits, 1, 'the file is processed locally');
   } finally { setProcessingServerUrl('http://localhost:9999'); release(); }
 });
+
+for (const spaces of [100, 5000]) it(`#10264 an unknown IFC header after ${spaces} spaces cannot bypass preflight`, async () => {
+  const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+  Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 4 });
+  const source = new File([' '.repeat(spaces), await file('model.ifc').text()], 'spaced.ifc');
+  const blob = new Blob([source]);
+  Object.defineProperty(source, 'size', { value: 1.05e9 });
+  Object.defineProperty(source, 'slice', { value: blob.slice.bind(blob) });
+  let fullReads = 0;
+  Object.defineProperty(source, 'arrayBuffer', { value: async () => { fullReads++; throw new Error('unadmitted source read'); } });
+  useViewerStore.setState({ ...fixtureModels(fixtureModel('prior-spaced')), mergeLayers: true });
+  const prior = useViewerStore.getState().models, errors: string[] = [];
+  try {
+    await act(async () => { await api!.loadFile(source, undefined, { onLoadError: error => errors.push(error) }); });
+    assert.equal(fullReads, 0);
+    assert.equal(engineInits, 0);
+    assert.equal(useViewerStore.getState().models, prior, 'unknown IFC admission must precede replacement');
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /local processing memory budget/);
+  } finally {
+    if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
+  }
+});
+
+for (const phase of ['header', 'dialog']) it(`#10264 loading-card Cancel during ${phase} preserves the displayed primary scene`, async () => {
+  const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+  Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 8 });
+  useViewerStore.setState({ ...fixtureModels(fixtureModel('prior-cancel')), selectedEntityId: 7, mergeLayers: true });
+  const prior = useViewerStore.getState().models;
+  const source = file('cancel-preflight.ifc'), blob = new Blob([source]);
+  Object.defineProperty(source, 'size', { value: 1.05e9 });
+  let releaseHead!: () => void, readHead = false;
+  const gate = new Promise<void>(resolve => { releaseHead = resolve; });
+  Object.defineProperty(source, 'slice', { value: (start?: number, end?: number) => {
+    const part = blob.slice(start, end);
+    return { arrayBuffer: async () => { readHead = true; if (phase === 'header') await gate; return part.arrayBuffer(); } };
+  } });
+  let pending: Promise<void> | undefined;
+  try {
+    await act(async () => { pending = api!.loadFile(source); });
+    await waitFor(() => phase === 'header' ? readHead : !!document.querySelector('[role="alertdialog"]'), 'preflight is waiting');
+    assert.equal(useViewerStore.getState().loading, true);
+    await act(async () => { useViewerStore.getState().activeLoadCanceller?.(); });
+    releaseHead(); await pending;
+    assert.equal(useViewerStore.getState().models, prior, 'loading-card Cancel must not commit a primary replacement');
+    assert.equal(useViewerStore.getState().selectedEntityId, 7);
+    assert.equal(useViewerStore.getState().loading, false);
+    assert.equal(engineInits, 0);
+    assert.equal(document.querySelector('[role="alertdialog"]') !== null, false);
+  } finally {
+    releaseHead(); await act(async () => { root.render(null); }); await pending;
+    if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
+  }
+});

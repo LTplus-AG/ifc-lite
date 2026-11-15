@@ -114,7 +114,7 @@ const openness = (p: readonly [number, number], poly: Flat, holes: readonly Flat
 
 /**
  * Polylabel-style refinement (#9828): the scanline candidate is inside the face but not always the
- * point farthest from every edge. Cells of a grid over the bounds are searched best first, each
+ * point farthest from every edge. Rectangular cells of a 16 x 16 grid over the bounds are searched best first, each
  * bounded by its centre's openness plus its half diagonal, and a cell replaces the candidate only when
  * it is more than 0.1% of its openness better, so a candidate already on a plateau (the centre of a
  * band) stays exactly where it is. At most {@link POLE_CELL_BUDGET} cells are looked at.
@@ -126,15 +126,17 @@ function mostOpenPoint(seed: readonly [number, number], poly: Flat, holes: reado
   const xs = poly.map((p) => p[0]);
   const ys = poly.map((p) => p[1]);
   const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-  const size = Math.max(Math.min(x1 - x0, y1 - y0), Math.max(x1 - x0, y1 - y0) / 16);
-  if (!(size > 0) || !(margin > 0)) return seed;
-  type Cell = { x: number; y: number; half: number; open: number; bound: number };
-  const cell = (x: number, y: number, half: number): Cell => {
+  if (!(x1 > x0) || !(y1 > y0) || !(margin > 0)) return seed;
+  // Rectangular cells, a 16 x 16 grid over the bounds: a long thin face gets cells as thin as itself, so the
+  // budget is not spent on cells far outside it.
+  type Cell = { x: number; y: number; hx: number; hy: number; open: number; bound: number };
+  const cell = (x: number, y: number, hx: number, hy: number): Cell => {
     const open = openness([x, y], poly, holes);
-    return { x, y, half, open, bound: open + half * Math.SQRT2 };
+    return { x, y, hx, hy, open, bound: open + Math.hypot(hx, hy) };
   };
+  const [hx0, hy0] = [(x1 - x0) / 32, (y1 - y0) / 32];
   const queue: Cell[] = [];
-  for (let x = x0; x < x1; x += size) for (let y = y0; y < y1; y += size) queue.push(cell(x + size / 2, y + size / 2, size / 2));
+  for (let i = 0; i < 16; i++) for (let j = 0; j < 16; j++) queue.push(cell(x0 + hx0 * (2 * i + 1), y0 + hy0 * (2 * j + 1), hx0, hy0));
   for (let looked = 0; queue.length && looked < POLE_CELL_BUDGET; looked++) {
     // Best first; ties by position so the result does not depend on insertion order.
     let top = 0;
@@ -145,8 +147,8 @@ function mostOpenPoint(seed: readonly [number, number], poly: Flat, holes: reado
     const [c] = queue.splice(top, 1);
     if (c.bound <= bestOpen + margin) break;
     if (c.open > bestOpen + margin) { best = [c.x, c.y]; bestOpen = c.open; }
-    const h = c.half / 2;
-    for (const [dx, dy] of [[-h, -h], [h, -h], [-h, h], [h, h]]) queue.push(cell(c.x + dx, c.y + dy, h));
+    const [hx, hy] = [c.hx / 2, c.hy / 2];
+    for (const [dx, dy] of [[-hx, -hy], [hx, -hy], [-hx, hy], [hx, hy]]) queue.push(cell(c.x + dx, c.y + dy, hx, hy));
   }
   return best;
 }

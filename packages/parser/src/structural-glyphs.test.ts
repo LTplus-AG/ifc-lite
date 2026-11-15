@@ -848,8 +848,8 @@ describe('face stations', () => {
     // vertex average off the face.
     const h = 5e-6;
     const polygon: [number, number, number][] = [[0, 0, 0], [1e4, 0, 0], [1e4, h, 0], [9e3, h, 0], [9e3, h / 2, 0], [1e3, h / 2, 0], [1e3, h, 0], [0, h, 0]];
-    // The best candidates (mid-length on the lower half, or mid-lobe on the
-    // upper half) are all h / 4 clear of every edge.
+    // A point in either lobe at y = h / 2 is h / 2 clear (the most open); the scanline candidate alone
+    // was h / 4 (#9828).
     const centre = shapeCentre({ kind: 'face', polygon });
     expect(inside(centre, polygon)).toBe(true);
     const [u, v] = centre;
@@ -858,7 +858,7 @@ describe('face stations', () => {
       const t = Math.max(0, Math.min(1, ((u - ax) * (bx - ax) + (v - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2)));
       return Math.hypot(u - ax - t * (bx - ax), v - ay - t * (by - ay));
     });
-    expect(Math.min(...edgeDistance)).toBeGreaterThan(h / 4 * (1 - 1e-6));
+    expect(Math.min(...edgeDistance)).toBeGreaterThan(h / 2 * 0.97);
   });
 
   it('retains interior stations for a convex sliver', () => {

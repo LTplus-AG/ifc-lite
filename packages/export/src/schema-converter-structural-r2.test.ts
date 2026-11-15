@@ -18,6 +18,24 @@ describe('structural schema conformance #9668', () => {
       expect(convertStepLine(there!, 'IFC4', 'IFC2X3')).toBe(source);
     });
   }
+  // #9856: expected members are written from the IFC4 EXPRESS SELECT definitions
+  // (IfcTranslationalStiffnessSelect etc.), one per stiffness slot in order, never
+  // read back from the converter's own mapping table.
+  const T = 'IFCLINEARSTIFFNESSMEASURE', R = 'IFCROTATIONALSTIFFNESSMEASURE';
+  const EL = 'IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE', ER = 'IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE';
+  for (const [type, values, members] of [
+    ['IFCBOUNDARYNODECONDITION', [11, 12, 13, 14, 15, 16], [T, T, T, R, R, R]],
+    ['IFCBOUNDARYNODECONDITIONWARPING', [11, 12, 13, 14, 15, 16, 17], [T, T, T, R, R, R, 'IFCWARPINGMOMENTMEASURE']],
+    ['IFCBOUNDARYEDGECONDITION', [11, 12, 13, 14, 15, 16], [EL, EL, EL, ER, ER, ER]],
+    ['IFCBOUNDARYFACECONDITION', [11, 12, 13], Array(3).fill('IFCMODULUSOFSUBGRADEREACTIONMEASURE')],
+  ] as const) {
+    it(`${type} writes the IFC4 SELECT member of every stiffness slot and restores each value`, () => {
+      const source = `#23=${type}('Support',${values.map((v) => `${v}.`).join(',')});`;
+      const there = convertStepLine(source, 'IFC2X3', 'IFC4')!;
+      expect(there).toBe(`#23=${type}('Support',${members.map((m, i) => `${m}(${values[i]}.)`).join(',')});`);
+      expect(convertStepLine(there, 'IFC4', 'IFC2X3')).toBe(source);
+    });
+  }
   it('translates rigid and free boolean restraints into IFC2X3 sentinels', () => {
     const source = "#23=IFCBOUNDARYNODECONDITION($,IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),$,$,$,$);";
     const there = convertStepLine(source, 'IFC4', 'IFC2X3');

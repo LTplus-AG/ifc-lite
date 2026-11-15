@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geo",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Headless CRS engine for IFC-Lite: resolve a CRS, reproject to and from WGS84, grid convergence and scale factors, EGM96 undulation",
   "type": "module",
   "sideEffects": false,
@@ -16,6 +16,11 @@
       "types": "./dist/proj4.d.ts",
       "import": "./dist/proj4.js",
       "default": "./dist/proj4.js"
+    },
+    "./wkt": {
+      "types": "./dist/wkt.d.ts",
+      "import": "./dist/wkt.js",
+      "default": "./dist/wkt.js"
     }
   },
   "scripts": {
@@ -26,10 +31,9 @@
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/pointcloud": "workspace:^",
     "geotiff": "^3.0.5",
-    "proj4": "^2.22.0",
-    "wkt-parser": "1.6.0"
+    "proj4": "^2.23.0",
+    "wkt-parser": "^1.9.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
@@ -61,5 +65,8 @@
   "files": [
     "dist",
     "README.md"
-  ]
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

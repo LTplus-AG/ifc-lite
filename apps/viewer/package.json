@@ -111,7 +111,7 @@
     "pdfjs-dist": "6.3.289",
     "postcss": "^8.5.32",
     "posthog-js": "^1.440.0",
-    "proj4": "^2.22.0",
+    "proj4": "^2.23.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-grid-layout": "^2.3.0",

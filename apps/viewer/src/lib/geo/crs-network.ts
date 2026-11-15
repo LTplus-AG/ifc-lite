@@ -3,15 +3,22 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The viewer's network policy for `@ifc-lite/geo`, which makes no request of
- * its own: an EPSG code missing from the bundled index is looked up on
- * epsg.io, and datum-shift grids come from cdn.proj.org.
+ * The viewer's network and logging policy for `@ifc-lite/geo`, which makes no
+ * request and writes no log of its own: an EPSG code missing from the bundled
+ * index is looked up on epsg.io, datum-shift grids come from cdn.proj.org,
+ * and the engine's diagnostics (approximated datum shifts, unreadable WKT,
+ * refused positions) go to the console as warnings.
  *
  * Imported for its side effect by `reproject.ts`, the module every viewer
  * caller resolves a projection through.
  */
 
-import { configureCrsLoaders, epsgIoDefinitionLoader, projCdnGridLoader } from '@ifc-lite/geo';
+import {
+  configureCrsDiagnostics,
+  configureCrsLoaders,
+  epsgIoDefinitionLoader,
+  projCdnGridLoader,
+} from '@ifc-lite/geo';
 
 /**
  * Under the Node test runner no grid is fetched and callers get the bundled
@@ -23,4 +30,9 @@ const underNodeTest = typeof process !== 'undefined' && !!process.env.NODE_TEST_
 configureCrsLoaders({
   epsgDefinition: epsgIoDefinitionLoader(),
   gridFile: underNodeTest ? null : projCdnGridLoader(),
+});
+
+configureCrsDiagnostics((message, cause) => {
+  if (cause === undefined) console.warn(message);
+  else console.warn(message, cause);
 });

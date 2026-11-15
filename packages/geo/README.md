@@ -16,6 +16,8 @@ the same code.
 npm install @ifc-lite/geo
 ```
 
+The package is ESM-only (`import`, no `require`) and needs Node 18 or later.
+
 ## Usage
 
 ```ts
@@ -37,6 +39,34 @@ lv95.toWgs84([2600000, 1200000, 540]);              // [7.4386..., 46.9510..., 5
 // Grid convergence (radians) and point scale factor at a point.
 const factors = lv95.gridFactors(2600000, 1200000); // { gamma, pointScale }
 ```
+
+## Units: projected coordinates are always metres
+
+**A transformer takes and returns projected coordinates in metres, even when
+the CRS is defined in feet.** It does not read or write the CRS's own numbers
+for a foot-based CRS such as a US State Plane zone. `linearUnit` tells you
+what the CRS's own unit is, so you can convert:
+
+```ts
+import { resolveCrs } from '@ifc-lite/geo';
+
+// NAD83 / California zone 3 (ftUS). Its false origin, 36.5 N 120.5 W, is at
+// E 6,561,666.667 ftUS, N 1,640,416.667 ftUS in the CRS's own numbers.
+const zone3 = await resolveCrs({ epsg: 2227 });
+if (!zone3?.linearUnit) throw new Error('unknown CRS');
+zone3.linearUnit;                                  // { name: 'US survey foot', toMetres: 0.3048006096... }
+
+const { toMetres } = zone3.linearUnit;
+zone3.toWgs84([6561666.667 * toMetres, 1640416.667 * toMetres]); // [-120.5, 36.5]
+
+const metres = zone3.fromWgs84([-120.5, 36.5]);    // [2000000.0001..., 500000.0001...]
+const feet = metres && [metres[0] / toMetres, metres[1] / toMetres]; // [6561666.667, 1640416.667]
+```
+
+Passing the feet values straight to `toWgs84` reads them as metres, 3.28
+times too large, and lands thousands of kilometres away. `linearUnit` is
+`null` for a geographic CRS (whose coordinates are degrees) and for a unit the
+package does not recognise.
 
 ## API
 
@@ -72,19 +102,19 @@ EPSG definition loader if you installed one.
 | `fromWgs84([lon, lat, z?])` | WGS84 to CRS coordinates `[x, y, z?]`. |
 | `gridFactors(x, y)` | `{ gamma, pointScale }` at a point, or `null`. |
 | `kind` | `'projected'` or `'geographic'`. |
+| `linearUnit` | The CRS's own unit, `{ name, toMetres }`, or `null` (see "Units"). |
 | `epsg` | The EPSG code the input resolved through, or `null`. |
 | `datumShift` | How the datum shift to WGS84 is done (see "Accuracy"). |
 | `definition` | The proj4 definition in use. Treat it as opaque. |
 
 **Units and axis order.** A projected CRS is read and written in **metres**,
-whatever unit the CRS is defined in: a US survey foot CRS still takes and
-returns metres. A geographic CRS and WGS84 use degrees. East or longitude is
-always first.
+whatever unit the CRS is defined in (see "Units" above). A geographic CRS and
+WGS84 use degrees. East or longitude is always first.
 
 **Refusals.** `toWgs84` and `fromWgs84` return `null` instead of a wrong
-position: for a non-finite input, a latitude or longitude out of range, a point
-outside the coverage of a loaded datum grid, and a result outside the extent
-the WKT declares.
+position, alike in both directions: for a non-finite input, a latitude or
+longitude out of range, a point outside the coverage of a loaded datum grid,
+and a WGS84 position outside the extent the WKT declares.
 
 **Grid factors.** `gamma` is the grid convergence in radians,
 counter-clockwise positive: grid north is true north rotated by `+gamma`.
@@ -96,7 +126,7 @@ transverse Mercator, Lambert conformal conic and Krovak (the test oracle,
 CRS and within 0.1 degrees of a pole. To reduce a ground distance to the grid
 you also need the height: multiply `pointScale` by `R / (R + h)`.
 
-### Network loaders
+### Network loaders and engines
 
 Two things can need the network, and both are off until you turn them on:
 
@@ -121,9 +151,42 @@ configureCrsLoaders({
 });
 ```
 
-`configureCrsLoaders` replaces both loaders and returns the previous ones. A
-CRS resolved before a grid loader was installed keeps the definition it got;
-resolve it again to pick the grid up.
+`configureCrsLoaders` sets the loaders of the default engine, the one
+`resolveCrs` and `@ifc-lite/geo/proj4` use. **It is one configuration per
+process.** It replaces both loaders, returns the previous ones and starts the
+default engine over: definitions and grids resolved under the previous loaders
+are dropped (a transformer you already hold keeps working). A CRS resolved
+before a grid loader was installed keeps the definition it got; resolve it
+again to pick the grid up.
+
+A host that needs different loaders side by side, such as a server handling
+several tenants, makes an engine for each. An engine has its own loaders and
+its own caches: what it resolves is not visible to the default engine or to
+another engine, and theirs is not visible to it.
+
+```ts
+import { createCrsEngine, projCdnGridLoader } from '@ifc-lite/geo';
+
+const online = createCrsEngine({ loaders: { gridFile: projCdnGridLoader() } });
+const offline = createCrsEngine();                  // no loaders, no requests
+
+const rd = await online.resolveCrs({ epsg: 28992 }); // datumShift 'as-defined' once the grid loads
+const rdOffline = await offline.resolveCrs({ epsg: 28992 }); // 'helmert-approximation'
+```
+
+Keep an engine for as long as its loaders apply: it loads each grid once.
+
+### Diagnostics
+
+The engine reports what it worked around (a 7-parameter shift standing in
+for a grid, a WKT it could not read, a position it refused) to a handler you
+install. Without one it is silent; it never writes to the console itself.
+
+```ts
+import { configureCrsDiagnostics } from '@ifc-lite/geo';
+
+configureCrsDiagnostics((message, cause) => console.warn(message, cause ?? ''));
+```
 
 ### `egm96Undulation(latitude, longitude)`
 
@@ -137,7 +200,14 @@ The definition-string layer underneath `resolveCrs` (`resolveProjection`,
 `computeGridPointFactors` and others). It exists for a host that calls proj4
 itself, as the viewer's globe placement does. A definition returned for a WKT
 is a handle registered with the proj4 instance this package imports, so it is
-only valid there. Prefer `resolveCrs`.
+only valid there. These functions use the default engine. Prefer `resolveCrs`.
+
+### `@ifc-lite/geo/wkt`
+
+Reads what a CRS WKT states without resolving it: its EPSG identifiers, axis
+directions and units (`extractWktSpatialMetadata`), the horizontal part of a
+compound CRS (`extractWktHorizontalCrs`) and its declared extent
+(`extractWktBoundingBox`). No proj4 and no EPSG index.
 
 ## Accuracy
 
@@ -167,7 +237,8 @@ registry's 7-parameter shift is not good enough. What that means in practice:
   | Brazil | SAD69 | SAD69_003 | 5 to 10 m |
   | New Zealand | NZGD49 / NZMG (EPSG:27200) | nzgd2kgrid0005 | not recorded |
 
-  `datumShift` is `'as-defined'` when the CRS's own operation is in use,
+  `datumShift` is `'as-defined'` when the CRS's own operation is in use
+  (including a `TOWGS84` the WKT states itself),
   `'helmert-approximation'` when a 7-parameter shift stands in for a grid that
   was not available, and `'grid-unavailable'` when the CRS needs a grid and no
   replacement is known, in which case no shift is applied and positions can be
@@ -183,7 +254,8 @@ registry's 7-parameter shift is not good enough. What that means in practice:
   7-parameter shift, about 1 m.
 
 - **A WKT without a datum shift.** A WKT that declares a non-WGS84 datum
-  without `TOWGS84` or a `BOUNDCRS` gets no shift, and a warning is logged.
+  without `TOWGS84` or a `BOUNDCRS` gets no shift, and a diagnostic is
+  reported.
 
 ## Heights
 
@@ -197,15 +269,26 @@ model drawn at orthometric height sits 40 to 50 m under a globe's terrain in
 Central Europe. **It is not a survey-grade vertical transform**, and EGM96 is
 not the geoid any national height system is defined on.
 
-## The patched WKT reader
+## How a WKT is read
 
-This package pins `wkt-parser` 1.6.0. Inside this repository that version is
-patched (`patches/wkt-parser@1.6.0.patch`) to read WKT1-style parameter names
-(`central_meridian`, `latitude_of_origin`, `scale_factor`) inside a WKT2
-`CONVERSION`. pnpm applies patches only in the workspace that declares them,
-so an npm install of this package gets the unpatched reader, which does not
-pick those parameters up from a WKT2. WKT2 that uses the EPSG parameter names
-(`Longitude of natural origin`, ...) and WKT1 are unaffected.
+WKT goes through proj4's reader, `wkt-parser` 1.9 or later, with two
+additions:
+
+- **Parameters without a unit.** ISO 19162:2019 (section 9.3.4) says a map
+  projection parameter that omits its unit is in decimal degrees if it is an
+  angle, metres if it is a length and unity if it is a scale factor; PROJ
+  reads it that way. `wkt-parser` would hand a bare angle to proj4 as radians,
+  so a central meridian of 9 would become 9 radians. The engine adds the
+  standard degree before parsing.
+- **Refusal instead of a misplaced CRS.** For transverse Mercator, Lambert
+  conic conformal, oblique stereographic and Mercator, a parse that lacks a
+  parameter the method needs (a central meridian, a scale factor, a standard
+  parallel) resolves to `null` with a diagnostic, rather than to a CRS on the
+  wrong meridian. That happens when a WKT spells a parameter in a way the
+  reader does not recognise.
+
+WKT1 parameter names inside WKT2 (`central_meridian`, `latitude_of_origin`,
+`scale_factor`) are read by `wkt-parser` itself since 1.7.0.
 
 ## License
 

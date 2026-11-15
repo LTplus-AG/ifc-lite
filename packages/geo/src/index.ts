@@ -10,15 +10,20 @@
  * browser, and makes no network request unless the host installs a loader.
  *
  * The definition-string functions the viewer builds on are the separate
- * `@ifc-lite/geo/proj4` entry.
+ * `@ifc-lite/geo/proj4` entry; reading a WKT without resolving it is
+ * `@ifc-lite/geo/wkt`.
  */
 
 export {
+  createCrsEngine,
   resolveCrs,
   type Coordinate,
   type CrsDatumShift,
+  type CrsEngine,
+  type CrsEngineOptions,
   type CrsInput,
   type CrsTransformer,
+  type LinearUnit,
 } from './transformer.js';
 export type { GridPointFactors } from './proj4-utils.js';
 export {
@@ -30,4 +35,5 @@ export {
   type GridFileLoader,
   type ProjCdnGridLoaderOptions,
 } from './loaders.js';
+export { configureCrsDiagnostics, type CrsDiagnosticHandler } from './diagnostics.js';
 export { egm96Undulation } from './egm96-undulation.js';

@@ -8,6 +8,7 @@ import proj4 from 'proj4';
 import { writeArrayBuffer } from 'geotiff';
 import { lookupEpsgByCode } from '@ifc-lite/data';
 
+import { configureCrsDiagnostics } from './diagnostics.js';
 import { configureCrsLoaders, projCdnGridLoader } from './loaders.js';
 import { PRECISION_GRIDS, isHorizontalOffsetGrid, resolvePrecisionDef, hasLoadedPrecisionGrid, hasFailedPrecisionGrid } from './precision-grids.js';
 
@@ -200,7 +201,6 @@ describe('precision grids validate source datums before registration (#7052)', (
       GeographicTypeGeoKey: 4326,
     });
     const originalFetch = globalThis.fetch;
-    const originalWarn = console.warn;
     const warnings: string[] = [];
     let requests = 0;
     const previousLoaders = configureCrsLoaders({ gridFile: projCdnGridLoader() });
@@ -208,7 +208,7 @@ describe('precision grids validate source datums before registration (#7052)', (
       requests++;
       return new Response(grid, { status: 200 });
     };
-    console.warn = (message: unknown) => { warnings.push(String(message)); };
+    const previousDiagnostics = configureCrsDiagnostics((message) => { warnings.push(message); });
     try {
       const valid = PRECISION_GRIDS['28992'];
       assert.equal(await resolvePrecisionDef('28992'), valid.proj4);
@@ -236,7 +236,7 @@ describe('precision grids validate source datums before registration (#7052)', (
       assert.ok(warnings.some(message => message.includes('EPSG:999999') && message.includes('(unknown)')));
     } finally {
       globalThis.fetch = originalFetch;
-      console.warn = originalWarn;
+      configureCrsDiagnostics(previousDiagnostics);
       configureCrsLoaders(previousLoaders);
     }
   });

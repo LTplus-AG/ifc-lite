@@ -6,10 +6,14 @@
  * The two places the CRS engine can reach the network, as injectable loaders.
  *
  * Nothing here runs unless the host installs it with
- * {@link configureCrsLoaders}: with no loaders the engine resolves from the
- * bundled EPSG index, the UTM and name aliases and WKT only, and a CRS that
- * has a precision grid uses its documented `+towgs84` approximation.
+ * {@link configureCrsLoaders} or passes it to `createCrsEngine`: with no
+ * loaders the engine resolves from the bundled EPSG index, the UTM and name
+ * aliases and WKT only, and a CRS that has a precision grid uses its
+ * documented `+towgs84` approximation.
  */
+
+import { reportCrsDiagnostic } from './diagnostics.js';
+import { replaceDefaultEngineState } from './engine-state.js';
 
 /**
  * Last-resort definition lookup for an EPSG code the bundled index does not
@@ -33,30 +37,20 @@ export interface CrsLoaders {
   gridFile?: GridFileLoader | null;
 }
 
-let current: CrsLoaders = {};
-const listeners = new Set<() => void>();
-
 /**
- * Install the loaders the engine may call, replacing both. Returns the
- * previous ones, so a caller that installs temporarily can put them back.
- * Grids that could not load before (including "no loader installed") are
- * tried again after this call.
+ * Install the loaders the default engine (`resolveCrs`, `@ifc-lite/geo/proj4`)
+ * may call, replacing both. Returns the previous ones, so a caller that
+ * installs temporarily can put them back.
+ *
+ * This is one configuration per process. It starts the default engine over:
+ * definitions and grids resolved under the previous loaders are dropped, so
+ * nothing a previous loader returned is used afterwards (a transformer made
+ * earlier keeps working with the definition it holds). A host that needs
+ * different loaders side by side, such as a server handling several tenants,
+ * makes an engine for each with `createCrsEngine`.
  */
 export function configureCrsLoaders(loaders: CrsLoaders): CrsLoaders {
-  const previous = current;
-  current = { epsgDefinition: loaders.epsgDefinition ?? null, gridFile: loaders.gridFile ?? null };
-  for (const listener of listeners) listener();
-  return previous;
-}
-
-/** The installed loaders. Internal to the engine. */
-export function crsLoaders(): CrsLoaders {
-  return current;
-}
-
-/** Run `listener` whenever the loaders are replaced. Internal to the engine. */
-export function onCrsLoadersChanged(listener: () => void): void {
-  listeners.add(listener);
+  return replaceDefaultEngineState(loaders);
 }
 
 type FetchLike = (input: string, init?: { signal?: AbortSignal }) => Promise<Response>;
@@ -106,7 +100,7 @@ export function projCdnGridLoader(options: ProjCdnGridLoaderOptions = {}): GridF
     // perpetual "loading grid" badge.
     const response = await fetchImpl(`${baseUrl}/${filename}`, { signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok) {
-      console.warn(`[precision-grid] ${filename}: fetch failed (HTTP ${response.status})`);
+      reportCrsDiagnostic(`[precision-grid] ${filename}: fetch failed (HTTP ${response.status})`);
       return null;
     }
     return response.arrayBuffer();

@@ -7,7 +7,7 @@
  * (`+towgs84`) gives unacceptable error (≥ ~1 m).
  *
  * proj4js can't read NTv2 `.gsb` files directly, but it CAN consume the
- * GeoTIFF datum-shift grids PROJ publishes at cdn.proj.org. The host's grid
+ * GeoTIFF datum-shift grids PROJ publishes at cdn.proj.org. The engine's grid
  * loader (`configureCrsLoaders`, `projCdnGridLoader`) fetches the grid on
  * first use of a covered CRS; we parse it with geotiff.js, register via
  * `proj4.nadgrid(key, adapter)`, then call `proj4.defs(...)` with a string
@@ -28,7 +28,8 @@ import proj4 from 'proj4';
 import { lookupEpsgByCode } from '@ifc-lite/data';
 import { DEPRECATED_SOURCE_DATUMS } from './precision-grid-data.js';
 import { PRECISION_GRIDS, type PrecisionGridSpec } from './precision-grid-table.js';
-import { crsLoaders, onCrsLoadersChanged } from './loaders.js';
+import { reportCrsDiagnostic } from './diagnostics.js';
+import { defaultEngineState, type EngineState } from './engine-state.js';
 
 export { PRECISION_GRIDS } from './precision-grid-table.js';
 
@@ -45,25 +46,17 @@ export function isHorizontalOffsetGrid(sampleCount: number): boolean {
   return sampleCount >= 2;
 }
 
-const loadedGrids = new Set<string>();
-const inflightGrids = new Map<string, Promise<boolean>>();
-const failedGrids = new Set<string>();
-const incompatibleCodes = new Set<string>();
-
-// A grid that failed under the previous loader (or for want of one) gets a
-// fresh attempt under the new one.
-onCrsLoadersChanged(() => failedGrids.clear());
-
 /**
  * Load a GeoTIFF datum-shift grid into proj4js. Idempotent: subsequent
  * calls for the same key resolve immediately. Concurrent calls dedup.
  * Returns `true` on success, `false` on any failure (caller decides
  * whether to fall back to a `+towgs84`-based proj4 string).
  */
-async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolean> {
+async function loadPrecisionGrid(spec: PrecisionGridSpec, state: EngineState): Promise<boolean> {
+  const { loaded: loadedGrids, failed: failedGrids, inflight: inflightGrids } = state.grids;
   if (loadedGrids.has(spec.key)) return true;
   if (failedGrids.has(spec.key)) return false;
-  const loadGridFile = crsLoaders().gridFile;
+  const loadGridFile = state.loaders.gridFile;
   if (!loadGridFile) {
     // No grid loader installed (the default, and what a test run wants):
     // the caller falls back to the bundled +towgs84.
@@ -85,7 +78,7 @@ async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolean> {
       const probe = await tiff.getImage(0);
       const bands = probe.getSamplesPerPixel();
       if (!isHorizontalOffsetGrid(bands)) {
-        console.warn(
+        reportCrsDiagnostic(
           `[precision-grid] ${spec.key}: ${bands}-band grid is not a horizontal datum shift; using +towgs84 fallback`,
         );
         failedGrids.add(spec.key);
@@ -122,7 +115,7 @@ async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolean> {
       // proj4js types lag the actual adapter shape; cast at the boundary.
       const grid = (proj4 as unknown as {
         nadgrid: (key: string, source: unknown) => { ready?: Promise<unknown> } | undefined;
-      }).nadgrid(spec.key, adapter);
+      }).nadgrid(state.gridName(spec.key), adapter);
       const ready = grid?.ready;
       if (ready && typeof ready.then === 'function') {
         await ready;
@@ -130,7 +123,7 @@ async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolean> {
       loadedGrids.add(spec.key);
       return true;
     } catch (error) {
-      console.warn(`[precision-grid] ${spec.key}: load failed, falling back to +towgs84`, error);
+      reportCrsDiagnostic(`[precision-grid] ${spec.key}: load failed, falling back to +towgs84`, error);
       failedGrids.add(spec.key);
       return false;
     }
@@ -146,14 +139,18 @@ async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolean> {
  * grid-using proj4 definition. Returns `null` when the code isn't in our
  * curated list — caller should fall back to the bundled `+towgs84` def.
  */
-export async function resolvePrecisionDef(epsgCode: string): Promise<string | null> {
+export async function resolvePrecisionDef(
+  epsgCode: string,
+  state: EngineState = defaultEngineState(),
+): Promise<string | null> {
   const spec = PRECISION_GRIDS[epsgCode];
   if (!spec) return null;
+  const incompatibleCodes = state.grids.incompatible;
   const entry = await lookupEpsgByCode(epsgCode);
   const sourceDatum = entry?.datum ?? DEPRECATED_SOURCE_DATUMS[epsgCode];
   if (!sourceDatum || !spec.sourceDatums.includes(sourceDatum)) {
     if (!incompatibleCodes.has(epsgCode)) {
-      console.warn(
+      reportCrsDiagnostic(
         `[precision-grid] EPSG:${epsgCode}: source datum ${sourceDatum ?? '(unknown)'} is incompatible with ${spec.filename}; keeping bundled definition`,
       );
     }
@@ -161,26 +158,29 @@ export async function resolvePrecisionDef(epsgCode: string): Promise<string | nu
     return null;
   }
   incompatibleCodes.delete(epsgCode);
-  const loaded = await loadPrecisionGrid(spec);
+  const loaded = await loadPrecisionGrid(spec, state);
   if (!loaded) return null;
-  return spec.proj4;
+  const name = state.gridName(spec.key);
+  return name === spec.key ? spec.proj4 : spec.proj4.replace(`+nadgrids=${spec.key}`, `+nadgrids=${name}`);
 }
 
 /**
- * Diagnostic — has the grid for this code been loaded successfully?
+ * Diagnostic for the default engine — has the grid for this code been loaded successfully?
  * Surfaces in the GeoreferencingPanel so users know they're getting
  * the grid-accurate transform vs. the +towgs84 fallback.
  */
 export function hasLoadedPrecisionGrid(epsgCode: string): boolean {
   const spec = PRECISION_GRIDS[epsgCode];
-  return spec ? !incompatibleCodes.has(epsgCode) && loadedGrids.has(spec.key) : false;
+  const { incompatible, loaded } = defaultEngineState().grids;
+  return spec ? !incompatible.has(epsgCode) && loaded.has(spec.key) : false;
 }
 
 /**
- * Diagnostic — did the grid load fail (so the badge can stop spinning
+ * Diagnostic for the default engine — did the grid load fail (so the badge can stop spinning
  * and show an error state instead of perpetually "loading")?
  */
 export function hasFailedPrecisionGrid(epsgCode: string): boolean {
   const spec = PRECISION_GRIDS[epsgCode];
-  return spec ? incompatibleCodes.has(epsgCode) || failedGrids.has(spec.key) : false;
+  const { incompatible, failed } = defaultEngineState().grids;
+  return spec ? incompatible.has(epsgCode) || failed.has(spec.key) : false;
 }

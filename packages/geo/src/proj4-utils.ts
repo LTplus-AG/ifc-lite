@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import proj4 from 'proj4';
+import { reportCrsDiagnostic } from './diagnostics.js';
 import { isWktDefinition, registeredWktDefinition, wktDefinitionInMetres } from './wkt-projection.js';
 
 /** Also answers for a WKT definition registered by `resolveWktProjection`. */
@@ -151,7 +152,7 @@ export function computeGridFrame(projDef: string, easting: number, northing: num
     // alignment inside Cesium's TRUE-north ENU frame — a rotation of up to ~3°
     // (UTM zone edge) or ~7-8° (Krovak). Called once per model, so logging it
     // costs nothing and names the cause if it ever happens.
-    console.warn(
+    reportCrsDiagnostic(
       `[cesium] grid convergence unavailable for ${projDef}; the model is placed `
       + 'grid-aligned in a true-north frame (rotation up to a few degrees).',
       err,

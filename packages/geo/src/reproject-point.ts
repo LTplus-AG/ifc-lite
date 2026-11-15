@@ -10,6 +10,7 @@ import proj4 from 'proj4';
 import { resolveMapUnitToMetreScale } from './map-unit.js';
 import { isGeographicProj4, projectedDefinitionInMetres } from './proj4-utils.js';
 import { resolveProjection, type CrsDescriptor } from './resolve-projection.js';
+import { reportCrsDiagnostic } from './diagnostics.js';
 import { isWithinWktDefinitionExtent } from './wkt-projection.js';
 
 export interface LatLon {
@@ -31,22 +32,24 @@ export function coordinatesToLatLon(definition: string, x: number, y: number): L
     const [lon, lat] = proj4(projectedDefinitionInMetres(definition), 'WGS84', [x, y]);
     return validLatLon(lon, lat) && isWithinWktDefinitionExtent(definition, lon, lat) ? { lat, lon } : null;
   } catch (error) {
-    console.warn('[reproject] coordinate transformation failed', error);
+    reportCrsDiagnostic('[reproject] coordinate transformation failed', error);
     return null;
   }
 }
 
 /**
  * WGS84 degrees to the CRS: degrees for a geographic CRS, metres for a
- * projected one. The inverse of {@link coordinatesToLatLon}.
+ * projected one. The inverse of {@link coordinatesToLatLon}, with the same
+ * refusals: a position outside the extent a WKT declares is `null` in both
+ * directions.
  */
 export function latLonToCoordinates(definition: string, lon: number, lat: number): { x: number; y: number } | null {
-  if (!validLatLon(lon, lat)) return null;
+  if (!validLatLon(lon, lat) || !isWithinWktDefinitionExtent(definition, lon, lat)) return null;
   try {
     const [x, y] = proj4('WGS84', projectedDefinitionInMetres(definition), [lon, lat]);
     return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
   } catch (error) {
-    console.warn('[reproject] inverse coordinate transformation failed', error);
+    reportCrsDiagnostic('[reproject] inverse coordinate transformation failed', error);
     return null;
   }
 }

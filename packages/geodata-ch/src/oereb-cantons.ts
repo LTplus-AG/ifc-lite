@@ -13,7 +13,8 @@
  * `oereb_extract_url` (NOT its `oereb_webservice` field, which was wrong
  * for GL, ZG, SH and JU: a 404 path, a full extract URL, a 404 path and a
  * 500 path respectively), and `GET {base}/versions/{json|xml}` (ÖREB v2
- * spec) had to answer 200. Every URL in swiss-zoning-api's older table that
+ * spec) had to answer 200 (SO and SH: only `/versions/xml` did; their entries
+ * record the 500 for json). Every URL in swiss-zoning-api's older table that
  * differs from these is stale.
  */
 

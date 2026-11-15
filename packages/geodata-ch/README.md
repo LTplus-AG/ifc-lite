@@ -143,7 +143,8 @@ The parcel's extract URL comes from the federal availability register first.
 `CANTON_OEREB_SERVICES` is the fallback when the register has no record for
 the parcel. To build it, the register was queried in each capital, the base
 was taken from its `oereb_extract_url`, and `GET {base}/versions/{json|xml}`
-had to answer 200. The register's `oereb_webservice` field was wrong for GL,
+had to answer 200 (SO and SH: only `/versions/xml` did, `/versions/json`
+answered 500; their entries say so). The register's `oereb_webservice` field was wrong for GL,
 ZG, SH and JU, so it is not used. 25 cantons are **verified** on 2026-11-15.
 **VS** (`https://rdppf.apps.vs.ch`) is **unverified**: the register lists it,
 but it timed out from the checking host. Every entry carries its own

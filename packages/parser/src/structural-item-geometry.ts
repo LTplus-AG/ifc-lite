@@ -315,11 +315,13 @@ export class ItemGeometryReader {
       // An unreadable bound must not silently drop its region.
       if (rings.some((ring) => !ring)) return null;
       const found = faceRegionsOfOuterBounds(rings as Vec3[][]);
-      // The face's frame comes from its main region, so that is the largest one; a sliver first in the file would give none.
-      const areas = found.map((region) => ringArea(region.polygon));
-      const main = areas.indexOf(Math.max(...areas));
-      const [first] = found.splice(main, 1);
-      return { polygon: first.polygon, innerBounds: first.innerBounds, ...(found.length ? { regions: found } : {}) };
+      if (found) {
+        // The face's frame comes from its main region, so that is the largest one; a sliver first in the file would give none.
+        const areas = found.map((region) => ringArea(region.polygon));
+        const [first] = found.splice(areas.indexOf(Math.max(...areas)), 1);
+        return { polygon: first.polygon, innerBounds: first.innerBounds, ...(found.length ? { regions: found } : {}) };
+      }
+      // Loops that do not share a plane are no regions of one face: read it as before, the first outer bound and openings.
     }
     const outer = bounds.find((b) => b?.type === 'IFCFACEOUTERBOUND') ?? bounds.find((b) => b?.type === 'IFCFACEBOUND');
     const polygon = this.boundPolygon(outer);

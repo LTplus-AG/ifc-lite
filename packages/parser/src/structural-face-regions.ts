@@ -53,6 +53,23 @@ function onBoundary([x, y]: readonly [number, number], poly: Flat): boolean {
   return false;
 }
 
+/** A point inside a simple polygon: the midpoint of the first span of a scanline between two vertex heights (even-odd). */
+function interiorPoint(poly: Flat): readonly [number, number] {
+  const heights = [...new Set(poly.map((p) => p[1]))].sort((a, b) => a - b);
+  for (let k = 1; k < heights.length; k++) {
+    const y = (heights[k - 1] + heights[k]) / 2;
+    const xs: number[] = [];
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i];
+      const [xj, yj] = poly[j];
+      if ((yi > y) !== (yj > y)) xs.push(((xj - xi) * (y - yi)) / (yj - yi) + xi);
+    }
+    xs.sort((a, b) => a - b);
+    if (xs.length >= 2 && xs[1] - xs[0] > 1e-12) return [(xs[0] + xs[1]) / 2, y];
+  }
+  return poly[0];
+}
+
 const area = (poly: Flat): number => {
   let twice = 0;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) twice += poly[j][0] * poly[i][1] - poly[i][0] * poly[j][1];
@@ -61,30 +78,28 @@ const area = (poly: Flat): number => {
 
 /**
  * The regions of a face written as `rings`, in file order of their outer rings. One ring is one
- * region. Rings are projected on the plane of the largest one, so a face that is not planar
- * (or has a zero-area first ring) is read as every ring being its own region.
+ * region. Rings are projected on the plane of the largest one; null when they do not share a plane
+ * (or the largest has none), which no planar face does, so the caller keeps its single-polygon reading.
  */
-export function faceRegionsOfOuterBounds(rings: readonly Vec3[][]): FaceRegion[] {
-  const alone = (): FaceRegion[] => rings.map((polygon) => ({ polygon, innerBounds: [] }));
-  if (rings.length < 2) return alone();
-  const reference = rings.reduce((best, ring) => (ring.length > best.length ? ring : best), rings[0]);
+export function faceRegionsOfOuterBounds(rings: readonly Vec3[][]): FaceRegion[] | null {
+  if (rings.length < 2) return rings.map((polygon) => ({ polygon, innerBounds: [] }));
+  const reference = rings.reduce((best, ring) => (ringArea(ring) > ringArea(best) ? ring : best), rings[0]);
   let normal: Vec3 | null = null;
   for (let i = 1; i + 1 < reference.length && !normal; i++) {
     normal = normalize(cross(sub(reference[i], reference[0]), sub(reference[i + 1], reference[0])));
   }
   const x = normal && normalize(sub(reference[1], reference[0]));
-  if (!normal || !x) return alone();
-  // Every loop must lie in the plane of the reference loop; a loop in another plane is projected onto it
-  // wrongly, so a face that is not planar keeps each loop as its own region.
+  if (!normal || !x) return null;
+  // Every loop must lie in the plane of the reference loop; a loop in another plane would be projected onto it wrongly.
   const extent = Math.max(...reference.map((p) => Math.hypot(...sub(p, reference[0]))), 1e-9);
-  if (rings.some((ring) => ring.some((p) => Math.abs(dot(sub(p, reference[0]), normal!)) > 1e-6 * extent + 1e-9))) return alone();
+  if (rings.some((ring) => ring.some((p) => Math.abs(dot(sub(p, reference[0]), normal!)) > 1e-6 * extent + 1e-9))) return null;
   const y = cross(normal, x);
   const flat = rings.map((ring): Flat => ring.map((p) => [dot(sub(p, reference[0]), x), dot(sub(p, reference[0]), y)] as const));
   const areas = flat.map(area);
-  // The loops each loop lies in: a larger loop that holds its vertex average and has no vertex of it
-  // outside. The average rules out a tile that fills a notch of a concave loop with all its vertices
-  // on that loop's edge.
-  const middle = flat.map((ring): readonly [number, number] => [ring.reduce((sum, p) => sum + p[0], 0) / ring.length, ring.reduce((sum, p) => sum + p[1], 0) / ring.length]);
+  // The loops each loop lies in: a larger loop that holds a point inside this one and has no vertex of
+  // it outside. The interior point (not the vertex average, which can fall in a notch of a concave
+  // loop) rules out a tile that fills a notch of a concave loop with all its vertices on that loop's edge.
+  const middle = flat.map(interiorPoint);
   const containers = flat.map((ring, i) => flat.map((_, j) => j).filter((j) => j !== i && areas[j] > areas[i]
     && inside(middle[i], flat[j]) && ring.every((p) => inside(p, flat[j]) || onBoundary(p, flat[j]))));
   const regions = new Map<number, FaceRegion>();

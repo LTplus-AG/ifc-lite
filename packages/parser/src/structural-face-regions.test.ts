@@ -47,13 +47,20 @@ describe('faceRegionsOfOuterBounds', () => {
     expect(faceRegionsOfOuterBounds([l, tile])).toEqual([{ polygon: l, innerBounds: [] }, { polygon: tile, innerBounds: [] }]);
   });
 
-  it('keeps loops in different planes as separate regions instead of nesting their projections', () => {
+  it('reads loops in different planes as no regions of one face', () => {
     const wall: Vec3[] = [[0, 0, 0], [10, 0, 0], [10, 0, 10], [0, 0, 10]];
     const floorPatch: Vec3[] = [[4, 0, 4], [6, 0, 4], [6, 2, 4], [4, 2, 4]]; // projects inside the wall loop but lies in another plane
-    expect(faceRegionsOfOuterBounds([wall, floorPatch])).toEqual([{ polygon: wall, innerBounds: [] }, { polygon: floorPatch, innerBounds: [] }]);
+    expect(faceRegionsOfOuterBounds([wall, floorPatch])).toBeNull();
   });
 
-  it('keeps every loop of a non-planar or degenerate face as its own region', () => {
+  it('reads an L-shaped opening whose vertex average falls in the notch of the larger L as that L\'s opening', () => {
+    const big: Vec3[] = [[0, 0, 0], [10, 0, 0], [10, 4, 0], [4, 4, 0], [4, 10, 0], [0, 10, 0]];
+    // Follows the big L's two arms, so the average of its vertices (4.33, 4.33) lies in the notch (x > 4, y > 4).
+    const opening: Vec3[] = [[1, 1, 0], [9, 1, 0], [9, 3, 0], [3, 3, 0], [3, 9, 0], [1, 9, 0]];
+    expect(faceRegionsOfOuterBounds([big, opening])).toEqual([{ polygon: big, innerBounds: [opening] }]);
+  });
+
+  it('keeps a collinear loop as its own region and a single loop as one', () => {
     const line: Vec3[] = [[0, 0, 0], [1, 0, 0], [2, 0, 0]];
     expect(faceRegionsOfOuterBounds([line, square(5, 5, 1)])).toHaveLength(2);
     expect(faceRegionsOfOuterBounds([square(0, 0, 1)])).toHaveLength(1);
@@ -70,11 +77,14 @@ describe('a face of disjoint outer-bound loops is drawn on all its regions', () 
     expect(onShape({ kind: 'face', polygon: square(0, 0, 2) }, [11, 1, 0])).toBe(false);
   });
 
-  it('keeps every station of a far-apart pair on the face, with none in the gap', () => {
+  it('gives each far-apart region a station of its own, none in the gap', () => {
     const stations = shapeStations(shape);
-    expect(stations.length).toBeGreaterThan(0);
+    expect(stations.some((p) => p[0] < 2)).toBe(true);
+    expect(stations.some((p) => p[0] >= 10)).toBe(true);
     expect(stations.every((p) => onShape(shape, p))).toBe(true);
     expect(onShape(shape, shapeCentre(shape))).toBe(true);
+    // Without the second region only the first is drawn on.
+    expect(shapeStations({ kind: 'face', polygon: square(0, 0, 2) }).every((p) => p[0] < 2)).toBe(true);
   });
 
   it('spreads the lattice of a slab tiled by two triangles over both', () => {
@@ -127,6 +137,17 @@ ENDSEC;END-ISO-10303-21;`;
     expect(shape.polygon).toEqual([[10, 0, 0], [12, 0, 0], [10, 2, 0]]);
     expect(shape.regions).toEqual([{ polygon: [[0, 0, 0], [2, 0, 0], [2, 0, 0]], innerBounds: [] }]);
     expect(onShape(shape, [10.5, 0.5, 0])).toBe(true);
+  });
+
+  it('reads loops that share no plane as before: the first outer bound with the rest as openings', async () => {
+    const skew = STEP.replace('#35=IFCCARTESIANPOINT((10.,2.,0.));', '#35=IFCCARTESIANPOINT((10.,2.,5.));');
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(skew).buffer as ArrayBuffer);
+    const shape = new ItemGeometryReader(store).shape(43);
+    expect(shape?.kind).toBe('face');
+    if (shape?.kind !== 'face') return;
+    expect(shape.regions).toBeUndefined();
+    expect(shape.polygon).toEqual([[0, 0, 0], [2, 0, 0], [0, 2, 0]]);
+    expect(shape.innerBounds).toEqual([[[10, 0, 0], [12, 0, 0], [10, 2, 5]]]);
   });
 
   it('returns the first triangle as the polygon and the second as a further region', async () => {

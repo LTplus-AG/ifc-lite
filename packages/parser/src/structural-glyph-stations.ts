@@ -171,7 +171,22 @@ function faceStations(polygon: readonly Vec3[], innerBounds?: Vec3[][], regions?
       if (onAnyRegion([u, v], face)) out.push(pointIn(frame, u, v));
     }
   }
+  // A region the lattice missed (regions far apart) still gets a station of its own, a few at most.
+  const missed = [{ flat, holes: face.holes }, ...more].filter((region) =>
+    !out.some((p) => onFace([dot(sub(p, frame.origin), frame.x), dot(sub(p, frame.origin), frame.y)], region.flat, region.holes)));
+  for (const region of missed.slice(0, MISSED_REGION_STATIONS)) {
+    if (out.length > 0 || more.length > 0) out.push(pointIn(frame, ...faceRegionCentre(region)));
+  }
   return out.length ? out : [faceCentre(polygon, face)];
+}
+
+/** At most this many extra stations, one per region the face lattice missed. */
+const MISSED_REGION_STATIONS = 9;
+
+/** A point on one region: its vertex average when that lies on it, else a scanline point. */
+function faceRegionCentre({ flat, holes }: FlatRegion): readonly [number, number] {
+  const c = [flat.reduce((sum, p) => sum + p[0], 0) / flat.length, flat.reduce((sum, p) => sum + p[1], 0) / flat.length] as const;
+  return onFace(c, flat, holes) ? c : interiorPoint(flat, holes);
 }
 
 /** Where a shape anchors a single marker: the vertex, the edge midpoint, or a point on the face. */

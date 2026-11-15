@@ -20,7 +20,7 @@ it('effective aggregate text agrees with the actual STEP read after serializatio
   const reopened = read(`#1=IFCPOSTALADDRESS($,$,$,$,${serializeValue(labels)},$,$,$,$,$);`);
   expect(effective.attributes).toEqual(reopened.attributes);
   expect(effective.attributes[4]).toEqual(['$', '*', '#42', 'Station']);
-  expect(labels).toEqual(['$', '*', '#42', 'Station'].map(stepString), 'reading cannot mutate the queued edits');
+  expect(labels, 'reading cannot mutate the queued edits').toEqual(['$', '*', '#42', 'Station'].map(stepString));
 });
 
 it('unwraps shared nested aggregate markers without mutating the authored arrays (#9876 review)', () => {

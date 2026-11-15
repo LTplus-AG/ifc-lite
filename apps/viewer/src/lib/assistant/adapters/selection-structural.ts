@@ -5,6 +5,7 @@
 import { getAttributeTypeForSchema, measureUnit, type ProjectUnits, type StructuralExtraction, type StructuralLoadInfo,
   type BoundaryConditionInfo } from '@ifc-lite/parser';
 import { selectedStructuralMember, structuralRelatedRows } from '@/components/viewer/properties/selectedStructuralMember';
+import { structuralCardSections, type StructuralCardSection, type StructuralCardValue } from '@/components/viewer/properties/structural-card-model';
 const bounded = (value: string | undefined) => value === undefined || value === '' ? null : value.length > 240 ? `${value.slice(0, 240)}…` : value;
 function components(record: StructuralLoadInfo | BoundaryConditionInfo, limit: number, units: ProjectUnits, schema: string | undefined) {
   const all = Object.entries(record.components);
@@ -46,11 +47,32 @@ function loadEvidence(load: StructuralLoadInfo, limit: number, units: ProjectUni
     configurations, nativeTruncated, evidenceTruncated, configurationNodeBudget: 64 };
 }
 
-/** Only the existing native selected-member StructuralCard section, no new structural feature. */
+/** A card row value with strings and lists bounded like the other evidence (#9951). */
+function boundedValue(value: StructuralCardValue, limit: number): unknown {
+  if (typeof value === 'string') return bounded(value);
+  if (Array.isArray(value)) return value.slice(0, limit);
+  if (typeof value === 'object' && 'refs' in value) return { refs: value.refs.slice(0, limit) };
+  if (typeof value === 'object' && 'globalIds' in value) return { globalIds: value.globalIds.slice(0, limit) };
+  return value;
+}
+
+/** What the card shows for a structural record that is not a member: its own section and the records it holds, bounded. */
+function recordEvidence(sections: readonly StructuralCardSection[], limit: number, valueLimit: number) {
+  return { sectionCount: sections.length, omittedSections: Math.max(0, sections.length - limit),
+    sections: sections.slice(0, limit).map(section => ({ expressId: section.expressId, type: section.type, via: section.via, depth: section.depth,
+      rowCount: section.rows.length, omittedRows: Math.max(0, section.rows.length - valueLimit),
+      rows: section.rows.slice(0, valueLimit).map(row => ({ attribute: row.attribute, value: boundedValue(row.value, valueLimit), measure: row.measure ?? null })) })) };
+}
+
+/** The native StructuralCard content: the member section for a member, else the section tree of any other structural record (connection, action, reaction, load group or case, result group, analysis model). */
 export function structuralEvidence(data: StructuralExtraction | null, expressId: number, globalId: string | undefined,
   limit: number, valueLimit: number, units: ProjectUnits, schema: string | undefined, sourceAvailable: boolean) {
   const member = selectedStructuralMember(data, expressId, globalId);
-  if (!member || !data) return null;
+  if (!data) return null;
+  if (!member) {
+    const sections = structuralCardSections(data, { expressId, globalId }, schema);
+    return sections.length > 0 ? { record: recordEvidence(sections, limit, valueLimit) } : null;
+  }
   const connectionRows = structuralRelatedRows(data.connections, member.connectionGlobalIds);
   const activityRows = structuralRelatedRows(data.activities, member.activityGlobalIds);
   const modelRows = structuralRelatedRows(data.analysisModels, member.analysisModelGlobalIds);

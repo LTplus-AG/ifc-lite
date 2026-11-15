@@ -151,7 +151,8 @@ describe('ifc-lite site-context from a model', () => {
     expect(r.bytes).toBe(bytes.byteLength);
     const doc = decodeSiteContextGlb(new Uint8Array(bytes));
     expect(doc.layers.map((l) => l.kind)).toEqual(['terrain', 'parcel']);
-    expect(r.layers[0]).toMatchObject({ kind: 'terrain', complete: true, triangles: 2 * 160 * 160 });
+    // Surface cells plus the skirt (a wall per edge segment and a two-triangle bottom).
+    expect(r.layers[0]).toMatchObject({ kind: 'terrain', complete: true, triangles: 2 * 160 * 160 + 2 * 4 * 160 + 2 });
     expect(r.parcels).toEqual([{ egrid: 'CH999999999999', number: '123', canton: 'BE', oerebExtractUrl: null }]);
     // The ÖREB failure is reported on the parcel layer, not a failed run.
     expect(r.layers[1].complete).toBe(false);

@@ -18,6 +18,7 @@
  * - Error-to-LLM feedback loop for failed scripts
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type DragEvent } from 'react';
 import { X, Send, Square, Trash2, Paperclip, ArrowDown, Zap, Wrench } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -1190,11 +1191,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           </div>
         )}
 
-        {/* Post-authoring install CTA — rendered INLINE at the end of
-            the conversation, directly under the generated code, so the
-            "now install it" step is impossible to miss. Highlighted
-            (ring + accent) the moment a workflow is authored. */}
-        {chatToolReady && status === 'idle' && (
+        {/* Extension installation stays beside authored code when the host
+            enables extensions. Both the CTA and dialog honour that gate. */}
+        {isFeatureEnabled('automate.extensions') && chatToolReady && status === 'idle' && (
           <div className="mx-3 my-3 rounded-lg border-2 border-primary bg-primary/10 p-3 shadow-sm ring-2 ring-primary/30">
             <div className="flex items-center gap-2 mb-1">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -1319,7 +1318,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       {/* Promote-to-tool dialog, opened from the post-authoring CTA.
           `source` was snapshotted from the editor at open time. */}
       <PromoteToolDialog
-        open={promoteFromChat.open}
+        open={isFeatureEnabled('automate.extensions') && promoteFromChat.open}
         source={promoteFromChat.source}
         onClose={() => setPromoteFromChat((p) => ({ ...p, open: false }))}
       />

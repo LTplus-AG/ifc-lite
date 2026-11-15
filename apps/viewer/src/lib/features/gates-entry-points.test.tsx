@@ -321,8 +321,8 @@ describe('AI and extensions off have no other door', () => {
 
   for (const extensions of [false, true]) {
     it(`script promotion and its install banner follow extensions (#10176): ${extensions}`, () => {
-      resetFeaturesForTest({ default: 'all', disable: extensions ? ['ai.assistant'] : ['ai.assistant', 'automate.extensions'] });
-      useViewerStore.setState({ scriptEditorContent: 'console.log("tool");', chatToolReady: { kind: 'script', name: 'Tool' } });
+      resetFeaturesForTest({ default: 'all', disable: extensions ? [] : ['automate.extensions'] });
+      useViewerStore.setState({ chatPanelVisible: true, scriptEditorContent: 'console.log("tool");', chatToolReady: { kind: 'script', name: 'Tool' } });
       const network = captureFetch(() => Promise.reject(new Error('network disabled in test')));
       try {
         render(<BimReactContext.Provider value={{} as BimContext}>
@@ -331,7 +331,7 @@ describe('AI and extensions off have no other door', () => {
         const promote = document.querySelector<HTMLButtonElement>('button[aria-label="Save this script as a persistent tool"]');
         assert.ok(promote);
         assert.equal(promote.disabled, !extensions);
-        assert.equal(buttonsNamed('Install as tool'), extensions ? 1 : 0);
+        assert.equal(buttonsNamed('Install as tool'), extensions ? 2 : 0, 'both the script and chat install banners follow the flag');
         if (!extensions) {
           click(promote);
           assert.equal(document.querySelectorAll('[role="dialog"]').length, 0);

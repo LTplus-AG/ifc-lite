@@ -363,3 +363,217 @@ it('in sheet mode a visible endpoint wins over a closer one clipped out of the v
   const [placed] = useViewerStore.getState().dimension2DPoints;
   assert.ok(placed && Math.abs(placed.x - 6.8) < 1e-9 && Math.abs(placed.y - 1.6) < 1e-9, `placed on the visible corner: ${JSON.stringify(placed)}`);
 });
+
+// ── Keyboard: Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z and Ctrl+Y redo ─────────────────────────────
+
+const D = (id: string): Dimension2D => ({ id, a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 0.5, orientation: 'aligned' });
+
+/** Dispatches a keydown on `target` and reports whether it was cancelled and whether it reached a window bubble listener. */
+function press(target: EventTarget, key: string, init: KeyboardEventInit = {}) {
+  let reachedBubble = false;
+  const onBubble = () => { reachedBubble = true; };
+  window.addEventListener('keydown', onBubble);
+  const event = new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ctrlKey: true, ...init });
+  act(() => { target.dispatchEvent(event); });
+  window.removeEventListener('keydown', onBubble);
+  return { prevented: event.defaultPrevented, reachedBubble };
+}
+
+function seedHistory() {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension' });
+  const s = useViewerStore.getState();
+  s.addDimension2D(D('a')); s.addDimension2D(D('b'));
+}
+const liveIds = () => useViewerStore.getState().dimensions2D.map((d) => d.id);
+
+it('Ctrl+Z undoes and Ctrl+Shift+Z / Ctrl+Y redo while the tool is active, swallowing the key', () => {
+  seedHistory();
+  const canvas = render(<Harness />).firstElementChild!;
+  let r = press(canvas, 'z');
+  assert.deepEqual([r.prevented, r.reachedBubble], [true, false], 'preventDefault and stopPropagation');
+  assert.deepEqual(liveIds(), ['a']);
+  r = press(canvas, 'z', { shiftKey: true });
+  assert.equal(r.prevented, true);
+  assert.deepEqual(liveIds(), ['a', 'b']);
+  press(canvas, 'z');
+  press(canvas, 'y');
+  assert.deepEqual(liveIds(), ['a', 'b'], 'Ctrl+Y redoes');
+  press(canvas, 'Z');
+  assert.deepEqual(liveIds(), ['a'], 'caps lock / shift variants of the key still undo');
+});
+
+it('Cmd+Z and Cmd+Shift+Z work like Ctrl; Cmd+Y and Alt chords are left alone', () => {
+  seedHistory();
+  const canvas = render(<Harness />).firstElementChild!;
+  press(canvas, 'z', { ctrlKey: false, metaKey: true });
+  assert.deepEqual(liveIds(), ['a']);
+  press(canvas, 'z', { ctrlKey: false, metaKey: true, shiftKey: true });
+  assert.deepEqual(liveIds(), ['a', 'b']);
+  assert.equal(press(canvas, 'z', { altKey: true }).prevented, false);
+  assert.equal(press(canvas, 'y', { ctrlKey: false, metaKey: true }).prevented, false);
+  assert.equal(press(canvas, 'z', { ctrlKey: false }).prevented, false, 'a bare Z is not a shortcut');
+  assert.deepEqual(liveIds(), ['a', 'b']);
+});
+
+it('leaves Ctrl+Z and redo to the workspace history when the dimension stack is empty', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension', dimension2DUndo: [], dimension2DRedo: [] });
+  const canvas = render(<Harness />).firstElementChild!;
+  for (const [key, opts] of [['z', {}], ['z', { shiftKey: true }], ['y', {}]] as const) {
+    const r = press(canvas, key, opts);
+    assert.deepEqual([r.prevented, r.reachedBubble], [false, true], `${key} ${JSON.stringify(opts)} passes through`);
+  }
+});
+
+it('does nothing, and does not cancel the key, while the dimension tool is not active', () => {
+  seedHistory();
+  useViewerStore.setState({ annotation2DActiveTool: 'none' });
+  const canvas = render(<Harness />).firstElementChild!;
+  const r = press(canvas, 'z');
+  assert.deepEqual([r.prevented, r.reachedBubble], [false, true], 'left for the global handlers');
+  assert.deepEqual(liveIds(), ['a', 'b']);
+  act(() => useViewerStore.getState().setAnnotation2DActiveTool('dimension'));
+  press(canvas, 'z');
+  assert.deepEqual(liveIds(), ['a'], 'active again');
+  act(() => useViewerStore.getState().setAnnotation2DActiveTool('measure'));
+  assert.equal(press(canvas, 'z').prevented, false, 'another tool: the listener is gone');
+  assert.deepEqual(liveIds(), ['a']);
+});
+
+it('leaves Ctrl+Z to inputs, textareas, contenteditable hosts and panels with their own history', () => {
+  seedHistory();
+  render(<Harness />);
+  const field = (tag: string) => { const el = document.createElement(tag); document.body.appendChild(el); return el; };
+  const editable = field('div');
+  Object.defineProperty(editable, 'isContentEditable', { value: true });
+  const panel = field('div'); panel.setAttribute('data-own-history', '');
+  const inside = document.createElement('button'); panel.appendChild(inside);
+  for (const target of [field('input'), field('textarea'), field('select'), editable, inside]) {
+    const r = press(target, 'z');
+    assert.deepEqual([r.prevented, r.reachedBubble], [false, true], `${(target as HTMLElement).tagName} keeps its own undo`);
+    assert.equal(press(target, 'y').prevented, false);
+    assert.equal(press(target, 'z', { shiftKey: true }).prevented, false);
+  }
+  assert.deepEqual(liveIds(), ['a', 'b'], 'the dimension history was never touched');
+  // Focus elsewhere in the document (not an input) still undoes.
+  press(field('div'), 'z');
+  assert.deepEqual(liveIds(), ['a']);
+});
+
+it('a dimension drag is one undo step', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none',
+    dimensions2D: [{ id: 'd1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned', plane: PLANE }] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 250, clientY: -50 });
+  mouseMove(canvas, { clientX: 300, clientY: 0 });
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 1, y: 1 });
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 1, 'many mouse moves, one command');
+  act(() => useViewerStore.getState().undoDimension2D());
+  assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 0, y: 0 });
+});
+
+it('a drag whose markup is replaced mid-drag records nothing on release', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none',
+    dimensions2D: [{ id: 'd1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned', plane: PLANE }] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 250, clientY: -50 });
+  // A restore replaces the markup (and resets its history) while the button is held.
+  const restored = [{ id: 'r1', a: { x: 9, y: 9 }, b: { x: 12, y: 9 }, offset: 1, orientation: 'aligned' as const, plane: PLANE }];
+  act(() => useViewerStore.setState({ dimensions2D: restored, dimension2DUndo: [], dimension2DRedo: [] }));
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 0, 'no stale pre-drag snapshot to undo into');
+  assert.deepEqual(liveIds(), ['r1']);
+});
+
+it('a drag across a reconcile that keeps the dragged dimension is still one undo step', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none',
+    dimensions2D: [{ id: 'd1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned', plane: PLANE }] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 250, clientY: -50 });
+  // A restore unites a stored dimension with the live list and rebases (here: replaces) the stacks.
+  const saved = { id: 's1', a: { x: 9, y: 9 }, b: { x: 12, y: 9 }, offset: 1, orientation: 'aligned' as const, plane: PLANE };
+  act(() => useViewerStore.setState((st) => ({ dimensions2D: [saved, ...st.dimensions2D], dimension2DUndo: [], dimension2DRedo: [] })));
+  mouseMove(canvas, { clientX: 300, clientY: 0 });
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 1, 'the drag is recorded');
+  act(() => useViewerStore.getState().undoDimension2D());
+  const live = useViewerStore.getState().dimensions2D;
+  assert.deepEqual(live.map((d) => d.id), ['s1', 'd1'], 'undo keeps the reconciled dimension');
+  assert.deepEqual(live[1].a, { x: 0, y: 0 }, 'and puts the dragged one back where it started');
+});
+
+it('a drag that crosses a model switch records nothing, even onto a same-id dimension', () => {
+  const d1 = { id: 'd1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned' as const, plane: PLANE };
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none', activeModelId: 'A', dimensions2D: [d1] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 250, clientY: -50 });
+  // Model B carries a dimension with the same id but other geometry.
+  act(() => useViewerStore.setState({ activeModelId: 'B', dimensions2D: [{ ...d1, a: { x: 7, y: 7 }, b: { x: 9, y: 7 } }], dimension2DUndo: [], dimension2DRedo: [] }));
+  // Moving after the switch must not drag model B's same-id dimension.
+  mouseMove(canvas, { clientX: 300, clientY: 0 });
+  assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 7, y: 7 }, 'model B markup is untouched');
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 0);
+});
+
+it('a drag interrupted by a switch away and back (A→B→A) records nothing', () => {
+  const d1 = { id: 'd1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned' as const, plane: PLANE };
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none', activeModelId: 'A', dimensions2D: [d1] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 250, clientY: -50 });
+  // Back on A with the very objects the drag last wrote, so only the switch itself can end it.
+  const moved = useViewerStore.getState().dimensions2D;
+  act(() => useViewerStore.setState({ activeModelId: 'B', dimensions2D: [], dimension2DUndo: [], dimension2DRedo: [] }));
+  act(() => useViewerStore.setState({ activeModelId: 'A', dimensions2D: moved, dimension2DUndo: [], dimension2DRedo: [] }));
+  mouseMove(canvas, { clientX: 300, clientY: 0 });
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.deepEqual(useViewerStore.getState().dimensions2D, moved, 'not moved after the round trip');
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 0, 'and nothing recorded');
+});
+
+it('a drag whose dimension is replaced by a same-id one mid-drag stops and records nothing', () => {
+  const d1 = { id: 'd1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned' as const, plane: PLANE };
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none', activeModelId: 'A', dimensions2D: [d1] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 250, clientY: -50 });
+  const replaced = { ...d1, a: { x: 5, y: 5 }, b: { x: 8, y: 5 } };
+  act(() => useViewerStore.setState({ dimensions2D: [replaced], dimension2DUndo: [], dimension2DRedo: [] }));
+  mouseMove(canvas, { clientX: 300, clientY: 0 });
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 5, y: 5 }, 'the replacement is not dragged');
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 0, 'and no stale before-state is recorded');
+});
+
+it('undoing a drag puts every same-id dimension back at its own start', () => {
+  const first = { id: 'dup', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: -1, orientation: 'aligned' as const, plane: PLANE };
+  const second = { ...first, a: { x: 0, y: -6 }, b: { x: 3, y: -6 } };
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'none', dimensions2D: [first, second] });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 200, clientY: -100 });
+  mouseMove(canvas, { clientX: 300, clientY: 0 });
+  act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
+  assert.equal(useViewerStore.getState().dimension2DUndo.length, 1);
+  act(() => useViewerStore.getState().undoDimension2D());
+  const [a, b] = useViewerStore.getState().dimensions2D;
+  assert.deepEqual([a.a, a.b], [first.a, first.b]);
+  assert.deepEqual([b.a, b.b], [second.a, second.b], 'the second is restored to its own geometry');
+});
+
+it('placing a dimension with the tool is undoable from the keyboard', () => {
+  useViewerStore.setState({ drawing2D: drawing(), annotation2DActiveTool: 'dimension' });
+  const canvas = render(<Harness />).firstElementChild!;
+  mouseDown(canvas, { clientX: 100, clientY: 600 });
+  mouseDown(canvas, { clientX: 300, clientY: 600 });
+  mouseDown(canvas, { clientX: 200, clientY: 500 });
+  assert.equal(useViewerStore.getState().dimensions2D.length, 1);
+  press(canvas, 'z');
+  assert.equal(useViewerStore.getState().dimensions2D.length, 0);
+  press(canvas, 'z', { shiftKey: true });
+  assert.equal(useViewerStore.getState().dimensions2D.length, 1);
+});

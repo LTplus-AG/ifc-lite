@@ -221,6 +221,8 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     textAnnotations2D: result.textAnnotations2D,
     cloudAnnotations2D: result.cloudAnnotations2D,
     dimensions2D: result.dimensions2D,
+    dimension2DUndo: [],
+    dimension2DRedo: [],
   });
 }
 

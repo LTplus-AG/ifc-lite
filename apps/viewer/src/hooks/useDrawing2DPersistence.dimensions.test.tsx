@@ -109,4 +109,41 @@ describe('dimension auto-save and restore', () => {
 
     assert.deepEqual(useViewerStore.getState().dimensions2D, [dimension], 'the reload restores the dimension from storage');
   });
+
+  it('saves the result of an undo and of a redo, so a reload never brings back an undone dimension', async () => {
+    const file = new File([new Uint8Array(256).map((_, i) => (i * 11) % 256)], 'b.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    const second: Dimension2D = { ...dimension, id: 'dim-second', offset: 1.5 };
+    const savedIds = () => loadDrawing2DEntry(hash, DEFAULTS)?.dimensions2D?.map((d) => d.id) ?? [];
+
+    useViewerStore.setState({ models: new Map([['model-b', stubModel('model-b', file)]]) });
+    await mount();
+    await act(async () => { useViewerStore.getState().setActiveModel('model-b'); });
+    await flush();
+
+    await act(async () => { useViewerStore.getState().addDimension2D(dimension); useViewerStore.getState().addDimension2D(second); });
+    assert.deepEqual(savedIds(), ['dim-keep', 'dim-second']);
+
+    await act(async () => { useViewerStore.getState().undoDimension2D(); });
+    assert.deepEqual(savedIds(), ['dim-keep'], 'the save reflects the undone add');
+
+    await act(async () => { useViewerStore.getState().redoDimension2D(); });
+    assert.deepEqual(savedIds(), ['dim-keep', 'dim-second'], 'and the redo');
+
+    await act(async () => { useViewerStore.getState().clearDimensions2D(); });
+    assert.deepEqual(savedIds(), []);
+    await act(async () => { useViewerStore.getState().undoDimension2D(); });
+    assert.deepEqual(savedIds(), ['dim-keep', 'dim-second'], 'undoing a clear is saved too');
+
+    // Reload: the saved state is what comes back, with no stale history attached.
+    await act(async () => {
+      useViewerStore.getState().resetViewerState();
+      useViewerStore.getState().clearAllModels();
+    });
+    useViewerStore.setState({ models: new Map([['model-b2', stubModel('model-b2', file)]]) });
+    await act(async () => { useViewerStore.getState().setActiveModel('model-b2'); });
+    await flush();
+    assert.deepEqual(useViewerStore.getState().dimensions2D.map((d) => d.id), ['dim-keep', 'dim-second']);
+    assert.deepEqual([useViewerStore.getState().dimension2DUndo, useViewerStore.getState().dimension2DRedo], [[], []]);
+  });
 });

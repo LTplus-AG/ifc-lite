@@ -10,7 +10,7 @@ description = "Independent WebAssembly entry point for on-demand exporters (Rhin
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ifc-lite-export = { workspace = true, default-features = false }
+ifc-lite-export = { workspace = true, default-features = false, features = ["cityjson"] }
 serde_json.workspace = true
 js-sys = "=0.3.103"
 wasm-bindgen = "=0.2.126"

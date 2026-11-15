@@ -88,7 +88,7 @@ fn try_resolve(content: &[u8], warnings: &mut Vec<String>) -> Result<OutputFrame
         return Err("the model has no IfcMapConversion".to_string());
     }
     let context = model_context(content, &mut decoder)?;
-    let frame = facts.frame(context, &mut decoder)?;
+    let frame = facts.frame(context, &mut decoder).map_err(|reason| explain_scale(reason, &facts, context, &mut decoder))?;
     let epsg = epsg_code(&frame.crs.name).ok_or_else(|| {
         format!("the target IfcProjectedCRS is named '{}', which is not an EPSG code (EPSG:<code>)", frame.crs.name)
     })?;
@@ -98,7 +98,7 @@ fn try_resolve(content: &[u8], warnings: &mut Vec<String>) -> Result<OutputFrame
             frame.crs.name
         ));
     }
-    let out_per_map = if frame.map_unit_si() {
+    let out_per_map = if is_metric(frame.map_metres()) {
         frame.map_metres()
     } else {
         warnings.push(format!(
@@ -107,6 +107,49 @@ fn try_resolve(content: &[u8], warnings: &mut Vec<String>) -> Result<OutputFrame
         1.0
     };
     Ok(OutputFrame::Map { project_metres: facts.project_metres(), out_per_map, epsg, frame: Box::new(frame) })
+}
+
+/// The resolver's omitted-Scale refusal, with the units named and the value to
+/// set: a millimetre project with a metre map unit and no `Scale` is the most
+/// common authoring error. Composed here from the same facts so the shared
+/// LandXML resolver (linked into the default engine) keeps its short message;
+/// the Scale is still never applied.
+fn explain_scale(reason: String, facts: &ModelFacts, context: u32, decoder: &mut EntityDecoder) -> String {
+    // The resolver's wording (pinned by the LandXML terrain tests).
+    if !reason.contains("omits Scale") {
+        return reason;
+    }
+    let Some(map_metres) = facts.map_unit_metres(context, decoder) else { return reason };
+    let project_metres = facts.project_metres();
+    format!(
+        "{reason}. The project length unit ({}) and the map unit ({}) differ: if the map conversion is otherwise right, \
+         set IfcMapConversion.Scale to {} (map units per project unit)",
+        unit_label(project_metres),
+        unit_label(map_metres),
+        format_ratio(project_metres / map_metres),
+    )
+}
+
+/// Whether a length unit of `metres` is a (prefixed) metre: a power of ten.
+/// No conversion-based length unit IFC readers recognise (foot, inch, yard,
+/// mile, US survey foot) is one, so this is the SI test for a map unit.
+fn is_metric(metres: f64) -> bool {
+    let l = metres.log10();
+    l.is_finite() && (l - l.round()).abs() < 1e-9
+}
+
+/// A length unit for a message: its name when it is a common one, else its
+/// size in metres.
+fn unit_label(metres: f64) -> String {
+    let named = [(1.0, "metre"), (0.001, "millimetre"), (0.01, "centimetre"), (0.1, "decimetre"), (1000.0, "kilometre"), (0.3048, "foot"), (0.0254, "inch"), (1200.0 / 3937.0, "US survey foot")];
+    named.iter().find(|(m, _)| (m - metres).abs() <= 1e-12 * metres).map_or_else(|| format!("{metres} m"), |(_, name)| format!("{name}, {metres} m"))
+}
+
+/// A unit ratio without float noise (0.001, not 0.0010000000000000002).
+fn format_ratio(ratio: f64) -> String {
+    let s = format!("{ratio:.12}");
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    if s == "0" { format!("{ratio:e}") } else { s.to_string() }
 }
 
 /// The one 3D `IfcGeometricRepresentationContext` of type `Model`, whose

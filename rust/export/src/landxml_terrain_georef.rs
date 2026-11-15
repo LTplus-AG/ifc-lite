@@ -28,9 +28,6 @@ pub(crate) struct MapFrame {
     georef: GeoReference,
     /// Metres per map unit (`IfcProjectedCRS.MapUnit`, else the project unit).
     map_metres: f64,
-    /// The map unit is an `IfcSIUnit` (a metre, possibly prefixed), not a
-    /// conversion-based unit such as a foot.
-    map_unit_si: bool,
     pub crs: Crs,
 }
 
@@ -40,23 +37,6 @@ impl MapFrame {
         let (e, n, h) = self.georef.local_to_map(x, y, z);
         [n * self.map_metres, e * self.map_metres, h * self.map_metres]
     }
-
-    /// `(easting, northing, height)` in map units, from local project-unit
-    /// coordinates.
-    pub fn to_map(&self, x: f64, y: f64, z: f64) -> [f64; 3] {
-        let (e, n, h) = self.georef.local_to_map(x, y, z);
-        [e, n, h]
-    }
-
-    /// Metres per map unit.
-    pub fn map_metres(&self) -> f64 {
-        self.map_metres
-    }
-
-    /// Whether the map unit is a (prefixed) SI metre.
-    pub fn map_unit_si(&self) -> bool {
-        self.map_unit_si
-    }
 }
 
 /// What a whole-file scan has to find once, whatever terrains are selected.
@@ -64,7 +44,6 @@ pub(crate) struct ModelFacts {
     /// `(id, type, SourceCRS)` of every `IfcMapConversion` / `…Scaled`.
     conversions: Vec<(u32, IfcType, Option<u32>)>,
     project_metres: f64,
-    project_unit_si: bool,
     pub project_name: Option<String>,
 }
 
@@ -84,24 +63,14 @@ impl ModelFacts {
             return Err(format!("the model has {} IfcProject entities; exactly one is required to resolve its length unit", projects.len()));
         };
         let project = decode(decoder, project_id)?;
-        let (project_metres, project_unit_si) = project_length_metres(&project, decoder)?;
+        let project_metres = project_length_metres(&project, decoder)?;
         let project_name = text(&project, slot::IfcProject::NAME).or_else(|| text(&project, slot::IfcProject::LONG_NAME));
         let mut conversions = Vec::with_capacity(conversion_ids.len());
         for (id, kind) in conversion_ids {
             let source = decode(decoder, id)?.ref_at(slot::IfcMapConversion::SOURCE_CRS);
             conversions.push((id, kind, source));
         }
-        Ok(Self { conversions, project_metres, project_unit_si, project_name })
-    }
-
-    /// Metres per project length unit.
-    pub fn project_metres(&self) -> f64 {
-        self.project_metres
-    }
-
-    /// The `IfcMapConversion` operations found, as `(id, SourceCRS)`.
-    pub fn conversion_sources(&self) -> impl Iterator<Item = (u32, Option<u32>)> + '_ {
-        self.conversions.iter().map(|(id, _, source)| (*id, *source))
+        Ok(Self { conversions, project_metres, project_name })
     }
 
     /// The map frame for a representation authored in `context`: the one
@@ -144,35 +113,21 @@ impl ModelFacts {
             vertical_datum: text(&target, slot::IfcProjectedCRS::VERTICAL_DATUM),
         };
         // IFC: an omitted MapUnit is the project length unit.
-        let (map_metres, map_unit_si) = match target.ref_at(slot::IfcProjectedCRS::MAP_UNIT) {
-            Some(unit) => {
-                let unit = decode(decoder, unit)?;
-                (length_unit_metres(&unit)?, unit.ifc_type == IfcType::IfcSIUnit)
-            }
-            None => (self.project_metres, self.project_unit_si),
+        let map_metres = match target.ref_at(slot::IfcProjectedCRS::MAP_UNIT) {
+            Some(unit) => length_unit_metres(&decode(decoder, unit)?)?,
+            None => self.project_metres,
         };
         // Scale is the combined local-to-map unit conversion. Defaulting it to
         // 1 across a unit change would misplace every vertex by that ratio.
         let scale_omitted = conversion.attr(slot::IfcMapConversion::SCALE).is_none_or(AttributeValue::is_null);
         if scale_omitted && (map_metres - self.project_metres).abs() > 1e-12 * map_metres.max(self.project_metres) {
-            // The most common authoring error (a millimetre project, a metre
-            // map unit, no Scale): name both units and the value to set, but
-            // never apply it.
-            let ratio = self.project_metres / map_metres;
-            return Err(format!(
-                "IfcMapConversion #{conversion_id} omits Scale while the project length unit ({}) and the map unit ({}) differ; \
-                 Scale is required and the exporter will not infer it. If the map conversion is otherwise right, set IfcMapConversion.Scale to {} \
-                 (map units per project unit)",
-                unit_label(self.project_metres),
-                unit_label(map_metres),
-                format_ratio(ratio),
-            ));
+            return Err(format!("IfcMapConversion #{conversion_id} omits Scale while the project and map length units differ; Scale is required, the exporter will not infer it"));
         }
         let georef = GeoRefExtractor::extract(decoder, &[(conversion_id, kind), (crs_id, IfcType::IfcProjectedCRS)])
             .map_err(|error| error.to_string())?
             .filter(|georef| georef.has_map_conversion)
             .ok_or_else(|| format!("IfcMapConversion #{conversion_id} cannot be resolved exactly"))?;
-        Ok(MapFrame { georef, map_metres, map_unit_si, crs })
+        Ok(MapFrame { georef, map_metres, crs })
     }
 }
 
@@ -188,8 +143,7 @@ pub(crate) fn text(entity: &DecodedEntity, at: impl Into<slot::SlotIx<slot::kind
     (!value.is_empty()).then_some(value)
 }
 
-/// Metres per project length unit, and whether that unit is an `IfcSIUnit`.
-fn project_length_metres(project: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(f64, bool), String> {
+fn project_length_metres(project: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<f64, String> {
     let assignment = project.ref_at(slot::IfcProject::UNITS_IN_CONTEXT).ok_or("IfcProject has no UnitsInContext; the exporter will not assume metres")?;
     let assignment = decode(decoder, assignment)?;
     let mut length_units = Vec::new();
@@ -200,23 +154,9 @@ fn project_length_metres(project: &DecodedEntity, decoder: &mut EntityDecoder) -
         }
     }
     match &length_units[..] {
-        [unit] => Ok((length_unit_metres(unit)?, unit.ifc_type == IfcType::IfcSIUnit)),
+        [unit] => length_unit_metres(unit),
         units => Err(format!("IfcProject.UnitsInContext defines {} length units; exactly one is required", units.len())),
     }
-}
-
-/// A length unit for a message: its name when it is a common one, else its
-/// size in metres.
-fn unit_label(metres: f64) -> String {
-    let named = [(1.0, "metre"), (0.001, "millimetre"), (0.01, "centimetre"), (0.1, "decimetre"), (1000.0, "kilometre"), (0.3048, "foot"), (0.0254, "inch"), (1200.0 / 3937.0, "US survey foot")];
-    named.iter().find(|(m, _)| (m - metres).abs() <= 1e-12 * metres).map_or_else(|| format!("{metres} m"), |(_, name)| format!("{name}, {metres} m"))
-}
-
-/// A unit ratio without float noise (0.001, not 0.0010000000000000002).
-fn format_ratio(ratio: f64) -> String {
-    let s = format!("{ratio:.12}");
-    let s = s.trim_end_matches('0').trim_end_matches('.');
-    if s == "0" { format!("{ratio:e}") } else { s.to_string() }
 }
 
 /// Metres per one `unit`, refusing anything that is not a known length unit.
@@ -236,6 +176,66 @@ fn length_unit_metres(unit: &DecodedEntity) -> Result<f64, String> {
     };
     metres.filter(|metres: &f64| metres.is_finite() && *metres > 0.0)
         .ok_or_else(|| format!("length unit #{} ({}) is not one the exporter can convert to metres exactly", unit.id, unit.ifc_type.name()))
+}
+
+/// Read access for the CityJSON exporter, which takes its map frame from this
+/// resolver. Compiled only with the `cityjson` feature, so the default engine
+/// (which builds without it) links exactly the code above.
+#[cfg(feature = "cityjson")]
+impl MapFrame {
+    /// `(easting, northing, height)` in map units, from local project-unit
+    /// coordinates.
+    pub fn to_map(&self, x: f64, y: f64, z: f64) -> [f64; 3] {
+        let (e, n, h) = self.georef.local_to_map(x, y, z);
+        [e, n, h]
+    }
+
+    /// Metres per map unit.
+    pub fn map_metres(&self) -> f64 {
+        self.map_metres
+    }
+}
+
+#[cfg(feature = "cityjson")]
+impl ModelFacts {
+    /// Metres per project length unit.
+    pub fn project_metres(&self) -> f64 {
+        self.project_metres
+    }
+
+    /// The `IfcMapConversion` operations found, as `(id, SourceCRS)`.
+    pub fn conversion_sources(&self) -> impl Iterator<Item = (u32, Option<u32>)> + '_ {
+        self.conversions.iter().map(|(id, _, source)| (*id, *source))
+    }
+
+    /// Metres per map unit of the one conversion [`Self::frame`] would use for
+    /// `context` (its TargetCRS MapUnit, else the project unit), for a caller
+    /// that explains a refusal; `None` when that conversion cannot be found.
+    /// The context walk mirrors `frame`'s, which stays untouched.
+    pub fn map_unit_metres(&self, context: u32, decoder: &mut EntityDecoder) -> Option<f64> {
+        let mut matching = Vec::new();
+        let mut current = Some(context);
+        let mut seen = Vec::new();
+        while let Some(id) = current {
+            if seen.len() >= MAX_CONTEXT_DEPTH || seen.contains(&id) {
+                return None;
+            }
+            seen.push(id);
+            matching.extend(self.conversions.iter().filter(|(_, _, source)| *source == Some(id)));
+            let node = decode(decoder, id).ok()?;
+            current = match node.ifc_type {
+                IfcType::IfcGeometricRepresentationSubContext => Some(node.ref_at(slot::IfcGeometricRepresentationSubContext::PARENT_CONTEXT)?),
+                _ => None,
+            };
+        }
+        let [(conversion_id, _, _)] = matching[..] else { return None };
+        let crs_id = decode(decoder, *conversion_id).ok()?.ref_at(slot::IfcMapConversion::TARGET_CRS)?;
+        let target = decode(decoder, crs_id).ok()?;
+        match target.ref_at(slot::IfcProjectedCRS::MAP_UNIT) {
+            Some(unit) => length_unit_metres(&decode(decoder, unit).ok()?).ok(),
+            None => Some(self.project_metres),
+        }
+    }
 }
 
 #[cfg(test)]

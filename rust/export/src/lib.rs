@@ -12,6 +12,9 @@
 mod test_support;
 
 mod adjacency;
+// CityJSON 2.0 writer: behind the default-on `cityjson` feature, which the
+// default engine wasm (built without default features) does not enable.
+#[cfg(feature = "cityjson")]
 mod cityjson;
 mod collada;
 mod collada_document;
@@ -101,6 +104,7 @@ mod xml_text;
 /// The STEP string-literal escaper; `escape`'s docs say why it is public.
 pub use step_text::escape as escape_step_string;
 
+#[cfg(feature = "cityjson")]
 pub use cityjson::{try_export_cityjson, CityJsonExport, CityJsonOptions, CityJsonRefusal};
 pub use collada::try_export_collada_from_meshes;
 pub use csv::{export_csv, CsvMode, CsvOptions};

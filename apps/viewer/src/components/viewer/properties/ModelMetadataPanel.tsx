@@ -33,6 +33,7 @@ import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
 import { useLoadWindowHold } from '@/hooks/loadWindow';
 import { isModelStreaming } from '@/lib/streaming-refresh';
+import { TriangleCountRow } from './TriangleCountRow';
 import { GaussianCaptureMetadataPanel } from './GaussianCaptureMetadataPanel';
 
 /** Model metadata. A Gaussian capture is a different component type, so
@@ -273,6 +274,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
             value={model.sourceSchema ? formatLocaleNumber(locale, landXmlStats.overlays) : stats ? formatLocaleNumber(locale, stats.elementsWithGeometry) : STAT_PENDING}
             copy={false}
           />
+          <TriangleCountRow modelId={model.id} />
           {!model.sourceSchema && (
             <InspectorRow label={t('properties.modelMetadata.maxExpressId')} value={formatLocaleNumber(locale, maxExpressId)} copy={false} />
           )}

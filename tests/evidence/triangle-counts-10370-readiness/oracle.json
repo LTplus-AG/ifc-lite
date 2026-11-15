@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "The #10370 inspector and list must reject partial or unreplayed model geometry even when another source exists in the active Scene; keep all new modules and widgets loadable.",
+  "key": "apps/viewer/src/lib/model-triangle-counts.ts",
+  "mutation": "tests/evidence/triangle-counts-10370-readiness/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/triangle-counts.test.tsx"
+}

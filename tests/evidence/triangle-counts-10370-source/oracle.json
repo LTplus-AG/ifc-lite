@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "The #10370 source count must retain the actual indexed triangles; keep the new API loadable while suppressing its flat source contribution.",
+  "key": "packages/renderer/src/triangle-counts.ts",
+  "mutation": "tests/evidence/triangle-counts-10370-source/behaviour.oracle.patch",
+  "test": "packages/renderer/src/triangle-counts.test.ts"
+}

@@ -19,13 +19,14 @@
  *      the same storey the source belongs to (or skipped if the
  *      source isn't spatially contained)
  *
- * The function is pure — no I/O, no parser access. It accepts the
- * already-extracted source attributes and does the bookkeeping.
+ * The function performs no I/O. It accepts extracted product attributes and
+ * verifies parsed type members against the immutable source before writing.
  */
 
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
+import { validateTypeMembers } from './duplicate-type-members.js';
 
 /** A 3D vector — STEP-local metres. */
 export type Vec3 = [number, number, number];
@@ -39,7 +40,7 @@ export type Vec3 = [number, number, number];
  * rels.
  *
  * The resolver populates these from the parsed store; the in-store
- * builder stays parser-free.
+ * builder verifies a parsed type relationship before extending it.
  */
 export interface SourceAssociation {
   /** Existing rel's IFC type (e.g. `'IfcRelDefinesByProperties'`). */
@@ -186,14 +187,7 @@ export function duplicateInStore(
     );
   }
 
-  for (const association of source.associations ?? []) {
-    // Only a shared IfcRelDefinesByType is extended in place, so only it needs
-    // the collected RelatedObjects; other associations are replayed fresh.
-    if (association.relId !== undefined && !association.relatedIds?.length
-      && association.relType.toUpperCase() === 'IFCRELDEFINESBYTYPE') {
-      throw new Error('duplicateInStore: an IfcRelDefinesByType association with relId must include non-empty relatedIds before it can be extended');
-    }
-  }
+  for (const association of source.associations ?? []) validateTypeMembers(editor, association);
 
   // Offset is metres; the source location is in the file's native
   // length unit — convert before adding (a mm file would otherwise get

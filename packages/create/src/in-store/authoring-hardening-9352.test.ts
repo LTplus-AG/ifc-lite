@@ -138,3 +138,24 @@ it(`#9352 duplicate refuses ${list} relatedIds on a parsed type relationship bef
   expect(s.text()).toBe(text);
 });
 }
+
+it('#9352 complete parsed type members survive repeated copies and export/reopen', async () => {
+  let { s, wall, home } = await setup();
+  const other = addOrdinaryElementInStore(s.editor, d => resolveSpatialAnchor(s.store, home, d.getMutationView()),
+    { kind: 'wall', params: { Start: [0, 2, 0], End: [12, 2, 0], Thickness: .2, Height: 3 } });
+  const type = s.editor.addEntity('IfcWallType', ['0000000000000000000001', null, 'Type', null, null, null, null, null, null, '.STANDARD.']);
+  const rel = s.editor.addEntity('IfcRelDefinesByType', ['0000000000000000000002', null, null, null, [`#${wall}`, `#${other}`], `#${type.expressId}`]);
+  s = session(await parse(s.text()));
+  const source = resolveDuplicateSource(s.store, wall, s.editor);
+  const materialize = vi.spyOn(s.store.source, 'materialize');
+  const copies: number[] = [];
+  try {
+    copies.push(duplicateInStore(s.editor, source).newId);
+    // Reusing the same snapshot must keep the earlier live extension.
+    copies.push(duplicateInStore(s.editor, source).newId);
+    expect(materialize).not.toHaveBeenCalled();
+  } finally { materialize.mockRestore(); }
+  s = session(await parse(s.text()));
+  expect(readRelatedLists(s.store, 'IfcRelDefinesByType', s.view).find(row => row.relId === rel.expressId)?.relatedIds)
+    .toEqual([wall, other, ...copies]);
+});

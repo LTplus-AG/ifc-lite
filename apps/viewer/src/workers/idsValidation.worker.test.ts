@@ -122,9 +122,10 @@ async function validate(
     propertyOverlay,
     entityIds,
   };
+  const replyStart = posted.length;
   await onmessage!({ data: request } as MessageEvent<IdsWorkerRequest>);
 
-  const terminal = posted.filter((m) => m.type !== 'progress');
+  const terminal = posted.slice(replyStart).filter((m) => m.type !== 'progress');
   assert.equal(terminal.length, 1, `expected exactly one terminal reply, got ${JSON.stringify(terminal)}`);
   const reply = terminal[0];
   assert.equal(reply.type, 'complete', reply.type === 'error' ? reply.message : '');

@@ -133,8 +133,9 @@ ones built from the core entry.
 An inline cloud's optional f64 `origin` must be three finite coordinates in
 float32 range. `setPointClouds` and `addPointClouds` skip a cloud whose origin
 is not, with a warning, and it does not count toward picking;
-`PointCloudRenderer.addAsset` throws for it. `hasRenderablePointCloudOrigin(asset)`, from the
-package root, is that check, for code that counts the clouds that will render.
+`PointCloudRenderer.addAsset` throws for it. `isRenderablePointCloud(asset)`, from the
+package root, says whether a cloud renders (it has points and a renderable origin),
+for code that counts the clouds that will.
 
 ## Appearance triangle mapping
 

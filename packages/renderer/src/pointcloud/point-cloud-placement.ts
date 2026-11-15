@@ -86,10 +86,16 @@ export function originMatrix(origin: readonly [number, number, number]): Float64
   return new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
 }
 
-/** Whether an inline cloud's optional origin can cross the GPU boundary.
+/** Whether an inline cloud renders: it has points (a streamed scan's
+ * descriptor has none) and its optional origin can cross the GPU boundary.
  * Shared by upload, pick identity and the viewer's class histogram (#10094). */
-export function hasRenderablePointCloudOrigin(asset: { origin?: readonly number[] }): boolean {
-  return asset.origin == null || renderableCoordinates(asset.origin);
+export function isRenderablePointCloud(asset: { origin?: readonly number[] | null; chunk: { pointCount: number } }): boolean {
+  return asset.chunk.pointCount > 0 && (asset.origin == null || renderableCoordinates(asset.origin));
+}
+
+/** The f64 origin matrix of an inline cloud: undefined without an origin, null for an unrenderable one. */
+function pointCloudOriginMatrix(asset: PointCloudAsset): Float64Array | null | undefined {
+  return asset.origin == null ? undefined : originMatrix(asset.origin);
 }
 
 /**
@@ -123,7 +129,7 @@ export function withPointCloudOrigins(
   upload: (asset: PointCloudAsset, origin: Float64Array | undefined) => void,
 ): void {
   for (const asset of assets) {
-    const origin = asset.origin == null ? undefined : originMatrix(asset.origin);
+    const origin = pointCloudOriginMatrix(asset);
     if (origin === null) {
       console.warn(`[PointCloudRenderer] point cloud ${asset.expressId} skipped: origin ${asset.origin!.join(', ')} is not renderable`);
       continue;
@@ -134,7 +140,7 @@ export function withPointCloudOrigins(
 
 /** Single-asset uploads retain the throwing validation contract. */
 export function requirePointCloudOrigin(asset: PointCloudAsset): Float64Array | undefined {
-  const origin = asset.origin == null ? undefined : originMatrix(asset.origin);
+  const origin = pointCloudOriginMatrix(asset);
   if (origin === null) throw new Error('Pointcloud origin needs three finite coordinates in the renderable range.');
   return origin;
 }

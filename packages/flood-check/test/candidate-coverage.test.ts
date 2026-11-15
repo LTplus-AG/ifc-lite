@@ -72,6 +72,28 @@ function rampPlacedInside(b: Extra) {
   b.contain(b.storeys.eg.id, ramp);
 }
 
+/** An unplaceable door filling an opening whose body puts the hole at x 7..8 in an external south wall. */
+function unplacedDoorInPlacedOpening(b: Extra) {
+  const wall = b.add(`IFCWALL(${b.guid()},$,'Wand Süd 3',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},$,$,.STANDARD.)`);
+  b.pset(wall, 'Pset_WallCommon', 'IsExternal', 'IFCBOOLEAN(.T.)');
+  const hole = b.rectExtrusion(0, 0, 1, 2.1, 0.4, b.axis(7.5, -0.2, 1.05, b.dir(0, 1, 0), b.dir(1, 0, 0)), b.dir(0, 0, 1));
+  const opening = b.add(`IFCOPENINGELEMENT(${b.guid()},$,'Öffnung Tür lose',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([hole])},$,.OPENING.)`);
+  b.add(`IFCRELVOIDSELEMENT(${b.guid()},$,$,$,#${wall},#${opening})`);
+  const door = b.add(`IFCDOOR(${b.guid()},$,'Tür lose',$,$,$,$,$,2.1,1.,.DOOR.,$,$)`);
+  b.add(`IFCRELFILLSELEMENT(${b.guid()},$,$,$,#${opening},#${door})`);
+  b.contain(b.storeys.eg.id, wall);
+  b.contain(b.storeys.eg.id, door);
+}
+
+/** An unplaceable external stair whose flight is placed outside the house and descends 2 m. */
+function flightOfUnplacedStair(b: Extra) {
+  const body = b.rectExtrusion(0, 0, 2, 3, 2, b.axis(0, 0, -2), b.dir(0, 0, 1));
+  const flight = b.add(`IFCSTAIRFLIGHT(${b.guid()},$,'Lauf Kellerabgang',$,$,#${b.place(b.storeys.eg.pl, 5, -3, 0)},#${b.shape([body])},$,$,$,$,$,.STRAIGHT.)`);
+  const stair = b.add(`IFCSTAIR(${b.guid()},$,'Kellerabgang lose',$,$,$,$,$,.STRAIGHT_RUN_STAIR.)`);
+  b.add(`IFCRELAGGREGATES(${b.guid()},$,$,$,#${stair},(#${flight}))`);
+  b.contain(b.storeys.eg.id, stair);
+}
+
 const extract = async (extra: (b: Extra) => void) =>
   extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', extra })), { expectedCrs: 'EPSG:2056' });
 const deep = CODE['depth-gt-0.25'];
@@ -102,10 +124,31 @@ describe('the three reported cases', () => {
   });
 });
 
+describe('an element excluded for unreadable data does not take a checkable neighbour with it', () => {
+  it('an unplaceable door: its readable opening is checked as a hole, and the door is skipped with a reason', async () => {
+    const facts = await extract(unplacedDoorInPlacedOpening);
+    const hole = facts.candidates.find((c) => c.name === 'Öffnung Tür lose');
+    expect(hole).toMatchObject({ category: 'wall-opening', levelBasis: 'opening-body-bottom' });
+    expect(localOf(hole!.position).x).toBeCloseTo(7.5, 1);
+    expect(hole!.notes?.join()).toMatch(/filling .* is not a candidate/);
+    expect(facts.skipped.find((s) => s.ifcClass === 'IfcDoor' && s.reason === 'no readable IfcLocalPlacement chain')).toBeDefined();
+    const r = checkFloodExposure(facts, raster((l) => (l.y < 0 && l.x > 5 && l.x < 10 ? deep : CELL_NO_RUNOFF)), flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
+    expect(r.results.find((x) => x.candidate.name === 'Öffnung Tür lose')!.outcome).toBe('exposed');
+  });
+
+  it('an unplaceable stair: its placed flight is checked on its own', async () => {
+    const facts = await extract(flightOfUnplacedStair);
+    expect(facts.candidates.map((c) => c.name)).toContain('Lauf Kellerabgang');
+    expect(facts.skipped.find((s) => s.ifcClass === 'IfcStair' && s.reason === 'no readable IfcLocalPlacement chain')).toBeDefined();
+  });
+});
+
 describe('every element of a covered class is a candidate or skipped, exactly once', () => {
   /** Extra elements that each take a different exit of candidate selection. */
   const zoo = (b: Extra) => {
     doorAtWallOrigin(b);
+    unplacedDoorInPlacedOpening(b);
+    flightOfUnplacedStair(b);
     windowWithPartlyReadableOpening(b);
     rampPlacedInside(b);
     const { eg, og, ug } = b.storeys;
@@ -170,7 +213,15 @@ describe('every element of a covered class is a candidate or skipped, exactly on
     expect(problems).toEqual([]);
     for (const s of facts.skipped) expect(s.reason.length).toBeGreaterThan(10);
     // Kept rather than dropped: the elevator with no stated kind, the gate opening filled by a proxy.
-    expect(facts.candidates.map((c) => c.name)).toEqual(expect.arrayContaining(['Aufzug', 'Öffnung Tor Proxy', 'Rampe Garage']));
+    expect(facts.candidates.map((c) => c.name)).toEqual(
+      expect.arrayContaining(['Aufzug', 'Öffnung Tor Proxy', 'Rampe Garage', 'Öffnung Tür lose', 'Lauf Kellerabgang']),
+    );
+    // A skip that says another element reports for it is only true when that element is a candidate.
+    const candidateIds = new Set(candidates);
+    for (const s of facts.skipped) {
+      const m = /#(\d+), which is reported for it/.exec(s.reason);
+      if (m) expect(candidateIds.has(Number(m[1])), `${s.ifcClass} #${s.expressId}: ${s.reason}`).toBe(true);
+    }
     // An element that could not be placed is named in the warnings, which reach the result.
     expect(facts.warnings.join()).toMatch(/could not be placed .*Tür ohne Platz|Tür ohne Platz.*could not be placed/);
   });

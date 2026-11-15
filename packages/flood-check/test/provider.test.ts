@@ -111,6 +111,21 @@ describe('BAFU provider', () => {
     await expect(pending).rejects.toThrow('user cancelled');
   });
 
+  it('a response whose body stalls after the headers times out as a HazardRequestError, and the rendering check says unconfirmed', async () => {
+    const stalling = (async (_url: string, init?: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          // As a platform body read does: a plain AbortError, not the signal's reason.
+          init?.signal?.addEventListener('abort', () => controller.error(new DOMException('The operation was aborted', 'AbortError')));
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'image/png' } });
+    }) as unknown as typeof fetch;
+    const provider = createBafuRunoffProvider({ fetch: stalling, timeoutMs: 20 });
+    await expect(provider.fetchRaster({ bbox: SITE1, crs: 'EPSG:2056' })).rejects.toBeInstanceOf(HazardRequestError);
+    expect(await provider.confirmRendering!()).toMatchObject({ confirmed: false, detail: expect.stringMatching(/timed out/) });
+  });
+
   it('refuses a foreign CRS and boxes outside the layer', async () => {
     const provider = createBafuRunoffProvider({ fetch: stubFetch(fixture('bern-uniform-9px.png')).fetchImpl });
     await expect(provider.fetchRaster({ bbox: SITE1, crs: 'EPSG:21781' })).rejects.toMatchObject({ code: 'crs-mismatch' });

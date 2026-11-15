@@ -117,17 +117,21 @@ function collectFillings(ctx: CandidateContext, types: readonly string[], out: C
 
 function collectOpenings(ctx: CandidateContext, out: CandidateFact[]): void {
   const r = ctx.reader;
+  // A skip that says another element reports for this one is only true when that element is a candidate.
+  const reported = new Set(out.map((c) => c.expressId));
   for (const id of r.idsOfType('IFCOPENINGELEMENT')) {
     const entity = r.entity(id);
     if (!entity) continue;
     // A light well named so is collected as one.
     if (LIGHT_WELL_NAME.test(label(ctx, entity))) continue;
-    // Filled by a door or window: reported through it. Filled by anything else (a gate as a proxy): still a hole.
+    // Filled by a door or window that is a candidate: reported through it. Otherwise (a gate as a proxy, a door that
+    // could not be placed or was excluded) the hole is checked on its own.
     const filling = r.related(id, RelationshipType.FillsElement, 'forward').map((f) => r.entity(f)).find((f) => f && FILLING_TYPES.has(f.type));
-    if (filling) {
+    if (filling && reported.has(filling.expressId)) {
       skip(ctx, entity, `filled by ${r.className(filling)} #${filling.expressId}, which is reported for it`);
       continue;
     }
+    const fillingNote = filling ? `its filling ${r.className(filling)} #${filling.expressId} is not a candidate (see skipped), so the hole is checked itself` : null;
     if (predefinedType(r, entity) === 'RECESS') {
       skip(ctx, entity, 'a RECESS opening, not through the wall');
       continue;
@@ -164,11 +168,13 @@ function collectOpenings(ctx: CandidateContext, out: CandidateFact[]): void {
       skip(ctx, entity, reason.not);
       continue;
     }
-    const fact = base(ctx, entity, 'wall-opening', at, `unfilled opening; ${reason}${host ? '' : ' (no host element)'}`, levelBasis);
+    const fact = base(ctx, entity, 'wall-opening', at, `${filling ? 'opening' : 'unfilled opening'}; ${reason}${host ? '' : ' (no host element)'}`, levelBasis);
+    const notes = fillingNote ? [fillingNote] : [];
     if (at.partial) {
       fact.levelIsUpperEstimate = true;
-      fact.notes = ['part of the opening\'s body cannot be read, so it may reach lower: the level is an upper estimate'];
+      notes.push('part of the opening\'s body cannot be read, so it may reach lower: the level is an upper estimate');
     }
+    if (notes.length > 0) fact.notes = notes;
     if (host) fact.host = { expressId: host.expressId, ifcClass: r.className(host) };
     out.push(fact);
   }
@@ -220,18 +226,26 @@ function descentEvidence(ctx: CandidateContext, entity: DecodedEntity, level: nu
 
 function collectDescents(ctx: CandidateContext, types: readonly string[], category: 'stair' | 'ramp', out: CandidateFact[]): void {
   const r = ctx.reader;
+  // How each container was decided (containers come before their flights in `types`): a flight is reported or assessed
+  // through it, unless the container could not be placed, or is no stair or ramp: then the flight is checked on its own.
+  const decided = new Map<number, string>();
+  const skipAs = (e: DecodedEntity, reason: string) => {
+    decided.set(e.expressId, reason);
+    skip(ctx, e, reason);
+  };
   for (const type of types) {
     for (const id of r.idsOfType(type)) {
       const entity = r.entity(id);
       if (!entity) continue;
       const container = type.endsWith('FLIGHT') ? r.related(id, RelationshipType.Aggregates, 'inverse')[0] : undefined;
-      if (container !== undefined) {
-        skip(ctx, entity, `part of #${container}, which is reported for it`);
+      const verdict = container === undefined ? undefined : decided.get(container);
+      if (verdict !== undefined && verdict !== NO_PLACEMENT) {
+        skip(ctx, entity, verdict === 'candidate' ? `part of #${container}, which is reported for it` : `part of #${container}, assessed with it (${verdict})`);
         continue;
       }
       const at = placed(ctx, entity);
       if (!at) {
-        skip(ctx, entity, NO_PLACEMENT);
+        skipAs(entity, NO_PLACEMENT);
         continue;
       }
       const external = isExternal(r, entity);
@@ -245,15 +259,16 @@ function collectDescents(ctx: CandidateContext, types: readonly string[], catego
         : !body.complete && Math.abs(d) <= ctx.boundaryTolerance ? `placed within ${ctx.boundaryTolerance} m of the outline and its body cannot be fully read`
         : null;
       if (!external && !outside) {
-        skip(ctx, entity, `interior ${category}: placed ${Math.abs(d).toFixed(2)} m inside the footprint${body.complete ? ' and its body lies inside it' : ''}${external === false ? '; IsExternal = false' : ''}`);
+        skipAs(entity, `interior ${category}: placed ${Math.abs(d).toFixed(2)} m inside the footprint${body.complete ? ' and its body lies inside it' : ''}${external === false ? '; IsExternal = false' : ''}`);
         continue;
       }
       const evidence = descentEvidence(ctx, entity, at.level, body);
       if (!evidence.keep) {
-        skip(ctx, entity, `external ${category}: ${evidence.why}`);
+        skipAs(entity, `external ${category}: ${evidence.why}`);
         continue;
       }
       const why = external ? 'IsExternal' : `${outside}${external === false ? ' (despite IsExternal = false)' : ''}`;
+      decided.set(id, 'candidate');
       out.push(base(ctx, entity, category, { position: at.position, level: ctx.groundLevel }, `${why}; ${evidence.why}; entry at the terrain`, 'ground-storey-or-terrain'));
     }
   }

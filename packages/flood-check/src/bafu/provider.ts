@@ -163,7 +163,15 @@ async function fetchBytes(url: string, fetchImpl: typeof fetch, signal: AbortSig
       throw new HazardRequestError(`hazard service answered HTTP ${response.status}`, response.status);
     }
     const contentType = response.headers.get('content-type') ?? '';
-    const bytes = new Uint8Array(await response.arrayBuffer());
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(await response.arrayBuffer());
+    } catch (error) {
+      // The body can fail after the headers (a stalled stream hit by the timeout, a dropped connection): typed like the request.
+      if (timed.signal.reason instanceof HazardRequestError) throw timed.signal.reason;
+      if (signal.aborted) throw error;
+      throw new HazardRequestError(`hazard response body could not be read: ${error instanceof Error ? error.message : String(error)}`);
+    }
     if (!contentType.toLowerCase().startsWith('image/png')) {
       const text = new TextDecoder().decode(bytes.subarray(0, 400)).replace(/\s+/g, ' ').trim();
       throw new HazardResponseError(`hazard service answered ${contentType || 'without a content type'}, not a PNG: ${text}`);

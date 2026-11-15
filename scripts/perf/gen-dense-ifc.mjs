@@ -88,6 +88,9 @@ export function ellipsoid(rand, rings, segs, rx, ry, rz, jitter) {
   return { pts, tris };
 }
 
+/** Schemas the generator can write; both kinds are checked against this before anything runs. */
+export const SCHEMAS = Object.freeze(['IFC4', 'IFC2X3']);
+
 export const DEFAULTS = Object.freeze({ kind: 'tfs', rings: 24, segs: 48, psets: 0, seed: 1, grid: 3 });
 
 /**
@@ -98,6 +101,7 @@ export function generateDenseIfc(sink, options) {
   const o = { ...DEFAULTS, ...options };
   const schema = o.schema ?? (o.kind === 'tfs' ? 'IFC4' : 'IFC2X3');
   if (!['tfs', 'brep'].includes(o.kind)) throw new Error(`unknown kind ${o.kind}`);
+  if (!SCHEMAS.includes(schema)) throw new Error(`unsupported schema ${schema}: use ${SCHEMAS.join(' or ')}`);
   if (o.kind === 'tfs' && schema !== 'IFC4') throw new Error('IfcTriangulatedFaceSet needs IFC4');
   if (!(o.elements > 0) && !(o.targetBytes > 0)) throw new Error('elements or targetBytes required');
   const int = (k, min) => { if (!Number.isInteger(o[k]) || o[k] < min) throw new Error(`${k} must be an integer >= ${min}, got ${o[k]}`); };
@@ -224,6 +228,7 @@ function main() {
   const bad = [...['elements', 'rings', 'segs', 'psets', 'seed'].filter((k) => values[k] !== undefined && !/^\d+$/.test(values[k])),
     ...['target-mb', 'grid'].filter((k) => values[k] !== undefined && !/^\d+(\.\d+)?$/.test(values[k]))];
   if (bad.length) { console.error(`gen-dense-ifc: not a plain non-negative number: ${bad.map((k) => `--${k} '${values[k]}'`).join(', ')}`); process.exit(2); }
+  if (values.schema !== undefined && !SCHEMAS.includes(values.schema)) { console.error(`gen-dense-ifc: unsupported --schema '${values.schema}': use ${SCHEMAS.join(' or ')}`); process.exit(2); }
   const out = positionals[0];
   if (!out || (!values['target-mb'] && !values.elements)) {
     console.error('usage: gen-dense-ifc.mjs OUT.ifc (--target-mb N | --elements N) [--kind tfs|brep] [--rings 24] [--segs 48] [--psets 0] [--seed 1] [--schema IFC4|IFC2X3] [--grid 3]');

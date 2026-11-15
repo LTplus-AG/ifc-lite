@@ -8,7 +8,8 @@ import { gaussianCaptureFrame, gaussianUploadPlacement } from './gaussianCapture
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import {
-  normalizeGaussianAttributes, type GaussianSplatApi, type GaussianSplatHandle, type NormalizedGaussianAttributes,
+  gaussianRowsFromAttributes, normalizeGaussianAttributes, type GaussianRowSource, type GaussianSplatApi, type GaussianSplatHandle,
+  type NormalizedGaussianAttributes,
 } from '@ifc-lite/renderer';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 import { modelIndices } from '../../lib/model-placement/model-indices.js';
@@ -52,10 +53,21 @@ export function prepareGaussianCapture(decoded: GaussianDecoded): PreparedGaussi
   return { attributes, decodeOrigin, count, shDegree, centerBounds };
 }
 
+/** What an upload needs: the capture's canonical rows (#9018) and the summary the store keeps. */
+export interface GaussianUploadCapture extends Pick<GaussianDecoded, 'count' | 'shDegree' | 'centerBounds'> {
+  rows: GaussianRowSource;
+  decodeOrigin: readonly [number, number, number];
+}
+
+/** Rows over arrays already in memory (the in-process decoder seam). */
+export function inMemoryGaussianCapture(prepared: PreparedGaussianCapture): GaussianUploadCapture {
+  return { ...prepared, rows: gaussianRowsFromAttributes(prepared.attributes) };
+}
+
 export interface GaussianUploadRequest {
   modelId: string;
   format: GaussianSplatModel['format'];
-  capture: PreparedGaussianCapture;
+  capture: GaussianUploadCapture;
   splats: GaussianSplatApi;
   /** Renderer generation captured before decoding; a different one refuses. */
   generation: number;
@@ -75,7 +87,8 @@ export interface GaussianUploadRequest {
  * `commit` (the store now owns it) or `rollback` (remove it) must run. */
 export interface GaussianUpload {
   record: GaussianSplatModel;
-  attributes: NormalizedGaussianAttributes;
+  /** The canonical rows; the registry keeps them for re-anchoring, never a copy of the rows. */
+  rows: GaussianRowSource;
   commit(): void;
   rollback(): void;
 }
@@ -100,7 +113,7 @@ export async function uploadGaussianCapture(request: GaussianUploadRequest): Pro
     // The adapter's acknowledgement literal is a renderer call detail, not the
     // admission decision: that is the build's (`gaussianAdmissionEnabled`, #8568).
     handle = await splats.add({
-      attributes: capture.attributes, placement: { matrix: gaussianUploadPlacement(placement, capture.decodeOrigin) }, modelIndex: slot.index, visible: request.visible,
+      rows: capture.rows, placement: { matrix: gaussianUploadPlacement(placement, capture.decodeOrigin) }, modelIndex: slot.index, visible: request.visible,
     }, { qualification: 'internal-unqualified', signal });
   } catch (error) {
     slot.release(); // A rejected add retains nothing, including this index.
@@ -110,7 +123,7 @@ export async function uploadGaussianCapture(request: GaussianUploadRequest): Pro
   if (!request.isCurrent() || signal.aborted) { rollback(); return null; }
   const { count, shDegree, centerBounds } = capture;
   return {
-    attributes: capture.attributes,
+    rows: capture.rows,
     record: {
       handle, format: request.format, count, shDegree, sourceCenterBounds: centerBounds,
       ...framed, decodeOrigin: capture.decodeOrigin, placementOrigin: request.placement ? 'explicit' : 'source', calibration: 'uncalibrated',

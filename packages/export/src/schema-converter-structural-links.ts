@@ -3,7 +3,20 @@
 import { getCanonicalEntityName, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { convertEntityType } from './schema-converter.js';
 import { listItems } from './schema-converter-structural-axes.js';
-import { refId } from './schema-ifc2x3-records.js';
+import { skipStepTrivia } from './step-slot-grammar.js';
+
+/** An entity reference slot, with STEP whitespace and comments around it allowed (#10248). */
+function slotRef(token: string | undefined): number | null {
+  const start = skipStepTrivia(token ?? '', 0);
+  const m = start < 0 ? null : /^#\s*(\d+)/.exec(token!.slice(start));
+  return m && skipStepTrivia(token!, start + m[0].length) === token!.length ? Number(m[1]) : null;
+}
+
+/** Whether the slot is the unset marker `$`, with STEP whitespace and comments around it allowed (#10248). */
+function slotUnset(token: string): boolean {
+  const start = skipStepTrivia(token, 0);
+  return start >= 0 && token[start] === '$' && skipStepTrivia(token, start + 1) === token.length;
+}
 
 const BECOMES = new Map<string, boolean>();
 /** Whether IFC4 `keyword` converts to an IFC2X3 subtype of `parent`, memoized per pair. */
@@ -43,9 +56,9 @@ export class StructuralLinks {
 
   /** The IfcRelConnectsStructuralElement attributes for an IFC4 `IFCRELASSIGNSTOPRODUCT` record of that shape. */
   link(entity: string, args: readonly string[]): string | undefined {
-    if (!this.typeOf || entity !== 'IFCRELASSIGNSTOPRODUCT' || args.length !== 7 || args[5].trim() !== '$') return undefined;
+    if (!this.typeOf || entity !== 'IFCRELASSIGNSTOPRODUCT' || args.length !== 7 || !slotUnset(args[5])) return undefined;
     const related = listItems(args[4]);
-    const member = related?.length === 1 ? refId(related[0]) : null, element = refId(args[6]);
+    const member = related?.length === 1 ? slotRef(related[0]) : null, element = slotRef(args[6]);
     if (member === null || element === null || !becomes(this.typeOf(member), 'IfcStructuralMember') || !becomes(this.typeOf(element), 'IfcElement')) return undefined;
     return `${args.slice(0, 4).join(',')},#${element},#${member}`;
   }

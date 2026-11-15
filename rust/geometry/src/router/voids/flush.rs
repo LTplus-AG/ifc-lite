@@ -25,7 +25,9 @@ use crate::kernel::mesh_bridge::SNAP_GRID;
 use crate::{Point3, Vector3};
 
 /// A host face up to this far beyond a cap lies on the cap. Four grid steps,
-/// 61 um in metres: two roundings (host and cutter) with a step to spare.
+/// 61 um in metres. Rounding moves a vertex up to 0.87 of a step along an
+/// oblique axis, so host and cutter together move under two steps; the other
+/// two are margin.
 const FLUSH_BAND: f64 = 4.0 * SNAP_GRID;
 
 /// [`FLUSH_BAND`] where coordinates reach `mag`: never narrower than f32

@@ -71,6 +71,7 @@
         "package.json",
         "tsconfig.json",
         "tsconfig.*.json",
+        "!tsconfig.tests.json",
         "vite.config.ts",
         "index.html"
       ],

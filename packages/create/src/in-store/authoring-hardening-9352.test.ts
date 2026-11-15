@@ -118,7 +118,8 @@ it('#9352 a level X-aligned beam without RefDirection uses the IFC default proje
   expect(levelTopFaceAbove({ dataStore: s.store, view: s.view, editor: s.editor }, beam, 'linear')).toBeCloseTo(.2, 8);
 });
 
-it('#9352 duplicate refuses empty relatedIds on a parsed type relationship before writing', async () => {
+for (const list of ['empty', 'missing source', 'missing other', 'extra'] as const) {
+it(`#9352 duplicate refuses ${list} relatedIds on a parsed type relationship before writing`, async () => {
   let { s, wall, home } = await setup();
   const other = addOrdinaryElementInStore(s.editor, d => resolveSpatialAnchor(s.store, home, d.getMutationView()),
     { kind: 'wall', params: { Start: [0, 2, 0], End: [12, 2, 0], Thickness: .2, Height: 3 } });
@@ -129,9 +130,11 @@ it('#9352 duplicate refuses empty relatedIds on a parsed type relationship befor
   const source = resolveDuplicateSource(s.store, wall, s.editor);
   const association = source.associations!.find(a => a.relId === rel.expressId)!;
   expect(association.relatedIds).toEqual([wall, other]);
-  association.relatedIds = [];
+  association.relatedIds = list === 'empty' ? [] : list === 'missing source' ? [other]
+    : list === 'missing other' ? [wall] : [wall, other, home];
   const before = s.snapshot(), text = s.text();
   expect(() => duplicateInStore(s.editor, source)).toThrow(/relatedIds/);
   expect(s.snapshot()).toEqual(before);
   expect(s.text()).toBe(text);
 });
+}

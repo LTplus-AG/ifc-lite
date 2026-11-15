@@ -90,7 +90,7 @@ ENDSEC;END-ISO-10303-21;`;
     const issues = computeValidationIssues(await new IfcParser().parseColumnar(new TextEncoder().encode(step).buffer as ArrayBuffer))
       .filter((issue) => issue.rule === 'structural-axis-drift');
     expect(issues.map((issue) => [issue.entityId, issue.target])).toEqual([[37, 27]]);
-    expect(issues[0].distance).toBeCloseTo(1, 6);
+    expect((issues[0] as { distance?: number }).distance).toBeCloseTo(1, 6);
   });
 
   it('IFC4: reports the six unlinked load-bearing elements of ISSUE_171 as warnings with their GlobalIds', async (ctx) => {

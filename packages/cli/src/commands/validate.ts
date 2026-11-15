@@ -236,6 +236,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   try {
     // Axis drift compares each member with its element's line, one shape read per element.
     // Read them only when the file has a curve member and a schema the reader supports.
+    // @raw-entity-enumeration-ok class census of the parsed file; no attribute decoding
     const hasCurveMember = [...(store.entityIndex?.byType.keys() ?? [])].some((type) => /^ifcstructuralcurvemember/i.test(type));
     const physicalAxes = hasCurveMember && store.schemaVersion !== 'IFC5' ? structuralPhysicalAxes(store) : undefined;
     const structural = structuralConsistencyIssues(store, { physicalAxes });

@@ -118,7 +118,8 @@ fn real_or_unset(v: Option<&Value>) -> Result<String, Unwritable> {
 /// `IFC4X3.exp` (`IFC4X3_DEV_923b0514`, what was released as IFC4X3_ADD2)
 /// does; `IFC4X3` is the bare family identifier. RC identifiers fail closed.
 fn declares_map_conversion_scaled(file_schema: &str) -> bool {
-    matches!(file_schema.trim().to_ascii_uppercase().as_str(), "IFC4X3" | "IFC4X3_ADD2")
+    let token = file_schema.trim();
+    token.eq_ignore_ascii_case("IFC4X3") || token.eq_ignore_ascii_case("IFC4X3_ADD2")
 }
 
 /// `scaledUndeclaredWarning`, verbatim.
@@ -130,12 +131,9 @@ fn scaled_undeclared_warning(file_schema: &str) -> String {
 /// for. A partial triple is reported and treated as none (all three are
 /// mandatory on `IfcMapConversionScaled`; 1.0 for a gap would be a guess).
 fn requested_factors<'a>(mc: &'a Map<String, Value>, warnings: &mut Vec<String>) -> Option<[&'a Value; 3]> {
-    let given = [mc.get("factorX"), mc.get("factorY"), mc.get("factorZ")];
-    if given.iter().all(Option::is_none) {
-        return None;
-    }
-    match given {
+    match [mc.get("factorX"), mc.get("factorY"), mc.get("factorZ")] {
         [Some(x), Some(y), Some(z)] => Some([x, y, z]),
+        [None, None, None] => None,
         _ => {
             warnings.push(PARTIAL_FACTORS.to_string());
             None
@@ -144,7 +142,8 @@ fn requested_factors<'a>(mc: &'a Map<String, Value>, warnings: &mut Vec<String>)
 }
 
 /// `mapConversionLine`: `IFCMAPCONVERSIONSCALED` when all three factors
-/// were requested, else `IFCMAPCONVERSION`.
+/// were requested and the schema declares it, else `IFCMAPCONVERSION`. The
+/// scaled entity is the plain one plus FactorX/Y/Z, so one line serves both.
 fn map_conversion_line(
     id: u32,
     context: u32,
@@ -153,8 +152,14 @@ fn map_conversion_line(
     warnings: &mut Vec<String>,
     file_schema: &str,
 ) -> Result<String, Unwritable> {
-    let head = format!(
-        "#{context},#{crs},{},{},{},{},{},{}",
+    let mut factors = requested_factors(mc, warnings);
+    if factors.is_some() && !declares_map_conversion_scaled(file_schema) {
+        warnings.push(scaled_undeclared_warning(file_schema));
+        factors = None;
+    }
+    let mut line = format!(
+        "#{id}=IFCMAPCONVERSION{}(#{context},#{crs},{},{},{},{},{},{}",
+        if factors.is_some() { "SCALED" } else { "" },
         real_or_zero(mc.get("eastings"))?,
         real_or_zero(mc.get("northings"))?,
         real_or_zero(mc.get("orthogonalHeight"))?,
@@ -162,21 +167,12 @@ fn map_conversion_line(
         real_or_unset(mc.get("xAxisOrdinate"))?,
         real_or_unset(mc.get("scale"))?,
     );
-    let mut requested = requested_factors(mc, warnings);
-    if requested.is_some() && !declares_map_conversion_scaled(file_schema) {
-        warnings.push(scaled_undeclared_warning(file_schema));
-        requested = None;
+    for f in factors.into_iter().flatten() {
+        line.push(',');
+        line.push_str(&to_step_real(js_to_number(f))?);
     }
-    match requested {
-        Some(factors) => {
-            let mut reals = Vec::with_capacity(3);
-            for f in factors {
-                reals.push(to_step_real(js_to_number(f))?);
-            }
-            Ok(format!("#{id}=IFCMAPCONVERSIONSCALED({head},{});", reals.join(",")))
-        }
-        None => Ok(format!("#{id}=IFCMAPCONVERSION({head});")),
-    }
+    line.push_str(");");
+    Ok(line)
 }
 
 /// Queue edits on an existing record and nominate it as the TypeScript side does.
@@ -192,6 +188,9 @@ fn edit_existing(pass: &mut Pass<'_, '_>, id: u32, edits: Vec<(String, String)>)
 pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &str) -> Result<(), Unwritable> {
     let crs_ids = pass.of_type("IFCPROJECTEDCRS");
     let mut mc_ids = pass.of_type("IFCMAPCONVERSION");
+    // The edited record is `mc_ids[0]`: an IfcMapConversionScaled exactly
+    // when the file has no plain IfcMapConversion (the lists are disjoint).
+    let first_is_scaled = mc_ids.is_empty();
     mc_ids.extend(pass.of_type("IFCMAPCONVERSIONSCALED"));
 
     if let (Some(crs), Some(&id)) = (&g.projected_crs, crs_ids.first()) {
@@ -237,7 +236,7 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
             }
         }
         if let Some(factors) = requested_factors(mc, &mut pass.warnings) {
-            if pass.of_type("IFCMAPCONVERSIONSCALED").contains(&id) {
+            if first_is_scaled {
                 for (attr, v) in ["FactorX", "FactorY", "FactorZ"].into_iter().zip(factors) {
                     edits.push((attr.to_string(), json_to_js_string(v)));
                 }

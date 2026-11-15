@@ -153,13 +153,6 @@ fn write_line<W: Write>(
     out.write_all(b"\n").map(|()| true)
 }
 
-/// The header, naming the source's schema token unless this export converts,
-/// with how many records the log modified.
-fn write_header<W: Write>(out: &mut W, opts: &StepOptions, content: &[u8], converting: bool, target: &str, modifications: usize) -> io::Result<()> {
-    let source_header = crate::source_header::parse_source_header(content);
-    let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, target);
-    crate::step_header::write_header_counted(out, opts, source_header.as_ref(), header_schema, modifications)
-}
 
 fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
     if opts.included.is_some() {
@@ -202,12 +195,13 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     pass.warnings.extend(src.duplicates.iter().map(|&id| crate::step_index::RecordIndex::duplicate_warning(id)));
     let unwritable = |e: super::values::Unwritable| invalid(format!("export_step_with_log: {}", e.0));
     let collected = collect(&mut pass, &mut base);
+    // The FILE_SCHEMA this export declares: the source's token unless it
+    // converts. It heads the output and decides whether
+    // IfcMapConversionScaled may be written (TS: `pass.schemaToken`).
+    let source_header = crate::source_header::parse_source_header(content);
+    let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, &target);
     if let Some(georef) = &log.georef_mutations {
-        // The FILE_SCHEMA this export declares, which decides whether
-        // IfcMapConversionScaled may be written (TS: `pass.schemaToken`).
-        let source_header = crate::source_header::parse_source_header(content);
-        let file_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, &target).to_string();
-        super::georef::apply(&mut pass, georef, &file_schema).map_err(unwritable)?;
+        super::georef::apply(&mut pass, georef, header_schema).map_err(unwritable)?;
     }
     retain_shared_atoms(&mut pass);
 
@@ -257,7 +251,8 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     generate(&mut pass, collected).map_err(unwritable)?;
     write_created(&mut pass).map_err(unwritable)?;
 
-    write_header(out, opts, content, converting, &target, pass.new_entity_count + pass.ledger.modified_count())?;
+    // The header, with how many records the log modified.
+    crate::step_header::write_header_counted(out, opts, source_header.as_ref(), header_schema, pass.new_entity_count + pass.ledger.modified_count())?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, target_is_ifc2x3);
 

@@ -13,14 +13,14 @@ use crate::{Mesh, Point3, Vector3};
 /// `n`, so a coordinate tangent to the plane, however large, adds nothing.
 /// The clipper leaves every copy of a section vertex on the plane this way.
 fn lies_on_plane(p: Point3<f64>, plane_point: Point3<f64>, n: Vector3<f64>) -> bool {
-    let along: f64 = (0..3).map(|k| n[k].abs() * (p[k].abs() + plane_point[k].abs())).sum();
+    let along = n.x.abs() * (p.x.abs() + plane_point.x.abs())
+        + n.y.abs() * (p.y.abs() + plane_point.y.abs())
+        + n.z.abs() * (p.z.abs() + plane_point.z.abs());
     (p - plane_point).dot(&n).abs() <= 8.0 * f64::from(f32::EPSILON) * along + f64::MIN_POSITIVE
 }
 
-fn point_at(mesh: &Mesh, i: usize) -> Point3<f64> {
-    let at = i * 3;
-    let c = |k: usize| mesh.positions[at + k] as f64;
-    Point3::new(c(0), c(1), c(2))
+fn point(c: &[f32; 3]) -> Point3<f64> {
+    Point3::new(c[0] as f64, c[1] as f64, c[2] as f64)
 }
 
 /// Weld the mesh's vertices on a grid of `weld_eps`, as (position, on the cut
@@ -42,16 +42,16 @@ pub(super) fn weld_section(
     let mut on_plane: Vec<bool> = Vec::new();
     let mut exact: Vec<bool> = Vec::new();
     let mut welded: Vec<u32> = Vec::with_capacity(vcount);
-    for i in 0..vcount {
-        let at = i * 3;
-        let key = (quant(mesh.positions[at]), quant(mesh.positions[at + 1]), quant(mesh.positions[at + 2]));
-        let p = point_at(mesh, i);
+    for c in mesh.positions.as_chunks::<3>().0 {
+        let key = (quant(c[0]), quant(c[1]), quant(c[2]));
+        let p = point(c);
         let id = match weld.get(&key) {
             Some(&id) => {
-                if !exact[id as usize] && lies_on_plane(p, plane_point, n) {
-                    pos[id as usize] = p;
-                    on_plane[id as usize] = true;
-                    exact[id as usize] = true;
+                let cell = (exact.get_mut(id as usize), on_plane.get_mut(id as usize), pos.get_mut(id as usize));
+                if let (Some(exact), Some(on), Some(at)) = cell {
+                    if !*exact && lies_on_plane(p, plane_point, n) {
+                        (*exact, *on, *at) = (true, true, p);
+                    }
                 }
                 id
             }
@@ -86,10 +86,10 @@ pub(super) fn snap_to_section(
     n: Vector3<f64>,
     (pos, on_plane, welded): (&[Point3<f64>], &[bool], &[u32]),
 ) {
-    for (i, &id) in welded.iter().enumerate() {
-        if on_plane[id as usize] && lies_on_plane(point_at(mesh, i), plane_point, n) {
-            let p = pos[id as usize];
-            mesh.positions[i * 3..i * 3 + 3].copy_from_slice(&[p.x as f32, p.y as f32, p.z as f32]);
+    for (c, &id) in mesh.positions.as_chunks_mut::<3>().0.iter_mut().zip(welded) {
+        let (Some(true), Some(p)) = (on_plane.get(id as usize), pos.get(id as usize)) else { continue };
+        if lies_on_plane(point(c), plane_point, n) {
+            *c = [p.x as f32, p.y as f32, p.z as f32];
         }
     }
 }

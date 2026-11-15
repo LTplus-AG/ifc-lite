@@ -384,9 +384,8 @@ fn gate_rejected_split(host: Host, recess: Recess, wall_turn: f64, step: u32) ->
 /// turn 0 take the fallback: at the origin, offset 2.685, 24 unpaired edges
 /// and 6.1 litres too much; at the kilometre site, offset 2.274, 43 unpaired
 /// edges and 28.9 litres too little. main 190d2fdb30 reads the same,
-/// placement for placement, over all 72 placements of that host it was
-/// measured at (walls 0, 42 and 90 deg). Remove the pin once the gate's
-/// fallback closes them.
+/// placement for placement (measured over walls 0, 42 and 90 deg; this test
+/// runs 0 and 90). Remove the pin once the gate's fallback closes them.
 fn gate_rejected_meshed(recess: Recess, at_origin: bool, wall_turn: f64, step: u32) -> GatePin {
     if !cfg!(feature = "csg_manifold_gate") || !matches!(recess, Recess::ToInterfaceAtTop) || wall_turn != 0.0 {
         return None;

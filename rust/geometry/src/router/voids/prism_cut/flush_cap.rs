@@ -26,9 +26,12 @@
 //! it and the moved cap.
 //!
 //! A cap with only its floor in its plane removes nothing there: an opening
-//! the host already has. Nor is a cap seated where a host face runs through
-//! its plane over the footprint: material continues past the cap there with
-//! no floor face, and a moved cap would cut into it. Both keep the plain cut.
+//! the host already has. Nor is a cap seated where host material past it
+//! reaches its plane over the footprint: a face through the plane, or one
+//! from past the cap that ends at the plane strictly inside the footprint
+//! (its mesh may be split there). Material may continue there with no floor
+//! face, and a moved cap would cut into it. Both keep the plain cut, which can
+//! also refuse a body that truly ends at a floor there.
 
 use super::extension::{extend_prism_caps, tri_touches_slab_footprint};
 use super::frame::PrismFrame;
@@ -142,21 +145,29 @@ pub(super) fn extend_and_seat_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[
             if hi < plane - allowance || lo > plane + allowance {
                 continue;
             }
-            let (below, above) = (lo < plane - allowance, hi > plane + allowance);
+            // Past the band away from the prism (`beyond`), and into it.
+            let (beyond, inside) = if high {
+                (hi > plane + allowance, lo < plane - allowance)
+            } else {
+                (lo < plane - allowance, hi > plane + allowance)
+            };
+            // Reaching into the prism only: no material past the cap.
+            if inside && !beyond {
+                continue;
+            }
             let along = faces_along(t, pf.d);
-            // Only side faces can carry material on through the plane, and
-            // only cap-parallel faces are flush.
-            if (below != above && along.is_some()) || (!below && !above && along.is_none()) {
+            // In the band but not cap-parallel: no use as a flush face.
+            if !beyond && along.is_none() {
                 continue;
             }
             if !tri_touches_slab_footprint(t, pf, &pf.profiles[slab], f64::NEG_INFINITY, f64::INFINITY, pad) {
                 continue;
             }
-            // Through the plane: in one triangle, or as a side face that ends
-            // in the band strictly inside the footprint, where its mesh may
-            // be split at the plane and carry on in the next triangle.
-            if below || above {
-                if (below && above) || depths_over_footprint(t, pf, -pad).is_some() {
+            // Material past the cap that reaches its plane: through it in one
+            // triangle, or ending in the band strictly inside the footprint,
+            // where its mesh may be split at the plane.
+            if beyond {
+                if inside || depths_over_footprint(t, pf, -pad).is_some() {
                     crossed = true;
                     break;
                 }

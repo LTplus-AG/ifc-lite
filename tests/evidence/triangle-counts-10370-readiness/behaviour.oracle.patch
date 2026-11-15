@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/lib/model-triangle-counts.ts
++++ b/apps/viewer/src/lib/model-triangle-counts.ts
+@@ -8,7 +8,7 @@
+   const model = state.models.get(modelId);
+   const complete = model
+     ? !model.geometryRestorePending && (
+-      model.geometryLoadState !== undefined ? !!model.geometryResult
++      model.geometryLoadState !== undefined ? model.geometryLoadState === 'complete'
+         : model.loadState !== undefined ? model.loadState === 'complete' : !!model.geometryResult)
+     : state.models.size === 0 && !!state.geometryResult;
+   return complete && !hasPendingInstancedShards(modelId);

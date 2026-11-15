@@ -15,6 +15,7 @@ import proj4 from 'proj4';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { resolveProjectionId } from '@/lib/geo/reproject';
+import { mapUnitAssumedMetres } from '@/lib/geo/ifc-spatial-reference';
 import { extractModelSpatialPlacement, type ModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
 import { siteContextHeightRefusal } from '@/hooks/ingest/ifcGeorefAssumptions';
 import { modelEgid, modelFootprint } from './site-context-subject';
@@ -31,6 +32,8 @@ export type SiteContextAnchor =
     crsAssumedFromName?: string;
     /** The model states no vertical datum; its heights will be taken as LN02. */
     heightAssumed: boolean;
+    /** The model's MapUnit reads as METRE, which an unreadable MapUnit also does: metres are assumed. */
+    mapUnitAssumed: boolean;
     /** The model's own building for the buildings layer: its EGID, else its footprint in EPSG:2056. */
     subject?: { egid?: string; footprint?: Array<Array<{ x: number; y: number }>> };
   }
@@ -109,5 +112,6 @@ export async function resolveSiteContextAnchor(modelId: string): Promise<SiteCon
     centre,
     ...(own.spatialReference.confidence === 'assumed' && own.spatialReference.horizontal ? { crsAssumedFromName: own.spatialReference.horizontal.id } : {}),
     heightAssumed: !verticalDeclared(own.spatialReference),
+    mapUnitAssumed: mapUnitAssumedMetres(own.spatialReference),
   };
 }

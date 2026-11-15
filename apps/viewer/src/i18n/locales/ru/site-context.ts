@@ -19,6 +19,7 @@ export const siteContextRu = {
   "siteContext.section.privacy": "Запросы идут из вашего браузера напрямую на geo.admin.ch и только после нажатия.",
   "siteContext.section.crsAssumed": "Система координат определена по её названию ({crs}).",
   "siteContext.section.heightAssumed": "В модели не указана система высот; её высоты будут считаться LN02.",
+  "siteContext.section.mapUnitAssumed": "Картографическая единица этой модели читается как метры; нечитаемая единица читается так же, поэтому предполагаются метры. Проверьте единицу, если окружение оказалось не на своём месте.",
   "siteContext.section.stats": "Запросов: {requests}, {size}, {seconds} с (из кэша: {cacheHits})",
   "siteContext.status.idle": "Не загружено",
   "siteContext.status.fetching": "Загрузка…",

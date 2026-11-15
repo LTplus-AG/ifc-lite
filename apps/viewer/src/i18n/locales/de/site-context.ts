@@ -19,6 +19,7 @@ export const siteContextDe = {
   "siteContext.section.privacy": "Anfragen gehen direkt aus Ihrem Browser an geo.admin.ch, und nur, wenn Sie klicken.",
   "siteContext.section.crsAssumed": "Das KBS wurde aus seinem Namen angenommen ({crs}).",
   "siteContext.section.heightAssumed": "Dieses Modell gibt kein Höhensystem an; seine Höhen werden als LN02 angenommen.",
+  "siteContext.section.mapUnitAssumed": "Die Karteneinheit dieses Modells wird als Meter gelesen; eine unlesbare Karteneinheit wird gleich gelesen, daher werden Meter angenommen. Prüfen Sie die Karteneinheit, falls die Umgebung am falschen Ort liegt.",
   "siteContext.section.stats": "{requests} Anfragen, {size}, {seconds} s ({cacheHits} aus dem Cache)",
   "siteContext.status.idle": "Nicht geladen",
   "siteContext.status.fetching": "Wird geladen …",

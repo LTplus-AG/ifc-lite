@@ -123,6 +123,7 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
           </fieldset>
           {anchor.crsAssumedFromName && <p className="text-xs text-muted-foreground">{t('siteContext.section.crsAssumed', { crs: anchor.crsAssumedFromName })}</p>}
           {anchor.heightAssumed && <p className="text-xs text-warn">{t('siteContext.section.heightAssumed')}</p>}
+          {anchor.mapUnitAssumed && <p className="text-xs text-warn">{t('siteContext.section.mapUnitAssumed')}</p>}
           <div className="flex items-center gap-2">
             <Button type="button" size="sm" className="h-7 px-2 text-xs" disabled={running || selected.size === 0} onClick={start}>
               <Mountain className="h-3 w-3" />{t('siteContext.section.load')}

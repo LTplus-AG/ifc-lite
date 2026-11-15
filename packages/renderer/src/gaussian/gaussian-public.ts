@@ -10,7 +10,7 @@ export type {
   GaussianComposition, GaussianCompositionFallback, GaussianCompositionMode, GaussianCompositionReport, GaussianTransparentLayers,
 } from './gaussian-composition.js';
 export type {
-  GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle,
+  GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle, GaussianSplatRowsInput,
   GaussianSplatPlacement, GaussianSplatState, GaussianSplatStats,
 } from './gaussian-types.js';
 

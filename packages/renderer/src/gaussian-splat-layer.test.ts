@@ -710,3 +710,25 @@ test('#9018 SH coefficients pack as round-to-nearest-even halves, with a float32
   assert.equal(large.scene().sources.at(-1)!.layout.shEncoding, 'float32', 'coefficients beyond half range keep float32');
   assert.equal(large.scene().sources.at(-1)!.sphericalHarmonics[0], 70_000);
 });
+
+test('#9018 an SH0 asset read after an SH1 asset in one pack gets zero coefficients, not the staged ones', async () => {
+  const h = harness();
+  const sh1 = countingRows(3, 1, 0.5);
+  const sh0 = countingRows(3, 0);
+  await h.layer.add({ rows: sh1.rows, placement: { matrix: IDENTITY }, modelIndex: 0 }, OPT_IN);
+  await h.layer.add({ rows: sh0.rows, placement: { matrix: IDENTITY }, modelIndex: 1 }, OPT_IN);
+  // Device recovery reads every asset into one fresh pack, sharing one staging set between them.
+  h.life.lost = true;
+  h.layer.release(false, false);
+  h.life.lost = false;
+  h.replaceDevice();
+  h.layer.frameReady();
+  await settle();
+  assert.equal(sh1.reads.count, 2, 'recovery read the SH1 asset');
+  assert.equal(sh0.reads.count, 2, 'and then the SH0 asset');
+  const packed = h.scene().sources.at(-1)!;
+  assert.equal(packed.layout.shDegree, 1);
+  const perRow = packed.sphericalHarmonics.length / packed.layout.rows;
+  assert.deepEqual([...packed.sphericalHarmonics.subarray(0, 3 * perRow)], Array(3 * perRow).fill(0.5), 'SH1 rows keep their coefficients');
+  assert.deepEqual([...packed.sphericalHarmonics.subarray(4 * perRow, 7 * perRow)], Array(3 * perRow).fill(0), 'SH0 rows (from row 4) carry no staged coefficients');
+});

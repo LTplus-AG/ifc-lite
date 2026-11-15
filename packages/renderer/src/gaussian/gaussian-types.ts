@@ -16,17 +16,25 @@ export interface GaussianSplatPlacement {
 }
 
 /**
- * One asset to add. `rows` is its canonical, re-readable source: the renderer keeps
- * no CPU copy of the rows and reads them again for every re-placement, repack and
- * device recovery (#9018). `attributes` is shorthand for `gaussianRowsFromAttributes`,
- * which keeps the caller's arrays alive for those re-reads.
+ * One normalized capture. Ownership of `attributes` transfers to the renderer on a
+ * successful add: it keeps no copy of its own and reads them again for every
+ * re-placement, repack and device recovery (#9018), so they must stay unmodified.
  */
-export type GaussianSplatAssetInput = GaussianSplatAssetCommon & (
-  | { readonly rows: GaussianRowSource; readonly attributes?: never }
-  | { readonly attributes: NormalizedGaussianAttributes; readonly rows?: never }
-);
+export interface GaussianSplatAssetInput {
+  readonly attributes: NormalizedGaussianAttributes;
+  readonly placement: GaussianSplatPlacement;
+  /** The caller's reserved federation slot; used only for the scene model translation and ownership. */
+  readonly modelIndex: number;
+  readonly visible?: boolean;
+}
 
-export interface GaussianSplatAssetCommon {
+/**
+ * One capture given as a re-readable row source instead of resident arrays (#9018):
+ * the renderer keeps no CPU copy and reads the rows again, in bounded chunks, for
+ * every re-placement, repack and device recovery.
+ */
+export interface GaussianSplatRowsInput {
+  readonly rows: GaussianRowSource;
   readonly placement: GaussianSplatPlacement;
   /** The caller's reserved federation slot; used only for the scene model translation and ownership. */
   readonly modelIndex: number;
@@ -82,7 +90,7 @@ export interface GaussianSplatStats {
 
 /** The internal adapter surface reachable through `Renderer.gaussianSplats`. */
 export interface GaussianSplatApi {
-  add(input: GaussianSplatAssetInput, options: GaussianSplatAddOptions): Promise<GaussianSplatHandle>;
+  add(input: GaussianSplatAssetInput | GaussianSplatRowsInput, options: GaussianSplatAddOptions): Promise<GaussianSplatHandle>;
   remove(handle: GaussianSplatHandle): boolean;
   setVisible(handle: GaussianSplatHandle, visible: boolean): boolean;
   setPlacement(handle: GaussianSplatHandle, placement: GaussianSplatPlacement): Promise<boolean>;

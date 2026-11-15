@@ -18,7 +18,7 @@ import { uploadRepack, type GaussianAssetRecord as AssetRecord } from './gaussia
 import type { SimilarityPlacement } from './gaussian-placement.js';
 import { gaussianReadiness, type GaussianReadiness } from './gaussian-readiness.js';
 export type { GaussianSplatApi } from './gaussian-types.js';
-import type { GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle, GaussianSplatPlacement, GaussianSplatState, GaussianSplatStats } from './gaussian-types.js';
+import type { GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle, GaussianSplatPlacement, GaussianSplatRowsInput, GaussianSplatState, GaussianSplatStats } from './gaussian-types.js';
 import { anchoredCamera, boundsChange, centreClipFilter, clipKey, layerStats, sameTranslation, STATES, unionBounds } from './gaussian-frame.js';
 import { GaussianGlassComposer, type DeferredPassRecorder, type GaussianCompositionMode, type GlassFrameInput, type GlassVisibility } from './gaussian-glass-frame.js';
 import type { PickClipState } from '../pick-types.js';
@@ -70,7 +70,7 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     return gaussianReadiness(life.ready, life.lost, life.disposed, life.generation, this.slot.upstream);
   }
 
-  async add(input: GaussianSplatAssetInput, options: GaussianSplatAddOptions): Promise<GaussianSplatHandle> {
+  async add(input: GaussianSplatAssetInput | GaussianSplatRowsInput, options: GaussianSplatAddOptions): Promise<GaussianSplatHandle> {
     if (options?.qualification !== 'internal-unqualified') {
       throw new GaussianSplatError('not-ready', 'Gaussian rendering is unqualified; internal use must pass { qualification: "internal-unqualified" }.');
     }

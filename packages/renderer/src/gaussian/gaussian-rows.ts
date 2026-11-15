@@ -100,10 +100,8 @@ export function validateGaussianRows(rows: GaussianRowSource): void {
 }
 
 /** The canonical rows of an `add` input, validated at the ownership boundary. */
-export function gaussianAssetRows(
-  input: { readonly rows: GaussianRowSource; readonly attributes?: never } | { readonly attributes: NormalizedGaussianAttributes; readonly rows?: never },
-): GaussianRowSource {
-  if (input.rows) { validateGaussianRows(input.rows); return input.rows; }
+export function gaussianAssetRows(input: { readonly rows: GaussianRowSource } | { readonly attributes: NormalizedGaussianAttributes }): GaussianRowSource {
+  if ('rows' in input) { validateGaussianRows(input.rows); return input.rows; }
   validateGaussianAttributes(input.attributes);
   return gaussianRowsFromAttributes(input.attributes);
 }

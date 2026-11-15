@@ -1,12 +1,12 @@
 diff --git a/rust/cache/src/stream.rs b/rust/cache/src/stream.rs
 --- a/rust/cache/src/stream.rs
 +++ b/rust/cache/src/stream.rs
-@@ -105,7 +105,9 @@ impl Staging {
- impl Drop for Staging {
-     fn drop(&mut self) {
-         let mut doomed = vec![&self.spool];
--        let _ = self.committed;
-+        if !self.committed {
+@@ -120,7 +120,9 @@ impl Drop for Staging {
+         if self.spool_owned {
+             doomed.push(&self.spool);
+         }
+-        let _ = (self.temp_owned, self.committed);
++        if self.temp_owned && !self.committed {
 +            doomed.push(&self.temp);
 +        }
          for path in doomed {

@@ -26,7 +26,7 @@ use crate::Mesh;
 ///   must be STRICTLY closed and stay so once cleaned
 ///   (`finish::can_adopt_refinement`).
 /// - Quality. The split triangles must leave the mesh better by the census's
-///   sliver measure (`facet_weld::keep_if_better`).
+///   sliver measure (`facet_weld::improves`).
 ///
 /// A refinement that fails either leaves the cut its own triangles,
 /// canonicalised, when that passes the closure test, and untouched when not.
@@ -43,13 +43,11 @@ pub(super) fn refine_rim_slivers(
     let Some(refined) = crate::facet_weld::refine_within_to_fixpoint(&out, boxes) else {
         return out;
     };
-    let kept = if adoptable(&refined) {
-        crate::facet_weld::keep_if_better(&out, refined)
-    } else {
-        crate::facet_weld::canonicalised(&out)
-    };
-    if adoptable(&kept) {
-        kept
+    let plain = crate::facet_weld::canonicalised(&out);
+    if adoptable(&refined) && crate::facet_weld::improves(&refined, &plain) {
+        refined
+    } else if adoptable(&plain) {
+        plain
     } else {
         out
     }

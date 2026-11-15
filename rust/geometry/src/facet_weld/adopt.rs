@@ -46,6 +46,11 @@ impl Quality {
     }
 }
 
+/// Whether `refined` improves on `plain` by [`Quality::improves_on`].
+pub(crate) fn improves(refined: &Mesh, plain: &Mesh) -> bool {
+    Quality::of(refined).improves_on(&Quality::of(plain))
+}
+
 /// `mesh` rebuilt from the pass's canonical vertices with nothing bisected:
 /// what the callers get when a refinement is not kept. `mesh` itself when no
 /// sliver fires the pass.
@@ -57,9 +62,9 @@ pub(crate) fn canonicalised(mesh: &Mesh) -> Mesh {
 /// against the canonicalised mesh, not the raw one: canonicalising alone drops
 /// triangles that collapse, and a refinement must not take credit for them.
 /// `refined` must be a refinement of `mesh` that changed it.
-pub(crate) fn keep_if_better(mesh: &Mesh, refined: Mesh) -> Mesh {
+fn keep_if_better(mesh: &Mesh, refined: Mesh) -> Mesh {
     let plain = canonicalised(mesh);
-    if Quality::of(&refined).improves_on(&Quality::of(&plain)) {
+    if improves(&refined, &plain) {
         refined
     } else {
         plain
@@ -68,10 +73,10 @@ pub(crate) fn keep_if_better(mesh: &Mesh, refined: Mesh) -> Mesh {
 
 /// [`super::refine_high_aspect_slivers`] under the rule above, for a caller
 /// that has no test of its own to put the result through.
-pub(crate) fn refine_slivers_if_better(mesh: &Mesh) -> Mesh {
-    match refine_high_aspect_slivers_impl(mesh, None, true) {
-        Some(refined) => keep_if_better(mesh, refined),
-        None => mesh.clone(),
+pub(crate) fn refine_slivers_if_better(mesh: Mesh) -> Mesh {
+    match refine_high_aspect_slivers_impl(&mesh, None, true) {
+        Some(refined) => keep_if_better(&mesh, refined),
+        None => mesh,
     }
 }
 

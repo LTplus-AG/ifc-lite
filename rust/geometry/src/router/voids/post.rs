@@ -68,7 +68,7 @@ pub(super) fn finish(mut result: Mesh, context: PostContext<'_>) -> Mesh {
     // This canonicalizer is likewise not a hygiene boundary: fresh sub-grid
     // candidates require handling by the remaining repair/clip/sweep path,
     // independently of the router's earlier source cleanup (#4797).
-    result = crate::facet_weld::refine_slivers_if_better(&result);
+    result = crate::facet_weld::refine_slivers_if_better(result);
 
     // UNDER-CUT REPAIR: a self-intersecting tessellated cutter (garbage
     // vertices metres from the real opening) makes the kernel UNDER-cut — a

@@ -503,7 +503,7 @@ pub(crate) fn refine_high_aspect_slivers(mesh: &Mesh) -> Mesh {
     refine_high_aspect_slivers_impl(mesh, None, true).unwrap_or_else(|| mesh.clone())
 }
 
-pub(crate) use adopt::{canonicalised, keep_if_better, refine_slivers_if_better, refine_within_to_fixpoint};
+pub(crate) use adopt::{canonicalised, improves, refine_slivers_if_better, refine_within_to_fixpoint};
 
 /// The cutter boxes a scoped refinement is limited to.
 type Region<'a> = &'a [([f64; 3], [f64; 3])];

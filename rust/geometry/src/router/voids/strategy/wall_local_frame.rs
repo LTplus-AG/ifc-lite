@@ -107,8 +107,11 @@ impl Execution {
         } else {
             frame_snap::closed_and_consistently_wound(&result_local)
         };
-        let first_slivers = if closed && touching { triangle_shape(&result_local).slivers } else { 0 };
-        if !result_local.positions.is_empty() && (!closed || first_slivers > 0) {
+        // Slivers of a closed cut by an opening that only touches the host:
+        // `Some` when that cut is retried too.
+        let first_slivers =
+            (closed && touching).then(|| triangle_shape(&result_local).slivers).filter(|&n| n > 0);
+        if !result_local.positions.is_empty() && (!closed || first_slivers.is_some()) {
             let first_volume = frame_snap::enclosed_volume(&result_local);
             // Only the kept run may leave a diagnostics record.
             let diag_first = self.split_off(diag_before);
@@ -132,8 +135,8 @@ impl Execution {
             let retry_volume = frame_snap::enclosed_volume(&retry);
             let same_cut = (retry_volume - first_volume).abs()
                 <= 1.0e-3 * first_volume.abs().max(retry_volume.abs());
-            let fewer_slivers = first_slivers == 0 || triangle_shape(&retry).slivers < first_slivers;
-            let accepted = if !same_cut || !fewer_slivers {
+            let fewer_slivers = || first_slivers.is_none_or(|n| triangle_shape(&retry).slivers < n);
+            let accepted = if !same_cut || !fewer_slivers() {
                 None
             } else if frame_relative {
                 let emitted = rotate_mesh_from_frame(&retry, &frame, &center_point);

@@ -30,7 +30,7 @@
 //! pushed through the 1 mm the notch leaves.
 
 use ifc_lite_processing::{process, MeshData, ProcessingRequest};
-use ifc_lite_testkit::mesh::signed_volume;
+use ifc_lite_testkit::mesh::{signed_volume, triangle_shape};
 
 const HOST: u32 = 50;
 
@@ -201,27 +201,12 @@ fn a_recess_keeps_a_skin_thinner_than_a_millimetre() {
 }
 
 /// Triangles, slivers and worst aspect of the cut host, by the mesh census's
-/// measure: a triangle's longest edge over its altitude onto that edge, a
-/// sliver above 50.
+/// measure.
 fn shape_census(ifc: &str) -> (usize, usize, f64) {
     let result = process(ifc.as_bytes(), &ProcessingRequest::full_pass(), &mut ());
     let mesh = result.meshes.iter().find(|mesh| mesh.express_id == HOST).expect("the wall meshes");
-    let point = |i: u32| [0, 1, 2].map(|k| f64::from(mesh.positions[i as usize * 3 + k]));
-    let (mut slivers, mut worst) = (0, 0.0_f64);
-    for t in mesh.indices.chunks_exact(3) {
-        let [a, b, c] = [point(t[0]), point(t[1]), point(t[2])];
-        let edge = |p: [f64; 3], q: [f64; 3]| [0, 1, 2].map(|k| q[k] - p[k]);
-        let (u, v, w) = (edge(a, b), edge(a, c), edge(b, c));
-        let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-        let square = |e: [f64; 3]| e[0] * e[0] + e[1] * e[1] + e[2] * e[2];
-        let twice_area = square(n).sqrt();
-        if twice_area > 0.0 {
-            let aspect = square(u).max(square(v)).max(square(w)) / twice_area;
-            worst = worst.max(aspect);
-            slivers += usize::from(aspect > 50.0);
-        }
-    }
-    (mesh.indices.len() / 3, slivers, worst)
+    let shape = triangle_shape(&mesh.positions, &mesh.indices);
+    (mesh.indices.len() / 3, shape.slivers, shape.max_aspect)
 }
 
 /// A 0.4 m by 1 m opening through the 12 mm sheet. The sheet's four narrow

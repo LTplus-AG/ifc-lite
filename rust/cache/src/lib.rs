@@ -42,11 +42,15 @@
 //!   colour per mesh and no distinct authored DiffuseColour.
 //! - **Mesh frame.** Native `process` meshes with its own per-mesh origins
 //!   (zero for most meshes; the browser path stores local-frame origins) and
-//!   in its own frame tier: when it selects the `IfcSite`-local tier it also
-//!   removes the site rotation, which `CoordinateInfo` cannot express. The
-//!   translation is recorded as `wasmRtcOffset`; `wasmRtcFrame`,
-//!   `buildingRotation` and `boundsRecoveryFallbackCount` are left absent
-//!   (each is producer provenance of the browser path).
+//!   in its own frame tier. Its translation is recorded as `wasmRtcOffset`;
+//!   when the `IfcSite`-local tier also removed the site rotation, which
+//!   `CoordinateInfo` cannot express, the writer puts that rotation back into
+//!   the stored origins, positions and normals (`pipeline.rs`), so every
+//!   vertex reads back at `MeshFrame::to_world` of its pass-frame point.
+//!   `wasmRtcFrame`, `buildingRotation` and `boundsRecoveryFallbackCount` are
+//!   left absent (each is producer provenance of the browser path;
+//!   `buildingRotation` orients camera presets and is never applied to
+//!   geometry).
 //! - **Entity rows** are the data model's rooted table and naming rules (an
 //!   explicit `''` Name and the own-Representation flag are re-read from the
 //!   source, which the data model does not carry: `row_facts.rs`), not the

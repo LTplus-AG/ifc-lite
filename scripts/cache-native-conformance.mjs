@@ -40,8 +40,10 @@
  *  6. Geometry: the canonical `ifc_lite_processing::process` output, dumped
  *     by `--example processing_oracle` (no writer code), converted to the
  *     viewer frame here (`lib/cache-native-geometry-oracle.mjs`): every mesh
- *     field, world coordinates, CoordinateInfo against the browser
- *     pre-pass's resolvers.
+ *     field, world coordinates against `MeshFrame::to_world` in every frame
+ *     tier (a rotated IfcSite included), CoordinateInfo against the browser
+ *     pre-pass's resolvers; plus known world corners for a synthetic
+ *     rotated site.
  *
  * Neither claims browser equivalence for what the native cache leaves absent;
  * those are printed as limitations on every run.
@@ -59,7 +61,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compareDecodedModel } from './lib/cache-native-decoded.mjs';
-import { compareGeometryOracle, LIMITATIONS } from './lib/cache-native-geometry-oracle.mjs';
+import { compareGeometryOracle, decodedWorldPoints, LIMITATIONS } from './lib/cache-native-geometry-oracle.mjs';
 import { compareModelOracle } from './lib/cache-native-model-oracle.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -84,6 +86,15 @@ const FIXTURES = [
   // frame), and a millimetre wall in a site placed off the origin.
   { path: 'rust/processing/tests/fixtures/issue_8190_slab_12381.ifc', committed: true },
   { path: 'rust/processing/tests/fixtures/issue_8156_wall_43810.ifc', committed: true },
+  // Committed, with world corners known by construction: an IfcSite at
+  // (1000000, 2000000, 0) turned 90° about Z, holding a tetrahedron with
+  // local corners (0,0,0), (10,0,0), (0,1,0), (0,0,3). Local (10,0,0) must
+  // read back at (1000000, 2000010, 0), not translation-only (1000010, 2000000, 0).
+  {
+    path: 'rust/cache/tests/fixtures/rotated_site_90.ifc',
+    committed: true,
+    worldPoints: [[999999, 2000000, 0], [1000000, 2000000, 0], [1000000, 2000000, 3], [1000000, 2000010, 0]],
+  },
   // Catalogued: a real authoring-tool model, with chunks large enough to deflate.
   { path: 'tests/models/ara3d/AC20-FZK-Haus.ifc', committed: false },
   // Catalogued georeferenced models: IfcMapConversion + IfcProjectedCRS.
@@ -121,7 +132,7 @@ try {
       console.log(`SKIP ${fixture.path}: absent; run \`pnpm fixtures\``);
       continue;
     }
-    await checkFixture(fixture.path, source);
+    await checkFixture(fixture, source);
     checked++;
   }
 } finally {
@@ -146,7 +157,8 @@ function toArrayBuffer(buf) {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
-async function checkFixture(label, sourcePath) {
+async function checkFixture(fixture, sourcePath) {
+  const label = fixture.path;
   const sourceBytes = readFileSync(sourcePath);
   const sourceBuffer = toArrayBuffer(sourceBytes);
 
@@ -176,6 +188,9 @@ async function checkFixture(label, sourcePath) {
   // by the byte cap can be listed before cells first seen earlier), so only
   // the emit order lets the two writers' chunk order be compared at all.
   const pipeline = compareGeometryOracle(label, { dump: processingDump(sourcePath), decoded, header });
+  if (fixture.worldPoints) {
+    assert.deepEqual(decodedWorldPoints(decoded), fixture.worldPoints, `${label}: world corners as the reader places them`);
+  }
 
   // 2 + 3. The TS writer over the same model, meshes in emit order.
   const entityIndex = decoded.entityIndex;

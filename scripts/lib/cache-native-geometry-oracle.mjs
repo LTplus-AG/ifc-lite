@@ -11,15 +11,23 @@
  * same IFC, dumped by `rust/cache/examples/processing_oracle.rs` (which uses
  * no writer code), after the documented frame conversion done HERE, in JS:
  *
- *   IFC Z-up (x, y, z) -> viewer Y-up (x, z, -y) for positions, normals and
- *   the mesh origin (a swap and a negation, so -0 stays -0); an AABB's new Z
- *   range is [-maxY, -minY]; a row-major 4x4 placement M becomes the matrix
- *   product S·M·Sᵀ (whose zero entries are +0).
+ *   1. Site rotation restored, only when the pass frame removed one (its
+ *      `MeshFrame::world_matrix` has a non-identity linear block R): origin′
+ *      = R·origin in f64, position′ = fround(R·position), normal′ =
+ *      fround(R·normal), each product summed in `rotate_and_translate`'s
+ *      order with a +0 offset. `localToWorld`/`localBounds` are not rotated
+ *      (captured in IFC world axes before the bake; the pass drops both in
+ *      this tier anyway).
+ *   2. IFC Z-up (x, y, z) -> viewer Y-up (x, z, -y) for positions, normals
+ *      and the mesh origin (a swap and a negation, so -0 stays -0); an AABB's
+ *      new Z range is [-maxY, -minY]; a row-major 4x4 placement M becomes the
+ *      matrix product S·M·Sᵀ (whose zero entries are +0).
  *
- * Every comparison is exact (f32/f64 bits, or `===` for f64 world values,
- * where -0 and +0 are the same coordinate). No tolerance is needed: the
- * conversion only permutes and negates, and the world sums are the same IEEE
- * operations in the same order as `MeshFrame::to_world`.
+ * Every record comparison is exact (f32/f64 bits): JS doubles have no fused
+ * multiply-add, so (1) is the same IEEE operations in the same order as the
+ * Rust restore. World coordinates are compared with `===` (where -0 and +0
+ * are the same coordinate) wherever the pass removed no rotation; under a
+ * rotation the one tolerance is derived in `compareFrame`.
  *
  * Sink semantics the oracle applies on its own (`ProcessingSink` docs):
  * `on_finishes` belongs to the `on_batch` that follows it, index for index;
@@ -43,7 +51,6 @@ export const LIMITATIONS = [
   'CoordinateInfo.wasmRtcFrame, buildingRotation and boundsRecoveryFallbackCount are absent',
   'per-mesh origins are the native pass\'s (zero for most meshes), not the browser path\'s local frames',
   'the frame is the native pass\'s (its RTC offset and IfcSite tier), not the browser pre-pass\'s',
-  'a rotated IfcSite-local pass frame is not expressible: world = R·local + rtc needs R',
   'MeshData fields with no v28 record slot (uvs, texture, instancing metadata, globalId, name, layer, material name, properties, presentation)',
 ];
 
@@ -110,8 +117,31 @@ function emitted(dump) {
   return meshes;
 }
 
+/**
+ * The linear block of `MeshFrame::world_matrix` (column-major), or null when
+ * it is the identity, i.e. the pass removed no rotation. Its entries are the
+ * site placement's with any zero spelled +0; a zero entry only ever adds a
+ * zero product, so the sign cannot reach a restored value.
+ */
+function siteRotation(dump) {
+  const world = f64(dump.frame.worldMatrix);
+  const identity = [0, 1, 2].every((c) => [0, 1, 2].every((r) => world[c * 4 + r] === (c === r ? 1 : 0)));
+  return identity ? null : world;
+}
+
+/** `rotate_and_translate(r, v, [0; 3])`, operand for operand. */
+const rotate = (r, v) => [0, 1, 2].map((a) => r[a] * v[0] + r[4 + a] * v[1] + r[8 + a] * v[2] + 0);
+
+/** fround(R·v) per xyz triple of an f32 buffer, or the buffer itself without R. */
+function restored(r, buffer) {
+  if (!r) return buffer;
+  const out = new Float32Array(buffer.length);
+  for (let i = 0; i + 2 < buffer.length; i += 3) out.set(rotate(r, [buffer[i], buffer[i + 1], buffer[i + 2]]).map(Math.fround), i);
+  return out;
+}
+
 /** A processing mesh as the v28 record the TS reader should decode, in the viewer frame. */
-function expectedRecord(mesh) {
+function expectedRecord(mesh, r) {
   const finite = (hex) => {
     if (hex === null) return undefined;
     const value = f32(hex)[0];
@@ -119,7 +149,8 @@ function expectedRecord(mesh) {
   };
   const metallic = finite(mesh.finish?.metallic ?? null);
   const roughness = finite(mesh.finish?.roughness ?? null);
-  const [ox, oy, oz] = f64(mesh.origin);
+  const zOrigin = Array.from(f64(mesh.origin));
+  const [ox, oy, oz] = r ? rotate(r, zOrigin) : zOrigin;
   const origin = [ox, oz, -oy];
   let localBounds;
   if (mesh.localBounds !== null) {
@@ -135,8 +166,8 @@ function expectedRecord(mesh) {
     color: f32(mesh.color),
     // The reader returns no origin when all three are zero, of either sign.
     origin: origin.some((v) => v !== 0) ? origin : undefined,
-    positions: yUp(f32(mesh.positions)),
-    normals: yUp(f32(mesh.normals)),
+    positions: yUp(restored(r, f32(mesh.positions))),
+    normals: yUp(restored(r, f32(mesh.normals))),
     indices: u32(mesh.indices),
     material: metallic === undefined && roughness === undefined ? undefined
       : { ...(metallic !== undefined ? { metallic } : {}), ...(roughness !== undefined ? { roughness } : {}) },
@@ -220,8 +251,7 @@ function sameValues(actual, expected, message) {
 function compareFrame(label, dump, raw, expected, decoded, header) {
   const info = decoded.geometry.coordinateInfo;
   const rtc = Array.from(f64(dump.frame.rtcOffset));
-  const world = f64(dump.frame.worldMatrix); // column-major, `MeshFrame::world_matrix`
-  const rotated = [0, 1, 2].some((c) => [0, 1, 2].some((r) => world[c * 4 + r] !== (c === r ? 1 : 0)));
+  const r = siteRotation(dump);
   const limitations = [];
 
   assert.equal(info.hasLargeCoordinates, dump.frame.needsShift, `${label}: hasLargeCoordinates is the pass frame's needs-shift`);
@@ -236,12 +266,24 @@ function compareFrame(label, dump, raw, expected, decoded, header) {
   assert.deepEqual(vec(info.siteOrigin), hexOrUndefined(meta.siteOrigin, (h) => Array.from(f64(h))), `${label}: siteOrigin is resolve_site_origin's`);
 
   // World: the format's reading, yUp⁻¹(origin + position) + wasmRtcOffset,
-  // against `MeshFrame::to_world` of the raw position (same operations, same
-  // order as `frame_point_to_world`).
+  // against `MeshFrame::to_world` of the pass-frame point (raw origin + raw
+  // position, f64), computed here as `frame_point_to_world` does: `local`
+  // untouched when nothing was subtracted, `local + rtc` when only a
+  // translation was, `R·local + rtc` (same operand order) under a rotation.
+  //
+  // Without a rotation the two are the same IEEE operations and must be
+  // `===`. With one they cannot be bit-equal: the cache stores
+  // R·origin + fround(R·position) and the reader adds the parts, where
+  // to_world rotates their f64 sum. R is linear, so the exact values agree
+  // and the gap is (a) the one f32 rounding of R·position, which is known
+  // exactly here, |fround(q) − q|, plus (b) f64 rounding: at most 7
+  // roundings per side, each ≤ u·M with M = Σ|R|·(|origin| + |position|) +
+  // |rtc| bounding every partial sum, so 16·u·M covers both sides.
   const offset = vec(info.wasmRtcOffset) ?? [0, 0, 0];
+  const u = Number.EPSILON / 2;
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
-  let unrotated = 0;
+  let turned = 0;
   expected.forEach((mesh, at) => {
     const o = mesh.origin ?? [0, 0, 0];
     const p = mesh.positions;
@@ -251,27 +293,29 @@ function compareFrame(label, dump, raw, expected, decoded, header) {
       const yup = [o[0] + p[i], o[1] + p[i + 1], o[2] + p[i + 2]];
       for (let a = 0; a < 3; a++) { min[a] = Math.min(min[a], yup[a]); max[a] = Math.max(max[a], yup[a]); }
       const fromCache = [yup[0] + offset[0], -yup[2] + offset[1], yup[1] + offset[2]];
-      // The pass-frame point: the raw mesh origin plus the raw position (f64).
       const local = [zo[0] + z[i], zo[1] + z[i + 1], zo[2] + z[i + 2]];
       const where = `${label}: #${mesh.expressId} vertex ${i / 3}`;
       if (!dump.frame.needsShift) {
         sameValues(fromCache, local, `${where} world coordinate`);
-      } else if (!rotated) {
+      } else if (!r) {
         sameValues(fromCache, local.map((v, a) => v + rtc[a]), `${where} world coordinate`);
       } else {
-        // Stated limitation: the cache keeps the pass-frame position and the
-        // translation, not the rotation. Check exactly that, and that the
-        // pipeline's world point really is the rotated one.
-        sameValues(fromCache, local.map((v, a) => v + rtc[a]), `${where} cache world is the un-rotated site frame`);
-        const truth = [0, 1, 2].map((r) => world[r] * local[0] + world[4 + r] * local[1] + world[8 + r] * local[2] + rtc[r]);
-        if (truth.some((v, a) => v !== fromCache[a])) unrotated++;
+        const truth = [0, 1, 2].map((a) => r[a] * local[0] + r[4 + a] * local[1] + r[8 + a] * local[2] + rtc[a]);
+        const q = rotate(r, [z[i], z[i + 1], z[i + 2]]);
+        const tolerance = [0, 1, 2].map((a) => {
+          const m = [0, 1, 2].reduce((acc, k) => acc + Math.abs(r[k * 4 + a]) * (Math.abs(zo[k]) + Math.abs(z[i + k])), Math.abs(rtc[a]));
+          return Math.abs(Math.fround(q[a]) - q[a]) + 16 * u * m;
+        });
+        const off = fromCache.map((v, a) => Math.abs(v - truth[a]));
+        assert.ok(off.every((d, a) => d <= tolerance[a]), `${where} world coordinate ${fromCache} vs to_world ${truth} (|Δ| ${off} > ${tolerance})`);
+        // Translation alone, what a cache without the restore reads back.
+        if (local.some((v, a) => Math.abs(v + rtc[a] - truth[a]) > tolerance[a])) turned++;
       }
     }
   });
-  if (rotated && expected.length > 0) {
-    // The difference is real, not a tolerance artefact: some vertex lands elsewhere.
-    assert.ok(unrotated > 0, `${label}: a rotated frame moves at least one vertex`);
-    limitations.push(`the pass meshed in a rotated IfcSite frame; ${unrotated} cache world vertices omit that rotation`);
+  if (r && expected.length > 0) {
+    // The check above is not vacuous: without R some vertex would land elsewhere.
+    assert.ok(turned > 0, `${label}: a rotated frame moves at least one vertex`);
   }
   if (expected.length > 0) {
     sameValues([...vec(info.originalBounds.min), ...vec(info.originalBounds.max)], [...min, ...max], `${label}: originalBounds`);
@@ -293,6 +337,27 @@ function compareFrame(label, dump, raw, expected, decoded, header) {
 }
 
 /**
+ * Every distinct world point of the decoded cache, as the TS reader's
+ * consumers place it (`yUp⁻¹(origin + position) + wasmRtcOffset`, f64, IFC
+ * Z-up), sorted. For fixtures whose world corners are known by construction.
+ */
+export function decodedWorldPoints(decoded) {
+  const offset = vec(decoded.geometry.coordinateInfo.wasmRtcOffset) ?? [0, 0, 0];
+  const points = new Map();
+  for (const mesh of decoded.geometry.meshes) {
+    const o = mesh.origin ?? [0, 0, 0];
+    const p = mesh.positions;
+    for (let i = 0; i < p.length; i += 3) {
+      const yup = [o[0] + p[i], o[1] + p[i + 1], o[2] + p[i + 2]];
+      // `+ 0` folds -0, so a corner has one spelling.
+      const point = [yup[0] + offset[0], -yup[2] + offset[1], yup[1] + offset[2]].map((v) => v + 0);
+      points.set(point.join(','), point);
+    }
+  }
+  return [...points.values()].sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+}
+
+/**
  * Compare the decoded native cache with the canonical pipeline output for the
  * same IFC. `dump` is the parsed `processing_oracle` JSON; `header` the TS
  * `readHeader` of the native cache.
@@ -308,7 +373,8 @@ export function compareGeometryOracle(label, { dump, decoded, header }) {
   }
   const valid = meshes.filter((m) => m.positions.length / 24 <= MAX_VERTEX_COUNT && m.indices.length / 8 <= MAX_INDEX_COUNT
     && m.normals.length === m.positions.length);
-  const expected = valid.map(expectedRecord);
+  const r = siteRotation(dump);
+  const expected = valid.map((mesh) => expectedRecord(mesh, r));
   assert.equal(decoded.geometry.meshes.length, expected.length, `${label}: mesh count after validateMeshes`);
   const emitOrder = compareMeshes(label, expected, decoded.geometry.meshes);
   const limitations = compareFrame(label, dump, valid, expected, decoded, header);

@@ -11,9 +11,9 @@
   - A `PredefinedType` on an entity without a classification slot, or a value outside its enum, throws.
 - **Profiles and materials:** I/L/T/U/C profiles and materials (`IfcMaterial`, `IfcMaterialLayer`, `IfcMaterialLayerSet`) use IFC2X3 layouts.
 - **Styles and placements:** `IfcStyledItem` references an `IfcPresentationStyleAssignment`, and site, building and storeys nest their placements as IFC2X3 requires.
-- **Scheduling:** tasks write the IFC2X3 `IfcTask` layout, and sequences write a zero `TimeLag`. Task times, lag durations, work schedules and work plans have no IFC2X3 form here, so they now throw a clear error instead of writing invalid records.
+- **Scheduling:** tasks write the IFC2X3 `IfcTask` layout, and sequences write a zero `TimeLag`. Task times, task `LongDescription` and `PredefinedType`, lag durations, work schedules and work plans have no IFC2X3 form here, so they now throw a clear error instead of writing invalid records.
 
-**New errors (IFC2X3 only, plus the generic-writer check):** `addIfcTask` with task times, `addIfcRelSequence` with `TimeLag`, `addIfcWorkSchedule`, `addIfcWorkPlan`, and `addElement` / `addAxisElement` with a `PredefinedType` the target entity cannot hold. Each previously wrote invalid IFC.
+**New errors (IFC2X3 only, plus the generic-writer check):** `addIfcTask` with task times, `LongDescription` or `PredefinedType`, `addIfcRelSequence` with `TimeLag`, `addIfcWorkSchedule`, `addIfcWorkPlan`, and `addElement` / `addAxisElement` with a `PredefinedType` the target entity cannot hold. Each previously wrote invalid IFC.
 
 IFC4 and IFC4X3 fixes:
 

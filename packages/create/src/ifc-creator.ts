@@ -1752,7 +1752,7 @@ export class IfcCreator {
       params.DurationType !== undefined ||
       params.Completion !== undefined;
 
-    if (this.schema === 'IFC2X3' && hasTaskTime) throw ifc2x3Unsupported('addIfcTask', 'task times (IfcTaskTime)');
+    if (this.schema === 'IFC2X3' && (hasTaskTime || params.LongDescription !== undefined || params.PredefinedType !== undefined)) throw ifc2x3Unsupported('addIfcTask', 'task times, LongDescription and PredefinedType');
     const taskTimeId = hasTaskTime ? emitTaskTime(params, this.emitEntity) : 0;
     const taskId = this.id();
     const globalId = this.newGlobalId();

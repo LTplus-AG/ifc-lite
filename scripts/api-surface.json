@@ -10889,6 +10889,7 @@
     "ParseRequestOptions: interface",
     "ParseResponse: interface",
     "ParseStreamOptions: interface",
+    "ProcessedModelRef: interface",
     "ProcessingStats: interface",
     "Quantity: interface",
     "QuantitySet: interface",
@@ -10910,10 +10911,14 @@
     "SymbolicTruncation: interface",
     "SymbolicTruncationReason: type",
     "asMeshCoordinateSpace: function",
+    "assertProcessedModelHash: function",
     "decodeDataModel: function",
     "decodeOptimizedParquetGeometry: function",
     "decodeParquetGeometry: function",
     "isParquetAvailable: function",
+    "isProcessedModelRef: function",
+    "normalizeProcessedModelHash: function",
+    "processedModelSize: function",
     "withNarrowedCoordinateSpace: function"
   ],
   "@ifc-lite/solar": [

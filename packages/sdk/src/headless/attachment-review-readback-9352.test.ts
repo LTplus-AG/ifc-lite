@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
-import { readStoreyInventory } from '@ifc-lite/create';
 import { openModel } from '../headless.js';
 
 const sample = new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
@@ -33,8 +32,11 @@ it.each(['cycle', 'dangling'] as const)('#9352 SDK refuses an unreadable %s floo
     const S = model.bim.store, home = S.listStoreyLevels('m')[0].expressId;
     const upper = S.addStorey('m', { Name: 'Upper', Elevation: 3 });
     const wall = S.addWall('m', home, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 1, TopConstraint: { kind: 'fixed' } });
-    const placement = readStoreyInventory(model.store, model.backend.getMutationView()!).storeys.find(x => x.expressId === upper.expressId)!.placementId!;
-    S.setPositionalAttribute({ modelId: 'm', expressId: placement }, 0, `#${fault === 'cycle' ? placement : 999999}`);
+    const point = S.addEntity('m', { type: 'IfcCartesianPoint', attributes: [[0, 0, 3]] });
+    const axis = S.addEntity('m', { type: 'IfcAxis2Placement3D', attributes: [`#${point.expressId}`, null, null] });
+    const placement = S.addEntity('m', { type: 'IfcLocalPlacement', attributes: [null, `#${axis.expressId}`] });
+    S.setPositionalAttribute(placement, 0, `#${fault === 'cycle' ? placement.expressId : 999999}`);
+    S.setPositionalAttribute(upper, 5, `#${placement.expressId}`);
     const check = (bim: typeof model.bim) => {
       const before = { properties: bim.properties(wall), quantities: bim.quantities(wall) };
       expect(() => bim.store.setTopConstraint(wall, { kind: 'storey', storeyId: upper.expressId })).toThrow(/placement.*cannot be read|unreadable.*placement/i);

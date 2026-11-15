@@ -168,7 +168,7 @@
    591 packages/create-ifc-lite/src/templates/react.ts
    428 packages/create-ifc-lite/src/templates/server-native.ts
    538 packages/create-ifc-lite/src/templates/server.ts
-  2827 packages/create/src/ifc-creator.ts
+  2818 packages/create/src/ifc-creator.ts
    535 packages/create/src/in-store/auto-space-detect.ts
    878 packages/create/src/in-store/extract-walls.ts
    819 packages/create/src/types.ts
@@ -200,7 +200,7 @@
   1585 packages/export/src/merged-exporter.ts
    616 packages/export/src/parquet-exporter.ts
    999 packages/export/src/reference-collector.ts
-   498 packages/export/src/schema-converter.ts
+   471 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    638 packages/geometry/src/coordinate-handler.ts
   1545 packages/geometry/src/geometry-parallel.ts

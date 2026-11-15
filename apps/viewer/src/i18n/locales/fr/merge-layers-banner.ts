@@ -10,4 +10,5 @@ export const mergeLayersBannerFr = {
   "mergeLayersBanner.subtitle": "Rechargez le modèle pour appliquer le nouveau paramètre.",
   "mergeLayersBanner.reloadButton": "Recharger",
   "mergeLayersBanner.dismissAriaLabel": "Ignorer le rappel de rechargement",
+  "mergeLayersBanner.serverProcessed": "Ce modèle a été traité sur le serveur : les réglages de géométrie au chargement ne le modifient pas.",
 } satisfies Catalogue;

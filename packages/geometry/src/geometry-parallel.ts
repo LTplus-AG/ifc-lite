@@ -41,6 +41,7 @@ import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from 
 // (and vice versa) instead of fetching the same binary a second time.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
 import { stitchShards, type ShardColumns } from './shard-stitch.js';
+import { PoolSetupBroadcast, holdsPoolUntilPrepassEnds } from './prepass-overlap-gate.js'; // #10264
 import { NOOP_LOAD_TRACE, accountWorkerMessages, countCopy, enableWorkerTrace, isTraceSpansMessage } from '@ifc-lite/load-trace';
 import { resolveRtcFrame } from './rtc-frame.js';
 import {
@@ -518,11 +519,8 @@ export async function* processParallel(
   // to replace a worker regardless of whether #4884's in-call recovery is
   // enabled, and replaying this log is how a replacement reaches the same
   // state every other worker is in.
-  const workerSetup: Array<(w: Worker) => void> = [];
-  const broadcastSetup = (setup: (w: Worker) => void) => {
-    workerSetup.push(setup);
-    for (const w of workers) setup(w);
-  };
+  const setupLog = new PoolSetupBroadcast(workers, holdsPoolUntilPrepassEnds(sharedBuffer.byteLength)); const workerSetup = setupLog.log;
+  const broadcastSetup = (setup: (w: Worker) => void) => setupLog.broadcast(setup); // held until the pre-pass ends on large files (#10264)
   const postInitMessages = (worker: Worker) => postGeometryWorkerInit(worker, options, sharedWasmModule);
   workerSetup.push(postInitMessages);
   // This loop runs BEFORE the try/finally below (which owns teardown for the
@@ -718,7 +716,7 @@ export async function* processParallel(
   }
 
   const dispatchJobsChunk = (jobs: Uint32Array, affinity: Uint32Array | null) => {
-    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived) {
+    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived || setupLog.holding) {
       // Hold until stream-start AND styles AND entity-index have all
       // been posted to workers. Without styles the meshes would render
       // with default per-type colours; without the pre-built entity
@@ -739,7 +737,7 @@ export async function* processParallel(
 
   /** Drain queued chunks once all gating conditions are met. */
   const drainQueuedChunksIfReady = () => {
-    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived) return;
+    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived || setupLog.holding) return;
     while (queuedChunks.length > 0) {
       const c = queuedChunks.shift()!;
       dispatchJobsChunkInternal(c.jobs, c.affinity);
@@ -770,7 +768,7 @@ export async function* processParallel(
   const overrideNote = options?.workerCountOverride != null
     ? ` (override=${options.workerCountOverride}, bound=${workerCountResult.reason})`
     : ` (cores=${cores}, bound=${workerCountResult.reason})`;
-  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${overrideNote}`);
+  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${overrideNote}${setupLog.holding ? " pool held until pre-pass ends (#10264)" : ""}`);
 
   /**
    * Deliver a built entity index to every geometry worker (via a shared SAB
@@ -1015,7 +1013,7 @@ export async function* processParallel(
   const shardActive = shardScanEnabled
     && typeof SharedArrayBuffer !== 'undefined'
     && sharedBuffer.byteLength >= SHARD_MIN_BYTES
-    && workers.length >= 2;
+    && workers.length >= 2 && !setupLog.holding; // shard scans install the source in every worker (#10264)
   if (shardActive) {
     const len = sharedBuffer.byteLength;
     const n = workers.length;
@@ -1363,6 +1361,8 @@ export async function* processParallel(
   const onPrepassComplete = () => {
     prepassDone = true;
     gateTracker.markPrepassDone();
+    prepassWorker.terminate(); // first: a held pool (#10264) grows its heaps only after this one is gone
+    if (setupLog.holding) { setupLog.release(); drainQueuedChunksIfReady(); }
     // Only signal stream-end to workers if they actually got
     // stream-start (which gates on `meta`). Zero-geometry files
     // never trigger meta → workers never start → no stream-end
@@ -1377,7 +1377,6 @@ export async function* processParallel(
         sendStreamEnd();
       }
     }
-    prepassWorker.terminate();
     wake();
   };
 

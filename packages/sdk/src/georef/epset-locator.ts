@@ -38,7 +38,7 @@ interface SourceSets {
   /** The IfcPropertySingleValue records those sets list: a rename of one changes what the reader finds. */
   atoms: Set<number>;
   /** Source IfcRelDefinesByProperties: the objects each relates to the set it names. */
-  rels: Array<{ id: number; hosts: number[]; set: number }> | null;
+  rels: Map<number, Array<{ id: number; hosts: number[] }>> | null;
 }
 const cache = new WeakMap<IfcDataStore, SourceSets>();
 
@@ -64,15 +64,16 @@ function sourceSets(store: IfcDataStore): SourceSets {
   return sets;
 }
 
+/** The source IfcRelDefinesByProperties indexed by the set each names, built once per store, so a call looks up the few sets it cares about. */
 function sourceRels(store: IfcDataStore, sets: SourceSets): NonNullable<SourceSets['rels']> {
   if (sets.rels) return sets.rels;
   const extractor = store.source?.length ? new EntityExtractor(store.source) : null;
-  sets.rels = [];
+  sets.rels = new Map();
   // @raw-entity-enumeration-ok immutable source relationships, cached per store; deletions and creations are applied by the caller
   for (const id of store.entityIndex?.byType.get('IFCRELDEFINESBYPROPERTIES') ?? []) {
     const ref = sourceRef(store, id);
     const attrs = ref && extractor?.extractEntity(ref)?.attributes;
-    if (attrs && typeof attrs[5] === 'number') sets.rels.push({ id, hosts: (Array.isArray(attrs[4]) ? attrs[4] : []).filter((h): h is number => typeof h === 'number'), set: attrs[5] });
+    if (attrs && typeof attrs[5] === 'number') sets.rels.set(attrs[5], [...(sets.rels.get(attrs[5]) ?? []), { id, hosts: (Array.isArray(attrs[4]) ? attrs[4] : []).filter((h): h is number => typeof h === 'number') }]);
   }
   return sets.rels;
 }
@@ -137,7 +138,8 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
   }
   const rels: Array<{ hosts: number[]; set: number }> = [];
   if (named.size > 0 || renamedOut.size > 0) {
-    for (const r of sourceRels(store, sets)) if (!view.isDeleted(r.id)) rels.push(r);
+    const bySet = sourceRels(store, sets);
+    for (const id of new Set([...named.keys(), ...renamedOut, ...sets.named.keys()])) for (const r of bySet.get(id) ?? []) if (!view.isDeleted(r.id)) rels.push({ hosts: r.hosts, set: id });
     for (const id of created('IFCRELDEFINESBYPROPERTIES')) {
       const read = effective.attributesOf(id);
       if ('attributes' in read && typeof read.attributes[5] === 'number') {
@@ -207,7 +209,7 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
   // The rest of the subgraph the export of a convention set serializes, none of which is interpreted: a set's class,
   // its membership (`HasProperties`) and other attributes, its properties' records, and the relationships that attach it.
   // (A set's NAME is read from its record above, and a deleted set's copies are skipped.)
-  const relIds = new Set(sets.named.size > 0 ? sourceRels(store, sets).filter((r) => sets.named.has(r.set)).map((r) => r.id) : []);
+  const relIds = new Set(sets.named.size > 0 ? [...sets.named.keys()].flatMap((id) => (sourceRels(store, sets).get(id) ?? []).map((r) => r.id)) : []);
   const subgraphEdits = allChanges.filter((c) => {
     if (c.kind === 'property' || c.kind === 'quantity' || c.kind === 'pset-added' || c.kind === 'pset-deleted' || c.kind === 'qset-added' || c.kind === 'qset-deleted') return false;
     if (sets.atoms.has(c.entityId) || relIds.has(c.entityId)) return true;

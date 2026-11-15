@@ -294,6 +294,9 @@ export function useIfcLoader() {
       },
       finish: () => { metadataAbort.abort(); releaseCanceller(); } });
 
+    setLoading(true);
+    useViewerStore.getState().setLoadingFileName(file.name);
+
     // Capture visibility before admission and the federated cold-tier drain.
     // The drain remains outside total_elapsed_ms (#2385).
     const wasHidden = visibilityWitness();

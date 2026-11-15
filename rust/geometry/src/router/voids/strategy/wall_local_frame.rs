@@ -61,7 +61,7 @@ impl Execution {
             .iter()
             .fold(0.0_f64, |m, v| m.max((*v as f64).abs()));
         let snap_tolerance = frame_snap::frame_snap_tolerance(world_magnitude);
-        let touching = frame_snap::touches_host(&host_local, &local_ctx.openings, snap_tolerance);
+        let touching = frame_snap::touching_openings(&host_local, &local_ctx.openings, snap_tolerance);
 
         // Forward the WORLD host bounds captured before this rotation so the
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
@@ -91,7 +91,7 @@ impl Execution {
         // T-junctions of its own that the cut consolidates away.
         //
         // One closed cut is retried too: that of an opening which only touches
-        // the host (`frame_snap::touches_host`) and left slivers. The same
+        // the host (`frame_snap::touching_openings`) and left slivers. The same
         // storage noise makes the opening bite a few micrometres into a face
         // it was authored on, and the cut is closed with the chips in it. That
         // retry must also come back with fewer slivers, by the census measure:
@@ -110,7 +110,7 @@ impl Execution {
         // Slivers of a closed cut by an opening that only touches the host:
         // `Some` when that cut is retried too.
         let first_slivers =
-            (closed && touching).then(|| triangle_shape(&result_local).slivers).filter(|&n| n > 0);
+            (closed && !touching.is_empty()).then(|| triangle_shape(&result_local).slivers).filter(|&n| n > 0);
         if !result_local.positions.is_empty() && (!closed || first_slivers.is_some()) {
             let first_volume = frame_snap::enclosed_volume(&result_local);
             // Only the kept run may leave a diagnostics record.
@@ -118,7 +118,11 @@ impl Execution {
             // Rebuilt rather than kept from above: the clean path pays nothing.
             let mut host_snapped = mesh_to_frame(mesh, &axes, center);
             let mut openings_snapped = local_ctx.openings.clone();
-            frame_snap::snap_to_frame_planes(&mut host_snapped, &mut openings_snapped, snap_tolerance);
+            // A closed cut snaps only the openings that touch, so the snap
+            // cannot close a thin slot elsewhere in the host. An open cut's
+            // retry snaps them all, as it always has.
+            let only = first_slivers.is_some().then_some(touching.as_slice());
+            frame_snap::snap_to_frame_planes(&mut host_snapped, &mut openings_snapped, only, snap_tolerance);
             let snapped_ctx = VoidContext {
                 merged_openings: GeometryRouter::merge_rectangular_openings(&openings_snapped),
                 openings: openings_snapped,

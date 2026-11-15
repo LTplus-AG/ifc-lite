@@ -20,7 +20,7 @@ import {
   resolveCrs,
   type GridFileLoader,
 } from './index.js';
-import { hasLoadedPrecisionGrid } from './precision-grids.js';
+import { hasFailedPrecisionGrid, hasLoadedPrecisionGrid } from './precision-grids.js';
 
 const UTM32 = '+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs';
 
@@ -219,5 +219,24 @@ describe('a non-finite height (#10385 review)', () => {
     assert.equal(crs.toWgs84([500000, 5200000, Number.NaN]), null);
     assert.equal(crs.fromWgs84([9, 47, Number.POSITIVE_INFINITY]), null);
     assert.equal((await resolveCrs({ epsg: 4326 }))?.toWgs84([8, 47, Number.NaN]), null);
+  });
+});
+
+describe('a grid the loader reports as not available (#10385 review)', () => {
+  it('reads as failed instead of loading, and is asked for again on the next resolution', async () => {
+    let available = false;
+    let requests = 0;
+    const previous = configureCrsLoaders({ gridFile: async () => { requests++; return available ? zeroGrid() : null; } });
+    try {
+      assert.equal((await resolveCrs({ epsg: 28992 }))?.datumShift, 'helmert-approximation');
+      assert.equal(hasFailedPrecisionGrid('28992'), true, 'the badge stops at failed, not loading');
+      available = true;
+      assert.equal((await resolveCrs({ epsg: 28992 }))?.datumShift, 'as-defined');
+      assert.equal(requests, 2, 'a null answer is retried');
+      assert.equal(hasFailedPrecisionGrid('28992'), false);
+      assert.equal(hasLoadedPrecisionGrid('28992'), true);
+    } finally {
+      configureCrsLoaders(previous);
+    }
   });
 });

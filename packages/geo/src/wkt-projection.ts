@@ -48,7 +48,12 @@ interface ParsedWktDefinition {
 export type WktProjection =
   /** `towgs84`: a datum shift the WKT states itself, to replace the EPSG default. */
   | { kind: 'epsg'; code: string; towgs84?: string }
-  | { kind: 'definition'; definition: string };
+  | { kind: 'definition'; definition: string }
+  /**
+   * Read, but without a parameter its projection needs: the WKT says where
+   * the CRS is and the reader lost it, so nothing else may stand in for it.
+   */
+  | { kind: 'refused' };
 
 const resolved = new Map<string, WktProjection | null>();
 const registered = new Map<string, { parsed: ParsedWktDefinition; extent?: WktBoundingBox }>();
@@ -132,7 +137,7 @@ function resolveUncached(wkt: string): WktProjection | null {
       `[reproject] IfcWellKnownText ${parsed.projName} was read without ${missing.join(', ')} `
       + '(a parameter name the WKT reader does not recognise); it cannot place the model.',
     );
-    return null;
+    return { kind: 'refused' };
   }
   // Keyed by the whole WKT: its extent (below) belongs to the registration.
   const name = `${WKT_DEFINITION_PREFIX}${hash(wkt)}`;

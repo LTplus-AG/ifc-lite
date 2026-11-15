@@ -89,7 +89,8 @@ export async function resolveProjection(crs: CrsDescriptor): Promise<string | nu
  * An `IfcWellKnownText` definition is authoritative over the name (which may
  * then be a placeholder such as "WKT"): an EPSG identifier it names resolves
  * through the order below, otherwise the WKT itself is the definition. A WKT
- * that cannot be read falls back to the name.
+ * that cannot be read falls back to the name; one that was read without a
+ * parameter its projection needs resolves to `null`.
  *
  * Resolution order:
  *   1. Cache hit
@@ -110,6 +111,10 @@ export async function resolveDefinition(crs: CrsDescriptor, state: EngineState):
   if (crs.wellKnownText) {
     const wkt = resolveWktProjection(crs.wellKnownText);
     if (wkt?.kind === 'definition') return asDefined(wkt.definition);
+    // A WKT the reader lost a parameter of is refused outright: falling back
+    // to the name would put this custom CRS on the registry projection's
+    // meridian. A WKT that cannot be read at all still falls back below.
+    if (wkt?.kind === 'refused') return null;
     const named: CrsDescriptor = { ...crs, wellKnownText: undefined };
     const resolved = await resolveDefinition(wkt?.kind === 'epsg' ? { ...named, name: `EPSG:${wkt.code}` } : named, state);
     if (!resolved || wkt?.kind !== 'epsg') return resolved;

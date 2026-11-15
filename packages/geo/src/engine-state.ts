@@ -40,6 +40,8 @@ interface GridState {
   loaded: Set<string>;
   failed: Set<string>;
   inflight: Map<string, Promise<boolean>>;
+  /** The loader's last answer was "not available right now" (`null`); retried on the next resolution. */
+  unavailable: Set<string>;
   /** EPSG codes whose datum does not match their listed grid's source. */
   incompatible: Set<string>;
 }
@@ -65,7 +67,7 @@ export function createEngineState(loaders: CrsLoaders): EngineState {
   return {
     loaders: { epsgDefinition: loaders.epsgDefinition ?? null, gridFile: loaders.gridFile ?? null },
     definitions: new Map(),
-    grids: { loaded: new Set(), failed: new Set(), inflight: new Map(), incompatible: new Set() },
+    grids: { loaded: new Set(), failed: new Set(), inflight: new Map(), unavailable: new Set(), incompatible: new Set() },
     gridName: (key) => `${key}${suffix}`,
   };
 }

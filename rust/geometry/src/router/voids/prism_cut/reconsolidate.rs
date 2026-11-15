@@ -25,11 +25,11 @@
 //! When the retry is not kept either, the cut is kept as it was made, provided
 //! it still finishes closed. Consolidation saves triangles; it is not allowed
 //! to cost a closed cut. Without that the opening went on to the exact kernel
-//! with the uncut host, which on a host of hundreds of thin facets
-//! (`ISSUE_129` #61300 with its site at the origin) left it torn.
+//! with the uncut host, which left a clipped wall torn
+//! (`FM_ARC_DigitalHub` #138037: 9 open edges).
 
 use super::checks::result_volume_within_bounds;
-use super::dedup_cut_vertices;
+use super::{dedup_cut_vertices, finish_cut_verdict};
 use crate::csg::{ClippingProcessor, ConsolidationOutcome};
 use crate::mesh::Mesh;
 use crate::mesh_check::{ClosureVerdict, Degenerate, EdgeLedger, VertexKey};
@@ -72,9 +72,8 @@ pub(super) fn consolidate(
     // Neither consolidation kept the cut closed and whole. Consolidating is a
     // saving in triangles, not a correction: the cut as it was made stands,
     // provided it is still closed once finished, on the 1 mm grid and on the
-    // kernel's.
-    // Otherwise the opening goes to the exact kernel, as it did.
-    let finishes_closed = super::finish_cut_verdict(raw.clone(), host, first.boundary)
+    // kernel's. Otherwise the opening goes to the exact kernel, as it did.
+    let finishes_closed = finish_cut_verdict(raw.clone(), host, first.boundary)
         .is_some_and(|(finished, directed)| directed && open_edges(&finished) == 0);
     if !finishes_closed {
         return (first, verdict);

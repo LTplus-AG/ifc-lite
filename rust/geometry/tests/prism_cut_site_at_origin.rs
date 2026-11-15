@@ -10,6 +10,9 @@
 //! face flush with a host face then lies half an f32 step from it all the way
 //! along, and the cut bridges that gap with zero-area triangles. These hosts
 //! came back with open edges from that input and closed from the rotated one.
+//!
+//! The last test reads a host under its file's own site: it pins the same
+//! consolidation step and shares the helpers here.
 
 #[path = "corpus/rtc_frame.rs"]
 mod census_rtc;

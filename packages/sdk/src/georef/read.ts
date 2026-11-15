@@ -56,13 +56,39 @@ export function readGeoreferencing(store: IfcDataStore, modelId = 'model'): Geor
   return readSourceGeoreferencing(store, modelId);
 }
 
-/** The georeferencing the model's source bytes declare (no session edits). */
-export function readSourceGeoreferencing(store: IfcDataStore, modelId: string): GeoreferencingState {
+/** Every raw STEP type the extractor reads georeferencing from. */
+const GEOREF_RECORD_TYPES = ['IFCMAPCONVERSION', 'IFCMAPCONVERSIONSCALED', 'IFCRIGIDOPERATION', 'IFCPROJECTEDCRS', 'IFCGEOGRAPHICCRS', 'IFCWELLKNOWNTEXT'];
+
+/**
+ * The georeferencing the model's source bytes declare (no session writes).
+ * `isDeleted` is the session's mutation view: a georeferencing record it has
+ * deleted is not reported, exactly as the export will not contain it.
+ */
+export function readSourceGeoreferencing(store: IfcDataStore, modelId: string, isDeleted?: (expressId: number) => boolean): GeoreferencingState {
   const schema = String(store.schemaVersion ?? '');
-  const info = extractGeoreferencingOnDemand(store);
+  const info = extractGeoreferencingOnDemand(isDeleted ? withoutDeletedGeorefRecords(store, isDeleted) : store);
   const state = emptyGeoreferencingState(modelId, schema);
   if (!info) return state;
   return fromGeoreferenceInfo(state, info, store);
+}
+
+/**
+ * `store`, or a view of it whose type index omits deleted georeferencing
+ * records, for the extractor to read. Built only when something was deleted;
+ * the extractor memoizes per store object, so a fresh view reads afresh.
+ */
+function withoutDeletedGeorefRecords(store: IfcDataStore, isDeleted: (expressId: number) => boolean): IfcDataStore {
+  if (!store.entityIndex) return store;
+  // @raw-entity-enumeration-ok source ids of the georeferencing classes, filtered by the session's tombstones
+  const { byType } = store.entityIndex;
+  const touched = GEOREF_RECORD_TYPES.filter((t) => (byType.get(t) ?? []).some(isDeleted));
+  if (touched.length === 0) return store;
+  const filtered = new Map(byType);
+  for (const t of touched) filtered.set(t, (byType.get(t) ?? []).filter((id) => !isDeleted(id)));
+  const view = Object.create(store) as IfcDataStore;
+  Object.defineProperty(view, 'georeferencing', { value: undefined, enumerable: true });
+  Object.defineProperty(view, 'entityIndex', { value: { ...store.entityIndex, byType: filtered }, enumerable: true });
+  return view;
 }
 
 function sourceOf(info: GeoreferenceInfo, store: IfcDataStore): GeorefSource | null {

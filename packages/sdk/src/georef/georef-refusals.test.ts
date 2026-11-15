@@ -9,8 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseModel } from '@ifc-lite/parser';
-import { openModel, HeadlessBackend, type HeadlessModelSession } from '../headless.js';
+import { openModel, type HeadlessModelSession } from '../headless.js';
 import { BimContext } from '../context.js';
 import { GeoreferencingError, type GeoreferencingSetInput } from './types.js';
 
@@ -183,23 +182,6 @@ describe('bim.georef refusals', () => {
       expect(err.code).toBe('NO_ANCHOR');
       expect(err.missing).toEqual(['IfcSite']);
     } finally { model.close(); }
-  });
-
-  it('drops a replace whose deletions were undone, rather than exporting half of it', async () => {
-    // mutation_undo (MCP) walks the mutation view, where the replace's
-    // tombstones live; restoring one must take the whole write with it.
-    const { store } = await parseModel(step('IFC4', `${WITH_CONTEXT}
-#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#90);
-#21=IFCMAPCONVERSION(#5,#20,1.,2.,3.,$,$,$);`), { disableWorkerScan: true });
-    const backend = new HeadlessBackend(store, 'm.ifc', 'model');
-    const bim = new BimContext({ backend });
-    bim.georef.set({ ...VALID, replace: true });
-    expect(bim.georef.get().pending).toBe(true);
-    expect(backend.getMutationView()!.restoreFromTombstone(21)).toBe(true);
-    const state = bim.georef.get();
-    expect(state.pending).toBe(false);
-    expect(state.MapConversion).toMatchObject({ expressId: 21, Eastings: 1 });
-    expect(backend.hasPendingChanges()).toBe(true); // #20 is still tombstoned, an ordinary pending edit
   });
 
   it('is not available on a backend without store access', async () => {

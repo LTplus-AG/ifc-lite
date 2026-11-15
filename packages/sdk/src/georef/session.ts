@@ -11,13 +11,14 @@
  * mutation view.
  *
  * A plan is computed in full before anything is applied, so a refused write
- * leaves the session exactly as it was.
+ * leaves the session exactly as it was. An applied write is one compound
+ * mutation, so `mutation_undo` takes it back whole.
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
-import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { collectGeorefModelFacts } from './model-facts.js';
+import { recordCompoundMutation, recordSessionMutation, StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
+import { collectGeorefModelFacts, type GeorefModelFacts } from './model-facts.js';
 import { planRemove, planSet, type GeorefWritePlan, type PropertySetOp, type StepGeorefMutations } from './plan.js';
 import { planUpdate } from './plan-update.js';
 import { readSourceGeoreferencing } from './read.js';
@@ -32,38 +33,56 @@ export interface GeoreferencingSessionDeps {
   editor(): StoreEditor;
 }
 
+/** The `SESSION_EDIT` label a georeferencing write is recorded under. */
+export const GEOREF_SESSION_KIND = 'georeferencing';
+
+/** One applied write: its history marker and what the session holds after it. */
+interface AppliedWrite {
+  marker: string;
+  pending: StepGeorefMutations | null;
+  state: GeoreferencingState;
+}
+
 export class GeoreferencingSession {
-  private pending: StepGeorefMutations | null = null;
-  private pendingState: GeoreferencingState | null = null;
-  /** Records this session deleted for a georeferencing write. */
-  private tombstoned: number[] = [];
+  /**
+   * Applied writes, oldest first. Each was recorded as one compound mutation
+   * (its tombstones, IFC2X3 property edits and a `SESSION_EDIT` marker), so
+   * one undo step takes all of it back; a write whose marker has left the
+   * history is dropped here, and the one below it is current again.
+   */
+  private writes: AppliedWrite[] = [];
 
   constructor(private readonly deps: GeoreferencingSessionDeps) {}
 
-  /** The effective georeferencing: the source, or this session's write. */
+  /** The effective georeferencing: this session's latest write, or the source minus its deletions. */
   get(): GeoreferencingState {
-    this.forgetIfUndone();
-    return this.pendingState ?? readSourceGeoreferencing(this.deps.store, this.deps.modelId);
+    const top = this.current();
+    if (top) return top.state;
+    const view = this.deps.view();
+    return readSourceGeoreferencing(this.deps.store, this.deps.modelId, view ? (id) => view.isDeleted(id) : undefined);
   }
 
   write(request: GeoreferencingWriteRequest): GeoreferencingWriteResult {
-    this.forgetIfUndone();
-    const editor = this.deps.editor();
+    const prior = this.current();
+    this.deps.editor();
     const view = this.deps.view();
-    const facts = collectGeorefModelFacts(this.deps.store, view && {
+    if (!view) throw new Error('georef: the session has no mutation view to record the write in');
+    const facts = collectGeorefModelFacts(this.deps.store, {
       isDeleted: (id) => view.isDeleted(id),
       getForEntity: (id) => view.getForEntity(id),
     });
-    const ctx = { modelId: this.deps.modelId, facts, current: this.get(), pending: this.pending };
+    const ctx = { modelId: this.deps.modelId, facts, current: this.get(), pending: prior?.pending ?? null };
     const plan: GeorefWritePlan = request.action === 'set' ? planSet(request.input, ctx)
       : request.action === 'update' ? planUpdate(request.input, ctx)
         : planRemove(ctx);
 
-    for (const id of plan.tombstone) editor.removeEntity(id);
-    if (view) for (const op of plan.propertySetOps) applyPropertySetOp(view, op);
-    this.pending = plan.georefMutations;
-    this.pendingState = plan.next;
-    this.tombstoned.push(...plan.tombstone);
+    const marker = recordCompoundMutation(view, (draft) => {
+      const editor = new StoreEditor(this.deps.store, draft);
+      for (const id of plan.tombstone) editor.removeEntity(id);
+      for (const op of plan.propertySetOps) applyPropertySetOp(draft, op);
+      return recordSessionMutation(draft, historyEntity(facts, plan), GEOREF_SESSION_KIND);
+    });
+    this.writes.push({ marker: marker.id, pending: plan.georefMutations, state: plan.next });
     return {
       action: plan.action,
       storage: plan.storage,
@@ -76,32 +95,41 @@ export class GeoreferencingSession {
 
   /** `StepExportOptions.georefMutations` for an export of this session, if any. */
   exportMutations(): StepGeorefMutations | undefined {
-    this.forgetIfUndone();
-    const m = this.pending;
+    const m = this.current()?.pending;
     if (!m) return undefined;
     const any = Object.keys(m.projectedCRS ?? {}).length > 0 || Object.keys(m.mapConversion ?? {}).length > 0;
     return any ? m : undefined;
   }
 
   hasPendingChanges(): boolean {
-    this.forgetIfUndone();
-    return this.pendingState !== null;
+    return this.current() !== null;
   }
 
   /**
-   * `mutation_undo` / `bim.mutate.undo` can restore a record this session
-   * deleted for a `set --replace` or `remove`. The georeferencing write it
-   * belonged to is then no longer what the session holds, so it is dropped as
-   * a whole rather than exported half-applied.
+   * The latest write still in the mutation history. `mutation_undo` reverts
+   * a recorded compound as a whole, marker included, so a write is either
+   * entirely in the history (and current, unless a later one is) or entirely
+   * gone; there is no half-undone write to export.
    */
-  private forgetIfUndone(): void {
-    if (this.tombstoned.length === 0) return;
-    const view = this.deps.view();
-    if (view && this.tombstoned.every((id) => view.isDeleted(id))) return;
-    this.pending = null;
-    this.pendingState = null;
-    this.tombstoned = [];
+  private current(): AppliedWrite | null {
+    if (this.writes.length === 0) return null;
+    const history = this.deps.view()?.getMutations() ?? [];
+    const inHistory = (marker: string) => {
+      for (let i = history.length - 1; i >= 0; i--) if (history[i].id === marker) return true;
+      return false;
+    };
+    while (this.writes.length > 0 && !inHistory(this.writes[this.writes.length - 1].marker)) this.writes.pop();
+    return this.writes[this.writes.length - 1] ?? null;
   }
+}
+
+/** A positive entity for the history marker: the anchor the write concerns. */
+function historyEntity(facts: GeorefModelFacts, plan: GeorefWritePlan): number {
+  const id = plan.storage === 'propertySets'
+    ? facts.sites[0] ?? facts.ePSetMapConversion?.hostId ?? facts.ePSetProjectedCRS?.hostId
+    : facts.contexts[0] ?? plan.tombstone[0];
+  if (id === undefined) throw new Error('georef: no entity to record the write against');
+  return id;
 }
 
 function applyPropertySetOp(view: MutablePropertyView, op: PropertySetOp): void {

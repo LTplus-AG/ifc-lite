@@ -657,3 +657,27 @@ fn a_section_with_vertices_inside_one_weld_cell_is_capped_closed() {
     assert!(cap_half_space_clip(&mut clipped, plane_point, clip_normal));
     assert!(paired(&clipped), "the cap must meet the cut wall at every section vertex");
 }
+
+/// The section weld moves the cut wall only once a cap region is built: a
+/// cap whose every ring fails its CDT returns the clipped mesh untouched.
+#[test]
+fn a_cap_that_builds_no_region_leaves_the_section_where_it_was() {
+    let ring: Vec<[f32; 2]> = (0..400)
+        .map(|i| {
+            let a = std::f64::consts::TAU * i as f64 / 400.0;
+            [(12.5 * a.cos()) as f32, (12.5 * a.sin()) as f32]
+        })
+        .collect();
+    let prism = extrude_profile(&ring, 0.0, 3.2);
+    let clip_normal = Vector3::new(0.0, 0.0, 1.0);
+    let plane_point = Point3::new(0.0, 0.0, 0.0016);
+    let clipped =
+        ClippingProcessor::new().clip_mesh(&prism, &Plane::new(plane_point, clip_normal)).unwrap();
+    let mut refused = clipped.clone();
+    force_cdt_fail_on_ring_for_test(Some(0));
+    let capped = cap_half_space_clip(&mut refused, plane_point, clip_normal);
+    force_cdt_fail_on_ring_for_test(None);
+    assert!(!capped);
+    assert_eq!(refused.positions, clipped.positions, "no vertex may move without a cap");
+    assert_eq!(refused.indices, clipped.indices);
+}

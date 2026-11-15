@@ -199,9 +199,6 @@ pub(crate) fn cap_half_space_clip(
     if loops.is_empty() {
         return false;
     }
-    // A cap follows: the cut wall takes the weld the cap is built on. Every
-    // refusal above leaves the mesh as it came in.
-    snap_to_section(mesh, &pos, &on_plane, &welded);
 
     // Project every loop into one shared 2D basis whose +w faces the cap's
     // outward normal (-clip_normal), so a CCW triangulated ring lifts to a
@@ -293,6 +290,11 @@ pub(crate) fn cap_half_space_clip(
             Ok(r) => r,
             Err(_) => continue,
         };
+        // The first cap region: the cut wall takes the weld the caps are
+        // built on. A cap that builds no region leaves the mesh as it came in.
+        if outer_filled == 0 {
+            snap_to_section(mesh, &pos, &on_plane, &welded);
+        }
         outer_filled += 1;
         let verts3d: Vec<Point3<f64>> = verts2d.iter().map(lift).collect();
         let base = (mesh.positions.len() / 3) as u32;

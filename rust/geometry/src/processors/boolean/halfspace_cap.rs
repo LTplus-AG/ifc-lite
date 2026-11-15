@@ -48,13 +48,13 @@ pub(crate) fn disabled() -> bool {
 ///
 /// A watertight host clipped by a plane has exactly one open boundary — the
 /// section, lying on the cut plane. We weld coincident vertices on a grid far
-/// finer than any feature ([`weld_section`], which also moves the mesh's own
-/// section vertices onto the weld),
-/// chain the on-plane boundary half-edges into loops, classify them into
-/// outer rings and holes by even-odd nesting, triangulate each region with the
-/// kernel's CDT, and append the result wound to face `-clip_normal` (away from
-/// the kept `+clip_normal` material). If the boundary is non-manifold or does
-/// not close (a non-watertight host), we bail and leave the mesh unchanged —
+/// finer than any feature ([`weld_section`]), move the mesh's own section
+/// vertices onto the weld, chain the on-plane boundary half-edges into loops,
+/// classify them into outer rings and holes by even-odd nesting, triangulate
+/// each region with the kernel's CDT, and append the result wound to face
+/// `-clip_normal` (away from the kept `+clip_normal` material). If the
+/// boundary is non-manifold or does not close (a non-watertight host), we
+/// bail and leave the mesh unchanged —
 /// never worse than the uncapped output.
 ///
 /// Returns whether the cut was actually closed. This MUST be measured, never

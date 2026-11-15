@@ -14,6 +14,8 @@ export interface ZoneListContext {
   volumeSiScale?: number;
   /** World coordinate in this model's own unit. */
   getWorldPosition?: (expressId: number) => { x: number; y: number; z: number } | null;
+  /** Unitless occurrence triangles for one entity, unavailable until geometry is ready. */
+  getTriangleCount?: (expressId: number) => number | null;
   /** Single-model fallback maps an id to itself. */
   toGlobalId: (expressId: number) => number;
 }

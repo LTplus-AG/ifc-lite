@@ -282,6 +282,7 @@ export function createListDataProvider(
     getModelName(): string {
       return modelName;
     },
+    getTriangleCount: (id) => zoneContext?.getTriangleCount?.(id) ?? null,
     getWorldPosition: (id) => zoneContext?.getWorldPosition?.(id) ?? null,
 
     discoverAllColumns(): DiscoveredColumns {

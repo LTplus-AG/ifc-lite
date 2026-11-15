@@ -99,6 +99,7 @@ const COMMON_COLUMNS: CommonColumn[] = [
   { id: 'col-building', source: 'spatial', propertyName: 'Building', label: 'Building' },
   { id: 'col-site', source: 'spatial', propertyName: 'Site', label: 'Site' },
   { id: 'col-project', source: 'spatial', propertyName: 'Project', label: 'Project' },
+  { id: 'col-triangle-count', source: 'geometry', propertyName: 'TriangleCount', label: 'Triangles' },
   { id: 'col-model', source: 'model', propertyName: 'Model', label: 'Model' },
   ...(['X', 'Y', 'Z'] as const).map((axis): CommonColumn => ({ id: `col-world-${axis.toLowerCase()}`, source: 'geometry', propertyName: axis, label: `World ${axis}` })),
 ];

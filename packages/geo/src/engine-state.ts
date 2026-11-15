@@ -36,7 +36,7 @@ export interface ResolvedDefinition {
   datumShift: CrsDatumShift;
 }
 
-export interface GridState {
+interface GridState {
   loaded: Set<string>;
   failed: Set<string>;
   inflight: Map<string, Promise<boolean>>;

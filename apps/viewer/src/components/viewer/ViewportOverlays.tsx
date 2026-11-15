@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { isFeatureEnabled } from '@/lib/features';
+import { SiteContextAttribution } from './site-context/SiteContextAttribution';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   Home,
@@ -181,6 +182,7 @@ export function ViewportOverlays({
       <FlySpeedIndicator />
       <WalkIndicator />
       <OrbitPivotMarker />
+      <SiteContextAttribution />
       {/* Touch navigation stays available on mobile. The desktop ribbon
           carries zoom and Home from the camera command list
           (`toolbar/CameraCommands`). */}

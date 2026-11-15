@@ -254,6 +254,8 @@ for (const publishes of [false, true]) it(`#10264 server failure ${publishes ? '
     assert.equal(reads, 0);
     assert.equal(engineInits, 0, 'no implicit local fallback after server publication');
   } finally {
+    const cancelDialog = document.querySelector<HTMLButtonElement>('[role="alertdialog"] button');
+    if (cancelDialog) click(cancelDialog);
     await act(async () => { useViewerStore.getState().activeLoadCanceller?.(); await pending; });
     if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
   }

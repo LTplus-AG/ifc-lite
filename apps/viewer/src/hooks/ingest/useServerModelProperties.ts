@@ -116,6 +116,9 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
     let ownershipMayHaveChanged = false;
     try {
       const dataStore = await hydrate(lease.signal);
+      // Deliberate: no data model (404, or still pending after polling) is an optional
+      // response, not a failure (#9538). The model stays read-only without a store
+      // (`model-unavailable`), and a failed run here could never be retried.
       if (!dataStore) return;
       await waitForCompletion(modelId, lease.signal);
       // The loader registered this model from its meshes. The data model also holds entities

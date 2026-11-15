@@ -4,6 +4,7 @@
 
 /** Combined Zustand store. Domain slices own their state and actions. */
 
+import { registerOverlayCapacity } from './overlay-capacity.js';
 import { registerWorkflowArtifactInvalidation } from '../lib/flow/artifact-lifetime.js';
 import { createAppearanceSlice, type AppearanceSlice } from './slices/appearanceSlice.js';
 import { create } from 'zustand';
@@ -279,6 +280,7 @@ export function getViewerStoreApi() {
   registerSidebarExclusivity(store);
   registerHierarchyLeftSync(store);
   registerDrawingInspectorSheetSync(store);
+  registerOverlayCapacity(store);
   registerMutationViewStoreBinding(store); // views read their model's CURRENT store, not the partial one (#5672)
   registerOverlayThemeSync(store); // `--overlay-*` on <html> follow `theme` in every app that holds the store (#5490)
   registerWorkflowArtifactInvalidation(store);

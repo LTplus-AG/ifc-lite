@@ -22,6 +22,8 @@ use super::wire::GeorefMutations;
 
 const WITHOUT_CONTEXT: &str = "Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.";
 const WITHOUT_CRS: &str = "Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.";
+const PARTIAL_FACTORS: &str = "Cannot write IfcMapConversionScaled: FactorX, FactorY and FactorZ are all mandatory and only some were given. The factors were not written.";
+const FACTORS_ON_UNSCALED: &str = "Cannot write FactorX/FactorY/FactorZ onto an existing IfcMapConversion: they exist only on IfcMapConversionScaled, and this edit does not change the class. The factors were not written.";
 
 /// The error the TypeScript exporter throws for an IFC2X3 output.
 pub(crate) const IFC2X3_REFUSAL: &str = "Georeferencing creation and editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.";
@@ -111,16 +113,51 @@ fn real_or_unset(v: Option<&Value>) -> Result<String, Unwritable> {
     v.map_or(Ok("$".to_string()), |v| to_step_real(js_to_number(v)))
 }
 
-fn map_conversion_line(id: u32, context: u32, crs: u32, mc: &Map<String, Value>) -> Result<String, Unwritable> {
-    Ok(format!(
-        "#{id}=IFCMAPCONVERSION(#{context},#{crs},{},{},{},{},{},{});",
+/// `requestedFactors`: the FactorX/Y/Z triple, `None` when none was asked
+/// for. A partial triple is reported and treated as none (all three are
+/// mandatory on `IfcMapConversionScaled`; 1.0 for a gap would be a guess).
+fn requested_factors<'a>(mc: &'a Map<String, Value>, warnings: &mut Vec<String>) -> Option<[&'a Value; 3]> {
+    let given = [mc.get("factorX"), mc.get("factorY"), mc.get("factorZ")];
+    if given.iter().all(Option::is_none) {
+        return None;
+    }
+    match given {
+        [Some(x), Some(y), Some(z)] => Some([x, y, z]),
+        _ => {
+            warnings.push(PARTIAL_FACTORS.to_string());
+            None
+        }
+    }
+}
+
+/// `mapConversionLine`: `IFCMAPCONVERSIONSCALED` when all three factors
+/// were requested, else `IFCMAPCONVERSION`.
+fn map_conversion_line(
+    id: u32,
+    context: u32,
+    crs: u32,
+    mc: &Map<String, Value>,
+    warnings: &mut Vec<String>,
+) -> Result<String, Unwritable> {
+    let head = format!(
+        "#{context},#{crs},{},{},{},{},{},{}",
         real_or_zero(mc.get("eastings"))?,
         real_or_zero(mc.get("northings"))?,
         real_or_zero(mc.get("orthogonalHeight"))?,
         real_or_unset(mc.get("xAxisAbscissa"))?,
         real_or_unset(mc.get("xAxisOrdinate"))?,
         real_or_unset(mc.get("scale"))?,
-    ))
+    );
+    match requested_factors(mc, warnings) {
+        Some(factors) => {
+            let mut reals = Vec::with_capacity(3);
+            for f in factors {
+                reals.push(to_step_real(js_to_number(f))?);
+            }
+            Ok(format!("#{id}=IFCMAPCONVERSIONSCALED({head},{});", reals.join(",")))
+        }
+        None => Ok(format!("#{id}=IFCMAPCONVERSION({head});")),
+    }
 }
 
 /// Queue edits on an existing record and nominate it as the TypeScript side does.
@@ -180,6 +217,15 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) -> Result<(), 
                 edits.push((attr.to_string(), json_to_js_string(v)));
             }
         }
+        if let Some(factors) = requested_factors(mc, &mut pass.warnings) {
+            if pass.of_type("IFCMAPCONVERSIONSCALED").contains(&id) {
+                for (attr, v) in ["FactorX", "FactorY", "FactorZ"].into_iter().zip(factors) {
+                    edits.push((attr.to_string(), json_to_js_string(v)));
+                }
+            } else {
+                pass.warnings.push(FACTORS_ON_UNSCALED.to_string());
+            }
+        }
         edit_existing(pass, id, edits);
     }
 
@@ -205,7 +251,8 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) -> Result<(), 
             Some(context) => {
                 let mc_id = pass.allocate()?;
                 let mc = g.map_conversion.as_ref().unwrap_or(&empty);
-                pass.georef_lines.push((mc_id, map_conversion_line(mc_id, context, crs_id, mc)?));
+                let line = map_conversion_line(mc_id, context, crs_id, mc, &mut pass.warnings)?;
+                pass.georef_lines.push((mc_id, line));
                 pass.new_entity_count += 1;
             }
             None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),
@@ -214,7 +261,8 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) -> Result<(), 
         match preferred_context(pass) {
             Some(context) => {
                 let mc_id = pass.allocate()?;
-                pass.georef_lines.push((mc_id, map_conversion_line(mc_id, context, crs_id, mc)?));
+                let line = map_conversion_line(mc_id, context, crs_id, mc, &mut pass.warnings)?;
+                pass.georef_lines.push((mc_id, line));
                 pass.new_entity_count += 1;
             }
             None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),

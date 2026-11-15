@@ -14,6 +14,7 @@ export { ParquetExporter, type ParquetExportOptions } from './parquet-exporter.j
 // JSONLDExporter removed — JSON-LD is now produced in Rust (ifc-lite-export).
 // Use GeometryProcessor.exportJsonld(bytes, …).
 export { StepExporter, exportToStep, type StepExportOptions, type StepExportResult, type StepExportProgress } from './step-exporter.js';
+export { isExpressibleMapUnit } from './step-map-unit.js';
 // Anonymized isolated export (#2934): pick a seed selection, expand it by
 // relationship context, then export exactly that subset with every
 // project-identifying signal removed. See `docs/guide/exporting.md`.

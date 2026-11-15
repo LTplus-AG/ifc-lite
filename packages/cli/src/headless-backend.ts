@@ -45,6 +45,7 @@ export class HeadlessBackend implements BimBackend {
   readonly selection: NonNullable<BimBackend['selection']>;
   readonly mutate: NonNullable<BimBackend['mutate']>;
   readonly style: NonNullable<BimBackend['style']>;
+  readonly georef: NonNullable<BimBackend['georef']>;
   readonly spatial: NonNullable<BimBackend['spatial']>;
   readonly export: NonNullable<BimBackend['export']>;
   readonly lens: NonNullable<BimBackend['lens']>;
@@ -64,6 +65,7 @@ export class HeadlessBackend implements BimBackend {
     this.selection = this.shared.selection;
     this.mutate = this.shared.mutate;
     this.style = this.shared.style;
+    this.georef = this.shared.georef;
     this.spatial = this.shared.spatial;
     this.lens = this.shared.lens;
     this.files = this.shared.files;

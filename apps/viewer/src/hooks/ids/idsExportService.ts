@@ -543,6 +543,7 @@ export function buildReportHTML(report: ValidationReport, locale: SupportedLocal
   <!-- Header -->
   <div class="card">
     <h1>${esc(reportTitle)}</h1>
+    ${report.targetScope ? `<p>Filtered population: ${esc(report.targetScope.entityCount.toLocaleString(locale))} candidates. This is not a whole-model validation.</p>` : ''}
     ${reportDescription ? `<p style="color: var(--muted); margin-top: 4px;">${esc(reportDescription)}</p>` : ''}
     <div class="meta">
       ${reportAuthor ? `<span>Author: ${esc(reportAuthor)}</span>` : ''}

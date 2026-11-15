@@ -100,6 +100,64 @@ function clearance([u, v]: readonly [number, number], poly: Flat): number {
  * anchor.
  */
 function interiorPoint(poly: Flat, holes: readonly Flat[]): readonly [number, number] {
+  return mostOpenPoint(scanlinePoint(poly, holes), poly, holes);
+}
+
+/** Cells whose openness the refinement may evaluate (each is one pass over the face's edges), so a long thin face costs a bounded amount. */
+const POLE_CELL_BUDGET = 8192;
+
+/** Distance to the nearest edge of the face, positive on it and negative off it. */
+const openness = (p: readonly [number, number], poly: Flat, holes: readonly Flat[]): number => {
+  const d = Math.min(...[poly, ...holes].map((loop) => clearance(p, loop)));
+  return onFace(p, poly, holes) ? d : -d;
+};
+
+/**
+ * Polylabel-style refinement (#9828): the scanline candidate is inside the face but not always the
+ * point farthest from every edge. Rectangular cells of a 16 x 16 grid over the bounds are searched best first, each
+ * bounded by its centre's openness plus its half diagonal, and a cell replaces the candidate only when
+ * it is more than 0.1% of its openness better, so a candidate already on a plateau (the centre of a
+ * band) stays exactly where it is. At most {@link POLE_CELL_BUDGET} cells are evaluated.
+ */
+function mostOpenPoint(seed: readonly [number, number], poly: Flat, holes: readonly Flat[]): readonly [number, number] {
+  let best = seed;
+  let bestOpen = openness(seed, poly, holes);
+  const margin = bestOpen * 1e-3;
+  const xs = poly.map((p) => p[0]);
+  const ys = poly.map((p) => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  if (!(x1 > x0) || !(y1 > y0) || !(margin > 0)) return seed;
+  // Rectangular cells, a 16 x 16 grid over the bounds: a long thin face gets cells as thin as itself, so the
+  // budget is not spent on cells far outside it.
+  type Cell = { x: number; y: number; hx: number; hy: number; open: number; bound: number };
+  let evaluated = 0;
+  const cell = (x: number, y: number, hx: number, hy: number): Cell => {
+    evaluated++;
+    const open = openness([x, y], poly, holes);
+    return { x, y, hx, hy, open, bound: open + Math.hypot(hx, hy) };
+  };
+  const [hx0, hy0] = [(x1 - x0) / 32, (y1 - y0) / 32];
+  const queue: Cell[] = [];
+  for (let i = 0; i < 16; i++) for (let j = 0; j < 16; j++) queue.push(cell(x0 + hx0 * (2 * i + 1), y0 + hy0 * (2 * j + 1), hx0, hy0));
+  // Children are evaluated when made, so the budget counts evaluations (four per cell looked at), not cells looked at.
+  while (queue.length && evaluated + 4 <= POLE_CELL_BUDGET) {
+    // Best first; ties by position so the result does not depend on insertion order.
+    let top = 0;
+    for (let i = 1; i < queue.length; i++) {
+      const [a, b] = [queue[i], queue[top]];
+      if (a.bound > b.bound || (a.bound === b.bound && (a.x < b.x || (a.x === b.x && a.y < b.y)))) top = i;
+    }
+    const [c] = queue.splice(top, 1);
+    if (c.bound <= bestOpen + margin) break;
+    if (c.open > bestOpen + margin) { best = [c.x, c.y]; bestOpen = c.open; }
+    const [hx, hy] = [c.hx / 2, c.hy / 2];
+    for (const [dx, dy] of [[-hx, -hy], [hx, -hy], [-hx, hy], [hx, hy]]) queue.push(cell(c.x + dx, c.y + dy, hx, hy));
+  }
+  return best;
+}
+
+/** The scanline candidate farthest from every edge. */
+function scanlinePoint(poly: Flat, holes: readonly Flat[]): readonly [number, number] {
   const heights = [...new Set([poly, ...holes].flatMap((loop) => loop.map((p) => p[1])))].sort((a, b) => a - b);
   let best: readonly [number, number] = poly[0];
   let farthest = -1;

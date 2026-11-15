@@ -152,9 +152,12 @@ export function footprintConcerns(fp: FootprintFact): { hullLike: boolean; parti
 
 export interface FootprintFact {
   /**
-   * Rings in map coordinates; a point inside any ring is inside the building,
-   * so a courtyard ring nested in an outer ring is filled (its elements get no
-   * reassuring outcome: `courtyard-ring`).
+   * Rings in map coordinates, read through the prepared footprint
+   * (`region.ts`). In a given footprint a ring whose whole boundary lies inside
+   * the others and that encloses 1 m² or more is a courtyard: a hole, open
+   * ground (the `courtyard-ring` guard withholds reassuring outcomes next to
+   * it); a smaller nested ring stays closed. Slab and wall rings never form
+   * holes.
    */
   rings: MapPoint[][];
   source: FootprintSource;

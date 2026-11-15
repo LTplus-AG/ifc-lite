@@ -102,6 +102,10 @@ describe('finding 3: one prepared footprint for every query', () => {
     const fp = prepareFootprint({ rings: [rect(0, 0, 10, 10), rect(10.2, 0, 20, 10)], source: 'slab-outline' });
     expect(sweep(fp, across(9.9, 10.3, 1.5))).toBeGreaterThan(0);
     expect(insideFootprint(fp, P(10.1, 1.5))).toBe(true);
+    // An independent oracle (CodeRabbit): beside the seam the real outline is the south and north façades, 5 m away, not the seam.
+    expect(signedDistance(fp, P(9.5, 5))).toBeCloseTo(-5, 6);
+    // In the gap the nearest outline is a slab corner beside the gap's mouth (no ring edge spans it): 5.001 m.
+    expect(signedDistance(fp, P(10.1, 5))).toBeCloseTo(-Math.hypot(0.1, 5), 6);
   });
 
   it('repro G (extracted room slabs): the gap is inside for every query', async () => {

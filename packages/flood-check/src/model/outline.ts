@@ -75,6 +75,7 @@ export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | nul
       if (arc && indices.length !== 3) return null;
       if (last !== indices[0]) out.push(pts[indices[0] - 1]);
       const rest = arc ? arcPoints(pts[indices[0] - 1], pts[indices[1] - 1], pts[indices[2] - 1]) : indices.slice(1).map((i: number) => pts[i - 1]);
+      if (!rest) return null; // an arc that cannot be traced makes the outline unreadable
       for (const p of rest) {
         const prev = out[out.length - 1];
         if (!prev || prev[0] !== p[0] || prev[1] !== p[1]) out.push(p);
@@ -93,6 +94,9 @@ export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | nul
  */
 export const ARC_SAGITTA = 5e-5;
 
+/** Most pieces one arc is traced in; beyond it the curve is unreadable (never an unbounded loop). */
+export const ARC_MAX_PIECES = 4096;
+
 /**
  * The points of an arc from `a` through `b` to `c`, after `a`: points on the
  * arc (its circle's axis-aligned extremes among them) alternating with the
@@ -102,9 +106,12 @@ export const ARC_SAGITTA = 5e-5;
  * every direction, in any frame the outline is later turned into (a
  * placement, a tilt, the map rotation), and lies within `ARC_SAGITTA` × radius
  * of it (relative to the shorter of radius and arc length). Three collinear
- * points are a straight line (`b`, `c`).
+ * points, or an arc that bulges no more than that tolerance, are a straight
+ * line (`b`, `c`). Null (the curve is unreadable) when the arc cannot be
+ * traced in at most `ARC_MAX_PIECES` pieces: a reader must not loop or exhaust
+ * memory on any input.
  */
-function arcPoints(a: Pt2, b: Pt2, c: Pt2): Pt2[] {
+function arcPoints(a: Pt2, b: Pt2, c: Pt2): Pt2[] | null {
   const d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
   if (Math.abs(d) < 1e-12) return [b, c];
   const sq = (p: Pt2) => p[0] * p[0] + p[1] * p[1];
@@ -124,7 +131,12 @@ function arcPoints(a: Pt2, b: Pt2, c: Pt2): Pt2[] {
   // Tangent points: both ends, the file's middle point, and every axis extreme on the arc, refined so that each piece spans at most 2h, where the
   // tangent corner (radius r / cos h) and the chord (r cos h from the centre) each stay within `tol` of the arc.
   const tol = ARC_SAGITTA * Math.min(r, r * sweep);
-  const h = Math.acos(r / (r + tol));
+  if (!Number.isFinite(r) || !Number.isFinite(sweep) || !Number.isFinite(tol)) return null;
+  // A nearly straight arc (a radius of 1e15 from three almost collinear points) bulges less than the tolerance: its chords.
+  if (2 * r * Math.sin(sweep / 4) ** 2 <= tol) return [b, c];
+  // Half the piece angle, stably: 1 - cos h = tol / (r + tol) loses everything to rounding when tol << r.
+  const h = 2 * Math.asin(Math.sqrt(tol / (2 * (r + tol))));
+  if (!(h > 0) || !Number.isFinite(sweep / h) || sweep / (2 * h) > ARC_MAX_PIECES) return null;
   const marks = [0, along(ang(b)), sweep];
   for (const e of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
     const off = along(e);

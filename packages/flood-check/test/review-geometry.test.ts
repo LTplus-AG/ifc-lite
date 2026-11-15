@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { extractModelFacts } from '../src/model/extract.js';
-import { curvePoints } from '../src/model/outline.js';
+import { ARC_MAX_PIECES, curvePoints } from '../src/model/outline.js';
 import type { ModelReader } from '../src/model/reader.js';
 import { mapOf, parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
 
@@ -156,5 +156,29 @@ describe('CodeRabbit on the tangent corners: a nearly straight arc stays nearly 
     const pts = curvePoints(reader, 1)!;
     const length = r * (0.1208 - 0.1);
     for (const [x, y] of pts) expect(Math.abs(Math.hypot(x, y) - r)).toBeLessThanOrEqual(5e-5 * length + 1e-6);
+  });
+});
+
+describe('CodeRabbit (Stability): an arc never loops or exhausts memory', () => {
+  const arcOf = (pts: Array<[number, number]>) => {
+    const list = { type: 'IFCCARTESIANPOINTLIST2D', attributes: [pts, null] };
+    const reader = { entity: (id: number | null) => (id === 1 ? { type: 'IFCINDEXEDPOLYCURVE', attributes: [2, [['IFCARCINDEX', [1, 2, 3]]], null] } : id === 2 ? list : null) } as unknown as ModelReader;
+    return curvePoints(reader, 1);
+  };
+
+  it('three almost collinear points (a radius of about 1e15) give the chord, at once (this exhausted the heap before)', () => {
+    expect(arcOf([[0, 0], [500, 1e-10], [1000, 0]])).toEqual([[0, 0], [500, 1e-10], [1000, 0]]);
+  });
+
+  it('every arc, from a 1 mm to a 1e12 m radius and any sweep, is traced in a bounded number of finite points', () => {
+    for (const r of [1e-3, 1, 30, 3e4, 1e8, 1e12]) {
+      for (const sweep of [1e-9, 1e-3, 0.5, 3, 6.2]) {
+        const p = (t: number): [number, number] => [r * Math.cos(t), r * Math.sin(t)];
+        const pts = arcOf([p(0), p(sweep / 2), p(sweep)]);
+        if (pts === null) continue; // unreadable, never a hang
+        expect(pts.length).toBeLessThanOrEqual(2 * ARC_MAX_PIECES + 8);
+        for (const [x, y] of pts) expect(Number.isFinite(x) && Number.isFinite(y)).toBe(true);
+      }
+    }
   });
 });

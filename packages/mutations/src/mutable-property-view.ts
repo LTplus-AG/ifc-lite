@@ -1270,7 +1270,7 @@ export class MutablePropertyView extends MutableOverlayState {
   /** Number of overlay-created entities; reads no payload. */
   getNewEntityCount(): number { return this.newEntities.size; }
   /** Relative order of a live creation; do not persist across undo/restoration. */
-  getNewEntityCreationOrder(id: number): number | null { const order = this.newEntities.positionOf(id); return Number.isFinite(order) ? order : null; }
+  getNewEntityCreationOrder(id: number): number | null { if (!this.newEntities.has(id)) return null; const order = this.newEntities.positionOf(id); return Number.isFinite(order) ? order : null; }
 
   getNewEntity(expressId: number): NewEntity | null {
     return this.newEntities.get(expressId) ?? null;

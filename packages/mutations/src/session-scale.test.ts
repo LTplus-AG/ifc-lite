@@ -38,7 +38,11 @@ describe('session-scale authoring #8452', () => {
     view.runAtomic(outer => {
       outer.runAtomic(inner => inner.createEntity('IfcWall', []));
       expect([...outer.getNewEntitiesOfType('IFCWALL')].map(e => e.expressId)).toEqual([a.expressId, 3]);
-      expect(() => outer.runAtomic(inner => { inner.deleteEntity(a.expressId); throw new Error('stop'); })).toThrow('stop');
+      expect(() => outer.runAtomic(inner => {
+        inner.deleteEntity(a.expressId);
+        expect(inner.getNewEntityCreationOrder(a.expressId)).toBeNull();
+        throw new Error('stop');
+      })).toThrow('stop');
     });
     expect(view.getNewEntities().map(e => e.expressId)).toEqual([a.expressId, b.expressId, 3]);
     expect([...view.getNewEntitiesOfType('IfcWall')].map(e => e.expressId)).toEqual([a.expressId, 3]);

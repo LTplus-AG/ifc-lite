@@ -7,9 +7,9 @@
  * binding, run on the in-band points the scan section layer already gathers,
  * read back into plain drawing-space rings and freed before returning.
  *
- * The points come from `collectScanBandPlaneXY`, i.e. the same drawing space
- * as `Drawing2D.lines` / `cutPolygons`, so the rings composite with the cut
- * and go through the DXF export's shared georeference transform
+ * The points come from `collectScanBandPlaneXY`, relative to an f64 anchor
+ * restored after tracing. Rings share `Drawing2D.lines` / `cutPolygons` space,
+ * so they composite with the cut and use the DXF export's shared transform
  * (`dxfExportGeoref.ts`) unchanged. No plane frame is passed: the viewer never
  * needs 3D coordinates for these rings.
  */
@@ -43,11 +43,13 @@ export function scanOutlineDxfLayers(outline: ScanOutlineLayer | null | undefine
 }
 
 /**
- * Trace the outline of `planeXY` (flat drawing-space `[x0, y0, …]`). The wasm
- * module must be initialised (`ensureWasm` from `@/lib/wasm/ensure-wasm`). Throws on invalid
- * options, never on degenerate input (that gives zero rings).
+ * Trace `planeXY` (flat anchor-relative `[x0, y0, …]`) and restore drawing space.
+ * The wasm module must be initialised (`ensureWasm` from `@/lib/wasm/ensure-wasm`).
+ * Throws on invalid options, never on degenerate input (that gives zero rings).
  */
-export function traceScanOutlineLayer(planeXY: Float32Array, maxGap: number): ScanOutlineLayer {
+export function traceScanOutlineLayer(
+  planeXY: Float32Array, maxGap: number, anchor: Point2D = { x: 0, y: 0 },
+): ScanOutlineLayer {
   const handle = traceScanOutline(planeXY, { maxGap });
   try {
     const coords = handle.coords();
@@ -58,7 +60,10 @@ export function traceScanOutlineLayer(planeXY: Float32Array, maxGap: number): Sc
     let at = 0;
     lengths.forEach((n, r) => {
       const ring: Point2D[] = [];
-      for (let k = 0; k < n; k++) ring.push({ x: coords[(at + k) * 2], y: coords[(at + k) * 2 + 1] });
+      for (let k = 0; k < n; k++) ring.push({
+        x: coords[(at + k) * 2] + anchor.x,
+        y: coords[(at + k) * 2 + 1] + anchor.y,
+      });
       rings.push(ring);
       holes.push(!shapeStarts.has(r));
       at += n;

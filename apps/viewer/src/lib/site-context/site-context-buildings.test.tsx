@@ -24,6 +24,7 @@ import { subjectOf } from '@/hooks/ingest/siteContextLoad';
 import { applyInitialHiddenState } from '@/hooks/ingest/initialHiddenState';
 import { siteContextViewerModel, siteContextModelName } from './site-context-model';
 import { isAllowedSwisstopoUrl } from './swisstopo-fetch';
+import { buildingsReadBudget } from './site-context-job';
 import { createSiteContextResponseCache, tilesCacheView } from './response-cache';
 
 const initial = useViewerStore.getState();
@@ -60,7 +61,8 @@ test('each building is drawn as a roof mesh and a wall mesh of one entity, with 
   assert.deepEqual(Array.from(roof.indices), [4, 5, 6, 4, 6, 7]);
   assert.equal(wall.indices.length, 12);
   assert.notDeepEqual(roof.color, wall.color, 'roof and wall have their own colours');
-  assert.ok(roof.color[0] > roof.color[2] && roof.color[0] - roof.color[2] > 0.1, 'roof reads warm');
+  assert.ok(roof.color[0] > roof.color[2], 'roof reads warm');
+  assert.ok(roof.color[0] + roof.color[1] + roof.color[2] < wall.color[0] + wall.color[1] + wall.color[2], 'roof a little darker than the wall');
   assert.equal(roof.positions, wall.positions, 'parts share the building\'s vertices');
   assert.equal(dataStore.getEntitiesByType('IfcBuilding').length, 2);
   assert.equal(dataStore.properties.getPropertyValue(1, 'IfcLite_SiteContextBuilding', 'EGID'), '100');
@@ -113,4 +115,11 @@ test('the 3D Tiles reader reads back through the shared IndexedDB cache, apart f
   assert.deepEqual(Array.from((await tiles.get(url))!), [7, 8, 9]);
   assert.equal(await cache.get(url), undefined, 'a geodata lookup of the same URL is a different key');
   assert.equal(cache.hits, 1);
+});
+
+test('the 3D Tiles read budget grows with the site area and keeps the preset at 300 m', () => {
+  assert.deepEqual(buildingsReadBudget(300), { maxRequests: 64, maxBytes: 32 * 1024 * 1024 });
+  assert.deepEqual(buildingsReadBudget(100), { maxRequests: 64, maxBytes: 32 * 1024 * 1024 }, 'never below the preset');
+  assert.equal(buildingsReadBudget(500).maxRequests, 178);
+  assert.equal(buildingsReadBudget(5000).maxBytes, 128 * 1024 * 1024, 'bytes capped');
 });

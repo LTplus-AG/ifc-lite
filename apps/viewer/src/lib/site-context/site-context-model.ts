@@ -59,10 +59,11 @@ const COLOURS = {
   parcel: [1.0, 0.36, 0.05, 1],
   parcelCasing: [0.10, 0.08, 0.07, 1],
   // Neighbours: a muted stone wall a shade darker than a typical model's
-  // white, and a dull terracotta roof that sits with the aerial image's red
-  // roofs. Neither is saturated, so the user's model stays the subject.
+  // white, and a warm grey-brown roof, a little darker and warmer than the
+  // wall so roofs read from the air without turning a campus brown. Neither
+  // is saturated, so the user's model stays the subject.
   buildings: [0.79, 0.77, 0.73, 1],
-  buildingRoof: [0.60, 0.47, 0.40, 1],
+  buildingRoof: [0.64, 0.56, 0.51, 1],
 } as const satisfies Record<string, readonly [number, number, number, number]>;
 
 /** The model name a category shows in the hierarchy. */

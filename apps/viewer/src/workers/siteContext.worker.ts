@@ -14,7 +14,7 @@ import type { SiteContextLayer } from '@ifc-lite/site-context';
 // Vite emits the Draco decoder wasm next to this worker and hands back its
 // URL; the 3D Tiles reader loads it lazily, the first time a Draco tile is met.
 import dracoWasmUrl from '@ifc-lite/tiles3d/draco_decoder.wasm?url';
-import type { SiteContextWorkerRequest, SiteContextWorkerResponse } from '../lib/site-context/site-context-job';
+import { buildingsReadBudget, type SiteContextWorkerRequest, type SiteContextWorkerResponse } from '../lib/site-context/site-context-job';
 
 /**
  * The geodata client, the core and their helpers load with the first build
@@ -66,6 +66,7 @@ scope.onmessage = (event) => {
         fetch: counting.fetch,
         cache: tilesCacheView(cache),
         dracoModuleOptions: { locateFile: () => dracoWasmUrl },
+        ...buildingsReadBudget(request.radius),
       },
       onProgress: (progress) => scope.postMessage({ type: 'progress', id, progress }),
       onLayer: (layer) => {

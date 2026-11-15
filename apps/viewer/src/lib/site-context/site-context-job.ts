@@ -46,3 +46,15 @@ export type SiteContextWorkerResponse =
   | SiteContextCategoryMessage
   | { type: 'complete'; id: number; stats: SiteContextWorkerStats }
   | { type: 'error'; id: number; message: string; coverage: boolean; stats: SiteContextWorkerStats };
+
+/**
+ * The 3D Tiles read budget for a site of `radius` metres: the reader's preset
+ * (64 requests, 32 MiB) is measured for about a 300 m site, and the tiles a
+ * site needs grow with its area, so the budget scales with it. At 500 m the
+ * preset stopped four tiles short (`buildings-read-truncated`). Bytes stay
+ * capped at 128 MiB.
+ */
+export function buildingsReadBudget(radius: number): { maxRequests: number; maxBytes: number } {
+  const area = Math.max(1, (radius / 300) ** 2);
+  return { maxRequests: Math.ceil(64 * area), maxBytes: Math.min(128 * 1024 * 1024, Math.ceil(32 * 1024 * 1024 * area)) };
+}

@@ -58,8 +58,7 @@ function withInlineIds(schema: AnthropicInputSchema): AnthropicInputSchema {
  */
 export function mainViewerToolDefinitions(): AgentToolDefinition[] {
   const scopes = new Map(CATALOG.tools.map((tool) => [tool.name, tool.scope]));
-  // A tool this page does not serve (`mainViewerTool`: bSDD with outside services off, edit tools with editing off) is not offered.
-  const edits = MAIN_VIEWER_EDIT_TOOLS.filter((name) => mainViewerTool(name) !== undefined).map((name): AgentToolDefinition => ({
+  const edits = MAIN_VIEWER_EDIT_TOOLS.map((name): AgentToolDefinition => ({
     name,
     description: EDIT_TOOL_SPECS[name].description,
     inputSchema: withModelId(EDIT_TOOL_SPECS[name].inputSchema),
@@ -69,6 +68,7 @@ export function mainViewerToolDefinitions(): AgentToolDefinition[] {
 }
 
 function readDefinitions(scopes: Map<string, string>): AgentToolDefinition[] {
+  // A tool this page does not serve (`mainViewerTool`, e.g. bSDD with outside services off) is not offered.
   const served = MAIN_VIEWER_TOOL_ALLOWLIST.filter((name) => mainViewerTool(name) !== undefined);
   return createAnthropicToolDefinitions(served).map((definition) => {
     const tool = mainViewerTool(definition.name);

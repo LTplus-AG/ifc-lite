@@ -56,8 +56,8 @@ const SHARED_TOOLS: Record<string, AgentTool> = {
 export function mainViewerTool(name: string): AgentTool | undefined {
   // bSDD is an outside service; a host can switch those off (`lib/features`).
   if (name in bsddTools && !isFeatureEnabled('privacy.third-party')) return undefined;
-  // Edit tools change model data, so they follow the editing switch.
-  if (isEditTool(name)) return isFeatureEnabled('edit.model') ? editTools[name] : undefined;
+  // Edits with `edit.model` off are refused at the write (`dataMutationPermission`, 'switched-off').
+  if (isEditTool(name)) return editTools[name];
   return (MAIN_VIEWER_TOOL_ALLOWLIST as readonly string[]).includes(name) ? SHARED_TOOLS[name] : undefined;
 }
 

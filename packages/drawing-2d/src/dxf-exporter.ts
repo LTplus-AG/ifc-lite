@@ -314,6 +314,18 @@ export class DXFExporter {
         const height = text.height * placement.scale;
         const lines = text.text.split('\n');
         const dirLength = Math.hypot(text.dirX, text.dirY) || 1;
+        // Aligned stays uniform only while the output map keeps the text's aspect; a stretched
+        // axis re-emits it as Fit so CAD does not scale the height with the span.
+        const normal = mapPoint({ x: text.position.x - text.dirY, y: text.position.y + text.dirX });
+        const along = Math.hypot(tip.x - anchor.x, tip.y - anchor.y) / dirLength;
+        const area = Math.abs((tip.x - anchor.x) * (normal.y - anchor.y) - (tip.y - anchor.y) * (normal.x - anchor.x)) / dirLength ** 2;
+        const keepsAspect = along <= 1e-12 || Math.abs(along * along - area) <= 1e-9 * Math.max(1, area);
+        // Aligned/fit text: re-emit as Fit (72=5) with its second point so the CAD
+        // reader (which measures real glyphs) spans the two points exactly.
+        const fitTo = lines.length === 1 && text.align === 'left' && text.valign === 'baseline'
+          && text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0
+          ? mapPoint({ x: text.position.x + (text.dirX / dirLength) * text.fitWidth,
+            y: text.position.y + (text.dirY / dirLength) * text.fitWidth }) : undefined;
         for (let i = 0; i < lines.length; i++) {
           // Stack subsequent lines by offsetting in LOCAL space, then map:
           // the stacking direction must rotate with the text when
@@ -325,7 +337,7 @@ export class DXFExporter {
           // review). "Down" across the baseline is the text direction turned
           // clockwise (local Y up), and the block offset honours the
           // vertical attachment like every other renderer.
-          const offset = dxfTextLineOffset(i, lines.length, text.valign, text.height);
+          const offset = dxfTextLineOffset(i, lines.length, text.valign, text.height, text.lineSpacingFactor);
           const lineAnchor = offset === 0
             ? anchor
             : mapPoint({ x: text.position.x + (text.dirY / dirLength) * offset,
@@ -333,9 +345,11 @@ export class DXFExporter {
           writer.addText(
             lineAnchor,
             lines[i],
-            height,
+            along > 1e-12 ? text.height * area / along : height, // mapped glyph height (placement and output scale)
             layer,
-            { rotationDeg: angle, hAlign: text.align, vAlign: text.valign, colorOverride: text.color },
+            { rotationDeg: angle, hAlign: text.align, vAlign: text.valign, colorOverride: text.color,
+              widthScale: keepsAspect || area <= 0 ? text.widthScale : (text.widthScale ?? 1) * along * along / area,
+              fitTo, fitUniform: text.fitUniform && keepsAspect },
           );
         }
       }

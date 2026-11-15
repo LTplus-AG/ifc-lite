@@ -20,12 +20,16 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { click, waitFor } from '@/test/render.js';
 import { loadDialogs } from '@/test/dialog-host.js';
 const { useIfcLoader } = await import('./useIfcLoader.js');
+const { getProcessingServerUrl, setProcessingServerUrl } = await import('@/lib/processed-model');
 const step = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
 let api: ReturnType<typeof useIfcLoader>;
 let root: Root, container: HTMLDivElement;
-let healthCalls = 0;
+let healthCalls = 0, previousServerUrl = '';
 function Probe() { api = useIfcLoader(); return null; }
-beforeEach(async () => {
+beforeEach(async (context) => {
+  healthCalls = 0;
+  previousServerUrl = getProcessingServerUrl();
+  setProcessingServerUrl(`/admission-server-case-${encodeURIComponent(context.name)}`);
   useViewerStore.getState().resetViewerState(); useViewerStore.getState().clearAllModels();
   useViewerStore.setState({ ...fixtureModels(fixtureModel('existing')), mergeLayers: false });
   mock.method(IfcServerClient.prototype, 'health', async () => { healthCalls++; throw new Error('connection refused'); });
@@ -34,6 +38,7 @@ beforeEach(async () => {
   await act(async () => { root.render(<><Probe /><ConfirmDialogHost /></>); });
 });
 afterEach(async () => {
+  setProcessingServerUrl(previousServerUrl);
   useViewerStore.getState().activeLoadCanceller?.();
   await act(async () => root.unmount()); container.remove(); setGlobalRendererRef({ current: null }); mock.restoreAll();
 });
@@ -89,7 +94,7 @@ for (const kind of ['primary', 'federated'] as const) for (const archive of ['st
       assert.equal(useViewerStore.getState().loading, false);
       if (memory === 4) { assert.equal(errors.length, 1); assert.match(errors[0], /local processing memory budget/); }
       else { assert.equal(errors.length, 0); assert.equal(useViewerStore.getState().error, null); }
-      if (kind === 'primary') assert.ok(healthCalls > 0, 'eligible server was exercised (later attempts may use its health cache)');
+      assert.equal(healthCalls, kind === 'primary' ? 1 : 0, 'this case independently exercises its eligible server route');
     } finally {
       Object.defineProperty(globalThis, 'SharedArrayBuffer', { configurable: true, writable: true, value: realShared });
       if (oldMemory) Object.defineProperty(navigator, 'deviceMemory', oldMemory); else Reflect.deleteProperty(navigator, 'deviceMemory');

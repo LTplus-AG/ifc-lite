@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "PR #10356 adds the whole rust/cache crate, so a derived revert deletes the code its tests compile against (INCONCLUSIVE); this keeps the crate and writes an absent source id as 0, a real material-layer id, so the sentinel assertions fail.",
+  "key": "rust/cache/src/geometry/record.rs",
+  "mutation": "tests/evidence/cache-native-record-9584/behaviour.oracle.patch",
+  "test": "rust/cache/src/geometry/record_tests.rs"
+}

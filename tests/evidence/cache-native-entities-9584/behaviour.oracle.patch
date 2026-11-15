@@ -1,0 +1,12 @@
+diff --git a/rust/cache/src/entities.rs b/rust/cache/src/entities.rs
+--- a/rust/cache/src/entities.rs
++++ b/rust/cache/src/entities.rs
+@@ -98,7 +98,7 @@ fn row(strings: &mut StringTable, entity: &EntityMetadata) -> Row {
+         type_enum: type_ordinal(&upper),
+         global_id: strings.intern(entity.global_id.as_deref().unwrap_or("")),
+         // Absent stays absent (#4930): a `$` name is the null index.
+-        name: strings.intern(entity.name.as_deref().unwrap_or("")),
++        name: strings.intern_opt(entity.name.as_deref()),
+         description: strings.intern(entity.description.as_deref().unwrap_or("")),
+         object_type: strings.intern(entity.object_type.as_deref().unwrap_or("")),
+         flags: bits,

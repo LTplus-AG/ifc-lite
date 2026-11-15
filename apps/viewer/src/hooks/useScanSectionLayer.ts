@@ -132,8 +132,10 @@ export function collectScanSources(
             // whenever it does, so the outline worker re-reads the points.
             revision: cached.seen,
             ...(() => {
-              const matrix = getGlobalRenderer()?.getPointCloudTransform({ id: model.pointCloudHandleId });
-              // Exact GPU world coordinates, even with alignment disabled.
+              // The exact f64 placement, not the f32 GPU copy, so an aligned scan at
+              // map scale keeps its millimetres into the outline (#10094 item 2).
+              const matrix = getGlobalRenderer()?.getPointCloudPlacement({ id: model.pointCloudHandleId });
+              // GPU world coordinates, even with alignment disabled.
               // Subtracting the reference IFC RTC here would shift only 2D.
               return { model: matrix, modelOutputsRenderFrame: true };
             })(),

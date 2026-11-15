@@ -10,4 +10,5 @@ export const mergeLayersBannerIt = {
   "mergeLayersBanner.subtitle": "Ricarica il modello per applicare la nuova impostazione.",
   "mergeLayersBanner.reloadButton": "Ricarica",
   "mergeLayersBanner.dismissAriaLabel": "Ignora il promemoria di ricaricamento",
+  "mergeLayersBanner.serverProcessed": "Questo modello è stato elaborato sul server: le impostazioni della geometria al caricamento non lo modificano.",
 } satisfies Catalogue;

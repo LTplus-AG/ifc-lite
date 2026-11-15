@@ -123,6 +123,11 @@ export function toolAnchor(tool: string): `tool-${string}` {
   return `tool-${tool}`;
 }
 
+/** The tool a {@link toolAnchor} names; `undefined` for any other anchor. */
+export function toolOfAnchor(anchor: string): string | undefined {
+  return anchor.startsWith('tool-') ? anchor.slice('tool-'.length) : undefined;
+}
+
 /** LensPanel lens card by lens id (one templated attribute lets any tour
  *  target any card, e.g. the builtin 'lens-by-class'). */
 export function lensCardAnchor(lensId: string): `lens-card-${string}` {

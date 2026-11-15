@@ -91,6 +91,8 @@ export const commandsRu = {
   "commands.search.exitCycle": "Завершить перебор совпадений",
   "commands.ui.commandPalette": "Палитра команд",
   "commands.ui.openPanel": "Открыть панель на боковой панели ({sidePanels}; {bottomPanels} открываются снизу)",
+  "commands.ui.openPanelSideOnly": "Открыть панель на боковой панели ({sidePanels})",
+  "commands.ui.openPanelEntry": "{digit} {panel}",
   "commands.ui.toggleSidebar": "Переключить боковую панель (развернуть ⇄ свернуть до значков)",
   "commands.ui.closeAllPanels": "Закрыть все панели (сохраняет видимость)",
   "commands.ui.closeOverlay": "Закрыть открытое меню или диалоговое окно",

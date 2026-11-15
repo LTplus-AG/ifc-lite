@@ -15,6 +15,7 @@ import { resolve as translate } from '@/i18n/registry';
 import type { TranslationKey } from '@/i18n';
 import { isNetworkUnavailableError } from '@/lib/cancelled-and-network-errors';
 import { formatLoadError } from '@/lib/load-error-message';
+import { messageOf } from '@/lib/load-errors';
 
 /** `ref` with its hash lowercased, so the model record holds one spelling; a hash that is not a SHA-256 is kept for the client to refuse. */
 export function normalizedProcessedModel(ref: ProcessedModelRef): ProcessedModelRef {
@@ -61,7 +62,7 @@ export function describeProcessedModelFailure(error: unknown): ProcessedModelFai
     if (error.status >= 500) return failure('viewportLighting.container.processedModel.serverError', 'server_error', true);
     return failure('viewportLighting.container.processedModel.refused', 'refused', false, { status: String(error.status) });
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = messageOf(error);
   if (isNetworkUnavailableError(message) || (error instanceof Error && error.name === 'TimeoutError')) {
     return failure('viewportLighting.container.processedModel.network', 'network', true);
   }

@@ -25,10 +25,10 @@ import { showLoadError } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { markLoadIntent } from '@/lib/load-intent';
-import { normalizeProcessedModelHash } from '@ifc-lite/server-client';
+import { normalizeProcessedModelHash, type ProcessedModelRef } from '@ifc-lite/server-client';
 
 /** The model `?processed=` names, `'malformed'` when the hash is not one, `null` when the parameter is absent. */
-export function processedModelFromQuery(search: string): { sha256: string; bytes: number; name: string } | 'malformed' | null {
+export function processedModelFromQuery(search: string): (ProcessedModelRef & { name: string }) | 'malformed' | null {
   const params = new URLSearchParams(search);
   const raw = params.get('processed');
   if (raw === null) return null;
@@ -44,8 +44,7 @@ export function useProcessedModelAutoload(): void {
   const { t } = useTranslation();
   const doneRef = useRef(false);
   // Navigation may change the query while the adapter probe is pending. Keep what this mount asked for.
-  const requestRef = useRef<ReturnType<typeof processedModelFromQuery> | undefined>(undefined);
-  if (requestRef.current === undefined) requestRef.current = processedModelFromQuery(window.location.search);
+  const requestRef = useRef(processedModelFromQuery(window.location.search));
 
   useEffect(() => {
     // Wait for the async adapter probe, as `?model=` does, so the guard gets a definitive answer.

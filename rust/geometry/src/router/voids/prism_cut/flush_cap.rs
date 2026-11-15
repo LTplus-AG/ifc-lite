@@ -61,6 +61,12 @@ fn rounding_allowance(pf: &PrismFrame) -> f64 {
     (pf.corner_mag() * 4.0 * f64::from(f32::EPSILON)).max(1.0e-7)
 }
 
+/// How far outside the profile's bounding box a host triangle still counts as
+/// over the footprint.
+pub(super) fn footprint_pad(pf: &PrismFrame) -> f64 {
+    1.0e-6 * (1.0 + pf.corner_mag())
+}
+
 /// The depth range of `t` over the profile's bounding box, or `None` when it
 /// does not reach the box. A large host face is only as flush as it is over
 /// the opening: its far corners can drift from the cap plane by the tilt.
@@ -108,15 +114,17 @@ fn faces_along(t: &PTri, d: V3) -> Option<bool> {
 pub(super) fn extend_and_seat_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[(V3, V3)]) -> FlushSeats {
     extend_prism_caps(pf, tris, aabbs);
     let allowance = rounding_allowance(pf);
-    let pad = 1.0e-6 * (1.0 + pf.corner_mag());
+    let pad = footprint_pad(pf);
+    // The footprint clip does not depend on the cap: once per triangle.
+    let depths: Vec<_> = tris.iter().map(|t| depths_over_footprint(t, pf, pad)).collect();
     let mut seats = FlushSeats::default();
-    for (side, high) in [false, true].into_iter().enumerate() {
+    for high in [false, true] {
         let (plane, slab) = if high { (pf.d1(), pf.profiles.len() - 1) } else { (pf.d0(), 0) };
         let mut reach = plane;
         let mut floor = Vec::new();
         let mut removes = false;
-        for t in tris {
-            let Some((lo, hi)) = depths_over_footprint(t, pf, pad) else { continue };
+        for (t, depth) in tris.iter().zip(&depths) {
+            let Some((lo, hi)) = *depth else { continue };
             if lo < plane - allowance
                 || hi > plane + allowance
                 || !tri_touches_slab_footprint(t, pf, &pf.profiles[slab], f64::NEG_INFINITY, f64::INFINITY, pad)
@@ -140,14 +148,14 @@ pub(super) fn extend_and_seat_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[
         // above f64 noise, and it is the most the cut can reach into material
         // beyond the cap where no flush face floors it.
         let margin = allowance / 16.0;
-        let last = pf.planes.len() - 1;
-        if high {
+        seats.0[usize::from(high)] = Some(if high {
+            let last = pf.planes.len() - 1;
             pf.planes[last] = reach + margin;
-            seats.0[side] = Some(Seat { limit: plane - allowance, band: plane + allowance, floor });
+            Seat { limit: plane - allowance, band: plane + allowance, floor }
         } else {
             pf.planes[0] = reach - margin;
-            seats.0[side] = Some(Seat { limit: plane + allowance, band: plane - allowance, floor });
-        }
+            Seat { limit: plane + allowance, band: plane - allowance, floor }
+        });
     }
     seats
 }
@@ -155,15 +163,16 @@ pub(super) fn extend_and_seat_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[
 impl FlushSeats {
     /// Whether `t`, with vertex depths `w`, lies outside the depth range the
     /// prism cuts: clear of both caps, or beyond a seated cap over the whole
-    /// footprint without being a flush face of the material inside.
-    pub(super) fn beyond_caps(&self, pf: &PrismFrame, t: &PTri, w: [f64; 3]) -> bool {
+    /// footprint without being a flush face of the material inside. `pad` is
+    /// [`footprint_pad`] of `pf`.
+    pub(super) fn beyond_caps(&self, pf: &PrismFrame, t: &PTri, w: [f64; 3], pad: f64) -> bool {
         if w[0].max(w[1]).max(w[2]) < pf.d0() || w[0].min(w[1]).min(w[2]) > pf.d1() {
             return true;
         }
         if self.0.iter().all(Option::is_none) {
             return false;
         }
-        let Some((lo, hi)) = depths_over_footprint(t, pf, 1.0e-6 * (1.0 + pf.corner_mag())) else {
+        let Some((lo, hi)) = depths_over_footprint(t, pf, pad) else {
             return false; // clear of the profile: the cut passes it through
         };
         let beyond = |seat: &Seat, high: bool| {

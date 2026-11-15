@@ -17,7 +17,7 @@ import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { ownerHistoryRef } from '../_emit-helpers.js';
-import { refId } from '../host-geometry-frame.js';
+import { placementInAncestor, refId } from '../host-geometry-frame.js';
 import { assertHostedGlobalIdAvailable } from '../hosted-global-id.js';
 import { readStoreyInventory, ref, type StoreyInventory, type StoreyRecord } from './storey-model.js';
 import { readPlacementLeaf, worldLiftInParent } from './storey-placement.js';
@@ -26,8 +26,6 @@ import { planAttachmentBindings, type StoreyBinding, type WallHeightChange } fro
 import { writeTopAttachment } from './storey-attachment.js';
 import { writeAttachedTop } from './storey-attached.js';
 import { dryRunTransaction } from './storey-dry-run.js';
-import { setWallSectionInStore } from '../wall-section-edit.js';
-import { scaleWallQuantities, wallGeometry } from './storey-level-write.js';
 
 export interface AddStoreyParams {
   readonly Name: string;
@@ -144,21 +142,10 @@ export function planStoreyAdd(inventory: StoreyInventory, params: AddStoreyParam
   const refused = (error: unknown): StoreyAddPlan => ({
     refusal: error instanceof Error ? error.message.replace(`${OP}: `, '') : String(error), bindings: [], unresized: [],
   });
-  let planned: ReturnType<typeof planAttachmentBindings>;
   try {
-    const { parentId } = joinedBuilding(inventory, params);
-    const refusal = addStoreyRefusal(inventory, params, parentId);
-    if (refusal) return { refusal, bindings: [], unresized: [] };
-    planned = planAttachmentBindings(inventory, params.Elevation, parentId);
-  } catch (error) {
-    return refused(error);
-  }
-  try {
-    dryRunTransaction(inventory.view, (draft) => { addStoreyInStore(inventory.store, new StoreEditor(inventory.store, draft), params); });
-  } catch (error) {
-    return refused(error);
-  }
-  return { refusal: null, bindings: planned.bindings, unresized: planned.unreadable };
+    const added = dryRunTransaction(inventory.view, draft => addStoreyInStore(inventory.store, new StoreEditor(inventory.store, draft), params));
+    return { refusal: null, bindings: added.bindings, unresized: added.unresizedWalls };
+  } catch (error) { return refused(error); }
 }
 
 /** Add a storey atomically. Throws (writing nothing) when the storey cannot be placed. */
@@ -199,7 +186,9 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
 
     const relAggregatesId = aggregateUnder(draft, inventory, parentId, storeyId, ownerHistoryId, reference?.aggregateRelId ?? null);
     const guid = String(draft.getNewEntity(storeyId)?.attributes[0]);
-    const bindings = planAttachmentBindings(inventory, params.Elevation, parentId);
+    const floor = placementInAncestor(inventory.reader, placementId, null);
+    if (!floor) throw new Error(`${OP}: the new storey floor cannot be read`);
+    const bindings = planAttachmentBindings(inventory, params.Elevation, parentId, floor.o[2] * inventory.scale);
     const boundWalls = bindings.walls.map((wall) => ({ ...wall, targetStoreyId: storeyId }));
     const view = draft.getMutationView();
     for (const id of bindings.unreadable) writeTopAttachment(view, id, guid, 'relative');
@@ -213,13 +202,8 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
         message: `#${binding.elementId} is attached to the storey above but cannot reach the new storey: ${reason}`,
       }]);
       if (binding.to < 0.01 && binding.kind !== 'linear') throw refuse(`it would end ${binding.to.toFixed(3)} m tall`);
-      const geometry = binding.kind === 'wall' ? wallGeometry(store, view, draft, binding.elementId) : undefined;
-      const outcome = binding.kind === 'wall'
-        ? setWallSectionInStore(target, binding.elementId, { height: binding.to })
-        : writeAttachedTop(target, binding.elementId, binding.kind, binding.from, binding.to);
+      const outcome = writeAttachedTop(target, binding.elementId, binding.kind, binding.from, binding.to);
       if (!outcome.ok) throw refuse(outcome.reason);
-      // The same quantity upkeep as a re-level: Height, areas and volumes follow the new height.
-      if (binding.kind === 'wall') scaleWallQuantities(store, view, binding.elementId, binding.to / binding.from, geometry);
       reshaped.push(...outcome.remesh);
     }
     return { storeyId, placementId, relAggregatesId, boundWalls, bindings: bindings.bindings, unresizedWalls: bindings.unreadable, reshaped: [...new Set(reshaped)] };

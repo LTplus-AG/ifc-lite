@@ -153,7 +153,7 @@ for (const scenario of ['unavailable', 'ineligible', 'success'] as const) {
       if (args[0] >= 1e9) { largeAllocations++; throw new Error('unexpected source allocation #10264'); }
       return Reflect.construct(target, args);
     } });
-    mock.method(IfcServerClient.prototype, 'parseParquetStream', async (_file, onBatch) => {
+    mock.method(IfcServerClient.prototype, 'parseParquetStream', async (_file: Parameters<IfcServerClient['parseParquetStream']>[0], onBatch: Parameters<IfcServerClient['parseParquetStream']>[1]) => {
       attempts++;
       if (scenario !== 'success') throw new Error('unavailable server #10264');
       onBatch({ meshes: PARQUET_RESULT.meshes, batch_number: 1, decode_time_ms: 0 });

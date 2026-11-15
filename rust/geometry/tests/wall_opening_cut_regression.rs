@@ -39,8 +39,9 @@ const FIXTURE: &str = "ara3d/advanced_model.ifc";
 /// Signed volume of the (closed) mesh via the divergence theorem — the
 /// load-bearing geometric invariant alongside the bbox. Volumes below are
 /// pinned against IfcOpenShell 0.8.2 and against Manifold over IfcOpenShell's
-/// uncut host and opening solids, which agree to a millilitre in f64; a triangle-count pin alone could go stale while a
-/// boolean corruption (inverted/open cut) shifts the volume.
+/// uncut host and opening solids, which agree to a millilitre in f64; a
+/// triangle-count pin alone could go stale while a boolean corruption
+/// (inverted/open cut) shifts the volume.
 fn mesh_volume(mesh: &Mesh) -> f64 {
     mesh.indices
         .chunks_exact(3)

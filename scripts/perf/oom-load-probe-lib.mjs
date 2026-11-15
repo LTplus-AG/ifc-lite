@@ -114,7 +114,7 @@ export function phaseOf(sample) {
   if (!sample) return 'before-open';
   if (sample.interactive) return 'loaded';
   if (sample.warning) return 'memory warning (load not started)';
-  if ((sample.tris ?? 0) > 0) return 'geometry-streaming';
+  if ((sample.tris ?? 0) > 0) return sample.progress?.phase === 'Complete' ? 'geometry complete (not yet interactive)' : 'geometry-streaming';
   if (sample.progress?.phase) return `pre-geometry (${sample.progress.phase})`;
   return sample.loading ? 'pre-geometry' : 'before-open';
 }

@@ -58,6 +58,7 @@ test('#10264 cap sizes and phase labels', () => {
   assert.equal(phaseOf(null), 'before-open');
   assert.equal(phaseOf({ loading: true, progress: { phase: 'Parsing' }, tris: 0 }), 'pre-geometry (Parsing)');
   assert.equal(phaseOf({ loading: true, tris: 10 }), 'geometry-streaming');
+  assert.equal(phaseOf({ loading: false, tris: 10, progress: { phase: 'Complete', percent: 100 } }), 'geometry complete (not yet interactive)');
   assert.equal(phaseOf({ interactive: true, tris: 10 }), 'loaded');
 });
 

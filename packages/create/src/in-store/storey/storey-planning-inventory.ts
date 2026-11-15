@@ -108,7 +108,7 @@ export class StoreyPlanningInventory {
       if (!railings) this.railingsByStorey.set(home, railings = new Set());
       railings.add(id);
     }
-    return { id, storey, placement, parentPlacement, exceptional,
+    return { id, storey, placement, exceptional,
       attachmentTargets: attachment?.targetStoreyId == null ? [] : [attachment.targetStoreyId] };
   }
   update(inventory: StoreyInventory, ids: Iterable<number>): void {

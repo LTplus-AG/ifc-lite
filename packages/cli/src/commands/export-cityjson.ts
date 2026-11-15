@@ -20,6 +20,9 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 
 export async function exportCityJson(format: 'cityjson' | 'cityjsonseq', args: string[], store: IfcDataStore): Promise<void> {
   const scaleFlag = getFlag(args, '--scale');
+  if (scaleFlag === undefined && hasFlag(args, '--scale')) {
+    fatal('--scale needs a value: a grid step in output units, greater than 0 and at most 1 (default 0.001).');
+  }
   const scale = scaleFlag === undefined ? undefined : Number(scaleFlag);
   if (scale !== undefined && !(Number.isFinite(scale) && scale > 0 && scale <= 1)) {
     fatal(`Invalid --scale "${scaleFlag}": a grid step in output units, greater than 0 and at most 1 (default 0.001).`);

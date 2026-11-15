@@ -103,6 +103,12 @@ describe('export --format cityjson', () => {
   it('rejects an invalid --scale before exporting', async () => {
     await expect(exportCommand([LOCAL, '--format', 'cityjson', '--scale', '0'])).rejects.toThrow();
   });
+
+  it('rejects --scale without a value instead of exporting at the default grid', async () => {
+    const out = join(tmp, 'missing-scale.city.json');
+    await expect(exportCommand([LOCAL, '--format', 'cityjson', '--out', out, '--scale'])).rejects.toThrow();
+    await expect(readFile(out, 'utf-8')).rejects.toThrow();
+  });
 });
 
 describe('export --format cityjsonseq', () => {

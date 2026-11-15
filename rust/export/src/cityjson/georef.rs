@@ -120,7 +120,10 @@ fn model_context(content: &[u8], decoder: &mut EntityDecoder) -> Result<u32, Str
         }
         let Ok(ctx) = decoder.decode_at_with_id(id, start, end) else { continue };
         let kind = ctx.string_at(slot::IfcGeometricRepresentationContext::CONTEXT_TYPE).unwrap_or_default();
-        if kind.eq_ignore_ascii_case("Model") {
+        // A 2D 'Model' context beside the 3D one is not a candidate: the
+        // meshes, and the map conversion the export applies, are 3D.
+        let three_d = ctx.int_at(slot::IfcGeometricRepresentationContext::COORDINATE_SPACE_DIMENSION) == Some(3);
+        if kind.eq_ignore_ascii_case("Model") && three_d {
             found.push(id);
         }
     }

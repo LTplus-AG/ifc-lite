@@ -1111,10 +1111,12 @@ height) and `yearOfConstruction` (`Pset_BuildingCommon.YearOfConstruction`). A S
 identifier `EGID` in any property set of the building, and a parcel identifier `EGRID` in the
 building's or its site's, are surfaced as top-level `EGID` / `EGRID` attributes.
 
-**Units.** Every length in the document is in the output unit: the unit of the output CRS (see
+**Units.** Every length the exporter writes is in the output unit: the unit of the output CRS (see
 [Georeferencing](#georeferencing)), or metres for local output. That covers the vertices,
 `transform.scale`, `measuredHeight` and the storey `Elevation` alike, which go through the same unit
-conversion, map scale and IFC4X3 `FactorZ`.
+conversion, map scale and IFC4X3 `FactorZ`. Values inside `ifcPropertySets` are copied as authored,
+in the IFC project's units (a `Width` of `3000` in a millimetre project stays `3000`); they are not
+converted.
 
 ### Levels of detail
 

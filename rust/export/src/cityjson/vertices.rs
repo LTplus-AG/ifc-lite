@@ -83,6 +83,15 @@ impl VertexPool {
         }).sum()
     }
 
+    /// Whether three pool vertices are collinear on the grid (exact): such a
+    /// triangle, though its indices differ, is no surface.
+    pub(super) fn collinear(&self, a: u32, b: u32, c: u32) -> bool {
+        let (pa, pb, pc) = (self.grid[a as usize], self.grid[b as usize], self.grid[c as usize]);
+        let u: [i128; 3] = std::array::from_fn(|k| i128::from(pb[k] - pa[k]));
+        let v: [i128; 3] = std::array::from_fn(|k| i128::from(pc[k] - pa[k]));
+        u[1] * v[2] - u[2] * v[1] == 0 && u[2] * v[0] - u[0] * v[2] == 0 && u[0] * v[1] - u[1] * v[0] == 0
+    }
+
     pub(super) fn len(&self) -> usize {
         self.grid.len()
     }

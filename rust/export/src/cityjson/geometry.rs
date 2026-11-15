@@ -232,8 +232,9 @@ pub(super) fn lod3_surfaces(
         for t in m.indices.chunks_exact(3) {
             let tri = [idx[t[0] as usize], idx[t[1] as usize], idx[t[2] as usize]];
             if let [Some(a), Some(b), Some(c)] = tri {
-                // Snapping can merge a sliver's vertices; such a triangle is no surface.
-                if a != b && b != c && a != c {
+                // Snapping can merge a sliver's vertices or put them on one
+                // grid line; such a triangle is no surface.
+                if a != b && b != c && a != c && !pool.collinear(a, b, c) {
                     surfaces.push([[a, b, c]]);
                 }
             }

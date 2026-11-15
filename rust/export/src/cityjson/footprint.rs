@@ -98,11 +98,15 @@ fn point(m: &MeshData, p: &[f32]) -> [f64; 3] {
     [m.origin[0] + p[0] as f64, m.origin[1] + p[1] as f64, m.origin[2] + p[2] as f64]
 }
 
-/// Twice the signed area (positive counter-clockwise).
+/// Twice the signed area (positive counter-clockwise), relative to the
+/// first vertex: products of large absolute coordinates (map-scale IFC
+/// world positions) would cancel a small ring's area away.
 pub(super) fn signed_area2(ring: &[[f64; 2]]) -> f64 {
     let n = ring.len();
+    let Some(&o) = ring.first() else { return 0.0 };
     (0..n).map(|i| {
         let (a, b) = (ring[i], ring[(i + 1) % n]);
+        let (a, b) = ([a[0] - o[0], a[1] - o[1]], [b[0] - o[0], b[1] - o[1]]);
         a[0] * b[1] - b[0] * a[1]
     }).sum()
 }

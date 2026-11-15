@@ -466,3 +466,39 @@ fn a_sliver_collinear_on_the_grid_is_dropped_and_counted() {
     let g1 = geometry::lod1(&fp, &mut pool, &|p: [f64; 3]| p, 1e-6, &mut dropped1).unwrap();
     assert_eq!(g1.value["type"], "Solid", "one prism, no zero-volume block");
 }
+
+/// A small ring far from the origin keeps its area: the shoelace runs
+/// relative to a vertex, not on absolute products that cancel (review).
+#[test]
+fn a_small_ring_at_large_coordinates_is_written() {
+    let (x, y, d) = (2_097_152.0, 2_097_152.0, 0.015625);
+    let ring = vec![[x, y], [x + d, y], [x + d, y + d], [x, y + d]];
+    let fp = footprint::Footprint { shapes: vec![vec![ring]], z_min: 0.0, z_max: 3.0, approximated: 0 };
+    let mut pool = vertices::VertexPool::new(0.001);
+    let mut dropped = 0;
+    let g0 = geometry::lod0(&fp, &mut pool, &|p: [f64; 3]| p, 1e-6, &mut dropped).expect("the ring is written");
+    assert_eq!(surfaces(&g0.value).len(), 1);
+    assert_eq!(dropped, 0);
+}
+
+/// A mesh triangle whose vertices snap onto one grid line is no LoD3
+/// surface (review: it was written as a zero-area triangle).
+#[test]
+fn an_lod3_triangle_collinear_on_the_grid_is_not_written() {
+    let positions = vec![0.0, 0.49, 0.0, 1.5, -0.49, 0.0, 3.0, 0.49, 0.0, 0.0, 0.0, 1.0];
+    let mesh = MeshData::new(1, "IfcWall".into(), positions, vec![0.0; 12], vec![0, 1, 2, 0, 1, 3], [1.0; 4]);
+    let mut pool = vertices::VertexPool::new(1.0);
+    let id = |p: [f64; 3]| p;
+    let g = geometry::lod3_surfaces(&[&mesh], &id, &mut pool, &id).expect("one real triangle");
+    assert_eq!(surfaces(&g.value).len(), 1, "the collinear triangle is dropped, the other kept");
+}
+
+/// A 2D 'Model' context beside the 3D one does not make the georeferenced
+/// context ambiguous (review: it fell back to local coordinates).
+#[test]
+fn a_2d_model_context_does_not_block_georeferencing() {
+    let content = model("IFC4", MAP_IFC4, None)
+        .replace("#7=IFCPROJECT(", "#8=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',2,1.E-05,#4,$);\n#7=IFCPROJECT(");
+    let (out, _) = export(&content, &CityJsonOptions::default());
+    assert_eq!(out.reference_system.as_deref(), Some("https://www.opengis.net/def/crs/EPSG/0/2056"), "{:?}", out.warnings);
+}

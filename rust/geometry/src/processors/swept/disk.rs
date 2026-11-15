@@ -139,6 +139,25 @@ pub(crate) fn build_tube_rmf(
     (tangents, perp1s, perp2s)
 }
 
+/// Section frames along a curve's own evaluated unit tangents (an
+/// alignment): Axis1 is the horizontal normal to the left of the tangent and
+/// Axis2 = tangent x Axis1, so a station's frame depends on that station
+/// alone. Two sweeps trimmed at the same station then place the same ring,
+/// vertex for vertex, wherever each one starts. A vertical tangent has no
+/// horizontal normal and takes +Y as Axis1, still fixed by the station.
+pub(crate) fn curve_frames(tangents: &[Vector3<f64>]) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
+    let mut perp1s = Vec::with_capacity(tangents.len());
+    let mut perp2s = Vec::with_capacity(tangents.len());
+    for t in tangents {
+        let left = Vector3::new(-t.y, t.x, 0.0)
+            .try_normalize(1e-9)
+            .unwrap_or_else(Vector3::y);
+        perp1s.push(left);
+        perp2s.push(t.cross(&left).normalize());
+    }
+    (perp1s, perp2s)
+}
+
 /// Mesh a circular (optionally annular) cross-section swept along
 /// `curve_points`: one ring of `segments` vertices per sample on the outer
 /// wall, a second ring per sample on the bore when `inner_radius` is set, and
@@ -151,9 +170,22 @@ pub(crate) fn build_tube_rmf(
 /// right-handed (`perp2 = t x perp1`), so a ring vertex at angle `theta` sits
 /// at `p + r(cos theta perp1 + sin theta perp2)` and CCW order in the
 /// `(perp1, perp2)` plane faces `+t`. `swept_disk_side_walls_face_outward` in
-/// `tests/swept_disk_winding_and_bore.rs` pins the sign.
+/// `tests/swept_disk_winding_and_bore.rs` pins the sign. Production goes
+/// through [`build_tube_along`]; this chord-frame form remains for tests.
+#[cfg(test)]
 fn build_tube(
     curve_points: &[Point3<f64>],
+    radius: f64,
+    inner_radius: Option<f64>,
+    segments: usize,
+) -> (Vec<f32>, Vec<u32>) {
+    build_tube_along(curve_points, None, radius, inner_radius, segments)
+}
+
+/// [`build_tube`] with the directrix's own unit tangents when it has them.
+fn build_tube_along(
+    curve_points: &[Point3<f64>],
+    tangents: Option<&[Vector3<f64>]>,
     radius: f64,
     inner_radius: Option<f64>,
     segments: usize,
@@ -166,7 +198,14 @@ fn build_tube(
 
     // Build a rotation-minimising frame across all sample points up-front.
     // (Per-iteration `up` selection caused frame flips at sharp bends.)
-    let (_, perp1s, perp2s) = build_tube_rmf(curve_points);
+    // The curve's own tangents when it has them (see `curve_frames`).
+    let (perp1s, perp2s) = match tangents {
+        Some(tangents) if tangents.len() == n => curve_frames(tangents),
+        _ => {
+            let (_, perp1s, perp2s) = build_tube_rmf(curve_points);
+            (perp1s, perp2s)
+        }
+    };
     let unit_circle: Vec<(f64, f64)> = (0..segments)
         .map(|j| {
             let angle = 2.0 * std::f64::consts::PI * j as f64 / segments as f64;
@@ -291,20 +330,22 @@ impl SweptDiskSolidProcessor {
         let (start_param, end_param) = crate::swept_disk_range::effective_range(
             directrix.ifc_type.clone(), start_param, end_param, decoder,
         );
-        let curve_points = self.profile_processor.get_directrix_points(
+        // Swept-disk bounds are an IfcParameterValue, never a length.
+        let samples = self.profile_processor.get_directrix_samples(
             &directrix,
             decoder,
-            start_param,
-            end_param,
+            start_param.map(crate::profiles::directrix::CurveMeasure::Parameter),
+            end_param.map(crate::profiles::directrix::CurveMeasure::Parameter),
             quality,
         )?;
+        let (curve_points, tangents) = (samples.points, samples.tangents);
 
         if !directrix_is_sweepable(&curve_points)? {
             return Ok(None);
         }
 
         let segments = quality.swept_disk_segments(radius * decoder.length_unit_scale());
-        Ok(Some(SweptDiskPlan { curve_points, radius, inner_radius, segments }))
+        Ok(Some(SweptDiskPlan { curve_points, radius, inner_radius, segments, tangents }))
     }
 }
 

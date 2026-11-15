@@ -8,6 +8,19 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Gradient-curve directrix sweeps cost only where they occur (#9969)
+
+**Measured, no regression.** Swept solids along an `IfcGradientCurve` now sample the
+vertical profile until every chord is within `CHORD_TOL_M`, at most 1,024 splits per
+span, and build their frames from the curve's evaluated tangents. The sampler runs
+only for a gradient directrix, so files without one produce byte-identical meshes
+(same mesh, vertex and triangle counts) at the same speed; on a file that has them
+the extra time is the extra stations.
+
+Lesson: bound the refinement per span and report when the bound is hit
+(`diag_warn`), so a pathological profile costs a fixed amount of work and says so
+instead of returning chords that silently miss the advertised tolerance.
+
 ## One store notification for a primary load's reset (#10196, closed)
 
 **Rejected before timing: holding store notifications through the synchronous reset at a primary load's pick saves about 5 ms, not the 25-35 ms the profile suggested.**

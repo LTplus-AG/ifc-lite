@@ -8,6 +8,9 @@
 
 use super::outline::trim_polyline;
 use super::ProfileProcessor;
+#[path = "directrix_gradient.rs"]
+mod gradient;
+pub(crate) use gradient::CurveMeasure;
 use crate::tessellation::TessellationQuality;
 use crate::{Error, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -25,6 +28,9 @@ impl ProfileProcessor {
     ///   - `IfcLine`: `P(u) = Pnt + u·V`.
     ///   - `IfcCircle` / `IfcEllipse`: angle in the project's plane-angle unit.
     ///
+    ///   - `IfcGradientCurve`: the `BaseCurve` parameter, with the elevation
+    ///     of its vertical profile (see [`Self::get_directrix_samples`]).
+    ///
     /// Any other directrix (an `IfcTrimmedCurve` carries its own Trim1/Trim2,
     /// so a redundant solid-level range is a no-op; a spline's knot-based
     /// parameter is not supported) is sampled whole.
@@ -37,6 +43,12 @@ impl ProfileProcessor {
         quality: TessellationQuality,
     ) -> Result<Vec<Point3<f64>>> {
         self.set_tessellation_quality(quality);
+        if directrix.ifc_type == IfcType::IfcGradientCurve {
+            let (start, end) = (start_param.map(CurveMeasure::Parameter), end_param.map(CurveMeasure::Parameter));
+            if let Some(samples) = self.get_gradient_directrix(directrix, decoder, start, end)? {
+                return Ok(samples.points);
+            }
+        }
         if start_param.is_none() && end_param.is_none() {
             return self.get_curve_points(directrix, decoder, quality);
         }

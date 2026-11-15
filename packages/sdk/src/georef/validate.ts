@@ -48,6 +48,21 @@ export function requireMapUnit(value: unknown, path = 'ProjectedCRS.MapUnit'): s
   return normalizeMapUnitName(unit);
 }
 
+/**
+ * Refuse a key `fields` does not list, so a typo or a guessed name
+ * (`Rotation`, `scale`, `Zone`) is never silently dropped. `path` prefixes
+ * the key in the message and in `missing`; '' for the top level.
+ */
+export function rejectUnknownKeys(obj: object | undefined, fields: readonly string[], path: string): void {
+  for (const key of Object.keys(obj ?? {})) {
+    if (!fields.includes(key)) {
+      const at = path ? `${path}.${key}` : key;
+      const what = path ? 'an attribute bim.georef writes' : 'a bim.georef input';
+      throw new GeoreferencingError('INVALID_INPUT', `${at} is not ${what} (known: ${fields.join(', ')}).`, [at]);
+    }
+  }
+}
+
 /** Throw MISSING_INPUT for every listed path whose value is undefined. */
 export function requirePresent(entries: Array<[string, unknown]>, what: string): void {
   const missing = entries.filter(([, v]) => v === undefined).map(([k]) => k);

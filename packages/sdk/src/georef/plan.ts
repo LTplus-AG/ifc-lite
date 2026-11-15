@@ -21,7 +21,7 @@
 import type { StepExportOptions } from '@ifc-lite/export';
 import { EPSET_MAP_CONVERSION, EPSET_PROJECTED_CRS, idList, type GeorefModelFacts } from './model-facts.js';
 import { compact, emptyGeoreferencingState, rotationOf } from './read.js';
-import { requireMapUnit, requireNumber, requirePresent, requireText, resolveFactors, resolveRotation } from './validate.js';
+import { rejectUnknownKeys, requireMapUnit, requireNumber, requirePresent, requireText, resolveFactors, resolveRotation } from './validate.js';
 import {
   GeoreferencingError,
   type GeorefMapConversionAttributes,
@@ -151,8 +151,11 @@ function decideMapUnit(input: GeorefProjectedCRSAttributes, current: Georeferenc
   }
   const prior = current.ProjectedCRS;
   const sameName = prior?.Name?.trim().toUpperCase() === input.Name.trim().toUpperCase();
+  const where = prior?.expressId !== undefined ? `${prior.type} #${prior.expressId}` : `this session's ${prior?.type}`;
   if (prior && sameName && prior.MapUnit !== undefined) {
-    const where = prior.expressId !== undefined ? `${prior.type} #${prior.expressId}` : `this session's ${prior.type}`;
+    if (prior.mapUnitResolved === false) {
+      throw unresolvedMapUnit(where);
+    }
     return {
       value: requireMapUnit(prior.MapUnit, `MapUnit of ${where}`),
       source: 'existing',
@@ -162,6 +165,15 @@ function decideMapUnit(input: GeorefProjectedCRSAttributes, current: Georeferenc
   throw new GeoreferencingError(
     'MISSING_INPUT',
     `ProjectedCRS.MapUnit is required: ifc-lite does not guess the unit of ${JSON.stringify(input.Name)}, carries no CRS database to derive it from, and the model has no IfcProjectedCRS of that Name to take it from. Pass it explicitly (e.g. METRE).`,
+    ['ProjectedCRS.MapUnit'],
+  );
+}
+
+/** The refusal for carrying a MapUnit the reader only defaulted. */
+export function unresolvedMapUnit(where: string): GeoreferencingError {
+  return new GeoreferencingError(
+    'MISSING_INPUT',
+    `ProjectedCRS.MapUnit is required: the MapUnit of ${where} could not be resolved (ifc-lite reads it as a METRE default, which may be wrong), so it is not carried over. Pass ProjectedCRS.MapUnit explicitly (e.g. METRE, US SURVEY FOOT).`,
     ['ProjectedCRS.MapUnit'],
   );
 }
@@ -221,7 +233,7 @@ export function stateAfter(
   const mcType: GeorefMapConversionState['type'] = storage === 'propertySets' ? 'ePSet_MapConversion' : scaled ? 'IfcMapConversionScaled' : 'IfcMapConversion';
   state.source = mc ? mcType : null;
   if (crs) {
-    state.ProjectedCRS = compact({ ...crs, type: storage === 'propertySets' ? 'ePSet_ProjectedCRS' as const : 'IfcProjectedCRS' as const, expressId: ids.crs });
+    state.ProjectedCRS = compact({ ...crs, mapUnitResolved: crs.MapUnit === undefined ? undefined : true, type: storage === 'propertySets' ? 'ePSet_ProjectedCRS' as const : 'IfcProjectedCRS' as const, expressId: ids.crs });
   }
   if (mc) {
     state.MapConversion = compact({ ...mc, type: mcType, expressId: ids.mc });
@@ -263,7 +275,12 @@ export function ePSetValues(src: Record<string, unknown>, fields: readonly strin
     .map((f) => [f, src[f] as string | number, EPSET_DATA_TYPES[f] ?? 'IfcLabel']);
 }
 
+const SET_KEYS = ['ProjectedCRS', 'MapConversion', 'rotationDegrees', 'replace'] as const;
+
 export function planSet(input: GeoreferencingSetInput, ctx: PlanContext): GeorefWritePlan {
+  rejectUnknownKeys(input, SET_KEYS, '');
+  rejectUnknownKeys(input.ProjectedCRS, CRS_FIELDS, 'ProjectedCRS');
+  rejectUnknownKeys(input.MapConversion, MC_FIELDS, 'MapConversion');
   const storage = requireStorage(ctx.facts);
   const anchor = requireAnchor(ctx.facts, storage);
   const records = storage === 'entities' ? existingRecords(ctx.facts) : [];

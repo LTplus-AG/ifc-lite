@@ -59,10 +59,12 @@ function refusal(fn: () => unknown): GeoreferencingError {
 
 /** Run `fn`, expect a refusal, and check the session holds nothing afterwards. */
 function refusedCleanly(model: HeadlessModelSession, fn: () => unknown): GeoreferencingError {
-  const before = model.bim.export.ifc();
+  // FILE_NAME carries the export time, which may tick between the two exports.
+  const exported = () => String(model.bim.export.ifc()).replace(/FILE_NAME\([^;]*\);/, 'FILE_NAME();');
+  const before = exported();
   const err = refusal(fn);
   expect(model.bim.georef.get().pending).toBe(false);
-  expect(model.bim.export.ifc()).toBe(before);
+  expect(exported()).toBe(before);
   return err;
 }
 

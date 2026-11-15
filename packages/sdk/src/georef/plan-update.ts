@@ -24,8 +24,9 @@ import {
   type GeorefWritePlan,
   type PlanContext,
   type PropertySetOp,
+  unresolvedMapUnit,
 } from './plan.js';
-import { requireMapUnit, requireNumber, requirePresent, requireText, resolveFactors, resolveRotation } from './validate.js';
+import { rejectUnknownKeys, requireMapUnit, requireNumber, requirePresent, requireText, resolveFactors, resolveRotation } from './validate.js';
 import {
   GeoreferencingError,
   type GeorefMapConversionAttributes,
@@ -36,18 +37,12 @@ import {
 
 type Attrs = Record<string, unknown>;
 
+const UPDATE_KEYS = ['ProjectedCRS', 'MapConversion', 'rotationDegrees'] as const;
+
 function attributesOf(state: object | null, fields: readonly string[]): Attrs | null {
   if (!state) return null;
   const src = state as Attrs;
   return Object.fromEntries(fields.filter((f) => src[f] !== undefined).map((f) => [f, src[f]]));
-}
-
-function rejectUnknownKeys(obj: object | undefined, fields: readonly string[], path: string): void {
-  for (const key of Object.keys(obj ?? {})) {
-    if (!fields.includes(key)) {
-      throw new GeoreferencingError('INVALID_INPUT', `${path}.${key} is not an attribute bim.georef writes (known: ${fields.join(', ')}).`, [`${path}.${key}`]);
-    }
-  }
 }
 
 function given(obj: Attrs): string[] {
@@ -57,6 +52,7 @@ function given(obj: Attrs): string[] {
 export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): GeorefWritePlan {
   const storage = requireStorage(ctx.facts);
   const cur = ctx.current;
+  rejectUnknownKeys(input, UPDATE_KEYS, '');
   rejectUnknownKeys(input.ProjectedCRS, CRS_FIELDS, 'ProjectedCRS');
   rejectUnknownKeys(input.MapConversion, MC_FIELDS, 'MapConversion');
   const crsIn = (input.ProjectedCRS ?? {}) as Attrs;
@@ -144,6 +140,7 @@ export function planUpdate(input: GeoreferencingUpdateInput, ctx: PlanContext): 
     mapUnit = { value: String(crsChanges.MapUnit), source: 'explicit', detail: 'given explicitly' };
   } else if (mergedCrs?.MapUnit !== undefined) {
     const where = cur.ProjectedCRS?.expressId !== undefined ? `${cur.ProjectedCRS.type} #${cur.ProjectedCRS.expressId}` : `this session's ${cur.ProjectedCRS?.type ?? 'CRS'}`;
+    if (cur.ProjectedCRS?.mapUnitResolved === false) throw unresolvedMapUnit(where);
     mapUnit = { value: mergedCrs.MapUnit, source: 'existing', detail: `kept from ${where}` };
   } else {
     throw new GeoreferencingError(

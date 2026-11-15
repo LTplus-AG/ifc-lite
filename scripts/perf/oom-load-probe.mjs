@@ -49,7 +49,7 @@ import { basename, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { writeDenseIfc } from './gen-dense-ifc.mjs';
-import { DIALOG_BUTTONS, MEMORY_WARNING, classify, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { DIALOG_BUTTONS, GENERIC_MODEL_ERROR, MEMORY_WARNING, classify, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
 import { GPU_ARGS } from './retained-qual-browser.mjs';
 import { chromePids, memoryOf } from './scenoptic-bench-sampling.mjs';
 import { openAndWaitInteractive, openViewerPage, startViewerServer } from './viewer-load-probe.mjs';
@@ -212,7 +212,7 @@ export async function runProbe(opts) {
         if (done || obs.pageCrashed || obs.browserGone || obs.killedTypes.some((t) => t === 'renderer' || t === 'browser')) return;
         const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 15000, () => null);
         if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
-        if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? 'model load error'; return; }
+        if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? GENERIC_MODEL_ERROR; return; }
         if (obs.decision === 'none') {
           // CSS role selectors, not getByRole: when another layer (e.g. a privacy banner) is open the
           // dialog's container can be aria-hidden, which hides it from getByRole although it is on screen.

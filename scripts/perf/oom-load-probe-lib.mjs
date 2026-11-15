@@ -65,8 +65,8 @@ const TAB_PROCESSES = new Set(['renderer', 'browser']);
  *  #  outcome                        when                                                  why it outranks the rows below
  *  1  killed / killed-after-continue the renderer or browser vanished at an OOM kill, the  a dead tab is the defect under test;
  *                                    page crashed, or the browser exited                    nothing a dead page showed can override it
- *  2  error                          an OOM kill whose victim could not be identified,     cannot be called killed or alive: never a pass
- *                                    with the page alive
+ *  2  error                          more OOM kills than identified victims (any kill's    cannot be called killed or alive: never a pass,
+ *                                    victim unknown), with the page alive                   even when the page is interactive (review #10415)
  *  3  loaded                         the load reached full interactivity (positively       a finished model beats any text elsewhere on
  *                                    observed); a GPU/utility OOM kill is noted            the page, including a stale or later error
  *  4  refused                        the explicit pre-read refusal text (store load        the refusal IS a load error; it must be read
@@ -79,12 +79,15 @@ const TAB_PROCESSES = new Set(['renderer', 'browser']);
  *  9  error                          nothing at all was observed                           never a pass
  */
 const TAB_DEATH = (o, k) => [...k.types.filter((t) => TAB_PROCESSES.has(t)).map((t) => `${t} OOM-killed`), o.pageCrashed && 'page crashed', o.browserGone && 'browser exited'].filter(Boolean);
-const texts = (o) => [o.storeError, ...(o.notices ?? [])].filter(Boolean).map(String);
+const texts = (o) => [o.storeError, ...(o.otherErrors ?? []), ...(o.notices ?? [])].filter(Boolean).map(String);
+
+/** What a poll records when a model is in error before the store has its message. */
+export const GENERIC_MODEL_ERROR = 'model load error';
 export const PRECEDENCE = Object.freeze([
   { outcome: 'killed', when: (o, k) => TAB_DEATH(o, k).length > 0,
     reason: (o, k) => `${TAB_DEATH(o, k).join(', ')}${k.kills ? ` (cgroup oom_kill=${k.kills})` : ''}` },
-  { outcome: 'error', when: (o, k) => k.kills > 0 && k.types.length === 0,
-    reason: (o, k) => `cgroup oom_kill=${k.kills} but the probe could not tell which process died; the page stayed alive` },
+  { outcome: 'error', when: (o, k) => k.kills > k.types.length,
+    reason: (o, k) => `cgroup oom_kill=${k.kills} but only ${k.types.length} victim(s) identified${k.types.length ? ` (${k.types.join('+')})` : ''}; the page stayed alive` },
   { outcome: 'loaded', when: (o) => Boolean(o.interactive), reason: () => 'interactive' },
   { outcome: 'refused', when: (o) => texts(o).some((t) => REFUSAL_MESSAGE.test(t)),
     reason: (o) => texts(o).find((t) => REFUSAL_MESSAGE.test(t)).trim().slice(0, 300) },
@@ -105,7 +108,8 @@ export const PRECEDENCE = Object.freeze([
  * @param {boolean} [o.pageCrashed]    Playwright page 'crash'.
  * @param {boolean} [o.browserGone]    Playwright context 'close' before the verdict.
  * @param {boolean} [o.interactive]    openAndWaitInteractive resolved.
- * @param {string|null} [o.storeError] the viewer store's load error (or 'model load error').
+ * @param {string|null} [o.storeError] the viewer store's load error (or GENERIC_MODEL_ERROR).
+ * @param {string[]} [o.otherErrors]   later, different load errors kept beside storeError.
  * @param {string[]} [o.notices]       text of dialogs, alerts and toasts at the end (not the whole page).
  * @param {boolean} [o.timedOut]
  * @param {boolean} [o.warningShown]   a MEMORY_WARNING dialog appeared.
@@ -134,7 +138,11 @@ export function classify(o) {
 export function mergeFinalSnapshot(obs, snap) {
   if (!snap) return obs;
   const out = { ...obs };
-  if (!out.storeError && (snap.error || snap.modelStates?.includes('error'))) out.storeError = snap.error ?? 'model load error';
+  if (snap.error || snap.modelStates?.includes('error')) {
+    const later = snap.error ?? GENERIC_MODEL_ERROR;
+    if (!out.storeError || out.storeError === GENERIC_MODEL_ERROR) out.storeError = later; // a specific message replaces the placeholder
+    else if (later !== GENERIC_MODEL_ERROR && later !== out.storeError) out.otherErrors = [...(out.otherErrors ?? []), later]; // keep both; the table decides
+  }
   if (snap.warningVisible && !out.warningShown) out.warningShown = true;
   if (Array.isArray(snap.notices)) out.notices = snap.notices;
   return out;

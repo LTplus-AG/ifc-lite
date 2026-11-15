@@ -80,7 +80,7 @@ test('#10264 OOM kill with an unidentified victim and a live page: `error`, a pa
   for (const extra of [{}, { interactive: true }, { timedOut: true }]) {
     const r = classify({ oomKills: 1, killedTypes: [], ...extra });
     assert.equal(r.outcome, 'error');
-    assert.match(r.reason, /could not tell which process died/);
+    assert.match(r.reason, /only 0 victim\(s\) identified/);
     for (const e of ['killed', 'not-killed', 'warned']) assert.equal(verdict(r.outcome, e).pass, false);
   }
 });
@@ -271,4 +271,34 @@ test('precedence 8>9: timeout beats no verdict, and nothing observed is error', 
 test('precedence: a load error beats loaded only when the load was not interactive', () => {
   assert.equal(classify({ ...base, storeError: OOM_TEXT, interactive: true }).outcome, 'loaded');
   assert.equal(classify({ ...base, storeError: OOM_TEXT, interactive: false }).outcome, 'error');
+});
+
+test('precedence 2 (review on #10415): two OOM kills with one identified GPU victim is error, even when interactive', () => {
+  const r = classify({ ...base, oomKills: 2, killedTypes: ['gpu-process'], interactive: true });
+  assert.equal(r.outcome, 'error');
+  assert.equal(r.rule, 2);
+  assert.match(r.reason, /only 1 victim\(s\) identified \(gpu-process\)/);
+  for (const e of ['killed', 'not-killed', 'warned', 'loaded']) assert.equal(verdict(r.outcome, e).pass, false);
+  // Every kill accounted for by a non-tab victim: the live, interactive load is loaded with a note.
+  assert.equal(classify({ ...base, oomKills: 2, killedTypes: ['gpu-process', 'utility'], interactive: true }).outcome, 'loaded');
+  // 1>2 still holds: a renderer among the victims is killed even if another kill is unidentified.
+  assert.equal(classify({ ...base, oomKills: 3, killedTypes: ['gpu-process', 'renderer'] }).outcome, 'killed');
+});
+
+test('final snapshot (review on #10415): an explicit refusal replaces the poll\'s generic model error', async () => {
+  const { mergeFinalSnapshot, GENERIC_MODEL_ERROR } = await import('./oom-load-probe-lib.mjs');
+  const polled = { ...base, storeError: GENERIC_MODEL_ERROR };
+  const refusal = `Failed to load "x.ifc": ${REFUSAL_TEXT}`;
+  const merged = mergeFinalSnapshot(polled, { error: refusal, modelStates: ['error'], warningVisible: false, notices: [] });
+  assert.equal(merged.storeError, refusal);
+  assert.equal(classify(merged).outcome, 'refused');
+  // A later generic placeholder never replaces a specific earlier error.
+  assert.equal(mergeFinalSnapshot({ ...base, storeError: OOM_TEXT }, { error: null, modelStates: ['error'], notices: [] }).storeError, OOM_TEXT);
+  // Two different specific errors are both kept; the precedence table decides (refusal row 4 beats error row 5).
+  const both = mergeFinalSnapshot({ ...base, storeError: OOM_TEXT }, { error: refusal, modelStates: ['error'], notices: [] });
+  assert.equal(both.storeError, OOM_TEXT);
+  assert.deepEqual(both.otherErrors, [refusal]);
+  assert.equal(classify(both).outcome, 'refused');
+  // The same message twice is not duplicated.
+  assert.equal(mergeFinalSnapshot({ ...base, storeError: OOM_TEXT }, { error: OOM_TEXT, modelStates: [], notices: [] }).otherErrors, undefined);
 });

@@ -5,6 +5,7 @@
 import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ConnectionTestResult } from '@ifc-lite/plugin-api';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
+import { SourceWriteBackModels } from './SourceWriteBackAction';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
 import { SourceBrowser } from './SourceBrowser';
 import { SourceProviderRow } from './SourceProviderRow';
@@ -283,6 +284,7 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
 
   return (
     <div className="flex h-full flex-col">
+      <SourceWriteBackModels />
       <div className="flex items-center justify-between border-b px-3 py-2">
         <span className="text-sm font-medium">{t('sources.sourcesPanel.title')}</span>
         <Button

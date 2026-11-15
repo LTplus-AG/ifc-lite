@@ -10,6 +10,7 @@
  * dispatches to this component for `model-header` nodes.
  */
 
+import { SourceWriteBackAction } from '@/components/sources/SourceWriteBackAction';
 import { PositionedDownload } from '../PositionedDownload';
 import { Move3D, ChevronRight, Eye, EyeOff, FileBox, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -117,6 +118,7 @@ export function ModelHeaderRow({
           </span>
         )}
         <PositionedDownload modelId={modelId} />
+        <SourceWriteBackAction modelId={modelId} />
         <ModelRowTags modelId={modelId} modelName={node.name} />
 
         <button

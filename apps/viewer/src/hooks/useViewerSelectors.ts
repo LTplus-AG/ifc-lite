@@ -11,7 +11,7 @@
 import { useMemo, useRef } from 'react';
 import { shallow } from 'zustand/shallow';
 import { modelHiddenEntities } from '../lib/visibility/model-hidden-entities.js';
-import { resolveViewHiddenEntities, retypedClasses } from '../lib/visibility/structural-view.js';
+import { resolveViewHiddenEntities, retypedClasses, withClassHiddenRetypes } from '../lib/visibility/structural-view.js';
 import { classFilterActive, type RetypedClasses } from '../store/typeVisibilityFilter.js';
 import { useViewerStore } from '../store/index.js';
 import { useStoreyContextVisibility } from './useStoreyContext.js';
@@ -50,11 +50,12 @@ export function useVisibilityState() {
   const models = useViewerStore((state) => state.models);
   const geometryContentVersion = useViewerStore((state) => state.geometryContentVersion);
   const toGlobalId = useViewerStore((state) => state.toGlobalId);
-  const hiddenEntities = useMemo(
-    () => resolveViewHiddenEntities({ models, ifcDataStore, mutationViews, structuralViewMode,
-      hiddenEntities: modelHiddenEntities(models, userHiddenEntities, toGlobalId), toGlobalId }),
-    [models, userHiddenEntities, toGlobalId, geometryContentVersion, structuralViewMode, ifcDataStore, mutationVersion, mutationViews],
-  );
+  const typeVisibility = useViewerStore((state) => state.typeVisibility);
+  const hiddenEntities = useMemo(() => {
+    const masked = resolveViewHiddenEntities({ models, ifcDataStore, mutationViews, structuralViewMode,
+      hiddenEntities: modelHiddenEntities(models, userHiddenEntities, toGlobalId), toGlobalId });
+    return withClassHiddenRetypes({ models, ifcDataStore, mutationViews, toGlobalId }, masked, typeVisibility);
+  }, [models, userHiddenEntities, toGlobalId, geometryContentVersion, structuralViewMode, ifcDataStore, mutationVersion, mutationViews, typeVisibility]);
   const isolatedEntities = useViewerStore((state) => state.isolatedEntities);
   const userGhostExcept = useViewerStore((state) => state.ghostExceptEntities);
   // The Model workspace hides (or ghosts) the storeys above the one being

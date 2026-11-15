@@ -98,17 +98,21 @@ export {
   getEpsgAreaOfUse,
   getEpsgAreasOfUse,
   getEpsgCompoundComponents,
-  getEpsgUnit,
+  getEpsgUnits,
   isLonLatInAreaOfUse,
   isLonLatInEpsgAreaOfUse,
+  loadEpsgExtentsDatasetVersion,
   loadEpsgExtentsFetchedDate,
 } from './epsg-extents.js';
 export type {
   EpsgAreaOfUse,
+  EpsgCatalogAreaOfUse,
+  EpsgCatalogEntry,
   EpsgCompoundComponents,
   EpsgCrsCatalog,
   EpsgCrsKind,
   EpsgUnit,
+  EpsgUnits,
 } from './epsg-extents.js';
 
 // Entity name mapping (UPPERCASE → PascalCase)

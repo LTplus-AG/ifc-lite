@@ -3,6 +3,7 @@
   "version": "6.4.0",
   "description": "Columnar data structures for IFC-Lite",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

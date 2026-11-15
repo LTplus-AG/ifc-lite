@@ -88,6 +88,12 @@ const gate = createWebglCapabilityGate<ThreeWebglFailureReason>({
   attributes: THREE_CONTEXT_ATTRIBUTES,
   probeFailureReason: 'probe_no_context',
   label: 'three',
+  // #9660: three dereferences precision queries during renderer construction.
+  // A lost/broken context can exist while those queries return null. Test all
+  // float precision levels because three falls back from high to medium/low.
+  validateContext: (context) => [0x8b31, 0x8b30].every(shaderType =>
+    [0x8df2, 0x8df1, 0x8df0].every(precisionType =>
+      context.getShaderPrecisionFormat?.(shaderType, precisionType) != null)),
 });
 
 /** The latched verdict, or `null` if nothing has been determined yet. */

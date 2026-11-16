@@ -146,6 +146,23 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
   const started = performance.now();
   assert.equal(topologyPoints(ifc4(shared.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#445,#46)')), 30), null);
   assert.ok(performance.now() - started < 2000, 'bounded walk');
+  // The same fan-out over topology with no readable vertex: walked once per map, not per path.
+  let empty = direct + "#59=IFCPOLYLINE((#10,#11));#56=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#59));";
+  for (let i = 0; i < 16; i += 1) {
+    const from = i === 0 ? '#56' : `#${500 + 5 * (i - 1) + 4}`;
+    const m = 500 + 5 * i;
+    empty += `#${m}=IFCREPRESENTATIONMAP(#41,${from});#${m + 1}=IFCMAPPEDITEM(#${m},#46);#${m + 2}=IFCMAPPEDITEM(#${m},#46);#${m + 3}=IFCMAPPEDITEM(#${m},#46);#${m + 4}=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#${m + 1},#${m + 2},#${m + 3},#${m + 1}));`;
+  }
+  const emptyStarted = performance.now();
+  assert.equal(topologyPoints(ifc4(empty.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#575,#46)')), 30).length, 2);
+  assert.ok(performance.now() - emptyStarted < 2000, 'memoised walk');
+  // The vertex cap counts direct vertices too, whatever the item order.
+  const many = Array.from({ length: 5001 }, (_, i) => `#${1000 + i}=IFCEDGE(#12,#13);`).join('');
+  const edges = Array.from({ length: 5001 }, (_, i) => `#${1000 + i}`).join(',');
+  for (const order of [`#47,${edges}`, `${edges},#47`]) {
+    const big = direct + many + `#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#600));#600=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${order}));`;
+    assert.equal(topologyPoints(ifc4(big.replace('#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#48,#15));', '')), 30), null, order.slice(0, 4));
+  }
   // A map whose MappedRepresentation is not a representation holds nothing: the direct edge alone, no throw.
   assert.equal(topologyPoints(ifc4(direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#41,#46)')), 30).length, 2);
   const dangling = direct.replace('#53=IFCMAPPEDITEM(#52,#46)', '#53=IFCMAPPEDITEM(#98,#46)');

@@ -183,49 +183,54 @@ function mappedSource(step, item) {
   return map?.type === 'IFCREPRESENTATIONMAP' ? { map, source: step.get(refOf(map.args[1])) } : null;
 }
 
-/** Per parsed file: whether each representation reaches topology items, itself or through maps. */
-const reaches = new WeakMap();
-
 /** Whether a representation holds topology items, itself or through its mapped items (an iterative walk). */
 function holdsTopology(step, rep) {
-  if (!rep) return false;
-  if (!reaches.has(step)) reaches.set(step, new Map());
-  const memo = reaches.get(step);
-  if (!memo.has(rep.id)) {
-    const seen = new Set();
-    const stack = [rep];
-    let held = false;
-    while (stack.length && !held) {
-      const r = stack.pop();
-      if (!r || seen.has(r.id)) continue;
-      seen.add(r.id);
-      for (const ref of itemsOf(r)) {
-        const item = step.get(refOf(ref));
-        if (item?.type === 'IFCMAPPEDITEM') stack.push(mappedSource(step, item)?.source);
-        else if (r.type === 'IFCTOPOLOGYREPRESENTATION') held = true;
-      }
+  const seen = new Set();
+  const stack = [rep];
+  while (stack.length) {
+    const r = stack.pop();
+    if (!r || seen.has(r.id)) continue;
+    seen.add(r.id);
+    for (const ref of itemsOf(r)) {
+      const item = step.get(refOf(ref));
+      if (item?.type === 'IFCMAPPEDITEM') stack.push(mappedSource(step, item)?.source);
+      else if (r.type === 'IFCTOPOLOGYREPRESENTATION') return true;
     }
-    memo.set(rep.id, held);
   }
-  return memo.get(rep.id);
+  return false;
 }
 
 /** Bounds on the mapped walk: nesting, and vertices (shared maps multiply them). */
 const MAX_MAP_DEPTH = 16;
 const MAX_VERTICES = 10000;
 
+/** Per parsed file: each representation's vertices, once walked. */
+const walked = new WeakMap();
+
 /**
- * The topology vertices of one representation, in its product's axes: its
- * own items when it is an `IfcTopologyRepresentation`, and those of every
- * mapped item's source representation. Null when a mapped item that holds
- * topology cannot be followed (a map cycle, maps nested over 16 deep, over
- * 10000 vertices, an origin or target this oracle does not read): fewer
- * vertices would check less. Maps that hold no topology are not walked.
+ * The topology vertices of one representation, in its axes: its own items
+ * when it is an `IfcTopologyRepresentation`, and those of every mapped item's
+ * source representation; memoised per file, so shared maps are walked once.
+ * Null when a mapped item that holds topology cannot be followed (a map
+ * cycle through topology, maps nested over 16 deep, over 10000 vertices, an
+ * origin or target this oracle does not read): fewer vertices would check
+ * less. Maps that yield no vertices are skipped before their frames are read.
  */
-function representationVertices(step, rep, path = new Set()) {
+function representationVertices(step, rep, active = new Set()) {
   if (!rep) return [];
-  if (path.has(rep.id) || path.size > MAX_MAP_DEPTH) return holdsTopology(step, rep) ? null : [];
-  const inner = new Set(path).add(rep.id);
+  if (!walked.has(step)) walked.set(step, new Map());
+  const memo = walked.get(step);
+  if (memo.has(rep.id)) return memo.get(rep.id);
+  if (active.has(rep.id) || active.size > MAX_MAP_DEPTH) return holdsTopology(step, rep) ? null : [];
+  active.add(rep.id);
+  const points = mapVertices(step, rep, active);
+  active.delete(rep.id);
+  const result = points && points.length <= MAX_VERTICES ? points : null;
+  memo.set(rep.id, result);
+  return result;
+}
+
+function mapVertices(step, rep, active) {
   const topology = rep.type === 'IFCTOPOLOGYREPRESENTATION';
   const points = [];
   for (const ref of itemsOf(rep)) {
@@ -236,12 +241,11 @@ function representationVertices(step, rep, path = new Set()) {
       continue;
     }
     const { map, source } = mappedSource(step, item) ?? {};
-    if (!holdsTopology(step, source)) continue;
-    const mapped = representationVertices(step, source, inner);
+    const mapped = representationVertices(step, source, active);
     if (mapped?.length === 0) continue;
-    const origin = axisPlacement(step, refOf(map.args[0]));
-    const target = transformOperator(step, refOf(item.args[1]));
-    if (!mapped || !origin || !target || points.length + mapped.length > MAX_VERTICES) return null;
+    const origin = mapped && axisPlacement(step, refOf(map.args[0]));
+    const target = mapped && transformOperator(step, refOf(item.args[1]));
+    if (!origin || !target || points.length + mapped.length > MAX_VERTICES) return null;
     const frame = compose(target, origin);
     for (const p of mapped) points.push(apply(frame, p));
   }

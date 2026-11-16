@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { SourceHost, type FileSourceProviderFactory } from './source-host';
+import { attachCoordinationSources } from '../coordination-hosts';
 import { BUILT_IN_PROVIDER_FACTORIES } from './registered-providers';
 
 const SourceHostContext = createContext<SourceHost | null>(null);
@@ -60,6 +61,8 @@ export function SourceHostProvider({ children, additionalProviders }: SourceHost
   // lifetime, so a later change to `additionalProviders` is deliberately not
   // re-read (it would construct every provider again and drop their state).
   const [host] = useState(() => buildSourceHost(additionalProviders));
+
+  useEffect(() => attachCoordinationSources(host), [host]);
 
   return (
     <SourceHostContext value={host}>

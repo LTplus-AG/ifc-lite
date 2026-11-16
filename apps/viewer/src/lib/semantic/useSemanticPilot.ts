@@ -14,6 +14,7 @@ import { useSemanticSession, savedSemanticWorkspace } from './session';
 import { liveEntities } from './viewer';
 import { queryForSelection } from './related-query';
 import { validateInWorker } from './validation-worker';
+import { validateCurrentSemantic } from './validate-current';
 import type { ValidationJob, ValidationOutput } from './validation-job';
 
 export interface SourceInput { mode: string; payload: string; endpoint: string; host: string; query: string; mapping: BindingMapping; bearer?: string; relayProvider?: string; loopbackHttpOrigin?: string }
@@ -112,14 +113,8 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
   }
   function validate(suppliedGraph = false) {
     return run(async signal => {
-      const input = useSemanticSession.getState();
-      const value = await execute(suppliedGraph ? { graph: input.graph, graphFormat: input.graphFormat, profile: input.profile } : { document: input.document, profile: input.profile }, signal);
-      const latest = useSemanticSession.getState();
-      // A worker result describes its exact input, never a newer edited/restored dataset.
-      if (!signal.aborted && latest.dataVersion === input.dataVersion && latest.profile === input.profile && latest.graph === input.graph && latest.graphFormat === input.graphFormat && latest.document === input.document) {
-        setFindings(value.findings); setDiagnostic(value.diagnostic ?? '');
-        session.setReport(value.diagnostic ? undefined : value.report);
-      }
+      const value = await validateCurrentSemantic(suppliedGraph, signal, execute);
+      setDiagnostic(value.diagnostic ?? '');
     });
   }
   function editGraph(value: string) {

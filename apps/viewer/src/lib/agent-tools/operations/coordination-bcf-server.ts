@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
+import { bcfProjectMetadata } from './coordination-bcf-metadata';
 import { coordination, idSchema } from './coordination-common';
 import { emptySchema } from './contract';
 export const coordinationBcfServerOperations = [
@@ -18,7 +19,7 @@ export const coordinationBcfServerOperations = [
     const { pullBcfServerProject } = await import('@/services/bcf-server'); const before = useViewerStore.getState().bcfProject;
     if ((before?.projectId ?? '') !== i.replace_project_id) throw new Error('Local BCF project changed; inspect before replacing.');
     const pulled = await pullBcfServerProject(i.project_id, i.project_name, undefined, c.signal); c.checkpoint?.();
-    return c.commit(() => { if (useViewerStore.getState().bcfProject !== before) throw new Error('Local BCF project changed during synchronization.'); useViewerStore.getState().setBcfProject(pulled.project); return { project: { ...pulled.project, topics: [...pulled.project.topics.values()] }, warnings: pulled.warnings }; });
+    return c.commit(() => { if (useViewerStore.getState().bcfProject !== before) throw new Error('Local BCF project changed during synchronization.'); useViewerStore.getState().setBcfProject(pulled.project); return { project: bcfProjectMetadata(pulled.project), warnings: pulled.warnings }; });
   }),
   coordination('bcf.outbox', 'Read durable native BCF publication attempts, receipts, unknown outcomes and blocked entries.', ['read'], emptySchema, async () => {
     const { readPublications } = await import('@/lib/bcf-publication/outbox-store'); return { publications: await readPublications() };

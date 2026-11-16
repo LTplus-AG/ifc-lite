@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { deflateSync } from 'node:zlib';
 import { beforeEach, it } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
 import { Camera, type Renderer } from '@ifc-lite/renderer';
@@ -217,4 +218,56 @@ it('native assistant attachment handles transmit real selection grounding once a
     assert.equal(outcome.completed, true); assert.ok(transmitted.includes(wall.globalId), 'the native request carries the captured real IFC identity');
     await assert.rejects(execute('assistant.send', { prompt: 'Do not reuse consumed attachment', evidence_id: evidence.evidence_id, attachment_id: capture.attachment_id }), /attachment capture is absent/);
   } finally { globalThis.fetch = originalFetch; }
+});
+
+/** Valid 1024×1024 RGB PNG: ordinary screenshot dimensions with incompressible image detail. */
+function largeBcfScreenshot() {
+  const width = 1024, height = 1024, raw = Buffer.alloc((width * 3 + 1) * height); let seed = 8191;
+  for (let row = 0; row < height; row++) for (let col = 1; col <= width * 3; col++) { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; raw[row * (width * 3 + 1) + col] = seed >>> 24; }
+  const chunk = (kind: string, data: Uint8Array) => {
+    const body = Buffer.concat([Buffer.from(kind), data]), output = Buffer.alloc(body.length + 8); output.writeUInt32BE(data.byteLength); body.copy(output, 4);
+    let crc = 0xffffffff; for (const byte of body) { crc ^= byte; for (let bit = 0; bit < 8; bit++) crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1; } output.writeUInt32BE((crc ^ 0xffffffff) >>> 0, output.length - 4); return output;
+  };
+  const header = Buffer.alloc(13); header.writeUInt32BE(width); header.writeUInt32BE(height, 4); header[8] = 8; header[9] = 2;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(raw)), chunk('IEND', new Uint8Array())]);
+}
+it('BCF metadata stays below the executor limit with >1 MiB native screenshot media; native apply and ZIP export retain full bytes (#10525)', async () => {
+  const { createBCFComment } = await import('@ifc-lite/bcf');
+  const camera = new Camera(); camera.setPosition(12, 8, 20); camera.setTarget(0, 0, 0); camera.setAspect(16 / 9);
+  const renderer = { getCamera: () => camera } as unknown as Renderer; setGlobalRendererRef({ current: renderer });
+  const imageViewpointId = crypto.randomUUID(), secondImageViewpointId = crypto.randomUUID(); const png = largeBcfScreenshot(); assert.ok(png.byteLength > 1024 * 1024); const screenshot = `data:image/png;base64,${png.toString('base64')}`;
+  try {
+    await execute('bcf.createProject', { value: 'Screenshot transport fixture' });
+    const created = await execute<{ guid: string }>('bcf.createTopic', { title: 'Inspect native screenshots', description: 'Exact description for editing', status: 'Open' });
+    useViewerStore.getState().setSelectedEntityIds([1, 2]);
+    const captured = await execute<{ viewpoint: { guid: string } }>('bcf.captureViewpoint', { topic_id: created.guid, snapshot: false, selection: true, visibility: false });
+    const native = useViewerStore.getState().bcfProject!.topics.get(created.guid)!.viewpoints.find(viewpoint => viewpoint.guid === captured.viewpoint.guid)!;
+    useViewerStore.getState().addViewpoint(created.guid, { ...native, guid: imageViewpointId, snapshot: screenshot, snapshotData: png });
+    useViewerStore.getState().addViewpoint(created.guid, { ...native, guid: secondImageViewpointId, snapshot: screenshot, snapshotData: png });
+    const comment = createBCFComment({ author: 'native fixture', comment: 'Exact reviewed comment '.repeat(200) }); useViewerStore.getState().addComment(created.guid, comment);
+    for (let index = 0; index < 21; index++) await execute('bcf.createTopic', { title: `Paged native topic ${index}`, description: '', status: 'Open' });
+    const request = async <T>(operation_id: string, input: unknown = {}) => {
+      const response = await dispatchMainViewerTool(context.host, 'viewer_operation_execute', { operation_id, input }, { canEdit: () => true }); assert.equal(response.isError, false, response.text);
+      assert.ok(new TextEncoder().encode(response.text).byteLength < 1024 * 1024); return (response.structured as { result: T }).result;
+    };
+    const discovery = await dispatchMainViewerTool(context.host, 'viewer_operations', { operation_id: 'bcf.read' }); assert.equal(discovery.isError, false, discovery.text);
+    const first = await request<{ project: { topic_count: number; snapshot_count: number; topics: Array<{ guid: string }> }; page: { next_offset: number | null } }>('bcf.read');
+    assert.equal(first.project.topic_count, 22); assert.equal(first.project.snapshot_count, 2); assert.equal(first.project.topics.length, 20); assert.equal(first.page.next_offset, 20);
+    const next = await request<{ project: { topics: unknown[] } }>('bcf.read', { offset: first.page.next_offset, limit: 20 }); assert.equal(next.project.topics.length, 2);
+    const selected = await request<{ project: { topics: Array<{ guid: string; description: string; expected_modified: string }> } }>('bcf.read', { topic_id: created.guid }); assert.equal(selected.project.topics[0].description, 'Exact description for editing');
+    const viewpoints = await request<{ viewpoints: Array<{ guid: string; snapshot_available: boolean; snapshot_data_bytes: number; selection_count: number }>; page: { next_offset: number | null } }>('bcf.viewpoints', { topic_id: created.guid, offset: 1, limit: 1, viewpoint_id: '' });
+    assert.equal(viewpoints.viewpoints[0].snapshot_available, true); assert.equal(viewpoints.viewpoints[0].snapshot_data_bytes, png.byteLength); assert.equal(viewpoints.viewpoints[0].selection_count, 2); assert.equal(viewpoints.page.next_offset, 2);
+    assert.equal(JSON.stringify(viewpoints).includes('data:image'), false); assert.equal('snapshotData' in viewpoints.viewpoints[0], false);
+    const comments = await request<{ comments: Array<{ expected_comment: string }> }>('bcf.comments', { topic_id: created.guid, offset: 0, limit: 20, comment_id: comment.guid }); assert.equal(comments.comments[0].expected_comment, comment.comment);
+    await request('bcf.updateComment', { topic_id: created.guid, comment_id: comment.guid, expected_comment: comments.comments[0].expected_comment, comment: 'Native comment updated with its exact inspected value.' });
+    const freshTopic = await request<{ project: { topics: Array<{ expected_modified: string }> } }>('bcf.read', { topic_id: created.guid });
+    await request('bcf.updateTopic', { id: created.guid, expected_modified: freshTopic.project.topics[0].expected_modified, title: 'Updated issue with unchanged native screenshots', description: 'Edited description', status: 'Open', priority: '', assigned_to: '' });
+    await request('bcf.selectTopic', { id: created.guid });
+    useViewerStore.getState().clearEntitySelection(); camera.setPosition(1, 1, 1); await request('bcf.applyViewpoint', { topic_id: created.guid, viewpoint_id: imageViewpointId, animate: false });
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([1, 2])); assert.ok(Math.abs(camera.getPosition().x - 12) < 0.001);
+    const exported = await request<ArtifactMetadata>('bcf.export'), bytes = new Uint8Array(exported.bytes);
+    for (let offset = 0; offset < bytes.length; offset += 65536) { const chunk = await readArtifact(context.host, exported.artifact_id, offset, Math.min(65536, bytes.length - offset)); bytes.set(Uint8Array.from(atob(chunk.data), character => character.charCodeAt(0)), offset); }
+    const restored = await readBCF(bytes), restoredViewpoint = restored.topics.get(created.guid)!.viewpoints.find(viewpoint => viewpoint.guid === imageViewpointId); assert.ok(restoredViewpoint?.snapshotData);
+    assert.deepEqual(Buffer.from(restoredViewpoint.snapshotData), png); assert.equal(restored.topics.get(created.guid)?.comments[0].comment, 'Native comment updated with its exact inspected value.');
+  } finally { clearGlobalRefs(); }
 });

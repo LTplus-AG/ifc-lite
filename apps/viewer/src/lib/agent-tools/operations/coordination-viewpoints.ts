@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
+import { bcfViewpointMetadata } from './coordination-bcf-metadata';
 import { coordination } from './coordination-common';
 interface Ref { topic_id: string; viewpoint_id: string }
 function topic(id: string) {
@@ -20,7 +21,7 @@ export const coordinationViewpointOperations = [
     };
     c.checkpoint?.(); const viewpoint = await captureNativeBcfViewpoint(renderer, getGlobalCanvas(), { includeSnapshot: i.snapshot, includeSelection: i.selection, includeHidden: i.visibility, isCaptureStillValid: current });
     c.checkpoint?.(); if (!viewpoint || !current()) throw new Error('Scene or BCF project changed during viewpoint capture.');
-    return c.commit(() => { useViewerStore.getState().addViewpoint(i.topic_id, viewpoint); return { topic_id: i.topic_id, viewpoint }; });
+    return c.commit(() => { useViewerStore.getState().addViewpoint(i.topic_id, viewpoint); return { topic_id: i.topic_id, viewpoint: bcfViewpointMetadata(viewpoint) }; });
   }),
   coordination<Ref & { animate: boolean }>('bcf.applyViewpoint', 'Apply a known BCF viewpoint through the exact native camera/section/selection/visibility transition.', ['view', 'selection'], { type: 'object', properties: { ...refSchema.properties, animate: { type: 'boolean' } }, required: ['topic_id', 'viewpoint_id', 'animate'], additionalProperties: false }, async (i, c) => {
     const [{ applyNativeBcfViewpoint }, { getGlobalRenderer }] = await Promise.all([import('@/hooks/bcf/apply-viewpoint'), import('@/hooks/useBCF')]);

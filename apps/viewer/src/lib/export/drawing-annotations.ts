@@ -4,13 +4,16 @@
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { MutablePropertyView, StoreEditor, iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
-import { DRAWING_MARKUP_OBJECTTYPE, resolveSpatialAnchor } from '@ifc-lite/create';
-import { loadPersistedDimensions, type Dimension2D } from '@/store/slices/drawing2DDimensions';
+import { DRAWING_MARKUP_OBJECTTYPE } from '@ifc-lite/create';
+import { loadPersistedDimensions, isDimensionOnPlane, type Dimension2D } from '@/store/slices/drawing2DDimensions';
 import type { DrawnSectionPlane, Measure2DResult, TagAnnotation2D, Point2D } from '@/store/slices/drawing2DSlice';
 import { dimensionGraphics } from '@/lib/drawing2d-markup/dimension-graphics';
 import { customPlaneCenter } from '@/store/slices/section-plane-center';
 
 import { removeEmbeddedDrawingMarkup } from '@/lib/drawing2d-markup/drawing-markup-embedded-sweep';
+import { drawingAnnotationAnchor } from './drawing-annotation-anchor';
+import { embeddedMarkupIdentity } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
+import { sourceMarkupGlobalId } from '@/lib/drawing2d-markup/drawing-markup-restore';
 import { validElementTags } from '@/lib/drawing/tag-persistence';
 
 const LEGACY_LINEAR_TAGS = new Set<unknown>([DRAWING_MARKUP_OBJECTTYPE.MEASURE, DRAWING_MARKUP_OBJECTTYPE.DIMENSION]);
@@ -18,7 +21,7 @@ const LEGACY_LINEAR_TAGS = new Set<unknown>([DRAWING_MARKUP_OBJECTTYPE.MEASURE, 
 const OBJECT_TYPE = 'IfcLite:DrawingAnnotation:1';
 type Item = { kind: 'measure'; value: Measure2DResult } | { kind: 'dimension'; value: Dimension2D }
   | { kind: 'tag'; value: Omit<TagAnnotation2D, 'modelId'>; label: string };
-interface Saved { item: Item; plane: DrawnSectionPlane }
+interface Saved { item: Item; plane: DrawnSectionPlane; paperScale?: number; ifcOffset?: number[] }
 export interface DrawingAnnotations {
   measures: Measure2DResult[];
   dimensions: Dimension2D[];
@@ -45,7 +48,7 @@ export function readDrawingAnnotations(store: IfcDataStore, view?: MutableProper
       if (!saved.item || !['measure', 'dimension', 'tag'].includes(saved.item.kind)
         || typeof saved.item.value?.id !== 'string') continue;
       if (!validSaved(saved)) continue;
-      records.push({ id: expressId, identity: typeof record.attributes[0] === 'string' ? record.attributes[0] : `#${expressId}`, saved });
+      records.push({ id: expressId, identity: annotationIdentity(store, view, expressId), saved });
     } catch (error) {
       console.warn('Cannot restore drawing annotation', expressId, error);
     }
@@ -56,20 +59,31 @@ export function readDrawingAnnotations(store: IfcDataStore, view?: MutableProper
 function validSaved(saved: Saved): boolean {
   const point = (p: Point2D | undefined) => !!p && Number.isFinite(p.x) && Number.isFinite(p.y);
   if (loadPersistedDimensions([{ id: 'plane-check', a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, offset: 0, orientation: 'aligned', plane: saved.plane }]).length !== 1 || !saved.plane) return false;
+  if (saved.paperScale !== undefined && (!Number.isFinite(saved.paperScale) || saved.paperScale <= 0)) return false;
+  if (saved.ifcOffset !== undefined && (!Array.isArray(saved.ifcOffset) || saved.ifcOffset.length !== 3 || !saved.ifcOffset.every(Number.isFinite))) return false;
   const item = saved.item;
   if (item.kind === 'dimension') return loadPersistedDimensions([item.value]).length === 1;
   if (item.kind === 'measure') return point(item.value.start) && point(item.value.end) && Number.isFinite(item.value.distance);
   return typeof item.label === 'string' && validElementTags([{ ...item.value, modelId: 'restored' }]).length === 1;
 }
 
-export function restoredDrawingAnnotations(store: IfcDataStore, modelId: string, view?: MutablePropertyView) {
+export function restorableDrawingAnnotationRecords(store: IfcDataStore, view?: MutablePropertyView) {
   const records = readDrawingAnnotations(store, view);
+  const first = records[0]?.saved;
+  return first ? records.filter(({ saved }) => isDimensionOnPlane({ plane: saved.plane }, first.plane)
+    && (saved.paperScale ?? 100) === (first.paperScale ?? 100)
+    && JSON.stringify(saved.ifcOffset ?? [0, 0, 0]) === JSON.stringify(first.ifcOffset ?? [0, 0, 0])) : [];
+}
+
+export function restoredDrawingAnnotations(store: IfcDataStore, modelId: string, view?: MutablePropertyView) {
+  const records = restorableDrawingAnnotationRecords(store, view);
   if (!records.length) return null;
   return {
     measure2DResults: records.flatMap(({ saved: { item } }) => item.kind === 'measure' ? [item.value] : []),
     dimensions2D: records.flatMap(({ saved: { item } }) => item.kind === 'dimension' ? [item.value] : []),
     tagAnnotations2D: records.flatMap(({ saved: { item } }) => item.kind === 'tag' ? [{ ...item.value, modelId }] : []),
     drawing2DPlane: records[0].saved.plane,
+    paperScale: records[0].saved.paperScale ?? 100,
   };
 }
 
@@ -85,7 +99,7 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
   if (input.absorbed?.size) {
     for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCANNOTATION'])) {
       const attrs = effectiveMetadataRecord(store, expressId, view)?.attributes;
-      const identity = typeof attrs?.[0] === 'string' ? attrs[0] : `#${expressId}`;
+      const identity = annotationIdentity(store, view, expressId);
       if (LEGACY_LINEAR_TAGS.has(attrs?.[4]) && input.absorbed.has(identity)) legacy.add(identity);
     }
   }
@@ -95,8 +109,10 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
   const replaceable = existing.filter(({ identity, saved }) => input.absorbed?.has(identity) || current.has(key(saved.item)));
   if (!items.length && !replaceable.length && !legacy.size) return view;
   // Preserve native entity identities and geometry when reopening unchanged IFC.
-  if (!legacy.size && JSON.stringify(existing.map(({ saved }) => saved.item)) === JSON.stringify(items)
-    && existing.every(({ saved }) => JSON.stringify(saved.plane) === JSON.stringify(input.plane))) return view;
+  if (!legacy.size && JSON.stringify(replaceable.map(({ saved }) => saved.item)) === JSON.stringify(items)
+    && replaceable.every(({ saved }) => JSON.stringify(saved.plane) === JSON.stringify(saved.item.kind === 'dimension' ? saved.item.value.plane ?? input.plane : input.plane)
+      && (saved.paperScale ?? 100) === input.paperScale
+      && JSON.stringify(saved.ifcOffset ?? [0, 0, 0]) === JSON.stringify(input.ifcOffset ?? [0, 0, 0]))) return view;
   const base = view ?? new MutablePropertyView(store.properties ?? null, 'drawing-export');
   return base.prepareAtomic(draft => {
     const editor = new StoreEditor(store, draft);
@@ -112,8 +128,7 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
       editor.removeEntity(id);
     }
     if (!items.length) return draft;
-    const anchor = resolveSpatialAnchor(store, input.storeyId, draft);
-    if (!anchor.rootContextId) throw new Error('Drawing annotations need a representation context');
+    const anchor = drawingAnnotationAnchor(store, editor, input.storeyId);
     const ref = (id: number) => `#${id}`;
     const add = (type: string, attributes: Parameters<StoreEditor['addEntity']>[1]) => editor.addEntity(type, attributes).expressId;
     const owner = anchor.ownerHistoryId ? ref(anchor.ownerHistoryId) : null;
@@ -158,10 +173,11 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
       const text = emit('IfcTextLiteral', [label, ref(textAxes), '.RIGHT.']);
       const shape = emit('IfcShapeRepresentation', [ref(context), 'Annotation', 'Annotation2D', [...curves.map(ref), ref(text)]]);
       const product = emit('IfcProductDefinitionShape', [null, null, [ref(shape)]]);
-      const attributes = [guid(), owner, Array.from(label).slice(0, 255).join(''), JSON.stringify({ item, plane: input.plane } satisfies Saved), OBJECT_TYPE, ref(placement), ref(product)];
+      const attributes = [guid(), owner, Array.from(label).slice(0, 255).join(''), JSON.stringify({ item, plane, paperScale: input.paperScale, ifcOffset: input.ifcOffset ?? [0, 0, 0] } satisfies Saved), OBJECT_TYPE, ref(placement), ref(product)];
       if (anchor.schema === 'IFC4X3') attributes.push(null);
       const annotation = add('IfcAnnotation', attributes);
-      add('IfcRelContainedInSpatialStructure', [guid(), owner, null, null, [ref(annotation)], ref(item.kind === 'tag' ? containingStorey(store, draft, item.value.entityId) ?? input.storeyId : input.storeyId)]);
+      const storeyId = item.kind === 'tag' ? containingStorey(store, draft, item.value.entityId) ?? anchor.storeyId : anchor.storeyId;
+      if (storeyId) add('IfcRelContainedInSpatialStructure', [guid(), owner, null, null, [ref(annotation)], ref(storeyId)]);
       if (item.kind === 'tag') add('IfcRelAssignsToProduct', [guid(), owner, 'Tagged element', null, [ref(annotation)], null, ref(item.value.entityId)]);
     }
     return draft;
@@ -204,4 +220,8 @@ function containingStorey(store: IfcDataStore, view: MutablePropertyView, target
 function referenceId(value: unknown): number | null {
   const id = typeof value === 'number' ? value : typeof value === 'string' && value.startsWith('#') ? Number(value.slice(1)) : NaN;
   return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function annotationIdentity(store: IfcDataStore, view: MutablePropertyView | undefined, id: number): string {
+  return embeddedMarkupIdentity(id, view?.getNewEntity(id)?.attributes[0] ?? sourceMarkupGlobalId(store, id));
 }

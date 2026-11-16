@@ -65,7 +65,7 @@
  */
 
 import { mergeRestoredMeasures, mergeRestoredDimensions } from '@/lib/export/drawing-annotation-restore';
-import { readDrawingAnnotations, restoredDrawingAnnotations } from '@/lib/export/drawing-annotations';
+import { restorableDrawingAnnotationRecords, restoredDrawingAnnotations } from '@/lib/export/drawing-annotations';
 import { useLoadWindowHold } from './loadWindow.js';
 import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -195,8 +195,9 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
   if (!hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
     markRestored(modelId);
     if (annotations) {
-      absorbEmbeddedMarkup(modelId, readDrawingAnnotations(store, state.getMutationView(modelId) ?? undefined).map(record => record.identity));
-      useViewerStore.setState({ ...annotations, dimension2DUndo: [], dimension2DRedo: [] });
+      absorbEmbeddedMarkup(modelId, restorableDrawingAnnotationRecords(store, state.getMutationView(modelId) ?? undefined).map(record => record.identity));
+      const { paperScale, ...fields } = annotations;
+      useViewerStore.setState({ ...fields, drawing2DDisplayOptions: { ...state.drawing2DDisplayOptions, scale: paperScale }, dimension2DUndo: [], dimension2DRedo: [] });
     }
     return;
   }
@@ -223,14 +224,15 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
 
   // Before the write: the save subscription persists the set with it.
   absorbEmbeddedMarkup(modelId, restoredEmbeddedMarkupIdentities(modelId, result));
-  if (annotations) absorbEmbeddedMarkup(modelId, readDrawingAnnotations(store, state.getMutationView(modelId) ?? undefined).map(record => record.identity));
+  if (annotations) absorbEmbeddedMarkup(modelId, restorableDrawingAnnotationRecords(store, state.getMutationView(modelId) ?? undefined).map(record => record.identity));
   useViewerStore.setState({
     measure2DResults: mergeRestoredMeasures(result.measure2DResults, annotations?.measure2DResults ?? []),
     polygonArea2DResults: result.polygonArea2DResults,
     textAnnotations2D: result.textAnnotations2D,
     cloudAnnotations2D: result.cloudAnnotations2D,
     dimensions2D: mergeRestoredDimensions(result.dimensions2D, annotations?.dimensions2D ?? []),
-    ...(annotations ? { tagAnnotations2D: annotations.tagAnnotations2D, drawing2DPlane: annotations.drawing2DPlane } : {}),
+    ...(annotations ? { tagAnnotations2D: annotations.tagAnnotations2D, drawing2DPlane: annotations.drawing2DPlane,
+      drawing2DDisplayOptions: { ...state.drawing2DDisplayOptions, scale: annotations.paperScale } } : {}),
     dimension2DUndo: [],
     dimension2DRedo: [],
   });

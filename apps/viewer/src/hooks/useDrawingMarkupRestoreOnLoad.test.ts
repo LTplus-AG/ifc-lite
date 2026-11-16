@@ -430,7 +430,7 @@ it('load window: single-model cache hit restores nothing between the record turn
 it('#9296: mixed automatic annotations and saved markup both restore', async () => {
   __resetDrawingMarkupRestoreForTests();
   __resetSymbolicAnnotationsCacheForTests();
-  const saved = JSON.stringify({ item: { kind: 'dimension', value: { id: 'saved-dimension', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 1, orientation: 'aligned' } }, plane: { axis: 'down', position: 1, flipped: false } });
+  const saved = JSON.stringify({ item: { kind: 'dimension', value: { id: 'saved-dimension', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 1, orientation: 'aligned' } }, plane: { axis: 'down', position: 1, flipped: false }, paperScale: 50 });
   const mixed = fixture().replace('ENDSEC;\nEND-ISO', `#60=IFCANNOTATION('0Annot000000000000060d',#4,'Tag','${saved}','IfcLite:DrawingAnnotation:1',$,$);\nENDSEC;\nEND-ISO`);
   const store = await seedStore('mixed', mixed);
   useViewerStore.setState({ dimensions2D: [], tagAnnotations2D: [] });
@@ -442,6 +442,7 @@ it('#9296: mixed automatic annotations and saved markup both restore', async () 
   tryRestoreDrawingMarkup('mixed');
   assert.equal(useViewerStore.getState().measure2DResults.length, 1);
   assert.equal(useViewerStore.getState().dimensions2D[0]?.id, 'saved-dimension');
+  assert.equal(useViewerStore.getState().drawing2DDisplayOptions.scale, 50, 'restore the authored paper scale');
   const { absorbedEmbeddedMarkupFor } = await import('@/lib/drawing2d-markup/drawing-markup-absorbed');
   assert.equal(absorbedEmbeddedMarkupFor('mixed').size, 2, 'both annotation generations keep persistent ownership');
 });

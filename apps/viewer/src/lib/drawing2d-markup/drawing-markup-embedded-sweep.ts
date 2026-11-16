@@ -208,7 +208,7 @@ export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEd
     const attributes = reader.attributes(expressId);
     if (!tags.has(attributes?.[OBJECT_TYPE_INDEX])) continue;
     // Match on the GlobalId the restore recorded (the source one), not a pending edit of it.
-    if (absorbed.has(embeddedMarkupIdentity(expressId, created ? attributes?.[0] : sourceMarkupGlobalId(store, expressId)))) annotations.add(expressId);
+    if (absorbed.has(embeddedMarkupIdentity(expressId, created ? view.getNewEntity(expressId)?.attributes[0] : sourceMarkupGlobalId(store, expressId)))) annotations.add(expressId);
   }
   if (annotations.size === 0) return 0;
 

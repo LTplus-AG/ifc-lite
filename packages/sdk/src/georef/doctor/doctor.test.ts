@@ -12,6 +12,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { resolveCrs } from '@ifc-lite/geo';
+import { deriveSitePosition } from './site-derivation.js';
 import { openModel, type HeadlessModelSession } from '../../headless.js';
 import type { GeorefCheckReport, GeorefFixPlanOptions, GeorefPlannedFix } from '../types.js';
 
@@ -239,4 +240,22 @@ describe('IFC2X3 convention sets on IfcSite', () => {
       expect(after.facts.ePSetHosts).toEqual(['IfcSite']);
     } finally { model.close(); }
   });
+});
+
+// Doctor port: non-uniform factors scale the local axes before rotation.
+it('derives the site from a rotated scaled conversion without exchanging the axis factors', async () => {
+  const model = await open(fixture('clean-lv95-mm'));
+  try {
+    const report = await model.bim.georef.check();
+    const transformer = await resolveCrs({ epsg: 2056 });
+    expect(transformer).toBeTruthy();
+    const facts = { ...report.facts, coordinates: { ...report.facts.coordinates!, siteOrigin: { x: 10, y: 20, z: 0 } }, entities: {
+      ...report.facts.entities!, operation: { ...report.facts.entities!.operation!, eastings: 2600000, northings: 1200000,
+        xAxisAbscissa: 0, xAxisOrdinate: 1, scale: 2, factorX: 3, factorY: 4 },
+    } };
+    const derived = deriveSitePosition(facts, report, { epsg: 2056 }, new Map([[2056, transformer!]]), { lookup: () => undefined });
+    const expected = transformer!.toWgs84([2599840, 1200060])!;
+    expect(derived.longitude).toBeCloseTo(expected[0], 6);
+    expect(derived.latitude).toBeCloseTo(expected[1], 6);
+  } finally { model.close(); }
 });

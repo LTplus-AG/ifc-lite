@@ -110,9 +110,9 @@ describe('ifc-lite georef fix', () => {
     expect(codes(json<CheckJson>().report)).toEqual([]);
 
     expect(await run(['check', p('epset-on-site.ifc'), '--fix', '--out', p('epset-fixed.ifc'), '--json'])).toBe(0);
-    expect(json<FixJson>().applied).toEqual(['EPSET_NOT_ON_PROJECT.1']);
-    expect(await run(['check', p('epset-fixed.ifc'), '--json'])).toBe(0);
-    expect(json<CheckJson>().report.facts.ePSetHosts).toEqual(['IfcProject']);
+    expect(json<FixJson>().applied).toEqual([]);
+    expect(json<FixJson>().plan.fixes[0].status).toBe('manual');
+    expect(existsSync(p('epset-fixed.ifc'))).toBe(false);
   });
 
   it('map conversion missing and LV03/LV95: fixed with the values only the user knows (check --fix)', async () => {

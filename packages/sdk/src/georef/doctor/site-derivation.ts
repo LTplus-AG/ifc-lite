@@ -71,8 +71,8 @@ export function deriveSitePosition(
   const [sx, sy, sz] = [scale * (op.factorX ?? 1), scale * (op.factorY ?? 1), scale * (op.factorZ ?? 1)];
   const site = facts.coordinates?.siteOrigin ?? { x: 0, y: 0, z: 0 };
   // IfcMapConversion: local (project units) → map units, then metres.
-  const east = (op.eastings + sx * (a * site.x - b * site.y)) * mapUnit;
-  const north = (op.northings + sy * (b * site.x + a * site.y)) * mapUnit;
+  const east = (op.eastings + (sx * a * site.x - sy * b * site.y)) * mapUnit;
+  const north = (op.northings + (sx * b * site.x + sy * a * site.y)) * mapUnit;
   // The site's map position, not the conversion's offsets: a zero-offset
   // conversion over absolute placements is a correct georeference.
   if (Math.abs(east) < FALSE_ORIGIN_METRES && Math.abs(north) < FALSE_ORIGIN_METRES) {

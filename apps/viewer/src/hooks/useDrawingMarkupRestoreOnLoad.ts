@@ -64,6 +64,7 @@
  * suddenly injects the model's embedded markup over what the user just drew.
  */
 
+import { restoredDrawingAnnotations } from '@/lib/export/drawing-annotations';
 import { useLoadWindowHold } from './loadWindow.js';
 import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -133,7 +134,7 @@ function markupFieldsEmpty(): boolean {
     s.polygonArea2DResults.length === 0 &&
     s.textAnnotations2D.length === 0 &&
     s.cloudAnnotations2D.length === 0 &&
-    s.dimensions2D.length === 0
+    s.dimensions2D.length === 0 && s.tagAnnotations2D.length === 0
   );
 }
 
@@ -189,6 +190,12 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
   const state = useViewerStore.getState();
   const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
   if (!store) return;
+  const annotations = restoredDrawingAnnotations(store, modelId, state.getMutationView(modelId) ?? undefined);
+  if (annotations) {
+    markRestored(modelId);
+    useViewerStore.setState({ ...annotations, dimension2DUndo: [], dimension2DRedo: [] });
+    return;
+  }
   if (!hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
     markRestored(modelId);
     return;

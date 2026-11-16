@@ -135,11 +135,12 @@ export default {
         await field(s, s.page.getByRole('textbox', { name: 'Name', exact: true }), 'Parity renamed door');
         renamedSvg = await exportDrawing(s, 'svg');
       }));
+      const annotationIfc = await oracleModel(s);
       const areaLabel = typeof expectedArea === 'number' ? `≈ ${Number(expectedArea.toFixed(2))} m²` : null;
       const xmlText = text => String(text ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
       const tagged = tags.length === 2 && [door?.id,space?.id].every(id => tags.some(tag => tag.entityId === id && tag.modelId === expectedModelId));
       return {
-        tasks, notes: [], evidence: [shot, await s.shot('tags')], artifacts: { svg: renamedSvg ?? taggedSvg ?? svg, dxf },
+        tasks, notes: [], evidence: [shot, await s.shot('tags')], exportText: annotationIfc.text, artifacts: { svg: renamedSvg ?? taggedSvg ?? svg, dxf },
         checks: [
           { name: 'a dimension was placed in the drawing', ok: annotations > 0, detail: `${annotations} drawing markups in the store` },
           { name: 'dimension measures the 5 m room span', ok: dimensions.length === 1 && near(dimensions[0], 5, 0.25), detail: JSON.stringify(dimensions) },

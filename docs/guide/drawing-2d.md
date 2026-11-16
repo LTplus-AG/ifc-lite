@@ -25,6 +25,11 @@ Each drawing includes:
 | **Architectural symbols** | Door swings, window frames, stair arrows |
 | **Annotations** | Dimensions and labels |
 
+IFC export includes the active model's Distance measurements, linear dimensions
+and entity-bound tags as `IfcAnnotation` curves and text. Tags retain a relationship
+to their element. Reopening the IFC restores these editable markups; an unchanged
+re-export preserves their STEP records. This applies to IFC2X3, IFC4 and IFC4X3.
+
 ## Element tags in the viewer
 
 In a plan or section drawing, choose **Tag** and click a door, window or space.

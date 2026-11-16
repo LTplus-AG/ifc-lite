@@ -1,0 +1,71 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { it } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir, homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { IfcCreator } from '@ifc-lite/create';
+import { IfcParser } from '@ifc-lite/parser';
+import { StepExporter } from '@ifc-lite/export';
+import { prepareDrawingAnnotations, readDrawingAnnotations, restoredDrawingAnnotations, type DrawingAnnotations } from './drawing-annotations';
+
+const parse = (text: string | Uint8Array) => new IfcParser().parseColumnar(
+  (typeof text === 'string' ? new TextEncoder().encode(text) : text).slice().buffer as ArrayBuffer);
+const decode = (v: string | Uint8Array) => typeof v === 'string' ? v : new TextDecoder().decode(v);
+const stable = (text: string) => text.replace(/FILE_NAME\([^\n]*/, 'FILE_NAME(timestamp ignored)');
+for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
+  it(`#9296: ${Schema} dimensions and bound tags survive IFC export/reopen/export`, async () => {
+    const creator = new IfcCreator({ Name: 'Annotations', Schema, Timestamp: 0 });
+    const storey = creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
+    creator.addIfcWall(storey, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
+    const source = await parse(creator.toIfc().content);
+    const storeyId = source.entityIndex.byType.get('IFCBUILDINGSTOREY')![0];
+    const wall = source.entityIndex.byType.get('IFCWALL')![0];
+    const input: DrawingAnnotations = {
+      measures: [{ id: 'm', start: { x: 0, y: 0 }, end: { x: 5, y: 0 }, distance: 5 }],
+      dimensions: [{ id: 'd', a: { x: 0, y: 1 }, b: { x: 5, y: 1 }, offset: 0.5, orientation: 'aligned' }],
+      tags: [{ tag: { id: 't', modelId: 'model', entityId: wall, anchor: { x: 2, y: 0 }, offset: { x: 0, y: 0.3 }, template: 'auto' }, label: 'Wall mark' }],
+      plane: { axis: 'down', position: 1, flipped: false }, storeyId, paperScale: 100,
+    };
+    const first = decode(new StepExporter(source, prepareDrawingAnnotations(source, undefined, input)).export({ schema: Schema }).content);
+    const reopened = await parse(first);
+    assert.equal(reopened.entityIndex.byType.get('IFCANNOTATION')?.length, 3);
+    assert.equal(reopened.entityIndex.byType.get('IFCTEXTLITERAL')?.length, 3);
+    assert.equal(reopened.entityIndex.byType.get('IFCRELASSIGNSTOPRODUCT')?.length, 1);
+    const saved = readDrawingAnnotations(reopened);
+    assert.equal(saved.length, 3);
+    assert.deepEqual(saved[0].saved.item, { kind: 'measure', value: input.measures[0] });
+    const restored = restoredDrawingAnnotations(reopened, 'new-model')!;
+    assert.deepEqual(restored.measure2DResults, input.measures);
+    assert.deepEqual(restored.dimensions2D, input.dimensions);
+    assert.deepEqual(restored.tagAnnotations2D, [{ ...input.tags[0].tag, modelId: 'new-model' }]);
+    const view = prepareDrawingAnnotations(reopened, undefined, input);
+    const second = decode(new StepExporter(reopened, view).export({ schema: Schema }).content);
+    assert.equal(stable(second), stable(first), 'unchanged reopen preserves every STEP record');
+    const folder = mkdtempSync(join(tmpdir(), 'annotations-'));
+    try {
+      const file = join(folder, 'export.ifc'); writeFileSync(file, first);
+      const python = process.env.PARITY_PYTHON ?? join(homedir(), 'modelling-parity/venv/bin/python');
+      const result = spawnSync(python, [resolve('../../tools/ifcopenshell_reference/validate_export.py'), file], { encoding: 'utf8' });
+      assert.equal(result.status, 0, `${result.error ?? ''}\n${result.stdout}\n${result.stderr}`);
+    } finally { rmSync(folder, { recursive: true, force: true }); }
+  });
+  it(`#9296: ${Schema} no markup leaves export byte-identical`, async () => {
+    const creator = new IfcCreator({ Name: 'Unchanged', Schema, Timestamp: 0 });
+    creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
+    const source = await parse(creator.toIfc().content);
+    const before = decode(new StepExporter(source).export({ schema: Schema }).content);
+    const after = decode(new StepExporter(source, prepareDrawingAnnotations(source, undefined, null)).export({ schema: Schema }).content);
+    assert.equal(stable(after), stable(before));
+  });
+}
+
+it('#9296: drawing coordinates lift into the IFC plan and section planes', async () => {
+  const { drawingPointInIfc } = await import('./drawing-annotations');
+  assert.deepEqual(drawingPointInIfc({ x: 2, y: 3 }, { axis: 'down', position: 4, flipped: false }), [2, -3, 4]);
+  assert.deepEqual(drawingPointInIfc({ x: 2, y: 3 }, { axis: 'front', position: 4, flipped: false }), [2, -4, 3]);
+  assert.deepEqual(drawingPointInIfc({ x: 2, y: 3 }, { axis: 'side', position: 4, flipped: false }), [4, -2, 3]);
+});

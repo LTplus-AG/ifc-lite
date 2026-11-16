@@ -17,7 +17,7 @@ import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { getViewerStoreApi, type ViewerState } from '@/store';
 import { isFeatureEnabled } from '@/lib/features';
 import { collectChangedModels, totalChangeCount } from '@/lib/export/model-changes';
-import { isSupportedModelFile, PICKER_FILE_EXTENSIONS } from '@/services/supported-model-files';
+import { isSupportedModelFile } from '@/services/supported-model-files';
 import { DEMO_KIT_PATHS, fetchSampleFile, waitForLoadIdle } from '@/lib/tours/demo-kit';
 import { getAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
 import { CALL_LIMITS } from '@/lib/agent-bridge/call-admission';
@@ -49,7 +49,7 @@ export const OPEN_MODEL_WAIT_MS = CALL_LIMITS.callTimeoutMs - 15_000;
 export const MODEL_OPEN_SPECS = {
   viewer_open_model: {
     description: 'Open a model in the viewer tab and wait until it has loaded. Pass `sample` for a bundled model '
-      + `(${Object.entries(OPEN_MODEL_SAMPLES).map(([id, s]) => `${id}: ${s.about}`).join('; ')}) or \`url\` for an https model file whose path ends in its extension, fetched by the tab (CORS, no credentials). `
+      + `(${Object.entries(OPEN_MODEL_SAMPLES).map(([id, s]) => `${id}: ${s.about}`).join('; ')}) or \`url\` for an https model file whose path ends in its extension (not .gltf: its buffers cannot come along), fetched by the tab (CORS, no credentials, redirects followed; HTML pages refused). `
       + '`mode` is `replace` (default when nothing is loaded) or `add` to federate with the loaded models; it is required while models are loaded. '
       + 'Replacing models with unexported edits is refused. Returns the loaded models with their model_id. Requires the commands and edits permission.',
     inputSchema: { type: 'object', properties: {
@@ -97,12 +97,10 @@ function fileNameOf(url: URL): string {
 }
 
 /**
- * Extensions a URL may name: what the viewer opens from one file, derived from the shared format list (so
- * a build without splats does not offer them). Not `.gltf`: its external buffers and textures do not come
- * along with a single download.
+ * Whether a URL may name this file: what the viewer opens from one file (the shared format list, so a build
+ * without splats refuses them), except `.gltf`, whose external buffers and textures do not come along.
  */
-const URL_MODEL_EXTENSIONS = PICKER_FILE_EXTENSIONS.filter((ext) => ext !== '.gltf' && isSupportedModelFile(new File([], `model${ext}`)));
-const isUrlModelName = (name: string) => URL_MODEL_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
+const isUrlModelName = (name: string) => !/\.gltf$/i.test(name) && isSupportedModelFile(new File([], name));
 
 /**
  * The body as a File, refusing once it passes the limit rather than after
@@ -140,11 +138,16 @@ async function readLimited(res: Response, url: URL, name: string): Promise<File>
   }
 }
 
+/** Starts like an HTML document, after any whitespace, comment or XML declaration. */
+const HTML_START = /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<(?:!doctype\s+html|html|head|body)[\s>]/i;
+
 async function download(url: URL, signal?: AbortSignal): Promise<File> {
-  const notAModel = (name: string, where: string) => invalid(`${name || where} is not a model file the viewer opens from a URL `
-    + `(${URL_MODEL_EXTENSIONS.join(', ')}). Use a URL whose path ends in the file's extension.`);
   // The name, and so the format, comes from the URL path: refused before any network or state change.
-  if (!isUrlModelName(fileNameOf(url))) notAModel(fileNameOf(url), url.href);
+  const requested = fileNameOf(url);
+  if (!isUrlModelName(requested)) {
+    invalid(`${requested || url.href} is not a model file the viewer opens from a URL (IFC, IFCX, IFCZIP, GLB, 3DM, LandXML .xml, `
+      + 'point clouds; not .gltf, whose buffers cannot come along). Use a URL whose path ends in the file\'s extension.');
+  }
   let res: Response;
   try {
     res = await fetch(url, { credentials: 'omit', signal });
@@ -153,20 +156,23 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
     return fail(ToolErrorCode.UNSUPPORTED_OPERATION,
       `The tab could not fetch ${url.href}. The server must allow cross-origin requests (CORS) from this viewer.`);
   }
-  const refuse = (message: string): never => { void res.body?.cancel(); return fail(ToolErrorCode.UNSUPPORTED_OPERATION, message); };
-  if (!res.ok) refuse(`Fetching ${url.href} returned HTTP ${res.status}.`);
-  // After redirects the bytes are those of the final URL: name (and route) them by it.
-  const finalUrl = res.url ? new URL(res.url) : url;
-  const name = fileNameOf(finalUrl);
-  if (!isUrlModelName(name)) { void res.body?.cancel(); notAModel(name, finalUrl.href); }
+  // After redirects the bytes are the final URL's: report that URL, and name the file by it when it names a
+  // model (a CDN or signed URL often has no extension; then the requested name stands).
+  const source = res.url ? new URL(res.url) : url;
+  const redirectedName = fileNameOf(source);
+  const name = redirectedName !== requested && isUrlModelName(redirectedName) ? redirectedName : requested;
+  const refuse = (message: string): never => {
+    // An unread body is cancelled so it stops downloading; one already read (or being read) has nothing left to stop.
+    if (res.body && !res.body.locked) void res.body.cancel();
+    return fail(ToolErrorCode.UNSUPPORTED_OPERATION, message);
+  };
+  if (!res.ok) refuse(`Fetching ${source.href} returned HTTP ${res.status}.`);
   // An error or sign-in page served under a model URL must not replace the user's models.
-  if (/^(?:text\/html|application\/xhtml\+xml)\b/i.test(res.headers.get('content-type') ?? '')) refuse(`${url.href} returned an HTML page, not a model. Nothing was loaded.`);
-  const file = await readLimited(res, url, name);
-  if (file.size === 0) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `${url.href} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
+  if (/^(?:text\/html|application\/xhtml\+xml)\b/i.test(res.headers.get('content-type') ?? '')) refuse(`${source.href} returned an HTML page, not a model. Nothing was loaded.`);
+  const file = await readLimited(res, source, name);
+  if (file.size === 0) refuse(`${source.href} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
   // Whatever the server called it: a body that starts like an HTML document is one.
-  if (/^\s*<(?:!doctype\s+html|html[\s>])/i.test(await file.slice(0, 512).text())) {
-    fail(ToolErrorCode.UNSUPPORTED_OPERATION, `${url.href} returned an HTML page, not a model. Nothing was loaded.`);
-  }
+  if (HTML_START.test(await file.slice(0, 1024).text())) refuse(`${source.href} returned an HTML page, not a model. Nothing was loaded.`);
   return file;
 }
 

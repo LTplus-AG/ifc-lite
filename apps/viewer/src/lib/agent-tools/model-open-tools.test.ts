@@ -368,11 +368,26 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await run({ url: 'https://example.com/x/..%2F..%2Fetc%2Fhouse.ifc', mode: 'add' });
     assert.equal(calls.at(-1)!.names[0], 'house.ifc');
     // A .gltf cannot bring its external buffers along.
-    await assert.rejects(run({ url: 'https://example.com/scene.gltf', mode: 'add' }), { code: 'INVALID_INPUT', message: /\.glb/ });
+    await assert.rejects(run({ url: 'https://example.com/scene.gltf', mode: 'add' }), { code: 'INVALID_INPUT', message: /not \.gltf/ });
     // An HTML body under a generic type is still an HTML page.
     respond = () => new Response('<!DOCTYPE html><title>Sign in</title>', { status: 200, headers: { 'content-type': 'application/octet-stream' } });
     const before = calls.length;
     await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /HTML page/ });
     assert.equal(calls.length, before, 'nothing was loaded');
+  });
+  it('follows redirects: names by the final URL when it names a model, else keeps the requested name (#9523 code review)', async () => {
+    const redirected = (to: string, body: BodyInit = new Uint8Array([1])) => () => {
+      const res = new Response(body, { status: 200 });
+      Object.defineProperty(res, 'url', { value: to });
+      return res;
+    };
+    respond = redirected('https://cdn.example/obj/7f3a9c?sig=1');
+    await run({ url: 'https://example.com/files/house.ifc' });
+    assert.equal(calls.at(-1)!.names[0], 'house.ifc', 'an extensionless signed URL keeps the requested name');
+    respond = redirected('https://cdn.example/rev42.ifcx');
+    await run({ url: 'https://example.com/latest.ifc', mode: 'add' });
+    assert.equal(calls.at(-1)!.names[0], 'rev42.ifcx', 'the bytes are routed by what was actually served');
+    respond = redirected('https://login.example/sso', '<?xml version="1.0"?>\n<!-- sso -->\n<html xmlns="http://www.w3.org/1999/xhtml"><body>Sign in</body></html>');
+    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /login\.example.*HTML page/ });
   });
 });

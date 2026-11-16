@@ -87,9 +87,12 @@ export async function createNativeClashTopic(options: TopicOptions): Promise<{ g
         includeSnapshot: true,
         includeSelection: !focused,
         includeHidden: true,
-        isCaptureStillValid: captureIsCurrent,
+        // Only a group capture stops early when stale: it re-checks the framed camera and
+        // scene. A pair capture runs to its end so a real failure (a lost frame, no camera)
+        // is logged even after the panel closed; a stale result is dropped below.
         ...(focused
           ? {
+              isCaptureStillValid: captureIsCurrent,
               onVisibilityModelIdsCaptured: (ids: readonly string[]) => {
                 visibilityModelIds = ids;
               },

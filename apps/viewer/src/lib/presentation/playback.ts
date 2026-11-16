@@ -11,7 +11,13 @@ const listeners = new Set<() => void>();
 function publish(update: Partial<PresentationPlaybackState>) { snapshot = { ...snapshot, ...update }; for (const listener of listeners) listener(); }
 export const presentationPlaybackState = () => snapshot;
 export function usePresentationPlayback() { return useSyncExternalStore(listener => { listeners.add(listener); return () => listeners.delete(listener); }, presentationPlaybackState, presentationPlaybackState); }
-export function stopPresentationPlayback(): void { controller?.abort(); }
+/** Ends the run at once, as Stop did before the shared service: the run's pending
+ * wait rejects later, but the stopped run no longer owns the published state. */
+export function stopPresentationPlayback(): void {
+  const running = controller; if (!running) return;
+  controller = null; running.abort();
+  publish({ state: 'cancelled', error: null });
+}
 function delay(milliseconds: number, signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     const aborted = () => { clearTimeout(timer); reject(signal.reason ?? new DOMException('Playback cancelled', 'AbortError')); };
@@ -29,7 +35,10 @@ export async function playNativePresentation(viewIds: readonly string[], options
   const views = viewIds.map(id => { const view = useViewerStore.getState().basketViews.find(row => row.id === id); if (!view) throw new Error('Unknown saved presentation view.'); return structuredClone(view); });
   const abort = new AbortController(); controller = abort;
   const cancelled = () => abort.abort(options.signal?.reason); options.signal?.addEventListener('abort', cancelled, { once: true });
-  publish({ state: 'running', current_view_id: null, played: 0, error: null });
+  const owns = () => controller === abort;
+  let final: PresentationPlaybackState = { state: 'running', current_view_id: null, played: 0, error: null };
+  const report = (update: Partial<PresentationPlaybackState>) => { final = { ...final, ...update }; if (owns()) publish(update); };
+  report(final);
   try {
     const { activateBasketViewFromStore } = await import('@/store/basket/basketViewActivator');
     for (let repetition = 0; options.repetitions === 0 || repetition < options.repetitions; repetition++) for (const view of views) {
@@ -37,13 +46,13 @@ export async function playNativePresentation(viewIds: readonly string[], options
       if (JSON.stringify(useViewerStore.getState().basketViews.find(row => row.id === view.id)) !== JSON.stringify(view)) throw new Error('A saved view changed during playback.');
       if (view.section?.plane.enabled && !isToolAvailable('section')) throw new Error('Section tools are disabled by the host.');
       const apply = () => activateBasketViewFromStore(view.id); if (options.beforeActivate) options.beforeActivate(apply); else apply();
-      publish({ current_view_id: view.id, played: snapshot.played + 1 });
+      report({ current_view_id: view.id, played: final.played + 1 });
       const duration = view.transitionMs && Number.isFinite(view.transitionMs) && view.transitionMs > 0 ? Math.max(150, Math.min(15000, Math.round(view.transitionMs))) : 700;
       await delay(duration + 180, abort.signal);
     }
-    publish({ state: 'succeeded' });
+    report({ state: 'succeeded' });
   } catch (error) {
-    publish({ state: abort.signal.aborted || options.signal?.aborted ? 'cancelled' : 'failed', error: abort.signal.aborted ? null : error instanceof Error ? error.message : String(error) });
-  } finally { options.signal?.removeEventListener('abort', cancelled); if (controller === abort) controller = null; }
-  return snapshot;
+    report({ state: abort.signal.aborted || options.signal?.aborted ? 'cancelled' : 'failed', error: abort.signal.aborted ? null : error instanceof Error ? error.message : String(error) });
+  } finally { options.signal?.removeEventListener('abort', cancelled); if (owns()) controller = null; }
+  return final;
 }

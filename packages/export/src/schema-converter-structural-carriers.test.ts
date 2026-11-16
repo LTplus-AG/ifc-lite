@@ -274,13 +274,22 @@ ${geometry}
 
 // #9668 final review: a source 'Causes' relationship naming another reaction.
 describe('CausedBy beside a different Causes relationship #9668', () => {
-  it('adds no second cause and reports CausedBy lost', async () => {
-    const ifc2x3 = model('IFC2X3', `${OWNER}
+  const ifc2x3 = model('IFC2X3', `${OWNER}
 #20=IFCSTRUCTURALPOINTREACTION('0KQ0efL39PrP5DeqBwaUNp',#5,'R',$,$,#9,$,#12,.GLOBAL_COORDS.);
 #23=IFCSTRUCTURALPOINTREACTION('1KQ0efL39PrP5DeqBwaUNp',#5,'R2',$,$,#9,$,#12,.GLOBAL_COORDS.);
 #21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);
 #30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#23),$,#21);`);
+
+  it('adds no second cause and reports CausedBy lost', async () => {
     const up = await convert(ifc2x3, 'IFC4');
+    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/^#30=.*'Causes',\$,\(#23\),\$,#21\);$/)]);
+    expect(up.warnings).toContain('IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted');
+    expect(up.warnings).not.toContain('CausedBy is written as');
+  });
+
+  it('reports CausedBy lost when the source Causes names it among others', async () => {
+    const both = ifc2x3.replace("(#23),$,#21);", "(#20,#23),$,#21);");
+    const up = await convert(both, 'IFC4');
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toHaveLength(1);
     expect(up.warnings).toContain('IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted');
   });

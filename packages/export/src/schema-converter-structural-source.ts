@@ -97,11 +97,11 @@ export interface CarrierSet {
   readonly related: readonly number[];
   /** Property name -> its id. */
   readonly props: ReadonlyMap<string, number>;
-  /** Whether the set and each of its properties are named by no other source record than this relationship and this set. */
-  readonly exclusive: boolean;
+  /** Whether the set and each of its properties are named by no other source record than this relationship and this set; absent unless asked for. */
+  readonly exclusive?: boolean;
 }
 
-/** Every property set named `name` in the source, with what it relates to. `exclusive`, which reads every record, is false unless `checkExclusive`. */
+/** Every property set named `name` in the source, with what it relates to; `exclusive`, which reads every record, only with `checkExclusive`. */
 export function readCarrierSets(source: SourceRecords, name: string, checkExclusive = true): CarrierSet[] {
   const quoted = `'${name}'`;
   const rels = source.ids('IFCRELDEFINESBYPROPERTIES');
@@ -115,7 +115,7 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
     return { rel, pset, propIds: (listItems(source.slots(pset)![4]) ?? []).map(refId) };
   });
   // A carrier is exclusive when its relationship is the only record naming its set, and its set the only one naming each property.
-  const uses = !checkExclusive ? new Map<number, number>() : source.referrers(new Set(members.flatMap(({ pset, propIds }) => [pset, ...propIds.filter((p): p is number => p !== null)])));
+  const uses = checkExclusive ? source.referrers(new Set(members.flatMap(({ pset, propIds }) => [pset, ...propIds.filter((p): p is number => p !== null)]))) : undefined;
   return members.map(({ rel, pset, propIds }) => {
     const props = new Map<string, number>();
     for (const p of propIds) {
@@ -123,7 +123,7 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
       if (p !== null && propName !== null) props.set(propName, p);
     }
     const related = (listItems(source.slots(rel)![4]) ?? []).map(refId).filter((r): r is number => r !== null);
-    const exclusive = uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1);
+    const exclusive = uses && uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1);
     return { rel, pset, related, props, exclusive };
   });
 }

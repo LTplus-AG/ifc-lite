@@ -76,7 +76,7 @@ const IFC4_TO_IFC2X3: Map<string, string> = new Map([
   // IFC2X3 folds load cases into `IfcStructuralLoadGroup` with
   // `PredefinedType=.LOAD_CASE.` and no `SelfWeightCoefficients` slot — a
   // strict attribute-name prefix, so the trim path below reconciles it
-  // without help from `BY_NAME_ATTR_REMAP_TYPES`.
+  // without help from `BY_NAME_ATTR_REMAP_TYPES` (full exports: structural-carriers).
   ['IFCSTRUCTURALLOADCASE', 'IFCSTRUCTURALLOADGROUP'],
   // IfcStructuralCurveAction/SurfaceAction(IFC4) rename to
   // IfcStructuralLinearAction/PlanarAction(IFC2X3): both carry the same

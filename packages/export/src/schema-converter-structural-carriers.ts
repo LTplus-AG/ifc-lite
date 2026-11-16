@@ -178,8 +178,9 @@ export class StructuralCarriers {
     const reaction = refId(args[CAUSED_BY]);
     if (reaction === null) return false;
     const written = this.causesWritten.get(id);
-    // A source 'Causes' naming another reaction would make two causes; IFC4 keeps the source's, and CausedBy is reported lost.
-    if (written) return written.has(reaction);
+    // A source 'Causes' already names the action: it carries CausedBy only when it names just this reaction,
+    // which the downgrade reads back. Otherwise IFC4 keeps the source's and CausedBy is reported lost.
+    if (written) return written.size === 1 && written.has(reaction);
     const guid = deterministicGlobalId(`ifc2x3-caused-by:${args[0].trim()}:#${reaction}`);
     this.pending.push(`#${this.ids()}=IFCRELASSIGNSTOPRODUCT('${guid}',${args[1]},'${CAUSES}',$,(#${reaction}),$,#${id});`);
     return true;

@@ -120,6 +120,8 @@ const activeRunners = new Set<NativeScriptRunner>();
 export class NativeScriptRunner {
   private active: Sandbox | null = null;
   private epoch = 0;
+  private cancellationEpoch = 0;
+  private running = 0;
   private sharedEpoch = -1;
   constructor(private readonly bim: BimContext, private readonly config?: SandboxConfig) {}
   async execute(code: string): Promise<ScriptResult | null> {
@@ -139,7 +141,7 @@ export class NativeScriptRunner {
     // This instance's own epoch: whether THIS instance has since started a
     // newer run (a second `execute()` call) or reset itself. Gates the
     // RETURN VALUE only — see the doc above `runEpochRef`.
-    const myLocalEpoch = ++this.epoch;
+    const myLocalEpoch = ++this.epoch, cancellationEpoch = this.cancellationEpoch;
     const stillCurrentLocally = () => this.epoch === myLocalEpoch;
 
     setExecutionState('running');
@@ -156,7 +158,7 @@ export class NativeScriptRunner {
       return null;
     }
 
-    activeRunners.add(this);
+    this.running++; activeRunners.add(this);
     let sandbox: Sandbox | null = null;
     let torndown = false;
     /**
@@ -185,7 +187,7 @@ export class NativeScriptRunner {
 
       sandbox = await createViewerSandbox(bim, config);
       this.active = sandbox;
-      if (!stillCurrentLocally()) return null;
+      if (this.cancellationEpoch !== cancellationEpoch) return null;
 
       const result = await sandbox.eval(code);
 
@@ -299,7 +301,7 @@ export class NativeScriptRunner {
       setError(runtime.message, runtime.diagnostics);
       return null;
     } finally {
-      activeRunners.delete(this);
+      if (--this.running === 0) activeRunners.delete(this);
       // Always dispose the sandbox after execution. A no-op on the success
       // path, which already settled itself above; this covers create/eval
       // throwing, and a teardown abort on the way out of a failed run.
@@ -313,6 +315,7 @@ export class NativeScriptRunner {
   }
   ownsEpoch(epoch: number): boolean { return this.sharedEpoch === epoch; }
   cancel(): void {
+    this.cancellationEpoch++;
     if (useViewerStore.getState().scriptRunEpoch === this.sharedEpoch) this.reset();
     else { this.epoch++; this.dispose(); }
   }
@@ -343,7 +346,7 @@ export class NativeScriptRunner {
     setError(null);
     setDiagnostics([]);
   }
-  dispose(): void { if (this.active) { disposeSandboxReportingAbort(this.active); this.active = null; } }
+  dispose(): void { this.cancellationEpoch++; if (this.active) { disposeSandboxReportingAbort(this.active); this.active = null; } }
 }
 
 export function cancelNativeScriptRun(expectedEpoch: number): boolean {

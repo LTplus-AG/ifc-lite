@@ -23,7 +23,7 @@ export const coordinationFlavorOperations = [
     const host = coordinationExtensions(), target = await exactFlavor(i.id, i.expected_updated_at); if (i.action === 'delete') { await host.flavors.delete(i.id); return { state: 'deleted', id: i.id }; }
     const now = new Date().toISOString(); let flavor: Flavor;
     if (i.action === 'capture') flavor = captureNativeFlavor(target);
-    else { if (!i.name.trim()) throw new Error('A nonempty native flavor name is required.'); flavor = { ...target, name: i.name, updatedAt: now, ...(i.action === 'duplicate' ? { id: `${target.id}.copy.${now.replace(/[:.]/g, '-')}`, createdAt: now } : {}) }; }
+    else { if (!i.name.trim()) throw new Error('A nonempty native flavor name is required.'); flavor = { ...target, name: i.name, updatedAt: now, ...(i.action === 'duplicate' ? { id: `${target.id}.copy.${now.replace(/[:.]/g, '-').toLowerCase()}`, createdAt: now } : {}) }; }
     await host.flavors.put(flavor, i.action === 'capture' ? 'capture current state' : i.action); return { state: 'saved', id: flavor.id, flavor };
   })),
   coordination<{ id: string; expected_updated_at: string }>('extensions.switchFlavor', 'Run the complete native flavor switcher, retaining existing reviewed extension grants and reporting every refused saved-state restore. Activations retain their existing native install review and exact current grants; no new capability is granted.', ['configuration', 'model', 'view', 'network'], {

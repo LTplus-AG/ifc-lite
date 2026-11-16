@@ -6,7 +6,7 @@ const MARKER = 'epsg-lookup-gate:';
 export async function resolve(specifier, context, nextResolve) {
   const real = await nextResolve(specifier, context);
   if (!context.parentURL?.startsWith(MARKER)
-    && /\/EpsgLookupDialog\.tsx(?:\?|$)/.test(context.parentURL ?? '')
+    && /\/(?:EpsgLookupDialog\.tsx|epsg-search\.ts)(?:\?|$)/.test(context.parentURL ?? '')
     && (specifier === '@ifc-lite/data' || /\/packages\/data\/(?:src\/index\.ts|dist\/index\.js)(?:\?|$)/.test(real.url))) {
     return { url: MARKER + real.url, shortCircuit: true, format: 'module' };
   }

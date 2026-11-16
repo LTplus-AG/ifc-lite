@@ -188,7 +188,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         toast.error(t('extensionsFlavors.flavorDialog.toast.notFound', { id }));
         return;
       }
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').toLowerCase();
       const newId = `${target.id}.copy.${stamp}`;
       const now = new Date().toISOString();
       const clone: Flavor = {

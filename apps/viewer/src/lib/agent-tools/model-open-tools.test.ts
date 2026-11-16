@@ -384,7 +384,7 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     respond = redirected('https://cdn.example/obj/7f3a9c?sig=1');
     await run({ url: 'https://example.com/files/house.ifc' });
     assert.equal(calls.at(-1)!.names[0], 'house.ifc', 'an extensionless signed URL keeps the requested name');
-    respond = redirected('https://cdn.example/rev42.ifcx', '{"header":{}}');
+    respond = redirected('https://cdn.example/rev42.ifcx', '{"header":{"ifcxVersion":"ifcx_alpha"}}');
     await run({ url: 'https://example.com/latest.ifc', mode: 'add' });
     assert.equal(calls.at(-1)!.names[0], 'rev42.ifcx', 'the bytes are routed by what was actually served');
     respond = redirected('https://login.example/sso', '<?xml version="1.0"?>\n<!-- sso -->\n<html xmlns="http://www.w3.org/1999/xhtml"><body>Sign in</body></html>');
@@ -407,6 +407,9 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await refused('https://example.com/house.ifc', '<!-- edge -->{"error":"expired"}', /JSON response/);
     await refused('https://example.com/house.ifc', '<!DOCTYPE\r\nhtml><h1>403 Forbidden</h1>', /HTML page/);
     await refused('https://example.com/terrain.xml', '<ERROR><Message>Denied</Message></ERROR>', /XML error response/);
+    await refused('https://example.com/house.ifc', `<!DOCTYPE${' '.repeat(80)}html><h1>403 Forbidden</h1>`, /HTML page/);
+    await refused('https://example.com/house.ifc', '<h1>Forbidden</h1>', /HTML page/);
+    await refused('https://example.com/model.ifcx', '{"header":{"status":403},"error":"expired"}', /JSON response/);
     await refused('https://example.com/terrain.xml', '<?xml version="1.0"?><ows:ExceptionReport/>', /XML error response/);
     await refused('https://example.com/terrain.xml', '<!DOCTYPE Error><Error/>', /XML error response/);
     await refused('https://example.com/model.ifc', `<!-- ${'b'.repeat(5000)} --><html><body>Sign in</body></html>`, /HTML page/);
@@ -433,13 +436,14 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       ['https://example.com/cloud.pts', '3\n1.0 2.0 3.0\n'], // ASCII point cloud
       ['https://example.com/mesh.ply', 'ply\nformat ascii 1.0\n'], // ASCII PLY header
       ['https://example.com/cloud.pcd', 'version 0.7\nSIZE 4 4 4\n'], // ASCII PCD, any header order
-      ['https://example.com/notice.ifc', 'Access Denied'], // plain text is not recognised: the loader decides
+      ['https://example.com/notice.ifc', 'Access Denied'], // plain text: the loader's preflight refuses it before its reset
+      ['https://example.com/settings.xml', '<DefaultSettings/>'], // a name that merely contains 'fault'
     ] as const) {
       respond = served(body);
       const out = await run({ url, mode: 'add' }).catch((err: Error) => err);
       assert.ok(!(out instanceof Error), `${url}: ${out instanceof Error ? out.message : ''}`);
     }
-    assert.deepEqual(calls.map((c) => c.names[0]), ['model.ifc', 'model2.ifc', 'terrain.xml', 'scan.ply', 'capture.splat', 'terrain2.xml', 'scan.xml', 'spaced.ifc', 'cloud.pts', 'mesh.ply', 'cloud.pcd', 'notice.ifc']);
+    assert.deepEqual(calls.map((c) => c.names[0]), ['model.ifc', 'model2.ifc', 'terrain.xml', 'scan.ply', 'capture.splat', 'terrain2.xml', 'scan.xml', 'spaced.ifc', 'cloud.pts', 'mesh.ply', 'cloud.pcd', 'notice.ifc', 'settings.xml']);
   });
 
   it('never shows a signed URL query in an error (#9523 code review)', async () => {
@@ -456,7 +460,8 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     assert.deepEqual(calls, []);
   });
   it('a crafted prolog cannot make recognition backtrack (#9523 code review)', async () => {
-    // 40 empty comments: a backtracking matcher would take hours (each comment doubles it); a linear scan takes ms.
+    // 40 empty comments. The earlier regex took 388 ms at 24 and doubled per comment (measured in review), so it
+    // would not finish here; the linear scan takes milliseconds.
     respond = () => new Response(`${'<!---->'.repeat(40)}<LandXML/>`, { status: 200 });
     const started = Date.now();
     await run({ url: 'https://example.com/terrain.xml' });

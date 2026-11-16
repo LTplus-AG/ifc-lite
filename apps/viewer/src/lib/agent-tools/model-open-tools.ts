@@ -117,11 +117,16 @@ function afterProlog(text: string): string {
   let at = 0;
   for (;;) {
     while (at < text.length && /\s/.test(text[at])) at++;
-    const close = text.startsWith('<?', at) ? '?>' : text.startsWith('<!--', at) ? '-->'
-      : /^<!doctype(?!\s+html\b)/i.test(text.slice(at, at + 64)) ? '>' : null;
-    const end = close ? text.indexOf(close, at + 2) : -1;
+    let close: string | null = text.startsWith('<?', at) ? '?>' : text.startsWith('<!--', at) ? '-->' : null;
+    if (!close && /^<!doctype\b/i.test(text.slice(at, at + 10))) {
+      // Up to its '>': an HTML doctype is the document itself, any other is prolog.
+      const gt = text.indexOf('>', at);
+      close = gt !== -1 && !/^<!doctype\s+html\b/i.test(text.slice(at, gt + 1)) ? '>' : null;
+    }
+    if (!close) return text.slice(at);
+    const end = text.indexOf(close, at + 2);
     if (end === -1) return text.slice(at);
-    at = end + close!.length;
+    at = end + close.length;
   }
 }
 
@@ -132,18 +137,19 @@ const ERROR_BODY_MAX_BYTES = 64 * 1024;
  * Why the body is an error response rather than a model (`null` otherwise), checked before a replace can close
  * the open models. Routing stays the loader's: this refuses only what no model format can be, so it never
  * refuses a file the loader would open. An HTML page; a small body that parses whole as JSON and is not an
- * IFCX document (every IFCX document has a `header`); a small XML document whose root is an error, exception
- * or fault element. A plain-text error is not recognised and reaches the loader.
+ * IFCX document (whose header names its `ifcxVersion`); a small XML document whose root is an error, exception
+ * or fault element. A text body under .ifc is refused by the loader's own preflight, before its scene reset.
  */
 async function errorResponseKind(file: File): Promise<string | null> {
   const small = file.size <= ERROR_BODY_MAX_BYTES;
   const body = afterProlog(await file.slice(0, ERROR_BODY_MAX_BYTES).text());
-  if (/^<(?:!doctype\s+html|html|head|body|title|meta)[\s>]/i.test(body)) return 'an HTML page';
+  if (/^<(?:!doctype\s+html|html|head|body|title|meta|h[1-6]|div|p|pre|span|center|script|style|noscript|a)[\s>]/i.test(body)) return 'an HTML page';
   if (!small) return null;
   if (body.startsWith('<')) {
     // The root's local name only: a bounded slice keeps the match linear whatever the body holds.
     const root = (/^<([\w.:-]{1,128})/.exec(body.slice(0, 256))?.[1] ?? '').split(':').pop() ?? '';
-    return /error|exception|fault|accessdenied/i.test(root) ? 'an XML error response' : null;
+    // An error-named root (Error, ErrorResponse, ows:ExceptionReport, soap:Fault, ERROR), not any name containing one (DefaultSettings).
+    return /^(?:error|exception|fault|accessdenied)|(?:error|exception|fault)(?:report|response)?$/i.test(root) ? 'an XML error response' : null;
   }
   if (!/^[{["]/.test(body)) return null;
   let value: unknown;
@@ -153,7 +159,9 @@ async function errorResponseKind(file: File): Promise<string | null> {
     console.debug('[viewer_open_model] a small body starting like JSON is not JSON; left to the loader:', err);
     return null;
   }
-  return typeof value === 'object' && value !== null && !Array.isArray(value) && 'header' in value ? null : 'a JSON response';
+  // An IFCX document's header names its IFCX version; an API envelope with some other `header` does not.
+  const header = typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as { header?: unknown }).header : undefined;
+  return typeof header === 'object' && header !== null && 'ifcxVersion' in header ? null : 'a JSON response';
 }
 
 /**

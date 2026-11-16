@@ -36,4 +36,5 @@ const CONTENT_REFUSALS = [
   /^(?:XYZ|PTS|CSV): file does not look like ASCII point data$/,
   /^Invalid IFCX file(?: "[^"\r\n]*")?: (?:JSON parse error - SyntaxError: [\s\S]+|missing or invalid header\.ifcxVersion)$/,
   /^Unknown file format\. Expected IFC \(STEP\) or IFCX \(JSON\)\.$/,
+  /^The file is (?:an HTML page|a JSON response|an XML error response|text that is neither STEP nor an IFC ZIP), not a model\.$/, // #9523 ingest/nonModelContent
 ];

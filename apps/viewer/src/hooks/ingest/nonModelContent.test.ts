@@ -1,0 +1,75 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/** #9523: error responses saved or served as models are recognised; files a loader would open are not. */
+import '@/test/setup-dom.js';
+import { it } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { zipSync, strToU8 } from 'fflate';
+import { isInvalidInputError } from '@/lib/invalid-input-errors';
+import { afterProlog, nonModelContentMessage, nonModelContentReason } from './nonModelContent';
+
+const step = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
+const reason = (body: BlobPart, name: string) => nonModelContentReason(new File([body], name));
+
+it('#9523 recognises error responses under any model name', async () => {
+  const cases: Array<[BlobPart, string, RegExp]> = [
+    ['<title>403 Forbidden</title>', 'house.ifc', /HTML page/],
+    ['<h1>Forbidden</h1>', 'model.ifcx', /HTML page/],
+    ['<!DOCTYPEhtml><p>denied</p>', 'scan.las', /HTML page/],
+    [`<!DOCTYPE${' '.repeat(80)}html><h1>403</h1>`, 'model.glb', /HTML page/],
+    [`<!-- ${'b'.repeat(5000)} --><html><body>Sign in</body></html>`, 'house.ifc', /HTML page/],
+    ['{"error":"expired"}', 'house.ifc', /JSON response/],
+    ['<!-- edge -->{"message":"Forbidden"}', 'model.ifcx', /JSON response/],
+    ['{"header":{"status":403},"error":"expired"}', 'model.ifcx', /JSON response/],
+    ['{"header":{"ifcxVersion":null}}', 'model.ifcx', /JSON response/],
+    ['"expired"', 'scan.ply', /JSON response/],
+    ['<?xml version="1.0"?><Error><Code>AccessDenied</Code></Error>', 'terrain.xml', /XML error response/],
+    ['<?xml version="1.0"?><!-- s3 --><ErrorResponse/>', 'terrain.xml', /XML error response/],
+    ['<ows:ExceptionReport/>', 'terrain.xml', /XML error response/],
+    ['<soap:Fault/>', 'terrain.xml', /XML error response/],
+    ['<ERROR><Message>Denied</Message></ERROR>', 'terrain.xml', /XML error response/],
+    ['<!DOCTYPE Error [<!ENTITY x "a>b">]><Error/>', 'terrain.xml', /XML error response/],
+    ['Access Denied', 'house.ifc', /neither STEP/],
+    ['nope', 'pack.ifczip', /neither STEP/],
+  ];
+  for (const [body, name, expected] of cases) assert.match(String(await reason(body, name)), expected, `${name}: ${String(body).slice(0, 40)}`);
+});
+
+it('#9523 leaves every file a loader would open alone', async () => {
+  const ifcx = readFileSync(new URL('../../../public/samples/hello-wall.ifcx', import.meta.url), 'utf8');
+  const cases: Array<[BlobPart, string]> = [
+    [step, 'house.ifc'],
+    [`${' '.repeat(5000)}${step}`, 'spaced.ifc'],
+    [zipSync({ 'model.ifc': strToU8(step) }), 'pack.ifczip'],
+    [zipSync({ 'model.ifc': strToU8(step) }), 'zipped.ifc'],
+    [ifcx, 'model.ifcx'],
+    [ifcx, 'model.ifc'],
+    [`<?xml version="1.0"?>\n<!--${'x'.repeat(5000)}-->\n<LandXML/>`, 'terrain.xml'],
+    ['<?xml version="1.0"?><lx:LandXML xmlns:lx="http://www.landxml.org/schema/LandXML-1.2"/>', 'terrain.xml'],
+    ...['DefaultSettings', 'Default', 'UserDefault', 'ErrorBars', 'Exceptional', 'FaultModel'].map((root): [BlobPart, string] => [`<${root}/>`, 'other.xml']),
+    [new Uint8Array([0x4c, 0x41, 0x53, 0x46, 0, 0, 1, 2]), 'scan.ply'],
+    [new Uint8Array([0x7b, 1, 2, 3, 0, 5, 6, 7]), 'capture.splat'],
+    ['version 0.7\nSIZE 4 4 4\n', 'cloud.pcd'],
+    ['3\n1.0 2.0 3.0\n', 'cloud.pts'],
+    ['ply\nformat ascii 1.0\n', 'mesh.ply'],
+    [new Uint8Array([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0]), 'model.glb'],
+    ['', 'empty.ifc'],
+  ];
+  for (const [body, name] of cases) assert.equal(await reason(body, name), null, `${name}: ${String(body).slice(0, 40)}`);
+});
+
+it('#9523 scans a crafted prolog linearly', () => {
+  // The previous regex took 388 ms at 24 comments and doubled per comment (measured in review): 40 would not finish.
+  const started = Date.now();
+  assert.equal(afterProlog(`${'<!---->'.repeat(40_000)}<LandXML/>`), '<LandXML/>');
+  assert.ok(Date.now() - started < 5_000, `took ${Date.now() - started} ms`);
+});
+
+it('#9523 refusals are classified as invalid input, not crashes', () => {
+  for (const r of ['an HTML page', 'a JSON response', 'an XML error response', 'text that is neither STEP nor an IFC ZIP']) {
+    assert.equal(isInvalidInputError(new Error(nonModelContentMessage(r)), nonModelContentMessage(r)), true, r);
+  }
+});

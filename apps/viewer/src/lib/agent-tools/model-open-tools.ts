@@ -109,62 +109,6 @@ const shown = (url: URL) => `${url.origin}${url.pathname}`;
 const tooLarge = (url: URL) => `${shown(url)} is larger than ${OPEN_MODEL_MAX_BYTES} bytes, the limit for an agent download.`;
 
 /**
- * `text` after its markup prolog: whitespace, processing instructions (`<?xml ?>`), comments and a DOCTYPE
- * other than HTML's. A linear scan, so no crafted body can make it backtrack. An unterminated prolog item
- * leaves the rest as is.
- */
-function afterProlog(text: string): string {
-  let at = 0;
-  for (;;) {
-    while (at < text.length && /\s/.test(text[at])) at++;
-    let close: string | null = text.startsWith('<?', at) ? '?>' : text.startsWith('<!--', at) ? '-->' : null;
-    if (!close && /^<!doctype\b/i.test(text.slice(at, at + 10))) {
-      // Up to its '>': an HTML doctype is the document itself, any other is prolog.
-      const gt = text.indexOf('>', at);
-      close = gt !== -1 && !/^<!doctype\s+html\b/i.test(text.slice(at, gt + 1)) ? '>' : null;
-    }
-    if (!close) return text.slice(at);
-    const end = text.indexOf(close, at + 2);
-    if (end === -1) return text.slice(at);
-    at = end + close.length;
-  }
-}
-
-/** Bodies up to this size are read whole to recognise a JSON or XML error response. HTML is looked for in this much of any body. */
-const ERROR_BODY_MAX_BYTES = 64 * 1024;
-
-/**
- * Why the body is an error response rather than a model (`null` otherwise), checked before a replace can close
- * the open models. Routing stays the loader's: this refuses only what no model format can be, so it never
- * refuses a file the loader would open. An HTML page; a small body that parses whole as JSON and is not an
- * IFCX document (whose header names its `ifcxVersion`); a small XML document whose root is an error, exception
- * or fault element. A text body under .ifc is refused by the loader's own preflight, before its scene reset.
- */
-async function errorResponseKind(file: File): Promise<string | null> {
-  const small = file.size <= ERROR_BODY_MAX_BYTES;
-  const body = afterProlog(await file.slice(0, ERROR_BODY_MAX_BYTES).text());
-  if (/^<(?:!doctype\s+html|html|head|body|title|meta|h[1-6]|div|p|pre|span|center|script|style|noscript|a)[\s>]/i.test(body)) return 'an HTML page';
-  if (!small) return null;
-  if (body.startsWith('<')) {
-    // The root's local name only: a bounded slice keeps the match linear whatever the body holds.
-    const root = (/^<([\w.:-]{1,128})/.exec(body.slice(0, 256))?.[1] ?? '').split(':').pop() ?? '';
-    // An error-named root (Error, ErrorResponse, ows:ExceptionReport, soap:Fault, ERROR), not any name containing one (DefaultSettings).
-    return /^(?:error|exception|fault|accessdenied)|(?:error|exception|fault)(?:report|response)?$/i.test(root) ? 'an XML error response' : null;
-  }
-  if (!/^[{["]/.test(body)) return null;
-  let value: unknown;
-  try {
-    value = JSON.parse(body);
-  } catch (err) {
-    console.debug('[viewer_open_model] a small body starting like JSON is not JSON; left to the loader:', err);
-    return null;
-  }
-  // An IFCX document's header names its IFCX version; an API envelope with some other `header` does not.
-  const header = typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as { header?: unknown }).header : undefined;
-  return typeof header === 'object' && header !== null && 'ifcxVersion' in header ? null : 'a JSON response';
-}
-
-/**
  * The body as a File, refusing once it passes the limit rather than after
  * buffering all of it (chunked or compressed bodies have no usable length).
  * Bytes are counted as they stream; the browser holds the body once.
@@ -229,8 +173,6 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
   if (Number(res.headers.get('content-length')) > OPEN_MODEL_MAX_BYTES) refuse(tooLarge(source), ToolErrorCode.INVALID_INPUT);
   const file = await readLimited(res, source, name);
   if (file.size === 0) refuse(`${shown(source)} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
-  const errorKind = await errorResponseKind(file);
-  if (errorKind) refuse(`${shown(source)} returned ${errorKind}, not a model. Nothing was loaded.`);
   return file;
 }
 

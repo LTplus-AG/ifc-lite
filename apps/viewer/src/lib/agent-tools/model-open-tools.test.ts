@@ -369,8 +369,8 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     assert.equal(calls.at(-1)!.names[0], 'house.ifc');
     // A .gltf cannot bring its external buffers along.
     await assert.rejects(run({ url: 'https://example.com/scene.gltf', mode: 'add' }), { code: 'INVALID_INPUT', message: /not \.gltf/ });
-    // An HTML body under a generic type is still an HTML page.
-    respond = () => new Response('<!DOCTYPE html><title>Sign in</title>', { status: 200, headers: { 'content-type': 'application/octet-stream' } });
+    // An HTML content type is refused before the body is read (bodies are checked by the loader's preflight).
+    respond = () => new Response('<!DOCTYPE html><title>Sign in</title>', { status: 200, headers: { 'content-type': 'text/html' } });
     const before = calls.length;
     await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /HTML page/ });
     assert.equal(calls.length, before, 'nothing was loaded');
@@ -387,38 +387,13 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     respond = redirected('https://cdn.example/rev42.ifcx', '{"header":{"ifcxVersion":"ifcx_alpha"}}');
     await run({ url: 'https://example.com/latest.ifc', mode: 'add' });
     assert.equal(calls.at(-1)!.names[0], 'rev42.ifcx', 'the bytes are routed by what was actually served');
-    respond = redirected('https://login.example/sso', '<?xml version="1.0"?>\n<!-- sso -->\n<html xmlns="http://www.w3.org/1999/xhtml"><body>Sign in</body></html>');
-    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /login\.example.*(HTML page|did not return)/ });
   });
-  it('refuses error responses before a replace can close the open models (#9523 code review)', async () => {
-    useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
-    const refused = async (url: string, body: string, what: RegExp, to?: string) => {
-      respond = () => {
-        const res = new Response(body, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
-        if (to) Object.defineProperty(res, 'url', { value: to });
-        return res;
-      };
-      await assert.rejects(run({ url, mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: what }, body.slice(0, 40));
-    };
-    await refused('https://example.com/house.ifc', '<title>403 Forbidden</title>', /HTML page/);
-    await refused('https://example.com/house.ifc', '{"error":"expired"}', /auth\.example\/token-expired returned a JSON response/, 'https://auth.example/token-expired?sig=1');
-    await refused('https://example.com/model.glb', '{"asset":{"version":"2.0"}}', /JSON response/, 'https://cdn.example/model.gltf');
-    await refused('https://example.com/house.ifc', '"expired"', /JSON response/);
-    await refused('https://example.com/house.ifc', '<!-- edge -->{"error":"expired"}', /JSON response/);
-    await refused('https://example.com/house.ifc', '<!DOCTYPE\r\nhtml><h1>403 Forbidden</h1>', /HTML page/);
-    await refused('https://example.com/terrain.xml', '<ERROR><Message>Denied</Message></ERROR>', /XML error response/);
-    await refused('https://example.com/house.ifc', `<!DOCTYPE${' '.repeat(80)}html><h1>403 Forbidden</h1>`, /HTML page/);
-    await refused('https://example.com/house.ifc', '<h1>Forbidden</h1>', /HTML page/);
-    await refused('https://example.com/model.ifcx', '{"header":{"status":403},"error":"expired"}', /JSON response/);
-    await refused('https://example.com/terrain.xml', '<?xml version="1.0"?><ows:ExceptionReport/>', /XML error response/);
-    await refused('https://example.com/terrain.xml', '<!DOCTYPE Error><Error/>', /XML error response/);
-    await refused('https://example.com/model.ifc', `<!-- ${'b'.repeat(5000)} --><html><body>Sign in</body></html>`, /HTML page/);
-    await refused('https://example.com/model.ifcx', '{"message":"Forbidden"}', /JSON response/);
-    await refused('https://example.com/scan.ply', '{"error":"expired"}', /JSON response/);
-    await refused('https://example.com/capture.splat', '{"message":"Forbidden"}', /JSON response/);
-    await refused('https://example.com/model.ifcx', '<?xml version="1.0"?><Error><Code>AccessDenied</Code></Error>', /XML error response/);
-    await refused('https://example.com/terrain.xml', '<?xml version="1.0"?><!-- s3 --><ErrorResponse><Error/></ErrorResponse>', /XML error response/);
-    assert.deepEqual(calls, [], 'nothing was loaded');
+  it('leaves error bodies to the loader preflight, which refuses them before its reset (#9523 code review)', async () => {
+    // Content checks live in hooks/ingest/nonModelContent (unit-tested there) and run inside loadFile's preflight;
+    // the tool itself only refuses what it can see without reading the body.
+    respond = () => new Response('{"error":"expired"}', { status: 200, headers: { 'content-type': 'application/json' } });
+    await run({ url: 'https://example.com/house.ifc', mode: 'add' });
+    assert.equal(calls.at(-1)!.names[0], 'house.ifc');
   });
 
   it('hands every body that could be a model to the loader, which decides its routing (#9523 code review)', async () => {

@@ -83,6 +83,10 @@ export function placedItems(reader: ModelReader, item: number, outer: Frame = ID
     const originRef = map ? reader.attr(map, 'MappingOrigin') : null;
     const origin = originRef === null || originRef === undefined ? IDENTITY : axisPlacementFrame(reader, originRef);
     if (!map || !rep || mapId === null || !target || !origin || level >= MAX_MAP_DEPTH || ancestors.has(mapId)) return null;
+    // Keep MappingTarget · MappingOrigin in the geometry engine's convention:
+    // rust/geometry/src/representation/mapped_transform.rs, mapped_item_local_transform
+    // composes t * o. The translated-origin and rotated-origin regression tests,
+    // plus the explicit +1 m Z case, pin this order in mapped-items.test.ts.
     const placed = composeFrames(frame, composeFrames(target, origin));
     const nextAncestors = new Set(ancestors).add(mapId);
     const out: PlacedItem[] = [];

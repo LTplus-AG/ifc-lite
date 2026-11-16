@@ -155,6 +155,61 @@ describe('item 5: roofing that is not a slab counts, over the hole\'s whole area
     };
     expect(await courtyards(roofWithNotch)).toBe(1);
   });
+
+  it('a courtyard jointly roofed by two abutting deck slabs is interior (#10503 review round 4)', async () => {
+    const splitDecks = (b: Extra) => {
+      const pt = (x: number, y: number) => b.pt2(x, y);
+      const loop = (points: Array<[number, number]>) => b.add(`IFCPOLYLINE((${[...points, points[0]].map(([x, y]) => `#${pt(x, y)}`).join(',')}))`);
+      const addDeck = (x0: number, x1: number) => {
+        const profile = b.add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${loop([[x0, 2.5], [x1, 2.5], [x1, 7.5], [x0, 7.5]])})`);
+        const solid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 0)},#${b.dir(0, 0, -1)},0.3)`);
+        b.contain(b.storeys.og.id, b.add(`IFCSLAB(${b.guid()},$,'Deck ${x0} to ${x1}',$,$,#${b.place(b.storeys.og.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLOOR.)`));
+      };
+      addDeck(5, 10);
+      addDeck(10, 15);
+    };
+    const fp = (await extract(holedUnder(splitDecks))).footprint;
+    expect(fp.courtyardRings).toBeUndefined();
+    expect(fp.quality?.worst).toBe('complete');
+  });
+
+  it('a courtyard roofed half by a deck slab and half by an IfcRoof is interior (#10503 review round 4)', async () => {
+    const mixedRoof = (b: Extra) => {
+      const pt = (x: number, y: number) => b.pt2(x, y);
+      const loop = (points: Array<[number, number]>) => b.add(`IFCPOLYLINE((${[...points, points[0]].map(([x, y]) => `#${pt(x, y)}`).join(',')}))`);
+      const leftProfile = b.add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${loop([[5, 2.5], [10, 2.5], [10, 7.5], [5, 7.5]])})`);
+      const leftSolid = b.add(`IFCEXTRUDEDAREASOLID(#${leftProfile},#${b.axis(0, 0, 0)},#${b.dir(0, 0, -1)},0.3)`);
+      b.contain(b.storeys.og.id, b.add(`IFCSLAB(${b.guid()},$,'Deck left',$,$,#${b.place(b.storeys.og.pl, 0, 0, 0)},#${b.shape([leftSolid])},$,.FLOOR.)`));
+      const rightSolid = b.rectExtrusion(12.5, 5, 5, 5, 0.1, b.axis(0, 0, 3), b.dir(0, 0, 1));
+      b.contain(b.storeys.eg.id, b.add(`IFCROOF(${b.guid()},$,'Roof right',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([rightSolid])},$,.FLAT_ROOF.)`));
+    };
+    const fp = (await extract(holedUnder(mixedRoof))).footprint;
+    expect(fp.courtyardRings).toBeUndefined();
+    expect(fp.quality?.worst).toBe('complete');
+  });
+
+  it('a 0.6 m gap between two decks leaves the courtyard open (#10503 review round 4)', async () => {
+    const decksWithGap = (b: Extra) => {
+      const addDeck = (cx: number, width: number) => {
+        const solid = b.rectExtrusion(cx, 5, width, 5, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
+        b.contain(b.storeys.og.id, b.add(`IFCSLAB(${b.guid()},$,'Deck with gap',$,$,#${b.place(b.storeys.og.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLOOR.)`));
+      };
+      addDeck(7.35, 4.7);
+      addDeck(12.65, 4.7);
+    };
+    expect((await extract(holedUnder(decksWithGap))).footprint.courtyardRings).toHaveLength(1);
+  });
+
+  it('a deck void over part of the courtyard leaves it open (#10503 review round 4)', async () => {
+    const deckWithVoid = (b: Extra) => {
+      const pt = (x: number, y: number) => b.pt2(x, y);
+      const loop = (points: Array<[number, number]>) => b.add(`IFCPOLYLINE((${[...points, points[0]].map(([x, y]) => `#${pt(x, y)}`).join(',')}))`);
+      const profile = b.add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#${loop([[5, 2.5], [15, 2.5], [15, 7.5], [5, 7.5]])},(#${loop([[9, 3], [11, 3], [11, 6], [9, 6]])}))`);
+      const solid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 0)},#${b.dir(0, 0, -1)},0.3)`);
+      b.contain(b.storeys.og.id, b.add(`IFCSLAB(${b.guid()},$,'Deck with void',$,$,#${b.place(b.storeys.og.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLOOR.)`));
+    };
+    expect((await extract(holedUnder(deckWithVoid))).footprint.courtyardRings).toHaveLength(1);
+  });
 });
 
 describe('mapped slab outlines use the mapped-item reader', () => {

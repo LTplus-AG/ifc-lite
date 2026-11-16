@@ -12,6 +12,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { extractModelFacts } from '../src/model/extract.js';
+import { readBody } from '../src/model/outline.js';
+import { ModelReader } from '../src/model/reader.js';
 import { localOf } from './candidate-fixtures.js';
 import { parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
 
@@ -57,6 +59,14 @@ describe('a body given as a mapped item', () => {
     const d = await door(mappedDoor(leaf(0, -1), {}, 1));
     expect(d.levelIsUpperEstimate).toBe(false);
     expect(d.level).toBeCloseTo(500, 6);
+  });
+
+  it('keeps a source-origin leaf at +1 m Z for identity target and +1 m MappingOrigin (#10503 review round 4)', async () => {
+    const store = await parseStep(syntheticHouse({ extra: mappedDoor(leaf(), {}, 1) }));
+    const reader = new ModelReader(store);
+    const body = readBody(reader, reader.idsOfType('IFCDOOR').at(-1)!);
+    expect(body.readable).toBe(1);
+    expect(Math.min(...body.corners.map((point) => point[2]))).toBeCloseTo(1, 6);
   });
 
   it('composes a translated MappingOrigin before a rotated, translated MappingTarget (engine order)', async () => {

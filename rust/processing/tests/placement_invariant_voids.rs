@@ -331,7 +331,8 @@ END-ISO-10303-21;
 }
 
 /// A host and an opening placed absolutely, each the root of its own chain,
-/// cut the same at the origin and under a rotated, translated placement, and
+/// which places no site, so the host is cut in the caller's frame as on main.
+/// It cuts the same at the origin and under a rotated, translated placement, and
 /// closed with the expected volume both times: 5 x 0.2 x 3 m less the
 /// 1 x 0.2 x 1.2 m the opening takes, to the census bless bound.
 #[test]
@@ -353,4 +354,64 @@ fn absolutely_placed_host_and_opening_mesh_the_same_wherever_they_are() {
     assert_eq!(moved_mesh.indices, origin_mesh.indices, "index buffer changed with the placement");
     let worst = worst_deviation(&world_vertices(&unplaced, &origin_mesh), &world_vertices(&placed, &moved_mesh));
     assert!(worst <= TOLERANCE_M, "a vertex moved {worst:.3e} m with the placement (tolerance {TOLERANCE_M:.1e} m)");
+}
+
+/// `hello-wall.ifc` (the viewer's #7328 sample) with its storey placed
+/// absolutely and rotated 90 degrees about Z, and wall #1222 (two openings)
+/// placed either in that storey or, `under_b`, in a second storey placed
+/// absolutely and rotated 45 degrees, with the relative placement that keeps
+/// the wall where it is. The openings stay placed relative to the wall.
+fn reparent_fixture(under_b: bool) -> String {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/viewer/public/samples/hello-wall.ifc");
+    let source = std::fs::read_to_string(path).expect("hello-wall sample");
+    let (a_at, a_yaw) = ([2.0, -3.0, 4.0], 90.0_f64.to_radians());
+    let (b_at, b_yaw) = ([-7.0, 6.0, 12.0], 45.0_f64.to_radians());
+    let axis = |id: u32, at: [f64; 3], yaw: f64| {
+        let (sin, cos) = yaw.sin_cos();
+        format!(
+            "#{id}=IFCCARTESIANPOINT(({:?},{:?},{:?}));\n#{}=IFCDIRECTION(({cos:?},{sin:?},0.));\n#{}=IFCAXIS2PLACEMENT3D(#{id},#56,#{});\n",
+            at[0], at[1], at[2], id + 1, id + 2, id + 1
+        )
+    };
+    // The wall's world frame is storey A's: its own placement is the identity.
+    let d = [a_at[0] - b_at[0], a_at[1] - b_at[1], a_at[2] - b_at[2]];
+    let (sin, cos) = (-b_yaw).sin_cos();
+    let in_b = [cos * d[0] - sin * d[1], sin * d[0] + cos * d[1], d[2]];
+    let mut extra = axis(9001, a_at, a_yaw) + &axis(9011, b_at, b_yaw) + "#9014=IFCLOCALPLACEMENT($,#9013);\n";
+    let mut text = source.replace("#65=IFCLOCALPLACEMENT(#59,#64);", "#65=IFCLOCALPLACEMENT($,#9003);");
+    if under_b {
+        extra += &axis(9021, in_b, a_yaw - b_yaw);
+        text = text.replace("#1235=IFCLOCALPLACEMENT(#65,#1234);", "#1235=IFCLOCALPLACEMENT(#9014,#9023);");
+    }
+    assert!(text.contains("#65=IFCLOCALPLACEMENT($,#9003);"), "storey placement rewritten");
+    assert_eq!(text.contains("#1235=IFCLOCALPLACEMENT(#9014,#9023);"), under_b, "wall placement rewritten");
+    text.replacen("ENDSEC;\nEND-ISO-10303-21;", &format!("{extra}ENDSEC;\nEND-ISO-10303-21;"), 1)
+}
+
+/// Viewer #7328 at the Rust level: wall #1222 moved between two absolutely
+/// placed, rotated storeys with a relative placement that keeps it where it
+/// is meshes the same. The chain roots are storey placements, not a site's,
+/// so the wall is cut in the caller's frame both times.
+#[test]
+fn a_voided_wall_moved_between_absolute_storeys_in_place_meshes_the_same() {
+    let request = ProcessingRequest::full_pass();
+    let (under_a, under_b) = (
+        process(reparent_fixture(false).as_bytes(), &request, &mut ()),
+        process(reparent_fixture(true).as_bytes(), &request, &mut ()),
+    );
+    let walls = |result: &ProcessingResult| -> Vec<MeshData> {
+        result.meshes.iter().filter(|mesh| mesh.express_id == 1222).cloned().collect()
+    };
+    let (a, b) = (walls(&under_a), walls(&under_b));
+    assert!(!a.is_empty() && a.len() == b.len(), "wall meshes: {} and {}", a.len(), b.len());
+    for (ma, mb) in a.iter().zip(&b) {
+        assert_eq!(mb.indices, ma.indices, "index buffer changed with the storey");
+        let (wa, wb) = (world_vertices(&under_a, ma), world_vertices(&under_b, mb));
+        let worst = wa
+            .iter()
+            .zip(&wb)
+            .map(|(p, q)| ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt())
+            .fold(0.0, f64::max);
+        assert!(worst <= TOLERANCE_M, "a vertex moved {worst:.3e} m with the storey");
+    }
 }

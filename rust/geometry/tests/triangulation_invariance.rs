@@ -1484,8 +1484,16 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     // and #32810 3207 -> 3064 (3224 -> 3096). #32810's three open edges close
     // with them (3/3 -> 0/0, both triangulators; 1257.4454 m2 either way).
     // Columns: (host, open, strict, strict under the alternate, triangles).
+    //
+    // Site-frame cut (#10435): the slab is cut in its site placement's frame,
+    // where the two boundary vertices above no longer share a weld cell, so
+    // the alternate reads #12381 strict 0 again, and both slabs consolidate
+    // further: prism route off, #12381 10982 -> 7252 triangles and #32810
+    // 3096 -> 3086; on, #12381 5756 -> 5322 and #32810 3064 -> 3060. Volumes
+    // against IfcOpenShell 0.8.2: #12381 1437.0993 m3 (1437.1123, -0.0009%),
+    // #32810 881.2594 m3 (881.3038, -0.005%, as before), closed both ways.
     let expected = if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
-        [(12381, 0, 0, 2, 10982), (32810, 0, 0, 0, 3096)]
+        [(12381, 0, 0, 0, 7252), (32810, 0, 0, 0, 3086)]
     } else {
         // #7292: retaining supported finite source cells removes ten signed
         // and strict boundary defects in both triangulators (25/26 -> 15/16).
@@ -1507,7 +1515,7 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
         // `facet_weld::adopt`: #12381 5884 -> 5756, volume unchanged. The
         // sliver pass no longer keeps bisections the census measure does not
         // improve.
-        [(12381, 0, 0, 0, 5756), (32810, 0, 0, 0, 3064)]
+        [(12381, 0, 0, 0, 5322), (32810, 0, 0, 0, 3060)]
     };
     for &alt in triangulators {
         set_alt(alt);
@@ -1569,7 +1577,16 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // improve (`facet_weld::adopt`). Each host keeps its surface:
                 // areas agree to 7e-6 and every one is closed before and
                 // after. 154 -> 26.
-                (11477, 0, 0, 26, 0),
+                //
+                // Site-frame cut (#10435), every host here closed. Census
+                // volumes against IfcOpenShell 0.8.2 (these 12 mm coverings sit
+                // within one kernel-grid step of thickness, 0.127%): #11477
+                // 26 -> 24 (-0.061%), #31156 70 -> 68 (-0.039%), #17553
+                // 24 -> 12 (-0.059%), #17615 22 -> 12 (-0.014%), #26681
+                // 142 -> 60 (-0.052%; the alternate closes, 7 -> 0 open), and
+                // #25914 closes, 25 open -> 0 (strict 28 -> 22, the doubled
+                // interface of its layers), 87 -> 100 triangles, -0.002%.
+                (11477, 0, 0, 24, 0),
                 // #5410: 19 open / 139 tris until a plan-rotated host whose
                 // cutters author no depth took the wall-local frame; now closed
                 // (enclosed volume 0.01972 -> 0.01967 m3, IfcOpenShell 0.01752).
@@ -1578,10 +1595,10 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // IfcOpenShell 0.8.2 reads 0.019690 m3 and 3.3908 m2).
                 // 148 -> 20 unbisected, 3.3907 m2 still.
                 (11690, 0, 0, 20, 0),
-                (31156, 0, 0, 70, 0),
-                (17553, 0, 0, 24, 0),
-                (17615, 0, 0, 22, 0),
-                (25914, 25, 28, 87, 25),
+                (31156, 0, 0, 68, 0),
+                (17553, 0, 0, 12, 0),
+                (17615, 0, 0, 12, 0),
+                (25914, 0, 22, 100, 0),
                 (26610, 0, 0, 20, 0),
                 // rvt01 wall hosts the #3977 local-frame selector must leave
                 // closed (pinned after 0e8a42175 tore #10191 open via a -Z cutter depth).
@@ -1592,15 +1609,18 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // dropping their finite faces. DEFAULT now closes; the exact
                 // boundary is checked separately below, beyond this 1mm pin.
                 // 270 -> 142 unbisected; the alternate reads 7 open, was 10.
-                (26681, 0, 0, 142, 7),
+                (26681, 0, 0, 60, 0),
             ][..],
         ),
         (
             "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
             &[
-                (247051, 0, 0, 44, 0),
-                (141060, 0, 0, 70, 0),
-                (145756, 0, 0, 16, 0),
+                // Site-frame cut (#10435): closed, 44 -> 40, 70 -> 62 and
+                // 16 -> 12 triangles; census volume against IfcOpenShell 0.8.2
+                // +0.008%, -0.00002% and -0.005%.
+                (247051, 0, 0, 40, 0),
+                (141060, 0, 0, 62, 0),
+                (145756, 0, 0, 12, 0),
             ][..],
         ),
     ] {
@@ -2082,7 +2102,10 @@ const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
 // 2 -> 1. #1320395 (open 13 -> 0) closed once the post-cut sliver pass stopped
 // keeping a bisection the census's sliver measure does not improve
 // (`facet_weld::adopt`): unbisected, its cut is closed.
-const ISSUE_068_KNOWN_TORN_HOSTS: usize = 1;
+// Site-frame cut (#10435): 1 -> 0. #423069 (open 3 -> 0, 0.828724 m3 against
+// IfcOpenShell 0.8.2 at 0.828794) closes once the host is cut in its site's
+// frame.
+const ISSUE_068_KNOWN_TORN_HOSTS: usize = 0;
 
 /// Coverage floors, one per heavy fixture, bounding BOTH the checked-in golden
 /// and every sweep that gates or blesses against it. [`MIN_VOID_HOSTS`]'s job,

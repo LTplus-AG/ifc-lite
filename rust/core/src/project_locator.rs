@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The one `IFCPROJECT` locator (XCUT-6, CORE-3, PROC-AL-12).
+//! The one `IFCPROJECT` locator (XCUT-6, CORE-3, PROC-AL-12), whose search
+//! also finds the model's `IFCSITE`s ([`find_site_ids`]).
 //!
 //! Every reader that needs "the project" starts here: a SIMD keyword search
 //! plus a record-boundary check, never a full [`crate::EntityScanner`] walk.
@@ -30,7 +31,7 @@ use crate::parser::find_keyword;
 /// already fixed for the "not found at all" case.
 pub fn find_project_ids(content: &[u8]) -> Vec<u32> {
     let mut ids = Vec::new();
-    let refused = scan_projects(content, &mut |id| {
+    let refused = scan_records(content, b"IFCPROJECT(", &mut |id| {
         ids.push(id);
         true
     });
@@ -43,7 +44,7 @@ pub fn find_project_ids(content: &[u8]) -> Vec<u32> {
 /// distance to it. Reports a refused id like [`find_project_ids`].
 pub fn find_project_id(content: &[u8]) -> Option<u32> {
     let mut first = None;
-    let refused = scan_projects(content, &mut |id| {
+    let refused = scan_records(content, b"IFCPROJECT(", &mut |id| {
         first = Some(id);
         false
     });
@@ -66,21 +67,50 @@ pub(crate) fn scan_for_project_id(content: &[u8]) -> Option<u32> {
     None
 }
 
-/// Case-insensitive search for the literal keyword `IFCPROJECT(` at or after
-/// `from` (issue #4497: STEP keyword case is not significant, so a lowercase
-/// or CamelCase exporter's `ifcproject(`/`IfcProject(` must resolve exactly
-/// like the uppercase form). [`find_keyword`] anchors on `J`, which occurs in
-/// almost nothing else; the measurement that chose it over the lead `I` is
-/// recorded on that function's module. The `from` cut matters because the
-/// caller resumes at `previous_hit + 1`, so a hit behind it would be
-/// returned forever.
-pub(crate) fn find_project_keyword(content: &[u8], from: usize) -> Option<usize> {
-    find_keyword(content.get(from..)?, b"IFCPROJECT(").map(|rel| from + rel)
+/// The first `keyword` (uppercase, with its `(`) at or after `from`,
+/// case-insensitively. The `from` cut matters because [`scan_records`]
+/// resumes at `previous_hit + 1`, so a hit behind it would be returned forever.
+pub(crate) fn find_record_keyword(content: &[u8], from: usize, keyword: &[u8]) -> Option<usize> {
+    find_keyword(content.get(from..)?, keyword).map(|rel| from + rel)
 }
 
-/// Visit each project id in file order until `visit` returns `false`.
-/// Returns how many ids were refused as oversized.
-fn scan_projects(content: &[u8], visit: &mut dyn FnMut(u32) -> bool) -> usize {
+/// Every `IFCSITE` express id in file order, by the same search as the
+/// project. A candidate is a byte-search hit; the caller confirms its type.
+/// An oversized id is skipped unreported: the definition scanner reports
+/// that record already, and this runs once per decoder.
+pub(crate) fn find_site_ids(content: &[u8]) -> Vec<u32> {
+    let mut ids = Vec::new();
+    scan_records(content, b"IFCSITE(", &mut |id| {
+        ids.push(id);
+        true
+    });
+    ids
+}
+
+/// Every `IFCSITE` an entity scan meets: the fallback of
+/// [`crate::EntityDecoder::is_site_placement`] when the byte search confirms
+/// none, as [`scan_for_project_id`] is for the project. The scan sees
+/// `IFCSITE (` and comments around `=`, which the byte search cannot; a file
+/// without the keyword at all skips it.
+pub(crate) fn scan_for_site_ids(content: &[u8]) -> Vec<u32> {
+    if find_keyword(content, b"IFCSITE").is_none() {
+        return Vec::new();
+    }
+    let mut scanner = crate::parser::EntityScanner::new(content);
+    let mut ids = Vec::new();
+    while let Some((id, kind, _, _)) = scanner.next_entity() {
+        if crate::parser::keyword_eq(kind, "IFCSITE") {
+            ids.push(id);
+        }
+    }
+    ids
+}
+
+/// Visit each id of a `keyword` record (the uppercase keyword with its `(`)
+/// in file order until `visit` returns `false`. Returns how many ids were
+/// refused as oversized. The search is case-insensitive (issue #4497: STEP
+/// keyword case is not significant) and resumes past each hit.
+fn scan_records(content: &[u8], keyword: &[u8], visit: &mut dyn FnMut(u32) -> bool) -> usize {
     let mut refused = 0usize;
     let mut from = 0usize;
     // Search for the keyword+paren only; the `=` and `#<id>` are reconstructed by
@@ -88,9 +118,9 @@ fn scan_projects(content: &[u8], visit: &mut dyn FnMut(u32) -> bool) -> usize {
     // `#1593796= IFCPROJECT(` with a SPACE, so the old `=IFCPROJECT(` literal
     // never matched and the whole unit chain silently defaulted (length → metres
     // on a mm model, plane-angle → radians on a degree model, making arched
-    // openings render as full circles — issue #1367). `IFCPROJECT(` cannot
-    // collide with `IFCPROJECTEDCRS(` because the `(` must immediately follow.
-    while let Some(kw) = find_project_keyword(content, from) {
+    // openings render as full circles — issue #1367). The `(` must immediately
+    // follow, so `IFCPROJECT(` cannot collide with `IFCPROJECTEDCRS(`.
+    while let Some(kw) = find_record_keyword(content, from, keyword) {
         // Backtrack over optional whitespace, then require '='.
         let mut i = kw;
         while i > 0 && content[i - 1].is_ascii_whitespace() {

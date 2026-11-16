@@ -10,8 +10,8 @@
 //! same building under a rotated `IfcSite` took different strategies and came
 //! back with a different triangulation.
 //!
-//! The root of a host's placement chain (the site's placement, in an ordinary
-//! file) is the rigid placement of the whole model. While a
+//! The root of a host's placement chain, when it is an `IfcSite`'s placement,
+//! is the rigid placement of the whole model. While a
 //! [`CutFrameScope`] is open, every placement the router resolves is
 //! expressed relative to that root and the model RTC offset reads as zero, so
 //! the host, its openings and the whole cut see what they would see with the
@@ -21,7 +21,10 @@
 //! Relative placements come from [`placement::resolve_chain_relative`], which
 //! composes only the links below the root: the root's own numbers never enter
 //! the cut. A chain whose root is the identity is in this frame already and
-//! keeps the caller's.
+//! keeps the caller's, and so does a chain whose root places something other
+//! than a site (a storey or a host placed absolutely): moving such a host to
+//! another root that keeps it where it is must leave its mesh as it was, and
+//! only the caller's frame does that.
 
 use super::{instancing_enabled, GeometryRouter};
 use crate::math::aabb::Aabb3;
@@ -131,6 +134,9 @@ impl GeometryRouter {
         self.bake_root_frame_cut(&mut sub.mesh, at);
     }
 
+    // Out of line, as is `bounds_in`: both placement paths reach it, and
+    // inlining it into each cost 500 bytes of engine wasm.
+    #[inline(never)]
     fn bake_root_frame_cut(&self, mesh: &mut Mesh, at: &RootPlacement) {
         debug_assert!(!self.in_cut_frame(), "a root-frame cut is placed with its frame closed");
         // Bounds the cut carried could be in any frame it passed through, so
@@ -149,6 +155,7 @@ impl GeometryRouter {
 }
 
 /// The f64 box of `mesh`'s positions mapped by `m`.
+#[inline(never)]
 fn bounds_in(mesh: &Mesh, m: &Matrix4<f64>) -> Aabb3 {
     let o = mesh.origin;
     Aabb3::from_points(mesh.positions.chunks_exact(3).map(|c| {
@@ -183,7 +190,7 @@ impl CutFrame {
     /// Choose the frame once. The caller's frame is kept when `own_frame` is
     /// false (the host's geometry arrived placed), when a cut frame is open
     /// already, and when the chain has no root that moves anything: no
-    /// placement, an unreadable one, a root that is not an
+    /// placement, an unreadable one, a root that is not an `IfcSite`'s
     /// `IfcLocalPlacement`, one that is the identity or singular, or a host
     /// placement that does not resolve relative to it.
     pub(crate) fn choose(
@@ -202,7 +209,7 @@ impl CutFrame {
     fn root_of(host: &DecodedEntity, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Option<Self> {
         let placement = decoder.resolve_optional(host, slot::IfcProduct::OBJECT_PLACEMENT.index()).ok()??;
         let base = *placement::chain(&placement, decoder).ok()?.last()?;
-        if base.kind != LinkKind::Local {
+        if base.kind != LinkKind::Local || !decoder.is_site_placement(base.id) {
             return None;
         }
         let base_entity = decoder.decode_by_id(base.id).ok()?;

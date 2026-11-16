@@ -11,8 +11,8 @@
 export interface AgentModelLoader {
   /** Replace the loaded models (`useIfcLoader.loadFile`). */
   loadFile(file: File): Promise<void>;
-  /** Federate with the loaded models; the new model id, or null when the load failed. */
-  addModel(file: File): Promise<string | null>;
+  /** Federate with the loaded models; the new model id, or null when it failed (`onError` says why, for this add only). */
+  addModel(file: File, onError: (message: string) => void): Promise<string | null>;
   /** Replace the loaded models with a composed .ifcx layer stack. */
   loadStack(files: File[]): Promise<void>;
 }

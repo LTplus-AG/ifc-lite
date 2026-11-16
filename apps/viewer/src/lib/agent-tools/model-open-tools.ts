@@ -99,8 +99,14 @@ function percentDecoded(text: string, charset = 'utf-8'): string {
 function dispositionParams(header: string): Map<string, string> {
   const params = new Map<string, string>();
   // The leading ';' also reads a header that omits the disposition type (`filename="x.ifc"`); the first value of a name wins.
-  // A repeated header arrives joined with ', ': read only the first disposition.
-  const first = header.split(/,\s*(?=(?:attachment|inline)\b)/i)[0];
+  // A repeated header arrives joined with ', ': read only up to the first comma outside quotes.
+  let first = header;
+  for (let i = 0, quoted = false; i < header.length; i++) {
+    const c = header[i];
+    if (c === '\\' && quoted) i++;
+    else if (c === '"') quoted = !quoted;
+    else if (c === ',' && !quoted) { first = header.slice(0, i); break; }
+  }
   for (const [, key, quoted, bare] of `;${first}`.matchAll(/;\s*([^\s=;]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]*))/g)) {
     if (!params.has(key.toLowerCase())) params.set(key.toLowerCase(), quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare.trim());
   }
@@ -218,49 +224,60 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   }
 
   const before = new Set(state.models.keys());
-  const openModels = () => [...store.getState().models.values()].map((m) => ({
+  // A record is ours when it carries one of our file names; packing may change the extension (.gltf to .glb).
+  const baseName = (fileName: string) => fileName.replace(/\.[^.]+$/, '');
+  const ours = new Set(files.map((f) => baseName(f.name)));
+  const snapshot = () => [...store.getState().models.values()].map((m) => ({
     model_id: m.id, name: m.name, schema: m.schemaVersion ?? null, new: !before.has(m.id),
+    failed: m.loadState === 'error', error: m.loadError ?? null,
   }));
   const name = files.length > 1 ? 'the layer stack' : files[0].name;
   // From here the load changes the session whatever happens to this call: it is not cancellable.
   if (ctx.commitState) ctx.commitState.committing = true;
-  const load: Promise<string | null | void> = request.mode === 'add' ? loader.addModel(files[0])
+  let addError: string | undefined;
+  const load: Promise<string | null | void> = request.mode === 'add' ? loader.addModel(files[0], (message) => { addError = message; })
     : files.length > 1 ? loader.loadStack(files) : loader.loadFile(files[0]);
   const stillLoading = (): ToolOutput => ({
-    text: `${name} is still loading; it continues in the tab.${request.mode === 'replace' ? ' The previous models are closing.' : ''} `
-      + 'Do not retry. Call model_list until it appears; if it never does, the load failed: take a viewer_screenshot or ask the user what the viewer reports.',
-    // Placeholder records of the load have no data yet, and a replace is closing the old models: list only models that stay.
-    structured: { mode: request.mode, state: 'loading', loading: name, models: request.mode === 'add' ? openModels().filter((m) => !m.new) : [] },
+    text: `${name} is still loading; it continues in the tab.${request.mode === 'replace' ? ' A replace closes the previous models as it proceeds.' : ''} `
+      + 'Do not retry. Call model_list to see what is open; if the model never appears, the load failed: take a viewer_screenshot or ask the user what the viewer reports.',
+    // Placeholder records have no data yet, and a replace may be closing the old models: list only models an add keeps.
+    structured: { mode: request.mode, state: 'loading', loading: name, models: request.mode === 'add' ? snapshot().filter((m) => !m.new).map(publicModel) : [] },
   });
   const loaded = await within(load.then((id) => ({ id })), deadline - Date.now());
   if (!loaded) return stillLoading();
+  if (loaded.id === null) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not add ${name}: ${addError ?? 'a newer load superseded it, or it was cancelled'}.`);
 
-  if (loaded.id === null) {
-    const { error } = store.getState();
-    fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not add ${name}${error ? `: ${error}` : '. See the viewer for details.'}`);
-  }
   // Models can register just after the loader resolves: wait until the pipeline is idle, which needs no model.
   const settled = await waitForLoadIdle(deadline - Date.now());
-  if (typeof loaded.id === 'string' && !store.getState().models.has(loaded.id)) {
-    fail(ToolErrorCode.STATE_CHANGED, `${name} was added, then closed by another load in the tab. Check model_list.`);
-  }
-  let added = openModels().filter((m) => m.new);
-  if (added.length === 0 && settled) {
-    // Rare path: give a registration queued behind the loader one task before concluding nothing opened.
+  const opened = () => snapshot().filter((m) => m.new && ours.has(baseName(m.name)) && (typeof loaded.id !== 'string' || m.model_id === loaded.id));
+  let mine = opened();
+  if (mine.length === 0 && settled) {
+    // Rare path: give a registration queued behind the loader one task before concluding.
     await new Promise((resolve) => { setTimeout(resolve, 0); });
-    added = openModels().filter((m) => m.new);
+    mine = opened();
   }
-  if (added.length === 0) {
+  if (typeof loaded.id === 'string' && mine.length === 0) fail(ToolErrorCode.STATE_CHANGED, `${name} was added, then closed by another load in the tab. Check model_list.`);
+  if (mine.length === 0) {
     if (!settled) return stillLoading();
-    // Nothing of ours opened: report the pipeline's error if it set one, else say so (an underlay drape, a geometry-kernel refusal).
-    const final = store.getState();
-    if (final.error && final.loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${final.error}`);
-    fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. See the viewer for why.`);
+    const { error, loadErrorSeq } = store.getState();
+    if (error && loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${error}`);
+    // No error and none of ours: an underlay drape, a geometry-kernel refusal, or another load replaced it.
+    fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. Check model_list and the viewer.`);
   }
-  const models = openModels();
-  const text = `Loaded ${added.map((m) => `${m.name} (model_id ${m.model_id})`).join(', ')}${settled ? '' : '; geometry is still streaming'}. `
+  // A failed load leaves its record with loadState 'error': that is a failure, not an opened model.
+  const failed = mine.filter((m) => m.failed);
+  const good = mine.filter((m) => !m.failed);
+  if (good.length === 0) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${failed[0].error ?? 'see the viewer for details'}`);
+  const models = snapshot().filter((m) => !m.failed);
+  const text = `Loaded ${good.map((m) => `${m.name} (model_id ${m.model_id})`).join(', ')}${settled ? '' : '; geometry is still streaming'}`
+    + `${failed.length ? `; ${failed.map((m) => m.name).join(', ')} failed` : ''}. `
     + `${models.length} model(s) now open. Next: query_entities with a model_id, or viewer_screenshot to look at the view.`;
-  return { text, structured: { mode: request.mode, state: settled ? 'loaded' : 'streaming', models } };
+  return { text, structured: { mode: request.mode, state: settled ? 'loaded' : 'streaming', models: models.map(publicModel) } };
+}
+
+/** A model as the agent sees it. */
+function publicModel(m: { model_id: string; name: string; schema: string | null; new: boolean }) {
+  return { model_id: m.model_id, name: m.name, schema: m.schema, new: m.new };
 }
 
 /** `work`'s value, or null once `ms` pass first; the timer is cleared either way. */

@@ -35,7 +35,7 @@ function model(id: string, name: string) {
 }
 
 /** Drives the store the way useIfcLoader / useIfcFederation do. */
-async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[]): Promise<string | null> {
+async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[], onError?: (message: string) => void): Promise<string | null> {
   calls.push({ kind, names: files.map((f) => f.name) });
   // Like useIfcLoader: clearing the previous error bumps loadErrorSeq before the load runs.
   useViewerStore.getState().setError(null);
@@ -43,14 +43,19 @@ async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[]): Promi
   if (behaviour === 'hang') return new Promise(() => {});
   await Promise.resolve();
   if (behaviour === 'nothing') { useViewerStore.setState({ loading: false }); return 'none'; }
+  const models = new Map(kind === 'add' ? useViewerStore.getState().models : []);
+  const id = `m-${calls.length}-${files[0].name}`;
   if (behaviour === 'error') {
-    useViewerStore.setState((s) => ({ loading: false, error: 'bad STEP', loadErrorSeq: s.loadErrorSeq + 1 }));
+    // The primary loader keeps its placeholder record, marked failed; an add reports to its own onError and resolves null.
+    if (kind !== 'add') models.set(id, { ...model(id, files[0].name), loadState: 'error', loadError: 'bad STEP' } as never);
+    useViewerStore.setState({ models: models as never });
+    useViewerStore.getState().setError('bad STEP');
+    useViewerStore.setState({ loading: false });
+    onError?.('bad STEP');
     return null;
   }
-  const models = new Map(kind === 'add' ? useViewerStore.getState().models : []);
   for (const f of files) models.set(`m-${calls.length}-${f.name}`, model(`m-${calls.length}-${f.name}`, f.name) as never);
   useViewerStore.setState({ loading: false, models: models as never });
-  const id = `m-${calls.length}-${files[0].name}`;
   // Another load in the tab closes what this call added.
   if (behaviour === 'closed') useViewerStore.setState({ models: new Map() as never });
   // Something unrelated reports an error after this call's model opened.
@@ -68,7 +73,7 @@ beforeEach(() => {
   }) as typeof fetch;
   unregister = registerAgentModelLoader({
     loadFile: async (file) => { await fakeLoad('replace', [file]); },
-    addModel: (file) => fakeLoad('add', [file]),
+    addModel: (file, onError) => fakeLoad('add', [file], onError),
     loadStack: async (files) => { await fakeLoad('stack', files); },
   });
   useViewerStore.setState({ models: new Map() as never, ifcDataStore: null, loading: false, geometryStreamingActive: false, mutationViews: new Map() as never, georefMutations: new Map() as never });
@@ -135,6 +140,7 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
 
   it('reports a failed load or add instead of hanging', async () => {
     behaviour = 'error';
+    // A failed replace leaves an errored placeholder record: still a failure (#9523 code review).
     await assert.rejects(run({ sample: 'demo' }), { code: 'INTERNAL_ERROR', message: /bad STEP/ });
     await assert.rejects(run({ sample: 'demo', mode: 'add' }), { code: 'INTERNAL_ERROR', message: /bad STEP/ });
   });
@@ -186,7 +192,7 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       mock.timers.tick(OPEN_MODEL_WAIT_MS);
       const out = await pending;
       assert.equal((out.structured as { state: string }).state, 'loading');
-      assert.deepEqual((out.structured as { models: unknown[] }).models, [], 'no placeholder model ids (code review of this PR)');
+      assert.deepEqual((out.structured as { models: unknown[] }).models, [], 'no placeholder model ids (#9523 code review)');
       assert.match(out.text, /Do not retry/);
     } finally {
       mock.timers.reset();
@@ -217,32 +223,32 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       mock.timers.tick(OPEN_MODEL_WAIT_MS);
       const out = await pending;
       assert.deepEqual((out.structured as { models: unknown[] }).models, []);
-      assert.match(out.text, /previous models are closing/);
+      assert.match(out.text, /closes the previous models/);
     } finally {
       mock.timers.reset();
     }
   });
 
-  it('reports an added model that another load closed (code review of this PR)', async () => {
+  it('reports an added model that another load closed (#9523 code review)', async () => {
     useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
     behaviour = 'closed';
     await assert.rejects(run({ sample: 'hello-wall', mode: 'add' }), { code: 'STATE_CHANGED', message: /closed by another load/ });
   });
 
-  it('succeeds when its model opened even if something else then reported an error (code review of this PR)', async () => {
+  it('succeeds when its model opened even if something else then reported an error (#9523 code review)', async () => {
     behaviour = 'unrelated-error';
     const out = await run({ sample: 'demo' });
     assert.equal((out.structured as { state: string }).state, 'loaded');
   });
 
-  it('refuses an empty body before a replace can close the open models (code review of this PR)', async () => {
+  it('refuses an empty body before a replace can close the open models (#9523 code review)', async () => {
     useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
     respond = () => new Response(null, { status: 204 });
     await assert.rejects(run({ url: 'https://example.com/model.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /empty body/ });
     assert.deepEqual(calls, []);
   });
 
-  it('reads Content-Disposition variants: no type, ISO-8859-1, quoted escapes, first value wins (code review of this PR)', async () => {
+  it('reads Content-Disposition variants: no type, ISO-8859-1, quoted escapes, first value wins (#9523 code review)', async () => {
     const nameFor = async (header: string) => {
       respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': header } });
       await run({ url: 'https://example.com/download', mode: 'add' });
@@ -253,9 +259,27 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     assert.equal(await nameFor('attachment; filename="a\\"b.ifc"'), 'a"b.ifc');
     assert.equal(await nameFor('attachment; filename="first.ifc"; filename="second.ifc"'), 'first.ifc');
   });
-  it('reads only the first of repeated Content-Disposition headers (code review of this PR)', async () => {
+  it('reads only the first of repeated Content-Disposition headers (#9523 code review)', async () => {
     respond = () => new Response(new Uint8Array([1]), { status: 200, headers: [['content-disposition', 'attachment; filename=a.ifc'], ['content-disposition', 'attachment; filename=b.ifc']] });
     await run({ url: 'https://example.com/download' });
     assert.equal(calls.at(-1)!.names[0], 'a.ifc');
+  });
+  it('keeps a quoted comma inside a file name (#9523 code review)', async () => {
+    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename="plan, inline view.ifc"' } });
+    await run({ url: 'https://example.com/download' });
+    assert.equal(calls.at(-1)!.names[0], 'plan, inline view.ifc');
+  });
+
+  it('does not claim a model another load opened meanwhile (#9523 code review)', async () => {
+    unregister();
+    unregister = registerAgentModelLoader({
+      loadFile: async () => {
+        // The user's own open wins the race: a different file ends up loaded.
+        useViewerStore.setState({ models: new Map([['user', model('user', 'theirs.ifc')]]) as never });
+      },
+      addModel: async () => null,
+      loadStack: async () => {},
+    });
+    await assert.rejects(run({ sample: 'demo' }), { code: 'UNSUPPORTED_OPERATION', message: /did not open/ });
   });
 });

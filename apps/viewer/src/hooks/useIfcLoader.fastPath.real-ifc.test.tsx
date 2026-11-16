@@ -82,6 +82,7 @@ let claims = 0;
 function startRuntime(): void {
   assert.ok(runtimeMod && runMod, 'the fast-path runtime and run exist (lib/fast-path, workers/fast-geometry-run.ts)');
   runtime = runtimeMod.createFastPathRuntime({
+    log: message => console.debug('[fast-path test]', message),
     allowed: () => true,
     whenIdle: (run) => { let live = true; queueMicrotask(() => { if (live) run(); }); return () => { live = false; }; },
     isLoading: () => useViewerStore.getState().loading,

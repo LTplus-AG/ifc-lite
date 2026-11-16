@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/hooks/drawingPersistenceKey.ts
++++ b/apps/viewer/src/hooks/drawingPersistenceKey.ts
+@@ -120,7 +120,7 @@
+   // A preflight refusal never admitted its bytes; a post-publication error did.
+   // Only the explicit refusal marker prevents a background identity read (#10264).
+   const refused = Symbol('refused-source');
+-  const known = await whenModel(modelId, file, (model) => model.sourceContentHash ?? (model.loadState === 'error' ? refused : loading(model) ? undefined : ''));
++  const known = await whenModel(modelId, file, (model) => model.sourceContentHash ?? (model.sourceReadRefused ? refused : loading(model) ? undefined : ''));
+   if (known === refused) return null; // retain unsaved sheet in memory without reading unadmitted bytes
+   if (known) return known;
+   if (!globalThis.crypto?.subtle) return null; // no digest in this context, so nothing was ever keyed either

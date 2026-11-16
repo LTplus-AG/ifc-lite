@@ -566,12 +566,9 @@ export interface FederatedModel extends ModelLoadReportFields {
   visible: boolean;
   /** UI collapse state in hierarchy panel */
   collapsed: boolean;
-  /** IFC schema version */
-  schemaVersion: SchemaVersion;
-  /** Load timestamp */
-  loadedAt: number;
-  /** Original file size in bytes */
-  fileSize: number;
+  schemaVersion: SchemaVersion; // IFC schema version
+  loadedAt: number; // Load timestamp
+  fileSize: number; // Original file size in bytes
   /** Original source handle used for explicit reload/reposition operations. */
   sourceFile?: ModelSourceFile;
   /**

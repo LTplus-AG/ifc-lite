@@ -22,6 +22,7 @@ import type {
 } from '../../types.js';
 import type { IDSAuditIssue } from '../types.js';
 import { isValidLexicalForXsType } from '../../constraints/xsd-lexical.js';
+import { isNameAuthored, isTitleAuthored } from '../../parser/authored-values.js';
 
 // info/author's element declaration is an inline restriction of xs:string,
 // not the named ids:upperCaseName/ids:relations types — so it has no home in
@@ -96,11 +97,17 @@ export function runXsdAudit(doc: IDSDocument): IDSAuditIssue[] {
       }
     }
   }
-  if (!doc.info.title || doc.info.title.trim() === '' || doc.info.title === 'Untitled IDS') {
-    // The XSD makes <title> mandatory and non-empty. Treat a missing or
+  if (
+    !doc.info.title ||
+    doc.info.title.trim() === '' ||
+    (doc.info.title === 'Untitled IDS' && !isTitleAuthored(doc.info))
+  ) {
+    // The XSD requires <title>. Treat a missing or
     // empty title as a warning rather than error — most authoring tools
     // accept it, and consumers care more about specification content
-    // than the document-level title.
+    // than the document-level title. "Untitled IDS" is the parser's
+    // fill-in for a missing title, unless the parser read it from the
+    // XML (#10542).
     issues.push({
       severity: 'warning',
       code: 'E_XSD_REQUIRED_ATTR',
@@ -148,7 +155,13 @@ function auditSpecification(
   issues: IDSAuditIssue[]
 ): void {
   const path = `specifications[${i}]`;
-  if (!spec.name || spec.name.trim() === '' || /^Specification \d+$/.test(spec.name)) {
+  // "Specification <n>" is the parser's fill-in for a missing @name, unless
+  // the parser read it from the XML (#10542).
+  if (
+    !spec.name ||
+    spec.name.trim() === '' ||
+    (/^Specification \d+$/.test(spec.name) && !isNameAuthored(spec))
+  ) {
     issues.push({
       severity: 'error',
       code: 'E_XSD_REQUIRED_ATTR',

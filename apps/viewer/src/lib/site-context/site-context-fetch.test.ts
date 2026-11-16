@@ -123,12 +123,5 @@ test('an imagery failure leaves the terrain loaded but partial, with the reason'
   assert.match(terrain?.issues.at(-1)?.message ?? '', /SWISSIMAGE answered 503/);
 });
 
-test('loading a category again replaces its earlier model instead of stacking a copy', async () => {
-  useViewerStore.getState().registerSiteContextModel('old-terrain', { kind: 'terrain', attribution: [swisstopo], issues: [], complete: true, origin: [0, 0, 0] });
-  useViewerStore.getState().registerSiteContextModel('old-parcel', { kind: 'parcel', attribution: [swisstopo], issues: [], complete: true, origin: [0, 0, 0] });
-  const run = loadSiteContext({ ...base, categories: ['terrain'] });
-  worker.category('terrain', true);
-  worker.send({ type: 'complete', stats: { requests: 1, bytes: 1, cacheHits: 0 } } as Omit<SiteContextWorkerResponse, 'id'>);
-  await run;
-  assert.deepEqual(removed, ['old-terrain'], 'only the reloaded category is replaced');
-});
+// Replacing an earlier model of the same kind is the shared load step's job, on every path:
+// see apps/viewer/src/hooks/ingest/siteContextLoad.replace.test.ts (real loader, real GLBs).

@@ -142,24 +142,9 @@ test('clearing all models ends the run: request cleared, and the detached run ad
 
 const previousTerrain = { kind: 'terrain' as const, attribution: [], issues: [], complete: true, origin: [0, 0, 0] as [number, number, number] };
 
-test('a reloaded category adds its new model first and removes the previous one only after it is in', async () => {
-  state().registerSiteContextModel('old-terrain', previousTerrain);
-  const events: string[] = [];
-  const run = loadSiteContext({
-    ...base, categories: ['terrain'],
-    addModel: async () => { events.push('add'); return 'new-terrain'; },
-    removeModel: (id) => { events.push(`remove ${id}`); },
-  });
-  workers[0].category('terrain');
-  workers[0].complete();
-  await run;
-  assert.deepEqual(events, ['add', 'remove old-terrain']);
-  assert.equal(state().siteContextCategories.terrain?.modelId, 'new-terrain');
-  assert.equal(state().siteContextCategories.terrain?.anchorModelId, 'anchor');
-});
-
 test('when the replacement fails to load, the previous model stays and the category reports the error next to it', async () => {
   state().registerSiteContextModel('old-terrain', previousTerrain);
+  useViewerStore.setState({ siteContextCategories: { terrain: { status: 'done', modelId: 'old-terrain', issues: [], attribution: [] } } });
   const run = loadSiteContext({ ...base, categories: ['terrain'], addModel: async () => null });
   workers[0].category('terrain');
   workers[0].complete();
@@ -169,4 +154,22 @@ test('when the replacement fails to load, the previous model stays and the categ
   assert.equal(terrain?.status, 'error');
   assert.equal(terrain?.modelId, 'old-terrain');
   assert.match(terrain?.issues.at(-1)?.message ?? '', /previous one is still shown/);
+});
+
+test('an addModel that throws fails its category, the next categories still load, and the run settles (#10481 review)', async () => {
+  let calls = 0;
+  const run = loadSiteContext({
+    ...base, categories: ['terrain', 'parcel'],
+    addModel: async (_file, { name }) => { calls++; if (calls === 1) throw new Error('GPU device lost'); added.push(name); return `model:${name}`; },
+  });
+  workers[0].category('terrain');
+  workers[0].category('parcel');
+  workers[0].complete();
+  await run;
+  assert.equal(state().siteContextAbort, null, 'the run settled');
+  assert.equal(state().siteContextRequest, null);
+  const terrain = state().siteContextCategories.terrain;
+  assert.equal(terrain?.status, 'error');
+  assert.match(terrain?.issues.at(-1)?.message ?? '', /GPU device lost/);
+  assert.equal(state().siteContextCategories.parcel?.status, 'done', 'the next category still loaded');
 });

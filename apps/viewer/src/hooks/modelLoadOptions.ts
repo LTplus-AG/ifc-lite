@@ -50,10 +50,22 @@ export interface ModelLoadOptions {
   onLoadError?: (message: string) => void;
   /** A federated target: THIS load registered its model (another load may reuse an explicit id). */
   onModelRegistered?: () => void;
+  /** A site-context model loaded by the panel's fetch run (absent for a dropped site-context GLB). */
+  siteContextArrival?: SiteContextArrival;
+}
+
+/** Which fetch run a site-context load belongs to, so the one arrival step can tell a live run from a cancelled one. */
+export interface SiteContextArrival {
+  /** The run's identity in the slice (`siteContextAbort`). */
+  run: AbortController;
+  /** The model the site context was fetched around. */
+  anchorModelId: string;
+  /** False once the run was cancelled, replaced or detached: its model is then not adopted. */
+  isCurrent(): boolean;
 }
 
 /** Federation placement/display options share loader ownership and source handles. */
-export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianUpAxis' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianBudgetReserved' | 'onGaussianLoadSettled'> {
+export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'siteContextArrival' | 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianUpAxis' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianBudgetReserved' | 'onGaussianLoadSettled'> {
   name?: string;
   modelId?: string;
   loadedAt?: number;

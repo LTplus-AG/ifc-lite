@@ -35,6 +35,8 @@ import { siteContextViewerModel, siteContextModelName, terrainPlanBox } from '@/
 import { parcelDisplayWidth } from '@/lib/site-context/parcel-outline';
 import { siteContextFileName, singleCategoryDocument } from '@/lib/site-context/site-context-glb';
 import { siteContextPlacementReference } from '@/lib/site-context/site-context-anchor';
+import { adoptSiteContextModel } from '@/lib/site-context/site-context-arrival';
+import type { SiteContextArrival } from '../modelLoadOptions.js';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
 export interface SiteContextLoadOptions {
@@ -59,6 +61,8 @@ export interface SiteContextLoadOptions {
   ): Promise<void>;
   /** Start a federated load of another category's single-category GLB. */
   loadSibling(file: File, name: string): void;
+  /** The fetch run this load belongs to; absent for a dropped site-context GLB. */
+  arrival?: SiteContextArrival;
   onError(code: string, message: string): void;
 }
 
@@ -181,6 +185,8 @@ export async function loadSiteContextModel(options: SiteContextLoadOptions): Pro
     // the model stands: it starts hidden through the ordinary per-entity hide
     // state, so the tree and the card can show it again.
     if (subject) applyInitialHiddenState(options.modelId, subject.expressIds);
+    // One site context per scene, on every path: this model replaces the loaded one of its kind.
+    adoptSiteContextModel(options.modelId, plan.here, options.arrival);
     if (heightAssumed) {
       toast.info('The model states no vertical datum, so its heights were taken as LN02 (EPSG:5728) to place the site context.');
     }

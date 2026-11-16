@@ -15,13 +15,14 @@
 import type { SiteContextLayerKind } from '@ifc-lite/site-context';
 import { useViewerStore } from '@/store';
 import { categoryStatusOf, type SiteContextRadius } from '@/store/slices/siteContextSlice';
+import type { SiteContextArrival } from '@/hooks/modelLoadOptions';
 import { watchLoadSupersession } from '@/hooks/modelLoadCanceller';
 import { buildSiteContextInWorker, SiteContextBuildError } from './site-context-client';
 import type { SiteContextCategoryMessage } from './site-context-job';
 import { siteContextFileName } from './site-context-glb';
 import { siteContextModelName } from './site-context-model';
 
-export type SiteContextAddModel = (file: File, options: { name: string }) => Promise<string | null>;
+export type SiteContextAddModel = (file: File, options: { name: string; siteContextArrival: SiteContextArrival }) => Promise<string | null>;
 
 export interface LoadSiteContextOptions {
   anchorModelId: string;
@@ -72,30 +73,44 @@ export async function loadSiteContext(options: LoadSiteContextOptions): Promise<
       store().setSiteContextCategory(abort, kind, { status: 'error' });
       return;
     }
-    // A category loaded again replaces the earlier one (one site context per scene) rather
-    // than stacking a second copy of the same surface (z-fighting, doubled attribution rows).
-    // The new model goes in first; the old one leaves only once it has (#10481 review).
-    const previous = [...store().siteContextModels].filter(([, record]) => record.kind === kind).map(([id]) => id);
+    // The shared load step (`adoptSiteContextModel`, on every path) replaces the earlier
+    // model of this kind once the new one is in, and points the category at it; this run
+    // only says which run the arrival belongs to (#10481 review).
     const file = new File([category.bytes.slice().buffer], siteContextFileName(kind));
-    const modelId = await options.addModel(file, { name: siteContextModelName(kind) });
+    const siteContextArrival = { run: abort, anchorModelId: options.anchorModelId, isCurrent: current };
+    let modelId: string | null;
+    try {
+      modelId = await options.addModel(file, { name: siteContextModelName(kind), siteContextArrival });
+    } catch (error) {
+      // A load that throws fails this category only: the chain goes on to the next category and the
+      // run still settles (an unhandled rejection here left the request running forever; #10481 review).
+      console.error(`[site-context] loading the ${kind} failed:`, error);
+      if (!current()) return;
+      const kept = store().siteContextCategories[kind];
+      store().setSiteContextCategory(abort, kind, {
+        status: 'error',
+        issues: [...(kept?.issues ?? []), { code: 'site-context-load-failed', severity: 'error', message: `the ${kind} could not be loaded: ${error instanceof Error ? error.message : String(error)}` }],
+      });
+      return;
+    }
     if (!current()) {
-      // The run ended while its model was being added: that model belongs to no run, so take it out again.
+      // The run ended while its model was being added: it was not adopted, so take it out again.
       if (modelId) options.removeModel(modelId);
       return;
     }
     if (!modelId) {
-      // The replacement did not load: the previous model stays, and the category says why.
+      // The new model did not load: the previous one of this kind (if any) stays, and the category says why.
       const kept = store().siteContextCategories[kind];
+      const previous = [...store().siteContextModels].some(([, record]) => record.kind === kind);
       store().setSiteContextCategory(abort, kind, {
         status: 'error',
-        issues: [...(kept?.issues ?? []), { code: 'site-context-load-failed', severity: 'error', message: `the new ${kind} could not be loaded${previous.length ? '; the previous one is still shown' : ''}` }],
-        ...(previous.length ? { modelId: previous[0] } : {}),
+        issues: [...(kept?.issues ?? []), { code: 'site-context-load-failed', severity: 'error', message: `the new ${kind} could not be loaded${previous ? '; the previous one is still shown' : ''}` }],
       });
       return;
     }
-    for (const id of previous) options.removeModel(id);
+    // Whether the layer was complete is this run's to say (the shared step has no run status).
     store().setSiteContextCategory(abort, kind, { status: categoryStatusOf(true, category.complete), modelId, anchorModelId: options.anchorModelId });
-    if (!modelId || kind !== 'terrain' || !options.imagery) return;
+    if (kind !== 'terrain' || !options.imagery) return;
     try {
       await drape(modelId, abort.signal);
     } catch (error) {

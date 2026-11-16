@@ -37,11 +37,13 @@ export function SiteContextAttribution() {
   const models = useViewerStore((s) => s.models);
   const texts = useMemo(() => siteContextAttributionTexts(records, models), [records, models]);
   if (texts.length === 0) return null;
+  // Wraps rather than truncates: attribution is a licence condition, so no source may be cut off
+  // behind an ellipsis on a narrow viewport (#10481 review).
   return (
     <p
       aria-label={t('siteContext.attribution.label')}
       data-testid="site-context-attribution"
-      className="pointer-events-none absolute bottom-1 right-2 max-w-[60%] truncate rounded bg-background/70 px-1.5 py-0.5 text-2xs text-foreground/80 backdrop-blur-sm"
+      className="pointer-events-none absolute bottom-1 right-2 max-w-[60%] whitespace-normal break-words rounded bg-background/70 px-1.5 py-0.5 text-2xs text-foreground/80 backdrop-blur-sm"
     >
       {texts.join(' · ')}
     </p>

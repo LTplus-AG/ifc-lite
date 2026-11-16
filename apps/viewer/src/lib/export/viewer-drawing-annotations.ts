@@ -14,16 +14,16 @@ import { prepareDrawingAnnotations } from './drawing-annotations';
 export function viewerDrawingAnnotations(modelId: string, store: IfcDataStore, view: MutablePropertyView | undefined, toSourceId: (id: number) => number | undefined = id => id) {
   const state = useViewerStore.getState();
   const owner = state.activeModelId ?? (state.models.size === 0 ? '__legacy__' : null);
-  if (modelId !== owner) return view;
+  if (modelId !== owner) return prepareDrawingAnnotations(store, view, null);
   const plane = state.drawing2DPlane;
-  if (!plane) return view;
+  if (!plane) return prepareDrawingAnnotations(store, view, null);
   let requestedStorey: number | undefined;
   if (state.activeStorey?.modelId === modelId) {
     try { requestedStorey = toSourceId(state.activeStorey.expressId); }
     catch (error) { console.warn('Cannot map active drawing storey; using source storey', error); }
   }
   const storeyId = requestedStorey ?? iterateEffectiveEntityIds(store, view, ['IFCBUILDINGSTOREY']).next().value?.expressId;
-  if (!storeyId) return view;
+  if (!storeyId) return prepareDrawingAnnotations(store, view, null);
   const offset = viewerToIfcAxes(totalYupOffset(state.models.get(modelId)?.geometryResult?.coordinateInfo ?? state.geometryResult?.coordinateInfo));
   return prepareDrawingAnnotations(store, view, {
     absorbed: absorbedEmbeddedMarkupFor(modelId),

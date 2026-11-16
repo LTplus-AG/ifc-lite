@@ -92,20 +92,34 @@ export function restoredDrawingAnnotations(store: IfcDataStore, modelId: string,
   };
 }
 
+/** Native retained geometry cannot be safely reinterpreted in another unit. */
+function guardDrawingAnnotationUnits(store: IfcDataStore, view?: MutablePropertyView, replaced: ReadonlySet<number> = new Set()): boolean {
+  const unchanged = drawingAnnotationLengthUnitScale(store, view) === drawingAnnotationLengthUnitScale(store);
+  if (!unchanged) {
+    for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCANNOTATION'])) {
+      if (!replaced.has(expressId)) {
+        throw new Error('Cannot change IFC length units while retained annotations remain outside the current drawing. Keep the original project length units when exporting this model.');
+      }
+    }
+  }
+  return unchanged;
+}
+
 /** Detached export view: exporting never dirties the model or consumes live ids. */
 export function prepareDrawingAnnotations(store: IfcDataStore, view: MutablePropertyView | undefined, input: DrawingAnnotations | null): MutablePropertyView | undefined {
-  if (!input) return view;
+  if (!input) { guardDrawingAnnotationUnits(store, view); return view; }
   const items: Item[] = [
     ...input.measures.map(value => ({ kind: 'measure' as const, value })),
     ...input.dimensions.map(value => ({ kind: 'dimension' as const, value })),
     ...input.tags.map(({ tag: { modelId: _modelId, ...value }, label }) => ({ kind: 'tag' as const, value, label })),
   ];
   const legacy = new Set<string>();
+  const legacyIds = new Set<number>();
   if (input.absorbed?.size) {
     for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCANNOTATION'])) {
       const attrs = effectiveMetadataRecord(store, expressId, view)?.attributes;
       const identity = annotationIdentity(store, view, expressId);
-      if (LEGACY_LINEAR_TAGS.has(attrs?.[4]) && input.absorbed.has(identity)) legacy.add(identity);
+      if (LEGACY_LINEAR_TAGS.has(attrs?.[4]) && input.absorbed.has(identity)) { legacy.add(identity); legacyIds.add(expressId); }
     }
   }
   const existing = readDrawingAnnotations(store, view);
@@ -120,9 +134,10 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
   const replaceable = existing.filter(({ identity, saved }) => input.absorbed?.has(identity)
     || (!ownedKeys.has(key(saved.item)) && sameDrawingLayout(saved, input)
       && current.get(key(saved.item))?.some(plane => isDimensionOnPlane({ plane: saved.plane }, plane))));
+  const unitScaleUnchanged = guardDrawingAnnotationUnits(store, view, new Set([...replaceable.map(record => record.id), ...legacyIds]));
   if (!items.length && !replaceable.length && !legacy.size) return view;
   // Preserve native entity identities and geometry when reopening unchanged IFC.
-  if (!legacy.size && drawingAnnotationLengthUnitScale(store, view) === drawingAnnotationLengthUnitScale(store)
+  if (!legacy.size && unitScaleUnchanged
     && JSON.stringify(replaceable.map(({ saved }) => saved.item)) === JSON.stringify(items)
     && replaceable.every(({ saved }) => JSON.stringify(saved.plane) === JSON.stringify(saved.item.kind === 'dimension' ? saved.item.value.plane ?? input.plane : input.plane)
       && sameDrawingLayout(saved, input))) return view;

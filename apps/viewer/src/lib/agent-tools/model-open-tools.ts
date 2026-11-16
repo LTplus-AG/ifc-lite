@@ -84,32 +84,61 @@ function parseArgs(args: Record<string, unknown>, state: ViewerState): OpenReque
   return { source, mode: mode ?? 'replace' };
 }
 
-/** The file name: Content-Disposition's, else the URL's last path segment. */
-function fileNameOf(url: URL, res: Response): string {
-  const disposition = res.headers.get('content-disposition') ?? '';
-  const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1];
-  const raw = named ?? url.pathname.split('/').filter(Boolean).pop() ?? '';
-  let name = raw;
-  try { name = decodeURIComponent(raw); } catch { /* keep the raw segment */ }
-  return name.split(/[\\/]/).pop() || 'model.ifc';
+/** `text` percent-decoded, or as given when its escapes are malformed. */
+function decoded(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch (err) {
+    console.warn('[viewer_open_model] keeping a malformed percent-escape as is:', text, err);
+    return text;
+  }
 }
 
-/** The body, refusing once it passes the limit rather than after buffering all of it (chunked or compressed bodies have no usable length). */
+/**
+ * The name from Content-Disposition (RFC 6266: `filename*` with its charset
+ * and language prefix wins over `filename`), else the URL's last path segment.
+ * Cross-origin, the header is only readable when the server exposes it
+ * (Access-Control-Expose-Headers), so the URL path is the usual source.
+ */
+function fileNameOf(url: URL, res: Response): string {
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const extended = /filename\*\s*=\s*"?[^']*'[^']*'([^";]+)/i.exec(disposition)?.[1];
+  const plain = /filename\s*=\s*(?:"([^"]*)"|([^;\s]+))/i.exec(disposition);
+  const raw = extended !== undefined ? decoded(extended.trim()) : plain ? (plain[1] ?? plain[2]) : decoded(url.pathname.split('/').filter(Boolean).pop() ?? '');
+  return raw.split(/[\\/]/).pop() || 'model.ifc';
+}
+
+/**
+ * The body as a File, refusing once it passes the limit rather than after
+ * buffering all of it (chunked or compressed bodies have no usable length).
+ * Bytes are counted as they stream; the browser still holds them once.
+ */
 async function readLimited(res: Response, url: URL, name: string): Promise<File> {
   const tooBig = () => fail(ToolErrorCode.INVALID_INPUT, `${url.href} is larger than ${OPEN_MODEL_MAX_BYTES} bytes, the limit for an agent download.`);
   if (Number(res.headers.get('content-length')) > OPEN_MODEL_MAX_BYTES) tooBig();
   if (!res.body) return new File([await res.blob()], name);
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > OPEN_MODEL_MAX_BYTES) { void reader.cancel(); tooBig(); }
-    chunks.push(value);
+  const reader = res.body.getReader();
+  const limited = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) { controller.close(); return; }
+      total += value.byteLength;
+      if (total > OPEN_MODEL_MAX_BYTES) {
+        controller.error(new RangeError('download limit'));
+        await reader.cancel();
+        return;
+      }
+      controller.enqueue(value);
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+  try {
+    return new File([await new Response(limited).blob()], name);
+  } catch (err) {
+    if (total > OPEN_MODEL_MAX_BYTES) tooBig();
+    throw err;
   }
-  return new File(chunks as BlobPart[], name);
 }
 
 async function download(url: URL, signal?: AbortSignal): Promise<File> {
@@ -124,7 +153,7 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
   if (!res.ok) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `Fetching ${url.href} returned HTTP ${res.status}.`);
   const file = await readLimited(res, url, fileNameOf(url, res));
   if (!isSupportedModelFile(file)) {
-    invalid(`${file.name} is not a model file the viewer opens (IFC, IFCX, glTF/GLB, point clouds, splats). The URL path or its Content-Disposition must end in the file's extension.`);
+    invalid(`${file.name} is not a model file the viewer opens (IFC, IFCX, glTF/GLB, point clouds, splats). Use a URL whose path ends in the file's extension (a cross-origin Content-Disposition name is only readable when the server exposes that header).`);
   }
   return file;
 }
@@ -139,19 +168,26 @@ async function filesFor(source: Source, signal?: AbortSignal): Promise<File[]> {
   return buildDemoLayerFiles();
 }
 
-async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): Promise<ToolOutput> {
+async function openModel(rawArgs: Record<string, unknown>, ctx: ToolCallContext): Promise<ToolOutput> {
+  // The tab answers every call within CALL_LIMITS.callTimeoutMs of starting it, download included.
+  const deadline = Date.now() + OPEN_MODEL_WAIT_MS;
   assertGranted(ctx);
+  // Some clients send unset optional fields as null: treat them as absent.
+  const args = Object.fromEntries(Object.entries(rawArgs).filter(([, value]) => value !== null));
   const store = getViewerStoreApi();
   const request = parseArgs(args, store.getState());
   const loader = getAgentModelLoader();
   if (!loader) return fail(ToolErrorCode.UNSUPPORTED_OPERATION, 'This viewer page has no file loader mounted. Retry after it has finished loading.');
   if (store.getState().loading) fail(ToolErrorCode.STATE_CHANGED, 'A model is already loading. Wait for it, then try again.');
 
+  // Nothing has changed yet, so a download that outlasts the budget is abandoned.
+  const downloadBudget = AbortSignal.timeout(Math.max(0, deadline - Date.now()));
   let files: File[];
   try {
-    files = await filesFor(request.source, ctx.signal);
+    files = await filesFor(request.source, ctx.signal ? AbortSignal.any([ctx.signal, downloadBudget]) : downloadBudget);
   } catch (err) {
     if (ctx.signal?.aborted || (err as { code?: unknown }).code) throw err;
+    if (downloadBudget.aborted) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The download did not finish within ${OPEN_MODEL_WAIT_MS / 1000} s. Nothing was loaded; try a smaller file.`);
     return fail(ToolErrorCode.UNSUPPORTED_OPERATION, err instanceof Error ? err.message : String(err));
   }
 
@@ -172,29 +208,41 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   const name = files.length > 1 ? 'the layer stack' : files[0].name;
   // From here the load changes the session whatever happens to this call: it is not cancellable.
   if (ctx.commitState) ctx.commitState.committing = true;
-  const deadline = Date.now() + OPEN_MODEL_WAIT_MS;
   const load: Promise<string | null | void> = request.mode === 'add' ? loader.addModel(files[0])
     : files.length > 1 ? loader.loadStack(files) : loader.loadFile(files[0]);
-  const loaded = await within(load.then((id) => ({ id })), OPEN_MODEL_WAIT_MS);
+  const loaded = await within(load.then((id) => ({ id })), deadline - Date.now());
   if (!loaded) {
     return {
-      text: `${name} is still loading after ${OPEN_MODEL_WAIT_MS / 1000} s; it continues in the tab. Do not retry: call model_list until it appears.`,
-      structured: { mode: request.mode, state: 'loading', models: openModels() },
+      text: `${name} is still loading; it continues in the tab. Do not retry. Call model_list until it appears; if it never does, `
+        + 'the load failed: take a viewer_screenshot or ask the user what the viewer reports.',
+      // Placeholder records of the load in progress have no data yet: list only the models that were already open.
+      structured: { mode: request.mode, state: 'loading', loading: name, models: openModels().filter((m) => !m.new) },
     };
   }
 
   const after = store.getState();
   if (after.error && after.loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${after.error}`);
   if (loaded.id === null) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not add ${name}. See the viewer for details.`);
-  const left = deadline - Date.now();
-  const settled = left > 0 && await waitForModelSettled(left).then(() => true, () => false);
+  // loadFile can return without an error and without opening a model (an underlay drape, a geometry-kernel refusal).
+  if (!openModels().some((m) => m.new)) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. See the viewer for why.`);
+  const settled = await settledWithin(deadline - Date.now());
   const models = openModels();
   const added = models.filter((m) => m.new);
-  // loadFile can return without an error and without opening a model (an underlay drape, a geometry-kernel refusal).
-  if (added.length === 0) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. See the viewer for why.`);
   const text = `Loaded ${added.map((m) => `${m.name} (model_id ${m.model_id})`).join(', ')}${settled ? '' : '; geometry is still streaming'}. `
     + `${models.length} model(s) now open. Next: query_entities with a model_id, or viewer_screenshot to look at the view.`;
   return { text, structured: { mode: request.mode, state: settled ? 'loaded' : 'streaming', models } };
+}
+
+/** Whether loading and geometry streaming finish within `ms`; false when the time runs out first. */
+async function settledWithin(ms: number): Promise<boolean> {
+  if (ms <= 0) return false;
+  try {
+    await waitForModelSettled(ms);
+    return true;
+  } catch (err) {
+    if (err instanceof Error && /did not settle in time/.test(err.message)) return false;
+    throw err;
+  }
 }
 
 /** `work`'s value, or null once `ms` pass first; the timer is cleared either way. */

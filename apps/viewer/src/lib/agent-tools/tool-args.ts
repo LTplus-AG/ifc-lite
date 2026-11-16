@@ -48,8 +48,8 @@ export function integer(args: Record<string, unknown>, key: string, fallback: nu
 
 /** One of `choices`, or `fallback` when absent. */
 export function oneOf<T extends string>(args: Record<string, unknown>, key: string, choices: readonly T[], fallback?: T): T | undefined {
-  // Only an absent key takes the fallback; an explicit null is invalid like any other wrong value.
-  const value = args[key] === undefined ? fallback : args[key];
+  // null counts as absent: some clients send unset optional fields as null.
+  const value = args[key] ?? fallback;
   if (value !== undefined && !choices.includes(value as T)) invalid(`${key} must be one of: ${choices.join(', ')}.`);
   return value as T | undefined;
 }

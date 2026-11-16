@@ -137,18 +137,23 @@ describe('viewer_open_model', () => {
     unregister();
     await assert.rejects(run({ sample: 'demo' }), { code: 'UNSUPPORTED_OPERATION', message: /no file loader/ });
   });
-  it('treats an explicit null like a wrong value, not as absent', async () => {
-    await assert.rejects(run({ sample: null }), { code: 'INVALID_INPUT', message: /sample must be one of/ });
-    await assert.rejects(run({ sample: 'demo', mode: null }), { code: 'INVALID_INPUT', message: /mode must be one of/ });
+  it('treats null like an absent argument, as clients that send unset fields expect', async () => {
+    await assert.rejects(run({ sample: null }), { code: 'INVALID_INPUT', message: /exactly one/ });
+    const out = await run({ sample: 'demo', url: null, mode: null });
+    assert.equal((out.structured as { mode: string }).mode, 'replace');
   });
 
   it('names a download from Content-Disposition and survives a malformed escape', async () => {
     respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename="tower.ifc"' } });
     await run({ url: 'https://example.com/download?id=5' });
     assert.deepEqual(calls, [{ kind: 'replace', names: ['tower.ifc'] }]);
+    // RFC 6266: filename* (with its charset and language) wins over filename.
+    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': `attachment; filename="export.bin"; filename*=UTF-8'en'Tour%20A.ifc` } });
+    await run({ url: 'https://example.com/download?id=6', mode: 'add' });
+    assert.equal(calls.at(-1)!.names[0], 'Tour A.ifc');
     respond = () => new Response(new Uint8Array([1]), { status: 200 });
     await run({ url: 'https://example.com/a%E0%A4.ifc', mode: 'add' });
-    assert.equal(calls[1].names[0], 'a%E0%A4.ifc');
+    assert.equal(calls.at(-1)!.names[0], 'a%E0%A4.ifc');
   });
 
   it('stops reading a body without a length once it passes the limit', async () => {
@@ -160,9 +165,11 @@ describe('viewer_open_model', () => {
     assert.deepEqual(calls, []);
   });
 
-  it('reports a load that opened no model as a failure, not success', async () => {
+  it('reports a load that opened no model as a failure at once, not success', async () => {
     behaviour = 'nothing';
+    const started = Date.now();
     await assert.rejects(run({ sample: 'demo' }), { code: 'UNSUPPORTED_OPERATION', message: /did not open/ });
+    assert.ok(Date.now() - started < 2000, 'without waiting out the call budget');
   });
 
   it('answers within the call budget while a long load continues, and says not to retry', async () => {
@@ -174,6 +181,7 @@ describe('viewer_open_model', () => {
       mock.timers.tick(OPEN_MODEL_WAIT_MS);
       const out = await pending;
       assert.equal((out.structured as { state: string }).state, 'loading');
+      assert.deepEqual((out.structured as { models: unknown[] }).models, [], 'no placeholder model ids');
       assert.match(out.text, /Do not retry/);
     } finally {
       mock.timers.reset();

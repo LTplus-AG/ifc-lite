@@ -134,12 +134,12 @@ function topologyVertices(step, id, depth = 0) {
   }
 }
 
-/** The operator kinds this oracle reads: [is 2D, index of Scale2, index of Scale3]. */
+/** The operator kinds this oracle reads, with the attribute index of Scale2 and Scale3 where they have one. */
 const OPERATORS = {
-  IFCCARTESIANTRANSFORMATIONOPERATOR3D: [false],
-  IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM: [false, 5, 6],
-  IFCCARTESIANTRANSFORMATIONOPERATOR2D: [true],
-  IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM: [true, 4],
+  IFCCARTESIANTRANSFORMATIONOPERATOR3D: { twoD: false },
+  IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM: { twoD: false, scale2: 5, scale3: 6 },
+  IFCCARTESIANTRANSFORMATIONOPERATOR2D: { twoD: true },
+  IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM: { twoD: true, scale2: 4 },
 };
 
 /**
@@ -153,7 +153,7 @@ function transformOperator(step, id) {
   const r = step.get(id);
   const kind = OPERATORS[r?.type];
   if (!kind) return null;
-  const [twoD, scale2, scale3] = kind;
+  const { twoD, scale2, scale3 } = kind;
   const o = coords(step, refOf(r.args[2]));
   const [axis1, axis2, axis3] = [direction(step, r.args[0]), direction(step, r.args[1]), twoD ? undefined : direction(step, r.args[4])];
   if (!o || axis1 === null || axis2 === null || axis3 === null) return null;
@@ -168,8 +168,8 @@ function transformOperator(step, id) {
   if (!y) return null;
   // The schema requires every scale > 0; a zero one would collapse the map onto LocalOrigin.
   const s = numberOf(r.args[3]) ?? 1;
-  const s2 = (scale2 && numberOf(r.args[scale2])) ?? s;
-  const s3 = (scale3 && numberOf(r.args[scale3])) ?? s;
+  const s2 = (scale2 === undefined ? undefined : numberOf(r.args[scale2])) ?? s;
+  const s3 = (scale3 === undefined ? undefined : numberOf(r.args[scale3])) ?? s;
   if (!(s > 0 && s2 > 0 && s3 > 0)) return null;
   return { o, x: scaled(x, s), y: scaled(y, s2), z: scaled(z, s3) };
 }
@@ -212,17 +212,22 @@ function holdsTopology(step, rep) {
   return held;
 }
 
-/** Vertices one member may need checked; more (shared maps multiply them) is refused. */
-const MAX_VERTICES = 10000;
+/**
+ * Bounds on the mapped walk: vertices one representation takes through its
+ * mapped items (shared maps multiply them), and map nesting (the stack).
+ */
+const MAX_MAPPED_VERTICES = 10000;
+const MAX_MAP_DEPTH = 1000;
 
 /**
  * The topology vertices of one representation, in its axes: its own items
  * when it is an `IfcTopologyRepresentation`, and those of every mapped item's
  * source representation; memoised per file, so each map is walked once.
  * Null when a mapped item that reaches topology cannot be followed (a map
- * cycle through topology, over 10000 vertices, an origin or target this
- * oracle does not read): fewer vertices would check less. A map that yields
- * no vertices is skipped before its frames are read.
+ * cycle through topology, over 10000 mapped vertices or 1000 nested maps, an
+ * origin or target this oracle does not read): fewer vertices would check
+ * less. A map that yields no vertices is skipped before its frames are read.
+ * Direct topology is read whole, as R8 did.
  */
 function representationVertices(step, rep, active = new Set()) {
   if (!rep) return [];
@@ -230,6 +235,7 @@ function representationVertices(step, rep, active = new Set()) {
   if (memo.has(rep.id)) return memo.get(rep.id);
   // Back into a representation still being walked: a cycle, refused only when it reaches topology.
   if (active.has(rep.id)) return holdsTopology(step, rep) ? null : [];
+  if (active.size > MAX_MAP_DEPTH) return null;
   active.add(rep.id);
   const points = mapVertices(step, rep, active);
   active.delete(rep.id);
@@ -240,12 +246,12 @@ function representationVertices(step, rep, active = new Set()) {
 function mapVertices(step, rep, active) {
   const topology = rep.type === 'IFCTOPOLOGYREPRESENTATION';
   const points = [];
+  let mappedCount = 0;
   for (const ref of itemsOf(rep)) {
     const id = refOf(ref);
     const item = step.get(id);
     if (item?.type !== 'IFCMAPPEDITEM') {
       if (topology) for (const p of topologyVertices(step, id)) points.push(p);
-      if (points.length > MAX_VERTICES) return null;
       continue;
     }
     const { map, source } = mappedSource(step, item) ?? {};
@@ -253,7 +259,8 @@ function mapVertices(step, rep, active) {
     if (mapped?.length === 0) continue;
     const origin = mapped && axisPlacement(step, refOf(map.args[0]));
     const target = mapped && transformOperator(step, refOf(item.args[1]));
-    if (!origin || !target || points.length + mapped.length > MAX_VERTICES) return null;
+    mappedCount += mapped?.length ?? 0;
+    if (!origin || !target || mappedCount > MAX_MAPPED_VERTICES) return null;
     const frame = compose(target, origin);
     for (const p of mapped) points.push(apply(frame, p));
   }
@@ -272,7 +279,7 @@ export function topologyPoints(step, productId, scale = lengthScale(step)) {
   const shape = step.get(product?.args[6]);
   if (!shape) return [];
   const points = (Array.isArray(shape.args[2]) ? shape.args[2] : []).map((repRef) => representationVertices(step, step.get(repRef)));
-  if (points.includes(null) || points.reduce((n, p) => n + p.length, 0) > MAX_VERTICES) return null;
+  if (points.includes(null)) return null;
   if (!frame) return points.flat().length ? null : [];
   return points.flat().map((p) => apply(frame, p).map((c) => c * scale));
 }

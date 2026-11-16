@@ -169,17 +169,24 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
   // A topology representation with no readable vertex, in a map cycle, is no topology, not unplaced.
   const polyCycle = direct + "#59=IFCPOLYLINE((#10,#11));#56=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#59,#58));#57=IFCREPRESENTATIONMAP(#41,#56);#58=IFCMAPPEDITEM(#57,#46);";
   assert.equal(topologyPoints(ifc4(polyCycle.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#57,#46)')), 30).length, 2);
-  // The vertex cap counts direct vertices too, whatever the item order, and across representations.
+  // The cap counts mapped vertices only: 10002 direct vertices are read whole, as in R8, and the same
+  // edges behind a map are refused, whatever the order beside a direct edge.
   const many = Array.from({ length: 5001 }, (_, i) => `#${1000 + i}=IFCEDGE(#12,#13);`).join('');
   const edges = Array.from({ length: 5001 }, (_, i) => `#${1000 + i}`).join(',');
-  for (const order of [`#47,${edges}`, `${edges},#47`]) {
-    const big = direct + many + `#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#600));#600=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${order}));`;
-    assert.equal(topologyPoints(ifc4(big.replace('#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#48,#15));', '')), 30), null, order.slice(0, 4));
+  const bare = direct.replace('#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#48,#15));', '') + many;
+  assert.equal(topologyPoints(ifc4(`${bare}#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#600));#600=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${edges}));`), 30).length, 10002);
+  for (const order of ['#47,#14', '#14,#47']) {
+    const big = `${bare}#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#600));#600=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${order}));`
+      + `#42=IFCREPRESENTATIONMAP(#41,#601);#601=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${edges}));`;
+    assert.equal(topologyPoints(ifc4(big.replace("#42=IFCREPRESENTATIONMAP(#41,#15);", '')), 30), null, order);
   }
-  const half = Array.from({ length: 2501 }, (_, i) => `#${1000 + i}`).join(',');
-  const split = direct.replace('#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#48,#15));', '') + many
-    + `#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#600,#601));#600=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${half}));#601=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${half}));`;
-  assert.equal(topologyPoints(ifc4(split), 30), null);
+  // Maps nested past the stack bound are unplaced, not a crash.
+  let chain = direct;
+  for (let i = 0; i < 1200; i += 1) {
+    const from = i === 0 ? '#15' : `#${20000 + 3 * (i - 1) + 2}`;
+    chain += `#${20000 + 3 * i}=IFCREPRESENTATIONMAP(#41,${from});#${20000 + 3 * i + 1}=IFCMAPPEDITEM(#${20000 + 3 * i},#46);#${20000 + 3 * i + 2}=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#${20000 + 3 * i + 1}));`;
+  }
+  assert.equal(topologyPoints(ifc4(chain.replace('#47=IFCMAPPEDITEM(#42,#46)', `#47=IFCMAPPEDITEM(#${20000 + 3 * 1199},#46)`)), 30), null);
   // A map whose MappedRepresentation is not a representation holds nothing: the direct edge alone, no throw.
   assert.equal(topologyPoints(ifc4(direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#41,#46)')), 30).length, 2);
   const dangling = direct.replace('#53=IFCMAPPEDITEM(#52,#46)', '#53=IFCMAPPEDITEM(#98,#46)');

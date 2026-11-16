@@ -86,3 +86,17 @@ it('#5813 requests from separate surfaces are shown in order', async () => {
   click(dialog.querySelector('button')!);
   assert.equal(await second!, null);
 });
+
+it('#10264 abort removes a pending confirmation and cannot authorize its superseded operation', async () => {
+  const { confirmDialog } = await loadDialogs();
+  await mount();
+  const owner = new AbortController();
+  let answer: Promise<boolean> | undefined;
+  act(() => { answer = confirmDialog({ description: 'Continue loading this model?', signal: owner.signal }); });
+  assert.ok(document.querySelector('[role="alertdialog"]'));
+  act(() => owner.abort());
+  assert.equal(await answer, false);
+  await waitFor(() => !document.querySelector('[role="alertdialog"]'), 'the stale confirmation disappears');
+  assert.equal(await confirmDialog({ description: 'Already cancelled', signal: owner.signal }), false);
+  assert.equal(document.querySelector('[role="alertdialog"]'), null);
+});

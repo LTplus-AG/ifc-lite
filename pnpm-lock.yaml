@@ -1177,6 +1177,12 @@ importers:
       '@ifc-lite/flow-nodes':
         specifier: workspace:^
         version: link:../flow-nodes
+      '@ifc-lite/geo':
+        specifier: workspace:^
+        version: link:../geo
+      '@ifc-lite/geodata-ch':
+        specifier: workspace:^
+        version: link:../geodata-ch
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry
@@ -1222,6 +1228,12 @@ importers:
       '@ifc-lite/semantic':
         specifier: workspace:^
         version: link:../semantic
+      '@ifc-lite/site-context':
+        specifier: workspace:^
+        version: link:../site-context
+      '@ifc-lite/tiles3d':
+        specifier: workspace:^
+        version: link:../tiles3d
       '@ifc-lite/viewer-core':
         specifier: workspace:^
         version: link:../viewer
@@ -1634,6 +1646,9 @@ importers:
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../parser
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
     devDependencies:
       '@mergifyio/vitest':
         specifier: ^2026.10.11
@@ -2616,6 +2631,28 @@ importers:
       parquet-wasm:
         specifier: ^0.9.0
         version: 0.9.0
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.5(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/site-context:
+    dependencies:
+      '@ifc-lite/geo':
+        specifier: workspace:^
+        version: link:../geo
+      '@ifc-lite/geodata-ch':
+        specifier: workspace:^
+        version: link:../geodata-ch
+      '@ifc-lite/tiles3d':
+        specifier: workspace:^
+        version: link:../tiles3d
+    devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

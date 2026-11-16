@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/hooks/useIfcServer.ts
++++ b/apps/viewer/src/hooks/useIfcServer.ts
+@@ -363,7 +363,7 @@
+     } catch (err) {
+       // After replacing the scene, report the server failure rather than ask
+       // for a local fallback consent whose Cancel could not restore that scene.
+-      if (processed) throw err;
++      if (processed || (beforePublish && published)) throw err;
+       console.error('[useIfc] Server parse failed:', err);
+       return false;
+     }

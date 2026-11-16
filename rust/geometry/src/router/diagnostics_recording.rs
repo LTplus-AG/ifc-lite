@@ -352,6 +352,16 @@ impl GeometryRouter {
         entry.host_bounds = Some(host_bounds);
     }
 
+    /// Restate a recorded host cut's bounds. A host cut in its root frame
+    /// records them there; this puts the diagnostic back in world coordinates.
+    pub(crate) fn restate_host_bounds(&self, host_id: u32, host_bounds: ((f32, f32, f32), (f32, f32, f32))) {
+        if let Some(entry) = self.host_opening_diagnostics.borrow_mut().get_mut(&host_id) {
+            if entry.host_bounds.is_some() {
+                entry.host_bounds = Some(host_bounds);
+            }
+        }
+    }
+
 }
 
 /// Internal classification-branch tag for `bump_classification`. Mirrors

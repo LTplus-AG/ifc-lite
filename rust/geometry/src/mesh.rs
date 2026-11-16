@@ -348,6 +348,7 @@ impl Mesh {
         if self.positions.is_empty() {
             self.origin = other.origin;
         }
+        self.welded_in_object_frame = false; // no longer one weld's buffers
         let d = [
             other.origin[0] - self.origin[0],
             other.origin[1] - self.origin[1],

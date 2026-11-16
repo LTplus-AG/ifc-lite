@@ -11,18 +11,28 @@
 import { insideRing } from '../geom.js';
 import type { MapPoint } from '../types.js';
 import type { FootprintInput } from './footprint.js';
-import { completeness, readSlabOutline, toWorld } from './outline.js';
+import { completeness, extrusionRegions, readSlabOutline, toWorld } from './outline.js';
+import { asEnum } from './reader.js';
 
-/** A slab above the ground slab, in map coordinates; `certain` only when its outline is complete with no unread voids. */
+/**
+ * Something above a ground slab that may roof a hole, in map coordinates: a
+ * point is under it inside every polygon of one of its `regions` and outside
+ * its `holes`. `certain` only when it was read in full (a slab's complete
+ * outline with no unread voids; a roofing element whose every body leaf is a
+ * plain extrusion).
+ */
 export interface UpperSlab {
   id: number;
   z: number;
   certain: boolean;
-  outer: MapPoint[][];
+  regions: MapPoint[][][];
   holes: MapPoint[][];
 }
 
-/** Every slab of the model, mapped once (the covering test asks them for each hole). */
+/** Roofing that is not a slab: roofs, roofing coverings, windows (a skylight lying flat), plates (a glass roof). */
+const ROOFING = ['IFCROOF', 'IFCCOVERING', 'IFCWINDOW', 'IFCWINDOWSTANDARDCASE', 'IFCPLATE', 'IFCPLATESTANDARDCASE'];
+
+/** Every slab and roofing element of the model, mapped once (the covering test asks them for each hole). */
 export function upperSlabs(input: Pick<FootprintInput, 'reader' | 'placements' | 'georef'>): UpperSlab[] {
   const { reader, placements, georef } = input;
   const out: UpperSlab[] = [];
@@ -31,7 +41,22 @@ export function upperSlabs(input: Pick<FootprintInput, 'reader' | 'placements' |
     if (!frame) continue;
     const o = readSlabOutline(reader, id);
     const map = (pts: [number, number, number][]) => toWorld(frame, pts).map((p) => ({ x: georef.toMap(p)[0], y: georef.toMap(p)[1] }));
-    out.push({ id, z: georef.toMap(frame.origin)[2], certain: !o.voids && completeness(o) === 'complete', outer: o.rings.map(map), holes: o.holes.map(map) });
+    out.push({ id, z: georef.toMap(frame.origin)[2], certain: !o.voids && completeness(o) === 'complete', regions: o.rings.map((r) => [map(r)]), holes: o.holes.map(map) });
+  }
+  for (const type of ROOFING) {
+    for (const id of reader.idsOfType(type)) {
+      const e = reader.entity(id);
+      // A covering roofs only as roofing (a ceiling or a floor finish is no roof).
+      if (!e || (type === 'IFCCOVERING' && asEnum(reader.attr(e, 'PredefinedType')) !== 'ROOFING')) continue;
+      const frame = placements.ofProduct(id);
+      if (!frame) continue;
+      const body = extrusionRegions(reader, id);
+      if (body.regions.length === 0) continue;
+      const map = (pts: [number, number, number][]) => toWorld(frame, pts).map((p) => georef.toMap(p));
+      const regions = body.regions.map((region) => region.map(map));
+      const z = Math.min(...regions.flat(2).map((p) => p[2]));
+      out.push({ id, z, certain: body.complete, regions: regions.map((region) => region.map((poly) => poly.map(([x, y]) => ({ x, y })))), holes: [] });
+    }
   }
   return out;
 }
@@ -73,10 +98,10 @@ function pointsInside(ring: MapPoint[]): MapPoint[] {
 
 /**
  * The slabs that roof a hole in a ground slab at `z`, or null when it is not
- * wholly roofed: every point inside the hole (`pointsInside`) must be under
- * the outer outline of a certain slab more than 1 m higher, outside that
- * slab's holes. One uncovered or uncertain point (a partly roofed hole, a
- * balcony over half of it, a hole above part of it) makes it open ground.
+ * wholly roofed: every guaranteed-inside point (`pointsInside`) must be under
+ * some certain slab or roofing element more than 1 m higher (`UpperSlab`),
+ * outside that element's holes. One uncovered or uncertain point makes it
+ * open ground. Different roofing elements may cover different parts.
  * Proven, because an interior hole stays filled and an element next to it may
  * then be excluded as interior; on doubt the hole is a courtyard.
  */
@@ -85,7 +110,7 @@ export function roofedBy(above: readonly UpperSlab[], ring: MapPoint[], z: numbe
   if (pts.length === 0) return null;
   const roofs = new Set<number>();
   for (const p of pts) {
-    const roof = above.find((s) => s.certain && s.z > z + 1 && s.outer.some((r) => insideRing(p, r)) && !s.holes.some((h) => insideRing(p, h)));
+    const roof = above.find((s) => s.certain && s.z > z + 1 && s.regions.some((region) => region.every((r) => insideRing(p, r))) && !s.holes.some((h) => insideRing(p, h)));
     if (!roof) return null;
     roofs.add(roof.id);
   }

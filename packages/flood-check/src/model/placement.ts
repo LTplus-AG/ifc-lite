@@ -25,16 +25,16 @@ export interface Frame {
 
 export const IDENTITY: Frame = { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
-function normalize(v: Vec3): Vec3 | null {
+export function normalize(v: Vec3): Vec3 | null {
   const n = Math.hypot(v[0], v[1], v[2]);
   return n > 1e-12 ? [v[0] / n, v[1] / n, v[2] / n] : null;
 }
 
-function cross(a: Vec3, b: Vec3): Vec3 {
+export function cross(a: Vec3, b: Vec3): Vec3 {
   return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 }
 
-function dot(a: Vec3, b: Vec3): number {
+export function dot(a: Vec3, b: Vec3): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
@@ -65,7 +65,7 @@ export function composeFrames(outer: Frame, inner: Frame): Frame {
   };
 }
 
-function readPoint(reader: ModelReader, id: unknown): Vec3 | null {
+export function readPoint(reader: ModelReader, id: unknown): Vec3 | null {
   const e = reader.entity(asRef(id));
   if (!e || e.type !== 'IFCCARTESIANPOINT') return null;
   const coords = e.attributes[0];
@@ -75,7 +75,7 @@ function readPoint(reader: ModelReader, id: unknown): Vec3 | null {
   return [c[0] as number, c[1] as number, (c[2] as number | undefined) ?? 0];
 }
 
-function readDirection(reader: ModelReader, id: unknown): Vec3 | null {
+export function readDirection(reader: ModelReader, id: unknown): Vec3 | null {
   const e = reader.entity(asRef(id));
   if (!e || e.type !== 'IFCDIRECTION') return null;
   const ratios = e.attributes[0];

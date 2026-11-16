@@ -2376,6 +2376,9 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           SHARD: ${{ matrix.shard }}
           IFC_LITE_SECTION_EVIDENCE_DIR: ${{ runner.temp }}/section-export-7711-${{ github.run_id }}-${{ github.run_attempt }}
+          # This job fetches and verifies every fixture above, so a test that needs one must fail, never skip, when it is
+          # absent (the export and flood-check fixture policies read this; #6692).
+          IFC_LITE_REQUIRE_FIXTURES: "1"
         run: |
           filters_txt=$(node scripts/ci-node-test-shards.mjs --shard "$SHARD")
           mapfile -t filters <<<"$filters_txt"

@@ -139,7 +139,27 @@ The figure counts the store list, `preAlignment`, `removedMeshes`, the scene hol
 
 ## Host eviction on a reopened model
 
-PENDING
+The design note inferred that host-tier eviction frees nothing, because the store keeps its own references. One measurement settles it.
+
+**Setup (one run, untimed).**
+
+- A synthetic `tfs` 120 MB file: 2,209 meshes, 390 MiB of geometry.
+- Loaded once, so the reopen cache was written. The page was then reloaded in the same profile and the file opened again: a cache hit, so the cold provider was installed.
+- GPU and host budgets set to 32 MB through the `__IFC_LITE_GPU_BUDGET_MB` / `__IFC_LITE_HOST_BUDGET_MB` globals.
+- The camera was zoomed into one corner so the GPU tier evicted, and then the host tier.
+- Each reading ran a forced GC first.
+
+| Point | CPU geometry held | `scene.buckets` reachable | `store.models` exclusive | Scene bucket bytes (`render_stats.cpuBytes`) | JS heap | Summed PSS |
+|---|---:|---:|---:|---:|---:|---:|
+| First load, settled | 390 MiB | 390 MiB | 0 | 390 MiB | 711 MiB | 1,517 MiB |
+| Reopen, settled | 400 MiB | 400 MiB | 0 | 390 MiB | 964 MiB | 1,531 MiB |
+| After host eviction | **400 MiB** | 55 MiB | **345 MiB** | 54 MiB | 452 MiB | 1,164 MiB |
+
+The host tier did evict: the scene let go of 336 MiB of bucket geometry, and the console reported the budget still exceeded by hot buckets. **But `totalBytes` did not move.** The same buffers became exclusive to `store.models`. So the inference is confirmed: **host eviction frees no geometry**, because the store's mesh list keeps every array the scene drops. A restore then decodes a second copy from the cache entry.
+
+The JS heap and PSS did fall after the first zoom round, by about 510 MiB and 370 MiB. That is not geometry, since the figure shows the same buffers still referenced; this run does not say what it was. The extra 9 MiB on reopen is held by both the store and the scene.
+
+For S7 this means the store must learn about evictions (or stop holding the arrays) before the host tier saves anything.
 
 ## What stage S1 needs from this
 

@@ -80,8 +80,18 @@ describe('palette bridge commands: native actions and hostile callers', () => {
   });
 
   it('validates an entire selection before changing it; fabricated and cross-model ids cannot partially select', async () => {
-    await run('viewer_select', { express_ids: [WALL_ID] });
-    const before = new Set(currentSelection());
+    // The real hello-wall storey differs from the first id in the invalid request.
+    const seeded = await run('viewer_select', { express_ids: [42] });
+    assert.equal(seeded.isError, false, seeded.text);
+    const snapshot = () => {
+      const state = useViewerStore.getState();
+      return { ids: new Set(state.selectedEntityIds), id: state.selectedEntityId,
+        ref: state.selectedEntity && { ...state.selectedEntity },
+        refs: new Set(state.selectedEntitiesSet) };
+    };
+    const before = snapshot();
+    assert.equal(before.id, 42);
+    assert.deepEqual(before.ref, { modelId: 'hello', expressId: 42 });
     for (const args of [
       { express_ids: [WALL_ID, 999999] }, { express_ids: [String(WALL_ID)] },
       { model_id: 'missing', express_ids: [WALL_ID] }, { express_ids: [-1] },
@@ -89,7 +99,7 @@ describe('palette bridge commands: native actions and hostile callers', () => {
       { express_ids: Array(1001).fill(WALL_ID) },
     ]) {
       assert.equal((await run('viewer_select', args)).isError, true);
-      assert.deepEqual(currentSelection(), before);
+      assert.deepEqual(snapshot(), before, 'both numeric and property selection channels remain unchanged');
     }
   });
 

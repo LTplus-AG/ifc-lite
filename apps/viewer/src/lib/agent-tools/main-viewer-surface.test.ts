@@ -82,6 +82,19 @@ describe('main viewer tool allowlist (#9523)', () => {
     assert.equal((await dispatchMainViewerTool(host, 'no_such_tool', {})).errorCode, 'INVALID_INPUT');
   });
 
+  it('keeps a fixed permission boundary for native viewer tools (#10525 review)', () => {
+    const policy = {
+      viewer_commands: true,
+      viewer_get_selection: true,
+      viewer_select: false,
+      viewer_command_run: false,
+    };
+    const actual = Object.fromEntries(mainViewerToolDefinitions()
+      .filter(tool => Object.hasOwn(policy, tool.name))
+      .map(tool => [tool.name, tool.readOnly]));
+    assert.deepEqual(actual, policy, 'selection changes and command dispatch must never become read-only tools');
+  });
+
   it('advertises exactly the allowlist (read-only) and the edit tools, with model_id on model tools and inline IDS', () => {
     const definitions = mainViewerToolDefinitions();
     assert.deepEqual(new Set(definitions.map((d) => d.name)), new Set([...MAIN_VIEWER_TOOL_ALLOWLIST, ...MAIN_VIEWER_EDIT_TOOLS, ...Object.keys(VIEWER_COMMAND_SPECS)]));

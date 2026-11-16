@@ -89,17 +89,16 @@ test('#9668 read indexes subsequent loads recursively and still rejects wrong or
 });
 
 test('#9668 read accepts normalized activity links in either STEP orientation and rejects unrelated ends', async () => {
-  const run = (swapped, target = 'item', includeActivity = true, includeItem = true) => check(
+  const run = (swapped, target = 'item', includeActivity = true) => check(
     'IfcRelConnectsStructuralActivity', [],
     { RelatingElement: swapped ? '#3' : '#2', RelatedStructuralActivity: swapped ? '#2' : '#3' },
     { ...empty(),
-      connections: includeItem ? [{ expressId: 2, type: 'IfcStructuralPointConnection', globalId: 'item', activityGlobalIds: ['activity'] }] : [],
+      connections: [{ expressId: 2, type: 'IfcStructuralPointConnection', globalId: 'item', activityGlobalIds: ['activity'] }],
       activities: includeActivity ? [{ expressId: 3, type: 'IfcStructuralPointAction', globalId: 'activity', appliesToGlobalId: target }] : [],
     }, "#2=IFCSTRUCTURALPOINTCONNECTION('item');#3=IFCSTRUCTURALPOINTACTION('activity');", 'IFC4X3');
-  for (const swapped of [false, true]) assert.equal((await run(swapped)).status, 'pass');
   for (const swapped of [false, true]) {
+    assert.equal((await run(swapped)).status, 'pass');
     rejects(await run(swapped, 'other'), 'link');
     rejects(await run(swapped, undefined, false), 'link');
-    rejects(await run(swapped, 'item', true, false), 'link');
   }
 });

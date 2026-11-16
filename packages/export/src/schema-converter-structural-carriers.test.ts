@@ -121,13 +121,6 @@ describe('IfcStructuralAnalysisModel.SharedPlacement IFC2X3 -> IFC4 #9668', () =
     expect(line(step, 32)).toMatch(/,\$\);$/);
   });
 
-  it('does not report a SharedPlacement every grouped item keeps as lost on the downgrade', async () => {
-    const up = (await convert(ifc2x3('#9'), 'IFC4')).step;
-    const down = await convert(up, 'IFC2X3');
-    expect(down.warnings).not.toContain('SharedPlacement has no slot in IFC2X3; its value is omitted');
-    expect(down.warnings).toContain('it is kept as the ObjectPlacement of every grouped structural item');
-  });
-
   it('reports a SharedPlacement the upgrade cannot restore as lost', async () => {
     const ifc4 = model('IFC4', `${OWNER}
 #13=IFCGRIDPLACEMENT($,$,$);
@@ -177,6 +170,13 @@ describe('IfcStructuralLoadCase IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     const malformed = await convert(IFC4.replace('(0.,0.,-1.));', '(0.,-1.));'), 'IFC2X3');
     expect(records(malformed.step, 'IFCPROPERTYLISTVALUE')).toEqual([]);
     expect(malformed.warnings).toContain('IFCSTRUCTURALLOADCASE.SelfWeightCoefficients has no slot in IFC2X3');
+  });
+
+  it('does not count an id inside a string as naming a carrier', async () => {
+    const down = (await convert(IFC4, 'IFC2X3')).step;
+    const pset = /^#(\d+)=IFCPROPERTYSET\('[^']+',#5,'IFC4 IfcStructuralLoadCase'/m.exec(down)![1];
+    const noted = down.replace("'No weight',$,", `'No weight','see #${pset}',`);
+    expect(line((await convert(noted, 'IFC4')).step, 20)).toMatch(/^#20=IFCSTRUCTURALLOADCASE\(/);
   });
 
   it('keeps a carrier property set that a type object also names', async () => {

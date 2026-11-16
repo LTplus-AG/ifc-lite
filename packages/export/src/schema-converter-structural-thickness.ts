@@ -16,7 +16,7 @@
  * Reads the source store, so only an unedited full export arms it.
  */
 import { listItems } from './schema-converter-structural-axes.js';
-import { conversionMode, namesWithheld, readCarrierSets, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
+import { conversionMode, readCarrierSets, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { parseStepNumber } from './step-slot-grammar.js';
 
@@ -73,9 +73,8 @@ export class StructuralThickness {
   }
 
   /** IFC2X3 -> IFC4: adds the property set for a member's thicknesses. True when IFC4 holds them. */
-  note(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
+  note(id: number, entity: string, args: readonly string[]): boolean {
     if (this.mode !== 'upgrade' || entity !== ENTITY || !this.ids || args.length !== 11) return false;
-    if (namesWithheld(args, withheld)) return false;
     const values = [args[8], ...listItems(args[9]) ?? []].map(thickness);
     const location = refId(args[10]);
     if (values.length !== 3 || values.includes(null) || location === null || this.aspectOf(args[6]) !== location) return false;

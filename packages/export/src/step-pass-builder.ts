@@ -334,7 +334,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
   const pair = (sourceSchema === 'IFC2X3' && schema === 'IFC4') || (sourceSchema === 'IFC4' && schema === 'IFC2X3');
   if (pair && (!mutationView || !applyMutations) && !options.visibleOnly && !options.deltaOnly && !options.subsetEntityIds
     && !excludeGeometry && options.includeRelationships !== false) {
-    pass.enums.structural.fromStore(dataStore, sourceSchema, schema, pass.withheldRefIds);
+    pass.enums.structural.fromStore(dataStore, sourceSchema, schema);
   }
   // The same object, deliberately. See the file header.
   return pass;

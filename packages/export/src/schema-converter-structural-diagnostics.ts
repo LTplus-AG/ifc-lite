@@ -4,7 +4,7 @@ import { getSchemaRegistryForVersion, getCanonicalEntityName, type IfcDataStore 
 import { convertEntityType } from './schema-converter.js';
 import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
-import { CAUSED_BY_WRITTEN, SHARED_PLACEMENT_KEPT, StructuralCarriers } from './schema-converter-structural-carriers.js';
+import { CAUSED_BY_WRITTEN, StructuralCarriers } from './schema-converter-structural-carriers.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
@@ -26,15 +26,14 @@ export class StructuralDiagnostics {
 
   /**
    * The source prepasses for an IFC2X3 <-> IFC4 export; the caller arms them
-   * only for an unedited full export. `withheld` is the ids the export leaves
-   * out, so the carriers decide up front what they can write.
+   * only for an unedited full export.
    */
-  fromStore(store: IfcDataStore, from: string, to: string, withheld?: ReadonlySet<number>): void {
+  fromStore(store: IfcDataStore, from: string, to: string): void {
     if (from === 'IFC2X3') this.axes.fromStore(store);
     else this.links.fromStore(store);
     this.varying.fromStore(store, from, to);
     const source = new SourceRecords(store);
-    this.carriers.fromStore(source, from, to, withheld);
+    this.carriers.fromStore(source, from, to);
     this.thickness.fromStore(source, from, to);
   }
 
@@ -49,7 +48,7 @@ export class StructuralDiagnostics {
     if (!this.carriers.rewritesAfter) return line;
     const filled = this.carriers.after(Number(/^\s*#(\d+)/.exec(line)?.[1]), line, withheld);
     if (!filled) return line;
-    if (filled.loss) this.record(filled.loss);
+    this.record(filled.loss);
     return filled.line;
   }
 
@@ -101,17 +100,13 @@ export class StructuralDiagnostics {
    */
   rewrite(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null | undefined {
     const carried = new Set<string>();
-    if (this.carriers.noteCause(id, entity, args, withheld)) {
+    if (this.carriers.noteCause(id, entity, args)) {
       carried.add('CausedBy');
       this.record(CAUSED_BY_WRITTEN);
     }
-    if (this.thickness.note(id, entity, args, withheld)) {
+    if (this.thickness.note(id, entity, args)) {
       carried.add('SubsequentThickness').add('VaryingThicknessLocation');
       this.record(THICKNESS_WRITTEN);
-    }
-    if (this.carriers.keepsSharedPlacement(id)) {
-      carried.add('SharedPlacement');
-      this.record(SHARED_PLACEMENT_KEPT);
     }
     if (carried.size) this.carried.set(id, carried);
     const attrs = this.links.link(entity, args);

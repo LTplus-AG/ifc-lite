@@ -16,15 +16,15 @@
  *   (IfcObjectPlacement PlacesObject is SET [1:1] there), so the downgrade
  *   leaves equal copies. The upgrade writes the lowest-id copy as
  *   SharedPlacement and places the items by it. A model sharing an item with
- *   another model is left alone in both directions.
+ *   another model is left alone.
  * - IfcStructuralLoadCase. IFC2X3 folds it into IfcStructuralLoadGroup and has
  *   no slot for SelfWeightCoefficients. The downgrade attaches a property set
  *   (`LOAD_CASE_PSET`) holding them; the upgrade turns a LOAD_CASE group that
  *   carries it back into the load case and leaves the property set out.
  *
- * Every decision is made in `fromStore`, which knows the ids the export
- * withholds, so `rewrite` and `after` only apply it. Reads the source store, so
- * only an unedited full export arms it.
+ * The upgrade's decisions are made in `fromStore`, so `rewrite` and `after`
+ * only apply them; an IFC4 target withholds no ids (`computeWithheldRefIds`).
+ * Reads the source store, so only an unedited full export arms it.
  */
 import { deterministicGlobalId } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
@@ -52,7 +52,7 @@ export const CAUSED_BY_READ = "an IfcRelAssignsToProduct named 'Causes' from an 
 export const LOAD_CASE_WRITTEN = `IfcStructuralLoadCase is written as an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set holding ${COEFFICIENTS}`;
 export const LOAD_CASE_READ = `an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set is written as the IFC4 IfcStructuralLoadCase it came from`;
 export const SHARED_PLACEMENT = 'IfcStructuralAnalysisModel.SharedPlacement is written as the local placement all of its grouped structural items use or copy, and they are placed by it';
-export const SHARED_PLACEMENT_KEPT = 'IfcStructuralAnalysisModel.SharedPlacement has no slot in IFC2X3; it is kept as the ObjectPlacement of every grouped structural item, from which the upgrade restores it';
+export const SHARED_ITEM_PLACEMENT = "a structural item on an equal copy of its analysis model's SharedPlacement is placed by the SharedPlacement itself";
 
 export class StructuralCarriers {
   /** The exporter's express-id allocator, shared with every other record it appends. */
@@ -69,31 +69,25 @@ export class StructuralCarriers {
   /** Upgrade: load group id -> its SelfWeightCoefficients token; the carrier records left out. */
   private readonly loadCases = new Map<number, string>();
   private readonly consumed = new Set<number>();
-  /** Downgrade: analysis models whose SharedPlacement the upgrade restores from their items. */
-  private readonly sharedKept = new Set<number>();
 
-  fromStore(source: SourceRecords, from: string, to: string, withheld: ReadonlySet<number> | undefined): void {
+  fromStore(source: SourceRecords, from: string, to: string): void {
     this.mode = conversionMode(from, to);
     if (!this.mode) return;
     const schema = from as 'IFC2X3' | 'IFC4';
     const causes = this.readCauses(source, schema);
-    const models = source.ids('IFCSTRUCTURALANALYSISMODEL').length ? soleModelItems(source, schema) : new Map<number, Map<number, number | null>>();
     if (this.mode === 'downgrade') {
       // IFC2X3 CausedBy names one reaction, and IFC2X3 has only point reactions.
       for (const [action, reactions] of causes) {
         const [only] = reactions;
         if (reactions.size === 1 && source.type(only) === 'IFCSTRUCTURALPOINTREACTION') this.causedBy.set(action, only);
       }
-      for (const [model, items] of models) {
-        const placement = refId(source.slots(model)?.[9]);
-        if (placement !== null && source.type(placement) === 'IFCLOCALPLACEMENT' && !withheld?.has(model) && !namesWithheld(source.slots(model), withheld)
-          && items.size && [...items.values()].every((p) => p === placement)) this.sharedKept.add(model);
-      }
       return;
     }
     for (const [action, reactions] of causes) this.causesWritten.set(action, reactions);
-    for (const [model, items] of models) this.findSharedPlacement(source, model, items, withheld);
-    if (source.ids('IFCSTRUCTURALLOADGROUP').length) this.findLoadCases(source, withheld);
+    if (source.ids('IFCSTRUCTURALANALYSISMODEL').length) {
+      for (const [model, items] of soleModelItems(source)) this.findSharedPlacement(source, model, items);
+    }
+    if (source.ids('IFCSTRUCTURALLOADGROUP').length) this.findLoadCases(source);
   }
 
   /** Action id -> the reactions 'Causes' relationships name for it. */
@@ -112,9 +106,8 @@ export class StructuralCarriers {
   }
 
   /** IFC2X3 -> IFC4: the SharedPlacement of a model whose items' local placements are one or equal copies of one. */
-  private findSharedPlacement(source: SourceRecords, model: number, items: ReadonlyMap<number, number | null>, withheld: ReadonlySet<number> | undefined): void {
-    const args = source.slots(model);
-    if (args?.length !== 9 || !items.size || withheld?.has(model) || namesWithheld(args, withheld)) return;
+  private findSharedPlacement(source: SourceRecords, model: number, items: ReadonlyMap<number, number | null>): void {
+    if (source.slots(model)?.length !== 9 || !items.size) return;
     const keys = new Set<string>();
     let placement = Infinity;
     for (const p of items.values()) {
@@ -122,12 +115,12 @@ export class StructuralCarriers {
       keys.add(source.slots(p)?.map((a) => a.trim()).join(',') ?? '');
       placement = Math.min(placement, p);
     }
-    if (keys.size !== 1 || withheld?.has(placement)) return;
+    if (keys.size !== 1) return;
     this.shared.set(model, placement);
     for (const [item, own] of items) if (own !== placement) this.itemPlacements.set(item, placement);
   }
 
-  private findLoadCases(source: SourceRecords, withheld: ReadonlySet<number> | undefined): void {
+  private findLoadCases(source: SourceRecords): void {
     const sets = readCarrierSets(source, LOAD_CASE_PSET);
     const perGroup = new Map<number, number>();
     for (const set of sets) for (const g of set.related) perGroup.set(g, (perGroup.get(g) ?? 0) + 1);
@@ -137,7 +130,7 @@ export class StructuralCarriers {
       // A group with two carriers is ambiguous, so it keeps both and stays a load group.
       if (!set.exclusive || group === null || prop === undefined || perGroup.get(group) !== 1 || source.type(group) !== 'IFCSTRUCTURALLOADGROUP') continue;
       const groupArgs = source.slots(group);
-      if (groupArgs?.length !== 10 || groupArgs[5].trim().toUpperCase() !== '.LOAD_CASE.' || withheld?.has(group) || namesWithheld(groupArgs, withheld)) continue;
+      if (groupArgs?.length !== 10 || groupArgs[5].trim().toUpperCase() !== '.LOAD_CASE.') continue;
       const coefficients = this.coefficients(source.type(prop), source.slots(prop));
       if (coefficients === null) continue;
       this.loadCases.set(group, coefficients);
@@ -153,9 +146,6 @@ export class StructuralCarriers {
     const values = (listItems(args[2]) ?? []).map(ratio);
     return values.length === 3 && values.every((v) => v !== null) ? `(${values.join(',')})` : null;
   }
-
-  /** Whether the downgrade keeps this analysis model's SharedPlacement as its items' placement. */
-  keepsSharedPlacement(id: number): boolean { return this.sharedKept.has(id); }
 
   /**
    * The target body for one source record, `null` to leave it out, or
@@ -182,10 +172,10 @@ export class StructuralCarriers {
    * IFC2X3 -> IFC4: adds the 'Causes' relationship for an action's CausedBy,
    * unless the source has it already. True when IFC4 holds the cause either way.
    */
-  noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
+  noteCause(id: number, entity: string, args: readonly string[]): boolean {
     if (this.mode !== 'upgrade' || !this.ids || !IFC2X3_ACTIONS.has(entity)) return false;
     const reaction = refId(args[CAUSED_BY]);
-    if (reaction === null || withheld?.has(reaction) || namesWithheld(args, withheld)) return false;
+    if (reaction === null) return false;
     if (this.causesWritten.get(id)?.has(reaction)) return true;
     const guid = deterministicGlobalId(`ifc2x3-caused-by:${args[0].trim()}:#${reaction}`);
     this.pending.push(`#${this.ids()}=IFCRELASSIGNSTOPRODUCT('${guid}',${args[1]},'${CAUSES}',$,(#${reaction}),$,#${id});`);
@@ -201,11 +191,12 @@ export class StructuralCarriers {
    * relationship, on the upgrade a grouped item's ObjectPlacement as its
    * model's SharedPlacement. Undefined when nothing changes.
    */
-  after(id: number, line: string, withheld: ReadonlySet<number> | undefined): { line: string; loss?: string } | undefined {
+  after(id: number, line: string, withheld: ReadonlySet<number> | undefined): { line: string; loss: string } | undefined {
     const placement = this.mode === 'upgrade' ? this.itemPlacements.get(id) : undefined;
     if (placement !== undefined) {
-      const filled = replaceStepArgument(line, OBJECT_PLACEMENT, `#${placement}`);
-      return filled ? { line: filled } : undefined;
+      const type = readStepSlots(line)?.type;
+      const filled = isSubtype('IFC4', type, 'IfcStructuralItem') ? replaceStepArgument(line, OBJECT_PLACEMENT, `#${placement}`) : null;
+      return filled ? { line: filled, loss: SHARED_ITEM_PLACEMENT } : undefined;
     }
     const reaction = this.mode === 'downgrade' ? this.causedBy.get(id) : undefined;
     if (reaction === undefined || withheld?.has(reaction)) return undefined;
@@ -220,26 +211,25 @@ export class StructuralCarriers {
 }
 
 /**
- * The structural items grouped into each analysis model, with each item's
- * ObjectPlacement id, for the models none of whose items another model also
- * groups: IFC4 would require both models to share one placement.
+ * The structural items an IFC2X3 IfcRelAssignsToGroup groups into each
+ * analysis model, with each item's ObjectPlacement id, for the models none of
+ * whose items another model also groups: IFC4 would require both models to
+ * share one placement.
  */
-function soleModelItems(source: SourceRecords, schema: 'IFC2X3' | 'IFC4'): Map<number, Map<number, number | null>> {
+function soleModelItems(source: SourceRecords): Map<number, Map<number, number | null>> {
   const models = new Map<number, Map<number, number | null>>();
   const owners = new Map<number, Set<number>>();
-  for (const type of ['IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOGROUPBYFACTOR']) {
-    for (const id of source.ids(type)) {
-      const args = source.slots(id);
-      const model = refId(args?.[6]);
-      if (!args || model === null || source.type(model) !== 'IFCSTRUCTURALANALYSISMODEL') continue;
-      const items = models.get(model) ?? new Map<number, number | null>();
-      for (const item of (listItems(args[4]) ?? []).map(refId)) {
-        if (item === null || !isSubtype(schema, source.type(item), 'IfcStructuralItem')) continue;
-        items.set(item, refId(source.slots(item)?.[OBJECT_PLACEMENT]));
-        owners.set(item, (owners.get(item) ?? new Set<number>()).add(model));
-      }
-      models.set(model, items);
+  for (const id of source.ids('IFCRELASSIGNSTOGROUP')) {
+    const args = source.slots(id);
+    const model = refId(args?.[6]);
+    if (!args || model === null || source.type(model) !== 'IFCSTRUCTURALANALYSISMODEL') continue;
+    const items = models.get(model) ?? new Map<number, number | null>();
+    for (const item of (listItems(args[4]) ?? []).map(refId)) {
+      if (item === null || !isSubtype('IFC2X3', source.type(item), 'IfcStructuralItem')) continue;
+      items.set(item, refId(source.slots(item)?.[OBJECT_PLACEMENT]));
+      owners.set(item, (owners.get(item) ?? new Set<number>()).add(model));
     }
+    models.set(model, items);
   }
   for (const [model, items] of models) if ([...items.keys()].some((i) => owners.get(i)!.size > 1)) models.delete(model);
   return models;

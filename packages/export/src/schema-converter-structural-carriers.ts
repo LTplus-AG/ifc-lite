@@ -22,8 +22,9 @@
  *   (`LOAD_CASE_PSET`) holding them; the upgrade turns a LOAD_CASE group that
  *   carries it back into the load case and leaves the property set out.
  *
- * The upgrade's decisions are made in `fromStore`, so `rewrite` and `after`
- * only apply them; an IFC4 target withholds no ids (`computeWithheldRefIds`).
+ * The upgrade decides in `fromStore`: an IFC4 target withholds no ids
+ * (`computeWithheldRefIds`), and `StructuralDiagnostics` adds no records when
+ * one does. The downgrade checks withheld ids per record, where it writes.
  * Reads the source store, so only an unedited full export arms it.
  */
 import { deterministicGlobalId } from '@ifc-lite/parser';
@@ -52,7 +53,6 @@ export const CAUSED_BY_READ = "an IfcRelAssignsToProduct named 'Causes' from an 
 export const LOAD_CASE_WRITTEN = `IfcStructuralLoadCase is written as an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set holding ${COEFFICIENTS}`;
 export const LOAD_CASE_READ = `an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set is written as the IFC4 IfcStructuralLoadCase it came from`;
 export const SHARED_PLACEMENT = 'IfcStructuralAnalysisModel.SharedPlacement is written as the local placement all of its grouped structural items use or copy, and they are placed by it';
-export const SHARED_ITEM_PLACEMENT = "a structural item on an equal copy of its analysis model's SharedPlacement is placed by the SharedPlacement itself";
 
 export class StructuralCarriers {
   /** The exporter's express-id allocator, shared with every other record it appends. */
@@ -191,12 +191,12 @@ export class StructuralCarriers {
    * relationship, on the upgrade a grouped item's ObjectPlacement as its
    * model's SharedPlacement. Undefined when nothing changes.
    */
-  after(id: number, line: string, withheld: ReadonlySet<number> | undefined): { line: string; loss: string } | undefined {
+  after(id: number, line: string, withheld: ReadonlySet<number> | undefined): { line: string; loss?: string } | undefined {
     const placement = this.mode === 'upgrade' ? this.itemPlacements.get(id) : undefined;
+    // SHARED_PLACEMENT, recorded once for the model, reports the move.
     if (placement !== undefined) {
-      const type = readStepSlots(line)?.type;
-      const filled = isSubtype('IFC4', type, 'IfcStructuralItem') ? replaceStepArgument(line, OBJECT_PLACEMENT, `#${placement}`) : null;
-      return filled ? { line: filled, loss: SHARED_ITEM_PLACEMENT } : undefined;
+      const filled = replaceStepArgument(line, OBJECT_PLACEMENT, `#${placement}`);
+      return filled ? { line: filled } : undefined;
     }
     const reaction = this.mode === 'downgrade' ? this.causedBy.get(id) : undefined;
     if (reaction === undefined || withheld?.has(reaction)) return undefined;

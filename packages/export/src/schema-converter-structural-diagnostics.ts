@@ -48,7 +48,7 @@ export class StructuralDiagnostics {
     if (!this.carriers.rewritesAfter) return line;
     const filled = this.carriers.after(Number(/^\s*#(\d+)/.exec(line)?.[1]), line, withheld);
     if (!filled) return line;
-    this.record(filled.loss);
+    if (filled.loss) this.record(filled.loss);
     return filled.line;
   }
 
@@ -100,11 +100,13 @@ export class StructuralDiagnostics {
    */
   rewrite(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null | undefined {
     const carried = new Set<string>();
-    if (this.carriers.noteCause(id, entity, args)) {
+    // The upgrade-only carriers add records naming ids the source has; an IFC4 target withholds none.
+    const adds = !withheld?.size;
+    if (adds && this.carriers.noteCause(id, entity, args)) {
       carried.add('CausedBy');
       this.record(CAUSED_BY_WRITTEN);
     }
-    if (this.thickness.note(id, entity, args)) {
+    if (adds && this.thickness.note(id, entity, args)) {
       carried.add('SubsequentThickness').add('VaryingThicknessLocation');
       this.record(THICKNESS_WRITTEN);
     }

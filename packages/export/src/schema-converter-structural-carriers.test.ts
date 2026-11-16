@@ -174,7 +174,8 @@ describe('IfcStructuralLoadCase IFC4 -> IFC2X3 -> IFC4 #9668', () => {
 
   it('does not count an id inside a string as naming a carrier', async () => {
     const down = (await convert(IFC4, 'IFC2X3')).step;
-    const pset = /^#(\d+)=IFCPROPERTYSET\('[^']+',#5,'IFC4 IfcStructuralLoadCase'/m.exec(down)![1];
+    // The carrier set #20 itself has, found through its relationship.
+    const pset = /^#\d+=IFCRELDEFINESBYPROPERTIES\('[^']+',#5,\$,\$,\(#20\),#(\d+)\);$/m.exec(down)![1];
     const noted = down.replace("'No weight',$,", `'No weight','see #${pset}',`);
     expect(line((await convert(noted, 'IFC4')).step, 20)).toMatch(/^#20=IFCSTRUCTURALLOADCASE\(/);
   });

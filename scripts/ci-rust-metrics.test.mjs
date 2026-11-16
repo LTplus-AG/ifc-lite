@@ -70,6 +70,7 @@ fn combined_configuration() { assert!(std::hint::black_box(cfg!(feature = "gate-
     const cold = run(['test', '--offline']);
     assert.equal(cold.status, 0, cold.stderr);
     assert.ok(cold.rows[0].rebuiltArtifacts > 0);
+    // @source-text-assertion-ok runtime process output or generated metrics, never source text
     assert.match(cold.stdout + cold.stderr, /Doc-tests/);
     const warm = run(['test', '--offline']);
     assert.equal(warm.status, 0, warm.stderr);
@@ -81,10 +82,12 @@ fn combined_configuration() { assert!(std::hint::black_box(cfg!(feature = "gate-
     for (const features of ['gate-a', 'gate-b', 'gate-a,gate-b']) {
       const r = run(['test', '--offline', '--no-default-features', '--features', features]);
       assert.equal(r.status, 0, r.stderr);
+      // @source-text-assertion-ok runtime process output or generated metrics, never source text
       if (features.includes(',')) assert.match(r.stdout, /combined_configuration \.\.\. ok/);
     }
     const filtered = run(['test', '--offline', '--features', 'test-failure', 'passes', '--', '--exact']);
     assert.equal(filtered.status, 0, filtered.stderr);
+    // @source-text-assertion-ok runtime process output or generated metrics, never source text
     assert.match(filtered.stdout, /1 filtered out/);
     const failure = run(['test', '--offline', '--features', 'test-failure', '--no-fail-fast']);
     assert.notEqual(failure.status, 0);
@@ -92,10 +95,12 @@ fn combined_configuration() { assert!(std::hint::black_box(cfg!(feature = "gate-
     assert.equal(failure.rows.at(-1).exitCode, failure.status);
     const doc = run(['test', '--offline', '--features', 'doc-failure']);
     assert.notEqual(doc.status, 0);
+    // @source-text-assertion-ok runtime process output or generated metrics, never source text
     assert.match(doc.stdout + doc.stderr, /intentional doctest failure/);
     const compile = run(['test', '--offline', '--features', 'compile-failure']);
     assert.notEqual(compile.status, 0);
     assert.equal(compile.rows.at(-1).phase, 'compile');
+    // @source-text-assertion-ok runtime process output or generated metrics, never source text
     assert.match(compile.stderr, /intentional compiler failure/);
     const clippy = run(['clippy', '--offline', '--all-targets', '--', '-D', 'warnings']);
     assert.equal(clippy.status, 0, clippy.stderr);
@@ -127,6 +132,7 @@ test('command totals preserve failures, environment and report files (#10279)', 
     });
     assert.notEqual(missing.status, 0);
     const last = readFileSync(metrics, 'utf8').trim().split('\n').map(JSON.parse).at(-1);
+    // @source-text-assertion-ok runtime process output or generated metrics, never source text
     assert.match(last.error, /ENOENT/);
     assert.equal(last.exitCode, missing.status);
   } finally {

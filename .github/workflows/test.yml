@@ -326,6 +326,8 @@ jobs:
         with:
           filters: |
             rust:
+              - 'scripts/ci-rust-metrics.mjs'
+              - 'scripts/ci-rust-metrics.test.mjs'
               - 'rust/**'
               - 'scripts/retained-browser-runtime-tests.mjs'
               - 'scripts/stage-retained-runtime-peer.mjs'

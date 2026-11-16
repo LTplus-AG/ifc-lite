@@ -150,7 +150,7 @@ for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
     input.dimensions[0].plane = { axis: 'front', position: 4, flipped: false };
     const first = await parse(new StepExporter(source, prepareDrawingAnnotations(source, undefined, input)).export({ schema: Schema }).content);
     const changed = await parse(new StepExporter(first, prepareDrawingAnnotations(first, undefined,
-      { ...input, paperScale: 50, ifcOffset: [10, 0, 0] })).export({ schema: Schema }).content);
+      { ...input, paperScale: 50, ifcOffset: [10, 0, 0], absorbed: new Set(readDrawingAnnotations(first).map(record => record.identity)) })).export({ schema: Schema }).content);
     const dim = readDrawingAnnotations(changed).find(record => record.saved.item.kind === 'dimension')!;
     assert.deepEqual(dim.saved.plane, input.dimensions[0].plane, 'persist the actual dimension cut');
     const lengths = curveLengths(changed, dim.id);

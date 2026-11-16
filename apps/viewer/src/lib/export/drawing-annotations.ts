@@ -67,12 +67,17 @@ function validSaved(saved: Saved): boolean {
   return typeof item.label === 'string' && validElementTags([{ ...item.value, modelId: 'restored' }]).length === 1;
 }
 
+/** The layout boundary used by both restoration and unowned-record replacement. */
+function sameDrawingLayout(a: Pick<Saved, 'paperScale' | 'ifcOffset'>, b: Pick<Saved, 'paperScale' | 'ifcOffset'>): boolean {
+  return (a.paperScale ?? 100) === (b.paperScale ?? 100)
+    && JSON.stringify(a.ifcOffset ?? [0, 0, 0]) === JSON.stringify(b.ifcOffset ?? [0, 0, 0]);
+}
+
 export function restorableDrawingAnnotationRecords(store: IfcDataStore, view?: MutablePropertyView) {
   const records = readDrawingAnnotations(store, view);
   const first = records[0]?.saved;
   return first ? records.filter(({ saved }) => isDimensionOnPlane({ plane: saved.plane }, first.plane)
-    && (saved.paperScale ?? 100) === (first.paperScale ?? 100)
-    && JSON.stringify(saved.ifcOffset ?? [0, 0, 0]) === JSON.stringify(first.ifcOffset ?? [0, 0, 0])) : [];
+    && sameDrawingLayout(saved, first)) : [];
 }
 
 export function restoredDrawingAnnotations(store: IfcDataStore, modelId: string, view?: MutablePropertyView) {
@@ -111,14 +116,15 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
     planes.push(item.kind === 'dimension' ? item.value.plane ?? input.plane : input.plane);
     current.set(key(item), planes);
   }
+  const ownedKeys = new Set(existing.filter(({ identity }) => input.absorbed?.has(identity)).map(({ saved }) => key(saved.item)));
   const replaceable = existing.filter(({ identity, saved }) => input.absorbed?.has(identity)
-    || current.get(key(saved.item))?.some(plane => isDimensionOnPlane({ plane: saved.plane }, plane)));
+    || (!ownedKeys.has(key(saved.item)) && sameDrawingLayout(saved, input)
+      && current.get(key(saved.item))?.some(plane => isDimensionOnPlane({ plane: saved.plane }, plane))));
   if (!items.length && !replaceable.length && !legacy.size) return view;
   // Preserve native entity identities and geometry when reopening unchanged IFC.
   if (!legacy.size && JSON.stringify(replaceable.map(({ saved }) => saved.item)) === JSON.stringify(items)
     && replaceable.every(({ saved }) => JSON.stringify(saved.plane) === JSON.stringify(saved.item.kind === 'dimension' ? saved.item.value.plane ?? input.plane : input.plane)
-      && (saved.paperScale ?? 100) === input.paperScale
-      && JSON.stringify(saved.ifcOffset ?? [0, 0, 0]) === JSON.stringify(input.ifcOffset ?? [0, 0, 0]))) return view;
+      && sameDrawingLayout(saved, input))) return view;
   const base = view ?? new MutablePropertyView(store.properties ?? null, 'drawing-export');
   return base.prepareAtomic(draft => {
     const editor = new StoreEditor(store, draft);

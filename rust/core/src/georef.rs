@@ -82,12 +82,6 @@ pub struct GeoReference {
     /// Scale factor converting MapConversion values to metres, derived from
     /// `MapUnit` (0.001 for millimetres). `None` when no MapUnit is authored.
     pub map_unit_scale: Option<f64>,
-    /// Whether `map_unit` was READ (its declared factor is the one its name
-    /// means) or is a fallback nobody may carry into a write: the METRE
-    /// default of an unreadable unit, or a name whose declared factor
-    /// disagrees (a survey foot named FOOT). `None` when no MapUnit is
-    /// authored. The TS twin's `mapUnitResolved`.
-    pub map_unit_resolved: Option<bool>,
     /// Where the data was authored (`IfcMapConversion`, ePSet fallback, or
     /// legacy `IfcSite` lat/long). `None` when only a named
     /// `IfcProjectedCRS` was found: no conversion was authored, or the one
@@ -132,7 +126,6 @@ impl Default for GeoReference {
             map_zone: None,
             map_unit: None,
             map_unit_scale: None,
-            map_unit_resolved: None,
             source: None,
             eastings: 0.0,
             northings: 0.0,
@@ -459,7 +452,7 @@ impl GeoRefExtractor {
             if entity.ifc_type == IfcType::IfcGeographicCRS {
                 parse_geographic_crs(entity, &mut georef);
             } else {
-                Self::parse_projected_crs(entity, decoder, &mut georef);
+                Self::parse_projected_crs(entity, decoder, &mut georef, &mut details);
             }
             details.well_known_text = well_known_text_for(decoder, entity.id, &candidates.well_known_texts);
         }
@@ -477,6 +470,8 @@ impl GeoRefExtractor {
         // it counts as no operation here.
         if !georef.has_georef() {
             if let Some(georef) = Self::extract_from_pset(decoder, entity_types)? {
+                // An ePSet MapUnit is a label: resolved when the label table knows it.
+                details.map_unit_resolved = georef.map_unit.as_deref().map(|l| crate::unit_labels::infer_map_unit_scale(l).is_some());
                 return Ok(Some((georef, details)));
             }
             return Self::extract_from_site(decoder, entity_types)
@@ -584,6 +579,7 @@ impl GeoRefExtractor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         georef: &mut GeoReference,
+        details: &mut GeoReferenceDetails,
     ) {
         // Index 0: Name (e.g., "EPSG:32632"). Blank reads as unset, the rule
         // the ePSet path applies: the viewer gates on a non-empty CRS name,
@@ -700,7 +696,7 @@ impl GeoRefExtractor {
             }
             georef.map_unit = Some(unit_name);
             georef.map_unit_scale = Some(unit_scale);
-            georef.map_unit_resolved = Some(resolved);
+            details.map_unit_resolved = Some(resolved);
         }
     }
 

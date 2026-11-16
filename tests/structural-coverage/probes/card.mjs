@@ -69,7 +69,8 @@ const refsIn = (v) => (Array.isArray(v) ? v.flatMap(refsIn) : v && typeof v === 
 /** Rooted records whose card may show `rec`: itself when rooted, else the nearest rooted records referencing it. */
 function selections(ctx, file, types, rec) {
   const rooted = (r) => types.get(r?.type)?.rooted;
-  if (rooted(rec)) return [rec.id];
+  // Reinforcement resources are directly inspectable by express id even without a rooted owner.
+  if (rooted(rec) || rec.type === 'IFCSURFACEREINFORCEMENTAREA') return [rec.id];
   const parents = inverse(ctx, file);
   const out = new Set();
   const seen = new Set([rec.id]);

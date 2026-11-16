@@ -106,7 +106,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'structuralViewMode',
-  'siteContextModels', // site context: every context-model record goes with the models
+  'siteContextCategories', 'siteContextModels', // site context: every context-model record goes with the models, and no category stays reported loaded (#10481 review)
   'serverPropertiesRuns', // #9538 model-owned optional property polling
   'pendingPresentationLayerReveal', // #9273 one-shot layer reveal belongs to the outgoing model
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session

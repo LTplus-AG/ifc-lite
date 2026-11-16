@@ -215,13 +215,19 @@ export const siteContextTeardown = defineSliceTeardown(
       siteContextError: null,
       siteContextModels: new Map(),
     }),
+    // A category that loaded as the removed model is no longer loaded: back to idle, so the
+    // section does not report it done against a model that is gone (#10481 review).
     'model-removed': (scope, state) => {
-      if (!state.siteContextModels?.has(scope.modelId)) return {};
+      const categories = state.siteContextCategories ?? {};
+      const stale = Object.entries(categories).filter(([, c]) => c?.modelId === scope.modelId);
+      if (!state.siteContextModels?.has(scope.modelId) && stale.length === 0) return {};
       const models = new Map(state.siteContextModels);
       models.delete(scope.modelId);
-      return { siteContextModels: models };
+      const next = { ...categories };
+      for (const [kind] of stale) next[kind as SiteContextLayerKind] = { status: 'idle', issues: [], attribution: [] };
+      return { siteContextModels: models, siteContextCategories: next };
     },
-    'all-models-cleared': () => ({ siteContextModels: new Map() }),
+    'all-models-cleared': () => ({ siteContextModels: new Map(), siteContextCategories: {} }),
   },
 );
 

@@ -139,9 +139,8 @@ export function readSlabOutline(reader: ModelReader, slabId: number): OutlineRea
     // A profile only stands for the plan outline when it lies in a horizontal plane and is swept straight along its normal:
     // an oblique ExtrudedDirection moves the top profile sideways, so the base alone would miss part of the slab.
     if (!position || Math.abs(position.z[2]) < 0.99) continue;
-    const dirEntity = reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection')));
-    const d = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
-    if (!d || d.some((v) => v === null) || Math.hypot(d[0] ?? 0, d[1] ?? 0) > 1e-6 * Math.hypot(...(d as number[]))) continue;
+    const direction = extrusionDirection(reader, solid.expressId);
+    if (!direction || Math.hypot(direction[0], direction[1]) > 1e-6) continue;
     const placed = composeFrames(frame!, position);
     fromBody.rings.push(profile.map(([x, y]) => applyFrame(placed, [x, y, 0])));
     fromBody.readable++;
@@ -207,11 +206,10 @@ function verticalPrism(reader: ModelReader, id: number | null, outer: Frame = ID
   const profile = profilePoints(reader, asRef(reader.attr(solid, 'SweptArea')));
   const depth = asNumber(reader.attr(solid, 'Depth'));
   const position = reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
-  const dirEntity = reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection')));
-  const d = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
-  if (!profile || profile.length < 3 || depth === null || !position || !d || d.some((v) => v === null)) return null;
+  const direction = extrusionDirection(reader, solid.expressId);
+  if (!profile || profile.length < 3 || depth === null || !position || !direction) return null;
   const placed = composeFrames(outer, position);
-  const worldDirection = [0, 1, 2].map((axis) => placed.x[axis]! * (d[0] as number) + placed.y[axis]! * (d[1] as number) + placed.z[axis]! * (d[2] as number));
+  const worldDirection = [0, 1, 2].map((axis) => placed.x[axis]! * direction[0] + placed.y[axis]! * direction[1] + placed.z[axis]! * direction[2]);
   if (Math.abs(placed.z[0]) > 1e-6 || Math.abs(placed.z[1]) > 1e-6 || Math.hypot(worldDirection[0]!, worldDirection[1]!) > 1e-6 * Math.hypot(...worldDirection)) return null;
   const plan = profile.map(([x, y]) => applyFrame(placed, [x, y, 0]));
   const highPoints = plan.map((p) => [p[0] + worldDirection[0]! * depth, p[1] + worldDirection[1]! * depth, p[2] + worldDirection[2]! * depth] as Vec3);
@@ -302,12 +300,8 @@ function readExtrusion(reader: ModelReader, item: number, out: Vec3[], placed: F
   if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') return false;
   const profile = profilePoints(reader, asRef(reader.attr(solid, 'SweptArea')));
   const depth = asNumber(reader.attr(solid, 'Depth'));
-  const dirEntity = reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection')));
-  const ratios = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
-  if (!profile || depth === null || !ratios || ratios.some((v) => v === null)) return false;
-  const n = Math.hypot(...(ratios as number[]));
-  if (!(n > 0)) return false;
-  const dir: Vec3 = [(ratios[0] as number) / n, (ratios[1] as number) / n, ((ratios[2] as number | undefined) ?? 0) / n];
+  const dir = extrusionDirection(reader, solid.expressId);
+  if (!profile || depth === null || !dir) return false;
   const position = reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
   if (!position) return false;
   for (const [x, y] of profile) {
@@ -315,6 +309,17 @@ function readExtrusion(reader: ModelReader, item: number, out: Vec3[], placed: F
     out.push(applyFrame(placed, applyFrame(position, [x + dir[0] * depth, y + dir[1] * depth, dir[2] * depth])));
   }
   return unwrapped!.subtracted;
+}
+
+/** `IfcExtrudedAreaSolid.Depth` follows a unit direction; null for malformed or zero-length ratios. */
+function extrusionDirection(reader: ModelReader, solidId: number): Vec3 | null {
+  const direction = reader.entity(asRef(reader.attr(reader.entity(solidId), 'ExtrudedDirection')));
+  const ratios = direction && Array.isArray(direction.attributes[0]) ? direction.attributes[0].map(asNumber) : null;
+  if (!ratios || ratios.length < 2 || ratios.length > 3 || ratios.some((v) => v === null)) return null;
+  const vector: Vec3 = [ratios[0] as number, ratios[1] as number, (ratios[2] as number | undefined) ?? 0];
+  const magnitude = Math.hypot(...vector);
+  if (!(magnitude > 0) || !Number.isFinite(magnitude)) return null;
+  return [vector[0] / magnitude, vector[1] / magnitude, vector[2] / magnitude];
 }
 
 /**
@@ -341,15 +346,13 @@ export function extrusionRegions(reader: ModelReader, productId: number): { regi
         if (swept?.type === 'IFCARBITRARYPROFILEDEFWITHVOIDS' && asRefList(reader.attr(swept, 'InnerCurves')).length > 0) complete = false;
         const profile = solid?.type === 'IFCEXTRUDEDAREASOLID' ? profilePoints(reader, asRef(reader.attr(solid, 'SweptArea'))) : null;
         const depth = solid ? asNumber(reader.attr(solid, 'Depth')) : null;
-        const dirEntity = solid ? reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection'))) : null;
-        const d = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
+        const direction = solid ? extrusionDirection(reader, solid.expressId) : null;
         const position = !solid || reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
-        const n = d && !d.some((v) => v === null) ? Math.hypot(...(d as number[])) : 0;
-        if (!frame || !profile || profile.length < 3 || depth === null || !position || !(n > 0)) {
+        if (!frame || !profile || profile.length < 3 || depth === null || !position || !direction) {
           complete = false;
           continue;
         }
-        const dir = (d as number[]).map((v) => (v / n) * depth);
+        const dir = direction.map((v) => v * depth);
         const at = (x: number, y: number, k: number) => applyFrame(frame, applyFrame(position, [x + k * dir[0], y + k * dir[1], k * (dir[2] ?? 0)]));
         regions.push([profile.map(([x, y]) => at(x, y, 0)), profile.map(([x, y]) => at(x, y, 1))]);
       }

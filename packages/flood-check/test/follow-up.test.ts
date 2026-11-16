@@ -41,6 +41,22 @@ describe('item 8: a slab hole cut by a Boolean DIFFERENCE is read and classified
     expect(fp.source).toBe('slab-outline-voids-filled');
     expect(fp.courtyardRings).toBeUndefined();
   });
+  it.each([
+    { name: 'direction (0,0,2), depth 0.2 m is shallow', z: 2, depth: 0.2, through: false },
+    { name: 'direction (0,0,2), depth 0.4 m goes through', z: 2, depth: 0.4, through: true },
+    { name: 'direction (0,0,0.5), depth 0.2 m is shallow', z: 0.5, depth: 0.2, through: false },
+    { name: 'direction (0,0,0.5), depth 0.4 m goes through', z: 0.5, depth: 0.4, through: true },
+  ])('normalizes an extrusion direction for a cut: $name (#10503 review round 5)', async ({ z, depth, through }) => {
+    const fp = (await extract(cutSlab((b) => b.rectExtrusion(10, 5, 8, 4, depth, b.axis(0, 0, -0.3), b.dir(0, 0, z))))).footprint;
+    expect(fp.source).toBe(through ? 'slab-outline' : 'slab-outline-voids-filled');
+    if (through) expect(fp.courtyardRings).toHaveLength(1);
+    else expect(fp.courtyardRings).toBeUndefined();
+  });
+  it('a zero-length extrusion direction leaves the cut unreadable, not a through hole (#10503 review round 5)', async () => {
+    const fp = (await extract(cutSlab((b) => b.rectExtrusion(10, 5, 8, 4, 0.4, b.axis(0, 0, -0.3), b.dir(0, 0, 0))))).footprint;
+    expect(fp.source).toBe('slab-outline-voids-filled');
+    expect(fp.courtyardRings).toBeUndefined();
+  });
   it('two partial-depth cuts that jointly remove the slab thickness remain unreadable until their combined effect is proven', async () => {
     const fp = (await extract((b) => {
       const slab = b.rectExtrusion(10, 5, 20, 10, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));

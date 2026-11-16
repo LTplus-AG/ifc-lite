@@ -25,7 +25,7 @@
  * scale and stays closed.
  */
 
-import { closestBoundaryPoint, insideRing, ringArea, ringContainedInUnion } from './geom.js';
+import { closestBoundaryPoint, insideRing, ringArea } from './geom.js';
 import type { MapPoint } from './types.js';
 
 export const OUTLINE_PROBE = 0.55;
@@ -41,13 +41,21 @@ export interface PreparedFootprint {
   readonly closedSmallRings: readonly number[];
 }
 
-/** Rings whose whole boundary lies strictly inside the union of the others, without crossing an edge. */
+/** Rings whose whole boundary (edges sampled every 0.25 m, not only vertices) lies inside the union of the others. */
 function nestedRings(rings: Rings): Set<number> {
   const out = new Set<number>();
   rings.forEach((ring, j) => {
     const others = rings.filter((_, i) => i !== j);
     if (ring.length < 3 || others.length === 0) return;
-    if (!ringContainedInUnion(ring, others)) return;
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 0.25));
+      for (let k = 0; k < steps; k++) {
+        const p = { x: a.x + ((b.x - a.x) * k) / steps, y: a.y + ((b.y - a.y) * k) / steps };
+        if (!others.some((o) => insideRing(p, o))) return;
+      }
+    }
     out.add(j);
   });
   return out;

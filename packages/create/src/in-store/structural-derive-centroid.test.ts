@@ -78,6 +78,8 @@ ${beam(31, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,$,$,0.0
 ${beam(32, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,$,0.02,$,0.1,0.015,$,$,$,$,$)')}
 ${beam(33, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.,0.02,$,0.1,0.015,$,$,$,$,$)')}
 ${beam(34, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,$,$,0.1,0.015,$,$,$,$,$)')}
+${beam(35, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.035,0.01,0.02,$,0.1,0.015,$,$,$,$,$)')}
+${beam(36, "IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,$,0.1,'x',$,$,$,$,$)")}
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -133,5 +135,7 @@ describe('structural derive idealises an asymmetric section through its centroid
     expect(axes.has(324), 'WebThickness missing').toBe(false);
     expect(axes.has(334), 'WebThickness zero').toBe(false);
     expect(axes.has(344), 'BottomFlangeThickness missing').toBe(false);
+    expect(axes.has(354), 'depth equal to the two flange thicknesses leaves no web').toBe(false);
+    expect(axes.has(364), 'TopFlangeThickness present but unreadable').toBe(false);
   });
 });

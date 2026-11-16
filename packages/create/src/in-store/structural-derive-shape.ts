@@ -141,13 +141,15 @@ function segmentOrder(segments: unknown, count: number): number[] | null | strin
 type AsymmetricI = { bottom: number; top: number; depth: number; web: number; bottomThickness: number; topThickness: number };
 
 /**
- * An asymmetric I's dimensions, or null when the geometry reader would refuse it: a missing or non-positive
- * width, thickness or web, or a depth that leaves the web no height. An omitted TopFlangeThickness is the
- * bottom one (schema rule WR3). Bounds and centroid both read this, so they cannot disagree on validity.
+ * An asymmetric I's dimensions, or null when it is not idealised: a missing or non-positive width, thickness or
+ * web, or a depth that leaves the web no height. The geometry reader refuses only the last; derive also refuses
+ * a section with no web or flange, which has no centroid worth an axis. An omitted TopFlangeThickness is the
+ * bottom one (schema rule WR3), a present but unreadable one is refused. Bounds and centroid both read this,
+ * so they cannot disagree on validity.
  */
 function asymmetricIDimensions(a: readonly unknown[]): AsymmetricI | null {
   const [bottom, depth, web, bottomThickness, top] = [3, 4, 5, 6, 8].map((i) => num(a[i]));
-  const topThickness = num(a[9]) ?? bottomThickness;
+  const topThickness = a[9] === null || a[9] === undefined ? bottomThickness : num(a[9]);
   if (bottom === null || depth === null || web === null || bottomThickness === null || top === null || topThickness === null) return null;
   const positive = [bottom, top, web, bottomThickness, topThickness].every((v) => v > 0);
   return positive && depth > bottomThickness + topThickness ? { bottom, top, depth, web, bottomThickness, topThickness } : null;

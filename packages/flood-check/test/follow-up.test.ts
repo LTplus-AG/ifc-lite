@@ -84,3 +84,53 @@ describe('item 5: roofing that is not a slab counts, over the hole\'s whole area
     expect(await courtyards(flat('IFCPLATE', '$,.CURTAIN_PANEL.', 5, 10))).toBe(1);
   });
 });
+
+describe('item 20: a partial footprint withholds above-mapped-class-range, by that reason', () => {
+  it('a window clearing a shallow class gets above-mapped on a complete footprint, and is withheld (partial-footprint named) on a partial one', async () => {
+    const { checkFloodExposure } = await import('../src/check/check.js');
+    const { boxFacts, candidate, CODE, CONFIRMED, E0, flatTerrain, N0, NO_OTHER_BUILDINGS, syntheticRaster } = await import('./helpers.js');
+    const outside = (p: { x: number; y: number }) => !(p.x > E0 && p.x < E0 + 20 && p.y > N0 && p.y < N0 + 10);
+    const ras = syntheticRaster(E0 - 10, N0 - 10, 80, 60, 0.5, (p) => (outside(p) ? CODE['depth-0-0.1'] : 0));
+    const doors = [candidate({ expressId: 1, name: 'Fenster', category: 'window', position: { x: E0 + 10, y: N0 }, level: 501.5 }), candidate({ expressId: 2, position: { x: E0 + 5, y: N0 + 10 }, level: 500 })];
+    const opts = { renderingConfirmation: CONFIRMED, otherBuildings: NO_OTHER_BUILDINGS };
+    const complete = boxFacts(doors);
+    expect(checkFloodExposure(complete, ras, flatTerrain(500), opts).results[0].outcome).toBe('above-mapped-class-range');
+    const partial = boxFacts(doors, { footprint: { ...complete.footprint, partial: true } });
+    const r = checkFloodExposure(partial, ras, flatTerrain(500), opts).results[0];
+    expect(r.outcome).toBe('within-class-range');
+    expect(r.favourableWithheldBecause.join(' ')).toMatch(/footprint may miss part of the building/);
+  });
+});
+
+describe('item 15: outline terrain samples, on a slope and for a long outline', () => {
+  it('a long outline is sampled in at most 400 points (plus one per side)', async () => {
+    const { outlineTerrainPoints, resolveSampling } = await import('../src/check/sampling.js');
+    const { prepareFootprint } = await import('../src/region.js');
+    const { E0, N0 } = await import('./helpers.js');
+    const ring = [{ x: E0, y: N0 }, { x: E0 + 5000, y: N0 }, { x: E0 + 5000, y: N0 + 20 }, { x: E0, y: N0 + 20 }];
+    const pts = outlineTerrainPoints(prepareFootprint({ rings: [ring], source: 'given' }), resolveSampling());
+    expect(pts.length).toBeLessThanOrEqual(404);
+    expect(pts.length).toBeGreaterThan(380);
+  });
+
+  it('on a slope the band spans the uphill and the downhill side: a ground storey at the uphill terrain passes, one above it by more than the band is refused', async () => {
+    const { checkFloodExposure } = await import('../src/check/check.js');
+    const { FloodCheckRefusal } = await import('../src/errors.js');
+    const { boxFacts, candidate, CODE, CONFIRMED, E0, flatTerrain, N0, NO_OTHER_BUILDINGS, syntheticRaster } = await import('./helpers.js');
+    // A 100 m long building on terrain rising 10 m from west to east; the doors on the east (uphill) end.
+    const ring = [{ x: E0, y: N0 }, { x: E0 + 100, y: N0 }, { x: E0 + 100, y: N0 + 20 }, { x: E0, y: N0 + 20 }];
+    const slope = { ...flatTerrain(500), heightAt: (p: { x: number }) => 500 + 0.1 * (p.x - E0) };
+    const ras = syntheticRaster(E0 - 20, N0 - 20, 280, 120, 0.5, () => CODE['depth-0-0.1']);
+    const facts = (g: number) => boxFacts([candidate({ position: { x: E0 + 95, y: N0 }, level: g })], {
+      footprint: { rings: [ring], source: 'given', fromElements: [] },
+      groundStorey: { expressId: 10, level: g, basis: 'given' },
+      storeys: [{ expressId: 10, globalId: 's10', name: 'EG', level: g }],
+    });
+    const opts = { renderingConfirmation: CONFIRMED, otherBuildings: NO_OTHER_BUILDINGS };
+    const ok = checkFloodExposure(facts(509.5), ras, slope, opts).heightPlausibility;
+    expect(ok.status).toBe('within-band');
+    expect(ok.terrainMin!).toBeLessThan(500.5);
+    expect(ok.terrainMax!).toBeGreaterThan(509.5);
+    expect(() => checkFloodExposure(facts(514), ras, slope, opts)).toThrow(FloodCheckRefusal);
+  });
+});

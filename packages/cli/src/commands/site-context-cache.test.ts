@@ -28,10 +28,12 @@ describe('site-context disk cache', () => {
     const OLD = 1 << 20, NEW = 48 << 20;
     await cache.set(key, { status: 206, headers: { 'content-range': `bytes 0-${OLD - 1}/${OLD}` }, body: body(OLD, 1) });
     const seen = new Set<number>();
+    let overlapping = 0;
     let writing = true;
     const writer = Promise.resolve(cache.set(key, { status: 206, headers: { 'content-range': `bytes 0-${NEW - 1}/${NEW}` }, body: body(NEW, 2) })).finally(() => { writing = false; });
     while (writing) {
       const hit = await cache.get(key);
+      if (writing) overlapping++;
       if (hit) {
         const range = Number(/\/(\d+)$/.exec(hit.headers['content-range'])![1]);
         // The body must be exactly the one its metadata describes.
@@ -39,6 +41,9 @@ describe('site-context disk cache', () => {
       }
     }
     await writer;
+    // The check must have observed reads during the rewrite, or it proves nothing (#10480 review).
+    expect(overlapping).toBeGreaterThan(0);
+    expect(seen.size).toBeGreaterThan(0);
     expect([...seen].every((n) => n === OLD || n === NEW)).toBe(true);
     expect((await cache.get(key))!.body.byteLength).toBe(NEW);
   });

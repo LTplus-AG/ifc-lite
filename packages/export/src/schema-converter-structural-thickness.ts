@@ -25,7 +25,7 @@ import { parseStepNumber } from './step-slot-grammar.js';
 const THICKNESS_PSET = 'Pset_StructuralSurfaceMemberVaryingThickness';
 const ENTITY = 'IFCSTRUCTURALSURFACEMEMBERVARYING';
 const NAMES = ['Thickness1', 'Thickness2', 'Thickness3'];
-const THICKNESS_LOCATED = `${THICKNESS_PSET} gives Location properties, which cannot be checked against the IfcShapeAspect order; IFC2X3 SubsequentThickness and VaryingThicknessLocation are not written`;
+const THICKNESS_LOCATED = `${THICKNESS_PSET} gives Location properties, which cannot be checked against the IfcShapeAspect order; IFC2X3 SubsequentThickness and VaryingThicknessLocation are not written, so the output does not conform to IFC2X3 until they are given`;
 export const THICKNESS_WRITTEN = `IFC2X3 SubsequentThickness is held in IFC4 as ${THICKNESS_PSET} Thickness1 to Thickness3`;
 const THICKNESS_READ = `${THICKNESS_PSET} Thickness1 to Thickness3 are written as the IFC2X3 Thickness and SubsequentThickness, located by the one IfcShapeAspect of the member's representation`;
 
@@ -126,14 +126,19 @@ export class StructuralThickness {
     return ['SubsequentThickness', 'VaryingThicknessLocation'];
   }
 
-  /** IFC4 -> IFC2X3: why a member's property set is not read, when its set gives locations; the generic path writes the member. */
-  notice(id: number, entity: string): string | undefined {
-    return this.mode === 'downgrade' && entity === ENTITY && this.located.has(id) ? THICKNESS_LOCATED : undefined;
+  /** IFC4 -> IFC2X3: an IFC4 varying member record whose set gives locations; the generic path writes it. */
+  private locatedMember(id: number, entity: string, args: readonly string[]): boolean {
+    return this.mode === 'downgrade' && entity === ENTITY && args.length === 9 && this.located.has(id);
+  }
+
+  /** IFC4 -> IFC2X3: why a member the generic path writes has no IFC2X3 thicknesses, or undefined. */
+  notice(id: number, entity: string, args: readonly string[]): string | undefined {
+    return this.locatedMember(id, entity, args) ? THICKNESS_LOCATED : undefined;
   }
 
   /** IFC4 -> IFC2X3: the IFC2X3 member body from its property set and its one aspect, or undefined. */
   rewrite(id: number, entity: string, args: readonly string[]): StructuralRewrite | undefined {
-    if (this.mode !== 'downgrade' || entity !== ENTITY || args.length !== 9 || this.located.has(id)) return undefined;
+    if (this.mode !== 'downgrade' || entity !== ENTITY || args.length !== 9 || this.locatedMember(id, entity, args)) return undefined;
     const [first, ...rest] = this.psets.get(id) ?? [];
     const aspect = this.aspectOf(args[6]);
     if (first === undefined || aspect === null || !this.pointAspects.has(aspect)) return undefined;

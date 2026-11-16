@@ -10,18 +10,17 @@ interface AttributeBarrier {
   value: NewEntity['attributes'];
   descriptor?: PropertyDescriptor;
   listeners: ExposureListener | Set<ExposureListener>;
+  escaped: boolean;
+  borrow: NewEntity | undefined;
 }
 const barriers = new WeakMap<object, AttributeBarrier>();
-/** Rows whose mutable attribute arrays reached a caller; their borrows are never reused. */
-const escaped = new WeakSet<NewEntity>();
-const borrows = new WeakMap<NewEntity, { row: NewEntity; slot: number }>();
 // A session owns its live rows, so weak keys alone do not bound the retained
 // frozen copies. A finite FIFO keeps hot reads cheap without a second model.
 const BORROW_CACHE_LIMIT = 65_536;
 // WeakRef targets stay alive until the current JavaScript job ends. A long
 // synchronous authoring/export session must be able to collect evicted rows
 // before returning to the event loop, so retain only this bounded FIFO.
-const borrowSlots: NewEntity[] = [];
+const borrowSlots: AttributeBarrier[] = [];
 let nextBorrowSlot = 0;
 
 /** Cooperative cloning may unwrap our own data barrier, never a caller getter. */
@@ -40,7 +39,7 @@ export function withoutEntityExposure<T>(read: () => T): T {
  * obtained an attribute array, its index must conservatively recheck that row:
  * an alias can be edited again without another getNewEntity call. */
 function notify(entity: NewEntity, barrier: AttributeBarrier): void {
-  escaped.add(entity); borrows.delete(entity);
+  barrier.escaped = true; barrier.borrow = undefined;
   if (typeof barrier.listeners === 'function') barrier.listeners(entity);
   else for (const listener of barrier.listeners) listener(entity);
 }
@@ -68,14 +67,14 @@ export function observeEntityAttributes(entity: NewEntity, exposed: ExposureList
     }
     // A previously returned array can change without another getter, including
     // after a transaction rebuilds its temporary reference indexes.
-    if (escaped.has(entity)) exposed(entity);
+    if (previous.escaped) exposed(entity);
     return;
   }
   const descriptor = Object.getOwnPropertyDescriptor(entity, 'attributes');
-  if (descriptor && !descriptor.configurable) { escaped.add(entity); exposed(entity); return; }
+  if (descriptor && !descriptor.configurable) { exposed(entity); return; }
   const value = descriptor && 'value' in descriptor
     ? descriptor.value as NewEntity['attributes'] : withoutEntityExposure(() => entity.attributes);
-  barriers.set(entity, { value, listeners: exposed, ...(descriptor?.get || descriptor?.set ? { descriptor } : {}) });
+  barriers.set(entity, { value, listeners: exposed, escaped: false, borrow: undefined, ...(descriptor?.get || descriptor?.set ? { descriptor } : {}) });
   Object.defineProperty(entity, 'attributes', {
     enumerable: descriptor?.enumerable ?? true, configurable: true,
     get: readAttributes,
@@ -107,18 +106,18 @@ function frozenCopy(value: unknown, copies: Map<object, unknown>): unknown {
  * while cached, so repeated scans cost no later transaction (#8452). Cold
  * copies can be evicted; held borrows stay frozen and detached. */
 export function readEntitySnapshot(entity: NewEntity): NewEntity {
-  const cached = borrows.get(entity);
-  if (cached) return cached.row;
+  const barrier = barriers.get(entity);
+  if (barrier?.borrow) return barrier.borrow;
   const row = withoutEntityExposure(() => {
     const copy = { ...entity };
     copy.attributes = frozenCopy(copy.attributes, new Map()) as NewEntity['attributes'];
     return Object.freeze(copy);
   });
-  if (barriers.has(entity) && !escaped.has(entity)) {
+  if (barrier && !barrier.escaped) {
     const previous = borrowSlots[nextBorrowSlot];
-    if (previous && borrows.get(previous)?.slot === nextBorrowSlot) borrows.delete(previous);
-    borrows.set(entity, { row, slot: nextBorrowSlot });
-    borrowSlots[nextBorrowSlot] = entity;
+    if (previous) previous.borrow = undefined;
+    barrier.borrow = row;
+    borrowSlots[nextBorrowSlot] = barrier;
     nextBorrowSlot = (nextBorrowSlot + 1) % BORROW_CACHE_LIMIT;
   }
   return row;

@@ -23,3 +23,5 @@ Invalidate planning classifications when product GUIDs or placement classes chan
 Avoid cold reference-projection allocations for small relationship classes while bounding direct lookup work.
 
 Release completed transaction indexes and collect evicted read snapshots during synchronous sessions, while preserving retained draft views and already exposed mutable aliases.
+
+Keep borrow and exposure state in the shared attribute barrier to avoid duplicate weak-collection lookups and cache metadata allocations.

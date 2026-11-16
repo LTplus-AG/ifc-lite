@@ -313,7 +313,7 @@ export function useIfcLoader() {
     const wasHidden = visibilityWitness();
     const federatedHead = target.kind === 'federated' && !processedModel ? await localAdmission.preflight() : undefined;
     if (federatedHead === null || isStale()) return;
-    if (joiningPrimary && (!await waitForPrimaryInitialization(joiningPrimary.ready, metadataAbort.signal) || isStale())) { settleLoadUi(); return; }
+    if (joiningPrimary && (!await waitForPrimaryInitialization(joiningPrimary.ready, metadataAbort.signal) || isStale())) { activity.cancelled = true; settleLoadUi(); return; }
 
     {
       const scene = target.kind === 'federated' && !processedModel ? getGlobalRenderer()?.getScene() : undefined;

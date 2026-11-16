@@ -259,6 +259,7 @@ for (const refused of [false, true]) it(`#10264 federated publication waits for 
     await act(async () => { primary.release(); await Promise.all([primaryLoad, addLoad]); });
     const models = useViewerStore.getState().models;
     assert.equal(models.has('joined'), !refused, 'an admitted child survives primary reset; a refused parent admits no child');
+    if (refused) assert.equal(useActivityJournal.getState().jobs.find(job => job.subject === 'joined.glb')?.outcome, 'cancelled');
     if (!refused) {
       assert.equal(models.get('primary')?.loadState, 'complete');
       assert.equal(models.get('joined')?.loadState, 'complete');

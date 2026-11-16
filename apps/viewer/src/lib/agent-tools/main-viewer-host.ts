@@ -25,6 +25,8 @@ import type { StoreApi } from '@/sdk/adapters/types';
 import type { BsddClient, ModelEditor, ModelHandle, ModelStatus, ToolHost } from './types.js';
 
 export interface MainViewerToolHostOptions {
+  /** Session lifetime for host-owned jobs, independently of individual MCP calls. */
+  lifetimeSignal?: AbortSignal;
   /** Defaults to a client through this site's `/api/bsdd` proxy (the public endpoint fails CORS). */
   bsdd?: BsddClient;
   /** Writes for the edit tools (`createMainViewerEditor`). Absent, every edit tool is refused. */
@@ -101,6 +103,7 @@ export function createMainViewerToolHost(
 ): ToolHost {
   const bsdd = options.bsdd ?? new BsddNamespace({ apiBase: '/api/bsdd' });
   return {
+    lifetimeSignal: options.lifetimeSignal,
     bsdd,
     ...(options.editor ? { editor: options.editor } : {}),
     models(): ModelHandle[] {

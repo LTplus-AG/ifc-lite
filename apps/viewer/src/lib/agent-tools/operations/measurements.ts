@@ -40,9 +40,14 @@ export const measurementOperations = [
     idle();
     if (i.closed && i.points.length < 3) throw new Error('A closed perimeter needs at least three points.');
     const s = useViewerStore.getState();
+    const count = s.polylineMeasurements.length;
     s.startPolyline(point(i.points[0]));
     for (const p of i.points.slice(1)) s.addPolylinePoint(point(p));
     s.finishPolyline(i.closed);
+    if (useViewerStore.getState().polylineMeasurements.length !== count + 1) {
+      s.cancelPolyline();
+      throw new Error('The native measurement service could not complete a polyline from these points.');
+    }
     return useViewerStore.getState().polylineMeasurements.at(-1);
   }),
   operation<{ id: string }>(metadata('measurements.deleteDistance', 'Delete one existing native distance measurement.'), {

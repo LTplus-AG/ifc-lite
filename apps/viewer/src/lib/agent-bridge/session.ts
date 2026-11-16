@@ -127,7 +127,8 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
     return;
   }
   active?.disconnect();
-  const host = createMainViewerToolHost(useViewerStore, bim, { editor: createMainViewerEditor(useViewerStore) });
+  const lifetime = new AbortController();
+  const host = createMainViewerToolHost(useViewerStore, bim, { editor: createMainViewerEditor(useViewerStore), lifetimeSignal: lifetime.signal });
   resetActivity();
   updateAgentBridgeState({ activity: [] });
   let wasConnected = false;
@@ -143,6 +144,7 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
     WebSocket,
     probePermission: queryLocalNetworkPermission,
     onStatus: (status) => {
+      if (status.kind !== 'connected' && status.kind !== 'connecting') lifetime.abort();
       if (active !== client) return;
       if (status.kind !== 'connected' && status.kind !== 'connecting') flushActivity();
       updateAgentBridgeState({ status });

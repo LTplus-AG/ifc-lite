@@ -58,6 +58,8 @@ export type ReadyModel = ModelHandle & { store: IfcDataStore };
 export type BsddClient = Pick<BsddNamespace, 'search' | 'fetchClassInfo' | 'getPropertySets' | 'searchRelatedClasses'>;
 
 export interface ToolHost {
+  /** Ends host-owned analysis jobs when the agent connection closes. */
+  lifetimeSignal?: AbortSignal;
   /** Every model the host holds, in display order. Read live on each call. */
   models(): ModelHandle[];
   bsdd: BsddClient;

@@ -45,7 +45,7 @@ export function operation<T>(
 
 export const emptySchema: JSONSchemaType<Record<string, never>> = { type: 'object', properties: {}, required: [], additionalProperties: false };
 export const pointSchema: JSONSchemaType<[number, number, number]> = {
-  type: 'array', items: [{ type: 'number' }, { type: 'number' }, { type: 'number' }], minItems: 3, maxItems: 3,
+  type: 'array', items: [{ type: 'number', minimum: -1e9, maximum: 1e9 }, { type: 'number', minimum: -1e9, maximum: 1e9 }, { type: 'number', minimum: -1e9, maximum: 1e9 }], minItems: 3, maxItems: 3,
 };
 export const referenceSchema: JSONSchemaType<{ express_ids: number[] }> = {
   type: 'object', properties: { express_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, maxItems: 1000 } },

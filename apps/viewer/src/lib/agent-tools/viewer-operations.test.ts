@@ -111,6 +111,13 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.deepEqual(new Set(report.panels.map(panel => panel.id)), new Set(WORKSPACE_PANELS.map(panel => panel.id)));
     assert.ok(report.panels.every(panel => panel.complete === false && panel.gaps.length > 0));
   });
+  it('refuses overflow coordinates and incomplete closed perimeters', async () => {
+    assert.equal((await execute('measurements.distance', { start: [0, 0, 0], end: [1e308, 0, 0] })).isError, true);
+    assert.equal(useViewerStore.getState().measurements.length, 0);
+    assert.equal((await execute('measurements.polyline', { points: [[0, 0, 0], [0, 0, 0]], closed: true })).isError, true);
+    assert.equal(useViewerStore.getState().polylineMeasurements.length, 0);
+    assert.equal(useViewerStore.getState().activePolyline, null);
+  });
   it('does not overwrite an in-progress pointer measurement', async () => {
     useViewerStore.getState().startMeasurement({ x: 1, y: 2, z: 3, screenX: 1, screenY: 2 });
     const current = useViewerStore.getState().activeMeasurement;
@@ -166,6 +173,14 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     models.set('A', { ...models.get('A')!, name: 'replacement' });
     useViewerStore.setState({ models });
     assert.equal((await job(queued.job.id)).errorCode, 'STATE_CHANGED');
+  });
+  it('aborts host-owned analysis after its original MCP call has returned', async () => {
+    const lifetime = new AbortController();
+    host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), { lifetimeSignal: lifetime.signal });
+    const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
+    const queued = data<{ job: { id: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
+    lifetime.abort();
+    assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'cancelled');
   });
   it('declares an explicit capability and closed runtime schema for every exact ID', () => {
     const ids = new Set<string>();

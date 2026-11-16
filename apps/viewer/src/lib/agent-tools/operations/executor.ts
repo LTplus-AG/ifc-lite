@@ -71,6 +71,7 @@ export async function executeOperation(
   const input = args.input ?? {};
   try { entry.validate(input); } catch (error) { invalid(error instanceof Error ? error.message : 'Invalid operation input.'); }
   const check = () => {
+    host.lifetimeSignal?.throwIfAborted();
     assertToolActive(context);
     const unavailable = operationUnavailable(entry);
     if (unavailable) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: unavailable });
@@ -111,6 +112,7 @@ export async function executeOperation(
   const controller = new AbortController();
   const abort = () => controller.abort();
   context.signal?.addEventListener('abort', abort, { once: true });
+  host.lifetimeSignal?.addEventListener('abort', abort, { once: true });
   if (context.signal?.aborted) controller.abort();
   const snapshot: OperationJob = { id: crypto.randomUUID(), operation_id: entry.id, model_id: model.id, revision, state: 'running' };
   const active = () => { controller.signal.throwIfAborted(); check(); };
@@ -123,7 +125,10 @@ export async function executeOperation(
     .catch((error: unknown) => {
       snapshot.state = controller.signal.aborted ? 'cancelled' : 'failed';
       snapshot.error = error instanceof Error ? error.message : 'Operation failed.';
-    }).finally(() => context.signal?.removeEventListener('abort', abort));
+    }).finally(() => {
+      context.signal?.removeEventListener('abort', abort);
+      host.lifetimeSignal?.removeEventListener('abort', abort);
+    });
   return { job: { ...snapshot } };
 }
 

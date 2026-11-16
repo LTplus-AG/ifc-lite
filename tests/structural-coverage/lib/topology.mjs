@@ -144,27 +144,39 @@ function transformOperator(step, id) {
 /**
  * The topology vertices of one representation, in its product's axes: its
  * own items when it is an `IfcTopologyRepresentation`, and those of every
- * mapped item's source representation. Bounded: maps nest at most 8 deep.
+ * mapped item's source representation. Null when a mapped item that holds
+ * topology cannot be followed (a map nested over 8 deep, a map, origin or
+ * target this oracle does not read): fewer vertices would check less.
  */
 function representationVertices(step, rep, depth = 0) {
-  if (!rep || depth > 8) return [];
+  if (!rep) return [];
+  if (depth > 8) return null;
   const topology = rep.type === 'IFCTOPOLOGYREPRESENTATION';
-  return (rep.args[3] ?? []).flatMap((ref) => {
+  const points = [];
+  for (const ref of rep.args[3] ?? []) {
     const id = refOf(ref);
     const item = step.get(id);
-    if (item?.type !== 'IFCMAPPEDITEM') return topology ? topologyVertices(step, id) : [];
+    if (item?.type !== 'IFCMAPPEDITEM') {
+      if (topology) points.push(...topologyVertices(step, id));
+      continue;
+    }
     const map = step.get(refOf(item.args[0]));
-    const origin = map?.type === 'IFCREPRESENTATIONMAP' && axisPlacement(step, refOf(map.args[0]));
+    if (map?.type !== 'IFCREPRESENTATIONMAP') return null;
+    const mapped = representationVertices(step, step.get(refOf(map.args[1])), depth + 1);
+    if (mapped?.length === 0) continue;
+    const origin = axisPlacement(step, refOf(map.args[0]));
     const target = transformOperator(step, refOf(item.args[1]));
-    if (!origin || !target) return [];
+    if (!mapped || !origin || !target) return null;
     const frame = compose(target, origin);
-    return representationVertices(step, step.get(refOf(map.args[1])), depth + 1).map((p) => apply(frame, p));
-  });
+    points.push(...mapped.map((p) => apply(frame, p)));
+  }
+  return points;
 }
 
 /**
  * The topology vertices of a product, in IFC world metres. Empty when the file
- * gives it no topology representation, or a placement this oracle does not follow.
+ * gives it no topology representation, or a placement or mapped item this
+ * oracle does not follow.
  */
 export function topologyPoints(step, productId, scale = lengthScale(step)) {
   const product = step.get(productId);
@@ -172,8 +184,9 @@ export function topologyPoints(step, productId, scale = lengthScale(step)) {
   const frame = placementId === undefined ? IDENTITY : placementFrame(step, placementId);
   const shape = step.get(product?.args[6]);
   if (!frame || !shape) return [];
-  const points = (shape.args[2] ?? []).flatMap((repRef) => representationVertices(step, step.get(repRef)));
-  return points.map((p) => apply(frame, p).map((c) => c * scale));
+  const points = (shape.args[2] ?? []).map((repRef) => representationVertices(step, step.get(repRef)));
+  if (points.includes(null)) return [];
+  return points.flat().map((p) => apply(frame, p).map((c) => c * scale));
 }
 
 /** Distance from point `p` to triangle `a b c` (all 3-vectors). */

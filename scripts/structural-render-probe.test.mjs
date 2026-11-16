@@ -92,6 +92,30 @@ test('#9668 topology oracle: follows a mapped topology representation, origin th
   assert.equal((await run(meshesOf([ribbon(30, [1, 2, 3], [5, 2, 3])]))).status, 'fail');
 });
 
+test('#9668 topology oracle: a mapped topology it cannot follow leaves the member unplaced, not checked on fewer vertices', async () => {
+  // The direct edge stays; the mapped one sits behind an unreadable MappingOrigin, or nine nested maps.
+  const direct = MAPPED_MEMBER.replace('(#54,#48)', '(#54,#48,#15)');
+  const unreadable = direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#99,#15)');
+  let deep = direct;
+  for (let i = 0; i < 9; i += 1) {
+    const from = i === 0 ? '#15' : `#${70 + 2 * (i - 1) + 1}`;
+    deep += `#${70 + 2 * i}=IFCREPRESENTATIONMAP(#41,${from});#${70 + 2 * i + 1}=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#${90 + i}));#${90 + i}=IFCMAPPEDITEM(#${70 + 2 * i},#46);`;
+  }
+  deep = deep.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#86,#46)');
+  const id = 'IFC4/IfcStructuralCurveMember';
+  for (const [name, body] of [['unreadable', unreadable], ['deep', deep]]) {
+    const step = ifc4(body);
+    assert.deepEqual(topologyPoints(step, 30), [], name);
+    const file = { path: `${name}.ifc`, schema: 'IFC4', step };
+    const drawn = meshesOf([ribbon(30, [1, 2, 3], [5, 2, 3])]);
+    const res = await score(renderMembers, id, file, [[`meshes:${name}.ifc`, drawn]]);
+    assert.notEqual(res.status, 'pass', name);
+  }
+  // Eight nested maps are still followed.
+  const eight = deep.replace('#47=IFCMAPPEDITEM(#86,#46)', '#47=IFCMAPPEDITEM(#84,#46)');
+  assert.equal(topologyPoints(ifc4(eight), 30).length, 4);
+});
+
 test('#9668 topology oracle: schema default axes (IfcFirstProjAxis, IfcSecondProjAxis)', () => {
   const near = (points) => points.map((p) => p.map((c) => +c.toFixed(9)));
   // A mirroring target with no Axis2 keeps y = (0, 1, 0): the origin's y of 2 stays +2 (z x x would flip it).

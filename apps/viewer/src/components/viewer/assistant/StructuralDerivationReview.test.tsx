@@ -15,7 +15,9 @@ import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { FRAME } from '@/test/structural-frame-fixture';
 import { TOOL_SURFACE_COMMANDS } from '../surface-commands-tools';
 import { paletteAvailability } from '../palette-availability';
-import { StructuralDerivationReview } from './StructuralDerivationReview';
+import { loadStructuralWrites } from '@/sdk/adapters/store-adapter-structural';
+import { prepareStructuralDerivationReview } from '@/lib/actions/structural-derive-review';
+import { StructuralDerivationReview, DerivationSummary } from './StructuralDerivationReview';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
@@ -62,4 +64,17 @@ test('#9668 derive, review the plan, acknowledge and apply, through the structur
   assert.equal(graph.analysisModels.length, 1);
   assert.equal(graph.members.length, 3);
   assert.equal(useViewerStore.getState().mutationViews.get(SAMPLE_MODEL), view);
+});
+
+
+test('shows rejected openings separately with their host and reason', async () => {
+  await loadStructuralWrites();
+  await seedAuthoringSample({ bytes: FRAME });
+  const review = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
+  review.plan.report.skippedOpenings = [{ openingId: 701, hostId: 702, name: 'Kitchen window', reason: 'unsupported-opening-section', detail: 'not through' }];
+  review.plan.report.counts.skippedOpenings = 1;
+  const root = render(<DerivationSummary review={review} />);
+  assert.match(root.textContent ?? '', /Skipped openings \(1\)/);
+  assert.match(root.textContent ?? '', /Kitchen window: Opening #701 of host #702: unsupported opening section.*not through/);
+  assert.doesNotMatch(root.textContent ?? '', /Skipped elements \(1\)/);
 });

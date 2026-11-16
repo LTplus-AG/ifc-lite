@@ -103,8 +103,8 @@ pub struct Mesh {
     /// (synthetic/test meshes) — see issue #1474.
     pub local_to_world: Option<[f64; 16]>,
     /// Welded in the OBJECT FRAME by `mesh_weld::weld_mesh`/`weld_sub_mesh`
-    /// (its only setters; `rebuilt_like` clears it like `instance_meta`). The
-    /// real "already welded?" answer `build_mesh_data` today INFERS (#4122).
+    /// (`resource::mesh` copies it; `rebuilt_like`, `reframed_like`, `merge`
+    /// and `clear` clear it). `build_mesh_data` reads it, with `instance_meta`.
     pub welded_in_object_frame: bool,
     /// Per-triangle kernel-f64 supporting planes (issue #3914), 1:1 with
     /// `indices.chunks_exact(3)` when `Some`. Carried by direct kernel union
@@ -348,6 +348,7 @@ impl Mesh {
         if self.positions.is_empty() {
             self.origin = other.origin;
         }
+        self.welded_in_object_frame = false; // no longer one weld's buffers
         let d = [
             other.origin[0] - self.origin[0],
             other.origin[1] - self.origin[1],
@@ -682,6 +683,7 @@ impl Mesh {
         // Same concern for the local-bounds/placement capture (issue #1474).
         self.local_bounds = None;
         self.local_to_world = None;
+        self.welded_in_object_frame = false;
     }
 
     /// Weld vertices that share a position, regardless of normal.

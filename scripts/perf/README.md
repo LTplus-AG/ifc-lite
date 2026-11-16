@@ -8,6 +8,36 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Consolidation runs each retention variant once
+
+**Shipped, output-identical.** A consolidation that retains a healthy fold or
+thin source cells compares its output against the same input consolidated
+with that retention off, and each of those calls does the same. On a host
+with both a fold and thin cells the comparisons meet: of nine passes over the
+same mesh, three unique ones are run again. `csg/consolidate/sub_results.rs`
+keeps each result for the duration of the outer call, keyed by the three
+retention switches (mesh, unit scale and use are fixed below the first call).
+
+Found on `ISSUE_129` #61300, a 300-facet arc wall whose prism cut neither
+consolidation keeps closed. Cut in its placement root frame it certifies one
+fold, which the same wall in world coordinates does not, and then pays the
+fold-free comparison at every level plus the welded retry: 18 passes for 3,
+about 28 ms each, all discarded for the raw cut. Single-worker CPU for the
+host alone: 286 ms in world coordinates, 604 ms in the root frame, 455 ms
+with this change (12 passes). One other host in the census corpus loses
+passes (17 to 14); no other host changes.
+
+Identity: census and heavy lane rows byte-identical with and without the
+change, and an FNV hash over every mesh payload identical on the 35 census
+and heavy fixtures on disk.
+
+Lesson: the remaining 170 ms is the path, not waste. Whether a bucket
+certifies as a fold is decided on f32 coordinates, so it can differ between
+two frames of the same wall, and each certificate buys a full extra
+consolidation of the host. A host that cannot be consolidated still pays for
+every attempt; deciding that before the first pass would need a predictor
+that does not exist yet.
+
 ## Capped-memory load test and synthetic dense IFC (#10264, known issue)
 
 Reproduces "a large IFC kills the tab instead of being refused" without private files.

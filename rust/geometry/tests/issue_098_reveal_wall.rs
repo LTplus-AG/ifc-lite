@@ -139,66 +139,26 @@ fn dump_wall_mesh() {
     }
 }
 
-// #3440/#3871: under an accept gate (`csg_manifold_gate`, `csg_topology_gate`)
-// the boolean accept seam REJECTS a kernel result carrying a torn or
-// non-manifold edge, and the router falls back. On this fixture that fallback
-// is measurably WORSE than the tear it replaces, which is precisely why both
-// features are off by default. Where it regresses, the assertion below is not
-// relaxed - it is REPLACED by the measured value, so the gated build stays
-// green while still failing the moment the number moves in either direction.
-// The thing to fix is the FALLBACK path (the #635 AABB box-cut the void router
-// reaches when the exact cut is discarded), not the bar; when it is fixed,
-// these pins should go and the default bar apply to every build.
-//
-// `None` means the real bar still holds in that configuration and is left to do
-// its job. `csg_topology_gate` alone measures 22 unpaired edges here, BETTER
-// than the default build's ~42, so it keeps the bar rather than pinning a
-// number that is not a regression.
-#[cfg(not(feature = "csg_manifold_gate"))]
-const PINNED_OPEN_EDGES: Option<i64> = None;
-// #5131: 380 -> 382. The stray-shard sweep now keeps faces whose centroid is
-// within 1 mm of the reference host, so two sub-mm slivers the manifold-gate
-// fallback used to drop stay in this mesh. The other configurations did not
-// move (measured 352 with both gates, 6 with the topology gate alone).
-// #5573 (#5410): 382 -> 136 (manifold gate alone) and 352 -> 394 (both
-// gates). Profile-hole walls are now wound out of the solid and this
-// plan-rotated wall is cut in its own frame, which moved the gated fallback's
-// reading in both directions; re-measured, not assumed.
-// #7952: 136 -> 166 (manifold gate alone) and 394 -> 436 (both gates), moved
-// by #7607 (5b730c6fdb) alone; its parent reads 136/394 and the reading has
-// not moved since. The gate rejects the same Difference results as before, so
-// the fallback route is unchanged. What changed is how the shared kernel and
-// the void hygiene triangulate the same surface: #7607 splits exactly
-// collinear operand cap seams at an existing apex (BooleanOperand hygiene), and
-// it also changed the shared kernel. The extra unpaired edges are T-junctions
-// on that same surface, not new holes. Volume (32.714 / 33.835 m3) and area
-// (175.388 / 151.205 m2) agree with the parent to 1e-3, and once every
-// unpaired edge is split at the vertices lying within 0.1 mm of it, the
-// remaining gap is identical to the parent's: 14.643 m and 57.551 m of
-// boundary. The default build improved at the same commit (30 -> 20).
-// #10381: 166 -> 152 (manifold gate alone) and 436 -> 430 (both gates). The
-// post-cut sliver pass keeps a bisection only when the census measure improves
-// (`facet_weld::adopt`), so the fallback keeps fewer split points: 501 -> 378
-// and 493 -> 368 triangles. The dropped unpaired edges are T-junctions those
-// splits left. Volume (32.714 / 33.835 m3) and area (175.388 / 151.205 m2) are
-// unchanged to 1e-3, the opening still falls back to its 56-triangle AABB, and
-// once every unpaired edge is split at the vertices within 0.1 mm of it the gap
-// is the same 14.643 m (8 edges) and 57.551 m (171 edges) as before. The
-// default and topology-gate builds read 18 (was 20).
-#[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(152);
-#[cfg(all(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(430);
+// #3440/#3871: the accept gates (`csg_manifold_gate`, `csg_topology_gate`)
+// used to reject this wall's exact cut and fall back to a worse result, so
+// the gated builds carried measured pins instead of the bar (166 and 436
+// unpaired edges at their last reading). Cut in the frame of its site
+// placement, the kernel results pass both checks at the accept paths (no
+// torn result, no over-used edge), so no fallback runs: 12 unpaired edges,
+// which arise after those paths as in the default build, and IfcOpenShell
+// 0.8.2's volume (32.419 m3) in every build, so the bar below applies to
+// all of them.
 
 #[test]
 fn reveal_wall_openings_do_not_leave_flaps() {
     let voided = voided_wall();
     let open = open_edges(&voided);
     let mx = max_edge(&voided);
+    let vol = mesh_volume(&voided);
     println!(
         "[#098 wall] tris={} vol={:.3} openEdges={} maxEdge={:.3}",
         voided.triangle_count(),
-        mesh_volume(&voided),
+        vol,
         open,
         mx
     );
@@ -206,18 +166,10 @@ fn reveal_wall_openings_do_not_leave_flaps() {
     // NOTE: maxEdge ~23 m is the LEGIT uncut top/bottom-face diagonal of a 23 m
     // wall, not a defect — the real metric is unpaired (open) edges. Pre-fix the
     // exact-arrangement kernel left ~2534 (badly torn); the off-plane-constraint
-    // + weld-for-batching fixes bring it to ~42 (5 of 7 windows fully watertight,
-    // the reveals preserved). Guard against regression past that.
-    let _ = mx;
-    match PINNED_OPEN_EDGES {
-        None => assert!(open < 60, "cut re-fragmented: {open} unpaired edges (was ~42)"),
-        Some(pinned) => assert_eq!(
-            open, pinned,
-            "known regression under the accept gate(s) this build enables: the \
-             rejected cut falls back to a result with {pinned} unpaired edges \
-             against the default build's ~42. A different number means the gate \
-             or the fallback moved and the regression needs re-measuring, not \
-             re-pinning."
-        ),
-    }
+    // + weld-for-batching fixes brought it to ~42 (5 of 7 windows fully
+    // watertight, the reveals preserved); the site-frame cut (#10435) to 12.
+    // Guard against regression past that.
+    assert!(open <= 12, "cut re-fragmented: {open} unpaired edges (was 12)");
+    // IfcOpenShell 0.8.2 reads 32.419 m3 for this cut wall (42.371 uncut).
+    assert!((vol - 32.419).abs() < 32.419 * 5.0e-4, "wall volume {vol:.3} m³, IfcOpenShell 32.419");
 }

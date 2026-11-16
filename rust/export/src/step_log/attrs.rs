@@ -241,6 +241,7 @@ pub(crate) fn apply_named(
     upper: &str,
     edits: &[(String, String)],
     schema: &str,
+    is_text: &dyn Fn(&str) -> bool,
 ) -> (String, Vec<(String, String)>) {
     let Some((frame, mut args)) = split_record(text) else { return (text.to_string(), Vec::new()) };
     let lookup_schema = match schema {
@@ -254,7 +255,8 @@ pub(crate) fn apply_named(
         if index >= args.len() {
             continue;
         }
-        match named_attribute(upper, index, value, &args[index], schema) {
+        // An edit the georeferencing writer marked as text is written as a quoted string, whatever the text looks like.
+        match if is_text(name) { Some(quoted(value)) } else { named_attribute(upper, index, value, &args[index], schema) } {
             Some(serialized) => {
                 args[index] = serialized;
                 changed = true;

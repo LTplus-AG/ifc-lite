@@ -156,6 +156,7 @@ export function evaluateOmissionPredicates(
           modifiedEntityCount: 0,
           fileSize: emptyContent.byteLength,
           warnings: pass.warnings,
+          georeferencingWarnings: pass.georeferencingWarnings,
         },
       },
     };

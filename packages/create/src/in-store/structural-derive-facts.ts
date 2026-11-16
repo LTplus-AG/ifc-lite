@@ -20,9 +20,11 @@ import { safeLengthUnitScale } from './length-unit-scale.js';
 import { localBodyExtent } from './resolve-host.js';
 import { createStyleEntityReader, type StyleEntity } from './style-entity-reader.js';
 import { scale } from './structural-derive-idealise.js';
-import { DERIVATION_CLASSES } from './structural-derive-plan.js';
+import { roleOf, DERIVATION_CLASSES } from './structural-derive-plan.js';
 import { readElementShape } from './structural-derive-shape.js';
-import { DERIVED_ANALYSIS_MODEL_DESCRIPTION, type PhysicalElementFact, type StructuralDerivationFacts } from './structural-derive-types.js';
+import { DERIVED_ANALYSIS_MODEL_DESCRIPTION, type OpeningFact, type PhysicalElementFact, type StructuralDerivationFacts } from './structural-derive-types.js';
+
+import { OPENING_TYPES } from './hosted-fill-read.js';
 
 const FOOTINGS = new Set(['IfcFooting', 'IfcPile']);
 
@@ -80,10 +82,20 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
   const structural = liveStructuralExtraction(store, view);
   // Containment as the session has it (created, moved and deleted elements), resolved for every element at once.
   const storeyOf = effectiveStoreyResolver(store, effectiveSpatialContext(store, view));
+  const openings = new Map<number, Set<number>>();
+  for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCRELVOIDSELEMENT'])) {
+    const attrs = read(expressId)?.attributes;
+    const host = refId(attrs?.[4]), id = refId(attrs?.[5]);
+    if (host === null || id === null) continue;
+    const list = openings.get(host) ?? new Set<number>();
+    list.add(id);
+    openings.set(host, list);
+  }
   const elements: PhysicalElementFact[] = [];
   for (const { expressId, type: stepType } of iterateEffectiveEntityIds(store, view, expandTypes([...DERIVATION_CLASSES], store.schemaVersion))) {
     const type = normalizeIfcTypeName(stepType);
-    const name = read(expressId)?.attributes[2];
+    const entity = read(expressId);
+    const name = entity?.attributes[2];
     const fact: PhysicalElementFact = {
       expressId,
       type,
@@ -93,18 +105,35 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
       idealised: false,
     };
     if (FOOTINGS.has(type)) {
-      const placementId = refId(read(expressId)?.attributes[5]);
+      const placementId = refId(entity?.attributes[5]);
       const local = localBodyExtent(store, expressId, view);
       const frame = placementId === null ? null : placementInAncestor(reader, placementId, null);
       if (local && frame) {
         const world = transformBounds(local, frame);
         fact.bounds = { min: scale(world.min, metres), max: scale(world.max, metres) };
-      } else if (refId(read(expressId)?.attributes[6]) === null) fact.shapeIssue = 'no body (it has no Representation)';
+      } else if (refId(entity?.attributes[6]) === null) fact.shapeIssue = 'no body (it has no Representation)';
       else fact.shapeIssue = local ? 'the placement is unreadable' : 'the body is unreadable';
     } else {
       fact.loadBearing = readLoadBearing(store, view, expressId);
       fact.idealised = structuralCounterparts(structural, expressId)?.side === 'analytical';
       Object.assign(fact, readElementShape(reader, expressId, metres, true));
+      if (roleOf(type) === 'surface' && openings.has(expressId)) {
+        const collected: OpeningFact[] = [];
+        for (const id of openings.get(expressId) ?? []) {
+          const opening = read(id);
+          if (!opening || !OPENING_TYPES.has(opening.type.toUpperCase())) {
+            collected.push({
+              expressId: id, name: null,
+              type: opening ? normalizeIfcTypeName(opening.type) : null,
+              shapeIssue: opening ? `unsupported voiding type ${normalizeIfcTypeName(opening.type)}` : 'missing entity',
+            });
+            continue;
+          }
+          const name = opening.attributes[2];
+          collected.push({ expressId: id, type: normalizeIfcTypeName(opening.type), name: typeof name === 'string' ? name : null, ...readElementShape(reader, id, metres, false) });
+        }
+        fact.openings = collected;
+      }
     }
     elements.push(fact);
   }

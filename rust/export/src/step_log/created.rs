@@ -7,6 +7,7 @@
 use serde_json::Value;
 
 use super::attrs::{attr_names, named_attribute};
+use crate::step_text::quoted;
 use super::lines::split_args;
 use super::pass::Pass;
 use super::refilter::{filter_created_line, Filtered};
@@ -24,21 +25,21 @@ fn overrides(
     let mut args = split_args(args_text)
         .ok_or_else(|| Unwritable("Cannot apply an overlay override to an invalid STEP argument list.".to_string()))?;
     let names = attr_names(upper, "");
-    let named: Vec<(usize, String)> = pass
+    let named: Vec<(usize, String, bool)> = pass
         .attribute_edits(id)
         .unwrap_or(&[])
         .iter()
-        .filter_map(|(n, v)| names.iter().position(|m| m == n).map(|i| (i, v.clone())))
+        .filter_map(|(n, v)| names.iter().position(|m| m == n).map(|i| (i, v.clone(), pass.text_edits.contains(&(id, n.clone())))))
         .collect();
-    let pad = named.iter().any(|(i, _)| *i >= args.len())
+    let pad = named.iter().any(|(i, _, _)| *i >= args.len())
         || positionals.iter().any(|(i, _)| *i >= args.len() && *i < names.len());
     if pad {
         while args.len() < names.len() {
             args.push("$".to_string());
         }
     }
-    for (index, value) in named {
-        match named_attribute(upper, index, &value, &args[index], pass.schema) {
+    for (index, value, text) in named {
+        match if text { Some(quoted(&value)) } else { named_attribute(upper, index, &value, &args[index], pass.schema) } {
             Some(s) => args[index] = s,
             None => pass.warnings.push(format!(
                 "entity #{id}: attribute {} not written - {} is not a number and the slot is REAL-typed",

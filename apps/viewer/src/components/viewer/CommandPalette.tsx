@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { registerAgentCommandHost } from '@/lib/agent-bridge/command-host';
+import { useAgentBridgeState } from '@/lib/agent-bridge/state';
 import { useInlineSearchHost } from './inline-search-focus';
 import { useErrorReportDestination } from '@/lib/error-reports/destination';
 import { useRetainedReportHost } from './retained-report-destination';
@@ -91,6 +93,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuery = '' }: CommandPaletteProps) {
+  const agentActive = useAgentBridgeState().status.kind === 'connected';
   const hostLauncher = useContext(PaletteLauncherContext);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -138,7 +141,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
 
   // Retain export ownership while closed without following invisible command prerequisites.
   const copyClipboard = useSyncExternalStore(subscribeCopyClipboard, readCopyClipboard, readCopyClipboard);
-  const prerequisites = useViewerStore(useShallow(s => open ? palettePrerequisites(s) : null));
+  const prerequisites = useViewerStore(useShallow(s => open || agentActive ? palettePrerequisites(s) : null));
   const collabRole = prerequisites?.role ?? null;
   const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
   // Cesium only has something to show once a model carries georeferencing.
@@ -148,7 +151,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
-  const commands = useMemo<Command[]>(() => !open ? [] : [...buildCommandPaletteCommands({
+  const commands = useMemo<Command[]>(() => !open && !agentActive ? [] : [...buildCommandPaletteCommands({
     execute,
     surfaceContext: { ...toolHosts, ...surfaceContext,
       openBulkProperties: (surfaceContext?.openBulkProperties ?? toolHosts.openBulkProperties)
@@ -170,7 +173,11 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), ...dockDestinations.commands], [open, dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, currentExtensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, errorReportDestination, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, inlineSearchHost, locale, revision]);
+  }), ...dockDestinations.commands], [open, agentActive, dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, currentExtensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, errorReportDestination, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, inlineSearchHost, locale, revision]);
+  useLayoutEffect(() => {
+    if (!agentActive) return;
+    return registerAgentCommandHost(() => commands);
+  }, [agentActive, commands]);
   // ── Search: score, filter, sort ──
   // When searching, results are FLAT sorted by relevance — no category grouping.
   // When browsing (no query), results are grouped by category.

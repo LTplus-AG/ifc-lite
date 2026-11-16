@@ -839,7 +839,7 @@ importers:
         specifier: ^8.1.0
         version: 8.1.0
       '@ifc-lite/parser':
-        specifier: ^9.9.0
+        specifier: ^10.0.0 || ^9.9.0
         version: 9.9.0
     devDependencies:
       typescript:
@@ -967,7 +967,7 @@ importers:
         specifier: ^8.1.0
         version: 8.1.0
       '@ifc-lite/parser':
-        specifier: ^9.9.0
+        specifier: ^10.0.0 || ^9.9.0
         version: 9.9.0
       three:
         specifier: ^0.186.1

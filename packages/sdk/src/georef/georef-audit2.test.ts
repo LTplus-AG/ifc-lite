@@ -154,7 +154,7 @@ describe('F6. CRS text edited through the generic API', () => {
     m.bim.mutate.setAttribute({ modelId: 'model', expressId: 20 }, 'Description', value);
     await trueOrUntrusted(m.bim);
   });
-  it.each(['\u0000#5', '^', '^@', '\u0000'])('text %j is text on both paths: nothing is read as a marker', async (value) => {
+  it.each(['\u0000#5', '^', '^@', '\\^@', '\u0000'])('text %j is text on both paths: nothing is read as a marker', async (value) => {
     const m = await open('IFC4', GEO);
     m.bim.mutate.setAttribute({ modelId: 'model', expressId: 20 }, 'Description', value);
     await trueOrUntrusted(m.bim);

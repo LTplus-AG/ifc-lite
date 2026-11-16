@@ -1127,10 +1127,29 @@ describe('StepExporter georeferencing — IfcMapConversionScaled', () => {
       [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+',$,$,$,#2);"],
     ]);
     for (const mapConversion of [{ orthogonalHeight: 11 }, { eastings: 1, northings: 2 }, { eastings: 1, northings: null, orthogonalHeight: 3 }]) {
-      const result = new StepExporter(dataStore).export({ schema: 'IFC4', applyMutations: true, georefMutations: { mapConversion } as never });
+      // Planned (the SDK names the SourceCRS): a warning, nothing written.
+      const result = new StepExporter(dataStore).export({ schema: 'IFC4', applyMutations: true, georefMutations: { mapConversion, sourceCrs: [20] } as never });
       expect(decode(result.content)).not.toMatch(/=IFCMAPCONVERSION/);
       expect(result.stats.georeferencingWarnings?.join('\n')).toMatch(/Cannot create IfcMapConversion from a partial edit/);
+      // Unplanned (the viewer reads no warnings): refused with an error it shows, never zero-filled and never dropped.
+      expect(() => new StepExporter(dataStore).export({ schema: 'IFC4', applyMutations: true, georefMutations: { mapConversion } as never })).toThrow(/Georeferencing was not exported: Cannot create IfcMapConversion from a partial edit/);
     }
+  });
+
+  it('refuses an unplanned new CRS with no position (the viewer path) instead of dropping it or writing 0/0/0', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT(());'],
+    ]);
+    const projectedCRS = { name: 'EPSG:2056' };
+    expect(() => new StepExporter(dataStore).export({ schema: 'IFC4', applyMutations: true, georefMutations: { projectedCRS } as never })).toThrow(/no position was given for the new IfcProjectedCRS/);
+    const complete = new StepExporter(dataStore).export({ schema: 'IFC4', applyMutations: true, georefMutations: { projectedCRS, mapConversion: { eastings: 1, northings: 2, orthogonalHeight: 3 } } as never });
+    expect(decode(complete.content)).toMatch(/IFCMAPCONVERSION\(#20,#\d+,1\.,2\.,3\./);
   });
 });
 

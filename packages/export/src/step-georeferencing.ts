@@ -217,9 +217,7 @@ export function applyGeoreferencingMutations(
     const proj = crs.mapProjection ? `'${escapeStepString(String(crs.mapProjection))}'` : '$';
     const zone = crs.mapZone ? `'${escapeStepString(String(crs.mapZone))}'` : '$';
     let mapUnitRef = '$';
-    // `!== undefined`, matching the existing-CRS path above: an empty MapUnit is
-    // a unit this exporter cannot express, not an absent request, and the caller
-    // has to be told so rather than quietly getting `$`.
+    // `!== undefined`, as in the existing-CRS path: an empty MapUnit is one this exporter cannot express, and the caller is told.
     if (crs.mapUnit !== undefined) {
       const resolved = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, ctx);
       if (resolved === null) reportMapUnitUnsupported(pass.warnings, String(crs.mapUnit));
@@ -229,6 +227,7 @@ export function applyGeoreferencingMutations(
     pass.newEntityCount++;
 
     if (gm.mapConversion) createMapConversion(pass, ctx, crsId, gm.mapConversion, gm.sourceCrs);
+    else if (!existingMcIds?.length && !gm.sourceCrs?.length) throw new Error(`${UNPLANNED_REFUSAL} no position was given for the new IfcProjectedCRS.`);
   } else if (gm.mapConversion && !existingMcIds?.length && existingCrsIds?.length) {
     // CRS exists but no MapConversion — create just the conversion
     createMapConversion(pass, ctx, existingCrsIds[0], gm.mapConversion, gm.sourceCrs);
@@ -282,11 +281,12 @@ type MapConversionRequest = NonNullable<NonNullable<StepExportOptions['georefMut
 function createMapConversion(pass: ExportPass, ctx: GeorefContext, crsId: number, mc: MapConversionRequest, sourceCrs: readonly number[] | undefined): void {
   const given = (v: unknown) => v !== undefined && v !== null && !Number.isNaN(Number(v));
   if (![mc.eastings, mc.northings, mc.orthogonalHeight].every(given)) {
+    // An unplanned caller (the viewer) never reads warnings: it gets a thrown error, not a 0-filled or dropped position.
+    if (!sourceCrs?.length) throw new Error(`${UNPLANNED_REFUSAL} ${MAP_CONVERSION_INCOMPLETE_WARNING}`);
     reportGeorefWarning(pass.warnings, MAP_CONVERSION_INCOMPLETE_WARNING);
     return;
   }
-  // The planner names the SourceCRS (it saw the session's creations, deletions and edits); a host that does not plan
-  // (the viewer) leaves the choice to the file's own contexts.
+  // The planner names the SourceCRS; a host that does not plan (the viewer) leaves it to the file's own contexts.
   const contextId = sourceCrs === undefined || sourceCrs.length === 0 ? findPreferredGeometricRepresentationContextId(pass.effective, ctx)
     : sourceCrs.find((id) => pass.effective.typeOf(id) === 'IFCGEOMETRICREPRESENTATIONCONTEXT') ?? null;
   if (!contextId) return reportMapConversionRefused(pass.warnings);
@@ -334,8 +334,8 @@ function mapConversionLine(id: number, contextId: number, crsId: number, mc: Map
     : `#${id}=IFCMAPCONVERSION(${head});`;
 }
 
-const MAP_CONVERSION_INCOMPLETE_WARNING =
-  'Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight are all required.';
+const UNPLANNED_REFUSAL = 'Georeferencing was not exported:';
+const MAP_CONVERSION_INCOMPLETE_WARNING = 'Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight are all required.';
 
 function reportGeorefWarning(warnings: string[], message: string): void {
   warnings.push(message);

@@ -22,6 +22,7 @@ use super::wire::GeorefMutations;
 
 const WITHOUT_CONTEXT: &str = "Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.";
 const WITHOUT_CRS: &str = "Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.";
+const UNPLANNED_REFUSAL: &str = "Georeferencing was not exported:";
 const INCOMPLETE_MAP_CONVERSION: &str = "Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight are all required.";
 const PARTIAL_FACTORS: &str = "Cannot write IfcMapConversionScaled: FactorX, FactorY and FactorZ are all mandatory and must be finite numbers, and the triple given was not. The factors were not written.";
 const FACTORS_ON_UNSCALED: &str = "Cannot write FactorX/FactorY/FactorZ onto an existing IfcMapConversion: they exist only on IfcMapConversionScaled, and this edit does not change the class. The factors were not written.";
@@ -201,6 +202,10 @@ fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, 
     // A create needs the whole position (`+ 0.0` below folds -0 to 0): a partial edit whose record was deleted is refused, never written as 0.
     let pos = ["eastings", "northings", "orthogonalHeight"].map(|k| mc.get(k).filter(|v| !v.is_null()).map_or(f64::NAN, js_to_number));
     if pos.iter().any(|n| n.is_nan()) {
+        // An unplanned caller (the viewer) never reads warnings: it gets a refusal, not a 0-filled or dropped position.
+        if source_crs.is_empty() {
+            return Err(Unwritable(format!("{UNPLANNED_REFUSAL} {INCOMPLETE_MAP_CONVERSION}")));
+        }
         pass.warnings.push(INCOMPLETE_MAP_CONVERSION.to_string());
         return Ok(());
     }
@@ -296,6 +301,8 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
         pass.new_entity_count += 1;
         if let Some(mc) = &g.map_conversion {
             create_map_conversion(pass, crs_id, mc, &g.source_crs, file_schema)?;
+        } else if mc_ids.is_empty() && g.source_crs.is_empty() {
+            return Err(Unwritable(format!("{UNPLANNED_REFUSAL} no position was given for the new IfcProjectedCRS.")));
         }
     } else if let (Some(mc), true, Some(&crs_id)) = (&g.map_conversion, mc_ids.is_empty(), crs_ids.first()) {
         create_map_conversion(pass, crs_id, mc, &g.source_crs, file_schema)?;

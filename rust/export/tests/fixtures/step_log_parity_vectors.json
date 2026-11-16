@@ -4021,7 +4021,7 @@
   },
   {
    "name": "georef-partial-conversion-not-created",
-   "why": "A mapConversion without the whole position (Eastings, Northings and OrthogonalHeight) is never created with the missing fields written as 0: the IfcProjectedCRS is created, the conversion is skipped and the writer warns. This is what an update of one value leaves once the record it edited was deleted.",
+   "why": "A mapConversion without the whole position (Eastings, Northings and OrthogonalHeight) is never created with the missing fields written as 0: the IfcProjectedCRS is created, the conversion is skipped and the writer warns. This is what an update of one value leaves once the record it edited was deleted. (planned: the planner names the SourceCRS, so these stay warnings; the unplanned form is refused, see the refusedByBothCases georef-unplanned-*)",
    "source": "walls",
    "log": {
     "modelId": "model",
@@ -4047,7 +4047,10 @@
      },
      "mapConversion": {
       "orthogonalHeight": 11
-     }
+     },
+     "sourceCrs": [
+      12
+     ]
     }
    },
    "expected": [
@@ -4477,7 +4480,7 @@
   },
   {
    "name": "georef-create-feet",
-   "why": "MapUnit in feet creates the conversion-based unit and its measure. No mapConversion is requested, so only the CRS is created: a conversion is never created from nothing.",
+   "why": "MapUnit in feet creates the conversion-based unit and its measure. No mapConversion is requested, so only the CRS is created: a conversion is never created from nothing. (planned: the planner names the SourceCRS, so these stay warnings; the unplanned form is refused, see the refusedByBothCases georef-unplanned-*)",
    "source": "walls",
    "log": {
     "modelId": "model",
@@ -4500,7 +4503,10 @@
      "projectedCRS": {
       "name": "X",
       "mapUnit": "feet"
-     }
+     },
+     "sourceCrs": [
+      12
+     ]
     }
    },
    "expected": [
@@ -4569,7 +4575,7 @@
   },
   {
    "name": "georef-unsupported-unit",
-   "why": "An unsupported map unit leaves MapUnit unset (and warns); an empty name is not written.",
+   "why": "An unsupported map unit leaves MapUnit unset (and warns); an empty name is not written. (planned: the planner names the SourceCRS, so these stay warnings; the unplanned form is refused, see the refusedByBothCases georef-unplanned-*)",
    "source": "walls",
    "log": {
     "modelId": "model",
@@ -4592,7 +4598,10 @@
      "projectedCRS": {
       "name": "",
       "mapUnit": "furlong"
-     }
+     },
+     "sourceCrs": [
+      12
+     ]
     }
    },
    "expected": [
@@ -5176,7 +5185,7 @@
        null,
        "Detail",
        3,
-       0.00001,
+       1e-05,
        "#11",
        null
       ]
@@ -5388,7 +5397,7 @@
        null,
        "Plan",
        3,
-       0.00001,
+       1e-05,
        "#11",
        null
       ]
@@ -7493,6 +7502,42 @@
     "exportedAt": 0
    },
    "error": "Cannot write 1e+21 as a STEP INTEGER: it is not a finite value below 1e21"
+  },
+  {
+   "name": "georef-unplanned-crs-without-position",
+   "why": "A caller that does not plan (the viewer) asked for a new IfcProjectedCRS and no position. Before the georef SDK this wrote an IfcMapConversion filled with 0/0/0; silently dropping it would leave a CRS nothing references, so both writers refuse and the viewer shows the export error.",
+   "source": "walls",
+   "log": {
+    "modelId": "model",
+    "mutations": [],
+    "exportedAt": 0,
+    "georefMutations": {
+     "projectedCRS": {
+      "name": "EPSG:2056"
+     }
+    }
+   },
+   "error": "Georeferencing was not exported: no position was given for the new IfcProjectedCRS."
+  },
+  {
+   "name": "georef-unplanned-partial-position",
+   "why": "An unplanned request for a new CRS with a position missing OrthogonalHeight: refused, not zero-filled and not dropped.",
+   "source": "walls",
+   "log": {
+    "modelId": "model",
+    "mutations": [],
+    "exportedAt": 0,
+    "georefMutations": {
+     "projectedCRS": {
+      "name": "EPSG:2056"
+     },
+     "mapConversion": {
+      "eastings": 1,
+      "northings": 2
+     }
+    }
+   },
+   "error": "Georeferencing was not exported: Cannot create IfcMapConversion from a partial edit"
   }
  ]
 }

@@ -136,15 +136,17 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
   });
   // A carrier is exclusive when its relationship is the only record naming its set, and its set the only one naming each property.
   const uses = checkExclusive ? source.referrers(new Set(members.flatMap(({ pset, propIds }) => [pset, ...propIds.filter((p): p is number => p !== null)]))) : undefined;
-  return members.map(({ rel, pset, propIds }) => {
+  return members.flatMap(({ rel, pset, propIds }) => {
     const props = new Map<string, number>();
     for (const p of propIds) {
       const propName = stepString(source.slots(p)?.[0]);
+      // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32); a set that does not is not read.
+      if (propName !== null && props.has(propName)) return [];
       if (p !== null && propName !== null) props.set(propName, p);
     }
     const related = (listItems(source.slots(rel)![4]) ?? []).map(slotRef).filter((r): r is number => r !== null);
     const exclusive = uses ? uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1) : undefined;
-    return { rel, pset, related, props, exclusive };
+    return [{ rel, pset, related, props, exclusive }];
   });
 }
 

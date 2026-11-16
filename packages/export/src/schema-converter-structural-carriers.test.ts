@@ -512,3 +512,19 @@ describe('varying thickness with property-set locations #9668', () => {
     expect(line((await convert(inside, 'IFC2X3')).step, 21)).toContain(',.F.,$,.TRUE_LENGTH.);');
   });
 });
+
+// #9668 review (PR #10551): IfcPropertySet names its properties uniquely (IFC4
+// UniquePropertyNames, IFC2X3 WR32); a carrier set breaking that is not read.
+describe('carrier property set with a duplicate property name #9668', () => {
+  it('leaves the load group as it is', async () => {
+    const ifc2x3 = model('IFC2X3', `${OWNER}
+#20=IFCSTRUCTURALLOADGROUP('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,$,$);
+#30=IFCPROPERTYLISTVALUE('SelfWeightCoefficients',$,(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-1.)),$);
+#31=IFCPROPERTYLISTVALUE('SelfWeightCoefficients',$,(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-2.)),$);
+#32=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'${LOAD_CASE_PSET}',$,(#30,#31));
+#33=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#32);`);
+    const { step } = await convert(ifc2x3, 'IFC4');
+    expect(line(step, 20)).toMatch(/^#20=IFCSTRUCTURALLOADGROUP\(/);
+    expect(line(step, 32)).toBeDefined();
+  });
+});

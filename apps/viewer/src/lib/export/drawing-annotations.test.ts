@@ -191,3 +191,10 @@ it('#9296: format reconciliation preserves distinct repeated markups and cuts', 
     plane: { axis: 'down' as const, position: 1, flipped: false } };
   assert.equal(mergeRestoredDimensions([dim], [{ ...dim, id: 'automatic', plane: { ...dim.plane, position: 4 } }]).length, 2);
 });
+
+it('#9296: equal IDs never merge measurements with distinct geometry', async () => {
+  const { mergeRestoredMeasures } = await import('./drawing-annotation-restore');
+  const saved = { id: 'automatic', start: { x: 0, y: 0 }, end: { x: 4, y: 0 }, distance: 4 };
+  const automatic = { ...saved, end: { x: 7, y: 0 }, distance: 7 };
+  assert.deepEqual(mergeRestoredMeasures([saved], [automatic]), [saved, automatic]);
+});

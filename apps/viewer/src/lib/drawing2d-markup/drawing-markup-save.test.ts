@@ -348,3 +348,19 @@ it('#9296: a saved overlay not loaded into the drawing survives automatic export
   const reopened = await parse(typeof result.content === 'string' ? result.content : new TextDecoder().decode(result.content));
   assert.equal(reopened.entityIndex.byType.get('IFCANNOTATION')?.length, 1);
 });
+
+it('#9296: repeated measurement IDs preserve both saved annotations on export', async () => {
+  const store = await seedStore();
+  const first = ONE_MEASURE.measure2DResults[0];
+  const measures = [first, { ...first, end: { x: 7, y: 0 }, distance: 7 }];
+  useViewerStore.setState({ measure2DResults: measures, dimensions2D: [], tagAnnotations2D: [],
+    activeStorey: { modelId: 'm1', expressId: STOREY_ID }, drawing2DPlane: { axis: 'down', position: 1, flipped: false } });
+  const outcome = saveDrawingMarkupToModel('m1', { ...ONE_MEASURE, measure2DResults: measures });
+  assert.equal(outcome.measuresSaved, 2);
+  const { exportModelStep } = await import('@/lib/export/model-step-export');
+  const result = await exportModelStep({ modelId: 'm1', dataStore: store,
+    mutationView: useViewerStore.getState().getMutationView('m1') ?? undefined,
+    options: { schema: 'IFC4', applyMutations: true }, scheduleState: null });
+  const reopened = await parse(typeof result.content === 'string' ? result.content : new TextDecoder().decode(result.content));
+  assert.equal(reopened.entityIndex.byType.get('IFCANNOTATION')?.length, 2);
+});

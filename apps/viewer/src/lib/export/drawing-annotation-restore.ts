@@ -7,14 +7,13 @@ import { encodeDimensionPlane, encodeDimensionRef } from '@/lib/drawing2d-markup
 
 /** Reconcile formats one-to-one; distinct repeated markups within either format survive. */
 function reconcile<T extends { id: string }>(saved: T[], automatic: T[], signature: (item: T) => string): T[] {
-  const byId = new Map(automatic.map(item => [item.id, signature(item)]));
   const available = new Map<string, number>();
   for (const item of automatic) {
     const key = signature(item);
     available.set(key, (available.get(key) ?? 0) + 1);
   }
   return [...saved.filter(item => {
-    const key = byId.get(item.id) ?? signature(item);
+    const key = signature(item);
     const count = available.get(key) ?? 0;
     if (!count) return true;
     available.set(key, count - 1);

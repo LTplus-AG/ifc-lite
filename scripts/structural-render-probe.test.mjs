@@ -92,6 +92,18 @@ test('#9668 topology oracle: follows a mapped topology representation, origin th
   assert.equal((await run(meshesOf([ribbon(30, [1, 2, 3], [5, 2, 3])]))).status, 'fail');
 });
 
+test('#9668 topology oracle: schema default axes (IfcFirstProjAxis, IfcSecondProjAxis)', () => {
+  const near = (points) => points.map((p) => p.map((c) => +c.toFixed(9)));
+  // A mirroring target with no Axis2 keeps y = (0, 1, 0): the origin's y of 2 stays +2 (z x x would flip it).
+  const mirror = MAPPED_MEMBER.replace("#40=IFCCARTESIANPOINT((1.,0.,0.))", "#40=IFCCARTESIANPOINT((1.,2.,0.))")
+    .replace("#43=IFCDIRECTION((0.,1.,0.))", "#43=IFCDIRECTION((-1.,0.,0.))").replace("$,#45,2.,#44", "$,#45,1.,#44");
+  assert.deepEqual(near(topologyPoints(ifc4(mirror), 30)), [[10, 4, 3], [6, 4, 3]]);
+  // A placement z near (but not) x with no RefDirection takes x from (1, 0, 0).
+  const tilted = ifc4(MEMBER().replace("#21=IFCAXIS2PLACEMENT3D(#20,$,$)", "#23=IFCDIRECTION((3.,0.,1.));#21=IFCAXIS2PLACEMENT3D(#20,#23,$)"));
+  const r = Math.sqrt(10);
+  assert.deepEqual(near(topologyPoints(tilted, 30)), near([[1, 2, 3], [1 + 4 / r, 2, 3 - 12 / r]]));
+});
+
 test('#9668 member render: passes only for a mesh on the file\'s axis', async () => {
   const id = 'IFC4/IfcStructuralCurveMember';
   const file = { path: 'member.ifc', schema: 'IFC4', step: ifc4(MEMBER()) };

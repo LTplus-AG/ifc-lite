@@ -49,8 +49,8 @@ const scaled = (v, k) => v.map((c) => c * k);
 const unit = (a) => { const l = Math.hypot(...a); return l > 1e-12 ? a.map((c) => c / l) : null; };
 /** `v` with its component along each unit axis removed, as a unit vector; null when nothing is left. */
 const normalTo = (v, ...axes) => unit(axes.reduce((a, n) => sub(a, scaled(n, dot(a, n))), v));
-/** The schema's default x for a z axis: (1, 0, 0), or (0, 1, 0) when z is near x. */
-const defaultX = (z) => (Math.abs(z[0]) > 0.9 ? [0, 1, 0] : [1, 0, 0]);
+/** The schema's default x for a unit z axis (`IfcFirstProjAxis`): (1, 0, 0), or (0, 1, 0) when z is exactly (1, 0, 0). */
+const defaultX = (z) => (z[0] === 1 && z[1] === 0 && z[2] === 0 ? [0, 1, 0] : [1, 0, 0]);
 /** A point in `f`'s axes, in its parent's. */
 const apply = (f, p) => [0, 1, 2].map((i) => f.o[i] + f.x[i] * p[0] + f.y[i] * p[1] + f.z[i] * p[2]);
 const rotate = (f, v) => [0, 1, 2].map((i) => f.x[i] * v[0] + f.y[i] * v[1] + f.z[i] * v[2]);
@@ -130,7 +130,10 @@ function transformOperator(step, id) {
   if (!z) return null;
   const x = normalTo(coords(step, refOf(r.args[0])) ?? defaultX(z), z);
   if (!x) return null;
-  const y = normalTo(coords(step, refOf(r.args[1])) ?? cross(z, x), z, x);
+  // `IfcSecondProjAxis`: Axis2, else (0, 1, 0), made normal to z and x; a mirror keeps its sign.
+  // Without Axis2, a default that lies in the z-x plane leaves nothing; then z x x, a rotation.
+  const axis2 = coords(step, refOf(r.args[1]));
+  const y = normalTo(axis2 ?? [0, 1, 0], z, x) ?? (axis2 ? null : cross(z, x));
   if (!y) return null;
   const s = numberOf(r.args[3]) ?? 1;
   const s2 = numberOf(r.args[5]) ?? s;

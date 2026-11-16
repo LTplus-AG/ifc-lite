@@ -201,3 +201,20 @@ it('local layer operations use the native merge engine and reject stale refs wit
   await assert.rejects(execute('layers.mergeLocal', { ...input, resolver: 'stale', resolutions: [], waivers: [] }), /ref changed/);
   const exported = await execute<ArtifactMetadata>('layers.export', { id: candidate.header.id }); assert.ok(exported.bytes > 0);
 });
+
+it('native assistant attachment handles transmit real selection grounding once and stay bound to exact evidence (#10525)', async () => {
+  const { createSelectionAdapter } = await import('@/sdk/adapters/selection-adapter');
+  const { createQueryAdapter } = await import('@/sdk/adapters/query-adapter');
+  const wall = createQueryAdapter(useViewerStore).entities({ types: ['IfcWall'] })[0]; assert.ok(wall);
+  createSelectionAdapter(useViewerStore).set([wall.ref]);
+  const evidence = await execute<{ evidence_id: string }>('assistant.captureEvidence', { source: 'loadReport' });
+  const capture = await execute<{ attachment_id: string; selection_count: number }>('assistant.captureAttachments', { evidence_id: evidence.evidence_id, selection: true, screenshot: false, room_candidate_id: '', room_model_id: '' });
+  assert.equal(capture.selection_count, 1);
+  const originalFetch = globalThis.fetch; let transmitted = '';
+  globalThis.fetch = async (_url, init) => { transmitted = String(init?.body ?? ''); return new Response('data: {"choices":[{"delta":{"content":"Attached selection reviewed"},"finish_reason":"stop"}]}\n\n'); };
+  try {
+    const outcome = await execute<{ completed: boolean }>('assistant.send', { prompt: 'Review the explicitly attached wall', evidence_id: evidence.evidence_id, attachment_id: capture.attachment_id });
+    assert.equal(outcome.completed, true); assert.ok(transmitted.includes(wall.globalId), 'the native request carries the captured real IFC identity');
+    await assert.rejects(execute('assistant.send', { prompt: 'Do not reuse consumed attachment', evidence_id: evidence.evidence_id, attachment_id: capture.attachment_id }), /attachment capture is absent/);
+  } finally { globalThis.fetch = originalFetch; }
+});

@@ -90,19 +90,8 @@ export function downloadIdentityMapSidecar(
   identities: { base: ModelIdentity; head: ModelIdentity },
   accepted: readonly IdentityMapEntry[],
 ): void {
-  const sidecar = createIdentityMapSidecar({
-    ...identities,
-    entries: accepted,
-    created: new Date().toISOString(),
-    // #4989: writes format version 2 when the panel was keyed on an
-    // authored property, so a v1 consumer refuses rather than silently
-    // replaying claims taken under a scheme it never compared under.
-    keyProperty: result.keyProperty,
-  });
-  downloadBlob(
-    new Blob([serializeIdentityMapSidecar(sidecar)], { type: 'application/json;charset=utf-8;' }),
-    sidecarFilename(result, 'identity-map'),
-  );
+  const artifact = comparisonSidecarArtifact('identity-map', result, identities, accepted);
+  downloadBlob(new Blob([artifact.data], { type: 'application/json;charset=utf-8;' }), artifact.filename);
 }
 
 /**
@@ -138,18 +127,8 @@ export function downloadLineageSidecar(
   identities: { base: ModelIdentity; head: ModelIdentity },
   accepted: readonly IdentityMapEntry[],
 ): void {
-  const { entries, deleted } = lineageForExport(result, accepted);
-  const sidecar = createLineageSidecar({
-    ...identities,
-    entries,
-    deleted,
-    created: new Date().toISOString(),
-    keyProperty: result.keyProperty,
-  });
-  downloadBlob(
-    new Blob([serializeLineageSidecar(sidecar)], { type: 'application/json;charset=utf-8;' }),
-    sidecarFilename(result, 'lineage'),
-  );
+  const artifact = comparisonSidecarArtifact('lineage', result, identities, accepted);
+  downloadBlob(new Blob([artifact.data], { type: 'application/json;charset=utf-8;' }), artifact.filename);
 }
 
 /**
@@ -174,4 +153,12 @@ export function readIdentityMapSidecar(
   const mismatches = identityMapSidecarMismatches(sidecar, { ...identities, keyProperty });
   if (mismatches.length > 0) return { error: `Sidecar refused: ${mismatches.join('; ')}` };
   return { entries: sidecar.entries };
+}
+
+/** Native comparison sidecar bytes shared by download controls and host artifacts. */
+export function comparisonSidecarArtifact(kind: 'identity-map' | 'lineage', result: CompareResult, identities: { base: ModelIdentity; head: ModelIdentity }, accepted: readonly IdentityMapEntry[]) {
+  const common = { ...identities, created: new Date().toISOString(), keyProperty: result.keyProperty };
+  const data = kind === 'identity-map' ? serializeIdentityMapSidecar(createIdentityMapSidecar({ ...common, entries: accepted }))
+    : serializeLineageSidecar(createLineageSidecar({ ...common, ...lineageForExport(result, accepted) }));
+  return { filename: sidecarFilename(result, kind), data };
 }

@@ -10,8 +10,8 @@ export const coordinationAssistantOperations = [
     const [{ captureEvidence }, { replaceEvidence }] = await Promise.all([import('@/lib/assistant/evidence'), import('@/lib/assistant/conversation')]);
     return c.commit(() => { const snapshot = captureEvidence(i.source); replaceEvidence(snapshot); return { evidence_id: snapshot.id, source: snapshot.source }; });
   }),
-  coordination<{ prompt: string; evidence_id: string }>('assistant.send', 'Send one prompt against an exact native evidence snapshot using the already configured provider, credentials, entitlement and root budget. Awaits the actual streaming terminal response; cancellation aborts only this request.', ['network', 'configuration'], {
-    type: 'object', properties: { prompt: { type: 'string', minLength: 1, maxLength: 8000 }, evidence_id: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['prompt', 'evidence_id'], additionalProperties: false,
+  coordination<{ prompt: string; evidence_id: string; attachment_id?: string }>('assistant.send', 'Send one prompt against an exact native evidence snapshot using the already configured provider, credentials, entitlement and root budget. Awaits the actual streaming terminal response; cancellation aborts only this request.', ['network', 'configuration'], {
+    type: 'object', properties: { prompt: { type: 'string', minLength: 1, maxLength: 8000 }, evidence_id: { type: 'string', minLength: 1, maxLength: 200 }, attachment_id: { type: 'string', nullable: true, minLength: 1, maxLength: 200 } }, required: ['prompt', 'evidence_id'], additionalProperties: false,
   }, async (i, c) => {
     const [{ sendAssistant, ASSISTANT_PROXY_URL }, { useAssistant, cancelAssistant }, { useViewerStore }] = await Promise.all([import('@/lib/assistant/request'), import('@/lib/assistant/conversation'), import('@/store')]);
     if (useAssistant.getState().snapshot?.id !== i.evidence_id) throw new Error('Assistant evidence changed; inspect or capture the intended source first.');
@@ -22,8 +22,11 @@ export const coordinationAssistantOperations = [
     try {
       const completed = await c.commitAsync(async () => {
         if (useAssistant.getState().snapshot?.id !== i.evidence_id) throw new Error('Assistant evidence changed before request admission.');
-        const pending = sendAssistant(i.prompt, useViewerStore.getState().chatActiveModel, ASSISTANT_PROXY_URL);
-        owned = useAssistant.getState().controller; if (c.signal?.aborted) cancel(); return pending;
+        const { assistantAttachmentsForSend, removeAssistantAttachments } = await import('@/lib/assistant/attachment-library');
+        const attachments = i.attachment_id ? assistantAttachmentsForSend(i.attachment_id, i.evidence_id) : {};
+        c.checkpoint?.();
+        const pending = sendAssistant(i.prompt, useViewerStore.getState().chatActiveModel, ASSISTANT_PROXY_URL, attachments);
+        owned = useAssistant.getState().controller; if (c.signal?.aborted) cancel(); const success = await pending; if (success && i.attachment_id) removeAssistantAttachments(i.attachment_id); return success;
       });
       const state = useAssistant.getState(); return { completed, status: state.status, error: state.error, messages: state.messages, budget: state.budget };
     } finally { c.signal?.removeEventListener('abort', cancel); }

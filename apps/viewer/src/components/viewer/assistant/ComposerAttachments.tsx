@@ -18,27 +18,12 @@ import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { getModelById } from '@/lib/llm/models';
-import { captureSelectionGrounding, selectionGroundingText, type SelectionGrounding } from '@/lib/actions/selection-grounding';
-import type { AssistantAttachments } from '@/lib/assistant/request';
+import { captureSelectionGrounding } from '@/lib/actions/selection-grounding';
 import { captureViewportScreenshot } from './viewport-screenshot';
-import { roomAttachmentText, type RoomGrounding } from '@/lib/actions/room-review';
 
-export interface ComposerAttachmentValue {
-  selection: SelectionGrounding | null;
-  screenshot: string | null;
-  rooms?: RoomGrounding | null;
-}
-
-export const NO_ATTACHMENTS: ComposerAttachmentValue = { selection: null, screenshot: null };
-
-/** What a send carries for `value`: nothing unless the user attached it. */
-export function attachmentsForSend(value: ComposerAttachmentValue): AssistantAttachments {
-  return {
-    ...(value.selection ? { selection: selectionGroundingText(value.selection), selectionSnapshot: value.selection } : {}),
-    ...(value.screenshot ? { screenshot: value.screenshot } : {}),
-    ...(value.rooms ? { rooms: roomAttachmentText(value.rooms), roomSnapshot: value.rooms } : {}),
-  };
-}
+export { attachmentsForSend, NO_ATTACHMENTS } from '@/lib/assistant/attachments';
+export type { ComposerAttachmentValue } from '@/lib/assistant/attachments';
+import type { ComposerAttachmentValue } from '@/lib/assistant/attachments';
 
 function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
   const { t } = useTranslation();

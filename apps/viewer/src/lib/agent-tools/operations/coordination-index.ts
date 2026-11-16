@@ -1,6 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { coordinationAssistantAttachmentOperations } from './coordination-assistant-attachments';
+import { coordinationPortableOperations } from './coordination-portable';
+import { coordinationBcfRecoveryOperations } from './coordination-bcf-recovery';
+import { coordinationFinalControlOperations } from './coordination-final-controls';
 import { coordinationExtensionNativeOperations } from './coordination-extension-native';
 import { coordinationFlavorOperations } from './coordination-flavors';
 import { coordinationSemanticNativeOperations } from './coordination-semantic-native';
@@ -29,7 +33,7 @@ import { coordinationProviderOperations } from './coordination-providers';
 import { coordinationReviewOperations } from './coordination-review';
 import { coordinationScriptSessionOperations } from './coordination-script-session';
 import { coordinationSemanticOperations } from './coordination-semantic';
-export const coordinationOperations = [...coordinationExtensionNativeOperations, ...coordinationFlavorOperations, ...coordinationSemanticNativeOperations, ...coordinationSemanticProjectionOperations, ...coordinationLayerWorkflowOperations, ...coordinationSourceCatalogOperations, ...coordinationCollabOperations, ...coordinationScriptRunOperations, ...coordinationBcfServerOperations, ...coordinationBcfDraftOperations, ...coordinationGeorefOperations, ...coordinationCompareWorkspaceOperations, ...coordinationExtensionLifecycleOperations, ...coordinationSourceSettingsOperations, ...coordinationFlowRunOperations, ...coordinationAssistantOperations, ...coordinationSourceLoadOperations, ...coordinationViewpointOperations, ...coordinationBcfOperations, ...coordinationCompareOperations,
+export const coordinationOperations = [...coordinationAssistantAttachmentOperations, ...coordinationPortableOperations, ...coordinationBcfRecoveryOperations, ...coordinationFinalControlOperations, ...coordinationExtensionNativeOperations, ...coordinationFlavorOperations, ...coordinationSemanticNativeOperations, ...coordinationSemanticProjectionOperations, ...coordinationLayerWorkflowOperations, ...coordinationSourceCatalogOperations, ...coordinationCollabOperations, ...coordinationScriptRunOperations, ...coordinationBcfServerOperations, ...coordinationBcfDraftOperations, ...coordinationGeorefOperations, ...coordinationCompareWorkspaceOperations, ...coordinationExtensionLifecycleOperations, ...coordinationSourceSettingsOperations, ...coordinationFlowRunOperations, ...coordinationAssistantOperations, ...coordinationSourceLoadOperations, ...coordinationViewpointOperations, ...coordinationBcfOperations, ...coordinationCompareOperations,
   ...coordinationFlowOperations, ...coordinationInfluxOperations, ...coordinationLayerOperations,
   ...coordinationLoadReportOperations, ...coordinationProviderOperations, ...coordinationReviewOperations,
   ...coordinationScriptSessionOperations, ...coordinationSemanticOperations];

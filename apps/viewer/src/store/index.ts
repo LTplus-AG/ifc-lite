@@ -55,6 +55,7 @@ import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
 import { createGlobePlacementSlice, type GlobePlacementSlice } from './slices/globePlacementSlice.js';
 import { createSolarSlice, type SolarSlice } from './slices/solarSlice.js';
+import { createSiteContextSlice, type SiteContextSlice } from './slices/siteContextSlice.js';
 import { createEnvironmentSlice, type EnvironmentSlice } from './slices/environmentSlice.js';
 import { createScheduleSlice, type ScheduleSlice } from './slices/scheduleSlice.js';
 import { createPlaybackSlice, type PlaybackSlice } from './slices/playbackSlice.js';
@@ -179,7 +180,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice & GlobePlacementSlice &
-  SolarSlice &
+  SolarSlice & SiteContextSlice &
   EnvironmentSlice &
   ScheduleSlice &
   PlaybackSlice &
@@ -245,6 +246,7 @@ const createViewerStore = () => create<ViewerState>()(withStoreChurnCounters(wit
   ...createCesiumSlice(...args),
   ...createGlobePlacementSlice(...args),
   ...createSolarSlice(...args),
+  ...createSiteContextSlice(...args),
   ...createEnvironmentSlice(...args),
   ...createScheduleSlice(...args),
   ...createPlaybackSlice(...args),

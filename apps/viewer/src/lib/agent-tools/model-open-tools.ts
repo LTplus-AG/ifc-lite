@@ -177,7 +177,7 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
   // The loader's own pre-reset check, run here too so the agent hears which URL served the error before the
   // unexported-edits check and the grant recheck.
   const notAModel = await nonModelContentReason(file);
-  if (notAModel) refuse(`${shown(source)} returned ${notAModel}, not a model. Nothing was loaded.`);
+  if (notAModel) refuse(`${shown(source)} returned ${notAModel}. Nothing was loaded.`);
   return file;
 }
 

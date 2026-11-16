@@ -48,13 +48,15 @@ const XML_ERROR_SUFFIX = /(?:Error|Exception|Fault)(?:Report|Response)?$/;
 
 /** STEP's first line, after whitespace and comments (case-insensitive, with or without the hyphen). */
 const STEP_MARKER = /^ISO[- ]?10303-21/i;
+const STEP_ANYWHERE = /ISO[- ]?10303-21/i;
 
 /**
- * Why `file` is an error response rather than a model (`null` when it may be a model). An HTML page; for a small
- * text body, JSON that is not an IFCX document (whose `header.ifcxVersion` names IFCX) or XML whose root is an
- * error element; under an IFC name (.ifc, .ifczip), content the format router would send to the STEP parser
- * although it is not STEP. Formats the router recognises by content (ZIP, GLB, 3DM, IFCX JSON, point-cloud
- * magic) are always left to their loaders.
+ * Why the loaders could not open `file` (`null` when they may): an error response saved or served as a model,
+ * or text the IFC path cannot read. An HTML page; for a small text body, JSON that is not an IFCX document
+ * (whose `header.ifcxVersion` names IFCX) or XML whose root is an error element; under an IFC name (.ifc,
+ * .ifczip), content the format router would send to the STEP parser although it cannot read it: not STEP, or
+ * any UTF-16 text (the parser reads single-byte text; STEP saved as UTF-16 gets its own reason). Formats the
+ * router recognises by content (ZIP, GLB, 3DM, IFCX JSON, point-cloud magic) are always left to their loaders.
  *
  * `head` is the first 4 KiB the caller already read. More (up to {@link NON_MODEL_SCAN_BYTES}) is read only when
  * the head looks like text that is not plainly a model, so an ordinary STEP or binary model costs no extra read.
@@ -66,17 +68,20 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const routed = detectFormat(first);
   if (routed === 'glb' || routed === '3dm') return null;
   const ifcName = /\.(?:ifc|ifczip)$/i.test(file.name);
-  // A UTF-16 document (an IIS/.NET error page) has NUL bytes but is text: it is decoded and judged like any text.
+  // A UTF-16 document (an IIS/.NET error page) has NUL bytes but is text: it is decoded, then judged like text.
   const utf16 = utf16Encoding(bytes);
+  if (utf16 && ifcName) {
+    const decoded = new TextDecoder(utf16).decode(await readScan(file, first));
+    return STEP_ANYWHERE.test(decoded) ? NON_MODEL_REASONS.utf16Step : NON_MODEL_REASONS.notStep;
+  }
   const decode = (buffer: ArrayBuffer) => new TextDecoder(utf16 ?? 'utf-8').decode(buffer); // drops the BOM
-  // Otherwise a control byte in the first 512 means binary: a headerless .splat can start with '<a '.
-  const binary = !utf16 && bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32));
   const headText = decode(first);
+  // Binary: a control byte (code point, for UTF-16) in the first 512. A headerless .splat can start with '<a '.
+  const binary = utf16 ? /[\u0000-\u0008\u000e-\u001f]/.test(headText.slice(0, 256)) : bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32));
   const firstChar = headText.trimStart()[0] ?? '';
   const headLead = afterStepComments(headText);
-  const ifcNotStep = ifcName && !(headLead !== null && STEP_MARKER.test(headLead));
-  // STEP the parser cannot read: it reads single-byte text.
-  if (utf16 && ifcName && !ifcNotStep) return NON_MODEL_REASONS.utf16Step;
+  const headIsStep = headLead !== null && STEP_MARKER.test(headLead);
+  const ifcNotStep = ifcName && !headIsStep;
   // Only content that could be an error response (or is all blank so far), or IFC-named content that is not
   // plainly STEP, is read further.
   const couldBeText = firstChar === '' || firstChar === '<' || (!binary && /[{["]/.test(firstChar));

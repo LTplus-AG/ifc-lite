@@ -8,20 +8,20 @@
  * them without importing the ingest graph.
  */
 export const NON_MODEL_REASONS = {
-  html: 'an HTML page',
-  json: 'a JSON response',
+  html: 'an HTML page, not a model',
+  json: 'a JSON response, not a model',
   ifcxHeader: 'a JSON document without an IFCX header.ifcxVersion',
-  xmlError: 'an XML error response',
+  xmlError: 'an XML error response, not a model',
   notStep: 'content that is neither STEP nor an IFC ZIP',
-  utf16Step: 'STEP saved as UTF-16, which the parser cannot read (save it as UTF-8)',
+  utf16Step: 'STEP saved as UTF-16, which the parser cannot read; save it as UTF-8',
 } as const;
 export type NonModelReason = (typeof NON_MODEL_REASONS)[keyof typeof NON_MODEL_REASONS];
 
 /** The message every refusal carries, matched by the invalid-input classifier. */
 export function nonModelContentMessage(reason: NonModelReason): string {
-  return `The file is ${reason}, not a model.`;
+  return `The file is ${reason}.`;
 }
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^$(){}|[\]\\]/g, '\\$&');
 /** Matches exactly the messages {@link nonModelContentMessage} builds. */
-export const NON_MODEL_MESSAGE = new RegExp(`^The file is (?:${Object.values(NON_MODEL_REASONS).map(escapeRegExp).join('|')}), not a model\\.$`);
+export const NON_MODEL_MESSAGE = new RegExp(`^The file is (?:${Object.values(NON_MODEL_REASONS).map(escapeRegExp).join('|')})\\.$`);

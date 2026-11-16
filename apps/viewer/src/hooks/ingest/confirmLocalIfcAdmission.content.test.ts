@@ -26,7 +26,7 @@ it('#9523 refuses a .ifc or .ifczip that is neither STEP nor ZIP before the scen
   for (const file of [new File(['Access Denied'], 'house.ifc'), new File(['<h1>403</h1>'], 'house.IFC'), new File(['nope'], 'pack.ifczip')]) {
     const { head, failures } = await preflight(file);
     assert.equal(head, null, file.name);
-    assert.match(String(failures[0]), /not a model/, file.name);
+    assert.match(String(failures[0]), /^Error: The file is /, file.name);
   }
 });
 
@@ -59,14 +59,16 @@ it('#9523 a load superseded before the content check reads no further and report
 });
 
 it('#9523 a load superseded while the content is scanned reports nothing', async () => {
-  const file = new File(['{"error":"expired"}'], 'house.ifc');
-  let current = true;
+  // Over 4 KiB, so the check reads its 64 KiB scan: that second read is where the load is superseded.
+  const file = new File([`{"error":"expired"}${' '.repeat(5000)}`], 'house.ifc');
+  let current = true, reads = 0, finished = 0;
   const realSlice = file.slice.bind(file);
-  // The head read happens while current; the load is superseded before the refusal would be reported.
-  Object.defineProperty(file, 'slice', { value: (start?: number, end?: number) => { const blob = realSlice(start, end); queueMicrotask(() => { current = false; }); return blob; } });
+  Object.defineProperty(file, 'slice', { value: (start?: number, end?: number) => { if (++reads === 2) current = false; return realSlice(start, end); } });
   const failures: unknown[] = [];
   const admission = createLocalIfcLoadAdmission(file, { isCurrent: () => current, signal: new AbortController().signal,
-    onCancel: () => assert.fail('no consent prompt expected'), onFailure: (error) => failures.push(error), finish: () => {} });
+    onCancel: () => assert.fail('no consent prompt expected'), onFailure: (error) => failures.push(error), finish: () => { finished++; } });
   assert.equal(await admission.preflight(), null);
+  assert.equal(reads, 2, 'the content scan ran');
   assert.deepEqual(failures, [], 'a refusal for a superseded load is not reported');
+  assert.equal(finished, 1);
 });

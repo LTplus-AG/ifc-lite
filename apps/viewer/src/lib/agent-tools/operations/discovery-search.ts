@@ -29,8 +29,7 @@ const SYNONYMS: readonly (readonly string[])[] = [
   ['select', 'selection', 'pick', 'choose'],
   ['export', 'download', 'save'],
   ['clash', 'collision', 'conflict', 'interference'],
-  // Not 'ids': tokenize splits express_ids into it, so it would tie validation to every entity operation.
-  ['validate', 'validation', 'check', 'verify', 'audit'],
+  ['ids', 'validate', 'validation', 'check', 'verify', 'audit'],
   ['bcf', 'issue', 'topic'],
   ['wall', 'slab', 'door', 'window', 'column', 'beam', 'roof', 'stair', 'element', 'entity', 'object', 'product'],
   ['delete', 'remove', 'erase'],
@@ -64,7 +63,10 @@ export function stem(word: string): string {
 
 /** Splits ids (`.`, `-`, `_`, camelCase) and prose into case-folded, stemmed tokens. */
 export function tokenize(text: string, dropStopwords = false): string[] {
-  const words = text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+  // `express_ids` / `expressIds` name entity ids, not the IDS standard: keep them one token so
+  // they do not tie validation queries to every entity operation.
+  const words = text.replace(/express[_\s-]?ids/gi, 'expressids')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
     .toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
   return words.filter(word => !dropStopwords || !STOPWORDS.has(word)).map(stem);
 }

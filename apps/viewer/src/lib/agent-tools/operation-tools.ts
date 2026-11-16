@@ -42,8 +42,8 @@ export const OPERATION_SPECS = {
 } as const;
 const output = (structured: unknown): ToolOutput => ({ text: JSON.stringify(structured), structured });
 function jobId(args: Record<string, unknown>) {
-  if (Object.keys(args).some(key => key !== 'job_id') || typeof args.job_id !== 'string' || args.job_id.length > 200) invalid('Provide only job_id.');
-  return args.job_id;
+  keys(args, ['job_id']);
+  return boundedString(args, 'job_id', 200) ?? invalid('Provide job_id.');
 }
 export const operationTools: Record<keyof typeof OPERATION_SPECS, AgentTool> = {
   ...operationArtifactTools,

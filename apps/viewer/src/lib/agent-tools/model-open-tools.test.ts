@@ -25,7 +25,7 @@ const run = (args: Record<string, unknown>, ctx: ToolCallContext = granted) =>
 
 const realFetch = globalThis.fetch;
 let fetched: string[] = [];
-let respond = (): Response => new Response(new Uint8Array([73, 83, 79]), { status: 200 });
+let respond: () => Response;
 let calls: Array<{ kind: 'replace' | 'add' | 'stack'; names: string[] }> = [];
 let behaviour: 'load' | 'error' | 'nothing' | 'hang' = 'load';
 let unregister: () => void = () => {};

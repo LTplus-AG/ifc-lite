@@ -10,6 +10,15 @@ import { rankOperations, viewerOperations } from './registry';
 const top = (query: string, n = 3) => rankOperations(query).slice(0, n).map(op => op.id);
 
 describe('agent discovery ranker', () => {
+  it('keeps express_ids one token, so it is not the IDS standard', () => {
+    for (const text of ['express_ids', 'expressIds', 'express ids']) {
+      const tokens = tokenize(text);
+      assert.equal(tokens.length, 1, text);
+      assert.ok(!tokens.includes('ids'), text);
+    }
+    assert.ok(tokenize('run IDS check').includes('ids'));
+    assert.ok(top('ids check', 5).some(id => id.startsWith('validation.') || id.startsWith('ids.')), top('ids check', 5).join(', '));
+  });
   it('does not tie validation words to every operation that takes express_ids', () => {
     const first = top('validate model', 10);
     assert.ok(first.includes('model.audit'), first.join(', '));

@@ -84,6 +84,24 @@ describe('CPU geometry held (#10264)', () => {
     assert.deepEqual(Object.keys(held.owners), ['store.models']);
   });
 
+  it('preserves undo-stash ownership when it shares the active model list (#10506)', async () => {
+    const { measureCpuGeometryHeld } = await load();
+    const result = { meshes: [mesh(new Float32Array(3), new Float32Array(3), new Uint32Array(3))] };
+    const held = measureCpuGeometryHeld({
+      models: [{ geometryResult: result }, { geometryResult: result }],
+      geometryResult: result,
+      removedMeshes: [{ meshes: result.meshes }, { meshes: result.meshes }],
+    });
+    assert.equal(held.totalBytes, 36);
+    assert.equal(held.sharedBytes, 36);
+    assert.deepEqual(Object.keys(held.owners), ['store.models', 'store.removedMeshes']);
+    for (const owner of Object.values(held.owners)) {
+      assert.equal(owner.reachableBytes, 36);
+      assert.equal(owner.exclusiveBytes, 0);
+      assert.equal(owner.viewBytes, 36, 'duplicate lists within one holder count once');
+    }
+  });
+
   it('reports a holder-only buffer as exclusive to that holder', async () => {
     const { createCpuGeometryAccount } = await load();
     const account = createCpuGeometryAccount();

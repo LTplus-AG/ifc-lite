@@ -122,10 +122,13 @@ export interface CpuGeometrySources {
 export function measureCpuGeometryHeld(sources: CpuGeometrySources): CpuGeometryHeld {
   const start = performance.now();
   const account = createCpuGeometryAccount();
-  const seenLists = new Set<readonly MeshData[]>();
+  const seenLists = new Map<string, Set<readonly MeshData[]>>();
   const visitList = (owner: string, list: readonly MeshData[] | null | undefined) => {
-    if (!list || seenLists.has(list)) return; // the same list under two store fields is one holder
-    seenLists.add(list);
+    if (!list) return;
+    let seen = seenLists.get(owner);
+    if (!seen) seenLists.set(owner, (seen = new Set()));
+    if (seen.has(list)) return;
+    seen.add(list);
     for (const mesh of list) visitMeshArrays(owner, mesh, account.visit);
   };
   const models = [...(sources.models ?? [])];
@@ -136,7 +139,10 @@ export function measureCpuGeometryHeld(sources: CpuGeometrySources): CpuGeometry
     for (const array of model.preAlignment?.normals ?? []) if (array) account.visit('store.preAlignment', array, 'normals');
   }
   for (const stash of sources.removedMeshes ?? []) visitList('store.removedMeshes', stash.meshes);
-  visitList('store.geometryResult', sources.geometryResult?.meshes);
+  // The top-level result aliases the active model; report it only when distinct.
+  if (!models.some(model => model.geometryResult?.meshes === sources.geometryResult?.meshes)) {
+    visitList('store.geometryResult', sources.geometryResult?.meshes);
+  }
   sources.renderer?.visitCpuGeometry(account.visit);
   return account.result(performance.now() - start);
 }

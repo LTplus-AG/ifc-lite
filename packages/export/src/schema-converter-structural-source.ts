@@ -83,9 +83,10 @@ export class SourceRecords {
 
 /** An entity reference slot, with STEP whitespace and comments around it allowed (#10248). */
 export function slotRef(token: string | undefined): number | null {
-  const start = skipStepTrivia(token ?? '', 0);
-  const m = start < 0 ? null : /^#\s*(\d+)/.exec(token!.slice(start));
-  return m && skipStepTrivia(token!, start + m[0].length) === token!.length ? Number(m[1]) : null;
+  const text = token ?? '';
+  const start = skipStepTrivia(text, 0);
+  const m = start < 0 ? null : /^#\s*(\d+)/.exec(text.slice(start));
+  return m && skipStepTrivia(text, start + m[0].length) === text.length ? Number(m[1]) : null;
 }
 
 /** Whether the slot is the unset marker `$`, with STEP whitespace and comments around it allowed (#10248). */

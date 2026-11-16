@@ -45,6 +45,7 @@ export async function openSiteContext(): Promise<void> {
     return;
   }
   switch (anchor.reason) {
+    case 'stale': return;
     case 'not-georeferenced':
       toast.info(t('siteContext.refusal.notGeoreferenced'), { label: t('siteContext.refusal.openEditor'), onClick: () => openModelPanel(modelId) });
       return;

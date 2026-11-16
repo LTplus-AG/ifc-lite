@@ -13,6 +13,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import type { CoordinateInfo, ModelSpatialReference } from '@ifc-lite/geometry';
+import { configureCrsLoaders } from '@ifc-lite/geo';
 import type { MapConversion } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
@@ -44,7 +45,7 @@ function seed(...models: FederatedModel[]): void {
   useViewerStore.setState({ models: new Map(models.map((m) => [m.id, m])), activeModelId: models[models.length - 1].id, anchorModelIdOverride: null });
 }
 
-afterEach(() => useViewerStore.setState({ models: new Map(), activeModelId: null }));
+afterEach(() => useViewerStore.setState({ models: new Map(), activeModelId: null, georefMutations: new Map(), anchorModelIdOverride: null }));
 
 test('the selected model states no datum, the reference model states LHN95: the panel refuses, as the load does', async () => {
   seed(swissModel('reference', 1, 'LHN95'), swissModel('selected', 2));
@@ -139,3 +140,55 @@ test('an edit while the lazy loader is pending prevents dispatch after it become
   await runForCurrentSiteContextAnchor('m', captured, Promise.resolve(async () => { dispatched++; }));
   assert.equal(dispatched, 1, 'an unchanged anchor dispatches once when the loader is ready');
 });
+
+
+function rectangle(): FederatedModel {
+  const model = swissModel('m', 1, 'LN02');
+  model.geometryResult = { ...model.geometryResult!, meshes: [{ expressId: 1, ifcType: 'IfcWall', color: [0.5, 0.5, 0.5, 1],
+    positions: new Float32Array([-4, 0, -1, 4, 0, -1, 4, 0, 1, -4, 0, 1]), normals: new Float32Array(12), indices: new Uint32Array([0, 1, 2, 0, 2, 3]) }] };
+  return model;
+}
+
+test('rotating a rectangular subject at an unchanged centre refuses the captured footprint (#10481)', async () => {
+  const model = rectangle(); seed(model);
+  const captured = await resolveSiteContextAnchor('m'); assert.ok(captured.ok && captured.subject?.footprint);
+  const rotated = spatialReferenceFromIfc({ mapConversion: { ...conversion, xAxisAbscissa: 0, xAxisOrdinate: 1 },
+    projectedCRS: { id: 3, name: 'EPSG:2056', mapUnitScale: 1, verticalDatum: 'LN02' }, lengthUnitScale: 1, coordinateInfo: FRAME });
+  seed({ ...model, spatialReference: rotated });
+  const fresh = await resolveSiteContextAnchor('m'); assert.ok(fresh.ok);
+  assert.deepEqual(fresh.centre, captured.centre);
+  assert.notDeepEqual(fresh.subject, captured.subject);
+  assert.equal(await anchorStillCurrent('m', captured), false);
+  let dispatched = false;
+  await runForCurrentSiteContextAnchor('m', captured, Promise.resolve(async () => { dispatched = true; }));
+  assert.equal(dispatched, false);
+});
+
+test('changes during the footprint projection await refuse the entire result (#10481)', async () => {
+  const model = rectangle(); seed(model);
+  const pending = resolveSiteContextAnchor('m');
+  // The centre continuation runs first, then waits for the four footprint projections.
+  queueMicrotask(() => seed({ ...model, spatialReference: { ...model.spatialReference!, confidence: 'assumed' } }));
+  assert.deepEqual(await pending, { ok: false, reason: 'stale' });
+});
+
+for (const change of ['selected', 'reference-mutation'] as const) {
+  test(`a deferred CRS lookup cannot publish an anchor after a ${change} edit (#10481)`, async () => {
+    let release!: (definition: string) => void;
+    let requested!: () => void;
+    const started = new Promise<void>((resolve) => { requested = resolve; });
+    const definition = new Promise<string>((resolve) => { release = resolve; });
+    const previous = configureCrsLoaders({ epsgDefinition: async () => { requested(); return definition; } });
+    try {
+      const model = rectangle();
+      model.spatialReference = { ...model.spatialReference!, horizontal: { ...model.spatialReference!.horizontal!, id: change === 'selected' ? 'EPSG:999997' : 'EPSG:999998' } };
+      seed(swissModel('reference', 0, 'LN02'), model);
+      const pending = resolveSiteContextAnchor('m');
+      await started;
+      if (change === 'selected') seed({ ...model, spatialReference: { ...model.spatialReference, confidence: 'assumed' } });
+      else useViewerStore.setState({ georefMutations: new Map([['reference', { projectedCRS: { verticalDatum: 'LHN95' } }]]) });
+      release('+proj=somerc +lat_0=46.9524055555556 +lon_0=7.43958333333333 +k_0=1 +x_0=2600000 +y_0=1200000 +ellps=bessel +towgs84=674.374,15.056,405.346 +units=m +no_defs');
+      assert.deepEqual(await pending, { ok: false, reason: 'stale' });
+    } finally { configureCrsLoaders(previous); }
+  });
+}

@@ -22,7 +22,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { formatFileSize } from '@/lib/recent-files';
 import { SITE_CONTEXT_CATEGORIES, SITE_CONTEXT_RADII, type SiteContextCategoryStatus, type SiteContextRadius } from '@/store/slices/siteContextSlice';
-import { runForCurrentSiteContextAnchor, resolveSiteContextAnchor, type SiteContextAnchor } from '@/lib/site-context/site-context-anchor';
+import { runForCurrentSiteContextAnchor, resolveSiteContextAnchor, captureSiteContextAnchorInputs, siteContextAnchorInputsCurrent, type SiteContextAnchor } from '@/lib/site-context/site-context-anchor';
 
 const CATEGORY_KEY = {
   terrain: 'siteContext.category.terrain',
@@ -46,21 +46,26 @@ const STATUS_KEY = {
  * paired with the new model (#10481 review).
  */
 export function useSiteContextAnchor(modelId: string): SiteContextAnchor | null {
-  const model = useViewerStore((s) => s.models.get(modelId));
-  const mutations = useViewerStore((s) => s.georefMutations.get(modelId));
-  const [result, setResult] = useState<{ modelId: string; model: unknown; mutations: unknown; anchor: SiteContextAnchor | null } | null>(null);
+  const models = useViewerStore((s) => s.models);
+  const mutations = useViewerStore((s) => s.georefMutations);
+  const override = useViewerStore((s) => s.anchorModelIdOverride);
+  const inputs = captureSiteContextAnchorInputs(modelId);
+  const [result, setResult] = useState<{ inputs: typeof inputs; anchor: SiteContextAnchor | null } | null>(null);
   useEffect(() => {
     let live = true;
+    const captured = captureSiteContextAnchorInputs(modelId);
     void resolveSiteContextAnchor(modelId).then(
-      (anchor) => { if (live) setResult({ modelId, model, mutations, anchor }); },
-      (error: unknown) => { console.warn('[site-context] anchor resolution failed:', error); if (live) setResult({ modelId, model, mutations, anchor: null }); },
+      (anchor) => { if (live) setResult({ inputs: captured, anchor: !anchor.ok && anchor.reason === 'stale' ? null : anchor }); },
+      (error: unknown) => { console.warn('[site-context] anchor resolution failed:', error); if (live) setResult({ inputs: captured, anchor: null }); },
     );
     return () => { live = false; };
-  }, [modelId, model, mutations]);
-  return result && result.modelId === modelId && result.model === model && result.mutations === mutations ? result.anchor : null;
+  }, [modelId, models, mutations, override, inputs.placement]);
+  return result && result.inputs.modelId === modelId && siteContextAnchorInputsCurrent(result.inputs) ? result.anchor : null;
 }
 
-export function SiteContextSection({ modelId }: { modelId: string }) {
+const importContextLoader = () => import('@/lib/site-context/site-context-fetch');
+
+export function SiteContextSection({ modelId, loadContext = importContextLoader }: { modelId: string; loadContext?: () => Promise<Pick<Awaited<ReturnType<typeof importContextLoader>>, 'loadSiteContext'>> }) {
   const { t, locale } = useTranslation();
   const anchor = useSiteContextAnchor(modelId);
   const isContextModel = useViewerStore((s) => s.siteContextModels.has(modelId));
@@ -79,6 +84,7 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
   const last = useViewerStore.getState().siteContextLastChoice;
   const [radius, setRadius] = useState<SiteContextRadius>(last?.radius ?? 200);
   const [selected, setSelected] = useState<ReadonlySet<SiteContextLayerKind>>(new Set(last?.categories ?? ['terrain', 'parcel', 'buildings']));
+  const [loadError, setLoadError] = useState<{ modelId: string; message: string } | null>(null);
   const [imagery, setImagery] = useState(last?.imagery ?? true);
 
   // A site-context model is the context, not a site to fetch around; outside
@@ -88,10 +94,14 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
   const start = () => {
     if (!anchor.ok) return;
     const captured = anchor;
-    void runForCurrentSiteContextAnchor(modelId, captured, import('@/lib/site-context/site-context-fetch').then(({ loadSiteContext }) => () => loadSiteContext({
-      anchorModelId: modelId, centre: captured.centre, radius, ...(captured.subject ? { subject: captured.subject } : {}), categories: SITE_CONTEXT_CATEGORIES.filter((kind) => selected.has(kind)),
+    setLoadError(null);
+    void runForCurrentSiteContextAnchor(modelId, captured, Promise.resolve().then(loadContext).then(({ loadSiteContext }) => (fresh) => loadSiteContext({
+      anchorModelId: modelId, centre: fresh.centre, radius, ...(fresh.subject ? { subject: fresh.subject } : {}), categories: SITE_CONTEXT_CATEGORIES.filter((kind) => selected.has(kind)),
       imagery: imagery && selected.has('terrain'), addModel, removeModel,
-    })));
+    }))).catch((failure: unknown) => {
+      console.warn('[site-context] load failed:', failure);
+      setLoadError({ modelId, message: failure instanceof Error ? failure.message : String(failure) });
+    });
   };
   const toggle = (kind: SiteContextLayerKind, on: boolean) => {
     const next = new Set(selected);
@@ -149,7 +159,7 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
             )}
           </div>
           {progress && <output className="block text-xs text-muted-foreground">{progress.message}</output>}
-          {error && <p className="text-xs text-error">{error}</p>}
+          {(loadError?.modelId === modelId || error) && <p role="alert" className="text-xs text-error">{loadError?.modelId === modelId ? loadError.message : error}</p>}
           {stats && (
             <p className="text-xs text-muted-foreground">
               {t('siteContext.section.stats', {

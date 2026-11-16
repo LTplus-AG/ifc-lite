@@ -38,7 +38,7 @@ export type SiteContextAnchor =
     /** The model's own building for the buildings layer: its EGID, else its footprint in EPSG:2056. */
     subject?: { egid?: string; footprint?: Array<Array<{ x: number; y: number }>> };
   }
-  | { ok: false; reason: 'not-georeferenced' | 'unknown-crs' | 'outside-switzerland' | 'height-datum' | 'height-unknown'; detail?: string };
+  | { ok: false; reason: 'not-georeferenced' | 'unknown-crs' | 'outside-switzerland' | 'height-datum' | 'height-unknown' | 'stale'; detail?: string };
 
 /** The placement a model's geometry is in: the reference it was aligned to, else its own. */
 export function modelPlacement(model: FederatedModel, mutations = useViewerStore.getState().georefMutations.get(model.id)): {
@@ -92,29 +92,55 @@ export function siteContextPlacementReference(fallback?: ModelSpatialReference):
   return findReferenceSpatialModel()?.placement.spatialReference ?? fallback ?? null;
 }
 
-/**
- * True when `modelId` still resolves to the centre `captured` was taken from. Checked again right
- * before a load is dispatched, since the georeference can change between the click and the
- * dispatch (#10481 review).
- */
-export async function anchorStillCurrent(modelId: string, captured: { centre: { x: number; y: number } }): Promise<boolean> {
-  const fresh = await resolveSiteContextAnchor(modelId);
-  return fresh.ok && fresh.centre.x === captured.centre.x && fresh.centre.y === captured.centre.y;
+export type ResolvedSiteContextAnchor = Extract<SiteContextAnchor, { ok: true }>;
+
+/** Immutable store inputs plus placement values, including the federation reference's mutations. */
+export function captureSiteContextAnchorInputs(modelId: string) {
+  const state = useViewerStore.getState();
+  const model = state.models.get(modelId);
+  return {
+    modelId, models: state.models, mutations: state.georefMutations, override: state.anchorModelIdOverride,
+    geometry: model?.geometryResult, data: model?.ifcDataStore,
+    placement: JSON.stringify({ own: model ? modelPlacement(model) : null, reference: findReferenceSpatialModel() }),
+  };
 }
 
-/** Revalidate after the lazy loader is ready, so edits during its import cannot dispatch an old centre (#10481). */
+export function siteContextAnchorInputsCurrent(inputs: ReturnType<typeof captureSiteContextAnchorInputs>): boolean {
+  const now = captureSiteContextAnchorInputs(inputs.modelId);
+  return inputs.models === now.models && inputs.mutations === now.mutations && inputs.override === now.override
+    && inputs.geometry === now.geometry && inputs.data === now.data && inputs.placement === now.placement;
+}
+
+function sameAnchor(a: ResolvedSiteContextAnchor, b: ResolvedSiteContextAnchor): boolean {
+  return a.centre.x === b.centre.x && a.centre.y === b.centre.y
+    && JSON.stringify(a.subject ?? null) === JSON.stringify(b.subject ?? null)
+    && a.heightAssumed === b.heightAssumed && a.mapUnitAssumed === b.mapUnitAssumed
+    && a.crsAssumedFromName === b.crsAssumedFromName;
+}
+
+/** Check the full subject as well as the centre, and reject changes during asynchronous projection. */
+export async function anchorStillCurrent(modelId: string, captured: ResolvedSiteContextAnchor): Promise<boolean> {
+  const inputs = captureSiteContextAnchorInputs(modelId);
+  const fresh = await resolveSiteContextAnchor(modelId);
+  return siteContextAnchorInputsCurrent(inputs) && fresh.ok && sameAnchor(fresh, captured);
+}
+
+/** Revalidate after the lazy loader, and invoke it with the same coherent anchor just checked. */
 export async function runForCurrentSiteContextAnchor(
   modelId: string,
-  captured: { centre: { x: number; y: number } },
-  ready: Promise<() => Promise<void>>,
+  captured: ResolvedSiteContextAnchor,
+  ready: Promise<(anchor: ResolvedSiteContextAnchor) => Promise<void>>,
 ): Promise<void> {
   const run = await ready;
-  if (await anchorStillCurrent(modelId, captured)) await run();
+  const inputs = captureSiteContextAnchorInputs(modelId);
+  const fresh = await resolveSiteContextAnchor(modelId);
+  if (siteContextAnchorInputsCurrent(inputs) && fresh.ok && sameAnchor(fresh, captured)) await run(fresh);
 }
 
 /** Resolve the model `modelId` as a site-context anchor. */
 export async function resolveSiteContextAnchor(modelId: string): Promise<SiteContextAnchor> {
-  const model = useViewerStore.getState().models.get(modelId);
+  const inputs = captureSiteContextAnchorInputs(modelId);
+  const model = inputs.models.get(modelId);
   if (!model) return { ok: false, reason: 'not-georeferenced' };
   const { own, frame } = modelPlacement(model);
   if (!own || !frame) return { ok: false, reason: 'not-georeferenced' };
@@ -135,6 +161,7 @@ export async function resolveSiteContextAnchor(modelId: string): Promise<SiteCon
   const rendered = canonicalRendererPlacement(frame);
   const projected = projectedCentre(model, rendered);
   const centre = projected ? await toLv95(crs, projected[0], projected[1]) : null;
+  if (!siteContextAnchorInputsCurrent(inputs)) return { ok: false, reason: 'stale' };
   if (!centre) return { ok: false, reason: 'unknown-crs', detail: crs };
   if (!insideSwitzerland(centre)) return { ok: false, reason: 'outside-switzerland' };
   const egid = modelEgid(model.ifcDataStore);
@@ -144,6 +171,7 @@ export async function resolveSiteContextAnchor(modelId: string): Promise<SiteCon
     const lv95 = ring ? await Promise.all(ring.map(([e, n]) => toLv95(crs, e, n))) : [];
     footprint = lv95.length === 4 && lv95.every((p) => p !== null) ? lv95 as Array<{ x: number; y: number }> : null;
   }
+  if (!siteContextAnchorInputsCurrent(inputs)) return { ok: false, reason: 'stale' };
   return {
     ...(egid ? { subject: { egid } } : footprint ? { subject: { footprint: [footprint] } } : {}),
     ok: true,

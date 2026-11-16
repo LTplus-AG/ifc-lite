@@ -178,7 +178,7 @@ export const createSiteContextSlice: StateCreator<SiteContextSlice, [], [], Site
     // A request changes only the kinds it asks for: the others keep their records (and their
     // models stay in the scene, #10481 review). A kind fetched again still points at its loaded
     // model until a new one arrives and replaces it.
-    const categories: SiteContextSlice['siteContextCategories'] = { ...get().siteContextCategories };
+    const categories: SiteContextSlice['siteContextCategories'] = settleFetching(get().siteContextCategories, 'idle');
     for (const kind of request.categories) {
       const loaded = get().siteContextCategories[kind];
       categories[kind] = { status: 'fetching', issues: [], attribution: [], ...(loaded?.modelId ? { modelId: loaded.modelId, anchorModelId: loaded.anchorModelId } : {}) };

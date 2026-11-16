@@ -17,11 +17,12 @@ import type { SiteContextArrival } from '@/hooks/modelLoadOptions';
 /** The site-context models in the scene are exactly the models the category records point at. */
 export function expectSceneMatchesCategories(): void {
   const state = useViewerStore.getState();
-  const inScene = [...state.siteContextModels.keys()].filter((id) => state.models.has(id)).sort();
+  const inScene = [...state.siteContextModels.keys()].sort();
   const referenced = Object.values(state.siteContextCategories)
     .map((c) => c?.modelId)
-    .filter((id): id is string => !!id && state.models.has(id))
+    .filter((id): id is string => !!id)
     .sort();
+  for (const id of new Set([...inScene, ...referenced])) assert.ok(state.models.has(id), `${id} must actually exist in the scene`);
   assert.deepEqual(referenced, inScene, 'every site-context model in the scene has its category record, and only those');
 }
 

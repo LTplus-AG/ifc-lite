@@ -18,6 +18,8 @@ import { siteRadiusFor } from '@/hooks/ingest/siteContextLoad';
 import { __setSiteContextWorkerFactoryForTest, type SiteContextWorkerLike } from './site-context-client';
 import type { SiteContextWorkerRequest, SiteContextWorkerResponse } from './site-context-job';
 import { loadSiteContext, type SiteContextAddModel } from './site-context-fetch';
+import { fixtureModel } from '@/test/store-fixture';
+import { siteContextViewerModel } from './site-context-model';
 import { arriveInScene, expectSceneMatchesCategories } from '@/test/site-context-scene';
 
 const initial = useViewerStore.getState();
@@ -157,15 +159,30 @@ test('clearing all models ends the run: request cleared, and the detached run ad
 
 const previousTerrain = { kind: 'terrain' as const, attribution: [], issues: [], complete: true, origin: [0, 0, 0] as [number, number, number] };
 
-test('when the replacement fails to load, the previous model stays and the category reports the error next to it', async () => {
+function seedPreviousTerrain() {
+  const payload = siteContextViewerModel({ crs: 'EPSG:2056', verticalCrs: 'EPSG:5728', origin: [2600000, 1200000, 500] }, {
+    ...previousTerrain, features: [{ id: 'tile', name: 'Previous terrain tile', ifcType: 'IfcGeographicElement', attributes: {}, provenance: { dataset: 'test-terrain' }, origin: [2600000, 1200000, 500],
+      mesh: { positions: new Float32Array([0, 0, 0, 4, 0, 0, 0, 4, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]) } }],
+  }, new ArrayBuffer(8), 0);
+  const model = { ...fixtureModel('old-terrain'), ifcDataStore: payload.dataStore, geometryResult: payload.geometryResult, spatialReference: payload.spatialReference };
+  useViewerStore.setState({ models: new Map([['old-terrain', model]]) });
   state().registerSiteContextModel('old-terrain', previousTerrain);
-  useViewerStore.setState({ siteContextCategories: { terrain: { status: 'done', modelId: 'old-terrain', issues: [], attribution: [] } } });
+  state().recordArrivedSiteContextCategory('terrain', { status: 'done', modelId: 'old-terrain' });
+  return model;
+}
+
+test('when the replacement fails to load, the previous model stays and the category reports the error next to it', async () => {
+  const previous = seedPreviousTerrain();
   const run = loadSiteContext({ ...base, categories: ['terrain'], addModel: async () => null });
   workers[0].category('terrain');
   workers[0].complete();
   await run;
   expectSceneMatchesCategories();
   assert.deepEqual(removed, [], 'the previous terrain is not removed');
+  assert.equal(state().models.get('old-terrain'), previous, 'the same scene payload is retained');
+  assert.equal(state().models.get('old-terrain')?.geometryResult, previous.geometryResult);
+  assert.equal(previous.ifcDataStore.getEntitiesByType('IfcGeographicElement').length, 1);
+  assert.equal(previous.geometryResult.meshes[0].positions.length, 9);
   const terrain = state().siteContextCategories.terrain;
   assert.equal(terrain?.status, 'error');
   assert.equal(terrain?.modelId, 'old-terrain');
@@ -176,7 +193,7 @@ test('an addModel that throws fails its category, the next categories still load
   let calls = 0;
   const run = loadSiteContext({
     ...base, categories: ['terrain', 'parcel'],
-    addModel: async (_file, { name }) => { calls++; if (calls === 1) throw new Error('GPU device lost'); added.push(name); return `model:${name}`; },
+    addModel: async (file, options) => { calls++; if (calls === 1) throw new Error('GPU device lost'); return addModel(file, options); },
   });
   workers[0].category('terrain');
   workers[0].category('parcel');
@@ -189,4 +206,27 @@ test('an addModel that throws fails its category, the next categories still load
   assert.equal(terrain?.status, 'error');
   assert.match(terrain?.issues.at(-1)?.message ?? '', /GPU device lost/);
   assert.equal(state().siteContextCategories.parcel?.status, 'done', 'the next category still loaded');
+});
+
+
+test('superseding pending terrain with parcel settles only the old fetching state and retains real terrain (#10481)', async () => {
+  const previous = seedPreviousTerrain();
+  const first = loadSiteContext({ ...base, categories: ['terrain'] });
+  const oldRun = state().siteContextAbort!;
+  assert.equal(state().siteContextCategories.terrain?.status, 'fetching');
+  const second = loadSiteContext({ ...base, categories: ['parcel'] });
+  assert.equal(oldRun.signal.aborted, true);
+  assert.equal(state().siteContextCategories.terrain?.status, 'idle');
+  assert.equal(state().siteContextCategories.terrain?.modelId, previous.id);
+  assert.equal(state().models.get(previous.id), previous);
+  workers[0].fail();
+  state().setSiteContextCategory(oldRun, 'terrain', { status: 'error' });
+  state().finishSiteContextRequest(oldRun, null, 'stale failure');
+  workers[1].category('parcel');
+  workers[1].complete();
+  await Promise.all([first, second]);
+  expectSceneMatchesCategories();
+  assert.equal(state().siteContextCategories.terrain?.status, 'idle');
+  assert.equal(state().models.get(previous.id), previous);
+  assert.equal(state().siteContextCategories.parcel?.status, 'done');
 });

@@ -112,7 +112,10 @@ test('a cancel clears the request record', async () => {
 test('removing the anchor model ends the run: request cleared, and the detached run adds nothing', async () => {
   const run = loadSiteContext({ ...base, categories: ['terrain'] });
   const entry = viewerTeardownRegistry.find((e) => e.slice === 'siteContextSlice')!;
+  const runAbort = state().siteContextAbort!;
   useViewerStore.setState(entry.teardown({ kind: 'model-removed', modelId: 'anchor', isStale: () => false, nextActiveModelId: null }, state()));
+  assert.equal(runAbort.signal.aborted, true, 'the detached run aborts itself');
+  assert.equal(workers[0].terminated, true, 'and its worker stops');
   assert.equal(state().siteContextRequest, null);
   assert.equal(state().siteContextAbort, null);
   assert.equal(state().siteContextCategories.terrain?.status, 'idle');
@@ -126,10 +129,44 @@ test('removing the anchor model ends the run: request cleared, and the detached 
 test('clearing all models ends the run: request cleared, and the detached run adds nothing', async () => {
   const run = loadSiteContext({ ...base, categories: ['terrain'] });
   const entry = viewerTeardownRegistry.find((e) => e.slice === 'siteContextSlice')!;
+  const runAbort = state().siteContextAbort!;
   useViewerStore.setState(entry.teardown({ kind: 'all-models-cleared' }, state()));
+  assert.equal(runAbort.signal.aborted, true, 'the detached run aborts itself');
+  assert.equal(workers[0].terminated, true, 'and its worker stops');
   assert.equal(state().siteContextRequest, null);
   workers[0].category('terrain');
   workers[0].complete();
   await run;
   assert.deepEqual(added, []);
+});
+
+const previousTerrain = { kind: 'terrain' as const, attribution: [], issues: [], complete: true, origin: [0, 0, 0] as [number, number, number] };
+
+test('a reloaded category adds its new model first and removes the previous one only after it is in', async () => {
+  state().registerSiteContextModel('old-terrain', previousTerrain);
+  const events: string[] = [];
+  const run = loadSiteContext({
+    ...base, categories: ['terrain'],
+    addModel: async () => { events.push('add'); return 'new-terrain'; },
+    removeModel: (id) => { events.push(`remove ${id}`); },
+  });
+  workers[0].category('terrain');
+  workers[0].complete();
+  await run;
+  assert.deepEqual(events, ['add', 'remove old-terrain']);
+  assert.equal(state().siteContextCategories.terrain?.modelId, 'new-terrain');
+  assert.equal(state().siteContextCategories.terrain?.anchorModelId, 'anchor');
+});
+
+test('when the replacement fails to load, the previous model stays and the category reports the error next to it', async () => {
+  state().registerSiteContextModel('old-terrain', previousTerrain);
+  const run = loadSiteContext({ ...base, categories: ['terrain'], addModel: async () => null });
+  workers[0].category('terrain');
+  workers[0].complete();
+  await run;
+  assert.deepEqual(removed, [], 'the previous terrain is not removed');
+  const terrain = state().siteContextCategories.terrain;
+  assert.equal(terrain?.status, 'error');
+  assert.equal(terrain?.modelId, 'old-terrain');
+  assert.match(terrain?.issues.at(-1)?.message ?? '', /previous one is still shown/);
 });

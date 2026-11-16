@@ -63,6 +63,11 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
   const running = useViewerStore((s) => s.siteContextAbort !== null);
   const stats = useViewerStore((s) => s.siteContextStats);
   const error = useViewerStore((s) => s.siteContextError);
+  // One site context per scene: when it was loaded around another model, say so here.
+  const otherAnchorName = useViewerStore((s) => {
+    const other = Object.values(s.siteContextCategories).find((c) => c?.anchorModelId && c.anchorModelId !== modelId && c.modelId);
+    return other ? (s.models.get(other.anchorModelId!)?.name ?? other.anchorModelId!) : null;
+  });
   const { addModel, removeModel } = useIfc();
   // The last request's choices survive the panel closing and reopening (it remounts).
   const last = useViewerStore.getState().siteContextLastChoice;
@@ -121,6 +126,7 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
             ))}
             <Checkbox checked={imagery && selected.has('terrain')} disabled={!selected.has('terrain')} onCheckedChange={setImagery} label={t('siteContext.section.imagery')} />
           </fieldset>
+          {otherAnchorName && <p className="text-xs text-muted-foreground" data-testid="site-context-other-anchor">{t('siteContext.section.otherAnchor', { model: otherAnchorName })}</p>}
           {anchor.crsAssumedFromName && <p className="text-xs text-muted-foreground">{t('siteContext.section.crsAssumed', { crs: anchor.crsAssumedFromName })}</p>}
           {anchor.heightAssumed && <p className="text-xs text-warn">{t('siteContext.section.heightAssumed')}</p>}
           {anchor.mapUnitAssumed && <p className="text-xs text-warn">{t('siteContext.section.mapUnitAssumed')}</p>}

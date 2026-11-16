@@ -20,6 +20,7 @@ export const siteContextDe = {
   "siteContext.section.crsAssumed": "Das KBS wurde aus seinem Namen angenommen ({crs}).",
   "siteContext.section.heightAssumed": "Dieses Modell gibt kein Höhensystem an; seine Höhen werden als LN02 angenommen.",
   "siteContext.section.mapUnitAssumed": "Die Karteneinheit dieses Modells wird als Meter gelesen; eine unlesbare Karteneinheit wird gleich gelesen, daher werden Meter angenommen. Prüfen Sie die Karteneinheit, falls die Umgebung am falschen Ort liegt.",
+  "siteContext.section.otherAnchor": "Die Umgebung in der Szene wurde um {model} geladen. Es gibt eine pro Szene: hier laden ersetzt sie.",
   "siteContext.section.stats": "{requests} Anfragen, {size}, {seconds} s ({cacheHits} aus dem Cache)",
   "siteContext.status.idle": "Nicht geladen",
   "siteContext.status.fetching": "Wird geladen …",

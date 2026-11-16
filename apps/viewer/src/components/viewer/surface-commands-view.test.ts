@@ -12,7 +12,7 @@ const VIEW_IDS = [
   'view:home', 'view:fit', 'view:frame', 'view:stacked', 'view:exploded',
   'view:solo', 'view:projection', 'view:top', 'view:bottom', 'view:front',
   'view:back', 'view:left', 'view:right', 'view:world', 'view:lighting',
-  'view:spacemouse',
+  'view:spacemouse', 'view:site-context',
   'view:orientation:front-left-top', 'view:orientation:front-top', 'view:orientation:front-right-top',
   'view:orientation:front-left', 'view:orientation:front-right', 'view:orientation:front-left-bottom',
   'view:orientation:front-bottom', 'view:orientation:front-right-bottom', 'view:orientation:back-right-top',

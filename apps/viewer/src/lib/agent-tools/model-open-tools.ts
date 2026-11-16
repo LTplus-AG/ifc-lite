@@ -99,7 +99,9 @@ function percentDecoded(text: string, charset = 'utf-8'): string {
 function dispositionParams(header: string): Map<string, string> {
   const params = new Map<string, string>();
   // The leading ';' also reads a header that omits the disposition type (`filename="x.ifc"`); the first value of a name wins.
-  for (const [, key, quoted, bare] of `;${header}`.matchAll(/;\s*([^\s=;]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]*))/g)) {
+  // A repeated header arrives joined with ', ': read only the first disposition.
+  const first = header.split(/,\s*(?=(?:attachment|inline)\b)/i)[0];
+  for (const [, key, quoted, bare] of `;${first}`.matchAll(/;\s*([^\s=;]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]*))/g)) {
     if (!params.has(key.toLowerCase())) params.set(key.toLowerCase(), quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare.trim());
   }
   return params;
@@ -225,30 +227,37 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   const load: Promise<string | null | void> = request.mode === 'add' ? loader.addModel(files[0])
     : files.length > 1 ? loader.loadStack(files) : loader.loadFile(files[0]);
   const stillLoading = (): ToolOutput => ({
-    text: `${name} is still loading; it continues in the tab. Do not retry. Call model_list until it appears; if it never does, `
-      + 'the load failed: take a viewer_screenshot or ask the user what the viewer reports.',
-    // Placeholder records of the load have no data yet; with `replacing`, the listed models are about to close.
-    structured: { mode: request.mode, state: 'loading', loading: name, models: openModels().filter((m) => !m.new), ...(request.mode === 'replace' ? { replacing: true } : {}) },
+    text: `${name} is still loading; it continues in the tab.${request.mode === 'replace' ? ' The previous models are closing.' : ''} `
+      + 'Do not retry. Call model_list until it appears; if it never does, the load failed: take a viewer_screenshot or ask the user what the viewer reports.',
+    // Placeholder records of the load have no data yet, and a replace is closing the old models: list only models that stay.
+    structured: { mode: request.mode, state: 'loading', loading: name, models: request.mode === 'add' ? openModels().filter((m) => !m.new) : [] },
   });
   const loaded = await within(load.then((id) => ({ id })), deadline - Date.now());
   if (!loaded) return stillLoading();
 
-  const after = store.getState();
-  if (after.error && after.loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${after.error}`);
-  if (loaded.id === null) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not add ${name}. See the viewer for details.`);
-  // Models can register just after the loader resolves: wait until the pipeline is idle (needs no model), then one more task.
+  if (loaded.id === null) {
+    const { error } = store.getState();
+    fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not add ${name}${error ? `: ${error}` : '. See the viewer for details.'}`);
+  }
+  // Models can register just after the loader resolves: wait until the pipeline is idle, which needs no model.
   const settled = await waitForLoadIdle(deadline - Date.now());
-  await new Promise((resolve) => { setTimeout(resolve, 0); });
-  const final = store.getState();
-  if (final.error && final.loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${final.error}`);
-  if (typeof loaded.id === 'string' && !final.models.has(loaded.id)) {
+  if (typeof loaded.id === 'string' && !store.getState().models.has(loaded.id)) {
     fail(ToolErrorCode.STATE_CHANGED, `${name} was added, then closed by another load in the tab. Check model_list.`);
   }
+  let added = openModels().filter((m) => m.new);
+  if (added.length === 0 && settled) {
+    // Rare path: give a registration queued behind the loader one task before concluding nothing opened.
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    added = openModels().filter((m) => m.new);
+  }
+  if (added.length === 0) {
+    if (!settled) return stillLoading();
+    // Nothing of ours opened: report the pipeline's error if it set one, else say so (an underlay drape, a geometry-kernel refusal).
+    const final = store.getState();
+    if (final.error && final.loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${final.error}`);
+    fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. See the viewer for why.`);
+  }
   const models = openModels();
-  const added = models.filter((m) => m.new);
-  if (added.length === 0 && !settled) return stillLoading();
-  // loadFile can return without an error and without opening a model (an underlay drape, a geometry-kernel refusal).
-  if (added.length === 0) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. See the viewer for why.`);
   const text = `Loaded ${added.map((m) => `${m.name} (model_id ${m.model_id})`).join(', ')}${settled ? '' : '; geometry is still streaming'}. `
     + `${models.length} model(s) now open. Next: query_entities with a model_id, or viewer_screenshot to look at the view.`;
   return { text, structured: { mode: request.mode, state: settled ? 'loaded' : 'streaming', models } };

@@ -27,7 +27,7 @@ const realFetch = globalThis.fetch;
 let fetched: string[] = [];
 let respond: () => Response;
 let calls: Array<{ kind: 'replace' | 'add' | 'stack'; names: string[] }> = [];
-let behaviour: 'load' | 'error' | 'nothing' | 'hang' = 'load';
+let behaviour: 'load' | 'error' | 'nothing' | 'hang' | 'closed' | 'unrelated-error' = 'load';
 let unregister: () => void = () => {};
 
 function model(id: string, name: string) {
@@ -50,7 +50,12 @@ async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[]): Promi
   const models = new Map(kind === 'add' ? useViewerStore.getState().models : []);
   for (const f of files) models.set(`m-${calls.length}-${f.name}`, model(`m-${calls.length}-${f.name}`, f.name) as never);
   useViewerStore.setState({ loading: false, models: models as never });
-  return `m-${calls.length}-${files[0].name}`;
+  const id = `m-${calls.length}-${files[0].name}`;
+  // Another load in the tab closes what this call added.
+  if (behaviour === 'closed') useViewerStore.setState({ models: new Map() as never });
+  // Something unrelated reports an error after this call's model opened.
+  if (behaviour === 'unrelated-error') useViewerStore.getState().setError('another subsystem failed');
+  return id;
 }
 
 beforeEach(() => {
@@ -202,7 +207,7 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await assert.rejects(run({ url: 'https://example.com/', mode: 'add' }), { code: 'INVALID_INPUT', message: /not a model file/ });
   });
 
-  it('flags the open models as being replaced while a replace is still loading', async () => {
+  it('lists no models while a replace is still loading, and says the old ones are closing', async () => {
     useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
     behaviour = 'hang';
     mock.timers.enable({ apis: ['setTimeout', 'Date'] });
@@ -210,13 +215,26 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       const pending = run({ sample: 'demo', mode: 'replace' });
       while (calls.length === 0) await new Promise((resolve) => setImmediate(resolve));
       mock.timers.tick(OPEN_MODEL_WAIT_MS);
-      const structured = (await pending).structured as { models: Array<{ model_id: string }>; replacing?: boolean };
-      assert.deepEqual(structured.models.map((m) => m.model_id), ['old']);
-      assert.equal(structured.replacing, true);
+      const out = await pending;
+      assert.deepEqual((out.structured as { models: unknown[] }).models, []);
+      assert.match(out.text, /previous models are closing/);
     } finally {
       mock.timers.reset();
     }
   });
+
+  it('reports an added model that another load closed (code review of this PR)', async () => {
+    useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
+    behaviour = 'closed';
+    await assert.rejects(run({ sample: 'hello-wall', mode: 'add' }), { code: 'STATE_CHANGED', message: /closed by another load/ });
+  });
+
+  it('succeeds when its model opened even if something else then reported an error (code review of this PR)', async () => {
+    behaviour = 'unrelated-error';
+    const out = await run({ sample: 'demo' });
+    assert.equal((out.structured as { state: string }).state, 'loaded');
+  });
+
   it('refuses an empty body before a replace can close the open models (code review of this PR)', async () => {
     useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
     respond = () => new Response(null, { status: 204 });
@@ -234,5 +252,10 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     assert.equal(await nameFor("attachment; filename*=ISO-8859-1''Gr%FCn.ifc"), 'Grün.ifc');
     assert.equal(await nameFor('attachment; filename="a\\"b.ifc"'), 'a"b.ifc');
     assert.equal(await nameFor('attachment; filename="first.ifc"; filename="second.ifc"'), 'first.ifc');
+  });
+  it('reads only the first of repeated Content-Disposition headers (code review of this PR)', async () => {
+    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: [['content-disposition', 'attachment; filename=a.ifc'], ['content-disposition', 'attachment; filename=b.ifc']] });
+    await run({ url: 'https://example.com/download' });
+    assert.equal(calls.at(-1)!.names[0], 'a.ifc');
   });
 });

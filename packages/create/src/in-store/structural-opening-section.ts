@@ -50,10 +50,11 @@ function profileIntervals(outline: Vec3[], origin: Vec3, normal: Vec3, offset: n
 /** Only normal and in-plane sweeps have the supported section construction. */
 export function openingSection(prism: PrismFact, origin: Vec3, normal: Vec3, thickness: number, tolerance: number): Vec3[] | string {
   const depth = vecLen(prism.extrusion);
+  if (!(depth > 0)) return 'opening extrusion is degenerate (zero length)';
   const along = dot(prism.extrusion, normal);
   const cosine = Math.abs(along) / depth;
   const parallel = cosine >= Math.cos(ANGLE_TOLERANCE);
-  if (!(depth > 0) || (!parallel && cosine > Math.sin(ANGLE_TOLERANCE))) return 'opening extrusion is oblique to the plate normal (more than 1 degree)';
+  if (!parallel && cosine > Math.sin(ANGLE_TOLERANCE)) return 'opening extrusion is oblique to the plate normal (more than 1 degree)';
   const area = areaVector(prism.outline);
   const axis = vecCross(normal, area);
   if (!parallel && vecLen(axis) < 1e-12) return 'profile plane does not intersect the plate mid-plane in a line';
@@ -77,7 +78,7 @@ export function openingSection(prism: PrismFact, origin: Vec3, normal: Vec3, thi
     if (base.length !== 1 || top.length !== 1) return `opening profile section gives ${base.length !== 1 ? base.length : top.length} intervals (not through or not a single interval)`;
     return [base[0][0], base[0][1], add(top[0][1], prism.extrusion), add(top[0][0], prism.extrusion)];
   };
-  const middle = parallel ? prism.outline.map(p => sub(p, scale(normal, dot(sub(p, origin), normal)))) : section(0);
+  const middle = section(0);
   if (typeof middle === 'string') return middle;
   for (const offset of [-thickness / 2, thickness / 2]) {
     const face = section(offset);
@@ -91,22 +92,17 @@ export function openingSection(prism: PrismFact, origin: Vec3, normal: Vec3, thi
 export function plateOpenings(element: PhysicalElementFact, plate: { boundary: Vec3[]; thickness: number }, face: ReturnType<typeof prepareStructuralFace>, tolerance: number, skipped: SkippedOpening[]): Vec3[][] {
   if (!element.openings?.length) return [];
   const normal = face.axis;
-  // Extrusion depth is not the normal distance between an oblique slab’s faces.
-  const area = areaVector(element.prism!.outline);
-  const profileNormal = scale(area, 1 / vecLen(area));
-  const normalThickness = Math.abs(dot(profileNormal, normal)) > 0.99
-    ? Math.abs(dot(element.prism!.extrusion, normal)) : plate.thickness;
   const carried: Vec3[][] = [];
   const accepted: Vec3[][] = [];
-  for (const opening of element.openings ?? []) {
-    const reject = (detail: string) => skipped.push({ openingId: opening.expressId, hostId: element.expressId, name: opening.name, reason: detail });
+  for (const [index, opening] of (element.openings ?? []).entries()) {
+    const reject = (reason: SkippedOpening['reason'], detail: string) => skipped.push({ openingId: opening.expressId, hostId: element.expressId, name: opening.name, reason, detail });
     const prism = opening.prism;
-    if (!prism) { reject(opening.shapeIssue ?? 'unreadable body'); continue; }
-    if (!prism.outlineExact) { reject('profile outline is known only as bounds'); continue; }
-    const ring = openingSection(prism, plate.boundary[0], normal, normalThickness, tolerance);
-    if (typeof ring === 'string') { reject(ring); continue; }
-    try { accepted.push(checkOpening(face, ring, accepted, { clearance: tolerance })); }
-    catch (error) { reject(error instanceof Error ? error.message : String(error)); continue; }
+    if (!prism) { reject('unreadable-opening', opening.shapeIssue ?? 'unreadable body'); continue; }
+    if (!prism.outlineExact) { reject('unsupported-opening-section', 'profile outline is known only as bounds'); continue; }
+    const ring = openingSection(prism, plate.boundary[0], normal, plate.thickness, tolerance);
+    if (typeof ring === 'string') { reject('unsupported-opening-section', ring); continue; }
+    try { accepted.push(checkOpening(face, ring, accepted, { clearance: tolerance, index })); }
+    catch (error) { reject('invalid-opening-ring', error instanceof Error ? error.message : String(error)); continue; }
     carried.push(ring);
   }
   return carried;

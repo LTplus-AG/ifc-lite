@@ -38,7 +38,7 @@ export function createStructuralDerivationStoreBackend(
 ): Required<StructuralDerivationStoreBackendMethods> {
   const plan = (modelId: string, options?: StructuralDerivationOptions) => {
     const model = resolve(modelId);
-    return { model, plan: planStructuralDerivation(readStructuralDerivationFacts(model.store, model.editor), options) };
+    return { model, plan: planStructuralDerivation(readStructuralDerivationFacts(model.store, model.editor, options), options) };
   };
   return {
     planStructuralDerivation: (modelId, options) => plan(modelId, options).plan,

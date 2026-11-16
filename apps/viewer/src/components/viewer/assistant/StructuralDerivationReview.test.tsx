@@ -71,10 +71,10 @@ test('shows rejected openings separately with their host and reason', async () =
   await loadStructuralWrites();
   await seedAuthoringSample({ bytes: FRAME });
   const review = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
-  review.plan.report.skippedOpenings = [{ openingId: 701, hostId: 702, name: null, reason: 'not through' }];
+  review.plan.report.skippedOpenings = [{ openingId: 701, hostId: 702, name: 'Kitchen window', reason: 'unsupported-opening-section', detail: 'not through' }];
   review.plan.report.counts.skippedOpenings = 1;
   const root = render(<DerivationSummary review={review} />);
   assert.match(root.textContent ?? '', /Skipped openings \(1\)/);
-  assert.match(root.textContent ?? '', /Opening #701 of host #702: not through/);
+  assert.match(root.textContent ?? '', /Kitchen window: Opening #701 of host #702: unsupported opening section.*not through/);
   assert.doesNotMatch(root.textContent ?? '', /Skipped elements \(1\)/);
 });

@@ -19,11 +19,12 @@ import { placementInAncestor, refId, transformBounds } from './host-geometry-fra
 import { safeLengthUnitScale } from './length-unit-scale.js';
 import { localBodyExtent } from './resolve-host.js';
 import { createStyleEntityReader, type StyleEntity } from './style-entity-reader.js';
-import { scale } from './structural-derive-idealise.js';
+import { idealisePlate, scale } from './structural-derive-idealise.js';
 import { roleOf, DERIVATION_CLASSES } from './structural-derive-plan.js';
 import { readElementShape } from './structural-derive-shape.js';
-import { DERIVED_ANALYSIS_MODEL_DESCRIPTION, type OpeningFact, type PhysicalElementFact, type StructuralDerivationFacts } from './structural-derive-types.js';
+import { DERIVED_ANALYSIS_MODEL_DESCRIPTION, type StructuralDerivationOptions, type OpeningFact, type PhysicalElementFact, type StructuralDerivationFacts } from './structural-derive-types.js';
 
+import { prepareStructuralFace } from './_structural-face.js';
 import { OPENING_TYPES } from './hosted-fill-read.js';
 
 const FOOTINGS = new Set(['IfcFooting', 'IfcPile']);
@@ -74,7 +75,7 @@ export function shapeReader(store: IfcDataStore, editor: StoreEditor, label: str
   return { reader: { entity }, metres };
 }
 
-export function readStructuralDerivationFacts(store: IfcDataStore, editor: StoreEditor): StructuralDerivationFacts {
+export function readStructuralDerivationFacts(store: IfcDataStore, editor: StoreEditor, options: StructuralDerivationOptions = {}): StructuralDerivationFacts {
   if (store.schemaVersion === 'IFC5') throw new Error('Structural derivation: IFC5 is not supported; use IFC2X3, IFC4 or IFC4X3');
   const view = editor.getMutationView();
   const { reader, metres } = shapeReader(store, editor, 'readStructuralDerivationFacts');
@@ -82,13 +83,13 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
   const structural = liveStructuralExtraction(store, view);
   // Containment as the session has it (created, moved and deleted elements), resolved for every element at once.
   const storeyOf = effectiveStoreyResolver(store, effectiveSpatialContext(store, view));
-  const openings = new Map<number, number[]>();
+  const openings = new Map<number, Set<number>>();
   for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCRELVOIDSELEMENT'])) {
     const attrs = read(expressId)?.attributes;
     const host = refId(attrs?.[4]), id = refId(attrs?.[5]);
     if (host === null || id === null) continue;
-    const list = openings.get(host) ?? [];
-    list.push(id);
+    const list = openings.get(host) ?? new Set<number>();
+    list.add(id);
     openings.set(host, list);
   }
   const elements: PhysicalElementFact[] = [];
@@ -117,7 +118,14 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
       fact.loadBearing = readLoadBearing(store, view, expressId);
       fact.idealised = structuralCounterparts(structural, expressId)?.side === 'analytical';
       Object.assign(fact, readElementShape(reader, expressId, metres, true));
-      if (!fact.idealised && fact.loadBearing !== false && roleOf(type) === 'surface') {
+      const plate = roleOf(type) === 'surface' && !fact.idealised && fact.loadBearing !== false
+        && !(fact.loadBearing === null && options.whenLoadBearingUnknown === 'skip') && fact.prism ? idealisePlate(fact.prism) : null;
+      let validPlate = false;
+      if (plate && !('issue' in plate)) {
+        try { prepareStructuralFace(plate.boundary); validPlate = true; }
+        catch (error) { fact.shapeIssue ??= error instanceof Error ? error.message : String(error); } // The planner reports the invalid host boundary.
+      }
+      if (validPlate) {
         const collected: OpeningFact[] = [];
         for (const id of openings.get(expressId) ?? []) {
           const opening = read(id);

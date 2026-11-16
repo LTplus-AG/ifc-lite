@@ -42,7 +42,7 @@ export function DerivationSummary({ review }: { review: Review }) {
       {item.type} #{item.elementId}{item.name ? ` ${item.name}` : ''}: {t(`structuralDerive.reason.${item.reason}`)} <span className="text-muted-foreground">({item.detail})</span>
     </>} />
     <Listing summary={t('structuralDerive.skippedOpenings', { count: skippedOpenings.length })} rows={skippedOpenings}
-      row={(item) => <>{t('structuralDerive.skippedOpeningRow', { opening: item.openingId, host: item.hostId, reason: item.reason })}</>} />
+      row={(item) => <>{item.name ? `${item.name}: ` : ''}{t('structuralDerive.skippedOpeningRow', { opening: item.openingId, host: item.hostId, reason: t(`structuralDerive.reason.${item.reason}`) })} <span className="text-muted-foreground">({item.detail})</span></>} />
     <Listing summary={t('structuralDerive.guessed', { count: plan.report.guessedSupports.length })} rows={plan.report.guessedSupports}
       row={nodeRow} />
     <Listing summary={t('structuralDerive.moved', { count: extendedEnds.length })} rows={extendedEnds}

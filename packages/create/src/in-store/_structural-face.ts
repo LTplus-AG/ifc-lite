@@ -76,13 +76,13 @@ export function prepareStructuralFace(points: readonly Point3D[], openings: read
   const v = vecCross(axis, u);
   const project = (p: Point3D): [number, number] => [p.reduce((s, x, k) => s + x * u[k], 0), p.reduce((s, x, k) => s + x * v[k], 0)];
   const face = { origin, relative: planar, axis, tolerance, project, outer: planar.map(project), openings: [] as Point3D[][] };
-  for (const opening of openings) face.openings.push(checkOpening(face, opening, face.openings, { clearance: 0 }));
+  for (const [index, opening] of openings.entries()) face.openings.push(checkOpening(face, opening, face.openings, { clearance: 0, index }));
   return face;
 }
 
 /** Validate a world-space opening; return a snapped, oriented ring relative to the
  * face origin. Accepted rings use the same relative coordinates. */
-export function checkOpening(face: ReturnType<typeof prepareStructuralFace>, opening: readonly Point3D[], accepted: readonly Point3D[][], { clearance }: { clearance: number }): Point3D[] {
+export function checkOpening(face: ReturnType<typeof prepareStructuralFace>, opening: readonly Point3D[], accepted: readonly Point3D[][], { clearance, index = 0 }: { clearance: number; index?: number }): Point3D[] {
   const { origin, axis, tolerance, project, outer } = face;
   if (!isFiniteRing(opening)) throw new Error('Structural Face: opening requires at least three finite boundary points');
   const relativeRing = opening.map(p => p.map((x, k) => x - origin[k]) as Point3D);
@@ -91,7 +91,7 @@ export function checkOpening(face: ReturnType<typeof prepareStructuralFace>, ope
   const ring = relativeRing.map((p, i) => p.map((x, k) => x - offsets[i] * axis[k]) as Point3D);
   let prepared: ReturnType<typeof prepareStructuralFace>;
   try { prepared = prepareStructuralFace(ring); }
-  catch (error) { throw new Error(`Structural Face: opening ${accepted.length + 1}: ${error instanceof Error ? error.message : String(error)}`); }
+  catch (error) { throw new Error(`Structural Face: opening ${index + 1}: ${(error instanceof Error ? error.message : String(error)).replace(/^Structural Face: /, '')}`); }
   const flat = ring.map(project);
   const edgesOf = (points: Flat[]) => points.map((p, i): [Flat, Flat] => [p, points[(i + 1) % points.length]]);
   const edges = edgesOf(flat);

@@ -285,7 +285,8 @@ export interface SkippedOpening {
   openingId: number;
   hostId: number;
   name: string | null;
-  reason: string;
+  reason: 'unreadable-opening' | 'unsupported-opening-section' | 'invalid-opening-ring';
+  detail: string;
 }
 
 /** A member end moved along its own axis to meet another member. */

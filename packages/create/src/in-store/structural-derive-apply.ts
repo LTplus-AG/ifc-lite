@@ -12,7 +12,7 @@ import type { RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { DERIVATION_AXIS_PROPERTIES, DERIVATION_ELEMENT_PROPERTY, STRUCTURAL_DERIVATION_PSET, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
 import type { SpatialAnchor } from './anchor.js';
-import { prepareStructuralFace } from './_structural-face.js';
+import { checkOpening, prepareStructuralFace } from './_structural-face.js';
 import { applyFrame, inverseFrame, placementInAncestor } from './host-geometry-frame.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { createStyleEntityReader } from './style-entity-reader.js';
@@ -98,7 +98,7 @@ const samePoint = (p: Vec3, q: Vec3) => p.every((v, k) => v === q[k] || (Number.
  * thickness) throw inside the transaction and also leave nothing.
  */
 function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | null, p: Vec3) => Vec3): void {
-  const refuse = (what: string, why: string) => { throw new Error(`Structural derivation: ${what} ${why}; plan again`); };
+  const refuse = (what: string, why: string): never => { throw new Error(`Structural derivation: ${what} ${why}; plan again`); };
   for (const member of plan.curveMembers) {
     const what = `the curve member of element #${member.elementId}`;
     if (!plan.nodes[member.startNode] || !plan.nodes[member.endNode]) refuse(what, 'names a node the plan does not have');
@@ -114,10 +114,18 @@ function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | 
   }
   for (const member of plan.surfaceMembers) {
     const what = `the surface member of element #${member.elementId}`;
+    let face: ReturnType<typeof prepareStructuralFace>;
     try {
-      prepareStructuralFace(member.boundary.map((p) => toLocal(member.storeyId, p)), (member.openings ?? []).map(ring => ring.map(p => toLocal(member.storeyId, p))));
+      face = prepareStructuralFace(member.boundary.map((p) => toLocal(member.storeyId, p)));
     } catch (error) {
-      refuse(what, `has a bad boundary (${error instanceof Error ? error.message : String(error)})`);
+      return refuse(what, `has a bad boundary (${error instanceof Error ? error.message : String(error)})`);
+    }
+    for (const [index, ring] of (member.openings ?? []).entries()) {
+      try {
+        face.openings.push(checkOpening(face, ring.map(p => toLocal(member.storeyId, p)), face.openings, { clearance: 0, index }));
+      } catch (error) {
+        refuse(what, `has a bad opening ${index + 1} (${error instanceof Error ? error.message : String(error)})`);
+      }
     }
   }
 }

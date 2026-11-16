@@ -24,6 +24,7 @@ import { CATALOG } from '@/components/mcp/data';
 import { dispatch, parsePlaygroundModel, supportedToolNames } from '@/components/mcp/playground-dispatcher';
 import { createMainViewerToolHost } from './main-viewer-host.js';
 import { MAIN_VIEWER_EDIT_TOOLS, MAIN_VIEWER_TOOL_ALLOWLIST, dispatchMainViewerTool, mainViewerTool } from './main-viewer-dispatch.js';
+import { VIEWER_COMMAND_SPECS } from './viewer-command-tools';
 import { mainViewerToolDefinitions } from './main-viewer-tool-definitions.js';
 
 const HELLO_WALL = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
@@ -66,7 +67,7 @@ describe('main viewer tool allowlist (#9523)', () => {
   it('refuses every other tool the playground implements, before it runs', async () => {
     const host = await seedMainViewer(new Uint8Array(await readFile(HELLO_WALL)));
     // The edit tools are served, but only with a grant: main-viewer-edits.test.ts covers them.
-    const allowed = new Set<string>([...MAIN_VIEWER_TOOL_ALLOWLIST, ...MAIN_VIEWER_EDIT_TOOLS]);
+    const allowed = new Set<string>([...MAIN_VIEWER_TOOL_ALLOWLIST, ...MAIN_VIEWER_EDIT_TOOLS, ...Object.keys(VIEWER_COMMAND_SPECS)]);
     const refused = supportedToolNames().filter((name) => !allowed.has(name));
     assert.ok(refused.includes('entity_delete') && refused.includes('clash_check') && refused.includes('viewer_open'));
     for (const name of refused) {
@@ -83,8 +84,8 @@ describe('main viewer tool allowlist (#9523)', () => {
 
   it('advertises exactly the allowlist (read-only) and the edit tools, with model_id on model tools and inline IDS', () => {
     const definitions = mainViewerToolDefinitions();
-    assert.deepEqual(new Set(definitions.map((d) => d.name)), new Set([...MAIN_VIEWER_TOOL_ALLOWLIST, ...MAIN_VIEWER_EDIT_TOOLS]));
-    const edits = new Set<string>(MAIN_VIEWER_EDIT_TOOLS);
+    assert.deepEqual(new Set(definitions.map((d) => d.name)), new Set([...MAIN_VIEWER_TOOL_ALLOWLIST, ...MAIN_VIEWER_EDIT_TOOLS, ...Object.keys(VIEWER_COMMAND_SPECS)]));
+    const edits = new Set<string>([...MAIN_VIEWER_EDIT_TOOLS, ...Object.entries(VIEWER_COMMAND_SPECS).filter(([, spec]) => !spec.readOnly).map(([name]) => name)]);
     for (const definition of definitions) {
       assert.equal(definition.readOnly, !edits.has(definition.name), definition.name);
       assert.equal(definition.inputSchema.type, 'object', definition.name);

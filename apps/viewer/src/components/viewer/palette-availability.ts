@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { isSurfaceCommandAvailable } from './surface-command-features';
 import { hasStructuralData, structuralGlyphsVisible } from '@/lib/visibility/structural-view';
 import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { errorReportDestinationBlock } from '@/lib/error-reports/destination';
@@ -53,6 +54,7 @@ const modelTools = new Set(['tool:wall', 'tool:slab', 'tool:column', 'tool:beam'
 
 export function paletteAvailability(command: SurfaceCommandDefinition, context: SurfaceCommandContext,
   s: ViewerState = useViewerStore.getState(), flags?: SurfaceCommandState): PaletteAvailability {
+  if (!isSurfaceCommandAvailable(command)) return blocked('commandPalette.availability.feature');
   const canEditInSession = s.collabRole === null || s.collabRole === 'editor' || s.collabRole === 'admin';
   const state = { ...flags, canEditInSession, cesiumAvailable: s.cesiumAvailable };
   // Identify the registry's existing role restriction without changing that predicate.

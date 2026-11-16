@@ -109,7 +109,7 @@ describe('pairing link (#9523)', () => {
     assert.match(text, /cannot check what that program is\. Connect only if you started ifc-lite-mcp --bridge yourself/);
     assert.match(text, /the agent may send what it reads to its AI provider/);
     assert.match(text, /bSDD tools also send IFC class names to bSDD/);
-    assert.match(text, /Read-only at first: the agent cannot change the model/);
+    assert.match(text, /Read-only at first.*allow the agent to run command-palette actions/);
     assert.doesNotMatch(text, /not sent to ifclite\.com or any other server|from the ifc-lite agent bridge/, 'no over-claim');
     assert.equal(dialog()?.querySelector('[data-agent-bridge-target]')?.textContent?.trim(), 'Connects to 127.0.0.1:21518');
     const inputs = [...document.body.querySelectorAll('input')];
@@ -451,14 +451,14 @@ describe('allowing the agent to edit (#9523)', () => {
     const ui = render(<AgentBridgeConnectionPanel />);
     const toggle = () => ui.querySelector('[data-agent-bridge-allow-edits]') as HTMLButtonElement;
     assert.equal(toggle().getAttribute('aria-checked'), 'false', 'off by default');
-    assert.match(ui.textContent ?? '', /Allow the agent to edit models in this tab/);
+    assert.match(ui.textContent ?? '', /Allow the agent to run palette commands and edit models in this tab/);
     assert.match(ui.textContent ?? '', /any editable model loaded in this tab/);
     click(toggle());
     assert.deepEqual(asked, ['read-write']);
 
     updateAgentBridgeState({ status: { ...CONNECTED, permission: 'read-write' } });
     await waitFor(() => toggle().getAttribute('aria-checked') === 'true', 'the switch follows the grant');
-    assert.match(ui.textContent ?? '', /Local agent connected · can edit/);
+    assert.match(ui.textContent ?? '', /Local agent connected · commands and edits allowed/);
     click(toggle());
     assert.deepEqual(asked, ['read-write', 'read-only']);
   });

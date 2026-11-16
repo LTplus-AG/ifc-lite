@@ -24,6 +24,9 @@ export const KEY_COMMAND_FEATURE: Readonly<Partial<Record<KeyCommandId, FeatureI
   ...TOOL_ROWS,
   'basket.toggleDock': PANEL_FEATURE.presentation,
   'basket.saveView': PANEL_FEATURE.presentation,
+  'edit.toggleEditMode': 'edit.model',
+  'edit.rotate': 'edit.model',
+  'edit.duplicate': 'edit.model',
 };
 
 /** Contexts owned by one feature. A `command.<id>` context counts as `command`. */
@@ -33,6 +36,10 @@ export const KEY_CONTEXT_FEATURE: Readonly<Partial<Record<KeyContext, FeatureId>
   'panel.schedule': PANEL_FEATURE.gantt,
   'schedule.drag': PANEL_FEATURE.gantt,
   'panel.script': PANEL_FEATURE.script,
+  command: 'edit.model',
+  'workspace.model': 'edit.model',
+  'panel.reposition': 'edit.placement',
+  'panel.chat': 'ai.assistant',
   drawing2d: 'view.drawings',
 };
 

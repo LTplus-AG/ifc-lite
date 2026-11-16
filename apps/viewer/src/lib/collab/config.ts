@@ -27,6 +27,8 @@
  * a test profile or set by hand) is visible when a session cannot connect.
  */
 
+import { isFeatureEnabled } from '../features/index.js';
+
 const LS_OVERRIDE_KEY = 'ifc-lite:collab:enabled';
 const LS_SERVER_URL_KEY = 'ifc-lite:collab:server-url';
 
@@ -52,6 +54,7 @@ function readLocalStorageOverride(): boolean | null {
 
 /** Whether the collaboration feature is enabled in this session. */
 export function isCollabEnabled(): boolean {
+  if (!isFeatureEnabled('collab.sessions')) return false;
   const override = readLocalStorageOverride();
   if (override !== null) return override;
   return readEnvFlag();

@@ -14,6 +14,7 @@
  * Spec: docs/architecture/ai-customization/06-self-improvement.md §5.
  */
 
+import { isAiChatAvailable } from '@/components/viewer/surface-command-features';
 import { useCallback, useState } from 'react';
 import { CheckCircle2, RefreshCcw, ShieldAlert, Wrench, X } from 'lucide-react';
 import { needsSdkRepair } from '@ifc-lite/extensions';
@@ -77,6 +78,8 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
   // shouldn't spin up sandboxes for every installed extension — that
   // can be expensive when many extensions are installed and outdated.
 
+  // A repair is routed to the AI chat; a host can switch it off (`lib/features`).
+  const chat = isAiChatAvailable();
   const repairItem = (item: RevalidationItem) => {
     if (!version) return;
     queueChatPrompt(buildRepairPrompt(item, version));
@@ -153,7 +156,7 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
         ) : (
           <ul className="divide-y">
             {summary.items.map((item) => (
-              <RepairRow key={item.extensionId} item={item} onRepair={() => repairItem(item)} />
+              <RepairRow key={item.extensionId} item={item} onRepair={chat ? () => repairItem(item) : undefined} />
             ))}
           </ul>
         )}
@@ -167,7 +170,8 @@ function RepairRow({
   onRepair,
 }: {
   item: RevalidationItem;
-  onRepair: () => void;
+  /** Absent when there is no AI chat to repair in. */
+  onRepair?: () => void;
 }) {
   const { t, locale } = useTranslation();
   const tone =
@@ -207,7 +211,7 @@ function RepairRow({
             </div>
           )}
         </div>
-        {needsSdkRepair(item) && (
+        {needsSdkRepair(item) && onRepair && (
           <Button size="sm" variant="outline" onClick={onRepair}>
             <Wrench className="mr-1 h-3.5 w-3.5" />
             {t('extensionsPanels.repairQueuePanel.repairLabel')}

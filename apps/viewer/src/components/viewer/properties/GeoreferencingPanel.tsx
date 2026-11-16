@@ -24,7 +24,7 @@ import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
 import { FederationAlignmentControls } from './FederationAlignmentControls';
 import { PrecisionGridBadge } from './PrecisionGridBadge';
-import { LocationMap, type PickedPosition } from './LocationMap';
+import { LocationMap, type PickedPosition } from './location-map-gate';
 import { computeOrthogonalHeightForBaseAltitude } from '@/lib/geo/cesium-placement';
 import {
   detectScaleUnitMismatch,

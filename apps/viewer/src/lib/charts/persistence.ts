@@ -40,11 +40,13 @@ export function readDashboards(): DashboardRead {
 
 export function loadDashboards(): DashboardSpec[] { return readDashboards().entries; }
 
-export function saveDashboards(dashboards: readonly DashboardSpec[]): void {
+export function saveDashboards(dashboards: readonly DashboardSpec[]): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dashboards));
+    return true;
   } catch (err) {
     console.warn('[Charts] Failed to save dashboards to localStorage', err);
+    return false;
   }
 }
 

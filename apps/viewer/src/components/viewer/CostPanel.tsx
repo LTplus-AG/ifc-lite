@@ -37,8 +37,8 @@ import { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n/useTranslation';
-import { useViewerStore } from '@/store';
 import { buildCostCsvReport } from '@/lib/analysis/export-csv';
+import { selectCostTargets } from '@/lib/cost/select-targets';
 import type { EntityRefLike } from '@/lib/cost/cost-tree';
 import { downloadFile } from '@/lib/export/download';
 import { trackExportCompleted } from '@/lib/analytics';
@@ -56,13 +56,6 @@ export function CostPanel({ onClose }: CostPanelProps) {
   const { t } = useTranslation();
   const entries = useCostModels();
   const backend = useCostBackend();
-  const toGlobalId = useViewerStore((s) => s.toGlobalId);
-  const clearEntitySelection = useViewerStore((s) => s.clearEntitySelection);
-  const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
-  const setSelectedEntities = useViewerStore((s) => s.setSelectedEntities);
-  const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
-  const addEntitiesToSelection = useViewerStore((s) => s.addEntitiesToSelection);
-  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
 
   const [selectedRef, setSelectedRef] = useState<EntityRefLike | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -83,30 +76,7 @@ export function CostPanel({ onClose }: CostPanelProps) {
     setSelectedRef(ref);
   }, []);
 
-  const handleSelectTargets = useCallback(
-    (refs: EntityRefLike[]) => {
-      if (refs.length === 0) return;
-      // Two-channel selection (see AGENTS.md): global ids drive 3D
-      // highlight/pick, {modelId, expressId} refs drive the properties
-      // panel — both must be set, and both must go through toGlobalId so a
-      // federated session's per-model offset is applied, never a bare
-      // expressId that could collide with another loaded model's.
-      // Every multi-target channel carries ALL targets (the same replace
-      // sequence as useEntityListMultiSelect's selectExact), with the first
-      // target as primary; never collapse to a single-entity setter, which
-      // clears `selectedEntities`.
-      const globalIds = refs.map((r) => toGlobalId(r.modelId, r.expressId));
-      clearEntitySelection();
-      setSelectedEntityIds(globalIds);
-      setSelectedEntityId(globalIds[0]);
-      addEntitiesToSelection(refs);
-      setSelectedEntities(refs);
-      if (cameraCallbacks.frameSelection) {
-        window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
-      }
-    },
-    [toGlobalId, clearEntitySelection, setSelectedEntityIds, setSelectedEntityId, addEntitiesToSelection, setSelectedEntities, cameraCallbacks],
-  );
+  const handleSelectTargets = useCallback((refs: EntityRefLike[]) => { selectCostTargets(refs); }, []);
 
   const selectedEntry = selectedRef ? entries.find((e) => e.modelId === selectedRef.modelId) : undefined;
 

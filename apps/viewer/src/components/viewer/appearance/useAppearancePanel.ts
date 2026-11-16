@@ -9,16 +9,15 @@ import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 import type { AppearanceIntent } from '@/lib/appearance/draft-types.js';
 import { pdfCalibrationFrame } from '@/lib/appearance/pdf/calibration.js';
 import { usePdfAppearanceSource } from './usePdfAppearanceSource.js';
-import { preparePdfPagePreview } from '@/lib/appearance/pdf/page-preview.js';
+import { prepareNativeAppearancePlan, stageNativeAppearancePreview } from '@/lib/appearance/prepare-native-preview';
 import { prepareAppearanceSnapshot, type AppearanceSnapshot } from '@/lib/appearance/snapshot.js';
-import { expandAppearanceCorners } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
-import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets.js';
+import { appearanceAssets } from '@/lib/appearance/model-assets.js';
 import { appearanceOwners, appearanceScope } from '@/lib/appearance/scope.js';
-import { appearanceMapping, DEFAULT_APPEARANCE_SETTINGS } from '@/lib/appearance/settings.js';
+import { DEFAULT_APPEARANCE_SETTINGS } from '@/lib/appearance/settings.js';
 import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client.js';
-import { AppearancePreviewSession, bindAppearancePreview, type AppearancePreviewParts } from '@/lib/appearance/preview.js';
+import { AppearancePreviewSession, type AppearancePreviewParts } from '@/lib/appearance/preview.js';
 import { appearanceRevision, captureAppearanceSource, commitAppearance } from '@/lib/appearance/command.js';
 import type { AppearanceCatalog, AppearancePlan } from '@/lib/appearance/planner-types.js';
 import type { AppearanceAssetOwner } from '@/lib/appearance/assets.js';
@@ -193,30 +192,15 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         if (!currentScope.productIds.length) throw new AppearanceValidationError('appearance.controller.emptyScope');
         const renderer = getGlobalRenderer();
         if (!renderer) throw new AppearanceValidationError('appearance.controller.rendererNotReady');
-        const { source, schema, nextExpressId, bytes } = currentSnapshot;
-        const assetId = selectedSource?.assetId ?? sourceId;
-        // Face masks are a request-shape fault under any other policy; a
-        // dormant selection waits in the session for the policy to return.
         const masks = settings.representationPolicy === 'evaluatedOccurrence' ? faceMasks.requests(currentScope.productIds) : undefined;
-        const page = selectedSource?.pdf ? await preparePdfPagePreview({ snapshot: currentSnapshot,
-          productIds: currentScope.productIds, source: selectedSource, settings, planner: worker, owner, signal: controller.signal, faceMasks: masks }) : undefined;
-        const firstPageImage = page?.itemImages.values().next().value;
-        const imageUri = page ? firstPageImage?.imageUri ?? '' : modelAppearanceAssets.getAuthoredUri(modelId, assetId);
-        if (!page) appearanceAssets.retain(assetId, owner);
-        const bitmap = page ? firstPageImage?.bitmap : await appearanceAssets.decode(assetId, owner, controller.signal);
-        currentSnapshot.validate();
-        const plan = page?.plan ?? await worker.plan(bytes, { schema, sourceRevision: currentSnapshot.revision, nextExpressId,
-          productIds: currentScope.productIds, imageUri, repeatS: settings.repeatS,
-          repeatT: settings.repeatT, representationPolicy: settings.representationPolicy ?? 'preserve', mapping: appearanceMapping(settings),
-          ...(masks ? { faceMasks: masks } : {}) }, { signal: controller.signal });
-        if (controller.signal.aborted) return;
-        currentSnapshot.validate();
+        const prepared = await prepareNativeAppearancePlan({ snapshot: currentSnapshot, productIds: currentScope.productIds,
+          sourceId, selectedSource, settings, planner: worker, owner, signal: controller.signal, faceMasks: masks });
+        const { source, plan } = prepared;
         // A stale or spent face selection is dropped here with its diagnostic; the
         // mask change re-runs this effect, so this plan is not staged.
         if (faceMasks.reconcile(plan, modelId, id => `IFC object #${id}`).diagnostics.length) {
           setStatusMessage(translatedMessage('appearance.controller.faceSelectionChanged')); return;
         }
-        const state = useViewerStore.getState();
         if (!plan.items.length) {
           if (plan.exclusions[0]?.reason) throw new Error(plan.exclusions[0].reason);
           throw new AppearanceValidationError('appearance.controller.noSupportedSurfaces');
@@ -230,12 +214,8 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         }
         const previous = draft.current; draft.current = null;
         discardDraft(previous);
-        if (!bitmap) throw new AppearanceValidationError('appearance.controller.noProjectedImage');
-        const groups = bindAppearancePreview(state, renderer, modelId, plan, bitmap, imageUri,
-          settings.repeatS, settings.repeatT, expandAppearanceCorners, page?.itemImages);
-        const session = new AppearancePreviewSession(renderer);
-        session.stage(groups);
-        draft.current = { modelId, assetIds: page?.assetIds ?? [assetId], plan, groups, session, owner, source };
+        const { groups, session } = stageNativeAppearancePreview(modelId, prepared, settings, renderer);
+        draft.current = { modelId, assetIds: prepared.assetIds, plan, groups, session, owner, source };
         adopted = true;
         setCounts({ affected: groups.length, excluded: 0, reasons: [] });
         setConvertedObjects((plan.conversions ?? []).map(item => ({ productId: item.productId, name: `IFC object #${item.productId}` })));

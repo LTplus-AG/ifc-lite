@@ -48,6 +48,12 @@ function getRuntime(): DrawingRuntime {
   return runtime;
 }
 
+/** Automation uses the same viewer-scoped queue as the panel; absence is a refusal. */
+export function requireDrawingRuntime(): DrawingRuntime {
+  if (runtime === NO_RUNTIME) throw new Error('The native drawing runtime host is unavailable.');
+  return runtime;
+}
+
 export function useDrawingRuntime(): DrawingRuntime {
   return useSyncExternalStore(subscribe, getRuntime, getRuntime);
 }

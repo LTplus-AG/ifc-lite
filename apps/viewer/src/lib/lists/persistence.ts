@@ -51,19 +51,20 @@ export function exportListDefinition(definition: ListDefinition): void {
   trackExportCompleted({ format: 'json', surface: 'list_results' });
 }
 
+/** Native JSON import semantics, shared by file picker and operation adapter. */
+export function parseListDefinitionFile(text: string): ListDefinition {
+  const raw: unknown = JSON.parse(text);
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('Invalid list definition file');
+  const migrated = decodeSavedList(raw, Date.now());
+  return { ...migrated, id: crypto.randomUUID() };
+}
+
 export function importListDefinition(file: File): Promise<ListDefinition> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const raw: unknown = JSON.parse(reader.result as string);
-        if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-          reject(new Error('Invalid list definition file'));
-          return;
-        }
-        // Imports get fresh timestamps and identity, after the saved shape is checked.
-        const migrated = decodeSavedList(raw, Date.now());
-        resolve({ ...migrated, id: crypto.randomUUID() });
+        resolve(parseListDefinitionFile(reader.result as string));
       } catch {
         reject(new Error('Failed to parse list definition file'));
       }

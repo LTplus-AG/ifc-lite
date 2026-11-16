@@ -229,14 +229,17 @@ pub(super) fn tessellate_bspline_surface(
                 let base = (i * (v_segments + 1) + j) as u32;
                 let next_u = base + (v_segments + 1) as u32;
 
-                // Two triangles per quad
+                // Two triangles per quad, wound so their normal is Su x Sv,
+                // the surface's own normal, as the cylinder and revolution
+                // grids are. `FacePlan` reverses it for SameSense=.F.; the old
+                // order (v first) faced every such face into its solid.
                 indices.push(base);
-                indices.push(base + 1);
+                indices.push(next_u);
                 indices.push(next_u + 1);
 
                 indices.push(base);
                 indices.push(next_u + 1);
-                indices.push(next_u);
+                indices.push(base + 1);
             }
         }
     }

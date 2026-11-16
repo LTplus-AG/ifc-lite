@@ -259,35 +259,100 @@ fn malformed_shell_face_with_compatible_attribute_shape_retains_permissive_const
             lower_brep(&entity, &mut decoder, TessellationQuality::Medium, None).unwrap()
         };
         let mesh = plan.evaluate().unwrap();
-        // The unchanged production spline sampler stops 1e-6 inside each
-        // knot-domain end. This degree-one patch therefore covers a square
-        // with side 4*(1-1e-6), rounded to f32 at vertex emission, rather
-        // than the entire 4x4 analytic surface.
-        let sampled_side = (4. * (1. - 1e-6)) as f32 as f64;
-        let expected_area = if spline {
-            sampled_side * sampled_side
-        } else {
-            12.
-        };
+        // A flat control net is its plane, so the spline face is trimmed by
+        // the same bounds as the plane face: the 4x4 square less its 2x2
+        // opening, wound by its loops, which carry the face's sense.
         let actual_area = area(&mesh);
         assert!(
-            (actual_area - expected_area).abs() < 1e-8,
-            "spline={spline}: sampled area {actual_area}, expected {expected_area}"
+            (actual_area - 12.).abs() < 1e-8,
+            "spline={spline}: area {actual_area}, expected 12"
         );
-        if spline {
-            for triangle in mesh.indices.chunks_exact(3) {
-                let p = |index: u32| {
-                    let k = index as usize * 3;
-                    [mesh.positions[k], mesh.positions[k + 1]]
-                };
-                let a = p(triangle[0]);
-                let b = p(triangle[1]);
-                let c = p(triangle[2]);
-                assert!(
-                    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]) < 0.,
-                    "the permissive parameterized face still honors false SameSense"
-                );
-            }
+        for triangle in mesh.indices.chunks_exact(3) {
+            let p = |index: u32| {
+                let k = index as usize * 3;
+                [mesh.positions[k], mesh.positions[k + 1]]
+            };
+            let a = p(triangle[0]);
+            let b = p(triangle[1]);
+            let c = p(triangle[2]);
+            assert!(
+                (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]) > 0.,
+                "spline={spline}: the permissive face keeps its loops' winding"
+            );
         }
     }
+}
+
+fn triangle_normals(positions: &[f32], indices: &[u32]) -> Vec<Vector3<f32>> {
+    indices
+        .chunks_exact(3)
+        .map(|t| {
+            let p = |i: u32| {
+                let k = i as usize * 3;
+                Vector3::new(positions[k], positions[k + 1], positions[k + 2])
+            };
+            (p(t[1]) - p(t[0])).cross(&(p(t[2]) - p(t[0])))
+        })
+        .collect()
+}
+
+/// A curved, unbounded B-spline face: a degree (2, 1) arch over the XY plane
+/// whose surface normal Su x Sv points up (+Z) everywhere.
+fn arch_face(same_sense: &str) -> String {
+    format!(
+        "#1=IFCADVANCEDFACE((),#10,{same_sense});\n\
+        #10=IFCBSPLINESURFACEWITHKNOTS(2,1,((#11,#12),(#13,#14),(#15,#16)),.UNSPECIFIED.,.F.,.F.,.F.,(3,3),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.);\n\
+        #11=IFCCARTESIANPOINT((0.,0.,0.));#12=IFCCARTESIANPOINT((0.,1.,0.));\n\
+        #13=IFCCARTESIANPOINT((1.,0.,1.));#14=IFCCARTESIANPOINT((1.,1.,1.));\n\
+        #15=IFCCARTESIANPOINT((2.,0.,0.));#16=IFCCARTESIANPOINT((2.,1.,0.));"
+    )
+}
+
+#[test]
+fn bspline_face_winds_along_su_cross_sv_and_same_sense_reverses_it() {
+    for (sense, up) in [(".T.", true), (".F.", false)] {
+        let source = arch_face(sense);
+        let mut decoder = EntityDecoder::new(&source);
+        let face = decoder.decode_by_id(1).unwrap();
+        let plan = lower_face(&face, &mut decoder, TessellationQuality::Medium, None).unwrap();
+        let (positions, indices) = plan.evaluate().unwrap();
+        assert!(!indices.is_empty());
+        for n in triangle_normals(&positions, &indices) {
+            assert_eq!(n.z > 0., up, "SameSense={sense}: normal {n:?}");
+        }
+    }
+}
+
+/// A flat 20 x 20 B-spline patch whose surface normal points down (-Z), used
+/// with SameSense=.F. (so the face faces up, as Revit writes sloped and
+/// trimmed slab faces) and bounded by a unit right triangle, wound
+/// counter-clockwise about +Z.
+fn trimmed_flat_bspline_face() -> String {
+    "#1=IFCADVANCEDFACE((#2),#10,.F.);#2=IFCFACEOUTERBOUND(#3,.T.);\n\
+    #3=IFCEDGELOOP((#21,#22,#23));\n\
+    #21=IFCORIENTEDEDGE(*,*,#51,.T.);#22=IFCORIENTEDEDGE(*,*,#52,.T.);#23=IFCORIENTEDEDGE(*,*,#53,.T.);\n\
+    #51=IFCEDGECURVE(#31,#32,$,.T.);#52=IFCEDGECURVE(#32,#33,$,.T.);#53=IFCEDGECURVE(#33,#31,$,.T.);\n\
+    #31=IFCVERTEXPOINT(#41);#32=IFCVERTEXPOINT(#42);#33=IFCVERTEXPOINT(#43);\n\
+    #41=IFCCARTESIANPOINT((0.,0.,5.));#42=IFCCARTESIANPOINT((1.,0.,5.));#43=IFCCARTESIANPOINT((0.,1.,5.));\n\
+    #10=IFCRATIONALBSPLINESURFACEWITHKNOTS(1,1,((#11,#12),(#13,#14)),.UNSPECIFIED.,.F.,.F.,.F.,(2,2),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.,((1.,1.),(1.,1.)));\n\
+    #11=IFCCARTESIANPOINT((-10.,-10.,5.));#12=IFCCARTESIANPOINT((10.,-10.,5.));\n\
+    #13=IFCCARTESIANPOINT((-10.,10.,5.));#14=IFCCARTESIANPOINT((10.,10.,5.));"
+        .to_string()
+}
+
+#[test]
+fn flat_bspline_face_is_trimmed_by_its_bounds_and_faces_its_sense() {
+    let source = trimmed_flat_bspline_face();
+    let mut decoder = EntityDecoder::new(&source);
+    let face = decoder.decode_by_id(1).unwrap();
+    let plan = lower_face(&face, &mut decoder, TessellationQuality::Medium, None).unwrap();
+    let (positions, indices) = plan.evaluate().unwrap();
+    let normals = triangle_normals(&positions, &indices);
+    let area: f32 = normals.iter().map(|n| n.norm() * 0.5).sum();
+    assert!(
+        (area - 0.5).abs() < 1e-5,
+        "the bounded triangle, not the 20 x 20 patch: {area}"
+    );
+    assert!(normals.iter().all(|n| n.z > 0.), "faces up: {normals:?}");
+    assert!(positions.chunks_exact(3).all(|p| p[2] == 5.));
 }

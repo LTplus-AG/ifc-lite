@@ -253,3 +253,30 @@ it('#9296: float32 symbolic coordinates reconcile with full-precision measuremen
   assert.equal(mergeRestoredMeasures([saved, saved], [automatic]).length, 2, 'one-to-one multiplicity survives');
   assert.equal(mergeRestoredMeasures([{ ...saved, end: { x: 125, y: 570 } }], [automatic]).length, 2, 'distinct geometry survives');
 });
+
+for (const variant of [{ paperScale: 50 }, { ifcOffset: [10, 0, 0] }]) {
+  it(`#9296: an unabsorbed equal-ID frame survives ${JSON.stringify(variant)}`, async () => {
+    const { source, input } = await fixture('IFC4');
+    const a = { ...input, dimensions: [], tags: [] };
+    const first = await parse(new StepExporter(source, prepareDrawingAnnotations(source, undefined, a)).export({ schema: 'IFC4' }).content);
+    const b = { ...a, ...variant, measures: [{ ...a.measures[0], id: 'other' }] };
+    const second = await parse(new StepExporter(first, prepareDrawingAnnotations(first, undefined, b)).export({ schema: 'IFC4' }).content);
+    const other = readDrawingAnnotations(second).find(record => record.saved.item.value.id === 'other')!;
+    other.saved.item.value.id = a.measures[0].id;
+    const edit = new MutablePropertyView(second.properties, 'colliding-item-id');
+    edit.setPositionalAttribute(other.id, 3, JSON.stringify(other.saved));
+    const before = decode(new StepExporter(second, edit).export({ schema: 'IFC4' }).content);
+    const mixed = await parse(before);
+    const restored = restoredDrawingAnnotations(mixed, 'reopened')!;
+    assert.equal(restored.measure2DResults.length, 1);
+    const { restorableDrawingAnnotationRecords } = await import('./drawing-annotations');
+    const selected = restorableDrawingAnnotationRecords(mixed);
+    const reopenedInput = { ...a, measures: restored.measure2DResults, paperScale: restored.paperScale,
+      absorbed: new Set(selected.map(record => record.identity)) };
+    const after = decode(new StepExporter(mixed, prepareDrawingAnnotations(mixed, undefined, reopenedInput)).export({ schema: 'IFC4' }).content);
+    assert.equal(stable(after), stable(before), 'unabsorbed frame retains all native records');
+    const changed = await parse(new StepExporter(mixed, prepareDrawingAnnotations(mixed, undefined,
+      { ...reopenedInput, ...variant })).export({ schema: 'IFC4' }).content);
+    assert.equal(readDrawingAnnotations(changed).length, 2, 'editing the owned frame preserves its unabsorbed neighbour');
+  });
+}

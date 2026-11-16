@@ -290,7 +290,7 @@ function findUnconnectedEnds(
     if (degree[node.index] !== 1) continue;
     const onSurface = surfaces.find(({ member, normal }) =>
       Math.abs(dot(sub(p, member.boundary[0]), normal)) <= tolerance + member.thickness / 2 && insidePolygon(p, member.boundary, normal)
-      && !member.openings.some(ring => insidePolygon(p, ring, normal, tolerance)));
+      && !(member.openings ?? []).some(ring => insidePolygon(p, ring, normal, tolerance)));
     if (onSurface) found.push({ node: node.index, landsOnElementId: onSurface.member.elementId, landsOn: 'surface-member' });
   }
   return found;

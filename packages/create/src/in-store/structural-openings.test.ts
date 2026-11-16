@@ -226,7 +226,7 @@ ENDSEC;\nEND-ISO`);
     const wall = facts.elements.find(e => e.type === 'IfcWall')!;
     wall.openings = wall.openings!.filter(o => o.name === 'plan window');
     const plan = planStructuralDerivation(facts);
-    const holes = plan.surfaceMembers.find(m => m.elementId === wall.expressId)!.openings;
+    const holes = plan.surfaceMembers.find(m => m.elementId === wall.expressId)!.openings!;
     expect(holes).toHaveLength(1);
     expect(holes[0]).toHaveLength(4);
     for (const [axis, min, max] of [[0,0.545,1.455],[1,0.165,0.165],[2,0.75,2.57]]) {
@@ -273,7 +273,7 @@ ENDSEC;\nEND-ISO`);
     const s = await session(physicalModel());
     const facts = readStructuralDerivationFacts(s.store, s.editor);
     const plan = planStructuralDerivation(facts);
-    expect(plan.surfaceMembers.map(m => [facts.elements.find(e => e.expressId === m.elementId)?.type, m.openings.length])).toEqual([['IfcSlab',1],['IfcWall',2]]);
+    expect(plan.surfaceMembers.map(m => [facts.elements.find(e => e.expressId === m.elementId)?.type, m.openings!.length])).toEqual([['IfcSlab',1],['IfcWall',2]]);
     expect(plan.report.skippedOpenings.map(s => [s.name, s.detail])).toEqual([
       ['door','Structural Face: opening must lie strictly inside boundary'],
       ['oblique','opening extrusion is oblique to the plate normal (more than 1 degree)'],
@@ -314,7 +314,7 @@ describe('opening review regressions', () => {
     const facts = readStructuralDerivationFacts(s.store,s.editor);
     expect(facts.elements.find(e => e.type === 'IfcWall')!.openings).toHaveLength(7);
     const plan = planStructuralDerivation(facts);
-    expect(plan.surfaceMembers.reduce((n,m) => n+m.openings.length,0)).toBe(3);
+    expect(plan.surfaceMembers.reduce((n,m) => n+m.openings!.length,0)).toBe(3);
     expect(plan.report.skippedOpenings.filter(o => o.name === 'window1')).toEqual([]);
   });
   it('keeps slab openings when facts use skip and the planner uses include (#9668)', async () => {
@@ -398,7 +398,7 @@ describe('opening review regressions', () => {
     const s = await session(text);
     const facts = readStructuralDerivationFacts(s.store, s.editor);
     expect(facts.elements.flatMap(e => e.openings ?? [])).toHaveLength(8);
-    expect(planStructuralDerivation(facts).surfaceMembers.reduce((n,m) => n+m.openings.length,0)).toBe(3);
+    expect(planStructuralDerivation(facts).surfaceMembers.reduce((n,m) => n+m.openings!.length,0)).toBe(3);
     const bad = await session(text.replace(/IFCOPENINGSTANDARDCASE/g, 'IFCVOIDINGFEATURE'));
     const plan = planStructuralDerivation(readStructuralDerivationFacts(bad.store, bad.editor));
     expect(plan.report.skipped).toEqual([]);
@@ -498,5 +498,5 @@ it.skipIf(!existsSync(brickHouse))('keeps the brick-house result: 16 windows aft
   const s = { store, editor: new StoreEditor(store, new MutablePropertyView(null, 'brick-house')) };
   expect(extractStructuralOnDemand(s.store).members).toHaveLength(0);
   const plan = planStructuralDerivation(readStructuralDerivationFacts(s.store,s.editor));
-  expect(plan.surfaceMembers.reduce((n,m) => n + m.openings.length,0)).toBe(16);
+  expect(plan.surfaceMembers.reduce((n,m) => n + m.openings!.length,0)).toBe(16);
 });

@@ -247,7 +247,8 @@ export interface PlannedSurfaceMember {
   elementId: number;
   storeyId: number | null;
   boundary: Vec3[];
-  openings: Vec3[][];
+  /** Inner rings carried from physical openings. The planner always sets it; a plan held from before openings were carried may omit it. */
+  openings?: Vec3[][];
   thickness: number;
   loadBearing: MemberLoadBearing;
 }

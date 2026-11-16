@@ -34,7 +34,7 @@
  *    terrain next to it (the median of its own ground samples). If any does
  *    not, or there is no such door to check, the height reference is
  *    UNCONFIRMED and no element anywhere gets a favourable outcome. If all do,
- *    the height of the lowest ground-storey door above its adjacent terrain
+ *    the height of the highest ground-storey door above its adjacent terrain
  *    is an error the check cannot tell from a raised threshold: it is added to
  *    the clearance every favourable outcome needs (the "allowance"). A model
  *    placed too high by more than the allowance then needs every ground-storey
@@ -45,6 +45,12 @@
 import { FloodCheckRefusal } from '../errors.js';
 import type { CandidateFact, ModelFacts } from '../model/facts.js';
 import type { LocalizedText, MapPoint } from '../types.js';
+
+/** What the allowance is, in the one wording every text that states it uses (`allowance` is its value). */
+export const ALLOWANCE_MEANING = {
+  en: 'the height of the highest ground-storey door above its adjacent terrain',
+  de: 'die Höhe der höchsten Erdgeschosstür über dem Gelände daneben',
+} as const;
 
 export interface PlausibilityOptions {
   /**
@@ -291,14 +297,12 @@ export function confirmEntries(
       en:
         `The height reference of the model cannot be verified from the hazard map. It was cross-checked only against the terrain next to ` +
         `${entries.length} ground-storey door(s): a height error of up to ${entryAbove} m relative to that terrain is not detectable. ` +
-        `Every favourable outcome therefore needs ${f(allowance)} m more clearance (the height of the highest ground-storey door above its ` +
-        `adjacent terrain); it is still wrong only if the model is placed too high by more than that, which would put every ground-storey ` +
+        `Every favourable outcome therefore needs ${f(allowance)} m more clearance (${ALLOWANCE_MEANING.en}); it is still wrong only if the model is placed too high by more than that, which would put every ground-storey ` +
         `door below the terrain next to it.`,
       de:
         `Der Höhenbezug des Modells lässt sich aus der Gefährdungskarte nicht prüfen. Er wurde nur am Gelände neben ${entries.length} ` +
         `Tür(en) des Erdgeschosses plausibilisiert: ein Höhenfehler bis ${entryAbove} m gegenüber diesem Gelände ist nicht erkennbar. ` +
-        `Jedes günstige Ergebnis verlangt deshalb ${f(allowance)} m zusätzlichen Abstand (die Höhe der höchsten Erdgeschosstür über dem ` +
-        `Gelände daneben); es ist nur dann falsch, wenn das Modell um mehr als das zu hoch liegt, womit jede Erdgeschosstür unter dem ` +
+        `Jedes günstige Ergebnis verlangt deshalb ${f(allowance)} m zusätzlichen Abstand (${ALLOWANCE_MEANING.de}); es ist nur dann falsch, wenn das Modell um mehr als das zu hoch liegt, womit jede Erdgeschosstür unter dem ` +
         `Gelände daneben läge.`,
     },
   };

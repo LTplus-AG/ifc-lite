@@ -55,6 +55,7 @@
  * raster (`layer.ts`).
  */
 
+import { ALLOWANCE_MEANING } from './plausibility.js';
 import { fillsCourtyards, type CandidateFact, type ModelFacts } from '../model/facts.js';
 import type { ClassifiedHazardRaster, HazardClassDefinition, MapBBox, MapPoint } from '../types.js';
 import { compareLevel, type LevelComparison, type Outcome, type UnclassifiedReason } from './outcome.js';
@@ -236,7 +237,7 @@ export function evaluateCandidate(candidate: CandidateFact, plan: SamplePlan, ct
   ) {
     withheld.push(
       `the element clears the mapped class range by the ${m.toFixed(3)} m margin but not by the further ${a.toFixed(2)} m height-reference ` +
-        'allowance (the height of the lowest ground-storey door above its adjacent terrain, which could be a height error)',
+        `allowance (${ALLOWANCE_MEANING.en}, which could be a height error)`,
     );
   }
   if (result.outcome === 'above-mapped-class-range' && withheld.length > 0) result.outcome = 'within-class-range';

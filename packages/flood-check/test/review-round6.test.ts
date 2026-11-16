@@ -98,3 +98,30 @@ describe('the automated review of 14fabe313: a FootPrint curve does not hide the
     expect(facts.candidates.map((c) => c.name)).toContain('Hoftür');
   });
 });
+
+describe('review of #10486 at c39120ef8: one description of the allowance, the value applied is the value reported', () => {
+  it('with doors at +0.0 m and +0.3 m, the withheld note names the highest door and the 0.30 m that was applied', async () => {
+    const { boxFacts, candidate, CODE, E0, N0, syntheticRaster } = await import('./helpers.js');
+    const outside = (p: { x: number; y: number }) => !(p.x > E0 && p.x < E0 + 20 && p.y > N0 && p.y < N0 + 10);
+    const ras = syntheticRaster(E0 - 10, N0 - 10, 80, 60, 0.5, (p) => (outside(p) ? CODE['depth-0.1-0.25'] : CELL_NO_RUNOFF));
+    const doors = [
+      candidate({ expressId: 1, position: { x: E0 + 15, y: N0 }, level: 500.3, storeyId: 10 }),
+      candidate({ expressId: 2, position: { x: E0 + 5, y: N0 + 10 }, level: 500.0, storeyId: 10 }),
+    ];
+    const run = (level: number) =>
+      checkFloodExposure(boxFacts([...doors, candidate({ expressId: 3, name: 'Fenster', category: 'window', position: { x: E0 + 20, y: N0 + 5 }, level, storeyId: 10 })]), ras, flatTerrain(500), opts);
+    const probe = run(510);
+    const m = probe.margin.margin!;
+    const a = probe.heightReference.allowance!;
+    expect(a).toBeCloseTo(0.3, 6);
+    // Between m and m + a above the class: withheld, and the note states the rule and the number actually applied.
+    const between = run(500 + 0.25 + m + a / 2).results.find((x) => x.candidate.name === 'Fenster')!;
+    expect(between.outcome).toBe('within-class-range');
+    const note = between.favourableWithheldBecause.join();
+    expect(note).toMatch(/height of the highest ground-storey door above its adjacent terrain/);
+    expect(note).toMatch(new RegExp(`further ${a.toFixed(2)} m`));
+    expect(note).not.toMatch(/lowest/);
+    // Beyond m + a: above the mapped class range, so the threshold applied is exactly m + a.
+    expect(run(500 + 0.25 + m + a + 0.01).results.find((x) => x.candidate.name === 'Fenster')!.outcome).toBe('above-mapped-class-range');
+  });
+});

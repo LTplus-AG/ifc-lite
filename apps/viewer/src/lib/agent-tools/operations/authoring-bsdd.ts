@@ -5,7 +5,7 @@ import { viewerOperation, operation } from './contract';
 import { assertToolActive } from '../cancellation';
 import { bsddTools } from '../bsdd-tools';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' }, text: { type: 'string' } }, required: ['native_json', 'text'], additionalProperties: false };
-const meta = (id: string, description: string) => ({ id, owner: 'properties', description: `${description} Uses the host's native bSDD provider and its rate-limit/error contract. Requests send search terms/class names, never IFC model content. Cancellation suppresses the result; the provider's admitted HTTP call may settle.`, effects: ['network'] as const, capability: 'commands-and-edits' as const, implementation: 'sdk' as const, outputSchema, policy: { network: 'native-provider' as const } });
+const meta = (id: string, description: string) => ({ id, owner: 'properties', description: `${description} Uses the host's native bSDD provider and its rate-limit/error contract. Requests send search terms/class names, never IFC model content. Cancellation suppresses the result; the provider's admitted HTTP call may settle.`, features: ['privacy.third-party'] as const, effects: ['network'] as const, capability: 'commands-and-edits' as const, implementation: 'sdk' as const, outputSchema, policy: { network: 'native-provider' as const } });
 export const bsddOperations = [
   viewerOperation<{ query: string }>(meta('properties.bsdd.search', 'Search live bSDD classes/dictionaries using the canonical native provider.'), {
     type: 'object', properties: { query: { type: 'string', minLength: 1, maxLength: 500 } }, required: ['query'], additionalProperties: false,

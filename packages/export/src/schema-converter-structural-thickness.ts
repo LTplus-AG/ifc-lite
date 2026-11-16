@@ -17,10 +17,9 @@
  */
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
-import { conversionMode, readCarrierSets, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
+import { conversionMode, namesWithheld, readCarrierSets, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { parseStepNumber } from './step-slot-grammar.js';
-import { referencesAnyExpressId } from './step-ref-scan.js';
 
 export const THICKNESS_PSET = 'Pset_StructuralSurfaceMemberVaryingThickness';
 const ENTITY = 'IFCSTRUCTURALSURFACEMEMBERVARYING';
@@ -78,10 +77,13 @@ export class StructuralThickness {
   /** IFC2X3 -> IFC4: adds the property set for a member's thicknesses. True when IFC4 holds them. */
   note(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
     if (this.mode !== 'upgrade' || entity !== ENTITY || !this.ids || args.length !== 11) return false;
-    if (withheld && args.some((a) => referencesAnyExpressId(a, withheld))) return false;
+    if (namesWithheld(args, withheld)) return false;
     const values = [args[8], ...listItems(args[9]) ?? []].map(thickness);
-    if (values.length !== 3 || values.includes(null) || this.aspectOf(args[6]) !== refId(args[10])) return false;
-    if (this.psets.has(id)) return true;
+    const location = refId(args[10]);
+    if (values.length !== 3 || values.includes(null) || location === null || this.aspectOf(args[6]) !== location) return false;
+    // A property set the member already has holds the thicknesses only when its values are these.
+    const existing = this.psets.get(id);
+    if (existing) return existing.length === 3 && existing.every((v, i) => parseStepNumber(v) === parseStepNumber(values[i]!));
     const properties = values.map((v, i) => `IFCPROPERTYSINGLEVALUE('${NAMES[i]}',$,IFCPOSITIVELENGTHMEASURE(${v}),$)`);
     this.pending.push(...writeCarrierSet(this.ids, `ifc2x3-thickness:${args[0].trim()}`, args[1], THICKNESS_PSET, id, properties));
     return true;

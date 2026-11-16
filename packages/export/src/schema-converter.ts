@@ -292,10 +292,8 @@ export function convertStepLine(
   let converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural);
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.apply(converted, toSchema);
-  if (toSchema === 'IFC2X3') {
-    if (enums && fromSchema === 'IFC4') converted = enums.structural.fillCausedBy(Number(/^\s*#(\d+)/.exec(converted)?.[1]), converted, withheldRefIds);
-    return (slots ?? new Ifc2x3SlotFill()).apply(converted);
-  }
+  if (enums) converted = enums.structural.after(converted, withheldRefIds);
+  if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
   if (toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || /=\s*IFCSTRUCTURAL/i.test(converted))) ifc4Slots?.apply(converted);
   return converted;
 }
@@ -342,7 +340,7 @@ function convertRecord(
   if (withheldRefIds && withheldRefIds.size > 0 && referencesAnyExpressId(attrsRaw, withheldRefIds)) {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
-  structuralDiagnostics?.inspect(line, fromSchema, toSchema);
+  structuralDiagnostics?.inspect(Number(match[1].slice(1)), line, fromSchema, toSchema);
   if (structuralAxis) return `${prefix}${newType}(${args.join(',')},${structuralAxis});`;
   const structural = structuralAttributes(entityType, args, fromSchema, toSchema);
   if (structural !== null) return `${prefix}${newType}(${structural});`;

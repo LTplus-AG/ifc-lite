@@ -53,6 +53,11 @@ describe('CausedBy IFC2X3 <-> IFC4 #9668', () => {
     expect(records((await convert(down.step, 'IFC4')).step, 'IFCRELASSIGNSTOPRODUCT')).toHaveLength(1);
   });
 
+  it('finds a source Causes relationship whatever its RelatedObjectsType, and adds no second one', async () => {
+    const withRel = IFC2X3.replace('#22=', "#40=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#20),.PRODUCT.,#21);\n#22=");
+    expect(records((await convert(withRel, 'IFC4')).step, 'IFCRELASSIGNSTOPRODUCT')).toHaveLength(1);
+  });
+
   it('fills CausedBy only from one relationship naming one point reaction', async () => {
     const ifc4 = model('IFC4', `${OWNER}
 #20=IFCSTRUCTURALPOINTREACTION('0KQ0efL39PrP5DeqBwaUNp',#5,'R',$,$,#9,$,#12,.GLOBAL_COORDS.);
@@ -86,9 +91,12 @@ describe('IfcStructuralAnalysisModel.SharedPlacement IFC2X3 -> IFC4 #9668', () =
     expect(line(step, 30)).toBe("#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#9);");
   });
 
-  it('reads equal copies of one local placement as that placement', async () => {
+  it('reads equal copies of one local placement as that placement, and places the items by it', async () => {
     const { step } = await convert(ifc2x3('#10'), 'IFC4');
     expect(line(step, 30)).toBe("#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#9);");
+    expect(line(step, 21)).toBe("#21=IFCSTRUCTURALPOINTCONNECTION('1IIB7Cy$HI3REa9CT8boqX',#5,'N',$,$,#9,$,$,$);");
+    // The beam is not a structural item, so it keeps its own placement.
+    expect(line(step, 22)).toContain(",'Beam',$,$,#10,");
   });
 
   it('leaves it unset when the items use different placements', async () => {
@@ -121,6 +129,29 @@ describe('IfcStructuralLoadCase IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     expect(line(up.step, 21)).toBe("#21=IFCSTRUCTURALLOADCASE('2gUSy$VNbHyPCNtxi3Mz27',#5,'No weight',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,$,$,$);");
     expect(line(up.step, 22)).toMatch(/^#22=IFCSTRUCTURALLOADGROUP\(/);
     expect([...records(up.step, 'IFCPROPERTYSET'), ...records(up.step, 'IFCPROPERTYLISTVALUE'), ...records(up.step, 'IFCPROPERTYSINGLEVALUE'), ...records(up.step, 'IFCRELDEFINESBYPROPERTIES')]).toEqual([]);
+  });
+
+  it('keeps a carrier property set that a type object also names', async () => {
+    const down = (await convert(IFC4, 'IFC2X3')).step;
+    const pset = /^#(\d+)=IFCPROPERTYSET\('[^']+',#5,'IFC4 IfcStructuralLoadCase'/m.exec(down)![1];
+    const shared = down.replace('ENDSEC;\nEND-ISO', `#900=IFCBEAMTYPE('3hUSy$VNbHyPCNtxi3Mz27',#5,'T',$,$,(#${pset}),$,$,$,.BEAM.);\nENDSEC;\nEND-ISO`);
+    const { step } = await convert(shared, 'IFC4');
+    expect(line(step, Number(pset))).toBeDefined();
+    expect(records(step, 'IFCBEAMTYPE')[0]).toContain(`(#${pset})`);
+  });
+
+  it('leaves a load group with two carrier property sets as a load group', async () => {
+    const twice = model('IFC2X3', `${OWNER}
+#20=IFCSTRUCTURALLOADGROUP('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,$,$);
+#30=IFCPROPERTYLISTVALUE('SelfWeightCoefficients',$,(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-1.)),$);
+#31=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'${LOAD_CASE_PSET}',$,(#30));
+#32=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#31);
+#33=IFCPROPERTYLISTVALUE('SelfWeightCoefficients',$,(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-2.)),$);
+#34=IFCPROPERTYSET('4gUSy$VNbHyPCNtxi3Mz27',#5,'${LOAD_CASE_PSET}',$,(#33));
+#35=IFCRELDEFINESBYPROPERTIES('1hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#34);`);
+    const { step } = await convert(twice, 'IFC4');
+    expect(line(step, 20)).toMatch(/^#20=IFCSTRUCTURALLOADGROUP\(/);
+    expect(records(step, 'IFCPROPERTYSET')).toHaveLength(2);
   });
 
   it('keeps a carrier property set that something else also names', async () => {
@@ -163,6 +194,21 @@ ${geometry}
     expect(line(down.step, 20)).toMatch(/^#20=IFCSTRUCTURALSURFACEMEMBERVARYING\('2KZvpy1jjNYvbqlQZoD987',#5,'Slab',\$,\$,#\d+,#15,\.SHELL\.,0\.2,\(0\.25,0\.3\),#17\);$/);
     // The property set is valid IFC2X3 and stays; a second upgrade does not add another.
     expect(records((await convert(down.step, 'IFC4')).step, 'IFCPROPERTYSET')).toHaveLength(1);
+  });
+
+  it('reports the thicknesses lost when an existing property set holds other values', async () => {
+    const other = IFC2X3.replace('#20=', `#40=IFCPROPERTYSINGLEVALUE('Thickness1',$,IFCPOSITIVELENGTHMEASURE(0.9),$);
+#41=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'Pset_StructuralSurfaceMemberVaryingThickness',$,(#40));
+#42=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#41);
+#20=`);
+    const up = await convert(other, 'IFC4');
+    expect(records(up.step, 'IFCPROPERTYSET')).toHaveLength(1);
+    expect(up.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
+  });
+
+  it('writes no property set for an unset location, even where the representation has no single aspect', async () => {
+    const up = await convert(IFC2X3.replace(',#15,.SHELL.', ',$,.SHELL.').replace('(0.25,0.3),#17)', '(0.25,0.3),$)'), 'IFC4');
+    expect(records(up.step, 'IFCPROPERTYSET')).toEqual([]);
   });
 
   it('writes no property set when the location is not the one aspect of the representation', async () => {

@@ -25,13 +25,12 @@ import { deterministicGlobalId, type IfcDataStore } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
 import { slotUnset } from './schema-converter-structural-links.js';
 import {
-  conversionMode, isSubtype, readCarrierSets, SourceRecords, stepString, writeCarrierSet,
+  conversionMode, isSubtype, namesWithheld, readCarrierSets, SourceRecords, stepString, writeCarrierSet,
   type ConversionMode, type StructuralRewrite,
 } from './schema-converter-structural-source.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { readStepSlots, replaceStepArgument } from './step-argument-parser.js';
 import { parseStepNumber } from './step-slot-grammar.js';
-import { referencesAnyExpressId } from './step-ref-scan.js';
 
 /** The property set an IFC2X3 load group carries when it was an IFC4 IfcStructuralLoadCase. */
 export const LOAD_CASE_PSET = 'IFC4 IfcStructuralLoadCase';
@@ -46,9 +45,7 @@ export const CAUSED_BY_READ = "an IfcRelAssignsToProduct named 'Causes' from an 
 export const LOAD_CASE_WRITTEN = `IfcStructuralLoadCase is written as an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set holding ${COEFFICIENTS}`;
 export const LOAD_CASE_READ = `an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set is written as the IFC4 IfcStructuralLoadCase it came from`;
 export const SHARED_PLACEMENT = 'IfcStructuralAnalysisModel.SharedPlacement is written as the ObjectPlacement all of its grouped structural items share';
-
-const naming = (args: readonly string[] | undefined, withheld: ReadonlySet<number> | undefined): boolean =>
-  !!withheld && !!args?.some((a) => referencesAnyExpressId(a, withheld));
+export const SHARED_ITEM_PLACEMENT = 'a structural item on an equal copy of its analysis model\'s SharedPlacement is placed by the SharedPlacement itself';
 
 export class StructuralCarriers {
   /** The exporter's express-id allocator, shared with every other record it appends. */
@@ -59,8 +56,9 @@ export class StructuralCarriers {
   private readonly causesWritten = new Map<number, Set<number>>();
   /** Downgrade: action id -> the one point reaction that causes it. */
   private readonly causedBy = new Map<number, number>();
-  /** Upgrade: analysis model id -> the placement all its grouped items share. */
+  /** Upgrade: analysis model id -> the placement all its grouped items share; item id -> that placement, where it uses a copy. */
   private readonly shared = new Map<number, number>();
+  private readonly itemPlacements = new Map<number, number>();
   /** Upgrade: load group id -> its SelfWeightCoefficients token; and the carrier records left out. */
   private readonly loadCases = new Map<number, string>();
   private readonly consumed = new Set<number>();
@@ -87,7 +85,7 @@ export class StructuralCarriers {
     const causes = new Map<number, number[]>();
     for (const id of source.ids('IFCRELASSIGNSTOPRODUCT')) {
       const args = source.slots(id);
-      if (args?.length !== 7 || stepString(args[2]) !== CAUSES || !slotUnset(args[5])) continue;
+      if (args?.length !== 7 || stepString(args[2]) !== CAUSES) continue;
       const action = refId(args[6]);
       if (action === null || !isSubtype(schema, source.type(action), 'IfcStructuralAction')) continue;
       for (const r of (listItems(args[4]) ?? []).map(refId)) {
@@ -103,37 +101,48 @@ export class StructuralCarriers {
   /**
    * IFC2X3 gives each product its own placement record (IfcObjectPlacement
    * PlacesObject is SET [1:1] there), so a placement IFC4 shared comes back as
-   * equal copies: local placements with the same arguments count as one, and
-   * the lowest id is written.
+   * equal copies: local placements with the same arguments count as one, the
+   * lowest id is written, and items on a copy are pointed at it, so the IFC4
+   * proposition holds.
    */
   private findSharedPlacements(source: SourceRecords): void {
     const placements = new Map<number, Map<string, number>>();
+    const items = new Map<number, Map<number, number | null>>();
     for (const id of source.ids('IFCRELASSIGNSTOGROUP')) {
       const args = source.slots(id);
       const model = refId(args?.[6]);
       if (!args || model === null || source.type(model) !== 'IFCSTRUCTURALANALYSISMODEL') continue;
       const seen = placements.get(model) ?? new Map<string, number>();
+      const placed = items.get(model) ?? new Map<number, number | null>();
       for (const item of (listItems(args[4]) ?? []).map(refId)) {
         if (item === null || !isSubtype('IFC2X3', source.type(item), 'IfcStructuralItem')) continue;
         const placement = refId(source.slots(item)?.[5]);
         const key = source.type(placement) === 'IFCLOCALPLACEMENT' ? source.slots(placement)?.map((a) => a.trim()).join(',') ?? '' : '';
         seen.set(key, Math.min(seen.get(key) ?? Infinity, placement ?? Infinity));
+        placed.set(item, placement);
       }
       placements.set(model, seen);
+      items.set(model, placed);
     }
     for (const [model, seen] of placements) {
       if (seen.size !== 1) continue;
       const [[key, placement]] = seen;
-      if (key) this.shared.set(model, placement);
+      if (!key) continue;
+      this.shared.set(model, placement);
+      for (const [item, own] of items.get(model)!) if (own !== placement && !this.itemPlacements.has(item)) this.itemPlacements.set(item, placement);
     }
   }
 
   private findLoadCases(source: SourceRecords): void {
-    for (const set of readCarrierSets(source, LOAD_CASE_PSET)) {
+    const sets = readCarrierSets(source, LOAD_CASE_PSET);
+    const perGroup = new Map<number, number>();
+    for (const set of sets) for (const g of set.related) perGroup.set(g, (perGroup.get(g) ?? 0) + 1);
+    for (const set of sets) {
       const group = set.related.length === 1 ? set.related[0] : null;
       const prop = set.props.size === 1 ? set.props.get(COEFFICIENTS) : undefined;
-      if (!set.exclusive || group === null || prop === undefined || source.type(group) !== 'IFCSTRUCTURALLOADGROUP') continue;
-      if (source.slots(group)?.[5]?.trim().toUpperCase() !== '.LOAD_CASE.' || this.loadCases.has(group)) continue;
+      // A group with two carriers is ambiguous, so it keeps both and stays a load group.
+      if (!set.exclusive || group === null || prop === undefined || perGroup.get(group) !== 1 || source.type(group) !== 'IFCSTRUCTURALLOADGROUP') continue;
+      if (source.slots(group)?.[5]?.trim().toUpperCase() !== '.LOAD_CASE.') continue;
       const coefficients = this.coefficients(source.type(prop), source.slots(prop));
       if (coefficients === null) continue;
       this.loadCases.set(group, coefficients);
@@ -164,7 +173,7 @@ export class StructuralCarriers {
       const placement = this.shared.get(id);
       if (entity === 'IFCSTRUCTURALANALYSISMODEL' && placement !== undefined && args.length === 9 && !withheld?.has(placement))
         return { body: `IFCSTRUCTURALANALYSISMODEL(${[...args, `#${placement}`].join(',')})`, losses: [SHARED_PLACEMENT] };
-    } else if (this.mode === 'downgrade' && entity === 'IFCSTRUCTURALLOADCASE' && args.length === 11 && this.ids && !naming(args, withheld)) {
+    } else if (this.mode === 'downgrade' && entity === 'IFCSTRUCTURALLOADCASE' && args.length === 11 && this.ids && !namesWithheld(args, withheld)) {
       const values = listItems(args[10]);
       const property = values?.length === 3
         ? `IFCPROPERTYLISTVALUE('${COEFFICIENTS}',$,(${values.map((v) => `IFCRATIOMEASURE(${v.trim()})`).join(',')}),$)`
@@ -182,20 +191,34 @@ export class StructuralCarriers {
   noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
     if (this.mode !== 'upgrade' || !this.ids || !IFC2X3_ACTIONS.has(entity)) return false;
     const reaction = refId(args[CAUSED_BY]);
-    if (reaction === null || withheld?.has(reaction) || naming(args, withheld)) return false;
+    if (reaction === null || withheld?.has(reaction) || namesWithheld(args, withheld)) return false;
     if (this.causesWritten.get(id)?.has(reaction)) return true;
     const guid = deterministicGlobalId(`ifc2x3-caused-by:${args[0].trim()}:#${reaction}`);
     this.pending.push(`#${this.ids()}=IFCRELASSIGNSTOPRODUCT('${guid}',${args[1]},'${CAUSES}',$,(#${reaction}),$,#${id});`);
     return true;
   }
 
-  /** IFC4 -> IFC2X3: `line`, already converted record `id`, with an action's CausedBy filled from its 'Causes' relationship. */
-  fillCausedBy(id: number, line: string, withheld: ReadonlySet<number> | undefined): string {
+  /** Whether `after` may change a converted line, so callers parse its id only then. */
+  get rewritesAfter(): boolean { return this.causedBy.size > 0 || this.itemPlacements.size > 0; }
+
+  /**
+   * Record `id`, already converted to `line`, with what a carrier fills in
+   * place, and the message for it: on the downgrade an action's CausedBy from
+   * its 'Causes' relationship, on the upgrade a grouped item's ObjectPlacement
+   * as the model's SharedPlacement. Undefined when nothing changes.
+   */
+  after(id: number, line: string, withheld: ReadonlySet<number> | undefined): { line: string; loss: string } | undefined {
+    if (this.mode === 'upgrade') {
+      const placement = this.itemPlacements.get(id);
+      const filled = placement === undefined || withheld?.has(placement) ? null : replaceStepArgument(line, 5, `#${placement}`);
+      return filled ? { line: filled, loss: SHARED_ITEM_PLACEMENT } : undefined;
+    }
     const reaction = this.mode === 'downgrade' ? this.causedBy.get(id) : undefined;
-    if (reaction === undefined || withheld?.has(reaction)) return line;
+    if (reaction === undefined || withheld?.has(reaction)) return undefined;
     const rec = readStepSlots(line);
     const slot = rec && IFC2X3_ACTIONS.has(rec.type) ? rec.slots[CAUSED_BY] : undefined;
-    return slot !== undefined && slotUnset(slot) ? replaceStepArgument(line, CAUSED_BY, `#${reaction}`) ?? line : line;
+    const filled = slot !== undefined && slotUnset(slot) ? replaceStepArgument(line, CAUSED_BY, `#${reaction}`) : null;
+    return filled ? { line: filled, loss: CAUSED_BY_READ } : undefined;
   }
 
   /** Records written so far, to append after the source records. */

@@ -161,8 +161,9 @@ Four other values move between an attribute and a relationship or property set:
   `IFC4 IfcStructuralLoadCase` property set holding `SelfWeightCoefficients`.
   The upgrade turns a `LOAD_CASE` group carrying it back into the load case.
 - The upgrade writes `IfcStructuralAnalysisModel.SharedPlacement` when the
-  grouped structural items use one placement, or equal copies of one. It fills
-  this even where the IFC4 source left it empty.
+  grouped structural items use one placement, or equal copies of one, and places
+  each item on a copy by that placement. It fills this even where the IFC4
+  source left it empty.
 - An IFC2X3 varying surface member with three thicknesses gets
   `Pset_StructuralSurfaceMemberVaryingThickness` (`Thickness1` to
   `Thickness3`). Its location aspect must be the one aspect of the member's

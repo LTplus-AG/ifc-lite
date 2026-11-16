@@ -4,7 +4,7 @@ import { getSchemaRegistryForVersion, getCanonicalEntityName, type IfcDataStore 
 import { convertEntityType } from './schema-converter.js';
 import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
-import { CAUSED_BY_READ, CAUSED_BY_WRITTEN, StructuralCarriers } from './schema-converter-structural-carriers.js';
+import { CAUSED_BY_WRITTEN, StructuralCarriers } from './schema-converter-structural-carriers.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
 import { StructuralVarying } from './schema-converter-structural-varying.js';
@@ -38,14 +38,16 @@ export class StructuralDiagnostics {
   /** Records the prepasses added, to append after the source records. */
   added(): string[] { return [...this.varying.added(), ...this.carriers.added(), ...this.thickness.added()]; }
 
-  /** IFC4 -> IFC2X3: already converted record `id`, an action's CausedBy filled from its 'Causes' relationship. */
-  fillCausedBy(id: number, line: string, withheld: ReadonlySet<number> | undefined): string {
-    const filled = this.carriers.fillCausedBy(id, line, withheld);
-    if (filled !== line) this.record(CAUSED_BY_READ);
-    return filled;
+  /** An already converted IFC2X3 <-> IFC4 line with the values carriers fill in place (`StructuralCarriers.after`). */
+  after(line: string, withheld: ReadonlySet<number> | undefined): string {
+    if (!this.carriers.rewritesAfter) return line;
+    const filled = this.carriers.after(Number(/^\s*#(\d+)/.exec(line)?.[1]), line, withheld);
+    if (!filled) return line;
+    this.record(filled.loss);
+    return filled.line;
   }
 
-  inspect(line: string, from: string, to: string): void {
+  inspect(id: number, line: string, from: string, to: string): void {
     const assignment = /^\s*#\d+\s*=\s*IFCRELCONNECTSSTRUCTURALELEMENT\s*\(/i.test(line) ? readStepSlots(line) : null;
     if (assignment && isStructuralAssignmentConversion(assignment.type, from, to)) {
       this.record('IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the relationship kind is not kept in the target file');
@@ -67,7 +69,7 @@ export class StructuralDiagnostics {
       return;
     }
     const tgt = (meta.allAttributes ?? meta.attributes).map(a => a.name);
-    const carried = this.carried.get(Number(/^\s*#(\d+)/.exec(line)?.[1]));
+    const carried = this.carried.get(id);
     src.forEach((attr, i) => {
       // CONST is intrinsic to IFC2X3 linear/planar actions, not lost data.
       if (attr.name === 'PredefinedType' && rec.slots[i]?.trim() === '.CONST.'

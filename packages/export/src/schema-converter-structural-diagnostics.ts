@@ -13,6 +13,7 @@ import { readStepSlots } from './step-argument-parser.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 
 const NONE: ReadonlySet<string> = new Set();
+const CAUSED_BY_UNCONVERTED = "IFC2X3 CausedBy of a varying action that stays unconverted is not written as a 'Causes' relationship; its value is omitted";
 const LINK = 'IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link';
 
 export class StructuralDiagnostics {
@@ -101,7 +102,10 @@ export class StructuralDiagnostics {
    * A body still naming a `withheld` id is refused, and then nothing is reported.
    */
   rewrite(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null | undefined {
-    const cause = this.carriers.noteCause(id, entity, args, withheld);
+    // An IFC2X3 varying action that stays unconverted is no IFC4 product a 'Causes' relationship could name.
+    const unconverted = this.varying.staysUnconverted(entity, args);
+    if (unconverted && /^#/.test(args[10]?.trim() ?? '')) this.record(CAUSED_BY_UNCONVERTED);
+    const cause = unconverted ? null : this.carriers.noteCause(id, entity, args, withheld);
     const held = cause ? ['CausedBy'] : this.thickness.note(id, entity, args, withheld);
     let carried = NONE;
     if (held.length) {

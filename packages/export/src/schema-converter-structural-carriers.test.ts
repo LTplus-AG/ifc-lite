@@ -376,3 +376,32 @@ describe('CausedBy beside a source Causes relationship #9668', () => {
     expect(up.warnings).toContain('IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted');
   });
 });
+
+// #9668 review (PR #10551): a varying action StructuralVarying leaves unconverted
+// (as generated_structural_coverage_ifc2x3.ifc #58: one aspect representation, three loads)
+// is no IFC4 product, so no 'Causes' relationship may name it.
+describe('CausedBy of an unconverted varying action #9668', () => {
+  const geometry = `#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
+#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
+#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#17=IFCSHAPEASPECT((#16),'Coverage aspect',$,.T.,#15);
+#20=IFCSTRUCTURALPOINTREACTION('0KQ0efL39PrP5DeqBwaUNp',#5,'R',$,$,#9,$,#12,.GLOBAL_COORDS.);`;
+  const varying = (aspect: string) => model('IFC2X3', `${OWNER}
+${geometry.replace('(#16),', aspect)}
+#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#17,(#11,#11));`);
+
+  it('writes no Causes relationship and reports CausedBy omitted', async () => {
+    const up = await convert(varying('(#16),'), 'IFC4');
+    expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
+    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
+    expect(up.warnings).toContain("CausedBy of a varying action that stays unconverted is not written as a 'Causes' relationship");
+    expect(up.warnings).not.toContain('CausedBy is written as');
+  });
+
+  it('still writes it for a varying action that converts', async () => {
+    const up = await convert(varying('(#14,#16,#16),'), 'IFC4');
+    expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(/);
+    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/'Causes',\$,\(#20\),\$,#30\);$/)]);
+  });
+});

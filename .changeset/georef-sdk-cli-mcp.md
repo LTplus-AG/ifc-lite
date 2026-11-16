@@ -3,7 +3,8 @@
 "@ifc-lite/cli": minor
 "@ifc-lite/mcp": minor
 "@ifc-lite/export": major
-"@ifc-lite/parser": minor
+"@ifc-lite/parser": major
+"@ifc-lite/wasm": major
 ---
 
 Read and write georeferencing from the SDK, the CLI and the MCP server.
@@ -15,4 +16,6 @@ Read and write georeferencing from the SDK, the CLI and the MCP server.
 - Parser: the on-demand georeferencing reader now resolves a conversion-based MapUnit through its IfcMeasureWithUnit, so `US SURVEY FOOT` (as ifc-lite itself writes it) no longer reads back as METRE. `ProjectedCRS.mapUnitResolved` (new, optional) says whether `mapUnit` was read or is the METRE default for a unit the reader could not resolve, and an `IfcConversionBasedUnitWithOffset` MapUnit with a zero offset now resolves like its supertype (the Rust reader too).
 - Export: a georeferencing request that carries no plan (the viewer's own edits) and is incomplete (a new `IfcProjectedCRS` with no position, or a position missing Eastings, Northings or OrthogonalHeight) is refused with an error, in the TypeScript and the Rust writer. The viewer shows it as an export failure. A planned request (SDK, CLI, MCP) keeps the warning.
 
-Compatibility: the export package takes a major bump because incomplete new map-conversion requests now fail instead of fabricating zero coordinates. Callers creating a conversion must provide Eastings, Northings and OrthogonalHeight. The parser retains a minor bump: resolving FOOT, US SURVEY FOOT, zero-offset conversion-based units and their declared measure scale corrects the existing IFC unit-reading contract; no exported name or input shape is removed. Callers must use the returned unit and scale rather than rely on the former incorrect METRE fallback for resolvable units.
+Compatibility: the export package takes a major bump because incomplete new map-conversion requests now fail instead of fabricating zero coordinates. Callers creating a conversion must provide Eastings, Northings and OrthogonalHeight. The parser takes a conservative major bump because resolving FOOT, US SURVEY FOOT, zero-offset conversion-based units and their declared measure scale corrects the existing IFC unit-reading contract but changes returned unit/scale values for previously misread files; no exported name or input shape is removed. Callers must use the returned unit and scale rather than rely on the former incorrect METRE fallback for resolvable units.
+
+WASM compatibility: the public `exportStep` binding now throws when an unplanned new georeferencing request lacks a complete position, matching the TypeScript exporter refusal instead of returning bytes with fabricated zero coordinates. The WASM package therefore also takes a major bump.

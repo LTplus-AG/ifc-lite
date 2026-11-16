@@ -89,17 +89,20 @@ test('#9668 read indexes subsequent loads recursively and still rejects wrong or
 });
 
 test('#9668 read accepts normalized activity links in either STEP orientation and rejects unrelated ends', async () => {
-  const run = (swapped, target = 'item', includeActivity = true, itemActivities = ['activity']) => check(
+  const run = (swapped, { target = 'item', activity = true, itemActivities = ['activity'], item = true, itemType = 'IFCSTRUCTURALPOINTCONNECTION' } = {}) => check(
     'IfcRelConnectsStructuralActivity', [],
     { RelatingElement: swapped ? '#3' : '#2', RelatedStructuralActivity: swapped ? '#2' : '#3' },
     { ...empty(),
-      connections: [{ expressId: 2, type: 'IfcStructuralPointConnection', globalId: 'item', activityGlobalIds: itemActivities }],
-      activities: includeActivity ? [{ expressId: 3, type: 'IfcStructuralPointAction', globalId: 'activity', appliesToGlobalId: target }] : [],
-    }, "#2=IFCSTRUCTURALPOINTCONNECTION('item');#3=IFCSTRUCTURALPOINTACTION('activity');", 'IFC4X3');
+      connections: item ? [{ expressId: 2, type: 'IfcStructuralPointConnection', globalId: 'item', activityGlobalIds: itemActivities }] : [],
+      activities: activity ? [{ expressId: 3, type: 'IfcStructuralPointAction', globalId: 'activity', appliesToGlobalId: target }] : [],
+    }, `#2=${itemType}('item');#3=IFCSTRUCTURALPOINTACTION('activity');`, 'IFC4X3');
   for (const swapped of [false, true]) {
     assert.equal((await run(swapped)).status, 'pass');
-    rejects(await run(swapped, 'other'), 'link');
-    rejects(await run(swapped, undefined, false), 'link');
-    rejects(await run(swapped, 'item', true, []), 'link');
+    rejects(await run(swapped, { target: 'other' }), 'link');
+    rejects(await run(swapped, { activity: false }), 'link');
+    rejects(await run(swapped, { itemActivities: [] }), 'link');
+    // A structural item the read model dropped still fails; a physical element end is exempt.
+    rejects(await run(swapped, { item: false }), 'link');
+    assert.equal((await run(swapped, { item: false, itemType: 'IFCBEAM' })).status, 'pass');
   }
 });

@@ -61,9 +61,9 @@ const LINKS = {
   IfcRelConnectsStructuralActivity: ['RelatingElement', 'RelatedStructuralActivity',
     // Some writers swap the two ends (portal-demo.ifc); the read model carries the link either way.
     // A physical IfcElement end is not in the structural read model, so only a structural item end is checked.
-    (ix, a, b) => [[a, b], [b, a]].some(([item, activity]) => Boolean(item && activity)
+    (ix, a, b, rawA, rawB, step) => [[a, b, rawA], [b, a, rawB]].some(([item, activity, rawItem]) => Boolean(item && activity)
       && ix.byGuid.get(activity)?.appliesToGlobalId === item
-      && (!ix.byGuid.has(item) || ix.byGuid.get(item).activityGlobalIds?.includes(activity)))],
+      && (!/^IFCSTRUCTURAL/i.test(step.get(rawItem)?.type ?? '') || ix.byGuid.get(item)?.activityGlobalIds?.includes(activity)))],
   // IFC2X3 only: the member carries the physical element's model-local id.
   IfcRelConnectsStructuralElement: ['RelatingElement', 'RelatedStructuralMember', (ix, _a, b, rawFrom) => ix.byGuid.get(b)?.physicalElementIds?.includes(rawFrom?.ref)],
 };
@@ -145,7 +145,7 @@ export function readRow(row, entries, types) {
   const out = [...problems];
   const link = LINKS[row.root];
   const [from, to, held] = link ?? [];
-  const found = new Set(records.filter((r) => (link ? held(r.ix, value(r, from), value(r, to), r.rec.args[row.attributes.indexOf(from)]) : r.ix.byId.get(r.rec.id)?.type === row.entity)));
+  const found = new Set(records.filter((r) => (link ? held(r.ix, value(r, from), value(r, to), r.rec.args[row.attributes.indexOf(from)], r.rec.args[row.attributes.indexOf(to)], r.file.step) : r.ix.byId.get(r.rec.id)?.type === row.entity)));
   const lost = records.filter((r) => !found.has(r));
   if (lost.length) {
     const hit = lost[0].ix.byId.get(lost[0].rec.id);

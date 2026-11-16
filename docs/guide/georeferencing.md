@@ -26,7 +26,7 @@ ifc-lite georef set model.ifc --out geo.ifc --epsg 2056 --map-unit METRE \
 ifc-lite georef update geo.ifc --out geo2.ifc --height 401
 ```
 
-Writes fail closed: no CRS, map unit, scale or factor is ever guessed, an existing georeferencing is replaced only with `--replace`, and the written bytes are read back before the file is saved. The write API retains its IFC2X3 host behavior: new sets use IfcSite and updates preserve their host. `EPSET_NOT_ON_PROJECT` reports interoperability concerns; move sets to IfcProject in the authoring tool. The [CLI guide](cli.md) lists every option.
+Writes fail closed: no CRS, map unit, scale or factor is ever guessed, an existing georeferencing is replaced only with `--replace`, and the written bytes are read back before the file is saved. The write API retains its IFC2X3 host behavior: new sets use IfcSite and updates preserve their host. Property-set host migration is outside the doctor. The [CLI guide](cli.md) lists every option.
 
 ## Check
 
@@ -117,6 +117,5 @@ What each finding means and what to do. Codes are stable; `--json` carries them 
 | `ORTHOGONAL_HEIGHT_IMPLAUSIBLE` | warning | A height that is not a real place, usually millimetres. `fix` writes it in the map unit. |
 | `SOURCES_DISAGREE` | warning | The IFC4 entities and the ePSets, or two map conversions, say different things. Remove the stale one (`georef set --replace`). |
 | `IFC2X3_NO_EPSET` | info | An IFC2X3 model without the property-set convention. Add it with `georef set`. |
-| `EPSET_NOT_ON_PROJECT` | warning | IFC2X3 sets on IfcSite: IfcOpenShell-based tools read them only on IfcProject. Manual: move them in the authoring tool. |
 
 The checker's own catalogue, with every threshold and its rationale, is in the [`@ifc-lite/georef-check` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/georef-check#findings-catalogue).

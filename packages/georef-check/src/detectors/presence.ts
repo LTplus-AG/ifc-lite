@@ -171,28 +171,5 @@ export function detectPresence(ctx: DiagnosisContext): GeorefFinding[] {
     });
   }
 
-  const hostFinding = ifc2x3 ? ePSetHostFinding(ctx) : undefined;
-  if (hostFinding) findings.push(hostFinding);
-
   return findings;
-}
-
-/**
- * IFC2X3 convention sets attached to something other than IfcProject. The
- * buildingSMART user guide (v2.0, §5.1) links them to IfcProject and
- * IfcOpenShell reads them only there, so a set on IfcSite is invisible to
- * those tools. Moving the sets is manual: the write API preserves their host.
- */
-function ePSetHostFinding(ctx: DiagnosisContext): GeorefFinding | undefined {
-  const hosts = ctx.facts.ePSetHosts;
-  const op = ctx.facts.ePSet?.operation;
-  if (!hosts || hosts.length === 0 || hosts.includes('IfcProject') || !op) return undefined;
-  const crs = ctx.facts.ePSet?.crs;
-  return {
-    code: 'EPSET_NOT_ON_PROJECT',
-    severity: 'warning',
-    message: `ePSet_MapConversion${crs ? ' and ePSet_ProjectedCRS are' : ' is'} attached to ${hosts.join(' and ')}, but the buildingSMART convention attaches them to IfcProject, and IfcOpenShell-based tools read them only there: move them to IfcProject.`,
-    evidence: { hosts: hosts.join(', ') },
-    fixes: [{ summary: 'Move the convention sets to IfcProject in the authoring tool.', changes: [], apply: { via: 'manual', reason: 'The georeferencing write API preserves the existing IFC2X3 host; moving property sets is outside the doctor.' } }],
-  };
 }

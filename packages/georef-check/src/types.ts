@@ -141,12 +141,6 @@ export interface GeorefFacts {
   /** `ePSet_MapConversion` / `ePSet_ProjectedCRS`. */
   ePSet?: GeoreferenceSourceFact;
   /**
-   * IfcPascalCase classes the `ePSet` sets are attached to (via
-   * IfcRelDefinesByProperties), when known. The convention puts them on
-   * IfcProject; IfcOpenShell reads them only there.
-   */
-  ePSetHosts?: string[];
-  /**
    * Every IfcMapConversion in the file, each with its own TargetCRS, when
    * there is more than one (only the first is applied).
    */
@@ -354,5 +348,4 @@ export type GeorefFindingCode =
   | 'TRUE_NORTH_CONTRADICTS_ROTATION'
   | 'ORTHOGONAL_HEIGHT_IMPLAUSIBLE'
   | 'SOURCES_DISAGREE'
-  | 'IFC2X3_NO_EPSET'
-  | 'EPSET_NOT_ON_PROJECT';
+  | 'IFC2X3_NO_EPSET';

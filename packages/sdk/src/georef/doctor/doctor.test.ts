@@ -228,20 +228,6 @@ describe('fix() re-checks the safety rules of a plan it is handed', () => {
   });
 });
 
-describe('IFC2X3 convention sets on IfcSite', () => {
-  it('reports migration as manual and leaves the existing host unchanged', async () => {
-    const model = await open(fixture('epset-on-site'));
-    try {
-      const { report, plan, result, after } = await fixAndRecheck(model);
-      expect(codes(report)).toEqual(['EPSET_NOT_ON_PROJECT']);
-      expect(fix(plan, 'EPSET_NOT_ON_PROJECT.1').status).toBe('manual');
-      expect(result.applied).toEqual([]);
-      expect(codes(after)).toEqual(['EPSET_NOT_ON_PROJECT']);
-      expect(after.facts.ePSetHosts).toEqual(['IfcSite']);
-    } finally { model.close(); }
-  });
-});
-
 // Doctor port: non-uniform factors scale the local axes before rotation.
 it('derives the site from a rotated scaled conversion without exchanging the axis factors', async () => {
   const model = await open(fixture('clean-lv95-mm'));

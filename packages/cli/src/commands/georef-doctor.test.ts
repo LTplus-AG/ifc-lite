@@ -29,7 +29,7 @@ class Exit extends Error {
 
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), 'ifc-lite-cli-georef-doctor-'));
-  for (const name of ['clean-lv95-mm', 'zone-prefix', 'lv03-numbers-in-lv95', 'scale-inverted', 'crs-only', 'double-site-placement', 'site-default-revit-boston', 'epset-on-site']) {
+  for (const name of ['clean-lv95-mm', 'zone-prefix', 'lv03-numbers-in-lv95', 'scale-inverted', 'crs-only', 'double-site-placement', 'site-default-revit-boston']) {
     copyFileSync(join(FIXTURES, `${name}.ifc`), join(dir, `${name}.ifc`));
   }
 });
@@ -109,10 +109,6 @@ describe('ifc-lite georef fix', () => {
     expect(await run(['check', p('scale-fixed.ifc'), '--json'])).toBe(0);
     expect(codes(json<CheckJson>().report)).toEqual([]);
 
-    expect(await run(['check', p('epset-on-site.ifc'), '--fix', '--out', p('epset-fixed.ifc'), '--json'])).toBe(0);
-    expect(json<FixJson>().applied).toEqual([]);
-    expect(json<FixJson>().plan.fixes[0].status).toBe('manual');
-    expect(existsSync(p('epset-fixed.ifc'))).toBe(false);
   });
 
   it('map conversion missing and LV03/LV95: fixed with the values only the user knows (check --fix)', async () => {

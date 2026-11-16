@@ -48,7 +48,6 @@ export const GEOREF_HELP = `
 
   IFC2X3 has no such entities: set/update/remove write the ePSet_MapConversion and
   ePSet_ProjectedCRS property sets on IfcSite; updates preserve an existing host.
-  check reports interoperability concerns when the convention sets are not on IfcProject.
 
   check: what is wrong with the georeferencing (finding codes, severity, suggested fixes)
   and the Level of Georeferencing found. Exit 1 when a finding at or above --fail-on

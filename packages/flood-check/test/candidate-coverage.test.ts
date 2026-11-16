@@ -8,7 +8,7 @@
  * that would rest on unreadable or unusually placed data keeps the element.
  */
 
-import { existsSync } from 'node:fs';
+import { fixture } from './fixture.js';
 import { fileURLToPath } from 'node:url';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
@@ -193,8 +193,8 @@ describe('exactly once, over every IFC fixture the tests use', () => {
     ['IFC2X3 equipment', () => parseStep(equipment2x3()), { expectedCrs: 'EPSG:2056' }],
     ['building-architecture.ifc', () => parseFile(repo('apps/viewer/public/samples/building-architecture.ifc')), {}],
   ];
-  const miniBim = repo('tests/models/georeferencer/MiniBIM-3.1-DO_01_VORM.ifc');
-  if (existsSync(miniBim)) fixtures.push(['MiniBIM (pnpm fixtures)', () => parseFile(miniBim), {}]);
+  const { path: miniBim, present: hasMiniBim } = fixture('georeferencer/MiniBIM-3.1-DO_01_VORM.ifc');
+  if (hasMiniBim) fixtures.push(['MiniBIM (pnpm fixtures)', () => parseFile(miniBim), {}]);
 
   for (const [label, load, options] of fixtures) {
     it(label, async () => {

@@ -73,7 +73,7 @@ describe('finding 3: one prepared footprint for every query', () => {
   });
 
   it('geom.ts exports no footprint query on raw rings', () => {
-    expect(Object.keys(geom).sort()).toEqual(['bboxOf', 'chainIntoRing', 'closestBoundaryPoint', 'convexHull', 'expandBBox', 'insideRing', 'ringArea']);
+    expect(Object.keys(geom).sort()).toEqual(['bboxOf', 'chainIntoRing', 'closestBoundaryPoint', 'convexHull', 'expandBBox', 'insideRing', 'ringArea', 'ringContainsRing', 'segmentsIntersect']);
   });
 
   /** Every point of a grid over the footprint (plus a line across each gap): the queries agree with each other. */

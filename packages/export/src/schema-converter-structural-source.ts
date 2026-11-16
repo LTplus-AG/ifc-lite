@@ -101,7 +101,9 @@ export function bareMeasure(token: string | undefined, type: string): string | n
 }
 
 /** The text of a STEP string token, or null. Only compared with fixed names here, so escapes need no decoding. */
-export const stepString = (token: string | undefined): string | null => /^\s*'(.*)'\s*$/s.exec(token ?? '')?.[1] ?? null;
+export const stepString = (token: string | undefined): string | null =>
+  // STEP comments may sit around the string (#10248); the fixed names compared here hold none.
+  /^\s*'(.*)'\s*$/s.exec((token ?? '').replace(/\/\*[\s\S]*?\*\//g, ''))?.[1] ?? null;
 
 /** A property set attached by an IfcRelDefinesByProperties, read from the source. */
 export interface CarrierSet {
@@ -116,11 +118,10 @@ export interface CarrierSet {
 
 /** Every property set named `name` in the source, with what it relates to; `exclusive`, which reads every record, only with `checkExclusive`. */
 export function readCarrierSets(source: SourceRecords, name: string, checkExclusive = true): CarrierSet[] {
-  const quoted = `'${name}'`;
   const rels = source.ids('IFCRELDEFINESBYPROPERTIES');
   const candidates = rels.filter((rel) => {
     const pset = slotRef(source.slots(rel)?.[5]);
-    return source.type(pset) === 'IFCPROPERTYSET' && source.slots(pset)?.[2]?.trim() === quoted;
+    return source.type(pset) === 'IFCPROPERTYSET' && stepString(source.slots(pset)?.[2]) === name;
   });
   if (!candidates.length) return [];
   const members = candidates.map((rel) => {

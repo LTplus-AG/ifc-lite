@@ -44,7 +44,7 @@ export class StructuralThickness {
   private readonly aspects = new Map<number, number[]>();
   /** Aspects IFC2X3 admits as VaryingThicknessLocation: each representation one point (WR62, WR63); both directions require it. */
   private readonly pointAspects = new Set<number>();
-  /** Member id -> its three thicknesses from a source property set, or [] when it has more than one set or one gives locations. */
+  /** Member id -> its three thicknesses from a source property set, or [] when it has more than one set. */
   private readonly psets = new Map<number, string[]>();
   /** Members whose property set gives LocationNLocal/LocationNGlobal, which the aspect order cannot be checked against. */
   private readonly located = new Set<number>();
@@ -74,19 +74,15 @@ export class StructuralThickness {
         // A value in its own unit would need converting; only one in the project's length unit is read.
         return args && slotUnset(args[3] ?? '$') ? thickness(args[2]) : null;
       });
-      const givesLocations = [...set.props.keys()].some((name) => /^Location[123](?:Local|Global)$/.test(name));
+      // A location property counts only when it holds a value.
+      const givesLocations = [...set.props].some(([name, prop]) => /^Location[123](?:Local|Global)$/.test(name) && !slotUnset(source.slots(prop)?.[2] ?? '$'));
       for (const member of set.related) {
         if (source.type(member) !== ENTITY) continue;
         if (givesLocations) this.located.add(member);
-        // A member with two such property sets, or one giving locations, keeps no reading.
-        this.psets.set(member, this.psets.has(member) || givesLocations || values.includes(null) ? [] : values as string[]);
+        // A member with two such property sets keeps neither reading.
+        this.psets.set(member, this.psets.has(member) || values.includes(null) ? [] : values as string[]);
       }
     }
-  }
-
-  /** IFC4 -> IFC2X3: why a member's property set is not written as IFC2X3 thicknesses, when that is not reported otherwise. */
-  refusal(id: number): string | undefined {
-    return this.mode === 'downgrade' && this.located.has(id) ? THICKNESS_LOCATED : undefined;
   }
 
   /** The one aspect of a representation slot, or null. */
@@ -110,6 +106,8 @@ export class StructuralThickness {
     const location = slotRef(args[10]);
     if (location === null || this.aspectOf(args[6]) !== location || !this.pointAspects.has(location)) return [];
     const existing = this.psets.get(id);
+    // A set giving locations is not read back by the downgrade, so it does not hold them.
+    if (existing && this.located.has(id)) return [];
     if (existing) {
       // A property set the member already has holds the thicknesses only when its values are these.
       if (existing.length !== 3 || existing.some((v, i) => parseStepNumber(v) !== parseStepNumber(values[i]!))) return [];
@@ -129,6 +127,8 @@ export class StructuralThickness {
     // IFC2X3's VaryingThickness starts with Thickness (WR61 requires it).
     const own = thickness(args[8]);
     if (own !== null && parseStepNumber(own) !== parseStepNumber(first)) return undefined;
+    // Writable but for the set's locations: written as without a set (both slots $), with the reason.
+    if (this.located.has(id)) return { body: `${ENTITY}(${[...args, '$', '$'].join(',')})`, losses: [THICKNESS_LOCATED] };
     const values = [...args.slice(0, 8), own === null ? first : args[8], `(${rest.join(',')})`, `#${aspect}`];
     return { body: `${ENTITY}(${values.join(',')})`, losses: [THICKNESS_READ] };
   }

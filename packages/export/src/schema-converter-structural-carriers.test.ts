@@ -460,5 +460,39 @@ describe('varying thickness with property-set locations #9668', () => {
     expect(down.warnings).toContain('gives Location properties, which cannot be checked against the IfcShapeAspect order');
     const plain = await convert(ifc4.replace(',(#40,#41,#42,#43));', ',(#40,#41,#42));'), 'IFC2X3');
     expect(line(plain.step, 20)).toMatch(/,0\.2,\(0\.25,0\.3\),#17\);$/);
+    // An empty location property gives no location.
+    const empty = await convert(ifc4.replace("'Location1Local',$,(IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.)),$)", "'Location1Local',$,$,$)"), 'IFC2X3');
+    expect(line(empty.step, 20)).toMatch(/,0\.2,\(0\.25,0\.3\),#17\);$/);
+    // Not writable anyway (a second aspect): the location reason is not given.
+    const twoAspects = await convert(ifc4.replace('#20=', "#18=IFCSHAPEASPECT((#14),$,$,.T.,#15);\n#20="), 'IFC2X3');
+    expect(twoAspects.warnings).not.toContain('gives Location properties');
+  });
+
+  it('does not count a located set as holding the thicknesses on the upgrade', async () => {
+    const ifc2x3 = model('IFC2X3', `${OWNER}
+#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
+#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
+#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#17=IFCSHAPEASPECT((#16),$,$,.T.,#15);
+#20=IFCSTRUCTURALSURFACEMEMBERVARYING('2KZvpy1jjNYvbqlQZoD987',#5,'Slab',$,$,#9,#15,.SHELL.,0.2,(0.25,0.3),#17);
+#40=IFCPROPERTYSINGLEVALUE('Thickness1',$,IFCPOSITIVELENGTHMEASURE(0.2),$);
+#41=IFCPROPERTYSINGLEVALUE('Thickness2',$,IFCPOSITIVELENGTHMEASURE(0.25),$);
+#42=IFCPROPERTYSINGLEVALUE('Thickness3',$,IFCPOSITIVELENGTHMEASURE(0.3),$);
+#43=IFCPROPERTYLISTVALUE('Location1Local',$,(IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.)),$);
+#44=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'Pset_StructuralSurfaceMemberVaryingThickness',$,(#40,#41,#42,#43));
+#45=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#44);`);
+    const up = await convert(ifc2x3, 'IFC4');
+    expect(up.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
+    expect(up.warnings).not.toContain('SubsequentThickness is held');
+    expect(records(up.step, 'IFCPROPERTYSET')).toHaveLength(1);
+  });
+
+  it('reads a Causes label and a property set name beside STEP comments', async () => {
+    const ifc4 = model('IFC4', `${OWNER}
+#20=IFCSTRUCTURALPOINTREACTION('0KQ0efL39PrP5DeqBwaUNp',#5,'R',$,$,#9,$,#12,.GLOBAL_COORDS.);
+#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
+#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes' /* why */,$,(#20),$,#21);`);
+    expect(line((await convert(ifc4, 'IFC2X3')).step, 21)).toContain(',.F.,#20,.TRUE_LENGTH.);');
   });
 });

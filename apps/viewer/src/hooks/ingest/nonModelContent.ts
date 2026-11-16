@@ -12,10 +12,7 @@
 import { NON_MODEL_REASONS, type NonModelReason } from '@/lib/non-model-reasons';
 import { detectFormat } from '@ifc-lite/parser';
 import { detectPointCloudFormat } from './pointCloudIngest';
-import { headIsZip } from './sourceBuffers';
-
-/** The head the loader reads for format detection; the check works from it and reads further only when needed. */
-export const NON_MODEL_HEAD_BYTES = 4096;
+import { FORMAT_HEAD_BYTES, headIsZip } from './sourceBuffers';
 
 /** Bodies up to this size are read whole to recognise a JSON or XML error response; HTML is looked for in this much of any body. */
 export const NON_MODEL_SCAN_BYTES = 64 * 1024;
@@ -65,7 +62,7 @@ const STEP_MARKER = /^ISO[- ]?10303-21/i;
  * the head looks like text that is not plainly a model, so an ordinary STEP or binary model costs no extra read.
  */
 export async function nonModelContentReason(file: File, head?: ArrayBuffer): Promise<NonModelReason | null> {
-  const first = head ?? await file.slice(0, NON_MODEL_HEAD_BYTES).arrayBuffer();
+  const first = head ?? await file.slice(0, FORMAT_HEAD_BYTES).arrayBuffer();
   const bytes = new Uint8Array(first);
   if (bytes.length === 0 || headIsZip(first)) return null;
   const routed = detectFormat(first);
@@ -73,11 +70,18 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const ifcName = /\.(?:ifc|ifczip)$/i.test(file.name);
   // A control byte in the first 512 means binary: a headerless .splat can start with '<a '.
   const binary = bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32));
+  const encoding = utf16Encoding(bytes);
+  if (encoding) {
+    // A UTF-16 document (an IIS/.NET error page) has NUL bytes but is text: judge it decoded.
+    return htmlOrNull(afterProlog(new TextDecoder(encoding).decode(file.size > first.byteLength ? await file.slice(0, NON_MODEL_SCAN_BYTES).arrayBuffer() : first)));
+  }
   const headText = new TextDecoder().decode(first); // drops a UTF-8 BOM
   const firstChar = headText.trimStart()[0] ?? '';
-  // Only content that could be an error response, or IFC-named content that is not plainly STEP, is read further.
-  const couldBeText = firstChar === '<' || (!binary && /[{["]/.test(firstChar));
-  const ifcNotStep = ifcName && !STEP_MARKER.test(afterStepComments(headText) ?? '');
+  // Only content that could be an error response (or is all blank so far), or IFC-named content that is not
+  // plainly STEP, is read further.
+  const couldBeText = firstChar === '' || firstChar === '<' || (!binary && /[{["]/.test(firstChar));
+  const headLead = afterStepComments(headText);
+  const ifcNotStep = ifcName && !(headLead !== null && startsLikeStep(headLead));
   if (!couldBeText && !ifcNotStep) return null;
 
   const scan = file.size > first.byteLength && first.byteLength < NON_MODEL_SCAN_BYTES
@@ -97,13 +101,26 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   if (!ifcNotStep || routed === 'ifcx' || detectPointCloudFormat('content', first)) return null;
   // Under an IFC name everything else goes to the STEP parser: refuse what is not STEP. A blank file is the
   // loader's to judge; an unterminated comment is not STEP unless the scan was cut short.
-  const lead = afterStepComments(text);
+  const lead = text === headText ? headLead : afterStepComments(text);
   if (lead === null) return whole ? NON_MODEL_REASONS.notStep : null;
-  return lead === '' || STEP_MARKER.test(lead) ? null : NON_MODEL_REASONS.notStep;
+  return lead === '' || startsLikeStep(lead) ? null : NON_MODEL_REASONS.notStep;
+}
+
+/** Whether `text` (after whitespace and comments) starts like STEP: the one rule the preflight's IFC admission shares. */
+export function startsLikeStep(text: string): boolean {
+  return STEP_MARKER.test(text);
+}
+
+function utf16Encoding(bytes: Uint8Array): 'utf-16le' | 'utf-16be' | null {
+  return bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : null;
+}
+
+function htmlOrNull(body: string): NonModelReason | null {
+  return HTML_START.test(body) ? NON_MODEL_REASONS.html : null;
 }
 
 /** `text` after leading whitespace and STEP comments (`null` when a comment is unterminated); linear. */
-function afterStepComments(text: string): string | null {
+export function afterStepComments(text: string): string | null {
   let at = 0;
   for (;;) {
     while (at < text.length && /\s/.test(text[at])) at++;

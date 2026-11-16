@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 import { isInvalidInputError } from '@/lib/invalid-input-errors';
-import { afterProlog, NON_MODEL_HEAD_BYTES, NON_MODEL_REASONS, nonModelContentMessage, nonModelContentReason } from './nonModelContent';
+import { afterProlog, NON_MODEL_REASONS, nonModelContentMessage, nonModelContentReason } from './nonModelContent';
+import { FORMAT_HEAD_BYTES } from './sourceBuffers';
 
 const step = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
 const reason = (body: BlobPart, name: string) => nonModelContentReason(new File([body], name));
@@ -32,6 +33,9 @@ it('#9523 recognises error responses under any model name', async () => {
     ['[ERROR] token expired', 'house.ifc', /neither STEP/],
     ['/* Access denied', 'house.ifc', /neither STEP/],
     ['\uFEFF<!DOCTYPE html>\x00<html>Forbidden', 'a.glb', /HTML page/],
+    [`${'\n'.repeat(5000)}<!DOCTYPE html><html>Forbidden`, 'a.glb', /HTML page/],
+    [`${'\n'.repeat(5000)}{"error":"forbidden"}`, 'a.las', /JSON response/],
+    [new Uint8Array([0xff, 0xfe, ...Array.from('<html>Error</html>').flatMap((c) => [c.charCodeAt(0), 0])]), 'a.glb', /HTML page/],
     ['\x1b[31mError\x1b[0m forbidden', 'house.ifc', /neither STEP/],
     ['{"header":{"ifcxVersion":null}}', 'model.ifcx', /without an IFCX header\.ifcxVersion/],
     ['{"header":{"version":"1"},"data":[]}', 'model.ifcx', /without an IFCX header\.ifcxVersion/],
@@ -85,7 +89,7 @@ it('#9523 reads no more than the 4 KiB head for an ordinary STEP, binary or text
     const file = new File([body, ' '.repeat(100_000)], name);
     let extraReads = 0;
     const realSlice = file.slice.bind(file);
-    Object.defineProperty(file, 'slice', { value: (start?: number, end?: number) => { if (!(start === 0 && end === NON_MODEL_HEAD_BYTES)) extraReads++; return realSlice(start, end); } });
+    Object.defineProperty(file, 'slice', { value: (start?: number, end?: number) => { if (!(start === 0 && end === FORMAT_HEAD_BYTES)) extraReads++; return realSlice(start, end); } });
     assert.equal(await nonModelContentReason(file), null, name);
     assert.equal(extraReads, 0, name);
   }

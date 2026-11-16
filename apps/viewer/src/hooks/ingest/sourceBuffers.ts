@@ -35,6 +35,9 @@ const ZIP_LOCAL_HEADER = 0x04034b50;
  * the same signature `unwrapIfcZipWithResources` checks, so a `true` here is
  * exactly the case in which that call does work.
  */
+/** The head every load reads for format detection (#6431: once, then reused). */
+export const FORMAT_HEAD_BYTES = 4096;
+
 export function headIsZip(head: ArrayBuffer): boolean {
   return head.byteLength >= 4 && new DataView(head).getUint32(0, true) === ZIP_LOCAL_HEADER;
 }

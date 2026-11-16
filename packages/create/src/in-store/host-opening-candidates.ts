@@ -1,10 +1,30 @@
 // SPDX-License-Identifier: MPL-2.0
+import { iterateEffectiveEntities } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { refId } from './host-geometry-frame.js';
 const TYPE = 'IFCRELVOIDSELEMENT';
 const sources = new WeakMap<IfcDataStore, { signature: unknown[]; buckets: Map<number | null, number[]>; order: Map<number, number> }>();
+
+/** Source overrides are conservatively untyped in the mutation index. Resolve
+ * only their classes through the canonical metadata iterator before asking a
+ * payload reader to decode them. Missing metadata stays a candidate. */
+function openingOverrideIds(store: IfcDataStore, view: MutablePropertyView): number[] {
+  const ids = view.getAttributeOverrideEntityIds([TYPE]);
+  const sourceIds = ids.filter(id => !view.hasNewEntity(id));
+  if (!sourceIds.length) return ids;
+  const kinds = new Map(Array.from(iterateEffectiveEntities(store, {
+    isDeleted: id => view.isDeleted(id),
+    getTypeMutations: () => view.getTypeMutations(),
+    hasNewEntity: id => view.hasNewEntity(id),
+    // This adapter classifies only the sparse source domain, never creations.
+    getNewEntities: () => [],
+    readNewEntityKinds: () => [],
+  }, undefined, sourceIds), row => [row.expressId, row.type] as const));
+  return ids.filter(id => !kinds.has(id) || kinds.get(id) === TYPE);
+}
+
 
 /** Include unresolved hosts globally: their old conservative refusal is part
  * of the contract. Source projections are immutable; authored projections are
@@ -29,7 +49,7 @@ export function hostOpeningCandidates(store: IfcDataStore, host: number, view?: 
   }
   const candidates = new Set([...(source.buckets.get(host) ?? []), ...(source.buckets.get(null) ?? []),
     ...view.getNewEntityReferenceSlotIds(TYPE, 4, host), ...view.getNewEntityReferenceSlotIds(TYPE, 4, null),
-    ...view.getAttributeOverrideEntityIds([TYPE])]);
+    ...openingOverrideIds(store, view)]);
   const ranks = new Map<number, number>();
   const matches: number[] = [];
   for (const id of candidates) {

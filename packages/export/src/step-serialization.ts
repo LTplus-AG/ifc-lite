@@ -236,6 +236,22 @@ export function tokenIsRealLiteral(token: string): boolean {
  * Serialize a root attribute value for STEP, inferring the format from the
  * existing token (enum, boolean, number, string, etc.).
  */
+/**
+ * A named-edit value the georeferencing writer has decided is TEXT, whatever it looks like (`$`, `*`, `#12`). It is a
+ * distinct object, not a spelling inside a string: no user string can be one, and no string is ever inspected for a
+ * prefix to tell.
+ */
+export class TextEditValue extends String {}
+
+/**
+ * A CRS text value as an in-place edit: text is text (`$`, `*`, `#12` stay quoted strings, as on the create path)
+ * and only an empty value clears the slot, with the `$` token the create path writes for it.
+ */
+export function textEdit(value: unknown): string {
+  const text = String(value);
+  return text === '' ? '$' : (new TextEditValue(text) as unknown as string);
+}
+
 export function serializeAttributeValue(value: string, currentToken: string): string {
   const trimmed = value.trim();
   const current = currentToken.trim();

@@ -108,6 +108,14 @@ fn check_case(name: &str, expect: &serde_json::Value, georef: Option<&(GeoRefere
         }
     }
 
+    if let Some(want) = expect.get("mapUnitResolved").and_then(|v| v.as_bool()) {
+        assert_eq!(
+            details.map_unit_resolved,
+            Some(want),
+            "case `{name}`: mapUnitResolved (a unit is resolved only when its declared factor is the one its name means)"
+        );
+    }
+
     for (key, got) in [
         ("eastings", g.eastings),
         ("northings", g.northings),

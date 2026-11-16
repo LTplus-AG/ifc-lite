@@ -40,7 +40,8 @@ import {
   type WallInStoreParams,
   type WindowInStoreParams,
 } from '@ifc-lite/create';
-import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
+import { positionCompletion } from '@/lib/geo/complete-position.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { unionEntityBounds } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
@@ -52,7 +53,6 @@ import { authoredDataStore } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
 import { effectiveStoreyId } from '@/lib/effective-storey';
 import { copyElements, copySources, withHostedFillings } from '@/lib/commands/modeling/copy-elements';
-import { newMutationBatchId } from './mutation-batch-tags.js';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { remeshGridPlacementAfterCommit } from './mutation-grid-remesh';
 import { presentEntityRotation, rotateImplicitRefEntity } from './mutation-rotate-entity.js';
@@ -85,7 +85,7 @@ import { splitLinear, splitWall } from './mutation-split.js';
 import { splitSlab } from './mutation-split-slab.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
-import { withMutationBatchTags } from './mutation-batch-tags.js';
+import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
 import { canMutateData, canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
 import { clearViewAndTypeOverrides, syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
@@ -1016,10 +1016,19 @@ export const createMutationSlice: StateCreator<
       for (const entry of fields) {
         entityMuts[entry.field] = entry.value;
       }
+      // An edit that leaves the map position incomplete completes it here, in the same undo step (see complete-position.ts).
+      const written: Array<{ field: string; value: string | number; oldValue?: string | number }> = [...fields];
+      if (entity === 'mapConversion') {
+        const dataStore = state.models.get(modelId)?.ifcDataStore;
+        for (const done of positionCompletion(() => (dataStore ? extractGeoreferencingOnDemand(dataStore) : null), entityMuts as Partial<MapConversion>)) {
+          entityMuts[done.field] = done.value;
+          written.push({ field: done.field, value: done.value, oldValue: undefined });
+        }
+      }
       newGeorefMuts.set(modelId, { ...modelMuts, [entity]: entityMuts });
 
       // Track undo
-      const nextMutations: Mutation[] = fields.map(entry => ({
+      const nextMutations: Mutation[] = written.map(entry => ({
         id: `mut_georef_${entity}_${entry.field}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         type: 'UPDATE_ATTRIBUTE',
         timestamp: Date.now(),
@@ -1031,7 +1040,12 @@ export const createMutationSlice: StateCreator<
         propName: entry.field,
         psetName: entity,
       }));
-      return { georefMutations: newGeorefMuts, ...recordHistory(state, modelId, nextMutations) };
+      // An edit and its completion are one undo step (and one row in the Changes panel).
+      const batchId = written.length > fields.length ? newMutationBatchId() : null;
+      return {
+        georefMutations: newGeorefMuts, ...recordHistory(state, modelId, nextMutations),
+        ...(batchId ? { mutationBatchTags: withMutationBatchTags(state.mutationBatchTags, nextMutations.map((m) => m.id), batchId) } : {}),
+      };
     });
   },
 

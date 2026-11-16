@@ -223,3 +223,13 @@ describe('review: a deleted CRS keeps generic edits and pending fields together'
     if (file.MapConversion) expect(file.MapConversion).toMatchObject({ Eastings: 99, Northings: 77 });
   });
 });
+
+it('numeric convention-set CRS Name matches the exported reader and remains writable (#10382 review)', async () => {
+  const m = await open('IFC2X3', `${BASE}\n${sets(100, 1000000)}\n${attach(100, 6)}`);
+  m.bim.mutate.setProperty({ modelId: 'model', expressId: 6 }, 'ePSet_ProjectedCRS', 'Name', 2056);
+  expect(m.bim.georef.get().ProjectedCRS?.Name).toBe('2056');
+  expect(comparable(m.bim.georef.get())).toEqual(comparable(await reparsed(m.bim)));
+  m.bim.georef.update({ MapConversion: { Eastings: 2700000 } });
+  expect((await reparsed(m.bim)).MapConversion?.Eastings).toBe(2700000);
+  expect(m.bim.georef.get().ProjectedCRS?.Name).toBe('2056');
+});

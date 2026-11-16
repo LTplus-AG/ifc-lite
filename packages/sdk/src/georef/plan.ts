@@ -306,7 +306,7 @@ export function planSet(input: GeoreferencingSetInput, ctx: PlanContext): Georef
   const records = storage === 'entities' ? existingRecords(ctx.facts) : [];
   // Convention sets are read from every schema (the reader's fallback), so they count as existing whatever the storage.
   const epsets = existingEPSets(ctx.facts);
-  const sessionOnly = ctx.current.pending && ctx.current.hasGeoreference && records.length === 0 && epsets.length === 0;
+  const sessionOnly = ctx.current.pending && (ctx.current.ProjectedCRS || ctx.current.MapConversion || ctx.current.RigidOperation) && records.length === 0 && epsets.length === 0;
   const existing = [...records.map((r) => r.label), ...epsets, ...(sessionOnly ? ['the georeferencing set earlier in this session'] : [])];
   if (existing.length > 0 && input.replace !== true) {
     throw new GeoreferencingError(

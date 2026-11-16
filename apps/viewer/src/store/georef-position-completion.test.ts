@@ -171,3 +171,17 @@ it('a deleted source CRS needs a complete replacement position (#10382 review)',
   assert.equal(geo?.projectedCRS?.name, 'EPSG:2056');
   assert.deepEqual([geo?.mapConversion?.eastings, geo?.mapConversion?.northings, geo?.mapConversion?.orthogonalHeight], [0, 0, 0]);
 });
+
+it('a complete multi-field write undoes atomically before a later edit/export (#10382 review)', async () => {
+  await withModel(async (dataStore) => {
+    useViewerStore.getState().setGeorefFields('m', 'mapConversion', [
+      { field: 'eastings', value: 5 }, { field: 'northings', value: 6 }, { field: 'orthogonalHeight', value: 7 },
+    ]);
+    useViewerStore.getState().undo('m');
+    assert.equal(useViewerStore.getState().georefMutations.get('m'), undefined);
+    useViewerStore.getState().setGeorefFields('m', 'mapConversion', [{ field: 'scale', value: 2 }]);
+    const geo = await exported(dataStore, useViewerStore.getState().georefMutations.get('m'));
+    assert.deepEqual([geo?.mapConversion?.eastings, geo?.mapConversion?.northings, geo?.mapConversion?.orthogonalHeight], [0, 0, 0]);
+    assert.equal(geo?.mapConversion?.scale, 2);
+  });
+});

@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { parseModel } from '@ifc-lite/parser';
-import { undoRecordedMutationOperations, type MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
+import { undoRecordedMutationOperations, recordCompoundMutation, StoreEditor, type MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
 import { HeadlessBackend } from '../headless.js';
 import { BimContext } from '../context.js';
 import { readGeoreferencing } from './read.js';
@@ -105,7 +105,7 @@ async function session(schema: string, data: string) {
     expect(comparable(bim.georef.get())).toEqual(comparable(fromFile));
     return fromFile;
   };
-  return { bim, backend, undo, consistent };
+  return { bim, backend, undo, consistent, store };
 }
 
 describe('bim.georef writes are atomic under undo', () => {
@@ -233,4 +233,43 @@ describe('bim.georef writes are atomic under undo', () => {
     expect(bim.mutate.redo('model')).toBe(false);
     expect(comparable(await consistent())).toEqual(after);
   });
+});
+
+for (const schema of ['IFC4', 'IFC2X3']) {
+  it(`${schema}: remove with site fallback permits a fresh complete set without replace (#10382 review)`, async () => {
+    const site = BASE.replace('.ELEMENT.,$,$,$,$,$);', '.ELEMENT.,(47,22,0,0),(8,32,0,0),12.,$,$);');
+    const m = await session(schema, site);
+    m.bim.georef.set({ ...NEW, replace: undefined });
+    m.bim.georef.remove();
+    expect(m.bim.georef.get()).toMatchObject({ hasGeoreference: true, ProjectedCRS: null, MapConversion: null });
+    m.bim.georef.set({ ...NEW, replace: undefined, MapConversion: { Eastings: 7, Northings: 8, OrthogonalHeight: 9 } });
+    expect((await m.consistent()).MapConversion?.Eastings).toBe(7);
+  });
+}
+
+it('undoing deletion of a created marker host restores its pending write (#10382 review)', async () => {
+  const data = BASE.replace('(#5)', '()').replace("#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#3,$);", '');
+  const m = await session('IFC4', data);
+  const editor = m.backend.ensureEditor();
+  const host = editor.addEntity('IfcGeometricRepresentationContext', [null, 'Model', 3, 0.00001, { literal: '#3' }, null]);
+  m.bim.georef.set({ ...NEW, replace: undefined });
+  const view = m.backend.getMutationView()!;
+  expect(view.getMutations().some((entry) => entry.type === 'SESSION_EDIT' && entry.entityId === host.expressId)).toBe(true);
+  recordCompoundMutation(view, (draft) => new StoreEditor(m.store, draft).removeEntity(host.expressId));
+  expect(view.getMutations().some((entry) => entry.type === 'SESSION_EDIT')).toBe(false);
+  m.bim.georef.get(); // Reading while the marker is hidden must not discard its pending write.
+  m.undo(1);
+  expect((await m.consistent()).MapConversion?.Eastings).toBe(2600000);
+});
+
+it('a new write after undo cannot revive the abandoned write (#10382 review)', async () => {
+  const m = await session('IFC4', GEOREFERENCED);
+  m.bim.georef.update({ MapConversion: { Eastings: 99 } });
+  m.undo(1);
+  expect(m.bim.georef.get().MapConversion?.Eastings).toBe(1);
+  m.bim.georef.update({ MapConversion: { Eastings: 88 } });
+  expect((await m.consistent()).MapConversion?.Eastings).toBe(88);
+  expect(m.bim.mutate.redo('model')).toBe(false); // This backend exposes no redo history.
+  m.undo(1);
+  expect((await m.consistent()).MapConversion?.Eastings).toBe(1);
 });

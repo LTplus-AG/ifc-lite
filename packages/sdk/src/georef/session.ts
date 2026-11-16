@@ -52,7 +52,7 @@ export class GeoreferencingSession {
    * Applied writes, oldest first. Each was recorded as one compound mutation
    * (its tombstones, IFC2X3 property edits and a `SESSION_EDIT` marker), so
    * one undo step takes all of it back; a write whose marker has left the
-   * history is dropped here, and the one below it is current again.
+   * history is inactive here; undoing a host deletion may restore its marker.
    */
   private writes: AppliedWrite[] = [];
 
@@ -161,8 +161,10 @@ export class GeoreferencingSession {
     const none = () => readWithoutGeoreferencing(this.deps.store, this.deps.modelId, true, view ? (id) => view.isDeleted(id) : undefined);
     if (!view) return none();
     const facts = collectGeorefModelFacts(this.deps.store, view);
+    const text = (value: unknown) => typeof value === 'number' ? String(value)
+      : typeof value === 'string' && value.length > 0 ? value : undefined;
     const pick = (loc: GeorefModelFacts['ePSetMapConversion'], fields: readonly string[], numeric = false) =>
-      loc ? Object.fromEntries(fields.filter((f) => loc.values[f] != null && (!numeric || decodeNumber(loc.values[f]) !== undefined)).map((f) => [f, numeric ? decodeNumber(loc.values[f]) : loc.values[f]])) : null;
+      loc ? Object.fromEntries(fields.map((f) => [f, numeric ? decodeNumber(loc.values[f]) : text(loc.values[f])]).filter(([, value]) => value !== undefined)) : null;
     const mc = pick(facts.ePSetMapConversion, MC_FIELDS, true);
     const crs = pick(facts.ePSetProjectedCRS, CRS_FIELDS);
     if (!mc) return none();
@@ -202,8 +204,8 @@ export class GeoreferencingSession {
       for (let i = history.length - 1; i >= 0; i--) if (history[i].id === marker) return true;
       return false;
     };
-    while (this.writes.length > 0 && !inHistory(this.writes[this.writes.length - 1].marker)) this.writes.pop();
-    return this.writes[this.writes.length - 1] ?? null;
+    for (let i = this.writes.length - 1; i >= 0; i--) if (inHistory(this.writes[i].marker)) return this.writes[i];
+    return null;
   }
 }
 

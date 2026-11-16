@@ -1044,7 +1044,7 @@ export const createMutationSlice: StateCreator<
         psetName: entry.entity,
       }));
       // An edit and its completion are one undo step (and one row in the Changes panel).
-      const batchId = batch ?? (written.length > fields.length ? newMutationBatchId() : null);
+      const batchId = batch ?? (nextMutations.length > 1 ? newMutationBatchId() : null);
       return {
         georefMutations: newGeorefMuts, ...recordHistory(state, modelId, nextMutations),
         ...(batchId ? { mutationBatchTags: withMutationBatchTags(state.mutationBatchTags, nextMutations.map((m) => m.id), batchId) } : {}),

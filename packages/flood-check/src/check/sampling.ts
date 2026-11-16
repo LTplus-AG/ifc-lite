@@ -83,7 +83,8 @@ export function outlineTerrainPoints(fp: PreparedFootprint, s: ResolvedSampling)
         const m = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
         for (const sign of [1, -1]) {
           const p = { x: m.x + sign * nx * s.outlineOffset, y: m.y + sign * ny * s.outlineOffset };
-          if (outsideBy(fp, p, s.minOutsideDistance)) {
+          // No footprint (null): nothing excludes a point; the footprint quality then withholds every favourable outcome.
+          if (outsideBy(fp, p, s.minOutsideDistance) !== false) {
             out.push(p);
             break;
           }
@@ -134,7 +135,8 @@ export function planSamples(candidate: CandidateFact, fp: PreparedFootprint, s: 
     for (let k = 0; k < s.directions; k++) {
       const a = (2 * Math.PI * k) / s.directions;
       const p = { x: anchor.x + ring * Math.cos(a), y: anchor.y + ring * Math.sin(a) };
-      if (outsideBy(fp, p, s.minOutsideDistance)) points.push({ point: p, ring });
+      // No footprint (null): every ring point is taken; nothing is known to be inside, and the footprint withholds.
+      if (outsideBy(fp, p, s.minOutsideDistance) !== false) points.push({ point: p, ring });
       else rejected++;
     }
   }

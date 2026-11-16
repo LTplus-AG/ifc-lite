@@ -134,3 +134,27 @@ describe('item 15: outline terrain samples, on a slope and for a long outline', 
     expect(() => checkFloodExposure(facts(514), ras, slope, opts)).toThrow(FloodCheckRefusal);
   });
 });
+
+describe('item 4: a clipped body bottom equal to the placement level is still a lower bound', () => {
+  it('a light well placed at its clipped body\'s bottom is labelled a lower bound, not exact', async () => {
+    const facts = await extract((b) => {
+      const first = b.rectExtrusion(0, 0, 1, 1, 1, b.axis(0, 0, 0), b.dir(0, 0, 1)); // z 0..1 in its own frame: bottom at the placement
+      const cut = b.rectExtrusion(0, 0, 2, 2, 0.5, b.axis(0, 0, -0.1), b.dir(0, 0, 1)); // may have removed the bottom
+      const body = b.add(`IFCBOOLEANRESULT(.DIFFERENCE.,#${first},#${cut})`);
+      b.contain(b.storeys.eg.id, b.add(`IFCBUILDINGELEMENTPROXY(${b.guid()},$,'Lichtschacht Ost',$,$,#${b.place(b.storeys.eg.pl, 21, 5, 0)},#${b.shape([body])},$,.ELEMENT.)`));
+      b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Platte',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([b.rectExtrusion(10, 5, 20, 10, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1))])},$,.FLOOR.)`));
+    });
+    expect(facts.candidates.find((c) => c.name === 'Lichtschacht Ost')).toMatchObject({ levelIsLowerBound: true });
+  });
+});
+
+describe('item 11: with no footprint, outside is unknown', () => {
+  it('outsideBy answers null with no rings; the samples are then taken (nothing excludes them) and the footprint withholds', async () => {
+    const { outsideBy, prepareFootprint } = await import('../src/region.js');
+    const { planSamples, resolveSampling } = await import('../src/check/sampling.js');
+    const { candidate, E0, N0 } = await import('./helpers.js');
+    const empty = prepareFootprint({ rings: [], source: 'candidate-hull' });
+    expect(outsideBy(empty, { x: E0, y: N0 }, 1)).toBeNull();
+    expect(planSamples(candidate({ position: { x: E0, y: N0 }, level: 500 }), empty, resolveSampling()).points).toHaveLength(32);
+  });
+});

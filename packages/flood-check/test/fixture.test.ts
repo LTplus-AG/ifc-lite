@@ -21,7 +21,8 @@ describe('the fixture policy', () => {
     const warn = console.warn;
     console.warn = (m: string) => warnings.push(m);
     try {
-      expect(fixture('georeferencer/does-not-exist.ifc', undefined).present).toBe(false);
+      // '0' explicitly: an `undefined` argument would fall back to the environment, which CI sets to '1'.
+      expect(fixture('georeferencer/does-not-exist.ifc', '0').present).toBe(false);
     } finally {
       console.warn = warn;
     }

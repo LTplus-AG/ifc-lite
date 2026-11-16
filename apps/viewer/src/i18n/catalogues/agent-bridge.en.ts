@@ -45,6 +45,7 @@ export const agentBridgeEn = {
   'agentBridge.panel.error': 'error {code}',
   'agentBridge.panel.cancelled': 'cancelled',
   'agentBridge.panel.duration': '{ms} ms',
+  'agentBridge.panel.repeated': '×{count}',
 
   'agentBridge.failure.unreachable': 'Could not connect to the bridge on port {port}, or it dropped the connection. Start the bridge on this computer with the command below, check the port, then pair with the code it prints. If it is running, it may have refused the connection because too many tabs were trying to pair: close them and try again.',
   'agentBridge.failure.origin': 'Viewer not on ifclite.com? Start the bridge with --bridge-viewer-url {origin} so it accepts this page.',

@@ -12,6 +12,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { useViewerStore } from '@/store';
 import { registerAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
 import { modelOpenTools, MODEL_OPEN_SPECS, OPEN_MODEL_WAIT_MS } from './model-open-tools';
@@ -87,6 +88,12 @@ afterEach(() => {
   unregister();
   useViewerStore.setState({ models: new Map() as never, loading: false });
 });
+
+/** The layer-stack sample the demo builder parses, served from the viewer's public folder. */
+const serveStackSample = () => {
+  const body = readFileSync(new URL('../../../public/samples/hello-wall.ifcx', import.meta.url), 'utf8');
+  respond = () => new Response(body, { status: 200 });
+};
 
 describe('viewer_open_model (#9523 local agent bridge)', () => {
   it('is offered to the bridge as a tool that needs the grant', () => {
@@ -302,5 +309,36 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename=plan, v2.ifc' } });
     await run({ url: 'https://example.com/download' });
     assert.equal(calls.at(-1)!.names[0], 'plan, v2.ifc');
+  });
+  it('recognises a reopened layer stack, whose layer ids repeat (#9523 code review)', async () => {
+    serveStackSample();
+    await run({ sample: 'layers-demo' });
+    const first = [...useViewerStore.getState().models.keys()];
+    unregister();
+    unregister = registerAgentModelLoader({
+      loadFile: async () => {}, addModel: async () => null,
+      // Same deterministic ids as the stack already open.
+      loadStack: async (files) => { useViewerStore.setState({ models: new Map(files.map((f, i) => [first[i], model(first[i], f.name)])) as never }); },
+    });
+    const out = await run({ sample: 'layers-demo', mode: 'replace' });
+    assert.equal((out.structured as { state: string }).state, 'loaded');
+  });
+
+  it('reports a failed stack load through the store error, even over an older stack (#9523 code review)', async () => {
+    serveStackSample();
+    await run({ sample: 'layers-demo' });
+    behaviour = 'error';
+    await assert.rejects(run({ sample: 'layers-demo', mode: 'replace' }), { code: 'INTERNAL_ERROR', message: /bad STEP/ });
+  });
+
+  it('cuts a repeated header only at a real boundary, and reads the first header only (#9523 code review)', async () => {
+    const nameFor = async (header: string) => {
+      respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': header } });
+      await run({ url: 'https://example.com/download', mode: 'add' });
+      return calls.at(-1)!.names[0];
+    };
+    await run({ sample: 'demo' });
+    assert.equal(await nameFor('attachment; filename=Plan, Inline Wall.ifc'), 'Plan, Inline Wall.ifc');
+    assert.equal(await nameFor("attachment; filename=a.ifc, attachment; filename*=UTF-8''b.ifc"), 'a.ifc');
   });
 });

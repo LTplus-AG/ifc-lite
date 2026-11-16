@@ -97,12 +97,18 @@ function percentDecoded(text: string, charset = 'utf-8'): string {
 
 /** `Content-Disposition` parameters by lower-case name, quoted strings unescaped. */
 function dispositionParams(header: string): Map<string, string> {
-  // The leading ';' also reads a header without a disposition type (`filename="x.ifc"`); the first value of a name wins.
+  // A repeated header arrives joined with ', ': parse only the first, which ends at a comma outside quotes
+  // that starts another disposition (`attachment;`, `inline;`) or a filename parameter.
+  let first = header;
+  for (let i = 0, quoted = false; i < header.length; i++) {
+    if (header[i] === '\\' && quoted) i++;
+    else if (header[i] === '"') quoted = !quoted;
+    else if (header[i] === ',' && !quoted && /^,\s*(?:(?:attachment|inline)\s*(?:;|$)|filename\*?\s*=)/i.test(header.slice(i))) { first = header.slice(0, i); break; }
+  }
+  // The leading ';' also reads a header without a disposition type (`filename="x.ifc"`).
   const params = new Map<string, string>();
-  for (const [, key, quoted, bare] of `;${header}`.matchAll(/;\s*([^\s=;,]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]*))/g)) {
-    // A repeated header arrives joined with ', ': an unquoted value ends where the next disposition or parameter starts.
-    const value = quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare.split(/,\s*(?=attachment|inline|filename)/i)[0].trim();
-    if (!params.has(key.toLowerCase())) params.set(key.toLowerCase(), value);
+  for (const [, key, quoted, bare] of `;${first}`.matchAll(/;\s*([^\s=;,]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]*))/g)) {
+    if (!params.has(key.toLowerCase())) params.set(key.toLowerCase(), quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare.trim());
   }
   return params;
 }
@@ -222,16 +228,16 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
     model_id: m.id, name: m.name, schema: m.schemaVersion ?? null, new: !before.has(m.id),
     failed: m.loadState === 'error', error: m.loadError ?? null,
   }));
-  const name = files.length > 1 ? 'the layer stack' : files[0].name;
-  // This call's own models: a replace runs under an id chosen here, an add reports its id, and the layer
-  // stack (no per-call id) is recognised by its exact file names.
-  const primaryId = crypto.randomUUID();
+  const stack = files.length > 1;
+  const name = stack ? 'the layer stack' : files[0].name;
   let loadError: string | undefined;
   const onError = (message: string) => { loadError = message; };
+  // A replace runs under an id chosen here; an add reports its id.
+  const primaryId = request.mode === 'replace' && !stack ? crypto.randomUUID() : null;
   // From here the load changes the session whatever happens to this call: it is not cancellable.
   if (ctx.commitState) ctx.commitState.committing = true;
   const load: Promise<string | null | void> = request.mode === 'add' ? loader.addModel(files[0], onError)
-    : files.length > 1 ? loader.loadStack(files) : loader.loadFile(files[0], primaryId, onError);
+    : stack ? loader.loadStack(files) : loader.loadFile(files[0], primaryId!, onError);
   const stillLoading = (): ToolOutput => ({
     text: `${name} is still loading; it continues in the tab.${request.mode === 'replace' ? ' A replace closes the previous models as it proceeds.' : ''} `
       + 'Do not retry. Call model_list to see what is open; if the model never appears, the load failed: take a viewer_screenshot or ask the user what the viewer reports.',
@@ -240,13 +246,18 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   });
   const loaded = await within(load.then((id) => ({ id })), deadline - Date.now());
   if (!loaded) return stillLoading();
-  const ownIds = request.mode === 'add' ? new Set(typeof loaded.id === 'string' ? [loaded.id] : [])
-    : files.length > 1 ? null : new Set([primaryId]);
+  // This call's own records. The stack loader has no per-call id and its layer ids repeat across loads,
+  // so after a stack replace its layers are recognised by exact file name.
   const stackNames = new Set(files.map((f) => f.name));
-  const isMine = (m: { model_id: string; name: string; new: boolean }) => m.new && (ownIds ? ownIds.has(m.model_id) : stackNames.has(m.name));
+  const ownId = typeof loaded.id === 'string' ? loaded.id : primaryId;
+  const isMine = (m: { model_id: string; name: string }) => (ownId ? m.model_id === ownId : stackNames.has(m.name));
 
   // Models can register just after the loader resolves: wait until the pipeline is idle, which needs no model.
   const settled = await waitForLoadIdle(deadline - Date.now());
+  // The stack loader reports failures only through the store; check that first, since a failed stack
+  // replace can leave an earlier stack's same-named layers open.
+  const { error, loadErrorSeq } = store.getState();
+  if (stack && error && loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${error}`);
   let mine = snapshot().filter(isMine);
   if (mine.length === 0 && settled && !loadError) {
     // Rare path: give a registration queued behind the loader one task before concluding.
@@ -255,9 +266,9 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   }
   if (mine.length === 0) {
     if (loadError) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${loadError}`);
-    if (!settled && loaded.id !== null) return stillLoading();
     if (typeof loaded.id === 'string') fail(ToolErrorCode.STATE_CHANGED, `${name} was added, then closed by another load in the tab. Check model_list.`);
-    // No error of ours and no model of ours: an underlay drape, a geometry-kernel refusal, a cancel, or another load won.
+    if (!settled && loaded.id !== null) return stillLoading();
+    // No error and no model of ours: an underlay drape, a cancel, or another load won.
     fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. Check model_list and the viewer.`);
   }
   // A failed load can leave its record with loadState 'error': that is a failure, not an opened model.
@@ -265,7 +276,7 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   const good = mine.filter((m) => !m.failed);
   if (good.length === 0) {
     if (failed.some((m) => m.error === 'cancelled')) fail(ToolErrorCode.STATE_CHANGED, `Loading ${name} was cancelled in the viewer.`);
-    fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${loadError ?? 'see the viewer for details'}`);
+    fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${loadError ?? failed[0].error ?? 'see the viewer for details'}`);
   }
   const models = snapshot().filter((m) => !m.failed);
   const text = `Loaded ${good.map((m) => `${m.name} (model_id ${m.model_id})`).join(', ')}${settled ? '' : '; geometry is still streaming'}`

@@ -3,6 +3,33 @@ import { expect, it, vi } from 'vitest';
 import { MutablePropertyView } from './mutable-property-view.js';
 import { recordCompoundMutation, undoRecordedMutationOperations } from './compound-recording.js';
 import { cooperativeOverlay } from './cooperative-overlay-access.js';
+import { indexedHistory, historyForEntity, purgeEntityHistory } from './indexed-mutation-history.js';
+
+it('#8452 indexes single-row entity journals without allocating a Set per authored record', () => {
+  const view = new MutablePropertyView(null, 'singleton-journal');
+  for (let i = 0; i < 35; i++) view.createEntity('IfcCartesianPoint', [[i, 0, 0]]);
+  const rows = [...view.getMutations()];
+  const OriginalSet = globalThis.Set;
+  let allocations = 0;
+  let journal: ReturnType<typeof indexedHistory>;
+  vi.stubGlobal('Set', new Proxy(OriginalSet, {
+    construct(target, args, newTarget) {
+      allocations++;
+      return Reflect.construct(target, args, newTarget);
+    },
+  }));
+  try { journal = indexedHistory(rows); }
+  finally { vi.unstubAllGlobals(); }
+  expect(allocations).toBe(0);
+  expect([...journal!]).toEqual(rows);
+  // Promotion to multiple rows must retain exact entity lookup and removal.
+  const first = rows[0]!;
+  const second = { ...first, id: first.id + '-second' };
+  journal!.push(second);
+  expect(historyForEntity(journal!, first.entityId)).toEqual([first, second]);
+  expect(purgeEntityHistory(journal!, first.entityId)).toEqual([first, second]);
+  expect([...journal!]).toEqual(rows.slice(1));
+});
 
 it('#8452 replacing a bounded join profile does not read unrelated journal records', () => {
   const view = new MutablePropertyView(null, 'bounded-delete');

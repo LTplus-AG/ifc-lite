@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
 
 const runner = fileURLToPath(new URL('./ci-rust-metrics.mjs', import.meta.url));
 
@@ -20,6 +21,13 @@ test('CI metrics preserve feature inventory, filters, compile/test/doc failures 
     t.skip('Cargo unavailable; run this fixture with the pinned Rust toolchain');
     return;
   }
+  // Resolve in the repository, before the fixture leaves rust-toolchain.toml's ancestry.
+  const active = spawnSync('rustup', ['show', 'active-toolchain'], {
+    encoding: 'utf8', env: { ...process.env, RUSTUP_AUTO_INSTALL: '0' }, timeout: 10000,
+  });
+  assert.equal(active.status, 0, active.stderr);
+  const toolchain = active.stdout.trim().split(/\s+/)[0];
+  assert.ok(toolchain);
   const root = mkdtempSync(join(tmpdir(), 'rust-ci-metrics-'));
   try {
     mkdirSync(join(root, 'src'));
@@ -70,7 +78,7 @@ fn combined_configuration() { assert!(std::hint::black_box(cfg!(feature = "gate-
         ...(featureIndex < 0 ? [] : args[featureIndex + 1].split(','))].sort().join(',');
       const r = spawnSync(process.execPath, [runner, 'fixture', ...args], {
         cwd: root, encoding: 'utf8', timeout: 60000,
-        env: { ...process.env, RUSTUP_AUTO_INSTALL: '0', CARGO_TARGET_DIR: join(root, 'target'),
+        env: { ...process.env, RUSTUP_AUTO_INSTALL: '0', RUSTUP_TOOLCHAIN: toolchain, CARGO_TARGET_DIR: join(root, 'target'),
           RUST_CI_METRICS: metrics, RUST_CI_CACHE_HIT: 'false', EXPECTED_FEATURES: expected,
           GITHUB_STEP_SUMMARY: join(root, 'summary.md') },
       });
@@ -148,5 +156,25 @@ test('command totals preserve failures, environment and report files (#10279)', 
     assert.equal(last.exitCode, missing.status);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// The workflow's machine-readable command inventory is the compatibility contract.
+test('each retained and CSG command has a distinct summary identity (#10279)', () => {
+  const workflow = parse(readFileSync(new URL('../.github/workflows/test.yml', import.meta.url), 'utf8'));
+  for (const job of ['rust-retained', 'csg-accept-gates']) {
+    const identities = new Set();
+    let commands = 0;
+    for (const step of workflow.jobs[job].steps) {
+      for (const line of (step.run || '').split('\n')) {
+        const match = /node scripts\/ci-rust-metrics\.mjs (\S+) (test|clippy|command) /.exec(line);
+        if (!match) continue;
+        const identity = `${match[1]} / ${match[2]}`;
+        assert.equal(identities.has(identity), false, `ambiguous summary identity: ${identity}`);
+        identities.add(identity);
+        commands++;
+      }
+    }
+    assert.equal(commands, job === 'rust-retained' ? 17 : 6);
   }
 });

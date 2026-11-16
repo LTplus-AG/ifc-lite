@@ -3007,19 +3007,19 @@ jobs:
           node scripts/ci-rust-metrics.mjs retained-ifc-lite-geometry-native-retained-runtime test -p ifc-lite-geometry --features retained-runtime
           node scripts/ci-rust-metrics.mjs retained-ifc-lite-geometry-native-retained-runtime clippy -p ifc-lite-geometry --features retained-runtime --all-targets -- -D warnings
           node scripts/ci-rust-metrics.mjs retained-ifc-lite-processing-native-retained-runtime clippy -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
-          node scripts/ci-rust-metrics.mjs retained-ifc-lite-processing-native-retained-runtime test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
-          node scripts/ci-rust-metrics.mjs retained-ifc-lite-processing-native-retained-runtime test -p ifc-lite-processing --features retained-runtime --test 'm[0-9]*' --test retained_refusal_lifecycle --test retained_finishes_from_source
+          node scripts/ci-rust-metrics.mjs retained-processing-session-tests test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
+          node scripts/ci-rust-metrics.mjs retained-processing-integration-tests test -p ifc-lite-processing --features retained-runtime --test 'm[0-9]*' --test retained_refusal_lifecycle --test retained_finishes_from_source
           # Includes M11-0 m11_presentation (SDK-free face-copy mutation witness).
           # Includes M11-F m11_faces (SDK-free face attribution and tie-break mutation witness).
-          node scripts/ci-rust-metrics.mjs retained-ifc-lite-wasm-native-retained-browser test -p ifc-lite-wasm --features retained-browser --test m1_retained_model
-          node scripts/ci-rust-metrics.mjs retained-ifc-lite-wasm-native-retained-browser test -p ifc-lite-wasm --features retained-browser --test m2_retained_view
-          node scripts/ci-rust-metrics.mjs retained-ifc-lite-wasm-native-retained-browser test -p ifc-lite-wasm --lib --features retained-browser retained_browser
+          node scripts/ci-rust-metrics.mjs retained-wasm-model-tests test -p ifc-lite-wasm --features retained-browser --test m1_retained_model
+          node scripts/ci-rust-metrics.mjs retained-wasm-view-tests test -p ifc-lite-wasm --features retained-browser --test m2_retained_view
+          node scripts/ci-rust-metrics.mjs retained-wasm-library-tests test -p ifc-lite-wasm --lib --features retained-browser retained_browser
           node scripts/ci-rust-metrics.mjs retained-ifc-lite-wasm-native-retained-browser clippy -p ifc-lite-wasm --features retained-browser --all-targets -- -D warnings
           # Match geometry-platform's wasm test target: testkit exposes the
           # mesh-check oracles through the existing test-support feature.
           node scripts/ci-rust-metrics.mjs retained-ifc-lite-wasm-wasm32-retained-browser clippy --target wasm32-unknown-unknown -p ifc-lite-wasm --all-targets --features retained-browser -- -D warnings
-          node scripts/ci-rust-metrics.mjs retained-ifc-lite-retained-native-native-retained-runtime test -p ifc-lite-retained-native --features retained-runtime
-          node scripts/ci-rust-metrics.mjs retained-ifc-lite-retained-native-native-retained-runtime test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
+          node scripts/ci-rust-metrics.mjs retained-native-library-tests test -p ifc-lite-retained-native --features retained-runtime
+          node scripts/ci-rust-metrics.mjs retained-native-example-tests test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
           node scripts/ci-rust-metrics.mjs retained-ifc-lite-retained-native-native-retained-runtime clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
       - name: Upload Rust cache and timing evidence
         if: always()

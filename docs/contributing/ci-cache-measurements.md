@@ -94,3 +94,36 @@ single/combined features, no-default-features, filtering, doctests, compiler
 errors, test failures and Clippy. It explicitly skips when Cargo is absent;
 that skip does not qualify the Rust telemetry. Run it with the pinned toolchain:
 `node --test scripts/ci-rust-metrics.test.mjs`.
+
+## First production retained telemetry
+
+[Run 43829144636](https://github.com/LTplus-AG/ifc-lite/actions/runs/43829144636/job/133170363605)
+passed the retained job on merge source `637cc88439731b074ef7cf75d6afe082e8283382`
+(PR head `d771ec359`). Its `rust-ci-metrics-rust-retained-1` artifact contains
+25 successful rows covering all 13 native Cargo commands and four boundary,
+WASM-build, CLI-build and CLI-report commands. The single Cargo archive restore
+reported an exact hit. Totals from the JSONL, rounded only for presentation:
+
+| Phase | Rows | Seconds | Fresh artifacts | Rebuilt artifacts |
+| --- | ---: | ---: | ---: | ---: |
+| Native test compilation | 8 | 542.07 | 885 | 264 |
+| Cargo execution including doctests | 8 | 150.64 | — | — |
+| Clippy | 5 | 160.05 | 579 | 439 |
+| Boundary/build/report totals | 4 | 1025.25 | — | — |
+
+Artifact counts across invocations are not unique crate counts. The first
+retained geometry test compilation reused 109 artifacts and rebuilt 188; later
+processing test compilations reused 97/101 and 100/111 artifacts respectively.
+The first geometry execution/doctest phase took 124.84 seconds, versus 321.43
+seconds for its compilation. The mixed build/report work splits into browser
+boundary 117.67 seconds, WASM build 484.08, root CLI build 421.38 and CLI report
+2.11. Thus the earlier combined step was not a measure of test execution.
+
+The archive is useful, but an exact archive hit does not imply every feature's
+workspace and test binaries are reusable. Keep compatible dependency objects in
+the existing tree and retain each feature configuration; these results do not
+justify combining them or assuming that another archive prefix removes linking
+and feature compilation. The original two runs lack this phase breakdown and
+used different sources/runners, so this is neither an A/B speedup claim nor
+proof of a regression. CSG qualification remains a separate required assessment;
+this PR's ordinary full run correctly skipped that queue-only lane.

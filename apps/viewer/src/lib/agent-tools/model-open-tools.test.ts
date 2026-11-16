@@ -403,6 +403,11 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await refused('https://example.com/house.ifc', '<title>403 Forbidden</title>', /HTML page/);
     await refused('https://example.com/house.ifc', '{"error":"expired"}', /auth\.example\/token-expired returned a JSON response/, 'https://auth.example/token-expired?sig=1');
     await refused('https://example.com/model.glb', '{"asset":{"version":"2.0"}}', /JSON response/, 'https://cdn.example/model.gltf');
+    await refused('https://example.com/house.ifc', 'Access Denied', /plain-text response/);
+    await refused('https://example.com/house.ifc', '"expired"', /plain-text response/);
+    await refused('https://example.com/terrain.xml', '<?xml version="1.0"?><ows:ExceptionReport/>', /XML error response/);
+    await refused('https://example.com/terrain.xml', '<!DOCTYPE Error><Error/>', /XML error response/);
+    await refused('https://example.com/model.ifc', `<!-- ${'b'.repeat(5000)} --><html><body>Sign in</body></html>`, /HTML page/);
     await refused('https://example.com/model.ifcx', '{"message":"Forbidden"}', /JSON response/);
     await refused('https://example.com/scan.ply', '{"error":"expired"}', /JSON response/);
     await refused('https://example.com/capture.splat', '{"message":"Forbidden"}', /JSON response/);
@@ -411,24 +416,26 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     assert.deepEqual(calls, [], 'nothing was loaded');
   });
 
-  it('opens what the loader can route, whatever the extension promises (#9523 code review)', async () => {
+  it('hands every body that could be a model to the loader, which decides its routing (#9523 code review)', async () => {
     const served = (body: BodyInit) => () => new Response(body, { status: 200 });
     const ifcx = readFileSync(new URL('../../../public/samples/hello-wall.ifcx', import.meta.url), 'utf8');
     for (const [url, body] of [
       ['https://example.com/model.ifc', new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0, 0])], // a zipped IFC under .ifc
-      ['https://example.com/model2.ifc', ifcx], // IFCX JSON under .ifc: the loader routes it as IFCX
+      ['https://example.com/model2.ifc', ifcx], // IFCX JSON under .ifc
       ['https://example.com/terrain.xml', `<?xml version="1.0"?>\n<!--${'x'.repeat(5000)}-->\n<LandXML/>`], // a long prolog
-      ['https://example.com/scan.ply', 'LASF....'], // LAS bytes under .ply: routed by magic
+      ['https://example.com/scan.ply', new Uint8Array([0x4c, 0x41, 0x53, 0x46, 0, 0, 1, 2])], // binary LAS magic under .ply
       ['https://example.com/capture.splat', new Uint8Array([0x7b, 1, 2, 3, 4, 5, 6, 7])], // headerless binary starting with '{'
       ['https://example.com/terrain2.xml', '<?xml version="1.0"?><lx:LandXML xmlns:lx="http://www.landxml.org/schema/LandXML-1.2"/>'], // a prefixed root
-      ['https://example.com/scan.xml', 'LASF....'], // LAS bytes under .xml: routed by magic
-      ['https://example.com/spaced.ifc', `${' '.repeat(200)}ISO-10303-21;`], // leading whitespace past detectFormat's window
+      ['https://example.com/scan.xml', new Uint8Array([0x4c, 0x41, 0x53, 0x46, 1, 0, 2, 0])], // binary LAS bytes under .xml
+      ['https://example.com/spaced.ifc', `${' '.repeat(200)}ISO-10303-21;`], // leading whitespace
+      ['https://example.com/cloud.pts', '3\n1.0 2.0 3.0\n'], // ASCII point cloud
+      ['https://example.com/mesh.ply', 'ply\nformat ascii 1.0\n'], // ASCII PLY header
     ] as const) {
       respond = served(body);
       const out = await run({ url, mode: 'add' }).catch((err: Error) => err);
       assert.ok(!(out instanceof Error), `${url}: ${out instanceof Error ? out.message : ''}`);
     }
-    assert.deepEqual(calls.map((c) => c.names[0]), ['model.ifc', 'model2.ifc', 'terrain.xml', 'scan.ply', 'capture.splat', 'terrain2.xml', 'scan.xml', 'spaced.ifc']);
+    assert.deepEqual(calls.map((c) => c.names[0]), ['model.ifc', 'model2.ifc', 'terrain.xml', 'scan.ply', 'capture.splat', 'terrain2.xml', 'scan.xml', 'spaced.ifc', 'cloud.pts', 'mesh.ply']);
   });
 
   it('never shows a signed URL query in an error (#9523 code review)', async () => {
@@ -443,5 +450,11 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     respond = () => new Response('ISO-10303-21;', { status: 200, headers: { 'content-length': String(2 ** 30) } });
     await assert.rejects(run({ url: 'https://example.com/huge.ifc' }), { code: 'INVALID_INPUT', message: /larger than/ });
     assert.deepEqual(calls, []);
+  });
+  it('recognising a crafted prolog stays fast (no regex backtracking) (#9523 code review)', async () => {
+    respond = () => new Response(`${'<!---->'.repeat(5000)}<LandXML/>`, { status: 200 });
+    const started = Date.now();
+    await run({ url: 'https://example.com/terrain.xml', mode: 'add' });
+    assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
   });
 });

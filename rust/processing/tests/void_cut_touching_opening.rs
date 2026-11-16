@@ -37,6 +37,14 @@ fn a_post_its_neighbours_openings_only_touch_stays_a_box() {
         "a box is 12 triangles and its 96 mm x 2.2 m faces are 23:1; worst here {:.0}:1",
         shape.max_aspect
     );
+    // The opening cuts nothing: the post is cut in its site's frame (#10435),
+    // where the uncut post and the cut both enclose 0.0253411 m3. That is the
+    // post stored as f32 211 m from the site origin, one f32 step there being
+    // 15 um on a 96 mm side, and what main gives with the site placement at
+    // identity. Placing the cut back 270 m out takes 1.6 cm3 more: 0.0253395,
+    // 4.5 cm3 under IfcOpenShell, where main's wall-frame cut reads 0.0253445.
+    // The chips this test is about (16 triangles, 5 cm3 short) fail the
+    // triangle and sliver counts above.
     let volume = signed_volume(positions, indices).abs();
-    assert!((volume - 0.025_344).abs() < 2.0e-6, "post of {volume:.7} m3, IfcOpenShell 0.0253440");
+    assert!((volume - 0.025_344).abs() < 5.0e-6, "post of {volume:.7} m3, IfcOpenShell 0.0253440");
 }

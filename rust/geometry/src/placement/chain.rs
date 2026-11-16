@@ -80,15 +80,65 @@ pub fn resolve_object_placement(
     }
 }
 
+/// `placement` expressed in the frame of the placement `base`:
+/// `base_world⁻¹ · placement_world`, unscaled.
+///
+/// Composed from the links below the nearest placement the two chains share,
+/// so nothing at or above it enters the arithmetic: with `base` the root of
+/// `placement`'s chain, moving the root leaves the result bit-identical, and
+/// no inverse is taken at all. The memo is not consulted, since it holds
+/// world transforms.
+pub fn resolve_chain_relative(
+    placement: &DecodedEntity,
+    base: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> PlacementResult<Matrix4<f64>> {
+    // Climbed first, so a cyclic placement is refused even as its own base;
+    // as its own base its own frame is read too, as the path below reads the
+    // frames below the shared one, and an unreadable one is refused.
+    let target = full_climb(placement, decoder)?;
+    if placement.id == base.id {
+        if let Some(own) = target.frames.first() {
+            frame_matrix(own, decoder)?;
+        }
+        return Ok(Matrix4::identity());
+    }
+    let origin = full_climb(base, decoder)?;
+    let shared = target.frames.iter().enumerate().find_map(|(i, frame)| {
+        origin.frames.iter().position(|b| b.entity.id == frame.entity.id).map(|j| (i, j))
+    });
+    let (target_links, base_links) = shared.unwrap_or((target.frames.len(), origin.frames.len()));
+    let mut to_shared = Matrix4::<f64>::identity();
+    for frame in target.frames[..target_links].iter().rev() {
+        to_shared *= frame_matrix(frame, decoder)?;
+    }
+    if base_links == 0 {
+        return Ok(to_shared);
+    }
+    let mut base_to_shared = Matrix4::<f64>::identity();
+    for frame in origin.frames[..base_links].iter().rev() {
+        base_to_shared *= frame_matrix(frame, decoder)?;
+    }
+    let inverse = base_to_shared
+        .try_inverse()
+        .ok_or(super::PlacementError::Policy { at: base.id, rule: "placement frame is not invertible" })?;
+    Ok(inverse * to_shared)
+}
+
+/// The whole path from `placement` to its root, leaf first, memo not consulted.
+fn full_climb(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<Climb> {
+    let mut climbed = Climb::new();
+    climb(&mut climbed, placement, decoder, false, false, None)?;
+    match climbed.stopped_at {
+        Some((at, found)) => Err(unsupported(decoder, at, found)),
+        None => Ok(climbed),
+    }
+}
+
 /// The placements from `placement` up to the root, leaf first, cycle-checked.
 /// No transforms are composed and the memo is not consulted.
 pub fn chain(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<SmallVec<[Link; 8]>> {
-    let mut climbed = Climb::new();
-    climb(&mut climbed, placement, decoder, false, false, None)?;
-    if let Some((at, found)) = climbed.stopped_at {
-        return Err(unsupported(decoder, at, found));
-    }
-    Ok(climbed.frames.iter().map(|f| Link { id: f.entity.id, kind: f.kind }).collect())
+    Ok(full_climb(placement, decoder)?.frames.iter().map(|f| Link { id: f.entity.id, kind: f.kind }).collect())
 }
 
 /// The local-to-parent frame of one link. A frame that cannot be read or

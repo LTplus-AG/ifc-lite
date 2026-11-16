@@ -426,3 +426,49 @@ it('load window: single-model cache hit restores nothing between the record turn
     await probe.dispose();
   }
 });
+
+it('#9296: mixed automatic annotations and saved markup both restore', async () => {
+  __resetDrawingMarkupRestoreForTests();
+  __resetSymbolicAnnotationsCacheForTests();
+  const saved = JSON.stringify({ item: { kind: 'dimension', value: { id: 'saved-dimension', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 1, orientation: 'aligned' } }, plane: { axis: 'down', position: 1, flipped: false }, paperScale: 50 });
+  const mixed = fixture().replace('ENDSEC;\nEND-ISO', `#60=IFCANNOTATION('0Annot000000000000060d',#4,'Tag','${saved}','IfcLite:DrawingAnnotation:1',$,$);\nENDSEC;\nEND-ISO`);
+  const store = await seedStore('mixed', mixed);
+  useViewerStore.setState({ dimensions2D: [], tagAnnotations2D: [] });
+  const release = fakeWasmReplyWith(oneMeasureFlat());
+  ensureParseFor([store]);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  release();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  tryRestoreDrawingMarkup('mixed');
+  assert.equal(useViewerStore.getState().measure2DResults.length, 1);
+  assert.equal(useViewerStore.getState().dimensions2D[0]?.id, 'saved-dimension');
+  assert.equal(useViewerStore.getState().drawing2DDisplayOptions.scale, 50, 'restore the authored paper scale');
+  const { absorbedEmbeddedMarkupFor } = await import('@/lib/drawing2d-markup/drawing-markup-absorbed');
+  assert.equal(absorbedEmbeddedMarkupFor('mixed').size, 2, 'both annotation generations keep persistent ownership');
+});
+
+it('#9296: restore reconciles saved and automatic copies of one measurement', async () => {
+  __resetDrawingMarkupRestoreForTests();
+  __resetSymbolicAnnotationsCacheForTests();
+  const source = await seedStore('copy-source');
+  useViewerStore.setState({ dimensions2D: [], tagAnnotations2D: [] });
+  let release = fakeWasmReplyWith(oneMeasureFlat());
+  ensureParseFor([source]);
+  await new Promise(resolve => setTimeout(resolve, 0)); release();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const { restoreDrawingMarkupFromModel } = await import('@/lib/drawing2d-markup/drawing-markup-restore');
+  const measure = restoreDrawingMarkupFromModel('copy-source')!.measure2DResults[0];
+  for (const id of [measure.id, 'automatic-copy']) {
+    const modelId = `copy-${id}`;
+    const saved = JSON.stringify({ item: { kind: 'measure', value: { ...measure, id } }, plane: { axis: 'down', position: 1, flipped: false } });
+    const mixed = fixture().replace('ENDSEC;\nEND-ISO', `#60=IFCANNOTATION('0Annot000000000000060d',#4,'Measurement','${saved}','IfcLite:DrawingAnnotation:1',$,$);\nENDSEC;\nEND-ISO`);
+    const store = await seedStore(modelId, mixed);
+    release = fakeWasmReplyWith(oneMeasureFlat());
+    ensureParseFor([store]);
+    await new Promise(resolve => setTimeout(resolve, 0)); release();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    tryRestoreDrawingMarkup(modelId);
+    assert.equal(useViewerStore.getState().measure2DResults.length, 1);
+    assert.equal(useViewerStore.getState().measure2DResults[0].id, id, 'automatic payload preserves the editable identity');
+  }
+});

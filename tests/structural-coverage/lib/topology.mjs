@@ -72,7 +72,8 @@ function coords(step, id) {
 /** A direction attribute as a unit vector: undefined when omitted, null when given but unreadable or zero. */
 function direction(step, value) {
   const id = refOf(value);
-  return id === undefined ? undefined : unit(coords(step, id) ?? [0, 0, 0]);
+  if (id === undefined) return undefined;
+  return step.get(id)?.type === 'IFCDIRECTION' ? unit(coords(step, id) ?? [0, 0, 0]) : null;
 }
 
 /**
@@ -190,8 +191,10 @@ function representationVertices(step, rep, path = new Set()) {
       continue;
     }
     const map = step.get(refOf(item.args[0]));
-    if (map?.type !== 'IFCREPRESENTATIONMAP') continue;
-    const mapped = representationVertices(step, step.get(refOf(map.args[1])), inner);
+    const source = map?.type === 'IFCREPRESENTATIONMAP' ? step.get(refOf(map.args[1])) : undefined;
+    // Body and axis maps hold no topology: not walked, however deep they nest.
+    if (!holdsTopology(step, source)) continue;
+    const mapped = representationVertices(step, source, inner);
     if (mapped?.length === 0) continue;
     const origin = axisPlacement(step, refOf(map.args[0]));
     const target = transformOperator(step, refOf(item.args[1]));
@@ -204,17 +207,18 @@ function representationVertices(step, rep, path = new Set()) {
 
 /**
  * The topology vertices of a product, in IFC world metres. Empty when the file
- * gives it no topology representation, or a placement or mapped item this
- * oracle does not follow.
+ * gives it no topology representation; null when it has a placement or
+ * mapped topology this oracle does not follow.
  */
 export function topologyPoints(step, productId, scale = lengthScale(step)) {
   const product = step.get(productId);
   const placementId = refOf(product?.args[5]);
   const frame = placementId === undefined ? IDENTITY : placementFrame(step, placementId);
   const shape = step.get(product?.args[6]);
-  if (!frame || !shape) return [];
+  if (!shape) return [];
   const points = (shape.args[2] ?? []).map((repRef) => representationVertices(step, step.get(repRef)));
-  if (points.includes(null)) return [];
+  if (points.includes(null)) return null;
+  if (!frame) return points.flat().length ? null : [];
   return points.flat().map((p) => apply(frame, p).map((c) => c * scale));
 }
 

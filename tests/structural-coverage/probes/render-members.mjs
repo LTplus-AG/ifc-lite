@@ -48,7 +48,8 @@ function memberMeshes(ctx, file) {
 /** Why one member record is not drawn at the file's coordinates, or null when it is. */
 function memberMiss(step, rec, drawn, scale = lengthScale(step)) {
   const points = topologyPoints(step, rec.id, scale);
-  if (!points.length) return 'the file gives it no topology representation this oracle can place';
+  if (!points) return 'the oracle cannot follow its placement or mapped topology';
+  if (!points.length) return 'the file gives it no topology representation';
   const meshes = drawn.byId.get(rec.id);
   if (!meshes?.length) return 'no mesh';
   const far = points.map((p) => meshDistance(meshes, p, drawn.frame)).find((d) => !(d <= TOLERANCE_M));

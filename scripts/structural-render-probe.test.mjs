@@ -98,6 +98,7 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
   const cases = {
     unreadableOrigin: direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#99,#15)'),
     unreadableAxis: direct.replace('#43=IFCDIRECTION((0.,1.,0.))', '#43=IFCDIRECTION(($,$,$))'),
+    pointAsAxis: direct.replace('#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#43,', '#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#45,'),
     unreadableOriginAxis: direct.replace('#41=IFCAXIS2PLACEMENT3D(#40,$,$)', '#41=IFCAXIS2PLACEMENT3D(#40,#99,$)'),
     zeroOriginAxis: direct.replace('#41=IFCAXIS2PLACEMENT3D(#40,$,$)', '#41=IFCAXIS2PLACEMENT3D(#40,#59,$);#59=IFCDIRECTION((0.,0.,0.))'),
     zeroScale: direct.replace('$,#45,2.,#44', '$,#45,0.,#44'),
@@ -110,13 +111,13 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
   const both = { byId: new Map([[30, [ribbon(30, [1, 2, 3], [5, 2, 3]), ribbon(30, [11, 4, 3], [11, 12, 3])]]]), frame: {} };
   for (const [name, body] of Object.entries(cases)) {
     const step = ifc4(body);
-    assert.deepEqual(topologyPoints(step, 30), [], name);
+    assert.equal(topologyPoints(step, 30), null, name);
     const file = { path: `${name}.ifc`, schema: 'IFC4', step };
     // Refused whether the mesh covers only the direct edge or both.
     for (const drawn of [meshesOf([ribbon(30, [1, 2, 3], [5, 2, 3])]), both]) {
       const res = await score(renderMembers, id, file, [[`meshes:${name}.ifc`, drawn]]);
       assert.equal(res.status, 'fail', name);
-      assert.match(res.reason, /no topology representation this oracle can place/, name);
+      assert.match(res.reason, /cannot follow its placement or mapped topology/, name);
     }
   }
   // Followed: both edges, with nine nested maps or beside a mapped item whose map does not resolve.
@@ -127,6 +128,14 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
     deep += `#${70 + 2 * i}=IFCREPRESENTATIONMAP(#41,${from});#${70 + 2 * i + 1}=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#${90 + i}));#${90 + i}=IFCMAPPEDITEM(#${70 + 2 * i},#46);`;
   }
   assert.equal(topologyPoints(ifc4(deep.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#86,#46)')), 30).length, 4);
+  // Over 16 nested maps reaching topology: unplaced. Seventeen are refused, sixteen followed.
+  let deeper = direct;
+  for (let i = 0; i < 17; i += 1) {
+    const from = i === 0 ? '#15' : `#${200 + 2 * (i - 1) + 1}`;
+    deeper += `#${200 + 2 * i}=IFCREPRESENTATIONMAP(#41,${from});#${200 + 2 * i + 1}=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#${300 + i}));#${300 + i}=IFCMAPPEDITEM(#${200 + 2 * i},#46);`;
+  }
+  assert.equal(topologyPoints(ifc4(deeper.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#232,#46)')), 30), null);
+  assert.equal(topologyPoints(ifc4(deeper.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#230,#46)')), 30).length, 4);
   const dangling = direct.replace('#53=IFCMAPPEDITEM(#52,#46)', '#53=IFCMAPPEDITEM(#98,#46)');
   assert.equal(topologyPoints(ifc4(dangling), 30).length, 4);
   // A cycle among maps that hold no topology (here the Axis map) does not hide the topology beside it.

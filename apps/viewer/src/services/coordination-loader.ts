@@ -11,3 +11,14 @@ export function attachCoordinationModelAdder(load: NativeModelAdder): () => void
 export function coordinationModelAdder(): NativeModelAdder {
   const current = [...loaders.values()].at(-1); if (!current) throw new Error('The viewer federation loader is not mounted.'); return current;
 }
+export interface NativeCompositionHost {
+  addIfcxOverlays(files: File[]): Promise<void>;
+  loadFederatedIfcx(files: File[]): Promise<void>;
+}
+const compositions = new Map<symbol, NativeCompositionHost>();
+export function attachCoordinationComposition(host: NativeCompositionHost): () => void {
+  const owner = Symbol(); compositions.set(owner, host); return () => { compositions.delete(owner); };
+}
+export function coordinationComposition(): NativeCompositionHost {
+  const host = [...compositions.values()].at(-1); if (!host) throw new Error('The native IFCX composition loader is not mounted.'); return host;
+}

@@ -178,3 +178,26 @@ it('Flow effect admission refuses future remote nodes and detects native HTTP Pl
   const requested = await execute<{ state: string }>('flow.run', { ...input(), inputs_json: '{"http.method":"POST"}' });
   assert.equal(requested.state, 'waiting-for-approval'); assert.equal(ran, false);
 });
+
+it('local layer operations use the native merge engine and reject stale refs without model prerequisites (#10525)', async () => {
+  const { computeLayerId, createProvenanceManifest, setProvenance, computeStackHash } = await import('@ifc-lite/ifcx');
+  const { getBrowserLayerStore } = await import('@/lib/layers/browser-store');
+  const { extractStackState } = await import('@ifc-lite/merge');
+  const makeLayer = (data: import('@ifc-lite/ifcx').IfcxNode[], base: string[] | null) => {
+    const file = setProvenance({ header: { id: '', ifcxVersion: 'ifcx_alpha', dataVersion: '1.0.0', author: 'fixture', timestamp: '2026-07-11T00:00:00Z' }, imports: [], schemas: {}, data }, createProvenanceManifest({ author: { kind: 'human', principal: 'fixture' }, intent: 'Native merge fixture', base: base ? { kind: 'stack', id: computeStackHash(base) } : null, created: '2026-07-11T00:00:00Z' }));
+    return { ...file, header: { ...file.header, id: computeLayerId(file) } };
+  };
+  const store = await getBrowserLayerStore(), base = makeLayer([{ path: 'wall-native', attributes: { rating: 'REI60' } }], null);
+  store.storeLayer(base); const candidate = makeLayer([{ path: 'wall-native', attributes: { rating: 'REI90' } }], [base.header.id]); store.storeLayer(candidate);
+  const ref = `operation-fixture-${crypto.randomUUID()}`; store.setRef(ref, { layers: [base.header.id] });
+  useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: null, geometryResult: null });
+  const input = { candidate_id: candidate.header.id, ref_name: ref, expected_ref_json: JSON.stringify(store.getRef(ref)) };
+  const preview = await execute<{ outcome: { status: string; conflicts: unknown[] } }>('layers.previewLocalMerge', input);
+  assert.equal(preview.outcome.status, 'preview'); assert.equal(preview.outcome.conflicts.length, 0);
+  const merged = await execute<{ outcome: { status: string } }>('layers.mergeLocal', { ...input, resolver: 'fixture', resolutions: [], waivers: [] });
+  assert.ok(['merged', 'fast-forward'].includes(merged.outcome.status));
+  const files = store.getRef(ref)!.layers.map(id => store.loadLayer(id));
+  assert.equal(extractStackState(files).get('wall-native')?.components.get('attr:rating')?.rating, 'REI90');
+  await assert.rejects(execute('layers.mergeLocal', { ...input, resolver: 'stale', resolutions: [], waivers: [] }), /ref changed/);
+  const exported = await execute<ArtifactMetadata>('layers.export', { id: candidate.header.id }); assert.ok(exported.bytes > 0);
+});

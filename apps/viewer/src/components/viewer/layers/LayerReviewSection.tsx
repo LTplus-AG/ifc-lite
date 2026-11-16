@@ -11,6 +11,7 @@
  * synthetic per parse and never persisted.
  */
 
+import { useLayerAutomationReview } from '@/lib/layers/automation-review';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, MessageSquarePlus, RefreshCw } from 'lucide-react';
@@ -89,6 +90,11 @@ function CandidateReview({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [withViewpoint, setWithViewpoint] = useState(true);
+  const automationReview = useLayerAutomationReview(state => state.candidate);
+  useEffect(() => {
+    if (!automationReview || automationReview.candidateId !== candidateId || automationReview.refName !== refName || automationReview.action !== 'comment') return;
+    setTitle(automationReview.title); setDescription(automationReview.description); setWithViewpoint(automationReview.withViewpoint);
+  }, [automationReview, candidateId, refName]);
   // One registry action at a time (C-2): a same-tick double press is refused
   // before React re-renders the buttons disabled.
   const flight = useAsyncRun();

@@ -148,3 +148,25 @@ describe('bim.georef.setSite', () => {
     expect(two.bim.georef.setSite({ siteId: 7, RefLatitude: 47, RefLongitude: 8 }).siteId).toBe(7);
   });
 });
+
+// PR #10537: external positional edits must not be overwritten; own writes stay repeatable.
+it('refuses an external positional location edit but allows repeated setSite writes', async () => {
+  const { bim, backend } = await session('IFC4');
+  bim.georef.setSite({ RefLatitude: 47, RefLongitude: 8 });
+  bim.georef.setSite({ RefLatitude: 48, RefLongitude: 9 });
+  const view = backend.getMutationView()!;
+  view.setPositionalAttribute(6, 9, [1, 0, 0, 0]);
+  const before = String(bim.export.ifc());
+  expect(() => bim.georef.setSite({ RefLatitude: 49, RefLongitude: 10 })).toThrow(/outside setSite/);
+  expect(String(bim.export.ifc())).toBe(before);
+});
+
+it('reports the first valid site in the same order as the exported reader (#10537)', async () => {
+  const earlier = BASE.replace('(42,24,53,508911),(-71,-15,-29,-58837),0.', '$,$,$');
+  const { bim, reread } = await session('IFC4', `${earlier}\n#7=IFCSITE('2Pbuu0tu59NfhrTsztVBK1',$,'B',$,$,$,$,$,.ELEMENT.,(40,0,0,0),(10,0,0,0),0.,$,$);`);
+  expect(bim.georef.get().site?.expressId).toBe(7);
+  bim.georef.setSite({ siteId: 6, RefLatitude: 47, RefLongitude: 8, RefElevation: 123 });
+  expect(bim.georef.get().site).toMatchObject({ expressId: 6, latitude: 47, longitude: 8, elevation: 123 });
+  const { info } = await reread();
+  expect(info?.mapConversion).toMatchObject({ id: 6, northings: 47, eastings: 8, orthogonalHeight: 123 });
+});

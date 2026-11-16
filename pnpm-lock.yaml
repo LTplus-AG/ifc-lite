@@ -1186,6 +1186,9 @@ importers:
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry
+      '@ifc-lite/georef-check':
+        specifier: workspace:^
+        version: link:../georef-check
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids

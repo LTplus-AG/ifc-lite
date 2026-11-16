@@ -78,7 +78,7 @@ function chooseSite(store: IfcDataStore, view: MutablePropertyView | null, siteI
 }
 
 /** Validate a site write and plan it, or refuse with the missing input named. */
-export function planSiteWrite(store: IfcDataStore, view: MutablePropertyView | null, input: GeorefSiteInput): SiteWritePlan {
+export function planSiteWrite(store: IfcDataStore, view: MutablePropertyView | null, input: GeorefSiteInput, ownedEdits: ReadonlySet<string> = new Set()): SiteWritePlan {
   rejectUnknownKeys(input, SITE_KEYS, '');
   if (!input) throw new GeoreferencingError('INVALID_INPUT', 'setSite needs an input object.');
   const schema = String(store.schemaVersion ?? '');
@@ -103,6 +103,15 @@ export function planSiteWrite(store: IfcDataStore, view: MutablePropertyView | n
     || (c.kind === 'entity-added' && c.newValue?.toUpperCase() === 'IFCSITE')
     || (c.entityId === siteId && c.kind === 'attribute' && (Object.keys(SITE_SLOTS) as string[]).includes(c.name ?? '')))) {
     throw new GeoreferencingError('UNSUPPORTED_RECORD', 'IfcSite was created, retyped or its location edited outside setSite; its current values cannot be carried reliably. Nothing was written.');
+  }
+  const history = view?.getMutations() ?? [];
+  for (const slot of Object.values(SITE_SLOTS)) {
+    const value = view?.getPositionalMutationsForEntity(siteId)?.get(slot);
+    if (value === undefined) continue;
+    const latest = [...history].reverse().find((m) => m.type === 'UPDATE_POSITIONAL_ATTRIBUTE' && m.entityId === siteId && m.attributeName === `@${slot}`);
+    if (!latest || !ownedEdits.has(latest.id) || JSON.stringify(latest.newValue) !== JSON.stringify(value)) {
+      throw new GeoreferencingError('UNSUPPORTED_RECORD', `IfcSite location slot ${slot} was edited outside setSite. Nothing was written.`);
+    }
   }
   const before = readSiteValues(store, view, siteId);
   const after: SiteValues = { ...before, ...values };
@@ -134,17 +143,18 @@ export function planSiteWrite(store: IfcDataStore, view: MutablePropertyView | n
  */
 export function withSiteEdits(state: GeoreferencingState, store: IfcDataStore, view: MutablePropertyView | null): GeoreferencingState {
   if (!view) return state;
-  const sites = liveSites(store, view).filter((id) => view.getPositionalMutationsForEntity(id)?.size);
-  if (sites.length === 0) return state;
-  const reported = state.source === 'IfcSite' ? state.site?.expressId : undefined;
-  const target = reported ?? (!state.hasGeoreference ? sites[0] : undefined);
-  if (target === undefined || !sites.includes(target)) return state;
-  const v = readSiteValues(store, view, target);
-  if (v.RefLatitude === null || v.RefLongitude === null) return state;
-  return {
-    ...state,
-    hasGeoreference: true,
-    source: 'IfcSite',
-    site: { expressId: target, latitude: v.RefLatitude, longitude: v.RefLongitude, elevation: v.RefElevation ?? 0 },
-  };
+  if (state.hasGeoreference && state.source !== 'IfcSite') return state;
+  const sites = liveSites(store, view);
+  if (!sites.some((id) => view.getPositionalMutationsForEntity(id)?.size)) return state;
+  for (const target of sites) {
+    const v = readSiteValues(store, view, target);
+    if (v.RefLatitude === null || v.RefLongitude === null) continue;
+    return {
+      ...state,
+      hasGeoreference: true,
+      source: 'IfcSite',
+      site: { expressId: target, latitude: v.RefLatitude, longitude: v.RefLongitude, elevation: v.RefElevation ?? 0 },
+    };
+  }
+  return state;
 }

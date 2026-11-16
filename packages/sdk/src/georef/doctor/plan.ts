@@ -56,8 +56,8 @@ function currentValue(path: string, facts: GeorefFacts, report: GeorefCheckRepor
 }
 
 function suppliedValue(path: string, values: Values): string | number | undefined {
-  const v = values[path];
-  if (v === undefined) return undefined;
+  const v: unknown = values[path];
+  if ((typeof v !== 'string' && typeof v !== 'number') || (typeof v === 'string' && !v.trim()) || (typeof v === 'number' && !Number.isFinite(v))) return undefined;
   if (path.startsWith('ProjectedCRS.')) return String(v);
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : undefined;
@@ -142,12 +142,8 @@ function fieldsOf(write: GeorefPlannedWrite): Map<string, string | number> {
   return out;
 }
 
-/** Equal for the purpose of two fixes agreeing: site angles to about 1 m, other numbers to 1e-9 relative. */
-function same(path: string, a: string | number, b: string | number): boolean {
-  if (typeof a !== 'number' || typeof b !== 'number') return a === b;
-  const tolerance = path === 'IfcSite.RefLatitude' || path === 'IfcSite.RefLongitude' ? 1e-5 : 1e-9 * Math.max(1, Math.abs(a));
-  return Math.abs(a - b) <= tolerance;
-}
+/** Agree exactly, as applyGeorefFixPlan merges writes. */
+function same(a: string | number, b: string | number): boolean { return a === b; }
 
 function idsFor(findings: readonly GeorefFinding[]): string[][] {
   const seen = new Map<string, number>();
@@ -224,7 +220,7 @@ export function planGeorefFixes(report: GeorefCheckReport, options: GeorefFixPla
         continue;
       }
     }
-    const clash = [...fieldsOf(fix.write)].find(([path, value]) => claimed.has(path) && !same(path, claimed.get(path)!.value, value));
+    const clash = [...fieldsOf(fix.write)].find(([path, value]) => claimed.has(path) && !same(claimed.get(path)!.value, value));
     if (clash) {
       const [path, value] = clash;
       const other = claimed.get(path)!;
@@ -233,6 +229,15 @@ export function planGeorefFixes(report: GeorefCheckReport, options: GeorefFixPla
     }
     if (fix.write.via !== 'georef.site') georefVia = fix.write.via;
     for (const [path, value] of fieldsOf(fix.write)) if (!claimed.has(path)) claimed.set(path, { id: fix.id, value });
+  }
+  // A derived site value describes the original conversion, not a conversion another fix changes.
+  const changesConversion = fixes.some((f) => f.status === 'ready' && f.write && f.write.via !== 'georef.site'
+    && Object.entries(f.write.input.MapConversion ?? {}).some(([key, value]) => currentValue(`MapConversion.${key}`, report.facts, report) !== value));
+  if (changesConversion) for (const f of fixes) {
+    if (f.status === 'ready' && f.write?.via === 'georef.site' && f.derived) {
+      f.status = 'review';
+      f.reason = 'Recheck after applying the map conversion fix: these derived site values describe the previous conversion.';
+    }
   }
   return { fixes };
 }

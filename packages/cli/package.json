@@ -43,6 +43,7 @@
     "@ifc-lite/geo": "workspace:^",
     "@ifc-lite/geodata-ch": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
+    "@ifc-lite/georef-check": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",

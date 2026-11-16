@@ -26,7 +26,7 @@ const UPDATE_FLAGS: Record<string, string> = {
 
 function quote(v: string | number): string {
   const s = String(v);
-  return /^[\w.:+-]+$/.test(s) ? s : JSON.stringify(s);
+  return /^[\w.:+-]+$/.test(s) ? s : "'" + s.replaceAll("'", "'\"'\"'") + "'";
 }
 
 /** Path → value pairs of a planned write. */

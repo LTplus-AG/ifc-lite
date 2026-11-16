@@ -119,3 +119,5 @@ What each finding means and what to do. Codes are stable; `--json` carries them 
 | `IFC2X3_NO_EPSET` | info | An IFC2X3 model without the property-set convention. Add it with `georef set`. |
 
 The checker's own catalogue, with every threshold and its rationale, is in the [`@ifc-lite/georef-check` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/georef-check#findings-catalogue).
+
+The doctor rechecks derived site values in a second pass when another selected fix changes the map conversion. An unreadable site placement is unknown, so it cannot supply a derived position. Hand-built doctor plans support nested `ProjectedCRS` / `MapConversion` fields; use `bim.georef.set` or `update` directly for `replace` and `rotationDegrees`.

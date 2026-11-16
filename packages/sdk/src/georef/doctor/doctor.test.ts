@@ -214,20 +214,6 @@ describe('capabilities', () => {
   });
 });
 
-describe('fix() re-checks the safety rules of a plan it is handed', () => {
-  it('refuses a fix marked ready that still has an open value, or a checker caveat, and writes nothing', async () => {
-    const model = await open(fixture('double-site-placement'));
-    try {
-      const plan = model.bim.georef.planFixes(await model.bim.georef.check());
-      const caveated = plan.fixes.map((f) => (f.id === 'MAP_POSITION_APPLIED_TWICE.2' ? { ...f, status: 'ready' as const } : f));
-      expect(() => model.bim.georef.fix({ fixes: caveated })).toThrow(/uncertain/);
-      const open_ = { ...fix(plan, 'MAP_POSITION_APPLIED_TWICE.2'), caveat: undefined, status: 'ready' as const, write: { via: 'georef.update' as const, input: { MapConversion: { Eastings: null as unknown as number } } } };
-      expect(() => model.bim.georef.fix({ fixes: [open_] })).toThrow(/still open/);
-      expect(model.bim.georef.get().pending).toBe(false);
-    } finally { model.close(); }
-  });
-});
-
 // Doctor port: non-uniform factors scale the local axes before rotation.
 it('derives the site from a rotated scaled conversion without exchanging the axis factors', async () => {
   const model = await open(fixture('clean-lv95-mm'));

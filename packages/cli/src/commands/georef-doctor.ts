@@ -20,6 +20,7 @@ import { createHeadlessContext } from '../loader.js';
 import { fatal, printJson } from '../output.js';
 import { GeorefUsageError } from './georef-args.js';
 import { describeReport, writeFields } from './georef-doctor-format.js';
+import { assertDistinctOutput, verifySiteWrites } from './georef-doctor-verify.js';
 import { verifyWritten } from './georef-format.js';
 
 const SEVERITY_RANK = { error: 0, warning: 1, info: 2 } as const;
@@ -145,7 +146,9 @@ async function runFix(parsed: DoctorArgs): Promise<void> {
   const mismatches = result.writes.some((w) => w.via !== 'georef.site')
     ? verifyWritten(intended, readGeoreferencing(written), extractGeoreferencingOnDemand(written))
     : [];
+  mismatches.push(...verifySiteWrites(written, plan));
   if (mismatches.length > 0) fatal(`The written file does not read back as the fixes intended; nothing was saved:\n  ${mismatches.join('\n  ')}`);
+  await assertDistinctOutput(parsed.file, parsed.out as string);
   await writeFile(parsed.out as string, text, 'utf-8');
 
   // Check the file as written, from disk, with the same capabilities.

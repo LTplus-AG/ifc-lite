@@ -11,3 +11,5 @@ The georeferencing doctor: check and fix a model's georeferencing from the CLI, 
 - CLI: `ifc-lite georef check <file>` (human or `--json`; exit 1 on findings at or above `--fail-on`, default `error`; `--allow-network`) and `ifc-lite georef fix <file> --out F` (= `check --fix`; `--apply ID`, `--value PATH=V`, `--dry-run`, `--accept-approximate-datum`), which shows each change, writes a new file, verifies it reads back and checks it again.
 - MCP: `georeferencing_check` (report and plan as JSON) and `georeferencing_fix`; `georeferencing_write` gains action `site`.
 - georef-check: site latitude/longitude fixes are `apply.via: 'georef.site'`.
+
+The doctor refuses input/output aliases and verifies site fields before saving. Invalid user values stay unresolved; derived site values wait for a recheck if their conversion changes. Site writes retain ownership of their positional edits, and session reads match the exported first-valid-site selection.

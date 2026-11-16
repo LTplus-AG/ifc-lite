@@ -58,6 +58,9 @@ export function applyGeorefFixPlan(target: FixTarget, plan: GeorefFixPlan): Geor
       merge(site as Record<string, unknown>, values, fix, 'IfcSite');
       continue;
     }
+    for (const key of Object.keys(write.input)) {
+      if (key !== 'ProjectedCRS' && key !== 'MapConversion') refuse(fix, `${key} is not supported in a doctor write; use the georeferencing write API directly`);
+    }
     if (via && via !== write.via) refuse(fix, `it needs ${write.via} and another fix ${via}`);
     via = write.via;
     merge(crs, (write.input.ProjectedCRS ?? {}) as Record<string, string>, fix, 'ProjectedCRS');

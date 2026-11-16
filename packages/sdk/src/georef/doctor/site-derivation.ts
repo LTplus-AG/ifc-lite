@@ -69,7 +69,8 @@ export function deriveSitePosition(
   const [a, b] = [a0 / length, b0 / length];
   const scale = op.scale ?? 1;
   const [sx, sy, sz] = [scale * (op.factorX ?? 1), scale * (op.factorY ?? 1), scale * (op.factorZ ?? 1)];
-  const site = facts.coordinates?.siteOrigin ?? { x: 0, y: 0, z: 0 };
+  const site = facts.coordinates?.siteOrigin ?? (facts.coordinates?.sitePlacementId === undefined ? { x: 0, y: 0, z: 0 } : undefined);
+  if (!site) return { epsg: requirement.epsg, blockedBy: [...blockedBy, { reason: 'unavailable', detail: 'The IfcSite placement cannot be read, so its position is unknown.' }] };
   // IfcMapConversion: local (project units) → map units, then metres.
   const east = (op.eastings + (sx * a * site.x - sy * b * site.y)) * mapUnit;
   const north = (op.northings + (sx * b * site.x + sy * a * site.y)) * mapUnit;

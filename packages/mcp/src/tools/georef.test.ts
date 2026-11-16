@@ -251,3 +251,13 @@ ENDSEC;`), 'utf-8');
     expect(read.georef.site).toMatchObject({ expressId: 40 });
   });
 });
+
+// PR #10537: MCP values objects can reach the handler without entry validation.
+it('does not turn a null user coordinate into latitude zero', async () => {
+  const file = join(tmp, 'null-values.ifc');
+  await writeFile(file, header('IFC4') + BODY.replace('.ELEMENT.,$,$,$,$,$)', '.ELEMENT.,(42,21,30,240000),(-71,-3,-35,-280000),0.,$,$)'));
+  await session('null-values.ifc');
+  const result = await structured<{ applied: string[]; plan: { fixes: Array<{ code: string; status: string }> } }>('georeferencing_fix', { values: { 'IfcSite.RefLatitude': null, 'IfcSite.RefLongitude': 8 } });
+  expect(result.applied).toEqual([]);
+  expect(result.plan.fixes.find((f) => f.code === 'SITE_LOCATION_DEFAULT')?.status).toBe('needs-value');
+});

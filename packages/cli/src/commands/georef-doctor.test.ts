@@ -9,9 +9,12 @@
  * written file; the written file is read back again with `georef check --json`.
  */
 
-import { copyFileSync, existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, writeFileSync, linkSync, symlinkSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { execFileSync } from 'node:child_process';
+import * as loader from '../loader.js';
+import { describeReport } from './georef-doctor-format.js';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -156,4 +159,36 @@ describe('ifc-lite georef fix', () => {
     expect(await run(['fix', p('zone-prefix.ifc'), '--out', p('z.ifc'), '--apply', 'NOPE.1'])).toBe(1);
     expect(stderr).toMatch(/Unknown fix id: NOPE\.1/);
   });
+});
+
+// PR #10537: reject corrupt exported site coordinates before replacing any output.
+it('verifies site-only exported bytes before replacing the destination', async () => {
+  await run(['set', p('site-default-revit-boston.ifc'), '--out', p('verify-source.ifc'), '--epsg', '2056', '--map-unit', 'METRE', '--eastings', '2600000', '--northings', '1199650', '--height', '540']);
+  const context = await loader.createHeadlessContext(p('verify-source.ifc'));
+  const unchanged = String(context.bim.export.ifc());
+  vi.spyOn(context.bim.export, 'ifc').mockReturnValue(unchanged);
+  vi.spyOn(loader, 'createHeadlessContext').mockResolvedValue(context);
+  writeFileSync(p('verify-output.ifc'), 'existing destination');
+  expect(await run(['fix', p('verify-source.ifc'), '--out', p('verify-output.ifc'), '--json'])).toBe(1);
+  expect(readFileSync(p('verify-output.ifc'), 'utf8')).toBe('existing destination');
+});
+
+it.each(['hard', 'symbolic'])('refuses an output %s link to the input (#10537)', async (kind) => {
+  const original = p(`alias-input-${kind}.ifc`);
+  const output = p(`alias-output-${kind}.ifc`);
+  copyFileSync(p('zone-prefix.ifc'), original);
+  const before = readFileSync(original, 'utf8');
+  if (kind === 'hard') linkSync(original, output); else symlinkSync(original, output);
+  expect(await run(['fix', original, '--out', output])).toBe(1);
+  expect(readFileSync(original, 'utf8')).toBe(before);
+});
+
+it('generated commands keep shell substitutions literal (#10537)', async () => {
+  const { bim } = await loader.createHeadlessContext(p('double-site-placement.ifc'));
+  const report = await bim.georef.check();
+  const marker = p('unexpected-shell-write');
+  const rendered = describeReport(`$(touch '${marker}').ifc`, report, bim.georef.planFixes(report));
+  const command = rendered.split('\n').find((line) => line.includes('to apply it yourself: ifc-lite'))!.split('to apply it yourself: ')[1];
+  execFileSync('/bin/sh', ['-c', command.replace(/^ifc-lite /, ': ')]);
+  expect(existsSync(marker)).toBe(false);
 });

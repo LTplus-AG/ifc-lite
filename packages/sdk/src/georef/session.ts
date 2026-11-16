@@ -56,6 +56,7 @@ export class GeoreferencingSession {
    * history is inactive here; undoing a host deletion may restore its marker.
    */
   private writes: AppliedWrite[] = [];
+  private siteEditIds = new Set<string>();
 
   constructor(private readonly deps: GeoreferencingSessionDeps) {}
 
@@ -95,17 +96,19 @@ export class GeoreferencingSession {
     this.deps.editor();
     const view = this.deps.view();
     if (!view) throw new Error('georef: the session has no mutation view to record the write in');
-    const plan = planSiteWrite(this.deps.store, view, input);
+    const plan = planSiteWrite(this.deps.store, view, input, this.siteEditIds);
+    const recorded: string[] = [];
     recordCompoundMutation(view, (draft) => {
-      for (const [slot, value] of plan.edits) draft.setPositionalAttribute(plan.siteId, slot, value);
+      for (const [slot, value] of plan.edits) recorded.push(draft.setPositionalAttribute(plan.siteId, slot, value).id);
       return recordSessionMutation(draft, plan.siteId, GEOREF_SESSION_KIND);
     });
+    for (const id of recorded) this.siteEditIds.add(id);
     return plan.result;
   }
 
   /** Throws what `writeSite(input)` would, without writing. */
   validateSite(input: GeorefSiteInput): void {
-    planSiteWrite(this.deps.store, this.deps.view(), input);
+    planSiteWrite(this.deps.store, this.deps.view(), input, this.siteEditIds);
   }
 
   private read(): GeoreferencingState {

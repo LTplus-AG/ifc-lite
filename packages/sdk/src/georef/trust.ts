@@ -39,15 +39,16 @@ export interface GeorefTrust {
   foreign: string[];
 }
 
-const CLASS_PART: Record<string, GeorefPart> = {
+const CLASS_PART: Readonly<Record<string, GeorefPart>> = Object.freeze({
   IFCMAPCONVERSION: 'MapConversion', IFCMAPCONVERSIONSCALED: 'MapConversion', IFCRIGIDOPERATION: 'RigidOperation',
   IFCPROJECTEDCRS: 'ProjectedCRS', IFCGEOGRAPHICCRS: 'ProjectedCRS', IFCWELLKNOWNTEXT: 'ProjectedCRS', IFCSITE: 'site',
-};
+});
 /** Attribute positions that hold references, for the unit records a map unit can chain through. */
-const UNIT_REFS: Record<string, number[]> = {
+const UNIT_REFS: Readonly<Record<string, readonly number[]>> = Object.freeze({
   IFCCONVERSIONBASEDUNIT: [0, 3], IFCCONVERSIONBASEDUNITWITHOFFSET: [0, 3], IFCMEASUREWITHUNIT: [1], IFCSIUNIT: [], IFCDIMENSIONALEXPONENTS: [],
-};
-const NO_TRUST: GeorefTrust = { reasons: {}, foreign: [] };
+});
+/** The "nothing changed" assessment, shared and frozen: an assessment is a value, and a caller that needs to add to one builds its own. */
+const NO_TRUST: GeorefTrust = Object.freeze({ reasons: Object.freeze({}), foreign: Object.freeze([]) as unknown as string[] });
 
 /** The entities the georeferencing state is read from, by part, with their STEP class. */
 function readEntities(store: IfcDataStore): Map<number, { part: GeorefPart; type: string }> {

@@ -21,8 +21,8 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveEntities, type EffectiveEntities } from './effective-entities.js';
 import type { EPSetLocation } from './model-facts.js';
 
-const NAMES = ['epset_mapconversion', 'epset_projectedcrs'];
-const NUMERIC = ['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 'XAxisOrdinate', 'Scale'];
+const NAMES = Object.freeze(['epset_mapconversion', 'epset_projectedcrs']);
+const NUMERIC = Object.freeze(['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 'XAxisOrdinate', 'Scale']);
 /** A number as the reader reads one: a finite number, or text that is one (some writers store Eastings as text). */
 export function decodeNumber(value: unknown): number | undefined {
   const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
@@ -225,7 +225,8 @@ export function describeSet(p: EPSetLocation): string {
   return p.orphan === undefined ? `${p.name} on #${p.hostId}` : `${p.name} #${p.orphan} (not attached to any object)`;
 }
 
-const NONE: ConventionSets = { copies: [], mapConversion: null, projectedCRS: null, ambiguous: [], touched: false };
+/** Shared and frozen: a caller that needs to change a result builds its own. */
+const NONE: ConventionSets = Object.freeze({ copies: Object.freeze([]) as unknown as EPSetLocation[], mapConversion: null, projectedCRS: null, ambiguous: Object.freeze([]) as unknown as string[], touched: false });
 
 /** `locateConventionSets` for a caller without facts; instant when the file has no convention set and the session touched none. */
 export function conventionSetsOf(store: IfcDataStore, view: MutablePropertyView): ConventionSets {

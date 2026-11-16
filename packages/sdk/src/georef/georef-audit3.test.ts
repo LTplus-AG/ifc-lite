@@ -10,6 +10,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseModel } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { assessTrust } from './trust.js';
 import { HeadlessBackend } from '../headless.js';
 import { BimContext } from '../context.js';
 import { readGeoreferencing } from './read.js';
@@ -155,5 +157,26 @@ describe('text edits carry no marker characters (review finding on the in-band m
     expect(String(m.bim.export.ifc())).toMatch(/IFCPROJECTEDCRS\('EPSG:2056','CH1903\+',/);
     expect((await reparsed(m.bim)).ProjectedCRS?.Description).toBe('CH1903+');
     await trueOrUntrusted(m.bim);
+  });
+});
+
+describe('trust assessments are never shared between models', () => {
+  it('a model with a convention-set reason does not make a clean model in the same process untrusted', async () => {
+    const REVERSED = `${BASE}\n${sets(200, 2000000)}\n${attach(200, 6)}\n${sets(100, 1000000)}\n${attach(100, 6)}`;
+    const a = await open('IFC2X3', REVERSED);
+    a.view(); // a session with a view and no pending change: the "nothing changed" assessment
+    expect(a.bim.georef.get().untrusted?.length).toBeGreaterThan(0);
+    const clean = await open('IFC2X3', `${BASE}\n${sets(100, 1000000)}\n${attach(100, 6)}`);
+    clean.view();
+    expect(clean.bim.georef.get().untrusted).toBeUndefined();
+    const plain = await open('IFC4', BASE);
+    plain.view();
+    expect(plain.bim.georef.get().untrusted).toBeUndefined();
+  });
+  it('the shared "nothing changed" assessment is frozen, so a write to it throws instead of leaking', async () => {
+    const { store } = await parseModel(step('IFC4', BASE), { disableWorkerScan: true });
+    const none = assessTrust(store, new MutablePropertyView(null, 'model'), null);
+    expect(Object.isFrozen(none) && Object.isFrozen(none.reasons) && Object.isFrozen(none.foreign)).toBe(true);
+    expect(() => { (none.reasons as Record<string, string[]>).ePSet = ['x']; }).toThrow(TypeError);
   });
 });

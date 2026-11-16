@@ -219,6 +219,7 @@ impl GeoRefExtractor {
                     // metre scale from the unit label so consumers don't default
                     // explicit non-metre ePSet offsets to metres.
                     georef.map_unit_scale = value.as_deref().and_then(crate::unit_labels::infer_map_unit_scale);
+                    georef.map_unit_resolved = value.as_deref().map(|v| crate::unit_labels::infer_map_unit_scale(v).is_some());
                     georef.map_unit = value;
                 }
                 _ => {}

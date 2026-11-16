@@ -43,6 +43,8 @@ interface Expect {
   mapZone?: string | null;
   mapUnit?: string | null;
   mapUnitScale?: number | null;
+  /** Whether the unit was read (its declared factor is the one its name means) or is a fallback nobody may carry. */
+  mapUnitResolved?: boolean;
   /** `null` asserts no IfcWellKnownText is attached to the CRS read. */
   wellKnownText?: string | null;
   eastings?: number;
@@ -254,6 +256,8 @@ describe.skipIf(!existsSync(fixturePath))('extractGeoreferencing shared parity v
           approx(crs?.mapUnitScale, want.mapUnitScale as number, 'mapUnitScale');
         }
       }
+
+      if (want.mapUnitResolved !== undefined) expect(crs?.mapUnitResolved, 'mapUnitResolved').toBe(want.mapUnitResolved);
 
       const strings: [keyof Expect, string | undefined][] = [
         ['crsName', crs?.name],

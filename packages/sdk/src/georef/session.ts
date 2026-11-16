@@ -74,7 +74,8 @@ export class GeoreferencingSession {
 
   /** Trust in what `state` is read from. A change to a convention set only matters while the state is read from one. */
   private trust(state: GeoreferencingState, view: MutablePropertyView) {
-    const trust = assessTrust(this.deps.store, view, this.current()?.pending ?? null);
+    const assessed = assessTrust(this.deps.store, view, this.current()?.pending ?? null);
+    const trust = { reasons: { ...assessed.reasons }, foreign: assessed.foreign };
     // The convention sets are read back live for IFC2X3 only; elsewhere an edited or created copy is not reflected.
     // Which copy the reader takes is known only while the session left the copies alone.
     const sets = conventionSetsOf(this.deps.store, view);

@@ -57,7 +57,7 @@ export function readGeoreferencing(store: IfcDataStore, modelId = 'model'): Geor
 }
 
 /** Every raw STEP type the extractor reads georeferencing from. */
-const GEOREF_RECORD_TYPES = ['IFCMAPCONVERSION', 'IFCMAPCONVERSIONSCALED', 'IFCRIGIDOPERATION', 'IFCPROJECTEDCRS', 'IFCGEOGRAPHICCRS', 'IFCWELLKNOWNTEXT'];
+const GEOREF_RECORD_TYPES = Object.freeze(['IFCMAPCONVERSION', 'IFCMAPCONVERSIONSCALED', 'IFCRIGIDOPERATION', 'IFCPROJECTEDCRS', 'IFCGEOGRAPHICCRS', 'IFCWELLKNOWNTEXT']);
 
 /**
  * The georeferencing the model's source bytes declare (no session writes).

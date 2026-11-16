@@ -21,12 +21,12 @@ import { rotationOf, compact } from './read.js';
 import type { GeoreferencingState } from './types.js';
 
 /** `CRS_FIELDS` without `MapUnit` (a reference attribute); a literal so the module does no work at import. */
-export const CRS_TEXT_FIELDS: readonly string[] = ['Name', 'Description', 'GeodeticDatum', 'VerticalDatum', 'MapProjection', 'MapZone'];
+export const CRS_TEXT_FIELDS: readonly string[] = Object.freeze(['Name', 'Description', 'GeodeticDatum', 'VerticalDatum', 'MapProjection', 'MapZone']);
 
 /** The three coordinates an IfcMapConversion cannot do without: an unset one reads back as 0. */
-export const MANDATORY_MC_FIELDS: readonly string[] = ['Eastings', 'Northings', 'OrthogonalHeight'];
+export const MANDATORY_MC_FIELDS: readonly string[] = Object.freeze(['Eastings', 'Northings', 'OrthogonalHeight']);
 /** Attributes only IfcMapConversionScaled has; the exporter drops a named edit of them on a plain conversion. */
-export const SCALED_ONLY_MC_FIELDS: readonly string[] = ['FactorX', 'FactorY', 'FactorZ'];
+export const SCALED_ONLY_MC_FIELDS: readonly string[] = Object.freeze(['FactorX', 'FactorY', 'FactorZ']);
 
 /**
  * The exporter's reading of a numeric edit of a REAL slot (`serializeNamedAttribute`): empty is unset (`$`), a

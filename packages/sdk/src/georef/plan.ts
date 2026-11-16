@@ -76,8 +76,8 @@ export interface PlanContext {
   afterRemove(withPropertySets: boolean): GeoreferencingState;
 }
 
-export const CRS_FIELDS = ['Name', 'Description', 'GeodeticDatum', 'VerticalDatum', 'MapProjection', 'MapZone', 'MapUnit'] as const;
-export const MC_FIELDS = ['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 'XAxisOrdinate', 'Scale', 'FactorX', 'FactorY', 'FactorZ'] as const;
+export const CRS_FIELDS = Object.freeze(['Name', 'Description', 'GeodeticDatum', 'VerticalDatum', 'MapProjection', 'MapZone', 'MapUnit'] as const);
+export const MC_FIELDS = Object.freeze(['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 'XAxisOrdinate', 'Scale', 'FactorX', 'FactorY', 'FactorZ'] as const);
 
 /** The exporter's camelCase key for an EXPRESS attribute name. */
 export function exporterKey(attr: string): string {
@@ -283,11 +283,11 @@ export function stateAfter(
   return state;
 }
 
-export const EPSET_DATA_TYPES: Record<string, EPSetDataType> = {
+export const EPSET_DATA_TYPES: Readonly<Record<string, EPSetDataType>> = Object.freeze({
   Eastings: 'IfcLengthMeasure', Northings: 'IfcLengthMeasure', OrthogonalHeight: 'IfcLengthMeasure',
   XAxisAbscissa: 'IfcReal', XAxisOrdinate: 'IfcReal', Scale: 'IfcReal',
   Description: 'IfcText',
-};
+});
 
 export function ePSetValues(src: Record<string, unknown>, fields: readonly string[]): Array<[string, string | number, EPSetDataType]> {
   return fields

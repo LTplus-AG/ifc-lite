@@ -25,7 +25,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { verdict } from '../lib/values.mjs';
 import { storeOf } from '../lib/packages.mjs';
-import { extractionEntry } from './read.mjs';
+import { extractionEntry, isStructuralItem } from './read.mjs';
 import checks from './capability-checks.mjs';
 import stale from './capability-stale.mjs';
 
@@ -39,7 +39,7 @@ const isElement = (table, type) => table.chain(table.types.get(String(type ?? ''
  * assigned to a storey or an action assigned to a member is not a link.
  */
 function physicalLinks(step, table) {
-  const structural = (e) => e && /^IFCSTRUCTURAL(CURVE|SURFACE|POINT)(MEMBER|CONNECTION)/.test(e.type);
+  const structural = isStructuralItem;
   const element = (e) => e && isElement(table, e.type);
   const pairs = new Map();
   const add = (item, product) => pairs.set(`${item},${product}`, [item, product]);

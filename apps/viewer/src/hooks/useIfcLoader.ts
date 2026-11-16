@@ -293,7 +293,7 @@ export function useIfcLoader() {
 
     const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
     const showLoadError = loadFailureReporter(processedModel ? undefined : file, activity, retryThisLoad, options?.onLoadError);
-    const localAdmission = createLocalIfcLoadAdmission(file, { isCurrent, signal: metadataAbort.signal, onCancel: () => { primarySession?.settle(false); settleLoadUi(); },
+    const localAdmission = createLocalIfcLoadAdmission(file, { isCurrent, signal: metadataAbort.signal, onCancel: () => { activity.cancelled = true; primarySession?.settle(false); settleLoadUi(); },
       onFailure: error => {
         const candidate = useViewerStore.getState().models.get(modelId);
         if (!initialized && candidate?.sourceFile === file && candidate.loadState === 'pending' && !candidate.geometryResult) updateModel(modelId, { sourceReadRefused: true });

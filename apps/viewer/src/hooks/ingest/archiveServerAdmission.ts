@@ -4,7 +4,8 @@
 
 /** #10264: decide whether uploading the original ZIP would lose viewer images.
  * Read only the end record and a bounded central directory. Unknown layouts
- * (including ZIP64/multipart) cannot authorize local expansion; never inflate to decide. */
+ * (including ZIP64/multipart) cannot authorize expansion from metadata or a server upload.
+ * The caller may use its separate small-input, capped-local-extraction policy. Never inflate here. */
 export async function inspectIfcArchiveAdmission(file: File): Promise<{ modelBytes: number; allowsServer: boolean } | null> {
   const tail = new Uint8Array(await file.slice(-65557).arrayBuffer());
   const end = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);

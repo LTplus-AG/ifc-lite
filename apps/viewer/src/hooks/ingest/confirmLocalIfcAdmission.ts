@@ -73,7 +73,9 @@ export function createLocalIfcLoadAdmission(file: File, options: {
     archiveModelLimit: () => archiveModelBytes,
     preflight: () => preflightLocalIfcSource(file, { ...options, admit: async (bytes, head) => {
       if (headIsZip(head)) {
-        const archive = await inspectIfcArchiveAdmission(file);
+        // Small legacy ZIP layouts stay local with a hard extraction cap, never a guessed server route.
+        const archive = await inspectIfcArchiveAdmission(file) ?? (file.size <= 1024 * 1024
+          ? { modelBytes: 64 * 1024 * 1024, allowsServer: false } : null);
         if (!archive) throw new RangeError('Cannot safely inspect this IFC ZIP model size within the archive metadata limit. Extract the IFC before opening it, or use the native CLI/server.');
         sourceAllowsServer = archive.allowsServer;
         archiveModelBytes = archive.modelBytes;

@@ -20,8 +20,10 @@ class History {
   position: number;
   base?: History;
   private order?: string[];
+  private inheritedTail: string | null;
   constructor(base?: History) {
     this.base = base; this.length = base?.length ?? 0; this.position = base?.position ?? 0;
+    this.inheritedTail = base?.last() ?? null;
   }
   has(id: string): boolean { return this.nodes.has(id) || (!this.removed.has(id) && !!this.base?.has(id)); }
   get(id: string): Mutation {
@@ -38,7 +40,7 @@ class History {
   }
   last(): string | null {
     if (this.tail !== null) return this.tail;
-    let id = this.base?.last() ?? null;
+    let id = this.inheritedTail;
     while (id !== null && this.removed.has(id)) id = this.base!.previous(id);
     return id;
   }
@@ -52,7 +54,7 @@ class History {
   previous(id: string): string | null {
     const own = this.nodes.get(id);
     if (own?.previous) return own.previous;
-    let previous = this.base ? own ? this.base.last() : this.base.previous(id) : null;
+    let previous = own ? this.inheritedTail : this.base?.previous(id) ?? null;
     while (previous !== null && this.removed.has(previous)) previous = this.base!.previous(previous);
     return previous;
   }
@@ -96,6 +98,7 @@ class History {
       this.unindexEntity(own.row.entityId, id);
     } else if (this.base?.has(id) && !this.removed.has(id)) {
       const next = this.next(id);
+      if (id === this.inheritedTail) this.inheritedTail = this.previous(id);
       this.removed.set(id, { mutation: structuredClone(this.base.get(id)), beforeId: next !== null && this.base.has(next) ? next : null });
       this.reads.delete(id);
     } else return;
@@ -144,7 +147,7 @@ class History {
     return out;
   }
   replace(rows: Mutation[]): void {
-    this.base = undefined; this.nodes.clear(); this.entities.clear(); this.reads.clear(); this.removed.clear();
+    this.base = undefined; this.inheritedTail = null; this.nodes.clear(); this.entities.clear(); this.reads.clear(); this.removed.clear();
     this.head = this.tail = null; this.length = this.position = 0; this.order = undefined;
     for (const row of rows) this.append(row);
   }

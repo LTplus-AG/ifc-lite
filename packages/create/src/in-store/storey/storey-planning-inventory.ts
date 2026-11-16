@@ -101,7 +101,7 @@ export class StoreyPlanningInventory {
     // Only a private local placement directly following its home storey is
     // omitted from the solver. Shared, grid, missing and indirect placements
     // retain the full placement solver and its refusal semantics.
-    const exceptional = this.multipleHomes.has(id) || placement === null || parentPlacement !== floor
+    const exceptional = this.multipleHomes.has(id) || floor == null || placement === null || parentPlacement !== floor
       || inventory.reader.entity(placement)?.type.toUpperCase() !== 'IFCLOCALPLACEMENT'
       || this.owners.get(placement)?.length !== 1;
     const kind = attachedKind(type);
@@ -131,6 +131,21 @@ export class StoreyPlanningInventory {
     for (const id of affected) if (this.types.has(id)) rows.push([id, this.row(inventory, id)]);
     this.index.apply(this.revision, ++this.revision, rows);
     this.inventoryProducts = rows.length;
+  }
+  /** Preserve planners already borrowed by unchanged detached drafts. The
+   * topology is immutable between rebuilds; only update-owned maps are copied. */
+  updated(inventory: StoreyInventory, ids: Iterable<number>): StoreyPlanningInventory {
+    const copy = Object.create(StoreyPlanningInventory.prototype) as StoreyPlanningInventory;
+    Object.assign(copy, this, {
+      index: this.index.copy(), types: new Map(this.types), identities: new Map(this.identities),
+      aliases: new Map([...this.aliases].map(([id, copies]) => [id, new Set(copies)])),
+      aliasSources: new Map(this.aliasSources), specialDependents: new Set(this.specialDependents),
+      railingsByStorey: new Map([...this.railingsByStorey].map(([id, rows]) => [id, new Set(rows)])),
+      elementTargets: new Map([...this.elementTargets].map(([id, rows]) => [id, new Set(rows)])),
+      elementTargetOf: new Map(this.elementTargetOf),
+    });
+    copy.update(inventory, ids);
+    return copy;
   }
   needsRebuild(inventory: StoreyInventory, ids: Iterable<number>): boolean {
     for (const id of ids) {
@@ -185,9 +200,12 @@ export class StoreyPlanningInventory {
 
 export function storeyPlanningInventory(inventory: StoreyInventory): StoreyPlanningInventory {
   const cache = plannerCache(inventory);
-  const index = cache.value instanceof StoreyPlanningInventory && !cache.value.needsRebuild(inventory, cache.dirty)
+  let index = cache.value instanceof StoreyPlanningInventory && !cache.value.needsRebuild(inventory, cache.dirty)
     ? cache.value : new StoreyPlanningInventory(inventory);
-  if (cache.value === index) { index.inventoryProducts = 0; if (cache.dirty.size) index.update(inventory, cache.dirty); }
+  if (cache.value === index) {
+    if (cache.dirty.size) index = index.updated(inventory, cache.dirty);
+    else index.inventoryProducts = 0;
+  }
   cache.save(index, index.parents);
   return index;
 }

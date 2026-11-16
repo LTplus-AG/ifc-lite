@@ -40,9 +40,10 @@ it('#8452 preserves caller accessor descriptors and nonwritable data while obser
   });
   let exposed = 0;
   observeEntityAttributes(row, () => { exposed++; });
+  expect(exposed).toBe(1); // #10420 caller getters can change before any external read.
   row.attributes = [[4, 5, 6]];
   expect(row.attributes).toEqual([[4, 5, 6]]);
-  expect(writes).toBe(1); expect(reads).toBeGreaterThan(0); expect(exposed).toBe(2);
+  expect(writes).toBe(1); expect(reads).toBeGreaterThan(0); expect(exposed).toBe(3);
   const fixed: NewEntity = { expressId: 2, type: 'IfcCartesianPoint', attributes: [] };
   Object.defineProperty(fixed, 'attributes', { value: [[7, 8, 9]], writable: false, configurable: true });
   observeEntityAttributes(fixed, () => { exposed++; });

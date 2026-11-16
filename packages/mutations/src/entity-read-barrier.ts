@@ -91,6 +91,7 @@ export function observeEntityAttributes(entity: NewEntity, exposed: ExposureList
     get: readAttributes,
     set: descriptor?.get && !descriptor.set || descriptor?.writable === false ? undefined : writeAttributes,
   });
+  if (barrier.escaped) exposed(entity);
 }
 
 function frozenCopy(value: unknown, copies: Map<object, unknown>): unknown {

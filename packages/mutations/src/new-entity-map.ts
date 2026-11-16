@@ -41,7 +41,6 @@ export class NewEntityMap extends Map<number, NewEntity> {
       if (this.tailId !== undefined) this.positions.get(this.tailId)!.next = expressId;
       this.tailId = expressId;
     }
-    this.unindexReferences(expressId);
     const previous = super.get(expressId);
     if (previous && previous.type.toUpperCase() !== entity.type.toUpperCase()) this.unindex(previous);
     super.set(expressId, entity);
@@ -50,6 +49,25 @@ export class NewEntityMap extends Map<number, NewEntity> {
     let bucket = this.byType.get(key);
     if (!bucket) this.byType.set(key, (bucket = new Map()));
     bucket.set(expressId, entity);
+    this.indexReferences(entity);
+    if (!this.exposureCallback) {
+      const owner = this.weakSelf ??= new WeakRef(this);
+      this.exposureCallback = (row: NewEntity) => {
+        const map = owner.deref(), id = row.expressId;
+        // A replaced row's escaped arrays no longer belong to this index.
+        if (map?.peek(id) !== row) return;
+        (map.exposed ??= new Set()).add(id);
+        for (const listener of map.exposureListeners ?? []) listener(id);
+      };
+    }
+    observeEntityAttributes(entity, this.exposureCallback);
+    return this;
+  }
+
+  /** Refresh reference projections without re-registering exposure listeners. */
+  private indexReferences(entity: NewEntity): void {
+    const expressId = entity.expressId, key = entity.type.toUpperCase();
+    this.unindexReferences(expressId);
     const references = new Set<number>(), visited = new Set<unknown[]>(), pending: unknown[] = [withoutEntityExposure(() => entity.attributes)];
     while (pending.length) {
       const value = pending.pop();
@@ -71,19 +89,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
       if (!bucket) this.byReference.set(id, bucket = new Set());
       bucket.add(expressId);
     }
-    if (!this.exposureCallback) {
-      const owner = this.weakSelf ??= new WeakRef(this);
-      this.exposureCallback = (row: NewEntity) => {
-        const map = owner.deref(), id = row.expressId;
-        // A replaced row's escaped arrays no longer belong to this index.
-        if (map?.peek(id) !== row) return;
-        (map.exposed ??= new Set()).add(id);
-        for (const listener of map.exposureListeners ?? []) listener(id);
-      };
-    }
     this.slots?.update(entity);
-    observeEntityAttributes(entity, this.exposureCallback);
-    return this;
   }
 
   override delete(expressId: number): boolean {
@@ -189,7 +195,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
   /** Mutable aliases require rechecking only the rows whose arrays escaped. */
   refreshReferences(): void {
     withoutEntityExposure(() => {
-      for (const id of this.exposed ?? []) { const row = super.get(id); if (row) this.set(id, row); }
+      for (const id of this.exposed ?? []) { const row = super.get(id); if (row) this.indexReferences(row); }
     });
   }
 

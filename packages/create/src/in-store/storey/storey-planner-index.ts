@@ -15,6 +15,14 @@ export class StoreyPlannerIndex {
   private readonly attachmentPairs = new Map<number, Buckets>();
   private readonly unresolved = new Set<number>();
   private revision = 0;
+  /** Rows are frozen; mutable membership buckets belong to each snapshot. */
+  copy(): StoreyPlannerIndex {
+    return Object.assign(new StoreyPlannerIndex(), {
+      products: new Map(this.products), unresolved: new Set(this.unresolved), revision: this.revision,
+      attachmentPairs: new Map([...this.attachmentPairs].map(([target, owners]) => [target,
+        new Map([...owners].map(([owner, ids]) => [owner, new Set(ids)]))])),
+    });
+  }
   get(id: number): PlannerProduct | undefined { return this.products.get(id); }
   private update(bucket: Buckets, key: number, id: number, add: boolean): void {
     if (add) { let ids = bucket.get(key); if (!ids) bucket.set(key, ids = new Set()); ids.add(id); }

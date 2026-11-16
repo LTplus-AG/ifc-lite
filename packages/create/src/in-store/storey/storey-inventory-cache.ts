@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { EntityChangeTracker, MutablePropertyView } from '@ifc-lite/mutations';
+import { iterateEffectiveEntityIds, type EntityChangeTracker, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { AnchorEntityReader } from '../resolve-anchor.js';
 import type { StoreyInventory, StoreyRelationship } from './storey-model.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -67,11 +67,14 @@ export function storeyInventoryCache(
     const deleted = view.isDeleted(id);
     if (deleted !== entry.deleted.has(id)) { entry.graph = undefined; entry.planner = undefined; }
     if (deleted) entry.deleted.add(id); else entry.deleted.delete(id);
+    const retype = view.getEntityTypeMutation(id);
+    const createdType = view.getNewEntityType(id);
+    const originalType = retype ? createdType ?? iterateEffectiveEntityIds(store, null, undefined, [id]).next().value?.type : undefined;
     // @raw-entity-enumeration-ok point classification of an invalidated ID; this cache must not borrow every new geometry payload during ordinary creation.
-    const type = deleted ? undefined : (view.getEntityTypeMutation(id)?.newType ?? view.getNewEntityType(id) ?? store.entityIndex.byId.get(id)?.type)?.toUpperCase();
+    const type = deleted ? undefined : (retype?.newType ?? createdType ?? store.entityIndex.byId.get(id)?.type)?.toUpperCase();
     // A deleted end changes the live relationship graph. Placement topology,
     // grid bindings and source property records may change many classifications.
-    if (!type || type.startsWith('IFCREL') || type.startsWith('IFCPROPERTY') || type.startsWith('IFCGRID')
+    if (!type || type.startsWith('IFCREL') || originalType?.toUpperCase().startsWith('IFCREL') || type.startsWith('IFCPROPERTY') || type.startsWith('IFCGRID')
       || type === 'IFCVIRTUALGRIDINTERSECTION') {
       entry.graph = undefined; entry.planner = undefined;
     }

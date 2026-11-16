@@ -27,3 +27,15 @@ it('#10420 retained published drafts enumerate inherited X and appended A once',
   expect(draft.getMutations().map(row => row.entityId)).toEqual([x, x + 1]);
   expect(view.getMutations().map(row => row.entityId)).toEqual([x, x + 1]);
 });
+
+it('#10420 retained journal boundaries skip an inherited tail removed before publication', () => {
+  const view = new MutablePropertyView(null, 'removed-history-boundary');
+  view.createEntity('IfcCartesianPoint', [[0, 0, 0]]);
+  const removed = view.createEntity('IfcCartesianPoint', [[1, 0, 0]]).expressId;
+  const draft = view.runAtomic(draft => {
+    draft.deleteEntity(removed);
+    draft.createEntity('IfcCartesianPoint', [[2, 0, 0]]);
+    return draft;
+  });
+  expect(draft.getMutations().map(row => row.id)).toEqual(view.getMutations().map(row => row.id));
+});

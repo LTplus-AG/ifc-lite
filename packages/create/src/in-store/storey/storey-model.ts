@@ -126,7 +126,13 @@ function relationshipsOf(reader: AnchorEntityReader, deleted: ReadonlySet<number
       if (rel) result.push(rel);
     }
   }
-  return result;
+  return result.sort(relationshipOrder);
+}
+
+/** Both complete graphs and sparse lookups choose the same first parent. */
+function relationshipOrder(a: StoreyRelationship, b: StoreyRelationship): number {
+  const rank = (type: string) => (SPATIAL_RELATIONSHIPS as readonly string[]).indexOf(type);
+  return rank(a.type) - rank(b.type) || a.id - b.id;
 }
 
 function relationshipMaps(relationships: readonly StoreyRelationship[]) {
@@ -157,8 +163,7 @@ function incomingThroughReferencers(
     if (rel?.children.includes(id)) found.push(rel);
   }
   // The order a whole-graph read lists them in: relationship class, then id.
-  const rank = (type: string) => (SPATIAL_RELATIONSHIPS as readonly string[]).indexOf(type);
-  return found.sort((a, b) => rank(a.type) - rank(b.type) || a.id - b.id);
+  return found.sort(relationshipOrder);
 }
 
 /** Read the live storeys and spatial relationships of one model. */

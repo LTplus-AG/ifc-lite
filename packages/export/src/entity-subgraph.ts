@@ -102,15 +102,24 @@ export function serializeEntitySubgraph(
       // A context site is carried for its ObjectPlacement (the mesher cuts a
       // host in its site placement's frame, #10435), not for its terrain:
       // written with Representation `$`, and only its other refs walked.
+      // An unreadable site is refused with the subgraph (`unreadable`), never
+      // dropped: without it the host would be cut in another frame.
       const line = writer.line(id);
-      const shallow = line === null ? null : replaceStepArgument(line, SITE_REPRESENTATION_SLOT, '$');
-      if (shallow === null) continue;
-      shallowSites.set(id, shallow);
-      for (const slot of readStepSlots(shallow)?.slots ?? []) {
-        const group = refGroupFromArg(slot);
-        if (typeof group === 'number') walkRoots.add(group);
-        else if (Array.isArray(group)) for (const ref of group) walkRoots.add(ref);
+      if (line === null) {
+        writer.markUnreadable(id);
+        continue;
       }
+      const slots = readStepSlots(line)?.slots;
+      const shallow = slots && replaceStepArgument(line, SITE_REPRESENTATION_SLOT, '$');
+      if (!slots || !shallow) {
+        writer.markUnreadable(id);
+        continue;
+      }
+      shallowSites.set(id, shallow);
+      slots.forEach((slot, at) => {
+        const ref = at === SITE_REPRESENTATION_SLOT ? undefined : refGroupFromArg(slot);
+        if (typeof ref === 'number') walkRoots.add(ref);
+      });
       continue;
     }
     if (!index.typeOf(id)?.startsWith('IFCREL')) {
@@ -157,7 +166,7 @@ export function serializeEntitySubgraph(
     const line = writer.line(id);
     if (line !== null) lines.set(id, line);
   }
-  // A site some other root reaches in full keeps its full line.
+  // A site some other root reaches in full keeps its full line, terrain and all.
   for (const [id, line] of shallowSites) if (!lines.has(id)) lines.set(id, line);
   const isAbsent = (ref: number): boolean => !lines.has(ref) && !relationships.has(ref);
   for (const [id, line] of relationships) {

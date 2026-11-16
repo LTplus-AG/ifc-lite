@@ -188,6 +188,22 @@ describe('serializeEntitySubgraph (#6232)', () => {
     expect(own.ids.has(37)).toBe(true);
   });
 
+  it('carries a site created or retyped to a site this session, not one retyped away (#10435)', async () => {
+    const store = await parse(model(0));
+    const { view, editor } = withEditor(store);
+    const place = editor.addEntity('IfcLocalPlacement', [null, '#21']).expressId;
+    const site = editor.addEntity('IfcSite', ['1site000000000000000000', null, 'New', null, null, `#${place}`, null, null, '.ELEMENT.', null, null, null, null, null]).expressId;
+    view.setEntityType(30, 'IfcBuilding');
+    view.setEntityType(40, 'IfcSite');
+    const roots = remeshContextRoots(store, view, new Set([WALL]));
+    expect(roots.has(site)).toBe(true);
+    expect(roots.has(30)).toBe(false);
+    expect(roots.has(40)).toBe(true);
+    const sub = serializeEntitySubgraph(store, view, { targets: new Set([WALL]) });
+    expect(sub.ids.has(site) && sub.ids.has(place)).toBe(true);
+    expect(closure(await parse(sub.bytes)).dangling).toEqual([]);
+  });
+
   it('carries queued edits and drops tombstoned context', async () => {
     const store = await parse(model(1));
     const { view, editor } = withEditor(store);

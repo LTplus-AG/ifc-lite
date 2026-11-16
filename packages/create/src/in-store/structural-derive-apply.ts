@@ -118,7 +118,7 @@ function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | 
     try {
       prepareStructuralFace(
         member.boundary.map(p => toLocal(member.storeyId, p)),
-        (member.openings ?? []).map(ring => ring.map(p => toLocal(member.storeyId, p))),
+        (member.openings ?? []).map(ring => (Array.isArray(ring) ? ring : []).map(p => toLocal(member.storeyId, p))),
       );
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);

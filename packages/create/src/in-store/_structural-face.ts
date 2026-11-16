@@ -28,7 +28,9 @@ function isFiniteRing(points: unknown): points is Point3D[] {
 }
 
 /** Validate before emitting anything. Coordinates are storey-local metres. */
-export function prepareStructuralFace(points: readonly Point3D[], openings: readonly Point3D[][] = []) {
+export function prepareStructuralFace(points: readonly Point3D[], openings: readonly Point3D[][] | null = []) {
+  // JSON callers send null for no openings.
+  openings ??= [];
   if (!Array.isArray(openings)) throw new Error('Structural Face: Openings must be an array');
   if (!isFiniteRing(points)) {
     throw new Error('Structural Face: at least three finite boundary points are required');

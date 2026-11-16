@@ -357,7 +357,8 @@ function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placem
     outline: outline.points.map(([x, y]) => toWorld([x, y, 0])),
     extrusion: sub(toWorld(scale(unitDir, depth)), toWorld([0, 0, 0])),
     outlineExact: outline.exact,
-    ...(upper(profile) === 'IFCARBITRARYPROFILEDEFWITHVOIDS' ? { profileHasVoids: true } : {}),
+    ...(['IFCARBITRARYPROFILEDEFWITHVOIDS', 'IFCRECTANGLEHOLLOWPROFILEDEF'].includes(upper(profile)) ? { profileHasVoids: true } : {}),
+    ...(upper(profile) === 'IFCROUNDEDRECTANGLEPROFILEDEF' ? { outlineRounded: true } : {}),
     ...(outline.centroid ? { centroid: toWorld([outline.centroid[0], outline.centroid[1], 0]) } : {}),
   };
 }

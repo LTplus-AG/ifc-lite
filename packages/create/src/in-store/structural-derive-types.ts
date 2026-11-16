@@ -144,8 +144,10 @@ export interface PrismFact {
   extrusion: Vec3;
   /** False when `outline` is only the profile's bounding rectangle (I-shapes, circles, ...). */
   outlineExact: boolean;
-  /** The outer outline omits inner profile voids. */
+  /** The outer outline omits inner profile voids (a profile with voids, a hollow rectangle). */
   profileHasVoids?: boolean;
+  /** The outline squares off rounded corners (a rounded rectangle read as its rectangle). */
+  outlineRounded?: boolean;
   /** The profile's centroid on the base plane, when it is not the centre of the bounds (L, T, U, C sections). */
   centroid?: Vec3;
 }

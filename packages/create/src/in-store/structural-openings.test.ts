@@ -192,6 +192,27 @@ ENDSEC;\nEND-ISO`);
     expect(plan.surfaceMembers.find(m => m.elementId === wall.expressId)!.openings).toEqual([]);
     expect(plan.report.skippedOpenings).toMatchObject([{ reason: 'opening-profile-has-voids' }]);
   });
+  it.each([
+    ['IFCRECTANGLEHOLLOWPROFILEDEF(.AREA.,$,#90011,2.,0.6,0.1,$,$)', 'opening-profile-has-voids'],
+    ['IFCROUNDEDRECTANGLEPROFILEDEF(.AREA.,$,#90011,2.,0.6,0.1)', 'unsupported-opening-section'],
+  ])('skips %s instead of cutting a hole larger than the physical opening', async (profile, reason) => {
+    const text = physicalModel(true).replace(/IFCARBITRARYCLOSEDPROFILEDEF\(.AREA.,\$,#[0-9]+\)/, profile)
+      .replace('ENDSEC;\nEND-ISO', `
+#90011=IFCAXIS2PLACEMENT2D(#90012,$);
+#90012=IFCCARTESIANPOINT((-2.,0.));
+ENDSEC;\nEND-ISO`);
+    const s = await session(text);
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    const wall = facts.elements.find(e => e.type === 'IfcWall')!;
+    wall.openings = wall.openings!.filter(o => o.name === 'two intervals');
+    expect(wall.openings[0].prism?.outlineExact).toBe(true);
+    const plan = planStructuralDerivation(facts);
+    expect(plan.surfaceMembers.find(m => m.elementId === wall.expressId)!.openings).toEqual([]);
+    expect(plan.report.skippedOpenings).toMatchObject([{ reason }]);
+  });
+  it('treats Openings: null from a JSON caller as no openings', () => {
+    expect(prepareStructuralFace(boundary, null).openings).toEqual([]);
+  });
   it('reports a missing voiding entity as unreadable', async () => {
     const s = await session(physicalModel().replace(/#(\d+)=IFCOPENINGELEMENT[^;]+;/g, ''));
     const facts = readStructuralDerivationFacts(s.store, s.editor);
@@ -427,7 +448,7 @@ describe('opening review regressions', () => {
     plan.surfaceMembers.forEach(m => Reflect.deleteProperty(m, 'openings'));
     expect(() => applyStructuralDerivation(s.editor,s.store,plan)).not.toThrow();
   });
-  it.each([null, {}])('validates a non-array Openings value %s before emitting', async Openings => {
+  it.each([{}, 'x'])('validates a non-array Openings value %s before emitting', async Openings => {
     const s = await session();
     const before = s.editor.getNewEntities().length;
     // Deliberately malformed plain data from an untyped caller.

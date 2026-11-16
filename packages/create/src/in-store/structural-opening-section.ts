@@ -103,6 +103,8 @@ export function plateOpenings(element: PhysicalElementFact, plate: { boundary: V
     const prism = opening.prism;
     if (!prism) { reject('unreadable-opening', opening.shapeIssue ?? 'unreadable body'); continue; }
     if (prism.profileHasVoids) { reject('opening-profile-has-voids', 'opening profile has inner voids'); continue; }
+    // A hole larger than the physical cut would remove material the element keeps.
+    if (prism.outlineRounded) { reject('unsupported-opening-section', 'rounded profile corners are not carried'); continue; }
     if (!prism.outlineExact) { reject('unsupported-opening-section', 'profile outline is known only as bounds'); continue; }
     const ring = openingSection(prism, plate.boundary[0], normal, plate.thickness, tolerance);
     if (typeof ring === 'string') { reject('unsupported-opening-section', ring); continue; }

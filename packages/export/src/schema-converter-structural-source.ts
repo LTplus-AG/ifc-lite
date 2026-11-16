@@ -101,9 +101,16 @@ export function bareMeasure(token: string | undefined, type: string): string | n
 }
 
 /** The text of a STEP string token, or null. Only compared with fixed names here, so escapes need no decoding. */
-export const stepString = (token: string | undefined): string | null =>
-  // STEP comments may sit around the string (#10248); the fixed names compared here hold none.
-  /^\s*'(.*)'\s*$/s.exec((token ?? '').replace(/\/\*[\s\S]*?\*\//g, ''))?.[1] ?? null;
+export function stepString(token: string | undefined): string | null {
+  // STEP whitespace and comments may sit around the string (#10248), never inside the quotes.
+  const text = token ?? '';
+  const start = skipStepTrivia(text, 0);
+  if (start < 0 || text[start] !== "'") return null;
+  // The closing quote: STEP writes a quote inside a string as ''.
+  let end = start + 1;
+  while (end < text.length && (text[end] !== "'" || text[end + 1] === "'")) end += text[end] === "'" ? 2 : 1;
+  return end < text.length && skipStepTrivia(text, end + 1) === text.length ? text.slice(start + 1, end) : null;
+}
 
 /** A property set attached by an IfcRelDefinesByProperties, read from the source. */
 export interface CarrierSet {

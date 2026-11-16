@@ -461,11 +461,21 @@ describe('varying thickness with property-set locations #9668', () => {
     const plain = await convert(ifc4.replace(',(#40,#41,#42,#43));', ',(#40,#41,#42));'), 'IFC2X3');
     expect(line(plain.step, 20)).toMatch(/,0\.2,\(0\.25,0\.3\),#17\);$/);
     // An empty location property gives no location.
-    const empty = await convert(ifc4.replace("'Location1Local',$,(IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.)),$)", "'Location1Local',$,$,$)"), 'IFC2X3');
-    expect(line(empty.step, 20)).toMatch(/,0\.2,\(0\.25,0\.3\),#17\);$/);
+    for (const blank of ["'Location1Local',$,$,$)", "'Location1Local',$,(),$)"]) {
+      const empty = await convert(ifc4.replace("'Location1Local',$,(IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.)),$)", blank), 'IFC2X3');
+      expect(line(empty.step, 20)).toMatch(/,0\.2,\(0\.25,0\.3\),#17\);$/);
+      expect(empty.warnings).not.toContain('gives Location properties');
+    }
+    // A location given another way (a bounded value) still counts.
+    const bounded = await convert(ifc4.replace("IFCPROPERTYLISTVALUE('Location1Local',$,(IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.)),$)", "IFCPROPERTYBOUNDEDVALUE('Location1Local',$,$,IFCLENGTHMEASURE(1.),$,$)"), 'IFC2X3');
+    expect(line(bounded.step, 20)).toContain(',.SHELL.,0.2,$,$);');
     // Not writable anyway (a second aspect): the location reason is not given.
     const twoAspects = await convert(ifc4.replace('#20=', "#18=IFCSHAPEASPECT((#14),$,$,.T.,#15);\n#20="), 'IFC2X3');
+    expect(line(twoAspects.step, 20)).toContain(',.SHELL.,0.2,$,$);');
     expect(twoAspects.warnings).not.toContain('gives Location properties');
+    // The member's own Thickness unset: Thickness1 still fills it (WR61).
+    const ownUnset = await convert(ifc4.replace(',.SHELL.,0.2);', ',.SHELL.,$);'), 'IFC2X3');
+    expect(line(ownUnset.step, 20)).toContain(',.SHELL.,0.2,$,$);');
   });
 
   it('does not count a located set as holding the thicknesses on the upgrade', async () => {
@@ -494,5 +504,8 @@ describe('varying thickness with property-set locations #9668', () => {
 #21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
 #30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes' /* why */,$,(#20),$,#21);`);
     expect(line((await convert(ifc4, 'IFC2X3')).step, 21)).toContain(',.F.,#20,.TRUE_LENGTH.);');
+    // A comment inside the quotes is part of the name, which then is not 'Causes'.
+    const inside = ifc4.replace("'Causes' /* why */", "'Causes/* old */'");
+    expect(line((await convert(inside, 'IFC2X3')).step, 21)).toContain(',.F.,$,.TRUE_LENGTH.);');
   });
 });

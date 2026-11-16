@@ -29,6 +29,12 @@ const THICKNESS_LOCATED = `${THICKNESS_PSET} gives Location properties, which ca
 export const THICKNESS_WRITTEN = `IFC2X3 SubsequentThickness is held in IFC4 as ${THICKNESS_PSET} Thickness1 to Thickness3`;
 const THICKNESS_READ = `${THICKNESS_PSET} Thickness1 to Thickness3 are written as the IFC2X3 Thickness and SubsequentThickness, located by the one IfcShapeAspect of the member's representation`;
 
+/** Whether a property record is a single or list value with no value: `$` or `()`. Anything else, or unreadable, counts as a value. */
+function emptyValue(type: string | undefined, args: readonly string[] | undefined): boolean {
+  if (!args || (type !== 'IFCPROPERTYSINGLEVALUE' && type !== 'IFCPROPERTYLISTVALUE')) return false;
+  return slotUnset(args[2] ?? '') || listItems(args[2] ?? '')?.length === 0;
+}
+
 /** The bare number of a thickness token, `0.2` or `IFCPOSITIVELENGTHMEASURE(0.2)`, or null unless positive. */
 function thickness(token: string | undefined): string | null {
   const bare = bareMeasure(token, 'IFCPOSITIVELENGTHMEASURE');
@@ -74,8 +80,8 @@ export class StructuralThickness {
         // A value in its own unit would need converting; only one in the project's length unit is read.
         return args && slotUnset(args[3] ?? '$') ? thickness(args[2]) : null;
       });
-      // A location property counts only when it holds a value.
-      const givesLocations = [...set.props].some(([name, prop]) => /^Location[123](?:Local|Global)$/.test(name) && !slotUnset(source.slots(prop)?.[2] ?? '$'));
+      // A location property counts unless it is a single or list value that is plainly empty.
+      const givesLocations = [...set.props].some(([name, prop]) => /^Location[123](?:Local|Global)$/.test(name) && !emptyValue(source.type(prop), source.slots(prop)));
       for (const member of set.related) {
         if (source.type(member) !== ENTITY) continue;
         if (givesLocations) this.located.add(member);
@@ -105,9 +111,9 @@ export class StructuralThickness {
     // Held only where the location comes back too, so the round trip is exact.
     const location = slotRef(args[10]);
     if (location === null || this.aspectOf(args[6]) !== location || !this.pointAspects.has(location)) return [];
-    const existing = this.psets.get(id);
     // A set giving locations is not read back by the downgrade, so it does not hold them.
-    if (existing && this.located.has(id)) return [];
+    if (this.located.has(id)) return [];
+    const existing = this.psets.get(id);
     if (existing) {
       // A property set the member already has holds the thicknesses only when its values are these.
       if (existing.length !== 3 || existing.some((v, i) => parseStepNumber(v) !== parseStepNumber(values[i]!))) return [];
@@ -127,9 +133,10 @@ export class StructuralThickness {
     // IFC2X3's VaryingThickness starts with Thickness (WR61 requires it).
     const own = thickness(args[8]);
     if (own !== null && parseStepNumber(own) !== parseStepNumber(first)) return undefined;
-    // Writable but for the set's locations: written as without a set (both slots $), with the reason.
-    if (this.located.has(id)) return { body: `${ENTITY}(${[...args, '$', '$'].join(',')})`, losses: [THICKNESS_LOCATED] };
-    const values = [...args.slice(0, 8), own === null ? first : args[8], `(${rest.join(',')})`, `#${aspect}`];
+    const base = [...args.slice(0, 8), own === null ? first : args[8]];
+    // Writable but for the set's locations: Thickness1 is still the member's thickness; the rest is not written.
+    if (this.located.has(id)) return { body: `${ENTITY}(${[...base, '$', '$'].join(',')})`, losses: [THICKNESS_LOCATED] };
+    const values = [...base, `(${rest.join(',')})`, `#${aspect}`];
     return { body: `${ENTITY}(${values.join(',')})`, losses: [THICKNESS_READ] };
   }
 

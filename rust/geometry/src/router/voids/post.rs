@@ -62,10 +62,13 @@ pub(super) fn finish(mut result: Mesh, context: PostContext<'_>) -> Mesh {
     // ⇒ cut volume is preserved exactly. A no-op on clean cuts (no triangle
     // exceeds 8:1), so it does not perturb the frozen corpus. Only runs when
     // a cut was actually attempted (`!ctx.is_noop()` guarantees this path).
+    // The split is kept only when it leaves the mesh better by the census's
+    // sliver measure (`facet_weld::adopt`): on a thin host it only multiplied
+    // the host's own needles.
     // This canonicalizer is likewise not a hygiene boundary: fresh sub-grid
     // candidates require handling by the remaining repair/clip/sweep path,
     // independently of the router's earlier source cleanup (#4797).
-    result = crate::facet_weld::refine_high_aspect_slivers(&result);
+    result = crate::facet_weld::refine_slivers_if_better(result);
 
     // UNDER-CUT REPAIR: a self-intersecting tessellated cutter (garbage
     // vertices metres from the real opening) makes the kernel UNDER-cut — a

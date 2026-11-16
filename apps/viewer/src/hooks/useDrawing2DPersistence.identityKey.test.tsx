@@ -129,6 +129,24 @@ afterEach(async () => {
 });
 
 describe('drawing persistence is keyed by the placement identity (#7035)', () => {
+  for (const edited of [false, true]) it(`#10264 does not hash refused provisional source with unsaved sheet edit=${edited}`, async () => {
+    const bytes = bytesOf(23);
+    const file = sourceFile(bytes, 'refused-before-read.ifc');
+    const before = { full: fullSourcePasses(), legacy: legacyPasses() };
+    await open(loadedModel('refused-source', file, bytes, { loadState: 'streaming-geometry', sourceContentHash: undefined }), false);
+    assert.equal(hasPersistedMarkupEntryFor('refused-source'), 'pending');
+    if (edited) await act(async () => { useViewerStore.getState().createSheet({ paperId: 'A4_PORTRAIT' }); });
+    const sheet = useViewerStore.getState().activeSheet;
+    await act(async () => { useViewerStore.getState().updateModel('refused-source', { loadState: 'error', loadError: 'Local memory admission refused this source' }); });
+    await waitFor(() => hasPersistedMarkupEntryFor('refused-source') !== 'pending', 'refused source persistence to settle without a hash');
+    assert.equal(fullSourcePasses() - before.full, 0, 'a failed provisional model must not launch the full-source identity worker');
+    assert.equal(legacyPasses() - before.legacy, 0);
+    assert.equal(wholeFileReads, 0);
+    assert.equal(useViewerStore.getState().models.get('refused-source')?.sourceContentHash, undefined);
+    assert.deepEqual(legacyShapedKeys(), []);
+    if (edited) assert.equal(useViewerStore.getState().activeSheet, sheet, 'unsaved edit remains in memory without a source read');
+  });
+
   it('new saves use the identity key, without a pass over the file', async () => {
     const bytes = bytesOf(1);
     const file = sourceFile(bytes);

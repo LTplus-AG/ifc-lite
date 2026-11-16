@@ -90,6 +90,11 @@ describe('viewer_screenshot', () => {
     assert.equal(captured, 0);
   });
 
+  it('refuses null optional arguments like any other wrong value', async () => {
+    await assert.rejects(run(fakeDeps({ width: 10, height: 10 }), { format: null }), { code: 'INVALID_INPUT' });
+    await assert.rejects(run(fakeDeps({ width: 10, height: 10 }), { max_width: null }), { code: 'INVALID_INPUT' });
+  });
+
   it('fails clearly when the capture produced nothing or too much', async () => {
     await assert.rejects(run({ ...fakeDeps({ width: 10, height: 10 }), capture: async () => null }), { code: 'INTERNAL_ERROR' });
     const huge = { ...fakeDeps({ width: 10, height: 10 }), capture: async () => `data:image/png;base64,${PNG}${'A'.repeat(4 * 1024 * 1024)}` };

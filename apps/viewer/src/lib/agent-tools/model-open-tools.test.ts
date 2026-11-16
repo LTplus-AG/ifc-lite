@@ -56,8 +56,9 @@ async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[]): Promi
 beforeEach(() => {
   fetched = []; calls = []; behaviour = 'load';
   respond = () => new Response(new Uint8Array([73, 83, 79]), { status: 200 });
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     fetched.push(String(input));
+    if (init?.signal?.aborted) throw init.signal.reason;
     return respond();
   }) as typeof fetch;
   unregister = registerAgentModelLoader({
@@ -137,10 +138,9 @@ describe('viewer_open_model', () => {
     unregister();
     await assert.rejects(run({ sample: 'demo' }), { code: 'UNSUPPORTED_OPERATION', message: /no file loader/ });
   });
-  it('treats null like an absent argument, as clients that send unset fields expect', async () => {
-    await assert.rejects(run({ sample: null }), { code: 'INVALID_INPUT', message: /exactly one/ });
-    const out = await run({ sample: 'demo', url: null, mode: null });
-    assert.equal((out.structured as { mode: string }).mode, 'replace');
+  it('refuses an explicit null like any other wrong value', async () => {
+    await assert.rejects(run({ sample: null }), { code: 'INVALID_INPUT', message: /sample must be one of/ });
+    await assert.rejects(run({ sample: 'demo', mode: null }), { code: 'INVALID_INPUT', message: /mode must be one of/ });
   });
 
   it('names a download from Content-Disposition and survives a malformed escape', async () => {
@@ -183,6 +183,34 @@ describe('viewer_open_model', () => {
       assert.equal((out.structured as { state: string }).state, 'loading');
       assert.deepEqual((out.structured as { models: unknown[] }).models, [], 'no placeholder model ids');
       assert.match(out.text, /Do not retry/);
+    } finally {
+      mock.timers.reset();
+    }
+  });
+  it('abandons a download that outlasts the call budget, before anything changes', async (t) => {
+    t.mock.method(AbortSignal, 'timeout', () => AbortSignal.abort(new DOMException('signal timed out', 'TimeoutError')));
+    await assert.rejects(run({ url: 'https://example.com/slow.ifc' }), { code: 'UNSUPPORTED_OPERATION', message: /did not finish within/ });
+    await assert.rejects(run({ sample: 'demo' }), { code: 'UNSUPPORTED_OPERATION', message: /did not finish within/ }, 'samples get the budget too');
+    assert.deepEqual(calls, []);
+  });
+
+  it('uses the URL path when filename is empty, and never invents a name', async () => {
+    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename=""' } });
+    await run({ url: 'https://example.com/scan.glb' });
+    assert.equal(calls.at(-1)!.names[0], 'scan.glb');
+    respond = () => new Response(new Uint8Array([1]), { status: 200 });
+    await assert.rejects(run({ url: 'https://example.com/', mode: 'add' }), { code: 'INVALID_INPUT', message: /not a model file/ });
+  });
+
+  it('lists no models while a replace is still loading', async () => {
+    useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
+    behaviour = 'hang';
+    mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+    try {
+      const pending = run({ sample: 'demo', mode: 'replace' });
+      while (calls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+      mock.timers.tick(OPEN_MODEL_WAIT_MS);
+      assert.deepEqual(((await pending).structured as { models: unknown[] }).models, []);
     } finally {
       mock.timers.reset();
     }

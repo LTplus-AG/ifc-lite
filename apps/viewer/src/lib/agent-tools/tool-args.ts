@@ -2,7 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Argument checks and the commands-and-edits grant, shared by the viewer-native agent tools. */
+/**
+ * Argument checks and the commands-and-edits grant, shared by the viewer-native
+ * agent tools. Only an absent key takes a default: an explicit null is invalid
+ * like any other wrong value (the discovery hardening tests pin this).
+ */
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { assertDispatchActive } from './cancellation';
@@ -48,8 +52,7 @@ export function integer(args: Record<string, unknown>, key: string, fallback: nu
 
 /** One of `choices`, or `fallback` when absent. */
 export function oneOf<T extends string>(args: Record<string, unknown>, key: string, choices: readonly T[], fallback?: T): T | undefined {
-  // null counts as absent: some clients send unset optional fields as null.
-  const value = args[key] ?? fallback;
+  const value = args[key] === undefined ? fallback : args[key];
   if (value !== undefined && !choices.includes(value as T)) invalid(`${key} must be one of: ${choices.join(', ')}.`);
   return value as T | undefined;
 }

@@ -13,12 +13,12 @@
  * user gets.
  */
 
-import { ToolErrorCode } from '@ifc-lite/mcp/browser';
+import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { getViewerStoreApi, type ViewerState } from '@/store';
 import { isFeatureEnabled } from '@/lib/features';
 import { collectChangedModels, totalChangeCount } from '@/lib/export/model-changes';
 import { isSupportedModelFile } from '@/services/supported-model-files';
-import { DEMO_KIT_PATHS, fetchSampleFile, waitForModelSettled } from '@/lib/tours/demo-kit';
+import { DEMO_KIT_PATHS, fetchSampleFile, waitForLoadIdle } from '@/lib/tours/demo-kit';
 import { getAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
 import { CALL_LIMITS } from '@/lib/agent-bridge/call-admission';
 import { assertGranted, fail, invalid, keys, oneOf } from './tool-args';
@@ -84,8 +84,9 @@ function parseArgs(args: Record<string, unknown>, state: ViewerState): OpenReque
   return { source, mode: mode ?? 'replace' };
 }
 
-/** `text` percent-decoded, or as given when its escapes are malformed. */
-function decoded(text: string): string {
+/** Percent-decode `text` as UTF-8, or byte-per-character for ISO-8859-1; as given when malformed. */
+function percentDecoded(text: string, charset = 'utf-8'): string {
+  if (/^iso-8859-1$/i.test(charset)) return text.replace(/%([0-9a-f]{2})/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
   try {
     return decodeURIComponent(text);
   } catch (err) {
@@ -94,30 +95,41 @@ function decoded(text: string): string {
   }
 }
 
+/** `Content-Disposition` parameters by lower-case name, quoted strings unescaped. */
+function dispositionParams(header: string): Map<string, string> {
+  const params = new Map<string, string>();
+  for (const [, key, quoted, bare] of header.matchAll(/;\s*([^\s=;]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]*))/g)) {
+    params.set(key.toLowerCase(), quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare.trim());
+  }
+  return params;
+}
+
 /**
- * The name from Content-Disposition (RFC 6266: `filename*` with its charset
- * and language prefix wins over `filename`), else the URL's last path segment.
- * Cross-origin, the header is only readable when the server exposes it
- * (Access-Control-Expose-Headers), so the URL path is the usual source.
+ * The name from Content-Disposition (RFC 6266: `filename*`, `charset'lang'value`,
+ * wins over `filename`), else the URL's last path segment; empty when neither
+ * names a file, so the extension check refuses it. Cross-origin, the header is
+ * only readable when the server exposes it (Access-Control-Expose-Headers).
  */
 function fileNameOf(url: URL, res: Response): string {
-  const disposition = res.headers.get('content-disposition') ?? '';
-  const extended = /filename\*\s*=\s*"?[^']*'[^']*'([^";]+)/i.exec(disposition)?.[1];
-  const plain = /filename\s*=\s*(?:"([^"]*)"|([^;\s]+))/i.exec(disposition);
-  const raw = extended !== undefined ? decoded(extended.trim()) : plain ? (plain[1] ?? plain[2]) : decoded(url.pathname.split('/').filter(Boolean).pop() ?? '');
-  return raw.split(/[\\/]/).pop() || 'model.ifc';
+  const params = dispositionParams(res.headers.get('content-disposition') ?? '');
+  const extended = /^([^']*)'[^']*'(.+)$/.exec(params.get('filename*') ?? '');
+  const raw = extended ? percentDecoded(extended[2], extended[1])
+    : params.get('filename') || percentDecoded(url.pathname.split('/').filter(Boolean).pop() ?? '');
+  return raw.split(/[\\/]/).pop() ?? '';
 }
 
 /**
  * The body as a File, refusing once it passes the limit rather than after
  * buffering all of it (chunked or compressed bodies have no usable length).
- * Bytes are counted as they stream; the browser still holds them once.
+ * Bytes are counted as they stream; the browser holds the body once.
  */
 async function readLimited(res: Response, url: URL, name: string): Promise<File> {
   const tooBig = () => fail(ToolErrorCode.INVALID_INPUT, `${url.href} is larger than ${OPEN_MODEL_MAX_BYTES} bytes, the limit for an agent download.`);
   if (Number(res.headers.get('content-length')) > OPEN_MODEL_MAX_BYTES) tooBig();
-  if (!res.body) return new File([await res.blob()], name);
+  if (!res.body) return new File([], name); // a null-body response (204, 205, 304)
   let total = 0;
+  // Response.blob() wraps a stream error in its own, so the limit is remembered here rather than recognised there.
+  let overLimit = false;
   const reader = res.body.getReader();
   const limited = new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -125,6 +137,7 @@ async function readLimited(res: Response, url: URL, name: string): Promise<File>
       if (done) { controller.close(); return; }
       total += value.byteLength;
       if (total > OPEN_MODEL_MAX_BYTES) {
+        overLimit = true;
         controller.error(new RangeError('download limit'));
         await reader.cancel();
         return;
@@ -136,7 +149,7 @@ async function readLimited(res: Response, url: URL, name: string): Promise<File>
   try {
     return new File([await new Response(limited).blob()], name);
   } catch (err) {
-    if (total > OPEN_MODEL_MAX_BYTES) tooBig();
+    if (overLimit) tooBig();
     throw err;
   }
 }
@@ -153,7 +166,7 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
   if (!res.ok) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `Fetching ${url.href} returned HTTP ${res.status}.`);
   const file = await readLimited(res, url, fileNameOf(url, res));
   if (!isSupportedModelFile(file)) {
-    invalid(`${file.name} is not a model file the viewer opens (IFC, IFCX, glTF/GLB, point clouds, splats). Use a URL whose path ends in the file's extension (a cross-origin Content-Disposition name is only readable when the server exposes that header).`);
+    invalid(`${file.name || 'The download'} is not a model file the viewer opens (IFC, IFCX, glTF/GLB, point clouds, splats). Use a URL whose path ends in the file's extension (a cross-origin Content-Disposition name is only readable when the server exposes that header).`);
   }
   return file;
 }
@@ -162,18 +175,16 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
 async function filesFor(source: Source, signal?: AbortSignal): Promise<File[]> {
   if (source.kind === 'url') return [await download(source.url, signal)];
   const { path } = OPEN_MODEL_SAMPLES[source.id];
-  if (path) return [await fetchSampleFile(path, path.split('/').pop()!)];
+  if (path) return [await fetchSampleFile(path, path.split('/').pop()!, signal)];
   if (!isFeatureEnabled('files.samples')) fail(ToolErrorCode.UNSUPPORTED_OPERATION, 'Sample models are switched off in this viewer.');
   const { buildDemoLayerFiles } = await import('@/lib/layers/demo-stack');
-  return buildDemoLayerFiles();
+  return buildDemoLayerFiles(signal);
 }
 
-async function openModel(rawArgs: Record<string, unknown>, ctx: ToolCallContext): Promise<ToolOutput> {
+async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): Promise<ToolOutput> {
   // The tab answers every call within CALL_LIMITS.callTimeoutMs of starting it, download included.
   const deadline = Date.now() + OPEN_MODEL_WAIT_MS;
   assertGranted(ctx);
-  // Some clients send unset optional fields as null: treat them as absent.
-  const args = Object.fromEntries(Object.entries(rawArgs).filter(([, value]) => value !== null));
   const store = getViewerStoreApi();
   const request = parseArgs(args, store.getState());
   const loader = getAgentModelLoader();
@@ -186,8 +197,8 @@ async function openModel(rawArgs: Record<string, unknown>, ctx: ToolCallContext)
   try {
     files = await filesFor(request.source, ctx.signal ? AbortSignal.any([ctx.signal, downloadBudget]) : downloadBudget);
   } catch (err) {
-    if (ctx.signal?.aborted || (err as { code?: unknown }).code) throw err;
-    if (downloadBudget.aborted) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The download did not finish within ${OPEN_MODEL_WAIT_MS / 1000} s. Nothing was loaded; try a smaller file.`);
+    if (ctx.signal?.aborted || err instanceof ToolExecutionError) throw err;
+    if (downloadBudget.aborted) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The download did not finish within ${OPEN_MODEL_WAIT_MS / 1000} s. Nothing was loaded; try a smaller file or a faster host.`);
     return fail(ToolErrorCode.UNSUPPORTED_OPERATION, err instanceof Error ? err.message : String(err));
   }
 
@@ -210,39 +221,28 @@ async function openModel(rawArgs: Record<string, unknown>, ctx: ToolCallContext)
   if (ctx.commitState) ctx.commitState.committing = true;
   const load: Promise<string | null | void> = request.mode === 'add' ? loader.addModel(files[0])
     : files.length > 1 ? loader.loadStack(files) : loader.loadFile(files[0]);
+  const stillLoading = (): ToolOutput => ({
+    text: `${name} is still loading; it continues in the tab. Do not retry. Call model_list until it appears; if it never does, `
+      + 'the load failed: take a viewer_screenshot or ask the user what the viewer reports.',
+    // Placeholder records of the load have no data yet, and a replace is closing the old models: list only models that stay.
+    structured: { mode: request.mode, state: 'loading', loading: name, models: request.mode === 'add' ? openModels().filter((m) => !m.new) : [] },
+  });
   const loaded = await within(load.then((id) => ({ id })), deadline - Date.now());
-  if (!loaded) {
-    return {
-      text: `${name} is still loading; it continues in the tab. Do not retry. Call model_list until it appears; if it never does, `
-        + 'the load failed: take a viewer_screenshot or ask the user what the viewer reports.',
-      // Placeholder records of the load in progress have no data yet: list only the models that were already open.
-      structured: { mode: request.mode, state: 'loading', loading: name, models: openModels().filter((m) => !m.new) },
-    };
-  }
+  if (!loaded) return stillLoading();
 
   const after = store.getState();
   if (after.error && after.loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${after.error}`);
   if (loaded.id === null) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not add ${name}. See the viewer for details.`);
-  // loadFile can return without an error and without opening a model (an underlay drape, a geometry-kernel refusal).
-  if (!openModels().some((m) => m.new)) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. See the viewer for why.`);
-  const settled = await settledWithin(deadline - Date.now());
+  // Models can register just after the loader resolves: wait until the pipeline is idle, which needs no model.
+  const settled = await waitForLoadIdle(deadline - Date.now());
   const models = openModels();
   const added = models.filter((m) => m.new);
+  if (added.length === 0 && !settled) return stillLoading();
+  // loadFile can return without an error and without opening a model (an underlay drape, a geometry-kernel refusal).
+  if (added.length === 0) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. See the viewer for why.`);
   const text = `Loaded ${added.map((m) => `${m.name} (model_id ${m.model_id})`).join(', ')}${settled ? '' : '; geometry is still streaming'}. `
     + `${models.length} model(s) now open. Next: query_entities with a model_id, or viewer_screenshot to look at the view.`;
   return { text, structured: { mode: request.mode, state: settled ? 'loaded' : 'streaming', models } };
-}
-
-/** Whether loading and geometry streaming finish within `ms`; false when the time runs out first. */
-async function settledWithin(ms: number): Promise<boolean> {
-  if (ms <= 0) return false;
-  try {
-    await waitForModelSettled(ms);
-    return true;
-  } catch (err) {
-    if (err instanceof Error && /did not settle in time/.test(err.message)) return false;
-    throw err;
-  }
 }
 
 /** `work`'s value, or null once `ms` pass first; the timer is cleared either way. */

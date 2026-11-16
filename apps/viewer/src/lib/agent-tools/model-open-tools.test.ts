@@ -362,4 +362,17 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /HTML page/ });
     assert.deepEqual(calls, []);
   });
+  it('guards URL names and bodies before a replace can close the open models (#9523 code review)', async () => {
+    useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
+    // An encoded separator never reaches the model name.
+    await run({ url: 'https://example.com/x/..%2F..%2Fetc%2Fhouse.ifc', mode: 'add' });
+    assert.equal(calls.at(-1)!.names[0], 'house.ifc');
+    // A .gltf cannot bring its external buffers along.
+    await assert.rejects(run({ url: 'https://example.com/scene.gltf', mode: 'add' }), { code: 'INVALID_INPUT', message: /\.glb/ });
+    // An HTML body under a generic type is still an HTML page.
+    respond = () => new Response('<!DOCTYPE html><title>Sign in</title>', { status: 200, headers: { 'content-type': 'application/octet-stream' } });
+    const before = calls.length;
+    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /HTML page/ });
+    assert.equal(calls.length, before, 'nothing was loaded');
+  });
 });

@@ -17,7 +17,7 @@ import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { getViewerStoreApi, type ViewerState } from '@/store';
 import { isFeatureEnabled } from '@/lib/features';
 import { collectChangedModels, totalChangeCount } from '@/lib/export/model-changes';
-import { isSupportedModelFile } from '@/services/supported-model-files';
+import { isSupportedModelFile, PICKER_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { DEMO_KIT_PATHS, fetchSampleFile, waitForLoadIdle } from '@/lib/tours/demo-kit';
 import { getAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
 import { CALL_LIMITS } from '@/lib/agent-bridge/call-admission';
@@ -84,18 +84,25 @@ function parseArgs(args: Record<string, unknown>, state: ViewerState): OpenReque
   return { source, mode: mode ?? 'replace' };
 }
 
-/** The file name: the URL path's last segment, percent-decoded (as given when its escapes are malformed). */
+/** The file name: the URL path's last segment, percent-decoded, never carrying an encoded path separator. */
 function fileNameOf(url: URL): string {
   const segment = url.pathname.split('/').filter(Boolean).pop() ?? '';
+  let name = segment;
   try {
-    return decodeURIComponent(segment);
+    name = decodeURIComponent(segment);
   } catch (err) {
     console.warn('[viewer_open_model] keeping a malformed percent-escape as is:', segment, err);
-    return segment;
   }
+  return name.split(/[\\/]/).pop() ?? '';
 }
 
-const MODEL_FORMATS = 'IFC, IFCX, glTF/GLB, Rhino 3DM, LandXML, point clouds, splats';
+/**
+ * Extensions a URL may name: what the viewer opens from one file, derived from the shared format list (so
+ * a build without splats does not offer them). Not `.gltf`: its external buffers and textures do not come
+ * along with a single download.
+ */
+const URL_MODEL_EXTENSIONS = PICKER_FILE_EXTENSIONS.filter((ext) => ext !== '.gltf' && isSupportedModelFile(new File([], `model${ext}`)));
+const isUrlModelName = (name: string) => URL_MODEL_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
 
 /**
  * The body as a File, refusing once it passes the limit rather than after
@@ -134,11 +141,10 @@ async function readLimited(res: Response, url: URL, name: string): Promise<File>
 }
 
 async function download(url: URL, signal?: AbortSignal): Promise<File> {
-  // The name, and so the format, comes from the URL path alone: refused before any network or state change.
-  const name = fileNameOf(url);
-  if (!isSupportedModelFile(new File([], name))) {
-    invalid(`${name || url.href} is not a model file the viewer opens (${MODEL_FORMATS}). Use a URL whose path ends in the file's extension.`);
-  }
+  const notAModel = (name: string, where: string) => invalid(`${name || where} is not a model file the viewer opens from a URL `
+    + `(${URL_MODEL_EXTENSIONS.join(', ')}). Use a URL whose path ends in the file's extension.`);
+  // The name, and so the format, comes from the URL path: refused before any network or state change.
+  if (!isUrlModelName(fileNameOf(url))) notAModel(fileNameOf(url), url.href);
   let res: Response;
   try {
     res = await fetch(url, { credentials: 'omit', signal });
@@ -147,13 +153,20 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
     return fail(ToolErrorCode.UNSUPPORTED_OPERATION,
       `The tab could not fetch ${url.href}. The server must allow cross-origin requests (CORS) from this viewer.`);
   }
-  if (!res.ok) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `Fetching ${url.href} returned HTTP ${res.status}.`);
+  const refuse = (message: string): never => { void res.body?.cancel(); return fail(ToolErrorCode.UNSUPPORTED_OPERATION, message); };
+  if (!res.ok) refuse(`Fetching ${url.href} returned HTTP ${res.status}.`);
+  // After redirects the bytes are those of the final URL: name (and route) them by it.
+  const finalUrl = res.url ? new URL(res.url) : url;
+  const name = fileNameOf(finalUrl);
+  if (!isUrlModelName(name)) { void res.body?.cancel(); notAModel(name, finalUrl.href); }
   // An error or sign-in page served under a model URL must not replace the user's models.
-  if (/^text\/html\b/i.test(res.headers.get('content-type') ?? '')) {
-    fail(ToolErrorCode.UNSUPPORTED_OPERATION, `${url.href} returned an HTML page, not a model. Nothing was loaded.`);
-  }
+  if (/^(?:text\/html|application\/xhtml\+xml)\b/i.test(res.headers.get('content-type') ?? '')) refuse(`${url.href} returned an HTML page, not a model. Nothing was loaded.`);
   const file = await readLimited(res, url, name);
   if (file.size === 0) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `${url.href} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
+  // Whatever the server called it: a body that starts like an HTML document is one.
+  if (/^\s*<(?:!doctype\s+html|html[\s>])/i.test(await file.slice(0, 512).text())) {
+    fail(ToolErrorCode.UNSUPPORTED_OPERATION, `${url.href} returned an HTML page, not a model. Nothing was loaded.`);
+  }
   return file;
 }
 

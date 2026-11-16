@@ -42,6 +42,8 @@
     "@ifc-lite/drawing-2d": "workspace:^",
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",
+    "@ifc-lite/geo": "workspace:^",
+    "@ifc-lite/georef-check": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/lens": "workspace:^",

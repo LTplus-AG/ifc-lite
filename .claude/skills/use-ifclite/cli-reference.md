@@ -151,13 +151,18 @@ ifc-lite georef set model.ifc --epsg 2056 --map-unit METRE \
   --eastings 2600000 --northings 1200000 --height 400 --rotation 12.5 --out geo.ifc
 ifc-lite georef update geo.ifc --height 401 --out geo2.ifc
 ifc-lite georef remove geo.ifc --out plain.ifc
+ifc-lite georef check model.ifc --json        # findings with codes + fix plan; exit 1 on errors (--fail-on)
+ifc-lite georef fix model.ifc --out fixed.ifc # applies only `ready` fixes, re-checks the written file
+ifc-lite georef fix model.ifc --out fixed.ifc --value ProjectedCRS.Name=EPSG:2056 --apply EASTING_ZONE_PREFIX.2
 ```
 
 Fails closed (exit 1, nothing written): a missing CRS/unit/offset, an existing
 georeferencing without `--replace`, no representation context (IFC2X3: no
 IfcSite), contradicting rotation values, factors outside FILE_SCHEMA IFC4X3 / IFC4X3_ADD2. Every write is
 re-read from the written bytes before it is saved. `info --json` carries the
-same `georeferencing` object.
+same `georeferencing` object. `check`/`fix` run offline unless `--allow-network`;
+fixes that need a value list the `--value PATH=V` to pass, and a fix the checker marks
+uncertain (`review`) is never applied.
 
 ## eval / run / schema
 

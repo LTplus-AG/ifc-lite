@@ -171,8 +171,8 @@ ENDSEC;`));
 
   it('show refuses --out, and an unknown subcommand is named', async () => {
     expect(await exitCode(['show', p('ifc4.ifc'), '--out', p('x.json')])).toBe(1);
-    expect(await exitCode(['check', p('ifc4.ifc')])).toBe(1);
-    expect(stderr).toContain('show, set, update, remove');
+    expect(await exitCode(['frobnicate', p('ifc4.ifc')])).toBe(1);
+    expect(stderr).toContain('show, set, update, remove, check, fix');
   });
 
   it('prints its own help', async () => {

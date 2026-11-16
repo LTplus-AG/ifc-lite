@@ -13,7 +13,7 @@
  */
 
 import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
-import { epsgName, GeoreferencingError, type GeoreferencingSetInput, type GeoreferencingUpdateInput, type GeoreferencingWriteResult } from '@ifc-lite/sdk';
+import { epsgName, GeoreferencingError, type GeorefSiteInput, type GeoreferencingSetInput, type GeoreferencingUpdateInput, type GeoreferencingWriteResult } from '@ifc-lite/sdk';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -53,7 +53,8 @@ function numberProps(names: string[]): Record<string, { type: 'number' }> {
 export const georeferencingWriteTool: Tool = {
   name: 'georeferencing_write',
   description: [
-    'Set, update or remove a model\'s georeferencing. IFC4/IFC4X3 write IfcProjectedCRS + IfcMapConversion (IFC4X3 with FactorX/Y/Z: IfcMapConversionScaled); IFC2X3 writes the ePSet_MapConversion/ePSet_ProjectedCRS property sets on the IfcSite.',
+    'Set, update or remove a model\'s georeferencing, or write its IfcSite position. IFC4/IFC4X3 write IfcProjectedCRS + IfcMapConversion (IFC4X3 with FactorX/Y/Z: IfcMapConversionScaled); IFC2X3 writes the ePSet_MapConversion/ePSet_ProjectedCRS property sets on IfcSite (updates preserve an existing host).',
+    'action "site" writes Site.RefLatitude/RefLongitude (decimal degrees, WGS84) and RefElevation (project length units) on the IfcSite (Site.siteId when there are several).',
     'set needs ProjectedCRS.Name (or epsg), ProjectedCRS.MapUnit (METRE with any SI prefix, FOOT, US SURVEY FOOT), and MapConversion.Eastings/Northings/OrthogonalHeight in map units; rotation as rotationDegrees or XAxisAbscissa+XAxisOrdinate.',
     'Fails closed with the missing input named: nothing is guessed, an existing georeferencing is replaced only with replace=true, a model without an IfcGeometricRepresentationContext (IFC2X3: IfcSite) is refused, contradicting values are refused. Saved by export_ifc / model_save.',
   ].join(' '),
@@ -62,7 +63,13 @@ export const georeferencingWriteTool: Tool = {
     type: 'object',
     properties: {
       model_id: { type: 'string' },
-      action: { type: 'string', enum: ['set', 'update', 'remove'] },
+      action: { type: 'string', enum: ['set', 'update', 'remove', 'site'] },
+      Site: {
+        type: 'object',
+        properties: { siteId: { type: 'integer', minimum: 1 }, RefLatitude: { type: 'number' }, RefLongitude: { type: 'number' }, RefElevation: { type: 'number' } },
+        additionalProperties: false,
+        description: 'action "site" only.',
+      },
       ProjectedCRS: { type: 'object', properties: stringProps(CRS_PROPS), additionalProperties: false },
       MapConversion: { type: 'object', properties: numberProps(MC_PROPS), additionalProperties: false },
       epsg: { type: 'integer', minimum: 1, description: 'Convenience for ProjectedCRS.Name = "EPSG:<code>".' },
@@ -88,7 +95,18 @@ export const georeferencingWriteTool: Tool = {
   },
 };
 
+function writeSite(input: Record<string, unknown>, ctx: Parameters<Tool['handler']>[1]) {
+  const m = resolveModel(ctx, input.model_id as string | undefined);
+  if (input.ProjectedCRS || input.MapConversion || input.epsg !== undefined || input.rotationDegrees !== undefined || input.replace !== undefined) {
+    throw invalid('action "site" takes only Site.');
+  }
+  const result = m.bim.georef.setSite((input.Site ?? {}) as GeorefSiteInput);
+  return okResult(`IfcSite #${result.siteId} position queued; save with export_ifc or model_save.`, { action: 'site', site: result });
+}
+
 function writeGeoreferencing(input: Record<string, unknown>, ctx: Parameters<Tool['handler']>[1]) {
+  if (input.action === 'site') return writeSite(input, ctx);
+  if (input.Site !== undefined) throw invalid('Site applies to action "site" only.');
   const m = resolveModel(ctx, input.model_id as string | undefined);
   const action = input.action as 'set' | 'update' | 'remove';
   const crs = { ...(input.ProjectedCRS as Record<string, string> | undefined) };

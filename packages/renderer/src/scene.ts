@@ -25,6 +25,7 @@ export type { TexturedMesh } from './textured-drawable.js';
 import { interleaveTexturedVertices } from './textured-vertices.js';
 import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
+import { visitSceneCpuGeometry, type CpuGeometryVisitor, type SceneCpuGeometryHost } from './cpu-geometry-visit.js';
 import type { Mesh, BatchedMesh, Vec3, PickClipState } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { hostsOtherEntities } from './mesh-entity-hosting.js';
@@ -608,6 +609,9 @@ export class Scene {
 
   /** CPU bytes held by bucket meshData (positions + normals + indices). */
   getResidentCpuBytes(): number { return residentCpuBytes(this.buckets.values()); }
+
+  /** Diagnostic (#10264): every CPU geometry array the scene references, by holder; views only, nothing when not called. */
+  visitCpuGeometry(visit: CpuGeometryVisitor): void { visitSceneCpuGeometry(this as unknown as SceneCpuGeometryHost, visit); }
 
   /** A bucket whose content diverged from what the cache entry holds
    *  (recolour / move / removal) must never be cold-evicted: restoring it

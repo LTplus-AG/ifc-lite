@@ -400,3 +400,20 @@ test('TAB_ALIVE_INVARIANT: no kill accounting makes an alive, interactive tab ki
     }
   }
 });
+
+test('#10264 S0 cpuGeometrySummary: MiB per holder, bytes per triangle, null without the hook', () => {
+  const summary = lib().cpuGeometrySummary;
+  assert.equal(typeof summary, 'function', 'cpuGeometrySummary must exist');
+  assert.equal(summary(null, 10), null);
+  assert.equal(summary(undefined, 10), null);
+  const MiB = 2 ** 20;
+  const s = summary({ totalBytes: 84 * MiB, buffers: 3, sharedBytes: 84 * MiB, walkMs: 12.4,
+    byKind: { positions: 36 * MiB, normals: 36 * MiB, indices: 12 * MiB, other: 0 },
+    owners: { 'store.models': { reachableBytes: 84 * MiB, exclusiveBytes: 0 }, 'scene.buckets': { reachableBytes: 84 * MiB, exclusiveBytes: 0 } } }, MiB);
+  assert.equal(s.totalMiB, 84);
+  assert.equal(s.bytesPerTriangle, 84);
+  assert.deepEqual(s.owners['scene.buckets'], { reachableMiB: 84, exclusiveMiB: 0 });
+  assert.equal(s.byKindMiB.normals, 36);
+  assert.equal(s.walkMs, 12);
+  assert.equal(summary({ totalBytes: 0, owners: {} }, 0).bytesPerTriangle, null);
+});

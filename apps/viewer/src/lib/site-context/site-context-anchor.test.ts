@@ -65,3 +65,22 @@ test('a single model without a datum is its own reference: the LN02 assumption i
   const anchor = await resolveSiteContextAnchor('only');
   assert.equal(anchor.ok && anchor.heightAssumed, true);
 });
+
+test('a source with native axes and units (north/east/up, US survey feet) is centred through the canonical renderer frame (#10481 review)', async () => {
+  const offCentre: CoordinateInfo = {
+    ...FRAME,
+    originalBounds: { min: { x: 100, y: 0, z: -40 }, max: { x: 120, y: 10, z: -20 } },
+    shiftedBounds: { min: { x: 100, y: 0, z: -40 }, max: { x: 120, y: 10, z: -20 } },
+  };
+  const base = spatialReferenceFromIfc({
+    mapConversion: conversion, projectedCRS: { id: 3, name: 'EPSG:2056', mapUnitScale: 1, verticalDatum: 'LN02' }, lengthUnitScale: 1, coordinateInfo: offCentre,
+  });
+  const scan = { ...base, source: { axes: ['north', 'east', 'up'] as const, horizontalUnitToMetres: 1200 / 3937, verticalUnitToMetres: 1200 / 3937 } };
+  const model = { ...fixtureModel('scan'), ifcDataStore: undefined, loadedAt: 1, spatialReference: scan, geometryResult: { meshes: [], coordinateInfo: offCentre } } as unknown as FederatedModel;
+  seed(model);
+  const anchor = await resolveSiteContextAnchor('scan');
+  assert.equal(anchor.ok, true);
+  // The renderer's bounds are east/up/south metres: the centre is 110 m east and 30 m north of the conversion origin.
+  assert.ok(anchor.ok && Math.abs(anchor.centre.x - (2_600_000 + 110)) < 0.01, `easting ${anchor.ok && anchor.centre.x}`);
+  assert.ok(anchor.ok && Math.abs(anchor.centre.y - (1_200_000 + 30)) < 0.01, `northing ${anchor.ok && anchor.centre.y}`);
+});

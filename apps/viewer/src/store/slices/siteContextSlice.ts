@@ -127,6 +127,8 @@ export interface SiteContextSlice {
   /** A run that saw its own abort settles, if it is still the current one; never touches a newer run. */
   settleAbortedSiteContextRun: (run: AbortController) => void;
   setSiteContextError: (run: AbortController, message: string | null) => void;
+  /** A site-context model arrived outside any fetch run (a dropped site-context GLB): its category points at it. */
+  recordArrivedSiteContextCategory: (kind: SiteContextLayerKind, patch: Partial<SiteContextCategoryState>) => void;
   registerSiteContextModel: (modelId: string, info: SiteContextModelInfo) => void;
   updateSiteContextModel: (modelId: string, patch: Partial<SiteContextModelInfo>) => void;
 }
@@ -174,7 +176,11 @@ export const createSiteContextSlice: StateCreator<SiteContextSlice, [], [], Site
   beginSiteContextRequest: (request, abort) => {
     get().siteContextAbort?.abort();
     const categories: SiteContextSlice['siteContextCategories'] = {};
-    for (const kind of request.categories) categories[kind] = { status: 'fetching', issues: [], attribution: [] };
+    // A category being fetched again still points at the model that is loaded until a new one replaces it.
+    for (const kind of request.categories) {
+      const loaded = get().siteContextCategories[kind];
+      categories[kind] = { status: 'fetching', issues: [], attribution: [], ...(loaded?.modelId ? { modelId: loaded.modelId, anchorModelId: loaded.anchorModelId } : {}) };
+    }
     set({
       siteContextRequest: request,
       siteContextLastChoice: { radius: request.radius, categories: request.categories, imagery: request.imagery },
@@ -215,6 +221,11 @@ export const createSiteContextSlice: StateCreator<SiteContextSlice, [], [], Site
   settleAbortedSiteContextRun: (run) => set((state) => (state.siteContextAbort === run ? cancelledRun(state) : {})),
 
   setSiteContextError: (run, message) => set((state) => (state.siteContextAbort === run ? { siteContextError: message } : {})),
+
+  recordArrivedSiteContextCategory: (kind, patch) => set((state) => {
+    const current = state.siteContextCategories[kind] ?? { status: 'idle', issues: [], attribution: [] };
+    return { siteContextCategories: { ...state.siteContextCategories, [kind]: { ...current, ...patch } } };
+  }),
 
   registerSiteContextModel: (modelId, info) => set((state) => {
     const models = new Map(state.siteContextModels);

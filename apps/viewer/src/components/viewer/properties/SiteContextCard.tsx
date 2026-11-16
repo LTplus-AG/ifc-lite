@@ -19,6 +19,7 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import type { SiteContextModelInfo } from '@/store/slices/siteContextSlice';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
+import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -48,7 +49,13 @@ function SubjectNotice({ modelId, subject }: { modelId: string; subject: NonNull
     <div className="px-3 py-2 space-y-1" data-testid="site-context-subject">
       <p className="text-xs">{t('siteContext.card.subjectHidden', { name: subject.name, method })}</p>
       <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-xs"
-        onClick={() => { const s = useViewerStore.getState(); if (hidden) s.showEntities(ids); else s.hideEntities(ids); }}>
+        onClick={() => {
+          // Routed like every other hide/show channel (#3338), though these ids are the
+          // context model's own building features, each carrying its own mesh.
+          const s = useViewerStore.getState();
+          const targets = resolvePresentationIds(s.cameraCallbacks?.resolveHighlightIds, ids);
+          if (hidden) s.showEntities(targets); else s.hideEntities(targets);
+        }}>
         {t(hidden ? 'siteContext.card.showSubject' : 'siteContext.card.hideSubject')}
       </Button>
     </div>

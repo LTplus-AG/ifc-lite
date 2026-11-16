@@ -54,6 +54,8 @@ export const REQUIRES_ROUTING_MARKER = new Set([
   // Assistant scene actions (#6907): hide routes its targets through resolvePresentationIds.
   'apps/viewer/src/lib/actions/scene-apply.ts',
   'apps/viewer/src/components/viewer/LensPanel.tsx',
+  // Site context card (#10481): shows/hides the model's own building among the neighbours.
+  'apps/viewer/src/components/viewer/properties/SiteContextCard.tsx',
   'apps/viewer/src/components/viewer/PropertiesPanel.tsx',
   'apps/viewer/src/components/viewer/SearchModal.filter.tsx',
   'apps/viewer-embed/src/bridge/handler.ts',

@@ -38,25 +38,31 @@ const STATUS_KEY = {
   error: 'siteContext.status.error',
 } as const satisfies Record<SiteContextCategoryStatus, string>;
 
-/** Resolve the anchor whenever the model or its georeference changes. */
-function useAnchor(modelId: string): SiteContextAnchor | null {
+/**
+ * Resolve the anchor whenever the model or its georeference changes. A result
+ * is returned only while the inputs that produced it are still the current
+ * ones: after a switch of model or a georeference edit the section has no
+ * anchor (and so no Load) until the new one resolves, never the old centre
+ * paired with the new model (#10481 review).
+ */
+export function useSiteContextAnchor(modelId: string): SiteContextAnchor | null {
   const model = useViewerStore((s) => s.models.get(modelId));
   const mutations = useViewerStore((s) => s.georefMutations.get(modelId));
-  const [anchor, setAnchor] = useState<SiteContextAnchor | null>(null);
+  const [result, setResult] = useState<{ modelId: string; model: unknown; mutations: unknown; anchor: SiteContextAnchor | null } | null>(null);
   useEffect(() => {
     let live = true;
     void resolveSiteContextAnchor(modelId).then(
-      (resolved) => { if (live) setAnchor(resolved); },
-      (error: unknown) => { console.warn('[site-context] anchor resolution failed:', error); if (live) setAnchor(null); },
+      (anchor) => { if (live) setResult({ modelId, model, mutations, anchor }); },
+      (error: unknown) => { console.warn('[site-context] anchor resolution failed:', error); if (live) setResult({ modelId, model, mutations, anchor: null }); },
     );
     return () => { live = false; };
   }, [modelId, model, mutations]);
-  return anchor;
+  return result && result.modelId === modelId && result.model === model && result.mutations === mutations ? result.anchor : null;
 }
 
 export function SiteContextSection({ modelId }: { modelId: string }) {
   const { t, locale } = useTranslation();
-  const anchor = useAnchor(modelId);
+  const anchor = useSiteContextAnchor(modelId);
   const isContextModel = useViewerStore((s) => s.siteContextModels.has(modelId));
   const categories = useViewerStore((s) => s.siteContextCategories);
   const progress = useViewerStore((s) => s.siteContextProgress);

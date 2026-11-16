@@ -17,6 +17,7 @@ import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { resolveProjectionId } from '@/lib/geo/reproject';
 import { mapUnitAssumedMetres } from '@/lib/geo/ifc-spatial-reference';
 import { extractModelSpatialPlacement, findReferenceSpatialModel, type ModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
+import { canonicalRendererPlacement } from '@/hooks/ingest/federationCanonicalReference';
 import { siteContextHeightRefusal } from '@/hooks/ingest/ifcGeorefAssumptions';
 import { modelEgid, modelFootprint } from './site-context-subject';
 
@@ -106,14 +107,18 @@ export async function resolveSiteContextAnchor(modelId: string): Promise<SiteCon
   const heights = siteContextPlacementReference(own.spatialReference) ?? own.spatialReference;
   const declaredOther = siteContextHeightRefusal(heights);
   if (declaredOther) return { ok: false, reason: 'height-datum', detail: declaredOther };
-  const projected = projectedCentre(model, frame);
+  // Renderer-space bounds and meshes are east/up/south metres: project them through the canonical
+  // renderer frame, as federation does, not a source's native axes or units (#10481 review). The raw
+  // `own` reference still answers the CRS-name and map-unit questions below.
+  const rendered = canonicalRendererPlacement(frame);
+  const projected = projectedCentre(model, rendered);
   const centre = projected ? await toLv95(crs, projected[0], projected[1]) : null;
   if (!centre) return { ok: false, reason: 'unknown-crs', detail: crs };
   if (!insideSwitzerland(centre)) return { ok: false, reason: 'outside-switzerland' };
   const egid = modelEgid(model.ifcDataStore);
   let footprint: Array<{ x: number; y: number }> | null = null;
   if (!egid) {
-    const ring = modelFootprint(model, frame);
+    const ring = modelFootprint(model, rendered);
     const lv95 = ring ? await Promise.all(ring.map(([e, n]) => toLv95(crs, e, n))) : [];
     footprint = lv95.length === 4 && lv95.every((p) => p !== null) ? lv95 as Array<{ x: number; y: number }> : null;
   }

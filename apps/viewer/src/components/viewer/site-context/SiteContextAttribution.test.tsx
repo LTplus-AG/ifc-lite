@@ -61,3 +61,20 @@ test('a removed site-context model takes its attribution with it', () => {
   act(() => useViewerStore.setState({ models: new Map() }));
   assert.equal(line(), null);
 });
+
+test('every source stays readable: the line wraps instead of cutting text off behind an ellipsis (#10481 review)', () => {
+  const terrain = fixtureModel('terrain');
+  useViewerStore.setState({ ...fixtureModels(terrain) });
+  render(<SiteContextAttribution />);
+  act(() => {
+    useViewerStore.getState().registerSiteContextModel('terrain', {
+      kind: 'terrain', complete: true, origin: [0, 0, 0], issues: [],
+      attribution: [attribution('swissalti3d', '© swisstopo'), attribution('cadastralwebmap', '© Cadastral surveying (CS) and the cantons')],
+    });
+  });
+  const el = line() as HTMLElement;
+  assert.match(el.textContent ?? '', /© Cadastral surveying \(CS\) and the cantons/);
+  // happy-dom does not lay out: check the rendered element is not set to clip its text.
+  assert.equal(el.classList.contains('truncate'), false);
+  assert.ok(el.classList.contains('whitespace-normal'));
+});

@@ -11,7 +11,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { meshPlanBox, planFineDrape, remapUvs, swissimageLayer, swissimageRequest } from './site-context-imagery';
+import { meshPlanBox, planFineDrape, remapUvs, settleImages, swissimageLayer, swissimageRequest, withRequestTimeout } from './site-context-imagery';
 
 // A 600 m site split into 4 × 4 chunks of 150 m, as the core does at 300 m radius.
 const SITE = [2_680_528, 1_251_142, 2_681_128, 1_251_742] as const;
@@ -50,4 +50,19 @@ test('remapped UVs put the same ground point at the same place in the fine textu
   const edgeInSite = chunkUvs(1, 1)[0];
   const edgeE = SITE[0] + edgeInSite * (SITE[2] - SITE[0]);
   assert.equal(edgeE, fine.box[0]);
+});
+
+test('a failed imagery level closes the image that did arrive, and every request is bounded in time (#10481 review)', async () => {
+  const closed: string[] = [];
+  const image = (name: string) => ({ name, close: () => { closed.push(name); } });
+  await assert.rejects(settleImages([Promise.resolve(image('fine')), Promise.reject(new Error('SWISSIMAGE answered 503'))]), /503/);
+  assert.deepEqual(closed, ['fine']);
+  assert.deepEqual((await settleImages([Promise.resolve(image('a')), Promise.resolve(image('b'))])).map((i) => i.name), ['a', 'b']);
+  const bounded = withRequestTimeout(undefined, 20);
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(bounded.aborted, true, 'a stalled request is given up');
+  const user = new AbortController();
+  const combined = withRequestTimeout(user.signal, 60_000);
+  user.abort();
+  assert.equal(combined.aborted, true, 'the user cancel still aborts it');
 });

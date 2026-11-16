@@ -19,7 +19,7 @@ import { fixtureModel } from '@/test/store-fixture';
 import { siteContextAnchorRefusal } from '@/hooks/ingest/siteContextLoad';
 import { siteContextVerticalPolicy } from '@/hooks/ingest/ifcGeorefAssumptions';
 import { spatialReferenceFromIfc } from '@/lib/geo/ifc-spatial-reference';
-import { resolveSiteContextAnchor, siteContextPlacementReference } from './site-context-anchor';
+import { anchorStillCurrent, resolveSiteContextAnchor, siteContextPlacementReference } from './site-context-anchor';
 
 const FRAME: CoordinateInfo = {
   originShift: { x: 0, y: 0, z: 0 },
@@ -99,4 +99,18 @@ test('a non-IFC model with no vertical datum is not assumed to be LN02: the poli
   const scan = { ...swissModel('scan', 1), spatialReference: scanNoDatum } as unknown as FederatedModel;
   seed(scan);
   assert.deepEqual(await resolveSiteContextAnchor('scan'), { ok: false, reason: 'height-unknown' });
+});
+
+test('a load is dispatched only while the model still resolves to the centre the click captured (#10481 review)', async () => {
+  seed(swissModel('m', 1, 'LN02'));
+  const captured = await resolveSiteContextAnchor('m');
+  assert.ok(captured.ok);
+  assert.equal(await anchorStillCurrent('m', captured), true);
+  // The georeference is edited between the click and the dispatch: the model now sits 500 m east.
+  const moved = spatialReferenceFromIfc({
+    mapConversion: { ...conversion, eastings: conversion.eastings + 500 },
+    projectedCRS: { id: 3, name: 'EPSG:2056', mapUnitScale: 1, verticalDatum: 'LN02' }, lengthUnitScale: 1, coordinateInfo: FRAME,
+  });
+  useViewerStore.setState((s) => ({ models: new Map([['m', { ...s.models.get('m')!, spatialReference: moved } as FederatedModel]]) }));
+  assert.equal(await anchorStillCurrent('m', captured), false);
 });

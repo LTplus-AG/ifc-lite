@@ -92,6 +92,16 @@ export function siteContextPlacementReference(fallback?: ModelSpatialReference):
   return findReferenceSpatialModel()?.placement.spatialReference ?? fallback ?? null;
 }
 
+/**
+ * True when `modelId` still resolves to the centre `captured` was taken from. Checked again right
+ * before a load is dispatched, since the georeference can change between the click and the
+ * dispatch (#10481 review).
+ */
+export async function anchorStillCurrent(modelId: string, captured: { centre: { x: number; y: number } }): Promise<boolean> {
+  const fresh = await resolveSiteContextAnchor(modelId);
+  return fresh.ok && fresh.centre.x === captured.centre.x && fresh.centre.y === captured.centre.y;
+}
+
 /** Resolve the model `modelId` as a site-context anchor. */
 export async function resolveSiteContextAnchor(modelId: string): Promise<SiteContextAnchor> {
   const model = useViewerStore.getState().models.get(modelId);

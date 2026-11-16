@@ -40,6 +40,29 @@ const FINE_GSD = 0.1;
 export const FINE_DRAPE_HALF_SIZE = 100;
 /** Longest side of the requested image, in pixels. */
 const MAX_PIXELS = 4096;
+/**
+ * How long one imagery request may take before it is given up, in ms. Abort alone left a stalled
+ * WMS request (and so the run that awaits the drape) pending until the user cancelled (#10481 review).
+ */
+export const IMAGERY_REQUEST_TIMEOUT_MS = 60_000;
+
+/** The caller's signal, also aborted after `ms`. */
+export function withRequestTimeout(signal: AbortSignal | undefined, ms = IMAGERY_REQUEST_TIMEOUT_MS): AbortSignal {
+  const timeout = AbortSignal.timeout(ms);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+/**
+ * All images, or a rejection with every image that did arrive closed: `Promise.all` alone left the
+ * successful bitmap of a pair open when the other request failed (#10481 review).
+ */
+export async function settleImages<T extends { close(): void }>(requests: ReadonlyArray<Promise<T>>): Promise<T[]> {
+  const results = await Promise.allSettled(requests);
+  const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (!failed) return results.map((r) => (r as PromiseFulfilledResult<T>).value);
+  for (const r of results) if (r.status === 'fulfilled') r.value.close();
+  throw failed.reason;
+}
 
 // Renderer cache keys for drape textures, in their own negative range.
 let nextTextureId = -2_100_000_000;
@@ -95,7 +118,7 @@ async function fetchImage(request: SiteContextImageryRequest, signal?: AbortSign
   let body: ArrayBuffer;
   if (cached) body = cached.body;
   else {
-    const response = await swisstopoFetch().fetch(request.url, { signal });
+    const response = await swisstopoFetch().fetch(request.url, { signal: withRequestTimeout(signal) });
     if (!response.ok) throw new Error(`SWISSIMAGE answered ${response.status}`);
     const type = response.headers.get('content-type') ?? '';
     body = await response.arrayBuffer();
@@ -181,7 +204,7 @@ export async function drapeSiteContextImagery(modelId: string, signal?: AbortSig
   if (coarseRequest) levels.push({ request: coarseRequest, box: site, textureId: nextTextureId-- });
   if (levels.length === 0) throw new Error('The terrain has no plan extent to request imagery for.');
 
-  const images = await Promise.all(levels.map((level) => fetchImage(level.request, signal)));
+  const images = await settleImages(levels.map((level) => fetchImage(level.request, signal)));
   const closeAll = () => { for (const image of images) image.close(); };
   const renderer = getGlobalRenderer();
   if (!renderer || !renderer.isReady()) { closeAll(); throw new Error('The viewport is not ready to show imagery yet.'); }

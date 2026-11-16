@@ -108,8 +108,10 @@ export function createCpuGeometryAccount(): { visit: CpuGeometryVisitor; result(
 type MeshList = { meshes?: readonly MeshData[] | null } | null | undefined;
 
 export interface CpuGeometrySources {
-  /** Per-model geometry results (the store's `models`). */
-  models?: Iterable<{ geometryResult?: MeshList }>;
+  /** Per-model geometry results (the store's `models`), with the pre-alignment copy georeferenced federated models keep. */
+  models?: Iterable<{ geometryResult?: MeshList; preAlignment?: { positions?: readonly Float32Array[]; normals?: readonly (Float32Array | undefined)[] } | null }>;
+  /** The delete-undo stash (the store's `removedMeshes`). */
+  removedMeshes?: Iterable<{ meshes?: readonly MeshData[] }>;
   /** The store's top-level `geometryResult` (single-model path; may be the same object as a model's). */
   geometryResult?: MeshList;
   /** Renderer-side holders (scene, raycast index); absent before the viewport is ready. */
@@ -126,7 +128,14 @@ export function measureCpuGeometryHeld(sources: CpuGeometrySources): CpuGeometry
     seenLists.add(list);
     for (const mesh of list) visitMeshArrays(owner, mesh, account.visit);
   };
-  for (const model of sources.models ?? []) visitList('store.models', model.geometryResult?.meshes);
+  const models = [...(sources.models ?? [])];
+  for (const model of models) visitList('store.models', model.geometryResult?.meshes);
+  for (const model of models) {
+    // A copy of positions and normals per mesh, not views of the mesh arrays (#4970 restore baseline).
+    for (const array of model.preAlignment?.positions ?? []) account.visit('store.preAlignment', array, 'positions');
+    for (const array of model.preAlignment?.normals ?? []) if (array) account.visit('store.preAlignment', array, 'normals');
+  }
+  for (const stash of sources.removedMeshes ?? []) visitList('store.removedMeshes', stash.meshes);
   visitList('store.geometryResult', sources.geometryResult?.meshes);
   sources.renderer?.visitCpuGeometry(account.visit);
   return account.result(performance.now() - start);

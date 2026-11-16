@@ -80,4 +80,17 @@ describe('CPU geometry held (#10264)', () => {
     assert.equal(held.owners['scene.buckets'].exclusiveBytes, 0);
     assert.equal(held.byKind.other, 32);
   });
+
+  it('counts the pre-alignment copy and the delete-undo stash as their own holders', async () => {
+    const { measureCpuGeometryHeld } = await load();
+    const live = mesh(new Float32Array(3), new Float32Array(3), new Uint32Array(3));
+    const stashed = mesh(new Float32Array(6), new Float32Array(6), new Uint32Array(6));
+    const held = measureCpuGeometryHeld({
+      models: [{ geometryResult: { meshes: [live] }, preAlignment: { positions: [new Float32Array(3)], normals: [undefined] } }],
+      removedMeshes: [{ meshes: [stashed] }],
+    });
+    assert.equal(held.owners['store.preAlignment'].exclusiveBytes, 12);
+    assert.equal(held.owners['store.removedMeshes'].exclusiveBytes, 24 + 24 + 24);
+    assert.equal(held.totalBytes, 36 + 12 + 72);
+  });
 });

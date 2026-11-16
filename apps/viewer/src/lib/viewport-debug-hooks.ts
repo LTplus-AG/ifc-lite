@@ -168,7 +168,8 @@ export function installViewportDebugHooks(
   host.__ifc_lite_cpu_geometry_held__ = async () => {
     const { measureCpuGeometryHeld } = await import('./perf/cpuGeometryHeld.js');
     const state = useViewerStore.getState();
-    return measureCpuGeometryHeld({ models: state.models.values(), geometryResult: state.geometryResult, renderer });
+    return measureCpuGeometryHeld({ models: state.models.values(), geometryResult: state.geometryResult,
+      removedMeshes: state.removedMeshes.values(), renderer });
   };
   // The camera's world view-projection, the matrix every mesh draw packs as
   // `uniforms.viewProj` (the depth nudge reads its projection from it, #6729).

@@ -227,8 +227,9 @@ entities, properties and containment from the parsed store. No meshing.
   shallow cut (a recess) leaves slab material under it and is no hole. The inner curves of a slab profile are
   read as holes, also under a `FootPrint`: one under 1 m² stays closed; one
   wholly roofed (every point of a grid clipped to the hole and just inside
-  each edge and corner lies under the outer outline of a slab more than 1 m
-  higher, outside its holes, with no unread voids) is interior (a shaft, a
+  each edge and corner lies under a slab, a roof, a roofing covering, a
+  window lying flat or a plate more than 1 m higher, read in full, outside
+  its holes) is interior (a shaft, a
   stair opening, a floor area under the building): filled, noted, no
   condition; any other, a partly roofed one included, is open to the sky, a
   courtyard: a hole in the prepared footprint (`courtyardRings`,
@@ -696,10 +697,13 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
   that, right against the façade (below the map's 1 m cell), is not sampled;
   a footprint up to about 1 m smaller than the building the hazard model
   raised still has samples beyond the raised building.
-- Whether a slab hole is open to the sky is read from the slabs above only:
-  a roof opening closed by a skylight or a hatch not modelled as a slab reads
-  as open, so the hole is a courtyard (guarded locally; an element there may
-  get `no-ground-sample` when the hole is narrower than the sample rings).
+- Whether a slab hole is open to the sky is read from what lies above it:
+  slabs, roofs, roofing coverings, windows lying flat (skylights) and plates,
+  each through its body's plain extrusions (an element whose body is a Brep
+  or a Boolean solid does not count as roofing). A hatch or skylight not
+  modelled as one of these reads as open, so the hole is a courtyard
+  (guarded locally; an element there may get `no-ground-sample` when the
+  hole is narrower than the sample rings).
 - In a given footprint, a ring entirely covered by the others is taken for a
   courtyard (a redundant ring cannot be told from one); in slab outlines it
   never is.

@@ -49,3 +49,38 @@ describe('item 8: a slab hole cut by a Boolean DIFFERENCE is read and classified
     expect((await extract(cutSlab(half))).footprint.source).toBe('slab-outline-voids-filled');
   });
 });
+
+describe('item 5: roofing that is not a slab counts, over the hole\'s whole area', () => {
+  /** The ground slab 0..20 x 0..10 with a hole 6..14 x 3..7 in its profile, and `roof` above it. */
+  const holedUnder = (roof: (b: Extra) => void) => (b: Extra) => {
+    const pt = (x: number, y: number) => b.add(`IFCCARTESIANPOINT((${x}.,${y}.))`);
+    const loop = (pts: Array<[number, number]>) => b.add(`IFCPOLYLINE((${[...pts, pts[0]].map(([x, y]) => `#${pt(x, y)}`).join(',')}))`);
+    const profile = b.add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#${loop([[0, 0], [20, 0], [20, 10], [0, 10]])},(#${loop([[6, 3], [14, 3], [14, 7], [6, 7]])}))`);
+    const solid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 0)},#${b.dir(0, 0, -1)},0.3)`);
+    b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Bodenplatte gelocht',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLOOR.)`));
+    roof(b);
+  };
+  /** An element of `record` (its arguments after the placement and shape) whose body is a flat 0.1 m plate over x0..x1, y 2.5..7.5, 3 m up. */
+  const flat = (cls: string, tail: string, x0 = 5, x1 = 15) => (b: Extra) => {
+    const plate = b.rectExtrusion((x0 + x1) / 2, 5, x1 - x0, 5, 0.1, b.axis(0, 0, 3), b.dir(0, 0, 1));
+    b.contain(b.storeys.eg.id, b.add(`${cls}(${b.guid()},$,'Dach',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([plate])},${tail})`));
+  };
+  const courtyards = async (roof: (b: Extra) => void) => (await extract(holedUnder(roof))).footprint.courtyardRings?.length ?? 0;
+
+  it('control: with nothing above, the hole is a courtyard', async () => {
+    expect(await courtyards(() => {})).toBe(1);
+  });
+  it('an IfcRoof body over the whole hole roofs it', async () => {
+    expect(await courtyards(flat('IFCROOF', '$,.FLAT_ROOF.'))).toBe(0);
+  });
+  it('an IfcCovering of type ROOFING roofs it; a CEILING covering does not count as roofing', async () => {
+    expect(await courtyards(flat('IFCCOVERING', '$,.ROOFING.'))).toBe(0);
+    expect(await courtyards(flat('IFCCOVERING', '$,.CEILING.'))).toBe(1);
+  });
+  it('a skylight (an IfcWindow lying flat over the hole) roofs it', async () => {
+    expect(await courtyards(flat('IFCWINDOW', '$,10.,5.,.SKYLIGHT.,$,$'))).toBe(0);
+  });
+  it('an IfcPlate over only half the hole leaves it open', async () => {
+    expect(await courtyards(flat('IFCPLATE', '$,.CURTAIN_PANEL.', 5, 10))).toBe(1);
+  });
+});

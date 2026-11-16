@@ -20,98 +20,13 @@
 
 import { insideRing } from '../geom.js';
 import { placedItems } from './mapped.js';
-import { arcPoints, type Pt2 } from './arc.js';
+import { curvePoints, profilePoints } from './curves.js';
 import { applyFrame, axisPlacementFrame, IDENTITY, type Frame, type Vec3 } from './placement.js';
 import { asEnum, asNumber, asRef, asRefList, asString, type ModelReader } from './reader.js';
 
 
-function pointList(reader: ModelReader, id: number | null): Pt2[] | null {
-  const e = reader.entity(id);
-  if (!e) return null;
-  if (e.type === 'IFCCARTESIANPOINTLIST2D' || e.type === 'IFCCARTESIANPOINTLIST3D') {
-    const list = e.attributes[0];
-    if (!Array.isArray(list)) return null;
-    const out: Pt2[] = [];
-    for (const row of list) {
-      if (!Array.isArray(row)) return null;
-      const x = asNumber(row[0]);
-      const y = asNumber(row[1]);
-      if (x === null || y === null) return null;
-      out.push([x, y]);
-    }
-    return out;
-  }
-  return null;
-}
-
-/** Points of a planar bounded curve in its own coordinates; null when it cannot be read. */
-/** Per-item primitive (one curve: points, or null when that item cannot be read); production callers use the readers below. */
-export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | null {
-  const e = reader.entity(id);
-  if (!e) return null;
-  if (e.type === 'IFCPOLYLINE') {
-    const out: Pt2[] = [];
-    for (const pid of asRefList(e.attributes[0])) {
-      const p = reader.entity(pid);
-      const c = p && Array.isArray(p.attributes[0]) ? p.attributes[0].map(asNumber) : null;
-      if (!c || c[0] === null || c[1] === null) return null;
-      out.push([c[0] as number, c[1] as number]);
-    }
-    return out.length >= 2 ? out : null;
-  }
-  if (e.type === 'IFCINDEXEDPOLYCURVE') {
-    const pts = pointList(reader, asRef(e.attributes[0]));
-    if (!pts || pts.length < 2) return null;
-    const segments = e.attributes[1];
-    if (segments === null || segments === undefined) return pts; // no Segments: the points in list order
-    // Segments name the points of the curve and their order (1-based; a line, or an arc through three points, traced along
-    // its length so that its extent holds in any frame, see arcPoints). A point the segments omit is not on the curve, and a malformed segment makes the whole outline unreadable.
-    if (!Array.isArray(segments) || segments.length === 0) return null;
-    const out: Pt2[] = [];
-    let last = -1;
-    for (const seg of segments) {
-      const indices = Array.isArray(seg) && typeof seg[0] === 'string' && Array.isArray(seg[1]) ? seg[1] : null;
-      if (!indices || indices.length < 2) return null;
-      if (indices.some((i) => typeof i !== 'number' || !Number.isInteger(i) || i < 1 || i > pts.length)) return null;
-      const arc = seg[0] === 'IFCARCINDEX';
-      if (arc && indices.length !== 3) return null;
-      if (last !== indices[0]) out.push(pts[indices[0] - 1]);
-      const rest = arc ? arcPoints(pts[indices[0] - 1], pts[indices[1] - 1], pts[indices[2] - 1]) : indices.slice(1).map((i: number) => pts[i - 1]);
-      if (!rest) return null; // an arc that cannot be traced makes the outline unreadable
-      for (const p of rest) {
-        const prev = out[out.length - 1];
-        if (!prev || prev[0] !== p[0] || prev[1] !== p[1]) out.push(p);
-      }
-      last = indices[indices.length - 1];
-    }
-    return out.length >= 2 ? out : null;
-  }
-  return null;
-}
-
 export { ARC_MAX_PIECES, ARC_SAGITTA } from './arc.js';
-
-/** Outer boundary of a profile definition, in the profile's own 2D coordinates. */
-function profilePoints(reader: ModelReader, id: number | null): Pt2[] | null {
-  const e = reader.entity(id);
-  if (!e) return null;
-  if (e.type === 'IFCARBITRARYCLOSEDPROFILEDEF' || e.type === 'IFCARBITRARYPROFILEDEFWITHVOIDS') {
-    return curvePoints(reader, asRef(reader.attr(e, 'OuterCurve')));
-  }
-  if (e.type === 'IFCRECTANGLEPROFILEDEF') {
-    const x = asNumber(reader.attr(e, 'XDim'));
-    const y = asNumber(reader.attr(e, 'YDim'));
-    if (x === null || y === null) return null;
-    const frame = axisPlacementFrame(reader, reader.attr(e, 'Position'));
-    const corners: Pt2[] = [[-x / 2, -y / 2], [x / 2, -y / 2], [x / 2, y / 2], [-x / 2, y / 2]];
-    if (!frame) return reader.attr(e, 'Position') == null ? corners : null;
-    return corners.map(([cx, cy]) => {
-      const p = applyFrame(frame, [cx, cy, 0]);
-      return [p[0], p[1]];
-    });
-  }
-  return null;
-}
+export { curvePoints } from './curves.js';
 
 /** The items of a product's representation with one of the given identifiers. */
 function representationItems(reader: ModelReader, productId: number, identifier: string): number[] {
@@ -387,3 +302,42 @@ function readExtrusion(reader: ModelReader, item: number, out: Vec3[], placed: F
   }
   return unwrapped!.subtracted;
 }
+
+/**
+ * A product's body as plan regions it covers: for each leaf (mapped items
+ * expanded) that is a plain extrusion, its profile at the base and at the top,
+ * in object coordinates; a point lies under the leaf only inside both (an
+ * inclined plate covers less than either). `complete` is false when a leaf is
+ * anything else (a Brep, a clipped or Boolean solid, an unreadable profile).
+ */
+export function extrusionRegions(reader: ModelReader, productId: number): { regions: Vec3[][][]; complete: boolean } {
+  const product = reader.entity(productId);
+  const shape = reader.entity(asRef(reader.attr(product, 'Representation')));
+  const regions: Vec3[][][] = [];
+  let complete = true;
+  for (const repId of asRefList(reader.attr(shape, 'Representations'))) {
+    const rep = reader.entity(repId);
+    const identifier = rep ? asString(reader.attr(rep, 'RepresentationIdentifier')) : null;
+    if (!rep || (identifier !== null && NON_SOLID.has(identifier))) continue;
+    for (const top of asRefList(reader.attr(rep, 'Items'))) {
+      for (const { item, frame } of placedItems(reader, top)) {
+        const solid = reader.entity(item);
+        const profile = solid?.type === 'IFCEXTRUDEDAREASOLID' ? profilePoints(reader, asRef(reader.attr(solid, 'SweptArea'))) : null;
+        const depth = solid ? asNumber(reader.attr(solid, 'Depth')) : null;
+        const dirEntity = solid ? reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection'))) : null;
+        const d = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
+        const position = !solid || reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
+        const n = d && !d.some((v) => v === null) ? Math.hypot(...(d as number[])) : 0;
+        if (!frame || !profile || profile.length < 3 || depth === null || !position || !(n > 0)) {
+          complete = false;
+          continue;
+        }
+        const dir = (d as number[]).map((v) => (v / n) * depth);
+        const at = (x: number, y: number, k: number) => applyFrame(frame, applyFrame(position, [x + k * dir[0], y + k * dir[1], k * (dir[2] ?? 0)]));
+        regions.push([profile.map(([x, y]) => at(x, y, 0)), profile.map(([x, y]) => at(x, y, 1))]);
+      }
+    }
+  }
+  return { regions, complete };
+}
+

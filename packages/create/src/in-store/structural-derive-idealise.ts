@@ -9,9 +9,7 @@
  */
 
 import { vecCross as cross, vecLen as length } from '../ifc-creator-math.js';
-import { openingSection } from './structural-opening-section.js';
-import { prepareStructuralFace } from './_structural-face.js';
-import type { PhysicalElementFact, SkippedElement, PrismFact, Vec3 } from './structural-derive-types.js';
+import type { PrismFact, Vec3 } from './structural-derive-types.js';
 
 export const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -133,21 +131,4 @@ export function prismSection(prism: PrismFact): number | null {
   const f = prismFrame(prism);
   if (typeof f === 'string') return null;
   return [f.long, f.short, f.depth].sort((a, b) => b - a)[1];
-}
-
-/** Through-openings only; report the opening id rather than hiding it on its host. */
-export function plateOpenings(element: PhysicalElementFact, plate: { boundary: Vec3[]; thickness: number }, normal: Vec3, tolerance: number, skipped: SkippedElement[]): Vec3[][] {
-  const carried: Vec3[][] = [];
-  for (const opening of element.openings ?? []) {
-    const reject = (detail: string) => skipped.push({ elementId: opening.expressId, type: 'IfcOpeningElement', name: opening.name, reason: 'no-idealisable-shape', detail: `Opening of #${element.expressId}: ${detail}` });
-    const prism = opening.prism;
-    if (!prism) { reject(opening.shapeIssue ?? 'unreadable body'); continue; }
-    if (!prism.outlineExact) { reject('profile outline is known only as bounds'); continue; }
-    const ring = openingSection(prism, plate.boundary[0], normal, plate.thickness, tolerance);
-    if (typeof ring === 'string') { reject(ring); continue; }
-    try { prepareStructuralFace(plate.boundary, [...carried, ring], tolerance); }
-    catch (error) { reject(error instanceof Error ? error.message : String(error)); continue; }
-    carried.push(ring);
-  }
-  return carried;
 }

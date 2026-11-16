@@ -148,6 +148,13 @@ export interface PrismFact {
   centroid?: Vec3;
 }
 
+export interface OpeningFact {
+  expressId: number;
+  name: string | null;
+  prism?: PrismFact;
+  shapeIssue?: string;
+}
+
 export interface PhysicalElementFact {
   expressId: number;
   /** IFC PascalCase class, e.g. 'IfcBeamStandardCase'. */
@@ -162,7 +169,7 @@ export interface PhysicalElementFact {
   /** Straight Axis representation, world metres. */
   axis?: [Vec3, Vec3];
   prism?: PrismFact;
-  openings?: Array<{ expressId: number; name: string | null; prism?: PrismFact; shapeIssue?: string }>;
+  openings?: OpeningFact[];
   /** Why no prism was read. */
   shapeIssue?: string;
   /** Body bounds in world metres; read for footings and piles only. */

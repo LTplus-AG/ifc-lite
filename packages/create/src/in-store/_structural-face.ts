@@ -23,10 +23,13 @@ function segmentsMeet([p1, p2]: readonly [Flat, Flat], [q1, q2]: readonly [Flat,
   return touches(q1, q2, p1, tol) || touches(q1, q2, p2, tol) || touches(p1, p2, q1, tol) || touches(p1, p2, q2, tol);
 }
 
+function isFiniteRing(points: unknown): points is Point3D[] {
+  return Array.isArray(points) && points.length >= 3 && points.every(p => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite));
+}
+
 /** Validate before emitting anything. Coordinates are storey-local metres. */
-export function prepareStructuralFace(points: readonly Point3D[], openings: readonly Point3D[][] = [], margin = 0) {
-  const raw: unknown = points; // untyped callers (scripts, JSON) may pass anything
-  if (!Array.isArray(raw) || raw.length < 3 || raw.some(p => !Array.isArray(p) || p.length !== 3 || p.some((v: unknown) => !Number.isFinite(v)))) {
+export function prepareStructuralFace(points: readonly Point3D[], openings: readonly Point3D[][] = []) {
+  if (!isFiniteRing(points)) {
     throw new Error('Structural Face: at least three finite boundary points are required');
   }
   const origin = points[0];
@@ -71,33 +74,46 @@ export function prepareStructuralFace(points: readonly Point3D[], openings: read
   const u = vecNorm(planar[1]);
   const v = vecCross(axis, u);
   const project = (p: Point3D): [number, number] => [p.reduce((s, x, k) => s + x * u[k], 0), p.reduce((s, x, k) => s + x * v[k], 0)];
-  const outer = planar.map(project);
-  const rings: Point3D[][] = [];
-  const flats: [number, number][][] = [];
-  const edgesOf = (ring: Flat[]) => ring.map((p, i): [Flat, Flat] => [p, ring[(i + 1) % ring.length]]);
-  const meet = (a: Flat[], b: Flat[]) => edgesOf(a).some(e => edgesOf(b).some(f => segmentsMeet(e, f, Math.max(tolerance, margin))));
-  for (const opening of openings) {
-    // Use the same simple-ring checks, but identify the offending opening.
-    if (!Array.isArray(opening) || opening.length < 3 || opening.some(p => !Array.isArray(p) || p.length !== 3 || p.some(x => !Number.isFinite(x)))) {
-      throw new Error('Structural Face: opening requires at least three finite boundary points');
-    }
-    const relativeRing = opening.map(p => p.map((x, k) => x - origin[k]) as Point3D);
-    const offsets = relativeRing.map(p => p.reduce((s, x, k) => s + x * axis[k], 0));
-    if (offsets.some(d => Math.abs(d) > tolerance)) throw new Error('Structural Face: opening must be coplanar with boundary');
-    const ring = relativeRing.map((p, i) => p.map((x, k) => x - offsets[i] * axis[k]) as Point3D);
-    try { prepareStructuralFace(ring); }
-    catch (error) { throw new Error(`Structural Face: opening ${rings.length + 1}: ${error instanceof Error ? error.message : String(error)}`); }
-    const flat = ring.map(project);
-    if (!flat.every(p => pointInPolygon(p[0], p[1], outer)) || meet(flat, outer)) throw new Error('Structural Face: opening must lie strictly inside boundary');
-    if (flats.some(other => meet(flat, other) || pointInPolygon(flat[0][0], flat[0][1], other) || pointInPolygon(other[0][0], other[0][1], flat))) throw new Error('Structural Face: openings must not overlap or touch');
-    const signed = flat.reduce((sum, p, i) => sum + p[0] * flat[(i + 1) % flat.length][1] - p[1] * flat[(i + 1) % flat.length][0], 0);
-    rings.push(signed > 0 ? ring.reverse() : ring);
-    flats.push(flat);
-  }
-  return { origin, relative: planar, axis, openings: rings };
+  const face = { origin, relative: planar, axis, tolerance, project, outer: planar.map(project), openings: [] as Point3D[][] };
+  for (const opening of openings) face.openings.push(checkOpening(face, opening, face.openings, { clearance: 0 }));
+  return face;
 }
 
-/** Every id in a surface product's exclusively owned face subgraph. */
+/** Validate a world-space opening; return a snapped, oriented ring relative to the
+ * face origin. Accepted rings use the same relative coordinates. */
+export function checkOpening(face: ReturnType<typeof prepareStructuralFace>, opening: readonly Point3D[], accepted: readonly Point3D[][], { clearance }: { clearance: number }): Point3D[] {
+  const { origin, axis, tolerance, project, outer } = face;
+  if (!isFiniteRing(opening)) throw new Error('Structural Face: opening requires at least three finite boundary points');
+  const relativeRing = opening.map(p => p.map((x, k) => x - origin[k]) as Point3D);
+  const offsets = relativeRing.map(p => p.reduce((s, x, k) => s + x * axis[k], 0));
+  if (offsets.some(d => Math.abs(d) > tolerance)) throw new Error('Structural Face: opening must be coplanar with boundary');
+  const ring = relativeRing.map((p, i) => p.map((x, k) => x - offsets[i] * axis[k]) as Point3D);
+  let prepared: ReturnType<typeof prepareStructuralFace>;
+  try { prepared = prepareStructuralFace(ring); }
+  catch (error) { throw new Error(`Structural Face: opening ${accepted.length + 1}: ${error instanceof Error ? error.message : String(error)}`); }
+  const flat = ring.map(project);
+  const edgesOf = (points: Flat[]) => points.map((p, i): [Flat, Flat] => [p, points[(i + 1) % points.length]]);
+  const edges = edgesOf(flat);
+  const padding = Math.max(tolerance, clearance);
+  const boundsOf = (points: Flat[]) => [0, 1].map(k => [Math.min(...points.map(p => p[k])), Math.max(...points.map(p => p[k]))]);
+  const bounds = boundsOf(flat);
+  const meet = (other: Flat[]) => {
+    const otherBounds = boundsOf(other);
+    if (bounds.some(([min, max], k) => max + padding < otherBounds[k][0] || otherBounds[k][1] + padding < min)) return false;
+    const otherEdges = edgesOf(other);
+    return edges.some(e => otherEdges.some(f => segmentsMeet(e, f, padding)));
+  };
+  if (!flat.every(p => pointInPolygon(p[0], p[1], outer)) || meet(outer)) throw new Error('Structural Face: opening must lie strictly inside boundary');
+  if (accepted.some(r => {
+    const other = r.map(project);
+    return meet(other) || pointInPolygon(flat[0][0], flat[0][1], other) || pointInPolygon(other[0][0], other[0][1], flat);
+  })) throw new Error('Structural Face: openings must not overlap or touch');
+  return prepared.axis.reduce((sum, x, k) => sum + x * axis[k], 0) > 0 ? ring.reverse() : ring;
+}
+
+/** Placement, plane, face and representation ids, plus point/vertex/edge/oriented-edge
+ * ids from all loops. loopId and boundId identify only the outer loop and bound;
+ * inner loop and bound ids are not listed. */
 export interface StructuralFaceIds {
   placementId: number;
   pointIds: number[];
@@ -116,24 +132,30 @@ export interface StructuralFaceIds {
   productShapeId: number;
 }
 
-/** A fresh, exclusively owned topology subgraph for each surface product. */
-export function emitStructuralFace(editor: StoreEditor, anchor: SpatialAnchor, face: ReturnType<typeof prepareStructuralFace>): StructuralFaceIds {
-  const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, toNativePoint3(anchor, face.origin));
-  const pointIds = face.relative.map(p => editor.addEntity('IfcCartesianPoint', [toNativePoint3(anchor, p)]).expressId);
+/** Emit one exclusively owned edge loop. */
+function emitLoop(editor: StoreEditor, anchor: SpatialAnchor, points: readonly Point3D[]) {
+  const pointIds = points.map(p => editor.addEntity('IfcCartesianPoint', [toNativePoint3(anchor, p)]).expressId);
   const vertexIds = pointIds.map(id => editor.addEntity('IfcVertexPoint', [`#${id}`]).expressId);
   const edgeIds = vertexIds.map((id, i) => editor.addEntity('IfcEdge', [`#${id}`, `#${vertexIds[(i + 1) % vertexIds.length]}`]).expressId);
   const orientedEdgeIds = edgeIds.map(id => editor.addEntity('IfcOrientedEdge', ['*', '*', `#${id}`, '.T.']).expressId);
   const loopId = editor.addEntity('IfcEdgeLoop', [orientedEdgeIds.map(id => `#${id}`)]).expressId;
+  return { pointIds, vertexIds, edgeIds, orientedEdgeIds, loopId };
+}
+
+/** A fresh, exclusively owned topology subgraph for each surface product. */
+export function emitStructuralFace(editor: StoreEditor, anchor: SpatialAnchor, face: ReturnType<typeof prepareStructuralFace>): StructuralFaceIds {
+  const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, toNativePoint3(anchor, face.origin));
+  const { pointIds, vertexIds, edgeIds, orientedEdgeIds, loopId } = emitLoop(editor, anchor, face.relative);
   const boundId = editor.addEntity('IfcFaceOuterBound', [`#${loopId}`, '.T.']).expressId;
-  const innerBoundIds = face.openings.map(ring => {
-    const points = ring.map(p => editor.addEntity('IfcCartesianPoint', [toNativePoint3(anchor, p)]).expressId);
-    const vertices = points.map(id => editor.addEntity('IfcVertexPoint', [`#${id}`]).expressId);
-    const edges = vertices.map((id, i) => editor.addEntity('IfcEdge', [`#${id}`, `#${vertices[(i + 1) % vertices.length]}`]).expressId);
-    const oriented = edges.map(id => editor.addEntity('IfcOrientedEdge', ['*', '*', `#${id}`, '.T.']).expressId);
-    const loop = editor.addEntity('IfcEdgeLoop', [oriented.map(id => `#${id}`)]).expressId;
-    pointIds.push(...points); vertexIds.push(...vertices); edgeIds.push(...edges); orientedEdgeIds.push(...oriented);
-    return editor.addEntity('IfcFaceBound', [`#${loop}`, '.T.']).expressId;
-  });
+  const innerBoundIds: number[] = [];
+  for (const ring of face.openings) {
+    const inner = emitLoop(editor, anchor, ring);
+    pointIds.push(...inner.pointIds);
+    vertexIds.push(...inner.vertexIds);
+    edgeIds.push(...inner.edgeIds);
+    orientedEdgeIds.push(...inner.orientedEdgeIds);
+    innerBoundIds.push(editor.addEntity('IfcFaceBound', [`#${inner.loopId}`, '.T.']).expressId);
+  }
   const planePointId = editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId;
   const normalId = editor.addEntity('IfcDirection', [face.axis]).expressId;
   const refDirectionId = editor.addEntity('IfcDirection', [vecNorm(face.relative[1])]).expressId;

@@ -9,9 +9,10 @@
 
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { vecLen as length } from '../ifc-creator-math.js';
+import { plateOpenings } from './structural-opening-section.js';
 import { prepareStructuralFace } from './_structural-face.js';
 import { pointInPolygon } from './room-footprint-offset.js';
-import { curveElementLine, idealisePlate, plateOpenings, prismSection, add, sub, scale, dot } from './structural-derive-idealise.js';
+import { curveElementLine, idealisePlate, prismSection, add, sub, scale, dot } from './structural-derive-idealise.js';
 import { clusterEnds, joinEnds, SegmentGrid } from './structural-derive-joints.js';
 import {
   DEFAULT_DERIVATION_OPTIONS,

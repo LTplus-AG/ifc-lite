@@ -10,6 +10,7 @@ import type { DrawnSectionPlane, Measure2DResult, TagAnnotation2D, Point2D } fro
 import { dimensionGraphics } from '@/lib/drawing2d-markup/dimension-graphics';
 import { customPlaneCenter } from '@/store/slices/section-plane-center';
 
+import { removeEmbeddedDrawingMarkup } from '@/lib/drawing2d-markup/drawing-markup-embedded-sweep';
 import { validElementTags } from '@/lib/drawing/tag-persistence';
 
 const OBJECT_TYPE = 'IfcLite:DrawingAnnotation:1';
@@ -89,8 +90,9 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
   const base = view ?? new MutablePropertyView(store.properties ?? null, 'drawing-export');
   return base.prepareAtomic(draft => {
     const editor = new StoreEditor(store, draft);
-    // Only delete the annotation itself: never trust file-supplied resource ids
-    // as deletion authority over unrelated entities.
+    // Use the existing live-reference sweep; shared geometry and model
+    // infrastructure survive, while mandatory shape inverses remain valid.
+    removeEmbeddedDrawingMarkup(store, editor, new Set(replaceable.map(record => record.identity)), new Set([OBJECT_TYPE]));
     for (const { id } of replaceable) {
       for (const { expressId } of iterateEffectiveEntityIds(store, draft, ['IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELASSIGNSTOPRODUCT'])) {
         const record = effectiveMetadataRecord(store, expressId, draft);

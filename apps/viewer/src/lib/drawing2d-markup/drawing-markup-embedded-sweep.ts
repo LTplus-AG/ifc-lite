@@ -194,7 +194,7 @@ function relatedIds(value: unknown): (number | null)[] {
  * identity is in `absorbed`, and what only it uses (see the module doc).
  * Returns how many tagged annotations were removed.
  */
-export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEditor, absorbed: ReadonlySet<string>): number {
+export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEditor, absorbed: ReadonlySet<string>, tags: ReadonlySet<unknown> = MARKUP_TAGS): number {
   if (absorbed.size === 0) return 0;
   const view = editor.getMutationView();
   const reader = new EffectiveReader(store, view);
@@ -203,7 +203,7 @@ export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEd
   for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCANNOTATION'])) {
     if (reader.isCreated(expressId)) continue;
     const attributes = reader.attributes(expressId);
-    if (!MARKUP_TAGS.has(attributes?.[OBJECT_TYPE_INDEX])) continue;
+    if (!tags.has(attributes?.[OBJECT_TYPE_INDEX])) continue;
     // Match on the GlobalId the restore recorded (the source one), not a pending edit of it.
     if (absorbed.has(embeddedMarkupIdentity(expressId, sourceMarkupGlobalId(store, expressId)))) annotations.add(expressId);
   }

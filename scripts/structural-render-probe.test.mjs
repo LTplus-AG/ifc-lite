@@ -186,7 +186,15 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
     const from = i === 0 ? '#15' : `#${20000 + 3 * (i - 1) + 2}`;
     chain += `#${20000 + 3 * i}=IFCREPRESENTATIONMAP(#41,${from});#${20000 + 3 * i + 1}=IFCMAPPEDITEM(#${20000 + 3 * i},#46);#${20000 + 3 * i + 2}=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#${20000 + 3 * i + 1}));`;
   }
-  assert.equal(topologyPoints(ifc4(chain.replace('#47=IFCMAPPEDITEM(#42,#46)', `#47=IFCMAPPEDITEM(#${20000 + 3 * 1199},#46)`)), 30), null);
+  const chainStep = ifc4(chain.replace('#47=IFCMAPPEDITEM(#42,#46)', `#47=IFCMAPPEDITEM(#${20000 + 3 * 1199},#46)`)
+    + `#31=IFCSTRUCTURALCURVEMEMBER('n',$,$,$,$,#22,#17,.RIGID_JOINED_MEMBER.,$);#17=IFCPRODUCTDEFINITIONSHAPE($,$,(#${20000 + 3 * 500 + 2}));`);
+  assert.equal(topologyPoints(chainStep, 30), null);
+  // Path-independent: a member 501 maps down the same chain still reads after the deep one was refused.
+  assert.equal(topologyPoints(chainStep, 31).length, 2);
+  // The same depth over maps that reach no topology is no topology, not unplaced.
+  const bodyChain = chain.replace("#15=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#14))", "#15=IFCSHAPEREPRESENTATION($,'Body','Curve3D',(#50))")
+    .replace('(#54,#48,#15)', '(#54,#48)').replace('#47=IFCMAPPEDITEM(#42,#46)', `#47=IFCMAPPEDITEM(#${20000 + 3 * 1199},#46)`);
+  assert.deepEqual(topologyPoints(ifc4(bodyChain), 30), []);
   // A map whose MappedRepresentation is not a representation holds nothing: the direct edge alone, no throw.
   assert.equal(topologyPoints(ifc4(direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#41,#46)')), 30).length, 2);
   const dangling = direct.replace('#53=IFCMAPPEDITEM(#52,#46)', '#53=IFCMAPPEDITEM(#98,#46)');

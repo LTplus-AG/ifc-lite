@@ -218,6 +218,7 @@ function holdsTopology(step, rep) {
  */
 const MAX_MAPPED_VERTICES = 10000;
 const MAX_MAP_DEPTH = 1000;
+const TOO_DEEP = Symbol('maps nested too deep');
 
 /**
  * The topology vertices of one representation, in its axes: its own items
@@ -235,7 +236,11 @@ function representationVertices(step, rep, active = new Set()) {
   if (memo.has(rep.id)) return memo.get(rep.id);
   // Back into a representation still being walked: a cycle, refused only when it reaches topology.
   if (active.has(rep.id)) return holdsTopology(step, rep) ? null : [];
-  if (active.size > MAX_MAP_DEPTH) return null;
+  // Too deep for the stack: unwind the whole member walk, memoising nothing on its path.
+  if (active.size > MAX_MAP_DEPTH) {
+    if (!holdsTopology(step, rep)) return [];
+    throw TOO_DEEP;
+  }
   active.add(rep.id);
   const points = mapVertices(step, rep, active);
   active.delete(rep.id);
@@ -278,10 +283,17 @@ export function topologyPoints(step, productId, scale = lengthScale(step)) {
   const frame = placementId === undefined ? IDENTITY : placementFrame(step, placementId);
   const shape = step.get(product?.args[6]);
   if (!shape) return [];
-  const points = (Array.isArray(shape.args[2]) ? shape.args[2] : []).map((repRef) => representationVertices(step, step.get(repRef)));
+  let points;
+  try {
+    points = (Array.isArray(shape.args[2]) ? shape.args[2] : []).map((repRef) => representationVertices(step, step.get(repRef)));
+  } catch (e) {
+    if (e === TOO_DEEP) return null;
+    throw e;
+  }
   if (points.includes(null)) return null;
-  if (!frame) return points.flat().length ? null : [];
-  return points.flat().map((p) => apply(frame, p).map((c) => c * scale));
+  const flat = points.flat();
+  if (!frame) return flat.length ? null : [];
+  return flat.map((p) => apply(frame, p).map((c) => c * scale));
 }
 
 /** Distance from point `p` to triangle `a b c` (all 3-vectors). */

@@ -87,7 +87,7 @@ export class StructuralCarriers {
       return;
     }
     this.causesWritten = causes;
-    this.reactions = new Set(source.ids('IFCSTRUCTURALPOINTREACTION'));
+    if (hasActions) this.reactions = new Set(source.ids('IFCSTRUCTURALPOINTREACTION'));
     if (source.ids('IFCSTRUCTURALANALYSISMODEL').length) {
       for (const [model, items] of soleModelItems(source)) this.findSharedPlacement(source, model, items);
     }
@@ -175,10 +175,12 @@ export class StructuralCarriers {
   /**
    * IFC2X3 -> IFC4: the 'Causes' relationship for an action's CausedBy, added
    * unless the source's 'Causes' relationships already name that reaction.
-   * Returns the message to report when IFC4 holds the cause, or null when
-   * CausedBy names no point reaction (then `inspect` reports it omitted):
-   * CAUSED_BY_WRITTEN when the action ends with that one cause, which the
-   * downgrade reads back; CAUSED_BY_AMONG when it ends with several.
+   * Returns the message to report when IFC4 holds the cause: CAUSED_BY_WRITTEN
+   * when the action ends with that one cause, which the downgrade reads back;
+   * CAUSED_BY_AMONG when it ends with several. Null when the carrier is not
+   * armed (no upgrade, no id allocator, a withheld set) or the record is not an
+   * IFC2X3 action whose CausedBy names a point reaction; `inspect` then reports
+   * a set CausedBy omitted.
    */
   noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null {
     // The added relationship names ids the source has; an IFC4 target withholds none, so none is checked.
@@ -190,7 +192,9 @@ export class StructuralCarriers {
       const guid = deterministicGlobalId(`ifc2x3-caused-by:${args[0].trim()}:#${reaction}`);
       this.pending.push(`#${this.ids()}=IFCRELASSIGNSTOPRODUCT('${guid}',${args[1]},'${CAUSES}',$,(#${reaction}),$,#${id});`);
     }
-    return written.size === 0 || (written.size === 1 && written.has(reaction)) ? CAUSED_BY_WRITTEN : CAUSED_BY_AMONG;
+    // The downgrade restores CausedBy only for an action with exactly one cause.
+    const total = written.size + (written.has(reaction) ? 0 : 1);
+    return total === 1 ? CAUSED_BY_WRITTEN : CAUSED_BY_AMONG;
   }
 
   /** Whether `after` may change a converted line, so callers parse its id only then. */

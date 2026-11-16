@@ -288,6 +288,11 @@ describe('CausedBy beside a source Causes relationship #9668', () => {
     ]);
     expect(up.warnings).toContain('IFC2X3 CausedBy is one of several reactions');
     expect(up.warnings).not.toContain('CausedBy has no slot in IFC4');
+    expect(up.warnings).not.toContain('CausedBy is written as');
+    // Back in IFC2X3 the action has two causes, so CausedBy stays unset and both relationships stay.
+    const down = await convert(up.step, 'IFC2X3');
+    expect(line(down.step, 21)).toContain(',.F.,$,.TRUE_LENGTH.);');
+    expect(records(down.step, 'IFCRELASSIGNSTOPRODUCT')).toHaveLength(2);
   });
 
   it("writes a Causes relationship for an action even when another action's names the same reaction", async () => {

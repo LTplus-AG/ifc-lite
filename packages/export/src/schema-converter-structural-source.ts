@@ -55,7 +55,6 @@ export class SourceRecords {
     for (const entry of this.store.entityIndex.byId.values()) {
       const text = decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength);
       const args = text.slice(Math.max(0, text.indexOf('(')));
-      if (!referencesAnyExpressId(args, targets)) continue;
       for (const t of namedExpressIds(args, targets)) uses.set(t, (uses.get(t) ?? 0) + 1);
     }
     return uses;

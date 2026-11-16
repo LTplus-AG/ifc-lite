@@ -89,11 +89,12 @@ export class StructuralThickness {
     if (this.mode !== 'upgrade' || entity !== ENTITY || !this.ids || withheld?.size || args.length !== 11) return false;
     const values = [args[8], ...listItems(args[9]) ?? []].map(thickness);
     const location = refId(args[10]);
-    // The same location rule as the downgrade, so what this writes comes back.
-    if (values.length !== 3 || values.includes(null) || location === null || this.aspectOf(args[6]) !== location || !this.pointAspects.has(location)) return false;
+    if (values.length !== 3 || values.includes(null)) return false;
     // A property set the member already has holds the thicknesses only when its values are these.
     const existing = this.psets.get(id);
     if (existing) return existing.length === 3 && existing.every((v, i) => parseStepNumber(v) === parseStepNumber(values[i]!));
+    // The same location rule as the downgrade, so what this writes comes back.
+    if (location === null || this.aspectOf(args[6]) !== location || !this.pointAspects.has(location)) return false;
     const properties = values.map((v, i) => `IFCPROPERTYSINGLEVALUE('${NAMES[i]}',$,IFCPOSITIVELENGTHMEASURE(${v}),$)`);
     this.pending.push(...writeCarrierSet(this.ids, `ifc2x3-thickness:${args[0].trim()}`, args[1], THICKNESS_PSET, id, properties));
     return true;

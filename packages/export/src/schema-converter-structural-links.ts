@@ -13,7 +13,6 @@ function slotRef(token: string | undefined): number | null {
   return m && skipStepTrivia(token!, start + m[0].length) === token!.length ? Number(m[1]) : null;
 }
 
-
 /** Whether IFC4 `keyword` converts to an IFC2X3 subtype of `parent`. */
 const becomes = (keyword: string | undefined, parent: string): boolean =>
   !!keyword && isSubtype('IFC2X3', convertEntityType(keyword, 'IFC4', 'IFC2X3'), parent);

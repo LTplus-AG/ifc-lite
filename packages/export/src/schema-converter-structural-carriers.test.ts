@@ -271,7 +271,14 @@ ${geometry}
 
   it('requires each location representation to hold exactly one point, on the way up and down', async () => {
     const twoPoints = IFC2X3.replace("#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));", "#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7,#7));");
-    expect(records((await convert(twoPoints, 'IFC4')).step, 'IFCPROPERTYSET')).toEqual([]);
+    const twoUp = await convert(twoPoints, 'IFC4');
+    expect(records(twoUp.step, 'IFCPROPERTYSET')).toEqual([]);
+    expect(twoUp.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
+    // Down: a valid IFC4 file whose aspect representation then gets a second point.
+    const valid = (await convert(IFC2X3, 'IFC4')).step;
+    const twoDown = valid.replace("#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));", "#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7,#7));");
+    expect(twoDown).not.toBe(valid);
+    expect(line((await convert(twoDown, 'IFC2X3')).step, 20)).toContain(',.SHELL.,0.2,$,$);');
     const onSurface = IFC2X3.replace("#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));", "#18=IFCPLANE(#8);\n#19=IFCPOINTONSURFACE(#18,0.,0.);\n#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#19));");
     const up = await convert(onSurface, 'IFC4');
     expect(records(up.step, 'IFCPROPERTYSET')).toHaveLength(1);

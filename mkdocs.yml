@@ -322,6 +322,7 @@ nav:
   - Contributing:
     - Development Setup: contributing/setup.md
     - Testing: contributing/testing.md
+    - CI Cache Measurements: contributing/ci-cache-measurements.md
     - Collaboration Testing: contributing/collaboration-testing.md
     - Release Process: contributing/release.md
     - Contributor License Agreement: contributing/cla.md

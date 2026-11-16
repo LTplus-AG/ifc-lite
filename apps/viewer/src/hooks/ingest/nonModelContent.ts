@@ -10,6 +10,8 @@
  */
 
 import { NON_MODEL_REASONS, type NonModelReason } from '@/lib/non-model-reasons';
+import { detectFormat } from '@ifc-lite/parser';
+import { detectPointCloudFormat } from './pointCloudIngest';
 import { headIsZip } from './sourceBuffers';
 
 /** Bodies up to this size are read whole to recognise a JSON or XML error response; HTML is looked for in this much of any body. */
@@ -46,48 +48,61 @@ const HTML_START = /^<(?:!doctype\s*html|html|head|body|title|meta|h[1-6]|div|p|
 const XML_ERROR_NAMES = new Set(['error', 'errors', 'errorresponse', 'exception', 'exceptionreport', 'fault', 'accessdenied']);
 const XML_ERROR_SUFFIX = /(?:Error|Exception|Fault)(?:Report|Response)?$/;
 
+/** STEP's first line, after whitespace and comments (case-insensitive, with or without the hyphen). */
+const STEP_MARKER = /^ISO[- ]?10303-21/i;
+
 /**
- * Why `file` is an error response rather than a model (`null` when it may be a model). Text only (binary content
- * is left to the loaders): an HTML page; for a small body, JSON that is not an IFCX document (whose
- * `header.ifcxVersion` names IFCX) or XML whose root is an error element; under an IFC name (.ifc, .ifczip),
- * text that does not start (after whitespace and comments) like STEP. `scan`, when given, is the file's first
- * {@link NON_MODEL_SCAN_BYTES} bytes, so a caller that already read them is not read twice.
+ * Why `file` is an error response rather than a model (`null` when it may be a model). An HTML page; for a small
+ * text body, JSON that is not an IFCX document (whose `header.ifcxVersion` names IFCX) or XML whose root is an
+ * error element; under an IFC name (.ifc, .ifczip), content the format router would send to the STEP parser
+ * although it is not STEP. Formats the router recognises by content (ZIP, GLB, 3DM, IFCX JSON, point-cloud
+ * magic) are always left to their loaders.
+ *
+ * `head` is the first 4 KiB the caller already read. More (up to {@link NON_MODEL_SCAN_BYTES}) is read only when
+ * the head looks like text that is not plainly a model, so an ordinary STEP or binary model costs no extra read.
  */
-export async function nonModelContentReason(file: File, scan?: ArrayBuffer): Promise<NonModelReason | null> {
-  const buffer = scan ?? await file.slice(0, NON_MODEL_SCAN_BYTES).arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  if (bytes.length === 0 || headIsZip(buffer)) return null;
-  const text = new TextDecoder().decode(bytes);
-  const body = afterProlog(text);
-  // A control byte in the first 512 means binary, so only a full HTML document start (doctype or <html>) counts:
-  // a headerless .splat can start with '<a '.
+export async function nonModelContentReason(file: File, head?: ArrayBuffer): Promise<NonModelReason | null> {
+  const first = head ?? await file.slice(0, 4096).arrayBuffer();
+  const bytes = new Uint8Array(first);
+  if (bytes.length === 0 || headIsZip(first)) return null;
+  const routed = detectFormat(first);
+  if (routed === 'glb' || routed === '3dm') return null;
+  const ifcName = /\.(?:ifc|ifczip)$/i.test(file.name);
+  // A control byte in the first 512 means binary: a headerless .splat can start with '<a '.
   const binary = bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32));
+  const firstChar = String.fromCharCode(bytes[bytes.findIndex((b) => b > 32)] ?? 0);
+  if (binary && firstChar !== '<' && !ifcName) return null;
+  if (ifcName && STEP_MARKER.test(afterStepComments(new TextDecoder().decode(first)) ?? '')) return null;
+
+  const scan = file.size > first.byteLength && first.byteLength < NON_MODEL_SCAN_BYTES ? await file.slice(0, NON_MODEL_SCAN_BYTES).arrayBuffer() : first;
+  const text = new TextDecoder().decode(scan);
+  const body = afterProlog(text);
   if (binary ? /^<(?:!doctype\s*html|html)[\s>]/i.test(body) : HTML_START.test(body)) return NON_MODEL_REASONS.html;
-  if (binary) return null;
-  const whole = file.size <= NON_MODEL_SCAN_BYTES;
-  if (whole && body.startsWith('<')) {
+  const whole = file.size <= scan.byteLength;
+  if (!binary && whole && body.startsWith('<')) {
     const root = (/^<([\w.:-]{1,128})/.exec(body.slice(0, 256))?.[1] ?? '').split(':').pop() ?? '';
     if (XML_ERROR_NAMES.has(root.toLowerCase()) || XML_ERROR_SUFFIX.test(root)) return NON_MODEL_REASONS.xmlError;
   }
-  if (whole && /^[{["]/.test(body)) {
+  if (!binary && whole && /^[{["]/.test(body)) {
     const reason = jsonReason(body, /\.ifcx$/i.test(file.name));
     if (reason) return reason;
   }
-  // Under an IFC name the loader treats unknown content as STEP. STEP starts with ISO (the format router's own
-  // test), after whitespace and any comments; JSON goes to the IFCX loader; blank content is the loader's to judge.
+  if (!ifcName || routed === 'ifcx' || detectPointCloudFormat('content', first)) return null;
+  // Under an IFC name everything else goes to the STEP parser: refuse what is not STEP. A blank file is the
+  // loader's to judge; an unterminated comment is text unless the scan was cut short.
   const lead = afterStepComments(text);
-  if (/\.(?:ifc|ifczip)$/i.test(file.name) && lead.length > 0 && !/^iso/i.test(lead) && !/^[{[]/.test(lead)) return NON_MODEL_REASONS.notStep;
-  return null;
+  if (lead === null) return whole ? NON_MODEL_REASONS.notStep : null;
+  return lead === '' || STEP_MARKER.test(lead) ? null : NON_MODEL_REASONS.notStep;
 }
 
-/** `text` after leading whitespace and STEP comments; linear. */
-function afterStepComments(text: string): string {
+/** `text` after leading whitespace and STEP comments (`null` when a comment is unterminated); linear. */
+function afterStepComments(text: string): string | null {
   let at = 0;
   for (;;) {
     while (at < text.length && /\s/.test(text[at])) at++;
     if (!text.startsWith('/*', at)) return text.slice(at);
     const end = text.indexOf('*/', at + 2);
-    if (end === -1) return '';
+    if (end === -1) return null;
     at = end + 2;
   }
 }

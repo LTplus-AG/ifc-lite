@@ -28,6 +28,10 @@ it('#9523 recognises error responses under any model name', async () => {
     ['<!DOCTYPE html>\x00<html>Forbidden', 'a.glb', /HTML page/],
     [`<!DOCTYPE${' '.repeat(1100)}html>Access denied`, 'm.glb', /HTML page/],
     ['Error: expected ISO-10303-21 header', 'a.ifc', /neither STEP/],
+    ['Isolation failure: access denied', 'a.ifc', /neither STEP/],
+    ['[ERROR] token expired', 'house.ifc', /neither STEP/],
+    ['/* Access denied', 'house.ifc', /neither STEP/],
+    ['\x1b[31mError\x1b[0m forbidden', 'house.ifc', /neither STEP/],
     ['{"header":{"ifcxVersion":null}}', 'model.ifcx', /without an IFCX header\.ifcxVersion/],
     ['{"header":{"version":"1"},"data":[]}', 'model.ifcx', /without an IFCX header\.ifcxVersion/],
     [`<!DOCTYPE${' '.repeat(300)}html>Access denied`, 'model.glb', /HTML page/],
@@ -53,6 +57,8 @@ it('#9523 leaves every file a loader would open alone', async () => {
     ['ISO10303-21;\nHEADER;', 'tight-iso.ifc'],
     ['iso-10303-21;\nHEADER;', 'lower-iso.ifc'],
     ['   \n', 'blank.ifc'],
+    ['ply\nformat ascii 1.0\nelement vertex 1\n', 'renamed-ply.ifc'],
+    ['VERSION 0.7\nFIELDS x y z\n', 'renamed-pcd.ifc'],
     [`${' '.repeat(5000)}${step}`, 'spaced.ifc'],
     [zipSync({ 'model.ifc': strToU8(step) }), 'pack.ifczip'],
     [zipSync({ 'model.ifc': strToU8(step) }), 'zipped.ifc'],
@@ -71,6 +77,17 @@ it('#9523 leaves every file a loader would open alone', async () => {
     ['', 'empty.ifc'],
   ];
   for (const [body, name] of cases) assert.equal(await reason(body, name), null, `${name}: ${String(body).slice(0, 40)}`);
+});
+
+it('#9523 reads no more than the 4 KiB head for an ordinary STEP or binary model', async () => {
+  for (const [body, name] of [[step, 'house.ifc'], [new Uint8Array([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0, 9, 9]), 'model.glb']] as const) {
+    const file = new File([body, ' '.repeat(100_000)], name);
+    let extraReads = 0;
+    const realSlice = file.slice.bind(file);
+    Object.defineProperty(file, 'slice', { value: (start?: number, end?: number) => { if (!(start === 0 && end === 4096)) extraReads++; return realSlice(start, end); } });
+    assert.equal(await nonModelContentReason(file), null, name);
+    assert.equal(extraReads, 0, name);
+  }
 });
 
 it('#9523 scans a crafted prolog linearly', () => {

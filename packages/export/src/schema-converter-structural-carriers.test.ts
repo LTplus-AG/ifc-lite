@@ -525,6 +525,23 @@ describe('carrier property set with a duplicate property name #9668', () => {
 #33=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#32);`);
     const { step } = await convert(ifc2x3, 'IFC4');
     expect(line(step, 20)).toMatch(/^#20=IFCSTRUCTURALLOADGROUP\(/);
-    expect(line(step, 32)).toBeDefined();
+    for (const id of [30, 31, 32, 33]) expect(line(step, id)).toBeDefined();
+  });
+
+  it('gives a varying member no second thickness set', async () => {
+    const ifc2x3 = model('IFC2X3', `${OWNER}
+#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
+#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
+#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#17=IFCSHAPEASPECT((#16),$,$,.T.,#15);
+#20=IFCSTRUCTURALSURFACEMEMBERVARYING('2KZvpy1jjNYvbqlQZoD987',#5,'Slab',$,$,#9,#15,.SHELL.,0.2,(0.25,0.3),#17);
+#40=IFCPROPERTYSINGLEVALUE('Thickness1',$,IFCPOSITIVELENGTHMEASURE(0.2),$);
+#41=IFCPROPERTYSINGLEVALUE('Thickness1',$,IFCPOSITIVELENGTHMEASURE(0.9),$);
+#44=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'Pset_StructuralSurfaceMemberVaryingThickness',$,(#40,#41));
+#45=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#44);`);
+    const up = await convert(ifc2x3, 'IFC4');
+    expect(records(up.step, 'IFCPROPERTYSET')).toHaveLength(1);
+    expect(up.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
   });
 });

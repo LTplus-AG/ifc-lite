@@ -223,10 +223,12 @@ entities, properties and containment from the parsed store. No meshing.
   when the slab has holes whose shape is not read: a `FootPrint` of more than
   one curve, or a Boolean DIFFERENCE). The inner curves of a slab profile are
   read as holes, also under a `FootPrint`: one under 1 m² stays closed; one
-  roofed by a slab more than 1 m higher (its outer outline over the hole, no
-  hole there, no unread voids) is interior (a shaft, a stair opening, a floor
-  area under the building): filled, noted, no condition; any other is open to
-  the sky, a courtyard: a hole in the prepared footprint (`courtyardRings`,
+  wholly roofed (every point of a grid clipped to the hole and just inside
+  each edge and corner lies under the outer outline of a slab more than 1 m
+  higher, outside its holes, with no unread voids) is interior (a shaft, a
+  stair opening, a floor area under the building): filled, noted, no
+  condition; any other, a partly roofed one included, is open to the sky, a
+  courtyard: a hole in the prepared footprint (`courtyardRings`,
   quality `courtyard-ring`), guarded only for the elements next to it. Else its external walls' axes
   chained into one closed ring (`external-wall-outline`, which keeps
   courtyards and notches), else the hull of those axes (`external-wall-hull`),

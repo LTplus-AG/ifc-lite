@@ -158,3 +158,54 @@ describe('the merge-queue failure on MiniBIM: a slab hole is read, and only an o
     expect(outcomeOf(facts, 'Haustür').outcome).toBe('no-runoff-mapped');
   });
 });
+
+describe('review of #10486 at 5cc3b584c: a hole is roofed only over its whole area; on doubt it is a courtyard', () => {
+  type Pts = Array<[number, number]>;
+  /** A ground slab 0..20 x 0..20 with `hole`, and above it the slabs `upper` (outer, holes). */
+  const build = (hole: Pts, upper: Array<{ outer: Pts; holes: Pts[] }>) => (b: Extra) => {
+    const pt = (x: number, y: number) => b.add(`IFCCARTESIANPOINT((${x},${y}))`);
+    const loop = (pts: Pts) => b.add(`IFCPOLYLINE((${[...pts, pts[0]].map(([x, y]) => `#${pt(x, y)}`).join(',')}))`);
+    const slab = (storey: { pl: number; id: number }, name: string, outer: Pts, holes: Pts[]) => {
+      const prof = holes.length
+        ? b.add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#${loop(outer)},(${holes.map((h) => `#${loop(h)}`).join(',')}))`)
+        : b.add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${loop(outer)})`);
+      const solid = b.add(`IFCEXTRUDEDAREASOLID(#${prof},#${b.axis(0, 0, 0)},#${b.dir(0, 0, -1)},0.3)`);
+      b.contain(storey.id, b.add(`IFCSLAB(${b.guid()},$,'${name}',$,$,#${b.place(storey.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLOOR.)`));
+    };
+    const square: Pts = [[0, 0], [20, 0], [20, 20], [0, 20]];
+    slab(b.storeys.eg, 'EG', square, [hole]);
+    upper.forEach((u, k) => slab(b.storeys.og, `OG ${k}`, u.outer, u.holes));
+  };
+  const square: Pts = [[0, 0], [20, 0], [20, 20], [0, 20]];
+  const run = async (hole: Pts, upper: Array<{ outer: Pts; holes: Pts[] }>) => (await extract(build(hole, upper), false)).footprint;
+
+  // The finding's L, shifted by (5, 5): its vertex mean (9, 9) lies in slab material, not in the hole.
+  const L: Pts = [[5, 5], [15, 5], [15, 7], [7, 7], [7, 15], [5, 15]];
+  it('an L-shaped courtyard open through the floor above is a courtyard, though slab material above covers its vertex mean', async () => {
+    const fp = await run(L, [{ outer: square, holes: [L] }]);
+    expect(fp.courtyardRings).toHaveLength(1);
+    expect(fp.quality?.worst).toBe('courtyard-ring');
+  });
+
+  it('a U-shaped courtyard open above is a courtyard (its vertex mean lies between the arms, in slab material)', async () => {
+    const U: Pts = [[5, 5], [15, 5], [15, 15], [13, 15], [13, 7], [7, 7], [7, 15], [5, 15]];
+    expect((await run(U, [{ outer: square, holes: [U] }])).courtyardRings).toHaveLength(1);
+  });
+
+  it('a hole half covered by a balcony slab is a courtyard (partly roofed is open)', async () => {
+    const hole: Pts = [[6, 3], [14, 3], [14, 7], [6, 7]];
+    const fp = await run(hole, [{ outer: square, holes: [hole] }, { outer: [[6, 3], [11, 3], [11, 7], [6, 7]], holes: [] }]);
+    expect(fp.courtyardRings).toHaveLength(1);
+  });
+
+  it('a hole under a slab that itself has a hole above part of it is a courtyard', async () => {
+    const hole: Pts = [[6, 3], [14, 3], [14, 7], [6, 7]];
+    expect((await run(hole, [{ outer: square, holes: [[[12, 3], [14, 3], [14, 7], [12, 7]]] }])).courtyardRings).toHaveLength(1);
+  });
+
+  it('control: a hole wholly roofed by the slab above stays interior', async () => {
+    const fp = await run([[6, 3], [14, 3], [14, 7], [6, 7]], [{ outer: square, holes: [] }]);
+    expect(fp.courtyardRings).toBeUndefined();
+    expect(fp.quality?.notes.join()).toMatch(/wholly roofed/);
+  });
+});

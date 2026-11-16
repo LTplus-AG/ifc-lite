@@ -56,6 +56,9 @@ export interface StructuralLoadInfo {
    * the parametric locations they apply at, as {@link StructuralLoadConfigurationInfo}.
    */
   configuration?: StructuralLoadConfigurationInfo;
+  /** Ordered reinforcement measures, in the file's two or three directions; absent for other resources. */
+  SurfaceReinforcement1?: number[];
+  SurfaceReinforcement2?: number[];
 }
 
 /**
@@ -274,9 +277,22 @@ function readLoad(
       type,
       name: asString(attrs[0]),
       components: readNumericComponents(type, attrs, store.schemaVersion),
+      ...(type === 'IfcSurfaceReinforcementArea' ? reinforcementLists(attrs) : {}),
     },
     truncated: false,
   };
+}
+
+/** Keep reinforcement direction indices intact; never compact a malformed list. */
+function reinforcementLists(attrs: unknown[]): Pick<StructuralLoadInfo, 'SurfaceReinforcement1' | 'SurfaceReinforcement2'> {
+  const out: Pick<StructuralLoadInfo, 'SurfaceReinforcement1' | 'SurfaceReinforcement2'> = {};
+  for (const [key, index] of [['SurfaceReinforcement1', 1], ['SurfaceReinforcement2', 2]] as const) {
+    const raw = attrs[index];
+    if (!Array.isArray(raw)) continue;
+    const values = raw.map(asNumber);
+    if (values.every((value): value is number => value !== undefined)) out[key] = values;
+  }
+  return out;
 }
 
 /**

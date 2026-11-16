@@ -7,6 +7,7 @@ import { getInheritanceChain } from './ifc-schema.js';
 import type { StructuralExtraction } from './structural-types.js';
 
 export type StructuralRole =
+  | 'reinforcementArea'
   | 'member'
   | 'connection'
   | 'activity'
@@ -18,12 +19,13 @@ export type StructuralRole =
 export function emptyStructuralExtraction(): StructuralExtraction {
   return {
     analysisModels: [], members: [], connections: [], activities: [],
-    loadGroups: [], resultGroups: [], hasStructural: false, loadsTruncated: false,
+    loadGroups: [], resultGroups: [], reinforcementAreas: [], hasStructural: false, loadsTruncated: false,
   };
 }
 
 /** Chain marker → role. Every marker is disjoint, so match order is not load-bearing. */
 const ROLE_BY_SUPERTYPE: ReadonlyArray<readonly [string, StructuralRole]> = [
+  ['IFCSURFACEREINFORCEMENTAREA', 'reinforcementArea'],
   ['IFCSTRUCTURALANALYSISMODEL', 'analysisModel'],
   ['IFCSTRUCTURALRESULTGROUP', 'resultGroup'],
   ['IFCSTRUCTURALLOADGROUP', 'loadGroup'],
@@ -34,7 +36,8 @@ const ROLE_BY_SUPERTYPE: ReadonlyArray<readonly [string, StructuralRole]> = [
 
 /**
  * Classify by inheritance, not by name. Unrelated `IFCSTRUCTURAL*` entities
- * such as load leaves and profile properties are intentionally skipped.
+ * such as other load leaves and profile properties are intentionally skipped;
+ * reinforcement results also have their own directly inspectable collection.
  */
 export function structuralRoleOf(type: string): StructuralRole | undefined {
   const chain = getInheritanceChain(type).map((c) => c.toUpperCase());

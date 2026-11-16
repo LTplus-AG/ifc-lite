@@ -12,15 +12,12 @@ import type {
   IFCDataAccessor,
 } from '../types.js';
 import type { FacetCheckResult } from './index.js';
-import { matchConstraint, formatConstraint } from '../constraints/index.js';
+import { formatConstraint } from '../constraints/index.js';
+import { matchesEntityName } from './entity-name-match.js';
 import { IFC2X3_MAPPED_ALIASES, rowsForOccurrence } from './ifc2x3-type-mapping.js';
 import { matchPredefinedType } from './predefined-type-match.js';
 import { distinctIds } from './distinct-ids.js';
 import { assertGuardedRegexPattern } from '@ifc-lite/regex-guard';
-
-/** IFC entity NAME comparisons are case-insensitive per IDS spec. Predefined
- *  types are NOT — see `predefined-type-match.ts`. */
-const IFC_CASE_INSENSITIVE = { caseInsensitive: true } as const;
 
 /**
  * Does `facet.name` match this entity through buildingSMART's IFC2X3
@@ -52,7 +49,7 @@ function matchesIfc2x3Mapping(
   const typeEntityUpper = typeEntityType.toUpperCase();
   for (const row of rows) {
     if (row.typeEntity !== typeEntityUpper) continue;
-    if (matchConstraint(facet.name, row.alias, IFC_CASE_INSENSITIVE)) return true;
+    if (matchesEntityName(facet.name, row.alias)) return true;
   }
   return false;
 }
@@ -93,10 +90,8 @@ export function checkEntityFacet(
     };
   }
 
-  // Per IDS 1.0 spec, entity-name simpleValue literals MUST be
-  // uppercase (`IFCWALL`, not `IfcWall`). Reject malformed authoring
-  // outright before attempting the case-insensitive comparison —
-  // otherwise mixed-case literals would silently match.
+  // A simple value that is not upper case is rejected, as buildingSMART's
+  // invalid-entities_must_be_specified_as_uppercase_strings requires.
   if (
     facet.name.type === 'simpleValue' &&
     facet.name.value !== facet.name.value.toUpperCase()
@@ -114,9 +109,9 @@ export function checkEntityFacet(
     };
   }
 
-  // Check entity type (case-insensitive per IDS spec — IFC entity names are case-agnostic)
+  // Check entity type: the IDS name against the upper-case class (#10544)
   if (
-    !matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE) &&
+    !matchesEntityName(facet.name, entityType) &&
     !matchesIfc2x3Mapping(facet, entityType, expressId, accessor)
   ) {
     return {
@@ -209,7 +204,7 @@ export function entityFacetPasses(
   }
 
   if (
-    !matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE) &&
+    !matchesEntityName(facet.name, entityType) &&
     !matchesIfc2x3Mapping(facet, entityType, expressId, accessor)
   ) {
     return false;

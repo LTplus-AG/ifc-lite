@@ -168,7 +168,10 @@ Four other values move between an attribute and a relationship or property set:
   `Pset_StructuralSurfaceMemberVaryingThickness` (`Thickness1` to
   `Thickness3`) when its location is the one aspect of the member's
   representation and each of that aspect's representations holds one point,
-  which is where the downgrade finds it again. Otherwise both are reported lost.
+  which is where the downgrade finds it again. Otherwise both are reported lost,
+  also when the member already has a matching property set. The downgrade
+  reads an IFC4 member's property set with that one point aspect as its
+  location.
 
 These also need an unedited full export.
 

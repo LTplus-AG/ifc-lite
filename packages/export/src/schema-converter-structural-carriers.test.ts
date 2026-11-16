@@ -257,11 +257,11 @@ ${geometry}
     expect(kept.warnings).toContain('IFC2X3 SubsequentThickness is held in IFC4');
     expect(kept.warnings).not.toContain('has no slot in IFC4');
     expect(records(kept.step, 'IFCPROPERTYSET')).toHaveLength(1);
-    // The other aspect of the representation is the location: thickness is held, the location is not.
+    // A second aspect on the representation: the location would not come back, so both are reported lost.
     const elsewhere = await convert(matching.replace('#17=', "#18=IFCSHAPEASPECT((#14),$,$,.T.,#15);\n#17="), 'IFC4');
-    expect(elsewhere.warnings).toContain('IFC2X3 SubsequentThickness is held in IFC4');
+    expect(elsewhere.warnings).not.toContain('SubsequentThickness is held');
+    expect(elsewhere.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
     expect(elsewhere.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.VaryingThicknessLocation has no slot in IFC4');
-    expect(elsewhere.warnings).not.toContain('SubsequentThickness has no slot');
     expect(records(elsewhere.step, 'IFCPROPERTYSET')).toHaveLength(1);
   });
 
@@ -278,6 +278,7 @@ ${geometry}
   it('writes no property set for an unset location where the representation has no single aspect', async () => {
     const up = await convert(IFC2X3.replace(',#15,.SHELL.', ',$,.SHELL.').replace('(0.25,0.3),#17)', '(0.25,0.3),$)'), 'IFC4');
     expect(records(up.step, 'IFCPROPERTYSET')).toEqual([]);
+    expect(up.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
   });
 
   it('leaves an IFC4 member whose location aspect is not points, or whose thickness has its own unit, to the previous handling', async () => {

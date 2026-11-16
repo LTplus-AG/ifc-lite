@@ -103,11 +103,11 @@ export class StructuralDiagnostics {
   rewrite(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null | undefined {
     const cause = this.carriers.noteCause(id, entity, args, withheld);
     const held = cause ? ['CausedBy'] : this.thickness.note(id, entity, args, withheld);
+    const carried: ReadonlySet<string> = held.length ? new Set(held) : NONE;
     if (held.length) {
       this.record(cause ?? THICKNESS_WRITTEN);
-      this.carried.set(id, new Set(held));
+      this.carried.set(id, carried);
     }
-    const carried = this.carried.get(id) ?? NONE;
     const attrs = this.links.link(entity, args);
     const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] }
       : this.varying.rewrite(entity, args, carried) ?? this.carriers.rewrite(id, entity, args, withheld) ?? this.thickness.rewrite(id, entity, args);

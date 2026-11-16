@@ -10,10 +10,11 @@
  * The upgrade writes an IFC2X3 member with three thicknesses (Thickness and two
  * subsequent ones) as that property set when its location aspect is the one
  * point aspect of the member's representation (WR62, WR63), which is where the
- * downgrade takes it back; otherwise both are reported lost, so the downgrade
- * never adopts an aspect the source did not name. A matching property set the
- * member already has holds the thicknesses either way. The property set is
+ * downgrade takes it back; otherwise both are reported lost. A matching
+ * property set the member already has counts the same way. The property set is
  * valid IFC2X3 too and is kept; a member that has one is not given a second.
+ * The downgrade reads a native IFC4 member the same way: its property set and
+ * the one point aspect of its representation, the only candidate location.
  *
  * Reads the source store, so only an unedited full export arms it.
  */
@@ -86,29 +87,28 @@ export class StructuralThickness {
   }
 
   /**
-   * IFC2X3 -> IFC4: the attributes of a varying member IFC4 holds elsewhere.
-   * SubsequentThickness in a matching property set the member has, or in one
-   * this adds when the location comes back; VaryingThicknessLocation when its
-   * aspect is the representation's one point aspect (WR62, WR63).
+   * IFC2X3 -> IFC4: the attributes of a varying member IFC4 holds elsewhere:
+   * SubsequentThickness and VaryingThicknessLocation, in a matching property
+   * set the member has or one this adds, when the location is the
+   * representation's one point aspect (WR62, WR63). None otherwise.
    */
   note(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): readonly string[] {
     // The added property set names only the member; an IFC4 target withholds none, so none is checked.
     if (this.mode !== 'upgrade' || entity !== ENTITY || !this.ids || withheld?.size || args.length !== 11) return [];
     const values = [args[8], ...listItems(args[9]) ?? []].map(thickness);
     if (values.length !== 3 || values.includes(null)) return [];
+    // Held only where the location comes back too, so the round trip is exact.
     const location = refId(args[10]);
-    const located = location !== null && this.aspectOf(args[6]) === location && this.pointAspects.has(location);
+    if (location === null || this.aspectOf(args[6]) !== location || !this.pointAspects.has(location)) return [];
     const existing = this.psets.get(id);
     if (existing) {
       // A property set the member already has holds the thicknesses only when its values are these.
       if (existing.length !== 3 || existing.some((v, i) => parseStepNumber(v) !== parseStepNumber(values[i]!))) return [];
-    } else if (located) {
+    } else {
       const properties = values.map((v, i) => `IFCPROPERTYSINGLEVALUE('${NAMES[i]}',$,IFCPOSITIVELENGTHMEASURE(${v}),$)`);
       this.pending.push(...writeCarrierSet(this.ids, `ifc2x3-thickness:${args[0].trim()}`, args[1], THICKNESS_PSET, id, properties));
-    } else {
-      return [];
     }
-    return located ? ['SubsequentThickness', 'VaryingThicknessLocation'] : ['SubsequentThickness'];
+    return ['SubsequentThickness', 'VaryingThicknessLocation'];
   }
 
   /** IFC4 -> IFC2X3: the IFC2X3 member body from its property set and its one aspect, or undefined. */

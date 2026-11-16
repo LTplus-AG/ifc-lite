@@ -14,6 +14,9 @@ import { detectFormat } from '@ifc-lite/parser';
 import { detectPointCloudFormat } from './pointCloudIngest';
 import { headIsZip } from './sourceBuffers';
 
+/** The head the loader reads for format detection; the check works from it and reads further only when needed. */
+export const NON_MODEL_HEAD_BYTES = 4096;
+
 /** Bodies up to this size are read whole to recognise a JSON or XML error response; HTML is looked for in this much of any body. */
 export const NON_MODEL_SCAN_BYTES = 64 * 1024;
 
@@ -62,7 +65,7 @@ const STEP_MARKER = /^ISO[- ]?10303-21/i;
  * the head looks like text that is not plainly a model, so an ordinary STEP or binary model costs no extra read.
  */
 export async function nonModelContentReason(file: File, head?: ArrayBuffer): Promise<NonModelReason | null> {
-  const first = head ?? await file.slice(0, 4096).arrayBuffer();
+  const first = head ?? await file.slice(0, NON_MODEL_HEAD_BYTES).arrayBuffer();
   const bytes = new Uint8Array(first);
   if (bytes.length === 0 || headIsZip(first)) return null;
   const routed = detectFormat(first);
@@ -70,12 +73,16 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const ifcName = /\.(?:ifc|ifczip)$/i.test(file.name);
   // A control byte in the first 512 means binary: a headerless .splat can start with '<a '.
   const binary = bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32));
-  const firstChar = String.fromCharCode(bytes[bytes.findIndex((b) => b > 32)] ?? 0);
-  if (binary && firstChar !== '<' && !ifcName) return null;
-  if (ifcName && STEP_MARKER.test(afterStepComments(new TextDecoder().decode(first)) ?? '')) return null;
+  const headText = new TextDecoder().decode(first); // drops a UTF-8 BOM
+  const firstChar = headText.trimStart()[0] ?? '';
+  // Only content that could be an error response, or IFC-named content that is not plainly STEP, is read further.
+  const couldBeText = firstChar === '<' || (!binary && /[{["]/.test(firstChar));
+  const ifcNotStep = ifcName && !STEP_MARKER.test(afterStepComments(headText) ?? '');
+  if (!couldBeText && !ifcNotStep) return null;
 
-  const scan = file.size > first.byteLength && first.byteLength < NON_MODEL_SCAN_BYTES ? await file.slice(0, NON_MODEL_SCAN_BYTES).arrayBuffer() : first;
-  const text = new TextDecoder().decode(scan);
+  const scan = file.size > first.byteLength && first.byteLength < NON_MODEL_SCAN_BYTES
+    ? await file.slice(0, NON_MODEL_SCAN_BYTES).arrayBuffer() : first;
+  const text = scan === first ? headText : new TextDecoder().decode(scan);
   const body = afterProlog(text);
   if (binary ? /^<(?:!doctype\s*html|html)[\s>]/i.test(body) : HTML_START.test(body)) return NON_MODEL_REASONS.html;
   const whole = file.size <= scan.byteLength;
@@ -87,9 +94,9 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
     const reason = jsonReason(body, /\.ifcx$/i.test(file.name));
     if (reason) return reason;
   }
-  if (!ifcName || routed === 'ifcx' || detectPointCloudFormat('content', first)) return null;
+  if (!ifcNotStep || routed === 'ifcx' || detectPointCloudFormat('content', first)) return null;
   // Under an IFC name everything else goes to the STEP parser: refuse what is not STEP. A blank file is the
-  // loader's to judge; an unterminated comment is text unless the scan was cut short.
+  // loader's to judge; an unterminated comment is not STEP unless the scan was cut short.
   const lead = afterStepComments(text);
   if (lead === null) return whole ? NON_MODEL_REASONS.notStep : null;
   return lead === '' || STEP_MARKER.test(lead) ? null : NON_MODEL_REASONS.notStep;

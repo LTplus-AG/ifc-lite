@@ -12,7 +12,7 @@ export const NON_MODEL_REASONS = {
   json: 'a JSON response',
   ifcxHeader: 'a JSON document without an IFCX header.ifcxVersion',
   xmlError: 'an XML error response',
-  notStep: 'text that is neither STEP nor an IFC ZIP',
+  notStep: 'content that is neither STEP nor an IFC ZIP',
 } as const;
 export type NonModelReason = (typeof NON_MODEL_REASONS)[keyof typeof NON_MODEL_REASONS];
 

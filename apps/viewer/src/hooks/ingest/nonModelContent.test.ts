@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 import { isInvalidInputError } from '@/lib/invalid-input-errors';
-import { afterProlog, NON_MODEL_REASONS, nonModelContentMessage, nonModelContentReason } from './nonModelContent';
+import { afterProlog, NON_MODEL_HEAD_BYTES, NON_MODEL_REASONS, nonModelContentMessage, nonModelContentReason } from './nonModelContent';
 
 const step = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
 const reason = (body: BlobPart, name: string) => nonModelContentReason(new File([body], name));
@@ -31,6 +31,7 @@ it('#9523 recognises error responses under any model name', async () => {
     ['Isolation failure: access denied', 'a.ifc', /neither STEP/],
     ['[ERROR] token expired', 'house.ifc', /neither STEP/],
     ['/* Access denied', 'house.ifc', /neither STEP/],
+    ['\uFEFF<!DOCTYPE html>\x00<html>Forbidden', 'a.glb', /HTML page/],
     ['\x1b[31mError\x1b[0m forbidden', 'house.ifc', /neither STEP/],
     ['{"header":{"ifcxVersion":null}}', 'model.ifcx', /without an IFCX header\.ifcxVersion/],
     ['{"header":{"version":"1"},"data":[]}', 'model.ifcx', /without an IFCX header\.ifcxVersion/],
@@ -79,12 +80,12 @@ it('#9523 leaves every file a loader would open alone', async () => {
   for (const [body, name] of cases) assert.equal(await reason(body, name), null, `${name}: ${String(body).slice(0, 40)}`);
 });
 
-it('#9523 reads no more than the 4 KiB head for an ordinary STEP or binary model', async () => {
-  for (const [body, name] of [[step, 'house.ifc'], [new Uint8Array([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0, 9, 9]), 'model.glb']] as const) {
+it('#9523 reads no more than the 4 KiB head for an ordinary STEP, binary or text point-cloud model', async () => {
+  for (const [body, name] of [[step, 'house.ifc'], [new Uint8Array([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0, 9, 9]), 'model.glb'], ['ply\nformat ascii 1.0\n', 'cloud.ply'], [new Uint8Array([0x4c, 0x41, 0x53, 0x46, 0, 0]), 'scan.las']] as const) {
     const file = new File([body, ' '.repeat(100_000)], name);
     let extraReads = 0;
     const realSlice = file.slice.bind(file);
-    Object.defineProperty(file, 'slice', { value: (start?: number, end?: number) => { if (!(start === 0 && end === 4096)) extraReads++; return realSlice(start, end); } });
+    Object.defineProperty(file, 'slice', { value: (start?: number, end?: number) => { if (!(start === 0 && end === NON_MODEL_HEAD_BYTES)) extraReads++; return realSlice(start, end); } });
     assert.equal(await nonModelContentReason(file), null, name);
     assert.equal(extraReads, 0, name);
   }

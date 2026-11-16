@@ -80,6 +80,7 @@ function chooseSite(store: IfcDataStore, view: MutablePropertyView | null, siteI
 /** Validate a site write and plan it, or refuse with the missing input named. */
 export function planSiteWrite(store: IfcDataStore, view: MutablePropertyView | null, input: GeorefSiteInput): SiteWritePlan {
   rejectUnknownKeys(input, SITE_KEYS, '');
+  if (!input) throw new GeoreferencingError('INVALID_INPUT', 'setSite needs an input object.');
   const schema = String(store.schemaVersion ?? '');
   if (!SITE_SCHEMAS.has(schema)) {
     throw new GeoreferencingError('UNSUPPORTED_SCHEMA', `IfcSite RefLatitude/RefLongitude can be written to IFC2X3, IFC4 and IFC4X3 models; this model is ${schema || 'of unknown schema'}.`);
@@ -97,6 +98,12 @@ export function planSiteWrite(store: IfcDataStore, view: MutablePropertyView | n
     throw new GeoreferencingError('INVALID_INPUT', `RefLongitude must be within -180..180 degrees, got ${values.RefLongitude}.`, ['RefLongitude']);
   }
   const siteId = chooseSite(store, view, input.siteId);
+  const changes = view?.getEffectiveChanges() ?? [];
+  if (changes.some((c) => (c.kind === 'type' && (liveSites(store, view).includes(c.entityId) || c.newValue?.toUpperCase() === 'IFCSITE'))
+    || (c.kind === 'entity-added' && c.newValue?.toUpperCase() === 'IFCSITE')
+    || (c.entityId === siteId && c.kind === 'attribute' && (Object.keys(SITE_SLOTS) as string[]).includes(c.name ?? '')))) {
+    throw new GeoreferencingError('UNSUPPORTED_RECORD', 'IfcSite was created, retyped or its location edited outside setSite; its current values cannot be carried reliably. Nothing was written.');
+  }
   const before = readSiteValues(store, view, siteId);
   const after: SiteValues = { ...before, ...values };
   // One without the other locates nothing, and readers drop it.

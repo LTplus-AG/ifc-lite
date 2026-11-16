@@ -105,7 +105,16 @@ describe('bim.georef.setSite', () => {
     expect(bim.georef.get().site?.latitude).toBeCloseTo(46.948091, 9);
   });
 
-  it('one undo takes the whole write back', async () => {
+  it('refuses a site retyped outside georef without editing the replacement record', async () => {
+    const { bim, backend } = await session('IFC4');
+    bim.georef.setSite({ RefLatitude: 47, RefLongitude: 8 });
+    backend.getMutationView()!.setEntityType(6, 'IfcBuilding');
+    const before = String(bim.export.ifc());
+    expect(() => bim.georef.setSite({ RefLatitude: 47, RefLongitude: 8 })).toThrow(/retyped/);
+    expect(String(bim.export.ifc())).toBe(before);
+  });
+
+  it('one undo takes the whole write back' , async () => {
     const { bim, backend, undo, reread } = await session('IFC4');
     bim.georef.setSite({ RefLatitude: -33.8688, RefLongitude: 151.2093, RefElevation: 20 });
     // One operation: the three slot edits and the history marker together.

@@ -57,3 +57,16 @@ it('#9523 a load superseded before the content check reads no further and report
   assert.deepEqual(failures, [], 'a stale load reports nothing');
   assert.equal(finished, 1);
 });
+
+it('#9523 a load superseded while the content is scanned reports nothing', async () => {
+  const file = new File(['{"error":"expired"}'], 'house.ifc');
+  let current = true;
+  const realSlice = file.slice.bind(file);
+  // The head read happens while current; the load is superseded before the refusal would be reported.
+  Object.defineProperty(file, 'slice', { value: (start?: number, end?: number) => { const blob = realSlice(start, end); queueMicrotask(() => { current = false; }); return blob; } });
+  const failures: unknown[] = [];
+  const admission = createLocalIfcLoadAdmission(file, { isCurrent: () => current, signal: new AbortController().signal,
+    onCancel: () => assert.fail('no consent prompt expected'), onFailure: (error) => failures.push(error), finish: () => {} });
+  assert.equal(await admission.preflight(), null);
+  assert.deepEqual(failures, [], 'a refusal for a superseded load is not reported');
+});

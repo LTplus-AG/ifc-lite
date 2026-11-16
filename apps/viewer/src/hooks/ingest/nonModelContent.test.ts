@@ -13,6 +13,9 @@ import { NON_MODEL_REASONS, nonModelContentMessage } from '@/lib/non-model-reaso
 import { afterProlog, nonModelContentReason, textStartsLikeStep } from './nonModelContent';
 import { FORMAT_HEAD_BYTES } from './sourceBuffers';
 
+/** UTF-16 bytes of `text` with a BOM. */
+const utf16 = (text: string, be = false) => new Uint8Array([...(be ? [0xfe, 0xff] : [0xff, 0xfe]), ...Array.from(text).flatMap((c) => (be ? [0, c.charCodeAt(0)] : [c.charCodeAt(0), 0]))]);
+
 const step = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
 const reason = (body: BlobPart, name: string) => nonModelContentReason(new File([body], name));
 
@@ -49,7 +52,11 @@ it('#9523 recognises error responses under any model name', async () => {
     ['<ERROR><Message>Denied</Message></ERROR>', 'terrain.xml', /XML error response/],
     ['<!DOCTYPE Error [<!ENTITY x "a>b">]><Error/>', 'terrain.xml', /XML error response/],
     ['Access Denied', 'house.ifc', /neither STEP/],
-    [new Uint8Array([0xff, 0xfe, ...Array.from('Access denied').flatMap((c) => [c.charCodeAt(0), 0])]), 'house.ifc', /neither STEP/],
+    [utf16('Access denied'), 'house.ifc', /neither STEP/],
+    [utf16('Access denied', true), 'house.ifc', /neither STEP/],
+    [utf16('{"error":"x"}'), 'a.ifc', /JSON response/],
+    [utf16('<Error/>'), 'a.xml', /XML error response/],
+    [utf16('ISO-10303-21;'), 'house.ifc', /saved as UTF-16/],
     ['nope', 'pack.ifczip', /neither STEP/],
   ];
   for (const [body, name, expected] of cases) assert.match(String(await reason(body, name)), expected, `${name}: ${String(body).slice(0, 40)}`);
@@ -64,6 +71,9 @@ it('#9523 leaves every file a loader would open alone', async () => {
     ['ISO10303-21;\nHEADER;', 'tight-iso.ifc'],
     ['iso-10303-21;\nHEADER;', 'lower-iso.ifc'],
     ['   \n', 'blank.ifc'],
+    [new Uint8Array([0xff, 0xfe]), 'blank16.ifc'],
+    [utf16('  \n'), 'blank16b.ifc'],
+    [utf16('3\n1.0 2.0 3.0'), 'cloud.pts'],
     ['ply\nformat ascii 1.0\nelement vertex 1\n', 'renamed-ply.ifc'],
     ['VERSION 0.7\nFIELDS x y z\n', 'renamed-pcd.ifc'],
     [`${' '.repeat(5000)}${step}`, 'spaced.ifc'],

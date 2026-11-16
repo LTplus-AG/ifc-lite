@@ -66,27 +66,24 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const routed = detectFormat(first);
   if (routed === 'glb' || routed === '3dm') return null;
   const ifcName = /\.(?:ifc|ifczip)$/i.test(file.name);
-  // A control byte in the first 512 means binary: a headerless .splat can start with '<a '.
-  const binary = bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32));
-  const encoding = utf16Encoding(bytes);
-  if (encoding) {
-    // A UTF-16 document (an IIS/.NET error page) has NUL bytes but is text: judge it decoded.
-    const decoded = new TextDecoder(encoding).decode(await readScan(file, first));
-    if (HTML_START.test(afterProlog(decoded))) return NON_MODEL_REASONS.html;
-    // The STEP parser reads single-byte text, so UTF-16 content under an IFC name is never STEP it can open.
-    return ifcName ? NON_MODEL_REASONS.notStep : null;
-  }
-  const headText = new TextDecoder().decode(first); // drops a UTF-8 BOM
+  // A UTF-16 document (an IIS/.NET error page) has NUL bytes but is text: it is decoded and judged like any text.
+  const utf16 = utf16Encoding(bytes);
+  const decode = (buffer: ArrayBuffer) => new TextDecoder(utf16 ?? 'utf-8').decode(buffer); // drops the BOM
+  // Otherwise a control byte in the first 512 means binary: a headerless .splat can start with '<a '.
+  const binary = !utf16 && bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32));
+  const headText = decode(first);
   const firstChar = headText.trimStart()[0] ?? '';
+  const headLead = afterStepComments(headText);
+  const ifcNotStep = ifcName && !(headLead !== null && STEP_MARKER.test(headLead));
+  // STEP the parser cannot read: it reads single-byte text.
+  if (utf16 && ifcName && !ifcNotStep) return NON_MODEL_REASONS.utf16Step;
   // Only content that could be an error response (or is all blank so far), or IFC-named content that is not
   // plainly STEP, is read further.
   const couldBeText = firstChar === '' || firstChar === '<' || (!binary && /[{["]/.test(firstChar));
-  const headLead = afterStepComments(headText);
-  const ifcNotStep = ifcName && !(headLead !== null && STEP_MARKER.test(headLead));
   if (!couldBeText && !ifcNotStep) return null;
 
   const scan = await readScan(file, first);
-  const text = scan === first ? headText : new TextDecoder().decode(scan);
+  const text = scan === first ? headText : decode(scan);
   const body = afterProlog(text);
   if (binary ? /^<(?:!doctype\s*html|html)[\s>]/i.test(body) : HTML_START.test(body)) return NON_MODEL_REASONS.html;
   const whole = file.size <= scan.byteLength;

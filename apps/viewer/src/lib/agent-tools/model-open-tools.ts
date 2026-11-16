@@ -229,7 +229,7 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   }));
   const stack = files.length > 1;
   const name = stack ? 'the layer stack' : files[0].name;
-  // A declaration, not a const arrow: TypeScript only ends control flow at calls to declared `never` functions.
+  // A declaration: TypeScript ends control flow at its calls (an unannotated `never` arrow would not).
   function couldNotLoad(reason: string): never { return fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${reason}`); }
   let loadError: string | undefined;
   const onError = (message: string) => { loadError = message; };

@@ -6,7 +6,7 @@ import type { StoreApi } from 'zustand';
 import type { CollabSession } from '@ifc-lite/collab';
 import type { ViewerState } from '@/store';
 import { canMutate } from '@/store/mutation-permission';
-import { roomSlotFor, roomStoreFor } from './room-model-target';
+import { roomSlotFor, roomStoreFor, roomMutationViewFor } from './room-model-target';
 import { createRoomSpatialContext, decodeRoomSpatialContext, receivedGeorefMutations, restoreRoomSpatialFacts } from './room-spatial-context';
 import { applyRoomModelData } from './room-model-apply';
 import { invalidateHistoryPatch } from '@/store/slices/mutation-redo-remote-guard';
@@ -40,7 +40,7 @@ export function attachRoomSpatialContextMirror(api: StoreApi<ViewerState>, sessi
           // Replace the stale local overlay with the received facts. Native
           // owners also retain these fields for the canonical STEP exporter.
           const georefMutations = new Map(api.getState().georefMutations);
-          if (context.georeferencing) georefMutations.set(modelId, receivedGeorefMutations(context.georeferencing));
+          if (context.georeferencing) georefMutations.set(modelId, receivedGeorefMutations(context.georeferencing, store, roomMutationViewFor(api.getState(), modelId)));
           else georefMutations.delete(modelId);
           api.setState({ georefMutations, mutationVersion: api.getState().mutationVersion + 1 });
           const current = api.getState();

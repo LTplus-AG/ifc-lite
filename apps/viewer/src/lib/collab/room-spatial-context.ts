@@ -7,6 +7,7 @@ import { computeTransformMatrix, extractGeoreferencingOnDemand, type Georeferenc
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { ModelSlot } from '@ifc-lite/collab';
 import type { ViewerModelPayload } from '@/hooks/ingest/viewerModelIngest';
+import { positionCompletion } from '@/lib/geo/complete-position';
 import { getEffectiveGeoreference, getIfcLengthUnitScale, type GeorefMutationDataLike } from '@/lib/geo/effective-georef';
 
 interface RoomSpatialContext {
@@ -97,14 +98,21 @@ export function createRoomSpatialContext(
 }
 
 /**
- * The pending georeference a recipient holds for received facts. A CRS the sender had without a conversion arrives with
- * an explicit zero position, like the panel's own edits: a recipient with no CRS record would otherwise export a CRS
- * with no position, which the exporter refuses.
+ * Authoritative room facts do not inherit local coordinate defaults. A surviving native CRS can be updated without
+ * inventing a conversion; a recipient with no such source record needs an explicit complete position for export.
  */
-export function receivedGeorefMutations(georeferencing: Pick<GeoreferenceInfo, 'mapConversion' | 'projectedCRS'>) {
+export function receivedGeorefMutations(
+  georeferencing: Pick<GeoreferenceInfo, 'mapConversion' | 'projectedCRS'>,
+  store?: IfcDataStore | null,
+  view?: { isDeleted(id: number): boolean },
+) {
+  const pending = { mapConversion: georeferencing.mapConversion, projectedCRS: georeferencing.projectedCRS };
+  const completion = positionCompletion(store, pending, view, { inheritSourcePosition: false });
   return {
-    mapConversion: georeferencing.mapConversion ?? (georeferencing.projectedCRS ? { eastings: 0, northings: 0, orthogonalHeight: 0 } : undefined),
-    projectedCRS: georeferencing.projectedCRS,
+    ...pending,
+    mapConversion: completion.length
+      ? { ...pending.mapConversion, ...Object.fromEntries(completion.map(({ field, value }) => [field, value])) }
+      : pending.mapConversion,
   };
 }
 

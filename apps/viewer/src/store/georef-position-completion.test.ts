@@ -185,3 +185,39 @@ it('a complete multi-field write undoes atomically before a later edit/export (#
     assert.equal(geo?.mapConversion?.scale, 2);
   });
 });
+
+for (const projectPrefix of ['$', '.MILLI.']) {
+  for (const projectedFirst of [false, true]) {
+    it(`angular site fallback never supplies projected position or height (${projectPrefix}, partial first=${projectedFirst}) (#10382 review)`, async () => {
+      const site = NO_GEOREF.replace('.LENGTHUNIT.,$,.METRE.', `.LENGTHUNIT.,${projectPrefix},.METRE.`)
+        .replace('ENDSEC;\nEND-ISO', "#45=IFCSITE('0Site00000000000000001',$,'Site',$,$,$,$,$,.ELEMENT.,(47,22,0,0),(8,32,0,0),123000.,$,$);\nENDSEC;\nEND-ISO");
+      await withModel(async (dataStore) => {
+        assert.equal(extractGeoreferencingOnDemand(dataStore)?.source, 'siteLocation');
+        const fields = [{ field: 'eastings', value: 2600000 }, { field: 'northings', value: 1200000 }];
+        if (projectedFirst) useViewerStore.getState().setGeorefFields('m', 'mapConversion', fields);
+        useViewerStore.getState().setGeorefFields('m', 'projectedCRS', [{ field: 'name', value: 'EPSG:2056' }, { field: 'mapUnit', value: 'METRE' }]);
+        const geo = await exported(dataStore, useViewerStore.getState().georefMutations.get('m'));
+        assert.equal(geo?.projectedCRS?.name, 'EPSG:2056');
+        assert.deepEqual([geo?.mapConversion?.eastings, geo?.mapConversion?.northings, geo?.mapConversion?.orthogonalHeight], projectedFirst ? [2600000, 1200000, 0] : [0, 0, 0]);
+      }, site);
+    });
+  }
+}
+
+it('a received CRS-only source preserves sender absence on the same native receiver (#10382 review)', async () => {
+  const { receivedGeorefMutations } = await import('@/lib/collab/room-spatial-context');
+  const sender = await parse(CRS_ONLY), receiver = await parse(CRS_ONLY);
+  const sent = await exported(sender, undefined);
+  assert.ok(sent?.projectedCRS);
+  assert.equal(sent.mapConversion, undefined);
+  const mutations = receivedGeorefMutations(sent, receiver);
+  assert.equal(mutations.mapConversion, undefined);
+  const received = await exported(receiver, mutations);
+  assert.equal(received?.projectedCRS?.name, sent.projectedCRS.name);
+  assert.equal(received?.mapConversion, undefined);
+  const view = new MutablePropertyView(receiver.properties, 'm');
+  view.deleteEntity(40);
+  const replacement = receivedGeorefMutations(sent, receiver, view);
+  assert.deepEqual(replacement.mapConversion, { eastings: 0, northings: 0, orthogonalHeight: 0 });
+  assert.deepEqual((await exported(receiver, replacement, view))?.mapConversion?.eastings, 0);
+});

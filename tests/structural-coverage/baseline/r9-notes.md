@@ -1,6 +1,6 @@
 # R9 mapped topology
 
-Product source: main `40dd89f534`. No product changes. R9 corrects the member render oracle (`lib/topology.mjs`); R0 to R8 are retained.
+Product source: main `700936a3a7` (measured identically on `40dd89f534`). No product changes. R9 corrects the member render oracle (`lib/topology.mjs`); R0 to R8 are retained.
 
 Rows: **106/119 -> 106/119** (met 93, partial 26, missing 0). Cells: **755.5/774 -> 756/774**. Render: 42/43 -> 42.5/43. All other level totals are unchanged. Both online ratchet runs (against R8, then R9) pass with no row or cell dropped.
 

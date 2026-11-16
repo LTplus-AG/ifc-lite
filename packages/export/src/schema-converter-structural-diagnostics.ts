@@ -101,17 +101,13 @@ export class StructuralDiagnostics {
    * A body still naming a `withheld` id is refused, and then nothing is reported.
    */
   rewrite(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null | undefined {
-    let carried: ReadonlySet<string> = NONE;
     const cause = this.carriers.noteCause(id, entity, args, withheld);
-    const thicknesses = cause ? [] : this.thickness.note(id, entity, args, withheld);
-    if (cause) {
-      carried = new Set(['CausedBy']);
-      this.record(cause);
-    } else if (thicknesses.length) {
-      carried = new Set(thicknesses);
-      this.record(THICKNESS_WRITTEN);
+    const held = cause ? ['CausedBy'] : this.thickness.note(id, entity, args, withheld);
+    if (held.length) {
+      this.record(cause ?? THICKNESS_WRITTEN);
+      this.carried.set(id, new Set(held));
     }
-    if (carried.size) this.carried.set(id, carried);
+    const carried = this.carried.get(id) ?? NONE;
     const attrs = this.links.link(entity, args);
     const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] }
       : this.varying.rewrite(entity, args, carried) ?? this.carriers.rewrite(id, entity, args, withheld) ?? this.thickness.rewrite(id, entity, args);

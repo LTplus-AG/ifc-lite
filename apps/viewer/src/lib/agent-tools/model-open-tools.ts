@@ -111,45 +111,33 @@ const tooLarge = (url: URL) => `${shown(url)} is larger than ${OPEN_MODEL_MAX_BY
 /** Starts like an HTML document, after any whitespace, comment or XML declaration. */
 const HTML_START = /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<(?:!doctype\s+html|html|head|body|title|meta)[\s>]/i;
 
-/** A complete small document is an API response, not a model: real models do not fit in this many bytes. */
-const SMALL_BODY_BYTES = 64 * 1024;
+/** Bodies up to this size are read whole to recognise an error response; bigger ones are never refused for content. */
+const ERROR_BODY_MAX_BYTES = 64 * 1024;
 
 /**
- * Why the loader could not open this body (`null` when it can), decided with the loader's own routing
- * (`detectPointCloudFormat`, `headIsZip`, `detectFormat`, LandXML and splats by name) and checked before a
- * replace can close the open models. Small JSON or XML bodies are read whole: an API error is small, a model
- * is not, so `{"message":"Forbidden"}` or `<Error>` is refused without guessing at keys.
+ * Why the body is an error response rather than a model (`null` otherwise), checked before a replace can close
+ * the open models. Routing stays the loader's: this only refuses what is an error under any routing, so it
+ * never refuses a file the loader would open. An HTML page; a small body that parses whole as JSON without an
+ * IFCX `header` (every IFCX document has one); a small XML document whose root is an error element
+ * (`<Error>`, `<ErrorResponse>`). A plain-text error is not recognised and reaches the loader.
  */
-async function unloadableBecause(file: File): Promise<string | null> {
-  const headBuffer = await file.slice(0, 4096).arrayBuffer();
-  const head = new TextDecoder().decode(headBuffer);
+async function errorResponseKind(file: File): Promise<string | null> {
+  const head = await file.slice(0, 4096).text();
   if (HTML_START.test(head)) return 'an HTML page';
-  const whole = file.size <= SMALL_BODY_BYTES ? await file.text() : null;
-  const ext = /\.[^.]+$/.exec(file.name.toLowerCase())?.[0];
-  if (ext === '.splat') return null; // headerless binary, routed by name
-  if (ext === '.xml') {
-    // LandXML is routed by name; its parser needs a LandXML root.
-    if (!head.trimStart().startsWith('<')) return 'a non-XML response';
-    return whole !== null && !/<LandXML\b/.test(whole) ? 'an XML document without a LandXML root (an error response?)' : null;
+  const start = head.trimStart();
+  if (file.size > ERROR_BODY_MAX_BYTES || !(start.startsWith('{') || start.startsWith('[') || start.startsWith('<'))) return null;
+  const whole = await file.text();
+  if (start.startsWith('<')) {
+    return /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<(?:[\w.-]+:)?\w*Error\w*[\s>/]/.test(whole) ? 'an XML error response' : null;
   }
-  const [{ detectPointCloudFormat }, { headIsZip }, { detectFormat }] = await Promise.all([
-    import('@/hooks/ingest/pointCloudIngest'), import('@/hooks/ingest/sourceBuffers'), import('@ifc-lite/parser'),
-  ]);
-  if (detectPointCloudFormat(file.name, headBuffer) || headIsZip(headBuffer)) return null;
-  const format = detectFormat(headBuffer);
-  if (format === 'unknown') return 'content the viewer does not recognise (an error response?)';
-  if (format === 'ifcx' && whole !== null && !hasIfcxHeader(whole)) return 'a JSON response without an IFCX header';
-  return null;
-}
-
-function hasIfcxHeader(text: string): boolean {
+  let value: unknown;
   try {
-    const value: unknown = JSON.parse(text);
-    return typeof value === 'object' && value !== null && 'header' in value;
+    value = JSON.parse(whole);
   } catch (err) {
-    console.warn('[viewer_open_model] a small JSON body did not parse:', err);
-    return false;
+    console.debug('[viewer_open_model] a small body starting like JSON is not JSON; left to the loader:', err);
+    return null;
   }
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && 'header' in value ? null : 'a JSON response, not an IFCX document';
 }
 
 /**
@@ -217,8 +205,8 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
   if (Number(res.headers.get('content-length')) > OPEN_MODEL_MAX_BYTES) refuse(tooLarge(source), ToolErrorCode.INVALID_INPUT);
   const file = await readLimited(res, source, name);
   if (file.size === 0) refuse(`${shown(source)} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
-  const reason = await unloadableBecause(file);
-  if (reason) refuse(`${shown(source)} returned ${reason}, not a model. Nothing was loaded.`);
+  const errorKind = await errorResponseKind(file);
+  if (errorKind) refuse(`${shown(source)} returned ${errorKind}, not a model. Nothing was loaded.`);
   return file;
 }
 

@@ -390,19 +390,24 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     respond = redirected('https://login.example/sso', '<?xml version="1.0"?>\n<!-- sso -->\n<html xmlns="http://www.w3.org/1999/xhtml"><body>Sign in</body></html>');
     await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /login\.example.*(HTML page|did not return)/ });
   });
-  it('refuses what the loader could not open, before a replace can close the open models (#9523 code review)', async () => {
+  it('refuses error responses before a replace can close the open models (#9523 code review)', async () => {
     useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
-    const refused = async (url: string, body: string, what: RegExp) => {
-      respond = () => new Response(body, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
+    const refused = async (url: string, body: string, what: RegExp, to?: string) => {
+      respond = () => {
+        const res = new Response(body, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
+        if (to) Object.defineProperty(res, 'url', { value: to });
+        return res;
+      };
       await assert.rejects(run({ url, mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: what }, body.slice(0, 40));
     };
-    await refused('https://example.com/house.ifc', 'Access Denied', /does not recognise/);
     await refused('https://example.com/house.ifc', '<title>403 Forbidden</title>', /HTML page/);
-    await refused('https://example.com/model.glb', '{"asset":{"version":"2.0"}}', /without an IFCX header/);
-    await refused('https://example.com/model.ifcx', '{"message":"Forbidden"}', /without an IFCX header/);
-    await refused('https://example.com/model.ifcx', '<?xml version="1.0"?><Error><Code>AccessDenied</Code></Error>', /does not recognise/);
-    await refused('https://example.com/terrain.xml', '<?xml version="1.0"?><!-- s3 --><ErrorResponse><Error/></ErrorResponse>', /without a LandXML root/);
-    await refused('https://example.com/terrain.xml', 'Forbidden', /non-XML/);
+    await refused('https://example.com/house.ifc', '{"error":"expired"}', /auth\.example\/token-expired returned a JSON response/, 'https://auth.example/token-expired?sig=1');
+    await refused('https://example.com/model.glb', '{"asset":{"version":"2.0"}}', /JSON response/, 'https://cdn.example/model.gltf');
+    await refused('https://example.com/model.ifcx', '{"message":"Forbidden"}', /JSON response/);
+    await refused('https://example.com/scan.ply', '{"error":"expired"}', /JSON response/);
+    await refused('https://example.com/capture.splat', '{"message":"Forbidden"}', /JSON response/);
+    await refused('https://example.com/model.ifcx', '<?xml version="1.0"?><Error><Code>AccessDenied</Code></Error>', /XML error response/);
+    await refused('https://example.com/terrain.xml', '<?xml version="1.0"?><!-- s3 --><ErrorResponse><Error/></ErrorResponse>', /XML error response/);
     assert.deepEqual(calls, [], 'nothing was loaded');
   });
 
@@ -415,12 +420,15 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       ['https://example.com/terrain.xml', `<?xml version="1.0"?>\n<!--${'x'.repeat(5000)}-->\n<LandXML/>`], // a long prolog
       ['https://example.com/scan.ply', 'LASF....'], // LAS bytes under .ply: routed by magic
       ['https://example.com/capture.splat', new Uint8Array([0x7b, 1, 2, 3, 4, 5, 6, 7])], // headerless binary starting with '{'
+      ['https://example.com/terrain2.xml', '<?xml version="1.0"?><lx:LandXML xmlns:lx="http://www.landxml.org/schema/LandXML-1.2"/>'], // a prefixed root
+      ['https://example.com/scan.xml', 'LASF....'], // LAS bytes under .xml: routed by magic
+      ['https://example.com/spaced.ifc', `${' '.repeat(200)}ISO-10303-21;`], // leading whitespace past detectFormat's window
     ] as const) {
       respond = served(body);
       const out = await run({ url, mode: 'add' }).catch((err: Error) => err);
       assert.ok(!(out instanceof Error), `${url}: ${out instanceof Error ? out.message : ''}`);
     }
-    assert.deepEqual(calls.map((c) => c.names[0]), ['model.ifc', 'model2.ifc', 'terrain.xml', 'scan.ply', 'capture.splat']);
+    assert.deepEqual(calls.map((c) => c.names[0]), ['model.ifc', 'model2.ifc', 'terrain.xml', 'scan.ply', 'capture.splat', 'terrain2.xml', 'scan.xml', 'spaced.ifc']);
   });
 
   it('never shows a signed URL query in an error (#9523 code review)', async () => {

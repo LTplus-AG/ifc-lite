@@ -409,6 +409,9 @@ ${geometry.replace('(#16),', aspect)}
 
   it('reports nothing about Causes when the prepass is not armed', async () => {
     const result = new StepExporter(await parse(varying('(#16),'))).export({ schema: 'IFC4', subsetEntityIds: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 20, 30]) });
+    const step = new TextDecoder().decode(result.content);
+    expect(line(step, 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
+    expect(records(step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
     expect(result.stats.warnings.join('\n')).not.toContain("'Causes'");
   });
 });

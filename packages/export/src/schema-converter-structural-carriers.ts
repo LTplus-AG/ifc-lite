@@ -182,18 +182,24 @@ export class StructuralCarriers {
    * a set CausedBy omitted.
    */
   noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null {
-    // The added relationship names ids the source has; an IFC4 target withholds none, so none is checked.
-    if (this.mode !== 'upgrade' || !this.ids || withheld?.size || !IFC2X3_ACTIONS.has(entity)) return null;
-    const reaction = refId(args[CAUSED_BY]);
-    if (reaction === null || !this.reactions.has(reaction)) return null;
+    const reaction = this.causeOf(entity, args, withheld);
+    if (reaction === null) return null;
     const written = this.causesWritten.get(id) ?? new Set<number>();
     if (!written.has(reaction)) {
       const guid = deterministicGlobalId(`ifc2x3-caused-by:${args[0].trim()}:#${reaction}`);
-      this.pending.push(`#${this.ids()}=IFCRELASSIGNSTOPRODUCT('${guid}',${args[1]},'${CAUSES}',$,(#${reaction}),$,#${id});`);
+      this.pending.push(`#${this.ids!()}=IFCRELASSIGNSTOPRODUCT('${guid}',${args[1]},'${CAUSES}',$,(#${reaction}),$,#${id});`);
     }
     // The downgrade restores CausedBy only for an action with exactly one cause.
     const total = written.size + (written.has(reaction) ? 0 : 1);
     return total === 1 ? CAUSED_BY_WRITTEN : CAUSED_BY_AMONG;
+  }
+
+  /** IFC2X3 -> IFC4: the point reaction an action's CausedBy names that a 'Causes' relationship would carry, or null. */
+  causeOf(entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): number | null {
+    // The added relationship names ids the source has; an IFC4 target withholds none, so none is checked.
+    if (this.mode !== 'upgrade' || !this.ids || withheld?.size || !IFC2X3_ACTIONS.has(entity)) return null;
+    const reaction = refId(args[CAUSED_BY]);
+    return reaction !== null && this.reactions.has(reaction) ? reaction : null;
   }
 
   /** Whether `after` may change a converted line, so callers parse its id only then. */

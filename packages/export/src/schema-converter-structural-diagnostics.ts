@@ -9,7 +9,6 @@ import { SourceRecords } from './schema-converter-structural-source.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
 import { StructuralVarying } from './schema-converter-structural-varying.js';
-import { refId } from './schema-ifc2x3-records.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 
@@ -105,7 +104,7 @@ export class StructuralDiagnostics {
   rewrite(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null | undefined {
     // An IFC2X3 varying action that stays unconverted is no IFC4 product a 'Causes' relationship could name.
     const unconverted = this.varying.staysUnconverted(entity, args);
-    if (unconverted && refId(args[10]) !== null) this.record(CAUSED_BY_UNCONVERTED);
+    if (unconverted && this.carriers.causeOf(entity, args, withheld) !== null) this.record(CAUSED_BY_UNCONVERTED);
     const cause = unconverted ? null : this.carriers.noteCause(id, entity, args, withheld);
     const held = cause ? ['CausedBy'] : this.thickness.note(id, entity, args, withheld);
     let carried = NONE;

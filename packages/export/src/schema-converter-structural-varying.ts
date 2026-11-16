@@ -133,13 +133,16 @@ export class StructuralVarying {
    * action stays unconverted (no IFC4 entity holds it then). False when unarmed.
    */
   staysUnconverted(entity: string, args: readonly string[]): boolean {
-    return this.mode === 'upgrade' && !!this.ids && KINDS.some((k) => k.ifc2x3 === entity) && !this.upgradeLoads(entity, args);
+    return this.upgrading && KINDS.some((k) => k.ifc2x3 === entity) && !this.upgradeLoads(entity, args);
   }
+
+  /** Armed for IFC2X3 -> IFC4, with the exporter's id allocator. */
+  private get upgrading(): boolean { return this.mode === 'upgrade' && !!this.ids; }
 
   /** The kind and loads of an IFC2X3 varying action `toIfc4` converts, or undefined. */
   private upgradeLoads(entity: string, args: readonly string[]): { kind: Kind; loads: (number | null)[] } | undefined {
     const kind = KINDS.find((k) => k.ifc2x3 === entity);
-    if (this.mode !== 'upgrade' || !kind || !this.ids || args.length !== 14) return undefined;
+    if (!this.upgrading || !kind || args.length !== 14) return undefined;
     const loads = [args[7], ...(listItems(args[13]) ?? [])].map(refId);
     return this.convertible(kind, args[6], loads, refId(args[12])) === undefined ? undefined : { kind, loads };
   }

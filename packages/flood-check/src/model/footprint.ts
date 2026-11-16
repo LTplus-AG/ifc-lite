@@ -14,6 +14,7 @@
  * record is frozen into the footprint (`FootprintFact.quality`).
  */
 
+import { roofedBy, upperSlabs, type UpperSlab } from './slab-holes.js';
 import { chainIntoRing, convexHull, ringArea } from '../geom.js';
 import { closedGaps, prepareFootprint, signedDistance } from '../region.js';
 import type { MapPoint } from '../types.js';
@@ -106,7 +107,10 @@ interface Geometry {
   rings: MapPoint[][];
   source: FootprintFact['source'];
   from: number[];
+  /** Indices into `rings` of the slab holes that are open ground (courtyards). */
+  courtyardRings?: number[];
 }
+
 
 /** How far outside (or inside) a footprint must an external wall run before it shows the footprint does not fit, metres. */
 const FIT_TOLERANCE = 1;
@@ -118,8 +122,8 @@ const FIT_TOLERANCE = 1;
  * footprint is larger than the building (a podium or forecourt slab:
  * `oversized`, treated like a hull).
  */
-function checkAgainstWalls(rings: MapPoint[][], source: FootprintFact['source'], input: FootprintInput, log: QualityLog): void {
-  const region = prepareFootprint({ rings, source });
+function checkAgainstWalls(geometry: Geometry, input: FootprintInput, log: QualityLog): void {
+  const region = prepareFootprint(geometry);
   const { reader, placements, georef, storeyOf, ground } = input;
   for (const type of ['IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE']) {
     for (const id of reader.idsOfType(type)) {
@@ -157,7 +161,8 @@ function checkAgainstWalls(rings: MapPoint[][], source: FootprintFact['source'],
         return line.length === 1 ? line : out;
       });
       if (points.length === 0) continue;
-      const d = points.map((p) => signedDistance(region, p));
+      // The rings are non-empty here, so every distance is known.
+      const d = points.map((p) => signedDistance(region, p) ?? 0);
       const out = Math.max(...d);
       if (out > FIT_TOLERANCE) log.note('partial', `external wall ${reader.className(wall)} #${id} reaches ${out.toFixed(2)} m outside the footprint`);
       else if (Math.min(...d) < -FIT_TOLERANCE) {
@@ -167,8 +172,8 @@ function checkAgainstWalls(rings: MapPoint[][], source: FootprintFact['source'],
   }
 }
 
-function seal(rings: MapPoint[][], source: FootprintFact['source'], fromElements: number[], log: QualityLog): FootprintFact {
-  const region = prepareFootprint({ rings, source });
+function seal(rings: MapPoint[][], source: FootprintFact['source'], fromElements: number[], log: QualityLog, courtyardRings: number[] = []): FootprintFact {
+  const region = prepareFootprint({ rings, source, courtyardRings });
   if (region.courtyards.size > 0) log.mark('courtyard-ring');
   if (region.closedSmallRings.length > 0) {
     log.remark(`ring(s) ${region.closedSmallRings.join(', ')} of the given footprint enclose less than 1 m², below the closing scale, and are treated as closed (inside the building)`);
@@ -177,6 +182,7 @@ function seal(rings: MapPoint[][], source: FootprintFact['source'], fromElements
   if (gaps > 0) log.remark(`${gaps} boundary stretch(es) face a gap between footprint rings narrower than about 0.9 m, closed as inside the building`);
   const quality = log.record();
   const fact: FootprintFact = { rings, source, fromElements, quality };
+  if (courtyardRings.length > 0) fact.courtyardRings = [...courtyardRings];
   if (quality.conditions.includes('partial')) fact.partial = true;
   return fact;
 }
@@ -196,7 +202,7 @@ export function resolveFootprint(input: FootprintInput): FootprintResolution {
     geometry = fromModel(input, log);
   }
   // Whatever its source, the footprint must fit the building's own external walls.
-  if (geometry) checkAgainstWalls(geometry.rings, geometry.source, input, log);
+  if (geometry) checkAgainstWalls(geometry, input, log);
   let reported = false;
   const report = () => {
     if (reported) return;
@@ -210,13 +216,13 @@ export function resolveFootprint(input: FootprintInput): FootprintResolution {
     );
   };
   return {
-    fact: geometry ? seal(geometry.rings, geometry.source, geometry.from, log) : null,
+    fact: geometry ? seal(geometry.rings, geometry.source, geometry.from, log, geometry.courtyardRings) : null,
     finish(candidatePositions, outside = []) {
       report();
       for (const o of outside) {
         log.note('partial', `${o.ifcClass} #${o.expressId} stands ${o.distance.toFixed(2)} m outside the footprint (a façade element cannot be interior)`);
       }
-      if (geometry) return seal(geometry.rings, geometry.source, geometry.from, log);
+      if (geometry) return seal(geometry.rings, geometry.source, geometry.from, log, geometry.courtyardRings);
       log.mark('hull');
       const hull = convexHull(candidatePositions);
       input.warnings.push(
@@ -245,6 +251,8 @@ function fromModel(input: FootprintInput, log: QualityLog): Geometry | null {
   // 1. The ground storey's floor slab outlines. Ids are keyed by the raw STEP name: the standard and elemented cases are separate keys.
   const rings: MapPoint[][] = [];
   const from: number[] = [];
+  const courtyards: Array<{ ring: MapPoint[]; text: string }> = [];
+  let above: UpperSlab[] | undefined;
   for (const id of [...reader.idsOfType('IFCSLAB'), ...reader.idsOfType('IFCSLABSTANDARDCASE'), ...reader.idsOfType('IFCSLABELEMENTEDCASE')]) {
     if (!inGround(id)) continue;
     const kind = asEnum(reader.attr(reader.entity(id), 'PredefinedType'));
@@ -272,8 +280,30 @@ function fromModel(input: FootprintInput, log: QualityLog): Geometry | null {
     }
     if (used > 0) from.push(id);
     if (outline.voids) log.mark('voids-filled');
+    // The profile's holes, read: under 1 m² closed; roofed by a slab above, interior (filled); else open ground, a courtyard.
+    const z = georef.toMap(frame.origin)[2];
+    for (const h of outline.holes) {
+      const ring = toRing(toWorld(frame, h));
+      const area = ringArea(ring);
+      if (area < 1) continue;
+      above ??= upperSlabs(input);
+      const roof = roofedBy(above, ring, z);
+      if (roof !== null) {
+        log.remark(`a ${area.toFixed(2)} m² hole in ${cls} #${id} is wholly roofed by slab(s) #${roof.join(', #')} (a shaft, a stair opening or a floor area under the building): interior, filled`);
+      } else {
+        courtyards.push({ ring, text: `a ${area.toFixed(2)} m² hole in ${cls} #${id} is not wholly roofed by a slab above: a courtyard, open ground` });
+      }
+    }
   }
-  if (rings.length > 0) return { rings, source: log.record().conditions.includes('voids-filled') ? 'slab-outline-voids-filled' : 'slab-outline', from };
+  if (rings.length > 0) {
+    const courtyardRings: number[] = [];
+    for (const c of courtyards) {
+      courtyardRings.push(rings.length);
+      rings.push(c.ring);
+      log.remark(c.text);
+    }
+    return { rings, source: log.record().conditions.includes('voids-filled') ? 'slab-outline-voids-filled' : 'slab-outline', from, courtyardRings };
+  }
 
   // 2. The external walls' axes: chained into one closed ring (keeps courtyards and notches), else their hull.
   const points: MapPoint[] = [];

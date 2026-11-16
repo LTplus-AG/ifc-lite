@@ -1,0 +1,93 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Whether a hole in a ground slab's profile is roofed by the slabs above it
+ * (interior: a shaft, a stair opening, a floor area under the building) or
+ * open to the sky (a courtyard). Decided over the hole's whole area.
+ */
+
+import { insideRing } from '../geom.js';
+import type { MapPoint } from '../types.js';
+import type { FootprintInput } from './footprint.js';
+import { completeness, readSlabOutline, toWorld } from './outline.js';
+
+/** A slab above the ground slab, in map coordinates; `certain` only when its outline is complete with no unread voids. */
+export interface UpperSlab {
+  id: number;
+  z: number;
+  certain: boolean;
+  outer: MapPoint[][];
+  holes: MapPoint[][];
+}
+
+/** Every slab of the model, mapped once (the covering test asks them for each hole). */
+export function upperSlabs(input: Pick<FootprintInput, 'reader' | 'placements' | 'georef'>): UpperSlab[] {
+  const { reader, placements, georef } = input;
+  const out: UpperSlab[] = [];
+  for (const id of [...reader.idsOfType('IFCSLAB'), ...reader.idsOfType('IFCSLABSTANDARDCASE'), ...reader.idsOfType('IFCSLABELEMENTEDCASE')]) {
+    const frame = placements.ofProduct(id);
+    if (!frame) continue;
+    const o = readSlabOutline(reader, id);
+    const map = (pts: [number, number, number][]) => toWorld(frame, pts).map((p) => ({ x: georef.toMap(p)[0], y: georef.toMap(p)[1] }));
+    out.push({ id, z: georef.toMap(frame.origin)[2], certain: !o.voids && completeness(o) === 'complete', outer: o.rings.map(map), holes: o.holes.map(map) });
+  }
+  return out;
+}
+
+/**
+ * Points guaranteed inside a hole: a grid clipped to it (spacing at most
+ * 0.5 m, finer for a small hole) and a point just inside each edge's middle
+ * and each corner, so a non-convex hole (an L, a U) is sampled over its whole
+ * area, never by one representative point that may lie outside it.
+ */
+function pointsInside(ring: MapPoint[]): MapPoint[] {
+  const xs = ring.map((p) => p.x);
+  const ys = ring.map((p) => p.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const step = Math.max(0.05, Math.min(0.5, (x1 - x0) / 8, (y1 - y0) / 8));
+  const out: MapPoint[] = [];
+  for (let x = x0 + step / 2; x < x1; x += step) for (let y = y0 + step / 2; y < y1; y += step) if (insideRing({ x, y }, ring)) out.push({ x, y });
+  const nudge = Math.min(0.02, step / 4);
+  ring.forEach((a, k) => {
+    const b = ring[(k + 1) % ring.length];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (!(len > 0)) return;
+    const [nx, ny] = [(b.y - a.y) / len, -(b.x - a.x) / len];
+    for (const base of [{ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, a]) {
+      for (const sgn of [1, -1]) {
+        // Towards the inside, along the normal and along the corner's diagonals.
+        for (const [dx, dy] of [[nx, ny], [nx + (b.x - a.x) / len, ny + (b.y - a.y) / len], [nx - (b.x - a.x) / len, ny - (b.y - a.y) / len]]) {
+          const q = { x: base.x + sgn * nudge * dx, y: base.y + sgn * nudge * dy };
+          if (insideRing(q, ring)) {
+            out.push(q);
+            return;
+          }
+        }
+      }
+    }
+  });
+  return out;
+}
+
+/**
+ * The slabs that roof a hole in a ground slab at `z`, or null when it is not
+ * wholly roofed: every point inside the hole (`pointsInside`) must be under
+ * the outer outline of a certain slab more than 1 m higher, outside that
+ * slab's holes. One uncovered or uncertain point (a partly roofed hole, a
+ * balcony over half of it, a hole above part of it) makes it open ground.
+ * Proven, because an interior hole stays filled and an element next to it may
+ * then be excluded as interior; on doubt the hole is a courtyard.
+ */
+export function roofedBy(above: readonly UpperSlab[], ring: MapPoint[], z: number): number[] | null {
+  const pts = pointsInside(ring);
+  if (pts.length === 0) return null;
+  const roofs = new Set<number>();
+  for (const p of pts) {
+    const roof = above.find((s) => s.certain && s.z > z + 1 && s.outer.some((r) => insideRing(p, r)) && !s.holes.some((h) => insideRing(p, h)));
+    if (!roof) return null;
+    roofs.add(roof.id);
+  }
+  return [...roofs];
+}

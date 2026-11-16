@@ -291,7 +291,7 @@ describe('listing options may only widen what is listed', () => {
 
 // PR review thread: a slab profile with voids lost its courtyards but was still called a real outline.
 describe('slab outline with voids', () => {
-  it('is labelled slab-outline-voids-filled, which withholds reassuring outcomes like a hull', async () => {
+  it('a profile hole open to the sky (no slab above) is a courtyard: a hole in the outline, never a complete one', async () => {
     const f = await facts(
       {
         slab: false,
@@ -308,8 +308,9 @@ describe('slab outline with voids', () => {
       },
       { expectedCrs: 'EPSG:2056' },
     );
-    expect(f.footprint.source).toBe('slab-outline-voids-filled');
-    const { fillsCourtyards } = await import('../src/model/facts.js');
-    expect(fillsCourtyards(f.footprint.source)).toBe(true);
+    // Since the MiniBIM queue failure: a hole is read, not filled; open to the sky it is a courtyard (guarded locally).
+    expect(f.footprint.source).toBe('slab-outline');
+    expect(f.footprint.courtyardRings).toEqual([1]);
+    expect(f.footprint.quality?.worst).toBe('courtyard-ring');
   });
 });

@@ -11,7 +11,9 @@
  * fillings in those openings (`IfcRelFillsElement`), and its layered material
  * (`IfcRelAssociatesMaterial`, which the wasm material-layer index scans the
  * buffer for). Nor does it reach the project, whose unit assignment and
- * representation contexts the pre-pass reads. This module names those roots.
+ * representation contexts the pre-pass reads, or the sites, whose placement
+ * the mesher recognises to pick a host's cut frame (#10435; the subgraph
+ * writes them without their representation). This module names those roots.
  *
  * Cost is O(targets + their relationship edges): the parsed relationship
  * graph answers the source relationships by CSR lookup, and the overlay's
@@ -33,9 +35,15 @@ const VOIDS = 'IFCRELVOIDSELEMENT';
 const FILLS = 'IFCRELFILLSELEMENT';
 const MATERIAL = 'IFCRELASSOCIATESMATERIAL';
 
+/** Records a re-mesh buffer carries for what the mesher reads about the whole
+ *  model, not for any element: the project (units, contexts) and the sites
+ *  (the placement a host's cut frame is recognised by, #10435). Never
+ *  re-meshed themselves. */
+export const REMESH_CONTEXT_TYPES = ['IFCPROJECT', 'IFCSITE'] as const;
+
 /**
  * Roots, besides the targets themselves, that a subgraph must carry for the
- * targets to mesh exactly as they do on load: every live `IfcProject`, each
+ * targets to mesh exactly as they do on load: every live `IfcProject` and `IfcSite`, each
  * target's openings and host (with the voiding relationship), the fillings of
  * those openings (with the filling relationship), and each target's
  * `IfcRelAssociatesMaterial`. Relationships the overlay created this session
@@ -58,9 +66,13 @@ export function contextRootsFor(
   targets: ReadonlySet<number>,
 ): Set<number> {
   const out = new Set<number>();
-  // @raw-entity-enumeration-ok one bucket lookup (IFCPROJECT), each id re-checked against the effective index; overlay-created projects are added below
-  for (const id of store.entityIndex.byType.get('IFCPROJECT') ?? []) {
-    if (index.has(id)) out.add(id);
+  for (const type of REMESH_CONTEXT_TYPES) {
+    // @raw-entity-enumeration-ok one bucket lookup per context type, each id re-checked against the effective index and type; overlay-created ones are added below
+    for (const id of store.entityIndex.byType.get(type) ?? []) {
+      // Any live source project, as on main (its units and contexts are read
+      // whatever it was retyped to); a site only while it is one.
+      if (index.has(id) && (type === 'IFCPROJECT' || index.typeOf(id) === type)) out.add(id);
+    }
   }
 
   const graph = store.relationships;
@@ -126,7 +138,7 @@ function addOverlayRelationships(
     && typeof view.readNewEntitiesOfType === 'function';
   const everything = indexed ? null : Array.from(view.readNewEntities?.() ?? view.getNewEntities(), entity => entity.expressId);
   const retyped = indexed
-    ? view.getAttributeOverrideEntityIds([VOIDS, FILLS, MATERIAL, 'IFCPROJECT']).filter(id => index.isOverlayCreated(id))
+    ? view.getAttributeOverrideEntityIds([VOIDS, FILLS, MATERIAL, ...REMESH_CONTEXT_TYPES]).filter(id => index.isOverlayCreated(id))
     : [];
   const ascending = (ids: Iterable<number>) => [...new Set(ids)].sort((a, b) => a - b);
   const naming = (ids: Iterable<number>): number[] => {
@@ -139,9 +151,14 @@ function addOverlayRelationships(
     return ascending(found);
   };
   const ofType = (ids: readonly number[], type: string) => ids.filter(id => index.typeOf(id) === type);
-  const projects = everything
-    ?? ascending([...Array.from(view.readNewEntitiesOfType('IFCPROJECT'), row => row.expressId), ...retyped]);
-  for (const id of ofType(projects, 'IFCPROJECT')) out.add(id);
+  // Source records retyped into a context type count too: the bucket loop
+  // above only sees the type a record was parsed with.
+  const retypedContext = everything ? [] : view.getAttributeOverrideEntityIds([...REMESH_CONTEXT_TYPES]);
+  for (const type of REMESH_CONTEXT_TYPES) {
+    const created = everything
+      ?? ascending([...Array.from(view.readNewEntitiesOfType(type), row => row.expressId), ...retypedContext]);
+    for (const id of ofType(created, type)) out.add(id);
+  }
   const targetSet = new Set(targets);
   const ref = (rel: number, name: string): number | undefined => {
     const id = index.effectiveAttributeRef(rel, name);

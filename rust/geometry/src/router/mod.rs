@@ -166,6 +166,8 @@ pub struct GeometryRouter {
     /// and `process_element_with_submeshes_and_voids` first attempt to slice
     /// single-solid elements by their `IfcMaterialLayerSetUsage` buildup.
     material_layer_index: Option<Arc<MaterialLayerIndex>>,
+    /// The frame a voided host is being cut in (`transforms::cut_frame`).
+    cut_frame: transforms::cut_frame::CutFrameSlot,
     /// Boolean / CSG failures attributed by IFC product express ID. Populated
     /// by the void-subtraction path (`apply_void_context`) when the BSP
     /// kernel falls back to the un-cut host. Drainable via
@@ -256,6 +258,7 @@ impl GeometryRouter {
             length_unit_refused: false,
             config: RouterConfig::default(),
             material_layer_index: None,
+            cut_frame: transforms::cut_frame::CutFrameSlot::default(),
             csg_failures: RefCell::new(FxHashMap::default()),
             stopped_csg_failures: RefCell::new(FxHashMap::default()),
             csg_scope: CsgScopeState::default(),
@@ -602,9 +605,10 @@ impl GeometryRouter {
         self.config.rtc_offset = offset;
     }
 
-    /// Get the current RTC offset
+    /// Get the current RTC offset. Zero while a voided host is cut in its
+    /// root frame, which applies the offset afterwards (`transforms::cut_frame`).
     pub fn rtc_offset(&self) -> (f64, f64, f64) {
-        self.config.rtc_offset
+        if self.in_cut_frame() { (0.0, 0.0, 0.0) } else { self.config.rtc_offset }
     }
 
     /// Check if RTC offset is active (non-zero)

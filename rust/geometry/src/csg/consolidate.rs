@@ -18,6 +18,7 @@ mod preservation;
 mod supported_cells;
 mod source_boundary;
 mod source_boundary_graph;
+mod sub_results;
 
 use super::ClippingProcessor;
 use conform::{count_open_boundary_edges_at, open_edge_endpoints_at};
@@ -171,7 +172,7 @@ impl ClippingProcessor {
     /// only to the existing bounded remote-plane recovery (#7633).
     pub(crate) fn consolidate_prism_cut(mesh: Mesh, host: &Mesh) -> ConsolidationOutcome {
         Self::consolidate_with_outcome(mesh, 1.0, true, true,
-            ConsolidationUse::ClosedOutput, true, Some(host))
+            ConsolidationUse::ClosedOutput, true, Some(host), &mut Default::default())
     }
 
     /// IFC boolean operands receive source hygiene after scaling to metres;
@@ -183,18 +184,18 @@ impl ClippingProcessor {
 
     fn consolidate_with_supported_cells(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool, preserve_folds: bool, prism_host: Option<&Mesh>) -> Mesh {
         Self::consolidate_with_outcome(mesh, length_unit_scale, preserve_supported, preserve_folds,
-            ConsolidationUse::ClosedOutput, true, prism_host).mesh
+            ConsolidationUse::ClosedOutput, true, prism_host, &mut Default::default()).mesh
     }
 
     fn consolidate_with_use(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool,
         preserve_folds: bool, usage: ConsolidationUse, preserve_connected: bool) -> Mesh {
         Self::consolidate_with_outcome(mesh, length_unit_scale, preserve_supported, preserve_folds,
-            usage, preserve_connected, None).mesh
+            usage, preserve_connected, None, &mut Default::default()).mesh
     }
 
     fn consolidate_with_outcome(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool,
         preserve_folds: bool, usage: ConsolidationUse, preserve_connected: bool,
-        prism_host: Option<&Mesh>) -> ConsolidationOutcome {
+        prism_host: Option<&Mesh>, subs: &mut sub_results::SubResults) -> ConsolidationOutcome {
         if mesh.indices.len() < 6 {
             return ConsolidationOutcome::established(mesh);
         }
@@ -227,8 +228,7 @@ impl ClippingProcessor {
         if !supported.folded_buckets.is_empty()
             && preservation::tears_beyond_folds(&output, &buckets, &supported)
         {
-            let ordinary = Self::consolidate_with_use(
-                mesh.clone(), length_unit_scale, preserve_supported, false, usage, preserve_connected);
+            let ordinary = subs.run(&mesh, length_unit_scale, preserve_supported, false, usage, preserve_connected);
             // Only a fully closed fold-free host replaces the fold output; one
             // that is merely less open gives up the fold's finite support for
             // nothing (rvt01 #26681 pins that trade).
@@ -253,8 +253,8 @@ impl ClippingProcessor {
             let exact = crate::exact_topology::strict_closed_mesh(&output);
             let public = preservation::public_weld_closed(&output);
             if !exact || !public {
-                let ordinary = fold_free.take().unwrap_or_else(|| Self::consolidate_with_use(
-                    mesh.clone(), length_unit_scale, preserve_supported, false, usage, preserve_connected));
+                let ordinary = fold_free.take().unwrap_or_else(|| subs.run(
+                    &mesh, length_unit_scale, preserve_supported, false, usage, preserve_connected));
                 if ((!exact && crate::exact_topology::strict_closed_mesh(&ordinary))
                     || (!public && preservation::public_weld_closed(&ordinary)))
                     && !supported_cells::has_uncertified_needle(&ordinary, &supported) {
@@ -268,7 +268,7 @@ impl ClippingProcessor {
         if !supported.cells.is_empty() {
             // Rejecting the connected extension must retain the established
             // isolated-cell policy, not silently remove its certified cells.
-            let baseline = Self::consolidate_with_use(mesh.clone(), length_unit_scale,
+            let baseline = subs.run(&mesh, length_unit_scale,
                 supported.has_connected_patch, preserve_folds, usage, false);
             // An already closed ordinary boundary needs no source-cell rescue.
             if crate::exact_topology::strict_closed_mesh(&baseline) { return ConsolidationOutcome::established(baseline); }

@@ -31,7 +31,7 @@ import {
   filterHiddenRefsFromRelationshipLine,
   refGroupFromArg,
 } from './reference-collector.js';
-import { readStepSlots } from './step-argument-parser.js';
+import { readStepSlots, replaceStepArgument } from './step-argument-parser.js';
 import { applySourceLineMutations } from './step-attribute-mutations.js';
 import { effectiveCreatedRecord } from './effective-source-record.js';
 import { contextRootsFor } from './remesh-context-roots.js';
@@ -42,6 +42,9 @@ import type { IfcSchemaVersion } from './schema-converter.js';
 export { remeshContextRoots } from './remesh-context-roots.js';
 
 const log = createLogger('EntitySubgraph');
+
+/** `IfcProduct.Representation`, the same slot in IFC2X3, IFC4 and IFC4X3. */
+const SITE_REPRESENTATION_SLOT = 6;
 
 export interface EntitySubgraphRequest {
   /** Elements to mesh. Tombstoned or unknown ids are skipped. */
@@ -92,8 +95,33 @@ export function serializeEntitySubgraph(
 
   const walkRoots = new Set<number>();
   const relationships = new Map<number, string>();
+  const shallowSites = new Map<number, string>();
   for (const id of [...req.targets, ...contextRoots]) {
-    if (!index.has(id) || relationships.has(id)) continue;
+    if (!index.has(id) || relationships.has(id) || shallowSites.has(id)) continue;
+    if (index.typeOf(id) === 'IFCSITE' && !req.targets.has(id)) {
+      // A context site is carried for its ObjectPlacement (the mesher cuts a
+      // host in its site placement's frame, #10435), not for its terrain:
+      // written with Representation `$`, and only its other refs walked.
+      // An unreadable site is refused with the subgraph (`unreadable`), never
+      // dropped: without it the host would be cut in another frame.
+      const line = writer.line(id);
+      if (line === null) {
+        writer.markUnreadable(id);
+        continue;
+      }
+      const slots = readStepSlots(line)?.slots;
+      const shallow = slots && replaceStepArgument(line, SITE_REPRESENTATION_SLOT, '$');
+      if (!slots || !shallow) {
+        writer.markUnreadable(id);
+        continue;
+      }
+      shallowSites.set(id, shallow);
+      slots.forEach((slot, at) => {
+        const ref = at === SITE_REPRESENTATION_SLOT ? undefined : refGroupFromArg(slot);
+        if (typeof ref === 'number') walkRoots.add(ref);
+      });
+      continue;
+    }
     if (!index.typeOf(id)?.startsWith('IFCREL')) {
       walkRoots.add(id);
       continue;
@@ -138,6 +166,8 @@ export function serializeEntitySubgraph(
     const line = writer.line(id);
     if (line !== null) lines.set(id, line);
   }
+  // A site some other root reaches in full keeps its full line, terrain and all.
+  for (const [id, line] of shallowSites) if (!lines.has(id)) lines.set(id, line);
   const isAbsent = (ref: number): boolean => !lines.has(ref) && !relationships.has(ref);
   for (const [id, line] of relationships) {
     const narrowed = filterHiddenRefsFromRelationshipLine(line, isAbsent, schema);

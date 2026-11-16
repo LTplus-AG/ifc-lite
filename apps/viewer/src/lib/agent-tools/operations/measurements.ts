@@ -5,11 +5,11 @@
 import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { isToolAvailable } from '@/lib/features/tools';
-import { operation, emptySchema, pointSchema } from './contract';
+import { viewerOperation as operation, emptySchema, pointSchema } from './contract';
 
 const metadata = (id: string, description: string) => ({
   id, owner: 'measurements', description, effects: ['view'] as const,
-  capability: 'commands-and-edits' as const, implementation: 'native-store' as const,
+  capability: 'commands-and-edits' as const, synchronous: true, implementation: 'native-store' as const,
 });
 function available() { if (!isToolAvailable('measure')) throw new Error('Measurement tools are disabled by the host.'); }
 function idle() {

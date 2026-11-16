@@ -1,18 +1,35 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
-import { validationOperations } from './validation';
-import { measurementOperations } from './measurements';
-import { pointCloudOperations } from './pointclouds';
-import { clashOperations } from './clash';
-import { viewOperations } from './view';
-import { readOperations } from './reads';
-import { environmentOperations } from './environment';
-import { isFeatureEnabled, type FeatureId } from '@/lib/features';
+import { operationContracts } from './generated/contracts';
+import { operationLoaders } from './generated/loaders';
+import { operationValidators } from './validators';
+import { publicOperationContract, contractFingerprint, type OperationContract } from './metadata';
+import { isFeatureEnabled } from '@/lib/features';
+import { PANEL_FEATURE } from '@/lib/panels/availability';
 import type { Operation } from './contract';
 
-const entries = [...viewOperations, ...readOperations, ...environmentOperations, ...validationOperations, ...measurementOperations, ...pointCloudOperations, ...clashOperations];
+function lazyOperation(contract: OperationContract): Operation {
+  const { module, exportName, ...metadata } = contract;
+  if (!metadata.outputSchema) throw new Error(`Missing output contract: ${metadata.id}`);
+  let implementation: Promise<Operation> | undefined;
+  const load = () => implementation ??= (async () => {
+    const loader = operationLoaders[module];
+    if (!loader) throw new Error(`Missing operation module: ${module}`);
+    const loaded = await loader();
+    const candidates = loaded[exportName];
+    if (!Array.isArray(candidates)) throw new Error(`Missing native operations: ${module}.${exportName}`);
+    const native = (candidates as Operation[]).find(candidate => candidate.id === metadata.id);
+    if (!native || contractFingerprint(publicOperationContract(native)) !== contractFingerprint(metadata)) {
+      throw new Error(`Native operation contract changed: ${metadata.id}. Rebuild the verified operation catalogue.`);
+    }
+    return native;
+  })();
+  return { ...metadata, ...operationValidators(metadata.id, metadata.inputSchema, metadata.outputSchema),
+    async execute(input, context) { return (await load()).execute(input, context); },
+  };
+}
+const entries = operationContracts.map(lazyOperation);
 const registry = new Map<string, Operation>();
 for (const entry of entries) {
   if (registry.has(entry.id)) throw new Error(`Duplicate viewer operation: ${entry.id}`);
@@ -25,16 +42,10 @@ export function viewerOperation(id: string): Operation {
   return entry;
 }
 export function describeOperation(entry: Operation) {
-  return { id: entry.id, version: entry.version, owner: entry.owner, description: entry.description,
-    effects: entry.effects, capability: entry.capability, inputSchema: entry.inputSchema,
-    result: entry.result, completion: entry.completion ?? 'synchronous', implementation: entry.implementation };
+  return { ...publicOperationContract(entry), completion: entry.completion ?? 'synchronous' };
 }
-
-const ownerFeatures: Readonly<Record<string, FeatureId>> = {
-  environment: 'view.environment', pointclouds: 'view.point-clouds', gantt: 'data.schedule',
-  cost: 'data.cost', clash: 'check.clash', validation: 'check.validation', lens: 'view.lens',
-};
 export function operationUnavailable(entry: Operation): string | null {
-  const feature = ownerFeatures[entry.owner];
-  return feature && !isFeatureEnabled(feature) ? `Host feature ${feature} is disabled.` : null;
+  const feature = PANEL_FEATURE[entry.owner as keyof typeof PANEL_FEATURE];
+  const disabled = [feature, ...(entry.features ?? [])].find(id => id && !isFeatureEnabled(id));
+  return disabled ? `Host feature ${disabled} is disabled.` : null;
 }

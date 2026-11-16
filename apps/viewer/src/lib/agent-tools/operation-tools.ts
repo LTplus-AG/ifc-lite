@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { operationArtifactSpecs, operationArtifactTools } from './operation-artifact-tools';
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import type { AgentInputSchema, AgentTool, ToolOutput } from './types';
 
@@ -10,23 +11,24 @@ const executionSchema = { type: 'object', properties: {
   expected_revision: { type: 'integer', minimum: 0 }, idempotency_key: { type: 'string', minLength: 1, maxLength: 200 }, background: { type: 'boolean' },
 }, required: ['operation_id'] } satisfies AgentInputSchema;
 export const OPERATION_SPECS = {
+  ...operationArtifactSpecs,
   viewer_operation_coverage: {
     description: 'Read machine-readable migration coverage for all 35 panels, finite viewport tools and non-panel controls. Lists actual implemented IDs, remaining gaps and specific human-only host boundaries. Partial coverage is never reported as complete.',
     inputSchema: { type: 'object', properties: {} } satisfies AgentInputSchema, readOnly: true,
   },
   viewer_operations: {
-    description: 'Search native parameterized viewer operations. Bounded discovery, with exact runtime schemas on describe. Opening panels is separate. Operations currently cover native camera, section planes, visibility, selection, appearance, lighting, IFC schedule/cost/structural reads and IDS validation. Discovery does not execute operations.',
+    description: 'Search native parameterized viewer operations. Bounded discovery, with exact runtime schemas on describe. Opening panels is separate. Operations currently cover native camera, section planes, visibility, selection, appearance, lighting, native authoring review, analysis, documents, exports, sources and workflow execution. Discovery does not execute operations.',
     inputSchema: { type: 'object', properties: {
       query: { type: 'string', maxLength: 200 }, operation_id: { type: 'string', maxLength: 200 },
       offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 50 },
     } } satisfies AgentInputSchema, readOnly: true,
   },
   viewer_operation_inspect: {
-    description: 'Execute a read-only operation against one explicit model and its current revision. background=true returns a job; use viewer_operation_job for its actual completion and results. Does not change viewer state.',
+    description: 'Execute a read-only operation. Discover needs: model operations require an explicit target; viewer operations omit model_id. background=true returns a job; use viewer_operation_job for its actual completion and results. Does not change viewer state.',
     inputSchema: executionSchema, readOnly: true,
   },
   viewer_operation_execute: {
-    description: 'Execute an exact parameterized native view/settings operation. Requires commands and edits permission at execution. Inputs are validated before any effects. Supply expected_revision from inspection to refuse stale requests. Model writes, files, network and publication are excluded from this capability.',
+    description: 'Execute an exact parameterized native operation. Discover needs and its input/output schema first. Requires commands and edits permission at execution. Inputs are validated before any effects. Supply expected_revision from inspection to refuse stale requests. Sensitive effects retain their declared native transaction, export, provider and review policies. This grant does not bypass exact-candidate approval.',
     inputSchema: executionSchema, readOnly: false,
   },
   viewer_operation_job: {
@@ -45,6 +47,7 @@ function jobId(args: Record<string, unknown>) {
   return args.job_id;
 }
 export const operationTools: Record<keyof typeof OPERATION_SPECS, AgentTool> = {
+  ...operationArtifactTools,
   viewer_operation_coverage: { needs: 'none', async run(_host, args) {
     if (Object.keys(args).length) invalid('Coverage accepts no arguments.');
     const { viewerOperationCoverage } = await import('./operations/coverage');
@@ -63,15 +66,15 @@ export const operationTools: Record<keyof typeof OPERATION_SPECS, AgentTool> = {
       && `${op.id} ${op.owner} ${op.description}`.toLowerCase().includes(query));
     return output({ total: matching.length, offset, next_offset: offset + limit < matching.length ? offset + limit : null,
       operations: matching.slice(offset, offset + limit).map(op => args.operation_id ? { ...describeOperation(op), unavailable: operationUnavailable(op) }
-        : { id: op.id, version: op.version, owner: op.owner, description: op.description, effects: op.effects, capability: op.capability, unavailable: operationUnavailable(op) }) });
+        : { id: op.id, version: op.version, owner: op.owner, description: op.description, effects: op.effects, capability: op.capability, needs: op.needs, unavailable: operationUnavailable(op) }) });
   } },
-  viewer_operation_inspect: { needs: 'store', async run(host, model, args, ctx) {
-    const { executeOperation } = await import('./operations/executor');
-    return output(await executeOperation(host, model, args, ctx, true));
+  viewer_operation_inspect: { needs: 'none', async run(host, args, ctx) {
+    const { executeOperationRequest } = await import('./operations/executor');
+    return output(await executeOperationRequest(host, args, ctx, true));
   } },
-  viewer_operation_execute: { needs: 'store', async run(host, model, args, ctx) {
-    const { executeOperation } = await import('./operations/executor');
-    return output(await executeOperation(host, model, args, ctx, false));
+  viewer_operation_execute: { needs: 'none', async run(host, args, ctx) {
+    const { executeOperationRequest } = await import('./operations/executor');
+    return output(await executeOperationRequest(host, args, ctx, false));
   } },
   viewer_operation_job: { needs: 'none', async run(host, args) {
     const id = jobId(args); const { operationJob } = await import('./operations/executor'); return output(operationJob(host, id));

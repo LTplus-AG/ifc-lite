@@ -105,6 +105,7 @@ export function createMainViewerToolHost(
   return {
     lifetimeSignal: options.lifetimeSignal,
     bsdd,
+    bim,
     ...(options.editor ? { editor: options.editor } : {}),
     models(): ModelHandle[] {
       const state: ViewerState = store.getState();

@@ -4,10 +4,10 @@
 
 import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
-import { operation, emptySchema } from './contract';
+import { viewerOperation as operation, emptySchema } from './contract';
 const metadata = (id: string, description: string) => ({
   id, owner: 'pointclouds', description, effects: ['view'] as const,
-  capability: 'commands-and-edits' as const, implementation: 'native-store' as const,
+  capability: 'commands-and-edits' as const, synchronous: true, implementation: 'native-store' as const,
 });
 function inspect() {
   const s = useViewerStore.getState();

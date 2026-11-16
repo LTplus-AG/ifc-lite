@@ -129,7 +129,8 @@
     "check:codegen-sync": "node scripts/check-codegen-sync.mjs",
     "check:generated": "node scripts/check-generated.mjs",
     "test:packed": "node scripts/check-packed-workflows.mjs",
-    "docs:api": "node scripts/docs/build-api-reference.mjs"
+    "docs:api": "node scripts/docs/build-api-reference.mjs",
+    "viewer:operations:update": "node scripts/check-viewer-operations.mjs --update"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

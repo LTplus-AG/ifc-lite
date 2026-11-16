@@ -6,6 +6,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 import { setImmediate } from 'node:timers/promises';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
@@ -27,9 +28,9 @@ async function seed(n: 1 | 2 = 1) {
   host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
 }
 const execute = (id: string, input: unknown = {}, extra: Record<string, unknown> = {}, canEdit = true) =>
-  dispatchMainViewerTool(host, 'viewer_operation_execute', { model_id: 'A', operation_id: id, input, ...extra }, { canEdit: () => canEdit });
+  dispatchMainViewerTool(host, 'viewer_operation_execute', { ...(viewerOperations().find(operation => operation.id === id)?.needs === 'model' ? { model_id: 'A' } : {}), operation_id: id, input, ...extra }, { canEdit: () => canEdit });
 const inspect = (id: string, input: unknown = {}, extra: Record<string, unknown> = {}) =>
-  dispatchMainViewerTool(host, 'viewer_operation_inspect', { model_id: 'A', operation_id: id, input, ...extra });
+  dispatchMainViewerTool(host, 'viewer_operation_inspect', { ...(viewerOperations().find(operation => operation.id === id)?.needs === 'model' ? { model_id: 'A' } : {}), operation_id: id, input, ...extra });
 const job = (job_id: string) => dispatchMainViewerTool(host, 'viewer_operation_job', { job_id });
 function data<T>(value: { structured: unknown; isError: boolean; text: string }): T { assert.equal(value.isError, false, value.text); return value.structured as T; }
 async function settled(id: string) {
@@ -71,7 +72,7 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
   it('rechecks a grant revoked while the lazy executor is loading', async () => {
     let granted = true;
     const pending = dispatchMainViewerTool(host, 'viewer_operation_execute', {
-      model_id: 'A', operation_id: 'environment.exposure', input: { value: 1.7 },
+      operation_id: 'environment.exposure', input: { value: 1.7 },
     }, { canEdit: () => granted });
     granted = false;
     assert.equal((await pending).errorCode, 'READ_ONLY');
@@ -104,6 +105,30 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal(first.isError, false, first.text); assert.deepEqual(second.structured, first.structured);
     assert.equal(useViewerStore.getState().measurements.length, 1);
     assert.equal((await execute('measurements.distance', { ...input, end: [1, 1, 1] }, { idempotency_key: 'distance-1' })).isError, true);
+  });
+  it('exports a real changed IFC artifact without downloading or discarding pending edits', async () => {
+    const view = new MutablePropertyView(null, 'A');
+    view.setAttribute(1, 'Name', 'AGENT-EXPORTED-WALL');
+    useViewerStore.setState({ mutationViews: new Map([['A', view]]), mutationVersion: 1 });
+    const result = data<{ committed: boolean; result: { artifact: { artifact_id: string }; files: Array<{ model_id: string }> } }>(await execute('exports.changedModels'));
+    assert.equal(result.committed, true);
+    assert.equal(result.result.files[0].model_id, 'A');
+    const chunk = data<{ data: string; next_offset: number | null }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: result.result.artifact.artifact_id, offset: 0, length: 65536 }));
+    assert.equal(chunk.next_offset, null);
+    assert.match(Buffer.from(chunk.data, 'base64').toString('utf8'), /AGENT-EXPORTED-WALL/);
+    assert.equal(view.getMutations().length, 1, 'creating an export must not discard its pending edits');
+    assert.equal((await execute('model.unload')).isError, true, 'unexported edits still require native discard confirmation');
+    assert.ok(useViewerStore.getState().models.has('A'));
+  });
+  it('validates every basket reference before changing native basket isolation', async () => {
+    useViewerStore.getState().clearBasket();
+    const before = useViewerStore.getState().isolatedEntities;
+    assert.equal((await execute('basket.replace', { express_ids: [1, 999999] })).isError, true);
+    assert.equal(useViewerStore.getState().pinboardEntities.size, 0);
+    assert.equal(useViewerStore.getState().isolatedEntities, before);
+    assert.equal((await inspect('basket.clear')).errorCode, 'READ_ONLY');
+    assert.equal((await execute('basket.replace', { express_ids: [1] }, {}, false)).errorCode, 'READ_ONLY');
+    assert.equal(useViewerStore.getState().pinboardEntities.size, 0);
   });
   it('covers all panel IDs while exposing each incomplete workflow as a real gap', () => {
     const report = viewerOperationCoverage();

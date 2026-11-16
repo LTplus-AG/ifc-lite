@@ -19,6 +19,7 @@ export const floodCheckRu = {
   "floodCheck.section.cancel": "Отмена",
   "floodCheck.section.running": "Чтение модели, карты опасности и рельефа…",
   "floodCheck.section.refused": "Проверка отказала: {reason}",
+  "floodCheck.section.modelEdited": "Модель изменена после проверки, поэтому результаты удалены. Экспортируйте модель и откройте её снова, чтобы проверить изменённую модель.",
   "floodCheck.outcome.exposed": "Под угрозой",
   "floodCheck.outcome.openEnded": "Класс глубины без верхней границы",
   "floodCheck.outcome.withinRange": "В пределах класса",

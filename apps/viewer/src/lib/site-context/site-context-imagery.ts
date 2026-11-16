@@ -139,9 +139,14 @@ export function siteContextGpuUvs(uvs: Float32Array, width: number, height: numb
   return borderedGpuUvs(flipped, width, height);
 }
 
-async function fetchImage(request: SiteContextImageryRequest, source: string, signal?: AbortSignal): Promise<ImageBitmap> {
-  const cache = createSiteContextResponseCache();
-  const cached = await cache.get(request.url);
+/**
+ * One WMS image through the allowlist. `cacheable: false` fetches it fresh every time: the hazard map answers
+ * transparent PNGs during an outage exactly as where nothing is mapped, so a cached answer could keep showing an
+ * outage as "no runoff" (the flood check never caches a transparent answer either).
+ */
+async function fetchImage(request: SiteContextImageryRequest, source: string, signal?: AbortSignal, cacheable = true): Promise<ImageBitmap> {
+  const cache = cacheable ? createSiteContextResponseCache() : null;
+  const cached = await cache?.get(request.url);
   let body: ArrayBuffer;
   if (cached) body = cached.body;
   else {
@@ -150,7 +155,7 @@ async function fetchImage(request: SiteContextImageryRequest, source: string, si
     const type = response.headers.get('content-type') ?? '';
     body = await response.arrayBuffer();
     if (!type.startsWith('image/')) throw new Error(`${source} answered ${type || 'no content type'}, not an image`);
-    await cache.set(request.url, { status: response.status, headers: { 'content-type': type }, body });
+    await cache?.set(request.url, { status: response.status, headers: { 'content-type': type }, body });
   }
   return createImageBitmap(new Blob([body], { type: request.mime }));
 }
@@ -309,6 +314,7 @@ async function drapeLayers(modelId: string, layers: TerrainDrapeLayers, signal?:
   if (!info || info.kind !== 'terrain' || !info.planBox || !model?.geometryResult) {
     throw new Error('Map layers drape on a loaded site-context terrain only.');
   }
+  signal?.throwIfAborted();
   if (!getGlobalRenderer()?.isReady()) throw new Error('The viewport is not ready to show the terrain layers yet.');
   const site = info.planBox;
   const core = coreMeshes(model.geometryResult.meshes);
@@ -338,11 +344,12 @@ async function drapeLayers(modelId: string, layers: TerrainDrapeLayers, signal?:
   if (levels.length === 0) throw new Error('The terrain has no plan extent to request map layers for.');
 
   const wanted = levels.flatMap((level) => level.requests.flatMap((request, slot) => (request ? [{ level, slot, request }] : [])));
-  const images = await settleImages(wanted.map((w) => fetchImage(w.request, SOURCE_NAMES[w.slot], signal)));
+  const images = await settleImages(wanted.map((w) => fetchImage(w.request, SOURCE_NAMES[w.slot], signal, w.slot === 0)));
   const closeAll = () => { for (const image of images) image.close(); };
   const geometry = useViewerStore.getState().models.get(modelId)?.geometryResult;
   let latestCore: MeshData[];
   try {
+    signal?.throwIfAborted();
     if (!geometry) throw new Error('The terrain was removed before its map layers arrived.');
     latestCore = coreMeshes(geometry.meshes);
     if (latestCore.length !== coreCount) throw new Error('The terrain changed while its map layers were loading.');

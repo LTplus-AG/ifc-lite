@@ -43,6 +43,9 @@ export interface FloodCheckRun {
   error: { message: string; code: string | null } | null;
 }
 
+/** The error code of a result dropped because its model was edited after (or while) it was checked. */
+export const MODEL_EDITED = 'model-edited';
+
 export interface FloodCheckSlice {
   floodCheck: FloodCheckRun | null;
   /** Verdict colours on the checked elements; on after every run. */
@@ -52,6 +55,11 @@ export interface FloodCheckSlice {
   isFloodCheckRunCurrent: (run: AbortController) => boolean;
   finishFloodCheck: (run: AbortController, data: FloodCheckOutcomeData) => void;
   failFloodCheck: (run: AbortController, error: { message: string; code: string | null }) => void;
+  /**
+   * The checked model was edited (its georeference or an element): a running check stops, a result is dropped
+   * (its verdicts describe the file as loaded, not the edited model), and the panel says why.
+   */
+  invalidateFloodCheck: () => void;
   /** User cancel or a run that saw its own abort: the run is forgotten, an earlier result is not restored. */
   cancelFloodCheck: () => void;
   setFloodColoursShown: (shown: boolean) => void;
@@ -76,6 +84,13 @@ export const createFloodCheckSlice: StateCreator<FloodCheckSlice, [], [], FloodC
   failFloodCheck: (run, error) => set((state) => (state.floodCheck?.abort !== run ? {} : {
     floodCheck: { ...state.floodCheck, status: 'error', abort: null, data: null, error },
   })),
+
+  invalidateFloodCheck: () => {
+    const run = get().floodCheck;
+    if (!run || run.status === 'error') return;
+    run.abort?.abort();
+    set({ floodCheck: { ...run, status: 'error', abort: null, data: null, error: { message: 'model edited', code: MODEL_EDITED } } });
+  },
 
   cancelFloodCheck: () => {
     const run = get().floodCheck;

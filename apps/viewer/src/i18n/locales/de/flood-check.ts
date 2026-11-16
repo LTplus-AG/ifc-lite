@@ -19,6 +19,7 @@ export const floodCheckDe = {
   "floodCheck.section.cancel": "Abbrechen",
   "floodCheck.section.running": "Modell, Gefährdungskarte und Gelände werden gelesen…",
   "floodCheck.section.refused": "Die Prüfung wurde verweigert: {reason}",
+  "floodCheck.section.modelEdited": "Das Modell wurde nach der Prüfung bearbeitet, daher wurden die Ergebnisse verworfen. Exportieren Sie das Modell und öffnen Sie es erneut, um das bearbeitete Modell zu prüfen.",
   "floodCheck.outcome.exposed": "Exponiert",
   "floodCheck.outcome.openEnded": "Tiefenklasse ohne Obergrenze",
   "floodCheck.outcome.withinRange": "Innerhalb des Klassenbereichs",

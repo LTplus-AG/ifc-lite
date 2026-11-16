@@ -17,6 +17,7 @@ import { afterEach, test } from 'node:test';
 import { act } from 'react';
 import { BAFU_ATTRIBUTION } from '@ifc-lite/flood-check';
 import { ProjectUnits } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { cleanup, render } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { floodCheckFixture } from '@/test/flood-check-fixture';
@@ -73,6 +74,22 @@ test('verdict colours go to the overlay compositor by global id, and come off wi
   act(() => useViewerStore.getState().removeModel('building'));
   assert.equal(useViewerStore.getState().floodCheck, null, 'the result belongs to its model');
   assert.equal(layer(), undefined);
+});
+
+test('editing the checked model drops its verdicts: they describe the file as loaded, not the edited model', () => {
+  seed();
+  render(<FloodCheckOverlay />);
+  assert.ok(useViewerStore.getState().overlayLayers.get(FLOOD_OVERLAY_LAYER_ID));
+  act(() => {
+    const view = new MutablePropertyView(null, 'building');
+    view.setAttribute(1, 'Name', 'Moved door');
+    useViewerStore.setState({ mutationViews: new Map([...useViewerStore.getState().mutationViews, ['building', view]]) });
+  });
+  const run = useViewerStore.getState().floodCheck;
+  assert.equal(run?.status, 'error');
+  assert.equal(run?.error?.code, 'model-edited');
+  assert.equal(run?.data, null);
+  assert.equal(useViewerStore.getState().overlayLayers.get(FLOOD_OVERLAY_LAYER_ID), undefined);
 });
 
 test('the hazard legend is shown exactly while the overland flow map is draped on a visible terrain', () => {

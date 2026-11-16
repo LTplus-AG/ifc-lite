@@ -19,6 +19,7 @@ export const floodCheckFr = {
   "floodCheck.section.cancel": "Annuler",
   "floodCheck.section.running": "Lecture du modèle, de la carte d’aléa et du terrain…",
   "floodCheck.section.refused": "Le contrôle a refusé : {reason}",
+  "floodCheck.section.modelEdited": "Le modèle a été modifié après le contrôle : ses résultats ont été retirés. Exportez le modèle et rouvrez-le pour contrôler le modèle modifié.",
   "floodCheck.outcome.exposed": "Exposé",
   "floodCheck.outcome.openEnded": "Classe de hauteur sans borne supérieure",
   "floodCheck.outcome.withinRange": "Dans la plage de la classe",

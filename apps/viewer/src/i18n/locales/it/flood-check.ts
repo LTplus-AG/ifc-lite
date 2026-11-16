@@ -19,6 +19,7 @@ export const floodCheckIt = {
   "floodCheck.section.cancel": "Annulla",
   "floodCheck.section.running": "Lettura del modello, della carta dei pericoli e del terreno…",
   "floodCheck.section.refused": "La verifica ha rifiutato: {reason}",
+  "floodCheck.section.modelEdited": "Il modello è stato modificato dopo la verifica, quindi gli esiti sono stati scartati. Esportate il modello e riapritelo per verificare il modello modificato.",
   "floodCheck.outcome.exposed": "Esposto",
   "floodCheck.outcome.openEnded": "Classe di profondità senza limite superiore",
   "floodCheck.outcome.withinRange": "Entro l’intervallo della classe",

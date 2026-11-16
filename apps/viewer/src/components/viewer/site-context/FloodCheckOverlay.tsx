@@ -44,11 +44,22 @@ export function useFloodVerdictColours(): void {
 }
 
 function Swatch({ colour }: { colour: string }) {
-  return <span aria-hidden className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm border border-black/20" style={{ background: colour }} />;
+  return <span aria-hidden className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm border border-border" style={{ background: colour }} />;
+}
+
+/** A model edited after it was checked no longer matches its verdicts: drop them (the panel says why). */
+export function useFloodCheckInvalidation(): void {
+  const edited = useViewerStore((s) => {
+    const run = s.floodCheck;
+    if (!run || run.status === 'error') return false;
+    return s.georefMutations.has(run.modelId) || (s.mutationViews.get(run.modelId)?.hasChanges() ?? false);
+  });
+  useEffect(() => { if (edited) useViewerStore.getState().invalidateFloodCheck(); }, [edited]);
 }
 
 export function FloodCheckOverlay() {
   useFloodVerdictColours();
+  useFloodCheckInvalidation();
   const { t, locale } = useTranslation();
   const hazardShown = useViewerStore((s) => visibleSiteContextModels(s.siteContextModels, s.models).some(([, info]) => info.hazard !== undefined));
   const run = useViewerStore((s) => s.floodCheck);
@@ -56,7 +67,7 @@ export function FloodCheckOverlay() {
   const verdicts = run?.status === 'done' && run.data && coloursShown ? run.data.result.summary : null;
   if (!hazardShown && !verdicts) return null;
   return (
-    <div className="pointer-events-none absolute bottom-8 right-2 flex max-w-[18rem] flex-col gap-1.5" data-testid="flood-check-legends">
+    <div className="pointer-events-none absolute bottom-8 right-2 flex max-w-72 flex-col gap-1.5" data-testid="flood-check-legends">
       {hazardShown && (
         <section aria-label={t('floodCheck.legend.hazardTitle')} className="rounded bg-background/80 px-2 py-1.5 text-2xs text-foreground backdrop-blur-sm" data-testid="flood-hazard-legend">
           <p className="font-semibold">{t('floodCheck.legend.hazardTitle')}</p>

@@ -21,6 +21,7 @@ import { Droplets, X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { visibleSiteContextModels } from '@/store/slices/siteContextSlice';
+import { MODEL_EDITED } from '@/store/slices/floodCheckSlice';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -33,8 +34,12 @@ const GUESS = 'guess';
 
 /** The loaded, visible site-context terrain, if any: where the hazard map drapes (the legend reads the same). */
 function useTerrain(): { modelId: string; hazard: boolean } | null {
-  const entry = useViewerStore((s) => visibleSiteContextModels(s.siteContextModels, s.models).find(([, info]) => info.kind === 'terrain' && info.planBox));
-  return entry ? { modelId: entry[0], hazard: entry[1].hazard !== undefined } : null;
+  // Primitives only: a selector returning a fresh tuple fails the store's snapshot identity and loops.
+  const terrain = (s: ReturnType<typeof useViewerStore.getState>) =>
+    visibleSiteContextModels(s.siteContextModels, s.models).find(([, info]) => info.kind === 'terrain' && info.planBox);
+  const modelId = useViewerStore((s) => terrain(s)?.[0] ?? null);
+  const hazard = useViewerStore((s) => terrain(s)?.[1].hazard !== undefined);
+  return modelId ? { modelId, hazard } : null;
 }
 
 const importRun = () => import('@/lib/flood-check/flood-check-run');
@@ -119,7 +124,8 @@ export function FloodCheckSection({ modelId }: { modelId: string }) {
       {running && <output className="block text-xs text-muted-foreground">{t('floodCheck.section.running')}</output>}
       {run?.status === 'error' && run.error && (
         <p role="alert" className="text-xs text-error" data-testid="flood-check-error">
-          {run.error.code ? t('floodCheck.section.refused', { reason: run.error.message }) : run.error.message}
+          {run.error.code === MODEL_EDITED ? t('floodCheck.section.modelEdited')
+            : run.error.code ? t('floodCheck.section.refused', { reason: run.error.message }) : run.error.message}
         </p>
       )}
       {run?.status === 'done' && run.data && <FloodCheckSummary data={run.data} />}

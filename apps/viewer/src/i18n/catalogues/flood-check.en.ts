@@ -18,6 +18,7 @@ export const floodCheckEn = {
   'floodCheck.section.cancel': 'Cancel',
   'floodCheck.section.running': 'Reading the model, the hazard map and the terrain…',
   'floodCheck.section.refused': 'The check refused: {reason}',
+  'floodCheck.section.modelEdited': "The model was edited after it was checked, so its verdicts were dropped. Export the model and open it again to check the edited model.",
   'floodCheck.outcome.exposed': 'Exposed',
   'floodCheck.outcome.openEnded': 'Open-ended depth class',
   'floodCheck.outcome.withinRange': 'Within class range',

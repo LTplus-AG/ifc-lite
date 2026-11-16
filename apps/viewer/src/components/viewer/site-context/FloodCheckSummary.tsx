@@ -56,7 +56,7 @@ export function FloodCheckSummary({ data }: { data: FloodCheckOutcomeData }) {
           : t('floodCheck.summary.heightUnconfirmed', { reasons: reference.unconfirmedBecause.join('; ') })}
       </p>
 
-      <Disclosure title={t('floodCheck.summary.notes', { count: result.warnings.length + 1 })} testId="flood-check-notes">
+      <Disclosure title={t('floodCheck.summary.notes', { count: result.warnings.length + 3 })} testId="flood-check-notes">
         <p>{localized(result.caveat, locale)}</p>
         <p>{localized(reference.residualRisk, locale)}</p>
         <p className="font-mono">{result.margin.statement}</p>

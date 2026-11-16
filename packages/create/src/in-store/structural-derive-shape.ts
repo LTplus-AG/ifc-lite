@@ -146,6 +146,8 @@ const PARAMETERISED: Record<string, (a: readonly unknown[]) => { size: [unknown,
   IFCCIRCLEHOLLOWPROFILEDEF: (a) => PARAMETERISED.IFCCIRCLEPROFILEDEF(a),
   IFCELLIPSEPROFILEDEF: (a) => ({ size: [2 * (num(a[3]) ?? NaN), 2 * (num(a[4]) ?? NaN)], exact: false }),
   IFCISHAPEPROFILEDEF: (a) => ({ size: [a[3], a[4]], exact: false }),
+  // The bounds are the wider flange by the overall depth, as the geometry reader draws it.
+  IFCASYMMETRICISHAPEPROFILEDEF: (a) => ({ size: [Math.max(num(a[3]) ?? NaN, num(a[8]) ?? NaN), a[4]], exact: false }),
   IFCLSHAPEPROFILEDEF: (a) => ({ size: [a[4] ?? a[3], a[3]], exact: false }),
   IFCTSHAPEPROFILEDEF: (a) => ({ size: [a[4], a[3]], exact: false }),
   IFCUSHAPEPROFILEDEF: (a) => ({ size: [a[4], a[3]], exact: false }),
@@ -177,7 +179,9 @@ type Part = [cx: number, cy: number, w: number, h: number];
  * Where the centroid of an asymmetric steel section lies from the centre of its bounds, in the
  * profile's own frame (x along the width, y along the depth), from its sharp-cornered shape (fillets
  * move it by well under a millimetre). Orientations follow the IFC profile definitions: an L has its
- * legs left and bottom, a T its flange on top, a U and C their web on the left. Null for a section
+ * legs left and bottom, a T its flange on top, a U and C their web on the left, an asymmetric I its
+ * bottom flange at the bottom (the frame `rust/geometry/src/profiles/shapes.rs` draws it in; an omitted
+ * TopFlangeThickness is the bottom one, schema rule WR3). Null for a section
  * whose centroid is its bounds centre or that is not read.
  */
 function sectionCentroidOffset(type: string, a: readonly unknown[], x: number, y: number): Flat | null {
@@ -199,6 +203,10 @@ function sectionCentroidOffset(type: string, a: readonly unknown[], x: number, y
       const flange = (y0: number): Part => [p5 / 2, y0, p4 - p5, p5];
       const lip = (sign: number): Part => [p4 / 2 - p5 / 2, sign * (p3 / 2 - p5 - (p6 - p5) / 2), p5, p6 - p5];
       return [[-p4 / 2 + p5 / 2, 0, p5, p3], flange(p3 / 2 - p5 / 2), flange(-p3 / 2 + p5 / 2), lip(1), lip(-1)];
+    }
+    if (type === 'IFCASYMMETRICISHAPEPROFILEDEF' && p3 !== null && p4 !== null && p5 !== null && p6 !== null && num(a[8]) !== null) {
+      const [bottomWidth, topWidth, topThickness] = [p3, num(a[8])!, num(a[9]) ?? p6];
+      return [[0, -p4 / 2 + p6 / 2, bottomWidth, p6], [0, (p6 - topThickness) / 2, p5, p4 - p6 - topThickness], [0, p4 / 2 - topThickness / 2, topWidth, topThickness]];
     }
     return null;
   })();

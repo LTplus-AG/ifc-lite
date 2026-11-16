@@ -115,7 +115,20 @@
     "rigid_operation_lengths_against_geographic_crs_refused",
     "rigid_operation_crs_defined_only_by_well_known_text",
     "well_known_text_attaches_only_to_its_crs",
-    "well_known_text_only_crs_without_operation_falls_back_to_site"
+    "well_known_text_only_crs_without_operation_falls_back_to_site",
+    "epset_lowercase_ePset_names",
+    "projected_crs_conversion_based_unknown_through_foot_unresolved",
+    "projected_crs_conversion_based_missing_component_unresolved",
+    "projected_crs_unit_resolved_FOOT_exact",
+    "projected_crs_unit_resolved_US_SURVEY_FOOT_exact",
+    "projected_crs_unit_unresolved_FOOT_declared_as_survey_foot",
+    "projected_crs_unit_unresolved_US_SURVEY_FOOT_declared_as_foot",
+    "projected_crs_unit_unresolved_METRE_declared_as_foot",
+    "projected_crs_unit_unresolved_FOOT_zero_factor",
+    "projected_crs_unit_unresolved_FOOT_negative_factor",
+    "projected_crs_unit_unresolved_FOOT_missing_factor",
+    "projected_crs_conversion_based_absent_component_unresolved",
+    "projected_crs_conversion_based_non_length_component_unresolved"
   ],
   "cases": [
     {
@@ -1227,6 +1240,174 @@
         "northings": 47.36666666666667,
         "eastings": 8.533333333333333,
         "orthogonalHeight": 400.0
+      }
+    },
+    {
+      "name": "epset_lowercase_ePset_names",
+      "_note": "Real authoring tools write `ePset_…`; a strict third-party reader would miss it, ours must not. The writer itself always spells `ePSet_…`.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#10=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(1000.),$);\n#11=IFCPROPERTYSINGLEVALUE('Northings',$,IFCREAL(2000.),$);\n#12=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCREAL(3.),$);\n#13=IFCPROPERTYSINGLEVALUE('XAxisAbscissa',$,IFCREAL(1.),$);\n#14=IFCPROPERTYSINGLEVALUE('XAxisOrdinate',$,IFCREAL(0.),$);\n#15=IFCPROPERTYSINGLEVALUE('Scale',$,IFCREAL(1.),$);\n#16=IFCPROPERTYSET('0aaaaaaaaaaaaaaaaaaaaa',$,'ePset_MapConversion',$,(#10,#11,#12,#13,#14,#15));\n#20=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);\n#21=IFCPROPERTYSET('0bbbbbbbbbbbbbbbbbbbbb',$,'ePset_ProjectedCRS',$,(#20));\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "ePSetMapConversion",
+        "crsName": "EPSG:2056",
+        "mapUnit": null,
+        "mapUnitScale": null,
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 3.0,
+        "xAxisAbscissa": 1.0,
+        "xAxisOrdinate": 0.0,
+        "scale": 1.0,
+        "localToMap": [
+          {
+            "local": [
+              5.0,
+              7.0,
+              2.0
+            ],
+            "map": [
+              1005.0,
+              2007.0,
+              5.0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "projected_crs_conversion_based_unknown_through_foot_unresolved",
+      "_note": "A unit named CHAIN defined as 66 of a conversion-based FOOT: the component's own factor is not applied, so the factor is not stated and the unit stays the unresolved METRE default (never 66).",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.30480000000000002),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#6);\n#7=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(66.),#4);\n#8=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'CHAIN',#7);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#8);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnit": "METRE",
+        "mapUnitScale": 1.0
+      }
+    },
+    {
+      "name": "projected_crs_conversion_based_missing_component_unresolved",
+      "_note": "The measure names a component unit that is not in the file: its factor is not stated, the unit stays the unresolved METRE default (never 66).",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.30480000000000002),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#6);\n#7=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(66.),#999);\n#8=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'CHAIN',#7);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#8);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnit": "METRE",
+        "mapUnitScale": 1.0
+      }
+    },
+    {
+      "name": "projected_crs_unit_resolved_FOOT_exact",
+      "_note": "A foot declared as 0.3048 is the unit its name means.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#6);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#4);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnitResolved": true
+      }
+    },
+    {
+      "name": "projected_crs_unit_resolved_US_SURVEY_FOOT_exact",
+      "_note": "A US survey foot declared as 1200/3937 is the unit its name means.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048006096012192),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'US SURVEY FOOT',#6);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#4);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnitResolved": true
+      }
+    },
+    {
+      "name": "projected_crs_unit_unresolved_FOOT_declared_as_survey_foot",
+      "_note": "The name says FOOT, the declared factor is the survey foot: the name no longer identifies the unit.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048006096),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#6);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#4);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnitResolved": false
+      }
+    },
+    {
+      "name": "projected_crs_unit_unresolved_US_SURVEY_FOOT_declared_as_foot",
+      "_note": "The name says US SURVEY FOOT, the declared factor is the international foot.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'US SURVEY FOOT',#6);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#4);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnitResolved": false
+      }
+    },
+    {
+      "name": "projected_crs_unit_unresolved_METRE_declared_as_foot",
+      "_note": "A unit named METRE declared as 0.3048 is not a metre: a 3.28x error if carried by name.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'METRE',#6);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#4);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnitResolved": false
+      }
+    },
+    {
+      "name": "projected_crs_unit_unresolved_FOOT_zero_factor",
+      "_note": "A zero factor states nothing.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#6);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#4);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnitResolved": false
+      }
+    },
+    {
+      "name": "projected_crs_unit_unresolved_FOOT_negative_factor",
+      "_note": "A negative factor states nothing.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(-0.3048),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#6);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#4);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnitResolved": false
+      }
+    },
+    {
+      "name": "projected_crs_unit_unresolved_FOOT_missing_factor",
+      "_note": "A factor with no value states nothing.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT($,#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#6);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#4);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnitResolved": false
+      }
+    },
+    {
+      "name": "projected_crs_conversion_based_absent_component_unresolved",
+      "_note": "The measure has no component unit at all (`$`): its factor is not stated, the unit stays the unresolved METRE default.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.30480000000000002),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#6);\n#7=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(66.),$);\n#8=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'CHAIN',#7);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#8);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnit": "METRE",
+        "mapUnitScale": 1.0
+      }
+    },
+    {
+      "name": "projected_crs_conversion_based_non_length_component_unresolved",
+      "_note": "The component is an SI unit that is not a length (a radian): its prefix says nothing about a length factor.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.30480000000000002),#5);\n#4=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#6);\n#9=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n#7=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(66.),#9);\n#8=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'CHAIN',#7);\n#2=IFCPROJECTEDCRS('EPSG:2263',$,$,$,$,$,#8);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,3.,1.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2263",
+        "mapUnit": "METRE",
+        "mapUnitScale": 1.0
       }
     }
   ]

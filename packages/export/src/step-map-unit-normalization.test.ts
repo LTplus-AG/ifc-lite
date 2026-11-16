@@ -94,7 +94,7 @@ describe('opt-in emitted map-unit normalization (#6587)', () => {
     const fresh = await parse(file(body.slice(0, body.indexOf('#37='))));
     const generated = new StepExporter(fresh).export({ schema: 'IFC4', normalizeMapUnitsToMetres: true,
       georefMutations: { projectedCRS: { name: 'EPSG:32760', mapUnit: 'MILLIMETRE' },
-        mapConversion: { eastings: 700000000, northings: 9000000000, scale: 1 } } });
+        mapConversion: { eastings: 700000000, northings: 9000000000, orthogonalHeight: 0, scale: 1 } } });
     const out = await parse(generated.content);
     const id = out.entityIndex.byType.get('IFCMAPCONVERSION')![0];
     expect(attrs(out, id).slice(2, 5)).toEqual([700000, 9000000, 0]);

@@ -72,6 +72,8 @@ the answer, and `contentDiff.pendingMutations` says how many.
 
 **Mutations** (hidden under `--read-only`) — `entity_create`, `entity_delete`,
 `entity_set_attribute`, `entity_set_property`, `entity_delete_property`,
+`georeferencing_write` (set/update/remove IfcMapConversion + IfcProjectedCRS; refuses
+rather than guess a CRS, unit or scale),
 `mutation_batch`, `mutation_diff`, `mutation_undo`.
 
 **Export** — `export_csv`, `export_json`, `export_ifc`, `export_ifcx`,

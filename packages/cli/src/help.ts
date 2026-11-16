@@ -78,6 +78,10 @@ export function buildHelp(version: string): string {
               constrain --element ID --top fixed|storeyAbove|storey|slab|roof [--target ID]
               copy --ids ID,... --to S [--to S ...]
               delete --storey S [--move-to S | --delete-contents]  Each writes --out F; --dry-run writes nothing
+    georef    show|set|update|remove <file.ifc>  Read and write georeferencing ("georef --help" for every option)
+              show [--json]                       IfcMapConversion/IfcProjectedCRS (IFC2X3: ePSet_MapConversion), rotation, units
+              set --out F (--crs N|--epsg C) --map-unit U --eastings E --northings N --height H [--rotation DEG] [--replace]
+              update --out F [--eastings E ...] | remove --out F  Fail closed: nothing is guessed, nothing written on refusal
     site-context <file.ifc> --out F             Swiss terrain, parcel + neighbouring buildings around a georeferenced model as one GLB ("site-context --help")
               [--centre E,N | --egrid CH...] [--radius M] [--layers terrain,parcel,buildings] [--resolution auto|M] [--json] [--offline] [--cache-dir D]
     ask       <file.ifc> "<question>"            Natural language BIM queries
@@ -188,6 +192,8 @@ export function buildHelp(version: string): string {
     ifc-lite mcp model.ifc --read-only
     ifc-lite mcp arch.ifc struct.ifc --federate
     ifc-lite mcp model.ifc --transport http --port 8765 --token abc
+    ifc-lite georef show model.ifc --json
+    ifc-lite georef set model.ifc --epsg 2056 --map-unit METRE --eastings 2600000 --northings 1200000 --height 400 --rotation 12.5 --out geo.ifc
     ifc-lite site-context geo.ifc --radius 300 --layers terrain,parcel,buildings --out context.glb --json
     ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc
     ifc-lite ref create main

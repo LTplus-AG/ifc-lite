@@ -88,10 +88,13 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
   const start = () => {
     if (!anchor.ok) return;
     const captured = anchor;
-    void Promise.all([import('@/lib/site-context/site-context-fetch'), anchorStillCurrent(modelId, captured)]).then(([{ loadSiteContext }, unchanged]) => unchanged && loadSiteContext({
+    void Promise.all([import('@/lib/site-context/site-context-fetch'), anchorStillCurrent(modelId, captured)]).then(([{ loadSiteContext }, unchanged]) => {
+      if (!unchanged) return;
+      return loadSiteContext({
       anchorModelId: modelId, centre: captured.centre, radius, ...(captured.subject ? { subject: captured.subject } : {}), categories: SITE_CONTEXT_CATEGORIES.filter((kind) => selected.has(kind)),
       imagery: imagery && selected.has('terrain'), addModel, removeModel,
-    }));
+      });
+    });
   };
   const toggle = (kind: SiteContextLayerKind, on: boolean) => {
     const next = new Set(selected);

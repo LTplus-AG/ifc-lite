@@ -1,12 +1,12 @@
 # R10 convert carriers and point-action CausedBy
 
-Product source: this branch on main `5edf312b07` (#9668 convert lane, after R9 #10548). R10 adds structural conversion carriers in `packages/export`, one convert-probe correction, and the IFC2X3 point-action `CausedBy` fixture from the point-action lane (commit `1a671e4`, taken into this lane because it cannot land alone). R0 to R9 are retained.
+Product source: branch from main `5edf312b07` (after R9, #10548). R10 adds structural conversion carriers in `packages/export`, one convert-probe correction, and the IFC2X3 point-action `CausedBy` fixture from the point-action lane (branch `structural-climb/pointaction-causedby`). R0 to R9 are retained.
 
 Rows: **106/119 -> 109/119** (met 93 -> 99, partial 26 -> 20, missing 0 -> 0). Cells: **756/774 -> 759.5/774**. Read: 109.5/110 -> 110/110; card: 99.5/100 -> 100/100; convert: 56/72 -> 58.5/72. All other level totals are unchanged. The online ratchet against R9 passes with no row or cell dropped.
 
 ## Every changed cell
 
-The full summary comparison against R9 has exactly eight changed cells, including the one reason-only change. The point-action convert cell is listed too: it does not change, but only because of this revision's product fix.
+The full summary comparison against R9 has exactly eight changed cells, including the one reason-only change; the point-action convert row is listed for context.
 
 | Row | Level | R9 -> R10 | Why |
 |---|---|---|---|
@@ -40,4 +40,4 @@ Regression test: `convert (#9668): an IFC4 stiffness false may come back as the 
 - IFC4 curve member and surface member (generated files): no `IfcOwnerHistory` in the source; IFC2X3 requires one and the converter does not invent one (#4686).
 - IFC4 curve connection and curve member varying `Axis`: no IFC2X3 slot.
 - IFC4 surface member varying: the source has no thickness data; IFC2X3 requires `SubsequentThickness` LIST [2:?].
-- IFC4 IfcStructuralAnalysisModel: see the table.
+- IFC4 IfcStructuralAnalysisModel: beam_01 #72 left `SharedPlacement` empty, and IFC2X3 cannot record that it was.

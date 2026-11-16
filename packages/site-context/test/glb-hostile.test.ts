@@ -61,6 +61,16 @@ describe('a damaged GLB is refused, not decoded short', () => {
     expect(() => decodeSiteContextGlb(join(json, bin))).toThrow(SiteContextFormatError);
   });
 
+  it('an accessor over a buffer view that omits byteLength (#10480 review follow-up)', async () => {
+    const { json, bin } = split(encodeSiteContextGlb(await smallDoc()));
+    // The last index buffer view: without byteLength, the accessor end must still be checked against the BIN chunk.
+    const indexAccessors = json.meshes!.map((m) => m.primitives[0].indices!);
+    const last = indexAccessors.reduce((a, b) => ((json.bufferViews![json.accessors![a].bufferView].byteOffset ?? 0) > (json.bufferViews![json.accessors![b].bufferView].byteOffset ?? 0) ? a : b));
+    delete (json.bufferViews![json.accessors![last].bufferView] as { byteLength?: number }).byteLength;
+    json.accessors![last].count += 3;
+    expect(() => decodeSiteContextGlb(join(json, bin))).toThrow(SiteContextFormatError);
+  });
+
   it('an index that points past the vertices', async () => {
     const { json, bin } = split(encodeSiteContextGlb(await smallDoc()));
     const prim = json.meshes![0].primitives[0];

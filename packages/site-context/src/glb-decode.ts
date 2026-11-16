@@ -68,7 +68,9 @@ function readAccessor<T extends Float32Array | Uint32Array>(json: GltfJson, bin:
   if (!Number.isInteger(acc.count) || acc.count < 0) throw new SiteContextFormatError(`accessor ${index} has count ${acc.count}`);
   const start = view.byteOffset ?? 0;
   const byteLength = acc.count * WIDTH[type] * 4;
-  if (!Number.isInteger(start) || start < 0 || byteLength > view.byteLength || start + view.byteLength > bin.byteLength) {
+  const viewLength: unknown = view.byteLength;
+  if (!Number.isInteger(start) || start < 0 || typeof viewLength !== 'number' || !Number.isInteger(viewLength) || viewLength < 0
+    || byteLength > viewLength || start + viewLength > bin.byteLength || start + byteLength > bin.byteLength) {
     throw new SiteContextFormatError(`accessor ${index} (${byteLength} bytes at ${start}) does not fit its buffer view or the BIN chunk`);
   }
   // Copy: the BIN chunk is not guaranteed to sit 4-byte aligned in the caller's buffer.

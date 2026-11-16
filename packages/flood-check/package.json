@@ -1,0 +1,56 @@
+{
+  "name": "@ifc-lite/flood-check",
+  "version": "0.1.0",
+  "description": "Reads the elements a surface-runoff check needs from a georeferenced building model: façade openings, light wells, external stairs and ramps, low technical equipment, footprint and levels",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/parser": "workspace:^"
+  },
+  "devDependencies": {
+    "@mergifyio/vitest": "^2026.10.11",
+    "@types/node": "^26.6.4",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/flood-check"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "keywords": [
+    "ifc",
+    "bim",
+    "gis",
+    "flood",
+    "surface-runoff",
+    "hazard",
+    "switzerland",
+    "aec"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

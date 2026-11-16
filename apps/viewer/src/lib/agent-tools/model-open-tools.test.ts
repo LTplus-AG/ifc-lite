@@ -71,7 +71,7 @@ async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[], onErro
 
 beforeEach(() => {
   fetched = []; calls = []; behaviour = 'load';
-  respond = () => new Response(new Uint8Array([73, 83, 79]), { status: 200 });
+  respond = () => new Response('ISO-10303-21;\nHEADER;\n', { status: 200 });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     fetched.push(String(input));
     if (init?.signal?.aborted) throw init.signal.reason;
@@ -346,7 +346,7 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
   });
 
   it('names a URL download from its path only, and refuses before fetching when the path is not a model (#9523 code review)', async () => {
-    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename="other.glb"' } });
+    respond = () => new Response('ISO-10303-21;\nHEADER;\n', { status: 200, headers: { 'content-disposition': 'attachment; filename="other.glb"' } });
     await run({ url: 'https://example.com/files/Tower%20A.ifc' });
     assert.equal(calls.at(-1)!.names[0], 'Tower A.ifc', 'decoded path name; Content-Disposition is not used');
     await run({ url: 'https://example.com/a%E0%A4.ifc', mode: 'add' });
@@ -376,7 +376,7 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     assert.equal(calls.length, before, 'nothing was loaded');
   });
   it('follows redirects: names by the final URL when it names a model, else keeps the requested name (#9523 code review)', async () => {
-    const redirected = (to: string, body: BodyInit = new Uint8Array([1])) => () => {
+    const redirected = (to: string, body: BodyInit = 'ISO-10303-21;\nHEADER;\n') => () => {
       const res = new Response(body, { status: 200 });
       Object.defineProperty(res, 'url', { value: to });
       return res;
@@ -384,10 +384,36 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     respond = redirected('https://cdn.example/obj/7f3a9c?sig=1');
     await run({ url: 'https://example.com/files/house.ifc' });
     assert.equal(calls.at(-1)!.names[0], 'house.ifc', 'an extensionless signed URL keeps the requested name');
-    respond = redirected('https://cdn.example/rev42.ifcx');
+    respond = redirected('https://cdn.example/rev42.ifcx', '{"header":{}}');
     await run({ url: 'https://example.com/latest.ifc', mode: 'add' });
     assert.equal(calls.at(-1)!.names[0], 'rev42.ifcx', 'the bytes are routed by what was actually served');
     respond = redirected('https://login.example/sso', '<?xml version="1.0"?>\n<!-- sso -->\n<html xmlns="http://www.w3.org/1999/xhtml"><body>Sign in</body></html>');
-    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /login\.example.*HTML page/ });
+    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /login\.example.*(HTML page|did not return)/ });
+  });
+  it('checks the bytes against the promised format before a replace can close the open models (#9523 code review)', async () => {
+    useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
+    const redirected = (to: string, body: BodyInit) => () => {
+      const res = new Response(body, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
+      Object.defineProperty(res, 'url', { value: to });
+      return res;
+    };
+    respond = redirected('https://auth.example/token-expired', '{"error":"expired"}');
+    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /did not return IFC content/ });
+    respond = redirected('https://cdn.example/model.gltf', '{"asset":{"version":"2.0"}}');
+    await assert.rejects(run({ url: 'https://example.com/model.glb', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /did not return GLB content/ });
+    respond = redirected('https://example.com/errors/denied.xml', '<?xml version="1.0"?><Error>denied</Error>');
+    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /did not return XML content/ });
+    respond = redirected('https://example.com/house.ifc', '<title>403 Forbidden</title>');
+    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION' });
+    assert.deepEqual(calls, [], 'nothing was loaded');
+  });
+
+  it('never shows a signed URL query in an error (#9523 code review)', async () => {
+    respond = () => {
+      const res = new Response('nope', { status: 403 });
+      Object.defineProperty(res, 'url', { value: 'https://bucket.s3.example/house.ifc?X-Amz-Signature=secret' });
+      return res;
+    };
+    await assert.rejects(run({ url: 'https://example.com/house.ifc' }), (err: Error) => /HTTP 403/.test(err.message) && !/secret|X-Amz/.test(err.message));
   });
 });

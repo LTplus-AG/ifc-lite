@@ -17,7 +17,7 @@ import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { getViewerStoreApi, type ViewerState } from '@/store';
 import { isFeatureEnabled } from '@/lib/features';
 import { collectChangedModels, totalChangeCount } from '@/lib/export/model-changes';
-import { isSupportedModelFile } from '@/services/supported-model-files';
+import { isSupportedModelFile, PICKER_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { DEMO_KIT_PATHS, fetchSampleFile, waitForLoadIdle } from '@/lib/tours/demo-kit';
 import { getAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
 import { CALL_LIMITS } from '@/lib/agent-bridge/call-admission';
@@ -101,6 +101,39 @@ function fileNameOf(url: URL): string {
  * without splats refuses them), except `.gltf`, whose external buffers and textures do not come along.
  */
 const isUrlModelName = (name: string) => !/\.gltf$/i.test(name) && isSupportedModelFile(new File([], name));
+/** The extensions a URL may name, for messages. */
+const URL_MODEL_EXTENSIONS = () => PICKER_FILE_EXTENSIONS.filter((ext) => isUrlModelName(`model${ext}`)).join(', ');
+
+/** A URL in messages: never its query or fragment, which can carry signed-URL credentials. */
+const shown = (url: URL) => `${url.origin}${url.pathname}`;
+
+/** Starts like an HTML document, after any whitespace, comment or XML declaration. */
+const HTML_START = /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<(?:!doctype\s+html|html|head|body|title|meta)[\s>]/i;
+
+/**
+ * Why the first bytes are not the format the name promises (`null` when they are), checked before a replace can close the open
+ * models: an error page, a JSON error or a redirect to another format is refused here instead of after.
+ * Formats without a reliable signature (`.pts`, `.xyz`, `.pcd`, `.splat`) pass when they are not HTML.
+ */
+async function contentMismatch(file: File): Promise<'html' | 'format' | null> {
+  const head = await file.slice(0, 4096).arrayBuffer();
+  const text = new TextDecoder().decode(head);
+  if (HTML_START.test(text)) return 'html';
+  const { detectFormat } = await import('@ifc-lite/parser');
+  return hasSignatureOf(/\.[^.]+$/.exec(file.name.toLowerCase())?.[0], head, text, detectFormat) ? null : 'format';
+}
+
+function hasSignatureOf(ext: string | undefined, head: ArrayBuffer, text: string, detectFormat: (buffer: ArrayBuffer) => string): boolean {
+  switch (ext) {
+    case '.ifc': case '.ifcx': case '.glb': case '.3dm': return detectFormat(head) === ext.slice(1);
+    case '.ifczip': return text.startsWith('PK');
+    case '.xml': return /<LandXML\b/.test(text);
+    case '.las': case '.laz': return text.startsWith('LASF');
+    case '.e57': return text.startsWith('ASTM-E57');
+    case '.ply': return text.startsWith('ply');
+    default: return true;
+  }
+}
 
 /**
  * The body as a File, refusing once it passes the limit rather than after
@@ -108,8 +141,7 @@ const isUrlModelName = (name: string) => !/\.gltf$/i.test(name) && isSupportedMo
  * Bytes are counted as they stream; the browser holds the body once.
  */
 async function readLimited(res: Response, url: URL, name: string): Promise<File> {
-  const tooBig = () => fail(ToolErrorCode.INVALID_INPUT, `${url.href} is larger than ${OPEN_MODEL_MAX_BYTES} bytes, the limit for an agent download.`);
-  if (Number(res.headers.get('content-length')) > OPEN_MODEL_MAX_BYTES) tooBig();
+  const tooBig = () => fail(ToolErrorCode.INVALID_INPUT, `${shown(url)} is larger than ${OPEN_MODEL_MAX_BYTES} bytes, the limit for an agent download.`);
   if (!res.body) return new File([], name); // a null-body response (204, 205, 304)
   let total = 0;
   // Response.blob() wraps a stream error in its own, so the limit is remembered here rather than recognised there.
@@ -138,15 +170,12 @@ async function readLimited(res: Response, url: URL, name: string): Promise<File>
   }
 }
 
-/** Starts like an HTML document, after any whitespace, comment or XML declaration. */
-const HTML_START = /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<(?:!doctype\s+html|html|head|body)[\s>]/i;
-
 async function download(url: URL, signal?: AbortSignal): Promise<File> {
   // The name, and so the format, comes from the URL path: refused before any network or state change.
   const requested = fileNameOf(url);
   if (!isUrlModelName(requested)) {
-    invalid(`${requested || url.href} is not a model file the viewer opens from a URL (IFC, IFCX, IFCZIP, GLB, 3DM, LandXML .xml, `
-      + 'point clouds; not .gltf, whose buffers cannot come along). Use a URL whose path ends in the file\'s extension.');
+    invalid(`${requested || shown(url)} is not a model file the viewer opens from a URL (${URL_MODEL_EXTENSIONS()}; not .gltf, `
+      + 'whose buffers cannot come along). Use a URL whose path ends in the file\'s extension.');
   }
   let res: Response;
   try {
@@ -154,25 +183,25 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
   } catch (err) {
     if (signal?.aborted) throw err;
     return fail(ToolErrorCode.UNSUPPORTED_OPERATION,
-      `The tab could not fetch ${url.href}. The server must allow cross-origin requests (CORS) from this viewer.`);
+      `The tab could not fetch ${shown(url)}. The server must allow cross-origin requests (CORS) from this viewer.`);
   }
-  // After redirects the bytes are the final URL's: report that URL, and name the file by it when it names a
-  // model (a CDN or signed URL often has no extension; then the requested name stands).
+  // After redirects the bytes are the final URL's: name the file by it when it names a model (a signed CDN URL
+  // often has no extension; then the requested name stands). The byte check below catches a mismatch either way.
   const source = res.url ? new URL(res.url) : url;
-  const redirectedName = fileNameOf(source);
-  const name = redirectedName !== requested && isUrlModelName(redirectedName) ? redirectedName : requested;
+  const name = isUrlModelName(fileNameOf(source)) ? fileNameOf(source) : requested;
   const refuse = (message: string): never => {
     // An unread body is cancelled so it stops downloading; one already read (or being read) has nothing left to stop.
-    if (res.body && !res.body.locked) void res.body.cancel();
+    if (res.body && !res.body.locked) res.body.cancel().catch((err: unknown) => console.warn('[viewer_open_model] cancelling the response body failed:', err));
     return fail(ToolErrorCode.UNSUPPORTED_OPERATION, message);
   };
-  if (!res.ok) refuse(`Fetching ${source.href} returned HTTP ${res.status}.`);
-  // An error or sign-in page served under a model URL must not replace the user's models.
-  if (/^(?:text\/html|application\/xhtml\+xml)\b/i.test(res.headers.get('content-type') ?? '')) refuse(`${source.href} returned an HTML page, not a model. Nothing was loaded.`);
+  if (!res.ok) refuse(`Fetching ${shown(source)} returned HTTP ${res.status}.`);
+  if (/^(?:text\/html|application\/xhtml\+xml)\b/i.test(res.headers.get('content-type') ?? '')) refuse(`${shown(source)} returned an HTML page, not a model. Nothing was loaded.`);
+  if (Number(res.headers.get('content-length')) > OPEN_MODEL_MAX_BYTES) refuse(`${shown(source)} is larger than ${OPEN_MODEL_MAX_BYTES} bytes, the limit for an agent download.`);
   const file = await readLimited(res, source, name);
-  if (file.size === 0) refuse(`${source.href} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
-  // Whatever the server called it: a body that starts like an HTML document is one.
-  if (HTML_START.test(await file.slice(0, 1024).text())) refuse(`${source.href} returned an HTML page, not a model. Nothing was loaded.`);
+  if (file.size === 0) refuse(`${shown(source)} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
+  const mismatch = await contentMismatch(file);
+  if (mismatch === 'html') refuse(`${shown(source)} returned an HTML page, not a model. Nothing was loaded.`);
+  if (mismatch) refuse(`${shown(source)} did not return ${name.split('.').pop()?.toUpperCase()} content (an error response or another format). Nothing was loaded.`);
   return file;
 }
 

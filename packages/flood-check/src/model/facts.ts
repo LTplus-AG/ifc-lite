@@ -160,6 +160,13 @@ export interface FootprintFact {
    * holes.
    */
   rings: MapPoint[][];
+  /**
+   * Indices into `rings` of holes in a slab outline that are open to the sky
+   * (courtyards: no slab above covers them), read through `region.ts` as open
+   * ground. Holes roofed by a slab above (shafts, stair openings, floor areas
+   * under the building) are not listed: they stay filled.
+   */
+  courtyardRings?: number[];
   source: FootprintSource;
   /** The rings may miss part of the building (mirrors `quality.conditions` containing `partial`): no reassuring outcome. */
   partial?: boolean;

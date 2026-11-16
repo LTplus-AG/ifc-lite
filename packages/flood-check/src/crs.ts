@@ -52,6 +52,18 @@ export function projectedCrsIdentifier(crs: ProjectedCRS): string | null {
   );
 }
 
+/**
+ * The two EPSG codes when the CRS's Name and its WKT's top-level identifier
+ * name different ones (a model saying EPSG:2056 whose WKT says EPSG:21781):
+ * which one the coordinates are in cannot be told. Null when they agree or
+ * either is missing.
+ */
+export function projectedCrsConflict(crs: ProjectedCRS): { name: string; wkt: string } | null {
+  const name = normalizeCrs(crs.name);
+  const wkt = crs.wellKnownText ? epsgFromWkt(crs.wellKnownText) : null;
+  return name && wkt && name !== wkt ? { name, wkt } : null;
+}
+
 /** Spellings of one vertical CRS, keyed by its EPSG identifier. */
 const VERTICAL_ALIASES: ReadonlyArray<readonly [string, ...string[]]> = [
   ['EPSG:5728', 'LN02', 'LANDESNIVELLEMENT1902', 'SWISSLN02', 'LN02HEIGHT'],

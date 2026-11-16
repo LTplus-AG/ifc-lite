@@ -84,7 +84,7 @@ describe('finding 3: one prepared footprint for every query', () => {
     for (let x = Math.min(...xs) - 3; x <= Math.max(...xs) + 3; x += 0.5) for (let y = Math.min(...ys) - 3; y <= Math.max(...ys) + 3; y += 0.5) pts.push({ x, y });
     let inside = 0;
     for (const p of pts) {
-      const d = signedDistance(fp, p);
+      const d = signedDistance(fp, p)!; // non-empty fixtures: always known
       const isIn = insideFootprint(fp, p);
       // On the boundary itself the distance is 0 whichever way the inside test rounds; everywhere else its sign is the test.
       if (Math.abs(d) > 1e-9) expect(d < 0, `${p.x - E0},${p.y - N0}`).toBe(isIn);

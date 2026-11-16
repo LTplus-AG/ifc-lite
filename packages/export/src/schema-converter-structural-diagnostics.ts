@@ -24,13 +24,17 @@ export class StructuralDiagnostics {
   /** Source record id -> attributes the target holds elsewhere (`note*`), which `inspect` does not report lost. */
   private readonly carried = new Map<number, ReadonlySet<string>>();
 
-  /** The source prepasses for an IFC2X3 <-> IFC4 export; the caller arms them only for an unedited full export. */
-  fromStore(store: IfcDataStore, from: string, to: string): void {
+  /**
+   * The source prepasses for an IFC2X3 <-> IFC4 export; the caller arms them
+   * only for an unedited full export. `withheld` is the ids the export leaves
+   * out, so the carriers decide up front what they can write.
+   */
+  fromStore(store: IfcDataStore, from: string, to: string, withheld?: ReadonlySet<number>): void {
     if (from === 'IFC2X3') this.axes.fromStore(store);
     else this.links.fromStore(store);
     this.varying.fromStore(store, from, to);
     const source = new SourceRecords(store);
-    this.carriers.fromStore(source, from, to);
+    this.carriers.fromStore(source, from, to, withheld);
     this.thickness.fromStore(source, from, to);
   }
 
@@ -45,7 +49,7 @@ export class StructuralDiagnostics {
     if (!this.carriers.rewritesAfter) return line;
     const filled = this.carriers.after(Number(/^\s*#(\d+)/.exec(line)?.[1]), line, withheld);
     if (!filled) return line;
-    this.record(filled.loss);
+    if (filled.loss) this.record(filled.loss);
     return filled.line;
   }
 

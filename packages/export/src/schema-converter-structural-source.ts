@@ -45,21 +45,17 @@ export class SourceRecords {
   constructor(private readonly store: IfcDataStore) {}
 
   /**
-   * How many source records name each of `targets`. Reads every record once,
-   * so callers ask only when they have targets. A `#n` inside a string counts
-   * too, which only ever makes a target look more shared.
+   * How many source records name each of `targets`, outside strings and
+   * comments. Reads every record, so callers ask only when they have targets.
    */
   referrers(targets: ReadonlySet<number>): Map<number, number> {
     const uses = new Map<number, number>();
     // @raw-entity-enumeration-ok same unedited source-only prepass
     for (const entry of this.store.entityIndex.byId.values()) {
       const text = decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength);
-      const named = new Set<number>();
-      for (const m of text.slice(Math.max(0, text.indexOf('('))).matchAll(/#\s*(\d+)/g)) {
-        const id = Number(m[1]);
-        if (targets.has(id)) named.add(id);
-      }
-      for (const id of named) uses.set(id, (uses.get(id) ?? 0) + 1);
+      const args = text.slice(Math.max(0, text.indexOf('(')));
+      if (!referencesAnyExpressId(args, targets)) continue;
+      for (const t of targets) if (referencesAnyExpressId(args, new Set([t]))) uses.set(t, (uses.get(t) ?? 0) + 1);
     }
     return uses;
   }

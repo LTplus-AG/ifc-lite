@@ -128,6 +128,16 @@ describe('IfcStructuralAnalysisModel.SharedPlacement IFC2X3 -> IFC4 #9668', () =
     expect(down.warnings).toContain('it is kept as the ObjectPlacement of every grouped structural item');
   });
 
+  it('reports a SharedPlacement the upgrade cannot restore as lost', async () => {
+    const ifc4 = model('IFC4', `${OWNER}
+#13=IFCGRIDPLACEMENT($,$,$);
+#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#13,$,.RIGID_JOINED_MEMBER.,$);
+#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#13);
+#31=IFCRELASSIGNSTOGROUP('1rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#20),$,#30);`);
+    const { warnings } = await convert(ifc4, 'IFC2X3');
+    expect(warnings).toContain('IFCSTRUCTURALANALYSISMODEL.SharedPlacement has no slot in IFC2X3; its value is omitted');
+  });
+
   it('leaves it unset when the items use different placements', async () => {
     const { step } = await convert(ifc2x3('#13').replace('#12=', '#13=IFCLOCALPLACEMENT(#9,#8);\n#12='), 'IFC4');
     expect(line(step, 30)).toBe("#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,$);");

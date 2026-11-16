@@ -246,6 +246,19 @@ ${geometry}
     expect(records((await convert(down.step, 'IFC4')).step, 'IFCPROPERTYSET')).toHaveLength(1);
   });
 
+  it('applies the location rule even when an existing property set matches', async () => {
+    const matching = IFC2X3.replace('#20=', `#40=IFCPROPERTYSINGLEVALUE('Thickness1',$,IFCPOSITIVELENGTHMEASURE(0.2),$);
+#43=IFCPROPERTYSINGLEVALUE('Thickness2',$,IFCPOSITIVELENGTHMEASURE(0.25),$);
+#44=IFCPROPERTYSINGLEVALUE('Thickness3',$,IFCPOSITIVELENGTHMEASURE(0.3),$);
+#41=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'Pset_StructuralSurfaceMemberVaryingThickness',$,(#40,#43,#44));
+#42=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#41);
+#20=`);
+    const kept = await convert(matching, 'IFC4');
+    expect(kept.warnings).toContain('IFC2X3 SubsequentThickness is written as');
+    const unset = await convert(matching.replace('(0.25,0.3),#17)', '(0.25,0.3),$)'), 'IFC4');
+    expect(unset.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
+  });
+
   it('reports the thicknesses lost when an existing property set holds other values', async () => {
     const other = IFC2X3.replace('#20=', `#40=IFCPROPERTYSINGLEVALUE('Thickness1',$,IFCPOSITIVELENGTHMEASURE(0.9),$);
 #41=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'Pset_StructuralSurfaceMemberVaryingThickness',$,(#40));

@@ -51,11 +51,185 @@ function ribbon(id, a, b, rtc = { x: 0, y: 0, z: 0 }) {
 
 const meshesOf = (meshes, frame = {}) => ({ byId: new Map(meshes.map((m) => [m.expressId, [m]])), frame });
 
+/** How many topology points member #30 of `body` has; undefined when unplaced. */
+const count = (body) => topologyPoints(ifc4(body), 30)?.length;
+
+/** Points rounded to 1e-9, for comparing computed coordinates. */
+const near = (points) => points.map((p) => p.map((c) => +c.toFixed(9)));
+
 test('#9668 topology oracle: placement and the project length unit, read from the file alone', () => {
   assert.deepEqual(topologyPoints(ifc4(MEMBER()), 30), [[1, 2, 3], [5, 2, 3]]);
   const mm = ifc4(MEMBER('.MILLI.'));
   assert.equal(lengthScale(mm), 1e-3);
-  assert.deepEqual(topologyPoints(mm, 30).map((p) => p.map((c) => +c.toFixed(9))), [[0.001, 0.002, 0.003], [0.005, 0.002, 0.003]]);
+  assert.deepEqual(near(topologyPoints(mm, 30)), [[0.001, 0.002, 0.003], [0.005, 0.002, 0.003]]);
+});
+
+/**
+ * `MEMBER`, but its topology is an `IfcMappedItem` (as IfcOpenShell writes,
+ * e.g. analysis-models cantilever_01): the map's edge (0, 0, 0)-(4, 0, 0)
+ * sits at MappingOrigin (1, 0, 0); MappingTarget turns x onto y, scales by 2
+ * and moves by (10, 0, 0); the placement then moves by (1, 2, 3). A body map
+ * of the same edge is not topology.
+ */
+const MAPPED_MEMBER = MEMBER().replace('#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#15));', `
+#40=IFCCARTESIANPOINT((1.,0.,0.));#41=IFCAXIS2PLACEMENT3D(#40,$,$);#42=IFCREPRESENTATIONMAP(#41,#15);
+#43=IFCDIRECTION((0.,1.,0.));#44=IFCDIRECTION((0.,0.,1.));#45=IFCCARTESIANPOINT((10.,0.,0.));
+#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#43,$,#45,2.,#44);#47=IFCMAPPEDITEM(#42,#46);
+#48=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#47));
+#50=IFCPOLYLINE((#10,#11));#51=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',(#50));#52=IFCREPRESENTATIONMAP(#41,#51);
+#53=IFCMAPPEDITEM(#52,#46);#54=IFCSHAPEREPRESENTATION($,'Axis','MappedRepresentation',(#53));
+#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#48));`);
+
+test('#9668 topology oracle: follows a mapped topology representation, origin then target', async () => {
+  const step = ifc4(MAPPED_MEMBER);
+  assert.deepEqual(topologyPoints(step, 30), [[11, 4, 3], [11, 12, 3]]);
+  // A mapped shape representation that holds no topology gives no vertices.
+  assert.deepEqual(topologyPoints(ifc4(MAPPED_MEMBER.replace('(#54,#48)', '(#54)')), 30), []);
+  // The member is checked against the mapped axis: drawn there passes, drawn on the unmapped edge fails.
+  const id = 'IFC4/IfcStructuralCurveMember';
+  const file = { path: 'mapped.ifc', schema: 'IFC4', step };
+  const run = (drawn) => score(renderMembers, id, file, [['meshes:mapped.ifc', drawn]]);
+  const good = await run(meshesOf([ribbon(30, [11, 4, 3], [11, 12, 3])]));
+  assert.equal(good.status, 'pass', good.reason);
+  assert.equal((await run(meshesOf([ribbon(30, [1, 2, 3], [5, 2, 3])]))).status, 'fail');
+});
+
+/** `step` counting its record lookups in `calls`. */
+function counted(step) {
+  const get = step.get.bind(step);
+  step.calls = 0;
+  step.get = (id) => { step.calls += 1; return get(id); };
+  return step;
+}
+
+/** `MAPPED_MEMBER` with the direct edge #15 beside the mapped one (drawn on [11, 4, 3]-[11, 12, 3]). */
+const DIRECT = MAPPED_MEMBER.replace('(#54,#48)', '(#54,#48,#15)');
+
+/**
+ * `body` with `n` nested maps over representation `from`, ids from `base`:
+ * per level a map, `fan` mapped items of it and a representation holding
+ * them (`topology`: an IfcTopologyRepresentation, else a mapped shape
+ * representation). #47 then maps the outermost level. `rep(i)` is level i's
+ * representation id.
+ */
+function nestMaps(body, { n, from = 15, base, fan = 1, topology = false }) {
+  const stride = fan + 2;
+  const rep = (i) => base + stride * i + fan + 1;
+  let out = body;
+  for (let i = 0; i < n; i += 1) {
+    const m = base + stride * i;
+    const items = Array.from({ length: fan }, (_, k) => `#${m + 1 + k}`);
+    const holder = topology ? "IFCTOPOLOGYREPRESENTATION($,'Reference','Edge'" : "IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation'";
+    out += `#${m}=IFCREPRESENTATIONMAP(#41,#${i === 0 ? from : rep(i - 1)});${items.map((it) => `${it}=IFCMAPPEDITEM(#${m},#46);`).join('')}#${rep(i)}=${holder},(${items.join(',')}));`;
+  }
+  return { body: out.replace('#47=IFCMAPPEDITEM(#42,#46)', `#47=IFCMAPPEDITEM(#${base + stride * (n - 1)},#46)`), rep };
+}
+
+test('#9668 topology oracle: a mapped topology it cannot follow leaves the member unplaced, not checked on fewer vertices', async () => {
+  const cases = {
+    unreadableOrigin: DIRECT.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#99,#15)'),
+    unreadableAxis: DIRECT.replace('#43=IFCDIRECTION((0.,1.,0.))', '#43=IFCDIRECTION(($,$,$))'),
+    pointAsAxis: DIRECT.replace('#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#43,', '#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#45,'),
+    emptyAxis: DIRECT.replace('#43=IFCDIRECTION((0.,1.,0.))', '#43=IFCDIRECTION($)'),
+    unreadableOriginAxis: DIRECT.replace('#41=IFCAXIS2PLACEMENT3D(#40,$,$)', '#41=IFCAXIS2PLACEMENT3D(#40,#99,$)'),
+    zeroOriginAxis: DIRECT.replace('#41=IFCAXIS2PLACEMENT3D(#40,$,$)', '#41=IFCAXIS2PLACEMENT3D(#40,#59,$);#59=IFCDIRECTION((0.,0.,0.))'),
+    zeroScale: DIRECT.replace('$,#45,2.,#44', '$,#45,0.,#44'),
+    // A map whose source representation maps itself, holding the topology edge too.
+    cycle: DIRECT.replace("#48=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#47))",
+      "#48=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#47));#60=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#14,#62));#61=IFCREPRESENTATIONMAP(#41,#60);#62=IFCMAPPEDITEM(#61,#46)")
+      .replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#41,#60)'),
+  };
+  const id = 'IFC4/IfcStructuralCurveMember';
+  const both = { byId: new Map([[30, [ribbon(30, [1, 2, 3], [5, 2, 3]), ribbon(30, [11, 4, 3], [11, 12, 3])]]]), frame: {} };
+  for (const [name, body] of Object.entries(cases)) {
+    const step = ifc4(body);
+    assert.equal(topologyPoints(step, 30), null, name);
+    const file = { path: `${name}.ifc`, schema: 'IFC4', step };
+    // Refused whether the mesh covers only the direct edge or both.
+    for (const drawn of [meshesOf([ribbon(30, [1, 2, 3], [5, 2, 3])]), both]) {
+      const res = await score(renderMembers, id, file, [[`meshes:${name}.ifc`, drawn]]);
+      assert.equal(res.status, 'fail', name);
+      assert.match(res.reason, /cannot follow its placement or mapped topology/, name);
+    }
+  }
+});
+
+test('#9668 topology oracle: nested and shared maps are walked once each, at any depth', () => {
+  assert.equal(count(DIRECT), 4);
+  for (const n of [9, 17]) assert.equal(count(nestMaps(DIRECT, { n, base: 200 }).body), 4, `${n} maps`);
+  // Shared maps multiplying past 10000 vertices: unplaced, with each map walked once, not once per path (2^16).
+  const shared = counted(ifc4(nestMaps(DIRECT, { n: 16, base: 400, fan: 2, topology: true }).body));
+  assert.equal(topologyPoints(shared, 30), null);
+  assert.ok(shared.calls < 5000, `${shared.calls} lookups`);
+  // The same fan-out over topology with no readable vertex: no topology, still walked once per map.
+  const poly = "#59=IFCPOLYLINE((#10,#11));#56=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#59));";
+  const empty = counted(ifc4(nestMaps(DIRECT + poly, { n: 16, from: 56, base: 500, fan: 4, topology: true }).body));
+  assert.equal(topologyPoints(empty, 30)?.length, 2);
+  assert.ok(empty.calls < 5000, `${empty.calls} lookups`);
+  // 1200 nested maps: no stack overflow, and the same answer in either query order.
+  const chain = nestMaps(DIRECT, { n: 1200, base: 20000 });
+  const chainBody = `${chain.body}#31=IFCSTRUCTURALCURVEMEMBER('n',$,$,$,$,#22,#17,.RIGID_JOINED_MEMBER.,$);#17=IFCPRODUCTDEFINITIONSHAPE($,$,(#${chain.rep(500)}));`;
+  for (const order of [[30, 31], [31, 30]]) {
+    const step = ifc4(chainBody);
+    const got = Object.fromEntries(order.map((member) => [member, topologyPoints(step, member)?.length]));
+    assert.deepEqual(got, { 30: 4, 31: 2 }, order.join(','));
+  }
+});
+
+test('#9668 topology oracle: maps that hold nothing do not hide topology', () => {
+  // Representations given as * read as none, not a throw.
+  assert.deepEqual(topologyPoints(ifc4(DIRECT.replace('#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#48,#15))', '#16=IFCPRODUCTDEFINITIONSHAPE($,$,*)')), 30), []);
+  // A topology representation with no readable vertex, in a map cycle, is no topology, not unplaced.
+  const polyCycle = DIRECT + "#59=IFCPOLYLINE((#10,#11));#56=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#59,#58));#57=IFCREPRESENTATIONMAP(#41,#56);#58=IFCMAPPEDITEM(#57,#46);";
+  assert.equal(count(polyCycle.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#57,#46)')), 2);
+  // A map whose MappedRepresentation is not a representation: the direct edge alone, no throw.
+  assert.equal(count(DIRECT.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#41,#46)')), 2);
+  // A mapped item whose map does not resolve.
+  assert.equal(count(DIRECT.replace('#53=IFCMAPPEDITEM(#52,#46)', '#53=IFCMAPPEDITEM(#98,#46)')), 4);
+  // A cycle among maps without topology (the Axis map).
+  const axisCycle = DIRECT.replace("#51=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',(#50))", "#51=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',(#50,#53))");
+  assert.equal(count(axisCycle), 4);
+});
+
+test('#9668 topology oracle: the vertex cap counts mapped vertices only, in any item order', () => {
+  const many = Array.from({ length: 5001 }, (_, i) => `#${1000 + i}=IFCEDGE(#12,#13);`).join('');
+  const edges = Array.from({ length: 5001 }, (_, i) => `#${1000 + i}`).join(',');
+  const bare = DIRECT.replace('#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#48,#15));', '') + many;
+  // 10002 direct vertices are read whole, as in R8.
+  assert.equal(count(`${bare}#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#600));#600=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${edges}));`), 10002);
+  // The same edges behind a map are refused, whether the map comes before or after a direct edge.
+  for (const order of ['#47,#14', '#14,#47']) {
+    const big = `${bare.replace('#42=IFCREPRESENTATIONMAP(#41,#15);', '')}#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#600));#600=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${order}));`
+      + `#42=IFCREPRESENTATIONMAP(#41,#601);#601=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${edges}));`;
+    assert.equal(topologyPoints(ifc4(big), 30), null, order);
+  }
+});
+
+test('#9668 topology oracle: schema default axes (IfcFirstProjAxis, IfcSecondProjAxis)', () => {
+  // A mirroring target with no Axis2 keeps y = (0, 1, 0): the origin's y of 2 stays +2 (z x x would flip it).
+  const mirror = MAPPED_MEMBER.replace("#40=IFCCARTESIANPOINT((1.,0.,0.))", "#40=IFCCARTESIANPOINT((1.,2.,0.))")
+    .replace("#43=IFCDIRECTION((0.,1.,0.))", "#43=IFCDIRECTION((-1.,0.,0.))").replace("$,#45,2.,#44", "$,#45,1.,#44");
+  assert.deepEqual(near(topologyPoints(ifc4(mirror), 30)), [[10, 4, 3], [6, 4, 3]]);
+  // A target whose Axis3 is -x and Axis1 omitted takes x = (0, 1, 0): (1, 0, 0) would leave nothing.
+  const minusX = MAPPED_MEMBER.replace('#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#43,$,#45,2.,#44)', '#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#45,1.,#49);#49=IFCDIRECTION((-1.,0.,0.))');
+  assert.deepEqual(near(topologyPoints(ifc4(minusX), 30)), [[11, 3, 3], [11, 7, 3]]);
+  // 2D readers: an IfcAxis2Placement2D MappingOrigin, and a 2D target (Axis1 (0, 1, 0)) giving the same frame.
+  const twoD = MAPPED_MEMBER.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#57,#15);#57=IFCAXIS2PLACEMENT2D(#40,$)')
+    .replace('#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#43,$,#45,2.,#44)', '#46=IFCCARTESIANTRANSFORMATIONOPERATOR2D(#43,$,#45,2.)');
+  assert.deepEqual(near(topologyPoints(ifc4(twoD), 30)), [[11, 4, 3], [11, 12, 3]]);
+  // A 2D target whose Axis2 points against x turned counter-clockwise mirrors y: origin (1, 2) lands at x 15, not 7.
+  const twoDMirror = twoD.replace('#40=IFCCARTESIANPOINT((1.,0.,0.))', '#40=IFCCARTESIANPOINT((1.,2.,0.))')
+    .replace('IFCCARTESIANTRANSFORMATIONOPERATOR2D(#43,$,#45,2.)', 'IFCCARTESIANTRANSFORMATIONOPERATOR2D(#43,#58,#45,2.);#58=IFCDIRECTION((1.,0.))');
+  assert.deepEqual(near(topologyPoints(ifc4(twoDMirror), 30)), [[15, 4, 3], [15, 12, 3]]);
+  // A RefDirection along Axis keeps R8's fallback, x = (0, 1, 0) x z; along y, the default x.
+  const parallel = ifc4(MEMBER().replace('#21=IFCAXIS2PLACEMENT3D(#20,$,$)', '#23=IFCDIRECTION((0.,0.,1.));#21=IFCAXIS2PLACEMENT3D(#20,#23,#23)'));
+  assert.deepEqual(topologyPoints(parallel, 30), [[1, 2, 3], [5, 2, 3]]);
+  const alongY = ifc4(MEMBER().replace('#21=IFCAXIS2PLACEMENT3D(#20,$,$)', '#23=IFCDIRECTION((0.,1.,0.));#21=IFCAXIS2PLACEMENT3D(#20,#23,#23)'));
+  assert.deepEqual(near(topologyPoints(alongY, 30)), [[1, 2, 3], [5, 2, 3]]);
+  // A placement z near (but not) x with no RefDirection takes x from (1, 0, 0).
+  const tilted = ifc4(MEMBER().replace("#21=IFCAXIS2PLACEMENT3D(#20,$,$)", "#23=IFCDIRECTION((3.,0.,1.));#21=IFCAXIS2PLACEMENT3D(#20,#23,$)"));
+  const r = Math.sqrt(10);
+  assert.deepEqual(near(topologyPoints(tilted, 30)), near([[1, 2, 3], [1 + 4 / r, 2, 3 - 12 / r]]));
 });
 
 test('#9668 member render: passes only for a mesh on the file\'s axis', async () => {

@@ -11,8 +11,8 @@ import { updateAgentBridgeState, resetAgentBridgeStateForTests } from '@/lib/age
 import { dispatchMainViewerTool } from '@/lib/agent-tools/main-viewer-dispatch';
 import { viewerBim, viewerHost, seed, model, parseHelloWall } from '@/test/agent-tools-fixture';
 import { useViewerStore } from '@/store';
-import { render, cleanup, waitFor, advance } from '@/test/render';
-import { act } from 'react';
+import { render, cleanup, waitFor, advance, type as typeInto } from '@/test/render';
+import { act, useState } from 'react';
 import { CommandPaletteHost } from './CommandPaletteHost';
 
 const initial = useViewerStore.getState();
@@ -44,4 +44,34 @@ test('bridge connection mounts the real command owner without opening the palett
   cleanup();
   assert.equal(getAgentCommandHost(), null);
   assert.equal((await dispatchMainViewerTool(viewerHost(), 'viewer_command_run', { command_id: 'panel:clash' }, { canEdit: () => true })).isError, true);
+});
+
+// #10525 review: retaining the owner must not retain a closed cold-load query
+// or an unfinished IME composition, which would keep the owner unmounted.
+test('closing a composing cold palette clears input and retains agent commands across reopen', async () => {
+  seed([model('hello', await parseHelloWall())]);
+  updateAgentBridgeState({ status: { kind: 'connected', port: 21517, permission: 'read-only', since: 1, readOnlyCeiling: false } });
+  let changeOpen!: (open: boolean) => void;
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    changeOpen = setOpen;
+    return <BimReactContext.Provider value={viewerBim()}>
+      <CommandPaletteHost open={open} onOpenChange={setOpen} />
+    </BimReactContext.Provider>;
+  }
+  render(<Harness />);
+  const coldInput = document.querySelector<HTMLInputElement>('input[type="search"]');
+  assert.ok(coldInput, 'cold-load dialog is available synchronously');
+  typeInto(coldInput, 'stale cold query');
+  act(() => coldInput.dispatchEvent(new window.Event('compositionstart', { bubbles: true })));
+  await advance(0);
+  assert.equal(document.querySelector('input[role="combobox"]'), null, 'unfinished composition retains the cold input');
+  act(() => changeOpen(false));
+  await waitFor(() => getAgentCommandHost() !== null, 'closing composition must allow the command owner to mount');
+  assert.equal(document.querySelector('[role="dialog"]'), null);
+  act(() => changeOpen(true));
+  await waitFor(() => document.querySelector('input[role="combobox"]') !== null, 'reopened real palette');
+  const reopened = document.querySelector<HTMLInputElement>('input[role="combobox"]');
+  assert.equal(reopened?.value, '', 'a closed cold-load query cannot leak into the next open');
+  assert.ok(getAgentCommandHost(), 'reopening preserves command ownership');
 });

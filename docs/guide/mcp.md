@@ -441,6 +441,8 @@ The viewer lazily mounts the palette owner on connection without opening its dia
 
 A successful result says **dispatched**, not completed. Opening a clash, Flow, IDS or authoring panel exposes the native workflow; it does not run the workflow or fill its forms. This interface exposes palette entry points, not every control inside every panel. New palette features automatically appear through the existing registry/providers; no parallel agent command list is maintained.
 
+For the proposed path from palette entry points to complete panel and tool workflows, see the [viewer automation plan](../architecture/viewer-automation-plan.md).
+
 ## Wiring it into a client
 
 === "Claude Code"

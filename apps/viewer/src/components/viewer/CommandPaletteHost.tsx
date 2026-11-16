@@ -29,8 +29,11 @@ export function CommandPaletteHost(props: CommandPaletteHostProps) {
   }, [props.open]);
   useEffect(() => {
     if (props.open || agentActive) setOpened(true);
-    else { setPendingQuery(''); setComposing(false); }
   }, [props.open, agentActive]);
+  // Closing clears transient input even while the bridge retains the owner.
+  useEffect(() => {
+    if (!props.open) { setPendingQuery(''); setComposing(false); }
+  }, [props.open]);
   useEffect(() => {
     if (!opened) return;
     let current = true;

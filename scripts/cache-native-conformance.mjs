@@ -58,10 +58,11 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertStreamedMatches } from './lib/cache-native-cli.mjs';
 import { compareDecodedModel } from './lib/cache-native-decoded.mjs';
 import { compareGeometryOracle, decodedWorldPoints, LIMITATIONS } from './lib/cache-native-geometry-oracle.mjs';
 import { compareModelOracle } from './lib/cache-native-model-oracle.mjs';
@@ -162,15 +163,6 @@ function writeNative(source, threads) {
   return { bytes: readFileSync(out), stats: JSON.parse(run.stdout) };
 }
 
-/** The CLI's streamed cache, built at a path that already holds a stale file. */
-function writeStreamed(source) {
-  const out = join(work, 'streamed.ifclite');
-  writeFileSync(out, 'stale');
-  const run = spawnSync(cliBin, [source, out], { encoding: 'utf8' });
-  assert.equal(run.status, 0, `ifc-build-cache failed: ${run.stderr}`);
-  return { bytes: readFileSync(out), stats: JSON.parse(run.stdout) };
-}
-
 function toArrayBuffer(buf) {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
@@ -185,12 +177,7 @@ async function checkFixture(fixture, sourcePath) {
   const single = writeNative(sourcePath, 1);
   assert.ok(native.bytes.equals(single.bytes), `${label}: RAYON_NUM_THREADS=1 and default differ`);
   assert.ok(native.stats.meshCount > 0, `${label}: produced meshes`);
-  const streamed = writeStreamed(sourcePath);
-  assert.ok(streamed.bytes.equals(native.bytes), `${label}: ifc-build-cache (streamed) differs from build_cache`);
-  for (const [key, value] of Object.entries(native.stats)) {
-    assert.equal(streamed.stats[key], value, `${label}: ifc-build-cache stats.${key}`);
-  }
-  assert.deepEqual(readdirSync(work).filter((name) => name.startsWith('.')), [], `${label}: no staging file left`);
+  assertStreamedMatches({ cliBin, work, sourcePath, native, label });
 
   // 4. Acceptance, with source-hash validation.
   const nativeBuffer = toArrayBuffer(native.bytes);

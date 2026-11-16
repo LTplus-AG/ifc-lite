@@ -17,6 +17,7 @@
 
 import type { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
+import { getEntityRefFromStore } from './columnar-parser-root-attributes.js';
 import { getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
 import { asBoolean, asNumber, asRef, asString, attributeNamesFor } from './structural-step-values.js';
 
@@ -313,7 +314,7 @@ export function readNumericComponents(type: string, attrs: unknown[], schema: st
 
 function sourceLoadRecord(extractor: EntityExtractor, store: IfcDataStore, id: number): { record?: { type: string; attrs: unknown[] }; dropped: 'unresolved' | 'unreadable' } {
   // @raw-entity-enumeration-ok bounded source reference walk needs this STEP byte span for EntityExtractor
-  const ref = store.entityIndex.byId.get(id);
+  const ref = getEntityRefFromStore(store, id);
   if (!ref) return { dropped: 'unresolved' as const };
   const entity = extractor.extractEntity(ref);
   return { record: entity ? { type: entity.type, attrs: entity.attributes ?? [] } : undefined, dropped: 'unreadable' as const };

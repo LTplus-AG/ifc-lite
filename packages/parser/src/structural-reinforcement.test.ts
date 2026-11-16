@@ -39,6 +39,26 @@ describe('surface reinforcement read model', () => {
       expect(entries?.[1].value).toEqual(result.reinforcementAreas?.[0]);
       expect(result.loadsTruncated).toBe(false);
     });
+
+    it(`retains a reinforcement result whose source span is only in the deferred index in ${schema}`, async () => {
+      const store = await parse(schema, `${area}
+        #24=IFCSTRUCTURALLOADCONFIGURATION('Configuration',(#15),((4.)));
+        #50=IFCSTRUCTURALSURFACEACTION('0KQ0efL39PrP5DeqBwaUNp',$,'Action',$,$,$,$,#24,.GLOBAL_COORDS.,.F.,$,.CONST.);`);
+      const reference = store.entityIndex.byId.get(15)!;
+      expect(store.entityIndex.byType.get('IFCSURFACEREINFORCEMENTAREA')).toContain(15);
+      const deferred = {
+        ...store,
+        entityIndex: { ...store.entityIndex, byId: new Map([...store.entityIndex.byId.entries()].filter(([id]) => id !== 15)) },
+        deferredEntityIndex: new Map([[15, reference]]),
+      };
+      const result = extractStructuralOnDemand(deferred);
+      expect(result.hasStructural).toBe(true);
+      expect(result.reinforcementAreas).toHaveLength(1);
+      expect(result.reinforcementAreas?.[0].SurfaceReinforcement1).toEqual([0, 0.002]);
+      const entry = result.activities[0].appliedLoad?.configuration?.entries[0];
+      expect(entry?.value).toEqual(result.reinforcementAreas?.[0]);
+      expect(entry?.dropped).toBeUndefined();
+    });
   }
 
   it('keeps omitted reinforcement fields absent rather than reporting zeros or empty lists', async () => {

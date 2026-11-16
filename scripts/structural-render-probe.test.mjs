@@ -99,6 +99,7 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
     unreadableOrigin: direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#99,#15)'),
     unreadableAxis: direct.replace('#43=IFCDIRECTION((0.,1.,0.))', '#43=IFCDIRECTION(($,$,$))'),
     pointAsAxis: direct.replace('#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#43,', '#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#45,'),
+    emptyAxis: direct.replace('#43=IFCDIRECTION((0.,1.,0.))', '#43=IFCDIRECTION($)'),
     unreadableOriginAxis: direct.replace('#41=IFCAXIS2PLACEMENT3D(#40,$,$)', '#41=IFCAXIS2PLACEMENT3D(#40,#99,$)'),
     zeroOriginAxis: direct.replace('#41=IFCAXIS2PLACEMENT3D(#40,$,$)', '#41=IFCAXIS2PLACEMENT3D(#40,#59,$);#59=IFCDIRECTION((0.,0.,0.))'),
     zeroScale: direct.replace('$,#45,2.,#44', '$,#45,0.,#44'),
@@ -136,6 +137,17 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
   }
   assert.equal(topologyPoints(ifc4(deeper.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#232,#46)')), 30), null);
   assert.equal(topologyPoints(ifc4(deeper.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#230,#46)')), 30).length, 4);
+  // Shared maps multiplying past 10000 vertices: unplaced, quickly, not walked path by path.
+  let shared = direct;
+  for (let i = 0; i < 16; i += 1) {
+    const from = i === 0 ? '#15' : `#${400 + 3 * (i - 1) + 2}`;
+    shared += `#${400 + 3 * i}=IFCREPRESENTATIONMAP(#41,${from});#${400 + 3 * i + 1}=IFCMAPPEDITEM(#${400 + 3 * i},#46);#${400 + 3 * i + 2}=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#${400 + 3 * i + 1},#${400 + 3 * i + 1}));`;
+  }
+  const started = performance.now();
+  assert.equal(topologyPoints(ifc4(shared.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#445,#46)')), 30), null);
+  assert.ok(performance.now() - started < 2000, 'bounded walk');
+  // A map whose MappedRepresentation is not a representation holds nothing: the direct edge alone, no throw.
+  assert.equal(topologyPoints(ifc4(direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#41,#46)')), 30).length, 2);
   const dangling = direct.replace('#53=IFCMAPPEDITEM(#52,#46)', '#53=IFCMAPPEDITEM(#98,#46)');
   assert.equal(topologyPoints(ifc4(dangling), 30).length, 4);
   // A cycle among maps that hold no topology (here the Axis map) does not hide the topology beside it.

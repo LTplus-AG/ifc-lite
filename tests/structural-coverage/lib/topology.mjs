@@ -65,6 +65,7 @@ const compose = (outer, inner) => ({ o: apply(outer, inner.o), x: rotate(outer, 
 function coords(step, id) {
   const r = step.get(id);
   if (r?.type !== 'IFCCARTESIANPOINT' && r?.type !== 'IFCDIRECTION') return null;
+  if (!Array.isArray(r.args[0])) return null;
   const c = r.args[0].map(numberOf);
   return c.length >= 2 && c.every(Number.isFinite) ? [c[0], c[1], c[2] ?? 0] : null;
 }
@@ -173,50 +174,74 @@ function transformOperator(step, id) {
   return { o, x: scaled(x, s), y: scaled(y, s2), z: scaled(z, s3) };
 }
 
-/** Whether a representation holds topology items, itself or through its mapped items. */
-function holdsTopology(step, rep, seen = new Set()) {
-  if (!rep || seen.has(rep.id)) return false;
-  // Past any nesting the vertex walk follows: say yes, and let that walk refuse it.
-  if (seen.size > 64) return true;
-  seen.add(rep.id);
-  return (rep.args[3] ?? []).some((ref) => {
-    const item = step.get(refOf(ref));
-    if (item?.type !== 'IFCMAPPEDITEM') return rep.type === 'IFCTOPOLOGYREPRESENTATION';
-    const map = step.get(refOf(item.args[0]));
-    return map?.type === 'IFCREPRESENTATIONMAP' && holdsTopology(step, step.get(refOf(map.args[1])), seen);
-  });
+/** A representation's items; none when the record is not a representation. */
+const itemsOf = (rep) => (/REPRESENTATION$/.test(rep?.type ?? '') && Array.isArray(rep.args[3]) ? rep.args[3] : []);
+
+/** A mapped item's map and the representation it maps, or null when the map does not resolve. */
+function mappedSource(step, item) {
+  const map = step.get(refOf(item.args[0]));
+  return map?.type === 'IFCREPRESENTATIONMAP' ? { map, source: step.get(refOf(map.args[1])) } : null;
 }
+
+/** Per parsed file: whether each representation reaches topology items, itself or through maps. */
+const reaches = new WeakMap();
+
+/** Whether a representation holds topology items, itself or through its mapped items (an iterative walk). */
+function holdsTopology(step, rep) {
+  if (!rep) return false;
+  if (!reaches.has(step)) reaches.set(step, new Map());
+  const memo = reaches.get(step);
+  if (!memo.has(rep.id)) {
+    const seen = new Set();
+    const stack = [rep];
+    let held = false;
+    while (stack.length && !held) {
+      const r = stack.pop();
+      if (!r || seen.has(r.id)) continue;
+      seen.add(r.id);
+      for (const ref of itemsOf(r)) {
+        const item = step.get(refOf(ref));
+        if (item?.type === 'IFCMAPPEDITEM') stack.push(mappedSource(step, item)?.source);
+        else if (r.type === 'IFCTOPOLOGYREPRESENTATION') held = true;
+      }
+    }
+    memo.set(rep.id, held);
+  }
+  return memo.get(rep.id);
+}
+
+/** Bounds on the mapped walk: nesting, and vertices (shared maps multiply them). */
+const MAX_MAP_DEPTH = 16;
+const MAX_VERTICES = 10000;
 
 /**
  * The topology vertices of one representation, in its product's axes: its
  * own items when it is an `IfcTopologyRepresentation`, and those of every
  * mapped item's source representation. Null when a mapped item that holds
- * topology cannot be followed (a map cycle, maps nested over 16 deep, an
- * origin or target this oracle does not read): fewer vertices would check
- * less. A mapped item whose map does not resolve holds nothing, and is skipped.
+ * topology cannot be followed (a map cycle, maps nested over 16 deep, over
+ * 10000 vertices, an origin or target this oracle does not read): fewer
+ * vertices would check less. Maps that hold no topology are not walked.
  */
 function representationVertices(step, rep, path = new Set()) {
   if (!rep) return [];
-  if (path.has(rep.id) || path.size > 16) return holdsTopology(step, rep) ? null : [];
+  if (path.has(rep.id) || path.size > MAX_MAP_DEPTH) return holdsTopology(step, rep) ? null : [];
   const inner = new Set(path).add(rep.id);
   const topology = rep.type === 'IFCTOPOLOGYREPRESENTATION';
   const points = [];
-  for (const ref of rep.args[3] ?? []) {
+  for (const ref of itemsOf(rep)) {
     const id = refOf(ref);
     const item = step.get(id);
     if (item?.type !== 'IFCMAPPEDITEM') {
       if (topology) points.push(...topologyVertices(step, id));
       continue;
     }
-    const map = step.get(refOf(item.args[0]));
-    const source = map?.type === 'IFCREPRESENTATIONMAP' ? step.get(refOf(map.args[1])) : undefined;
-    // Body and axis maps hold no topology: not walked, however deep they nest.
+    const { map, source } = mappedSource(step, item) ?? {};
     if (!holdsTopology(step, source)) continue;
     const mapped = representationVertices(step, source, inner);
     if (mapped?.length === 0) continue;
     const origin = axisPlacement(step, refOf(map.args[0]));
     const target = transformOperator(step, refOf(item.args[1]));
-    if (!mapped || !origin || !target) return null;
+    if (!mapped || !origin || !target || points.length + mapped.length > MAX_VERTICES) return null;
     const frame = compose(target, origin);
     for (const p of mapped) points.push(apply(frame, p));
   }

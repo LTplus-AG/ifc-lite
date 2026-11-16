@@ -19,3 +19,5 @@ Keep read-only derived inventories request-scoped so hierarchy dependency tracki
 Read attachment metadata GUIDs through borrowed snapshots during export so a save does not make later transactions copy every authored product as a mutable alias.
 
 Invalidate planning classifications when product GUIDs or placement classes change, preserving unresolved attachment notices and unreadable-placement refusals.
+
+Avoid cold reference-projection allocations for small relationship classes while bounding direct lookup work.

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { ReferenceSlotIndex } from './reference-slot-index.js';
+import { ReferenceSlotIndex, referenceSlot } from './reference-slot-index.js';
 import type { NewEntity } from './types.js';
 import { observeEntityAttributes, withoutEntityExposure } from './entity-read-barrier.js';
 import { restoreEntityOrder } from './restore-entity-order.js';
@@ -130,6 +130,16 @@ export class NewEntityMap extends Map<number, NewEntity> {
 
   referenceSlotIds(type: string, slot: number, target: number | null): Iterable<number> {
     this.refreshReferences();
+    type = type.toUpperCase();
+    const bucket = this.byType?.get(type);
+    if (!bucket?.size) return [];
+    // Tiny classes stay bounded without cold projection maps. Growing classes
+    // switch to the maintained index after at most this many direct reads.
+    if (bucket.size <= 32) return withoutEntityExposure(() => {
+      const ids: number[] = [];
+      for (const row of bucket.values()) if (row.type.toUpperCase() === type && referenceSlot(row.attributes[slot]) === target) ids.push(row.expressId);
+      return ids;
+    });
     return (this.slots ??= new ReferenceSlotIndex()).ids(type, slot, target, () => this.ofType(type));
   }
 

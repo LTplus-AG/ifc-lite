@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { nativeCapturedSurfaces } from '@/lib/appearance/appearance-native-capture';
+
 import { selectCreatedAppearanceObject } from './select-created-object';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
@@ -47,9 +49,8 @@ export function AppearanceCapturePanel() {
   const { addModel, loadFile, loadFilesSequentially, loading } = useIfc();
   const target = useIfcAuthoringTarget();
   const denialReason = useMutationDenialReason(target.modelId || undefined);
-  const candidates = useMemo(() => [...models.values()].flatMap(model => (model.geometryResult?.meshes ?? [])
-    .flatMap((mesh, index) => mesh.textureRef ? [{ id: `${model.id}:${index}`, modelId: model.id, mesh,
-      label: t('appearance.capture.surfaceLabel', { modelName: model.name, n: formatLocaleNumber(locale, index + 1), triangleCount: formatLocaleNumber(locale, mesh.indices.length / 3) }) }] : [])), [models, t, locale, revision]);
+  const candidates = useMemo(() => nativeCapturedSurfaces(models).map(item => ({...item,
+    label: t('appearance.capture.surfaceLabel', {modelName:item.modelName,n:formatLocaleNumber(locale,item.ordinal+1),triangleCount:formatLocaleNumber(locale,item.mesh.indices.length/3)})})), [models,t,locale,revision]);
   const excludedSurfaces = useMemo(() => [...models.values()].reduce((count, model) => count
     + (model.geometryResult?.meshes ?? []).filter(mesh => !mesh.textureRef).length, 0), [models]);
   const [chosen, setChosen] = useState('');

@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { compareNativeAppearancePreview } from '@/lib/appearance/appearance-native-preview';
+
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { resolveAppearanceScope } from '@/lib/appearance/query-scope.js';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
@@ -288,8 +290,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     const renderer = getGlobalRenderer();
     if (!current || !renderer) return;
     try {
-      if (original) { current.session?.cancel(); current.session = null; }
-      else { const session = new AppearancePreviewSession(renderer); session.stage(current.groups); current.session = session; }
+      current.session = compareNativeAppearancePreview(renderer, current.groups, current.session, original);
       setShowingOriginal(original);
     } catch (error) { setStatus('error'); setStatusMessage(rawMessage(error)); }
   }

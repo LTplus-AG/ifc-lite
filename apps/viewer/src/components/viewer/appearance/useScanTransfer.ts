@@ -1,16 +1,18 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { stageNativeScanTransfer } from '@/lib/appearance/appearance-native-transfer';
+import { compareNativeAppearancePreview } from '@/lib/appearance/appearance-native-preview';
+
 import { useEffect, useRef, useState } from 'react';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
-import { expandAppearanceCorners } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { appearanceOwners } from '@/lib/appearance/scope';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
 import type { AppearanceAssetOwner } from '@/lib/appearance/assets';
 import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client';
-import { AppearancePreviewSession, bindAppearancePreview, type AppearancePreviewParts } from '@/lib/appearance/preview';
+import { AppearancePreviewSession, type AppearancePreviewParts } from '@/lib/appearance/preview';
 import { commitAppearance } from '@/lib/appearance/command';
 import { prepareMeshTransfer, type ScanTransferSettings } from '@/lib/appearance/scan/prepare-transfer';
 import type { MeshTransferPlan } from '@/lib/appearance/scan/transfer-types';
@@ -72,11 +74,7 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
         setCoverage(output.transfer);
         if (!output.plan || !output.transfer.applicable || !(output.transfer.coverage.observedRasterInteriorTexels > 0)) { setStatus(output.transfer.diagnostics.length ? raw(output.transfer.diagnostics.join(' ')) : translated('appearance.scanTransfer.status.noSurface')); return; }
         if (output.transfer.exclusions.length) throw new ScanValidationError('appearance.scanTransfer.error.unsupportedObjects');
-        const first = output.itemImages.values().next().value;
-        if (!first) throw new ScanValidationError('appearance.scanTransfer.error.noRetainedImage');
-        const groups = bindAppearancePreview(useViewerStore.getState(), renderer, session.targetModelId, output.plan,
-          first.bitmap, first.imageUri, false, false, expandAppearanceCorners, output.itemImages);
-        const staged = new AppearancePreviewSession(renderer); staged.stage(groups);
+        const {groups,preview:staged}=stageNativeScanTransfer(output,session.targetModelId,renderer);
         draft.current = { output, owner, groups, preview: staged }; adopted = true;
         setReady(true); setOriginal(false); setStatus(translated('appearance.scanTransfer.status.reviewCoverage'));
       } catch (failure) { if (isCurrent()) { setError(true); setStatus(scanFailureMessage(failure)); } }
@@ -88,8 +86,8 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
     if (!current || !renderer || busy || work.busy) return;
     try {
       work.session?.validate();
-      if (current.preview) { current.preview.cancel(); current.preview = null; setOriginal(true); }
-      else { const next = new AppearancePreviewSession(renderer); next.stage(current.groups); current.preview = next; setOriginal(false); }
+      const original = current.preview !== null;
+      current.preview = compareNativeAppearancePreview(renderer, current.groups, current.preview, original); setOriginal(original);
     } catch (failure) { setError(true); setStatus(scanFailureMessage(failure)); setReady(false); }
   }
   async function apply() {
@@ -98,7 +96,8 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
     const plan = current.output.plan;
     await work.applyAppearance(async signal => {
       session.validate();
-      if (!current.preview) { current.preview = new AppearancePreviewSession(renderer); current.preview.stage(current.groups); }
+      if (!current.preview) current.preview = compareNativeAppearancePreview(renderer,current.groups,null,false);
+      if (!current.preview) throw new ScanValidationError('appearance.scanTransfer.error.viewNotReady');
       await commitAppearance(session.targetModelId, current.output.assetIds, plan, renderer, current.preview, current.groups, session.appearanceSource, { signal });
       if (signal.aborted) return;
       useViewerStore.getState().setActiveModel(session.targetModelId);

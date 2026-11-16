@@ -22,7 +22,9 @@ const STALE_REASON = 'Face selection is stale';
 const DIRECT_BODY_REASON = 'Face masks currently apply to converted occurrence bodies only';
 
 export function normalizeFaceTriangles(triangles: Iterable<number>, triangleCount: number): Uint32Array {
-  const unique = [...new Set(triangles)].filter(ordinal => Number.isSafeInteger(ordinal) && ordinal >= 0 && ordinal < triangleCount).sort((a, b) => a - b);
+  const unique = [...new Set(triangles)]
+    .filter((ordinal) => Number.isSafeInteger(ordinal) && ordinal >= 0 && ordinal < triangleCount)
+    .sort((a, b) => a - b);
   return Uint32Array.from(unique);
 }
 
@@ -33,7 +35,11 @@ export function faceMaskRequests(masks: FaceMasks, productIds: readonly number[]
   const requests: AppearanceFaceMask[] = [];
   for (const mask of masks.values()) {
     if (!scope.has(mask.productId) || !mask.triangles.length) continue;
-    requests.push({ productId: mask.productId, surfaceFingerprint: mask.surfaceFingerprint, triangles: [...mask.triangles] });
+    requests.push({
+      productId: mask.productId,
+      surfaceFingerprint: mask.surfaceFingerprint,
+      triangles: [...mask.triangles],
+    });
   }
   return requests.length ? requests : undefined;
 }
@@ -53,7 +59,11 @@ export interface FaceMaskReconciliation {
  * direct tessellated Body (after Apply) cannot hold a mask either. Masks whose
  * products are absent from this plan (out of scope) are kept untouched.
  */
-export function reconcileFaceMasks(masks: FaceMasks, plan: AppearancePlan, label: (productId: number) => string): FaceMaskReconciliation {
+export function reconcileFaceMasks(
+  masks: FaceMasks,
+  plan: AppearancePlan,
+  label: (productId: number) => string,
+): FaceMaskReconciliation {
   const diagnostics: string[] = [];
   let next: Map<number, FaceMask> | undefined;
   const drop = (productId: number, message: string) => {
@@ -64,16 +74,45 @@ export function reconcileFaceMasks(masks: FaceMasks, plan: AppearancePlan, label
   for (const exclusion of plan.exclusions) {
     if (!masks.has(exclusion.productId)) continue;
     if (exclusion.reason.startsWith(STALE_REASON)) {
-      drop(exclusion.productId, `Face selection for ${label(exclusion.productId)} is stale: the evaluated surface geometry changed, so the selection was cleared. Select faces again.`);
+      drop(
+        exclusion.productId,
+        `Face selection for ${label(exclusion.productId)} is stale: the evaluated surface geometry changed, so the selection was cleared. Select faces again.`,
+      );
     } else if (exclusion.reason.startsWith(DIRECT_BODY_REASON)) {
-      drop(exclusion.productId, `Face selection for ${label(exclusion.productId)} was cleared: the object now has a direct tessellated Body.`);
+      drop(
+        exclusion.productId,
+        `Face selection for ${label(exclusion.productId)} was cleared: the object now has a direct tessellated Body.`,
+      );
     }
   }
   for (const conversion of plan.conversions ?? []) {
     const mask = masks.get(conversion.productId);
     if (mask && conversion.surfaceFingerprint && conversion.surfaceFingerprint !== mask.surfaceFingerprint) {
-      drop(conversion.productId, `Face selection for ${label(conversion.productId)} is stale: the evaluated surface geometry changed, so the selection was cleared. Select faces again.`);
+      drop(
+        conversion.productId,
+        `Face selection for ${label(conversion.productId)} is stale: the evaluated surface geometry changed, so the selection was cleared. Select faces again.`,
+      );
     }
   }
   return { masks: next ?? masks, diagnostics };
+}
+
+/** One face-selection edit shared by the UI canvas and operation inputs.
+ * A whole-surface/empty selection uses the native unmasked request semantics. */
+export function changeNativeFaceMask(
+  masks: FaceMasks,
+  conversions: ReadonlyArray<NonNullable<AppearancePlan['conversions']>[number]> | undefined,
+  productId: number,
+  triangles: Iterable<number> | null,
+): FaceMasks {
+  const conversion = conversions?.find((item) => item.productId === productId);
+  const count = conversion ? conversion.sourceIndices.length / 3 : 0;
+  const normalized =
+    triangles === null || !conversion?.surfaceFingerprint
+      ? new Uint32Array()
+      : normalizeFaceTriangles(triangles, count);
+  const next = new Map(masks);
+  if (!normalized.length || normalized.length >= count) next.delete(productId);
+  else next.set(productId, { productId, surfaceFingerprint: conversion!.surfaceFingerprint!, triangles: normalized });
+  return next;
 }

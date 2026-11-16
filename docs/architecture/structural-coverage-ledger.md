@@ -4,7 +4,7 @@
 
 The scorecard of the structural domain hill climb ([#9668](https://github.com/LTplus-AG/ifc-lite/issues/9668)): one row per concrete entity of the IFC structural analysis domain per schema, derived from the generated schema tables, plus capability rows. Every status below comes from a probe that ran (`tests/structural-coverage/`), never from a typed opinion.
 
-**Total: 106 / 119 rows** (met 93, partial 26, missing 0). **Cells: 756 / 774.** A met row counts 1, a partial row 0.5; a passing cell 1, a partial cell 0.5. The score may only go up: `node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r9.json` fails when the total, the cell score, any row or any cell drops.
+**Total: 106.5 / 119 rows** (met 94, partial 25, missing 0). **Cells: 756.5 / 774.** A met row counts 1, a partial row 0.5; a passing cell 1, a partial cell 0.5. The score may only go up: `node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r10.json` fails when the total, the cell score, any row or any cell drops.
 
 | Level | Score | Pass | Partial | Fail | Skip | Not written |
 |---|---|---|---|---|---|---|
@@ -16,9 +16,9 @@ The scorecard of the structural domain hill climb ([#9668](https://github.com/LT
 | edit | 110 / 110 | 110 | 0 | 0 | 0 | 0 |
 | remove | 110 / 110 | 110 | 0 | 0 | 0 | 0 |
 | convert | 56 / 72 | 49 | 14 | 9 | 0 | 0 |
-| capability | 8.5 / 9 | 8 | 1 | 0 | 0 | 0 |
+| capability | 9 / 9 | 9 | 0 | 0 | 0 | 0 |
 
-Summary: `tests/structural-coverage/baseline/r9.json`, scored over 27 corpus files (`tests/structural-coverage/corpus.json`).
+Summary: `tests/structural-coverage/baseline/r10.json`, scored over 27 corpus files (`tests/structural-coverage/corpus.json`).
 
 ✅ pass · ◐ partial · ❌ fail · ⏸ skip · `·` probe not written yet · – not applicable (the rule is in `notApplicable()` of `tests/structural-coverage/catalogue.mjs`).
 
@@ -153,7 +153,7 @@ Summary: `tests/structural-coverage/baseline/r9.json`, scored over 27 corpus fil
 |---|---|---|---|---|
 | Read the physical-to-analytical link (IfcRelAssignsToProduct, IfcRelConnectsStructuralElement) (`cap/physical-analytical-link-read`) | R1 | ✅ | `capability:physical-analytical-link-read` |  |
 | Toggle between the analytical and the physical model in the viewer (`cap/analytical-physical-toggle`) | R5 | ✅ | `capability:analytical-physical-toggle` |  |
-| Derive an analytical model from the physical model (`cap/derive-analytical-model`) | R6 | ◐ | `capability:derive-analytical-model` | connection #198 at [-14.85635417,-6.4521875,0]: reference has no support, derived #633 has support; connection #227 at [-7.85635417,-6.452,0]: reference has no support, derived #643 has support; connection #256 at [-11.35635417,-6.4521875,… |
+| Derive an analytical model from the physical model (`cap/derive-analytical-model`) | R6 | ✅ | `capability:derive-analytical-model` |  |
 | Check: load-bearing element with no analytical counterpart (`cap/check-unlinked-load-bearing`) | R7 | ✅ | `capability:check-unlinked-load-bearing` |  |
 | Check: analytical axis drifted from the physical element (`cap/check-axis-drift`) | R7 | ✅ | `capability:check-axis-drift` |  |
 | Check: structural member with no connection (`cap/check-unconnected-member`) | R7 | ✅ | `capability:check-unconnected-member` |  |
@@ -165,7 +165,7 @@ Summary: `tests/structural-coverage/baseline/r9.json`, scored over 27 corpus fil
 
 ```bash
 node tests/structural-coverage/score.mjs   # names the fetch command for any absent corpus file, then exits 2
-node tests/structural-coverage/score.mjs --out tests/structural-coverage/.out/summary.json --check tests/structural-coverage/baseline/r9.json
+node tests/structural-coverage/score.mjs --out tests/structural-coverage/.out/summary.json --check tests/structural-coverage/baseline/r10.json
 cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json   # only when a round is accepted
 node scripts/generate-structural-coverage-ledger.mjs
 ```

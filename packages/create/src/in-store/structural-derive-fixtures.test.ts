@@ -188,7 +188,9 @@ describe('derived against authored analytical models (#9668)', () => {
     expect(plan.report.counts).toMatchObject({ curveMembers: 13, nodes: 10 });
     expect(joints(plan)).toBe(7);
     expect(columnJoints(plan, facts)).toBe(3);
-    expect(plan.report.counts).toMatchObject({ freeEnds: 1, extendedEnds: 2, supports: 5, guessedSupports: 5 });
+    // The tie bears at the two heels, where AxisVM's authored model has its supports; its overhang tips are free ends.
+    expect(plan.report.counts).toMatchObject({ freeEnds: 3, extendedEnds: 2, supports: 2, guessedSupports: 2 });
+    expect(plan.nodes.filter((n) => n.support).map((n) => +n.position[0].toFixed(3)).sort((a, b) => a - b)).toEqual([-14.51, -8.206]);
     expect(maxExtension(plan)).toBeGreaterThan(0.14);
     expect(maxExtension(plan)).toBeLessThan(0.16);
   });

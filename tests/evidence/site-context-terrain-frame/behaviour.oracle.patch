@@ -1,0 +1,13 @@
+diff --git a/packages/site-context/src/terrain-mesh.ts b/packages/site-context/src/terrain-mesh.ts
+index b5344a4495..df7dfc3124 100644
+--- a/packages/site-context/src/terrain-mesh.ts
++++ b/packages/site-context/src/terrain-mesh.ts
+@@ -133,7 +133,7 @@ function buildChunk(g: TerrainGrid, c0: number, c1: number, r0: number, r1: numb
+     const r = used[2 * v + 1];
+     positions[3 * v] = (c - c0) * res;
+     positions[3 * v + 1] = (r1 - r) * res;
+-    positions[3 * v + 2] = heightAt(g, c, r);
++    positions[3 * v + 2] = heightAt(g, c, r) - h0;
+     nodeNormal(g, c, r, normals, 3 * v);
+     uvs[2 * v] = c / (g.width - 1);
+     uvs[2 * v + 1] = r / (g.height - 1);

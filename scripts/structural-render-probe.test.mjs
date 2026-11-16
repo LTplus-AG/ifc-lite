@@ -152,6 +152,17 @@ test('#9668 topology oracle: schema default axes (IfcFirstProjAxis, IfcSecondPro
   // A target whose Axis3 is -x and Axis1 omitted takes x = (0, 1, 0): (1, 0, 0) would leave nothing.
   const minusX = MAPPED_MEMBER.replace('#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#43,$,#45,2.,#44)', '#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#45,1.,#49);#49=IFCDIRECTION((-1.,0.,0.))');
   assert.deepEqual(near(topologyPoints(ifc4(minusX), 30)), [[11, 3, 3], [11, 7, 3]]);
+  // 2D readers: an IfcAxis2Placement2D MappingOrigin, and a 2D target (Axis1 (0, 1, 0)) giving the same frame.
+  const twoD = MAPPED_MEMBER.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#57,#15);#57=IFCAXIS2PLACEMENT2D(#40,$)')
+    .replace('#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#43,$,#45,2.,#44)', '#46=IFCCARTESIANTRANSFORMATIONOPERATOR2D(#43,$,#45,2.)');
+  assert.deepEqual(near(topologyPoints(ifc4(twoD), 30)), [[11, 4, 3], [11, 12, 3]]);
+  // A 2D target whose Axis2 points against x turned counter-clockwise mirrors y: origin (1, 2) lands at x 15, not 7.
+  const twoDMirror = twoD.replace('#40=IFCCARTESIANPOINT((1.,0.,0.))', '#40=IFCCARTESIANPOINT((1.,2.,0.))')
+    .replace('IFCCARTESIANTRANSFORMATIONOPERATOR2D(#43,$,#45,2.)', 'IFCCARTESIANTRANSFORMATIONOPERATOR2D(#43,#58,#45,2.);#58=IFCDIRECTION((1.,0.))');
+  assert.deepEqual(near(topologyPoints(ifc4(twoDMirror), 30)), [[15, 4, 3], [15, 12, 3]]);
+  // A RefDirection along Axis keeps R8's fallback, x = (0, 1, 0) x z.
+  const parallel = ifc4(MEMBER().replace('#21=IFCAXIS2PLACEMENT3D(#20,$,$)', '#23=IFCDIRECTION((0.,0.,1.));#21=IFCAXIS2PLACEMENT3D(#20,#23,#23)'));
+  assert.deepEqual(topologyPoints(parallel, 30), [[1, 2, 3], [5, 2, 3]]);
   // A placement z near (but not) x with no RefDirection takes x from (1, 0, 0).
   const tilted = ifc4(MEMBER().replace("#21=IFCAXIS2PLACEMENT3D(#20,$,$)", "#23=IFCDIRECTION((3.,0.,1.));#21=IFCAXIS2PLACEMENT3D(#20,#23,$)"));
   const r = Math.sqrt(10);

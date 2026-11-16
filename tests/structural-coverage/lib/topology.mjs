@@ -77,17 +77,19 @@ function direction(step, value) {
 }
 
 /**
- * `IfcAxis2Placement3D`: z = Axis, x = RefDirection made normal to z; IFC
- * defaults when omitted. Null when a given one does not read or lies along z.
+ * `IfcAxis2Placement3D` (or `2D`, in the XY plane): z = Axis, x =
+ * RefDirection made normal to z; IFC defaults when omitted, and a
+ * RefDirection along z falls back as R8 did. Null when a given one does not read.
  */
 function axisPlacement(step, id) {
   const r = step.get(id);
-  if (r?.type !== 'IFCAXIS2PLACEMENT3D') return null;
+  const is3d = r?.type === 'IFCAXIS2PLACEMENT3D';
+  if (!is3d && r?.type !== 'IFCAXIS2PLACEMENT2D') return null;
   const o = coords(step, refOf(r.args[0]));
-  const [axis, ref] = [direction(step, r.args[1]), direction(step, r.args[2])];
+  const [axis, ref] = is3d ? [direction(step, r.args[1]), direction(step, r.args[2])] : [undefined, direction(step, r.args[1])];
   if (!o || axis === null || ref === null) return null;
   const z = axis ?? [0, 0, 1];
-  const x = normalTo(ref ?? defaultX(z), z);
+  const x = normalTo(ref ?? defaultX(z), z) ?? unit(cross([0, 1, 0], z));
   return x && { o, x, y: cross(z, x), z };
 }
 
@@ -131,28 +133,42 @@ function topologyVertices(step, id, depth = 0) {
   }
 }
 
+/** The operator kinds this oracle reads: [is 2D, index of Scale2, index of Scale3]. */
+const OPERATORS = {
+  IFCCARTESIANTRANSFORMATIONOPERATOR3D: [false],
+  IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM: [false, 5, 6],
+  IFCCARTESIANTRANSFORMATIONOPERATOR2D: [true],
+  IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM: [true, 4],
+};
+
 /**
- * `IfcCartesianTransformationOperator3D` (or its non-uniform subtype) as a
- * frame with scaled axes, by the schema's `BaseAxis`: z = Axis3, x = Axis1
- * made normal to z, y = Axis2 made normal to both; null when unreadable.
+ * An `IfcCartesianTransformationOperator2D` or `3D` (or a non-uniform
+ * subtype) as a frame with scaled axes, by the schema's `BaseAxis`; null
+ * when unreadable. 3D: z = Axis3, x = Axis1 made normal to z, y = Axis2 made
+ * normal to both. 2D: x = Axis1, else Axis2 turned clockwise; y = x turned
+ * counter-clockwise, reversed when Axis2 points against it.
  */
 function transformOperator(step, id) {
   const r = step.get(id);
-  if (r?.type !== 'IFCCARTESIANTRANSFORMATIONOPERATOR3D' && r?.type !== 'IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM') return null;
+  const kind = OPERATORS[r?.type];
+  if (!kind) return null;
+  const [twoD, scale2, scale3] = kind;
   const o = coords(step, refOf(r.args[2]));
-  const [axis1, axis2, axis3] = [direction(step, r.args[0]), direction(step, r.args[1]), direction(step, r.args[4])];
+  const [axis1, axis2, axis3] = [direction(step, r.args[0]), direction(step, r.args[1]), twoD ? undefined : direction(step, r.args[4])];
   if (!o || axis1 === null || axis2 === null || axis3 === null) return null;
   const z = axis3 ?? [0, 0, 1];
-  const x = normalTo(axis1 ?? defaultX(z), z);
+  const x = normalTo(axis1 ?? (twoD && axis2 ? [axis2[1], -axis2[0], 0] : defaultX(z)), z);
   if (!x) return null;
+  const turned = [-x[1], x[0], 0];
   // `IfcSecondProjAxis`: Axis2, else (0, 1, 0), made normal to z and x; a mirror keeps its sign.
   // Without Axis2, a default that lies in the z-x plane leaves nothing; then z x x, a rotation.
-  const y = normalTo(axis2 ?? [0, 1, 0], z, x) ?? (axis2 ? null : cross(z, x));
+  const y = twoD ? (axis2 && dot(axis2, turned) < 0 ? scaled(turned, -1) : turned)
+    : normalTo(axis2 ?? [0, 1, 0], z, x) ?? (axis2 ? null : cross(z, x));
   if (!y) return null;
   // The schema requires every scale > 0; a zero one would collapse the map onto LocalOrigin.
   const s = numberOf(r.args[3]) ?? 1;
-  const s2 = numberOf(r.args[5]) ?? s;
-  const s3 = numberOf(r.args[6]) ?? s;
+  const s2 = (scale2 && numberOf(r.args[scale2])) ?? s;
+  const s3 = (scale3 && numberOf(r.args[scale3])) ?? s;
   if (!(s > 0 && s2 > 0 && s3 > 0)) return null;
   return { o, x: scaled(x, s), y: scaled(y, s2), z: scaled(z, s3) };
 }
@@ -160,6 +176,8 @@ function transformOperator(step, id) {
 /** Whether a representation holds topology items, itself or through its mapped items. */
 function holdsTopology(step, rep, seen = new Set()) {
   if (!rep || seen.has(rep.id)) return false;
+  // Past any nesting the vertex walk follows: say yes, and let that walk refuse it.
+  if (seen.size > 64) return true;
   seen.add(rep.id);
   return (rep.args[3] ?? []).some((ref) => {
     const item = step.get(refOf(ref));

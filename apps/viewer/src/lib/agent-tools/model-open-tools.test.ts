@@ -390,22 +390,34 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     respond = redirected('https://login.example/sso', '<?xml version="1.0"?>\n<!-- sso -->\n<html xmlns="http://www.w3.org/1999/xhtml"><body>Sign in</body></html>');
     await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /login\.example.*(HTML page|did not return)/ });
   });
-  it('checks the bytes against the promised format before a replace can close the open models (#9523 code review)', async () => {
+  it('refuses bodies that are plainly not a model before a replace can close the open models (#9523 code review)', async () => {
     useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
-    const redirected = (to: string, body: BodyInit) => () => {
+    const served = (to: string, body: BodyInit) => () => {
       const res = new Response(body, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
       Object.defineProperty(res, 'url', { value: to });
       return res;
     };
-    respond = redirected('https://auth.example/token-expired', '{"error":"expired"}');
-    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /did not return IFC content/ });
-    respond = redirected('https://cdn.example/model.gltf', '{"asset":{"version":"2.0"}}');
-    await assert.rejects(run({ url: 'https://example.com/model.glb', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /did not return GLB content/ });
-    respond = redirected('https://example.com/errors/denied.xml', '<?xml version="1.0"?><Error>denied</Error>');
-    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /did not return XML content/ });
-    respond = redirected('https://example.com/house.ifc', '<title>403 Forbidden</title>');
-    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION' });
+    const refused = async (url: string, to: string, body: string, what: RegExp) => {
+      respond = served(to, body);
+      await assert.rejects(run({ url, mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: what });
+    };
+    await refused('https://example.com/house.ifc', 'https://auth.example/token-expired', '{"error":"expired"}', /JSON response/);
+    await refused('https://example.com/model.glb', 'https://cdn.example/model.gltf', '{"asset":{"version":"2.0"}}', /JSON response/);
+    await refused('https://example.com/terrain.xml', 'https://example.com/terrain.xml', '<?xml version="1.0"?><Error><Code>AccessDenied</Code></Error>', /XML error response/);
+    await refused('https://example.com/house.ifc', 'https://example.com/house.ifc', '<title>403 Forbidden</title>', /HTML page/);
+    await refused('https://example.com/model.ifcx', 'https://example.com/model.ifcx', '{"error":"token expired"}', /JSON error response/);
     assert.deepEqual(calls, [], 'nothing was loaded');
+  });
+
+  it('leaves valid files the loader routes itself alone (#9523 code review)', async () => {
+    const served = (body: BodyInit) => () => new Response(body, { status: 200 });
+    respond = served(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0, 0])); // a zipped IFC under .ifc
+    await run({ url: 'https://example.com/model.ifc' });
+    respond = served(`<?xml version="1.0"?>\n<!--${'x'.repeat(5000)}-->\n<LandXML/>`); // a long prolog
+    await run({ url: 'https://example.com/terrain.xml', mode: 'add' });
+    respond = served('LASF....'); // LAS bytes under .ply: the loader routes by magic
+    await run({ url: 'https://example.com/scan.ply', mode: 'add' });
+    assert.equal(calls.length, 3);
   });
 
   it('never shows a signed URL query in an error (#9523 code review)', async () => {

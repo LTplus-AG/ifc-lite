@@ -120,6 +120,7 @@ function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | 
     } catch (error) {
       return refuse(what, `has a bad boundary (${error instanceof Error ? error.message : String(error)})`);
     }
+    if (member.openings !== undefined && !Array.isArray(member.openings)) refuse(what, 'has openings that are not an array');
     for (const [index, ring] of (member.openings ?? []).entries()) {
       try {
         face.openings.push(checkOpening(face, ring.map(p => toLocal(member.storeyId, p)), face.openings, { clearance: 0, index }));

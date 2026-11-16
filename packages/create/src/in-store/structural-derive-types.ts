@@ -149,6 +149,7 @@ export interface PrismFact {
 }
 
 export interface OpeningFact {
+  shapeIssueReason?: 'unsupported-voiding-type';
   expressId: number;
   name: string | null;
   prism?: PrismFact;
@@ -285,7 +286,7 @@ export interface SkippedOpening {
   openingId: number;
   hostId: number;
   name: string | null;
-  reason: 'unreadable-opening' | 'unsupported-opening-section' | 'invalid-opening-ring';
+  reason: 'unsupported-voiding-type' | 'unreadable-opening' | 'unsupported-opening-section' | 'invalid-opening-ring';
   detail: string;
 }
 

@@ -27,6 +27,7 @@ export const structuralDeriveRu = {
   "structuralDerive.free": "Свободные концы стержней без другого стержня и опоры ({count})",
   "structuralDerive.end.start": "начало",
   "structuralDerive.end.end": "конец",
+  "structuralDerive.reason.unsupported-voiding-type": "неподдерживаемый тип выреза",
   "structuralDerive.reason.unreadable-opening": "нечитаемый проём",
   "structuralDerive.reason.unsupported-opening-section": "неподдерживаемое сечение проёма",
   "structuralDerive.reason.invalid-opening-ring": "недопустимый контур проёма",

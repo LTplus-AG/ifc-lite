@@ -253,12 +253,15 @@ describe('opening review regressions', () => {
     expect(plan.surfaceMembers.reduce((n,m) => n+m.openings.length,0)).toBe(3);
     expect(plan.report.skippedOpenings.filter(o => o.name === 'window1')).toEqual([]);
   });
-  it('does not read opening shapes for hosts skipped by the unknown load-bearing policy', async () => {
+  it('keeps slab openings when facts use skip and the planner uses include (#9668)', async () => {
     const s = await session(physicalModel());
     const facts = readStructuralDerivationFacts(s.store,s.editor, { whenLoadBearingUnknown: 'skip' });
-    expect(facts.elements.every(e => e.openings === undefined)).toBe(true);
+    const slab = facts.elements.find(e => e.type === 'IfcSlab')!;
+    expect(slab.openings).toHaveLength(1);
+    const plan = planStructuralDerivation(facts, { whenLoadBearingUnknown: 'include' });
+    expect(plan.surfaceMembers.find(m => m.elementId === slab.expressId)!.openings).toHaveLength(1);
   });
-  it('does not read opening shapes for an unidealisable host', async () => {
+  it('retains opening facts for an unidealisable host (#9668)', async () => {
     const s = await session(physicalModel());
     const original = shapeModule.readElementShape;
     const read = vi.spyOn(shapeModule, 'readElementShape').mockImplementation((reader,id,metres,axis) => {
@@ -267,8 +270,8 @@ describe('opening review regressions', () => {
     });
     try {
       const facts = readStructuralDerivationFacts(s.store,s.editor);
-      expect(facts.elements.find(e => e.type === 'IfcWall')!.openings).toBeUndefined();
-      expect(read.mock.calls.filter(call => call[3] === false)).toHaveLength(1);
+      expect(facts.elements.find(e => e.type === 'IfcWall')!.openings).toHaveLength(7);
+      expect(read.mock.calls.filter(call => call[3] === false)).toHaveLength(8);
     } finally { read.mockRestore(); }
   });
   it('identifies a malformed held-plan ring as a bad opening of its host', async () => {
@@ -278,6 +281,33 @@ describe('opening review regressions', () => {
     member.openings = [windows[0].slice(0,2)];
     expect(() => applyStructuralDerivation(s.editor,s.store,plan)).toThrow(`element #${member.elementId} has a bad opening 1`);
     expect(s.editor.getNewEntities()).toHaveLength(0);
+  });
+  it.each([null, {}, 42, 'rings'])('refuses non-array held-plan openings %s with plan-again guidance (#9668)', async openings => {
+    const s = await session(physicalModel());
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(s.store, s.editor));
+    const member = plan.surfaceMembers[0];
+    // @ts-expect-error deliberately malformed held plan from an untyped caller
+    member.openings = openings;
+    expect(() => applyStructuralDerivation(s.editor, s.store, plan)).toThrow(`element #${member.elementId} has openings that are not an array; plan again`);
+    expect(s.editor.getNewEntities()).toHaveLength(0);
+  });
+  it.each([[0.04, -0.15], [0.06, -0.15], [0.04, 0.15], [0.06, 0.15]])('projects a column onto a diagonal wall: edge clearance %s, plane offset %s (#9668)', async (clearance, offset) => {
+    const s = await session(physicalModel());
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    const wall = facts.elements.find(e => e.type === 'IfcWall')!;
+    wall.openings = wall.openings!.filter(o => o.name === 'window1');
+    // Rotate the wall and its opening 45 degrees in plan.
+    const rotate = ([x,y,z]: Vec3): Vec3 => [(x-y)/Math.SQRT2, (x+y)/Math.SQRT2, z];
+    for (const prism of [wall.prism!, wall.openings[0].prism!]) {
+      prism.outline = prism.outline.map(rotate);
+      prism.extrusion = rotate(prism.extrusion);
+    }
+    // 15 cm along the normal; projection is just inside the window's left edge.
+    facts.elements.push({ expressId: 99999, type: 'IfcColumn', name: null, storeyId: 30, loadBearing: true, idealised: false,
+      axis: [rotate([-2.5+clearance,offset,-3]), rotate([-2.5+clearance,offset,2])] });
+    const plan = planStructuralDerivation(facts);
+    const top = plan.curveMembers.find(m => m.elementId === 99999)!.endNode;
+    expect(plan.report.unconnectedEnds.some(e => e.node === top && e.landsOn === 'surface-member')).toBe(clearance < 0.05);
   });
   it('labels a rejected ring by its input index without repeating the face prefix', async () => {
     const s = await session(physicalModel());
@@ -305,11 +335,11 @@ describe('opening review regressions', () => {
     const facts = readStructuralDerivationFacts(s.store, s.editor);
     expect(facts.elements.flatMap(e => e.openings ?? [])).toHaveLength(8);
     expect(planStructuralDerivation(facts).surfaceMembers.reduce((n,m) => n+m.openings.length,0)).toBe(3);
-    const bad = await session(text.replace(/IFCOPENINGSTANDARDCASE/g, 'IFCBUILDINGELEMENTPROXY'));
+    const bad = await session(text.replace(/IFCOPENINGSTANDARDCASE/g, 'IFCVOIDINGFEATURE'));
     const plan = planStructuralDerivation(readStructuralDerivationFacts(bad.store, bad.editor));
     expect(plan.report.skipped).toEqual([]);
     expect(plan.report.skippedOpenings).toHaveLength(8);
-    expect(plan.report.skippedOpenings.every(o => o.detail.includes('unsupported voiding type IFCBUILDINGELEMENTPROXY'))).toBe(true);
+    expect(plan.report.skippedOpenings.every(o => o.reason === 'unsupported-voiding-type' && o.detail === 'unsupported voiding type IfcVoidingFeature')).toBe(true);
   });
   it.each(['normal', 'in-plane'])('uses length tolerance for a slightly short %s opening', async kind => {
     const s = await session(physicalModel(kind === 'in-plane'));

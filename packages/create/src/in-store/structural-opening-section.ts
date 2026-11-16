@@ -94,10 +94,10 @@ export function plateOpenings(element: PhysicalElementFact, plate: { boundary: V
   const normal = face.axis;
   const carried: Vec3[][] = [];
   const accepted: Vec3[][] = [];
-  for (const [index, opening] of (element.openings ?? []).entries()) {
+  for (const [index, opening] of element.openings.entries()) {
     const reject = (reason: SkippedOpening['reason'], detail: string) => skipped.push({ openingId: opening.expressId, hostId: element.expressId, name: opening.name, reason, detail });
     const prism = opening.prism;
-    if (!prism) { reject('unreadable-opening', opening.shapeIssue ?? 'unreadable body'); continue; }
+    if (!prism) { reject(opening.shapeIssueReason ?? 'unreadable-opening', opening.shapeIssue ?? 'unreadable body'); continue; }
     if (!prism.outlineExact) { reject('unsupported-opening-section', 'profile outline is known only as bounds'); continue; }
     const ring = openingSection(prism, plate.boundary[0], normal, plate.thickness, tolerance);
     if (typeof ring === 'string') { reject('unsupported-opening-section', ring); continue; }

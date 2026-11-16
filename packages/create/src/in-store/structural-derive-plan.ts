@@ -83,7 +83,7 @@ function insidePolygon(p: Vec3, polygon: Vec3[], normal: Vec3, clearance = 0): b
   const drop = [0, 1, 2].reduce((m, k) => (Math.abs(normal[k]) > Math.abs(normal[m]) ? k : m), 0);
   const [i, j] = [0, 1, 2].filter((k) => k !== drop);
   const projected = sub(p, scale(normal, dot(sub(p, polygon[0]), normal)));
-  return pointInPolygon(p[i], p[j], polygon.map((q) => [q[i], q[j]])) && (clearance <= 0 || polygon.every((a, index) => {
+  return pointInPolygon(projected[i], projected[j], polygon.map((q) => [q[i], q[j]])) && (clearance <= 0 || polygon.every((a, index) => {
     const edge = sub(polygon[(index + 1) % polygon.length], a);
     const t = Math.max(0, Math.min(1, dot(sub(projected, a), edge) / dot(edge, edge)));
     return length(sub(projected, add(a, scale(edge, t)))) > clearance;
@@ -290,7 +290,7 @@ function findUnconnectedEnds(
     if (degree[node.index] !== 1) continue;
     const onSurface = surfaces.find(({ member, normal }) =>
       Math.abs(dot(sub(p, member.boundary[0]), normal)) <= tolerance + member.thickness / 2 && insidePolygon(p, member.boundary, normal)
-      && !(member.openings ?? []).some(ring => insidePolygon(p, ring, normal, tolerance)));
+      && !member.openings.some(ring => insidePolygon(p, ring, normal, tolerance)));
     if (onSurface) found.push({ node: node.index, landsOnElementId: onSurface.member.elementId, landsOn: 'surface-member' });
   }
   return found;

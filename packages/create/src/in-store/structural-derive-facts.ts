@@ -19,12 +19,11 @@ import { placementInAncestor, refId, transformBounds } from './host-geometry-fra
 import { safeLengthUnitScale } from './length-unit-scale.js';
 import { localBodyExtent } from './resolve-host.js';
 import { createStyleEntityReader, type StyleEntity } from './style-entity-reader.js';
-import { idealisePlate, scale } from './structural-derive-idealise.js';
+import { scale } from './structural-derive-idealise.js';
 import { roleOf, DERIVATION_CLASSES } from './structural-derive-plan.js';
 import { readElementShape } from './structural-derive-shape.js';
 import { DERIVED_ANALYSIS_MODEL_DESCRIPTION, type StructuralDerivationOptions, type OpeningFact, type PhysicalElementFact, type StructuralDerivationFacts } from './structural-derive-types.js';
 
-import { prepareStructuralFace } from './_structural-face.js';
 import { OPENING_TYPES } from './hosted-fill-read.js';
 
 const FOOTINGS = new Set(['IfcFooting', 'IfcPile']);
@@ -75,7 +74,8 @@ export function shapeReader(store: IfcDataStore, editor: StoreEditor, label: str
   return { reader: { entity }, metres };
 }
 
-export function readStructuralDerivationFacts(store: IfcDataStore, editor: StoreEditor, options: StructuralDerivationOptions = {}): StructuralDerivationFacts {
+// The options argument remains accepted for callers; eligibility belongs only to the planner.
+export function readStructuralDerivationFacts(store: IfcDataStore, editor: StoreEditor, _options: StructuralDerivationOptions = {}): StructuralDerivationFacts {
   if (store.schemaVersion === 'IFC5') throw new Error('Structural derivation: IFC5 is not supported; use IFC2X3, IFC4 or IFC4X3');
   const view = editor.getMutationView();
   const { reader, metres } = shapeReader(store, editor, 'readStructuralDerivationFacts');
@@ -118,25 +118,22 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
       fact.loadBearing = readLoadBearing(store, view, expressId);
       fact.idealised = structuralCounterparts(structural, expressId)?.side === 'analytical';
       Object.assign(fact, readElementShape(reader, expressId, metres, true));
-      const plate = roleOf(type) === 'surface' && !fact.idealised && fact.loadBearing !== false
-        && !(fact.loadBearing === null && options.whenLoadBearingUnknown === 'skip') && fact.prism ? idealisePlate(fact.prism) : null;
-      let validPlate = false;
-      if (plate && !('issue' in plate)) {
-        try { prepareStructuralFace(plate.boundary); validPlate = true; }
-        catch (error) { fact.shapeIssue ??= error instanceof Error ? error.message : String(error); } // The planner reports the invalid host boundary.
-      }
-      if (validPlate) {
+      if (roleOf(type) === 'surface' && openings.has(expressId)) {
         const collected: OpeningFact[] = [];
         for (const id of openings.get(expressId) ?? []) {
           const opening = read(id);
           if (!opening || !OPENING_TYPES.has(opening.type.toUpperCase())) {
-            collected.push({ expressId: id, name: null, shapeIssue: `unsupported voiding type ${opening?.type ?? 'missing entity'}` });
+            collected.push({
+              expressId: id, name: null,
+              shapeIssueReason: opening ? 'unsupported-voiding-type' : undefined,
+              shapeIssue: opening ? `unsupported voiding type ${normalizeIfcTypeName(opening.type)}` : 'missing entity',
+            });
             continue;
           }
           const name = opening.attributes[2];
           collected.push({ expressId: id, name: typeof name === 'string' ? name : null, ...readElementShape(reader, id, metres, false) });
         }
-        if (openings.has(expressId)) fact.openings = collected;
+        fact.openings = collected;
       }
     }
     elements.push(fact);

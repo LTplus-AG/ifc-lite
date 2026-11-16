@@ -26,8 +26,9 @@ function reconcile<T extends { id: string }>(saved: T[], automatic: T[], signatu
 const keyOf = (values: unknown[]) => JSON.stringify(values, (_key, value: unknown) =>
   typeof value === 'number' && Number.isFinite(value) && Math.abs(value) < 1e21 ? Math.round(value * 1e6) / 1e6 : value);
 
+// Symbolic polyPoints use float32; compare both formats at that coordinate precision.
 export function mergeRestoredMeasures(saved: Measure2DResult[], automatic: Measure2DResult[]): Measure2DResult[] {
-  return reconcile(saved, automatic, m => keyOf([m.start.x, m.start.y, m.end.x, m.end.y, m.distance]));
+  return reconcile(saved, automatic, m => keyOf([Math.fround(m.start.x), Math.fround(m.start.y), Math.fround(m.end.x), Math.fround(m.end.y), m.distance]));
 }
 
 export function mergeRestoredDimensions(saved: Dimension2D[], automatic: Dimension2D[]): Dimension2D[] {

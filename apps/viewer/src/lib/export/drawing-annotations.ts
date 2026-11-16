@@ -105,8 +105,14 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
   }
   const existing = readDrawingAnnotations(store, view);
   const key = (item: Item) => `${item.kind}:${item.value.id}`;
-  const current = new Set(items.map(key));
-  const replaceable = existing.filter(({ identity, saved }) => input.absorbed?.has(identity) || current.has(key(saved.item)));
+  const current = new Map<string, DrawnSectionPlane[]>();
+  for (const item of items) {
+    const planes = current.get(key(item)) ?? [];
+    planes.push(item.kind === 'dimension' ? item.value.plane ?? input.plane : input.plane);
+    current.set(key(item), planes);
+  }
+  const replaceable = existing.filter(({ identity, saved }) => input.absorbed?.has(identity)
+    || current.get(key(saved.item))?.some(plane => isDimensionOnPlane({ plane: saved.plane }, plane)));
   if (!items.length && !replaceable.length && !legacy.size) return view;
   // Preserve native entity identities and geometry when reopening unchanged IFC.
   if (!legacy.size && JSON.stringify(replaceable.map(({ saved }) => saved.item)) === JSON.stringify(items)

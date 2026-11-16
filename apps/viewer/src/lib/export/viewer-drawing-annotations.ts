@@ -17,8 +17,12 @@ export function viewerDrawingAnnotations(modelId: string, store: IfcDataStore, v
   if (modelId !== owner) return view;
   const plane = state.drawing2DPlane;
   if (!plane) return view;
-  const storeyId = state.activeStorey?.modelId === modelId ? toSourceId(state.activeStorey.expressId)
-    : iterateEffectiveEntityIds(store, view, ['IFCBUILDINGSTOREY']).next().value?.expressId;
+  let requestedStorey: number | undefined;
+  if (state.activeStorey?.modelId === modelId) {
+    try { requestedStorey = toSourceId(state.activeStorey.expressId); }
+    catch (error) { console.warn('Cannot map active drawing storey; using source storey', error); }
+  }
+  const storeyId = requestedStorey ?? iterateEffectiveEntityIds(store, view, ['IFCBUILDINGSTOREY']).next().value?.expressId;
   if (!storeyId) return view;
   const offset = viewerToIfcAxes(totalYupOffset(state.models.get(modelId)?.geometryResult?.coordinateInfo ?? state.geometryResult?.coordinateInfo));
   return prepareDrawingAnnotations(store, view, {

@@ -126,3 +126,22 @@ for (const failure of ['import', 'load'] as const) {
     assert.equal(useViewerStore.getState().siteContextAbort, null);
   });
 }
+
+
+test('removing the context anchor hides its note while context models stay loaded (#10481 r4588747577)', async () => {
+  const a = swissModel('anchor-uuid', 2_600_000);
+  const b = swissModel('B', 2_610_000);
+  const context = fixtureModel('ctx-terrain');
+  const categories = { terrain: { status: 'done' as const, modelId: context.id, anchorModelId: a.id, issues: [], attribution: [] } };
+  useViewerStore.setState({ models: new Map([[a.id, a], [b.id, b], [context.id, context]]), activeModelId: b.id,
+    anchorModelIdOverride: null, siteContextCategories: categories });
+  const host = render(<SiteContextSection modelId={b.id} />);
+  const note = () => host.querySelector('[data-testid="site-context-other-anchor"]');
+  await waitFor(() => !!note(), 'note for the loaded anchor');
+  assert.ok(note()!.textContent?.includes(a.name));
+  act(() => { useViewerStore.getState().removeModel(a.id); });
+  await waitFor(() => host.textContent?.includes('Load site context') === true, 'model B site context section');
+  assert.equal(note(), null, 'no raw UUID for a removed anchor');
+  assert.equal(useViewerStore.getState().models.get(context.id), context, 'context model remains in the scene');
+  assert.equal(useViewerStore.getState().siteContextCategories.terrain?.status, 'done');
+});

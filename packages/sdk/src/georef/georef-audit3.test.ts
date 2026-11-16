@@ -150,3 +150,13 @@ describe('input: a nested value that is not an object is refused, not dropped', 
     expect(refusal(() => m.bim.georef.set({ ...SET, MapConversion: value as never, replace: true })).code).toBe('INVALID_INPUT');
   });
 });
+
+describe('text edits carry no marker characters (review finding on the in-band marker)', () => {
+  it('an in-place Description of `CH1903+` is exactly that on the STEP line and after a re-parse', async () => {
+    const m = await open('IFC4', GEO);
+    m.bim.georef.update({ ProjectedCRS: { Description: 'CH1903+' } });
+    expect(String(m.bim.export.ifc())).toMatch(/IFCPROJECTEDCRS\('EPSG:2056','CH1903\+',/);
+    expect((await reparsed(m.bim)).ProjectedCRS?.Description).toBe('CH1903+');
+    await trueOrUntrusted(m.bim);
+  });
+});

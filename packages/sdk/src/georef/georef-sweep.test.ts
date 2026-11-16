@@ -175,7 +175,6 @@ describe.each([
       const result = await holds(fixture, cell);
       if (result !== true) failures.push(`${cell.label}: ${result}`);
     }
-    if (process.env.SWEEP_OUT) (await import('node:fs')).appendFileSync(process.env.SWEEP_OUT, `## ${_name}\n${failures.join('\n')}\n`);
     expect(failures).toEqual([]);
   }, 600000);
 });

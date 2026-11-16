@@ -542,6 +542,7 @@ export interface FederatedModel extends ModelLoadReportFields {
   name: string; // Display name (filename by default, user can rename)
   sourceFingerprint?: string; // Durable identity for persisted model filters.
   sourceContentHash?: string; // Full-content identity for workspace placements.
+  sourceReadRefused?: boolean; // Explicit pre-acquisition refusal, distinct from a published load error (#10264).
   /** Parsed IFC data model */
   ifcDataStore: IfcDataStore | null;
   /** Non-IFC source semantics, kept outside the IFC data store by design; `terrainImagery` is imagery draped on it (#5942), provenance only. */
@@ -566,12 +567,9 @@ export interface FederatedModel extends ModelLoadReportFields {
   visible: boolean;
   /** UI collapse state in hierarchy panel */
   collapsed: boolean;
-  /** IFC schema version */
-  schemaVersion: SchemaVersion;
-  /** Load timestamp */
-  loadedAt: number;
-  /** Original file size in bytes */
-  fileSize: number;
+  schemaVersion: SchemaVersion; // IFC schema version
+  loadedAt: number; // Load timestamp
+  fileSize: number; // Original file size in bytes
   /** Original source handle used for explicit reload/reposition operations. */
   sourceFile?: ModelSourceFile;
   /**

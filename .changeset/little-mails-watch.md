@@ -13,3 +13,5 @@ Add a constant-time relative creation-order query so bounded relationship lookup
 Index requested positional reference slots with an unresolved bucket, and narrow opening host/fill reads while preserving conservative malformed-host refusals.
 
 Maintain ID-only storey planning inventories across geometry edits and unchanged atomic drafts. Plan exceptional placements and unequal-delta attachment groups in detail while retaining the complete moved product list, refusal and undo contracts. Expose a bounded, disposable entity-change cursor for derived inventories.
+
+Keep read-only derived inventories request-scoped so hierarchy dependency tracking stays correct without retaining mutation subscriptions for temporary views.

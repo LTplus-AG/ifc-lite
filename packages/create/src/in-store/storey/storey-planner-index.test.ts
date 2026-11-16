@@ -21,11 +21,11 @@ it('#8452 bounded inventory planning agrees with a full classification oracle th
 });
 it('#8452 invalid inventory batches publish no partial deletion and preserve unresolved records', () => {
   const index = new StoreyPlannerIndex();
-  const product = (id: number, placement: number | null): PlannerProduct => ({ id, storey: 9, placement, attachmentTargets: [], exceptional: false });
+  const product = (id: number, placement: number | null): PlannerProduct => ({ id, storey: 9, placement, attachmentTargets: id === 1 ? [99] : [], exceptional: false });
   index.apply(0, 1, [[1, product(1, 10)], [2, product(2, 20)], [3, product(3, 10)], [4, product(4, null)]]);
-  expect([...index.heightCandidates(new Map())].sort()).toEqual([4]);
+  expect([...index.heightCandidates(new Map([[99, 1]]))].sort()).toEqual([1,4]);
   expect(() => index.apply(1, 2, [[1, null], [2, product(99, 20)]])).toThrow(/mismatch/);
-  expect([...index.heightCandidates(new Map())].sort()).toEqual([4]);
+  expect([...index.heightCandidates(new Map([[99, 1]]))].sort()).toEqual([1,4]);
 });
 
 it('#8452 floor-height inventory skips equal-delta attachment groups without rereading product payloads', () => {

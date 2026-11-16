@@ -11,7 +11,7 @@ export interface SpatialGraph {
 }
 interface Entry {
   readonly store: IfcDataStore;
-  readonly changes: EntityChangeTracker;
+  readonly changes?: EntityChangeTracker;
   readonly deleted: Set<number>;
   graph?: SpatialGraph;
   signature?: string;
@@ -30,8 +30,13 @@ const entries = new WeakMap<MutablePropertyView, Entry>();
 export function storeyInventoryCache(
   store: IfcDataStore, view: MutablePropertyView, reader: AnchorEntityReader, readParent: (view: MutablePropertyView) => void,
 ): Entry {
+  // Read-tracking proxies intentionally omit subscription capabilities: every
+  // point read must reach their dependency recorder, without a retained cursor.
+  if (typeof view.trackEntityChanges !== 'function') return {
+    store, deleted: new Set(view.getTombstones()), revision: view.getMutationRevision(), dirty: new Set(),
+  };
   let entry = entries.get(view);
-  if (entry?.store !== store) { entry?.changes.dispose(); entry = undefined; }
+  if (entry?.store !== store) { entry?.changes?.dispose(); entry = undefined; }
   if (!entry) {
     const changes = view.trackEntityChanges();
     entry = { store, changes, deleted: new Set(view.getTombstones()), revision: view.getMutationRevision(), dirty: new Set() };
@@ -52,7 +57,7 @@ export function storeyInventoryCache(
     entry.graph = undefined; entry.planner = undefined; entry.dirty.clear();
   }
   entry.sourceSignature = sourceSignature;
-  const dirty = entry.changes.take();
+  const dirty = entry.changes?.take() ?? null;
   if (dirty === null) {
     entry.graph = undefined; entry.planner = undefined; entry.dirty.clear(); entry.deleted.clear();
     for (const id of view.getTombstones()) entry.deleted.add(id);
@@ -77,7 +82,7 @@ export function storeyInventoryCache(
     }
   }
   // A changed detached draft must never mutate the parent's shared inventory.
-  if (dirty?.size && entry.changes.origin) entry.planner = undefined;
+  if (dirty?.size && entry.changes?.origin) entry.planner = undefined;
   if (!entry.planner) entry.dirty.clear();
   entry.revision = view.getMutationRevision();
   return entry;

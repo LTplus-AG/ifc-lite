@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from '../resolve-anchor.js';
 import { parse, session, THIRD_PARTY } from '../__test__/storey-fixtures.oracle.js';
@@ -8,6 +8,8 @@ import { planStoreyLevelEdit } from './storey-level-plan.js';
 import { storeyPlanningWork } from './storey-planning-diagnostics.js';
 import { applyStoreyLevelEdit } from './storey-level-apply.js';
 import { homeStoreyOf } from './storey-attachment.js';
+
+afterEach(() => vi.restoreAllMocks());
 
 it('#8452 a draft edited before its first inventory read cannot borrow the parent spatial graph', async () => {
   const s = session(await parse(THIRD_PARTY));

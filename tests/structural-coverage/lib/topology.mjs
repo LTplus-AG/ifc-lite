@@ -7,7 +7,9 @@
  * oracle of the member render probe. Like `step.mjs` it shares no code with
  * the product. It follows the item's `IfcTopologyRepresentation` (vertex,
  * edge, oriented edge, face bound) through its `IfcLocalPlacement` chain into
- * IFC world coordinates, in metres, Z up.
+ * IFC world coordinates, in metres, Z up. A topology representation reached
+ * through an `IfcMappedItem` counts too, placed by its map's `MappingOrigin`
+ * and then the item's `MappingTarget` (the order IfcOpenShell composes).
  *
  * Only the topology vertices are returned, not curve interiors: a drawn axis
  * or surface has to reach every one of them.
@@ -43,11 +45,14 @@ export function lengthScale(step) {
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const scaled = (v, k) => v.map((c) => c * k);
 const unit = (a) => { const l = Math.hypot(...a); return l > 1e-12 ? a.map((c) => c / l) : null; };
 /** A point in `f`'s axes, in its parent's. */
 const apply = (f, p) => [0, 1, 2].map((i) => f.o[i] + f.x[i] * p[0] + f.y[i] * p[1] + f.z[i] * p[2]);
 const rotate = (f, v) => [0, 1, 2].map((i) => f.x[i] * v[0] + f.y[i] * v[1] + f.z[i] * v[2]);
 const IDENTITY = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+/** `outer` after `inner`: a point in `inner`'s axes, in `outer`'s parent's. */
+const compose = (outer, inner) => ({ o: apply(outer, inner.o), x: rotate(outer, inner.x), y: rotate(outer, inner.y), z: rotate(outer, inner.z) });
 
 function coords(step, id) {
   const r = step.get(id);
@@ -83,7 +88,7 @@ function placementFrame(step, id) {
   for (const r of chain.reverse()) {
     const local = axisPlacement(step, refOf(r.args[1]));
     if (!local) return null;
-    frame = { o: apply(frame, local.o), x: rotate(frame, local.x), y: rotate(frame, local.y), z: rotate(frame, local.z) };
+    frame = compose(frame, local);
   }
   return frame;
 }
@@ -109,6 +114,48 @@ function topologyVertices(step, id, depth = 0) {
 }
 
 /**
+ * `IfcCartesianTransformationOperator3D` (or its non-uniform subtype) as a
+ * frame with scaled axes, by the schema's `BaseAxis`: z = Axis3, x = Axis1
+ * made normal to z, y = Axis2 made normal to both; null when unreadable.
+ */
+function transformOperator(step, id) {
+  const r = step.get(id);
+  if (r?.type !== 'IFCCARTESIANTRANSFORMATIONOPERATOR3D' && r?.type !== 'IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM') return null;
+  const o = coords(step, refOf(r.args[2]));
+  if (!o) return null;
+  const z = unit(coords(step, refOf(r.args[4])) ?? [0, 0, 1]);
+  const a1 = coords(step, refOf(r.args[0])) ?? (z && Math.abs(z[0]) > 0.9 ? [0, 1, 0] : [1, 0, 0]);
+  const x = z && unit(sub(a1, scaled(z, dot(a1, z))));
+  const a2 = coords(step, refOf(r.args[1])) ?? (x && cross(z, x));
+  const y = x && a2 && unit(sub(sub(a2, scaled(z, dot(a2, z))), scaled(x, dot(a2, x))));
+  if (!y) return null;
+  const s = numberOf(r.args[3]) ?? 1;
+  const s2 = numberOf(r.args[5]) ?? s;
+  const s3 = numberOf(r.args[6]) ?? s;
+  return { o, x: scaled(x, s), y: scaled(y, s2), z: scaled(z, s3) };
+}
+
+/**
+ * The topology vertices of one representation, in its product's axes: its
+ * own items when it is an `IfcTopologyRepresentation`, and those of every
+ * mapped item's source representation. Bounded: maps nest at most 8 deep.
+ */
+function representationVertices(step, rep, depth = 0) {
+  if (!rep || depth > 8) return [];
+  const topology = rep.type === 'IFCTOPOLOGYREPRESENTATION';
+  return (rep.args[3] ?? []).flatMap((ref) => {
+    const item = step.get(refOf(ref));
+    if (item?.type !== 'IFCMAPPEDITEM') return topology ? topologyVertices(step, refOf(ref)) : [];
+    const map = step.get(refOf(item.args[0]));
+    const origin = map?.type === 'IFCREPRESENTATIONMAP' && axisPlacement(step, refOf(map.args[0]));
+    const target = transformOperator(step, refOf(item.args[1]));
+    if (!origin || !target) return [];
+    const frame = compose(target, origin);
+    return representationVertices(step, step.get(refOf(map.args[1])), depth + 1).map((p) => apply(frame, p));
+  });
+}
+
+/**
  * The topology vertices of a product, in IFC world metres. Empty when the file
  * gives it no topology representation, or a placement this oracle does not follow.
  */
@@ -118,12 +165,7 @@ export function topologyPoints(step, productId, scale = lengthScale(step)) {
   const frame = placementId === undefined ? IDENTITY : placementFrame(step, placementId);
   const shape = step.get(product?.args[6]);
   if (!frame || !shape) return [];
-  const points = [];
-  for (const repRef of shape.args[2] ?? []) {
-    const rep = step.get(repRef);
-    if (rep?.type !== 'IFCTOPOLOGYREPRESENTATION') continue;
-    for (const item of rep.args[3] ?? []) points.push(...topologyVertices(step, refOf(item)));
-  }
+  const points = (shape.args[2] ?? []).flatMap((repRef) => representationVertices(step, step.get(repRef)));
   return points.map((p) => apply(frame, p).map((c) => c * scale));
 }
 

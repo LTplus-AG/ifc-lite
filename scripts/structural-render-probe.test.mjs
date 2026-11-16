@@ -58,6 +58,40 @@ test('#9668 topology oracle: placement and the project length unit, read from th
   assert.deepEqual(topologyPoints(mm, 30).map((p) => p.map((c) => +c.toFixed(9))), [[0.001, 0.002, 0.003], [0.005, 0.002, 0.003]]);
 });
 
+/**
+ * `MEMBER`, but its topology is an `IfcMappedItem` (as IfcOpenShell writes,
+ * e.g. analysis-models cantilever_01): the map's edge (0, 0, 0)-(4, 0, 0)
+ * sits at MappingOrigin (1, 0, 0); MappingTarget turns x onto y, scales by 2
+ * and moves by (10, 0, 0); the placement then moves by (1, 2, 3). A body map
+ * of the same edge is not topology.
+ */
+const MAPPED_MEMBER = `#1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);#2=IFCUNITASSIGNMENT((#1));#3=IFCPROJECT('p',$,$,$,$,$,$,$,#2);
+#10=IFCCARTESIANPOINT((0.,0.,0.));#11=IFCCARTESIANPOINT((4.,0.,0.));#12=IFCVERTEXPOINT(#10);#13=IFCVERTEXPOINT(#11);#14=IFCEDGE(#12,#13);
+#15=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#14));
+#40=IFCCARTESIANPOINT((1.,0.,0.));#41=IFCAXIS2PLACEMENT3D(#40,$,$);#42=IFCREPRESENTATIONMAP(#41,#15);
+#43=IFCDIRECTION((0.,1.,0.));#44=IFCDIRECTION((0.,0.,1.));#45=IFCCARTESIANPOINT((10.,0.,0.));
+#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#43,$,#45,2.,#44);#47=IFCMAPPEDITEM(#42,#46);
+#48=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#47));
+#50=IFCPOLYLINE((#10,#11));#51=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',(#50));#52=IFCREPRESENTATIONMAP(#41,#51);
+#53=IFCMAPPEDITEM(#52,#46);#54=IFCSHAPEREPRESENTATION($,'Axis','MappedRepresentation',(#53));
+#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#48));
+#20=IFCCARTESIANPOINT((1.,2.,3.));#21=IFCAXIS2PLACEMENT3D(#20,$,$);#22=IFCLOCALPLACEMENT($,#21);
+#30=IFCSTRUCTURALCURVEMEMBER('m',$,$,$,$,#22,#16,.RIGID_JOINED_MEMBER.,$);`;
+
+test('#9668 topology oracle: follows a mapped topology representation, origin then target', async () => {
+  const step = ifc4(MAPPED_MEMBER);
+  assert.deepEqual(topologyPoints(step, 30), [[11, 4, 3], [11, 12, 3]]);
+  // A mapped shape representation that holds no topology gives no vertices.
+  assert.deepEqual(topologyPoints(ifc4(MAPPED_MEMBER.replace('(#54,#48)', '(#54)')), 30), []);
+  // The member is checked against the mapped axis: drawn there passes, drawn on the unmapped edge fails.
+  const id = 'IFC4/IfcStructuralCurveMember';
+  const file = { path: 'mapped.ifc', schema: 'IFC4', step };
+  const run = (drawn) => score(renderMembers, id, file, [['meshes:mapped.ifc', drawn]]);
+  const good = await run(meshesOf([ribbon(30, [11, 4, 3], [11, 12, 3])]));
+  assert.equal(good.status, 'pass', good.reason);
+  assert.equal((await run(meshesOf([ribbon(30, [1, 2, 3], [5, 2, 3])]))).status, 'fail');
+});
+
 test('#9668 member render: passes only for a mesh on the file\'s axis', async () => {
   const id = 'IFC4/IfcStructuralCurveMember';
   const file = { path: 'member.ifc', schema: 'IFC4', step: ifc4(MEMBER()) };

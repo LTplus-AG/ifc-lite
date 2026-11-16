@@ -447,6 +447,12 @@ A successful result says **dispatched**, not completed. Opening a clash, Flow, I
 
 Images need a bridge that forwards them: it says so with `features: ["image-content"]` in its `welcome`. Against an older bridge the tab sends a text line asking for an update instead (`npx @ifc-lite/mcp@latest --bridge`), so mixed versions keep working. A result too large for the bridge drops its image with a note rather than failing the call.
 
+### Opening a model
+
+`viewer_open_model` lets the agent open a model itself and waits until it has loaded. Pass `sample` for a model bundled with the viewer (`demo`, `demo-rev-b`, `hello-wall`, `infra-bridge`, `layers-demo`) or `url` for an `https` IFC, IFCX, glTF/GLB or point-cloud file. The tab fetches the URL without credentials, so the server must allow cross-origin requests. `mode` is `replace` or `add` (federate); it may be omitted only when nothing is loaded. The result lists every open model with its `model_id`, so the agent can go straight to `query_entities`.
+
+It needs the commands-and-edits grant. Replacing models that have unexported edits is refused with `STATE_CHANGED`, since the agent cannot answer the confirmation a user would get; use `mode: "add"` or ask the user to export first. Loads use the same path as the welcome card and the command palette.
+
 For the proposed path from palette entry points to complete panel and tool workflows, see the [viewer automation plan](../architecture/viewer-automation-plan.md).
 
 ## Wiring it into a client

@@ -103,8 +103,9 @@ export class StructuralDiagnostics {
   rewrite(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null | undefined {
     const cause = this.carriers.noteCause(id, entity, args, withheld);
     const held = cause ? ['CausedBy'] : this.thickness.note(id, entity, args, withheld);
-    const carried: ReadonlySet<string> = held.length ? new Set(held) : NONE;
+    let carried = NONE;
     if (held.length) {
+      carried = new Set(held);
       this.record(cause ?? THICKNESS_WRITTEN);
       this.carried.set(id, carried);
     }

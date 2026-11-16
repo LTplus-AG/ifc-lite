@@ -275,7 +275,7 @@ ${geometry}
     expect(up.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
   });
 
-  it('writes no property set for an unset location where the representation has no single aspect', async () => {
+  it('writes no property set for an unset location on a member without representation', async () => {
     const up = await convert(IFC2X3.replace(',#15,.SHELL.', ',$,.SHELL.').replace('(0.25,0.3),#17)', '(0.25,0.3),$)'), 'IFC4');
     expect(records(up.step, 'IFCPROPERTYSET')).toEqual([]);
     expect(up.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');

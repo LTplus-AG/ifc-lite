@@ -53,10 +53,10 @@ function numberProps(names: string[]): Record<string, { type: 'number' }> {
 export const georeferencingWriteTool: Tool = {
   name: 'georeferencing_write',
   description: [
-    'Set, update or remove a model\'s georeferencing, or write its IfcSite position. IFC4/IFC4X3 write IfcProjectedCRS + IfcMapConversion (IFC4X3 with FactorX/Y/Z: IfcMapConversionScaled); IFC2X3 writes the ePSet_MapConversion/ePSet_ProjectedCRS property sets on the IfcProject (sets found on IfcSite move there on update).',
+    'Set, update or remove a model\'s georeferencing, or write its IfcSite position. IFC4/IFC4X3 write IfcProjectedCRS + IfcMapConversion (IFC4X3 with FactorX/Y/Z: IfcMapConversionScaled); IFC2X3 writes the ePSet_MapConversion/ePSet_ProjectedCRS property sets on IfcSite (updates preserve an existing host).',
     'action "site" writes Site.RefLatitude/RefLongitude (decimal degrees, WGS84) and RefElevation (project length units) on the IfcSite (Site.siteId when there are several).',
     'set needs ProjectedCRS.Name (or epsg), ProjectedCRS.MapUnit (METRE with any SI prefix, FOOT, US SURVEY FOOT), and MapConversion.Eastings/Northings/OrthogonalHeight in map units; rotation as rotationDegrees or XAxisAbscissa+XAxisOrdinate.',
-    'Fails closed with the missing input named: nothing is guessed, an existing georeferencing is replaced only with replace=true, a model without an IfcGeometricRepresentationContext (IFC2X3: IfcProject) is refused, contradicting values are refused. Saved by export_ifc / model_save.',
+    'Fails closed with the missing input named: nothing is guessed, an existing georeferencing is replaced only with replace=true, a model without an IfcGeometricRepresentationContext (IFC2X3: IfcSite) is refused, contradicting values are refused. Saved by export_ifc / model_save.',
   ].join(' '),
   scope: 'mutate',
   inputSchema: {

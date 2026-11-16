@@ -47,8 +47,8 @@ export const GEOREF_HELP = `
     --factor-x X --factor-y Y --factor-z Z IFC4X3 / IFC4X3_ADD2 files only: writes IfcMapConversionScaled
 
   IFC2X3 has no such entities: set/update/remove write the ePSet_MapConversion and
-  ePSet_ProjectedCRS property sets on the IfcProject (buildingSMART user guide; IfcOpenShell
-  reads them only there). Sets found on IfcSite are read, and an update moves them to IfcProject.
+  ePSet_ProjectedCRS property sets on IfcSite; updates preserve an existing host.
+  check reports interoperability concerns when the convention sets are not on IfcProject.
 
   check: what is wrong with the georeferencing (finding codes, severity, suggested fixes)
   and the Level of Georeferencing found. Exit 1 when a finding at or above --fail-on
@@ -63,7 +63,7 @@ export const GEOREF_HELP = `
     --accept-approximate-datum   allow a site position derived through a Helmert approximation
 
   Refusals (exit 1, nothing written): a missing CRS, unit or offset; an unsupported unit;
-  no IfcGeometricRepresentationContext (IFC2X3: no IfcProject); an existing georeferencing
+  no IfcGeometricRepresentationContext (IFC2X3: no IfcSite); an existing georeferencing
   without --replace; a rotation angle and vector that disagree; a CRS rename by update that
   would keep the old datum or unit; factors outside IFC4X3. Every write is re-read from the
   written bytes before the file is saved.

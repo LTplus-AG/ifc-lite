@@ -6795,7 +6795,8 @@
     "egm96Undulation: function",
     "epsgIoDefinitionLoader: function",
     "projCdnGridLoader: function",
-    "resolveCrs: function"
+    "resolveCrs: function",
+    "wellKnownCrsCode: function"
   ],
   "@ifc-lite/geo/proj4": [
     "CrsDescriptor: interface",

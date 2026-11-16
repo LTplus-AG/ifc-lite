@@ -6,6 +6,7 @@
 
 import type { CoordinateInfo, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { wellKnownCrsCode } from '@ifc-lite/geo';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale.js';
 import { effectiveMapConversionForGeometry } from './map-absolute.js';
 
@@ -17,23 +18,47 @@ export interface IfcSpatialReferenceInput {
 }
 
 /**
- * Extract a canonical CRS identifier only when IFC's declared Name is itself
- * an EPSG identifier. Arbitrary display names remain source metadata: treating
- * matching labels as a CRS match was the old IFC-only federation seam.
+ * A canonical CRS identifier for IFC's declared Name: a literal `EPSG:nnnn`,
+ * or one of the explicit authoring-tool aliases `@ifc-lite/geo` lists
+ * ("CH1903+ / LV95", "LV95", "Amersfoort / RD New", ...). Only exact
+ * listed names count, never a coordinate magnitude or a fuzzy match, and an
+ * alias resolves as `assumed` so the UI can say the CRS was taken from its
+ * name. Other display names remain source metadata.
  */
-function declaredEpsg(name: string | undefined): string | undefined {
-  const match = /^EPSG\s*:\s*(\d+)$/i.exec(name?.trim() ?? '');
-  return match ? `EPSG:${match[1]}` : undefined;
+export function declaredEpsg(name: string | undefined): { id: string; fromName: boolean } | undefined {
+  const trimmed = name?.trim() ?? '';
+  const match = /^EPSG\s*:\s*(\d+)$/i.exec(trimmed);
+  if (match) return { id: `EPSG:${match[1]}`, fromName: false };
+  const alias = trimmed ? wellKnownCrsCode(trimmed) : undefined;
+  // A datum-only geographic label ("WGS 84", "ETRS89") names no projection:
+  // as an IfcProjectedCRS it would turn metre offsets into degrees.
+  return alias && !GEOGRAPHIC_ALIAS_CODES.has(alias) ? { id: `EPSG:${alias}`, fromName: true } : undefined;
 }
 
-/** Exact, authoritative vertical-datum aliases commonly written by IFC tools. */
+const GEOGRAPHIC_ALIAS_CODES = new Set(['4326', '4269', '4267', '4258']);
+
+/** The EPSG id a CRS Name was assumed to mean, when it is a listed alias rather than a literal `EPSG:nnnn`. */
+export function crsAssumedFromName(name: string | undefined): string | undefined {
+  const declared = declaredEpsg(name);
+  return declared?.fromName ? declared.id : undefined;
+}
+
+/** Exact, authoritative vertical-datum names commonly written by IFC tools, keyed upper-case. */
+const VERTICAL_DATUM_ALIASES: Record<string, string> = {
+  'NAVD88': 'EPSG:5703', 'NORTH AMERICAN VERTICAL DATUM 1988': 'EPSG:5703',
+  'NAP': 'EPSG:5709', 'NORMAAL AMSTERDAMS PEIL': 'EPSG:5709',
+  // Switzerland: LN02 (levelling network 1902, what swissALTI3D and the
+  // cadastral survey use) and LHN95 (the 1995 orthometric height network).
+  // Not interchangeable: they differ by decimetres and more in the Alps.
+  'LN02': 'EPSG:5728', 'LN 02': 'EPSG:5728', 'LN02 HEIGHT': 'EPSG:5728', 'LANDESNIVELLEMENT 1902': 'EPSG:5728',
+  'LHN95': 'EPSG:5729', 'LHN 95': 'EPSG:5729', 'LHN95 HEIGHT': 'EPSG:5729',
+  'LANDESHOEHENNETZ 1995': 'EPSG:5729', 'LANDESHÖHENNETZ 1995': 'EPSG:5729',
+};
+
 function declaredVerticalEpsg(name: string | undefined): string | undefined {
-  const epsg = declaredEpsg(name);
-  if (epsg) return epsg;
-  const normalized = name?.trim().toUpperCase();
-  if (normalized === 'NAVD88' || normalized === 'NORTH AMERICAN VERTICAL DATUM 1988') return 'EPSG:5703';
-  if (normalized === 'NAP' || normalized === 'NORMAAL AMSTERDAMS PEIL') return 'EPSG:5709';
-  return undefined;
+  const match = /^EPSG\s*:\s*(\d+)$/i.exec(name?.trim() ?? '');
+  if (match) return `EPSG:${match[1]}`;
+  return VERTICAL_DATUM_ALIASES[name?.trim().toUpperCase() ?? ''];
 }
 
 /**
@@ -58,7 +83,7 @@ export function spatialReferenceFromIfc(input: IfcSpatialReferenceInput): ModelS
       horizontalUnitToMetres: 1,
       verticalUnitToMetres: 1,
     } as const),
-    ...(epsg ? { horizontal: Object.freeze({ id: epsg, provenance: Object.freeze({ source: 'IfcProjectedCRS.Name' }) }) } : {}),
+    ...(epsg ? { horizontal: Object.freeze({ id: epsg.id, provenance: Object.freeze({ source: epsg.fromName ? 'IfcProjectedCRS.Name (well-known name)' : 'IfcProjectedCRS.Name' }) }) } : {}),
     ...(verticalEpsg ? { vertical: Object.freeze({ id: verticalEpsg, provenance: Object.freeze({ source: 'IfcProjectedCRS.VerticalDatum' }) }) } : {}),
     localToProjected: Object.freeze({
       kind: 'local-projected-affine',
@@ -71,14 +96,26 @@ export function spatialReferenceFromIfc(input: IfcSpatialReferenceInput): ModelS
       scaleY: scale.y,
       scaleZ: scale.z,
     } as const),
-    confidence: epsg ? 'declared' : 'unknown',
+    confidence: epsg ? (epsg.fromName ? 'assumed' : 'declared') : 'unknown',
     sourceMetadata: Object.freeze({
       format: 'ifc',
       mapConversionExpressId: input.mapConversion.id,
       projectedCrsExpressId: input.projectedCRS.id,
       mapUnitToMetres: mapUnitScale,
+      ...(input.projectedCRS.mapUnit ? { mapUnit: input.projectedCRS.mapUnit } : {}),
       ...(input.projectedCRS.name ? { projectedCrsName: input.projectedCRS.name } : {}),
       ...(input.projectedCRS.verticalDatum ? { verticalDatum: input.projectedCRS.verticalDatum } : {}),
     }),
   });
+}
+
+/**
+ * True when the reference's IfcProjectedCRS.MapUnit reads as METRE at scale 1.
+ * `@ifc-lite/parser` gives an unresolvable MapUnit exactly that answer, so a
+ * declared metre and an unreadable unit cannot be told apart: callers say the
+ * map unit is assumed to be metres.
+ */
+export function mapUnitAssumedMetres(reference: ModelSpatialReference): boolean {
+  const meta = reference.sourceMetadata;
+  return meta?.format === 'ifc' && meta.mapUnit === 'METRE' && meta.mapUnitToMetres === 1;
 }

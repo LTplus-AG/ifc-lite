@@ -296,6 +296,9 @@ importers:
       '@ifc-lite/geo':
         specifier: workspace:^
         version: link:../../packages/geo
+      '@ifc-lite/geodata-ch':
+        specifier: workspace:^
+        version: link:../../packages/geodata-ch
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -368,6 +371,9 @@ importers:
       '@ifc-lite/server-client':
         specifier: workspace:^
         version: link:../../packages/server-client
+      '@ifc-lite/site-context':
+        specifier: workspace:^
+        version: link:../../packages/site-context
       '@ifc-lite/solar':
         specifier: workspace:^
         version: link:../../packages/solar
@@ -392,6 +398,9 @@ importers:
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../../packages/spatial
+      '@ifc-lite/tiles3d':
+        specifier: workspace:^
+        version: link:../../packages/tiles3d
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../../packages/wasm
@@ -675,6 +684,9 @@ importers:
       '@ifc-lite/geo':
         specifier: workspace:^
         version: link:../../packages/geo
+      '@ifc-lite/geodata-ch':
+        specifier: workspace:^
+        version: link:../../packages/geodata-ch
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -747,6 +759,9 @@ importers:
       '@ifc-lite/server-client':
         specifier: workspace:^
         version: link:../../packages/server-client
+      '@ifc-lite/site-context':
+        specifier: workspace:^
+        version: link:../../packages/site-context
       '@ifc-lite/solar':
         specifier: workspace:^
         version: link:../../packages/solar
@@ -771,6 +786,9 @@ importers:
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../../packages/spatial
+      '@ifc-lite/tiles3d':
+        specifier: workspace:^
+        version: link:../../packages/tiles3d
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../../packages/wasm

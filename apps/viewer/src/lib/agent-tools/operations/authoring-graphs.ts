@@ -16,7 +16,7 @@ const previewOutput = { type: 'object', properties: { token: { type: 'string' },
 const meta = (id: string, owner: string, description: string, write = false) => ({ id, owner, description,
   effects: write ? ['model'] as const : ['read'] as const, capability: write ? 'commands-and-edits' as const : 'read' as const,
   implementation: 'native-store' as const, policy: write ? { model: 'native-reviewed' as const } : undefined, outputSchema: jsonOutput });
-interface Review { preview: object; validate(): void; commit(): ModelChangeReceipt; dispose?(): void }
+interface Review { room?: import('@/lib/actions/room-review').RoomReview; preview: object; validate(): void; commit(): ModelChangeReceipt; dispose?(): void }
 interface Candidate { store: OperationContext['model']['store']; modelId: string; review?: Review; receipt?: ModelChangeReceipt }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(c: OperationContext) {
@@ -56,7 +56,7 @@ async function prepare(kind: 'group' | 'structural' | 'zone' | 'room', json: str
       const [{ parseRoomProposal }, { prepareRoomReview }, { commitReviewedRoom }] = await Promise.all([import('@/lib/actions/room-command-proposal'), import('@/lib/actions/room-review'), import('@/lib/actions/room-receipt')]);
       const proposal = parseRoomProposal(json); proposalModel(proposal, c);
       const review = await prepareRoomReview(proposal, c.signal ?? new AbortController().signal);
-      return { preview: { proposal: review.proposal, snapshot: review.snapshot, result: review.prepared.result }, validate: review.validate,
+      return { room: review, preview: { proposal: review.proposal, snapshot: review.snapshot, result: review.prepared.result }, validate: review.validate,
         commit: () => commitReviewedRoom(review, 'viewer-agent').receipt, dispose: review.dispose };
     }
   }
@@ -103,3 +103,10 @@ export const graphAuthoringOperations = [
     entry.review?.dispose?.(); owned(c).delete(i.token); return output({ discarded: true });
   }),
 ];
+
+/** Capture only the actual live prepared RoomReview owned by this host. */
+export async function captureRoomGroundingForCandidate(host:ToolHost,token:string,modelId:string){
+  const candidate=hosts.get(host)?.get(token),model=useViewerStore.getState().models.get(modelId);
+  if(!candidate||candidate.modelId!==modelId||candidate.store!==model?.ifcDataStore||!candidate.review?.room||candidate.receipt)throw new Error('Unknown or consumed native Room candidate for this host/model.');
+  candidate.review.validate();const {captureRoomGrounding}=await import('@/lib/actions/room-review');candidate.review.validate();return captureRoomGrounding(candidate.review.room);
+}

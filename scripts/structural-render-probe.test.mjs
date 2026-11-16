@@ -137,7 +137,7 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
     deep += `#${70 + 2 * i}=IFCREPRESENTATIONMAP(#41,${from});#${70 + 2 * i + 1}=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#${90 + i}));#${90 + i}=IFCMAPPEDITEM(#${70 + 2 * i},#46);`;
   }
   assert.equal(topologyPoints(ifc4(deep.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#86,#46)')), 30).length, 4);
-  // Seventeen nested maps are followed: only cycles and the vertex cap bound the walk.
+  // Seventeen nested maps are followed: only cycles and the mapped-vertex cap bound the walk.
   let deeper = direct;
   for (let i = 0; i < 17; i += 1) {
     const from = i === 0 ? '#15' : `#${200 + 2 * (i - 1) + 1}`;
@@ -180,21 +180,19 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
       + `#42=IFCREPRESENTATIONMAP(#41,#601);#601=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${edges}));`;
     assert.equal(topologyPoints(ifc4(big.replace("#42=IFCREPRESENTATIONMAP(#41,#15);", '')), 30), null, order);
   }
-  // Maps nested past the stack bound are unplaced, not a crash.
+  // 1200 nested maps: no depth limit and no stack overflow, and the same answer in either query order.
   let chain = direct;
   for (let i = 0; i < 1200; i += 1) {
     const from = i === 0 ? '#15' : `#${20000 + 3 * (i - 1) + 2}`;
     chain += `#${20000 + 3 * i}=IFCREPRESENTATIONMAP(#41,${from});#${20000 + 3 * i + 1}=IFCMAPPEDITEM(#${20000 + 3 * i},#46);#${20000 + 3 * i + 2}=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#${20000 + 3 * i + 1}));`;
   }
-  const chainStep = ifc4(chain.replace('#47=IFCMAPPEDITEM(#42,#46)', `#47=IFCMAPPEDITEM(#${20000 + 3 * 1199},#46)`)
-    + `#31=IFCSTRUCTURALCURVEMEMBER('n',$,$,$,$,#22,#17,.RIGID_JOINED_MEMBER.,$);#17=IFCPRODUCTDEFINITIONSHAPE($,$,(#${20000 + 3 * 500 + 2}));`);
-  assert.equal(topologyPoints(chainStep, 30), null);
-  // Path-independent: a member 501 maps down the same chain still reads after the deep one was refused.
-  assert.equal(topologyPoints(chainStep, 31).length, 2);
-  // The same depth over maps that reach no topology is no topology, not unplaced.
-  const bodyChain = chain.replace("#15=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#14))", "#15=IFCSHAPEREPRESENTATION($,'Body','Curve3D',(#50))")
-    .replace('(#54,#48,#15)', '(#54,#48)').replace('#47=IFCMAPPEDITEM(#42,#46)', `#47=IFCMAPPEDITEM(#${20000 + 3 * 1199},#46)`);
-  assert.deepEqual(topologyPoints(ifc4(bodyChain), 30), []);
+  const chainBody = chain.replace('#47=IFCMAPPEDITEM(#42,#46)', `#47=IFCMAPPEDITEM(#${20000 + 3 * 1199},#46)`)
+    + `#31=IFCSTRUCTURALCURVEMEMBER('n',$,$,$,$,#22,#17,.RIGID_JOINED_MEMBER.,$);#17=IFCPRODUCTDEFINITIONSHAPE($,$,(#${20000 + 3 * 500 + 2}));`;
+  for (const order of [[30, 31], [31, 30]]) {
+    const chainStep = ifc4(chainBody);
+    const got = Object.fromEntries(order.map((id) => [id, topologyPoints(chainStep, id).length]));
+    assert.deepEqual(got, { 30: 4, 31: 2 }, order.join(','));
+  }
   // A map whose MappedRepresentation is not a representation holds nothing: the direct edge alone, no throw.
   assert.equal(topologyPoints(ifc4(direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#41,#46)')), 30).length, 2);
   const dangling = direct.replace('#53=IFCMAPPEDITEM(#52,#46)', '#53=IFCMAPPEDITEM(#98,#46)');

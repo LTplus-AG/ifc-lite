@@ -212,43 +212,47 @@ function holdsTopology(step, rep) {
   return held;
 }
 
-/**
- * Bounds on the mapped walk: vertices one representation takes through its
- * mapped items (shared maps multiply them), and map nesting (the stack).
- */
+/** Vertices one representation may take through its mapped items; more (shared maps multiply them) is refused. */
 const MAX_MAPPED_VERTICES = 10000;
-const MAX_MAP_DEPTH = 1000;
-const TOO_DEEP = Symbol('maps nested too deep');
 
 /**
  * The topology vertices of one representation, in its axes: its own items
  * when it is an `IfcTopologyRepresentation`, and those of every mapped item's
- * source representation; memoised per file, so each map is walked once.
+ * source representation. An iterative post-order walk, memoised per file, so
+ * each map is walked once, at any nesting, whichever member reaches it first.
  * Null when a mapped item that reaches topology cannot be followed (a map
- * cycle through topology, over 10000 mapped vertices or 1000 nested maps, an
- * origin or target this oracle does not read): fewer vertices would check
- * less. A map that yields no vertices is skipped before its frames are read.
- * Direct topology is read whole, as R8 did.
+ * cycle through topology, over 10000 mapped vertices, an origin or target
+ * this oracle does not read): fewer vertices would check less. A map that
+ * yields no vertices is skipped before its frames are read. Direct topology
+ * is read whole, as R8 did.
  */
-function representationVertices(step, rep, active = new Set()) {
-  if (!rep) return [];
+function representationVertices(step, root) {
+  if (!root) return [];
   const memo = memoOf(walked, step);
-  if (memo.has(rep.id)) return memo.get(rep.id);
-  // Back into a representation still being walked: a cycle, refused only when it reaches topology.
-  if (active.has(rep.id)) return holdsTopology(step, rep) ? null : [];
-  // Too deep for the stack: unwind the whole member walk, memoising nothing on its path.
-  if (active.size > MAX_MAP_DEPTH) {
-    if (!holdsTopology(step, rep)) return [];
-    throw TOO_DEEP;
+  const open = new Set();
+  const stack = [root];
+  while (stack.length) {
+    const rep = stack[stack.length - 1];
+    if (memo.has(rep.id)) { stack.pop(); continue; }
+    if (!open.has(rep.id)) {
+      // First visit: its sources go first. An open source is an ancestor: a cycle, left to `combine`.
+      open.add(rep.id);
+      for (const ref of itemsOf(rep)) {
+        const item = step.get(refOf(ref));
+        const source = item?.type === 'IFCMAPPEDITEM' ? mappedSource(step, item)?.source : undefined;
+        if (source && !memo.has(source.id) && !open.has(source.id)) stack.push(source);
+      }
+      continue;
+    }
+    stack.pop();
+    memo.set(rep.id, combine(step, rep, memo));
+    open.delete(rep.id);
   }
-  active.add(rep.id);
-  const points = mapVertices(step, rep, active);
-  active.delete(rep.id);
-  memo.set(rep.id, points);
-  return points;
+  return memo.get(root.id);
 }
 
-function mapVertices(step, rep, active) {
+/** One representation's vertices, its mapped sources already walked (or open: a cycle). */
+function combine(step, rep, memo) {
   const topology = rep.type === 'IFCTOPOLOGYREPRESENTATION';
   const points = [];
   let mappedCount = 0;
@@ -260,7 +264,9 @@ function mapVertices(step, rep, active) {
       continue;
     }
     const { map, source } = mappedSource(step, item) ?? {};
-    const mapped = representationVertices(step, source, active);
+    if (!source) continue;
+    // Not yet memoised: open, so back into a cycle; refused only when it reaches topology.
+    const mapped = memo.has(source.id) ? memo.get(source.id) : holdsTopology(step, source) ? null : [];
     if (mapped?.length === 0) continue;
     const origin = mapped && axisPlacement(step, refOf(map.args[0]));
     const target = mapped && transformOperator(step, refOf(item.args[1]));
@@ -283,13 +289,7 @@ export function topologyPoints(step, productId, scale = lengthScale(step)) {
   const frame = placementId === undefined ? IDENTITY : placementFrame(step, placementId);
   const shape = step.get(product?.args[6]);
   if (!shape) return [];
-  let points;
-  try {
-    points = (Array.isArray(shape.args[2]) ? shape.args[2] : []).map((repRef) => representationVertices(step, step.get(repRef)));
-  } catch (e) {
-    if (e === TOO_DEEP) return null;
-    throw e;
-  }
+  const points = (Array.isArray(shape.args[2]) ? shape.args[2] : []).map((repRef) => representationVertices(step, step.get(repRef)));
   if (points.includes(null)) return null;
   const flat = points.flat();
   if (!frame) return flat.length ? null : [];

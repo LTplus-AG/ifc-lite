@@ -4,8 +4,9 @@
 
 //! WallLocalFrame (stage B, first): cut a plan-rotated wall in its own
 //! axis-aligned, origin-centred frame, retrying once on snapped operands when
-//! the first cut comes back open. The frame recursion runs the frame-local
-//! chain again with `allow_local_frame: false` (#3641).
+//! the first cut comes back open or an opening only touches the host. The
+//! frame recursion runs the frame-local chain again with
+//! `allow_local_frame: false` (#3641).
 
 use super::super::frame_snap;
 use super::super::geom::{
@@ -14,6 +15,7 @@ use super::super::geom::{
 };
 use super::super::local_frame::{host_thickness_wall_frame, vertical_depth_wall_frame};
 use super::super::{CutterKind, VoidContext, WALL_NORMAL_DEPTH_COS};
+use crate::mesh_check::triangle_shape;
 use crate::program::openings::execute::Execution;
 use crate::{GeometryRouter, Mesh, Point3, Vector3};
 use nalgebra::Matrix3;
@@ -51,6 +53,15 @@ impl Execution {
         let host_local = mesh_to_frame(mesh, &axes, center);
 
         let local_ctx = openings_in_frame(ctx, &axes, center)?;
+        // The WORLD magnitude (a local-frame host's origin folded in), so
+        // the tolerance does not depend on the vertex frame (#5739). For a
+        // world-frame host these are its own bounds, as before.
+        let ((wx0, wy0, wz0), (wx1, wy1, wz1)) = host_world_bounds;
+        let world_magnitude = [wx0, wy0, wz0, wx1, wy1, wz1]
+            .iter()
+            .fold(0.0_f64, |m, v| m.max((*v as f64).abs()));
+        let snap_tolerance = frame_snap::frame_snap_tolerance(world_magnitude);
+        let touching = frame_snap::touching_openings(&host_local, &local_ctx.openings, snap_tolerance);
 
         // Forward the WORLD host bounds captured before this rotation so the
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
@@ -75,9 +86,16 @@ impl Execution {
         // snapped back onto one value. Keep the retry only if it is strictly
         // closed and removed the same material as the first cut to within 0.1%
         // (a retry whose cut silently failed returns the whole host). A cut that
-        // is already closed is never touched, so it stays byte-identical. The
+        // is already closed is not touched, so it stays byte-identical. The
         // host itself need not be closed: an extruded voided profile carries
         // T-junctions of its own that the cut consolidates away.
+        //
+        // One closed cut is retried too: that of an opening which only touches
+        // the host (`frame_snap::touching_openings`) and left slivers. The same
+        // storage noise makes the opening bite a few micrometres into a face
+        // it was authored on, and the cut is closed with the chips in it. That
+        // retry must also come back with fewer slivers, by the census measure:
+        // snapping a cut that was clean only moves its faces.
         //
         // For a frame-relative host the closure is judged on the cut as it will
         // be emitted: rotated back and after the degenerate-triangle hygiene.
@@ -89,25 +107,22 @@ impl Execution {
         } else {
             frame_snap::closed_and_consistently_wound(&result_local)
         };
-        if !result_local.positions.is_empty() && !closed {
+        // Slivers of a closed cut by an opening that only touches the host:
+        // `Some` when that cut is retried too.
+        let first_slivers =
+            (closed && !touching.is_empty()).then(|| triangle_shape(&result_local).slivers).filter(|&n| n > 0);
+        if !result_local.positions.is_empty() && (!closed || first_slivers.is_some()) {
             let first_volume = frame_snap::enclosed_volume(&result_local);
             // Only the kept run may leave a diagnostics record.
             let diag_first = self.split_off(diag_before);
             // Rebuilt rather than kept from above: the clean path pays nothing.
             let mut host_snapped = mesh_to_frame(mesh, &axes, center);
             let mut openings_snapped = local_ctx.openings.clone();
-            // The WORLD magnitude (a local-frame host's origin folded in), so
-            // the tolerance does not depend on the vertex frame (#5739). For a
-            // world-frame host these are its own bounds, as before.
-            let ((wx0, wy0, wz0), (wx1, wy1, wz1)) = host_world_bounds;
-            let world_magnitude = [wx0, wy0, wz0, wx1, wy1, wz1]
-                .iter()
-                .fold(0.0_f64, |m, v| m.max((*v as f64).abs()));
-            frame_snap::snap_to_frame_planes(
-                &mut host_snapped,
-                &mut openings_snapped,
-                frame_snap::frame_snap_tolerance(world_magnitude),
-            );
+            // A closed cut snaps only the openings that touch, so the snap
+            // cannot close a thin slot elsewhere in the host. An open cut's
+            // retry snaps them all, as it always has.
+            let only = first_slivers.is_some().then_some(touching.as_slice());
+            frame_snap::snap_to_frame_planes(&mut host_snapped, &mut openings_snapped, only, snap_tolerance);
             let snapped_ctx = VoidContext {
                 merged_openings: GeometryRouter::merge_rectangular_openings(&openings_snapped),
                 openings: openings_snapped,
@@ -124,7 +139,8 @@ impl Execution {
             let retry_volume = frame_snap::enclosed_volume(&retry);
             let same_cut = (retry_volume - first_volume).abs()
                 <= 1.0e-3 * first_volume.abs().max(retry_volume.abs());
-            let accepted = if !same_cut {
+            let fewer_slivers = || first_slivers.is_none_or(|n| triangle_shape(&retry).slivers < n);
+            let accepted = if !same_cut || !fewer_slivers() {
                 None
             } else if frame_relative {
                 let emitted = rotate_mesh_from_frame(&retry, &frame, &center_point);

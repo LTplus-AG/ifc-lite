@@ -1,0 +1,12 @@
+diff --git a/packages/site-context/src/host-allowlist.ts b/packages/site-context/src/host-allowlist.ts
+index 58f9687..19bc52c 100644
+--- a/packages/site-context/src/host-allowlist.ts
++++ b/packages/site-context/src/host-allowlist.ts
+@@ -48,6 +48,7 @@ export function isAllowedSwisstopoUrl(url: string): boolean {
+  */
+ export function swisstopoOnlyFetch(inner: FetchLike = (input, init) => globalThis.fetch(input, init)): FetchLike {
+   return async (input, init) => {
++    if (!isAllowedSwisstopoUrl(input)) throw new SiteContextHostRefused(input);
+     return inner(input, { ...init, redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer' });
+   };
+ }

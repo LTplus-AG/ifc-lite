@@ -28,7 +28,7 @@ pub(super) async fn fill_data_model_cache(
     // The extraction applies the entities variant itself (#9582): this fill
     // runs beside the stream it was spawned from, so its peak is the one with
     // a ceiling.
-    let dm_result = tokio::task::spawn_blocking(move || extract_data_model_with(&content, options)).await;
+    let dm_result = tokio::task::spawn_blocking(move || extract_data_model_with(&content, options).model).await;
 
     if let Ok(data_model) = dm_result {
         let serialize_result =

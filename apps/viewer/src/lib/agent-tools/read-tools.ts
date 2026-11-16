@@ -37,7 +37,7 @@ function describeListRow(row: ReturnType<typeof modelListRow>): string {
   const count = row.entityCount === null ? null : `${row.entityCount.toLocaleString()} entities`;
   const status = 'status' in row ? row.status : null;
   const owner = 'composedInto' in row && row.composedInto ? `of '${row.composedInto}'` : null;
-  return `${row.name} (${[count, status, owner].filter(Boolean).join(', ')})`;
+  return `${row.name} (${[`model_id: ${row.id}`, row.schema, count, status, owner].filter(Boolean).join(', ')})`;
 }
 
 /** Most entities `query_entities` returns in one page. */

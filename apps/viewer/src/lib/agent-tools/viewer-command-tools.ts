@@ -9,6 +9,7 @@ import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { getAgentCommandHost } from '@/lib/agent-bridge/command-host';
 import type { Command } from '@/components/viewer/commandPaletteSearch';
 import { resolveRef } from './refs';
+import { rankSearch } from './operations/discovery-search';
 import { assertDispatchActive } from './cancellation';
 import type { AgentInputSchema, AgentTool, ToolCallContext, ToolOutput } from './types';
 
@@ -28,7 +29,7 @@ export const VIEWER_COMMAND_SPECS = {
     readOnly: true,
   },
   viewer_commands: {
-    description: 'Discover the live viewer command palette. Search by task, then inspect an exact command_id. Returns availability and no-argument input schemas. Commands launch native actions or interactive panels; opening a panel does not perform its workflow. Call again after changing selection or viewer state.',
+    description: 'Discover the live viewer command palette. Search by natural-language task (ranked), then inspect an exact command_id. Returns availability and no-argument input schemas. Commands launch native actions or interactive panels; opening a panel does not perform its workflow. Call again after changing selection or viewer state.',
     inputSchema: { type: 'object', properties: {
       query: { type: 'string', maxLength: 200 },
       command_id: { type: 'string', maxLength: 300 },
@@ -113,14 +114,19 @@ export const viewerCommandTools: Record<keyof typeof VIEWER_COMMAND_SPECS, Agent
   } },
   viewer_commands: { needs: 'none', async run(_host, args) {
     keys(args, ['query', 'command_id', 'offset', 'limit']);
-    const query = boundedString(args, 'query', 200)?.toLowerCase();
+    const query = boundedString(args, 'query', 200) ?? '';
     const id = boundedString(args, 'command_id', 300);
     const offset = integer(args, 'offset', 0, Number.MAX_SAFE_INTEGER);
     const limit = integer(args, 'limit', 25, 50);
-    const matches = commands().filter(command => (!id || command.id === id)
-      && (!query || `${command.id} ${command.label} ${command.keywords} ${command.category}`.toLowerCase().includes(query)));
+    const all = commands();
+    // An exact command_id inspects that command; query only ranks a search.
+    const matches = id ? all.filter(command => command.id === id)
+      : rankSearch(all, query, command => ({ primary: [command.id, command.label, command.category], secondary: [command.keywords] }));
+    const hint = matches.length ? undefined : id
+      ? `Unknown command_id. Nearest: ${rankSearch(all, id, command => ({ primary: [command.id, command.label], secondary: [] })).slice(0, 3).map(command => command.id).join(', ') || 'none'}.`
+      : `No command matched. Try task words or a category: ${[...new Set(all.map(command => command.category))].join(', ')}. Omit query to list all.`;
     return output({ total: matches.length, offset,
-      next_offset: offset + limit < matches.length ? offset + limit : null,
+      next_offset: offset + limit < matches.length ? offset + limit : null, ...(hint ? { hint } : {}),
       commands: matches.slice(offset, offset + limit).map(command => {
         const reason = unavailable(command);
         return { command_id: command.id, label: command.label, category: command.category,

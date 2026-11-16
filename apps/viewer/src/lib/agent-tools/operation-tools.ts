@@ -17,7 +17,7 @@ export const OPERATION_SPECS = {
     inputSchema: { type: 'object', properties: {} } satisfies AgentInputSchema, readOnly: true,
   },
   viewer_operations: {
-    description: 'Search native parameterized viewer operations. Bounded discovery, with exact runtime schemas on describe. Opening panels is separate. Operations currently cover native camera, section planes, visibility, selection, appearance, lighting, native authoring review, analysis, documents, exports, sources and workflow execution. Discovery does not execute operations.',
+    description: 'Search native parameterized viewer operations by natural-language task (query: "measure distance", "color walls", "screenshot"); results are ranked best first. operation_id describes one operation with its exact input/output schema. Workflow: model_list (model ids) → query_entities (express ids) → viewer_operations {query} → viewer_operations {operation_id} → viewer_operation_inspect (read-only) or viewer_operation_execute (needs the commands-and-edits grant the user toggles in the tab). Covers camera, section planes, visibility, selection, appearance, lighting, authoring review, analysis, documents, exports, sources and workflows. Discovery does not execute operations; opening panels is separate (viewer_commands).',
     inputSchema: { type: 'object', properties: {
       query: { type: 'string', maxLength: 200 }, operation_id: { type: 'string', maxLength: 200 },
       offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 50 },
@@ -60,11 +60,14 @@ export const operationTools: Record<keyof typeof OPERATION_SPECS, AgentTool> = {
     const offset = args.offset ?? 0, limit = args.limit ?? 25;
     if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0) invalid('Invalid offset.');
     if (typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) invalid('Invalid limit.');
-    const { viewerOperations, describeOperation, operationUnavailable } = await import('./operations/registry');
-    const query = typeof args.query === 'string' ? args.query.toLowerCase() : '';
-    const matching = viewerOperations().filter(op => (!args.operation_id || op.id === args.operation_id)
-      && `${op.id} ${op.owner} ${op.description}`.toLowerCase().includes(query));
-    return output({ total: matching.length, offset, next_offset: offset + limit < matching.length ? offset + limit : null,
+    const { viewerOperations, rankOperations, operationOwners, describeOperation, operationUnavailable } = await import('./operations/registry');
+    // An exact operation_id describes that operation; query only ranks a search.
+    const matching = typeof args.operation_id === 'string' ? viewerOperations().filter(op => op.id === args.operation_id)
+      : rankOperations(typeof args.query === 'string' ? args.query : '');
+    const hint = matching.length ? undefined : typeof args.operation_id === 'string'
+      ? `Unknown operation_id. Nearest: ${rankOperations(args.operation_id).slice(0, 3).map(op => op.id).join(', ') || 'none'}.`
+      : `No operation matched. Use task words (hide, colorize, measure, section, screenshot, export) or an owner family: ${operationOwners().join(', ')}. Omit query to list all. Find entities with query_entities.`;
+    return output({ total: matching.length, offset, next_offset: offset + limit < matching.length ? offset + limit : null, ...(hint ? { hint } : {}),
       operations: matching.slice(offset, offset + limit).map(op => args.operation_id ? { ...describeOperation(op), unavailable: operationUnavailable(op) }
         : { id: op.id, version: op.version, owner: op.owner, description: op.description, effects: op.effects, capability: op.capability, needs: op.needs, unavailable: operationUnavailable(op) }) });
   } },

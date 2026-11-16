@@ -4,6 +4,7 @@
 import { operationContracts } from './generated/contracts';
 import { operationLoaders } from './generated/loaders';
 import { operationValidators } from './validators';
+import { rankSearch } from './discovery-search';
 import { publicOperationContract, contractFingerprint, type OperationContract } from './metadata';
 import { isFeatureEnabled } from '@/lib/features';
 import { PANEL_FEATURE } from '@/lib/panels/availability';
@@ -36,6 +37,12 @@ for (const entry of entries) {
   registry.set(entry.id, entry);
 }
 export function viewerOperations(): readonly Operation[] { return entries; }
+/** Catalogue ranked for a natural-language task query; ids and owners outrank descriptions. */
+export function rankOperations(query: string): Operation[] {
+  return rankSearch(entries, query, op => ({ primary: [op.id, op.owner], secondary: [op.description] }));
+}
+/** Distinct owner families in catalogue order, for agents whose query matched nothing. */
+export function operationOwners(): string[] { return [...new Set(entries.map(op => op.owner))]; }
 export function viewerOperation(id: string): Operation {
   const entry = registry.get(id);
   if (!entry) throw new Error(`Unknown viewer operation: ${id}`);

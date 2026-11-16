@@ -31,12 +31,11 @@ import { deterministicGlobalId } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
 import { slotUnset } from './schema-converter-structural-links.js';
 import {
-  conversionMode, isSubtype, namesWithheld, readCarrierSets, SourceRecords, stepString, writeCarrierSet,
+  bareMeasure, conversionMode, isSubtype, namesWithheld, readCarrierSets, SourceRecords, stepString, writeCarrierSet,
   type ConversionMode, type StructuralRewrite,
 } from './schema-converter-structural-source.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { readStepSlots, replaceStepArgument } from './step-argument-parser.js';
-import { parseStepNumber } from './step-slot-grammar.js';
 
 /** The property set an IFC2X3 load group carries when it was an IFC4 IfcStructuralLoadCase. */
 export const LOAD_CASE_PSET = 'IFC4 IfcStructuralLoadCase';
@@ -49,10 +48,10 @@ const OBJECT_PLACEMENT = 5;
 const IFC2X3_ACTIONS = new Set(['IFCSTRUCTURALPOINTACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION', 'IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']);
 
 export const CAUSED_BY_WRITTEN = "IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes' from the action to the reaction, as IFC4 holds it";
-export const CAUSED_BY_READ = "an IfcRelAssignsToProduct named 'Causes' from an action to one point reaction also fills the IFC2X3 CausedBy";
-export const LOAD_CASE_WRITTEN = `IfcStructuralLoadCase is written as an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set holding ${COEFFICIENTS}`;
-export const LOAD_CASE_READ = `an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set is written as the IFC4 IfcStructuralLoadCase it came from`;
-export const SHARED_PLACEMENT = 'IfcStructuralAnalysisModel.SharedPlacement is written as the local placement all of its grouped structural items use or copy, and they are placed by it';
+const CAUSED_BY_READ = "an IfcRelAssignsToProduct named 'Causes' from an action to one point reaction also fills the IFC2X3 CausedBy";
+const LOAD_CASE_WRITTEN = `IfcStructuralLoadCase is written as an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set holding ${COEFFICIENTS}`;
+const LOAD_CASE_READ = `an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set is written as the IFC4 IfcStructuralLoadCase it came from`;
+const SHARED_PLACEMENT = 'IfcStructuralAnalysisModel.SharedPlacement is written as the local placement all of its grouped structural items use or copy, and they are placed by it';
 
 export class StructuralCarriers {
   /** The exporter's express-id allocator, shared with every other record it appends. */
@@ -60,7 +59,7 @@ export class StructuralCarriers {
   private readonly pending: string[] = [];
   private mode: ConversionMode = null;
   /** Upgrade: action id -> reaction ids a source 'Causes' relationship already names. */
-  private readonly causesWritten = new Map<number, Set<number>>();
+  private causesWritten = new Map<number, Set<number>>();
   /** Downgrade: action id -> the one point reaction that causes it. */
   private readonly causedBy = new Map<number, number>();
   /** Upgrade: analysis model id -> its SharedPlacement; item id -> the placement it is moved to. */
@@ -74,7 +73,8 @@ export class StructuralCarriers {
     this.mode = conversionMode(from, to);
     if (!this.mode) return;
     const schema = from as 'IFC2X3' | 'IFC4';
-    const causes = this.readCauses(source, schema);
+    const causes = [...IFC2X3_ACTIONS, 'IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALSURFACEACTION'].some((t) => source.ids(t).length)
+      ? this.readCauses(source, schema) : new Map<number, Set<number>>();
     if (this.mode === 'downgrade') {
       // IFC2X3 CausedBy names one reaction, and IFC2X3 has only point reactions.
       for (const [action, reactions] of causes) {
@@ -83,7 +83,7 @@ export class StructuralCarriers {
       }
       return;
     }
-    for (const [action, reactions] of causes) this.causesWritten.set(action, reactions);
+    this.causesWritten = causes;
     if (source.ids('IFCSTRUCTURALANALYSISMODEL').length) {
       for (const [model, items] of soleModelItems(source)) this.findSharedPlacement(source, model, items);
     }
@@ -143,8 +143,8 @@ export class StructuralCarriers {
     if (args?.length !== 4) return null;
     if (type === 'IFCPROPERTYSINGLEVALUE' && slotUnset(args[2])) return '$';
     if (type !== 'IFCPROPERTYLISTVALUE') return null;
-    const values = (listItems(args[2]) ?? []).map(ratio);
-    return values.length === 3 && values.every((v) => v !== null) ? `(${values.join(',')})` : null;
+    const values = threeRatios(args[2]);
+    return values ? `(${values.join(',')})` : null;
   }
 
   /**
@@ -172,8 +172,9 @@ export class StructuralCarriers {
    * IFC2X3 -> IFC4: adds the 'Causes' relationship for an action's CausedBy,
    * unless the source has it already. True when IFC4 holds the cause either way.
    */
-  noteCause(id: number, entity: string, args: readonly string[]): boolean {
-    if (this.mode !== 'upgrade' || !this.ids || !IFC2X3_ACTIONS.has(entity)) return false;
+  noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
+    // The added relationship names ids the source has; an IFC4 target withholds none, so none is checked.
+    if (this.mode !== 'upgrade' || !this.ids || withheld?.size || !IFC2X3_ACTIONS.has(entity)) return false;
     const reaction = refId(args[CAUSED_BY]);
     if (reaction === null) return false;
     if (this.causesWritten.get(id)?.has(reaction)) return true;
@@ -192,13 +193,13 @@ export class StructuralCarriers {
    * model's SharedPlacement. Undefined when nothing changes.
    */
   after(id: number, line: string, withheld: ReadonlySet<number> | undefined): { line: string; loss?: string } | undefined {
-    const placement = this.mode === 'upgrade' ? this.itemPlacements.get(id) : undefined;
+    const placement = this.itemPlacements.get(id);
     // SHARED_PLACEMENT, recorded once for the model, reports the move.
     if (placement !== undefined) {
       const filled = replaceStepArgument(line, OBJECT_PLACEMENT, `#${placement}`);
       return filled ? { line: filled } : undefined;
     }
-    const reaction = this.mode === 'downgrade' ? this.causedBy.get(id) : undefined;
+    const reaction = this.causedBy.get(id);
     if (reaction === undefined || withheld?.has(reaction)) return undefined;
     const rec = readStepSlots(line);
     const slot = rec && IFC2X3_ACTIONS.has(rec.type) ? rec.slots[CAUSED_BY] : undefined;
@@ -235,17 +236,15 @@ function soleModelItems(source: SourceRecords): Map<number, Map<number, number |
   return models;
 }
 
-/** A ratio as a bare number, from `0.` or `IFCRATIOMEASURE(0.)`, or null. */
-function ratio(token: string): string | null {
-  const bare = (/^\s*IFCRATIOMEASURE\s*\((.*)\)\s*$/i.exec(token)?.[1] ?? token).trim();
-  return Number.isFinite(parseStepNumber(bare)) ? bare : null;
+/** Three ratios, each `0.` or `IFCRATIOMEASURE(0.)`, as bare numbers, or null. */
+function threeRatios(token: string): string[] | null {
+  const values = (listItems(token) ?? []).map((v) => bareMeasure(v, 'IFCRATIOMEASURE'));
+  return values.length === 3 && values.every((v) => v !== null) ? values as string[] : null;
 }
 
 /** The carrier property for an IFC4 SelfWeightCoefficients slot, or null when it is not three ratios or `$`. */
 function coefficientsProperty(token: string): string | null {
   if (slotUnset(token)) return `IFCPROPERTYSINGLEVALUE('${COEFFICIENTS}',$,$,$)`;
-  const values = (listItems(token) ?? []).map(ratio);
-  return values.length === 3 && values.every((v) => v !== null)
-    ? `IFCPROPERTYLISTVALUE('${COEFFICIENTS}',$,(${values.map((v) => `IFCRATIOMEASURE(${v})`).join(',')}),$)`
-    : null;
+  const values = threeRatios(token);
+  return values ? `IFCPROPERTYLISTVALUE('${COEFFICIENTS}',$,(${values.map((v) => `IFCRATIOMEASURE(${v})`).join(',')}),$)` : null;
 }

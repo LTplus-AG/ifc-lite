@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Matches rust/export/src/schema_structural_links.rs (#9668). */
-import { getCanonicalEntityName, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { isSubtype } from './schema-converter-structural-source.js';
 import { convertEntityType } from './schema-converter.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
@@ -18,20 +19,9 @@ export function slotUnset(token: string): boolean {
   return start >= 0 && token[start] === '$' && skipStepTrivia(token, start + 1) === token.length;
 }
 
-const BECOMES = new Map<string, boolean>();
-/** Whether IFC4 `keyword` converts to an IFC2X3 subtype of `parent`, memoized per pair. */
-function becomes(keyword: string | undefined, parent: string): boolean {
-  if (!keyword) return false;
-  const key = `${keyword} ${parent}`;
-  let known = BECOMES.get(key);
-  if (known === undefined) {
-    const registry = getSchemaRegistryForVersion('IFC2X3');
-    const name = getCanonicalEntityName(registry, convertEntityType(keyword, 'IFC4', 'IFC2X3'));
-    known = !!name && registry.entities[name]?.inheritanceChain?.includes(parent) === true;
-    BECOMES.set(key, known);
-  }
-  return known;
-}
+/** Whether IFC4 `keyword` converts to an IFC2X3 subtype of `parent`. */
+const becomes = (keyword: string | undefined, parent: string): boolean =>
+  !!keyword && isSubtype('IFC2X3', convertEntityType(keyword, 'IFC4', 'IFC2X3'), parent);
 
 /**
  * IFC4 -> IFC2X3: the physical-to-analytical link back to its IFC2X3 entity.

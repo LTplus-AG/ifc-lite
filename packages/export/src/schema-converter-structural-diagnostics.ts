@@ -12,6 +12,7 @@ import { StructuralVarying } from './schema-converter-structural-varying.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 
+const NONE: ReadonlySet<string> = new Set();
 const LINK = 'IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link';
 
 export class StructuralDiagnostics {
@@ -75,6 +76,7 @@ export class StructuralDiagnostics {
     }
     const tgt = (meta.allAttributes ?? meta.attributes).map(a => a.name);
     const carried = this.carried.get(id);
+    this.carried.delete(id);
     src.forEach((attr, i) => {
       // CONST is intrinsic to IFC2X3 linear/planar actions, not lost data.
       if (attr.name === 'PredefinedType' && rec.slots[i]?.trim() === '.CONST.'
@@ -99,15 +101,12 @@ export class StructuralDiagnostics {
    * A body still naming a `withheld` id is refused, and then nothing is reported.
    */
   rewrite(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null | undefined {
-    const carried = new Set<string>();
-    // The upgrade-only carriers add records naming ids the source has; an IFC4 target withholds none.
-    const adds = !withheld?.size;
-    if (adds && this.carriers.noteCause(id, entity, args)) {
-      carried.add('CausedBy');
+    let carried: ReadonlySet<string> = NONE;
+    if (this.carriers.noteCause(id, entity, args, withheld)) {
+      carried = new Set(['CausedBy']);
       this.record(CAUSED_BY_WRITTEN);
-    }
-    if (adds && this.thickness.note(id, entity, args)) {
-      carried.add('SubsequentThickness').add('VaryingThicknessLocation');
+    } else if (this.thickness.note(id, entity, args, withheld)) {
+      carried = new Set(['SubsequentThickness', 'VaryingThicknessLocation']);
       this.record(THICKNESS_WRITTEN);
     }
     if (carried.size) this.carried.set(id, carried);

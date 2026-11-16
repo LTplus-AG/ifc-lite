@@ -9,6 +9,7 @@ import { listItems } from './schema-converter-structural-axes.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
+import { parseStepNumber } from './step-slot-grammar.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 
 export type ConversionMode = 'upgrade' | 'downgrade' | null;
@@ -77,6 +78,13 @@ export class SourceRecords {
     }
     return this.cache.get(id);
   }
+}
+
+/** The bare number of `token`, given as such or wrapped as `TYPE(n)`, or null when it is not a finite number. */
+export function bareMeasure(token: string | undefined, type: string): string | null {
+  const wrapped = new RegExp(`^\\s*${type}\\s*\\((.*)\\)\\s*$`, 'i').exec(token ?? '')?.[1];
+  const bare = (wrapped ?? token ?? '').trim();
+  return Number.isFinite(parseStepNumber(bare)) ? bare : null;
 }
 
 /** The text of a STEP string token, or null. Only compared with fixed names here, so escapes need no decoding. */

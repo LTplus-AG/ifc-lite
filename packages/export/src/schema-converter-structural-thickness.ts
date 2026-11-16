@@ -16,20 +16,20 @@
  * Reads the source store, so only an unedited full export arms it.
  */
 import { listItems } from './schema-converter-structural-axes.js';
-import { conversionMode, readCarrierSets, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
+import { bareMeasure, conversionMode, readCarrierSets, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { parseStepNumber } from './step-slot-grammar.js';
 
-export const THICKNESS_PSET = 'Pset_StructuralSurfaceMemberVaryingThickness';
+const THICKNESS_PSET = 'Pset_StructuralSurfaceMemberVaryingThickness';
 const ENTITY = 'IFCSTRUCTURALSURFACEMEMBERVARYING';
 const NAMES = ['Thickness1', 'Thickness2', 'Thickness3'];
 export const THICKNESS_WRITTEN = `IFC2X3 SubsequentThickness is written as ${THICKNESS_PSET} Thickness1 to Thickness3; the IfcShapeAspect locating them stays on the member's representation`;
-export const THICKNESS_READ = `${THICKNESS_PSET} Thickness1 to Thickness3 are written as the IFC2X3 Thickness and SubsequentThickness, located by the one IfcShapeAspect of the member's representation`;
+const THICKNESS_READ = `${THICKNESS_PSET} Thickness1 to Thickness3 are written as the IFC2X3 Thickness and SubsequentThickness, located by the one IfcShapeAspect of the member's representation`;
 
 /** The bare number of a thickness token, `0.2` or `IFCPOSITIVELENGTHMEASURE(0.2)`, or null unless positive. */
 function thickness(token: string | undefined): string | null {
-  const bare = /^\s*IFCPOSITIVELENGTHMEASURE\s*\((.*)\)\s*$/i.exec(token ?? '')?.[1] ?? token ?? '';
-  return parseStepNumber(bare) > 0 ? bare.trim() : null;
+  const bare = bareMeasure(token, 'IFCPOSITIVELENGTHMEASURE');
+  return bare !== null && parseStepNumber(bare) > 0 ? bare : null;
 }
 
 export class StructuralThickness {
@@ -46,9 +46,11 @@ export class StructuralThickness {
     const mode = conversionMode(from, to);
     if (!mode || !source.ids(ENTITY).length) return;
     this.mode = mode;
+    // Only the aspects of a varying member's representation are ever asked for.
+    const shapes = new Set(source.ids(ENTITY).map((m) => refId(source.slots(m)?.[6])));
     for (const id of source.ids('IFCSHAPEASPECT')) {
       const shape = refId(source.slots(id)?.[4]);
-      if (shape === null) continue;
+      if (shape === null || !shapes.has(shape)) continue;
       const list = this.aspects.get(shape) ?? [];
       list.push(id);
       this.aspects.set(shape, list);
@@ -73,8 +75,9 @@ export class StructuralThickness {
   }
 
   /** IFC2X3 -> IFC4: adds the property set for a member's thicknesses. True when IFC4 holds them. */
-  note(id: number, entity: string, args: readonly string[]): boolean {
-    if (this.mode !== 'upgrade' || entity !== ENTITY || !this.ids || args.length !== 11) return false;
+  note(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
+    // The added property set names only the member; an IFC4 target withholds none, so none is checked.
+    if (this.mode !== 'upgrade' || entity !== ENTITY || !this.ids || withheld?.size || args.length !== 11) return false;
     const values = [args[8], ...listItems(args[9]) ?? []].map(thickness);
     const location = refId(args[10]);
     if (values.length !== 3 || values.includes(null) || location === null || this.aspectOf(args[6]) !== location) return false;

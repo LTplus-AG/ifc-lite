@@ -21,7 +21,8 @@ export function drawingAnnotationAnchor(store: IfcDataStore, editor: StoreEditor
     const project = first('IFCPROJECT');
     if (project) {
       const existing = effectiveMetadataRecord(store, project, view)?.attributes[7];
-      editor.setPositionalAttribute(project, 7, [...(Array.isArray(existing) ? existing : []), `#${rootContextId}`]);
+      const contexts = Array.isArray(existing) ? existing.map(id => typeof id === 'number' ? `#${id}` : id) : [];
+      editor.setPositionalAttribute(project, 7, [...contexts, `#${rootContextId}`]);
     }
   }
   let lengthUnitScale = 1;

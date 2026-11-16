@@ -363,4 +363,7 @@ it('#9296: repeated measurement IDs preserve both saved annotations on export', 
     options: { schema: 'IFC4', applyMutations: true }, scheduleState: null });
   const reopened = await parse(typeof result.content === 'string' ? result.content : new TextDecoder().decode(result.content));
   assert.equal(reopened.entityIndex.byType.get('IFCANNOTATION')?.length, 2);
+  const { readDrawingAnnotations } = await import('@/lib/export/drawing-annotations');
+  const restored = readDrawingAnnotations(reopened).flatMap(record => record.saved.item.kind === 'measure' ? [record.saved.item.value] : []);
+  assert.deepEqual(restored, measures, 'both geometries survive with their repeated IDs');
 });

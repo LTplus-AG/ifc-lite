@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { IfcCreator } from '@ifc-lite/create';
 import { IfcParser, effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { prepareDrawingAnnotations, readDrawingAnnotations, restoredDrawingAnnotations, type DrawingAnnotations } from './drawing-annotations';
 
@@ -119,6 +119,32 @@ for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
     await validate(t, [output]);
   });
 
+  it(`#9296: ${Schema} adding a 3D annotation context preserves existing 2D references`, async t => {
+    const creator = new IfcCreator({ Name: 'Plan context', Schema, Timestamp: 0 });
+    creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
+    const base = await parse(creator.toIfc().content);
+    const edits = new MutablePropertyView(base.properties, 'plan-context');
+    for (const type of ['IFCGEOMETRICREPRESENTATIONCONTEXT', 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT']) {
+      for (const id of base.entityIndex.byType.get(type) ?? []) edits.deleteEntity(id);
+    }
+    const editor = new StoreEditor(base, edits);
+    const point = editor.addEntity('IfcCartesianPoint', [[0, 0]]).expressId;
+    const axes = editor.addEntity('IfcAxis2Placement2D', [`#${point}`, null]).expressId;
+    const plan = editor.addEntity('IfcGeometricRepresentationContext', [null, 'Plan', 2, 1e-5, `#${axes}`, null]).expressId;
+    const project = base.entityIndex.byType.get('IFCPROJECT')![0];
+    edits.setPositionalAttribute(project, 7, [`#${plan}`]);
+    const source = await parse(new StepExporter(base, edits).export({ schema: Schema }).content);
+    const { input } = await fixture(Schema);
+    const output = decode(new StepExporter(source, prepareDrawingAnnotations(source, undefined,
+      { ...input, storeyId: source.entityIndex.byType.get('IFCBUILDINGSTOREY')![0], dimensions: [], tags: [] })).export({ schema: Schema }).content);
+    const reopened = await parse(output);
+    const contexts = ids(attribute(reopened, project, 7));
+    assert.equal(contexts.length, 2);
+    assert.equal(contexts[0], plan, 'the original plan context remains a reference');
+    assert.deepEqual(contexts.map(id => attribute(reopened, id, 2)), [2, 3]);
+    await validate(t, [output]);
+  });
+
   it(`#9296: ${Schema} changed scale and offset change the actual annotation geometry`, async () => {
     const { source, input } = await fixture(Schema);
     input.dimensions[0].plane = { axis: 'front', position: 4, flipped: false };
@@ -197,4 +223,12 @@ it('#9296: equal IDs never merge measurements with distinct geometry', async () 
   const saved = { id: 'automatic', start: { x: 0, y: 0 }, end: { x: 4, y: 0 }, distance: 4 };
   const automatic = { ...saved, end: { x: 7, y: 0 }, distance: 7 };
   assert.deepEqual(mergeRestoredMeasures([saved], [automatic]), [saved, automatic]);
+});
+
+it('#9296: reconciliation compares geometry even when another item shares the automatic ID', async () => {
+  const { mergeRestoredMeasures } = await import('./drawing-annotation-restore');
+  const a = { id: 'a', start: { x: 0, y: 0 }, end: { x: 4, y: 0 }, distance: 4 };
+  const b = { ...a, id: 'b', end: { x: 7, y: 0 }, distance: 7 };
+  const automatic = { ...a, id: 'b' };
+  assert.deepEqual(mergeRestoredMeasures([a, b], [automatic]), [b, automatic]);
 });

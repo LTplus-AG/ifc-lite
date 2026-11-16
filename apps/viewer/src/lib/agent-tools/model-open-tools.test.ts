@@ -75,7 +75,7 @@ afterEach(() => {
   useViewerStore.setState({ models: new Map() as never, loading: false });
 });
 
-describe('viewer_open_model', () => {
+describe('viewer_open_model (#9523 local agent bridge)', () => {
   it('is offered to the bridge as a tool that needs the grant', () => {
     assert.equal(VIEWER_COMMAND_SPECS.viewer_open_model, MODEL_OPEN_SPECS.viewer_open_model);
     assert.equal(MODEL_OPEN_SPECS.viewer_open_model.readOnly, false);
@@ -181,7 +181,7 @@ describe('viewer_open_model', () => {
       mock.timers.tick(OPEN_MODEL_WAIT_MS);
       const out = await pending;
       assert.equal((out.structured as { state: string }).state, 'loading');
-      assert.deepEqual((out.structured as { models: unknown[] }).models, [], 'no placeholder model ids');
+      assert.deepEqual((out.structured as { models: unknown[] }).models, [], 'no placeholder model ids (code review of this PR)');
       assert.match(out.text, /Do not retry/);
     } finally {
       mock.timers.reset();
@@ -202,7 +202,7 @@ describe('viewer_open_model', () => {
     await assert.rejects(run({ url: 'https://example.com/', mode: 'add' }), { code: 'INVALID_INPUT', message: /not a model file/ });
   });
 
-  it('lists no models while a replace is still loading', async () => {
+  it('flags the open models as being replaced while a replace is still loading', async () => {
     useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
     behaviour = 'hang';
     mock.timers.enable({ apis: ['setTimeout', 'Date'] });
@@ -210,9 +210,29 @@ describe('viewer_open_model', () => {
       const pending = run({ sample: 'demo', mode: 'replace' });
       while (calls.length === 0) await new Promise((resolve) => setImmediate(resolve));
       mock.timers.tick(OPEN_MODEL_WAIT_MS);
-      assert.deepEqual(((await pending).structured as { models: unknown[] }).models, []);
+      const structured = (await pending).structured as { models: Array<{ model_id: string }>; replacing?: boolean };
+      assert.deepEqual(structured.models.map((m) => m.model_id), ['old']);
+      assert.equal(structured.replacing, true);
     } finally {
       mock.timers.reset();
     }
+  });
+  it('refuses an empty body before a replace can close the open models (code review of this PR)', async () => {
+    useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
+    respond = () => new Response(null, { status: 204 });
+    await assert.rejects(run({ url: 'https://example.com/model.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /empty body/ });
+    assert.deepEqual(calls, []);
+  });
+
+  it('reads Content-Disposition variants: no type, ISO-8859-1, quoted escapes, first value wins (code review of this PR)', async () => {
+    const nameFor = async (header: string) => {
+      respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': header } });
+      await run({ url: 'https://example.com/download', mode: 'add' });
+      return calls.at(-1)!.names[0];
+    };
+    assert.equal(await nameFor('filename="model.ifc"'), 'model.ifc');
+    assert.equal(await nameFor("attachment; filename*=ISO-8859-1''Gr%FCn.ifc"), 'Grün.ifc');
+    assert.equal(await nameFor('attachment; filename="a\\"b.ifc"'), 'a"b.ifc');
+    assert.equal(await nameFor('attachment; filename="first.ifc"; filename="second.ifc"'), 'first.ifc');
   });
 });

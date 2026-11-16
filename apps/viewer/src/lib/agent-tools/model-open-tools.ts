@@ -98,8 +98,9 @@ function percentDecoded(text: string, charset = 'utf-8'): string {
 /** `Content-Disposition` parameters by lower-case name, quoted strings unescaped. */
 function dispositionParams(header: string): Map<string, string> {
   const params = new Map<string, string>();
-  for (const [, key, quoted, bare] of header.matchAll(/;\s*([^\s=;]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]*))/g)) {
-    params.set(key.toLowerCase(), quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare.trim());
+  // The leading ';' also reads a header that omits the disposition type (`filename="x.ifc"`); the first value of a name wins.
+  for (const [, key, quoted, bare] of `;${header}`.matchAll(/;\s*([^\s=;]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]*))/g)) {
+    if (!params.has(key.toLowerCase())) params.set(key.toLowerCase(), quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare.trim());
   }
   return params;
 }
@@ -165,6 +166,8 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
   }
   if (!res.ok) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `Fetching ${url.href} returned HTTP ${res.status}.`);
   const file = await readLimited(res, url, fileNameOf(url, res));
+  // Refused here, before a replace could close the open models for nothing.
+  if (file.size === 0) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `${url.href} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
   if (!isSupportedModelFile(file)) {
     invalid(`${file.name || 'The download'} is not a model file the viewer opens (IFC, IFCX, glTF/GLB, point clouds, splats). Use a URL whose path ends in the file's extension (a cross-origin Content-Disposition name is only readable when the server exposes that header).`);
   }
@@ -224,8 +227,8 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   const stillLoading = (): ToolOutput => ({
     text: `${name} is still loading; it continues in the tab. Do not retry. Call model_list until it appears; if it never does, `
       + 'the load failed: take a viewer_screenshot or ask the user what the viewer reports.',
-    // Placeholder records of the load have no data yet, and a replace is closing the old models: list only models that stay.
-    structured: { mode: request.mode, state: 'loading', loading: name, models: request.mode === 'add' ? openModels().filter((m) => !m.new) : [] },
+    // Placeholder records of the load have no data yet; with `replacing`, the listed models are about to close.
+    structured: { mode: request.mode, state: 'loading', loading: name, models: openModels().filter((m) => !m.new), ...(request.mode === 'replace' ? { replacing: true } : {}) },
   });
   const loaded = await within(load.then((id) => ({ id })), deadline - Date.now());
   if (!loaded) return stillLoading();
@@ -233,8 +236,14 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   const after = store.getState();
   if (after.error && after.loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${after.error}`);
   if (loaded.id === null) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not add ${name}. See the viewer for details.`);
-  // Models can register just after the loader resolves: wait until the pipeline is idle, which needs no model.
+  // Models can register just after the loader resolves: wait until the pipeline is idle (needs no model), then one more task.
   const settled = await waitForLoadIdle(deadline - Date.now());
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  const final = store.getState();
+  if (final.error && final.loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${final.error}`);
+  if (typeof loaded.id === 'string' && !final.models.has(loaded.id)) {
+    fail(ToolErrorCode.STATE_CHANGED, `${name} was added, then closed by another load in the tab. Check model_list.`);
+  }
   const models = openModels();
   const added = models.filter((m) => m.new);
   if (added.length === 0 && !settled) return stillLoading();

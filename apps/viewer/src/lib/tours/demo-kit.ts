@@ -34,40 +34,30 @@ export const DEMO_KIT_PATHS = {
  * The load pipeline registers a placeholder model record before parsing, so
  * `models.size > 0` alone is NOT "loaded".
  */
-export function waitForModelSettled(timeoutMs = 180_000): Promise<void> {
-  const store = getViewerStoreApi();
-  const settled = (s: ViewerState) => s.models.size > 0 && !s.loading && !s.geometryStreamingActive;
-  return new Promise((resolve, reject) => {
-    if (settled(store.getState())) { resolve(); return; }
-    const timer = window.setTimeout(() => {
-      unsub();
-      reject(new Error('model load did not settle in time'));
-    }, timeoutMs);
-    const unsub = store.subscribe((s) => {
-      if (settled(s)) {
-        window.clearTimeout(timer);
-        unsub();
-        resolve();
-      }
-    });
-  });
+export async function waitForModelSettled(timeoutMs = 180_000): Promise<void> {
+  if (!await waitForViewerState((s) => s.models.size > 0 && !s.loading && !s.geometryStreamingActive, timeoutMs)) {
+    throw new Error('model load did not settle in time');
+  }
 }
 
 /**
- * Whether nothing is loading or streaming within `timeoutMs`: true once the
- * load pipeline is idle, false when the time runs out first. Unlike
- * {@link waitForModelSettled} it does not need a model, so a load that ended
- * without opening one is seen at once.
+ * Whether nothing is loading or streaming within `timeoutMs`. Unlike
+ * {@link waitForModelSettled} it needs no model, so a load that ended without
+ * opening one is seen at once.
  */
 export function waitForLoadIdle(timeoutMs: number): Promise<boolean> {
+  return waitForViewerState((s) => !s.loading && !s.geometryStreamingActive, timeoutMs);
+}
+
+/** True as soon as `predicate` holds for the viewer store, false if `timeoutMs` passes first. */
+function waitForViewerState(predicate: (s: ViewerState) => boolean, timeoutMs: number): Promise<boolean> {
   const store = getViewerStoreApi();
-  const idle = (s: ViewerState) => !s.loading && !s.geometryStreamingActive;
-  if (idle(store.getState())) return Promise.resolve(true);
+  if (predicate(store.getState())) return Promise.resolve(true);
   if (timeoutMs <= 0) return Promise.resolve(false);
   return new Promise((resolve) => {
     const timer = window.setTimeout(() => { unsub(); resolve(false); }, timeoutMs);
     const unsub = store.subscribe((s) => {
-      if (idle(s)) { window.clearTimeout(timer); unsub(); resolve(true); }
+      if (predicate(s)) { window.clearTimeout(timer); unsub(); resolve(true); }
     });
   });
 }

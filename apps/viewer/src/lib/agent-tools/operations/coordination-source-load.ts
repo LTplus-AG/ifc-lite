@@ -22,12 +22,15 @@ export const coordinationSourceLoadOperations = [coordination<SourceLoad>('sourc
     signal: c.signal, onProgress: (done, total) => c.progress?.({ phase: 'download', done, total: total ?? 0 }),
   });
   c.checkpoint?.(); const filename = sanitizeFilename(i.filename, { fallback: 'model.ifc' }), modelId = crypto.randomUUID();
-  return c.commitAsync(async () => {
-    const loadedId = await enqueueSourceLoad(() => addModel(new File([buffer], filename), { modelId, name: filename }));
+  // Queue waiting is preparation, not native load admission. Recheck the live
+  // grant only when this request actually reaches the serialized loader.
+  return enqueueSourceLoad(() => c.commitAsync(async () => {
+    if (host.get(i.provider) !== provider || JSON.stringify(loadResolvedSourcePrefs(provider.manifest)) !== JSON.stringify(prefs)) throw new Error('Native source provider configuration changed before load admission.');
+    const loadedId = await addModel(new File([buffer], filename), { modelId, name: filename });
     if (loadedId !== modelId) throw new Error('Native federation admission or loading did not complete.');
     const state = useViewerStore.getState(), model = state.models.get(modelId);
     if (!model || model.loadState === 'error' || (model.loadState && model.loadState !== 'complete')) throw new Error(model?.loadError ?? 'Native model load did not complete.');
     state.setSourceTag(modelId, host.createSourceTag(i.provider, i.project_id, i.container_id, i.file_id, i.revision_id));
     return { model_id: modelId, name: model.name, state: model.loadState ?? 'complete', bytes: buffer.byteLength };
-  });
+  }));
 })];

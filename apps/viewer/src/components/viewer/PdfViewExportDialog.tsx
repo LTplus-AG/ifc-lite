@@ -71,6 +71,7 @@ import {
 } from '@/lib/export/view-pdf/view-pdf-page-estimate';
 import {
   deriveDisplayedScaleFactor,
+  formatMm,
   describePage,
 } from '@/lib/export/view-pdf/view-pdf-scale';
 import { viewPdfPhaseLabel } from '@/lib/export/view-pdf/view-pdf-progress';
@@ -104,11 +105,6 @@ interface PdfViewExportDialogProps {
 /** The drafting scales offered as presets, coarsest detail last. */
 const SCALE_PRESETS = [10, 20, 50, 100, 200, 500] as const;
 
-/** Round a millimetre figure for display without inventing precision. */
-function formatMm(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
-}
 
 export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfViewExportDialogProps) {
   const { t } = useTranslation();

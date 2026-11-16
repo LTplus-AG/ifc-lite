@@ -29,7 +29,9 @@ export const coordinationFlavorOperations = [
   coordination<{ id: string; expected_updated_at: string }>('extensions.switchFlavor', 'Run the complete native flavor switcher, retaining existing reviewed extension grants and reporting every refused saved-state restore. Activations retain their existing native install review and exact current grants; no new capability is granted.', ['configuration', 'model', 'view', 'network'], {
     type: 'object', properties: { id: bounded, expected_updated_at: bounded }, required: ['id', 'expected_updated_at'], additionalProperties: false,
   }, async (i, c) => {
-    const host = coordinationExtensions(), target = await exactFlavor(i.id, i.expected_updated_at), installed = await host.listInstalled();
+    const host = coordinationExtensions();
+    await exactFlavor(i.id, i.expected_updated_at);
+    const installed = await host.listInstalled();
     for (const record of installed) validateNativeExtensionGrants(record);
     return c.commitAsync(async () => { await exactFlavor(i.id, i.expected_updated_at); if (JSON.stringify(await host.listInstalled()) !== JSON.stringify(installed)) throw new Error('Native installed extension revisions/grants changed before switching.'); const outcome = await host.switchFlavor(i.id); return { state: outcome.unapplied.length ? 'partial' : 'completed', id: i.id, ...outcome }; });
   }),

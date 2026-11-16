@@ -81,7 +81,9 @@ const workerPlanner: AppearancePlanRunner = async (source, request) => {
  * changed under the dialog — still worth reporting truthfully rather than
  * writing an empty file.
  */
-export async function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): Promise<LandXmlIfcDownloadResult> {
+export async function buildLandXmlIfcArtifact(input: LandXmlIfcDownloadInput): Promise<
+  (Extract<LandXmlIfcDownloadResult, { status: 'exported' }> & { blob: Blob }) | Extract<LandXmlIfcDownloadResult, { status: 'refused' }>
+> {
   // The declared CRS is named, never resolved, as `IfcProjectedCRS.Name`
   // (§4.2; precedence in `landXmlCrsName`). No `Bounds` accompany it, so the
   // transposition check does not run — see `crsName` in `landXmlIfcPlan.ts`
@@ -100,16 +102,22 @@ export async function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): Prom
   );
   if (result.status === 'refused') return result;
   const filename = buildExportFilename(stem, result.extension);
-  downloadBlob(
-    typeof result.content === 'string'
-      ? new Blob([result.content], { type: 'application/x-step' })
-      : new Blob([result.content.slice()], { type: 'application/zip' }),
-    filename,
-  );
+  const blob = typeof result.content === 'string'
+    ? new Blob([result.content], { type: 'application/x-step' })
+    : new Blob([result.content.slice()], { type: 'application/zip' });
   return {
-    status: 'exported', filename, imagery: result.imagery,
+    status: 'exported', filename, blob, imagery: result.imagery,
     surfaces: result.surfaces, surveyPoints: result.surveyPoints, alignments: result.alignments,
   };
+}
+
+/** Preserve the native browser transport while sharing the producer with operations. */
+export async function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): Promise<LandXmlIfcDownloadResult> {
+  const artifact = await buildLandXmlIfcArtifact(input);
+  if (artifact.status === 'refused') return artifact;
+  downloadBlob(artifact.blob, artifact.filename);
+  const { blob: _blob, ...result } = artifact;
+  return result;
 }
 
 /** The outcome an `ExportDialogShell.onExport` (or equivalent) renders. */

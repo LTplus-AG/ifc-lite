@@ -12,7 +12,6 @@ import {
   rulesFromPresets,
   groupDuplicateSets,
   findDuplicates,
-  type Clash,
   type ClashElement,
   type ClashResult,
   type ClashRule,

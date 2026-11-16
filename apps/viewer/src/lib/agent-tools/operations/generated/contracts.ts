@@ -4435,6 +4435,4230 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "clashOperations"
   },
   {
+    "id": "bcf.comments",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read a bounded native comment metadata/text page or one exact comment. Complete texts include their exact expected_comment edit guard; explicitly incomplete text can be inspected using bcf.readText. No viewpoint media is copied.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "comment_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "topic_id",
+        "offset",
+        "limit",
+        "comment_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string"
+        },
+        "comments": {
+          "type": "array",
+          "items": {}
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "topic_id",
+        "comments",
+        "page"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.viewpoints",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read bounded native viewpoint camera/media-availability/component-count metadata or one exact viewpoint. Screenshot and bitmap bodies remain in native state for application and ZIP export; they are never duplicated into metadata.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "viewpoint_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "topic_id",
+        "offset",
+        "limit",
+        "viewpoint_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string"
+        },
+        "viewpoints": {
+          "type": "array",
+          "items": {}
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "topic_id",
+        "viewpoints",
+        "page"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.readText",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read an exact bounded UTF-16 text segment from a native topic title/description or comment when metadata explicitly reports incomplete text. No trimming or normalization is applied; expected-value edits still compare complete native values.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "field": {
+          "type": "string",
+          "enum": [
+            "title",
+            "description",
+            "comment"
+          ]
+        },
+        "comment_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        }
+      },
+      "required": [
+        "topic_id",
+        "field",
+        "comment_id",
+        "offset",
+        "length"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "number"
+        },
+        "total_chars": {
+          "type": "number"
+        },
+        "next_offset": {}
+      },
+      "required": [
+        "text",
+        "offset",
+        "total_chars",
+        "next_offset"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.projectExtensions",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read a bounded page of one declared native project vocabulary for existing issue type/status/priority/label/assignee/stage controls.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "topicTypes",
+            "topicStatuses",
+            "priorities",
+            "topicLabels",
+            "users",
+            "stages"
+          ]
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "required": [
+        "kind",
+        "offset",
+        "limit"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "items": {}
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "kind",
+        "values",
+        "page"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "document.prepareReportRefresh",
+    "version": 1,
+    "owner": "document",
+    "description": "Prepare the native deterministic saved AI-report refresh against recaptured current source evidence under the compact SHA-256 revision from document.inspect/library. Returns a host-owned token and exact per-human-block conflict choices; no network generation or document write occurs.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "document_id",
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "claims": {
+          "type": "array"
+        },
+        "conflicts": {
+          "type": "array"
+        },
+        "models_changed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "token",
+        "document_id",
+        "claims",
+        "conflicts",
+        "models_changed"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "document.applyReportRefresh",
+    "version": 1,
+    "owner": "document",
+    "description": "Apply one exact prepared native refresh. Only listed human-block conflict IDs may be replaced; all other human edits and deletions retain the native refresh semantics. Rechecks source freshness and exact document at durable admission, returns native CAS persistence outcome, and preserves a failed-save candidate for exact retry.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "replace_block_ids": {
+          "type": "array",
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "required": [
+        "token",
+        "replace_block_ids"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "saved": {
+          "type": "boolean"
+        },
+        "storage": {
+          "type": "object"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "saved",
+        "storage",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "document.discardReportRefresh",
+    "version": 1,
+    "owner": "document",
+    "description": "Discard only this host-owned native refresh preview. Does not alter a document or discard any staged unsaved native persistence evidence.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "discarded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "discarded"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.prepareReportDraft",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Prepare the actual native checked AI report from an exact completed native evidence conversation. Uses canonical fact/citation checking, generator block provenance and native language selection; returns a host-owned review token. No generic document import can substitute checked AI provenance.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "de",
+            "fr",
+            "it",
+            "es",
+            "nl",
+            "pt",
+            "da",
+            "sv",
+            "nb",
+            "fi",
+            "pl",
+            "cs"
+          ]
+        },
+        "expected_evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_answer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        }
+      },
+      "required": [
+        "name",
+        "language",
+        "expected_evidence_id",
+        "expected_answer"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "document_json": {
+          "type": "string"
+        },
+        "claims": {
+          "type": "array"
+        },
+        "contradicted_claim_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "historical": {
+          "type": "boolean"
+        },
+        "language": {
+          "type": "string"
+        },
+        "declared_language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "token",
+        "document_id",
+        "document_json",
+        "claims",
+        "contradicted_claim_ids",
+        "historical",
+        "language",
+        "declared_language"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.reviseReportDraftClaim",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Edit or remove one exact native checked report claim through the canonical reviewer reducer. Rechecks the current native conversation and returns the recomposed checked document, including any remaining contradicted claims.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_document_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 2000000
+        },
+        "claim_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "edit",
+            "remove"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "token",
+        "expected_document_json",
+        "claim_id",
+        "action",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "document_json": {
+          "type": "string"
+        },
+        "claims": {
+          "type": "array"
+        },
+        "contradicted_claim_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "historical": {
+          "type": "boolean"
+        },
+        "language": {
+          "type": "string"
+        },
+        "declared_language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "token",
+        "document_id",
+        "document_json",
+        "claims",
+        "contradicted_claim_ids",
+        "historical",
+        "language",
+        "declared_language"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.saveReportDraft",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Save the exact reviewed checked native AI-report candidate through saveReportDraft, retaining canonical citation/fact/provenance validation, discussion freshness and native document CAS persistence. Contradicted claims must first be edited or removed. Does not overwrite another document and never treats provider completion as report approval.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "reviewed_document_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 2000000
+        }
+      },
+      "required": [
+        "token",
+        "reviewed_document_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "saved": {
+          "type": "boolean"
+        },
+        "storage": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "document_id",
+        "saved",
+        "storage"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.discardReportDraft",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Discard this host-owned checked native report preview. Preserves any staged native document evidence from an earlier refused persistence attempt.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "discarded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "discarded"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.captureAttachments",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Explicitly capture the native selected-element ownership sidecar, compressed viewport screenshot and/or prepared native Room review for exactly one evidence conversation. Returns an opaque per-send attachment handle; no attachment is sent automatically.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "selection": {
+          "type": "boolean"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "room_candidate_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "room_model_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "evidence_id",
+        "selection",
+        "screenshot",
+        "room_candidate_id",
+        "room_model_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "attachment_id": {
+          "type": "string"
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "selection_count": {
+          "type": "number"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "rooms": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "attachment_id",
+        "evidence_id",
+        "selection_count",
+        "screenshot",
+        "rooms"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.removeAttachments",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Discard one opaque native per-send attachment capture without sending it.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "removed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "removed"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.exportSidecar",
+    "version": 1,
+    "owner": "compare",
+    "description": "Export the native identity-map or lineage sidecar pinned to full source SHA-256 digests and authored key scheme, through the shared native serializer.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "identity-map",
+            "lineage"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.importSidecar",
+    "version": 1,
+    "owner": "compare",
+    "description": "Import reviewed identity-map entries only when native full-source digests, compared pair and authored key scheme match. Native ownership-aware identity admission reports every refused alias; rerun compare to publish the updated diff.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "refused": {
+          "type": "array",
+          "items": {}
+        },
+        "accepted": {
+          "type": "number"
+        },
+        "requires_rerun": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "refused",
+        "accepted",
+        "requires_rerun"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "review.exportWorkspace",
+    "version": 1,
+    "owner": "review",
+    "description": "Export native portable review decisions using the canonical backup codec, preserving unsaved review recovery evidence and statuses.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "review.importWorkspace",
+    "version": 1,
+    "owner": "review",
+    "description": "Import only review-workspace records from a canonical native backup. Native atomic conflict planning preserves differing originals under fresh identities; no assistant answer becomes a review decision implicitly.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "imported": {
+          "type": "number"
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "imported",
+        "storage"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.editDraftMembers",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Remove one exact native finding identity or split explicit members through the native ownership-aware draft reducer and viewpoint reframe, then await guarded durable save.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_modified_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "topic_guid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "remove",
+            "split"
+          ]
+        },
+        "member_identities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "batch_id",
+        "expected_modified_at",
+        "topic_guid",
+        "action",
+        "member_identities",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "batch": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "batch",
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.reconcileDraft",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Compare a draft with the exact current native clash run, apply one topic proposal or draft unplaced findings. Uses the native group ownership resolver and captured world frame; never silently moves findings held by another topic.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_modified_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "preview",
+            "apply-topic",
+            "draft-unplaced"
+          ]
+        },
+        "expected_run_digest": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "topic_guid": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "batch_id",
+        "expected_modified_at",
+        "action",
+        "expected_run_digest",
+        "topic_guid",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "proposal": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "proposal",
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.resolveOutbox",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Use native uncertain-outcome server checking, exact recorded candidate selection, absent-check requeue or remote-conflict overwrite/discard. This only changes durable recovery state; it never dispatches publication writes.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "publication_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "entry_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_entry_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "check",
+            "requeue",
+            "candidate",
+            "overwrite",
+            "discard"
+          ]
+        },
+        "candidate_guid": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "publication_id",
+        "entry_id",
+        "expected_entry_json",
+        "action",
+        "candidate_guid"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "saved": {
+          "type": "boolean"
+        },
+        "outcome": {}
+      },
+      "required": [
+        "saved",
+        "outcome"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.connect",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Use the existing native password/token/client-credentials connector and session token lifecycle. Secret inputs are not returned. Interactive OAuth stays with its native browser popup.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "password",
+            "token",
+            "client-credentials"
+          ]
+        },
+        "server_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        },
+        "username": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "password": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "token": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "client_id": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "client_secret": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "expected_account_json": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "mode",
+        "server_url",
+        "username",
+        "password",
+        "token",
+        "client_id",
+        "client_secret",
+        "expected_account_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "saved": {
+          "type": "boolean"
+        },
+        "connection": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "saved",
+        "connection"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.disconnect",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Clear one exact native BCF account through its existing credential teardown/change notification. Does not delete any server data.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_server_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        },
+        "expected_user_id": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "expected_server_url",
+        "expected_user_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "disconnected": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "disconnected"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "influx.configure",
+    "version": 1,
+    "owner": "influx",
+    "description": "Save the native bounded Influx connection selection through the same query validator and secret-exclusion rule as Connect. Token remains ephemeral and is never persisted or returned.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "org": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "bucket": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "measurement": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "field": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "guidTag": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "unit": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "token": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "expected_config_json": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "url",
+        "org",
+        "bucket",
+        "measurement",
+        "field",
+        "guidTag",
+        "unit",
+        "token",
+        "expected_config_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "saved": {
+          "type": "boolean"
+        },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "saved",
+        "configuration"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.exportReview",
+    "version": 1,
+    "owner": "layers",
+    "description": "Export the configured registry review through the exact native Layers BCF ZIP writer. Reads the native review identity/topics and never publishes content.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export",
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.loadStack",
+    "version": 1,
+    "owner": "layers",
+    "description": "Open an explicit IFCX stack using the exact native Load layer stack canonical composition loader. Current federation and mutation revision must match the inspected source before replacement; admitted reconstruction drains to actual native result.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "content": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 5000000
+              }
+            },
+            "required": [
+              "name",
+              "content"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "expected_model_ids": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "files",
+        "expected_model_ids",
+        "expected_mutation_version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "layers": {
+          "type": "array",
+          "items": {}
+        },
+        "model_ids": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "state",
+        "layers",
+        "model_ids"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.enable",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Enable the exact installed bundle under its existing reviewed grants through native loader/activation. No grant is added. Extension activation retains native install review and current grants.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "model",
+      "view",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_model_ids": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_geometry_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "extension_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_bundle_hash": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_grants_json": {
+          "type": "string",
+          "maxLength": 100000
+        }
+      },
+      "required": [
+        "expected_model_ids",
+        "expected_mutation_version",
+        "expected_geometry_version",
+        "extension_id",
+        "expected_bundle_hash",
+        "expected_version",
+        "expected_grants_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "extension_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "extension_id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed",
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.runCommand",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Invoke one exact enabled native extension command under its stored grants and sandbox budgets. Returns the actual settled native result. Unknown extension-owned side effects are not inferred as external publication success; native running evaluations drain to their actual outcome.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "model",
+      "view",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_model_ids": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_geometry_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "extension_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_bundle_hash": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_grants_json": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "command_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "args_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "expected_model_ids",
+        "expected_mutation_version",
+        "expected_geometry_version",
+        "extension_id",
+        "expected_bundle_hash",
+        "expected_version",
+        "expected_grants_json",
+        "command_id",
+        "args_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "extension_id": {
+          "type": "string"
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "state",
+        "extension_id",
+        "result"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed",
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.runExporter",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Invoke one exact enabled native extension exporter under its stored grants, await its actual bytes, and return a host-owned artifact. Native installed capability review remains authoritative; artifact creation does not assert that unknown external side effects succeeded.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "model",
+      "view",
+      "network",
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_model_ids": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_geometry_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "extension_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_bundle_hash": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_grants_json": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "exporter_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "expected_model_ids",
+        "expected_mutation_version",
+        "expected_geometry_version",
+        "extension_id",
+        "expected_bundle_hash",
+        "expected_version",
+        "expected_grants_json",
+        "exporter_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "extension_id": {
+          "type": "string"
+        },
+        "artifact": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "state",
+        "extension_id",
+        "artifact",
+        "result"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed",
+      "artifact": "native-export",
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.flavors",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Read the native flavor library and current persisted active pointer.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "flavors": {
+          "type": "array",
+          "items": {}
+        },
+        "active_id": {}
+      },
+      "required": [
+        "flavors",
+        "active_id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.createFlavor",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Create and activate a native flavor, optionally capturing the same live lenses/clash/sidebar state as New snapshot. No extension capability is installed or broadened.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "snapshot": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "snapshot"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "flavor": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "flavor"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.editFlavor",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Rename, duplicate, capture the native live viewer state into, or delete one exact flavor revision through its native persisted service.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "expected_updated_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "rename",
+            "duplicate",
+            "capture",
+            "delete"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "id",
+        "expected_updated_at",
+        "action",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.switchFlavor",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Run the complete native flavor switcher, retaining existing reviewed extension grants and reporting every refused saved-state restore. Activations retain their existing native install review and exact current grants; no new capability is granted.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "model",
+      "view",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "expected_updated_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "id",
+        "expected_updated_at"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "unapplied": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "state",
+        "id",
+        "unapplied"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed",
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.exportFlavor",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Export the exact native flavor archive bytes, preserving snapshots and metadata through the canonical packer.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.importFlavor",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Preview and validate bounded native flavor archive bytes before saving with explicit replace or save-as-new strategy. Does not activate, install bundled extensions or broaden grants.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "base64": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "replace",
+            "save-as-new"
+          ]
+        },
+        "new_id": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "expected_updated_at": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "base64",
+        "strategy",
+        "new_id",
+        "expected_updated_at"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "flavor": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "flavor"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.saveFlavorDefinition",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Save one exact data-only flavor definition through the canonical strict validator. Supports the native portable merge/editor result while preserving an explicit existing revision guard; does not activate or grant capabilities.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "definition_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "expected_updated_at": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "definition_json",
+        "expected_updated_at"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "flavor": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "flavor"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.resetFlavors",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Use the native Reset defaults lifecycle with its exact active pointer guard. Preserves native persistence refusal behavior.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_active_id": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "expected_active_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "flavor": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "flavor"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.loadSource",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Load bounded JSON/RDF or retrieve from the already exercised native endpoint grant through the same provider and validation worker as the panel. Related selection uses native identity/query resolution. Credentials/loopback/host grants cannot be supplied or broadened.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "local",
+            "turtle",
+            "nquads",
+            "jsonld",
+            "json",
+            "sparql",
+            "construct"
+          ]
+        },
+        "payload": {
+          "type": "string",
+          "maxLength": 5000000
+        },
+        "query": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "mapping_json": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "related_selection": {
+          "type": "boolean"
+        },
+        "expected_data_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_endpoint": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "expected_grant_generation": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "mode",
+        "payload",
+        "query",
+        "mapping_json",
+        "related_selection",
+        "expected_data_version",
+        "expected_endpoint",
+        "expected_grant_generation"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "diagnostic": {
+          "type": "string"
+        },
+        "data_version": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "diagnostic",
+        "data_version"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.endpoint",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Inspect only the identity/generation of the already exercised native endpoint grant; credentials and relay secrets remain private.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "endpoint": {},
+        "generation": {
+          "type": "number"
+        },
+        "configured": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "endpoint",
+        "generation",
+        "configured"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.profile",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Import a native data-only profile/dictionary using the canonical validators, or restore the reference profile. Imported JSON cannot supply executable contexts or shapes.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "profile",
+            "dictionary",
+            "reference"
+          ]
+        },
+        "definition": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "kind",
+        "definition"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "profile",
+        "diagnostics"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.profileFromBsdd",
+    "version": 1,
+    "owner": "semantic",
+    "features": [
+      "privacy.third-party"
+    ],
+    "description": "Build the native data-only profile from an exact bSDD class using the same configured proxy as the profile control. Retains native third-party privacy gate and rejects a changed profile.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "class_uri": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "class_uri"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "profile",
+        "diagnostics"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.profileArtifact",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Export the current native profile with generated data-only validation artifacts.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.links",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Apply bounded native resource identity links through the exact parser used by the identity controls.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "links": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "links"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.identity",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Configure the existing native identity strategy, profile field binding and resource URI template using canonical validation. Revision/model bindings remain explicit.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "ifc-global-id",
+            "resource-links",
+            "profile-fields",
+            "resource-uri"
+          ]
+        },
+        "GlobalId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "modelRevision": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "uri_mode": {
+          "type": "string",
+          "enum": [
+            "template",
+            "last-path-segment"
+          ]
+        },
+        "uri_template": {
+          "type": "string",
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "strategy",
+        "GlobalId",
+        "modelRevision",
+        "uri_mode",
+        "uri_template"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "type": "string"
+        },
+        "identity_fields": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "uri_config": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "strategy",
+        "identity_fields",
+        "uri_config"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.export",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Export the same native linked-records evidence bundle as the panel, including generated artifacts and original reference-profile disclaimer.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.resolveResource",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Resolve an exact native linked record with the configured identity strategy, inspect its relationships, and optionally select its native ownership targets in one explicit model scope.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "resource_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "model_scope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "select": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "resource_id",
+        "model_scope",
+        "select"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "resolution": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "related": {
+          "type": "array",
+          "items": {}
+        },
+        "selected": {}
+      },
+      "required": [
+        "resolution",
+        "related",
+        "selected"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.prepareProjection",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Prepare the exact native IFC property projection and provenance for a linked installation in the explicitly bound model. Returns an opaque review plan; no IFC mutation occurs.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "resource_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "mapping_id": {
+          "type": "string",
+          "enum": [
+            "door-fire-rating",
+            "wall-thermal-transmittance"
+          ]
+        },
+        "policy": {
+          "type": "string",
+          "enum": [
+            "error",
+            "skip",
+            "overwrite"
+          ]
+        },
+        "expected_data_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "resource_id",
+        "mapping_id",
+        "policy",
+        "expected_data_version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "plan_id": {
+          "type": "string"
+        },
+        "target": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "GlobalId": {
+          "type": "string"
+        },
+        "revision": {},
+        "property": {
+          "type": "string"
+        },
+        "previous": {},
+        "value": {},
+        "unit": {},
+        "policy": {
+          "type": "string"
+        },
+        "skip": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "plan_id",
+        "target",
+        "GlobalId",
+        "revision",
+        "property",
+        "previous",
+        "value",
+        "unit",
+        "policy",
+        "skip"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.applyProjection",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Apply one exact prepared native projection through the canonical mutate adapter in its single native undo batch. Native permission, property conflict, model identity and revision guards are rechecked at commit.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        },
+        "skipped": {
+          "type": "boolean"
+        },
+        "plan_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "applied",
+        "skipped",
+        "plan_id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.library",
+    "version": 1,
+    "owner": "layers",
+    "description": "Inspect native local content-addressed layers and refs. IndexedDB mirroring is native best effort, not a confirmed durable transaction.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "layer_ids": {
+          "type": "array",
+          "items": {}
+        },
+        "refs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "durability": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "layer_ids",
+        "refs",
+        "durability"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.export",
+    "version": 1,
+    "owner": "layers",
+    "description": "Export one exact immutable local IFCX layer using the native content-addressed store.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.publishLocalDraft",
+    "version": 1,
+    "owner": "layers",
+    "description": "Publish the existing viewer or collaboration draft into the native local layer store, then recompose through the canonical native overlay loader. Partial unresolved edits are reported and retained. This does not publish to a remote registry.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "session"
+          ]
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_layer_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "minItems": 1,
+          "maxItems": 10000
+        }
+      },
+      "required": [
+        "mode",
+        "intent",
+        "author",
+        "expected_mutation_version",
+        "expected_layer_ids"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "durability": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "mode",
+        "result",
+        "durability"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.previewLocalMerge",
+    "version": 1,
+    "owner": "layers",
+    "description": "Preview the native three-way local-ref merge with an exact ref guard. The candidate remains immutable and no registry request occurs.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "ref_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "expected_ref_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "candidate_id",
+        "ref_name",
+        "expected_ref_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "checks": {
+          "type": "array",
+          "items": {}
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "ref_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "outcome",
+        "checks",
+        "candidate_id",
+        "ref_json"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.mergeLocal",
+    "version": 1,
+    "owner": "layers",
+    "description": "Execute the native local three-way merge with exact ref guard, native conflict edits/removal semantics and explicit check waivers. Reports policy failure and unresolved conflicts without claiming a committed merge.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "ref_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "expected_ref_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "resolver": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "resolutions": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "component_key": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "choice": {
+                "type": "string",
+                "enum": [
+                  "ours",
+                  "theirs",
+                  "edited"
+                ]
+              },
+              "attributes_json": {
+                "type": "string",
+                "maxLength": 1000000
+              }
+            },
+            "required": [
+              "path",
+              "component_key",
+              "choice",
+              "attributes_json"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "waivers": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "spec": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "spec",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "candidate_id",
+        "ref_name",
+        "expected_ref_json",
+        "resolver",
+        "resolutions",
+        "waivers"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "durability": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "outcome",
+        "durability"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.loadLocalRef",
+    "version": 1,
+    "owner": "layers",
+    "description": "Load one exact native local ref through the canonical federated IFCX loader, retaining native composition diagnostics.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "expected_ref_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "ref_name",
+        "expected_ref_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "loaded": {
+          "type": "number"
+        },
+        "ref_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "loaded",
+        "ref_name"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.registry",
+    "version": 1,
+    "owner": "layers",
+    "description": "Inspect the configured native IFCX registry refs, layers and review list using its existing account token, without disclosing credentials or publishing a candidate.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "layers": {
+          "type": "array",
+          "items": {}
+        },
+        "refs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "reviews": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "layers",
+        "refs",
+        "reviews"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.prepareRegistryAction",
+    "version": 1,
+    "owner": "layers",
+    "description": "Stage an exact immutable layer/ref and optional entity-bound review comment in the real native Layers approval controls. Preview/open-review may upload the candidate, so no remote mutation is dispatched here.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "ref_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "merge",
+            "review",
+            "comment"
+          ]
+        },
+        "entity": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "with_viewpoint": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "ref_name",
+        "action",
+        "entity",
+        "title",
+        "description",
+        "with_viewpoint"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "candidate": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "state",
+        "candidate"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.favourites",
+    "version": 1,
+    "owner": "sources",
+    "description": "Read only native favourites belonging to the current authenticated provider identity.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "favourites": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "provider",
+        "favourites"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.toggleFavourite",
+    "version": 1,
+    "owner": "sources",
+    "description": "Toggle one exact native file/folder bookmark, stamped with the current provider identity. Does not accept a caller-supplied account identity.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "folder",
+            "file"
+          ]
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "project_name": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "file_area_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "file_area_name": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "container_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "container_name": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "file_id": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "file_name": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "provider",
+        "kind",
+        "project_id",
+        "project_name",
+        "file_area_id",
+        "file_area_name",
+        "container_id",
+        "container_name",
+        "file_id",
+        "file_name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "added": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "added",
+        "ok",
+        "items"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.renameFavourite",
+    "version": 1,
+    "owner": "sources",
+    "description": "Rename the label of one native bookmark owned by the current provider account.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "provider",
+        "key",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.removeFavourite",
+    "version": 1,
+    "owner": "sources",
+    "description": "Remove one native bookmark belonging to the current provider identity.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "provider",
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "removed": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "removed",
+        "items"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.refreshRevisions",
+    "version": 1,
+    "owner": "sources",
+    "description": "Perform one native source revision-change pass for loaded tagged models; no recurring watcher is created. Reports provider failures and unsupported change-detection coverage.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "updates": {},
+        "failures": {
+          "type": "array",
+          "items": {}
+        },
+        "unsupported_model_ids": {
+          "type": "array",
+          "items": {}
+        },
+        "partial": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "updates",
+        "failures",
+        "unsupported_model_ids",
+        "partial"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.join",
+    "version": 1,
+    "owner": "collab",
+    "description": "Join an exact room with a supplied existing token using native role parsing, sync/reconstruction and teardown. Never accepts a caller-chosen role or returns credentials. A join that would publish local annotations waits for native approval.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "room_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "room_id",
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "room_id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.identity",
+    "version": 1,
+    "owner": "collab",
+    "description": "Edit the native local display identity and, when connected, its authorized presence record. Does not change account id, room token or role.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        }
+      },
+      "required": [
+        "name",
+        "color"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "color"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.prepareRoom",
+    "version": 1,
+    "owner": "collab",
+    "description": "Validate and prepare an exact native share scope/role for the real Share consent dialog. New room creation uploads models only after the native Create link approval; no token is returned.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "active",
+            "all"
+          ]
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "commenter",
+            "editor"
+          ]
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_geometry_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "scope",
+        "role",
+        "expected_mutation_version",
+        "expected_geometry_version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "candidate": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "seed_failure": {}
+      },
+      "required": [
+        "state",
+        "candidate",
+        "seed_failure"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.revokeInvite",
+    "version": 1,
+    "owner": "collab",
+    "description": "Revoke the last native share link with the current native admin token. Does not disclose either token.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_room_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "expected_room_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "revoked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "revoked"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.removePeer",
+    "version": 1,
+    "owner": "collab",
+    "description": "Use native room administration to disconnect an exact peer client id; server token authority remains authoritative.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_room_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "peer_client_id": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "expected_room_id",
+        "peer_client_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "removed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "removed"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
     "id": "script.execute",
     "version": 1,
     "owner": "script",
@@ -6807,6 +11031,12 @@ export const operationContracts: readonly OperationContract[] = [
           "type": "string",
           "minLength": 1,
           "maxLength": 200
+        },
+        "attachment_id": {
+          "type": "string",
+          "nullable": true,
+          "minLength": 1,
+          "maxLength": 200
         }
       },
       "required": [
@@ -7102,7 +11332,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "bcf.read",
     "version": 1,
     "owner": "bcf",
-    "description": "Read local BCF project topics, comments and viewpoints.",
+    "description": "Read bounded native project/topic metadata. Defaults to 20 topics with a 192 KiB page budget; use next_offset or topic_id, and bcf.comments/bcf.viewpoints for child pages. Screenshot/media bodies stay in native state for application and ZIP export. expected_modified is the exact native optimistic edit guard.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -7110,7 +11340,25 @@ export const operationContracts: readonly OperationContract[] = [
     "capability": "read",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "nullable": true,
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "nullable": true,
+          "minimum": 1,
+          "maximum": 20
+        },
+        "topic_id": {
+          "type": "string",
+          "nullable": true,
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -7118,8 +11366,15 @@ export const operationContracts: readonly OperationContract[] = [
       "type": "object",
       "properties": {
         "project": {},
+        "page": {
+          "type": "object",
+          "additionalProperties": true
+        },
         "author": {
           "type": "string"
+        },
+        "author_complete": {
+          "type": "boolean"
         },
         "active_topic_id": {},
         "overlay": {
@@ -7128,7 +11383,9 @@ export const operationContracts: readonly OperationContract[] = [
       },
       "required": [
         "project",
+        "page",
         "author",
+        "author_complete",
         "active_topic_id",
         "overlay"
       ],
@@ -7225,24 +11482,20 @@ export const operationContracts: readonly OperationContract[] = [
         "title": {
           "type": "string"
         },
-        "creationAuthor": {
-          "type": "string"
+        "creationAuthor": {},
+        "comment_count": {
+          "type": "number"
         },
-        "comments": {
-          "type": "array",
-          "items": {}
-        },
-        "viewpoints": {
-          "type": "array",
-          "items": {}
+        "viewpoint_count": {
+          "type": "number"
         }
       },
       "required": [
         "guid",
         "title",
         "creationAuthor",
-        "comments",
-        "viewpoints"
+        "comment_count",
+        "viewpoint_count"
       ],
       "additionalProperties": true
     },
@@ -7734,7 +11987,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "bcf.export",
     "version": 1,
     "owner": "bcf",
-    "description": "Write the current BCF project through the native BCF writer and download helper.",
+    "description": "Write the complete native BCF project, including all stored screenshots and media, through the native ZIP writer into a host-owned artifact.",
     "needs": "viewer",
     "effects": [
       "artifact"
@@ -10927,7 +15180,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "document.library",
     "version": 1,
     "owner": "document",
-    "description": "Read current structured documents and native persistence status.",
+    "description": "Read a bounded page of document summaries and compact SHA-256 revisions; embedded media, blocks and AI evidence stay local. Defaults offset=0, limit=20. Inspect paged block metadata or export native JSON for complete content.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -10935,7 +15188,19 @@ export const operationContracts: readonly OperationContract[] = [
     "capability": "read",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "nullable": true
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "nullable": true
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -10944,6 +15209,15 @@ export const operationContracts: readonly OperationContract[] = [
       "properties": {
         "documents": {
           "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "next_offset": {
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "storage": {
           "type": "object"
@@ -10957,6 +15231,8 @@ export const operationContracts: readonly OperationContract[] = [
       },
       "required": [
         "documents",
+        "total",
+        "next_offset",
         "storage",
         "activeId"
       ],
@@ -11496,7 +15772,7 @@ export const operationContracts: readonly OperationContract[] = [
     "version": 1,
     "owner": "charts",
     "description": "Await the same native aggregation/source/filter/slice used by a dashboard card. Return serializable bucket identities and source fingerprint.",
-    "needs": "model",
+    "needs": "viewer",
     "effects": [
       "read"
     ],
@@ -11569,7 +15845,7 @@ export const operationContracts: readonly OperationContract[] = [
     "version": 1,
     "owner": "charts",
     "description": "Resolve exact native chart marks, verify the inspected data fingerprint, and apply native highlight/isolate/ghost selection, cross-filter identities and optional 3D color overlays without mounting a chart.",
-    "needs": "model",
+    "needs": "viewer",
     "effects": [
       "read",
       "selection",
@@ -11692,7 +15968,7 @@ export const operationContracts: readonly OperationContract[] = [
     "version": 1,
     "owner": "charts",
     "description": "Await native chart aggregation and ECharts SVG rendering and return the actual SVG artifact.",
-    "needs": "model",
+    "needs": "viewer",
     "effects": [
       "read",
       "artifact"
@@ -12330,6 +16606,9 @@ export const operationContracts: readonly OperationContract[] = [
         "counts": {
           "type": "array"
         },
+        "rule_members": {
+          "type": "array"
+        },
         "legend": {
           "type": "array"
         }
@@ -12340,6 +16619,7 @@ export const operationContracts: readonly OperationContract[] = [
         "matched",
         "hiddenIds",
         "counts",
+        "rule_members",
         "legend"
       ],
       "additionalProperties": false
@@ -12397,6 +16677,9 @@ export const operationContracts: readonly OperationContract[] = [
         "counts": {
           "type": "array"
         },
+        "rule_members": {
+          "type": "array"
+        },
         "legend": {
           "type": "array"
         }
@@ -12407,6 +16690,7 @@ export const operationContracts: readonly OperationContract[] = [
         "matched",
         "hiddenIds",
         "counts",
+        "rule_members",
         "legend"
       ],
       "additionalProperties": false
@@ -12466,6 +16750,9 @@ export const operationContracts: readonly OperationContract[] = [
         "counts": {
           "type": "array"
         },
+        "rule_members": {
+          "type": "array"
+        },
         "legend": {
           "type": "array"
         }
@@ -12476,6 +16763,7 @@ export const operationContracts: readonly OperationContract[] = [
         "matched",
         "hiddenIds",
         "counts",
+        "rule_members",
         "legend"
       ],
       "additionalProperties": false
@@ -12526,6 +16814,9 @@ export const operationContracts: readonly OperationContract[] = [
         "counts": {
           "type": "array"
         },
+        "rule_members": {
+          "type": "array"
+        },
         "legend": {
           "type": "array"
         }
@@ -12536,6 +16827,7 @@ export const operationContracts: readonly OperationContract[] = [
         "matched",
         "hiddenIds",
         "counts",
+        "rule_members",
         "legend"
       ],
       "additionalProperties": false
@@ -24740,6 +29032,9 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "exports.changedModels",
     "version": 1,
     "owner": "changes",
+    "features": [
+      "export.files"
+    ],
     "description": "Produce full native IFC/IFCX files with pending edits for every changed model, using the same exporter and ZIP bundler as Export modified IFC. Retains schedule attribution, portable appearance resources, native skips and format-loss diagnostics. Returns one connection-owned file or ZIP; no browser download or remote publication. Model/federation changes during production refuse the result.",
     "needs": "viewer",
     "effects": [
@@ -28762,5 +33057,6490 @@ export const operationContracts: readonly OperationContract[] = [
     "implementation": "native-store",
     "module": "clash-native-drafts",
     "exportName": "clashDraftOperations"
+  },
+  {
+    "id": "exports.modelStep",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce one native full/visible STEP IFC or portable IFCZIP with the Export dialog schema, geometry, mutation and trim/whole-section options. Uses its exact shared exportModelStep producer, room/source ID mapping, appearance packaging and schedule splicing; refuses unsupported native source/section modes. No download.",
+    "needs": "model",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "IFC2X3",
+            "IFC4",
+            "IFC4X3"
+          ]
+        },
+        "include_geometry": {
+          "type": "boolean"
+        },
+        "apply_mutations": {
+          "type": "boolean"
+        },
+        "visible_only": {
+          "type": "boolean"
+        },
+        "section_mode": {
+          "type": "string",
+          "enum": [
+            "trim",
+            "whole"
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "include_geometry",
+        "apply_mutations",
+        "visible_only",
+        "section_mode"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-step",
+    "exportName": "stepExportOperations"
+  },
+  {
+    "id": "exports.mergedStep",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce an explicit set of native merged STEP models, using the Export dialog merge-input, room visibility, unit reconciliation and section-cropping services. Skipped sources remain explicit diagnostics. Captures are rejected as inputs; no implicit active-model target and no download.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "IFC2X3",
+            "IFC4",
+            "IFC4X3"
+          ]
+        },
+        "include_geometry": {
+          "type": "boolean"
+        },
+        "apply_mutations": {
+          "type": "boolean"
+        },
+        "visible_only": {
+          "type": "boolean"
+        },
+        "section_mode": {
+          "type": "string",
+          "enum": [
+            "trim",
+            "whole"
+          ]
+        },
+        "model_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "unit_reconciliation": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "normalize",
+            "assume-shared"
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "include_geometry",
+        "apply_mutations",
+        "visible_only",
+        "section_mode",
+        "model_ids",
+        "unit_reconciliation"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-step",
+    "exportName": "stepExportOperations"
+  },
+  {
+    "id": "exports.models",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Read the exact native Export dialog model choices, including source-independent/native-metadata models and legacy IDs. Gaussian captures are omitted with an explicit count.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "models_json": {
+          "type": "string"
+        },
+        "omitted_captures": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "models_json",
+        "omitted_captures"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "model-ifcx",
+    "exportName": "ifcxExportOperations"
+  },
+  {
+    "id": "exports.modelIfcx",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce native IFCX with the Export dialog geometry, mutation, visible-only, changes-only and known-property options. Shares its exact instanced-mesh scoped producer and room path mapping. Native empty-pset/property-collision diagnostics remain in diagnostics_json; no download.",
+    "needs": "model",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "include_geometry": {
+          "type": "boolean"
+        },
+        "apply_mutations": {
+          "type": "boolean"
+        },
+        "visible_only": {
+          "type": "boolean"
+        },
+        "changes_only": {
+          "type": "boolean"
+        },
+        "only_known_properties": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "include_geometry",
+        "apply_mutations",
+        "visible_only",
+        "changes_only",
+        "only_known_properties"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-ifcx",
+    "exportName": "ifcxExportOperations"
+  },
+  {
+    "id": "exports.changesJson",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce the exact native source-independent JSON mutation delta for an explicit Export dialog model ID. Uses its active history/revert/georeference filter, including models without parsed IFC. No download and no source replacement.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "target_model_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-ifcx",
+    "exportName": "ifcxExportOperations"
+  },
+  {
+    "id": "lists.editColumn",
+    "version": 1,
+    "owner": "lists",
+    "description": "Use the native pencil-editor column-definition transformation, preserving column ID/order and custom labels; reject duplicates and stale complete definitions. This edits query configuration, never IFC values.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "column_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 500000
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "property",
+            "quantity"
+          ]
+        },
+        "set_name": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "property_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "id",
+        "column_id",
+        "expected_json",
+        "source",
+        "set_name",
+        "property_name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-list-controls",
+    "exportName": "analyticsListControlOperations"
+  },
+  {
+    "id": "lists.presentMembers",
+    "version": 1,
+    "owner": "lists",
+    "description": "Run the native group/row Isolate or X-ray toggle on explicit model-qualified members from lists.run, including federated groups. Resolves assembly parts and records native channel ownership.",
+    "needs": "viewer",
+    "effects": [
+      "selection",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "model_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "express_id": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "model_id",
+              "express_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "channel": {
+          "type": "string",
+          "enum": [
+            "isolate",
+            "ghost"
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "members",
+        "channel"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "isolate",
+            "ghost",
+            null
+          ]
+        }
+      },
+      "required": [
+        "channel"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-list-controls",
+    "exportName": "analyticsListControlOperations"
+  },
+  {
+    "id": "lists.releaseVisibility",
+    "version": 1,
+    "owner": "lists",
+    "description": "Release only the visibility channel still owned by the native list group action.",
+    "needs": "viewer",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-list-controls",
+    "exportName": "analyticsListControlOperations"
+  },
+  {
+    "id": "lens.discover",
+    "version": 1,
+    "owner": "lens",
+    "description": "Complete native Lens picker discovery over the effective federation, including IFC classes and requested property/quantity/classification/material categories; publish the same lazy data as the panel.",
+    "needs": "model",
+    "effects": [
+      "read",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "properties": {
+          "type": "boolean"
+        },
+        "quantities": {
+          "type": "boolean"
+        },
+        "classifications": {
+          "type": "boolean"
+        },
+        "materials": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "properties",
+        "quantities",
+        "classifications",
+        "materials"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-lens-controls",
+    "exportName": "analyticsLensControlOperations"
+  },
+  {
+    "id": "lens.ruleMembers",
+    "version": 1,
+    "owner": "lens",
+    "description": "Select an evaluated rule/value membership or run the exact native rule-isolation toggle, preserving assembly expansion and ownership. Requires the active lens to match inspection; evaluate it first using lens.apply.",
+    "needs": "model",
+    "effects": [
+      "selection",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_lens_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "select",
+            "isolate"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "expected_lens_id",
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "matched": {
+          "type": "integer"
+        },
+        "isolated_rule": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "matched",
+        "isolated_rule"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-lens-controls",
+    "exportName": "analyticsLensControlOperations"
+  },
+  {
+    "id": "schedule.animationSettings",
+    "version": 1,
+    "owner": "gantt",
+    "description": "Read all native animation style flags, ramps, ghost/tint settings and the complete RGBA task palette.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "settings": {
+          "type": "object",
+          "properties": {
+            "preparationDays": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 36500
+            },
+            "rampInFraction": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5
+            },
+            "fadeOutFraction": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5
+            },
+            "showPreparationGhost": {
+              "type": "boolean"
+            },
+            "colorizeByTaskType": {
+              "type": "boolean"
+            },
+            "paletteIntensity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "animateDemolition": {
+              "type": "boolean"
+            },
+            "hideBeforePreparation": {
+              "type": "boolean"
+            },
+            "hideUntaskedProducts": {
+              "type": "boolean"
+            },
+            "showCompletedTint": {
+              "type": "boolean"
+            },
+            "palette": {
+              "type": "object",
+              "properties": {
+                "ATTENDANCE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "CONSTRUCTION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "DEMOLITION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "DISMANTLE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "DISPOSAL": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "INSTALLATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "LOGISTIC": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "MAINTENANCE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "MOVE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "OPERATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "REMOVAL": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "RENOVATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "USERDEFINED": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "NOTDEFINED": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "PREPARATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "COMPLETED": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                }
+              },
+              "required": [
+                "ATTENDANCE",
+                "CONSTRUCTION",
+                "DEMOLITION",
+                "DISMANTLE",
+                "DISPOSAL",
+                "INSTALLATION",
+                "LOGISTIC",
+                "MAINTENANCE",
+                "MOVE",
+                "OPERATION",
+                "REMOVAL",
+                "RENOVATION",
+                "USERDEFINED",
+                "NOTDEFINED",
+                "PREPARATION",
+                "COMPLETED"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "preparationDays",
+            "rampInFraction",
+            "fadeOutFraction",
+            "showPreparationGhost",
+            "colorizeByTaskType",
+            "paletteIntensity",
+            "animateDemolition",
+            "hideBeforePreparation",
+            "hideUntaskedProducts",
+            "showCompletedTint",
+            "palette"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "settings"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-schedule-controls",
+    "exportName": "analyticsScheduleControlOperations"
+  },
+  {
+    "id": "schedule.configureAnimation",
+    "version": 1,
+    "owner": "gantt",
+    "description": "Set every native animation-popover style/palette control through the shared playback setter, with an expected settings conflict check. Full palette accepts only exact native task keys and finite normalized RGBA.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 30000
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "preparationDays": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 36500
+            },
+            "rampInFraction": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5
+            },
+            "fadeOutFraction": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5
+            },
+            "showPreparationGhost": {
+              "type": "boolean"
+            },
+            "colorizeByTaskType": {
+              "type": "boolean"
+            },
+            "paletteIntensity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "animateDemolition": {
+              "type": "boolean"
+            },
+            "hideBeforePreparation": {
+              "type": "boolean"
+            },
+            "hideUntaskedProducts": {
+              "type": "boolean"
+            },
+            "showCompletedTint": {
+              "type": "boolean"
+            },
+            "palette": {
+              "type": "object",
+              "properties": {
+                "ATTENDANCE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "CONSTRUCTION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "DEMOLITION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "DISMANTLE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "DISPOSAL": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "INSTALLATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "LOGISTIC": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "MAINTENANCE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "MOVE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "OPERATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "REMOVAL": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "RENOVATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "USERDEFINED": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "NOTDEFINED": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "PREPARATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "COMPLETED": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                }
+              },
+              "required": [
+                "ATTENDANCE",
+                "CONSTRUCTION",
+                "DEMOLITION",
+                "DISMANTLE",
+                "DISPOSAL",
+                "INSTALLATION",
+                "LOGISTIC",
+                "MAINTENANCE",
+                "MOVE",
+                "OPERATION",
+                "REMOVAL",
+                "RENOVATION",
+                "USERDEFINED",
+                "NOTDEFINED",
+                "PREPARATION",
+                "COMPLETED"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "preparationDays",
+            "rampInFraction",
+            "fadeOutFraction",
+            "showPreparationGhost",
+            "colorizeByTaskType",
+            "paletteIntensity",
+            "animateDemolition",
+            "hideBeforePreparation",
+            "hideUntaskedProducts",
+            "showCompletedTint",
+            "palette"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "expected_json",
+        "settings"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "settings": {
+          "type": "object",
+          "properties": {
+            "preparationDays": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 36500
+            },
+            "rampInFraction": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5
+            },
+            "fadeOutFraction": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5
+            },
+            "showPreparationGhost": {
+              "type": "boolean"
+            },
+            "colorizeByTaskType": {
+              "type": "boolean"
+            },
+            "paletteIntensity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "animateDemolition": {
+              "type": "boolean"
+            },
+            "hideBeforePreparation": {
+              "type": "boolean"
+            },
+            "hideUntaskedProducts": {
+              "type": "boolean"
+            },
+            "showCompletedTint": {
+              "type": "boolean"
+            },
+            "palette": {
+              "type": "object",
+              "properties": {
+                "ATTENDANCE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "CONSTRUCTION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "DEMOLITION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "DISMANTLE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "DISPOSAL": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "INSTALLATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "LOGISTIC": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "MAINTENANCE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "MOVE": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "OPERATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "REMOVAL": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "RENOVATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "USERDEFINED": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "NOTDEFINED": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "PREPARATION": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "COMPLETED": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4
+                }
+              },
+              "required": [
+                "ATTENDANCE",
+                "CONSTRUCTION",
+                "DEMOLITION",
+                "DISMANTLE",
+                "DISPOSAL",
+                "INSTALLATION",
+                "LOGISTIC",
+                "MAINTENANCE",
+                "MOVE",
+                "OPERATION",
+                "REMOVAL",
+                "RENOVATION",
+                "USERDEFINED",
+                "NOTDEFINED",
+                "PREPARATION",
+                "COMPLETED"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "preparationDays",
+            "rampInFraction",
+            "fadeOutFraction",
+            "showPreparationGhost",
+            "colorizeByTaskType",
+            "paletteIntensity",
+            "animateDemolition",
+            "hideBeforePreparation",
+            "hideUntaskedProducts",
+            "showCompletedTint",
+            "palette"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "settings"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-schedule-controls",
+    "exportName": "analyticsScheduleControlOperations"
+  },
+  {
+    "id": "schedule.moveTask",
+    "version": 1,
+    "owner": "gantt",
+    "description": "Reorder a task using the native Gantt drag-drop handler and undo stack. Verify the complete previous task order and exact source model before writing.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "new_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_order": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "new_index",
+        "expected_order"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "order"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "analytics-schedule-controls",
+    "exportName": "analyticsScheduleControlOperations"
+  },
+  {
+    "id": "drawing.centerDxf",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Center a DXF on the actual generated model drawing using the native underlay/georeference/reference-plane transforms. Refuse unusable bounds, edge-on references or nonfinite coordinates.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-controls",
+    "exportName": "analyticsDrawingControlOperations"
+  },
+  {
+    "id": "drawing.importDxf",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Import DXF text through the exact native ingest service with explicit source units and optional frozen current drawing-plane registration. Await actual newly registered underlay; native parsing/empty/reference-unit failure returns an error.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 200,
+          "pattern": "\\.dxf$"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000000
+        },
+        "units": {
+          "type": "string",
+          "enum": [
+            "m",
+            "mm",
+            "cm",
+            "ft",
+            "in"
+          ]
+        },
+        "register_to_drawing_plane": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "filename",
+        "content",
+        "units",
+        "register_to_drawing_plane"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-controls",
+    "exportName": "analyticsDrawingControlOperations"
+  },
+  {
+    "id": "drawing.styleText",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Edit existing native text typography through the same annotation setter as the editor; preserve content/position and check the complete previous annotation.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100000
+        },
+        "font_size": {
+          "type": "number",
+          "minimum": 6,
+          "maximum": 96
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "background": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "border": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      },
+      "required": [
+        "id",
+        "expected_json",
+        "font_size",
+        "color",
+        "background",
+        "border"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-controls",
+    "exportName": "analyticsDrawingControlOperations"
+  },
+  {
+    "id": "exports.landXmlIfc",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce the native mapped IFC4X3/IFCZIP conversion of an explicit loaded LandXML model, including source hashing, terrain/survey/alignment semantics, CRS naming and draped imagery. Shares the Export dialog producer and its exact refusal/imagery diagnostics. Native conversion may finish after cancellation; no artifact is retained after cancelled preparation. No download.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "target_model_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-landxml",
+    "exportName": "landXmlExportOperations"
+  },
+  {
+    "id": "filters.state",
+    "version": 1,
+    "owner": "search",
+    "description": "Read the native Search Filter configuration snapshot, current saved preset catalog, run status and result count. configuration_json is the exact expected_json guard for edits/run/export. Rules use the canonical FilterGroup/FilterRule codec, with text/captured-scope intersection.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "search",
+    "exportName": "searchOperations"
+  },
+  {
+    "id": "filters.configure",
+    "version": 1,
+    "owner": "search",
+    "description": "Replace every native Search Filter group/combinator/rule, limit/captured scope and intersecting text query through the native parser and setters. Refuses stale configuration and a currently running native UI filter.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_json": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000000
+        },
+        "configuration_json": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "expected_json",
+        "configuration_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "search",
+    "exportName": "searchOperations"
+  },
+  {
+    "id": "filters.run",
+    "version": 1,
+    "owner": "search",
+    "description": "Await the exact native Search Filter engine and publish its actual complete result to the native Search UI. Returns a 100-row preview and accurate count/limit-hit status. Native text/captured-scope semantics, progress and cancellation match the UI; source/configuration changes refuse publication.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_json": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "expected_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "search",
+    "exportName": "searchOperations"
+  },
+  {
+    "id": "filters.results",
+    "version": 1,
+    "owner": "search",
+    "description": "Read a bounded page of the native Search Filter result. current=false means its recorded source revision changed; null means a legacy/native UI result did not record a revision. Never presents that unverified result as a fresh analysis.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        }
+      },
+      "required": [
+        "offset",
+        "limit"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "search",
+    "exportName": "searchOperations"
+  },
+  {
+    "id": "filters.preset",
+    "version": 1,
+    "owner": "search",
+    "description": "Save the exact current native filter or delete a named native preset using the same durable codec/catalog as the builder. expected_catalog_json must match JSON.stringify(presets) from filters.state. Reports native storage refusal without claiming persistence.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_json": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000000
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "save",
+            "delete"
+          ]
+        },
+        "expected_catalog_json": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "expected_json",
+        "name",
+        "action",
+        "expected_catalog_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "search",
+    "exportName": "searchOperations"
+  },
+  {
+    "id": "filters.export",
+    "version": 1,
+    "owner": "search",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await native Filter Run and produce the native CSV/JSON writer output as a connection-owned artifact; no browser download.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_json": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000000
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "csv",
+            "json"
+          ]
+        }
+      },
+      "required": [
+        "expected_json",
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_json": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "integer"
+        },
+        "limit_hit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "artifact_json",
+        "rows",
+        "limit_hit"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "search",
+    "exportName": "searchOperations"
+  },
+  {
+    "id": "exports.glb",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await the exact native GLB dialog assembler for one explicitly targeted model. Native source-versus-mesh selection, merge-layer fidelity, instanced occurrences, class/storey/Lens visibility, apparent/shading color and lit/material metadata options are preserved. Refuse retained shape-only or stale output.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "visible_only": {
+          "type": "boolean"
+        },
+        "include_metadata": {
+          "type": "boolean"
+        },
+        "lit": {
+          "type": "boolean"
+        },
+        "color_source": {
+          "type": "string",
+          "enum": [
+            "rendering",
+            "shading"
+          ]
+        }
+      },
+      "required": [
+        "target_model_id",
+        "visible_only",
+        "include_metadata",
+        "lit",
+        "color_source"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-scenes",
+    "exportName": "exportNativeSceneOperations"
+  },
+  {
+    "id": "exports.usd",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await native edited STEP source resolution and Rust USDA production, with deterministic WASM disposal and native retained-geometry refusal. One explicit model; return actual UTF-8 stage bytes.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "target_model_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-scenes",
+    "exportName": "exportNativeSceneOperations"
+  },
+  {
+    "id": "exports.rhino",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await the exact native cancellable Rhino worker and edited STEP resolver with all existing units/coordinates/layers/instancing/property/space/version/visibility controls. Return the actual .3dm bytes and native warnings; no main-thread fallback.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "units": {
+              "type": "string",
+              "enum": [
+                "source",
+                "meters",
+                "millimeters",
+                "centimeters",
+                "feet",
+                "inches"
+              ]
+            },
+            "coordinates": {
+              "type": "string",
+              "enum": [
+                "local",
+                "world"
+              ]
+            },
+            "layerScheme": {
+              "type": "string",
+              "enum": [
+                "spatial-class",
+                "class",
+                "presentation"
+              ]
+            },
+            "properties": {
+              "type": "string",
+              "enum": [
+                "all",
+                "attributes",
+                "none"
+              ]
+            },
+            "instancing": {
+              "type": "boolean"
+            },
+            "includeSpaces": {
+              "type": "boolean"
+            },
+            "visibleOnly": {
+              "type": "boolean"
+            },
+            "version": {
+              "type": "integer",
+              "enum": [
+                8,
+                7
+              ]
+            }
+          },
+          "required": [
+            "units",
+            "coordinates",
+            "layerScheme",
+            "properties",
+            "instancing",
+            "includeSpaces",
+            "visibleOnly",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "target_model_id",
+        "settings"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-scenes",
+    "exportName": "exportNativeSceneOperations"
+  },
+  {
+    "id": "exports.energy",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await native Honeybee/Dragonfly energy export from the current edited model, including Room-tool spaces. Preserve no-space/source/retained refusals and HBJSON skipped-space counts instead of reporting truncated output as unqualified success.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "hbjson",
+            "dfjson"
+          ]
+        }
+      },
+      "required": [
+        "target_model_id",
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-scenes",
+    "exportName": "exportNativeSceneOperations"
+  },
+  {
+    "id": "exports.kmz",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await the native georeference-to-WGS84/COLLADA KMZ producer, one model including its own instanced occurrences, explicit terrain-clamped versus MSL altitude, pending georeference edits and native refusal diagnostics.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "altitude_mode": {
+          "type": "string",
+          "enum": [
+            "clampToGround",
+            "absolute"
+          ]
+        }
+      },
+      "required": [
+        "target_model_id",
+        "altitude_mode"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-scenes",
+    "exportName": "exportNativeSceneOperations"
+  },
+  {
+    "id": "exports.csv",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await one native registry CSV table (entities with properties, properties, quantities or spatial hierarchy), from an explicit model including its pending edits. Uses the exact Rust CSV producer shared by toolbar exports. Does not silently combine federated express IDs.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "table": {
+          "type": "string",
+          "enum": [
+            "entities",
+            "properties",
+            "quantities",
+            "spatial"
+          ]
+        }
+      },
+      "required": [
+        "target_model_id",
+        "table"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-data",
+    "exportName": "exportNativeDataOperations"
+  },
+  {
+    "id": "exports.json",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce the native toolbar JSON entity envelope for one explicit model using its effective pending-edit view and canonical row builder. Preserve exact IFC EXPRESS names and native JSON value representation.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "target_model_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-data",
+    "exportName": "exportNativeDataOperations"
+  },
+  {
+    "id": "exports.terrainLandXml",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Run the exact native IFC terrain-to-LandXML preflight/producer over explicit model-local terrain products, with native eligibility/refusal diagnostics, precision, units and per-surface names. Export is the producer acceptance, never a fabricated terrain mesh.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "express_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "linear_unit": {
+          "type": "string",
+          "enum": [
+            "metre",
+            "internationalFoot",
+            "usSurveyFoot"
+          ]
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12
+        },
+        "surface_names": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "express_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 10000
+              }
+            },
+            "required": [
+              "express_id",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "target_model_id",
+        "express_ids",
+        "linear_unit",
+        "decimals",
+        "surface_names"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-data",
+    "exportName": "exportNativeDataOperations"
+  },
+  {
+    "id": "exports.screenshot",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await the native viewport-frame capture and return real PNG bytes for the current rendered federation. Requires the live native renderer; this is a current-view snapshot with the same effects as the toolbar screenshot action.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "current-view"
+        }
+      },
+      "required": [
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-view",
+    "exportName": "exportNativeViewOperations"
+  },
+  {
+    "id": "exports.viewPdf",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await the toolbar to-scale current-view PDF producer with explicit displayed/numerical scale, shaded/line mode, hidden edges and scale stamp. Preserves current view visibility, all section cuts, native camera orientation and PDF page-size refusal; return actual PDF bytes plus native page/stroke/raster diagnostics.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "current-view"
+        },
+        "scale_mode": {
+          "type": "string",
+          "enum": [
+            "displayed",
+            "numerical"
+          ]
+        },
+        "scale": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "include_hidden_lines": {
+          "type": "boolean"
+        },
+        "render_mode": {
+          "type": "string",
+          "enum": [
+            "shaded",
+            "lines"
+          ]
+        },
+        "include_scale_stamp": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scope",
+        "scale_mode",
+        "scale",
+        "include_hidden_lines",
+        "render_mode",
+        "include_scale_stamp"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-view",
+    "exportName": "exportNativeViewOperations"
+  },
+  {
+    "id": "exports.anonymized.prepare",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Prepare native anonymized-isolated export membership with explicit source-model seeds, full relationship expansion, locked spatial containers, individual/type exclusions and coupled anonymization controls. Preview only; native source-record behavior intentionally excludes unsaved created entities.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "seed_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1
+        },
+        "excluded_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "excluded_types": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^Ifc[A-Za-z0-9]+$"
+          }
+        },
+        "file_stem": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "relations": {
+          "type": "object",
+          "properties": {
+            "IfcRelVoidsElement": {
+              "type": "boolean"
+            },
+            "IfcRelFillsElement": {
+              "type": "boolean"
+            },
+            "IfcRelAggregates": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down",
+                "both",
+                "none"
+              ]
+            },
+            "IfcRelNests": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down",
+                "both",
+                "none"
+              ]
+            },
+            "IfcRelDefinesByType": {
+              "type": "boolean"
+            },
+            "IfcRelAssociatesMaterial": {
+              "type": "boolean"
+            },
+            "IfcRelContainedInSpatialStructure": {
+              "type": "boolean"
+            },
+            "IfcRelDefinesByProperties": {
+              "type": "boolean"
+            },
+            "IfcRelConnectsPathElementsDepth": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          },
+          "required": [
+            "IfcRelVoidsElement",
+            "IfcRelFillsElement",
+            "IfcRelAggregates",
+            "IfcRelNests",
+            "IfcRelDefinesByType",
+            "IfcRelAssociatesMaterial",
+            "IfcRelContainedInSpatialStructure",
+            "IfcRelDefinesByProperties",
+            "IfcRelConnectsPathElementsDepth"
+          ],
+          "additionalProperties": false
+        },
+        "anonymize": {
+          "type": "object",
+          "properties": {
+            "names": {
+              "type": "boolean"
+            },
+            "otherNames": {
+              "type": "boolean"
+            },
+            "globalIds": {
+              "type": "boolean"
+            },
+            "propertySets": {
+              "type": "boolean"
+            },
+            "rootPlacementPosition": {
+              "type": "boolean"
+            },
+            "georeferencing": {
+              "type": "boolean"
+            },
+            "currency": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "names",
+            "otherNames",
+            "globalIds",
+            "propertySets",
+            "rootPlacementPosition",
+            "georeferencing",
+            "currency"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "target_model_id",
+        "seed_ids",
+        "excluded_ids",
+        "excluded_types",
+        "relations",
+        "anonymize",
+        "file_stem"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "included_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "locked_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "groups": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "included_ids",
+        "locked_ids",
+        "groups"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-anonymized",
+    "exportName": "exportNativeAnonymizedOperations"
+  },
+  {
+    "id": "exports.anonymized",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce the exact native anonymized IFC subset after rechecking preview membership. Uses the same source-record anonymizer and filename/privacy defaults as the UI. Returns native scrub/pruning warnings; GUID correlation maps stay private and are not exported.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "seed_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1
+        },
+        "excluded_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "excluded_types": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^Ifc[A-Za-z0-9]+$"
+          }
+        },
+        "file_stem": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "relations": {
+          "type": "object",
+          "properties": {
+            "IfcRelVoidsElement": {
+              "type": "boolean"
+            },
+            "IfcRelFillsElement": {
+              "type": "boolean"
+            },
+            "IfcRelAggregates": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down",
+                "both",
+                "none"
+              ]
+            },
+            "IfcRelNests": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down",
+                "both",
+                "none"
+              ]
+            },
+            "IfcRelDefinesByType": {
+              "type": "boolean"
+            },
+            "IfcRelAssociatesMaterial": {
+              "type": "boolean"
+            },
+            "IfcRelContainedInSpatialStructure": {
+              "type": "boolean"
+            },
+            "IfcRelDefinesByProperties": {
+              "type": "boolean"
+            },
+            "IfcRelConnectsPathElementsDepth": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          },
+          "required": [
+            "IfcRelVoidsElement",
+            "IfcRelFillsElement",
+            "IfcRelAggregates",
+            "IfcRelNests",
+            "IfcRelDefinesByType",
+            "IfcRelAssociatesMaterial",
+            "IfcRelContainedInSpatialStructure",
+            "IfcRelDefinesByProperties",
+            "IfcRelConnectsPathElementsDepth"
+          ],
+          "additionalProperties": false
+        },
+        "anonymize": {
+          "type": "object",
+          "properties": {
+            "names": {
+              "type": "boolean"
+            },
+            "otherNames": {
+              "type": "boolean"
+            },
+            "globalIds": {
+              "type": "boolean"
+            },
+            "propertySets": {
+              "type": "boolean"
+            },
+            "rootPlacementPosition": {
+              "type": "boolean"
+            },
+            "georeferencing": {
+              "type": "boolean"
+            },
+            "currency": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "names",
+            "otherNames",
+            "globalIds",
+            "propertySets",
+            "rootPlacementPosition",
+            "georeferencing",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        "expected_included_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "required": [
+        "target_model_id",
+        "seed_ids",
+        "excluded_ids",
+        "excluded_types",
+        "relations",
+        "anonymize",
+        "file_stem",
+        "expected_included_ids"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-anonymized",
+    "exportName": "exportNativeAnonymizedOperations"
+  },
+  {
+    "id": "appearance.source.inspect",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect an existing registered source, native PDF recipe/page count and calibration frame. Browser file selection and encrypted-PDF password entry remain explicit native input boundaries.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "source_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-sources",
+    "exportName": "appearanceSourceOperations"
+  },
+  {
+    "id": "appearance.pdf.raster",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Rasterize a registered retained PDF with explicit page/quarter-turn/crop/DPI through the exact native PDF document service. Empty crop_points selects the complete rotated page. Publishes only if source and handle remain current; native worker bounds, PDF errors and ownership cleanup are preserved.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_source": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "rotation": {
+          "type": "integer",
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ]
+        },
+        "crop_points": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "number",
+            "minimum": -1000000000,
+            "maximum": 1000000000
+          }
+        },
+        "dpi": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 2400
+        }
+      },
+      "required": [
+        "source_id",
+        "expected_source",
+        "page",
+        "rotation",
+        "crop_points",
+        "dpi"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-sources",
+    "exportName": "appearanceSourceOperations"
+  },
+  {
+    "id": "appearance.source.calibrate",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Set a complete two-landmark metric calibration on a registered image/PDF using the same native raster-coordinate conversion and complete-edit reducer as AppearanceCalibrationFields. Fractions refer to the current raster image; source coordinates remain stable across PDF crop/rotation.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_source": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "fractions": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [
+            {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              ]
+            },
+            {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              ]
+            }
+          ]
+        },
+        "distance_metres": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000
+        }
+      },
+      "required": [
+        "source_id",
+        "expected_source",
+        "fractions",
+        "distance_metres"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-sources",
+    "exportName": "appearanceSourceOperations"
+  },
+  {
+    "id": "appearance.plan",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Read the exact native Rust appearance plan support/exclusion/conversion report before staging. Supports the UI supported-only narrowing workflow: use the returned explicit supported_product_ids for a fresh preview, without committing or silently dropping exclusions.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "express_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "settings_json": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "source_id",
+        "express_ids",
+        "settings_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-faces",
+    "exportName": "appearanceFaceOperations"
+  },
+  {
+    "id": "appearance.faces.inspect",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect exact native candidate converted products, source-surface fingerprints and triangle ordinals before authoring face masks. Source/renderer/revision/applying guards remain authoritative.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "candidate_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-faces",
+    "exportName": "appearanceFaceOperations"
+  },
+  {
+    "id": "appearance.compare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Show original or staged appearance using the shared native Compare handler while preserving the same immutable plan/assets/face masks. Does not cancel/discard the candidate; applying or stale candidates are refused.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "original": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "original"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-faces",
+    "exportName": "appearanceFaceOperations"
+  },
+  {
+    "id": "appearance.faces.prepare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Create a new immutable native preview with explicit reviewed triangle masks on the prior candidate’s evaluated occurrence surfaces. Uses the exact shared UI mask reducer, native faceMaskRequests/reconcileFaceMasks and canonical preview planner. Full/empty surface selections retain native unmasked semantics; stale fingerprints/ordinals refuse.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "express_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "settings_json": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "masks": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "product_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "surface_fingerprint": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "triangles": {
+                "type": "array",
+                "maxItems": 200000,
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000000
+                }
+              }
+            },
+            "required": [
+              "product_id",
+              "surface_fingerprint",
+              "triangles"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "candidate_id",
+        "source_id",
+        "express_ids",
+        "settings_json",
+        "masks"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-faces",
+    "exportName": "appearanceFaceOperations"
+  },
+  {
+    "id": "appearance.references.read",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect native registered reference images, exact reference/history revision and immutable calibration/PDF lineage. This workspace has its own native Undo/Redo.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.restoreSource",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Restore the exact native source/calibration settings of an existing registered reference for explicit editing. Uses immutable image digest and PDF lineage; never silently substitutes the current PDF raster.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "reference_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "reference_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.prepare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Prepare and render a transient native calibrated reference candidate; does not register/history-commit it. Uses exact native calibration, immutable asset/PDF lineage, workspace frame and edit-identity checks. edit_reference_id empty creates a new reference.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_source": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "settings_json": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "edit_reference_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "source_id",
+        "expected_source",
+        "settings_json",
+        "edit_reference_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.place",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Place/replace the exact prepared native reference as one native reference-history transaction. Rendering precedes a final live-authorized synchronous record commit; source/frame/edit changes or cancellation refuse without a new registered reference.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.discard",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Discard only the host-owned transient native reference preview, releasing its renderer/asset leases; leaves registered history intact.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.action",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Update native reference visibility/lock/opacity, select/remove, Undo/Redo or import exact native exported reference definitions. Native workspace frame, locked-record and history/asset ownership rules stay authoritative. Image relink uses the browser file picker.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "update",
+            "remove",
+            "select",
+            "undo",
+            "redo",
+            "import"
+          ]
+        },
+        "reference_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "reference_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "locked": {
+          "type": "boolean"
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 10000000
+        }
+      },
+      "required": [
+        "action",
+        "reference_id",
+        "reference_revision",
+        "visible",
+        "locked",
+        "opacity",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.export",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Export native registered reference definitions/calibration lineage as a host-owned artifact.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.capture.sources",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect native loaded textured capture surfaces using stable model-qualified mesh ordinals and native source assets. Loading scan/image bundles remains the canonical source loader/browser file-picker workflow.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-capture",
+    "exportName": "appearanceCaptureOperations"
+  },
+  {
+    "id": "appearance.capture.destination",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Create the Capture panel’s blank Captured Surfaces destination through the mounted canonical federation addModel/loadFile service. Preserves native admission/RTC and viewer cancellation boundaries.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-capture",
+    "exportName": "appearanceCaptureOperations"
+  },
+  {
+    "id": "appearance.capture.prepare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Prepare the exact reviewed textured region using native captureRegistration/captureRegion/image ownership. Pins placement, source mesh and encoded texture identity; returns the immutable region counts before native IFC creation.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "mesh_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "triangles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 200000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000000
+          }
+        },
+        "container_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "Name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "source_model_id",
+        "mesh_ordinal",
+        "triangles",
+        "container_id",
+        "Name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-capture",
+    "exportName": "appearanceCaptureOperations"
+  },
+  {
+    "id": "appearance.capture.create",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Create the exact prepared captured surface through native createIfcFromCapturedMesh/commitTexturedProduct with native role/IFC4-container/placement/source/transaction and Undo guards. Only a reviewed region token is accepted.",
+    "needs": "model",
+    "effects": [
+      "model",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "appearance-native-capture",
+    "exportName": "appearanceCaptureOperations"
+  },
+  {
+    "id": "appearance.capture.discard",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Discard the host-owned immutable captured-region candidate without creating IFC.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-capture",
+    "exportName": "appearanceCaptureOperations"
+  },
+  {
+    "id": "appearance.scan.sources",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect the same native textured-GLB/retained RGB point-cloud sources and IFC destination models as Appearance Scan. Source models still load through the canonical Sources workflow.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.prepare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Prepare the actual immutable native scan/IFC registration session, including source/target hashes, materialized pending edits, stable workspace frame, concrete geometry/point-sample and session staleness guards. Chooses native source kind explicitly; no alternate ingest or registration implementation.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "mesh",
+            "points"
+          ]
+        },
+        "mesh_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        }
+      },
+      "required": [
+        "source_model_id",
+        "source_kind",
+        "mesh_ordinal"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.inspect",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect exact native landmark correspondences, fit/check partitions, registration residuals and recovery state. Stale diagnostics remain visible without inventing a successful registration.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "token",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.sourceLandmark",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Choose an exact native source landmark: a retained point index or mesh triangle ordinal plus barycentric weights [A,B,C]. Uses pointLandmark/sourceLandmark and their stable native observation identities; the next target pick consumes this pending source.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partition": {
+          "type": "string",
+          "enum": [
+            "fit",
+            "check"
+          ]
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000
+        },
+        "weights": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "required": [
+        "token",
+        "version",
+        "partition",
+        "index",
+        "weights"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.targetLandmark",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Pick a visible concrete IFC target surface at native viewport CSS coordinates, consuming the exact pending source landmark. Uses native raycaster/feature IDs, clipping/capture guards, duplicate-point limits and target-mesh retention; no fabricated free-space correspondences.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "viewport_x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "viewport_y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        }
+      },
+      "required": [
+        "token",
+        "version",
+        "viewport_x",
+        "viewport_y"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.calculate",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Run the same native Rust registerScan service over current fit/check correspondences and immutable frames. Returns actual fit/held-out residuals and degeneracy diagnostics; forwards worker cancellation and revalidates native session after completion.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "token",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.edit",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Remove an exact native pair, clear landmarks/registration, or discard the host-owned scan session and transfer preview. Explicit scan preparation restarts from a new native binding.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "removePair",
+            "clearPairs",
+            "discard",
+            "changePartition",
+            "cancelPending"
+          ]
+        },
+        "pair_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "partition": {
+          "type": "string",
+          "enum": [
+            "fit",
+            "check"
+          ]
+        }
+      },
+      "required": [
+        "token",
+        "version",
+        "action",
+        "pair_id",
+        "partition"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.transfer.prepare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Prepare/stage the actual native mesh or RGB-point appearance transfer on explicit IFC products. Uses prepareMeshTransfer’s fit/check/project-tolerance/review/coverage/point-support gates, image leases and exact shared native preview binding. Native inapplicable/excluded outcomes stay explicit; no fabricated texture coverage.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "express_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "toleranceMetres": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            },
+            "reviewed": {
+              "type": "boolean"
+            },
+            "texelsPerMetre": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            },
+            "maxDistanceMetres": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "minNormalDot": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1
+            },
+            "ambiguityDistanceMetres": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "maxBehindMetres": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "neighborhoodRadiusMetres": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 0.5
+            },
+            "minNeighbors": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 1000000
+            },
+            "maxNeighbors": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 1000000
+            },
+            "surfaceBandMetres": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 0.5
+            }
+          },
+          "required": [
+            "toleranceMetres",
+            "reviewed",
+            "texelsPerMetre",
+            "maxDistanceMetres",
+            "minNormalDot",
+            "ambiguityDistanceMetres",
+            "maxBehindMetres",
+            "neighborhoodRadiusMetres",
+            "minNeighbors",
+            "maxNeighbors",
+            "surfaceBandMetres"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "token",
+        "version",
+        "express_ids",
+        "settings"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-transfer",
+    "exportName": "appearanceTransferOperations"
+  },
+  {
+    "id": "appearance.scan.transfer.compare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Compare the exact native scan-transfer candidate with original appearance while retaining its immutable plan/images/coverage and calibration. Uses the same shared native Compare reducer as both Appearance panels.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "original": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "token",
+        "version",
+        "original"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-transfer",
+    "exportName": "appearanceTransferOperations"
+  },
+  {
+    "id": "appearance.scan.transfer.apply",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Apply the exact reviewed native scan transfer using commitAppearance’s native IFC/GPU/history transaction and role/source guards. Rebind/recompute registration using native unchanged-surface proof afterward; a completed edit with failed/cancelled revalidation explicitly reports recovery required.",
+    "needs": "model",
+    "effects": [
+      "model",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "token",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "appearance-native-transfer",
+    "exportName": "appearanceTransferOperations"
+  },
+  {
+    "id": "appearance.scan.revalidate",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Run the native retained-surface proof and registration refresh after a completed/cancelled appearance transaction. Refuses changed sources/frames/paired IFC geometry and preserves recovery state for a later explicit retry.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "token",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-transfer",
+    "exportName": "appearanceTransferOperations"
+  },
+  {
+    "id": "appearance.scan.transfer.discard",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Discard the host-owned native scan-transfer preview and its image/renderer leases; retain registration/landmark evidence for explicit further work.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "token",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-transfer",
+    "exportName": "appearanceTransferOperations"
+  },
+  {
+    "id": "viewport.pick",
+    "version": 1,
+    "owner": "viewport",
+    "description": "Read the native GPU pick at normalized canvas coordinates (top-left 0,0; bottom-right approaches 1,1), using the exact mounted click visibility/clip/streaming options. Does not select or change the tool. Native camera/scene/viewport ownership guards reject stale picks. GPU work may drain after cancellation; cancelled results are suppressed. hit_json is the native pick/intersection result; ref_json is a validated model-qualified entity or null with an explicit reason.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "hit_json": {
+          "type": "string"
+        },
+        "ref_json": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "width_css": {
+          "type": "number"
+        },
+        "height_css": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "hit_json",
+        "ref_json",
+        "reason",
+        "width_css",
+        "height_css"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "picking",
+    "exportName": "pickingOperations"
+  },
+  {
+    "id": "viewport.raycast",
+    "version": 1,
+    "owner": "viewport",
+    "description": "Read the native exact CPU visible-surface intersection (point/normal/triangle/barycentric coordinates) at normalized canvas coordinates (top-left 0,0; bottom-right approaches 1,1), using the exact mounted click visibility/clip/streaming options. Does not select or change the tool. Native camera/scene/viewport ownership guards reject stale picks. GPU work may drain after cancellation; cancelled results are suppressed. hit_json is the native pick/intersection result; ref_json is a validated model-qualified entity or null with an explicit reason.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "hit_json": {
+          "type": "string"
+        },
+        "ref_json": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "width_css": {
+          "type": "number"
+        },
+        "height_css": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "hit_json",
+        "ref_json",
+        "reason",
+        "width_css",
+        "height_css"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "picking",
+    "exportName": "pickingOperations"
+  },
+  {
+    "id": "document.inspect",
+    "version": 1,
+    "owner": "document",
+    "description": "Inspect one document revision/page metadata and a bounded page of block metadata. Large media bodies, evidence, generated text and long text are omitted/truncated; full native JSON remains available through document.export.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        }
+      },
+      "required": [
+        "id",
+        "offset",
+        "limit"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "document": {
+          "type": "object"
+        },
+        "page_metadata_json": {
+          "type": "string"
+        },
+        "blocks": {
+          "type": "array"
+        },
+        "total_blocks": {
+          "type": "integer"
+        },
+        "next_offset": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "document",
+        "page_metadata_json",
+        "blocks",
+        "total_blocks",
+        "next_offset"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "document-native-edit",
+    "exportName": "documentNativeEditOperations"
+  },
+  {
+    "id": "document.editBlock",
+    "version": 1,
+    "owner": "document",
+    "description": "Patch only existing native editable fields on one block with a compact full-document SHA-256 guard. Unedited media and AI provenance remain intact; editing generated text keeps its authored-versus-generated distinction. null clears an optional native field. Native block-kind allowlists and full document validation run before native CAS persistence.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "block_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "patch_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100000
+        }
+      },
+      "required": [
+        "id",
+        "expected_revision",
+        "block_id",
+        "patch_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "block_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blocks": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "block_id",
+        "blocks"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "document-native-edit",
+    "exportName": "documentNativeEditOperations"
+  },
+  {
+    "id": "document.editPage",
+    "version": 1,
+    "owner": "document",
+    "description": "Patch native document name/page size/orientation and heading/footer typography/text/logo height/date/page-number settings with a compact revision guard. Existing embedded logos survive omitted media fields; null clears optional bands/overrides. Uses the same native transform and validator as DocumentPanel.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "patch_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100000
+        }
+      },
+      "required": [
+        "id",
+        "expected_revision",
+        "patch_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "block_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blocks": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "block_id",
+        "blocks"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "document-native-edit",
+    "exportName": "documentNativeEditOperations"
+  },
+  {
+    "id": "document.blocks",
+    "version": 1,
+    "owner": "document",
+    "description": "Use native document block copy/remove/reorder transforms under a compact revision guard. Copy receives native fresh IDs and detaches AI provenance exactly as the panel; move preserves IDs, media, AI evidence and ordering of the selected group. Empty before_id means append.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "copy",
+            "remove",
+            "move"
+          ]
+        },
+        "block_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "before_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id",
+        "expected_revision",
+        "action",
+        "block_ids",
+        "before_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "block_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blocks": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "block_id",
+        "blocks"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "document-native-edit",
+    "exportName": "documentNativeEditOperations"
+  },
+  {
+    "id": "document.addBlock",
+    "version": 1,
+    "owner": "document",
+    "description": "Insert one small native structured block with a fresh block ID, full native validation and a compact revision guard. Empty before_id appends; large existing media need not be resent. Image file selection/large media insertion remains the existing native input workflow.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "block_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100000
+        },
+        "before_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id",
+        "expected_revision",
+        "block_json",
+        "before_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "block_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blocks": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "block_id",
+        "blocks"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "document-native-edit",
+    "exportName": "documentNativeEditOperations"
   }
 ];

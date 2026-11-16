@@ -8,6 +8,8 @@ import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { useViewerStore } from '@/store';
+import { nativeDocumentRevision } from '@/lib/document/native-edit';
+import { largePng } from '@/test/large-native-png';
 import { clashDiscussion, seedClashResult, typedReport } from '@/test/ai-report-fixture';
 import { useAssistant } from '@/lib/assistant/conversation';
 import { prepareReportDraft } from '@/lib/assistant/report-draft';
@@ -40,7 +42,7 @@ async function savedHumanReport() {
 }
 it('native report refresh retains human text, rejects non-conflict IDs and persists real generated provenance (#6918)', async () => {
   const { document, blockId } = await savedHumanReport();
-  const plan = await invoke<{ token: string; conflicts: Array<{ blockId: string }> }>('document.prepareReportRefresh', { document_id: document.id, expected_document_json: JSON.stringify(document) });
+  const plan = await invoke<{ token: string; conflicts: Array<{ blockId: string }> }>('document.prepareReportRefresh', { document_id: document.id, expected_revision: await nativeDocumentRevision(document) });
   assert.ok(plan.conflicts.some(conflict => conflict.blockId === blockId));
   await assert.rejects(invoke('document.applyReportRefresh', { token: plan.token, replace_block_ids: ['forged-human-block'] }), /conflict IDs/);
   const result = await invoke<{ saved: boolean }>('document.applyReportRefresh', { token: plan.token, replace_block_ids: [] }); assert.equal(result.saved, true);
@@ -51,7 +53,7 @@ it('native report refresh retains human text, rejects non-conflict IDs and persi
 });
 it('native refresh tokens reject another host, changed evidence and changed documents before persistence (#6918)', async () => {
   const { document } = await savedHumanReport();
-  const input = { document_id: document.id, expected_document_json: JSON.stringify(document) };
+  const input = { document_id: document.id, expected_revision: await nativeDocumentRevision(document) };
   const foreign = await invoke<{ token: string }>('document.prepareReportRefresh', input);
   await assert.rejects(invoke('document.applyReportRefresh', { token: foreign.token, replace_block_ids: [] }, { ...context, host: nativeHost() }), /this host/);
   seedClashResult([-0.06]); await assert.rejects(invoke('document.applyReportRefresh', { token: foreign.token, replace_block_ids: [] }), /evidence changed/);
@@ -60,7 +62,7 @@ it('native refresh tokens reject another host, changed evidence and changed docu
   await assert.rejects(invoke('document.applyReportRefresh', { token: fresh.token, replace_block_ids: [] }), /document changed/);
 });
 it('native refresh exposes a real IndexedDB CAS refusal without claiming a durable commit (#6918)', async () => {
-  const { document } = await savedHumanReport(), plan = await invoke<{ token: string }>('document.prepareReportRefresh', { document_id: document.id, expected_document_json: JSON.stringify(document) });
+  const { document } = await savedHumanReport(), plan = await invoke<{ token: string }>('document.prepareReportRefresh', { document_id: document.id, expected_revision: await nativeDocumentRevision(document) });
   const previous = (await readContentRows('document')).find(row => row.id === document.id); assert.ok(previous);
   const external = { ...document, name: 'Concurrent other-tab report' };
   assert.equal((await writeContent('document', document.id, external, previous.revision)).ok, true);
@@ -79,7 +81,7 @@ it('Assistant saves only the exact canonical checked report and preserves its ac
 });
 it('native refresh replaces only an explicitly selected real human-block conflict (#6918)', async () => {
   const { document, blockId } = await savedHumanReport();
-  const plan = await invoke<{ token: string }>('document.prepareReportRefresh', { document_id: document.id, expected_document_json: JSON.stringify(document) });
+  const plan = await invoke<{ token: string }>('document.prepareReportRefresh', { document_id: document.id, expected_revision: await nativeDocumentRevision(document) });
   await invoke('document.applyReportRefresh', { token: plan.token, replace_block_ids: [blockId] });
   const saved = (await readContentRows('document')).find(row => row.id === document.id)?.payload as DocumentSpec;
   const replaced = saved.blocks.find((block): block is TextBlock => block.id === blockId && block.kind === 'text'); assert.ok(replaced);
@@ -93,4 +95,19 @@ it('checked native report save refuses contradicted claims until canonical revie
   const revised = await invoke<{ document_json: string; contradicted_claim_ids: string[] }>('assistant.reviseReportDraftClaim', { token: prepared.token, expected_document_json: prepared.document_json, claim_id: 'C1', action: 'remove', text: '' });
   assert.deepEqual(revised.contradicted_claim_ids, []);
   const saved = await invoke<{ saved: boolean }>('assistant.saveReportDraft', { token: prepared.token, reviewed_document_json: revised.document_json }); assert.equal(saved.saved, true);
+});
+
+it('refreshes an image-heavy native report using compact revision guards and preserves its media', async () => {
+  const { document } = await savedHumanReport(), dataUrl = largePng();
+  document.blocks.push({ kind: 'image', id: 'human-image', dataUrl, height: 60, align: 'left' });
+  assert.ok(JSON.stringify(document).length > 1024 * 1024);
+  assert.equal(await useViewerStore.getState().upsertDocument(document), true);
+  const input = { document_id: document.id, expected_revision: await nativeDocumentRevision(document) };
+  assert.ok(JSON.stringify(input).length < 1024);
+  const plan = await invoke<{ token: string }>('document.prepareReportRefresh', input);
+  const result = await invoke<{ saved: boolean; revision: string }>('document.applyReportRefresh', { token: plan.token, replace_block_ids: [] });
+  assert.equal(result.saved, true); assert.ok(JSON.stringify(result).length < 10000);
+  const saved = (await readContentRows('document')).find(row => row.id === document.id)?.payload as DocumentSpec;
+  const image = saved.blocks.find(block => block.id === 'human-image'); assert.ok(image?.kind === 'image'); assert.equal(image.dataUrl, dataUrl);
+  assert.equal(result.revision, await nativeDocumentRevision(saved));
 });

@@ -54,7 +54,6 @@ export function LayerDraftSection() {
   }, [mutationVersion]);
 
   const publish = useCallback(async () => {
-    const state = useViewerStore.getState();
     const trimmedIntent = intent.trim();
     const trimmedAuthor = author.trim() || 'viewer-user';
     if (!trimmedIntent) return;

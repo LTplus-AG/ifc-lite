@@ -13,7 +13,7 @@ const artifact = { type: 'object', properties: {
 export const modelExportOperations = [
   viewerOperation({ id: 'exports.changedModels', owner: 'changes',
     description: 'Produce full native IFC/IFCX files with pending edits for every changed model, using the same exporter and ZIP bundler as Export modified IFC. Retains schedule attribution, portable appearance resources, native skips and format-loss diagnostics. Returns one connection-owned file or ZIP; no browser download or remote publication. Model/federation changes during production refuse the result.',
-    effects: ['artifact'], capability: 'commands-and-edits', implementation: 'native-store', policy: { artifact: 'native-export' },
+    features: ['export.files'], effects: ['artifact'], capability: 'commands-and-edits', implementation: 'native-store', policy: { artifact: 'native-export' },
     outputSchema: { type: 'object', properties: {
       artifact, files: { type: 'array', items: { type: 'object', properties: {
         filename: { type: 'string' }, model_id: { type: 'string' }, changes: { type: 'integer' }, skipped_psets: { type: 'integer' },

@@ -5,7 +5,6 @@ import '@/test/setup-dom.js';
 import '@/test/content-backup-fixture.js';
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
-import { deflateSync } from 'node:zlib';
 import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
@@ -18,19 +17,7 @@ import { blankDocument } from '@/lib/document/presets';
 import { loadDocuments } from '@/lib/document/persistence';
 import { aiBlockOrigin } from '@/lib/document/ai-report-types';
 import { resetFeaturesForTest } from '@/lib/features';
-/** A valid, noisy 512² RGBA PNG; actual image bytes exceed the 1MiB tool envelope after base64. */
-function largePng() {
-  const chunk = (type: string, data: Uint8Array) => {
-    const body = Buffer.concat([Buffer.from(type), data]); let crc = 0xffffffff;
-    for (const byte of body) { crc ^= byte; for (let i = 0; i < 8; i++) crc = crc >>> 1 ^ (crc & 1 ? 0xedb88320 : 0); }
-    const length = Buffer.alloc(4); length.writeUInt32BE(data.length); const end = Buffer.alloc(4); end.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
-    return Buffer.concat([length, body, end]);
-  };
-  const pixels = Buffer.alloc(512 * (512 * 4 + 1)); let random = 321;
-  for (let row = 0; row < 512; row++) for (let x = 1; x <= 512 * 4; x++) { random = (Math.imul(random, 1664525) + 1013904223) >>> 0; pixels[row * 2049 + x] = random >>> 24; }
-  const header = Buffer.alloc(13); header.writeUInt32BE(512, 0); header.writeUInt32BE(512, 4); header[8] = 8; header[9] = 6;
-  return `data:image/png;base64,${Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(pixels)), chunk('IEND', new Uint8Array())]).toString('base64')}`;
-}
+import { largePng } from '@/test/large-native-png';
 it('#10525 pages large native documents and edits text without resending or losing media/provenance; stale edits fail', async () => {
   resetFeaturesForTest(); const document = blankDocument(); const dataUrl = largePng(); assert.ok(dataUrl.length > 1024 * 1024);
   document.blocks = [{ kind: 'text', id: 'narrative', style: 'body', text: 'Original narrative', aiProvenance: { origin: 'ai', slot: 'narrative:0', generated: 'Original narrative' } }, { kind: 'image', id: 'image', dataUrl, height: 60, align: 'left' }];

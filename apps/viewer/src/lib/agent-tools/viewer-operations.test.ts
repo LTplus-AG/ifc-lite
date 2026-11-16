@@ -6,6 +6,9 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 import { setImmediate } from 'node:timers/promises';
+import type { Renderer } from '@ifc-lite/renderer';
+import { coordinationDashboard } from '@/lib/charts/presets';
+import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
@@ -130,11 +133,87 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal((await execute('basket.replace', { express_ids: [1] }, {}, false)).errorCode, 'READ_ONLY');
     assert.equal(useViewerStore.getState().pinboardEntities.size, 0);
   });
-  it('covers all panel IDs while exposing each incomplete workflow as a real gap', () => {
+  it('exports explicit native STEP targets and refuses an unknown merge member before retaining an artifact', async () => {
+    const options = { schema: 'IFC4', include_geometry: true, apply_mutations: true, visible_only: false, section_mode: 'trim' };
+    const exported = data<{ result: { artifact: { artifact_id: string }; diagnostics_json: string } }>(await execute('exports.modelStep', options));
+    const bytes = data<{ data: string }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: exported.result.artifact.artifact_id }));
+    assert.match(Buffer.from(bytes.data, 'base64').toString('utf8'), /IFCWALL/);
+    await seed(2);
+    const refused = await execute('exports.mergedStep', { ...options, model_ids: ['A', 'missing'], unit_reconciliation: 'assume-shared' });
+    assert.equal(refused.isError, true);
+    assert.deepEqual(data<{ artifacts: unknown[] }>(await dispatchMainViewerTool(host, 'viewer_artifacts', {})).artifacts, []);
+    const merged = data<{ result: { diagnostics_json: string } }>(await execute('exports.mergedStep', { ...options, model_ids: ['A', 'B'], unit_reconciliation: 'assume-shared' }));
+    const diagnostics = JSON.parse(merged.result.diagnostics_json) as { stats: { modelCount: number }; skipped: unknown[] };
+    assert.equal(diagnostics.stats.modelCount, 2); assert.deepEqual(diagnostics.skipped, []);
+  });
+  it('evaluates a native BCF dashboard before any IFC model is loaded', async () => {
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null, bcfProject: null });
+    assert.equal((await execute('bcf.createProject', { value: 'Native coordination' })).isError, false);
+    for (const status of ['Open', 'Closed']) assert.equal((await execute('bcf.createTopic', { title: status, description: '', status })).isError, false);
+    const dashboard = coordinationDashboard();
+    assert.equal(useViewerStore.getState().upsertDashboard(dashboard), true);
+    const chart = dashboard.charts.find(row => row.source === 'bcf'); assert.ok(chart);
+    const result = data<{ result: { total: number; categories: unknown[] } }>(await inspect('charts.evaluate', { dashboard_id: dashboard.id, chart_id: chart.id }));
+    assert.equal(result.result.total, 2); assert.equal(result.result.categories.length, 2);
+  });
+  it('runs native Rules filters, rejects stale configuration, and pages the published result', async () => {
+    const state = data<{ result: { native_json: string } }>(await inspect('filters.state'));
+    const initial = JSON.parse(state.result.native_json) as { configuration_json: string };
+    const next = JSON.stringify({ filter: { groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }] }], limit: 100 }, query: '' });
+    const changed = data<{ result: { native_json: string } }>(await execute('filters.configure', { expected_json: initial.configuration_json, configuration_json: next }));
+    const configured = JSON.parse(changed.result.native_json) as { configuration_json: string };
+    assert.equal((await execute('filters.run', { expected_json: initial.configuration_json })).isError, true);
+    const result = await execute('filters.run', { expected_json: configured.configuration_json });
+    assert.equal(result.isError, false, result.text);
+    assert.equal(useViewerStore.getState().searchFilterResult?.rows.length, 4);
+    const page = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset: 1, limit: 2 }));
+    const rows = JSON.parse(page.result.native_json) as { total: number; rows: unknown[][]; current: boolean };
+    assert.equal(rows.total, 4); assert.equal(rows.rows.length, 2); assert.equal(rows.current, true);
+    useViewerStore.setState({ mutationVersion: 1 });
+    const stale = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset: 0, limit: 1 }));
+    assert.equal((JSON.parse(stale.result.native_json) as { current: boolean }).current, false);
+  });
+  it('uses native pick visibility and ownership while rejecting a scene changed during GPU readback', async () => {
+    const models = new Map(useViewerStore.getState().models);
+    models.set('A', { ...models.get('A')!, maxExpressId: 4 }); useViewerStore.setState({ models });
+    const canvas = document.createElement('canvas');
+    canvas.getBoundingClientRect = () => new DOMRect(10, 20, 400, 200);
+    const options = { hiddenIds: new Set<number>(), isolatedIds: null, isStreaming: false };
+    let started!: () => void, release!: () => void, defer = false;
+    const began = new Promise<void>(resolve => { started = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const matrix = new Float32Array(16);
+    const renderer = {
+      getGPUDevice: () => ({}), getCamera: () => ({ getViewProjMatrix: () => ({ m: matrix }) }),
+      async pick(x: number, y: number, nativeOptions: unknown) {
+        assert.equal(x, 100); assert.equal(y, 100); assert.equal(nativeOptions, options);
+        if (defer) { started(); await gate; }
+        return { expressId: 1 };
+      },
+    } as unknown as Renderer;
+    const unregister = registerAgentViewportHost({ canvas, renderer, getPickOptions: () => options });
+    try {
+      const picked = data<{ result: { ref_json: string } }>(await inspect('viewport.pick', { x: 0.25, y: 0.5 }));
+      assert.deepEqual(JSON.parse(picked.result.ref_json), { modelId: 'A', expressId: 1 });
+      assert.equal(useViewerStore.getState().selectedEntityId, null);
+      defer = true;
+      const pending = inspect('viewport.pick', { x: 0.25, y: 0.5 });
+      await began; useViewerStore.getState().setSectionPlanePosition(123); release();
+      assert.equal((await pending).isError, true);
+      assert.equal(useViewerStore.getState().selectedEntityId, null);
+    } finally { unregister(); }
+  });
+  it('audits every built-in panel, tool and export while retaining native boundaries', () => {
     const report = viewerOperationCoverage();
-    assert.equal(report.panel_count, 35); assert.equal(report.complete, false);
+    assert.equal(report.panel_count, 35); assert.equal(report.all_controls_automatable, false);
     assert.deepEqual(new Set(report.panels.map(panel => panel.id)), new Set(WORKSPACE_PANELS.map(panel => panel.id)));
-    assert.ok(report.panels.every(panel => panel.complete === false && panel.gaps.length > 0));
+    assert.deepEqual(report.panels.flatMap(panel => panel.gaps.map(gap => `${panel.id}: ${gap}`)), []);
+    assert.deepEqual(report.tools.flatMap(tool => tool.gaps.map(gap => `${tool.id}: ${gap}`)), []);
+    assert.deepEqual(report.exports.flatMap(item => item.gaps.map(gap => `${item.id}: ${gap}`)), []);
+    assert.equal(report.complete, true);
+    assert.ok(report.panels.every(panel => panel.controls.length > 0));
+    assert.ok(report.panels.some(panel => panel.controls.some(control => control.classification === 'native-boundary')));
+    assert.ok(report.human_only.length > 0);
   });
   it('refuses overflow coordinates and incomplete closed perimeters', async () => {
     assert.equal((await execute('measurements.distance', { start: [0, 0, 0], end: [1e308, 0, 0] })).isError, true);

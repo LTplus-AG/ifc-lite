@@ -275,11 +275,12 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     } finally { release(); }
   });
 
-  it('executes numerical operations over real MCP transport with live grants (#10525 follow-up)', async () => {
+  it('executes model-free numerical operations over real MCP transport with live grants (#10525 follow-up)', async () => {
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null });
     const discovered = await mcp.request('tools/call', { name: 'viewer_operations', arguments: { operation_id: 'measurements.distance' } });
     assert.equal(discovered.isError, undefined, JSON.stringify(discovered));
     const invoke = () => mcp.request('tools/call', { name: 'viewer_operation_execute', arguments: {
-      model_id: 'hello', operation_id: 'measurements.distance', input: { start: [0, 0, 0], end: [3, 4, 0] },
+      operation_id: 'measurements.distance', input: { start: [0, 0, 0], end: [3, 4, 0] },
       idempotency_key: 'wire-distance',
     } });
     assert.equal((await invoke()).isError, true, 'read-only transport refuses view effects');
@@ -297,7 +298,7 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     await until(() => listChanged() > seen, 'operation execution removed after revoke');
     assert.equal((await invoke()).isError, true, 'revoked grant refuses even a cached write outcome');
     const read = await mcp.request('tools/call', { name: 'viewer_operation_inspect', arguments: {
-      model_id: 'hello', operation_id: 'measurements.read',
+      operation_id: 'measurements.read',
     } });
     assert.equal(read.isError, undefined, JSON.stringify(read));
   });

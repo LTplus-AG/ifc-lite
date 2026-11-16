@@ -47,6 +47,7 @@ import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../u
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import { unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D } from '../../utils/viewportUtils.js';
+import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { installViewportDebugHooks, clearViewportDebugHooks } from '@/lib/viewport-debug-hooks';
 import { COLORFUL_CANVAS_GRADIENT } from '@/lib/viewport-ui/overlay-theme';
@@ -608,6 +609,7 @@ export function Viewport({
     // Register refs for BCF hook access (snapshot capture, camera control)
     setGlobalCanvasRef(canvasRef);
     setGlobalRendererRef(rendererRef);
+    const unregisterAgentViewport = registerAgentViewportHost({ canvas, renderer, getPickOptions });
 
     renderer.init().then(() => {
       if (aborted) return;
@@ -1090,6 +1092,7 @@ export function Viewport({
 
     return () => {
       aborted = true;
+      unregisterAgentViewport();
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
       }

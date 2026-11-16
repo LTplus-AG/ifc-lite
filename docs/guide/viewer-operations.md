@@ -2,11 +2,13 @@
 
 The viewer's local agent connection offers a bounded operation gateway alongside
 its existing model tools and command palette gateway. It uses native SDK adapters
-and store actions. Panels do not need to be open for these operations.
+and store actions. Most services work with their panels closed; renderer and editor prerequisites remain explicit.
 
-This is a partial migration. `viewer_operation_coverage` returns the exact
-implemented operation IDs, remaining work for all 35 panels and viewport tools,
-and genuine browser/credential/review boundaries. No panel is marked complete.
+`viewer_operation_coverage` reports the finite audit of all 35 built-in panels,
+viewport tools and toolbar exports: concrete control bindings, missing bindings,
+presentation equivalents and native browser/credential/review boundaries. A complete
+audit means every listed control is classified; it does not mean every control can
+run unattended or that arbitrary third-party UI is automated.
 The full migration acceptance criteria are in
 [the architecture plan](../architecture/viewer-automation-plan.md).
 
@@ -23,12 +25,13 @@ The full migration acceptance criteria are in
 | `viewer_artifact_download` | Dispatch a native browser download; this does not confirm a saved file. |
 | `viewer_artifact_delete` | Release an owned artifact. |
 
-The concrete operations include model-qualified selection, visibility and colors;
-numerical camera and section planes; numerical distances and perimeters;
-lighting/solar settings; point-cloud display and LAS class masks; effective IFC
-schedule, cost and structural reads; IDS validation; and clash analysis against
-live geometry, including GPU-instanced occurrences. Clash analysis returns its
-own result and does not replace the current panel report.
+Discover operations by task or owner. Families include native authoring with
+preview/apply/Undo; picking, selection, visibility, camera, sections and measurements;
+clash, IDS and comparison; lists, charts, schedules and cost; appearance, drawing,
+documents and presentation; sources, point clouds, BCF, collaboration, semantic
+links, Flow, scripts, extensions and Assistant workflows. Export operations return
+real artifacts through the same producers used by the viewer. Native source,
+role, geometry and feature refusals remain authoritative.
 
 For example, discover `measurements.distance`, then execute:
 
@@ -86,3 +89,12 @@ a metadata-only catalogue and lazy module loaders with
 `pnpm viewer:operations:update`; the viewer build rejects stale generated files.
 Discovery does not import feature implementations. Execution verifies the loaded
 handler's contract against that catalogue before calling it.
+
+Document and BCF discovery is paged and excludes embedded media bodies. Document
+block/page edits use compact revision guards and preserve existing images and AI
+provenance. Inspect operation schemas for each page limit and supported native
+JSON codec; use artifact reads for full exports rather than discovery responses.
+
+Coverage tests reject unregistered bindings and unaudited new panels/tools. Native
+GPU success still requires a real renderer and suitable source fixtures; a tested
+refusal does not establish successful rendering or scan analysis.

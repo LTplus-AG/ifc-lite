@@ -8,7 +8,7 @@ import { parseDashboardFile } from '@/lib/charts/persistence';
 import { selectNativeChartItems, clearNativeChartSelection } from '@/components/viewer/charts/useChart3DLink';
 import { evaluateDashboardChart } from '@/lib/charts/evaluate-dashboard-chart';
 import { sanitizeFilename } from '@/lib/export/download';
-import { operation, viewerOperation, emptySchema } from './contract';
+import { viewerOperation, emptySchema } from './contract';
 import { metadata, idSchema, jsonSchema, artifactSchema, removedSchema, checkpoint } from './analytics-common';
 function dashboard(id: string) {
   const row = useViewerStore.getState().dashboards.find(item => item.id === id);
@@ -46,10 +46,10 @@ export const analyticsChartOperations = [
   } satisfies JSONSchemaType<{ id: string; focus: 'highlight' | 'isolate' | 'ghost'; color_in_3d: boolean }>, (i, c) => {
     dashboard(i.id); checkpoint(c); c.commit(() => { const s = useViewerStore.getState(); s.setActiveDashboardId(i.id); s.setChartFocusMode(i.focus); s.setChartColorIn3D(i.color_in_3d); }); return i;
   }),
-  operation(metadata('charts.evaluate', 'charts', 'Await the same native aggregation/source/filter/slice used by a dashboard card. Return serializable bucket identities and source fingerprint.', ['read'], {
+  viewerOperation(metadata('charts.evaluate', 'charts', 'Await the same native aggregation/source/filter/slice used by a dashboard card. Return serializable bucket identities and source fingerprint.', ['read'], {
     type: 'object', properties: { spec: { type: 'object' }, dataFingerprint: { type: 'string' }, categories: { type: 'array' }, series: { type: 'array' }, total: { type: 'number' }, unbucketed: { type: 'number' }, categoryOf: { type: 'array' }, unit: { type: 'string' } }, required: ['spec', 'dataFingerprint', 'categories', 'series', 'total', 'unbucketed', 'categoryOf'],
   }), targetSchema, async (i, c) => { const result = await evaluateDashboardChart(dashboard(i.dashboard_id), i.chart_id, c.signal); checkpoint(c); return { ...result, categoryOf: [...result.categoryOf] }; }),
-  operation<{ dashboard_id: string; chart_id: string; data_fingerprint: string; items: { seriesIndex: number; dataIndex: number }[] }>(metadata('charts.focusBuckets', 'charts', 'Resolve exact native chart marks, verify the inspected data fingerprint, and apply native highlight/isolate/ghost selection, cross-filter identities and optional 3D color overlays without mounting a chart.', ['read', 'selection', 'view'], { type: 'object', properties: { selected_ids: { type: 'array', items: { type: 'integer' } }, source: { type: ['string', 'null'] } }, required: ['selected_ids', 'source'], additionalProperties: false }), {
+  viewerOperation<{ dashboard_id: string; chart_id: string; data_fingerprint: string; items: { seriesIndex: number; dataIndex: number }[] }>(metadata('charts.focusBuckets', 'charts', 'Resolve exact native chart marks, verify the inspected data fingerprint, and apply native highlight/isolate/ghost selection, cross-filter identities and optional 3D color overlays without mounting a chart.', ['read', 'selection', 'view'], { type: 'object', properties: { selected_ids: { type: 'array', items: { type: 'integer' } }, source: { type: ['string', 'null'] } }, required: ['selected_ids', 'source'], additionalProperties: false }), {
     type: 'object', properties: { dashboard_id: idSchema.properties.id, chart_id: idSchema.properties.id, data_fingerprint: { type: 'string', minLength: 1, maxLength: 10000 }, items: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object', properties: { seriesIndex: { type: 'integer', minimum: 0 }, dataIndex: { type: 'integer', minimum: 0 } }, required: ['seriesIndex', 'dataIndex'], additionalProperties: false } } }, required: ['dashboard_id', 'chart_id', 'data_fingerprint', 'items'], additionalProperties: false,
   } satisfies JSONSchemaType<{ dashboard_id: string; chart_id: string; data_fingerprint: string; items: { seriesIndex: number; dataIndex: number }[] }>, async (i, c) => {
     const aggregation = await evaluateDashboardChart(dashboard(i.dashboard_id), i.chart_id, c.signal); checkpoint(c);
@@ -59,7 +59,7 @@ export const analyticsChartOperations = [
     const s = useViewerStore.getState(); return { selected_ids: [...s.selectedEntityIds], source: s.chartSliceSource };
   }),
   viewerOperation(metadata('charts.clearFocus', 'charts', 'Release native chart selection, owned visibility and 3D color overlay state.', ['selection', 'view'], { type: 'object', properties: { cleared: { type: 'boolean' } }, required: ['cleared'], additionalProperties: false }), emptySchema, (_, c) => { checkpoint(c); c.commit(clearNativeChartSelection); return { cleared: true }; }),
-  operation(metadata('charts.exportSvg', 'charts', 'Await native chart aggregation and ECharts SVG rendering and return the actual SVG artifact.', ['read', 'artifact'], artifactSchema), targetSchema, async (i, c) => {
+  viewerOperation(metadata('charts.exportSvg', 'charts', 'Await native chart aggregation and ECharts SVG rendering and return the actual SVG artifact.', ['read', 'artifact'], artifactSchema), targetSchema, async (i, c) => {
     const result = await evaluateDashboardChart(dashboard(i.dashboard_id), i.chart_id, c.signal); checkpoint(c);
     const { renderChartSvg } = await import('@ifc-lite/charts'); checkpoint(c);
     const svg = renderChartSvg({ aggregation: result, width: 1000, height: 600 }); checkpoint(c);

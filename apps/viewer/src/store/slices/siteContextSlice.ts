@@ -85,8 +85,25 @@ export interface SiteContextModelInfo {
   imagery?: { attribution: Attribution; groundSampleDistance: number; /** The sharper drape on the chunks around the model. */ nearGroundSampleDistance?: number };
 }
 
+/** What the user last asked for, kept after the run ends so the section can offer it again. */
+export interface SiteContextChoice {
+  radius: SiteContextRadius;
+  categories: SiteContextLayerKind[];
+  imagery: boolean;
+}
+
+/**
+ * Run state belongs to one run. `siteContextAbort` is the run's identity: a
+ * run writes only while it is still the current one (its controller is the
+ * one in the slice), so a cancelled, replaced or detached run cannot touch a
+ * newer run's state. `siteContextRequest` is the running request only, and
+ * is cleared however the run ends (success, error, cancel, its anchor model
+ * removed, all models cleared).
+ */
 export interface SiteContextSlice {
+  /** The running request; `null` when no run is in progress. */
   siteContextRequest: SiteContextRequest | null;
+  siteContextLastChoice: SiteContextChoice | null;
   siteContextCategories: Partial<Record<SiteContextLayerKind, SiteContextCategoryState>>;
   siteContextProgress: SiteContextProgress | null;
   siteContextAbort: AbortController | null;
@@ -97,13 +114,17 @@ export interface SiteContextSlice {
 
   /** Start a request: every requested category is `fetching`, others are left out. Replaces (and aborts) a running one. */
   beginSiteContextRequest: (request: SiteContextRequest, abort: AbortController) => void;
-  setSiteContextProgress: (progress: SiteContextProgress | null) => void;
-  setSiteContextCategory: (kind: SiteContextLayerKind, patch: Partial<SiteContextCategoryState>) => void;
+  /** True while `run` is the current run: every write below from a run is ignored otherwise. */
+  isSiteContextRunCurrent: (run: AbortController) => boolean;
+  setSiteContextProgress: (run: AbortController, progress: SiteContextProgress | null) => void;
+  setSiteContextCategory: (run: AbortController, kind: SiteContextLayerKind, patch: Partial<SiteContextCategoryState>) => void;
   /** The run ended (normally or not): categories still `fetching` become `error` with `reason`. */
-  finishSiteContextRequest: (stats: SiteContextRunStats | null, reason?: string) => void;
-  /** User cancel: aborts the fetch; categories still `fetching` return to `idle`, finished ones stay. */
+  finishSiteContextRequest: (run: AbortController, stats: SiteContextRunStats | null, reason?: string) => void;
+  /** User cancel of the current run: aborts the fetch; categories still `fetching` return to `idle`, finished ones stay. */
   abortSiteContextRequest: () => void;
-  setSiteContextError: (message: string | null) => void;
+  /** A run that saw its own abort settles, if it is still the current one; never touches a newer run. */
+  settleAbortedSiteContextRun: (run: AbortController) => void;
+  setSiteContextError: (run: AbortController, message: string | null) => void;
   registerSiteContextModel: (modelId: string, info: SiteContextModelInfo) => void;
   updateSiteContextModel: (modelId: string, patch: Partial<SiteContextModelInfo>) => void;
 }
@@ -128,8 +149,19 @@ function settleFetching(
   return next;
 }
 
+/** A run that ends without finishing: what was in flight returns to idle, finished categories stay. */
+function cancelledRun(state: Pick<SiteContextSlice, 'siteContextCategories'>): Partial<SiteContextSlice> {
+  return {
+    siteContextCategories: settleFetching(state.siteContextCategories, 'idle'),
+    siteContextRequest: null,
+    siteContextProgress: null,
+    siteContextAbort: null,
+  };
+}
+
 export const createSiteContextSlice: StateCreator<SiteContextSlice, [], [], SiteContextSlice> = (set, get) => ({
   siteContextRequest: null,
+  siteContextLastChoice: null,
   siteContextCategories: {},
   siteContextProgress: null,
   siteContextAbort: null,
@@ -143,6 +175,7 @@ export const createSiteContextSlice: StateCreator<SiteContextSlice, [], [], Site
     for (const kind of request.categories) categories[kind] = { status: 'fetching', issues: [], attribution: [] };
     set({
       siteContextRequest: request,
+      siteContextLastChoice: { radius: request.radius, categories: request.categories, imagery: request.imagery },
       siteContextCategories: categories,
       siteContextProgress: null,
       siteContextAbort: abort,
@@ -151,18 +184,22 @@ export const createSiteContextSlice: StateCreator<SiteContextSlice, [], [], Site
     });
   },
 
-  setSiteContextProgress: (progress) => set({ siteContextProgress: progress }),
+  isSiteContextRunCurrent: (run) => get().siteContextAbort === run,
 
-  setSiteContextCategory: (kind, patch) => set((state) => {
+  setSiteContextProgress: (run, progress) => set((state) => (state.siteContextAbort === run ? { siteContextProgress: progress } : {})),
+
+  setSiteContextCategory: (run, kind, patch) => set((state) => {
+    if (state.siteContextAbort !== run) return {};
     const current = state.siteContextCategories[kind] ?? { status: 'idle', issues: [], attribution: [] };
     return { siteContextCategories: { ...state.siteContextCategories, [kind]: { ...current, ...patch } } };
   }),
 
-  finishSiteContextRequest: (stats, reason) => set((state) => ({
+  finishSiteContextRequest: (run, stats, reason) => set((state) => (state.siteContextAbort !== run ? {} : {
     siteContextCategories: settleFetching(
       state.siteContextCategories, 'error',
       reason ? { code: 'site-context-failed', severity: 'error', message: reason } : undefined,
     ),
+    siteContextRequest: null,
     siteContextProgress: null,
     siteContextAbort: null,
     siteContextStats: stats,
@@ -170,14 +207,12 @@ export const createSiteContextSlice: StateCreator<SiteContextSlice, [], [], Site
 
   abortSiteContextRequest: () => {
     get().siteContextAbort?.abort();
-    set((state) => ({
-      siteContextCategories: settleFetching(state.siteContextCategories, 'idle'),
-      siteContextProgress: null,
-      siteContextAbort: null,
-    }));
+    set(cancelledRun);
   },
 
-  setSiteContextError: (message) => set({ siteContextError: message }),
+  settleAbortedSiteContextRun: (run) => set((state) => (state.siteContextAbort === run ? cancelledRun(state) : {})),
+
+  setSiteContextError: (run, message) => set((state) => (state.siteContextAbort === run ? { siteContextError: message } : {})),
 
   registerSiteContextModel: (modelId, info) => set((state) => {
     const models = new Map(state.siteContextModels);
@@ -202,12 +237,13 @@ export const createSiteContextSlice: StateCreator<SiteContextSlice, [], [], Site
 export const siteContextTeardown = defineSliceTeardown(
   'siteContextSlice',
   [
-    'siteContextRequest', 'siteContextCategories', 'siteContextProgress', 'siteContextAbort',
+    'siteContextRequest', 'siteContextLastChoice', 'siteContextCategories', 'siteContextProgress', 'siteContextAbort',
     'siteContextStats', 'siteContextError', 'siteContextModels',
   ],
   {
     'session-reset': () => ({
       siteContextRequest: null,
+      siteContextLastChoice: null,
       siteContextCategories: {},
       siteContextProgress: null,
       siteContextAbort: null,
@@ -215,19 +251,28 @@ export const siteContextTeardown = defineSliceTeardown(
       siteContextError: null,
       siteContextModels: new Map(),
     }),
-    // A category that loaded as the removed model is no longer loaded: back to idle, so the
-    // section does not report it done against a model that is gone (#10481 review).
     'model-removed': (scope, state) => {
       const categories = state.siteContextCategories ?? {};
       const stale = Object.entries(categories).filter(([, c]) => c?.modelId === scope.modelId);
-      if (!state.siteContextModels?.has(scope.modelId) && stale.length === 0) return {};
+      // Removing the model a run fetches around ends that run: the handle is dropped (not
+      // called; a teardown is pure), so the run is no longer current and writes nothing more.
+      const endsRun = state.siteContextRequest?.anchorModelId === scope.modelId;
+      if (!state.siteContextModels?.has(scope.modelId) && stale.length === 0 && !endsRun) return {};
       const models = new Map(state.siteContextModels);
       models.delete(scope.modelId);
-      const next = { ...categories };
+      // A category that loaded as the removed model is no longer loaded: back to idle (#10481 review).
+      let next = { ...categories };
       for (const [kind] of stale) next[kind as SiteContextLayerKind] = { status: 'idle', issues: [], attribution: [] };
-      return { siteContextModels: models, siteContextCategories: next };
+      if (endsRun) next = settleFetching(next, 'idle');
+      return {
+        siteContextModels: models,
+        siteContextCategories: next,
+        ...(endsRun ? { siteContextRequest: null, siteContextProgress: null, siteContextAbort: null } : {}),
+      };
     },
-    'all-models-cleared': () => ({ siteContextModels: new Map(), siteContextCategories: {} }),
+    'all-models-cleared': () => ({
+      siteContextModels: new Map(), siteContextCategories: {}, siteContextRequest: null, siteContextProgress: null, siteContextAbort: null,
+    }),
   },
 );
 

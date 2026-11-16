@@ -1,0 +1,135 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * #10481 review: a site-context run's state must not outlive the run. A run
+ * that was cancelled (or replaced) must not write into a newer run's state
+ * or leave a model behind, and the request record is cleared whichever way
+ * the run ends, so a later GLB drop is never judged against it.
+ */
+
+import assert from 'node:assert/strict';
+import { afterEach, beforeEach, test } from 'node:test';
+import type { SiteContextDocument } from '@ifc-lite/site-context';
+import { useViewerStore } from '@/store';
+import { viewerTeardownRegistry } from '@/store/teardown-registry';
+import { siteRadiusFor } from '@/hooks/ingest/siteContextLoad';
+import { __setSiteContextWorkerFactoryForTest, type SiteContextWorkerLike } from './site-context-client';
+import type { SiteContextWorkerRequest, SiteContextWorkerResponse } from './site-context-job';
+import { loadSiteContext, type SiteContextAddModel } from './site-context-fetch';
+
+const initial = useViewerStore.getState();
+const swisstopo = { datasetId: 'swissalti3d', text: '© swisstopo', licence: 'OGD', termsUrl: 'https://example.invalid', restrictions: [], termsVerifiedOn: '2026-11-15' };
+
+class FakeWorker implements SiteContextWorkerLike {
+  onmessage: ((event: MessageEvent<SiteContextWorkerResponse>) => void) | null = null;
+  onerror: ((event: ErrorEvent) => void) | null = null;
+  id = 0;
+  terminated = false;
+  postMessage(message: SiteContextWorkerRequest): void { this.id = message.id; }
+  terminate(): void { this.terminated = true; }
+  send(message: Omit<SiteContextWorkerResponse, 'id'>): void {
+    this.onmessage?.({ data: { ...message, id: this.id } as SiteContextWorkerResponse } as MessageEvent<SiteContextWorkerResponse>);
+  }
+  category(kind: 'terrain' | 'parcel'): void {
+    this.send({ type: 'category', kind, bytes: new Uint8Array([1]), hasGeometry: true, complete: true, attribution: [swisstopo], issues: [] } as Omit<SiteContextWorkerResponse, 'id'>);
+  }
+  complete(): void { this.send({ type: 'complete', stats: { requests: 1, bytes: 1, cacheHits: 0 } } as Omit<SiteContextWorkerResponse, 'id'>); }
+  fail(): void { this.send({ type: 'error', message: 'network down', stats: { requests: 1, bytes: 0, cacheHits: 0 } } as Omit<SiteContextWorkerResponse, 'id'>); }
+}
+
+let workers: FakeWorker[];
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+const state = () => useViewerStore.getState();
+const removed: string[] = [];
+const added: string[] = [];
+const addModel: SiteContextAddModel = async (_file, { name }) => { added.push(name); return `model:${name}:${added.length}`; };
+const base = { anchorModelId: 'anchor', centre: { x: 2_600_000, y: 1_200_000 }, radius: 100 as const, imagery: false, addModel, removeModel: (id: string) => { removed.push(id); } };
+
+beforeEach(() => {
+  workers = [];
+  removed.length = 0;
+  added.length = 0;
+  __setSiteContextWorkerFactoryForTest(() => { const w = new FakeWorker(); workers.push(w); return w; });
+});
+afterEach(() => {
+  __setSiteContextWorkerFactoryForTest(null);
+  useViewerStore.setState(initial, true);
+});
+
+test('a run cancelled while its model is being added does not touch the run started after it, and leaves no model behind', async () => {
+  let release!: (id: string) => void;
+  const slowAdd: SiteContextAddModel = () => new Promise((resolve) => { release = resolve; });
+  const first = loadSiteContext({ ...base, categories: ['terrain'], addModel: slowAdd });
+  workers[0].category('terrain');
+  await tick();
+  state().abortSiteContextRequest(); // the user cancels while addModel is in flight
+  const second = loadSiteContext({ ...base, radius: 200, categories: ['terrain'] });
+  const secondAbort = state().siteContextAbort;
+  release('model:stale-terrain'); // the first run's addModel finishes now
+  await first;
+  assert.equal(state().siteContextAbort, secondAbort, 'the second run is still the current one');
+  assert.equal(secondAbort?.signal.aborted, false, 'the second run was not aborted');
+  assert.equal(workers[1].terminated, false, 'the second run\'s worker keeps running');
+  assert.equal(state().siteContextCategories.terrain?.status, 'fetching', 'the second run\'s category is untouched');
+  assert.equal(state().siteContextRequest?.radius, 200);
+  assert.deepEqual(removed, ['model:stale-terrain'], 'the cancelled run\'s late model is removed again');
+  workers[1].category('terrain');
+  workers[1].complete();
+  await second;
+  assert.equal(state().siteContextCategories.terrain?.status, 'done');
+});
+
+test('success clears the request record, and a GLB dropped afterwards is not judged against it', async () => {
+  const run = loadSiteContext({ ...base, categories: ['terrain'] });
+  assert.equal(state().siteContextRequest?.radius, 100, 'the running request is recorded');
+  workers[0].category('terrain');
+  workers[0].complete();
+  await run;
+  assert.equal(state().siteContextRequest, null);
+  // A parcel-only document (as a CLI GLB's parcel sibling is): without a request it falls back to the default.
+  const parcelOnly: SiteContextDocument = { crs: 'EPSG:2056', verticalCrs: 'EPSG:5728', origin: [0, 0, 0], layers: [{ kind: 'parcel', features: [], attribution: [], issues: [], complete: true }] };
+  assert.equal(siteRadiusFor(parcelOnly), 300);
+  assert.deepEqual(state().siteContextLastChoice, { radius: 100, categories: ['terrain'], imagery: false }, 'the panel still remembers the last choice');
+});
+
+test('an error clears the request record', async () => {
+  const run = loadSiteContext({ ...base, categories: ['terrain'] });
+  workers[0].fail();
+  await run;
+  assert.equal(state().siteContextRequest, null);
+  assert.equal(state().siteContextAbort, null);
+});
+
+test('a cancel clears the request record', async () => {
+  const run = loadSiteContext({ ...base, categories: ['terrain'] });
+  state().abortSiteContextRequest();
+  await run;
+  assert.equal(state().siteContextRequest, null);
+});
+
+test('removing the anchor model ends the run: request cleared, and the detached run adds nothing', async () => {
+  const run = loadSiteContext({ ...base, categories: ['terrain'] });
+  const entry = viewerTeardownRegistry.find((e) => e.slice === 'siteContextSlice')!;
+  useViewerStore.setState(entry.teardown({ kind: 'model-removed', modelId: 'anchor', isStale: () => false, nextActiveModelId: null }, state()));
+  assert.equal(state().siteContextRequest, null);
+  assert.equal(state().siteContextAbort, null);
+  assert.equal(state().siteContextCategories.terrain?.status, 'idle');
+  workers[0].category('terrain');
+  workers[0].complete();
+  await run;
+  assert.deepEqual(added, [], 'a run that is no longer current loads no model');
+  assert.equal(state().siteContextCategories.terrain?.status, 'idle');
+});
+
+test('clearing all models ends the run: request cleared, and the detached run adds nothing', async () => {
+  const run = loadSiteContext({ ...base, categories: ['terrain'] });
+  const entry = viewerTeardownRegistry.find((e) => e.slice === 'siteContextSlice')!;
+  useViewerStore.setState(entry.teardown({ kind: 'all-models-cleared' }, state()));
+  assert.equal(state().siteContextRequest, null);
+  workers[0].category('terrain');
+  workers[0].complete();
+  await run;
+  assert.deepEqual(added, []);
+});

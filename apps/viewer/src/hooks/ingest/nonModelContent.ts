@@ -15,9 +15,7 @@ import { detectPointCloudFormat } from './pointCloudIngest';
 import { FORMAT_HEAD_BYTES, headIsZip } from './sourceBuffers';
 
 /** Bodies up to this size are read whole to recognise a JSON or XML error response; HTML is looked for in this much of any body. */
-export const NON_MODEL_SCAN_BYTES = 64 * 1024;
-
-export { NON_MODEL_REASONS, nonModelContentMessage, type NonModelReason } from '@/lib/non-model-reasons';
+const NON_MODEL_SCAN_BYTES = 64 * 1024;
 
 /**
  * `text` after its markup prolog: whitespace, processing instructions (`<?xml ?>`), comments and a DOCTYPE
@@ -73,7 +71,7 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const encoding = utf16Encoding(bytes);
   if (encoding) {
     // A UTF-16 document (an IIS/.NET error page) has NUL bytes but is text: judge it decoded.
-    return htmlOrNull(afterProlog(new TextDecoder(encoding).decode(file.size > first.byteLength ? await file.slice(0, NON_MODEL_SCAN_BYTES).arrayBuffer() : first)));
+    return HTML_START.test(afterProlog(new TextDecoder(encoding).decode(await readScan(file, first)))) ? NON_MODEL_REASONS.html : null;
   }
   const headText = new TextDecoder().decode(first); // drops a UTF-8 BOM
   const firstChar = headText.trimStart()[0] ?? '';
@@ -81,11 +79,10 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   // plainly STEP, is read further.
   const couldBeText = firstChar === '' || firstChar === '<' || (!binary && /[{["]/.test(firstChar));
   const headLead = afterStepComments(headText);
-  const ifcNotStep = ifcName && !(headLead !== null && startsLikeStep(headLead));
+  const ifcNotStep = ifcName && !(headLead !== null && STEP_MARKER.test(headLead));
   if (!couldBeText && !ifcNotStep) return null;
 
-  const scan = file.size > first.byteLength && first.byteLength < NON_MODEL_SCAN_BYTES
-    ? await file.slice(0, NON_MODEL_SCAN_BYTES).arrayBuffer() : first;
+  const scan = await readScan(file, first);
   const text = scan === first ? headText : new TextDecoder().decode(scan);
   const body = afterProlog(text);
   if (binary ? /^<(?:!doctype\s*html|html)[\s>]/i.test(body) : HTML_START.test(body)) return NON_MODEL_REASONS.html;
@@ -103,24 +100,26 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   // loader's to judge; an unterminated comment is not STEP unless the scan was cut short.
   const lead = text === headText ? headLead : afterStepComments(text);
   if (lead === null) return whole ? NON_MODEL_REASONS.notStep : null;
-  return lead === '' || startsLikeStep(lead) ? null : NON_MODEL_REASONS.notStep;
+  return lead === '' || STEP_MARKER.test(lead) ? null : NON_MODEL_REASONS.notStep;
 }
 
-/** Whether `text` (after whitespace and comments) starts like STEP: the one rule the preflight's IFC admission shares. */
-export function startsLikeStep(text: string): boolean {
-  return STEP_MARKER.test(text);
+/** Whether `text`, after whitespace and STEP comments, starts like STEP: the one rule the preflight's IFC admission shares. */
+export function textStartsLikeStep(text: string): boolean {
+  const lead = afterStepComments(text);
+  return lead !== null && STEP_MARKER.test(lead);
 }
 
 function utf16Encoding(bytes: Uint8Array): 'utf-16le' | 'utf-16be' | null {
   return bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : null;
 }
 
-function htmlOrNull(body: string): NonModelReason | null {
-  return HTML_START.test(body) ? NON_MODEL_REASONS.html : null;
+/** Up to {@link NON_MODEL_SCAN_BYTES} of `file`: the head itself when it already holds all of it. */
+async function readScan(file: File, head: ArrayBuffer): Promise<ArrayBuffer> {
+  return file.size > head.byteLength && head.byteLength < NON_MODEL_SCAN_BYTES ? file.slice(0, NON_MODEL_SCAN_BYTES).arrayBuffer() : head;
 }
 
 /** `text` after leading whitespace and STEP comments (`null` when a comment is unterminated); linear. */
-export function afterStepComments(text: string): string | null {
+function afterStepComments(text: string): string | null {
   let at = 0;
   for (;;) {
     while (at < text.length && /\s/.test(text[at])) at++;

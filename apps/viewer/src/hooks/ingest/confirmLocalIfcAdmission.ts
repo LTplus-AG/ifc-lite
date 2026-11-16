@@ -7,7 +7,8 @@ import { inspectIfcArchiveAdmission } from './archiveServerAdmission';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { resolve as t } from '@/i18n/registry';
 import { inspectLocalIfcAdmission } from './localIfcAdmission';
-import { afterStepComments, nonModelContentMessage, nonModelContentReason, startsLikeStep } from './nonModelContent';
+import { nonModelContentReason, textStartsLikeStep } from './nonModelContent';
+import { nonModelContentMessage } from '@/lib/non-model-reasons';
 
 /** Consent belongs to one load, never to a later file/pairing/session. An
  * unwrapped source larger than the approved input needs a fresh decision. */
@@ -47,7 +48,8 @@ export async function preflightLocalIfcSource(file: File, options: {
   try {
     const head = await file.slice(0, FORMAT_HEAD_BYTES).arrayBuffer();
     const format = detectFormat(head);
-    const unknownIfc = format === 'unknown' && (/\.(ifc|ifczip|ifcxml)$/i.test(file.name) || startsLikeStep(afterStepComments(new TextDecoder().decode(head)) ?? ''));
+    const unknownIfc = format === 'unknown' && (/\.(ifc|ifczip|ifcxml)$/i.test(file.name) || textStartsLikeStep(new TextDecoder().decode(head)));
+    if (!options.isCurrent()) { options.finish(); return null; }
     // An error response saved or served as a model is refused here, before the primary reset (#9523).
     const nonModel = await nonModelContentReason(file, head);
     if (nonModel) throw new Error(nonModelContentMessage(nonModel));

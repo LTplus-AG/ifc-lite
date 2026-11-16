@@ -229,6 +229,7 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   }));
   const stack = files.length > 1;
   const name = stack ? 'the layer stack' : files[0].name;
+  const couldNotLoad = (reason: string): never => fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${reason}`);
   let loadError: string | undefined;
   const onError = (message: string) => { loadError = message; };
   // A replace runs under an id chosen here; an add reports its id.
@@ -245,7 +246,7 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   });
   const loaded = await within(load.then((id) => ({ id }), (err: unknown) => {
     // The loader's own reason (onError) is more specific than the exception that ended it.
-    return fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${loadError ?? (err instanceof Error ? err.message : String(err))}`);
+    return couldNotLoad(loadError ?? (err instanceof Error ? err.message : String(err)));
   }), deadline - Date.now());
   if (!loaded) return stillLoading();
   // This call's own records: an add's returned id (none when it failed), a replace's chosen id, and for the
@@ -258,12 +259,9 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   // The stack loader reports failures only through the store, before it resolves and sometimes before it
   // clears anything, so an earlier stack's same-named layers may still be open: read its error now. Only
   // errors raised during the load and worded like the loader's count; later ones belong to someone else.
-  const stackFailure = () => {
-    const { error, loadErrorSeq } = store.getState();
-    return stack && error && loadErrorSeq !== state.loadErrorSeq && /federated IFCX loading failed|federated loading|is not an IFCX file/i.test(error) ? error : null;
-  };
-  const stackError = stackFailure();
-  if (stackError) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${stackError}`);
+  // TODO(#9523): give loadStack its own onError and layer ids (useIfcFederation is at its size budget).
+  const { error: stackError, loadErrorSeq } = store.getState();
+  if (stack && stackError && loadErrorSeq !== state.loadErrorSeq && /federated IFCX loading failed|federated loading|is not an IFCX file/i.test(stackError)) couldNotLoad(stackError);
 
   // Models can register just after the loader resolves: wait until the pipeline is idle, which needs no model.
   const settled = await waitForLoadIdle(deadline - Date.now());
@@ -274,7 +272,7 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
     mine = snapshot().filter(isMine);
   }
   if (mine.length === 0) {
-    if (loadError) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${loadError}`);
+    if (loadError) couldNotLoad(loadError);
     if (typeof loaded.id === 'string') fail(ToolErrorCode.STATE_CHANGED, `${name} was added, then closed by another load in the tab. Check model_list.`);
     if (!settled && loaded.id !== null) return stillLoading();
     // No error and no model of ours: an underlay drape, a cancel, or another load won.
@@ -285,7 +283,7 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   const good = mine.filter((m) => !m.failed);
   if (good.length === 0) {
     if (failed.some((m) => m.error === 'cancelled')) fail(ToolErrorCode.STATE_CHANGED, `Loading ${name} was cancelled in the viewer.`);
-    fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${loadError ?? failed[0].error ?? 'see the viewer for details'}`);
+    couldNotLoad(loadError ?? failed[0].error ?? 'see the viewer for details');
   }
   const models = snapshot().filter((m) => !m.failed);
   const text = `Loaded ${good.map((m) => `${m.name} (model_id ${m.model_id})`).join(', ')}${settled ? '' : '; geometry is still streaming'}`

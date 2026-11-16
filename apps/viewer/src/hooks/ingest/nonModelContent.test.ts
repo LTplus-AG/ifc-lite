@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 import { isInvalidInputError } from '@/lib/invalid-input-errors';
-import { afterProlog, NON_MODEL_REASONS, nonModelContentMessage, nonModelContentReason } from './nonModelContent';
+import { NON_MODEL_REASONS, nonModelContentMessage } from '@/lib/non-model-reasons';
+import { afterProlog, nonModelContentReason } from './nonModelContent';
 import { FORMAT_HEAD_BYTES } from './sourceBuffers';
 
 const step = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";

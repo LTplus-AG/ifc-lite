@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import type { MeshData } from '@ifc-lite/geometry';
 import { BVH } from './bvh.js';
+import { StreamingFragmentPieces } from './scene-fragment-pieces.js';
+import { StreamAssembly } from './scene-stream-assembly.js';
 
 // Loaded after asserting the module exists, so a reverted walk fails on an
 // assertion rather than as a file that cannot load.
@@ -20,6 +22,38 @@ function mesh(n: number, extra: Partial<MeshData> = {}): MeshData {
 }
 
 describe('scene CPU geometry walk (#10264)', () => {
+  it('reports fragment and stream-work arrays until finalize, with shared buffers visited per owner', async () => {
+    const { visitSceneCpuGeometry } = await load();
+    const shared = new Float32Array(12);
+    const meshData = mesh(0, { positions: shared });
+    const fragment = { id: 1 } as Parameters<StreamingFragmentPieces['record']>[0];
+    const fragments = new StreamingFragmentPieces();
+    const splitPiece = mesh(1);
+    fragments.record(fragment, [meshData, splitPiece], new Map([[splitPiece, meshData]]));
+    const streamWork = new StreamAssembly();
+    const captured = new ArrayBuffer(64);
+    streamWork.keepBytes(fragment, captured);
+    streamWork.record(fragment, [meshData]);
+    const source = {
+      buckets: new Map(), meshDataMap: new Map(), meshQueue: [], meshQueueReadIndex: 0,
+      instancedTemplateCpu: [], texturedMeshes: [], texturedSources: new WeakMap(),
+      fragmentPieces: fragments, streamWork,
+    };
+    const calls: { owner: string; buffer: ArrayBufferLike; bytes: number }[] = [];
+    const walk = () => visitSceneCpuGeometry(source, (owner, array) => calls.push({ owner, buffer: array.buffer, bytes: array.byteLength }));
+    walk();
+    const stream = calls.filter(entry => entry.owner === 'scene.fragmentPieces' || entry.owner === 'scene.streamWork');
+    assert.ok(stream.some(entry => entry.buffer === splitPiece.positions.buffer));
+    assert.equal(calls.filter(entry => entry.owner === 'scene.streamWork' && entry.buffer === captured).length, 1);
+    assert.ok(calls.some(entry => entry.owner === 'scene.fragmentPieces' && entry.buffer === shared.buffer));
+    assert.ok(calls.some(entry => entry.owner === 'scene.streamWork' && entry.buffer === shared.buffer));
+    const retiring = streamWork.beginFinalize([fragment]);
+    streamWork.endFinalize(retiring);
+    fragments.retainOnly([]);
+    calls.length = 0;
+    walk();
+    assert.equal(calls.filter(entry => entry.owner === 'scene.fragmentPieces' || entry.owner === 'scene.streamWork').reduce((sum, entry) => sum + entry.bytes, 0), 0);
+  });
   it('visits each holder, the queue from its read index, and a colour-merged mesh once', async () => {
     const { visitSceneCpuGeometry } = await load();
     const a = mesh(3), merged = mesh(3, { entityIds: new Uint32Array(3) }), queued = [mesh(1), mesh(2)];
@@ -35,6 +69,7 @@ describe('scene CPU geometry walk (#10264)', () => {
       meshQueue: queued, meshQueueReadIndex: 1,
       instancedTemplateCpu: [undefined, template],
       texturedMeshes: [drawable], texturedSources,
+      fragmentPieces: { visitMeshes: () => {} }, streamWork: { visitMeshes: () => {} },
     }, (owner, array, kind) => visits.push(`${owner}:${kind}:${array.byteLength}`));
     const count = (owner: string) => visits.filter((v) => v.startsWith(`${owner}:`)).length;
     assert.equal(count('scene.buckets'), 3 + 4);       // a: 3 arrays, merged: 3 + entityIds

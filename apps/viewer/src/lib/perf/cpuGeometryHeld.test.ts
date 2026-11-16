@@ -36,6 +36,23 @@ describe('CPU geometry held (#10264)', () => {
     assert.equal(held.owners['scene.buckets'].exclusiveBytes, 0);
   });
 
+  it('counts a buffer shared by a streaming fragment and finalized scene batch once', async () => {
+    const { measureCpuGeometryHeld } = await load();
+    const positions = new Float32Array(12);
+    const meshData = mesh(positions, new Float32Array(0), new Uint32Array(0));
+    const held = measureCpuGeometryHeld({
+      models: [{ geometryResult: { meshes: [meshData] } }],
+      renderer: { visitCpuGeometry: visit => {
+        visit('scene.fragmentPieces', positions, 'positions');
+        visit('scene.buckets', positions, 'positions');
+      } },
+    });
+    assert.equal(held.totalBytes, positions.byteLength);
+    assert.equal(held.buffers, 1);
+    assert.equal(held.owners['scene.fragmentPieces'].reachableBytes, positions.byteLength);
+    assert.equal(held.owners['scene.buckets'].reachableBytes, positions.byteLength);
+  });
+
   it('counts an arena viewed by many meshes once, at its full byteLength', async () => {
     const { measureCpuGeometryHeld } = await load();
     const pos = new ArrayBuffer(4 * 90), nrm = new ArrayBuffer(4 * 90), idx = new ArrayBuffer(4 * 30);

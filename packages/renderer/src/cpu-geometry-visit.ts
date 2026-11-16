@@ -42,6 +42,8 @@ export interface SceneCpuGeometryHost {
   instancedTemplateCpu: readonly ((Partial<MeshArrays> & { instanceData?: ArrayBuffer; canonicalAnchors?: Float64Array }) | undefined)[];
   texturedMeshes: readonly object[];
   texturedSources: WeakMap<object, { positions: Float32Array; fields: readonly (WeakRef<object> | undefined)[] }>;
+  fragmentPieces: { visitMeshes(visit: (mesh: MeshData) => void): void };
+  streamWork: { visitMeshes(visit: (mesh?: MeshData, bytes?: ArrayBuffer | Float32Array, salts?: Uint8Array) => void): void };
 }
 
 /** Every CPU geometry array a scene references, by holder. A mesh in several holders is visited once per holder. */
@@ -71,4 +73,10 @@ export function visitSceneCpuGeometry(scene: SceneCpuGeometryHost, visit: CpuGeo
     if (ArrayBuffer.isView(uvs)) visit('scene.textured', uvs, 'other');
     if (ArrayBuffer.isView(entityIds)) visit('scene.textured', entityIds, 'other');
   }
+  scene.fragmentPieces.visitMeshes(mesh => visitMeshArrays('scene.fragmentPieces', mesh, visit));
+  scene.streamWork.visitMeshes((mesh, bytes, salts) => {
+    if (mesh) visitMeshArrays('scene.streamWork', mesh, visit);
+    if (bytes) visit('scene.streamWork', bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes, 'other');
+    if (salts) visit('scene.streamWork', salts, 'other');
+  });
 }

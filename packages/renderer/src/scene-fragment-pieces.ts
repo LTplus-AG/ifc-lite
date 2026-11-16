@@ -67,6 +67,11 @@ export class FragmentPieces implements BatchPieces {
     for (const mesh of this.split.keys()) into.add(mesh);
   }
 
+  visitMeshes(visit: (mesh: MeshData) => void): void {
+    for (const mesh of this.whole) visit(mesh);
+    for (const [source, pieces] of this.split) { visit(source); for (const piece of pieces) visit(piece); }
+  }
+
   collect(mesh: MeshData, into: Set<MeshData>): void {
     if (this.whole.has(mesh)) {
       into.add(mesh);
@@ -119,6 +124,11 @@ export class BuiltBatchPieces implements BatchPieces {
  */
 export class StreamingFragmentPieces {
   private readonly byBatchId = new Map<number, BatchPieces>();
+
+  visitMeshes(visit: (mesh: MeshData) => void): void {
+    // BuiltBatchPieces are persistent partial-selection bookkeeping for ordinary finalized batches.
+    for (const record of this.byBatchId.values()) if (record instanceof FragmentPieces) record.visitMeshes(visit);
+  }
 
   /**
    * @param pieces What the fragment was uploaded from.

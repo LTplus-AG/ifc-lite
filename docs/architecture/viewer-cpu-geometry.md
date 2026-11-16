@@ -6,7 +6,7 @@ The viewer keeps the CPU copy of every flat mesh (`positions`, `normals`, `indic
 
 ## The figure: CPU geometry held
 
-`__ifc_lite_cpu_geometry_held__()` (installed with the other viewport debug hooks in `apps/viewer/src/lib/viewport-debug-hooks.ts`) walks every typed array of geometry that the main thread still references and returns:
+`__ifc_lite_cpu_geometry_held__()` (installed with the other viewport debug hooks in `apps/viewer/src/lib/viewport-debug-hooks.ts`) walks the typed-array geometry and index buffers held by the listed store, scene, and raycast-index owners. It includes streaming `fragmentPieces` and `streamWork` arrays under `scene.fragmentPieces` and `scene.streamWork`; these are released from that owner at finalize. It returns:
 
 | Field | Meaning |
 |---|---|
@@ -15,7 +15,9 @@ The viewer keeps the CPU copy of every flat mesh (`positions`, `normals`, `indic
 | `owners[name].exclusiveBytes` | Bytes reachable from that holder only: what letting go of that holder alone would free. |
 | `sharedBytes`, `byKind`, `buffers`, `walkMs` | Bytes reachable from more than one holder; split by positions / normals / indices / other; buffer count; walk time. |
 
-Holders: `store.models`, `store.geometryResult` (when it is a separate list), `store.preAlignment` (a copy kept for georeferenced federated models), `store.removedMeshes` (the delete-undo stash), `scene.buckets`, `scene.meshDataMap`, `scene.meshQueue`, `scene.instancedTemplates`, `scene.textured`, `pick.raycastIndex` and `pick.bvh`. The renderer side is `Renderer.visitCpuGeometry(visit)`, which hands out views and never copies.
+Holders: `store.models`, `store.geometryResult` (when it is a separate list), `store.preAlignment` (a copy kept for georeferenced federated models), `store.removedMeshes` (the delete-undo stash), `scene.buckets`, `scene.meshDataMap`, `scene.meshQueue`, `scene.instancedTemplates`, `scene.textured`, `scene.fragmentPieces` (transient whole and split pieces), `scene.streamWork` (recorded run meshes, captured bytes and colour salts), `pick.raycastIndex` and `pick.bvh`. The renderer side is `Renderer.visitCpuGeometry(visit)`, which hands out views and never copies.
+
+The count includes typed-array geometry and index bytes only. The renderer raycast BVH's typed-array buffers are visited as `pick.bvh` (`other`). The `@ifc-lite/spatial` BVH holds JavaScript objects with bounds per mesh and ordinary arrays, no geometry arrays; it is not counted. Capture-armed bytes held weakly before a fragment is recorded are not visited.
 
 Cost: nothing unless the hook is called. It is loaded on first call by a dynamic import, and no frame, load or pick path calls it. One call walks every mesh once and keeps a map with one entry per distinct buffer. Measured below: 2 to 8 ms over 27 to 66 buffers.
 
@@ -132,10 +134,9 @@ Other holders of typed geometry arrays on the main thread, beyond the store list
 - **References that pin meshes:**
   - the loader's `allMeshes` (cleared 5 s after finalize) and `cacheMeshes`;
   - `scene-precision.ts`'s `TopologyMemo`, which keeps strong `MeshData` keys;
-  - `scene-stream-assembly.ts`'s merged bytes until finalize;
   - the collab reconstruct cache.
 
-The figure counts the store list, `preAlignment`, `removedMeshes`, the scene holders and the raycast index. It does not count the transient and tool-scoped holders above. An S4 release that empties the store and scene arrays would leave all of them in place.
+The figure counts the store list, `preAlignment`, `removedMeshes`, the scene holders (including `scene.fragmentPieces` and `scene.streamWork` while streaming) and the raycast index. It does not count the transient and tool-scoped holders above, or JavaScript heap structures such as `store.spatialIndex`. An S4 release that empties the store and scene arrays would leave all of them in place.
 
 ## Host eviction on a reopened model
 

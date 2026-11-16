@@ -27,11 +27,11 @@ function Listing<T>({ summary, rows, row }: { summary: string; rows: readonly T[
 }
 
 /** The plan a derivation would write: what it derives, what it skipped and why, and which supports it guessed. */
-function DerivationSummary({ review }: { review: Review }) {
+export function DerivationSummary({ review }: { review: Review }) {
   const { t } = useTranslation();
   const { plan } = review;
   const nodeRow = (index: number) => t('structuralDerive.nodeAt', { node: index + 1, position: metres(plan.nodes[index].position) });
-  const { counts, skipped, unconnectedEnds, extendedEnds, freeEnds } = plan.report;
+  const { counts, skipped, skippedOpenings, unconnectedEnds, extendedEnds, freeEnds } = plan.report;
   const existing = plan.existingAnalysisModels.map((m) => `#${m.expressId}`).join(', ');
   return <>
     <output className="block">{t('structuralDerive.counts', { ...counts, created: review.created })}</output>
@@ -41,6 +41,8 @@ function DerivationSummary({ review }: { review: Review }) {
     <Listing summary={t('structuralDerive.skipped', { count: skipped.length })} rows={skipped} row={(item) => <>
       {item.type} #{item.elementId}{item.name ? ` ${item.name}` : ''}: {t(`structuralDerive.reason.${item.reason}`)} <span className="text-muted-foreground">({item.detail})</span>
     </>} />
+    <Listing summary={t('structuralDerive.skippedOpenings', { count: skippedOpenings.length })} rows={skippedOpenings}
+      row={(item) => <>{item.name ? `${item.name}: ` : ''}{t('structuralDerive.skippedOpeningRow', { opening: item.openingId, host: item.hostId, reason: t(`structuralDerive.reason.${item.reason}`) })} <span className="text-muted-foreground">({item.detail})</span></>} />
     <Listing summary={t('structuralDerive.guessed', { count: plan.report.guessedSupports.length })} rows={plan.report.guessedSupports}
       row={nodeRow} />
     <Listing summary={t('structuralDerive.moved', { count: extendedEnds.length })} rows={extendedEnds}

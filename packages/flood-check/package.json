@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/flood-check",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Headless check of a georeferenced building model against a surface-runoff hazard map (Swiss BAFU provider included)",
   "type": "module",
   "main": "./dist/index.js",

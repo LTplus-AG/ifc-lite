@@ -1,5 +1,11 @@
 # create-ifc-lite
 
+## 1.16.1
+
+### Patch Changes
+
+- [#9538](https://github.com/LTplus-AG/ifc-lite/pull/9538) [`1ef56b3`](https://github.com/LTplus-AG/ifc-lite/commit/1ef56b371fb233ef3fb61cdd2bb5cca8a36f8a49) Thanks [@louistrue](https://github.com/louistrue)! - Keep the generated streaming example successful when optional model-property fetching rejects. Warn without discarding successful geometry; actual streaming failures still exit unsuccessfully.
+
 ## 1.16.0
 
 ### Minor Changes

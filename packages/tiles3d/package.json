@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/tiles3d",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Headless OGC 3D Tiles reader: region queries over tilesets, b3dm/glb decoding (incl. Draco) into per-feature ECEF meshes with attributes",
   "type": "module",
   "main": "./dist/index.js",

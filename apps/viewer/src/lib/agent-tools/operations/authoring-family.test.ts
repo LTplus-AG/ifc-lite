@@ -18,6 +18,9 @@ import { resetFeaturesForTest } from '@/lib/features';
 let host: ToolHost;
 async function seed() {
   resetFeaturesForTest(); await seedAuthoringSample();
+  const state = useViewerStore.getState(), model = state.models.get(SAMPLE_MODEL)!;
+  let maxExpressId = 0; for (const id of model.ifcDataStore!.entities.expressId) maxExpressId = Math.max(maxExpressId, id);
+  useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, maxExpressId }]]) });
   useViewerStore.setState({ zoneSets: [], zoneAssignments: new Map(), changeSets: new Map(), activeChangeSetId: null });
   host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
 }

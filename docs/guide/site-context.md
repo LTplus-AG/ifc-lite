@@ -128,7 +128,11 @@ for (const layer of summarizeSiteContext(doc).layers) {
 ## What is in the file
 
 - **One frame.** The document origin `[E0, N0, H0]` is the centre rounded to
-  whole metres, with H0 the terrain height there. Every feature has its own
+  whole metres. H0 is the terrain height
+  nearest the centre, rounded, when terrain was read; `originHeight` then
+  carries it as `terrainHeight`. Without terrain (only buildings, or the
+  elevation grid failed) `originHeight.terrainHeight` is `null` with the
+  reason, and H0 is 0: a frame offset, not a height. Every feature has its own
   f64 origin and float32 positions relative to it. Local axes are east,
   north and up; in the GLB they are turned to glTF's Y-up as
   `(east, up, −north)`.
@@ -144,14 +148,18 @@ for (const layer of summarizeSiteContext(doc).layers) {
   the ÖREB extract link. A failed ÖREB lookup is an issue on the layer, not a
   failed run.
 - **Buildings**, one `IfcBuilding` feature per swissBUILDINGS3D building
-  whose footprint touches the site square, kept whole (never cut at the
+  object whose footprint touches the site square, kept whole (never cut at the
   boundary). Each mesh has a `roof` and a `wall` part (the tiles' red and
   beige materials), outward winding and flat normals, so it renders
   single-sided and casts shadows. Attributes are in the
   `IfcLite_SiteContextBuilding` set: `EGID` (where the canton's tiles have
   it, else `null`), `UUID`, `ObjectType`, `TotalHeight`, `RoofMin`,
-  `RoofMax`, `TerrainPoint`, `DatasetRelease`, `SourceTile`. The model's own
-  building is marked `subject: true`, matched by `--subject-egid`, else by
+  `RoofMax`, `TerrainPoint`, `DatasetRelease`, `SourceTile`. Ids are
+  `building:egid:<EGID>`; where the tiles split one building into several
+  objects sharing an EGID, each gets `building:egid:<EGID>:uuid:<UUID>`, so
+  every id is unique. The model's own building is marked `subject: true`
+  (every object of it, when it is split), even past the building and
+  triangle caps, matched by `--subject-egid`, else by
   overlap of at least half the smaller footprint with the plan rectangle
   spanned by the model's element placements (LOD0 boxes: an element's
   `IfcBoundingBox` where it has one, else its placement point), carried

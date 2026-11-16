@@ -99,6 +99,7 @@ export function encodeSiteContextGlb(doc: SiteContextDocument): Uint8Array {
     crs: doc.crs,
     verticalCrs: doc.verticalCrs,
     origin: [...doc.origin],
+    ...(doc.originHeight ? { originHeight: { ...doc.originHeight } } : {}),
     axes: AXES_DESCRIPTION,
     layers: [],
   };

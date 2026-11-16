@@ -6,7 +6,7 @@
 
 import type { Attribution } from '@ifc-lite/geodata-ch';
 import { BUILDING_SET } from './buildings-layer.js';
-import type { JsonValue, SiteContextDocument, SiteContextIssue, SiteContextLayer, SiteContextLayerKind } from './types.js';
+import type { JsonValue, SiteContextDocument, SiteContextIssue, SiteContextLayer, SiteContextLayerKind, SiteContextOriginHeight } from './types.js';
 
 export interface SiteContextLayerSummary {
   kind: SiteContextLayerKind;
@@ -28,8 +28,11 @@ export interface SiteContextParcelSummary {
 export interface SiteContextBuildingsSummary {
   count: number;
   withEgid: number;
-  /** The subject building and how it was matched; `null` when none was marked. */
-  subject: { id: string; egid: string | null; match: JsonValue } | null;
+  /**
+   * The subject building and how it was matched; `null` when none was marked. `ids` lists every
+   * feature marked subject: one building (EGID) can be several objects in the tiles.
+   */
+  subject: { id: string; ids: string[]; egid: string | null; match: JsonValue } | null;
   /** Network requests and bytes of the tile read (cache hits are free), from the layer provenance. */
   requests: number | null;
   bytes: number | null;
@@ -42,6 +45,8 @@ export interface SiteContextSummary {
   crs: 'EPSG:2056';
   verticalCrs: 'EPSG:5728';
   origin: [number, number, number];
+  /** What H0 is: the terrain height at the centre, or `null` with the reason (absent for older files). */
+  originHeight?: SiteContextOriginHeight;
   layers: SiteContextLayerSummary[];
   parcels: SiteContextParcelSummary[];
   /** Present when the document has a buildings layer. */
@@ -68,7 +73,10 @@ function buildingsSummary(layer: SiteContextLayer): SiteContextBuildingsSummary 
   for (const f of layer.features) {
     const egid = egidOf(f.attributes);
     if (egid !== null) withEgid++;
-    if (f.subject) subject = { id: f.id, egid, match: f.provenance.subjectMatch ?? null };
+    if (f.subject) {
+      if (subject) subject.ids.push(f.id);
+      else subject = { id: f.id, ids: [f.id], egid, match: f.provenance.subjectMatch ?? null };
+    }
     for (const p of f.mesh?.parts ?? []) partTriangles[p.name] = (partTriangles[p.name] ?? 0) + p.indexCount / 3;
   }
   const prov = layer.provenance ?? {};
@@ -108,5 +116,5 @@ export function summarizeSiteContext(doc: SiteContextDocument): SiteContextSumma
     };
   });
   const buildings = doc.layers.find((l) => l.kind === 'buildings');
-  return { crs: doc.crs, verticalCrs: doc.verticalCrs, origin: doc.origin, layers, parcels, ...(buildings ? { buildings: buildingsSummary(buildings) } : {}) };
+  return { crs: doc.crs, verticalCrs: doc.verticalCrs, origin: doc.origin, ...(doc.originHeight ? { originHeight: doc.originHeight } : {}), layers, parcels, ...(buildings ? { buildings: buildingsSummary(buildings) } : {}) };
 }

@@ -11117,6 +11117,7 @@
     "SiteContextLayerSummary: interface",
     "SiteContextMesh: interface",
     "SiteContextMeshPart: interface",
+    "SiteContextOriginHeight: interface",
     "SiteContextParcelSummary: interface",
     "SiteContextProgress: interface",
     "SiteContextSummary: interface",

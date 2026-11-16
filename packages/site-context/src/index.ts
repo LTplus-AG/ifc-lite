@@ -38,5 +38,6 @@ export type {
   SiteContextLayerKind,
   SiteContextMesh,
   SiteContextMeshPart,
+  SiteContextOriginHeight,
   SiteContextProgress,
 } from './types.js';

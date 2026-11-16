@@ -323,6 +323,33 @@ describe('ifc-lite site-context buildings', () => {
     expect(r.buildings!.subject!.match.overlap).toBeGreaterThan(0.99);
   });
 
+  it('reprojects every footprint corner of a UTM 32N model to EPSG:2056, not just its origin (#10480 review)', async () => {
+    // The same rotated millimetre sample, georeferenced in UTM 32N at the same ground point as rotated-mm.ifc.
+    const lv95 = (await resolveCrs({ epsg: 2056 }))!;
+    const utm = (await resolveCrs({ epsg: 32632 }))!;
+    const [lon, lat] = lv95.toWgs84([CENTRE.x, CENTRE.y])!;
+    const [ue, un] = utm.fromWgs84([lon, lat])!;
+    const sample = await readFile(p('rotated-mm.ifc'), 'utf8');
+    await writeFile(p('utm-mm.ifc'), sample
+      .replace(/^#18=IFCPROJECTEDCRS\(.*\);$/m, "#18=IFCPROJECTEDCRS('EPSG:32632',$,'WGS 84','LN02',$,$,#15);")
+      .replace(/^#19=IFCMAPCONVERSION\(.*\);$/m, `#19=IFCMAPCONVERSION(#11,#18,${(ue * 1000).toFixed(3)},${(un * 1000).toFixed(3)},500000.,0.5,0.8660254037844386,1.);`));
+    const plain = await siteContext([p('rotated-mm.ifc'), '--radius', '40', '--layers', 'buildings', '--out', p('fp-lv95.glb')], stub(), reader([]));
+    const viaUtm = await siteContext([p('utm-mm.ifc'), '--radius', '40', '--layers', 'buildings', '--out', p('fp-utm.glb')], stub(), reader([]));
+    // Corner offsets in the model's own map axes (rotation applied), read off the LV95 model's ring.
+    const offsets = plain.buildings!.subjectFootprint!.ring.map((q) => [q.x - CENTRE.x, q.y - CENTRE.y]);
+    const expected = offsets.map(([dx, dy]) => {
+      const [glon, glat] = utm.toWgs84([ue + dx, un + dy])!;
+      const [x, y] = lv95.fromWgs84([glon, glat])!;
+      return { x, y };
+    });
+    const got = viaUtm.buildings!.subjectFootprint!.ring;
+    expect(got).toHaveLength(4);
+    for (let i = 0; i < 4; i++) {
+      expect(Math.abs(got[i].x - expected[i].x)).toBeLessThan(0.01);
+      expect(Math.abs(got[i].y - expected[i].y)).toBeLessThan(0.01);
+    }
+  });
+
   it('turns an offline run without cached tiles into a failed buildings layer, not a failed run', async () => {
     capture();
     await siteContextCommand(['--centre', `${CENTRE.x},${CENTRE.y}`, '--radius', '20', '--layers', 'buildings', '--offline', '--json', '--cache-dir', p('empty-cache'), '--out', p('off.glb')], { geodata: stub() });

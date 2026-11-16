@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildSiteContext } from '../src/build.js';
 import { SUBJECT_MIN_OVERLAP } from '../src/buildings-footprint.js';
+import { BUILDING_SET } from '../src/buildings-layer.js';
 import type { BuildingsOptions, MapPoint, SiteContextFeature, SiteContextLayer } from '../src/types.js';
 import { stubGeodata } from './stub-geodata.js';
 import { prismFeature, stubReader, type BoxSpec } from './tiles-support.js';
@@ -179,5 +180,41 @@ describe('clipping, caps and honesty', () => {
     expect(layer.issues).toContainEqual(expect.objectContaining({ code: 'buildings-missing-egid', count: 1 }));
     expect(layer.issues).toContainEqual(expect.objectContaining({ code: 'buildings-missing-heights', count: 1 }));
     expect(layer.features[1].id).toBe('building:uuid:U-1');
+  });
+});
+
+describe('#10480 review: one building split into several objects, caps and the height check', () => {
+  // swissBUILDINGS3D splits some buildings: two objects, two UUIDs, one EGID.
+  const PART_A: BoxSpec = { ring: rect(-10, -5, 10, 10), base: 500, top: 512, attributes: { EGID: 333, UUID: 'PART-A' } };
+  const PART_B: BoxSpec = { ring: rect(0, -5, 10, 10), base: 500, top: 509, attributes: { EGID: 333, UUID: 'PART-B' } };
+
+  it('gives every emitted object its own id, keeping the shared EGID in the attributes', async () => {
+    const layer = await layerOf([PART_A, PART_B, L]);
+    const ids = layer.features.map((f) => f.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(expect.arrayContaining(['building:egid:333:uuid:PART-A', 'building:egid:333:uuid:PART-B', 'building:egid:222']));
+    expect(layer.features.filter((f) => (f.attributes[BUILDING_SET] as { EGID: unknown }).EGID === '333')).toHaveLength(2);
+  });
+
+  it('marks every object of the subject building, by EGID and by footprint', async () => {
+    const byEgid = await layerOf([PART_A, PART_B, L], { subject: { egid: '333' } });
+    expect(byEgid.features.filter((f) => f.subject).map((f) => f.id).sort()).toEqual(['building:egid:333:uuid:PART-A', 'building:egid:333:uuid:PART-B']);
+    const byFootprint = await layerOf([PART_A, PART_B, L], { subject: { footprint: [rect(-10, -5, 9, 10).map(([x, y]) => ({ x, y }))] } });
+    expect(byFootprint.features.filter((f) => f.subject)).toHaveLength(2);
+  });
+
+  it('keeps the subject even when it alone exceeds the triangle cap, so a reported match has its building', async () => {
+    const layer = await layerOf([BOX, L], { subject: { egid: '111' }, buildings: { maxTriangles: 1 } });
+    expect(layer.issues).toContainEqual(expect.objectContaining({ code: 'buildings-subject-matched' }));
+    expect(layer.features.filter((f) => f.subject).map((f) => f.id)).toEqual(['building:egid:111']);
+  });
+
+  it('runs the height check on the buildings kept, not on those the cap left out', async () => {
+    // BOX is near the centre and consistent; the far one has a top 3 m off its DACH_MAX and is capped out.
+    const far: BoxSpec = { ring: rect(60, 60, 5, 5), base: 500, top: 505, attributes: { EGID: 444, DACH_MAX: 508 } };
+    const layer = await layerOf([BOX, far], { buildings: { maxFeatures: 1 } });
+    expect(layer.features.map((f) => f.id)).toEqual(['building:egid:111']);
+    expect(layer.issues.map((i) => i.code)).not.toContain('buildings-height-check');
+    expect(layer.issues.map((i) => i.code)).toContain('buildings-truncated');
   });
 });

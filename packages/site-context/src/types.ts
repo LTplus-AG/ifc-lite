@@ -102,9 +102,25 @@ export interface SiteContextLayer {
 export interface SiteContextDocument {
   crs: 'EPSG:2056';
   verticalCrs: 'EPSG:5728';
-  /** Origin of the local site frame `[E0, N0, H0]`; whole metres. */
+  /**
+   * Origin of the local site frame `[E0, N0, H0]`; whole metres. H0 is the terrain height at
+   * the centre only when `originHeight.terrainHeight` says so; without terrain it is 0, a pure
+   * frame offset and not a height.
+   */
   origin: [number, number, number];
+  /**
+   * What H0 is. `terrainHeight`: the swissALTI3D height at the centre (nearest node, else the
+   * grid mean), or `null` when none was read (buildings only, or the grid failed), with `reason`.
+   * Absent in files written before it existed.
+   */
+  originHeight?: SiteContextOriginHeight;
   layers: SiteContextLayer[];
+}
+
+export interface SiteContextOriginHeight {
+  terrainHeight: number | null;
+  /** Why there is no terrain height; set exactly when `terrainHeight` is `null`. */
+  reason?: string;
 }
 
 /** The part of the `SwissGeodata` client the build uses. A `SwissGeodata` satisfies it. */

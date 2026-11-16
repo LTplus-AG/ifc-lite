@@ -37,6 +37,10 @@ interface Candidate {
   distance: number;
   triangles: number;
   egid: string | null;
+  /** The id suffix that keeps the id unique when several buildings share this EGID. */
+  own: string;
+  /** |measured top − DACH_MAX| in metres, `null` without DACH_MAX. */
+  heightOff: number | null;
 }
 
 function message(err: unknown): string {
@@ -79,7 +83,6 @@ export async function buildingsLayer(input: BuildingsLayerInput): Promise<SiteCo
   const candidates: Candidate[] = [];
   const seen = new Set<string>();
   let outside = 0, duplicates = 0, unmapped = 0, degenerate = 0, unknownMaterial = 0, repeatedFaces = 0, interiorFaces = 0;
-  let heightMismatch = 0, worstHeight = 0;
   for (const f of res.features) {
     const xyz = ecefToLv95(f.positions, t);
     if (!xyz) {
@@ -127,13 +130,10 @@ export async function buildingsLayer(input: BuildingsLayerInput): Promise<SiteCo
     interiorFaces += built.interior;
 
     const roofMax = numberOrNull(a.DACH_MAX);
-    if (roofMax !== null) {
-      const d = Math.abs(zmax - roofMax);
-      if (d > HEIGHT_CHECK_TOLERANCE) heightMismatch++;
-      worstHeight = Math.max(worstHeight, d);
-    }
     const objectType = textOrNull(a.OBJEKTART);
-    const id = `building:${egid ? `egid:${egid}` : uuid ? `uuid:${uuid}` : key}`;
+    const own = uuid ? `uuid:${uuid}` : key;
+    // Final when the EGID is unique in the site; made unique below when it is not.
+    const id = `building:${egid ? `egid:${egid}` : own}`;
     const attrs: { [k: string]: JsonValue } = {
       EGID: egid,
       UUID: uuid,
@@ -168,8 +168,17 @@ export async function buildingsLayer(input: BuildingsLayerInput): Promise<SiteCo
       distance: Math.hypot(c.x - centre.x, c.y - centre.y),
       triangles: built.mesh.indices.length / 3,
       egid,
+      own,
+      heightOff: roofMax === null ? null : Math.abs(zmax - roofMax),
     });
   }
+
+  // swissBUILDINGS3D can split one building (one EGID) into several objects, each with its own
+  // UUID. Every emitted feature needs its own id (the viewer derives a GlobalId from it), so a
+  // shared EGID keeps the EGID and adds the object's UUID; the EGID stays in the attributes.
+  const perEgid = new Map<string, number>();
+  for (const c of candidates) if (c.egid) perEgid.set(c.egid, (perEgid.get(c.egid) ?? 0) + 1);
+  for (const c of candidates) if (c.egid && perEgid.get(c.egid)! > 1) c.feature.id = `building:egid:${c.egid}:${c.own}`;
 
   // The subject: EGID first, then footprint overlap.
   const subject = input.subject;
@@ -197,22 +206,34 @@ export async function buildingsLayer(input: BuildingsLayerInput): Promise<SiteCo
     issues.push({ code: 'buildings-subject-not-found', severity: 'warning', message: `no building in the site has EGID ${subject.egid}, and no footprint was given to match by` });
   }
   if (subjectIndex >= 0) {
-    const s = candidates[subjectIndex];
-    s.feature.subject = true;
-    s.feature.provenance.subjectMatch = match;
-    issues.push({ code: 'buildings-subject-matched', severity: 'info', message: `the model's own building is ${s.feature.id}, matched by ${match!.method}; it is marked subject, not removed` });
+    // Every object of the matched building: all of them when it has an EGID they share.
+    const matched = candidates[subjectIndex];
+    const parts = matched.egid ? candidates.filter((c) => c.egid === matched.egid) : [matched];
+    for (const s of parts) {
+      s.feature.subject = true;
+      s.feature.provenance.subjectMatch = match;
+    }
+    const ids = parts.map((s) => s.feature.id).join(', ');
+    issues.push({ code: 'buildings-subject-matched', severity: 'info', message: `the model's own building is ${ids}, matched by ${match!.method}; it is marked subject, not removed` });
   }
 
-  // Caps: nearest the centre first, the subject always first.
+  // Caps: nearest the centre first. The subject is always kept, whatever the caps, since a
+  // reported match must have its building in the layer (#10480 review).
   candidates.sort((x, y) => Number(y.feature.subject === true) - Number(x.feature.subject === true) || x.distance - y.distance);
   const features: SiteContextFeature[] = [];
+  const kept: Candidate[] = [];
   let triangles = 0;
   let cappedBy: 'features' | 'triangles' | null = null;
   for (const c of candidates) {
-    if (features.length >= maxFeatures) cappedBy ??= 'features';
+    if (c.feature.subject) {
+      features.push(c.feature);
+      kept.push(c);
+      triangles += c.triangles;
+    } else if (features.length >= maxFeatures) cappedBy ??= 'features';
     else if (triangles + c.triangles > maxTriangles) cappedBy ??= 'triangles';
     else {
       features.push(c.feature);
+      kept.push(c);
       triangles += c.triangles;
     }
   }
@@ -235,6 +256,10 @@ export async function buildingsLayer(input: BuildingsLayerInput): Promise<SiteCo
   if (noHeights > 0) {
     issues.push({ code: 'buildings-missing-heights', severity: 'info', message: `${noHeights} of ${features.length} buildings lack some of GESAMTHOEHE, DACH_MIN, DACH_MAX, GELAENDEPUNKT`, count: noHeights });
   }
+  // The height check over the buildings kept, not those the caps left out (#10480 review).
+  const offs = kept.map((c) => c.heightOff).filter((d): d is number => d !== null);
+  const heightMismatch = offs.filter((d) => d > HEIGHT_CHECK_TOLERANCE).length;
+  const worstHeight = offs.reduce((w, d) => Math.max(w, d), 0);
   if (heightMismatch > 0) {
     const broken = worstHeight > 1;
     if (broken) complete = false;

@@ -50,7 +50,7 @@ The FSDI fair-use terms apply to every geo.admin.ch request.
 | `radius` | Half the side of the square site, in metres (0 < r ≤ 5000). |
 | `layers` | `'terrain' \| 'parcel' \| 'buildings'`. |
 | `resolution` | Terrain node spacing in metres, or `'auto'` (default): `max(0.5, extent / 500)` rounded up to 1/16 m, where `extent = 2 · radius`. That keeps the terrain near 501 × 501 nodes (≈ 250 000 vertices, 500 000 triangles): 200 m → 0.5 m, 500 m → 1 m, 1 km → 2 m. The rounding makes every node coordinate exact in float32, so chunk seams are bit-identical. Grids over 4 000 000 nodes are refused. |
-| `subject` | `{ footprint?, egid?, egrid? }`: `egrid` takes the parcel by EGRID; otherwise the parcel is the one at the footprint's centroid, or at the centre. In the buildings layer the model's own building is marked `subject: true`: the one whose `EGID` equals `egid`, else the one whose footprint overlaps `footprint` (EPSG:2056 rings, outer first) by at least `SUBJECT_MIN_OVERLAP` (0.5) of the smaller of the two areas. |
+| `subject` | `{ footprint?, egid?, egrid? }`: `egrid` takes the parcel by EGRID; otherwise the parcel is the one at the footprint's centroid, or at the centre. In the buildings layer the model's own building is marked `subject: true` (every object of it when the tiles split it, kept past the caps): the one whose `EGID` equals `egid`, else the one whose footprint overlaps `footprint` (EPSG:2056 rings, outer first) by at least `SUBJECT_MIN_OVERLAP` (0.5) of the smaller of the two areas. |
 | `buildings` | `BuildingsOptions`: `reader` (default `readSwisstopoBuildings` of `@ifc-lite/tiles3d`), `fetch` and `cache` passed to it (the CLI's on-disk cache, the viewer's own), `release`, `maxRequests` / `maxBytes` (preset defaults 64 / 32 MiB), `tileCullMarginMetres` (preset 100 m), `dracoModuleOptions` (a browser's `locateFile` for `@ifc-lite/tiles3d/draco_decoder.wasm`), and the caps `maxFeatures` (5000) and `maxTriangles` (2 000 000). |
 | `geodata` | A `SwissGeodata` from `@ifc-lite/geodata-ch` (or anything with its `elevationGrid`, `parcelById`, `parcelsAtPoint`, `oerebExtract`). |
 | `signal`, `onProgress`, `onLayer` | Abort; progress messages; each finished layer in document order. |
@@ -77,10 +77,11 @@ interface SiteContextDocument {
   crs: 'EPSG:2056';
   verticalCrs: 'EPSG:5728';
   origin: [E0, N0, H0];          // whole metres
+  originHeight?: { terrainHeight: number | null; reason?: string }; // what H0 is
   layers: {
     kind: 'terrain' | 'parcel' | 'buildings';
     features: {
-      id: string;                // 'terrain:chunk:r0c1', 'terrain:skirt', 'parcel:CH…', 'building:egid:…' | 'building:uuid:…'
+      id: string;                // 'terrain:chunk:r0c1', 'terrain:skirt', 'parcel:CH…', 'building:egid:…' | 'building:egid:…:uuid:…' (EGID shared by several objects) | 'building:uuid:…'
       ifcType: string;           // 'IfcGeographicElement' | 'IfcSite' | 'IfcBuilding'
       name: string;
       origin: [E, N, H];         // f64, EPSG:2056 / EPSG:5728
@@ -102,8 +103,11 @@ interface SiteContextDocument {
 
 **Frame.** Local axes are identity to the CRS: x east, y north, z up, metres,
 scale 1. A vertex's EPSG:2056 / LN02 coordinate is `feature.origin + position`,
-added in f64. The document origin is the centre rounded to whole metres, with
-H0 the terrain height nearest the centre, rounded. Each feature has its own
+added in f64. The document origin is the centre rounded to whole metres.
+H0 is the terrain height nearest the centre, rounded, when terrain was read
+(`originHeight.terrainHeight`); without terrain `originHeight.terrainHeight`
+is `null` with a `reason`, and H0 is 0, a frame offset rather than a height.
+Each feature has its own
 f64 origin and float32 positions relative to it, which matches the viewer's
 precision model (a per-mesh f64 origin plus relative-to-eye rendering). The
 document defines the frame; the building model's map conversion does not. A
@@ -232,12 +236,12 @@ One glTF 2.0 binary that also opens as plain geometry in any glTF viewer.
   each double in its shortest round-trip form, which parses back to the same
   double. The absolute feature origin is also stored in the node's extras.
 - **`asset.extras.ifcLiteSiteContext`**: `formatVersion` (1), `crs`,
-  `verticalCrs`, `origin`, `axes`, and per layer `kind`, `attribution`,
+  `verticalCrs`, `origin`, `originHeight` (optional), `axes`, and per layer `kind`, `attribution`,
   `issues`, `complete`, `node` (the index of its group node) and, when the
   layer has one, `provenance`.
 - **Feature node `extras.ifcLiteSiteContext`**: `id`, `ifcType`, `name`,
   `origin`, `attributes`, `provenance`, and `subject: true` on the subject
-  building only.
+  building's objects only.
 - **Mesh `extras.ifcLiteSiteContext.parts`** (buildings): the named index
   ranges of the mesh's single primitive, `[{ name: 'roof', firstIndex,
   indexCount }, { name: 'wall', … }]`, contiguous and covering every index.

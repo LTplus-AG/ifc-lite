@@ -188,7 +188,7 @@ async function run(args: string[], deps: SiteContextDeps): Promise<void> {
     centreSource = 'model';
     if (layers.includes('buildings')) {
       footprint = await modelFootprint(new Uint8Array(await readFile(file)), model, store.lengthUnitScale ?? 1);
-      if (!footprint) model.warnings.push('no placed element, so the model gives no footprint to find its own building by');
+      if (!footprint) model.warnings.push('the model gives no footprint (no placed element, or a corner that could not be converted) to find its own building by');
       else model.warnings.push(...footprint.warnings);
     }
   } else if (centreArg) {
@@ -234,6 +234,7 @@ async function run(args: string[], deps: SiteContextDeps): Promise<void> {
     crs: summary.crs,
     verticalCrs: summary.verticalCrs,
     origin: summary.origin,
+    originHeight: summary.originHeight ?? null,
     requests: (geodata.requestCount ?? 0) - requestsBefore + (summary.buildings?.requests ?? 0),
     cache: { dir: cacheDir, hits: cache.hits + tilesCache.hits, writes: cache.writes + tilesCache.writes, offline },
     seconds: Math.round((Date.now() - started) / 100) / 10,
@@ -265,13 +266,14 @@ async function run(args: string[], deps: SiteContextDeps): Promise<void> {
   const lines = [
     `site-context: wrote ${out} (${glb.byteLength} bytes, ${report.requests} requests)`,
     `  origin ${doc.origin.join(', ')}  (EPSG:2056 / EPSG:5728, x east, y north, z up)`,
+    ...(doc.originHeight?.terrainHeight === null ? [`  H0 is 0 as a frame offset, not a terrain height: ${doc.originHeight.reason ?? 'no terrain height'}`] : []),
     ...(model ? [`  centre from the model: ${model.crs.name} (${model.crs.matched}); its rotation is not applied`] : []),
     ...report.layers.map((l) => `  ${l.kind}: ${l.features} features, ${l.triangles} triangles${l.complete ? '' : ' (INCOMPLETE)'}`),
     ...summary.parcels.map((q) => `  parcel ${q.number ?? '?'} ${q.egrid}${q.oerebExtractUrl ? `  ÖREB ${q.oerebExtractUrl}` : ''}`),
     ...(summary.buildings
       ? [
           `  buildings: ${summary.buildings.count} (${summary.buildings.withEgid} with EGID), ${summary.buildings.requests ?? 0} tile requests, ${summary.buildings.bytes ?? 0} bytes` +
-            `; subject ${summary.buildings.subject ? `${summary.buildings.subject.id}` : 'not marked'}`,
+            `; subject ${summary.buildings.subject ? summary.buildings.subject.ids.join(', ') : 'not marked'}`,
         ]
       : []),
     ...report.warnings.map((w) => `  warning: ${w}`),

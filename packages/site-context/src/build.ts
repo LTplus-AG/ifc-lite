@@ -18,7 +18,7 @@ import {
 import { buildingsLayer } from './buildings-layer.js';
 import { footprintCentroid, parcelLayer } from './parcel-layer.js';
 import { terrainLayer } from './terrain-layer.js';
-import type { BuildSiteContextOptions, SiteContextDocument, SiteContextLayer, SiteContextLayerKind } from './types.js';
+import type { BuildSiteContextOptions, SiteContextDocument, SiteContextLayer, SiteContextLayerKind, SiteContextOriginHeight } from './types.js';
 
 const KINDS: readonly SiteContextLayerKind[] = ['terrain', 'parcel', 'buildings'];
 
@@ -26,8 +26,8 @@ function abortIfNeeded(signal?: AbortSignal): void {
   if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new DOMException('site context build aborted', 'AbortError');
 }
 
-/** H0: the terrain height at the node nearest the centre, else the mean of the grid, rounded to whole metres. */
-export function originHeight(grid: Pick<ElevationGrid, 'origin' | 'resolution' | 'width' | 'height' | 'values'>, x: number, y: number): number {
+/** H0: the terrain height at the node nearest the centre, else the mean of the grid, rounded to whole metres; `null` when the grid has no height at all. */
+export function originHeight(grid: Pick<ElevationGrid, 'origin' | 'resolution' | 'width' | 'height' | 'values'>, x: number, y: number): number | null {
   const col = Math.min(Math.max(Math.round((x - grid.origin.x) / grid.resolution), 0), grid.width - 1);
   const row = Math.min(Math.max(Math.round((grid.origin.y - y) / grid.resolution), 0), grid.height - 1);
   const h = grid.values[row * grid.width + col];
@@ -40,7 +40,7 @@ export function originHeight(grid: Pick<ElevationGrid, 'origin' | 'resolution' |
       n++;
     }
   }
-  return n > 0 ? Math.round(sum / n) : 0;
+  return n > 0 ? Math.round(sum / n) : null;
 }
 
 export async function buildSiteContext(options: BuildSiteContextOptions): Promise<SiteContextDocument> {
@@ -73,7 +73,17 @@ export async function buildSiteContext(options: BuildSiteContextOptions): Promis
       throw new SiteContextCoverageError(centre, `swissALTI3D has no data in the site box (missing tiles: ${grid.missingTiles.join(', ') || 'none listed'})`);
     }
   }
-  const h0 = grid ? originHeight(grid, centre.x, centre.y) : 0;
+  const terrainHeight = grid ? originHeight(grid, centre.x, centre.y) : null;
+  // Without a terrain height H0 is 0 as a frame offset only, and the document says why (#10480 review).
+  const heightInfo: SiteContextOriginHeight = terrainHeight !== null
+    ? { terrainHeight }
+    : {
+        terrainHeight: null,
+        reason: grid ? 'the elevation grid has no height in the site box'
+          : gridError !== null ? `the elevation grid could not be read: ${gridError}`
+            : 'no terrain was requested (only buildings), so no terrain height was read; H0 is 0 as a frame offset',
+      };
+  const h0 = terrainHeight ?? 0;
 
   const layers: SiteContextLayer[] = [];
   for (const kind of kinds) {
@@ -113,5 +123,5 @@ export async function buildSiteContext(options: BuildSiteContextOptions): Promis
     onLayer?.(layer);
   }
   onProgress?.({ stage: 'done', message: 'site context built' });
-  return { crs: 'EPSG:2056', verticalCrs: 'EPSG:5728', origin: [e0, n0, h0], layers };
+  return { crs: 'EPSG:2056', verticalCrs: 'EPSG:5728', origin: [e0, n0, h0], originHeight: heightInfo, layers };
 }

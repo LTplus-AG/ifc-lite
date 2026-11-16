@@ -40,6 +40,14 @@ export interface ModelCentre {
   rotationDegrees: number | null;
   /** IfcMapConversion Eastings/Northings in metres, in EPSG:2056 (the reprojected point for another CRS). */
   conversionOrigin: { x: number; y: number };
+  /** IfcMapConversion Eastings/Northings in metres, in the model's own CRS. */
+  sourceOrigin: { x: number; y: number };
+  /**
+   * A point in the model's own CRS (metres) to EPSG:2056, or `null` when it cannot be converted.
+   * The identity for an EPSG:2056 model; through WGS84 for another CRS, so grid convergence and
+   * scale differences are applied per point rather than to offsets added at the origin.
+   */
+  toLv95(x: number, y: number): { x: number; y: number } | null;
   /** IfcMapConversion.Scale as stated (absent: IFC's default 1). */
   conversionScale: number | null;
   /** Things the user should know that did not stop the run. */
@@ -109,6 +117,8 @@ export async function siteCentreFromModel(store: IfcDataStore): Promise<ModelCen
     verticalDatum: vertical,
     rotationDegrees: computeAngleToGridNorth(mc.xAxisAbscissa, mc.xAxisOrdinate),
     conversionOrigin: { x: e, y: n },
+    sourceOrigin: { x: e, y: n },
+    toLv95: (x: number, y: number) => ({ x, y }),
     conversionScale: mc.scale ?? null,
     warnings,
   };
@@ -132,5 +142,10 @@ export async function siteCentreFromModel(store: IfcDataStore): Promise<ModelCen
     `the model's CRS "${name}" (EPSG:${t.epsg ?? '?'}) is not EPSG:2056; only the centre point was reprojected (datum shift: ${t.datumShift}), ` +
       'the model itself must still be placed by its own georeferencing',
   );
-  return { ...base, conversionOrigin: { x: p[0], y: p[1] }, centre: { x: p[0], y: p[1] }, crs: { name, matched: 'reprojected', epsg: t.epsg, datumShift: t.datumShift } };
+  const toLv95 = (x: number, y: number) => {
+    const g = t.toWgs84([x, y]);
+    const q = g ? target.fromWgs84([g[0], g[1]]) : null;
+    return q ? { x: q[0], y: q[1] } : null;
+  };
+  return { ...base, toLv95, conversionOrigin: { x: p[0], y: p[1] }, centre: { x: p[0], y: p[1] }, crs: { name, matched: 'reprojected', epsg: t.epsg, datumShift: t.datumShift } };
 }

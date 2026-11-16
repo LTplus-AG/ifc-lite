@@ -34,7 +34,7 @@ export interface ModelFootprint {
 const NOT_BUILDING = new Set(['IfcSite', 'IfcGeographicElement', 'IfcAnnotation', 'IfcGrid', 'IfcVirtualElement', 'IfcExternalSpatialElement', 'IfcCivilElement', 'IfcProject']);
 
 /**
- * `null` when no element is placed. `lengthUnitScale` is the project's length
+ * `null` when no element is placed, or a corner cannot be converted to EPSG:2056 (said in `model.warnings`). `lengthUnitScale` is the project's length
  * unit in metres; the LOD0 boxes are in metres already.
  */
 export async function modelFootprint(bytes: Uint8Array, model: ModelCentre, lengthUnitScale: number): Promise<ModelFootprint | null> {
@@ -58,10 +58,18 @@ export async function modelFootprint(bytes: Uint8Array, model: ModelCentre, leng
   const theta = ((model.rotationDegrees ?? 0) * Math.PI) / 180;
   const cos = Math.cos(theta), sin = Math.sin(theta);
   const corners: Array<[number, number]> = [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]];
-  const ring = corners.map(([x, y]) => ({
-    x: model.conversionOrigin.x + scale * (x * cos - y * sin),
-    y: model.conversionOrigin.y + scale * (x * sin + y * cos),
-  }));
+  // Rotation and scale are in the model's own map axes: place each corner in its CRS, then
+  // carry that point to EPSG:2056. Adding the offsets to the reprojected origin would skip the
+  // grid convergence and scale between, say, UTM and LV95 (#10480 review).
+  const ring: Array<{ x: number; y: number }> = [];
+  for (const [x, y] of corners) {
+    const q = model.toLv95(model.sourceOrigin.x + scale * (x * cos - y * sin), model.sourceOrigin.y + scale * (x * sin + y * cos));
+    if (!q) {
+      model.warnings.push('a footprint corner could not be converted to EPSG:2056');
+      return null;
+    }
+    ring.push(q);
+  }
   if (maxX - minX < 1 || maxY - minY < 1) warnings.push(`the model's element placements span only ${(maxX - minX).toFixed(2)} × ${(maxY - minY).toFixed(2)} m, too little to find its building by`);
   return { ring, elements: placed.length, shapedElements: placed.filter((e) => e.bbox_source === 'shape').length, scale, warnings };
 }

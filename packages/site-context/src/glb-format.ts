@@ -19,7 +19,7 @@
  */
 
 import type { Attribution } from '@ifc-lite/geodata-ch';
-import type { JsonValue, SiteContextIssue, SiteContextLayerKind } from './types.js';
+import type { JsonValue, SiteContextIssue, SiteContextLayerKind, SiteContextOriginHeight } from './types.js';
 
 export const SITE_CONTEXT_FORMAT_VERSION = 1;
 export const EXTRAS_KEY = 'ifcLiteSiteContext';
@@ -52,6 +52,8 @@ export interface SiteContextGlbMeta {
   crs: 'EPSG:2056';
   verticalCrs: 'EPSG:5728';
   origin: [number, number, number];
+  /** What H0 is (optional in format 1: absent in files written before it existed). */
+  originHeight?: SiteContextOriginHeight;
   axes: string;
   layers: SiteContextGlbLayerMeta[];
 }

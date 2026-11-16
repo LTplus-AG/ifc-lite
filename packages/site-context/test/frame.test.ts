@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildSiteContext } from '../src/build.js';
 import { SiteContextCoverageError } from '../src/frame.js';
+import { decodeSiteContextGlb, encodeSiteContextGlb, summarizeSiteContext } from '../src/index.js';
 import { plane, stubGeodata } from './stub-geodata.js';
 
 describe('site frame', () => {
@@ -94,5 +95,31 @@ describe('layers', () => {
     const prov = doc.layers[0].features[0].provenance;
     expect(prov.sources).toEqual([expect.objectContaining({ id: 'swissalti3d_2019_2600-1199', year: 2019 })]);
     expect(doc.layers[0].attribution[0].text).toBe('© swisstopo');
+  });
+});
+
+describe('#10480 review: H0 is a terrain height only when terrain was read', () => {
+  const centre = { x: 2_600_123.5, y: 1_199_876.5 };
+  const noTiles = { reader: async () => { throw new Error('no tiles in this test'); } };
+
+  it('says so when it read one, through the GLB and the summary', async () => {
+    const doc = await buildSiteContext({ centre, radius: 20, layers: ['terrain'], geodata: stubGeodata() });
+    expect(doc.originHeight).toEqual({ terrainHeight: doc.origin[2] });
+    expect(decodeSiteContextGlb(encodeSiteContextGlb(doc)).originHeight).toEqual(doc.originHeight);
+    expect(summarizeSiteContext(doc).originHeight).toEqual(doc.originHeight);
+  });
+
+  it('gives no terrain height, with the reason, for a buildings-only site; H0 0 is only a frame offset', async () => {
+    const doc = await buildSiteContext({ centre, radius: 20, layers: ['buildings'], geodata: stubGeodata(), buildings: noTiles });
+    expect(doc.originHeight?.terrainHeight).toBeNull();
+    expect(doc.originHeight?.reason).toMatch(/no terrain was requested/);
+    expect(decodeSiteContextGlb(encodeSiteContextGlb(doc)).originHeight).toEqual(doc.originHeight);
+  });
+
+  it('gives no terrain height, with the read error, when the elevation grid fails', async () => {
+    const geodata = { ...stubGeodata(), elevationGrid: async () => { throw new Error('STAC unreachable'); } };
+    const doc = await buildSiteContext({ centre, radius: 20, layers: ['terrain', 'parcel'], geodata });
+    expect(doc.originHeight).toEqual({ terrainHeight: null, reason: expect.stringContaining('STAC unreachable') });
+    expect(summarizeSiteContext(doc).originHeight?.terrainHeight).toBeNull();
   });
 });

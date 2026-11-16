@@ -130,5 +130,5 @@ export function decodeSiteContextGlb(bytes: Uint8Array): SiteContextDocument {
     if (l.provenance) layer.provenance = l.provenance;
     return layer;
   });
-  return { crs: meta.crs, verticalCrs: meta.verticalCrs, origin: meta.origin, layers };
+  return { crs: meta.crs, verticalCrs: meta.verticalCrs, origin: meta.origin, ...(meta.originHeight ? { originHeight: meta.originHeight } : {}), layers };
 }

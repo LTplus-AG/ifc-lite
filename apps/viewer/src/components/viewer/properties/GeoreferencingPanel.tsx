@@ -46,6 +46,8 @@ import { GeorefRow, AngleRow } from './georef-rows';
 import { TerrainHeightButton } from './georef-terrain-height-button';
 import { GeorefReadOnlyNotices, WellKnownTextRow, isReadOnlyCoordinateOperation } from './georef-notices';
 import { WorldViewSettings } from './world-view-settings';
+import { SiteContextSection } from '../site-context/SiteContextSection';
+import { CrsAssumedBadge } from './crs-assumed-badge';
 
 // ── Main Panel ─────────────────────────────────────────────────────────
 
@@ -389,7 +391,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         {mergedCRS?.description && (
           <span className="text-xs font-mono text-muted-foreground truncate">{mergedCRS.description}</span>
         )}
-        {mergedCRS?.name && <PrecisionGridBadge crsName={mergedCRS.name} />}
+        {mergedCRS?.name && <><PrecisionGridBadge crsName={mergedCRS.name} /><CrsAssumedBadge crsName={mergedCRS.name} /></>}
         {editable && (
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
             <button className={`relative ml-auto flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS} after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`}>
@@ -577,11 +579,9 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         // panel's model id hasn't resolved and more than one model is loaded — see `canExportKmz`.
         geometryResult={canExportKmz ? geometryResult : null}
         instancedModelRange={instancedModelRange}
-        modelName={modelId ? models.get(modelId)?.name : undefined}
-        lengthUnitScale={lengthUnitScale}
-        editable={editable}
-        onApplyPosition={editable ? handleApplyPosition : undefined}
-      />
+        modelName={modelId ? models.get(modelId)?.name : undefined} lengthUnitScale={lengthUnitScale} editable={editable}
+        onApplyPosition={editable ? handleApplyPosition : undefined} />
+      {modelId && <SiteContextSection modelId={modelId} />}
     </div>
   );
 }

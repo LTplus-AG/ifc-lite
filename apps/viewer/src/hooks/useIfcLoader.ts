@@ -1050,8 +1050,8 @@ export function useIfcLoader() {
         }
       }
 
-      // GLB files: parse directly to MeshData (no data model, geometry only)
-      if (format === 'glb') {
+      if (format === 'glb' && (await import('../lib/site-context/site-context-glb.js')).isSiteContextGlbHead(headBuf)) { await (await import('./ingest/siteContextLoad.js')).loadSiteContextModel({ buffer, modelId, fileName: file.name, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(), trace, isStale, setProgress, settleLoadUi, onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel, loadSibling: (sibling, name) => { void loadFileRef.current?.(sibling, { kind: 'federated', modelId: crypto.randomUUID(), name, loadedAt: Date.now() }); }, ...(options?.siteContextArrival ? { arrival: options.siteContextArrival } : {}), onError: (code, message) => { updateModel(modelId, { loadState: 'error', loadError: message }); showLoadError(message, `site_context_${code.replace(/-/g, '_')}`); } }); return; } // before the generic GLB branch: a site-context GLB carries its own frame and semantics
+      if (format === 'glb') { // GLB files: parse directly to MeshData (no data model, geometry only)
         setProgress({ phase: 'Parsing GLB', percent: 10 });
 
         try {

@@ -6,13 +6,13 @@
 import { operationTools, OPERATION_SPECS } from './operation-tools';
 import { screenshotTools, SCREENSHOT_SPECS } from './viewport-screenshot-tool';
 import { modelOpenTools, MODEL_OPEN_SPECS } from './model-open-tools';
+import { assertGranted, boundedString, integer, invalid, keys } from './tool-args';
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { getAgentCommandHost } from '@/lib/agent-bridge/command-host';
 import type { Command } from '@/components/viewer/commandPaletteSearch';
 import { resolveRef } from './refs';
-import { rankSearch } from './operations/discovery-search';
-import { assertDispatchActive } from './cancellation';
-import type { AgentInputSchema, AgentTool, ToolCallContext, ToolOutput } from './types';
+import { nearestIds, rankSearch, type SearchFields } from './operations/discovery-search';
+import type { AgentInputSchema, AgentTool, ToolOutput } from './types';
 
 export const VIEWER_COMMAND_SPECS = {
   ...OPERATION_SPECS,
@@ -49,9 +49,7 @@ export const VIEWER_COMMAND_SPECS = {
   },
 } as const;
 
-function invalid(message: string): never {
-  throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message });
-}
+const commandFields = (command: Command): SearchFields => ({ primary: [command.id, command.label, command.category], secondary: [command.keywords] });
 
 function commands(): readonly Command[] {
   const host = getAgentCommandHost();
@@ -70,32 +68,7 @@ function unavailable(command: Command): string | undefined {
   return availability.status === 'disabled' ? availability.reasonKey : undefined;
 }
 
-function boundedString(args: Record<string, unknown>, key: string, max: number): string | undefined {
-  const value = args[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== 'string' || !value.trim() || value.length > max) invalid(`${key} must be a nonempty string of at most ${max} characters.`);
-  return value;
-}
-
-function keys(args: Record<string, unknown>, allowed: readonly string[]): void {
-  if (Object.keys(args).some(key => !allowed.includes(key))) invalid('Unknown argument. Use the tool input schema.');
-}
-
-function integer(args: Record<string, unknown>, key: string, fallback: number, max: number): number {
-  const value = args[key] === undefined ? fallback : args[key];
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < (key === 'limit' ? 1 : 0) || value > max) invalid(`Invalid ${key}.`);
-  return value;
-}
-
 function output(structured: unknown): ToolOutput { return { structured, text: JSON.stringify(structured) }; }
-
-function assertGranted(ctx: ToolCallContext): void {
-  assertDispatchActive(ctx.signal);
-  if (!ctx.canEdit?.()) throw new ToolExecutionError({
-    code: ToolErrorCode.READ_ONLY,
-    message: 'The tab has not allowed palette commands and edits. The user must enable them in the local agent connection panel.',
-  });
-}
 
 export const viewerCommandTools: Record<keyof typeof VIEWER_COMMAND_SPECS, AgentTool> = {
   ...operationTools,
@@ -119,14 +92,14 @@ export const viewerCommandTools: Record<keyof typeof VIEWER_COMMAND_SPECS, Agent
     keys(args, ['query', 'command_id', 'offset', 'limit']);
     const query = boundedString(args, 'query', 200) ?? '';
     const id = boundedString(args, 'command_id', 300);
-    const offset = integer(args, 'offset', 0, Number.MAX_SAFE_INTEGER);
-    const limit = integer(args, 'limit', 25, 50);
+    const offset = integer(args, 'offset', 0, 0, Number.MAX_SAFE_INTEGER);
+    const limit = integer(args, 'limit', 25, 1, 50);
     const all = commands();
     // An exact command_id inspects that command; query only ranks a search.
     const matches = id ? all.filter(command => command.id === id)
-      : rankSearch(all, query, command => ({ primary: [command.id, command.label, command.category], secondary: [command.keywords] }));
+      : rankSearch(all, query, commandFields);
     const hint = matches.length ? undefined : id
-      ? `Unknown command_id. Nearest: ${rankSearch(all, id, command => ({ primary: [command.id, command.label], secondary: [] })).slice(0, 3).map(command => command.id).join(', ') || 'none'}.`
+      ? `Unknown command_id. Nearest: ${nearestIds(all, id, commandFields, command => command.id).join(', ') || 'none'}.`
       : `No command matched. Try task words or a category: ${[...new Set(all.map(command => command.category))].join(', ')}. Omit query to list all.`;
     return output({ total: matches.length, offset,
       next_offset: offset + limit < matches.length ? offset + limit : null, ...(hint ? { hint } : {}),

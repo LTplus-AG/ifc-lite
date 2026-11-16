@@ -60,12 +60,12 @@ export const operationTools: Record<keyof typeof OPERATION_SPECS, AgentTool> = {
     const offset = args.offset ?? 0, limit = args.limit ?? 25;
     if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0) invalid('Invalid offset.');
     if (typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) invalid('Invalid limit.');
-    const { viewerOperations, rankOperations, operationOwners, describeOperation, operationUnavailable } = await import('./operations/registry');
+    const { viewerOperations, rankOperations, operationOwners, describeOperation, operationUnavailable, unknownOperationMessage } = await import('./operations/registry');
     // An exact operation_id describes that operation; query only ranks a search.
     const matching = typeof args.operation_id === 'string' ? viewerOperations().filter(op => op.id === args.operation_id)
       : rankOperations(typeof args.query === 'string' ? args.query : '');
     const hint = matching.length ? undefined : typeof args.operation_id === 'string'
-      ? `Unknown operation_id. Nearest: ${rankOperations(args.operation_id).slice(0, 3).map(op => op.id).join(', ') || 'none'}.`
+      ? unknownOperationMessage(args.operation_id)
       : `No operation matched. Use task words (hide, colorize, measure, section, screenshot, export) or an owner family: ${operationOwners().join(', ')}. Omit query to list all. Find entities with query_entities.`;
     return output({ total: matching.length, offset, next_offset: offset + limit < matching.length ? offset + limit : null, ...(hint ? { hint } : {}),
       operations: matching.slice(offset, offset + limit).map(op => args.operation_id ? { ...describeOperation(op), unavailable: operationUnavailable(op) }

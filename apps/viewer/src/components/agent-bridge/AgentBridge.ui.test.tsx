@@ -21,7 +21,7 @@ import { LocalBackend } from '@/sdk/local-backend';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { installPairingFragmentStrip } from '@/lib/agent-bridge/pairing-fragment';
 import {
-  getAgentBridgeState, registerAgentBridgeControls, resetAgentBridgeStateForTests, updateAgentBridgeState,
+  foldActivity, getAgentBridgeState, registerAgentBridgeControls, resetAgentBridgeStateForTests, updateAgentBridgeState,
   type AgentBridgePermission, type AgentBridgeStatus,
 } from '@/lib/agent-bridge/state';
 import { AgentBridgeHost, AgentBridgeStatusSlot } from './AgentBridgeHost';
@@ -500,7 +500,8 @@ describe('allowing the agent to edit (#9523)', () => {
     const edit = (seq: number) => ({ ...read(seq, 'entity_set_property', 'm'), mutating: true });
     updateAgentBridgeState({
       status: { ...CONNECTED, permission: 'read-write' },
-      activity: [edit(7), edit(6), read(5, 'get_entity', 'm'), read(4), read(3), read(2), read(1, 'model_list')],
+      // The session folds rows as they arrive (foldActivity); the panel shows the folded count.
+      activity: foldActivity([edit(7), edit(6), read(5, 'get_entity', 'm'), read(4), read(3), read(2), read(1, 'model_list')]),
     });
     try {
       const ui = render(<AgentBridgeActivityLog />);

@@ -89,14 +89,32 @@ function fieldScore(token: string, field: Set<string>): number {
  * Ranks `items` against a natural-language query. An empty (or stopword-only)
  * query returns every item in its original order; items matching no token are dropped.
  */
+/**
+ * Tokenized fields per item, per `fields` function: the operation catalogue is
+ * fixed, so it is tokenized once rather than on every query. Pass a stable
+ * (module-level) `fields` function to benefit; object items only are cached.
+ */
+const indexCache = new WeakMap<(item: never) => SearchFields, WeakMap<object, Indexed>>();
+
+function indexOf<T>(item: T, fields: (item: T) => SearchFields): Indexed {
+  let byItem = indexCache.get(fields as (item: never) => SearchFields);
+  if (!byItem) { byItem = new WeakMap(); indexCache.set(fields as (item: never) => SearchFields, byItem); }
+  const cacheable = typeof item === 'object' && item !== null;
+  const hit = cacheable ? byItem.get(item as object) : undefined;
+  if (hit) return hit;
+  const text = fields(item);
+  const indexed: Indexed = { primary: new Set(text.primary.flatMap(value => tokenize(value))),
+    secondary: new Set(text.secondary.flatMap(value => tokenize(value))) };
+  if (cacheable) byItem.set(item as object, indexed);
+  return indexed;
+}
+
 export function rankSearch<T>(items: readonly T[], query: string, fields: (item: T) => SearchFields): T[] {
   const tokens = [...new Set(tokenize(query, true))];
   if (tokens.length === 0) return [...items];
   const scored: Array<{ item: T; index: number; matched: number; score: number }> = [];
   items.forEach((item, index) => {
-    const text = fields(item);
-    const indexed: Indexed = { primary: new Set(text.primary.flatMap(value => tokenize(value))),
-      secondary: new Set(text.secondary.flatMap(value => tokenize(value))) };
+    const indexed = indexOf(item, fields);
     let matched = 0, score = 0;
     for (const token of tokens) {
       const best = Math.max(PRIMARY * fieldScore(token, indexed.primary), SECONDARY * fieldScore(token, indexed.secondary));
@@ -105,4 +123,9 @@ export function rankSearch<T>(items: readonly T[], query: string, fields: (item:
     if (matched > 0) scored.push({ item, index, matched, score });
   });
   return scored.sort((a, b) => b.matched - a.matched || b.score - a.score || a.index - b.index).map(entry => entry.item);
+}
+
+/** Ids of the `n` items nearest to an unknown `id`, for "did you mean" hints. */
+export function nearestIds<T>(items: readonly T[], id: string, fields: (item: T) => SearchFields, idOf: (item: T) => string, n = 3): string[] {
+  return rankSearch(items, id.slice(0, 200), fields).slice(0, n).map(idOf);
 }

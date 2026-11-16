@@ -42,23 +42,7 @@ function EditSummary({ edit }: { edit: AgentBridgeEdit }) {
   return <span className="block truncate pl-5 text-muted-foreground" title={text}>{text}</span>;
 }
 
-/**
- * Consecutive read calls with the same tool, model and outcome fold into one
- * row with a count, so an agent's discovery loop does not bury its edits.
- * Edits are never folded: each one says what it changed.
- */
-export function groupActivity(activity: readonly AgentBridgeActivity[]): Array<{ entry: AgentBridgeActivity; count: number }> {
-  const rows: Array<{ entry: AgentBridgeActivity; count: number }> = [];
-  for (const entry of activity) {
-    const last = rows[rows.length - 1];
-    if (last && !entry.mutating && !last.entry.mutating && last.entry.tool === entry.tool && last.entry.modelId === entry.modelId
-      && last.entry.outcome === entry.outcome && last.entry.errorCode === entry.errorCode) last.count++;
-    else rows.push({ entry, count: 1 });
-  }
-  return rows;
-}
-
-function ActivityRow({ entry, count }: { entry: AgentBridgeActivity; count: number }) {
+function ActivityRow({ entry }: { entry: AgentBridgeActivity }) {
   const { t } = useTranslation();
   const modelName = useViewerStore((s) => (entry.modelId ? s.models.get(entry.modelId)?.name : undefined));
   const outcome = entry.outcome === 'ok' ? t('agentBridge.panel.ok')
@@ -72,7 +56,7 @@ function ActivityRow({ entry, count }: { entry: AgentBridgeActivity; count: numb
           ? <Pencil className="h-3 w-3 shrink-0 self-center text-status-warn" aria-label={t('agentBridge.panel.edit')} />
           : null}
         <span className="min-w-0 flex-1 truncate font-mono">{entry.tool}</span>
-        {count > 1 && <span className="tabular-nums text-muted-foreground" data-agent-bridge-activity-count>{t('agentBridge.panel.repeated', { count })}</span>}
+        {entry.count !== undefined && entry.count > 1 && <span className="tabular-nums text-muted-foreground" data-agent-bridge-activity-count>{t('agentBridge.panel.repeated', { count: entry.count })}</span>}
         <span className="max-w-32 truncate text-muted-foreground" title={entry.modelId ?? undefined}>
           {entry.modelId ? (modelName ?? entry.modelId) : t('agentBridge.panel.noModel')}
         </span>
@@ -112,7 +96,7 @@ export function AgentBridgeActivityLog() {
       <p className="text-xs text-muted-foreground">{t('agentBridge.panel.activityNote')}</p>
       {activity.length === 0
         ? <p className="text-xs text-muted-foreground">{t('agentBridge.panel.noActivity')}</p>
-        : <ul className="max-h-64 overflow-y-auto">{groupActivity(activity).map(({ entry, count }) => <ActivityRow key={entry.seq} entry={entry} count={count} />)}</ul>}
+        : <ul className="max-h-64 overflow-y-auto">{activity.map((entry) => <ActivityRow key={entry.seq} entry={entry} />)}</ul>}
     </section>
   );
 }

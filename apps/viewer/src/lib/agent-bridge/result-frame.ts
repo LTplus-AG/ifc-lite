@@ -119,17 +119,22 @@ export function buildResultFrame(
 ): ResultFrame {
   const frame = (r: BridgeCallResult): string =>
     JSON.stringify({ type: 'result', sessionId, id, result: r } satisfies BridgeResultMessage);
-  const refusal = (json: string, r: BridgeCallResult): string | null => {
+  // A frame is its result's JSON inside a fixed envelope, so a result's size is
+  // its frame's size minus the envelope: one encode per check, not a re-stringify.
+  const empty: BridgeCallResult = { content: [] };
+  const envelopeBytes = byteLength(frame(empty)) - byteLength(JSON.stringify(empty));
+  const resultBytes = (json: string): number => byteLength(json) - envelopeBytes;
+  const refusal = (json: string): string | null => {
     const checked = parseTabMessage(json);
     if (!checked.ok) return checked.error;
-    const bytes = byteLength(JSON.stringify(r));
+    const bytes = resultBytes(json);
     return bytes > maxResultBytes ? `result is ${bytes} bytes; the limit is ${maxResultBytes}` : null;
   };
   const full = frame(result);
-  const why = refusal(full, result);
+  const why = refusal(full);
   if (why === null) return { json: full, truncated: false };
 
-  const originalBytes = byteLength(JSON.stringify(result));
+  const originalBytes = resultBytes(full);
   const texts = result.content.filter((block) => block.type === 'text');
   const images = result.content.length - texts.length;
   if (images > 0) {
@@ -138,7 +143,7 @@ export function buildResultFrame(
       + 'Ask for a smaller image (e.g. a lower max_width or JPEG).]';
     const withoutImages: BridgeCallResult = { ...result, content: [...texts, { type: 'text', text: imageNote }] };
     const json = frame(withoutImages);
-    if (refusal(json, withoutImages) === null) return { json, truncated: true };
+    if (refusal(json) === null) return { json, truncated: true };
   }
   const text = texts.map((block) => block.text).join('\n');
   const note = `\n\n[Truncated by the viewer: the full result (${originalBytes} bytes) is more than the bridge accepts `
@@ -156,7 +161,7 @@ export function buildResultFrame(
       ...(result.isError ? { isError: true } : {}),
     };
     const json = frame(cut);
-    if (refusal(json, cut) === null || budget === 0) return { json, truncated: true };
+    if (refusal(json) === null || budget === 0) return { json, truncated: true };
     budget = Math.floor(budget / 2);
   }
 }

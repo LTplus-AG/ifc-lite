@@ -92,6 +92,8 @@ export interface AgentBridgeActivity {
   mutating?: boolean;
   /** Set when an edit was applied (or found the value already there). */
   edit?: AgentBridgeEdit;
+  /** Consecutive identical read calls folded into this row (see {@link foldActivity}); absent means 1. */
+  count?: number;
 }
 
 /** What opened the connect dialog. */
@@ -107,6 +109,24 @@ export interface AgentBridgeState {
 
 /** Activity rows kept; older rows drop off. */
 export const AGENT_BRIDGE_ACTIVITY_LIMIT = 200;
+
+/**
+ * Fold consecutive read calls with the same tool, model and outcome (rows
+ * newest first) into the newest row with a count, so an agent's discovery
+ * loop neither buries nor evicts its edits from the bounded log. Edits are
+ * never folded: each one says what it changed.
+ */
+export function foldActivity(rows: readonly AgentBridgeActivity[]): AgentBridgeActivity[] {
+  const out: AgentBridgeActivity[] = [];
+  for (const row of rows) {
+    const last = out[out.length - 1];
+    if (last && !row.mutating && !last.mutating && last.tool === row.tool && last.modelId === row.modelId
+      && last.outcome === row.outcome && last.errorCode === row.errorCode) {
+      out[out.length - 1] = { ...last, count: (last.count ?? 1) + (row.count ?? 1) };
+    } else out.push(row);
+  }
+  return out;
+}
 
 const INITIAL: AgentBridgeState = { status: { kind: 'idle' }, dialog: null, activity: [] };
 let state: AgentBridgeState = INITIAL;

@@ -10,7 +10,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { coordinationDashboard } from '@/lib/charts/presets';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { createBimContext } from '@ifc-lite/sdk';
+import { ClashNamespace, createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
@@ -263,12 +263,27 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal((await job(queued.job.id)).errorCode, 'STATE_CHANGED');
   });
   it('cancels a real clash job and waits for native runner settlement', async () => {
-    const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
-    const queued = data<{ job: { id: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
-    const requested = await dispatchMainViewerTool(host, 'viewer_operation_cancel', { job_id: queued.job.id });
-    assert.equal(requested.isError, false, requested.text);
-    const terminal = data<{ state: string }>(await settled(queued.job.id));
-    assert.equal(terminal.state, 'cancelled');
+    // The fixture's clash finishes in milliseconds, which raced the cancel request.
+    // Hold the run until cancellation reaches it, then let the real engine see the aborted signal.
+    const run = ClashNamespace.prototype.run;
+    ClashNamespace.prototype.run = function (this: ClashNamespace, ...args: Parameters<typeof run>) {
+      const signal = args[2]?.signal;
+      return new Promise((resolve, reject) => {
+        if (!signal) { run.apply(this, args).then(resolve, reject); return; }
+        const start = () => { run.apply(this, args).then(resolve, reject); };
+        if (signal.aborted) start(); else signal.addEventListener('abort', start, { once: true });
+      });
+    };
+    try {
+      const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
+      const queued = data<{ job: { id: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
+      const requested = await dispatchMainViewerTool(host, 'viewer_operation_cancel', { job_id: queued.job.id });
+      assert.equal(requested.isError, false, requested.text);
+      const terminal = data<{ state: string }>(await settled(queued.job.id));
+      assert.equal(terminal.state, 'cancelled');
+    } finally {
+      ClashNamespace.prototype.run = run;
+    }
   });
   it('discards a completed result when the model object changes even if its store survives', async () => {
     const queued = data<{ job: { id: string } }>(await inspect('schedule.tasks', {}, { background: true }));

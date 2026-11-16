@@ -27,6 +27,7 @@ import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import { useFileHostRegistration } from './useFileHostRegistration';
+import { registerAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
 import { ShareDialog } from '../ShareDialog';
 import { FederationSetupControls } from '../FederationSetupControls';
 
@@ -136,6 +137,11 @@ export function useFileCommands(): FileCommands {
       window.removeEventListener('ifc-lite:load-layer-stack', stackHandler);
     };
   }, [loadFile, addModel, loadFederatedIfcx]);
+
+  // The same loaders, awaitable, for a connected agent (`viewer_open_model`).
+  useEffect(() => registerAgentModelLoader({
+    loadFile: (file) => loadFile(file), addModel: (file) => addModel(file), loadStack: loadFederatedIfcx,
+  }), [loadFile, addModel, loadFederatedIfcx]);
 
   const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);
 

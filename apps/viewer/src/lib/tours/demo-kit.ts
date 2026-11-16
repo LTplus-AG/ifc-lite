@@ -34,26 +34,29 @@ export const DEMO_KIT_PATHS = {
  * The load pipeline registers a placeholder model record before parsing, so
  * `models.size > 0` alone is NOT "loaded".
  */
-export function waitForModelSettled(timeoutMs = 180_000): Promise<void> {
+export function waitForModelSettled(timeoutMs = 180_000, signal?: AbortSignal): Promise<void> {
   const store = getViewerStoreApi();
   const settled = (s: ViewerState) => s.models.size > 0 && !s.loading && !s.geometryStreamingActive;
   return new Promise((resolve, reject) => {
     if (settled(store.getState())) { resolve(); return; }
+    const stop = () => { window.clearTimeout(timer); unsub(); signal?.removeEventListener('abort', onAbort); };
+    const onAbort = () => { stop(); reject(signal?.reason ?? new Error('aborted')); };
     const timer = window.setTimeout(() => {
-      unsub();
+      stop();
       reject(new Error('model load did not settle in time'));
     }, timeoutMs);
     const unsub = store.subscribe((s) => {
       if (settled(s)) {
-        window.clearTimeout(timer);
-        unsub();
+        stop();
         resolve();
       }
     });
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
-async function fetchAsFile(path: string, name: string): Promise<File> {
+/** A sample shipped under `/samples`, as a `File`; refused when the host switched samples off. */
+export async function fetchSampleFile(path: string, name: string): Promise<File> {
   // Every sample load comes through here; a host can switch sample models off (`lib/features`).
   if (!isFeatureEnabled('files.samples')) throw new Error('Sample models are switched off in this viewer');
   const res = await fetch(path);
@@ -67,7 +70,7 @@ async function fetchAsFile(path: string, name: string): Promise<File> {
  * `loadFile` (the first-run card) and so need no bus event.
  */
 export function fetchDemoProjectFile(): Promise<File> {
-  return fetchAsFile(DEMO_KIT_PATHS.base, BASE_NAME);
+  return fetchSampleFile(DEMO_KIT_PATHS.base, BASE_NAME);
 }
 
 let demoProjectInFlight: Promise<void> | null = null;
@@ -133,7 +136,7 @@ export function isViewerEmpty(s: Pick<ViewerState, 'models' | 'ifcDataStore' | '
  * goes through the canonical `addModel` path with ID-offset registration.
  */
 export async function loadDemoRevB(): Promise<void> {
-  const file = await fetchAsFile(DEMO_KIT_PATHS.revB, REV_B_NAME);
+  const file = await fetchSampleFile(DEMO_KIT_PATHS.revB, REV_B_NAME);
   window.dispatchEvent(new CustomEvent(EVENT_ADD_MODEL, { detail: file }));
 }
 
@@ -157,7 +160,7 @@ export async function loadDemoRevisions(): Promise<void> {
  * but rev B carries an injected duct that clashes with an existing wall.
  */
 export async function loadDemoClashModel(): Promise<void> {
-  const file = await fetchAsFile(DEMO_KIT_PATHS.revB, REV_B_NAME);
+  const file = await fetchSampleFile(DEMO_KIT_PATHS.revB, REV_B_NAME);
   window.dispatchEvent(new CustomEvent(EVENT_LOAD_FILE, { detail: file }));
 }
 

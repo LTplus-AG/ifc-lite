@@ -13,6 +13,8 @@
  * decoded file signature must match the declared type.
  */
 
+import { isRecord } from './json-bounds.js';
+
 /** `welcome.features` entry: this bridge forwards `image` result content. Older bridges refuse it. */
 export const BRIDGE_FEATURE_IMAGE_CONTENT = 'image-content';
 
@@ -71,10 +73,6 @@ function imageContentError(data: unknown, mimeType: unknown): string | null {
     return `data does not start with the ${mimeType} file signature`;
   }
   return null;
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 /** Check a result's `content` array and copy out only the protocol fields. */

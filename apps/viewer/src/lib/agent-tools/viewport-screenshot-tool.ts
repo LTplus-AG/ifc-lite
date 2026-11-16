@@ -12,6 +12,7 @@
  */
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
+import { integer, keys, oneOf } from './tool-args';
 import { BRIDGE_LIMITS } from '@ifc-lite/mcp/bridge-protocol';
 import type { ViewCameraSnapshot } from '@/lib/export/view-pdf/generate-view-pdf';
 import { assertDispatchActive } from './cancellation';
@@ -56,19 +57,10 @@ export function fitWidth(width: number, height: number, maxWidth: number): { wid
   return { width: maxWidth, height: Math.max(1, Math.round(height * (maxWidth / width))) };
 }
 
-function invalid(message: string): never {
-  throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message });
-}
-
 function parseArgs(args: Record<string, unknown>): { maxWidth: number; mimeType: 'image/jpeg' | 'image/png' } {
-  if (Object.keys(args).some((key) => key !== 'max_width' && key !== 'format')) invalid('Unknown argument. Use max_width and format only.');
-  const maxWidth = args.max_width ?? SCREENSHOT_WIDTH.default;
-  if (typeof maxWidth !== 'number' || !Number.isInteger(maxWidth) || maxWidth < SCREENSHOT_WIDTH.min || maxWidth > SCREENSHOT_WIDTH.max) {
-    invalid(`max_width must be an integer from ${SCREENSHOT_WIDTH.min} to ${SCREENSHOT_WIDTH.max}.`);
-  }
-  const format = args.format ?? 'jpeg';
-  if (format !== 'jpeg' && format !== 'png') invalid("format must be 'jpeg' or 'png'.");
-  return { maxWidth, mimeType: format === 'png' ? 'image/png' : 'image/jpeg' };
+  keys(args, ['max_width', 'format']);
+  const maxWidth = integer(args, 'max_width', SCREENSHOT_WIDTH.default, SCREENSHOT_WIDTH.min, SCREENSHOT_WIDTH.max);
+  return { maxWidth, mimeType: oneOf(args, 'format', ['jpeg', 'png'] as const, 'jpeg') === 'png' ? 'image/png' : 'image/jpeg' };
 }
 
 const DATA_URL = /^data:(image\/(?:png|jpeg));base64,/;
@@ -79,22 +71,21 @@ export function createScreenshotTool(load: () => Promise<ScreenshotDeps> = nativ
     const { maxWidth, mimeType } = parseArgs(args);
     const deps = await load();
     assertDispatchActive(ctx.signal);
-    let source = { width: 0, height: 0 };
-    let size = source;
-    let camera: ViewCameraSnapshot | null = null;
+    // Filled inside the capture's synchronous read, where the frame and its camera are current.
+    const frame = { source: { width: 0, height: 0 }, size: { width: 0, height: 0 }, camera: null as ViewCameraSnapshot | null };
     let url: string | null;
     try {
       url = await deps.capture((canvas) => {
-        source = { width: canvas.width, height: canvas.height };
-        if (!source.width || !source.height) throw new Error('The viewport canvas has no size.');
-        size = fitWidth(source.width, source.height, maxWidth);
+        frame.source = { width: canvas.width, height: canvas.height };
+        if (!canvas.width || !canvas.height) throw new Error('The viewport canvas has no size.');
+        frame.size = fitWidth(canvas.width, canvas.height, maxWidth);
         const out = deps.createCanvas();
-        out.width = size.width;
-        out.height = size.height;
+        out.width = frame.size.width;
+        out.height = frame.size.height;
         const g = out.getContext('2d');
         if (!g) throw new Error('No 2D canvas context to scale the capture.');
-        g.drawImage(canvas, 0, 0, size.width, size.height);
-        camera = deps.camera();
+        g.drawImage(canvas, 0, 0, frame.size.width, frame.size.height);
+        frame.camera = deps.camera();
         return out.toDataURL(mimeType, JPEG_QUALITY);
       });
     } catch (err) {
@@ -105,11 +96,14 @@ export function createScreenshotTool(load: () => Promise<ScreenshotDeps> = nativ
       });
     }
     assertDispatchActive(ctx.signal);
+    // The browser may fall back to PNG for an unsupported type: report what was actually encoded.
     const match = url ? DATA_URL.exec(url) : null;
     if (!url || !match) {
       throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'The viewport capture produced no image.', hint: 'Retry once the view has finished rendering.' });
     }
     const data = url.slice(match[0].length);
+    const encoded = match[1] as 'image/png' | 'image/jpeg';
+    const { source, size, camera: cam } = frame;
     if (data.length > BRIDGE_LIMITS.maxImageBytes) {
       throw new ToolExecutionError({
         code: ToolErrorCode.INVALID_INPUT,
@@ -117,16 +111,15 @@ export function createScreenshotTool(load: () => Promise<ScreenshotDeps> = nativ
         hint: "Retry with format 'jpeg' or a smaller max_width.",
       });
     }
-    const cam = camera as ViewCameraSnapshot | null;
     const structured = {
-      width: size.width, height: size.height, source_width: source.width, source_height: source.height, mime_type: match[1],
+      width: size.width, height: size.height, source_width: source.width, source_height: source.height, mime_type: encoded,
       ...(cam ? { camera: { projection: cam.projectionMode, position: cam.position, target: cam.target } } : {}),
     };
     const at = cam ? `; ${cam.projectionMode} camera at (${[cam.position.x, cam.position.y, cam.position.z].map(round).join(', ')}) looking at (${[cam.target.x, cam.target.y, cam.target.z].map(round).join(', ')})` : '';
     return {
-      text: `Viewport screenshot, ${size.width}x${size.height} ${match[1]} (viewport ${source.width}x${source.height})${at}.`,
+      text: `Viewport screenshot, ${size.width}x${size.height} ${encoded} (viewport ${source.width}x${source.height})${at}.`,
       structured,
-      image: { data, mimeType: match[1] as 'image/png' | 'image/jpeg' },
+      image: { data, mimeType: encoded },
     };
   } };
 }

@@ -1022,6 +1022,29 @@ model creation, with no operations or fresh pairs. Repair only the missing
 generated CLI graph and check every required protocol artifact before another
 exclusive window; preserve that failed receipt instead of reusing its outputs.
 
+
+The singleton-journal correction stores one mutation identity directly and
+promotes only multi-row entity buckets to sets. A fail-first resource invariant
+locks the allocation bound, while promotion, indexed removal and exact order
+retain their contracts. The recovered final cohort `46a0ecd6` completed every
+original authoring pair and the branch's sustained default-heap witness.
+Its source and descendants finalized unchanged after a client interruption;
+no timing was replayed.
+
+**Scoped verdict: accepted under the original paired noise gate.** Every timed
+row remains below the slowdown decision boundary, and the memory, selected
+join, storey and warm-planner gains hold. Small hosted-window insertion still
+has a higher point estimate inside its observed spread; this is not a speedup
+claim for that cell or proof that allocation counts explain all latency.
+The cold planner still constructs its inventory; F5 latency remains in #10535.
+
+The cohort pins `b8cd2415` against captured main `80f01cc5`. The later rebase
+adds georeferencing setup before the worker's timed intervals and viewer work;
+a path audit finds the mutation, create, planner, parser, exporter, encoding
+and Rust trees unchanged. Retain those source pins with the result rather
+than presenting the rebased revision as a newly timed cohort. Refresh focused
+correctness and identities on the rebased head before publication.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every

@@ -253,6 +253,12 @@ console.log(`GlobalId: ${attrs.globalId}`);
 console.log(`Description: ${attrs.description}`);
 ```
 
+`extractAllEntityAttributes(store, wallId, { includeDisplaySkipped: true })`
+includes populated attributes such as `GlobalId`, `OwnerHistory`,
+`ObjectPlacement`, and `Representation` in the named attribute list. Entity
+references are returned as numeric STEP IDs. Omit the option to use the
+default display list.
+
 ### Type-Inherited Properties
 
 `extractPropertiesOnDemand` returns only the sets attached to the occurrence

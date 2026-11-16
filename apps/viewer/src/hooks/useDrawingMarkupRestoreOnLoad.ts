@@ -64,6 +64,7 @@
  * suddenly injects the model's embedded markup over what the user just drew.
  */
 
+import { mergeRestoredMeasures, mergeRestoredDimensions } from '@/lib/export/drawing-annotation-restore';
 import { readDrawingAnnotations, restoredDrawingAnnotations } from '@/lib/export/drawing-annotations';
 import { useLoadWindowHold } from './loadWindow.js';
 import { useEffect } from 'react';
@@ -224,11 +225,11 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
   absorbEmbeddedMarkup(modelId, restoredEmbeddedMarkupIdentities(modelId, result));
   if (annotations) absorbEmbeddedMarkup(modelId, readDrawingAnnotations(store, state.getMutationView(modelId) ?? undefined).map(record => record.identity));
   useViewerStore.setState({
-    measure2DResults: [...result.measure2DResults, ...(annotations?.measure2DResults ?? [])],
+    measure2DResults: mergeRestoredMeasures(result.measure2DResults, annotations?.measure2DResults ?? []),
     polygonArea2DResults: result.polygonArea2DResults,
     textAnnotations2D: result.textAnnotations2D,
     cloudAnnotations2D: result.cloudAnnotations2D,
-    dimensions2D: [...result.dimensions2D, ...(annotations?.dimensions2D ?? [])],
+    dimensions2D: mergeRestoredDimensions(result.dimensions2D, annotations?.dimensions2D ?? []),
     ...(annotations ? { tagAnnotations2D: annotations.tagAnnotations2D, drawing2DPlane: annotations.drawing2DPlane } : {}),
     dimension2DUndo: [],
     dimension2DRedo: [],

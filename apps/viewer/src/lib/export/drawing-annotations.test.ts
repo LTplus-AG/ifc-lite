@@ -90,3 +90,13 @@ it('#9296: drawing coordinates lift into the IFC plan and section planes', async
   assert.deepEqual(drawingPointInIfc({ x: 2, y: 3 }, { axis: 'front', position: 4, flipped: false }), [2, -4, 3]);
   assert.deepEqual(drawingPointInIfc({ x: 2, y: 3 }, { axis: 'side', position: 4, flipped: false }), [4, -2, 3]);
 });
+
+it('#9296: format reconciliation preserves distinct repeated markups and cuts', async () => {
+  const { mergeRestoredMeasures, mergeRestoredDimensions } = await import('./drawing-annotation-restore');
+  const measure = { id: 'saved-1', start: { x: 0, y: 0 }, end: { x: 4, y: 0 }, distance: 4 };
+  const merged = mergeRestoredMeasures([measure, { ...measure, id: 'saved-2' }], [{ ...measure, id: 'automatic' }]);
+  assert.deepEqual(merged.map(item => item.id), ['saved-2', 'automatic']);
+  const dim = { id: 'saved', a: measure.start, b: measure.end, offset: 1, orientation: 'aligned' as const,
+    plane: { axis: 'down' as const, position: 1, flipped: false } };
+  assert.equal(mergeRestoredDimensions([dim], [{ ...dim, id: 'automatic', plane: { ...dim.plane, position: 4 } }]).length, 2);
+});

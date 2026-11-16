@@ -4,7 +4,7 @@
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { MutablePropertyView, StoreEditor, iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
-import { resolveSpatialAnchor } from '@ifc-lite/create';
+import { DRAWING_MARKUP_OBJECTTYPE, resolveSpatialAnchor } from '@ifc-lite/create';
 import { loadPersistedDimensions, type Dimension2D } from '@/store/slices/drawing2DDimensions';
 import type { DrawnSectionPlane, Measure2DResult, TagAnnotation2D, Point2D } from '@/store/slices/drawing2DSlice';
 import { dimensionGraphics } from '@/lib/drawing2d-markup/dimension-graphics';
@@ -12,6 +12,8 @@ import { customPlaneCenter } from '@/store/slices/section-plane-center';
 
 import { removeEmbeddedDrawingMarkup } from '@/lib/drawing2d-markup/drawing-markup-embedded-sweep';
 import { validElementTags } from '@/lib/drawing/tag-persistence';
+
+const LEGACY_LINEAR_TAGS = new Set<unknown>([DRAWING_MARKUP_OBJECTTYPE.MEASURE, DRAWING_MARKUP_OBJECTTYPE.DIMENSION]);
 
 const OBJECT_TYPE = 'IfcLite:DrawingAnnotation:1';
 type Item = { kind: 'measure'; value: Measure2DResult } | { kind: 'dimension'; value: Dimension2D }
@@ -79,20 +81,29 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
     ...input.dimensions.map(value => ({ kind: 'dimension' as const, value })),
     ...input.tags.map(({ tag: { modelId: _modelId, ...value }, label }) => ({ kind: 'tag' as const, value, label })),
   ];
+  const legacy = new Set<string>();
+  if (input.absorbed?.size) {
+    for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCANNOTATION'])) {
+      const attrs = effectiveMetadataRecord(store, expressId, view)?.attributes;
+      const identity = typeof attrs?.[0] === 'string' ? attrs[0] : `#${expressId}`;
+      if (LEGACY_LINEAR_TAGS.has(attrs?.[4]) && input.absorbed.has(identity)) legacy.add(identity);
+    }
+  }
   const existing = readDrawingAnnotations(store, view);
   const key = (item: Item) => `${item.kind}:${item.value.id}`;
   const current = new Set(items.map(key));
   const replaceable = existing.filter(({ identity, saved }) => input.absorbed?.has(identity) || current.has(key(saved.item)));
-  if (!items.length && !replaceable.length) return view;
+  if (!items.length && !replaceable.length && !legacy.size) return view;
   // Preserve native entity identities and geometry when reopening unchanged IFC.
-  if (JSON.stringify(existing.map(({ saved }) => saved.item)) === JSON.stringify(items)
+  if (!legacy.size && JSON.stringify(existing.map(({ saved }) => saved.item)) === JSON.stringify(items)
     && existing.every(({ saved }) => JSON.stringify(saved.plane) === JSON.stringify(input.plane))) return view;
   const base = view ?? new MutablePropertyView(store.properties ?? null, 'drawing-export');
   return base.prepareAtomic(draft => {
     const editor = new StoreEditor(store, draft);
     // Use the existing live-reference sweep; shared geometry and model
     // infrastructure survive, while mandatory shape inverses remain valid.
-    removeEmbeddedDrawingMarkup(store, editor, new Set(replaceable.map(record => record.identity)), new Set([OBJECT_TYPE]));
+    removeEmbeddedDrawingMarkup(store, editor, legacy, LEGACY_LINEAR_TAGS, true);
+    removeEmbeddedDrawingMarkup(store, editor, new Set(replaceable.map(record => record.identity)), new Set([OBJECT_TYPE]), true);
     for (const { id } of replaceable) {
       for (const { expressId } of iterateEffectiveEntityIds(store, draft, ['IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELASSIGNSTOPRODUCT'])) {
         const record = effectiveMetadataRecord(store, expressId, draft);

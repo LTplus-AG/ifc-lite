@@ -48,8 +48,9 @@ name: Export schema conformance
 on:
   pull_request:
     paths:
-      - "apps/viewer/src/lib/export/drawing-annotations*"
+      - "apps/viewer/src/lib/export/drawing-annotation*"
       - "apps/viewer/src/lib/drawing2d-markup/drawing-markup-embedded-sweep.ts"
+      - "apps/viewer/src/lib/drawing2d-markup/drawing-markup-save*"
       - "packages/export/**"
       - "packages/parser/**"
       # The rest of the workspace closure of the ONE file this job runs,
@@ -269,7 +270,7 @@ jobs:
       - name: Validate drawing annotation round trips in all supported schemas
         env:
           IFCOPENSHELL_PYTHON: python
-          TEST_PATTERN: drawing-annotations.test
+          TEST_PATTERN: (drawing-annotations|drawing-markup-save).test
         run: pnpm test --filter=@ifc-lite/viewer
 
       - name: Mergify CI Upload

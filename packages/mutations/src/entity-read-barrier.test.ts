@@ -78,3 +78,46 @@ it('#8452 rereads a caller accessor whose value changes independently of the obs
   expect(readEntitySnapshot(row).attributes).toEqual([[4, 5, 6]]);
   expect(held.attributes).toEqual([[1, 2, 3]]);
 });
+
+
+it('#8452 keeps record-owned barriers out of clones and does not inherit another record barrier', () => {
+  const original: NewEntity = { expressId: 1, type: 'IfcCartesianPoint', attributes: [[1, 2, 3]] };
+  let originalExposures = 0, cloneExposures = 0;
+  observeEntityAttributes(original, () => { originalExposures++; });
+  const clone = structuredClone(original);
+  const spread = { ...original };
+  const before = originalExposures;
+  observeEntityAttributes(clone, () => { cloneExposures++; });
+  const held = readEntitySnapshot(clone);
+  clone.attributes[0] = [4, 5, 6];
+  expect(readEntitySnapshot(clone).attributes).toEqual([[4, 5, 6]]);
+  expect(held.attributes).toEqual([[1, 2, 3]]);
+  expect(originalExposures).toBe(before);
+  expect(cloneExposures).toBe(1);
+  expect(spread).toEqual({ expressId: 1, type: 'IfcCartesianPoint', attributes: [[1, 2, 3]] });
+  expect(Object.keys(original)).toEqual(['expressId', 'type', 'attributes']);
+  const child: NewEntity = Object.create(original);
+  Object.defineProperty(child, 'attributes', { value: [[7, 8, 9]], configurable: true, enumerable: true });
+  let childExposures = 0;
+  observeEntityAttributes(child, () => { childExposures++; });
+  expect(child.attributes).toEqual([[7, 8, 9]]);
+  expect(childExposures).toBe(1);
+  expect(originalExposures).toBe(before);
+});
+
+
+it('#8452 observes fresh rows without inserting into a process-wide weak table', () => {
+  const rows: NewEntity[] = Array.from({ length: 1000 }, (_, i) => ({
+    expressId: i + 1, type: 'IfcCartesianPoint', attributes: [[i, 0, 0]],
+  }));
+  const original = WeakMap.prototype.set;
+  let insertions = 0;
+  WeakMap.prototype.set = function<K extends WeakKey, V>(this: WeakMap<K, V>, key: K, value: V): WeakMap<K, V> {
+    insertions++;
+    return original.call(this, key, value);
+  };
+  try { for (const row of rows) observeEntityAttributes(row, () => {}); }
+  finally { WeakMap.prototype.set = original; }
+  // The bounded first edit must not maintain a table containing all old rows.
+  expect(insertions).toBe(0);
+});

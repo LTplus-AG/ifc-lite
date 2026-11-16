@@ -938,8 +938,20 @@ Mutation modules name their load-time encoder initializer explicitly so unused
 modules can be tree-shaken safely. Prepared-operation execution loads after the
 asynchronous action has copied its inputs and private checkpoints.
 
-Timing qualification and the F5 verdict are still pending; no measured scale
-acceptance is claimed by the structural guard alone.
+The residual candidate completed the full paired authoring cohort and the
+sustained default-heap witness, but its first post-fill wall insertion regressed
+at smaller sizes. Ordinary operation tracing located the long insertion in the
+process-wide attribute-barrier WeakMap, after session-wide garbage collection.
+Record-owned, non-enumerable metadata removes that shared insertion table while
+keeping shared accessors and detached clone semantics. The allocation regression
+asserts that observing new rows does not insert into a process-wide weak table.
+The corrected candidate still needs fresh timing qualification. The original
+F5 attempt stopped at its GPU prelaunch guard without collecting a timing sample;
+its target remains unmet. Do not treat the completed authoring cohort or a
+passing structural guard as a no-regression verdict.
+
+Lesson: reducing retained allocation does not by itself bound the next edit's
+latency; weak-table maintenance can charge an entire session to one insertion.
 
 ## First selection reads typing relationships from the graph (#9192)
 

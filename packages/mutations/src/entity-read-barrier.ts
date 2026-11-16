@@ -13,7 +13,14 @@ interface AttributeBarrier {
   escaped: boolean;
   borrow: NewEntity | undefined;
 }
-const barriers = new WeakMap<object, AttributeBarrier>();
+// A global WeakMap accumulates every authored and temporary row. After GC,
+// its next insertion can rehash the entire session during one small edit.
+// Record-owned metadata has no session-sized insertion table (#8452).
+const barrierKey = Symbol('entityAttributeBarrier');
+type ObservedEntity = object & { [barrierKey]?: AttributeBarrier };
+function barrierOf(object: object): AttributeBarrier | undefined {
+  return Object.hasOwn(object, barrierKey) ? (object as ObservedEntity)[barrierKey] : undefined;
+}
 // A session owns its live rows, so weak keys alone do not bound the retained
 // frozen copies. A finite FIFO keeps hot reads cheap without a second model.
 const BORROW_CACHE_LIMIT = 65_536;
@@ -25,7 +32,7 @@ let nextBorrowSlot = 0;
 
 /** Cooperative cloning may unwrap our own data barrier, never a caller getter. */
 export function entityAttributeData(object: object, key: PropertyKey, descriptor: PropertyDescriptor | undefined): PropertyDescriptor | undefined {
-  const barrier = key === 'attributes' ? barriers.get(object) : undefined;
+  const barrier = key === 'attributes' ? barrierOf(object) : undefined;
   return barrier && !barrier.descriptor && descriptor?.get === readAttributes ? { value: barrier.value } : undefined;
 }
 
@@ -44,22 +51,22 @@ function notify(entity: NewEntity, barrier: AttributeBarrier): void {
   else for (const listener of barrier.listeners) listener(entity);
 }
 
-// One accessor pair for every ordinary row. Its data lives in a weak record,
+// One accessor pair for every ordinary row. Its data lives on that record,
 // rather than closures (and a descriptor/read closure) retained per IFC atom.
 function readAttributes(this: NewEntity): NewEntity['attributes'] {
-  const barrier = barriers.get(this)!;
+  const barrier = barrierOf(this)!;
   if (!internalReads) notify(this, barrier);
   return barrier.descriptor?.get ? barrier.descriptor.get.call(this) as NewEntity['attributes'] : barrier.value;
 }
 function writeAttributes(this: NewEntity, next: NewEntity['attributes']): void {
-  const barrier = barriers.get(this)!;
+  const barrier = barrierOf(this)!;
   notify(this, barrier);
   if (barrier.descriptor?.set) barrier.descriptor.set.call(this, next);
   else barrier.value = next;
 }
 
 export function observeEntityAttributes(entity: NewEntity, exposed: ExposureListener): void {
-  const previous = barriers.get(entity);
+  const previous = barrierOf(entity);
   if (previous) {
     if (previous.listeners !== exposed) {
       if (typeof previous.listeners === 'function') previous.listeners = new Set([previous.listeners]);
@@ -76,7 +83,9 @@ export function observeEntityAttributes(entity: NewEntity, exposed: ExposureList
     ? descriptor.value as NewEntity['attributes'] : withoutEntityExposure(() => entity.attributes);
   // Caller accessors can change independently of our setter. Only ordinary
   // data attributes have a stable value suitable for the frozen-borrow memo.
-  barriers.set(entity, { value, listeners: exposed, escaped: false, borrow: undefined, ...(descriptor?.get || descriptor?.set ? { descriptor, escaped: true } : {}) });
+  const barrier: AttributeBarrier = { value, listeners: exposed, escaped: false, borrow: undefined,
+    ...(descriptor?.get || descriptor?.set ? { descriptor, escaped: true } : {}) };
+  Object.defineProperty(entity, barrierKey, { value: barrier });
   Object.defineProperty(entity, 'attributes', {
     enumerable: descriptor?.enumerable ?? true, configurable: true,
     get: readAttributes,
@@ -108,7 +117,7 @@ function frozenCopy(value: unknown, copies: Map<object, unknown>): unknown {
  * while cached, so repeated scans cost no later transaction (#8452). Cold
  * copies can be evicted; held borrows stay frozen and detached. */
 export function readEntitySnapshot(entity: NewEntity): NewEntity {
-  const barrier = barriers.get(entity);
+  const barrier = barrierOf(entity);
   if (barrier?.borrow) return barrier.borrow;
   const row = withoutEntityExposure(() => {
     const copy = { ...entity };

@@ -25,3 +25,5 @@ Avoid cold reference-projection allocations for small relationship classes while
 Release completed transaction indexes and collect evicted read snapshots during synchronous sessions, while preserving retained draft views and already exposed mutable aliases.
 
 Keep borrow and exposure state in the shared attribute barrier to avoid duplicate weak-collection lookups and cache metadata allocations.
+
+Keep attribute barriers on their owning records as non-enumerable metadata, avoiding a session-wide weak-table insertion during a bounded edit. Metadata stays out of cloned and exported records.

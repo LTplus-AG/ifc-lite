@@ -383,3 +383,9 @@ undo step.
 Changing the preset, switching the outline mode, or finishing a roof clears
 individual edge slopes; the next roof keeps the preset. The preview uses the same
 planes as the IFC builder.
+
+## Large IFC load warnings
+
+Before local IFC processing, the viewer estimates the memory needed from the source size. If that estimate exceeds the budget and the browser reports less than 8 GiB of device memory, the viewer refuses the local load. At a report of 8 GiB, or when no valid memory report is available, it asks whether to **Continue loading**: browsers cap the report, so a workstation can have more memory than the reported value. Continuing can still exhaust memory and crash the tab. The estimate cannot predict every model's geometry complexity.
+
+The choice applies only to that load. A later file asks again, and cancelling or superseding a pending warning does not authorize loading it. Eligible native-server processing remains available; a server failure must pass the same local decision before falling back to WASM. The independent wasm32 source-size limit remains enforced for local processing.

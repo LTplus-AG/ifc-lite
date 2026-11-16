@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const viewerShellFr = {
+  "viewerShell.localIfcMemory.title": "Ce modèle peut dépasser la mémoire disponible",
+  "viewerShell.localIfcMemory.continue": "Poursuivre le chargement",
+  "viewerShell.localIfcMemory.description": "Ce modèle peut nécessiter environ {estimated} Gio de mémoire. Le navigateur signale au maximum 8 Gio ; la mémoire disponible peut donc être supérieure. Continuer sur un appareil disposant de trop peu de mémoire peut faire planter cet onglet. Annulez pour arrêter ce chargement, ou utilisez un modèle plus petit ou l’interface en ligne de commande/le serveur natif.",
+
   "viewerShell.star.title": "Vous appréciez IFC Lite ?",
   "viewerShell.star.detail": "Une étoile sur GitHub aide à faire connaître l’application.",
   "viewerShell.star.action": "Ajouter une étoile sur GitHub",

@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const viewerShellDe = {
+  "viewerShell.localIfcMemory.title": "Dieses Modell könnte den verfügbaren Speicher überschreiten",
+  "viewerShell.localIfcMemory.continue": "Laden fortsetzen",
+  "viewerShell.localIfcMemory.description": "Dieses Modell benötigt möglicherweise etwa {estimated} GiB Arbeitsspeicher. Der Browser meldet höchstens 8 GiB; tatsächlich kann mehr Speicher verfügbar sein. Das Fortsetzen auf einem Gerät mit zu wenig Speicher kann diesen Tab zum Absturz bringen. Brechen Sie ab, um den Ladevorgang zu stoppen, oder verwenden Sie ein kleineres Modell oder die native CLI/den Server.",
+
   "viewerShell.star.title": "Gefällt Ihnen IFC Lite?",
   "viewerShell.star.detail": "Ein Stern auf GitHub hilft anderen, die Anwendung zu entdecken.",
   "viewerShell.star.action": "Stern auf GitHub vergeben",

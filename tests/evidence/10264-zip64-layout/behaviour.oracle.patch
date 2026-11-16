@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/hooks/ingest/archiveServerAdmission.ts
++++ b/apps/viewer/src/hooks/ingest/archiveServerAdmission.ts
+@@ -32,7 +32,7 @@
+     // JSZip can replace the raw name from a Unicode Path extra field. Keep
+     // those archives unadmitted rather than certify an image-free raw-name list.
+     for (let extra = cursor + 46 + nameLength; extra < extraEnd;) {
+-      if (extra + 4 > extraEnd || view.getUint16(extra, true) === 0x7075) return null;
++      if (extra + 4 > extraEnd || [0x0001, 0x7075].includes(view.getUint16(extra, true))) return null;
+       extra += 4 + view.getUint16(extra + 2, true);
+       if (extra > extraEnd) return null;
+     }

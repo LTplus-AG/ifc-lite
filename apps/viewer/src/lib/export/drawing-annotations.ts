@@ -37,6 +37,7 @@ export interface DrawingAnnotations {
 
 /** Loading and non-IFC models may expose only part of the store contract. */
 export function canReadDrawingAnnotations(store: IfcDataStore | null | undefined): store is IfcDataStore {
+  // @raw-entity-enumeration-ok presence checks only; enumeration and attribute reads below use iterateEffectiveEntityIds/effectiveMetadataRecord
   return typeof store?.entityIndex?.byType?.get === 'function'
     && typeof store.entityIndex.byId?.get === 'function'
     && typeof store.entities?.getTypeName === 'function'

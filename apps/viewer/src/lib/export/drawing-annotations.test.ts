@@ -20,7 +20,8 @@ for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
   it(`#9296: ${Schema} dimensions and bound tags survive IFC export/reopen/export`, async () => {
     const creator = new IfcCreator({ Name: 'Annotations', Schema, Timestamp: 0 });
     const storey = creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
-    creator.addIfcWall(storey, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
+    const upper = creator.addIfcBuildingStorey({ Name: 'Upper', Elevation: 3 });
+    creator.addIfcWall(upper, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
     const source = await parse(creator.toIfc().content);
     const storeyId = source.entityIndex.byType.get('IFCBUILDINGSTOREY')![0];
     const wall = source.entityIndex.byType.get('IFCWALL')![0];
@@ -37,6 +38,11 @@ for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
     assert.equal(reopened.entityIndex.byType.get('IFCRELASSIGNSTOPRODUCT')?.length, 1);
     const saved = readDrawingAnnotations(reopened);
     assert.equal(saved.length, 3);
+    const { effectiveMetadataRecord } = await import('@ifc-lite/parser');
+    const tagId = saved.find(record => record.saved.item.kind === 'tag')!.id;
+    const tagContainment = (reopened.entityIndex.byType.get('IFCRELCONTAINEDINSPATIALSTRUCTURE') ?? [])
+      .map(id => effectiveMetadataRecord(reopened, id)!.attributes).find(attrs => Array.isArray(attrs[4]) && attrs[4].includes(tagId));
+    assert.equal(tagContainment?.[5], source.entityIndex.byType.get('IFCBUILDINGSTOREY')![1]);
     assert.deepEqual(saved[0].saved.item, { kind: 'measure', value: input.measures[0] });
     const restored = restoredDrawingAnnotations(reopened, 'new-model')!;
     assert.deepEqual(restored.measure2DResults, input.measures);
@@ -52,10 +58,13 @@ for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
     assert.equal(cleared.entityIndex.byType.get('IFCANNOTATION')?.length ?? 0, 0, 'an explicit clear removes only restored annotations');
     const folder = mkdtempSync(join(tmpdir(), 'annotations-'));
     try {
-      const file = join(folder, 'export.ifc'); writeFileSync(file, first);
+      const file = join(folder, 'export.ifc');
       const python = process.env.PARITY_PYTHON ?? join(homedir(), 'modelling-parity/venv/bin/python');
-      const result = spawnSync(python, [resolve('../../tools/ifcopenshell_reference/validate_export.py'), file], { encoding: 'utf8' });
-      assert.equal(result.status, 0, `${result.error ?? ''}\n${result.stdout}\n${result.stderr}`);
+      for (const content of [first, decode(new StepExporter(cleared).export({ schema: Schema }).content)]) {
+        writeFileSync(file, content);
+        const result = spawnSync(python, [resolve('../../tools/ifcopenshell_reference/validate_export.py'), file], { encoding: 'utf8' });
+        assert.equal(result.status, 0, `${result.error ?? ''}\n${result.stdout}\n${result.stderr}`);
+      }
     } finally { rmSync(folder, { recursive: true, force: true }); }
   });
   it(`#9296: ${Schema} no markup leaves export byte-identical`, async () => {

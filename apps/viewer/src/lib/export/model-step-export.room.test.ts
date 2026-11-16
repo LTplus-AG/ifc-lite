@@ -161,9 +161,9 @@ test('#9296: automatic drawing export remaps a portable room storey', async () =
     const { effectiveMetadataRecord } = await import('@ifc-lite/parser');
     const containment = (exported.entityIndex.byType.get('IFCRELCONTAINEDINSPATIALSTRUCTURE') ?? [])
       .map(id => effectiveMetadataRecord(exported, id)!.attributes)
-      .find(attrs => Array.isArray(attrs[4]) && attrs[4].includes(`#${annotations[0]}`));
-    assert.equal(containment?.[5], `#${sourceStorey}`, 'containment uses the portable source storey, not the viewer id');
+      .find(attrs => Array.isArray(attrs[4]) && attrs[4].includes(annotations[0]));
+    assert.equal(containment?.[5], sourceStorey, 'containment uses the portable source storey, not the viewer id');
     const relationship = exported.entityIndex.byType.get('IFCRELASSIGNSTOPRODUCT')![0];
-    assert.equal(effectiveMetadataRecord(exported, relationship)?.attributes[6], `#${sourceWindow}`, 'the tag binds the source window, not viewer #2');
+    assert.equal(effectiveMetadataRecord(exported, relationship)?.attributes[6], sourceWindow, 'the tag binds the source window, not viewer #2');
   } finally { useViewerStore.setState(previous, true); }
 });

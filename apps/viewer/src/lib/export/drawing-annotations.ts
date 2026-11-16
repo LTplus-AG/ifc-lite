@@ -94,7 +94,7 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
     for (const { id } of replaceable) {
       for (const { expressId } of iterateEffectiveEntityIds(store, draft, ['IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELASSIGNSTOPRODUCT'])) {
         const record = effectiveMetadataRecord(store, expressId, draft);
-        if (Array.isArray(record?.attributes[4]) && record.attributes[4].length === 1 && record.attributes[4][0] === `#${id}`) editor.removeEntity(expressId);
+        if (Array.isArray(record?.attributes[4]) && record.attributes[4].length === 1 && referenceId(record.attributes[4][0]) === id) editor.removeEntity(expressId);
       }
       editor.removeEntity(id);
     }
@@ -168,19 +168,27 @@ export function drawingPointInIfc(p: Point2D, plane: DrawnSectionPlane): number[
 }
 
 function containingStorey(store: IfcDataStore, view: MutablePropertyView, target: number): number | null {
-  const parents = new Map<string, number>();
+  const parents = new Map<number, number>();
   for (const { expressId, type } of iterateEffectiveEntityIds(store, view, ['IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELAGGREGATES'])) {
     const attrs = effectiveMetadataRecord(store, expressId, view)?.attributes;
     if (!attrs) continue;
     const contained = type.toUpperCase() === 'IFCRELCONTAINEDINSPATIALSTRUCTURE';
-    const parent = attrs[contained ? 5 : 4], children = attrs[contained ? 4 : 5];
-    if (typeof parent !== 'string' || !Array.isArray(children)) continue;
-    for (const child of children) if (typeof child === 'string') parents.set(child, Number(parent.slice(1)));
+    const parent = referenceId(attrs[contained ? 5 : 4]), children = attrs[contained ? 4 : 5];
+    if (parent === null || !Array.isArray(children)) continue;
+    for (const child of children) {
+      const id = referenceId(child);
+      if (id !== null) parents.set(id, parent);
+    }
   }
   const visited = new Set<number>();
-  for (let id: number | undefined = target; id !== undefined && !visited.has(id); id = parents.get(`#${id}`)) {
+  for (let id: number | undefined = target; id !== undefined && !visited.has(id); id = parents.get(id)) {
     visited.add(id);
     if (effectiveMetadataRecord(store, id, view)?.type.toUpperCase() === 'IFCBUILDINGSTOREY') return id;
   }
   return null;
+}
+
+function referenceId(value: unknown): number | null {
+  const id = typeof value === 'number' ? value : typeof value === 'string' && value.startsWith('#') ? Number(value.slice(1)) : NaN;
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
 }

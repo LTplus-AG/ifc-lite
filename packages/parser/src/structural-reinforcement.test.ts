@@ -49,6 +49,30 @@ describe('surface reinforcement read model', () => {
     });
   });
 
+  it('does not shift reinforcement directions when a malformed list has a missing value', async () => {
+    const result = extractStructuralOnDemand(await parse('IFC4',
+      "#15=IFCSURFACEREINFORCEMENTAREA('Malformed',(0.001,$,0.003),(0.,0.004),0.);"));
+    expect(result.reinforcementAreas?.[0].SurfaceReinforcement1).toBeUndefined();
+    expect(result.reinforcementAreas?.[0].SurfaceReinforcement2).toEqual([0, 0.004]);
+    expect(result.reinforcementAreas?.[0].components).toEqual({ ShearReinforcement: 0 });
+  });
+
+  it('keeps a deleted configuration result as a missing slot without inventing values or truncation', async () => {
+    const store = await parse('IFC4', `${area}
+      #24=IFCSTRUCTURALLOADCONFIGURATION('Configuration',(#15,#15),((0.),(4.)));
+      #50=IFCSTRUCTURALSURFACEACTION('0KQ0efL39PrP5DeqBwaUNp',$,'Action',$,$,$,$,#24,.GLOBAL_COORDS.,.F.,$,.CONST.);`);
+    const result = extractStructuralOnDemand(store, {
+      isDeleted: id => id === 15,
+      getNewEntities: () => [],
+    });
+    expect(result.reinforcementAreas).toEqual([]);
+    expect(result.activities[0].appliedLoad?.configuration?.entries).toEqual([
+      { value: undefined, dropped: 'unresolved', location: [0] },
+      { value: undefined, dropped: 'unresolved', location: [4] },
+    ]);
+    expect(result.loadsTruncated).toBe(false);
+  });
+
   it('respects live deletion, creation, retyping and edited lists', async () => {
     const store = await parse('IFC4', area);
     const view: StructuralExtractionView = {

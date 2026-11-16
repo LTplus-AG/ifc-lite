@@ -144,12 +144,15 @@ export interface PrismFact {
   extrusion: Vec3;
   /** False when `outline` is only the profile's bounding rectangle (I-shapes, circles, ...). */
   outlineExact: boolean;
+  /** The outer outline omits inner profile voids. */
+  profileHasVoids?: boolean;
   /** The profile's centroid on the base plane, when it is not the centre of the bounds (L, T, U, C sections). */
   centroid?: Vec3;
 }
 
 export interface OpeningFact {
-  shapeIssueReason?: 'unsupported-voiding-type';
+  /** IFC PascalCase class; null when the referenced entity is missing. */
+  type?: string | null;
   expressId: number;
   name: string | null;
   prism?: PrismFact;
@@ -286,7 +289,7 @@ export interface SkippedOpening {
   openingId: number;
   hostId: number;
   name: string | null;
-  reason: 'unsupported-voiding-type' | 'unreadable-opening' | 'unsupported-opening-section' | 'invalid-opening-ring';
+  reason: 'opening-profile-has-voids' | 'unsupported-voiding-type' | 'unreadable-opening' | 'unsupported-opening-section' | 'invalid-opening-ring';
   detail: string;
 }
 

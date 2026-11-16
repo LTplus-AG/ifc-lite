@@ -12,7 +12,7 @@ import type { RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { DERIVATION_AXIS_PROPERTIES, DERIVATION_ELEMENT_PROPERTY, STRUCTURAL_DERIVATION_PSET, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
 import type { SpatialAnchor } from './anchor.js';
-import { checkOpening, prepareStructuralFace } from './_structural-face.js';
+import { prepareStructuralFace } from './_structural-face.js';
 import { applyFrame, inverseFrame, placementInAncestor } from './host-geometry-frame.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { createStyleEntityReader } from './style-entity-reader.js';
@@ -114,19 +114,16 @@ function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | 
   }
   for (const member of plan.surfaceMembers) {
     const what = `the surface member of element #${member.elementId}`;
-    let face: ReturnType<typeof prepareStructuralFace>;
-    try {
-      face = prepareStructuralFace(member.boundary.map((p) => toLocal(member.storeyId, p)));
-    } catch (error) {
-      return refuse(what, `has a bad boundary (${error instanceof Error ? error.message : String(error)})`);
-    }
     if (member.openings !== undefined && !Array.isArray(member.openings)) refuse(what, 'has openings that are not an array');
-    for (const [index, ring] of (member.openings ?? []).entries()) {
-      try {
-        face.openings.push(checkOpening(face, ring.map(p => toLocal(member.storeyId, p)), face.openings, { clearance: 0, index }));
-      } catch (error) {
-        refuse(what, `has a bad opening ${index + 1} (${error instanceof Error ? error.message : String(error)})`);
-      }
+    try {
+      prepareStructuralFace(
+        member.boundary.map(p => toLocal(member.storeyId, p)),
+        (member.openings ?? []).map(ring => ring.map(p => toLocal(member.storeyId, p))),
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const opening = /^Structural Face: opening (\d+):/.exec(detail);
+      refuse(what, `has a bad ${opening ? `opening ${opening[1]}` : 'boundary'} (${detail})`);
     }
   }
 }

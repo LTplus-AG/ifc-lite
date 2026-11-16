@@ -31,6 +31,7 @@ export const structuralDeriveEn = {
   'structuralDerive.free': 'Free member ends, meeting no other member and no support ({count})',
   'structuralDerive.end.start': 'start',
   'structuralDerive.end.end': 'end',
+  "structuralDerive.reason.opening-profile-has-voids": "opening profile has inner voids",
   "structuralDerive.reason.unsupported-voiding-type": "unsupported voiding type",
   'structuralDerive.reason.unreadable-opening': 'unreadable opening',
   'structuralDerive.reason.unsupported-opening-section': 'unsupported opening section',

@@ -27,6 +27,7 @@ export const structuralDeriveShape = {
   "free": ["count"],
   "end.start": [],
   "end.end": [],
+  "reason.opening-profile-has-voids": [],
   "reason.unsupported-voiding-type": [],
   "reason.unreadable-opening": [],
   "reason.unsupported-opening-section": [],

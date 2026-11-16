@@ -346,7 +346,8 @@ function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placem
   const solidFrame = axis3d(reader, position);
   const dir = pointOf(reader, direction, 'IFCDIRECTION');
   const depth = num(depthValue);
-  const outline = profileOutline(reader, reader.entity(refId(sweptArea) ?? 0));
+  const profile = reader.entity(refId(sweptArea) ?? 0);
+  const outline = profileOutline(reader, profile);
   if (typeof outline === 'string') return outline;
   const unitDir = dir && unit(dir);
   if (!solidFrame || !unitDir || depth === null || depth <= 0) return 'extrusion is unreadable';
@@ -356,6 +357,7 @@ function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placem
     outline: outline.points.map(([x, y]) => toWorld([x, y, 0])),
     extrusion: sub(toWorld(scale(unitDir, depth)), toWorld([0, 0, 0])),
     outlineExact: outline.exact,
+    ...(upper(profile) === 'IFCARBITRARYPROFILEDEFWITHVOIDS' ? { profileHasVoids: true } : {}),
     ...(outline.centroid ? { centroid: toWorld([outline.centroid[0], outline.centroid[1], 0]) } : {}),
   };
 }

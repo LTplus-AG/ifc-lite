@@ -5,6 +5,7 @@
 import { vecCross, vecLen } from '../ifc-creator-math.js';
 import { add, sub, scale, dot, areaVector } from './structural-derive-idealise.js';
 import type { PhysicalElementFact, SkippedOpening, PrismFact, Vec3 } from './structural-derive-types.js';
+import { OPENING_TYPES } from './hosted-fill-read.js';
 import { pointInPolygon } from './room-footprint-offset.js';
 import { checkOpening, type prepareStructuralFace } from './_structural-face.js';
 
@@ -83,7 +84,9 @@ export function openingSection(prism: PrismFact, origin: Vec3, normal: Vec3, thi
   for (const offset of [-thickness / 2, thickness / 2]) {
     const face = section(offset);
     if (typeof face === 'string') return face;
-    if (face.some((p, i) => vecLen(sub(sub(p, scale(normal, offset)), middle[i])) > tolerance)) return 'opening section changes across plate faces (recess or tapered cut, not through)';
+    // A near-normal sweep translates each section along its own in-plane direction.
+    const drift = parallel ? scale(prism.extrusion, offset / along) : scale(normal, offset);
+    if (face.some((p, i) => vecLen(sub(sub(p, drift), middle[i])) > tolerance)) return 'opening section changes across plate faces (recess or tapered cut, not through)';
   }
   return middle;
 }
@@ -96,8 +99,10 @@ export function plateOpenings(element: PhysicalElementFact, plate: { boundary: V
   const accepted: Vec3[][] = [];
   for (const [index, opening] of element.openings.entries()) {
     const reject = (reason: SkippedOpening['reason'], detail: string) => skipped.push({ openingId: opening.expressId, hostId: element.expressId, name: opening.name, reason, detail });
+    if (opening.type && !OPENING_TYPES.has(opening.type.toUpperCase())) { reject('unsupported-voiding-type', opening.shapeIssue ?? `unsupported voiding type ${opening.type}`); continue; }
     const prism = opening.prism;
-    if (!prism) { reject(opening.shapeIssueReason ?? 'unreadable-opening', opening.shapeIssue ?? 'unreadable body'); continue; }
+    if (!prism) { reject('unreadable-opening', opening.shapeIssue ?? 'unreadable body'); continue; }
+    if (prism.profileHasVoids) { reject('opening-profile-has-voids', 'opening profile has inner voids'); continue; }
     if (!prism.outlineExact) { reject('unsupported-opening-section', 'profile outline is known only as bounds'); continue; }
     const ring = openingSection(prism, plate.boundary[0], normal, plate.thickness, tolerance);
     if (typeof ring === 'string') { reject('unsupported-opening-section', ring); continue; }

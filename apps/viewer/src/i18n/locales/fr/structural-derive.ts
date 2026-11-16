@@ -27,6 +27,7 @@ export const structuralDeriveFr = {
   "structuralDerive.free": "Extrémités libres, sans autre barre ni appui ({count})",
   "structuralDerive.end.start": "début",
   "structuralDerive.end.end": "fin",
+  "structuralDerive.reason.opening-profile-has-voids": "le profil de l’ouverture comporte des vides intérieurs",
   "structuralDerive.reason.unsupported-voiding-type": "type de découpe non pris en charge",
   "structuralDerive.reason.unreadable-opening": "ouverture illisible",
   "structuralDerive.reason.unsupported-opening-section": "section d’ouverture non prise en charge",

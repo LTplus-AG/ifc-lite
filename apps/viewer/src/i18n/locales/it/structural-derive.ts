@@ -27,6 +27,7 @@ export const structuralDeriveIt = {
   "structuralDerive.free": "Estremità libere, senza altre aste né vincoli ({count})",
   "structuralDerive.end.start": "inizio",
   "structuralDerive.end.end": "fine",
+  "structuralDerive.reason.opening-profile-has-voids": "il profilo dell’apertura contiene vuoti interni",
   "structuralDerive.reason.unsupported-voiding-type": "tipo di vuoto non supportato",
   "structuralDerive.reason.unreadable-opening": "apertura illeggibile",
   "structuralDerive.reason.unsupported-opening-section": "sezione di apertura non supportata",

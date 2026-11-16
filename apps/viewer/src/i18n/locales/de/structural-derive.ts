@@ -27,6 +27,7 @@ export const structuralDeriveDe = {
   "structuralDerive.free": "Freie Stabenden ohne anderen Stab und ohne Auflager ({count})",
   "structuralDerive.end.start": "Anfang",
   "structuralDerive.end.end": "Ende",
+  "structuralDerive.reason.opening-profile-has-voids": "Öffnungsprofil hat innere Aussparungen",
   "structuralDerive.reason.unsupported-voiding-type": "nicht unterstützter Aussparungstyp",
   "structuralDerive.reason.unreadable-opening": "Öffnung nicht lesbar",
   "structuralDerive.reason.unsupported-opening-section": "nicht unterstützter Öffnungsquerschnitt",

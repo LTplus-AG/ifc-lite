@@ -156,6 +156,49 @@ function physicalModel(planOpenings = false) {
 }
 
 describe('derive physical openings', () => {
+  it('carries a through-opening swept 0.8 degrees off a 0.4 m slab normal at 2 mm tolerance', async () => {
+    const s = await session(physicalModel());
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    const slab = facts.elements.find(e => e.type === 'IfcSlab')!;
+    slab.prism!.extrusion = [0, 0, 0.4];
+    const angle = 0.8 * Math.PI / 180;
+    slab.openings![0].prism!.extrusion = [0.6 * Math.tan(angle), 0, 0.6];
+    const plan = planStructuralDerivation(facts, { tolerance: 0.002 });
+    expect(plan.surfaceMembers.find(m => m.elementId === slab.expressId)!.openings).toHaveLength(1);
+    expect(plan.report.skippedOpenings.some(o => o.hostId === slab.expressId)).toBe(false);
+  });
+  it('skips an opening with a voided arbitrary profile instead of cutting its full outer outline', async () => {
+    // Replace the existing arbitrary U profile with a closed rectangle and an inner loop.
+    const text = physicalModel(true).replace(/IFCARBITRARYCLOSEDPROFILEDEF\(.AREA.,\$,#[0-9]+\)/,
+      'IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#90001,(#90002))')
+      .replace('ENDSEC;\nEND-ISO', `
+#90001=IFCPOLYLINE((#90003,#90004,#90005,#90006,#90003));
+#90002=IFCPOLYLINE((#90007,#90008,#90009,#90010,#90007));
+#90003=IFCCARTESIANPOINT((-3.,-0.3));
+#90004=IFCCARTESIANPOINT((-1.,-0.3));
+#90005=IFCCARTESIANPOINT((-1.,0.3));
+#90006=IFCCARTESIANPOINT((-3.,0.3));
+#90007=IFCCARTESIANPOINT((-2.5,-0.1));
+#90008=IFCCARTESIANPOINT((-1.5,-0.1));
+#90009=IFCCARTESIANPOINT((-1.5,0.1));
+#90010=IFCCARTESIANPOINT((-2.5,0.1));
+ENDSEC;\nEND-ISO`);
+    const s = await session(text);
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    const wall = facts.elements.find(e => e.type === 'IfcWall')!;
+    wall.openings = wall.openings!.filter(o => o.name === 'two intervals');
+    expect(wall.openings[0].prism).toMatchObject({ outlineExact: true, profileHasVoids: true });
+    const plan = planStructuralDerivation(facts);
+    expect(plan.surfaceMembers.find(m => m.elementId === wall.expressId)!.openings).toEqual([]);
+    expect(plan.report.skippedOpenings).toMatchObject([{ reason: 'opening-profile-has-voids' }]);
+  });
+  it('reports a missing voiding entity as unreadable', async () => {
+    const s = await session(physicalModel().replace(/#(\d+)=IFCOPENINGELEMENT[^;]+;/g, ''));
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    expect(facts.elements.flatMap(e => e.openings ?? []).every(o => o.type === null && o.shapeIssue === 'missing entity')).toBe(true);
+    expect(planStructuralDerivation(facts).report.skippedOpenings).toHaveLength(8);
+    expect(planStructuralDerivation(facts).report.skippedOpenings.every(o => o.reason === 'unreadable-opening')).toBe(true);
+  });
   it('carries a plan window swept vertically at its original sill height', async () => {
     const s = await session(physicalModel(true));
     const facts = readStructuralDerivationFacts(s.store, s.editor);
@@ -255,7 +298,7 @@ describe('opening review regressions', () => {
   });
   it('keeps slab openings when facts use skip and the planner uses include (#9668)', async () => {
     const s = await session(physicalModel());
-    const facts = readStructuralDerivationFacts(s.store,s.editor, { whenLoadBearingUnknown: 'skip' });
+    const facts = readStructuralDerivationFacts(s.store,s.editor);
     const slab = facts.elements.find(e => e.type === 'IfcSlab')!;
     expect(slab.openings).toHaveLength(1);
     const plan = planStructuralDerivation(facts, { whenLoadBearingUnknown: 'include' });

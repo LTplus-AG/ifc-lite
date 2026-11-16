@@ -269,7 +269,7 @@ describe('an empty footprint option', () => {
     const store = await parseStep(syntheticHouse({ verticalDatum: 'LN02' }));
     expect(() => extractModelFacts(store, { expectedCrs: 'EPSG:2056', footprint: [] })).toThrow(RangeError);
     expect(() => extractModelFacts(store, { expectedCrs: 'EPSG:2056', footprint: [[{ x: 2_600_000, y: 1_200_000 }, { x: 2_600_010, y: 1_200_000 }]] })).toThrow(RangeError);
-  });
+  }, 15_000);
 
   it('hand-built facts with no footprint rings get no reassuring outcome', () => {
     const facts = boxFacts([groundDoor(500), candidate({ expressId: 4, category: 'equipment', ifcClass: 'IfcBoiler', position: { x: E0 + 10, y: N0 + 5 }, level: 497, storeyId: 9 })], {

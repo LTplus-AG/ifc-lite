@@ -47,6 +47,10 @@ const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const scaled = (v, k) => v.map((c) => c * k);
 const unit = (a) => { const l = Math.hypot(...a); return l > 1e-12 ? a.map((c) => c / l) : null; };
+/** `v` with its component along each unit axis removed, as a unit vector; null when nothing is left. */
+const normalTo = (v, ...axes) => unit(axes.reduce((a, n) => sub(a, scaled(n, dot(a, n))), v));
+/** The schema's default x for a z axis: (1, 0, 0), or (0, 1, 0) when z is near x. */
+const defaultX = (z) => (Math.abs(z[0]) > 0.9 ? [0, 1, 0] : [1, 0, 0]);
 /** A point in `f`'s axes, in its parent's. */
 const apply = (f, p) => [0, 1, 2].map((i) => f.o[i] + f.x[i] * p[0] + f.y[i] * p[1] + f.z[i] * p[2]);
 const rotate = (f, v) => [0, 1, 2].map((i) => f.x[i] * v[0] + f.y[i] * v[1] + f.z[i] * v[2]);
@@ -68,8 +72,7 @@ function axisPlacement(step, id) {
   const o = coords(step, refOf(r.args[0]));
   if (!o) return null;
   const z = unit(coords(step, refOf(r.args[1])) ?? [0, 0, 1]) ?? [0, 0, 1];
-  const ref = coords(step, refOf(r.args[2])) ?? (Math.abs(z[0]) > 0.9 ? [0, 1, 0] : [1, 0, 0]);
-  const x = unit(sub(ref, z.map((c) => c * dot(ref, z)))) ?? unit(cross([0, 1, 0], z));
+  const x = normalTo(coords(step, refOf(r.args[2])) ?? defaultX(z), z) ?? unit(cross([0, 1, 0], z));
   return x && { o, x, y: cross(z, x), z };
 }
 
@@ -124,10 +127,10 @@ function transformOperator(step, id) {
   const o = coords(step, refOf(r.args[2]));
   if (!o) return null;
   const z = unit(coords(step, refOf(r.args[4])) ?? [0, 0, 1]);
-  const a1 = coords(step, refOf(r.args[0])) ?? (z && Math.abs(z[0]) > 0.9 ? [0, 1, 0] : [1, 0, 0]);
-  const x = z && unit(sub(a1, scaled(z, dot(a1, z))));
-  const a2 = coords(step, refOf(r.args[1])) ?? (x && cross(z, x));
-  const y = x && a2 && unit(sub(sub(a2, scaled(z, dot(a2, z))), scaled(x, dot(a2, x))));
+  if (!z) return null;
+  const x = normalTo(coords(step, refOf(r.args[0])) ?? defaultX(z), z);
+  if (!x) return null;
+  const y = normalTo(coords(step, refOf(r.args[1])) ?? cross(z, x), z, x);
   if (!y) return null;
   const s = numberOf(r.args[3]) ?? 1;
   const s2 = numberOf(r.args[5]) ?? s;
@@ -144,8 +147,9 @@ function representationVertices(step, rep, depth = 0) {
   if (!rep || depth > 8) return [];
   const topology = rep.type === 'IFCTOPOLOGYREPRESENTATION';
   return (rep.args[3] ?? []).flatMap((ref) => {
-    const item = step.get(refOf(ref));
-    if (item?.type !== 'IFCMAPPEDITEM') return topology ? topologyVertices(step, refOf(ref)) : [];
+    const id = refOf(ref);
+    const item = step.get(id);
+    if (item?.type !== 'IFCMAPPEDITEM') return topology ? topologyVertices(step, id) : [];
     const map = step.get(refOf(item.args[0]));
     const origin = map?.type === 'IFCREPRESENTATIONMAP' && axisPlacement(step, refOf(map.args[0]));
     const target = transformOperator(step, refOf(item.args[1]));

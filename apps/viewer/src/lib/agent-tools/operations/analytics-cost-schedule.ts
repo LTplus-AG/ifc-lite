@@ -6,7 +6,7 @@ import { useViewerStore } from '@/store';
 import { buildCostTree, classifyCostModel, getAssignedTargets, getOwningSchedules } from '@/lib/cost/cost-tree';
 import { buildCostCsvReport } from '@/lib/analysis/export-csv';
 import { selectCostTargets } from '@/lib/cost/select-targets';
-import { operation, emptySchema } from './contract';
+import { operation, viewerOperation, emptySchema } from './contract';
 import { metadata, artifactSchema, checkpoint } from './analytics-common';
 const cost = (id: string, description: string, output: Record<string, unknown>) => metadata(id, 'cost', description, ['read'], output);
 function timeline() {
@@ -66,5 +66,5 @@ export const analyticsCostScheduleOperations = [
     if (i.work_schedule_id && !s.scheduleData.workSchedules.some(row => row.globalId === i.work_schedule_id)) throw new Error('Unknown work schedule.');
     checkpoint(c); c.commit(() => { s.setActiveWorkScheduleId(i.work_schedule_id); s.setGanttTimeScale(i.scale); s.seekSchedule(i.time); s.setPlaybackSpeed(i.speed); s.setPlaybackLoop(i.loop); s.setAnimationEnabled(i.animation); }); return timeline();
   }),
-  operation(metadata('schedule.pause', 'gantt', 'Pause native playback and read its final timeline state.', ['view'], timelineSchema), emptySchema, (_, c) => { checkpoint(c); c.commit(() => useViewerStore.getState().pauseSchedule()); return timeline(); }),
+  viewerOperation(metadata('schedule.pause', 'gantt', 'Pause native playback and read its final timeline state.', ['view'], timelineSchema), emptySchema, (_, c) => { checkpoint(c); c.commit(() => useViewerStore.getState().pauseSchedule()); return timeline(); }),
 ];

@@ -24,11 +24,17 @@ import { analyticsCostScheduleOperations } from './analytics-cost-schedule';
 import { analyticsDrawingAppearanceOperations } from './analytics-drawing-appearance';
 import { analyticsScheduleEditOperations } from './analytics-schedule-edit';
 import { analyticsAppearanceOperations } from './analytics-appearance';
+import { analyticsPresentationOperations } from './analytics-presentation';
+import { analyticsSchedulePlaybackOperations } from './analytics-schedule-playback';
+import { analyticsScheduleGenerateOperations } from './analytics-schedule-generate';
+import { analyticsDrawingMarkupOperations } from './analytics-drawing-markup';
+import { analyticsDrawingSheetOperations } from './analytics-drawing-sheets';
+import { measuredDimensionValue } from '@/store/slices/drawing2DDimensions';
 import { blankDocument } from '@/lib/document/presets';
 import { modelOverviewDashboard } from '@/lib/charts/presets';
 import { listRunDefinition, listRunModels } from '@/lib/lists/run-provenance';
 
-const entries = [...analyticsListOperations, ...analyticsChartOperations, ...analyticsLensOperations, ...analyticsMeasurementOperations, ...analyticsDocumentOperations, ...analyticsCostScheduleOperations, ...analyticsDrawingAppearanceOperations, ...analyticsScheduleEditOperations, ...analyticsAppearanceOperations];
+const entries = [...analyticsListOperations, ...analyticsChartOperations, ...analyticsLensOperations, ...analyticsMeasurementOperations, ...analyticsDocumentOperations, ...analyticsCostScheduleOperations, ...analyticsDrawingAppearanceOperations, ...analyticsScheduleEditOperations, ...analyticsAppearanceOperations, ...analyticsScheduleGenerateOperations, ...analyticsDrawingMarkupOperations, ...analyticsDrawingSheetOperations, ...analyticsSchedulePlaybackOperations, ...analyticsPresentationOperations];
 let context: OperationContext;
 async function seed(count: 1 | 2 = 1) {
   resetFeaturesForTest(); await seedCoincidentWalls(count, 4);
@@ -41,7 +47,7 @@ async function seed(count: 1 | 2 = 1) {
   useViewerStore.setState({ mutationVersion: 0, selectedEntityId: null, selectedEntityIds: new Set(),
     activeMeasurement: null, activePolyline: null, activeAngle: null, activeRadius: null,
     angleMeasurements: [], radiusMeasurements: [], hiddenEntities: new Set(), lensAppliedHiddenIds: [], lensHiddenIds: new Set(),
-    activeLensId: null, listResult: null, activeListId: null, chartSlice: null, chartSliceSource: null });
+    activeLensId: null, playbackIsPlaying: false, animationEnabled: false, listResult: null, activeListId: null, chartSlice: null, chartSliceSource: null });
   const bim = createBimContext({ backend: new LocalBackend(useViewerStore) });
   const host = createMainViewerToolHost(useViewerStore, bim);
   const model = host.models().find(row => row.id === 'A');
@@ -149,6 +155,54 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     await assert.rejects(run('appearance.preview', { source_id: 'missing', express_ids: [1], settings: {
       representationPolicy: 'preserve', kind: 'planar', plane: 'xz', repeatU: 1, repeatV: 1, tileWidth: 1, tileHeight: 1, tileDepth: 1, rotationDegrees: 0, offsetU: 0, offsetV: 0, offsetW: 0, repeatS: true, repeatT: true,
     } }), /Edit mode/);
+  });
+
+  it('generates a native height-group schedule with exact product assignment and optional work-plan grouping', async () => {
+    const input = { settings: { strategy: 'IfcElement', startDate: '2026-01-05T08:00:00', daysPerGroup: 2, lagDays: 0, order: 'bottom-up', skipEmptyGroups: true, linkSequences: true, scheduleName: 'Native', predefinedType: 'CONSTRUCTION', heightTolerance: 3, elementZSubgroup: 'none' }, work_plan_name: 'Programme' };
+    const preview = await run<{ groups: number; products: number; extraction: { tasks: unknown[]; workSchedules: { type: string }[] } }>('schedule.generatePreview', input);
+    assert.equal(preview.groups, 1); assert.equal(preview.products, 4); assert.equal(preview.extraction.tasks.length, 1);
+    assert.equal(preview.extraction.workSchedules.length, 2);
+    useViewerStore.setState({ editEnabled: true, scheduleData: null, scheduleSourceModelId: null });
+    await run('schedule.generate', { ...input, expected_json: 'null' }); assert.equal(useViewerStore.getState().scheduleSourceModelId, 'A');
+    await assert.rejects(run('schedule.generate', { ...input, expected_json: 'null' }), /changed since inspection/);
+  });
+  it('computes native drawing polygon geometry and one undoable numerical dimension with no IFC loaded', async () => {
+    const { model: _model, ...viewerContext } = context;
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null, polygonArea2DPoints: [], polygonArea2DResults: [], dimension2DPoints: [], dimensions2D: [], dimension2DUndo: [], dimension2DRedo: [] });
+    await run('drawing.addPolygon', { points: [[0, 0], [3, 0], [3, 4], [0, 4]] }, viewerContext);
+    assert.equal(useViewerStore.getState().polygonArea2DResults[0].area, 12); assert.equal(useViewerStore.getState().polygonArea2DResults[0].perimeter, 14);
+    await run('drawing.addPolygon', { points: [[0, 0], [3, 0], [3, 4], [0, 4]] }, viewerContext);
+    assert.notEqual(useViewerStore.getState().polygonArea2DResults[0].id, useViewerStore.getState().polygonArea2DResults[1].id);
+    const dimension = await run<{ id: string }>('drawing.addDimension', { a: [0, 0], b: [3, 4], offset: 1, orientation: 'aligned', text: '<>' }, viewerContext);
+    assert.equal(measuredDimensionValue(useViewerStore.getState().dimensions2D[0]), 5);
+    await run('drawing.moveMarkup', { id: dimension.id, kind: 'dimension', position: [10, 10] }, viewerContext);
+    assert.equal(measuredDimensionValue(useViewerStore.getState().dimensions2D[0]), 5);
+    await run('drawing.dimensionHistory', { action: 'undo' }, viewerContext); assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 0, y: 0 });
+  });
+
+  it('awaits native 4D clock completion without mounting Gantt and releases the host runtime', async () => {
+    const previousRequest = globalThis.requestAnimationFrame; const previousCancel = globalThis.cancelAnimationFrame;
+    let next = 0; const frames = new Map<number, ReturnType<typeof setTimeout>>();
+    globalThis.requestAnimationFrame = callback => { const id = ++next; frames.set(id, setTimeout(() => { frames.delete(id); callback(performance.now()); }, 1)); return id; };
+    globalThis.cancelAnimationFrame = id => { const timer = frames.get(id); if (timer) clearTimeout(timer); frames.delete(id); };
+    const lifetime = new AbortController(); context.host.lifetimeSignal = lifetime.signal;
+    try {
+      useViewerStore.setState({ editEnabled: true, scheduleData: null, scheduleSourceModelId: null, scheduleIsEdited: false });
+      await run('schedule.initialize');
+      await run('schedule.import', { format: 'csv', text: 'Name,Start,Finish\nBuild,2026-01-05,2026-01-06\n' });
+      const range = useViewerStore.getState().scheduleRange; assert.ok(range);
+      useViewerStore.getState().setPlaybackSpeed(3650);
+      const result = await run<{ state: string; time: number }>('schedule.play', { until: range.end, max_real_seconds: 2 });
+      assert.equal(result.state, 'succeeded'); assert.ok(result.time >= range.end); assert.equal(useViewerStore.getState().playbackIsPlaying, false);
+    } finally { lifetime.abort(); for (const timer of frames.values()) clearTimeout(timer); globalThis.requestAnimationFrame = previousRequest; globalThis.cancelAnimationFrame = previousCancel; }
+  });
+  it('native Presentation Stop cancels an in-flight saved-view sequence and retains the view already applied', async () => {
+    const s = useViewerStore.getState(); s.setBasket([{ modelId: 'A', expressId: 1 }]);
+    const id = useViewerStore.getState().saveCurrentBasketView({ name: 'Native playback', transitionMs: 150, source: 'manual' }); assert.ok(id);
+    const pending = run<{ state: string; played: number }>('presentation.play', { view_ids: [id], repetitions: 2 });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    await run('presentation.stop'); const result = await pending;
+    assert.equal(result.state, 'cancelled'); assert.equal(result.played, 1); assert.equal(useViewerStore.getState().activeBasketViewId, id);
   });
 
 });

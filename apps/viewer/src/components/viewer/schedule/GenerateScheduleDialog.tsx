@@ -42,7 +42,8 @@ import {
   type GenerateScheduleOptions,
   type GenerateOrder,
 } from './generate-schedule';
-import { buildWorkPlanInfo, logGeneratedScheduleDebug } from './schedule-utils';
+import { generatedExtraction } from '@/lib/schedule/generated-extraction';
+import { logGeneratedScheduleDebug } from './schedule-utils';
 import { formatLocaleDate } from '@/i18n/intlFormat';
 import { HeightStrategyPanel } from './HeightStrategyPanel';
 import { GenerateAdvancedPanel } from './GenerateAdvancedPanel';
@@ -135,22 +136,8 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
     // and reused across renders until `options` changes, so mutating it
     // in place would leak the plan into a later preview that didn't ask
     // for one.
-    const extraction = createWorkPlan
-      ? {
-          ...preview.extraction,
-          workSchedules: [
-            ...preview.extraction.workSchedules,
-            buildWorkPlanInfo(
-              preview.extraction.workSchedules[0]?.globalId ?? 'workplan',
-              workPlanName.trim() || t('schedule.generateAdvanced.workPlanNamePlaceholder'),
-              // Group the generated IfcWorkSchedule(s) under this plan so
-              // the relation round-trips (see buildWorkPlanInfo's doc
-              // comment) instead of shipping a decorative orphan.
-              preview.extraction.workSchedules.map(s => s.globalId),
-            ),
-          ],
-        }
-      : preview.extraction;
+    const extraction = generatedExtraction(preview.extraction,
+      createWorkPlan ? workPlanName.trim() || t('schedule.generateAdvanced.workPlanNamePlaceholder') : null);
 
     logGeneratedScheduleDebug(extraction, effectiveOptions);
 

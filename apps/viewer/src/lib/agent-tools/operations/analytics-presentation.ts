@@ -4,6 +4,7 @@
 import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { isToolAvailable } from '@/lib/features/tools';
+import { playNativePresentation, stopPresentationPlayback, presentationPlaybackState } from '@/lib/presentation/playback';
 import { executeBasketSaveView } from '@/store/basket/basketCommands';
 import { activateBasketViewFromStore } from '@/store/basket/basketViewActivator';
 import { viewerOperation, emptySchema } from './contract';
@@ -37,4 +38,14 @@ export const analyticsPresentationOperations = [
     checkpoint(c); c.commit(() => { const s = useViewerStore.getState(); s.renameBasketView(i.id, i.name); s.setBasketViewTransitionMs(i.id, i.transition_ms); }); return inspect();
   }),
   viewerOperation<{ id: string }>(metadata('presentation.delete', 'presentation', 'Delete one saved native presentation view.', ['configuration'], removedSchema), idSchema, (i, c) => { saved(i.id); checkpoint(c); c.commit(() => useViewerStore.getState().removeBasketView(i.id)); return { removed: i.id }; }),
+  viewerOperation(metadata('presentation.playback', 'presentation', 'Inspect viewer-scoped saved-view sequence completion, cancellation or failure independently of the panel.', ['read'], { type: 'object', properties: { state: { type: 'string' }, current_view_id: { type: ['string', 'null'] }, played: { type: 'integer' }, error: { type: ['string', 'null'] } }, required: ['state', 'current_view_id', 'played', 'error'], additionalProperties: false }), emptySchema, presentationPlaybackState),
+  viewerOperation<{ view_ids: string[]; repetitions: number }>(metadata('presentation.play', 'presentation', 'Await a finite native saved-view sequence using the same playback service as Play All, with stop/signal cancellation and exact-view conflict checks. Completion follows native transition durations; camera callbacks have no separate settled acknowledgement.', ['view', 'selection', 'configuration'], { type: 'object', properties: { state: { type: 'string' }, current_view_id: { type: ['string', 'null'] }, played: { type: 'integer' }, error: { type: ['string', 'null'] } }, required: ['state', 'current_view_id', 'played', 'error'], additionalProperties: false }), {
+    type: 'object', properties: { view_ids: { type: 'array', items: idSchema.properties.id, minItems: 1, maxItems: 100 }, repetitions: { type: 'integer', minimum: 1, maximum: 10 } }, required: ['view_ids', 'repetitions'], additionalProperties: false,
+  } satisfies JSONSchemaType<{ view_ids: string[]; repetitions: number }>, async (i, c) => {
+    const duration = i.view_ids.reduce((total, id) => total + Math.max(150, Math.min(15000, saved(id).transitionMs ?? 700)) + 180, 0) * i.repetitions;
+    if (duration > 120000) throw new Error('Choose a finite saved-view sequence lasting at most two minutes.'); checkpoint(c);
+    return playNativePresentation(i.view_ids, { repetitions: i.repetitions, signal: c.signal, beforeActivate: apply => c.commit(apply) });
+  }),
+  viewerOperation({ ...metadata('presentation.stop', 'presentation', 'Request cancellation of the viewer-scoped native presentation sequence. Inspect presentation.playback for its terminal state; applied views are not rolled back.', ['view'], { type: 'object', properties: { requested: { type: 'boolean' } }, required: ['requested'], additionalProperties: false }), completion: 'dispatched' }, emptySchema, (_, c) => { checkpoint(c); const requested = presentationPlaybackState().state === 'running'; c.commit(stopPresentationPlayback); return { requested }; }),
+
 ];

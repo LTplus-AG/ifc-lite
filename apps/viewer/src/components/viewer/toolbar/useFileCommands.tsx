@@ -140,7 +140,8 @@ export function useFileCommands(): FileCommands {
 
   // The same loaders, awaitable, for a connected agent (`viewer_open_model`).
   useEffect(() => registerAgentModelLoader({
-    loadFile: (file) => loadFile(file), addModel: (file, onError) => addModel(file, { onError }), loadStack: loadFederatedIfcx,
+    loadFile: (file, modelId, onError) => loadFile(file, { kind: 'primary', modelId }, { onLoadError: onError }),
+    addModel: (file, onError) => addModel(file, { onError }), loadStack: loadFederatedIfcx,
   }), [loadFile, addModel, loadFederatedIfcx]);
 
   const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);

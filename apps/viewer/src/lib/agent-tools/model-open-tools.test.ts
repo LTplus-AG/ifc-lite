@@ -35,7 +35,7 @@ function model(id: string, name: string) {
 }
 
 /** Drives the store the way useIfcLoader / useIfcFederation do. */
-async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[], onError?: (message: string) => void): Promise<string | null> {
+async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[], onError?: (message: string) => void, primaryId?: string): Promise<string | null> {
   calls.push({ kind, names: files.map((f) => f.name) });
   // Like useIfcLoader: clearing the previous error bumps loadErrorSeq before the load runs.
   useViewerStore.getState().setError(null);
@@ -44,7 +44,7 @@ async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[], onErro
   await Promise.resolve();
   if (behaviour === 'nothing') { useViewerStore.setState({ loading: false }); return 'none'; }
   const models = new Map(kind === 'add' ? useViewerStore.getState().models : []);
-  const id = `m-${calls.length}-${files[0].name}`;
+  const id = primaryId ?? `m-${calls.length}-${files[0].name}`;
   if (behaviour === 'error') {
     // The primary loader keeps its placeholder record, marked failed; an add reports to its own onError and resolves null.
     if (kind !== 'add') models.set(id, { ...model(id, files[0].name), loadState: 'error', loadError: 'bad STEP' } as never);
@@ -54,7 +54,10 @@ async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[], onErro
     onError?.('bad STEP');
     return null;
   }
-  for (const f of files) models.set(`m-${calls.length}-${f.name}`, model(`m-${calls.length}-${f.name}`, f.name) as never);
+  for (const f of files) {
+    const fileId = primaryId ?? `m-${calls.length}-${f.name}`;
+    models.set(fileId, model(fileId, f.name) as never);
+  }
   useViewerStore.setState({ loading: false, models: models as never });
   // Another load in the tab closes what this call added.
   if (behaviour === 'closed') useViewerStore.setState({ models: new Map() as never });
@@ -72,7 +75,7 @@ beforeEach(() => {
     return respond();
   }) as typeof fetch;
   unregister = registerAgentModelLoader({
-    loadFile: async (file) => { await fakeLoad('replace', [file]); },
+    loadFile: async (file, modelId, onError) => { await fakeLoad('replace', [file], onError, modelId); },
     addModel: (file, onError) => fakeLoad('add', [file], onError),
     loadStack: async (files) => { await fakeLoad('stack', files); },
   });
@@ -100,8 +103,10 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     const out = await run({ sample: 'demo' });
     assert.deepEqual(calls, [{ kind: 'replace', names: ['building-architecture.ifc'] }]);
     assert.match(fetched[0], /\/samples\/building-architecture\.ifc$/);
-    assert.deepEqual(out.structured, { mode: 'replace', state: 'loaded', models: [{ model_id: 'm-1-building-architecture.ifc', name: 'building-architecture.ifc', schema: 'IFC4', new: true }] });
-    assert.match(out.text, /model_id m-1-building-architecture\.ifc/);
+    // A replace runs under an id the tool chose, so the result names exactly that record.
+    const [only] = [...useViewerStore.getState().models.keys()];
+    assert.deepEqual(out.structured, { mode: 'replace', state: 'loaded', models: [{ model_id: only, name: 'building-architecture.ifc', schema: 'IFC4', new: true }] });
+    assert.match(out.text, new RegExp(`model_id ${only}`));
   });
 
   it('asks for a mode once models are loaded, and federates with add', async () => {
@@ -281,5 +286,21 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       loadStack: async () => {},
     });
     await assert.rejects(run({ sample: 'demo' }), { code: 'UNSUPPORTED_OPERATION', message: /did not open/ });
+  });
+  it('does not claim a same-named model another load opened meanwhile (#9523 code review)', async () => {
+    unregister();
+    unregister = registerAgentModelLoader({
+      // The user's own demo.ifc wins the race; the agent's load (under its own id) never registers.
+      loadFile: async (file) => { useViewerStore.setState({ models: new Map([['user', model('user', file.name)]]) as never }); },
+      addModel: async () => null,
+      loadStack: async () => {},
+    });
+    await assert.rejects(run({ sample: 'demo' }), { code: 'UNSUPPORTED_OPERATION', message: /did not open/ });
+  });
+
+  it('keeps an unquoted file name that contains a comma (#9523 code review)', async () => {
+    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename=plan, v2.ifc' } });
+    await run({ url: 'https://example.com/download' });
+    assert.equal(calls.at(-1)!.names[0], 'plan, v2.ifc');
   });
 });

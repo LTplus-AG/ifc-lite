@@ -180,3 +180,41 @@ describe('trust assessments are never shared between models', () => {
     expect(() => { (none.reasons as Record<string, string[]>).ePSet = ['x']; }).toThrow(TypeError);
   });
 });
+
+describe('review: created and untrackable convention sets', () => {
+  it('an unattached convention set created through the generic API is read from its created records', async () => {
+    const m = await open('IFC2X3', BASE);
+    const v = m.view();
+    const atom = (name: string, value: number) => v.createEntity('IfcPropertySingleValue', [name, null, { typed: { type: 'IfcReal', value } }, null]).expressId;
+    const ids = [atom('Eastings', 5), atom('Northings', 6), atom('OrthogonalHeight', 7)];
+    v.createEntity('IfcPropertySet', ['3Zz9wAx1j4Bh3OB5NYQuhQ', null, 'ePSet_MapConversion', null, ids.map((i) => `#${i}`)]);
+    await trueOrUntrusted(m.bim);
+    const state = m.bim.georef.get();
+    if (!state.untrusted) expect(state.MapConversion).toMatchObject({ Eastings: 5, Northings: 6, OrthogonalHeight: 7 });
+  });
+  it('two source sets that share a GlobalId cannot be told apart: a rename of one is untrusted, not a stale copy', async () => {
+    const SAME = `${BASE}\n${sets(100, 1000000)}\n${attach(100, 6)}\n${sets(200, 2000000).replace(/'0200aaaaaaaaaaaaaaaaaaa'/, "'0100aaaaaaaaaaaaaaaaaaa'")}\n${attach(200, 6)}`;
+    const m = await open('IFC2X3', SAME);
+    m.bim.mutate.setAttribute({ modelId: 'model', expressId: 103 }, 'Name', 'Pset_Other');
+    await trueOrUntrusted(m.bim);
+  });
+  it('a source set with no GlobalId: a rename of it is untrusted, not a stale copy', async () => {
+    const NOGID = `${BASE}\n${sets(100, 1000000).replace(/'0100aaaaaaaaaaaaaaaaaaa'/, '$')}\n${attach(100, 6)}`;
+    const m = await open('IFC2X3', NOGID);
+    m.bim.mutate.setAttribute({ modelId: 'model', expressId: 103 }, 'Name', 'Pset_Other');
+    await trueOrUntrusted(m.bim);
+  });
+});
+
+describe('review: a deleted CRS keeps generic edits and pending fields together', () => {
+  it('update Eastings, generic Northings, delete the CRS: get() has both, and the file agrees where it reads one', async () => {
+    const m = await open('IFC4', GEO);
+    m.bim.georef.update({ MapConversion: { Eastings: 99 } });
+    m.bim.mutate.setAttribute({ modelId: 'model', expressId: 21 }, 'Northings', '77');
+    m.bim.store.removeEntity({ modelId: 'model', expressId: 20 });
+    const state = m.bim.georef.get();
+    expect(state.MapConversion).toMatchObject({ Eastings: 99, Northings: 77 });
+    const file = await reparsed(m.bim);
+    if (file.MapConversion) expect(file.MapConversion).toMatchObject({ Eastings: 99, Northings: 77 });
+  });
+});

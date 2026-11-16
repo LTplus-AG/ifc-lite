@@ -39,21 +39,18 @@ function resolveMeasureWithUnit(
   }
   if (value === undefined || !Number.isFinite(value) || value <= 0) return undefined;
 
-  let componentScale = 1;
+  // The factor is a multiple of its component unit: it must name an SI LENGTH unit (whose prefix is applied). An
+  // absent component, one that is not in the file, a non-length unit, or a conversion-based one (a chain of 66
+  // FEET, which would need its own factor) leaves the factor unstated.
   const componentRef = getReference(measure.attributes?.[1]);
-  if (componentRef !== undefined) {
-    const component = resolveEntity(componentRef);
-    // The factor is a multiple of its component unit. Only an SI unit's own prefix is known here: a component that is
-    // itself conversion-based (a chain of 66 FEET) would need its own factor, so the factor cannot be stated.
-    // A component that is missing, or is not an SI unit, leaves the factor unstated.
-    if (!component || (component.type ?? '').toUpperCase() !== 'IFCSIUNIT') return undefined;
-    {
-      const prefix = component.attributes?.[2];
-      if (typeof prefix === 'string' && prefix !== '$') {
-        const prefixScale = SI_PREFIX_MULTIPLIERS[prefix.replace(/\./g, '').toUpperCase()];
-        if (prefixScale !== undefined) componentScale = prefixScale;
-      }
-    }
+  const component = componentRef === undefined ? undefined : resolveEntity(componentRef);
+  if (!component || (component.type ?? '').toUpperCase() !== 'IFCSIUNIT') return undefined;
+  if (String(component.attributes?.[1] ?? '').replace(/\./g, '').toUpperCase() !== 'LENGTHUNIT') return undefined;
+  let componentScale = 1;
+  const prefix = component.attributes?.[2];
+  if (typeof prefix === 'string' && prefix !== '$') {
+    const prefixScale = SI_PREFIX_MULTIPLIERS[prefix.replace(/\./g, '').toUpperCase()];
+    if (prefixScale !== undefined) componentScale = prefixScale;
   }
 
   return value * componentScale;

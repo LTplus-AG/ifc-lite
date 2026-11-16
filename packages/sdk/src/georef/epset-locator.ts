@@ -35,6 +35,9 @@ interface SourceSets {
   named: Map<number, string>;
   /** Their GlobalIds: the view's entries name the set they come from by it, whatever order it lists them in. */
   byGlobalId: Map<string, number>;
+  /** GlobalId of each source set, and the ones two source sets share: an entry carrying one of those cannot be matched to a record. */
+  gidOf: Map<number, string>;
+  dupGids: Set<string>;
   /** The IfcPropertySingleValue records those sets list: a rename of one changes what the reader finds. */
   atoms: Set<number>;
   /** Source IfcRelDefinesByProperties: the objects each relates to the set it names. */
@@ -48,7 +51,7 @@ const sourceRef = (store: IfcDataStore, id: number) => store.entityIndex?.byId.g
 function sourceSets(store: IfcDataStore): SourceSets {
   let sets = cache.get(store);
   if (sets) return sets;
-  sets = { named: new Map(), byGlobalId: new Map(), atoms: new Set(), rels: null };
+  sets = { named: new Map(), byGlobalId: new Map(), gidOf: new Map(), dupGids: new Set(), atoms: new Set(), rels: null };
   const extractor = store.source?.length ? new EntityExtractor(store.source) : null;
   // @raw-entity-enumeration-ok immutable source membership, cached per store; tombstones and creations are applied by the caller
   for (const id of store.entityIndex?.byType.get('IFCPROPERTYSET') ?? []) {
@@ -56,7 +59,11 @@ function sourceSets(store: IfcDataStore): SourceSets {
     const attrs = ref && extractor?.extractEntity(ref)?.attributes;
     if (attrs && typeof attrs[2] === 'string' && isConvention(attrs[2])) {
       sets.named.set(id, attrs[2]);
-      if (typeof attrs[0] === 'string') sets.byGlobalId.set(attrs[0], id);
+      if (typeof attrs[0] === 'string') {
+        if (sets.byGlobalId.has(attrs[0])) sets.dupGids.add(attrs[0]);
+        sets.byGlobalId.set(attrs[0], id);
+        sets.gidOf.set(id, attrs[0]);
+      }
       for (const atom of Array.isArray(attrs[4]) ? attrs[4] : []) if (typeof atom === 'number') sets.atoms.add(atom);
     }
   }
@@ -73,20 +80,23 @@ function sourceRels(store: IfcDataStore, sets: SourceSets): NonNullable<SourceSe
   for (const id of store.entityIndex?.byType.get('IFCRELDEFINESBYPROPERTIES') ?? []) {
     const ref = sourceRef(store, id);
     const attrs = ref && extractor?.extractEntity(ref)?.attributes;
-    if (attrs && typeof attrs[5] === 'number') sets.rels.set(attrs[5], [...(sets.rels.get(attrs[5]) ?? []), { id, hosts: (Array.isArray(attrs[4]) ? attrs[4] : []).filter((h): h is number => typeof h === 'number') }]);
+    if (attrs && typeof attrs[5] === 'number') {
+      let bucket = sets.rels.get(attrs[5]);
+      if (!bucket) sets.rels.set(attrs[5], (bucket = []));
+      bucket.push({ id, hosts: (Array.isArray(attrs[4]) ? attrs[4] : []).filter((h): h is number => typeof h === 'number') });
+    }
   }
   return sets.rels;
 }
 
-/** An unattached source set's properties, name → value, read from the file. */
-function sourceValues(store: IfcDataStore, id: number): Record<string, unknown> {
-  const extractor = store.source?.length ? new EntityExtractor(store.source) : null;
-  const props = extractor && sourceRef(store, id) ? extractor.extractEntity(sourceRef(store, id)!)?.attributes?.[4] : null;
+/** A set's properties, name → value, read from the effective records (created or source, edits applied). */
+function recordValues(effective: EffectiveEntities, id: number): Record<string, unknown> {
+  const read = effective.attributesOf(id);
+  const props = 'attributes' in read ? read.attributes[4] : undefined;
   const values: Record<string, unknown> = {};
   for (const p of Array.isArray(props) ? props : []) {
-    const ref = typeof p === 'number' ? sourceRef(store, p) : undefined;
-    const attrs = ref && extractor?.extractEntity(ref)?.attributes;
-    if (attrs && typeof attrs[0] === 'string') values[attrs[0]] = Array.isArray(attrs[2]) ? attrs[2][1] : attrs[2];
+    const atom = typeof p === 'number' ? effective.attributesOf(p) : undefined;
+    if (atom && 'attributes' in atom && typeof atom.attributes[0] === 'string') values[atom.attributes[0]] = Array.isArray(atom.attributes[2]) ? atom.attributes[2][1] : atom.attributes[2];
   }
   return values;
 }
@@ -132,9 +142,10 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
   // Only what the session created is scanned here: the source's sets and relationships are cached, and walking every
   // set and relationship of a large model on each call would make this cost grow with the model.
   const created = (type: string) => view.getNewEntities().filter((e) => !view.isDeleted(e.expressId) && (view.getEntityTypeMutation(e.expressId)?.newType ?? e.type).toUpperCase() === type).map((e) => e.expressId);
+  let createdTouch = false; // the session created a convention set, or a relationship that attaches one
   for (const id of created('IFCPROPERTYSET')) {
     const name = effectiveName(id);
-    if (!named.has(id) && typeof name === 'string' && isConvention(name)) named.set(id, name);
+    if (!named.has(id) && typeof name === 'string' && isConvention(name)) { named.set(id, name); createdTouch = true; }
   }
   const rels: Array<{ hosts: number[]; set: number }> = [];
   if (named.size > 0 || renamedOut.size > 0) {
@@ -143,6 +154,7 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
     for (const id of created('IFCRELDEFINESBYPROPERTIES')) {
       const read = effective.attributesOf(id);
       if ('attributes' in read && typeof read.attributes[5] === 'number') {
+        if (named.has(read.attributes[5])) createdTouch = true;
         rels.push({ hosts: (Array.isArray(read.attributes[4]) ? read.attributes[4] : []).filter((h): h is number => typeof h === 'number'), set: read.attributes[5] });
       }
     }
@@ -179,12 +191,12 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
   for (const [id, name] of renamedIn) {
     const on = [...new Set(rels.filter((r) => r.set === id).flatMap((r) => r.hosts))];
     for (const host of on.length > 0 ? on : [0]) {
-      copies.push({ hostId: host, ...(on.length === 0 ? { orphan: id } : {}), name, values: sourceValues(store, id), managed: managedHosts.has(host), edited: true, order: Infinity, fileRank: Infinity });
+      copies.push({ hostId: host, ...(on.length === 0 ? { orphan: id } : {}), name, values: recordValues(effective, id), managed: managedHosts.has(host), edited: true, order: Infinity, fileRank: Infinity });
     }
   }
   // A set no relationship attaches to anything: the reader still takes it.
   for (const [id, name] of named) {
-    if (!attached.has(id) && !renamedIn.has(id)) copies.push({ hostId: 0, orphan: id, name, values: sourceValues(store, id), managed: false, edited: false, order: sets.named.has(id) ? id : Infinity, fileRank: rank.get(id) ?? Infinity });
+    if (!attached.has(id) && !renamedIn.has(id)) copies.push({ hostId: 0, orphan: id, name, values: recordValues(effective, id), managed: false, edited: false, order: sets.named.has(id) ? id : Infinity, fileRank: rank.get(id) ?? Infinity });
   }
 
   const ambiguous: string[] = [];
@@ -199,6 +211,12 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
     }
     return of[0] ?? null;
   };
+  // Entries of the view are matched to their records by GlobalId; a set whose removal the view does not show (renamed out
+  // or deleted) must be matchable, or its copy would stay.
+  for (const id of [...renamedOut, ...[...sets.named.keys()].filter((i) => view.isDeleted(i))]) {
+    const gid = sets.gidOf.get(id);
+    if (gid === undefined || sets.dupGids.has(gid)) ambiguous.push(`set #${id} has ${gid === undefined ? 'no GlobalId' : 'a GlobalId another set shares'}, so its removal cannot be matched to the view's entry`);
+  }
   const mapConversion = pick(NAMES[0]);
   const projectedCRS = pick(NAMES[1]);
   // A value the reader would not read as a number (`abc` where Eastings belongs) is not a state anyone can state.
@@ -217,7 +235,7 @@ export function locateConventionSets(store: IfcDataStore, view: MutablePropertyV
     return c.kind === 'type' || (c.kind === 'attribute' && c.name !== 'Name' && c.name !== '@2');
   });
   if (subgraphEdits.length > 0) ambiguous.push(`record(s) ${[...new Set(subgraphEdits.map((c) => `#${c.entityId}`))].join(', ')} of a convention set (its class, members, properties or relationships) were changed outside bim.georef`);
-  return { copies, mapConversion, projectedCRS, ambiguous, touched: changes.length > 0 || renamedOut.size > 0 || renamedIn.size > 0 || subgraphEdits.length > 0 };
+  return { copies, mapConversion, projectedCRS, ambiguous, touched: changes.length > 0 || renamedOut.size > 0 || renamedIn.size > 0 || subgraphEdits.length > 0 || createdTouch };
 }
 
 /** `ePSet_MapConversion on #8` / `ePSet_MapConversion #103 (not attached to any object)`. */

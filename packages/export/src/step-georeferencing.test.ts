@@ -930,6 +930,18 @@ describe('StepExporter georeferencing — IfcMapConversionScaled', () => {
     ]);
   }
 
+  it('a factor triple that is not all finite numbers is refused as a whole: no factor of an existing scaled record is edited', () => {
+    for (const factors of [{ factorX: Number.NaN, factorY: 2, factorZ: 3 }, { factorX: 'abc', factorY: 2, factorZ: 3 }, { factorX: Infinity, factorY: 2, factorZ: 3 }]) {
+      const result = new StepExporter(buildScaledGeoreferencedMockDataStore()).export({
+        schema: 'IFC4', applyMutations: true,
+        georefMutations: { mapConversion: { eastings: 9999, ...factors } as never },
+      });
+      // The position edit still applies; the factors stay exactly as the file has them (none of the three is written).
+      expect(decode(result.content)).toContain('#41=IFCMAPCONVERSIONSCALED(#20,#40,9999.,2.,3.,1.,0.,1.,1.,1.,1.);');
+      expect(result.stats.georeferencingWarnings?.join('\n')).toMatch(/must be finite numbers/);
+    }
+  });
+
   it('edits the scaled record in place instead of emitting a second conversion', () => {
     const exporter = new StepExporter(buildScaledGeoreferencedMockDataStore());
     const result = exporter.export({

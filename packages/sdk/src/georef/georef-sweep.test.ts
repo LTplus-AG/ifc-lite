@@ -137,10 +137,9 @@ async function holds(f: Fixture, cell: Cell): Promise<true | string> {
   if (!state.untrusted) {
     return isDeepStrictEqual(comparable(state), comparable(file)) ? true : `get() and the file disagree while get() calls itself trusted: ${JSON.stringify(comparable(state))} vs ${JSON.stringify(comparable(file))}`.slice(0, 400);
   }
+  // An untrusted state is not a state to carry values from: update refuses, whatever the edit was.
   try { m.bim.georef.update({ MapConversion: { OrthogonalHeight: 9 } }); } catch (err) { if (err instanceof GeoreferencingError) return true; throw err; }
-  // update went through on an untrusted state: only acceptable when the record it edited is gone and nothing was carried
-  const after = m.bim.georef.get();
-  return after.untrusted ? 'update succeeded on an untrusted state that stays untrusted' : true;
+  return 'update succeeded on an untrusted state';
 }
 
 describe.each([
@@ -158,4 +157,45 @@ describe.each([
     }
     expect(failures).toEqual([]);
   }, 600000);
+});
+
+describe('sweep: the per-store index and the view answer correctly across a SEQUENCE of edits and reads', () => {
+  const steps = (m: Awaited<ReturnType<typeof open>>): Array<[string, () => void]> => [
+    ['rename the MapConversion set out', () => m.bim.mutate.setAttribute({ modelId: 'model', expressId: 103 }, 'Name', 'Pset_Other')],
+    ['rename it back', () => m.bim.mutate.setAttribute({ modelId: 'model', expressId: 103 }, 'Name', 'ePSet_MapConversion')],
+    ['edit a property through the property API', () => m.view().setProperty(6, 'ePSet_MapConversion', 'Eastings', 5, 1 as never, undefined, false, 'IfcReal')],
+    ['rename the CRS set to the other convention name', () => m.bim.mutate.setAttribute({ modelId: 'model', expressId: 106 }, 'Name', 'ePSet_MapConversion')],
+    ['delete the Eastings atom', () => { m.bim.store.removeEntity({ modelId: 'model', expressId: 100 }); }],
+    ['delete the MapConversion set', () => { m.bim.store.removeEntity({ modelId: 'model', expressId: 103 }); }],
+  ];
+  for (const schema of ['IFC2X3', 'IFC4']) {
+    it(`${schema}: after each step get() equals the re-parse or says it is untrusted (one session, edits and reads alternating)`, async () => {
+      const m = await open(schema, CONVENTION.data);
+      const failures: string[] = [];
+      const check = async (label: string) => {
+        const state = m.bim.georef.get();
+        if (state.untrusted) return;
+        const file = await reparsed(m.bim);
+        if (!isDeepStrictEqual(comparable(state), comparable(file))) failures.push(`${label}: ${JSON.stringify(comparable(state))} vs ${JSON.stringify(comparable(file))}`.slice(0, 300));
+      };
+      await check('initial');
+      for (const [label, run] of steps(m)) {
+        try { run(); } catch { continue; }
+        await check(label);
+        await check(`${label} (read again)`);
+      }
+      expect(failures).toEqual([]);
+    });
+  }
+  it('two models in one process do not answer for each other', async () => {
+    const a = await open('IFC2X3', CONVENTION.data);
+    const b = await open('IFC2X3', CONVENTION.data);
+    a.bim.mutate.setAttribute({ modelId: 'model', expressId: 103 }, 'Name', 'Pset_Other');
+    expect(b.bim.georef.get().untrusted).toBeUndefined();
+    expect(b.bim.georef.get().hasGeoreference).toBe(true);
+    expect(a.bim.georef.get().hasGeoreference).toBe(false);
+    b.bim.mutate.setAttribute({ modelId: 'model', expressId: 106 }, 'Name', 'Zz');
+    expect(isDeepStrictEqual(comparable(a.bim.georef.get()), comparable(await reparsed(a.bim)))).toBe(true);
+    expect(b.bim.georef.get().hasGeoreference).toBe(true);
+  });
 });

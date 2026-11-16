@@ -23,7 +23,7 @@ use super::wire::GeorefMutations;
 const WITHOUT_CONTEXT: &str = "Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.";
 const WITHOUT_CRS: &str = "Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.";
 const INCOMPLETE_MAP_CONVERSION: &str = "Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight are all required.";
-const PARTIAL_FACTORS: &str = "Cannot write IfcMapConversionScaled: FactorX, FactorY and FactorZ are all mandatory and only some were given. The factors were not written.";
+const PARTIAL_FACTORS: &str = "Cannot write IfcMapConversionScaled: FactorX, FactorY and FactorZ are all mandatory and must be finite numbers, and the triple given was not. The factors were not written.";
 const FACTORS_ON_UNSCALED: &str = "Cannot write FactorX/FactorY/FactorZ onto an existing IfcMapConversion: they exist only on IfcMapConversionScaled, and this edit does not change the class. The factors were not written.";
 
 /// The error the TypeScript exporter throws for an IFC2X3 output.
@@ -124,7 +124,7 @@ fn scaled_undeclared_warning(file_schema: &str) -> String {
 fn requested_factors<'a>(mc: &'a Map<String, Value>, warnings: &mut Vec<String>) -> Option<[&'a Value; 3]> {
     // A null is a factor nobody gave, as in the TypeScript writer.
     match ["factorX", "factorY", "factorZ"].map(|k| mc.get(k).filter(|v| !v.is_null())) {
-        [Some(x), Some(y), Some(z)] => Some([x, y, z]),
+        [Some(x), Some(y), Some(z)] if [x, y, z].iter().all(|v| js_to_number(v).is_finite()) => Some([x, y, z]),
         [None, None, None] => None,
         _ => {
             warnings.push(PARTIAL_FACTORS.to_string());

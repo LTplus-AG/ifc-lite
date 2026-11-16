@@ -61,6 +61,9 @@ describe('extractGeoreferencingOnDemand — mapUnitResolved', () => {
 #16=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(66.),#15);
 #17=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(20.1168),#11);
 #18=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(66.),#999);
+#19=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(66.),$);
+#30=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#31=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(66.),#30);
 ${unit ? `#13=${unit};` : ''}
 #20=IFCPROJECTEDCRS('EPSG:2227',$,'NAD83',$,$,$,${unit ? '#13' : '$'});
 #21=IFCMAPCONVERSION(#5,#20,6000000.,2100000.,12.,$,$,$);`;
@@ -73,6 +76,8 @@ ${unit ? `#13=${unit};` : ''}
     ['an IfcConversionBasedUnit named FOOT whose declared factor is the survey foot (0.3048006096)', "IFCCONVERSIONBASEDUNIT(#10,.LENGTHUNIT.,'FOOT',#14)", 'FOOT', 0.3048, false],
     ['an unknown unit defined through a conversion-based component (66 feet): the component\'s own factor is not applied, so it stays unresolved', "IFCCONVERSIONBASEDUNIT(#10,.LENGTHUNIT.,'CHAIN',#16)", 'METRE', 1, false],
     ['an unknown unit whose measure names a component that is not in the file stays unresolved', "IFCCONVERSIONBASEDUNIT(#10,.LENGTHUNIT.,'CHAIN',#18)", 'METRE', 1, false],
+    ['an unknown unit whose measure has no component unit at all stays unresolved', "IFCCONVERSIONBASEDUNIT(#10,.LENGTHUNIT.,'CHAIN',#19)", 'METRE', 1, false],
+    ['an unknown unit whose component is an SI unit that is not a length stays unresolved', "IFCCONVERSIONBASEDUNIT(#10,.LENGTHUNIT.,'CHAIN',#31)", 'METRE', 1, false],
     ['an unknown unit defined through an SI prefix is read', "IFCCONVERSIONBASEDUNIT(#10,.LENGTHUNIT.,'CHAIN',#17)", 'CHAIN', 20.1168, true],
     ['an IfcContextDependentUnit (no factor)', "IFCCONTEXTDEPENDENTUNIT(#10,.LENGTHUNIT.,'CHAIN')", 'METRE', 1, false],
     ['an IfcSIUnit that is not a length', 'IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.)', 'METRE', 1, false],

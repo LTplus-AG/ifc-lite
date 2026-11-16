@@ -323,17 +323,19 @@ fn resolve_measure_with_unit(
         return None;
     }
 
+    // The factor is a multiple of its component unit: it must name an SI LENGTH unit (whose prefix is applied). An
+    // absent component, one that cannot be decoded, a non-length unit, or a conversion-based one (a chain of 66 feet)
+    // leaves the factor unstated.
+    let component_ref = measure.ref_at(slot::IfcMeasureWithUnit::UNIT_COMPONENT)?;
+    let component = decoder.decode_by_id(component_ref).ok()?;
+    if component.ifc_type != IfcType::IfcSIUnit
+        || !component.enum_at(slot::IfcSIUnit::UNIT_TYPE).is_some_and(|t| t.eq_ignore_ascii_case("LENGTHUNIT"))
+    {
+        return None;
+    }
     let mut component_scale = 1.0_f64;
-    if let Some(component_ref) = measure.ref_at(slot::IfcMeasureWithUnit::UNIT_COMPONENT) {
-        // The factor is a multiple of its component unit; only an SI unit's own prefix is known here. A component that
-        // is missing, or conversion-based (a chain of 66 feet), leaves the factor unstated.
-        let component = decoder.decode_by_id(component_ref).ok()?;
-        if component.ifc_type != IfcType::IfcSIUnit {
-            return None;
-        }
-        if let Some(prefix) = component.attr(slot::IfcSIUnit::PREFIX).filter(|a| !a.is_null()).and_then(|a| a.as_enum()) {
-            component_scale = crate::units::get_si_prefix_multiplier(prefix);
-        }
+    if let Some(prefix) = component.attr(slot::IfcSIUnit::PREFIX).filter(|a| !a.is_null()).and_then(|a| a.as_enum()) {
+        component_scale = crate::units::get_si_prefix_multiplier(prefix);
     }
 
     Some(value * component_scale)

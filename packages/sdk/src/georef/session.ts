@@ -96,7 +96,7 @@ export class GeoreferencingSession {
       // cache describes a file the export will not write, so report the source minus deletions.
       // The pending edit still stands (the exporter refuses to create from it), hence `pending`.
       if (view && [top.state.ProjectedCRS, top.state.MapConversion, top.state.RigidOperation, top.state.site].some((r) => r?.expressId !== undefined && view.isDeleted(r.expressId))) {
-        return { ...withPendingFields(readSourceGeoreferencing(this.deps.store, this.deps.modelId, (id) => view.isDeleted(id)), top.pending), pending: true };
+        return { ...withAttributeEdits(withPendingFields(readSourceGeoreferencing(this.deps.store, this.deps.modelId, (id) => view.isDeleted(id)), top.pending), view, top.pending), pending: true };
       }
       return view ? withAttributeEdits(top.state, view, top.pending) : top.state;
     }

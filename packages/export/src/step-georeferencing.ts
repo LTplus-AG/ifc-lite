@@ -265,7 +265,7 @@ function scaledUndeclaredWarning(fileSchema: string): string {
 
 /** A partial factor triple: IfcMapConversionScaled declares all three as mandatory. */
 const PARTIAL_FACTORS_WARNING =
-  'Cannot write IfcMapConversionScaled: FactorX, FactorY and FactorZ are all mandatory and only some were given. The factors were not written.';
+  'Cannot write IfcMapConversionScaled: FactorX, FactorY and FactorZ are all mandatory and must be finite numbers, and the triple given was not. The factors were not written.';
 
 /** Factors requested for a record that is a plain IfcMapConversion. */
 const FACTORS_ON_UNSCALED_WARNING =
@@ -303,7 +303,7 @@ function requestedFactors(mc: MapConversionRequest, warnings?: string[]): [numbe
   const given = [mc.factorX, mc.factorY, mc.factorZ];
   // A null is a factor nobody gave (`Number(null)` is 0, a mandatory FactorX of 0).
   if (given.every((f) => f == null)) return null;
-  if (given.some((f) => f == null)) {
+  if (given.some((f) => f == null || !Number.isFinite(Number(f)))) {
     if (warnings) reportGeorefWarning(warnings, PARTIAL_FACTORS_WARNING);
     return null;
   }

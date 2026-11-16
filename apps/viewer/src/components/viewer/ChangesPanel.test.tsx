@@ -157,7 +157,7 @@ test('#5902 georeference row has no fake Jump and downloads its model-level muta
   useViewerStore.setState({ models: new Map([['A', model]]), activeModelId: 'A',
     undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(),
     georefMutations: new Map(), editEnabled: true });
-  useViewerStore.getState().setGeorefFields('A', 'mapConversion', [{ field: 'Eastings', value: 42 }]);
+  useViewerStore.getState().setGeorefFields('A', 'mapConversion', [{ field: 'eastings', value: 42 }]);
   const ui = render(<ChangesPanel />);
   assert.match(ui.textContent ?? '', /Georeference/);
   assert.equal(ui.querySelectorAll('button[aria-label^="Jump to"]').length, 0);
@@ -167,8 +167,9 @@ test('#5902 georeference row has no fake Jump and downloads its model-level muta
     const download = downloads[0];
     assert.ok(download, 'a georeference-only row must not export an empty delta');
     const payload = JSON.parse(await download.text()) as { mutations: Array<{ attributeName?: string; newValue?: unknown }> };
-    assert.deepEqual(payload.mutations.map(mutation => mutation.attributeName), ['georef.mapConversion.Eastings']);
-    assert.deepEqual(payload.mutations.map(mutation => mutation.newValue), [42]);
+    // The edit leaves the position incomplete, so the store completes it with 0 in the same step and the delta carries both.
+    assert.deepEqual(payload.mutations.map(mutation => mutation.attributeName), ['georef.mapConversion.eastings', 'georef.mapConversion.northings', 'georef.mapConversion.orthogonalHeight']);
+    assert.deepEqual(payload.mutations.map(mutation => mutation.newValue), [42, 0, 0]);
   });
 });
 

@@ -102,6 +102,16 @@ export async function anchorStillCurrent(modelId: string, captured: { centre: { 
   return fresh.ok && fresh.centre.x === captured.centre.x && fresh.centre.y === captured.centre.y;
 }
 
+/** Revalidate after the lazy loader is ready, so edits during its import cannot dispatch an old centre (#10481). */
+export async function runForCurrentSiteContextAnchor(
+  modelId: string,
+  captured: { centre: { x: number; y: number } },
+  ready: Promise<() => Promise<void>>,
+): Promise<void> {
+  const run = await ready;
+  if (await anchorStillCurrent(modelId, captured)) await run();
+}
+
 /** Resolve the model `modelId` as a site-context anchor. */
 export async function resolveSiteContextAnchor(modelId: string): Promise<SiteContextAnchor> {
   const model = useViewerStore.getState().models.get(modelId);

@@ -19,7 +19,7 @@ import { fixtureModel } from '@/test/store-fixture';
 import { siteContextAnchorRefusal } from '@/hooks/ingest/siteContextLoad';
 import { siteContextVerticalPolicy } from '@/hooks/ingest/ifcGeorefAssumptions';
 import { spatialReferenceFromIfc } from '@/lib/geo/ifc-spatial-reference';
-import { anchorStillCurrent, resolveSiteContextAnchor, siteContextPlacementReference } from './site-context-anchor';
+import { anchorStillCurrent, runForCurrentSiteContextAnchor, resolveSiteContextAnchor, siteContextPlacementReference } from './site-context-anchor';
 
 const FRAME: CoordinateInfo = {
   originShift: { x: 0, y: 0, z: 0 },
@@ -113,4 +113,29 @@ test('a load is dispatched only while the model still resolves to the centre the
   });
   useViewerStore.setState((s) => ({ models: new Map([['m', { ...s.models.get('m')!, spatialReference: moved } as FederatedModel]]) }));
   assert.equal(await anchorStillCurrent('m', captured), false);
+});
+
+
+test('an edit while the lazy loader is pending prevents dispatch after it becomes ready (#10481 review)', async () => {
+  seed(swissModel('m', 1, 'LN02'));
+  const captured = await resolveSiteContextAnchor('m');
+  assert.ok(captured.ok);
+  let ready!: (run: () => Promise<void>) => void;
+  const imported = new Promise<() => Promise<void>>((resolve) => { ready = resolve; });
+  let dispatched = 0;
+  const pending = runForCurrentSiteContextAnchor('m', captured, imported);
+  // Let a prematurely parallel anchor check finish before the module arrives.
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const moved = spatialReferenceFromIfc({
+    mapConversion: { ...conversion, eastings: conversion.eastings + 500 },
+    projectedCRS: { id: 3, name: 'EPSG:2056', mapUnitScale: 1, verticalDatum: 'LN02' }, lengthUnitScale: 1, coordinateInfo: FRAME,
+  });
+  useViewerStore.setState((s) => ({ models: new Map([['m', { ...s.models.get('m')!, spatialReference: moved } as FederatedModel]]) }));
+  ready(async () => { dispatched++; });
+  await pending;
+  assert.equal(dispatched, 0);
+
+  seed(swissModel('m', 1, 'LN02'));
+  await runForCurrentSiteContextAnchor('m', captured, Promise.resolve(async () => { dispatched++; }));
+  assert.equal(dispatched, 1, 'an unchanged anchor dispatches once when the loader is ready');
 });

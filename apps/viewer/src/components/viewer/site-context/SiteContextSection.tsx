@@ -22,7 +22,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { formatFileSize } from '@/lib/recent-files';
 import { SITE_CONTEXT_CATEGORIES, SITE_CONTEXT_RADII, type SiteContextCategoryStatus, type SiteContextRadius } from '@/store/slices/siteContextSlice';
-import { anchorStillCurrent, resolveSiteContextAnchor, type SiteContextAnchor } from '@/lib/site-context/site-context-anchor';
+import { runForCurrentSiteContextAnchor, resolveSiteContextAnchor, type SiteContextAnchor } from '@/lib/site-context/site-context-anchor';
 
 const CATEGORY_KEY = {
   terrain: 'siteContext.category.terrain',
@@ -88,13 +88,10 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
   const start = () => {
     if (!anchor.ok) return;
     const captured = anchor;
-    void Promise.all([import('@/lib/site-context/site-context-fetch'), anchorStillCurrent(modelId, captured)]).then(([{ loadSiteContext }, unchanged]) => {
-      if (!unchanged) return;
-      return loadSiteContext({
+    void runForCurrentSiteContextAnchor(modelId, captured, import('@/lib/site-context/site-context-fetch').then(({ loadSiteContext }) => () => loadSiteContext({
       anchorModelId: modelId, centre: captured.centre, radius, ...(captured.subject ? { subject: captured.subject } : {}), categories: SITE_CONTEXT_CATEGORIES.filter((kind) => selected.has(kind)),
       imagery: imagery && selected.has('terrain'), addModel, removeModel,
-      });
-    });
+    })));
   };
   const toggle = (kind: SiteContextLayerKind, on: boolean) => {
     const next = new Set(selected);

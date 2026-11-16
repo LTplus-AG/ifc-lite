@@ -58,10 +58,20 @@ function referenceValues(got, raw, step, types) {
 /** Relationship end attributes and how the read model is expected to carry the link, by catalogue root. */
 const LINKS = {
   IfcRelConnectsStructuralMember: ['RelatingStructuralMember', 'RelatedStructuralConnection', (ix, a, b) => ix.byGuid.get(a)?.connectionGlobalIds?.includes(b) && ix.byGuid.get(b)?.memberGlobalIds?.includes(a)],
-  IfcRelConnectsStructuralActivity: ['RelatingElement', 'RelatedStructuralActivity', (ix, a, b) => ix.byGuid.get(b)?.appliesToGlobalId === a],
+  IfcRelConnectsStructuralActivity: ['RelatingElement', 'RelatedStructuralActivity', holdsActivityLink],
   // IFC2X3 only: the member carries the physical element's model-local id.
   IfcRelConnectsStructuralElement: ['RelatingElement', 'RelatedStructuralMember', (ix, _a, b, rawFrom) => ix.byGuid.get(b)?.physicalElementIds?.includes(rawFrom?.ref)],
 };
+
+/** Match the extractor's normalization only for an activity and a structural item. */
+function holdsActivityLink(ix, a, b) {
+  const from = ix.byGuid.get(a);
+  const to = ix.byGuid.get(b);
+  const family = (info) => ix.byId.get(info?.expressId)?.family;
+  if (family(from) === 'item' && family(to) === 'activity') return to.appliesToGlobalId === a;
+  if (family(from) === 'activity' && family(to) === 'item') return from.appliesToGlobalId === b;
+  return false;
+}
 
 /** Every read-model object of the extraction, by expressId and GlobalId, plus the fields each type has. */
 function indexExtraction(x) {
@@ -83,7 +93,10 @@ function indexExtraction(x) {
   for (const g of x.resultGroups) put('group', g, 'IfcStructuralResultGroup');
   for (const g of x.analysisModels) put('group', g, 'IfcStructuralAnalysisModel');
   const loads = (l) => { if (!l || byId.has(l.expressId)) return; put('resource', l); for (const e of l.configuration?.entries ?? []) loads(e.value); };
-  for (const a of x.activities) loads(a.appliedLoad);
+  for (const a of x.activities) {
+    loads(a.appliedLoad);
+    for (const load of a.subsequentLoads ?? []) loads(load);
+  }
   for (const c of x.connections) if (c.appliedCondition) put('resource', c.appliedCondition);
   for (const m of x.members) for (const rel of m.IfcRelConnectsStructuralMember ?? []) {
     put('relationship', rel, 'IfcRelConnectsStructuralMember');

@@ -73,3 +73,33 @@ test('#9668 reference arrays normalize ids while retaining multiplicity and nume
   for (const ids of [[2, 3, 99], [2, 3], [2, 3, 3], [2, 3, 2, 2]]) rejects(await run(ids), 'SubsequentAppliedLoads');
   rejects(await run([2, 3, 2], [0, 1, 0.5]), 'VaryingAppliedLoadLocation');
 });
+
+test('#9668 read indexes subsequent loads recursively and still rejects wrong or missing values', async () => {
+  const run = (force, include = true, nested = false) => {
+    const load = { expressId: 1, type: 'IfcStructuralLoadLinearForce', components: { LinearForceX: force } };
+    const subsequent = nested ? { expressId: 5, type: 'IfcStructuralLoadConfiguration', configuration: { entries: [{ value: load }] } } : load;
+    return check('IfcStructuralLoadLinearForce', ['LinearForceX'], { LinearForceX: '5.' },
+      { ...empty(), activities: [{ expressId: 2, type: 'IfcStructuralLinearActionVarying', subsequentLoads: include ? [undefined, subsequent] : [] }] }, '', 'IFC2X3');
+  };
+  for (const nested of [false, true]) {
+    assert.equal((await run(5, true, nested)).status, 'pass');
+    rejects(await run(6, true, nested), 'LinearForceX');
+    rejects(await run(5, false, nested), 'not in the read model');
+  }
+});
+
+test('#9668 read accepts normalized activity links in either STEP orientation and rejects unrelated ends', async () => {
+  const run = (swapped, target = 'item', includeActivity = true, includeItem = true) => check(
+    'IfcRelConnectsStructuralActivity', [],
+    { RelatingElement: swapped ? '#3' : '#2', RelatedStructuralActivity: swapped ? '#2' : '#3' },
+    { ...empty(),
+      connections: includeItem ? [{ expressId: 2, type: 'IfcStructuralPointConnection', globalId: 'item', activityGlobalIds: ['activity'] }] : [],
+      activities: includeActivity ? [{ expressId: 3, type: 'IfcStructuralPointAction', globalId: 'activity', appliesToGlobalId: target }] : [],
+    }, "#2=IFCSTRUCTURALPOINTCONNECTION('item');#3=IFCSTRUCTURALPOINTACTION('activity');", 'IFC4X3');
+  for (const swapped of [false, true]) assert.equal((await run(swapped)).status, 'pass');
+  for (const swapped of [false, true]) {
+    rejects(await run(swapped, 'other'), 'link');
+    rejects(await run(swapped, undefined, false), 'link');
+    rejects(await run(swapped, 'item', true, false), 'link');
+  }
+});

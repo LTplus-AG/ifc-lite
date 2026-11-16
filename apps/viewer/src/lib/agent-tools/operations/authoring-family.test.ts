@@ -127,4 +127,20 @@ describe('native reviewed authoring operations (full automation follow-up #10525
     assert.equal(state.mutationViews.get(SAMPLE_MODEL)!.getForEntity(express_id).some(pset => pset.name === input.pset), false);
   });
 
+  it('enforces network effect admission and suppresses a bSDD result after host disposal', async () => {
+    const lifetime = new AbortController(); let requests = 0;
+    let release: (() => void) | undefined, started: (() => void) | undefined;
+    const pending = new Promise<void>(resolve => { release = resolve; }), ready = new Promise<void>(resolve => { started = resolve; });
+    host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), {
+      lifetimeSignal: lifetime.signal,
+      bsdd: { search: async () => { requests++; started!(); await pending; return []; },
+        fetchClassInfo: async () => assert.fail('Unexpected class request'), getPropertySets: async () => assert.fail('Unexpected property request'), searchRelatedClasses: async () => assert.fail('Unexpected related request') },
+    });
+    const refused = await invoke('properties.bsdd.search', { query: 'IfcWall' });
+    assert.equal(refused.isError, true); assert.equal(requests, 0);
+    const running = invoke('properties.bsdd.search', { query: 'IfcWall' }, true);
+    await Promise.race([ready, running]); assert.equal(requests, 1); lifetime.abort(); release!();
+    const result = await running; assert.equal(result.isError, true);
+  });
+
 });

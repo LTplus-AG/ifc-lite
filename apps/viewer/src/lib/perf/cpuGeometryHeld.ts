@@ -12,8 +12,27 @@
  * (`__ifc_lite_cpu_geometry_held__()`), never on a hot path.
  */
 
-import { visitMeshArrays, type CpuGeometryKind, type CpuGeometryVisitor } from '@ifc-lite/renderer';
+import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
+
+/** The renderer's visitor contract (`Renderer.visitCpuGeometry`), without widening the package's exports. */
+type CpuGeometryVisitor = Parameters<Renderer['visitCpuGeometry']>[0];
+type CpuGeometryKind = Parameters<CpuGeometryVisitor>[2];
+
+/** Store meshes: the same arrays the renderer's walk visits for its own pieces. */
+function visitMeshArrays(owner: string, mesh: MeshData, visit: CpuGeometryVisitor): void {
+  visit(owner, mesh.positions, 'positions');
+  visit(owner, mesh.normals, 'normals');
+  visit(owner, mesh.indices, 'indices');
+  if (mesh.entityIds) visit(owner, mesh.entityIds, 'other');
+  if (mesh.uvs) visit(owner, mesh.uvs, 'other');
+  const source = mesh.appearanceSource;
+  if (source) {
+    visit(owner, source.indices, 'indices');
+    visit(owner, source.sourceIndices, 'indices');
+    if (source.cornerIndices) visit(owner, source.cornerIndices, 'indices');
+  }
+}
 
 export interface CpuGeometryOwnerBytes {
   /** Distinct buffer bytes reachable from this holder. */

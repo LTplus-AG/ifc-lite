@@ -97,7 +97,7 @@ export interface CarrierSet {
   readonly related: readonly number[];
   /** Property name -> its id. */
   readonly props: ReadonlyMap<string, number>;
-  /** Whether the set and each of its properties are named by no other source record than this relationship and this set; absent unless asked for. */
+  /** Whether the set and each of its properties are named by no other source record than this relationship and this set; undefined unless `checkExclusive`. */
   readonly exclusive?: boolean;
 }
 
@@ -123,7 +123,7 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
       if (p !== null && propName !== null) props.set(propName, p);
     }
     const related = (listItems(source.slots(rel)![4]) ?? []).map(refId).filter((r): r is number => r !== null);
-    const exclusive = uses && uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1);
+    const exclusive = uses ? uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1) : undefined;
     return { rel, pset, related, props, exclusive };
   });
 }

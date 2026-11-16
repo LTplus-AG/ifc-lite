@@ -4,7 +4,7 @@ import { getSchemaRegistryForVersion, getCanonicalEntityName, type IfcDataStore 
 import { convertEntityType } from './schema-converter.js';
 import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
-import { CAUSED_BY_WRITTEN, StructuralCarriers } from './schema-converter-structural-carriers.js';
+import { StructuralCarriers } from './schema-converter-structural-carriers.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
@@ -102,9 +102,10 @@ export class StructuralDiagnostics {
    */
   rewrite(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null | undefined {
     let carried: ReadonlySet<string> = NONE;
-    if (this.carriers.noteCause(id, entity, args, withheld)) {
+    const cause = this.carriers.noteCause(id, entity, args, withheld);
+    if (cause) {
       carried = new Set(['CausedBy']);
-      this.record(CAUSED_BY_WRITTEN);
+      this.record(cause);
     } else if (this.thickness.note(id, entity, args, withheld)) {
       carried = new Set(['SubsequentThickness', 'VaryingThicknessLocation']);
       this.record(THICKNESS_WRITTEN);

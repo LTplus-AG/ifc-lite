@@ -47,6 +47,7 @@ const CAUSED_BY = 10;
 const OBJECT_PLACEMENT = 5;
 const IFC2X3_ACTIONS = new Set(['IFCSTRUCTURALPOINTACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION', 'IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']);
 
+export const CAUSED_BY_AMONG = "IFC2X3 CausedBy names one of several reactions a source 'Causes' relationship holds; IFC4 keeps that relationship, but IFC2X3 CausedBy cannot be restored from it";
 export const CAUSED_BY_WRITTEN = "IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes' from the action to the reaction, as IFC4 holds it";
 const CAUSED_BY_READ = "an IfcRelAssignsToProduct named 'Causes' from an action to one point reaction also fills the IFC2X3 CausedBy";
 const LOAD_CASE_WRITTEN = `IfcStructuralLoadCase is written as an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set holding ${COEFFICIENTS}`;
@@ -60,6 +61,8 @@ export class StructuralCarriers {
   private mode: ConversionMode = null;
   /** Upgrade: action id -> reaction ids a source 'Causes' relationship already names. */
   private causesWritten = new Map<number, Set<number>>();
+  /** Upgrade: the source's point reactions, the only reactions IFC2X3 has. */
+  private reactions: ReadonlySet<number> = new Set();
   /** Downgrade: action id -> the one point reaction that causes it. */
   private readonly causedBy = new Map<number, number>();
   /** Upgrade: analysis model id -> its SharedPlacement; item id -> the placement it is moved to. */
@@ -84,6 +87,7 @@ export class StructuralCarriers {
       return;
     }
     this.causesWritten = causes;
+    this.reactions = new Set(source.ids('IFCSTRUCTURALPOINTREACTION'));
     if (source.ids('IFCSTRUCTURALANALYSISMODEL').length) {
       for (const [model, items] of soleModelItems(source)) this.findSharedPlacement(source, model, items);
     }
@@ -170,20 +174,20 @@ export class StructuralCarriers {
 
   /**
    * IFC2X3 -> IFC4: adds the 'Causes' relationship for an action's CausedBy,
-   * unless the source has it already. True when IFC4 holds the cause either way.
+   * unless the source has it already. Returns the message to report when IFC4
+   * holds the cause: CAUSED_BY_WRITTEN when the downgrade reads it back,
+   * CAUSED_BY_AMONG when a source 'Causes' names it among other reactions.
    */
-  noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
+  noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null {
     // The added relationship names ids the source has; an IFC4 target withholds none, so none is checked.
-    if (this.mode !== 'upgrade' || !this.ids || withheld?.size || !IFC2X3_ACTIONS.has(entity)) return false;
+    if (this.mode !== 'upgrade' || !this.ids || withheld?.size || !IFC2X3_ACTIONS.has(entity)) return null;
     const reaction = refId(args[CAUSED_BY]);
-    if (reaction === null) return false;
+    if (reaction === null || !this.reactions.has(reaction)) return null;
     const written = this.causesWritten.get(id);
-    // A source 'Causes' already names the action: it carries CausedBy only when it names just this reaction,
-    // which the downgrade reads back. Otherwise IFC4 keeps the source's and CausedBy is reported lost.
-    if (written) return written.size === 1 && written.has(reaction);
+    if (written) return !written.has(reaction) ? null : written.size === 1 ? CAUSED_BY_WRITTEN : CAUSED_BY_AMONG;
     const guid = deterministicGlobalId(`ifc2x3-caused-by:${args[0].trim()}:#${reaction}`);
     this.pending.push(`#${this.ids()}=IFCRELASSIGNSTOPRODUCT('${guid}',${args[1]},'${CAUSES}',$,(#${reaction}),$,#${id});`);
-    return true;
+    return CAUSED_BY_WRITTEN;
   }
 
   /** Whether `after` may change a converted line, so callers parse its id only then. */

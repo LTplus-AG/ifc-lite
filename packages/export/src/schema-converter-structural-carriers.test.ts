@@ -457,7 +457,7 @@ describe('varying thickness with property-set locations #9668', () => {
 #45=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#44);`);
     const down = await convert(ifc4, 'IFC2X3');
     expect(line(down.step, 20)).toContain(',.SHELL.,0.2,$,$);');
-    expect(down.warnings).toContain('gives Location properties, which cannot be checked against the IfcShapeAspect order');
+    expect(down.warnings).toContain('1 structural conversion record(s): Pset_StructuralSurfaceMemberVaryingThickness gives Location properties, which cannot be checked against the IfcShapeAspect order');
     const plain = await convert(ifc4.replace(',(#40,#41,#42,#43));', ',(#40,#41,#42));'), 'IFC2X3');
     expect(line(plain.step, 20)).toMatch(/,0\.2,\(0\.25,0\.3\),#17\);$/);
     // An empty location property gives no location.

@@ -63,10 +63,10 @@ export class StructuralDiagnostics {
     if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return;
     if (!/^\s*#\d+\s*=\s*(?:IFCSTRUCTURAL|IFCRELCONNECTSSTRUCTURAL|IFCRELASSOCIATESPROFILEPROPERTIES)/i.test(line)) return;
     const rec = readStepSlots(line);
-    // Recorded here, where the record takes the generic path, never for one withheld or rewritten.
-    const notice = rec ? this.thickness.notice(id, rec.type, rec.slots) : undefined;
-    if (notice) this.record(notice);
     if (!rec || !(rec.type.startsWith('IFCSTRUCTURAL') || rec.type.startsWith('IFCRELCONNECTSSTRUCTURAL') || rec.type === 'IFCRELASSOCIATESPROFILEPROPERTIES')) return;
+    // Recorded here, where the record takes the generic path, never for one withheld or rewritten.
+    const notice = this.thickness.notice(id, rec.type, rec.slots);
+    if (notice) this.record(notice);
     const source = getSchemaRegistryForVersion(from), target = getSchemaRegistryForVersion(to);
     const name = getCanonicalEntityName(source, rec.type);
     if (!name) return;

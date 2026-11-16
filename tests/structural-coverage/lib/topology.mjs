@@ -183,51 +183,58 @@ function mappedSource(step, item) {
   return map?.type === 'IFCREPRESENTATIONMAP' ? { map, source: step.get(refOf(map.args[1])) } : null;
 }
 
-/** Whether a representation holds topology items, itself or through its mapped items (an iterative walk). */
+/** Per parsed file: memoised answers keyed by representation id. */
+const memoOf = (cache, step) => cache.get(step) ?? cache.set(step, new Map()).get(step);
+const holds = new WeakMap();
+const walked = new WeakMap();
+
+/**
+ * Whether a representation reaches a topology item with a readable vertex,
+ * itself or through its mapped items: an iterative walk, memoised per file.
+ */
 function holdsTopology(step, rep) {
+  const memo = memoOf(holds, step);
+  if (memo.has(rep.id)) return memo.get(rep.id);
   const seen = new Set();
   const stack = [rep];
-  while (stack.length) {
+  let held = false;
+  while (stack.length && !held) {
     const r = stack.pop();
     if (!r || seen.has(r.id)) continue;
     seen.add(r.id);
     for (const ref of itemsOf(r)) {
       const item = step.get(refOf(ref));
       if (item?.type === 'IFCMAPPEDITEM') stack.push(mappedSource(step, item)?.source);
-      else if (r.type === 'IFCTOPOLOGYREPRESENTATION') return true;
+      else if (r.type === 'IFCTOPOLOGYREPRESENTATION' && topologyVertices(step, refOf(ref)).length) held = true;
     }
   }
-  return false;
+  memo.set(rep.id, held);
+  return held;
 }
 
-/** Bounds on the mapped walk: nesting, and vertices (shared maps multiply them). */
-const MAX_MAP_DEPTH = 16;
+/** Vertices one member may need checked; more (shared maps multiply them) is refused. */
 const MAX_VERTICES = 10000;
-
-/** Per parsed file: each representation's vertices, once walked. */
-const walked = new WeakMap();
 
 /**
  * The topology vertices of one representation, in its axes: its own items
  * when it is an `IfcTopologyRepresentation`, and those of every mapped item's
- * source representation; memoised per file, so shared maps are walked once.
- * Null when a mapped item that holds topology cannot be followed (a map
- * cycle through topology, maps nested over 16 deep, over 10000 vertices, an
- * origin or target this oracle does not read): fewer vertices would check
- * less. Maps that yield no vertices are skipped before their frames are read.
+ * source representation; memoised per file, so each map is walked once.
+ * Null when a mapped item that reaches topology cannot be followed (a map
+ * cycle through topology, over 10000 vertices, an origin or target this
+ * oracle does not read): fewer vertices would check less. A map that yields
+ * no vertices is skipped before its frames are read.
  */
 function representationVertices(step, rep, active = new Set()) {
   if (!rep) return [];
-  if (!walked.has(step)) walked.set(step, new Map());
-  const memo = walked.get(step);
+  const memo = memoOf(walked, step);
   if (memo.has(rep.id)) return memo.get(rep.id);
-  if (active.has(rep.id) || active.size > MAX_MAP_DEPTH) return holdsTopology(step, rep) ? null : [];
+  // Back into a representation still being walked: a cycle, refused only when it reaches topology.
+  if (active.has(rep.id)) return holdsTopology(step, rep) ? null : [];
   active.add(rep.id);
   const points = mapVertices(step, rep, active);
   active.delete(rep.id);
-  const result = points && points.length <= MAX_VERTICES ? points : null;
-  memo.set(rep.id, result);
-  return result;
+  memo.set(rep.id, points);
+  return points;
 }
 
 function mapVertices(step, rep, active) {
@@ -264,7 +271,7 @@ export function topologyPoints(step, productId, scale = lengthScale(step)) {
   const shape = step.get(product?.args[6]);
   if (!shape) return [];
   const points = (shape.args[2] ?? []).map((repRef) => representationVertices(step, step.get(repRef)));
-  if (points.includes(null)) return null;
+  if (points.includes(null) || points.reduce((n, p) => n + p.length, 0) > MAX_VERTICES) return null;
   if (!frame) return points.flat().length ? null : [];
   return points.flat().map((p) => apply(frame, p).map((c) => c * scale));
 }

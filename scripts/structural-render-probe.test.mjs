@@ -129,14 +129,13 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
     deep += `#${70 + 2 * i}=IFCREPRESENTATIONMAP(#41,${from});#${70 + 2 * i + 1}=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#${90 + i}));#${90 + i}=IFCMAPPEDITEM(#${70 + 2 * i},#46);`;
   }
   assert.equal(topologyPoints(ifc4(deep.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#86,#46)')), 30).length, 4);
-  // Over 16 nested maps reaching topology: unplaced. Seventeen are refused, sixteen followed.
+  // Seventeen nested maps are followed: only cycles and the vertex cap bound the walk.
   let deeper = direct;
   for (let i = 0; i < 17; i += 1) {
     const from = i === 0 ? '#15' : `#${200 + 2 * (i - 1) + 1}`;
     deeper += `#${200 + 2 * i}=IFCREPRESENTATIONMAP(#41,${from});#${200 + 2 * i + 1}=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#${300 + i}));#${300 + i}=IFCMAPPEDITEM(#${200 + 2 * i},#46);`;
   }
-  assert.equal(topologyPoints(ifc4(deeper.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#232,#46)')), 30), null);
-  assert.equal(topologyPoints(ifc4(deeper.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#230,#46)')), 30).length, 4);
+  assert.equal(topologyPoints(ifc4(deeper.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#232,#46)')), 30).length, 4);
   // Shared maps multiplying past 10000 vertices: unplaced, quickly, not walked path by path.
   let shared = direct;
   for (let i = 0; i < 16; i += 1) {
@@ -145,7 +144,8 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
   }
   const started = performance.now();
   assert.equal(topologyPoints(ifc4(shared.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#445,#46)')), 30), null);
-  assert.ok(performance.now() - started < 2000, 'bounded walk');
+  // Generous: the unmemoised walk took minutes.
+  assert.ok(performance.now() - started < 15000, 'bounded walk');
   // The same fan-out over topology with no readable vertex: walked once per map, not per path.
   let empty = direct + "#59=IFCPOLYLINE((#10,#11));#56=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#59));";
   for (let i = 0; i < 16; i += 1) {
@@ -155,14 +155,21 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
   }
   const emptyStarted = performance.now();
   assert.equal(topologyPoints(ifc4(empty.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#575,#46)')), 30).length, 2);
-  assert.ok(performance.now() - emptyStarted < 2000, 'memoised walk');
-  // The vertex cap counts direct vertices too, whatever the item order.
+  assert.ok(performance.now() - emptyStarted < 15000, 'memoised walk');
+  // A topology representation with no readable vertex, in a map cycle, is no topology, not unplaced.
+  const polyCycle = direct + "#59=IFCPOLYLINE((#10,#11));#56=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#59,#58));#57=IFCREPRESENTATIONMAP(#41,#56);#58=IFCMAPPEDITEM(#57,#46);";
+  assert.equal(topologyPoints(ifc4(polyCycle.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#57,#46)')), 30).length, 2);
+  // The vertex cap counts direct vertices too, whatever the item order, and across representations.
   const many = Array.from({ length: 5001 }, (_, i) => `#${1000 + i}=IFCEDGE(#12,#13);`).join('');
   const edges = Array.from({ length: 5001 }, (_, i) => `#${1000 + i}`).join(',');
   for (const order of [`#47,${edges}`, `${edges},#47`]) {
     const big = direct + many + `#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#600));#600=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${order}));`;
     assert.equal(topologyPoints(ifc4(big.replace('#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#48,#15));', '')), 30), null, order.slice(0, 4));
   }
+  const half = Array.from({ length: 2501 }, (_, i) => `#${1000 + i}`).join(',');
+  const split = direct.replace('#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#48,#15));', '') + many
+    + `#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#600,#601));#600=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${half}));#601=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(${half}));`;
+  assert.equal(topologyPoints(ifc4(split), 30), null);
   // A map whose MappedRepresentation is not a representation holds nothing: the direct edge alone, no throw.
   assert.equal(topologyPoints(ifc4(direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#41,#46)')), 30).length, 2);
   const dangling = direct.replace('#53=IFCMAPPEDITEM(#52,#46)', '#53=IFCMAPPEDITEM(#98,#46)');

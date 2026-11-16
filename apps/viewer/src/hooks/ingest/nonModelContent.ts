@@ -54,7 +54,8 @@ const STEP_MARKER = /^ISO[- ]?10303-21/i;
  * or text the IFC path cannot read. An HTML page; for a small text body, JSON that is not an IFCX document
  * (whose `header.ifcxVersion` names IFCX) or XML whose root is an error element; under an IFC name (.ifc,
  * .ifczip), content the format router would send to the STEP parser although it cannot read it: not STEP, or
- * any UTF-16 text (the parser reads single-byte text; STEP saved as UTF-16 gets its own reason). Formats the
+ * any UTF-16 text (the parser reads single-byte text). UTF-16 is judged decoded by the same rules: an HTML,
+ * JSON or XML error keeps its reason, STEP saved as UTF-16 gets its own, anything else is not STEP. Formats the
  * router recognises by content (ZIP, GLB, 3DM, IFCX JSON, point-cloud magic) are always left to their loaders.
  *
  * `head` is the first 4 KiB the caller already read. More (up to {@link NON_MODEL_SCAN_BYTES}) is read only when
@@ -69,12 +70,6 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const ifcName = /\.(?:ifc|ifczip)$/i.test(file.name);
   // A UTF-16 document (an IIS/.NET error page) has NUL bytes but is text: it is judged decoded.
   const utf16 = utf16Encoding(bytes);
-  if (utf16 && ifcName) {
-    // No loader opens UTF-16 under an IFC name: say what it is (an error page, STEP to re-save, or neither).
-    const decoded = new TextDecoder(utf16).decode(await readScan(file, first));
-    if (HTML_START.test(afterProlog(decoded))) return NON_MODEL_REASONS.html;
-    return textStartsLikeStep(decoded) ? NON_MODEL_REASONS.utf16Step : NON_MODEL_REASONS.notStep;
-  }
   const decode = (buffer: ArrayBuffer) => new TextDecoder(utf16 ?? 'utf-8').decode(buffer); // drops the BOM
   const headText = decode(first);
   // Binary: a control byte (code point, for UTF-16) in the first 512. A headerless .splat can start with '<a '.
@@ -86,7 +81,9 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   // Only content that could be an error response (or is all blank so far), or IFC-named content that is not
   // plainly STEP, is read further.
   const couldBeText = firstChar === '' || firstChar === '<' || (!binary && /[{["]/.test(firstChar));
-  if (!couldBeText && !ifcNotStep) return null;
+  // No loader opens UTF-16 under an IFC name, so it is always judged in full (and refused below).
+  const utf16Ifc = utf16 !== null && ifcName;
+  if (!couldBeText && !ifcNotStep && !utf16Ifc) return null;
 
   const scan = await readScan(file, first);
   const text = scan === first ? headText : decode(scan);
@@ -100,6 +97,11 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   if (!binary && whole && /^[{["]/.test(body)) {
     const reason = jsonReason(body, /\.ifcx$/i.test(file.name));
     if (reason) return reason;
+  }
+  if (utf16Ifc) {
+    // Not an error response: STEP to re-save as UTF-8, or neither.
+    const lead = afterStepComments(text);
+    return lead !== null && STEP_MARKER.test(lead) ? NON_MODEL_REASONS.utf16Step : NON_MODEL_REASONS.notStep;
   }
   if (!ifcNotStep || routed === 'ifcx' || detectPointCloudFormat('content', first)) return null;
   // Under an IFC name everything else goes to the STEP parser: refuse what is not STEP. A blank file is the

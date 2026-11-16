@@ -22,6 +22,7 @@ function inspect() {
     canUndo: s.modelPlacement.undo.length > 0, canRedo: s.modelPlacement.redo.length > 0 };
 }
 function expected(value: number) { if (useViewerStore.getState().modelPlacement.revision !== value) throw new Error('The placement revision changed. Inspect again.'); }
+type GeorefEditInput = { entity: 'mapConversion' | 'projectedCRS'; fields: Array<{ field: string; value: string | number; oldValue: string | number | null }> };
 export const placementOperations = [
   operation({ ...meta('placement.read', 'Read native whole-model placements and the current numerical preview. Engineering coordinates are IFC Z-up metres; rotations are radians.'), effects: ['read'], capability: 'read' }, emptySchema, () => out(inspect())),
   operation<{ delta: [number, number, number]; model_ids?: string[] | null; placement_revision: number }>(meta('placement.translation.preview', 'Start an explicit native reposition session for the selected model or an explicit model_ids set and preview a numerical engineering Z-up metre translation. Refuses an existing interactive preview.'), {
@@ -48,11 +49,11 @@ export const placementOperations = [
     const { getEffectiveGeoreference } = await import('@/lib/geo/effective-georef'); assertToolActive(c);
     const model = useViewerStore.getState().models.get(c.model.id); return out(getEffectiveGeoreference(c.model.store, model?.geometryResult?.coordinateInfo, useViewerStore.getState().georefMutations.get(c.model.id)));
   }),
-  operation<{ entity: 'mapConversion' | 'projectedCRS'; fields: Array<{ field: string; value: string | number; oldValue: string | number | null }> }>(meta('georeference.edit', 'Set a validated native georeferencing field batch as one native history operation. Exact current expected values are required. Existing field casing follows the georeference API.', true), {
+  operation<GeorefEditInput>(meta('georeference.edit', 'Set a validated native georeferencing field batch as one native history operation. Exact current expected values are required. Existing field casing follows the georeference API.', true), {
     type: 'object', properties: { entity: { type: 'string', enum: ['mapConversion', 'projectedCRS'] }, fields: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'object', properties: {
       field: { type: 'string', minLength: 1, maxLength: 80 }, value: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'number' }] }, oldValue: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'number' }, { type: 'null' }] } as unknown as JSONSchemaType<string | number | null>,
     }, required: ['field', 'value', 'oldValue'], additionalProperties: false } } }, required: ['entity', 'fields'], additionalProperties: false,
-  }, async (i, c) => {
+  } as unknown as JSONSchemaType<GeorefEditInput>, async (i, c) => {
     const [{ getEffectiveGeoreference, supportsStandardGeoreferencing }, { isReadOnlyCoordinateOperation }] = await Promise.all([import('@/lib/geo/effective-georef'), import('@/components/viewer/properties/georef-notices')]); assertToolActive(c);
     const effective = getEffectiveGeoreference(c.model.store, useViewerStore.getState().models.get(c.model.id)?.geometryResult?.coordinateInfo, useViewerStore.getState().georefMutations.get(c.model.id));
     if (!supportsStandardGeoreferencing(c.model.store.schemaVersion, effective) || isReadOnlyCoordinateOperation(effective)) throw new Error('The native panel treats this coordinate operation or schema as read-only.');

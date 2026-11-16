@@ -20,6 +20,7 @@ export class StoreyPlanningInventory {
   readonly walks = new Map<number, Walk>();
   readonly counts = new Map<number, number>();
   readonly types = new Map<number, string>();
+  private readonly identities = new Map<number, string | null>();
   readonly parents = new Map<number, number | null>();
   readonly railingsByStorey = new Map<number, Set<number>>();
   private readonly children = new Map<number, number[]>();
@@ -83,6 +84,7 @@ export class StoreyPlanningInventory {
     const entity = inventory.reader.entity(id)!;
     const type = entity.type.toUpperCase();
     this.types.set(id, type);
+    this.identities.set(id, typeof entity.attributes[0] === 'string' ? entity.attributes[0] : null);
     const previousAlias = this.aliasSources.get(id);
     if (previousAlias !== undefined) this.aliases.get(previousAlias)?.delete(id);
     const alias = inventory.view.getEntityAlias(id);
@@ -134,8 +136,13 @@ export class StoreyPlanningInventory {
     for (const id of ids) {
       const entity = inventory.reader.entity(id);
       const type = entity?.type.toUpperCase();
+      if (this.parents.has(id) && type !== 'IFCLOCALPLACEMENT' && type !== 'IFCGRIDPLACEMENT') return true;
       if (this.types.has(id)) {
         if (type !== this.types.get(id) || refId(entity?.attributes[5]) !== this.index.get(id)?.placement) return true;
+        // GUID bindings can become unresolved or resolve to another canonical
+        // target, even when the edited product had no dependents before.
+        const guid = typeof entity?.attributes[0] === 'string' ? entity.attributes[0] : null;
+        if (guid !== this.identities.get(id)) return true;
       } else if (type && getInheritanceChainAcrossSchemas(type).includes('IfcProduct')) return true;
     }
     return false;

@@ -92,3 +92,15 @@ it('#8452 changing a placement or escaped creation alias invalidates inheritance
   row.attributes[5] = '#61';
   expect(plan().placements.find(p => p.leaf.placementId === 61)?.owners).toContain(row.expressId);
 });
+
+it('#8452 retyping a cached local placement preserves the unreadable-placement refusal', async () => {
+  const s = session(await parse(THIRD_PARTY));
+  const placement = s.view.createEntity('IfcLocalPlacement', ['#44', '#5']).expressId;
+  const product = s.view.createEntity('IfcColumn', ['column', null, null, null, null, `#${placement}`, null, null, null]).expressId;
+  s.view.createEntity('IfcRelContainedInSpatialStructure', ['rel', null, null, null, [`#${product}`], '#42']);
+  const edit = { kind: 'elevation' as const, storeyId: 42, Elevation: 3.5 };
+  const plan = () => planStoreyLevelEdit(readStoreyInventory(s.store, s.view), edit, { dryRun: false });
+  expect(plan().refusals).toEqual([]);
+  s.view.setEntityType(placement, 'IfcDirection');
+  expect(plan().refusals).toContainEqual(expect.objectContaining({ code: 'unreadablePlacement', elementIds: [product] }));
+});

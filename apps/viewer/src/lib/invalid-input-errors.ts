@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { NON_MODEL_REASONS } from '@/hooks/ingest/nonModelContent';
+
 /** Content refusals only: never generic SyntaxError, decoder bounds or I/O errors.
  * Header readers receive completed byte reads; interrupted HTTP ranges have
  * their own length-mismatch errors and must remain outside this family.
@@ -36,5 +38,6 @@ const CONTENT_REFUSALS = [
   /^(?:XYZ|PTS|CSV): file does not look like ASCII point data$/,
   /^Invalid IFCX file(?: "[^"\r\n]*")?: (?:JSON parse error - SyntaxError: [\s\S]+|missing or invalid header\.ifcxVersion)$/,
   /^Unknown file format\. Expected IFC \(STEP\) or IFCX \(JSON\)\.$/,
-  /^The file is (?:an HTML page|a JSON response|an XML error response|text that is neither STEP nor an IFC ZIP), not a model\.$/, // #9523 ingest/nonModelContent
+  // #9523: built from the reasons themselves, so a reworded reason stays classified.
+  new RegExp(`^The file is (?:${Object.values(NON_MODEL_REASONS).map((r) => r.replace(/[.*+?^${'$'}{}()|[\]\\]/g, '\\$&')).join('|')}), not a model\\.$`),
 ];

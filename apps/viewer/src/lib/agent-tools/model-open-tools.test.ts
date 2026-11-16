@@ -388,12 +388,27 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await run({ url: 'https://example.com/latest.ifc', mode: 'add' });
     assert.equal(calls.at(-1)!.names[0], 'rev42.ifcx', 'the bytes are routed by what was actually served');
   });
-  it('leaves error bodies to the loader preflight, which refuses them before its reset (#9523 code review)', async () => {
-    // Content checks live in hooks/ingest/nonModelContent (unit-tested there) and run inside loadFile's preflight;
-    // the tool itself only refuses what it can see without reading the body.
-    respond = () => new Response('{"error":"expired"}', { status: 200, headers: { 'content-type': 'application/json' } });
-    await run({ url: 'https://example.com/house.ifc', mode: 'add' });
-    assert.equal(calls.at(-1)!.names[0], 'house.ifc');
+  it('refuses error bodies with the URL that served them, before anything changes (#9523 code review)', async () => {
+    useViewerStore.setState({
+      models: new Map([['old', model('old', 'a.ifc')]]) as never,
+      georefMutations: new Map([['old', { projectedCRS: { Name: 'EPSG:2056' } }]]) as never, // unexported edits
+    });
+    const served = (body: string, to?: string) => () => {
+      const res = new Response(body, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
+      if (to) Object.defineProperty(res, 'url', { value: to });
+      return res;
+    };
+    for (const [url, body, to, what] of [
+      ['https://example.com/house.ifc', '{"error":"expired"}', 'https://auth.example/token-expired?sig=1', /auth\.example\/token-expired returned a JSON response/],
+      ['https://example.com/house.ifc', 'Access Denied', undefined, /neither STEP/],
+      ['https://example.com/model.ifcx', '<h1>Forbidden</h1>', undefined, /HTML page/],
+      ['https://example.com/terrain.xml', '<?xml version="1.0"?><Error/>', undefined, /XML error response/],
+    ] as const) {
+      respond = served(body, to);
+      // The content error wins over the unexported-edits refusal: it names the real cause.
+      await assert.rejects(run({ url, mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: what }, body);
+    }
+    assert.deepEqual(calls, [], 'nothing was loaded');
   });
 
   it('hands every body that could be a model to the loader, which decides its routing (#9523 code review)', async () => {
@@ -411,14 +426,13 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       ['https://example.com/cloud.pts', '3\n1.0 2.0 3.0\n'], // ASCII point cloud
       ['https://example.com/mesh.ply', 'ply\nformat ascii 1.0\n'], // ASCII PLY header
       ['https://example.com/cloud.pcd', 'version 0.7\nSIZE 4 4 4\n'], // ASCII PCD, any header order
-      ['https://example.com/notice.ifc', 'Access Denied'], // plain text: the loader's preflight refuses it before its reset
       ['https://example.com/settings.xml', '<DefaultSettings/>'], // a name that merely contains 'fault'
     ] as const) {
       respond = served(body);
       const out = await run({ url, mode: 'add' }).catch((err: Error) => err);
       assert.ok(!(out instanceof Error), `${url}: ${out instanceof Error ? out.message : ''}`);
     }
-    assert.deepEqual(calls.map((c) => c.names[0]), ['model.ifc', 'model2.ifc', 'terrain.xml', 'scan.ply', 'capture.splat', 'terrain2.xml', 'scan.xml', 'spaced.ifc', 'cloud.pts', 'mesh.ply', 'cloud.pcd', 'notice.ifc', 'settings.xml']);
+    assert.deepEqual(calls.map((c) => c.names[0]), ['model.ifc', 'model2.ifc', 'terrain.xml', 'scan.ply', 'capture.splat', 'terrain2.xml', 'scan.xml', 'spaced.ifc', 'cloud.pts', 'mesh.ply', 'cloud.pcd', 'settings.xml']);
   });
 
   it('never shows a signed URL query in an error (#9523 code review)', async () => {

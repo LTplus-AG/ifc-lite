@@ -7,7 +7,7 @@ import { inspectIfcArchiveAdmission } from './archiveServerAdmission';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { resolve as t } from '@/i18n/registry';
 import { inspectLocalIfcAdmission } from './localIfcAdmission';
-import { nonModelContentMessage, nonModelContentReason } from './nonModelContent';
+import { NON_MODEL_SCAN_BYTES, nonModelContentMessage, nonModelContentReason } from './nonModelContent';
 
 /** Consent belongs to one load, never to a later file/pairing/session. An
  * unwrapped source larger than the approved input needs a fresh decision. */
@@ -45,11 +45,12 @@ export async function preflightLocalIfcSource(file: File, options: {
   onFailure: (error: unknown) => void; finish: () => void;
 }): Promise<ArrayBuffer | null> {
   try {
-    const head = await file.slice(0, 4096).arrayBuffer();
+    const scan = await file.slice(0, NON_MODEL_SCAN_BYTES).arrayBuffer(); // read once for both checks
+    const head = scan.slice(0, 4096);
     const format = detectFormat(head);
     const unknownIfc = format === 'unknown' && (/\.(ifc|ifczip|ifcxml)$/i.test(file.name) || new TextDecoder().decode(head).trimStart().startsWith('ISO-10303-21'));
     // An error response saved or served as a model is refused here, before the primary reset (#9523).
-    const nonModel = await nonModelContentReason(file);
+    const nonModel = await nonModelContentReason(file, scan);
     if (nonModel) throw new Error(nonModelContentMessage(nonModel));
     if (!options.isCurrent() || ((format === 'ifc' || unknownIfc || headIsZip(head)) && !await options.admit(file.size, head))) {
       options.finish(); return null;

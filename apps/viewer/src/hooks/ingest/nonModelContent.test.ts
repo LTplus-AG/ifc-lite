@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 import { isInvalidInputError } from '@/lib/invalid-input-errors';
-import { afterProlog, nonModelContentMessage, nonModelContentReason } from './nonModelContent';
+import { afterProlog, NON_MODEL_REASONS, nonModelContentMessage, nonModelContentReason } from './nonModelContent';
 
 const step = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
 const reason = (body: BlobPart, name: string) => nonModelContentReason(new File([body], name));
@@ -23,8 +23,10 @@ it('#9523 recognises error responses under any model name', async () => {
     [`<!-- ${'b'.repeat(5000)} --><html><body>Sign in</body></html>`, 'house.ifc', /HTML page/],
     ['{"error":"expired"}', 'house.ifc', /JSON response/],
     ['<!-- edge -->{"message":"Forbidden"}', 'model.ifcx', /JSON response/],
-    ['{"header":{"status":403},"error":"expired"}', 'model.ifcx', /JSON response/],
-    ['{"header":{"ifcxVersion":null}}', 'model.ifcx', /JSON response/],
+    ['{"header":{"status":403},"error":"expired"}', 'model.ifcx', /JSON/],
+    ['{"header":{"ifcxVersion":null}}', 'model.ifcx', /without an IFCX header\.ifcxVersion/],
+    ['{"header":{"version":"1"},"data":[]}', 'model.ifcx', /without an IFCX header\.ifcxVersion/],
+    [`<!DOCTYPE${' '.repeat(300)}html>Access denied`, 'model.glb', /HTML page/],
     ['"expired"', 'scan.ply', /JSON response/],
     ['<?xml version="1.0"?><Error><Code>AccessDenied</Code></Error>', 'terrain.xml', /XML error response/],
     ['<?xml version="1.0"?><!-- s3 --><ErrorResponse/>', 'terrain.xml', /XML error response/],
@@ -42,6 +44,8 @@ it('#9523 leaves every file a loader would open alone', async () => {
   const ifcx = readFileSync(new URL('../../../public/samples/hello-wall.ifcx', import.meta.url), 'utf8');
   const cases: Array<[BlobPart, string]> = [
     [step, 'house.ifc'],
+    [`/* exported by X */\n${step}`, 'commented.ifc'],
+    ['ISO 10303-21;\nHEADER;', 'spaced-iso.ifc'],
     [`${' '.repeat(5000)}${step}`, 'spaced.ifc'],
     [zipSync({ 'model.ifc': strToU8(step) }), 'pack.ifczip'],
     [zipSync({ 'model.ifc': strToU8(step) }), 'zipped.ifc'],
@@ -52,6 +56,7 @@ it('#9523 leaves every file a loader would open alone', async () => {
     ...['DefaultSettings', 'Default', 'UserDefault', 'ErrorBars', 'Exceptional', 'FaultModel'].map((root): [BlobPart, string] => [`<${root}/>`, 'other.xml']),
     [new Uint8Array([0x4c, 0x41, 0x53, 0x46, 0, 0, 1, 2]), 'scan.ply'],
     [new Uint8Array([0x7b, 1, 2, 3, 0, 5, 6, 7]), 'capture.splat'],
+    [new Uint8Array([0x3c, 0x61, 0x20, 0x3e, 0, 5, 6, 7]), 'binary.splat'], // binary that starts like '<a >'
     ['version 0.7\nSIZE 4 4 4\n', 'cloud.pcd'],
     ['3\n1.0 2.0 3.0\n', 'cloud.pts'],
     ['ply\nformat ascii 1.0\n', 'mesh.ply'],
@@ -69,7 +74,7 @@ it('#9523 scans a crafted prolog linearly', () => {
 });
 
 it('#9523 refusals are classified as invalid input, not crashes', () => {
-  for (const r of ['an HTML page', 'a JSON response', 'an XML error response', 'text that is neither STEP nor an IFC ZIP']) {
+  for (const r of Object.values(NON_MODEL_REASONS)) {
     assert.equal(isInvalidInputError(new Error(nonModelContentMessage(r)), nonModelContentMessage(r)), true, r);
   }
 });

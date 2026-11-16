@@ -72,9 +72,9 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const utf16 = utf16Encoding(bytes);
   const decode = (buffer: ArrayBuffer) => new TextDecoder(utf16 ?? 'utf-8').decode(buffer); // drops the BOM
   const headText = decode(first);
-  // Binary: a control byte (code point, for UTF-16) in the first 512. A headerless .splat can start with '<a '.
-  const binary = utf16 ? !ifcName && /[\u0000-\u0008\u000e-\u001f]/.test(headText.slice(0, 256)) // no loader opens UTF-16 under an IFC name: judge it as text
-    : bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32));
+  // Binary: a control byte (code point, for UTF-16) in the first 512; a headerless .splat can start with '<a '.
+  // Never under an IFC name, where the router sends everything to the STEP parser: judge it as text there.
+  const binary = !ifcName && (utf16 ? /[\u0000-\u0008\u000e-\u001f]/.test(headText.slice(0, 256)) : bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32)));
   const firstChar = headText.trimStart()[0] ?? '';
   const headLead = afterStepComments(headText);
   const headIsStep = headLead !== null && STEP_MARKER.test(headLead);

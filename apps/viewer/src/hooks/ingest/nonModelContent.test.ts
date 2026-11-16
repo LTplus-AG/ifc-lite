@@ -61,6 +61,7 @@ it('#9523 recognises error responses under any model name', async () => {
     [utf16('ISO-10303-21;'), 'house.ifc', /saved as UTF-16/],
     [utf16('<html><body>Forbidden</body></html>'), 'a.ifc', /HTML page/],
     [utf16('<title>Error</title>\x1b'), 'a.ifc', /HTML page/],
+    ['<title>Error</title>\x1b', 'house.ifc', /HTML page/],
     [utf16('Error: expected ISO-10303-21 header'), 'a.ifc', /neither STEP/],
     [utf16(`${' '.repeat(3000)}ISO-10303-21;`), 'spaced16.ifc', /saved as UTF-16/],
     [utf16(`/* ${'x'.repeat(3000)} */ISO-10303-21;`), 'comment16.ifc', /saved as UTF-16/],

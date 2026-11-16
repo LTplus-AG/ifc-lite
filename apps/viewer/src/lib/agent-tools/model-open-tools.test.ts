@@ -383,8 +383,35 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       return calls.at(-1)!.names[0];
     };
     await run({ sample: 'demo' });
-    assert.equal(await nameFor('attachment; filename=a=", attachment; filename=b.ifc'), 'download.ifc', 'a broken first value falls back to the URL');
+    await assert.rejects(nameFor('attachment; filename=a=", attachment; filename=b.ifc'), { code: 'INVALID_INPUT' }, 'the first header names a non-model file');
+    await assert.rejects(nameFor('inline; filename="error.html"'), { code: 'INVALID_INPUT', message: /error\.html/ }, 'a declared non-model body is refused');
+    assert.equal(await nameFor('attachment; foo; filename=x.ifc'), 'x.ifc', 'a valueless parameter is skipped');
+    assert.equal(await nameFor('attachment;; filename=y.ifc'), 'y.ifc');
+    assert.equal(await nameFor(`attachment; filename="z.ifc"junk; filename*=UTF-8''w.ifc`), 'w.ifc');
     assert.equal(await nameFor('attachment; filename="q.ifc", attachment; filename=b.ifc'), 'q.ifc');
     assert.equal(await nameFor('inline'), 'download.ifc');
+  });
+  it('an unrelated stack-like error after the stack registered does not fail it (#9523 code review)', async () => {
+    serveStackSample();
+    unregister();
+    unregister = registerAgentModelLoader({
+      loadFile: async () => {}, addModel: async () => null,
+      loadStack: async (files) => {
+        useViewerStore.setState({ loading: true, models: new Map(files.map((f, i) => [`layer-${i + 1}`, model(`layer-${i + 1}`, f.name)])) as never });
+        // After the loader resolved: an overlay drop elsewhere fails with a similar message.
+        setTimeout(() => {
+          useViewerStore.getState().setError('File "x.ifc" is not an IFCX file.');
+          useViewerStore.setState({ loading: false });
+        }, 0);
+      },
+    });
+    const out = await run({ sample: 'layers-demo' });
+    assert.equal((out.structured as { state: string }).state, 'loaded');
+  });
+
+  it('reports a rejected loader as a typed error (#9523 code review)', async () => {
+    unregister();
+    unregister = registerAgentModelLoader({ loadFile: async () => { throw new Error('blob revoked'); }, addModel: async () => null, loadStack: async () => {} });
+    await assert.rejects(run({ sample: 'demo' }), { code: 'INTERNAL_ERROR', message: /blob revoked/ });
   });
 });

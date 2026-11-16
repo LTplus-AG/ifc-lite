@@ -108,10 +108,20 @@ function dispositionParams(header: string): Map<string, string> {
   // Skip the disposition type; a header without one (`filename="x.ifc"`) starts with its first parameter.
   const text = /^[^;]*=/.test(trimmed) ? `;${trimmed}` : trimmed.slice(Math.max(0, trimmed.indexOf(';')));
   const params = new Map<string, string>();
-  DISPOSITION_PARAM.lastIndex = 0;
-  for (let m = DISPOSITION_PARAM.exec(text); m; m = DISPOSITION_PARAM.exec(text)) {
-    const [, key, quoted, bare] = m;
-    if (!params.has(key.toLowerCase())) params.set(key.toLowerCase(), quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare.trim());
+  for (let at = 0; at < text.length;) {
+    DISPOSITION_PARAM.lastIndex = at;
+    const m = DISPOSITION_PARAM.exec(text);
+    if (m) {
+      const [, key, quoted, bare] = m;
+      if (!params.has(key.toLowerCase())) params.set(key.toLowerCase(), quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare.trim());
+      at = DISPOSITION_PARAM.lastIndex;
+      continue;
+    }
+    // Not a parameter (`; foo`, `;;`, junk after a quoted value): skip to the next ';', unless the next header starts first.
+    const next = text.indexOf(';', at + 1);
+    const nextHeader = text.slice(at).search(/,\s*(?:attachment|inline)\s*(?:;|$)/i);
+    if (next === -1 || (nextHeader !== -1 && at + nextHeader < next)) break;
+    at = next;
   }
   return params;
 }
@@ -128,8 +138,9 @@ function fileNameOf(url: URL, res: Response): string {
   const lastSegment = (path: string) => path.split(/[\\/]/).pop() ?? '';
   const declared = lastSegment(extended ? percentDecoded(extended[2], extended[1]) : params.get('filename') ?? '');
   const fromPath = lastSegment(percentDecoded(url.pathname.split('/').filter(Boolean).pop() ?? ''));
-  // The declared name wins when it names a model file; otherwise the URL path may still name one.
-  return declared && (isSupportedModelFile(new File([], declared)) || !fromPath) ? declared : fromPath;
+  // A declared name wins, even when it is not a model file: a server labelling the body `error.html` is refused,
+  // rather than replacing the user's models with it.
+  return declared || fromPath;
 }
 
 /**
@@ -249,7 +260,8 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
     // Placeholder records have no data yet, and a replace may be closing the old models: list only models an add keeps.
     structured: { mode: request.mode, state: 'loading', loading: name, models: request.mode === 'add' ? snapshot().filter((m) => !m.new).map(publicModel) : [] },
   });
-  const loaded = await within(load.then((id) => ({ id })), deadline - Date.now());
+  const loaded = await within(load.then((id) => ({ id }), (err: unknown) => fail(ToolErrorCode.INTERNAL_ERROR,
+    `The viewer could not load ${name}: ${err instanceof Error ? err.message : String(err)}`)), deadline - Date.now());
   if (!loaded) return stillLoading();
   // This call's own records: an add's returned id (none when it failed), a replace's chosen id, and for the
   // stack (no per-call id, layer ids repeat across loads) its exact file names: a stack load clears every
@@ -258,20 +270,18 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   const isMine = (m: { model_id: string; name: string }) => (request.mode === 'add' ? m.model_id === loaded.id
     : stack ? stackNames.has(m.name) : m.model_id === primaryId);
 
-  // The stack loader reports failures only through the store, sometimes before it clears anything, so an
-  // earlier stack's same-named layers may still be open: read its own error first. It is recognised by the
-  // loader's messages, so an unrelated error elsewhere in the tab cannot fail a stack that loaded.
+  // The stack loader reports failures only through the store, before it resolves and sometimes before it
+  // clears anything, so an earlier stack's same-named layers may still be open: read its error now. Only
+  // errors raised during the load and worded like the loader's count; later ones belong to someone else.
   const stackFailure = () => {
     const { error, loadErrorSeq } = store.getState();
     return stack && error && loadErrorSeq !== state.loadErrorSeq && /federated IFCX loading failed|federated loading|is not an IFCX file/i.test(error) ? error : null;
   };
-  const early = stackFailure();
-  if (early) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${early}`);
+  const stackError = stackFailure();
+  if (stackError) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${stackError}`);
 
   // Models can register just after the loader resolves: wait until the pipeline is idle, which needs no model.
   const settled = await waitForLoadIdle(deadline - Date.now());
-  const late = stackFailure();
-  if (late) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${late}`);
   let mine = snapshot().filter(isMine);
   if (mine.length === 0 && settled && !loadError) {
     // Rare path: give a registration queued behind the loader one task before concluding.

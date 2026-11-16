@@ -755,7 +755,7 @@ export function createDrawingExport({
   // `lib/lists/export/pdf.ts` writes a Lists/schedule report through
   // `jspdf-autotable` with no `addImage` at all. That is a table, not a
   // drawing. The 3D view export, `lib/export/view-pdf/`, IS a raster.)
-  const createPdfArtifact = async (scaleFactor?: number): Promise<NativeDrawingArtifact> => {
+  const createPdfArtifact = async (scaleFactor?: number, deliver?: (artifact: NativeDrawingArtifact) => void): Promise<NativeDrawingArtifact> => {
     const warnings: string[] = [];
     const warn = (message: string) => { warnings.push(message); services.warn?.(message); };
     if (!drawing) throw new Error('No completed native drawing is available.');
@@ -847,6 +847,7 @@ export function createDrawingExport({
             raster_dpi: Math.floor(fit.effectiveDpi),
             raster_capped: fit.capped,
           });
+          deliver?.(artifact);
           return artifact;
       });
     }
@@ -948,13 +949,14 @@ export function createDrawingExport({
           axis: sectionPlane.axis,
           scale_factor: effectiveScale,
         });
+        deliver?.(artifact);
         return artifact;
       } finally { referenceSnapshot.release(); }
     });
   };
 
   const handleExportPDF = (scaleFactor?: number) => {
-    void createPdfArtifact(scaleFactor).then(artifact => downloadFile(artifact.blob, artifact.filename, 'application/pdf'))
+    void createPdfArtifact(scaleFactor, artifact => downloadFile(artifact.blob, artifact.filename, 'application/pdf'))
       .catch((error: unknown) => toast.error(error instanceof Error ? t('section2d.export.pdfFailed', { error: error.message }) : t('section2d.export.pdfFailedGeneric')));
   };
 

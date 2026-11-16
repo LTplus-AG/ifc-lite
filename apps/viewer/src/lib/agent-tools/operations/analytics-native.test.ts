@@ -281,7 +281,7 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     await run('drawing.centerDxf', { id: imported.id }, viewerContext);
     const underlay = useViewerStore.getState().dxfUnderlays.find(row => row.id === imported.id); assert.ok(underlay?.referenceFrame);
     const mapped = dxfPlaneDrawingMapper(underlay, useViewerStore.getState(), drawing.config.plane); assert.ok(mapped);
-    const center = mapped({ x: 11, y: 21 }); assert.ok(Math.abs(center.x - 2) < 1e-8); assert.ok(Math.abs(center.y) < 1e-8);
+    const center = mapped({ x: 11, y: 21 }); assert.ok(Math.abs(center.x - 2) < 1e-8); assert.ok(Math.abs(center.y - 0.5) < 1e-8, 'Center uses the generated model drawing bounds, including its vertical extents');
     for (const format of ['svg', 'dxf', 'pdf'] as const) {
       const result = await run<{ artifact: { artifact_id: string; bytes: number } }>('drawing.export', { format, use_display_scale: false, scale: 100 }, viewerContext);
       assert.ok(result.artifact.bytes > 100);

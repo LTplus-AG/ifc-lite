@@ -8,6 +8,7 @@ import { prepareDocument } from '@/lib/document/prepare-document';
 import { exportPreparedDocument, documentPdfWarnings } from '@/lib/document/export-prepared-document';
 import { captureAnalysisStamp, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
 import { sanitizeFilename } from '@/lib/export/download';
+import { nativeDocumentSummary } from '@/lib/document/native-inspection';
 import { viewerOperation, emptySchema } from './contract';
 import { metadata, idSchema, jsonSchema, artifactSchema, removedSchema, checkpoint } from './analytics-common';
 
@@ -18,9 +19,14 @@ function documentById(id: string) {
 }
 const savedSchema = { type: 'object', properties: { id: { type: 'string' }, blocks: { type: 'integer' } }, required: ['id', 'blocks'], additionalProperties: false };
 export const analyticsDocumentOperations = [
-  viewerOperation(metadata('document.library', 'document', 'Read current structured documents and native persistence status.', ['read'], {
-    type: 'object', properties: { documents: { type: 'array' }, storage: { type: 'object' }, activeId: { type: ['string', 'null'] } }, required: ['documents', 'storage', 'activeId'], additionalProperties: false,
-  }), emptySchema, () => { const s = useViewerStore.getState(); return { documents: s.documents, storage: s.documentsStorage, activeId: s.activeDocumentId }; }),
+  viewerOperation<{ offset?: number; limit?: number }>(metadata('document.library', 'document', 'Read a bounded page of document summaries and compact SHA-256 revisions; embedded media, blocks and AI evidence stay local. Defaults offset=0, limit=20. Inspect paged block metadata or export native JSON for complete content.', ['read'], {
+    type: 'object', properties: { documents: { type: 'array' }, total: { type: 'integer' }, next_offset: { type: ['integer', 'null'] }, storage: { type: 'object' }, activeId: { type: ['string', 'null'] } }, required: ['documents', 'total', 'next_offset', 'storage', 'activeId'], additionalProperties: false,
+  }), { type: 'object', properties: { offset: { type: 'integer', minimum: 0, nullable: true }, limit: { type: 'integer', minimum: 1, maximum: 50, nullable: true } }, required: [], additionalProperties: false } satisfies JSONSchemaType<{ offset?: number; limit?: number }>, async (i, c) => {
+    const s = useViewerStore.getState(); const offset = i.offset ?? 0; const limit = i.limit ?? 20; const page = s.documents.slice(offset, offset + limit); const documents: Awaited<ReturnType<typeof nativeDocumentSummary>>[] = [];
+    for (const document of page) { documents.push(await nativeDocumentSummary(document)); checkpoint(c); }
+    if (useViewerStore.getState().documents !== s.documents) throw new Error('Document library changed during inspection. Retry discovery.');
+    return { documents, total: s.documents.length, next_offset: offset + page.length < s.documents.length ? offset + page.length : null, storage: { phase: s.documentsStorage.phase, recovered: s.documentsStorage.recovered, items: Object.fromEntries(page.map(document => [document.id, s.documentsStorage.items[document.id] ?? null])) }, activeId: s.activeDocumentId };
+  }),
   viewerOperation(metadata('document.initialize', 'document', 'Await the native IndexedDB document library initialization; no panel mount is required.', ['configuration'], { type: 'object', properties: { initialized: { type: 'boolean' }, count: { type: 'integer' } }, required: ['initialized', 'count'], additionalProperties: false }), emptySchema, async (_, c) => {
     checkpoint(c); const initialized = await c.commitAsync(() => useViewerStore.getState().initializeDocuments()); checkpoint(c);
     if (!initialized) throw new Error('Native document library initialization failed. Inspect document.library storage diagnostics.');

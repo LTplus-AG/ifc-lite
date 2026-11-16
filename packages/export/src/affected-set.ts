@@ -69,7 +69,9 @@ export function expandAffectedSet(
   const openingTargets = [...targets].some((id) => IfcTypeEnumFromString(typeOf(store, view, id) ?? '') === IfcTypeEnum.IfcOpeningElement);
   for (const id of context) {
     const type = typeOf(store, view, id);
-    if (!type || type === 'IFCPROJECT' || type.startsWith('IFCREL')) continue;
+    // The project and the sites are context the mesher reads, not elements an
+    // edit moves (#10435).
+    if (!type || type === 'IFCPROJECT' || type === 'IFCSITE' || type.startsWith('IFCREL')) continue;
     if (cause !== 'shape') {
       out.add(id);
       continue;

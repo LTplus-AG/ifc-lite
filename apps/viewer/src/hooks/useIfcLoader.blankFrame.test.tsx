@@ -19,11 +19,12 @@ describe('canonical blank file → author → real WASM remesh (#6232)', () => {
     it(`${unit}: zero-job streaming emits actual engine metadata before completion`, { skip }, async () => {
       // A blank hierarchy still supplies two spatial-product jobs that yield
       // no meshes. For the distinct zero-job engine invariant, export the
-      // real project's forward closure (context and units, no products).
+      // real project's forward closure (context and units, no products):
+      // no re-mesh context roots, which would add the site (#10435).
       const store = await new IfcParser().parseColumnar(await blankFile(unit).arrayBuffer(), { disableWorkerScan: true });
       const project = store.entityIndex.byType.get('IFCPROJECT')?.[0];
       assert.ok(project);
-      const bytes = serializeEntitySubgraph(store, null, { targets: new Set([project]) }).bytes;
+      const bytes = serializeEntitySubgraph(store, null, { targets: new Set([project]), contextRoots: new Set() }).bytes;
       const events: Array<Record<string, unknown>> = [];
       const api = new IfcAPI();
       try {

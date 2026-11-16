@@ -11,7 +11,9 @@
  * fillings in those openings (`IfcRelFillsElement`), and its layered material
  * (`IfcRelAssociatesMaterial`, which the wasm material-layer index scans the
  * buffer for). Nor does it reach the project, whose unit assignment and
- * representation contexts the pre-pass reads. This module names those roots.
+ * representation contexts the pre-pass reads, or the sites, whose placement
+ * the mesher recognises to pick a host's cut frame (#10435; the subgraph
+ * writes them without their representation). This module names those roots.
  *
  * Cost is O(targets + their relationship edges): the parsed relationship
  * graph answers the source relationships by CSR lookup, and the overlay's
@@ -35,7 +37,7 @@ const MATERIAL = 'IFCRELASSOCIATESMATERIAL';
 
 /**
  * Roots, besides the targets themselves, that a subgraph must carry for the
- * targets to mesh exactly as they do on load: every live `IfcProject`, each
+ * targets to mesh exactly as they do on load: every live `IfcProject` and `IfcSite`, each
  * target's openings and host (with the voiding relationship), the fillings of
  * those openings (with the filling relationship), and each target's
  * `IfcRelAssociatesMaterial`. Relationships the overlay created this session
@@ -60,6 +62,10 @@ export function contextRootsFor(
   const out = new Set<number>();
   // @raw-entity-enumeration-ok one bucket lookup (IFCPROJECT), each id re-checked against the effective index; overlay-created projects are added below
   for (const id of store.entityIndex.byType.get('IFCPROJECT') ?? []) {
+    if (index.has(id)) out.add(id);
+  }
+  // @raw-entity-enumeration-ok one bucket lookup (IFCSITE), each id re-checked against the effective index
+  for (const id of store.entityIndex.byType.get('IFCSITE') ?? []) {
     if (index.has(id)) out.add(id);
   }
 

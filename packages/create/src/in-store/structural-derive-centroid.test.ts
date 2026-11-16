@@ -72,6 +72,9 @@ ${beam(25, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.3,0.008,0.012,$,0.1
 ${beam(26, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.15,0.5,0.012,0.025,$,0.15,0.025,$,$,$,$,$)')}
 ${beam(27, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.12,0.24,0.008,0.014,$,0.12,0.02,$,$,$,$,$)')}
 ${beam(28, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,$,0.1,$,$,$,$,$,$)')}
+${beam(29, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#48,0.2,0.4,0.01,0.02,$,0.1,0.015,$,$,$,$,$)')}
+${beam(30, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.03,0.01,0.02,$,0.1,0.015,$,$,$,$,$)')}
+${beam(31, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,$,$,0.015,$,$,$,$,$)')}
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -89,7 +92,8 @@ const ORACLE: Record<number, [number, number]> = {
   214: [-17.085, -17.085], // the AxisVM L (75 x 75 x 6, 10 mm fillet, 5 mm edge radius) states 17.07184: IfcOpenShell measures 17.085
   224: [-16.531, -16.531], // the same angle without fillets; a stated 20.4 mm (measured from the outer edge) disagrees by 23% and is ignored
   234: [-24.253, -24.253], // thin 100 x 100 x 2 angle stating 25.747 (the outer-edge distance), which is also within 10% of the 24.253 offset: ambiguous, so the computed one stays
-  244: [0, -50.5055], // IfcAsymmetricIShapeProfileDef: bottom flange 200 x 20, top 100 x 15, depth 400, web 10 (see below)
+  294: [50.5055, 0], // #244 with the profile Position rotated 90 degrees: the offset turns with it
+  244: [0, -50.5055], // IfcAsymmetricIShapeProfileDef: bottom flange 200 x 20, top 100 x 15, depth 400, web 10 (measured on the outline, see the header)
   254: [0, 36.3462], // wider top flange: bottom 100 x 12, top 160 x 18, depth 300, web 8
   264: [0, 0], // equal flanges are symmetric
   274: [0, 12.0838], // equal widths, a thicker top flange (120 x 14 below, 120 x 20 above), depth 240
@@ -116,5 +120,12 @@ describe('structural derive idealises an asymmetric section through its centroid
       expect(end[0]).toBeCloseTo(start[0], 9);
       expect([start[2], end[2]]).toEqual([0, 3]);
     }
+  });
+
+  it('refuses an asymmetric I the geometry reader refuses (#10377)', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(STEP).buffer as ArrayBuffer);
+    const axes = structuralPhysicalAxes(store);
+    expect(axes.has(304), 'depth 30 mm under flanges of 20 + 15 mm').toBe(false);
+    expect(axes.has(314), 'TopFlangeWidth missing').toBe(false);
   });
 });

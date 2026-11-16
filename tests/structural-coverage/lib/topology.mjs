@@ -69,14 +69,24 @@ function coords(step, id) {
   return c.length >= 2 && c.every(Number.isFinite) ? [c[0], c[1], c[2] ?? 0] : null;
 }
 
-/** `IfcAxis2Placement3D`: z = Axis, x = RefDirection made normal to z; IFC defaults otherwise. */
+/** A direction attribute as a unit vector: undefined when omitted, null when given but unreadable or zero. */
+function direction(step, value) {
+  const id = refOf(value);
+  return id === undefined ? undefined : unit(coords(step, id) ?? [0, 0, 0]);
+}
+
+/**
+ * `IfcAxis2Placement3D`: z = Axis, x = RefDirection made normal to z; IFC
+ * defaults when omitted. Null when a given one does not read or lies along z.
+ */
 function axisPlacement(step, id) {
   const r = step.get(id);
   if (r?.type !== 'IFCAXIS2PLACEMENT3D') return null;
   const o = coords(step, refOf(r.args[0]));
-  if (!o) return null;
-  const z = unit(coords(step, refOf(r.args[1])) ?? [0, 0, 1]) ?? [0, 0, 1];
-  const x = normalTo(coords(step, refOf(r.args[2])) ?? defaultX(z), z) ?? unit(cross([0, 1, 0], z));
+  const [axis, ref] = [direction(step, r.args[1]), direction(step, r.args[2])];
+  if (!o || axis === null || ref === null) return null;
+  const z = axis ?? [0, 0, 1];
+  const x = normalTo(ref ?? defaultX(z), z);
   return x && { o, x, y: cross(z, x), z };
 }
 
@@ -129,12 +139,9 @@ function transformOperator(step, id) {
   const r = step.get(id);
   if (r?.type !== 'IFCCARTESIANTRANSFORMATIONOPERATOR3D' && r?.type !== 'IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM') return null;
   const o = coords(step, refOf(r.args[2]));
-  // An omitted direction is undefined; a given one that does not read is null.
-  const given = (i) => (refOf(r.args[i]) === undefined ? undefined : coords(step, refOf(r.args[i])));
-  const [axis1, axis2, axis3] = [given(0), given(1), given(4)];
+  const [axis1, axis2, axis3] = [direction(step, r.args[0]), direction(step, r.args[1]), direction(step, r.args[4])];
   if (!o || axis1 === null || axis2 === null || axis3 === null) return null;
-  const z = unit(axis3 ?? [0, 0, 1]);
-  if (!z) return null;
+  const z = axis3 ?? [0, 0, 1];
   const x = normalTo(axis1 ?? defaultX(z), z);
   if (!x) return null;
   // `IfcSecondProjAxis`: Axis2, else (0, 1, 0), made normal to z and x; a mirror keeps its sign.
@@ -149,17 +156,29 @@ function transformOperator(step, id) {
   return { o, x: scaled(x, s), y: scaled(y, s2), z: scaled(z, s3) };
 }
 
+/** Whether a representation holds topology items, itself or through its mapped items. */
+function holdsTopology(step, rep, seen = new Set()) {
+  if (!rep || seen.has(rep.id)) return false;
+  seen.add(rep.id);
+  return (rep.args[3] ?? []).some((ref) => {
+    const item = step.get(refOf(ref));
+    if (item?.type !== 'IFCMAPPEDITEM') return rep.type === 'IFCTOPOLOGYREPRESENTATION';
+    const map = step.get(refOf(item.args[0]));
+    return map?.type === 'IFCREPRESENTATIONMAP' && holdsTopology(step, step.get(refOf(map.args[1])), seen);
+  });
+}
+
 /**
  * The topology vertices of one representation, in its product's axes: its
  * own items when it is an `IfcTopologyRepresentation`, and those of every
  * mapped item's source representation. Null when a mapped item that holds
- * topology cannot be followed (a map cycle, an origin or target this oracle
- * does not read): fewer vertices would check less. A mapped item whose map
- * does not resolve holds nothing, and is skipped.
+ * topology cannot be followed (a map cycle, maps nested over 16 deep, an
+ * origin or target this oracle does not read): fewer vertices would check
+ * less. A mapped item whose map does not resolve holds nothing, and is skipped.
  */
 function representationVertices(step, rep, path = new Set()) {
   if (!rep) return [];
-  if (path.has(rep.id)) return null;
+  if (path.has(rep.id) || path.size > 16) return holdsTopology(step, rep) ? null : [];
   const inner = new Set(path).add(rep.id);
   const topology = rep.type === 'IFCTOPOLOGYREPRESENTATION';
   const points = [];
@@ -178,7 +197,7 @@ function representationVertices(step, rep, path = new Set()) {
     const target = transformOperator(step, refOf(item.args[1]));
     if (!mapped || !origin || !target) return null;
     const frame = compose(target, origin);
-    points.push(...mapped.map((p) => apply(frame, p)));
+    for (const p of mapped) points.push(apply(frame, p));
   }
   return points;
 }

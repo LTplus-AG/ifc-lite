@@ -98,6 +98,8 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
   const cases = {
     unreadableOrigin: direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#99,#15)'),
     unreadableAxis: direct.replace('#43=IFCDIRECTION((0.,1.,0.))', '#43=IFCDIRECTION(($,$,$))'),
+    unreadableOriginAxis: direct.replace('#41=IFCAXIS2PLACEMENT3D(#40,$,$)', '#41=IFCAXIS2PLACEMENT3D(#40,#99,$)'),
+    zeroOriginAxis: direct.replace('#41=IFCAXIS2PLACEMENT3D(#40,$,$)', '#41=IFCAXIS2PLACEMENT3D(#40,#59,$);#59=IFCDIRECTION((0.,0.,0.))'),
     zeroScale: direct.replace('$,#45,2.,#44', '$,#45,0.,#44'),
     // A map whose source representation maps itself, holding the topology edge too.
     cycle: direct.replace("#48=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#47))",
@@ -127,6 +129,9 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
   assert.equal(topologyPoints(ifc4(deep.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#86,#46)')), 30).length, 4);
   const dangling = direct.replace('#53=IFCMAPPEDITEM(#52,#46)', '#53=IFCMAPPEDITEM(#98,#46)');
   assert.equal(topologyPoints(ifc4(dangling), 30).length, 4);
+  // A cycle among maps that hold no topology (here the Axis map) does not hide the topology beside it.
+  const axisCycle = direct.replace("#51=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',(#50))", "#51=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',(#50,#53))");
+  assert.equal(topologyPoints(ifc4(axisCycle), 30).length, 4);
 });
 
 test('#9668 topology oracle: schema default axes (IfcFirstProjAxis, IfcSecondProjAxis)', () => {

@@ -94,7 +94,7 @@ export const nativeValidationOperations = [
     type: 'object', properties: { ...runInput.properties, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 20 } }, required: ['run_id', 'offset', 'limit'], additionalProperties: false,
   }, (i, c) => { const value = run(c, i.run_id), rows = value.report.specificationResults; return out({ total: rows.length, offset: i.offset, results: rows.slice(i.offset, i.offset + i.limit), summary: value.report.summary }); }),
   operation<{ run_id: string }>(meta('validation.publish', 'Publish an exact current native run into the existing Validation-panel report slot, without rerunning or reinterpreting its findings.', 'configuration'), runInput, async (i, c) => {
-    const [{ captureAnalysisStamp, stampAnalysisReport }] = await Promise.all([import('@/hooks/useAnalysisStaleness')]); assertToolActive(c);
+    const { captureAnalysisStamp, stampAnalysisReport } = await import('@/hooks/useAnalysisStaleness'); assertToolActive(c);
     return out(c.commit(() => { const value = run(c, i.run_id); useViewerStore.getState().setIdsValidationReport(stampAnalysisReport(value.report, captureAnalysisStamp(true))); return { published: i.run_id, summary: value.report.summary }; }));
   }),
   operation<{ run_id: string; format: 'json' | 'html' }>(meta('validation.report.export', 'Render the exact native run through the panel’s shared JSON/HTML report writers into a host-owned artifact.', 'artifact'), {

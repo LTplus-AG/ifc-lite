@@ -92,6 +92,14 @@ test('#9668 topology oracle: follows a mapped topology representation, origin th
   assert.equal((await run(meshesOf([ribbon(30, [1, 2, 3], [5, 2, 3])]))).status, 'fail');
 });
 
+/** `step` counting its record lookups in `calls`. */
+function counted(step) {
+  const get = step.get.bind(step);
+  step.calls = 0;
+  step.get = (id) => { step.calls += 1; return get(id); };
+  return step;
+}
+
 test('#9668 topology oracle: a mapped topology it cannot follow leaves the member unplaced, not checked on fewer vertices', async () => {
   // The direct edge #15 stays beside the mapped one (drawn on [11, 4, 3]-[11, 12, 3]).
   const direct = MAPPED_MEMBER.replace('(#54,#48)', '(#54,#48,#15)');
@@ -142,10 +150,10 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
     const from = i === 0 ? '#15' : `#${400 + 3 * (i - 1) + 2}`;
     shared += `#${400 + 3 * i}=IFCREPRESENTATIONMAP(#41,${from});#${400 + 3 * i + 1}=IFCMAPPEDITEM(#${400 + 3 * i},#46);#${400 + 3 * i + 2}=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#${400 + 3 * i + 1},#${400 + 3 * i + 1}));`;
   }
-  const started = performance.now();
-  assert.equal(topologyPoints(ifc4(shared.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#445,#46)')), 30), null);
-  // Generous: the unmemoised walk took minutes.
-  assert.ok(performance.now() - started < 15000, 'bounded walk');
+  const sharedStep = counted(ifc4(shared.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#445,#46)')));
+  assert.equal(topologyPoints(sharedStep, 30), null);
+  // Each map is walked once: a few hundred lookups, not one per path (2^16).
+  assert.ok(sharedStep.calls < 5000, `${sharedStep.calls} lookups`);
   // The same fan-out over topology with no readable vertex: walked once per map, not per path.
   let empty = direct + "#59=IFCPOLYLINE((#10,#11));#56=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#59));";
   for (let i = 0; i < 16; i += 1) {
@@ -153,9 +161,11 @@ test('#9668 topology oracle: a mapped topology it cannot follow leaves the membe
     const m = 500 + 5 * i;
     empty += `#${m}=IFCREPRESENTATIONMAP(#41,${from});#${m + 1}=IFCMAPPEDITEM(#${m},#46);#${m + 2}=IFCMAPPEDITEM(#${m},#46);#${m + 3}=IFCMAPPEDITEM(#${m},#46);#${m + 4}=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#${m + 1},#${m + 2},#${m + 3},#${m + 1}));`;
   }
-  const emptyStarted = performance.now();
-  assert.equal(topologyPoints(ifc4(empty.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#575,#46)')), 30).length, 2);
-  assert.ok(performance.now() - emptyStarted < 15000, 'memoised walk');
+  const emptyStep = counted(ifc4(empty.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#575,#46)')));
+  assert.equal(topologyPoints(emptyStep, 30).length, 2);
+  assert.ok(emptyStep.calls < 5000, `${emptyStep.calls} lookups`);
+  // Representations given as * read as none, not a throw.
+  assert.deepEqual(topologyPoints(ifc4(direct.replace('#16=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#48,#15))', '#16=IFCPRODUCTDEFINITIONSHAPE($,$,*)')), 30), []);
   // A topology representation with no readable vertex, in a map cycle, is no topology, not unplaced.
   const polyCycle = direct + "#59=IFCPOLYLINE((#10,#11));#56=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#59,#58));#57=IFCREPRESENTATIONMAP(#41,#56);#58=IFCMAPPEDITEM(#57,#46);";
   assert.equal(topologyPoints(ifc4(polyCycle.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#57,#46)')), 30).length, 2);
@@ -196,9 +206,11 @@ test('#9668 topology oracle: schema default axes (IfcFirstProjAxis, IfcSecondPro
   const twoDMirror = twoD.replace('#40=IFCCARTESIANPOINT((1.,0.,0.))', '#40=IFCCARTESIANPOINT((1.,2.,0.))')
     .replace('IFCCARTESIANTRANSFORMATIONOPERATOR2D(#43,$,#45,2.)', 'IFCCARTESIANTRANSFORMATIONOPERATOR2D(#43,#58,#45,2.);#58=IFCDIRECTION((1.,0.))');
   assert.deepEqual(near(topologyPoints(ifc4(twoDMirror), 30)), [[15, 4, 3], [15, 12, 3]]);
-  // A RefDirection along Axis keeps R8's fallback, x = (0, 1, 0) x z.
+  // A RefDirection along Axis keeps R8's fallback, x = (0, 1, 0) x z; along y, the default x.
   const parallel = ifc4(MEMBER().replace('#21=IFCAXIS2PLACEMENT3D(#20,$,$)', '#23=IFCDIRECTION((0.,0.,1.));#21=IFCAXIS2PLACEMENT3D(#20,#23,#23)'));
   assert.deepEqual(topologyPoints(parallel, 30), [[1, 2, 3], [5, 2, 3]]);
+  const alongY = ifc4(MEMBER().replace('#21=IFCAXIS2PLACEMENT3D(#20,$,$)', '#23=IFCDIRECTION((0.,1.,0.));#21=IFCAXIS2PLACEMENT3D(#20,#23,#23)'));
+  assert.deepEqual(near(topologyPoints(alongY, 30)), [[1, 2, 3], [5, 2, 3]]);
   // A placement z near (but not) x with no RefDirection takes x from (1, 0, 0).
   const tilted = ifc4(MEMBER().replace("#21=IFCAXIS2PLACEMENT3D(#20,$,$)", "#23=IFCDIRECTION((3.,0.,1.));#21=IFCAXIS2PLACEMENT3D(#20,#23,$)"));
   const r = Math.sqrt(10);

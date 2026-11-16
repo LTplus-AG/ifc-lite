@@ -80,7 +80,7 @@ function direction(step, value) {
 /**
  * `IfcAxis2Placement3D` (or `2D`, in the XY plane): z = Axis, x =
  * RefDirection made normal to z; IFC defaults when omitted, and a
- * RefDirection along z falls back as R8 did. Null when a given one does not read.
+ * RefDirection along z falls back as R8 did (then to the default x). Null when a given one does not read.
  */
 function axisPlacement(step, id) {
   const r = step.get(id);
@@ -90,7 +90,7 @@ function axisPlacement(step, id) {
   const [axis, ref] = is3d ? [direction(step, r.args[1]), direction(step, r.args[2])] : [undefined, direction(step, r.args[1])];
   if (!o || axis === null || ref === null) return null;
   const z = axis ?? [0, 0, 1];
-  const x = normalTo(ref ?? defaultX(z), z) ?? unit(cross([0, 1, 0], z));
+  const x = normalTo(ref ?? defaultX(z), z) ?? unit(cross([0, 1, 0], z)) ?? normalTo(defaultX(z), z);
   return x && { o, x, y: cross(z, x), z };
 }
 
@@ -244,7 +244,8 @@ function mapVertices(step, rep, active) {
     const id = refOf(ref);
     const item = step.get(id);
     if (item?.type !== 'IFCMAPPEDITEM') {
-      if (topology) points.push(...topologyVertices(step, id));
+      if (topology) for (const p of topologyVertices(step, id)) points.push(p);
+      if (points.length > MAX_VERTICES) return null;
       continue;
     }
     const { map, source } = mappedSource(step, item) ?? {};
@@ -270,7 +271,7 @@ export function topologyPoints(step, productId, scale = lengthScale(step)) {
   const frame = placementId === undefined ? IDENTITY : placementFrame(step, placementId);
   const shape = step.get(product?.args[6]);
   if (!shape) return [];
-  const points = (shape.args[2] ?? []).map((repRef) => representationVertices(step, step.get(repRef)));
+  const points = (Array.isArray(shape.args[2]) ? shape.args[2] : []).map((repRef) => representationVertices(step, step.get(repRef)));
   if (points.includes(null) || points.reduce((n, p) => n + p.length, 0) > MAX_VERTICES) return null;
   if (!frame) return points.flat().length ? null : [];
   return points.flat().map((p) => apply(frame, p).map((c) => c * scale));

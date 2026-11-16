@@ -18,10 +18,10 @@
  * composite curves) counts as an unreadable item.
  */
 
+import { arcPoints, type Pt2 } from './arc.js';
 import { applyFrame, axisPlacementFrame, IDENTITY, type Frame, type Vec3 } from './placement.js';
 import { asEnum, asNumber, asRef, asRefList, asString, type ModelReader } from './reader.js';
 
-type Pt2 = [number, number];
 
 function pointList(reader: ModelReader, id: number | null): Pt2[] | null {
   const e = reader.entity(id);
@@ -87,75 +87,7 @@ export function curvePoints(reader: ModelReader, id: number | null): Pt2[] | nul
   return null;
 }
 
-/**
- * Largest gap between an arc and its outline, either way, as a fraction of the
- * shorter of its radius and its length: 1 mm on a 20 m radius, 3 cm on a 624 m
- * arc of a 30 km radius (a nearly straight arc stays nearly straight).
- */
-export const ARC_SAGITTA = 5e-5;
-
-/** Most pieces one arc is traced in; beyond it the curve is unreadable (never an unbounded loop). */
-export const ARC_MAX_PIECES = 4096;
-
-/**
- * The points of an arc from `a` through `b` to `c`, after `a`: points on the
- * arc (its circle's axis-aligned extremes among them) alternating with the
- * corners where the tangents at neighbouring arc points meet, which lie just
- * outside the circle. The on-arc points bound a concave arc, the tangent
- * corners a convex one, so the extent of these points reaches the arc's in
- * every direction, in any frame the outline is later turned into (a
- * placement, a tilt, the map rotation), and lies within `ARC_SAGITTA` × radius
- * of it (relative to the shorter of radius and arc length). Three collinear
- * points, or an arc that bulges no more than that tolerance, are a straight
- * line (`b`, `c`). Null (the curve is unreadable) when the arc cannot be
- * traced in at most `ARC_MAX_PIECES` pieces: a reader must not loop or exhaust
- * memory on any input.
- */
-function arcPoints(a: Pt2, b: Pt2, c: Pt2): Pt2[] | null {
-  const d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
-  if (Math.abs(d) < 1e-12) return [b, c];
-  const sq = (p: Pt2) => p[0] * p[0] + p[1] * p[1];
-  const ux = (sq(a) * (b[1] - c[1]) + sq(b) * (c[1] - a[1]) + sq(c) * (a[1] - b[1])) / d;
-  const uy = (sq(a) * (c[0] - b[0]) + sq(b) * (a[0] - c[0]) + sq(c) * (b[0] - a[0])) / d;
-  const r = Math.hypot(a[0] - ux, a[1] - uy);
-  const ang = (p: Pt2) => Math.atan2(p[1] - uy, p[0] - ux);
-  const norm = (t: number) => ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-  const ta = ang(a);
-  const ccw = norm(ang(b) - ta) < norm(ang(c) - ta);
-  const along = (t: number) => (ccw ? norm(t - ta) : norm(ta - t));
-  const sweep = along(ang(c));
-  const at = (off: number, radius = r): Pt2 => {
-    const t = ccw ? ta + off : ta - off;
-    return [ux + radius * Math.cos(t), uy + radius * Math.sin(t)];
-  };
-  // Tangent points: both ends, the file's middle point, and every axis extreme on the arc, refined so that each piece spans at most 2h, where the
-  // tangent corner (radius r / cos h) and the chord (r cos h from the centre) each stay within `tol` of the arc.
-  const tol = ARC_SAGITTA * Math.min(r, r * sweep);
-  if (!Number.isFinite(r) || !Number.isFinite(sweep) || !Number.isFinite(tol)) return null;
-  // A nearly straight arc (a radius of 1e15 from three almost collinear points) bulges less than the tolerance: its chords.
-  if (2 * r * Math.sin(sweep / 4) ** 2 <= tol) return [b, c];
-  // Half the piece angle, stably: 1 - cos h = tol / (r + tol) loses everything to rounding when tol << r.
-  const h = 2 * Math.asin(Math.sqrt(tol / (2 * (r + tol))));
-  if (!(h > 0) || !Number.isFinite(sweep / h) || sweep / (2 * h) > ARC_MAX_PIECES) return null;
-  const marks = [0, along(ang(b)), sweep];
-  for (const e of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
-    const off = along(e);
-    if (off > 1e-9 && off < sweep - 1e-9) marks.push(off);
-  }
-  marks.sort((x, y) => x - y);
-  const out: Pt2[] = [];
-  for (let i = 1; i < marks.length; i++) {
-    const [t0, t1] = [marks[i - 1], marks[i]];
-    const n = Math.max(1, Math.ceil((t1 - t0) / (2 * h)));
-    for (let k = 1; k <= n; k++) {
-      const s0 = t0 + ((t1 - t0) * (k - 1)) / n;
-      const s1 = t0 + ((t1 - t0) * k) / n;
-      out.push(at((s0 + s1) / 2, r / Math.cos((s1 - s0) / 2)));
-      out.push(k < n ? at(s1) : i === marks.length - 1 ? c : marks[i] === along(ang(b)) ? b : at(s1));
-    }
-  }
-  return out;
-}
+export { ARC_MAX_PIECES, ARC_SAGITTA } from './arc.js';
 
 /** Outer boundary of a profile definition, in the profile's own 2D coordinates. */
 function profilePoints(reader: ModelReader, id: number | null): Pt2[] | null {
@@ -237,11 +169,18 @@ export function completeness(r: Reading): Completeness {
 export interface OutlineReading extends Reading {
   rings: Vec3[][];
   /**
-   * The rings fill something the slab does not cover: inner boundaries that
-   * are not kept (a profile with voids, a `FootPrint` of several curves), or an
-   * outline read from the outer operand of a Boolean DIFFERENCE.
+   * The rings fill something the slab does not cover whose shape is not read:
+   * a `FootPrint` of several curves, an outline read from the outer operand of
+   * a Boolean DIFFERENCE, or an inner curve that cannot be read.
    */
   voids: boolean;
+  /**
+   * Inner boundaries of the slab's profiles (`IfcArbitraryProfileDefWithVoids`),
+   * read, in object coordinates: holes in the plan. Whether one is open ground
+   * (a courtyard) or interior (a shaft, a stair opening, a floor area under the
+   * building) is decided with the slabs above (`footprint.ts`).
+   */
+  holes: Vec3[][];
 }
 
 /**
@@ -251,7 +190,7 @@ export interface OutlineReading extends Reading {
  */
 export function readSlabOutline(reader: ModelReader, slabId: number): OutlineReading {
   const footprint = representationItems(reader, slabId, 'FootPrint');
-  const fromFootprint: OutlineReading = { rings: [], items: footprint.length, readable: 0, voids: footprint.length > 1 };
+  const fromFootprint: OutlineReading = { rings: [], items: footprint.length, readable: 0, voids: footprint.length > 1, holes: [] };
   for (const item of footprint) {
     const pts = curvePoints(reader, item);
     if (!pts || pts.length < 3) continue;
@@ -260,12 +199,16 @@ export function readSlabOutline(reader: ModelReader, slabId: number): OutlineRea
   }
   const body = representationItems(reader, slabId, 'Body');
   if (footprint.length > 0 && completeness(fromFootprint) === 'complete') {
-    // The FootPrint gives the outer curves only; a Body with voids (a profile with inner curves, or a Boolean cut) still has
-    // holes the outline fills: voids-filled, never a complete outline with a filled courtyard.
-    if (body.some((item) => bodyItemHasVoids(reader, item))) fromFootprint.voids = true;
+    // The FootPrint gives the outer curves only; the Body's holes (inner curves read, or a Boolean cut whose shape is not)
+    // still count, never a complete outline with a filled courtyard.
+    for (const item of body) {
+      const h = bodyHoles(reader, item);
+      if (h.unknown) fromFootprint.voids = true;
+      fromFootprint.holes.push(...h.holes);
+    }
     return fromFootprint;
   }
-  const fromBody: OutlineReading = { rings: [], items: body.length, readable: 0, voids: false };
+  const fromBody: OutlineReading = { rings: [], items: body.length, readable: 0, voids: false, holes: [] };
   for (const item of body) {
     const unwrapped = unwrapClipping(reader, item);
     const solid = reader.entity(unwrapped?.solid);
@@ -282,24 +225,36 @@ export function readSlabOutline(reader: ModelReader, slabId: number): OutlineRea
     if (!d || d.some((v) => v === null) || Math.hypot(d[0] ?? 0, d[1] ?? 0) > 1e-6 * Math.hypot(...(d as number[]))) continue;
     fromBody.rings.push(profile.map(([x, y]) => applyFrame(position, [x, y, 0])));
     fromBody.readable++;
-    const profileEntity = reader.entity(profileId);
-    const inner = profileEntity?.type === 'IFCARBITRARYPROFILEDEFWITHVOIDS' ? reader.attr(profileEntity, 'InnerCurves') : null;
-    if (unwrapped.subtracted || (Array.isArray(inner) && inner.length > 0)) fromBody.voids = true;
+    const h = bodyHoles(reader, item);
+    if (h.unknown) fromBody.voids = true;
+    fromBody.holes.push(...h.holes);
   }
   // The body when it was read in full, or when the footprint gave nothing better; else the partly read footprint.
   if (completeness(fromBody) === 'complete' || footprint.length === 0 || fromBody.readable > fromFootprint.readable) return fromBody;
   return fromFootprint;
 }
 
-/** A Body item that has holes the plan outline does not keep: a profile with inner curves, or a Boolean or clipping cut. */
-function bodyItemHasVoids(reader: ModelReader, item: number): boolean {
+/**
+ * A Body item's holes in plan: the inner curves of its profile, read and
+ * placed like its outer curve; `unknown` when it has holes whose shape is not
+ * read (a Boolean DIFFERENCE's second operand, or an inner curve that cannot be
+ * read).
+ */
+function bodyHoles(reader: ModelReader, item: number): { holes: Vec3[][]; unknown: boolean } {
   const unwrapped = unwrapClipping(reader, item);
-  if (!unwrapped) return false;
-  if (unwrapped.subtracted) return true;
+  if (!unwrapped) return { holes: [], unknown: false };
   const solid = reader.entity(unwrapped.solid);
   const profile = solid ? reader.entity(asRef(reader.attr(solid, 'SweptArea'))) : null;
-  const inner = profile?.type === 'IFCARBITRARYPROFILEDEFWITHVOIDS' ? reader.attr(profile, 'InnerCurves') : null;
-  return Array.isArray(inner) && inner.length > 0;
+  const inner = profile?.type === 'IFCARBITRARYPROFILEDEFWITHVOIDS' ? asRefList(reader.attr(profile, 'InnerCurves')) : [];
+  const position = !solid || reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
+  const holes: Vec3[][] = [];
+  let unknown = unwrapped.subtracted;
+  for (const c of inner) {
+    const pts = position ? curvePoints(reader, c) : null;
+    if (!pts || pts.length < 3) unknown = true;
+    else holes.push(pts.map(([x, y]) => applyFrame(position!, [x, y, 0])));
+  }
+  return { holes, unknown };
 }
 
 /** A wall's `Axis`: one polyline per readable curve, in object coordinates (raw file units). */

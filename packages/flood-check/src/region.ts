@@ -16,11 +16,13 @@
  * two slabs meet, and a gap between slabs narrower than about 0.9 m, are
  * inside the building; a passage or courtyard 1 m wide or wider is outside.
  *
- * Courtyards: only a footprint the caller gives can draw a hole as its own
- * ring (a ring whose whole boundary lies inside the union of the others).
- * Slab outlines and wall loops are material, so a ring within the others
- * there is a slab on or within another, never open ground. A courtyard ring
- * enclosing less than 1 m² is below the closing scale and stays closed.
+ * Courtyards: a footprint the caller gives draws a hole as its own ring (a
+ * ring whose whole boundary lies inside the union of the others); a slab
+ * outline lists the holes of its profiles that no slab above covers
+ * (`courtyardRings`). Otherwise slab outlines and wall loops are material, so
+ * a ring within the others there is a slab on or within another, never open
+ * ground. A courtyard ring enclosing less than 1 m² is below the closing
+ * scale and stays closed.
  */
 
 import { closestBoundaryPoint, insideRing, ringArea } from './geom.js';
@@ -60,9 +62,11 @@ function nestedRings(rings: Rings): Set<number> {
 }
 
 /** Prepare a footprint once; build it again whenever its rings change (facts are plain data). */
-export function prepareFootprint(footprint: { rings: Rings; source: string }): PreparedFootprint {
+export function prepareFootprint(footprint: { rings: Rings; source: string; courtyardRings?: readonly number[] }): PreparedFootprint {
   const courtyards = new Set<number>();
   const closedSmallRings: number[] = [];
+  // A slab outline's holes open to the sky, found by the reader (`footprint.ts`), 1 m² or more like a given courtyard.
+  for (const r of footprint.courtyardRings ?? []) if (footprint.rings[r] && ringArea(footprint.rings[r]) >= 1) courtyards.add(r);
   if (footprint.source === 'given') {
     for (const r of nestedRings(footprint.rings)) {
       if (ringArea(footprint.rings[r]) >= 1) courtyards.add(r);

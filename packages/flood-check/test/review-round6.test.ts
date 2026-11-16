@@ -79,7 +79,7 @@ describe('finding 3: a CRS name contradicted by its own WKT identifier is refuse
 });
 
 describe('the automated review of 14fabe313: a FootPrint curve does not hide the Body\'s voids', () => {
-  it('a slab with one outer FootPrint curve and a Body profile with a courtyard void is voids-filled, so the courtyard door is kept', async () => {
+  it('a slab with one outer FootPrint curve and a Body profile with a courtyard void is not complete, so the courtyard door is kept', async () => {
     const facts = await extract((b) => {
       const eg = b.storeys.eg;
       const pt = (x: number, y: number) => b.add(`IFCCARTESIANPOINT((${x}.,${y}.))`);
@@ -94,7 +94,9 @@ describe('the automated review of 14fabe313: a FootPrint curve does not hide the
       const leaf = b.shape([b.rectExtrusion(0, 0, 1, 0.1, 2.1, b.axis(0, 0, 0), b.dir(0, 0, 1))]);
       b.contain(eg.id, b.add(`IFCDOOR(${b.guid()},$,'Hoftür',$,$,#${b.place(eg.pl, 15, 10, 0)},#${leaf},$,2.1,1.,.DOOR.,$,$)`));
     }, false);
-    expect(facts.footprint.source).toBe('slab-outline-voids-filled');
+    // The Body's hole is read under the FootPrint and, with no slab above, is a courtyard: never a complete outline.
+    expect(facts.footprint.quality?.worst).toBe('courtyard-ring');
+    expect(facts.footprint.courtyardRings).toHaveLength(1);
     expect(facts.candidates.map((c) => c.name)).toContain('Hoftür');
   });
 });
@@ -123,5 +125,36 @@ describe('review of #10486 at c39120ef8: one description of the allowance, the v
     expect(note).not.toMatch(/lowest/);
     // Beyond m + a: above the mapped class range, so the threshold applied is exactly m + a.
     expect(run(500 + 0.25 + m + a + 0.01).results.find((x) => x.candidate.name === 'Fenster')!.outcome).toBe('above-mapped-class-range');
+  });
+});
+
+describe('the merge-queue failure on MiniBIM: a slab hole is read, and only an open one is a courtyard', () => {
+  /** The ground slab (0..20 x 0..10) with a hole 6..14 x 3..7; `roofed` adds an upper-storey slab without one. */
+  const holed = (roofed: boolean) => (b: Extra) => {
+    const pt = (x: number, y: number) => b.add(`IFCCARTESIANPOINT((${x}.,${y}.))`);
+    const loop = (pts: Array<[number, number]>) => b.add(`IFCPOLYLINE((${[...pts, pts[0]].map(([x, y]) => `#${pt(x, y)}`).join(',')}))`);
+    const profile = b.add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#${loop([[0, 0], [20, 0], [20, 10], [0, 10]])},(#${loop([[6, 3], [14, 3], [14, 7], [6, 7]])}))`);
+    const solid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 0)},#${b.dir(0, 0, -1)},0.3)`);
+    b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Bodenplatte gelocht',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLOOR.)`));
+    if (roofed) {
+      const deck = b.rectExtrusion(10, 5, 20, 10, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
+      b.contain(b.storeys.og.id, b.add(`IFCSLAB(${b.guid()},$,'Decke OG',$,$,#${b.place(b.storeys.og.pl, 0, 0, 0)},#${b.shape([deck])},$,.FLOOR.)`));
+    }
+  };
+  const outcomeOf = (facts: Awaited<ReturnType<typeof extract>>, name: string) =>
+    checkFloodExposure(facts, raster(() => CELL_NO_RUNOFF), flatTerrain(499.95), opts).results.find((x) => x.candidate.name === name)!;
+
+  it('a hole roofed by the slab above is interior: the outline is complete (noted), and the street door is not withheld by it', async () => {
+    const facts = await extract(holed(true), false);
+    expect(facts.footprint.quality?.worst).toBe('complete');
+    expect(facts.footprint.courtyardRings).toBeUndefined();
+    expect(facts.footprint.quality?.notes.join()).toMatch(/roofed by slab/);
+    expect(outcomeOf(facts, 'Haustür').outcome).toBe('no-runoff-mapped');
+  });
+
+  it('a hole open to the sky is a courtyard guarded locally: the street door far from it is not withheld', async () => {
+    const facts = await extract(holed(false), false);
+    expect(facts.footprint.quality?.worst).toBe('courtyard-ring');
+    expect(outcomeOf(facts, 'Haustür').outcome).toBe('no-runoff-mapped');
   });
 });

@@ -185,10 +185,17 @@ describe('repo fixtures', () => {
   const miniBim = fileURLToPath(new URL('../../../tests/models/georeferencer/MiniBIM-3.1-DO_01_VORM.ifc', import.meta.url));
   it.skipIf(!existsSync(miniBim))('runs a Revit-exported model (MiniBIM, EPSG:28992) end to end with a stub provider in its CRS (fixture: pnpm fixtures)', async () => {
     const store = await parseFile(miniBim);
-    const facts = extractModelFacts(store);
+    // Without a stated ground storey the ±0.00 pick is only a guess (so nothing is excluded by its level).
+    expect(extractModelFacts(store).groundStorey).toMatchObject({ level: 3.5, basis: 'project-zero' });
+    const facts = extractModelFacts(store, { groundStorey: 41 });
     expect(facts.georeference).toMatchObject({ crs: 'EPSG:28992', orthogonalHeight: 3.5, verticalDatum: null });
-    expect(facts.groundStorey).toMatchObject({ level: 3.5, basis: 'project-zero' });
+    expect(facts.groundStorey).toMatchObject({ level: 3.5, basis: 'given' });
+    // The ground slab's profile has four holes: an 81.33 m² floor area and two 4.22 m² shafts, all roofed by the slabs above
+    // (interior, filled), and a 9.63 m² shaft open through every floor and the roof (a courtyard: open ground, guarded locally).
     expect(facts.footprint.source).toBe('slab-outline');
+    expect(facts.footprint.quality?.worst).toBe('courtyard-ring');
+    expect(facts.footprint.courtyardRings).toHaveLength(1);
+    expect(facts.footprint.quality?.notes.filter((n) => /roofed by slab/.test(n))).toHaveLength(3);
     const count = (cat: string) => facts.candidates.filter((c) => c.category === cat).length;
     // Ten ground-floor doors sit in walls with Pset_WallCommon.IsExternal = TRUE (the doors themselves say FALSE).
     expect(count('door')).toBe(10);

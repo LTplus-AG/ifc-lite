@@ -220,8 +220,14 @@ entities, properties and containment from the parsed store. No meshing.
   outcome, `courtyard-ring`), else
   the outlines of the ground storey's floor slabs (`FootPrint` curve or the
   extruded `Body` profile; `slab-outline`, or `slab-outline-voids-filled`
-  when a slab profile has voids or its `FootPrint` more than one curve,
-  because the inner boundaries are not kept), else its external walls' axes
+  when the slab has holes whose shape is not read: a `FootPrint` of more than
+  one curve, or a Boolean DIFFERENCE). The inner curves of a slab profile are
+  read as holes, also under a `FootPrint`: one under 1 m² stays closed; one
+  roofed by a slab more than 1 m higher (its outer outline over the hole, no
+  hole there, no unread voids) is interior (a shaft, a stair opening, a floor
+  area under the building): filled, noted, no condition; any other is open to
+  the sky, a courtyard: a hole in the prepared footprint (`courtyardRings`,
+  quality `courtyard-ring`), guarded only for the elements next to it. Else its external walls' axes
   chained into one closed ring (`external-wall-outline`, which keeps
   courtyards and notches), else the hull of those axes (`external-wall-hull`),
   else the hull of the candidates (`candidate-hull`, with a warning). A hull
@@ -679,6 +685,10 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
   that, right against the façade (below the map's 1 m cell), is not sampled;
   a footprint up to about 1 m smaller than the building the hazard model
   raised still has samples beyond the raised building.
+- Whether a slab hole is open to the sky is read from the slabs above only:
+  a roof opening closed by a skylight or a hatch not modelled as a slab reads
+  as open, so the hole is a courtyard (guarded locally; an element there may
+  get `no-ground-sample` when the hole is narrower than the sample rings).
 - In a given footprint, a ring entirely covered by the others is taken for a
   courtyard (a redundant ring cannot be told from one); in slab outlines it
   never is.

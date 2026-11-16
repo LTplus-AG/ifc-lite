@@ -137,15 +137,26 @@ function segmentOrder(segments: unknown, count: number): number[] | null | strin
   return order.length > 0 ? order : 'profile segment indices are unreadable';
 }
 
+/** An asymmetric I's validated dimensions (IfcAsymmetricIShapeProfileDef). */
+type AsymmetricI = { bottom: number; top: number; depth: number; web: number; bottomThickness: number; topThickness: number };
+
 /**
- * An asymmetric I's bounds: the wider flange by the overall depth, as the geometry reader draws it. A missing
- * flange width, or a depth that leaves the web no height (the reader refuses it too), is not read.
+ * An asymmetric I's dimensions, or null when the geometry reader would refuse it: a missing or non-positive
+ * width, thickness or web, or a depth that leaves the web no height. An omitted TopFlangeThickness is the
+ * bottom one (schema rule WR3). Bounds and centroid both read this, so they cannot disagree on validity.
  */
-function asymmetricI(a: readonly unknown[]): { size: [unknown, unknown]; exact: boolean } {
-  const [bottom, top, depth, bottomThickness] = [num(a[3]), num(a[8]), num(a[4]), num(a[6])];
+function asymmetricIDimensions(a: readonly unknown[]): AsymmetricI | null {
+  const [bottom, depth, web, bottomThickness, top] = [3, 4, 5, 6, 8].map((i) => num(a[i]));
   const topThickness = num(a[9]) ?? bottomThickness;
-  const readable = bottom !== null && top !== null && depth !== null && bottomThickness !== null && topThickness !== null && depth > bottomThickness + topThickness;
-  return { size: [readable ? Math.max(bottom, top) : null, depth], exact: false };
+  if (bottom === null || depth === null || web === null || bottomThickness === null || top === null || topThickness === null) return null;
+  const positive = [bottom, top, web, bottomThickness, topThickness].every((v) => v > 0);
+  return positive && depth > bottomThickness + topThickness ? { bottom, top, depth, web, bottomThickness, topThickness } : null;
+}
+
+/** An asymmetric I's bounds: the wider flange by the overall depth, as the geometry reader draws it. */
+function asymmetricI(a: readonly unknown[]): { size: [unknown, unknown]; exact: boolean } {
+  const d = asymmetricIDimensions(a);
+  return { size: d ? [Math.max(d.bottom, d.top), d.depth] : [null, null], exact: false };
 }
 
 /** Parameterised profiles: their [width, depth] bounds, and whether those bounds are the outline. */
@@ -214,10 +225,9 @@ function sectionCentroidOffset(type: string, a: readonly unknown[], x: number, y
       const lip = (sign: number): Part => [p4 / 2 - p5 / 2, sign * (p3 / 2 - p5 - (p6 - p5) / 2), p5, p6 - p5];
       return [[-p4 / 2 + p5 / 2, 0, p5, p3], flange(p3 / 2 - p5 / 2), flange(-p3 / 2 + p5 / 2), lip(1), lip(-1)];
     }
-    const topWidth = num(a[8]);
-    if (type === 'IFCASYMMETRICISHAPEPROFILEDEF' && p3 !== null && p4 !== null && p5 !== null && p6 !== null && topWidth !== null) {
-      const topThickness = num(a[9]) ?? p6;
-      return [[0, -p4 / 2 + p6 / 2, p3, p6], [0, (p6 - topThickness) / 2, p5, p4 - p6 - topThickness], [0, p4 / 2 - topThickness / 2, topWidth, topThickness]];
+    const i = type === 'IFCASYMMETRICISHAPEPROFILEDEF' ? asymmetricIDimensions(a) : null;
+    if (i) {
+      return [[0, -i.depth / 2 + i.bottomThickness / 2, i.bottom, i.bottomThickness], [0, (i.bottomThickness - i.topThickness) / 2, i.web, i.depth - i.bottomThickness - i.topThickness], [0, i.depth / 2 - i.topThickness / 2, i.top, i.topThickness]];
     }
     return null;
   })();
@@ -312,7 +322,9 @@ function profileOutline(reader: GeometryEntityReader, profile: Entity | null): {
   }
   const parameterised = PARAMETERISED[type]?.(a);
   const [x, y] = parameterised ? parameterised.size.map(num) : [null, null];
-  if (x === null || y === null || x <= 0 || y <= 0) return `profile ${profile?.type ?? 'unreadable'} is not supported`;
+  if (x === null || y === null || x <= 0 || y <= 0) {
+    return type === 'IFCASYMMETRICISHAPEPROFILEDEF' ? 'asymmetric I profile dimensions are unreadable or inconsistent' : `profile ${profile?.type ?? 'unreadable'} is not supported`;
+  }
   const position = axis2d(reader, a[2]);
   if (!position) return 'profile position is unreadable';
   const { o, x: dir } = position;

@@ -75,6 +75,9 @@ ${beam(28, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,$,0.1,$
 ${beam(29, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#48,0.2,0.4,0.01,0.02,$,0.1,0.015,$,$,$,$,$)')}
 ${beam(30, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.03,0.01,0.02,$,0.1,0.015,$,$,$,$,$)')}
 ${beam(31, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,$,$,0.015,$,$,$,$,$)')}
+${beam(32, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,$,0.02,$,0.1,0.015,$,$,$,$,$)')}
+${beam(33, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.,0.02,$,0.1,0.015,$,$,$,$,$)')}
+${beam(34, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,$,$,0.1,0.015,$,$,$,$,$)')}
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -127,5 +130,8 @@ describe('structural derive idealises an asymmetric section through its centroid
     const axes = structuralPhysicalAxes(store);
     expect(axes.has(304), 'depth 30 mm under flanges of 20 + 15 mm').toBe(false);
     expect(axes.has(314), 'TopFlangeWidth missing').toBe(false);
+    expect(axes.has(324), 'WebThickness missing').toBe(false);
+    expect(axes.has(334), 'WebThickness zero').toBe(false);
+    expect(axes.has(344), 'BottomFlangeThickness missing').toBe(false);
   });
 });

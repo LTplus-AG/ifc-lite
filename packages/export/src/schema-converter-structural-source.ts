@@ -116,7 +116,7 @@ export interface CarrierSet {
   readonly rel: number;
   readonly pset: number;
   readonly related: readonly number[];
-  /** Property name -> its id. */
+  /** Property name -> its id; empty for a set that names two properties alike, which is then never read. */
   readonly props: ReadonlyMap<string, number>;
   /** Whether the set and each of its properties are named by no other source record than this relationship and this set; undefined unless `checkExclusive`. */
   readonly exclusive?: boolean;
@@ -149,7 +149,7 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
     if (duplicate) props = new Map();
     const related = (listItems(source.slots(rel)![4]) ?? []).map(slotRef).filter((r): r is number => r !== null);
     const exclusive = uses ? uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1) : undefined;
-    return { rel, pset, related, props, exclusive: duplicate ? false : exclusive };
+    return { rel, pset, related, props, exclusive };
   });
 }
 

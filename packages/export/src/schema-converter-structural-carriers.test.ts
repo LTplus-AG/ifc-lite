@@ -541,7 +541,7 @@ describe('carrier property set with a duplicate property name #9668', () => {
 #44=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'Pset_StructuralSurfaceMemberVaryingThickness',$,(#40,#41));
 #45=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#44);`);
     const up = await convert(ifc2x3, 'IFC4');
-    expect(records(up.step, 'IFCPROPERTYSET')).toHaveLength(1);
+    expect(records(up.step, 'IFCPROPERTYSET')).toEqual([expect.stringMatching(/^#44=/)]);
     expect(up.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
   });
 });

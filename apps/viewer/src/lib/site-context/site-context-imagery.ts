@@ -36,9 +36,10 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createSwissGeodata, type MapLayerDescriptor } from '@ifc-lite/geodata-ch';
 import { useViewerStore } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices';
-import { borderedGpuUvs, borderedTexture, type DrapeTexture } from '@/lib/terrain-imagery/raster-texture';
+import { borderedGpuUvs, type DrapeTexture } from '@/lib/terrain-imagery/raster-texture';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { createSiteContextResponseCache } from './response-cache';
+import { assertHazardShowsSomething, composeLayers } from './site-context-layer-compose';
 import { swisstopoFetch } from './swisstopo-fetch';
 
 /** Ground sample distance of the drape over the whole site; 25 cm reads well from the air. */
@@ -242,27 +243,6 @@ function coreMeshes(meshes: readonly MeshData[]): MeshData[] {
   });
 }
 
-/**
- * One layer as given, or the hazard map over the imagery. `borderedTexture`
- * frames the result in the flat terrain colour, which also shows through
- * wherever the hazard map alone is transparent (no runoff modelled).
- */
-function composeLevel(level: DrapeLevel, flat: readonly [number, number, number], imagery: ImageBitmap | null, hazard: ImageBitmap | null): DrapeTexture {
-  const { width, height } = level;
-  if (!imagery || !hazard) {
-    const single = imagery ?? hazard;
-    if (!single) throw new Error('No map layer arrived to drape.');
-    return borderedTexture(single, width, height, flat);
-  }
-  const canvas = new OffscreenCanvas(width, height);
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('This browser cannot compose the drape texture (no 2D canvas).');
-  context.drawImage(imagery, 0, 0, width, height);
-  // The publisher's legend colours, unaltered (no opacity): the viewport legend shows the same swatches.
-  context.drawImage(hazard, 0, 0, width, height);
-  return borderedTexture(canvas, width, height, flat);
-}
-
 function uploadTerrain(modelId: string, geometry: GeometryResult, meshes: MeshData[], changed: MeshData[]): void {
   const renderer = getGlobalRenderer();
   if (!renderer || !renderer.isReady()) throw new Error('The viewport is not ready to show the terrain layers yet.');
@@ -350,13 +330,14 @@ async function drapeLayers(modelId: string, layers: TerrainDrapeLayers, signal?:
   let latestCore: MeshData[];
   try {
     signal?.throwIfAborted();
+    if (layers.hazard) assertHazardShowsSomething(wanted.flatMap((w, i) => (w.slot === 1 ? [images[i]] : [])));
     if (!geometry) throw new Error('The terrain was removed before its map layers arrived.');
     latestCore = coreMeshes(geometry.meshes);
     if (latestCore.length !== coreCount) throw new Error('The terrain changed while its map layers were loading.');
     const flat = latestCore.find((mesh) => mesh.uvs)?.color ?? [0.8, 0.78, 0.72, 1];
     for (const level of levels) {
       const imageOf = (slot: number) => images[wanted.findIndex((w) => w.level === level && w.slot === slot)] ?? null;
-      level.texture = composeLevel(level, [flat[0], flat[1], flat[2]], imageOf(0), imageOf(1));
+      level.texture = composeLayers(level.width, level.height, [flat[0], flat[1], flat[2]], imageOf(0), imageOf(1));
     }
   } finally {
     closeAll();

@@ -12,6 +12,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { meshPlanBox, planFineDrape, remapUvs, runoffHazardLayer, settleImages, swissimageLayer, wmsMapRequest, withRequestTimeout } from './site-context-imagery';
+import { anyVisiblePixel } from './site-context-layer-compose';
 
 // A 600 m site split into 4 × 4 chunks of 150 m, as the core does at 300 m radius.
 const SITE = [2_680_528, 1_251_142, 2_681_128, 1_251_742] as const;
@@ -80,4 +81,12 @@ test('a failed imagery level closes the image that did arrive, and every request
   const combined = withRequestTimeout(user.signal, 60_000);
   user.abort();
   assert.equal(combined.aborted, true, 'the user cancel still aborts it');
+});
+
+test('an overland flow map transparent everywhere is told apart from one that shows anything (an outage answers transparent too)', () => {
+  const transparent = new Uint8ClampedArray(4 * 16);
+  assert.equal(anyVisiblePixel(transparent), false);
+  const one = transparent.slice();
+  one[4 * 9 + 3] = 1; // a single antialiased edge pixel still counts
+  assert.equal(anyVisiblePixel(one), true);
 });

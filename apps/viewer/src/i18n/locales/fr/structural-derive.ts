@@ -11,6 +11,8 @@ export const structuralDeriveFr = {
   "structuralDerive.counts": "Éléments linéaires : {curveMembers} · éléments surfaciques : {surfaceMembers} · nœuds : {nodes} · appuis : {supports}, dont supposés : {guessedSupports} · enregistrements IFC à créer : {created}",
   "structuralDerive.assumed": "Éléments sans valeur LoadBearing, supposés porteurs : {count}.",
   "structuralDerive.skipped": "Éléments ignorés ({count})",
+  "structuralDerive.skippedOpenings": "Ouvertures ignorées ({count})",
+  "structuralDerive.skippedOpeningRow": "Ouverture #{opening} de l’élément #{host} : {reason}",
   "structuralDerive.guessed": "Appuis supposés aux nœuds les plus bas, faute de fondation ({count})",
   "structuralDerive.unconnected": "Nœuds qui touchent un élément ou une surface sans y être reliés ({count})",
   "structuralDerive.existing": "Ce modèle possède déjà un modèle d'analyse ({ids}). Rien n'est dérivé à côté.",

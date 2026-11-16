@@ -11,6 +11,8 @@ export const structuralDeriveShape = {
   "counts": ["created", "curveMembers", "guessedSupports", "nodes", "supports", "surfaceMembers"],
   "assumed": ["count"],
   "skipped": ["count"],
+  "skippedOpenings": ["count"],
+  "skippedOpeningRow": ["host", "opening", "reason"],
   "guessed": ["count"],
   "unconnected": ["count"],
   "existing": ["ids"],

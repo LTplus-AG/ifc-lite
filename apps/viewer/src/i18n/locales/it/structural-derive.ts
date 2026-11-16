@@ -11,6 +11,8 @@ export const structuralDeriveIt = {
   "structuralDerive.counts": "Elementi lineari: {curveMembers} · elementi superficiali: {surfaceMembers} · nodi: {nodes} · vincoli: {supports}, di cui ipotizzati: {guessedSupports} · record IFC da creare: {created}",
   "structuralDerive.assumed": "Elementi senza valore LoadBearing, considerati portanti: {count}.",
   "structuralDerive.skipped": "Elementi saltati ({count})",
+  "structuralDerive.skippedOpenings": "Aperture saltate ({count})",
+  "structuralDerive.skippedOpeningRow": "Apertura #{opening} dell’elemento #{host}: {reason}",
   "structuralDerive.guessed": "Vincoli ipotizzati ai nodi più bassi, perché nessuna fondazione ne porta uno ({count})",
   "structuralDerive.unconnected": "Nodi che toccano un elemento o una superficie senza esservi collegati ({count})",
   "structuralDerive.existing": "Questo modello ha già un modello di analisi ({ids}). Non viene derivato nulla accanto.",

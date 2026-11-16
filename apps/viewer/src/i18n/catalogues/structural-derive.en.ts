@@ -15,6 +15,8 @@ export const structuralDeriveEn = {
   'structuralDerive.counts': 'Curve members: {curveMembers} · surface members: {surfaceMembers} · nodes: {nodes} · supports: {supports}, guessed: {guessedSupports} · IFC records to create: {created}',
   'structuralDerive.assumed': 'Elements with no LoadBearing value, assumed load-bearing: {count}.',
   'structuralDerive.skipped': 'Skipped elements ({count})',
+  "structuralDerive.skippedOpenings": "Skipped openings ({count})",
+  "structuralDerive.skippedOpeningRow": "Opening #{opening} of host #{host}: {reason}",
   'structuralDerive.guessed': 'Guessed supports, placed at the lowest nodes because no footing carries one ({count})',
   'structuralDerive.unconnected': 'Nodes touching a member or surface they are not connected to ({count})',
   'structuralDerive.existing': 'This model already has an analysis model ({ids}). Nothing is derived beside it.',

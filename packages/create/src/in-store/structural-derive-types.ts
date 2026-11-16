@@ -281,6 +281,13 @@ export interface SkippedElement {
   detail: string;
 }
 
+export interface SkippedOpening {
+  openingId: number;
+  hostId: number;
+  name: string | null;
+  reason: string;
+}
+
 /** A member end moved along its own axis to meet another member. */
 export interface ExtendedEnd {
   elementId: number;
@@ -308,10 +315,12 @@ export interface StructuralDerivationReport {
     guessedSupports: number;
     assumedLoadBearing: number;
     skipped: number;
+    skippedOpenings: number;
     extendedEnds: number;
     freeEnds: number;
   };
   skipped: SkippedElement[];
+  skippedOpenings: SkippedOpening[];
   /** Node indices of every guessed support. */
   guessedSupports: number[];
   extendedEnds: ExtendedEnd[];

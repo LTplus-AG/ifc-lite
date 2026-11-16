@@ -4,38 +4,38 @@
 
 import { vecCross, vecLen } from '../ifc-creator-math.js';
 import { add, sub, scale, dot, areaVector } from './structural-derive-idealise.js';
-import type { PhysicalElementFact, SkippedElement, PrismFact, Vec3 } from './structural-derive-types.js';
-import { checkOpening, prepareStructuralFace } from './_structural-face.js';
+import type { PhysicalElementFact, SkippedOpening, PrismFact, Vec3 } from './structural-derive-types.js';
+import { pointInPolygon } from './room-footprint-offset.js';
+import { checkOpening, type prepareStructuralFace } from './_structural-face.js';
 
 const ANGLE_TOLERANCE = Math.PI / 180;
 
 interface ProfileFrame {
   u: Vec3;
   across: Vec3;
-  coordinates: number[][];
+  coordinates: [number, number][];
 }
 
 /** Intersect the profile polygon with a plane; retain disjoint intervals explicitly. */
-function profileIntervals(outline: Vec3[], origin: Vec3, normal: Vec3, offset: number, frame: ProfileFrame): [Vec3, Vec3][] {
+function profileIntervals(outline: Vec3[], origin: Vec3, normal: Vec3, offset: number, frame: ProfileFrame, tolerance: number): [Vec3, Vec3][] {
   const { u, across } = frame;
-  const coordinates = frame.coordinates.map(([x, y]) => [x, y - offset]);
+  const coordinates = frame.coordinates.map(([x, y]): [number, number] => [x, y - offset]);
   const hits: number[] = [];
   const epsilon = 1e-9;
   for (let i = 0; i < coordinates.length; i++) {
     const [a, b] = [coordinates[i], coordinates[(i + 1) % coordinates.length]];
-    if (Math.abs(a[1]) <= epsilon) hits.push(a[0]);
+    if (Math.abs(a[1]) <= tolerance) hits.push(a[0]);
     if ((a[1] < 0) !== (b[1] < 0)) hits.push(a[0] + (b[0] - a[0]) * a[1] / (a[1] - b[1]));
   }
   const sorted = hits.sort((a, b) => a - b).filter((v, i, a) => !i || v - a[i - 1] > epsilon);
   const intervals: [number, number][] = [];
   for (let i = 0; i + 1 < sorted.length; i++) {
     const mid = (sorted[i] + sorted[i + 1]) / 2;
-    let inside = false;
+    const inside = pointInPolygon(mid, 0, coordinates);
     let onEdge = false;
     for (let j = 0; j < coordinates.length; j++) {
       const [a, b] = [coordinates[j], coordinates[(j + 1) % coordinates.length]];
-      if (Math.abs(a[1]) <= epsilon && Math.abs(b[1]) <= epsilon && mid >= Math.min(a[0], b[0]) && mid <= Math.max(a[0], b[0])) onEdge = true;
-      if ((a[1] > 0) !== (b[1] > 0) && mid < a[0] - a[1] * (b[0] - a[0]) / (b[1] - a[1])) inside = !inside;
+      if (Math.abs(a[1]) <= tolerance && Math.abs(b[1]) <= tolerance && mid >= Math.min(a[0], b[0]) && mid <= Math.max(a[0], b[0])) onEdge = true;
     }
     if (!inside && !onEdge) continue;
     const last = intervals[intervals.length - 1];
@@ -69,11 +69,11 @@ export function openingSection(prism: PrismFact, origin: Vec3, normal: Vec3, thi
   const section = (offset: number): Vec3[] | string => {
     if (!frame) {
       const parameters = prism.outline.map(p => (offset - dot(sub(p, origin), normal)) / along);
-      if (parameters.some(t => t < -1e-6 || t > 1 + 1e-6)) return 'opening does not span the plate thickness (not through)';
+      if (parameters.some(t => t < -tolerance / Math.abs(along) || t > 1 + tolerance / Math.abs(along))) return 'opening does not span the plate thickness (not through)';
       return prism.outline.map((p, i) => add(p, scale(prism.extrusion, parameters[i])));
     }
-    const base = profileIntervals(prism.outline, origin, normal, offset, frame);
-    const top = profileIntervals(prism.outline, origin, normal, offset - along, frame);
+    const base = profileIntervals(prism.outline, origin, normal, offset, frame, tolerance);
+    const top = profileIntervals(prism.outline, origin, normal, offset - along, frame, tolerance);
     if (base.length !== 1 || top.length !== 1) return `opening profile section gives ${base.length !== 1 ? base.length : top.length} intervals (not through or not a single interval)`;
     return [base[0][0], base[0][1], add(top[0][1], prism.extrusion), add(top[0][0], prism.extrusion)];
   };
@@ -88,16 +88,22 @@ export function openingSection(prism: PrismFact, origin: Vec3, normal: Vec3, thi
 }
 
 /** Through-openings only; report the opening id rather than hiding it on its host. */
-export function plateOpenings(element: PhysicalElementFact, plate: { boundary: Vec3[]; thickness: number }, normal: Vec3, tolerance: number, skipped: SkippedElement[]): Vec3[][] {
+export function plateOpenings(element: PhysicalElementFact, plate: { boundary: Vec3[]; thickness: number }, face: ReturnType<typeof prepareStructuralFace>, tolerance: number, skipped: SkippedOpening[]): Vec3[][] {
+  if (!element.openings?.length) return [];
+  const normal = face.axis;
+  // Extrusion depth is not the normal distance between an oblique slab’s faces.
+  const area = areaVector(element.prism!.outline);
+  const profileNormal = scale(area, 1 / vecLen(area));
+  const normalThickness = Math.abs(dot(profileNormal, normal)) > 0.99
+    ? Math.abs(dot(element.prism!.extrusion, normal)) : plate.thickness;
   const carried: Vec3[][] = [];
-  const face = prepareStructuralFace(plate.boundary);
   const accepted: Vec3[][] = [];
   for (const opening of element.openings ?? []) {
-    const reject = (detail: string) => skipped.push({ elementId: opening.expressId, type: 'IfcOpeningElement', name: opening.name, reason: 'no-idealisable-shape', detail: `Opening of #${element.expressId}: ${detail}` });
+    const reject = (detail: string) => skipped.push({ openingId: opening.expressId, hostId: element.expressId, name: opening.name, reason: detail });
     const prism = opening.prism;
     if (!prism) { reject(opening.shapeIssue ?? 'unreadable body'); continue; }
     if (!prism.outlineExact) { reject('profile outline is known only as bounds'); continue; }
-    const ring = openingSection(prism, plate.boundary[0], normal, plate.thickness, tolerance);
+    const ring = openingSection(prism, plate.boundary[0], normal, normalThickness, tolerance);
     if (typeof ring === 'string') { reject(ring); continue; }
     try { accepted.push(checkOpening(face, ring, accepted, { clearance: tolerance })); }
     catch (error) { reject(error instanceof Error ? error.message : String(error)); continue; }

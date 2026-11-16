@@ -11,6 +11,8 @@ export const structuralDeriveDe = {
   "structuralDerive.counts": "Stabelemente: {curveMembers} · Flächenelemente: {surfaceMembers} · Knoten: {nodes} · Auflager: {supports}, davon angenommen: {guessedSupports} · zu erstellende IFC-Datensätze: {created}",
   "structuralDerive.assumed": "Bauteile ohne LoadBearing-Wert, als tragend angenommen: {count}.",
   "structuralDerive.skipped": "Übersprungene Bauteile ({count})",
+  "structuralDerive.skippedOpenings": "Übersprungene Öffnungen ({count})",
+  "structuralDerive.skippedOpeningRow": "Öffnung #{opening} von Bauteil #{host}: {reason}",
   "structuralDerive.guessed": "Angenommene Auflager an den tiefsten Knoten, da kein Fundament einen trägt ({count})",
   "structuralDerive.unconnected": "Knoten, die einen Stab oder eine Fläche berühren, ohne verbunden zu sein ({count})",
   "structuralDerive.existing": "Dieses Modell hat bereits ein Analysemodell ({ids}). Daneben wird nichts abgeleitet.",

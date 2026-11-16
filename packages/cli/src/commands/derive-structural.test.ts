@@ -125,3 +125,18 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite derive-structural (#9668)', () =>
     expect(stderr).toMatch(/tolerance must be a number of metres/);
   });
 });
+
+
+it('prints rejected opening ids and hosts separately in text and JSON reports', async () => {
+  const source = await readFile(SAMPLE, 'utf8');
+  const host = source.match(/#(\d+)=IFCWALL\(/i)![1];
+  const withOpening = source.replace('ENDSEC;\nEND-ISO', `#990001=IFCOPENINGELEMENT('0opening00000000000000',$,'Unreadable',$,$,$,$,$,.OPENING.);\n#990002=IFCRELVOIDSELEMENT('0void00000000000000000',$,$,$,#${host},#990001);\nENDSEC;\nEND-ISO`);
+  const path = join(dir, 'opening.ifc');
+  await writeFile(path,withOpening);
+  const run = await derive();
+  await run([path,'--dry-run','--json']);
+  expect(JSON.parse(stdout)).toMatchObject({ counts: { skipped: 0, skippedOpenings: 1 }, skipped: [], skippedOpenings: [{ openingId: 990001, hostId: Number(host), reason: 'no Body representation' }] });
+  stdout = ''; stderr = '';
+  await run([path,'--dry-run']);
+  expect(stderr).toContain(`skipped opening #990001 of host #${host}: no Body representation`);
+});

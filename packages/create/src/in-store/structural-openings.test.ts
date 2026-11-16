@@ -3,12 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // #9668: physical openings survive derivation and a STEP round trip.
-import { describe, it, expect } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { describe, it, expect, vi } from 'vitest';
 import { IfcParser, extractStructuralOnDemand } from '@ifc-lite/parser';
 import { ItemGeometryReader } from '../../../parser/src/structural-item-geometry.js';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { addStructuralSurfaceMemberToStore, resolveSpatialAnchor, readStructuralDerivationFacts, planStructuralDerivation, applyStructuralDerivation } from '../index.js';
+import * as faceModule from './_structural-face.js';
+import * as planModule from './structural-derive-plan.js';
+import * as polygonModule from './room-footprint-offset.js';
+import { plateOpenings, openingSection } from './structural-opening-section.js';
 import { prepareStructuralFace } from './_structural-face.js';
 import type { Vec3 } from './structural-derive-types.js';
 const MODEL = `ISO-10303-21;
@@ -163,7 +168,7 @@ describe('derive physical openings', () => {
       expect(Math.min(...holes[0].map(p => p[axis]))).toBeCloseTo(min, 8);
       expect(Math.max(...holes[0].map(p => p[axis]))).toBeCloseTo(max, 8);
     }
-    expect(plan.report.skipped).toEqual([]);
+    expect(plan.report.skippedOpenings).toEqual([]);
   });
   it('rejects a section that shifts between the two wall faces', async () => {
     const s = await session(physicalModel(true));
@@ -174,7 +179,7 @@ describe('derive physical openings', () => {
     prism.outline = prism.outline.map(([x,y,z]) => [x + 2 * y, y, z]);
     const plan = planStructuralDerivation(facts);
     expect(plan.surfaceMembers.find(m => m.elementId === wall.expressId)!.openings).toEqual([]);
-    expect(plan.report.skipped[0].detail).toContain('section changes across plate faces');
+    expect(plan.report.skippedOpenings[0].reason).toContain('section changes across plate faces');
   });
   it.each([['plan recess','not through'], ['two intervals','2 intervals']])('skips %s with its section reason', async (name, reason) => {
     const s = await session(physicalModel(true));
@@ -183,8 +188,8 @@ describe('derive physical openings', () => {
     wall.openings = wall.openings!.filter(o => o.name === name);
     const plan = planStructuralDerivation(facts);
     expect(plan.surfaceMembers.find(m => m.elementId === wall.expressId)!.openings).toEqual([]);
-    expect(plan.report.skipped).toHaveLength(1);
-    expect(plan.report.skipped[0].detail).toContain(reason);
+    expect(plan.report.skippedOpenings).toHaveLength(1);
+    expect(plan.report.skippedOpenings[0].reason).toContain(reason);
   });
   it('uses the derive margin at the edge and refuses a shallow recess near the back face', async () => {
     const s = await session(physicalModel());
@@ -194,24 +199,27 @@ describe('derive physical openings', () => {
     // 2 cm clearance is inside the builder, but within the 5 cm derive margin.
     first.prism!.outline = first.prism!.outline.map(p => [p[0], p[1], p[2] - 1.48]);
     const recess = wall.openings!.find(o => o.name === 'recess')!;
-    recess.prism!.extrusion = [0, -0.49, 0]; // ends 1 cm before the back face
+    recess.prism!.extrusion = [0, -0.44, 0]; // ends 6 cm before the back face (outside derive tolerance)
     const plan = planStructuralDerivation(facts);
-    expect(plan.report.skipped.find(s => s.name === 'window1')?.detail).toContain('strictly inside');
-    expect(plan.report.skipped.find(s => s.name === 'recess')?.detail).toContain('not through');
+    expect(plan.report.skippedOpenings.find(s => s.name === 'window1')?.reason).toContain('strictly inside');
+    expect(plan.report.skippedOpenings.find(s => s.name === 'recess')?.reason).toContain('not through');
   });
   it('carries two through-windows and a stair opening, reporting every rejected opening', async () => {
     const s = await session(physicalModel());
     const facts = readStructuralDerivationFacts(s.store, s.editor);
     const plan = planStructuralDerivation(facts);
     expect(plan.surfaceMembers.map(m => [facts.elements.find(e => e.expressId === m.elementId)?.type, m.openings.length])).toEqual([['IfcSlab',1],['IfcWall',2]]);
-    expect(plan.report.skipped.map(s => [s.name, s.detail.split(': ').slice(1).join(': ')])).toEqual([
+    expect(plan.report.skippedOpenings.map(s => [s.name, s.reason])).toEqual([
       ['door','Structural Face: opening must lie strictly inside boundary'],
       ['oblique','opening extrusion is oblique to the plate normal (more than 1 degree)'],
       ['recess','opening does not span the plate thickness (not through)'],
       ['overlap','Structural Face: openings must not overlap or touch'],
       ['unreadable','no Body representation'],
     ]);
-    expect(plan.report.skipped.every(s => s.type === 'IfcOpeningElement')).toBe(true);
+    expect(plan.report.skipped).toEqual([]);
+    expect(plan.report.counts.skipped).toBe(0);
+    expect(plan.report.counts.skippedOpenings).toBe(5);
+    expect(plan.report.skippedOpenings.every(s => facts.elements.some(e => e.expressId === s.hostId && e.openings?.some(o => o.expressId === s.openingId)))).toBe(true);
     applyStructuralDerivation(s.editor, s.store, plan);
     const parsed = await roundTrip(s);
     const members = extractStructuralOnDemand(parsed).members;
@@ -221,4 +229,113 @@ describe('derive physical openings', () => {
       return shape?.kind === 'face' ? shape.innerBounds?.length : -1;
     })).toEqual([1,2]);
   });
+});
+
+describe('opening review regressions', () => {
+  it('reads IfcOpeningStandardCase and reports unsupported voiding types separately', async () => {
+    const text = physicalModel().replace(/IFCOPENINGELEMENT/g, 'IFCOPENINGSTANDARDCASE');
+    const s = await session(text);
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    expect(facts.elements.flatMap(e => e.openings ?? [])).toHaveLength(8);
+    expect(planStructuralDerivation(facts).surfaceMembers.reduce((n,m) => n+m.openings.length,0)).toBe(3);
+    const bad = await session(text.replace(/IFCOPENINGSTANDARDCASE/g, 'IFCBUILDINGELEMENTPROXY'));
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(bad.store, bad.editor));
+    expect(plan.report.skipped).toEqual([]);
+    expect(plan.report.skippedOpenings).toHaveLength(8);
+    expect(plan.report.skippedOpenings.every(o => o.reason.includes('unsupported voiding type IFCBUILDINGELEMENTPROXY'))).toBe(true);
+  });
+  it.each(['normal', 'in-plane'])('uses length tolerance for a slightly short %s opening', async kind => {
+    const s = await session(physicalModel(kind === 'in-plane'));
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    const wall = facts.elements.find(e => e.type === 'IfcWall')!;
+    wall.openings = wall.openings!.filter(o => o.name === (kind === 'normal' ? 'window1' : 'plan window'));
+    const prism = wall.openings[0].prism!;
+    if (kind === 'normal') {
+      prism.outline = prism.outline.map(([x,,z]) => [x,0.1998,z]);
+      prism.extrusion = [0,-0.3996,0];
+    } else {
+      prism.outline = prism.outline.map(([x,y,z]) => [x,0.165 + (y > 0.165 ? 1 : -1) * (0.33 - 1e-8)/2,z]);
+    }
+    const plan = planStructuralDerivation(facts, { tolerance: 0.001 });
+    expect(plan.surfaceMembers.find(m => m.elementId === wall.expressId)!.openings).toHaveLength(1);
+    expect(plan.report.skippedOpenings).toEqual([]);
+  });
+  it('samples true faces for a slab extruded two degrees off its profile normal', async () => {
+    const s = await session(physicalModel());
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    const slab = facts.elements.find(e => e.type === 'IfcSlab')!;
+    const angle = 2 * Math.PI/180;
+    slab.prism!.extrusion = [0.3*Math.sin(angle),0,0.3*Math.cos(angle)];
+    const cut = slab.openings![0].prism!;
+    cut.outline = cut.outline.map(([x,y]) => [x,y,0]);
+    cut.extrusion = [0,0,0.3*Math.cos(angle)];
+    const plan = planStructuralDerivation(facts, { tolerance: 1e-5 });
+    expect(plan.surfaceMembers.find(m => m.elementId === slab.expressId)!.openings).toHaveLength(1);
+  });
+  it('leaves a column top inside a slab opening free without claiming it rests on the slab', async () => {
+    const s = await session(physicalModel());
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    facts.elements.push({ expressId: 99999, type: 'IfcColumn', name: null, storeyId: 30, loadBearing: true, idealised: false, axis: [[20,0,-3],[20,0,0.15]] });
+    const plan = planStructuralDerivation(facts);
+    const top = plan.curveMembers.find(m => m.elementId === 99999)!.endNode;
+    expect(plan.report.freeEnds).toContain(top);
+    expect(plan.report.unconnectedEnds.filter(e => e.node === top)).toEqual([]);
+  });
+  it('applies a held plain plan with no openings field', async () => {
+    const s = await session(physicalModel());
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(s.store,s.editor));
+    plan.surfaceMembers.forEach(m => Reflect.deleteProperty(m, 'openings'));
+    expect(() => applyStructuralDerivation(s.editor,s.store,plan)).not.toThrow();
+  });
+  it.each([null, {}])('validates a non-array Openings value %s before emitting', async Openings => {
+    const s = await session();
+    const before = s.editor.getNewEntities().length;
+    // Deliberately malformed plain data from an untyped caller.
+    // @ts-expect-error testing runtime validation
+    expect(() => addStructuralSurfaceMemberToStore(s.editor,s.anchor,{ Boundary: boundary, Openings })).toThrow(/^Structural Face: Openings must be an array/);
+    expect(s.editor.getNewEntities()).toHaveLength(before);
+  });
+});
+
+
+describe('shared opening helpers', () => {
+  it('reuses the checked host face and returns early when no openings exist', async () => {
+    const s = await session(physicalModel());
+    const facts = readStructuralDerivationFacts(s.store,s.editor);
+    facts.elements.forEach(e => { e.openings = []; });
+    const prepare = vi.spyOn(faceModule, 'prepareStructuralFace');
+    try {
+      expect(planStructuralDerivation(facts).surfaceMembers).toHaveLength(2);
+      expect(prepare).toHaveBeenCalledTimes(2);
+      // An absent openings collection needs no prepared face at all.
+      expect(plateOpenings({ ...facts.elements[0], openings: undefined }, { boundary: [], thickness: 0 }, undefined!, 0.01, [])).toEqual([]);
+    } finally { prepare.mockRestore(); }
+  });
+  it('shares role classification with facts and pointInPolygon with profile sections', async () => {
+    const s = await session(physicalModel(true));
+    const role = vi.spyOn(planModule, 'roleOf');
+    const polygon = vi.spyOn(polygonModule, 'pointInPolygon');
+    try {
+      const facts = readStructuralDerivationFacts(s.store,s.editor);
+      expect(role).toHaveBeenCalledWith('IfcWall');
+      const wall = facts.elements.find(e => e.type === 'IfcWall')!;
+      wall.openings = wall.openings!.filter(o => o.name === 'plan window');
+      const calls = polygon.mock.calls.length;
+      openingSection(wall.openings[0].prism!, [0,0.165,0], [0,1,0], 0.33, 0.05);
+      expect(polygon.mock.calls.length).toBeGreaterThan(calls);
+    } finally { role.mockRestore(); polygon.mockRestore(); }
+  });
+});
+
+
+const brickHouse = new URL('../../../../tests/models/ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc', import.meta.url);
+if (!existsSync(brickHouse)) console.warn('skip: brick-house fixture missing; run `pnpm fixtures`');
+it.skipIf(!existsSync(brickHouse))('keeps the brick-house result: 16 windows after stripping authored structural entities in memory', async () => {
+  const source = readFileSync(brickHouse, 'utf8');
+  const physical = source.replace(/^#\d+=IFC(?:STRUCTURAL\w*|RELCONNECTSSTRUCTURAL\w*)\([\s\S]*?;\r?\n/gm, '');
+  const store = await parse(physical);
+  const s = { store, editor: new StoreEditor(store, new MutablePropertyView(null, 'brick-house')) };
+  expect(extractStructuralOnDemand(s.store).members).toHaveLength(0);
+  const plan = planStructuralDerivation(readStructuralDerivationFacts(s.store,s.editor));
+  expect(plan.surfaceMembers.reduce((n,m) => n + m.openings.length,0)).toBe(16);
 });

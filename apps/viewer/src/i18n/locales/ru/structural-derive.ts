@@ -11,6 +11,8 @@ export const structuralDeriveRu = {
   "structuralDerive.counts": "Стержней: {curveMembers} · пластин: {surfaceMembers} · узлов: {nodes} · опор: {supports}, из них предполагаемых: {guessedSupports} · записей IFC к созданию: {created}",
   "structuralDerive.assumed": "Элементов без значения LoadBearing, считающихся несущими: {count}.",
   "structuralDerive.skipped": "Пропущенные элементы ({count})",
+  "structuralDerive.skippedOpenings": "Пропущенные проёмы ({count})",
+  "structuralDerive.skippedOpeningRow": "Проём #{opening} элемента #{host}: {reason}",
   "structuralDerive.guessed": "Предполагаемые опоры в самых нижних узлах, так как фундаментов нет ({count})",
   "structuralDerive.unconnected": "Узлы, касающиеся элемента или пластины без соединения ({count})",
   "structuralDerive.existing": "В этой модели уже есть расчётная модель ({ids}). Рядом с ней ничего не выводится.",

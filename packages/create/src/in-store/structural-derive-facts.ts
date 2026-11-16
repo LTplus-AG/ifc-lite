@@ -10,7 +10,7 @@
 
 import { iterateEffectiveEntityIds, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
 import {
-  effectiveStoreyResolver, effectiveStructuralView, expandTypes, extractStructuralOnDemand, extractTypePropertiesOnDemand, normalizeIfcTypeName, getInheritanceChainAcrossSchemas,
+  effectiveStoreyResolver, effectiveStructuralView, expandTypes, extractStructuralOnDemand, extractTypePropertiesOnDemand, normalizeIfcTypeName,
   structuralCounterparts, type IfcDataStore, type StructuralExtraction,
 } from '@ifc-lite/parser';
 import { effectiveSpatialContext } from './edit/effective-storey.js';
@@ -20,9 +20,11 @@ import { safeLengthUnitScale } from './length-unit-scale.js';
 import { localBodyExtent } from './resolve-host.js';
 import { createStyleEntityReader, type StyleEntity } from './style-entity-reader.js';
 import { scale } from './structural-derive-idealise.js';
-import { CURVE, DERIVATION_CLASSES } from './structural-derive-plan.js';
+import { roleOf, DERIVATION_CLASSES } from './structural-derive-plan.js';
 import { readElementShape } from './structural-derive-shape.js';
 import { DERIVED_ANALYSIS_MODEL_DESCRIPTION, type OpeningFact, type PhysicalElementFact, type StructuralDerivationFacts } from './structural-derive-types.js';
+
+import { OPENING_TYPES } from './hosted-fill-read.js';
 
 const FOOTINGS = new Set(['IfcFooting', 'IfcPile']);
 
@@ -115,12 +117,14 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
       fact.loadBearing = readLoadBearing(store, view, expressId);
       fact.idealised = structuralCounterparts(structural, expressId)?.side === 'analytical';
       Object.assign(fact, readElementShape(reader, expressId, metres, true));
-      const chain = getInheritanceChainAcrossSchemas(type);
-      if (!fact.idealised && fact.loadBearing !== false && !CURVE.some(c => chain.includes(c))) {
+      if (!fact.idealised && fact.loadBearing !== false && roleOf(type) === 'surface') {
         const collected: OpeningFact[] = [];
         for (const id of openings.get(expressId) ?? []) {
           const opening = read(id);
-          if (opening?.type.toUpperCase() !== 'IFCOPENINGELEMENT') continue;
+          if (!opening || !OPENING_TYPES.has(opening.type.toUpperCase())) {
+            collected.push({ expressId: id, name: null, shapeIssue: `unsupported voiding type ${opening?.type ?? 'missing entity'}` });
+            continue;
+          }
           const name = opening.attributes[2];
           collected.push({ expressId: id, name: typeof name === 'string' ? name : null, ...readElementShape(reader, id, metres, false) });
         }

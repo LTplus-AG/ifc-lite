@@ -29,6 +29,7 @@ function isFiniteRing(points: unknown): points is Point3D[] {
 
 /** Validate before emitting anything. Coordinates are storey-local metres. */
 export function prepareStructuralFace(points: readonly Point3D[], openings: readonly Point3D[][] = []) {
+  if (!Array.isArray(openings)) throw new Error('Structural Face: Openings must be an array');
   if (!isFiniteRing(points)) {
     throw new Error('Structural Face: at least three finite boundary points are required');
   }
@@ -113,7 +114,7 @@ export function checkOpening(face: ReturnType<typeof prepareStructuralFace>, ope
 
 /** Placement, plane, face and representation ids, plus point/vertex/edge/oriented-edge
  * ids from all loops. loopId and boundId identify only the outer loop and bound;
- * inner loop and bound ids are not listed. */
+ * innerLoopIds and innerBoundIds identify the opening loops and bounds. */
 export interface StructuralFaceIds {
   placementId: number;
   pointIds: number[];
@@ -122,6 +123,8 @@ export interface StructuralFaceIds {
   orientedEdgeIds: number[];
   loopId: number;
   boundId: number;
+  innerLoopIds: number[];
+  innerBoundIds: number[];
   planePointId: number;
   normalId: number;
   refDirectionId: number;
@@ -148,8 +151,10 @@ export function emitStructuralFace(editor: StoreEditor, anchor: SpatialAnchor, f
   const { pointIds, vertexIds, edgeIds, orientedEdgeIds, loopId } = emitLoop(editor, anchor, face.relative);
   const boundId = editor.addEntity('IfcFaceOuterBound', [`#${loopId}`, '.T.']).expressId;
   const innerBoundIds: number[] = [];
+  const innerLoopIds: number[] = [];
   for (const ring of face.openings) {
     const inner = emitLoop(editor, anchor, ring);
+    innerLoopIds.push(inner.loopId);
     pointIds.push(...inner.pointIds);
     vertexIds.push(...inner.vertexIds);
     edgeIds.push(...inner.edgeIds);
@@ -164,5 +169,5 @@ export function emitStructuralFace(editor: StoreEditor, anchor: SpatialAnchor, f
   const faceId = editor.addEntity('IfcFaceSurface', [[boundId, ...innerBoundIds].map(id => `#${id}`), `#${planeId}`, '.T.']).expressId;
   const topologyRepId = editor.addEntity('IfcTopologyRepresentation', [`#${anchor.bodyContextId}`, 'Reference', 'Face', [`#${faceId}`]]).expressId;
   const productShapeId = editor.addEntity('IfcProductDefinitionShape', [null, null, [`#${topologyRepId}`]]).expressId;
-  return { placementId, pointIds, vertexIds, edgeIds, orientedEdgeIds, loopId, boundId, planePointId, normalId, refDirectionId, planePlacementId, planeId, faceId, topologyRepId, productShapeId };
+  return { placementId, pointIds, vertexIds, edgeIds, orientedEdgeIds, loopId, boundId, innerLoopIds, innerBoundIds, planePointId, normalId, refDirectionId, planePlacementId, planeId, faceId, topologyRepId, productShapeId };
 }

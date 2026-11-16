@@ -23,7 +23,10 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('%s imported face-based str
     const before = await parse(scene.exportText());
     const surface = create.addStructuralSurfaceMemberToStore(scene.editor, scene.anchor, {
       Boundary: [[0,0,0], [4,0,0], [4,3,0], [0,3,0]], PredefinedType: 'SHELL', Thickness: 0.2,
+      Openings: [[[1,1,0], [2,1,0], [2,2,0], [1,2,0]]],
     });
+    expect(surface.innerLoopIds).toHaveLength(1);
+    expect(surface.innerBoundIds).toHaveLength(1);
     const shell = scene.editor.addEntity('IfcOpenShell', [[`#${surface.faceId}`]]).expressId;
     const model = scene.editor.addEntity('IfcFaceBasedSurfaceModel', [[`#${shell}`]]).expressId;
     scene.editor.setEntityType(surface.topologyRepId, 'IfcShapeRepresentation');
@@ -36,7 +39,7 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('%s imported face-based str
       const otherModel = scene.editor.addEntity('IfcFaceBasedSurfaceModel', [[`#${otherShell}`]]).expressId;
       for (const id of [
         ...surface.pointIds, ...surface.vertexIds, ...surface.edgeIds, ...surface.orientedEdgeIds,
-        surface.loopId, surface.boundId, surface.planePointId, surface.normalId,
+        surface.loopId, surface.boundId, ...surface.innerLoopIds, ...surface.innerBoundIds, surface.planePointId, surface.normalId,
         surface.refDirectionId, surface.planePlacementId, surface.planeId, surface.faceId,
         otherShell, otherModel,
       ]) kept.add(id);

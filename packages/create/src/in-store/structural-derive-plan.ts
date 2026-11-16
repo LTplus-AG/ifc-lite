@@ -22,6 +22,7 @@ import {
   type PlannedNode,
   type PlannedSurfaceMember,
   type SkippedElement,
+  type SkippedOpening,
   type StructuralDerivationFacts,
   type StructuralDerivationOptions,
   type StructuralDerivationPlan,
@@ -41,7 +42,7 @@ const ROLE_CLASSES = [['curve', CURVE], ['surface', SURFACE], ['support', SUPPOR
 /** Every class the derivation reads, for the facts reader. */
 export const DERIVATION_CLASSES: readonly string[] = [...CURVE, ...SURFACE, ...SUPPORT];
 
-function roleOf(type: string): (typeof ROLE_CLASSES)[number][0] | null {
+export function roleOf(type: string): (typeof ROLE_CLASSES)[number][0] | null {
   const chain = getInheritanceChainAcrossSchemas(type);
   return ROLE_CLASSES.find(([, classes]) => classes.some((c) => chain.includes(c)))?.[0] ?? null;
 }
@@ -85,9 +86,9 @@ function insidePolygon(p: Vec3, polygon: Vec3[], normal: Vec3): boolean {
 }
 
 /** The surface builder's own boundary checks, run here so apply never meets them. */
-function checkFace(boundary: Vec3[]): { normal: Vec3 } | { issue: string } {
+function checkFace(boundary: Vec3[]): { face: ReturnType<typeof prepareStructuralFace> } | { issue: string } {
   try {
-    return { normal: prepareStructuralFace(boundary).axis };
+    return { face: prepareStructuralFace(boundary) };
   } catch (error) {
     return { issue: error instanceof Error ? error.message : String(error) };
   }
@@ -104,6 +105,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   const { tolerance } = resolved;
   const isLong = (line: { start: Vec3; end: Vec3 }) => length(sub(line.end, line.start)) > tolerance;
   const skipped: SkippedElement[] = [];
+  const skippedOpenings: SkippedOpening[] = [];
   const skip = (element: PhysicalElementFact, reason: SkippedElement['reason'], detail: string) => {
     skipped.push({ elementId: element.expressId, type: element.type, name: element.name, reason, detail });
   };
@@ -141,7 +143,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     if ('issue' in plate) { skip(element, 'no-idealisable-shape', plate.issue); continue; }
     const face = checkFace(plate.boundary);
     if ('issue' in face) skip(element, 'no-idealisable-shape', face.issue);
-    else surfaces.push({ member: { elementId: element.expressId, storeyId: element.storeyId, ...plate, openings: plateOpenings(element, plate, face.normal, tolerance, skipped), loadBearing }, normal: face.normal });
+    else surfaces.push({ member: { elementId: element.expressId, storeyId: element.storeyId, ...plate, openings: plateOpenings(element, plate, face.face, tolerance, skippedOpenings), loadBearing }, normal: face.face.axis });
   }
 
   const footingGrid = new SegmentGrid(2);
@@ -245,10 +247,12 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
         // Elements, not pieces: a split member counts once.
         assumedLoadBearing: new Set(members.filter((member) => member.loadBearing === 'assumed').map((member) => member.elementId)).size,
         skipped: skipped.length,
+        skippedOpenings: skippedOpenings.length,
         extendedEnds: joined.extended.length,
         freeEnds: freeEnds.length,
       },
       skipped,
+      skippedOpenings,
       guessedSupports,
       extendedEnds: joined.extended,
       freeEnds,
@@ -280,7 +284,8 @@ function findUnconnectedEnds(
     if (onMember) { found.push({ node: node.index, landsOnElementId: onMember.elementId, landsOn: 'member-interior' }); continue; }
     if (degree[node.index] !== 1) continue;
     const onSurface = surfaces.find(({ member, normal }) =>
-      Math.abs(dot(sub(p, member.boundary[0]), normal)) <= tolerance + member.thickness / 2 && insidePolygon(p, member.boundary, normal));
+      Math.abs(dot(sub(p, member.boundary[0]), normal)) <= tolerance + member.thickness / 2 && insidePolygon(p, member.boundary, normal)
+      && !(member.openings ?? []).some(ring => insidePolygon(p, ring, normal)));
     if (onSurface) found.push({ node: node.index, landsOnElementId: onSurface.member.elementId, landsOn: 'surface-member' });
   }
   return found;

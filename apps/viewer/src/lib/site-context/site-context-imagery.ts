@@ -273,21 +273,43 @@ function uploadTerrain(modelId: string, geometry: GeometryResult, meshes: MeshDa
   renderer.requestRender();
 }
 
+let drapeQueue: Promise<void> = Promise.resolve();
+
 /**
- * Drape the chosen layers on the site-context terrain model `modelId`, in two
+ * Change the layers draped on the site-context terrain `modelId`. Drapes run
+ * one at a time, and a layer `change` leaves out keeps the state it has when
+ * this drape starts, so concurrent requests (the automatic imagery drape, the
+ * hazard toggle, the imagery button) compose instead of the last one undoing
+ * the others. Rejects with a user-facing reason.
+ */
+export function drapeSiteContextTerrain(modelId: string, change: Partial<TerrainDrapeLayers>, signal?: AbortSignal): Promise<void> {
+  const run = drapeQueue.then(() => {
+    const info = useViewerStore.getState().siteContextModels.get(modelId);
+    return drapeLayers(modelId, {
+      imagery: change.imagery ?? info?.imagery !== undefined,
+      hazard: change.hazard ?? info?.hazard !== undefined,
+    }, signal);
+  });
+  drapeQueue = run.catch(() => undefined);
+  return run;
+}
+
+/**
+ * Drape exactly `layers` on the site-context terrain model `modelId`, in two
  * levels: 10 cm on the chunks around the model, 25 cm (or coarser, within the
  * texture limit) on the rest. Each level is its own texture through the
  * existing textured-mesh path; a chunk takes exactly one. Imagery and hazard
  * map of a level are requested for the same box at the same pixel size, so
  * they line up. Throws with a user-facing reason.
  */
-export async function drapeSiteContextTerrain(modelId: string, layers: TerrainDrapeLayers, signal?: AbortSignal): Promise<void> {
+async function drapeLayers(modelId: string, layers: TerrainDrapeLayers, signal?: AbortSignal): Promise<void> {
   const state = useViewerStore.getState();
   const info = state.siteContextModels.get(modelId);
   const model = state.models.get(modelId);
   if (!info || info.kind !== 'terrain' || !info.planBox || !model?.geometryResult) {
     throw new Error('Map layers drape on a loaded site-context terrain only.');
   }
+  if (!getGlobalRenderer()?.isReady()) throw new Error('The viewport is not ready to show the terrain layers yet.');
   const site = info.planBox;
   const core = coreMeshes(model.geometryResult.meshes);
   const coreCount = core.length;
@@ -353,8 +375,14 @@ export async function drapeSiteContextTerrain(modelId: string, layers: TerrainDr
     meshes[index] = draped;
     changed.push(draped);
   });
-  if (changed.length === 0) throw new Error('The terrain carries no texture coordinates to drape on.');
-  uploadTerrain(modelId, geometry, meshes, changed);
+  try {
+    if (changed.length === 0) throw new Error('The terrain carries no texture coordinates to drape on.');
+    uploadTerrain(modelId, geometry, meshes, changed);
+  } catch (error) {
+    // Nothing took the composed textures: free them now rather than at collection.
+    for (const level of levels) level.texture?.bitmap.close();
+    throw error;
+  }
   const gsd = (coarseLevel ?? levels[0]).groundSampleDistance;
   const near = fineLevel ? { nearGroundSampleDistance: fineLevel.groundSampleDistance } : {};
   useViewerStore.getState().updateSiteContextModel(modelId, {

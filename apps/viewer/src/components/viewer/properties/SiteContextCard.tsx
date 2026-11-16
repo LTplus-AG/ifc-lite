@@ -70,7 +70,7 @@ export function SiteContextCard({ model }: { model: FederatedModel }) {
   const drape = async () => {
     setDraping(true);
     try {
-      await (await import('@/lib/site-context/site-context-imagery')).drapeSiteContextTerrain(model.id, { imagery: true, hazard: info.hazard !== undefined });
+      await (await import('@/lib/site-context/site-context-imagery')).drapeSiteContextTerrain(model.id, { imagery: true });
     } catch (error) {
       console.error('[site-context] imagery drape failed:', error);
       toast.error(error instanceof Error ? error.message : String(error));

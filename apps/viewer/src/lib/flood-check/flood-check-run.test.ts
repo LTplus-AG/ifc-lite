@@ -13,6 +13,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { runViewerFloodCheck, swissAlti3dTerrain, SWISSALTI3D_VERTICAL_ACCURACY } from './flood-check-run';
 
@@ -49,6 +50,21 @@ test('a georeference edited in the viewer is refused, since the check would read
   assert.equal(run?.status, 'error');
   assert.match(run?.error?.message ?? '', /edited in the viewer/);
   assert.equal(run?.data, null, 'no result is kept from a refused run');
+  assert.deepEqual(requested, []);
+});
+
+test('a model with elements edited in the viewer is refused: the check would paint the file\'s verdicts on the edited model', async () => {
+  recordFetch();
+  useViewerStore.setState({ ...fixtureModels(fixtureModel('building')) });
+  const views = new Map(useViewerStore.getState().mutationViews);
+  const view = new MutablePropertyView(null, 'building');
+  view.setAttribute(1, 'Name', 'Moved door');
+  views.set('building', view);
+  useViewerStore.setState({ mutationViews: views });
+  await runViewerFloodCheck({ modelId: 'building' });
+  const run = useViewerStore.getState().floodCheck;
+  assert.equal(run?.status, 'error');
+  assert.match(run?.error?.message ?? '', /edited in the viewer/);
   assert.deepEqual(requested, []);
 });
 

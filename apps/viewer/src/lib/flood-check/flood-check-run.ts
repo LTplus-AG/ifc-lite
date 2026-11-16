@@ -9,10 +9,12 @@
  *
  * Only ever started by a user click. Every request goes through the swisstopo
  * host allowlist (`swisstopoFetch`): the hazard map from wms.geo.admin.ch, the
- * terrain (swissALTI3D) from data.geo.admin.ch, both through the site-context
- * response cache. The model's facts are read from its parsed data store as
- * loaded: a georeference edited in the viewer and not yet saved is refused,
- * since the check would read the old one.
+ * terrain (swissALTI3D) from data.geo.admin.ch. The terrain goes through the
+ * site-context response cache; the hazard map is fetched for each run (a
+ * transparent answer may be an outage, so it is never served from a cache).
+ * The model's facts are read from its parsed data store as loaded: a model
+ * edited in the viewer (its georeference, or any element) is refused, since
+ * the check would read the file as it was and paint that on the edited model.
  *
  * Nothing is written into the model; the element and site property sets are
  * kept as payloads for the property panel.
@@ -76,12 +78,19 @@ export async function runViewerFloodCheck(options: RunViewerFloodCheckOptions): 
   const supersession = watchLoadSupersession('primary');
   const onSuperseded = () => abort.abort();
   supersession.signal.addEventListener('abort', onSuperseded, { once: true });
+  // A run detached by the slice (its model removed, all models cleared) aborts itself: a teardown only drops the handle.
+  const unsubscribe = useViewerStore.subscribe((state) => {
+    if (state.floodCheck?.abort !== abort && !abort.signal.aborted) abort.abort();
+  });
   try {
     const model = store().models.get(options.modelId);
     const dataStore = model?.ifcDataStore;
     if (!dataStore) throw new ViewerRefusal('The flood check reads IFC models only; this model has no IFC data.');
     if (store().georefMutations.has(options.modelId)) {
       throw new ViewerRefusal('The georeference of this model was edited in the viewer and the check reads the georeference the file states. Export the model and open it again to check it with the edited georeference.');
+    }
+    if (store().mutationViews.get(options.modelId)?.hasChanges()) {
+      throw new ViewerRefusal('This model was edited in the viewer and the check reads the model as its file states it. Export the model and open it again to check the edited model.');
     }
     // Let the panel show "running" before the synchronous read of the model.
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -110,6 +119,9 @@ export async function runViewerFloodCheck(options: RunViewerFloodCheckOptions): 
       code: error instanceof FloodCheckRefusal ? error.code : null,
     });
   } finally {
+    unsubscribe();
+    // A run that aborted while still the slice's run (superseded) must not stay "running".
+    if (store().floodCheck?.abort === abort && store().floodCheck?.status === 'running') store().cancelFloodCheck();
     supersession.signal.removeEventListener('abort', onSuperseded);
     supersession.stop();
   }

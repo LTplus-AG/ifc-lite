@@ -583,7 +583,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         modelName={modelId ? models.get(modelId)?.name : undefined} lengthUnitScale={lengthUnitScale} editable={editable}
         onApplyPosition={editable ? handleApplyPosition : undefined} />
       {modelId && <SiteContextSection modelId={modelId} />}
-      {modelId && <FloodCheckSection modelId={modelId} />}
+      {modelId && <FloodCheckSection key={modelId} modelId={modelId} />}
     </div>
   );
 }

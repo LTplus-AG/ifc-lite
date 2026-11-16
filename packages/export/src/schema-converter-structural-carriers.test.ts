@@ -407,19 +407,21 @@ ${geometry.replace('(#16),', aspect)}
     expect(up.warnings).not.toContain('stays unconverted');
   });
 
-  it('says nothing about Causes for a CausedBy that names no point reaction', async () => {
+  it('reports no CausedBy message for a CausedBy that names no point reaction', async () => {
     const up = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.'), 'IFC4');
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
-    // No CausedBy message of any kind; only the unconverted record is reported.
+    // No CausedBy message of any kind (every Causes message names CausedBy too).
     expect(up.warnings).not.toContain('CausedBy');
     expect(up.warnings).toContain('IFCSTRUCTURALLINEARACTIONVARYING has no representation in IFC4; record remains unconverted');
   });
 
-  it('reports nothing about Causes when the prepass is not armed', async () => {
+  it('reports no CausedBy message when the prepass is not armed', async () => {
     const result = new StepExporter(await parse(varying('(#16),'))).export({ schema: 'IFC4', subsetEntityIds: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 20, 30]) });
     const step = new TextDecoder().decode(result.content);
     expect(line(step, 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
     expect(records(step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
-    expect(result.stats.warnings.join('\n')).not.toContain('CausedBy');
+    const warnings = result.stats.warnings.join('\n');
+    expect(warnings).toContain('IFCSTRUCTURALLINEARACTIONVARYING has no representation in IFC4; record remains unconverted');
+    expect(warnings).not.toContain('CausedBy');
   });
 });

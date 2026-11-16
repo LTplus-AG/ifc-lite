@@ -49,6 +49,14 @@ pub fn documented() {}
 fn passes() { assert_eq!(2 + 2, 4); }
 #[test]
 fn feature_contract() {
+    let enabled = [
+        ("default-on", cfg!(feature = "default-on")),
+        ("doc-failure", cfg!(feature = "doc-failure")),
+        ("gate-a", cfg!(feature = "gate-a")),
+        ("gate-b", cfg!(feature = "gate-b")),
+        ("test-failure", cfg!(feature = "test-failure")),
+    ].into_iter().filter_map(|(name, enabled)| enabled.then_some(name)).collect::<Vec<_>>();
+    assert_eq!(enabled.join(","), std::env::var("EXPECTED_FEATURES").unwrap());
     assert!(!std::hint::black_box(cfg!(feature = "test-failure")), "intentional harness failure");
 }
 #[cfg(all(feature = "gate-a", feature = "gate-b"))]
@@ -57,10 +65,13 @@ fn combined_configuration() { assert!(std::hint::black_box(cfg!(feature = "gate-
 `);
     const metrics = join(root, 'metrics.jsonl');
     const run = args => {
+      const featureIndex = args.indexOf('--features');
+      const expected = [...(args.includes('--no-default-features') ? [] : ['default-on']),
+        ...(featureIndex < 0 ? [] : args[featureIndex + 1].split(','))].sort().join(',');
       const r = spawnSync(process.execPath, [runner, 'fixture', ...args], {
         cwd: root, encoding: 'utf8', timeout: 60000,
         env: { ...process.env, RUSTUP_AUTO_INSTALL: '0', CARGO_TARGET_DIR: join(root, 'target'),
-          RUST_CI_METRICS: metrics, RUST_CI_CACHE_HIT: 'false',
+          RUST_CI_METRICS: metrics, RUST_CI_CACHE_HIT: 'false', EXPECTED_FEATURES: expected,
           GITHUB_STEP_SUMMARY: join(root, 'summary.md') },
       });
       assert.ifError(r.error);

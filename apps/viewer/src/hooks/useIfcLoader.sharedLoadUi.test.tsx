@@ -226,16 +226,18 @@ for (const end of formatEnds) {
   }
 }
 
-it('a primary Cancel after a federated add failed beside it leaves no spinner (L5)', async () => {
+it('a primary Cancel while a federated add waits for its scene leaves no spinner (L5)', async () => {
   const primary = heldFile('primary.glb', buildTriangleGlb(3));
   let primaryLoad!: Promise<void>;
   await act(async () => {
     primaryLoad = loader!.loadFile(primary.file, { kind: 'primary', modelId: 'primary' });
     await primary.started;
   });
-  await act(async () => { await loader!.loadFile(new File(['0 0 0\n'], 'bad.xyz'), { kind: 'federated', modelId: 'bad' }); });
+  let joined!: Promise<void>;
+  await act(async () => { joined = loader!.loadFile(new File(['0 0 0\n'], 'bad.xyz'), { kind: 'federated', modelId: 'bad' }); });
   const job = loadJob('primary.glb');
-  await act(async () => { cancelActivity(job); primary.release(); await primaryLoad; });
+  await act(async () => { cancelActivity(job); primary.release(); await Promise.all([primaryLoad, joined]); });
+  assert.equal(useViewerStore.getState().models.has('bad'), false, 'Cancel cannot publish a waiting add');
   assert.equal(useViewerStore.getState().loading, false);
 });
 

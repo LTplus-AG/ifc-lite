@@ -293,6 +293,8 @@ export function useIfcLoader() {
     const showLoadError = loadFailureReporter(processedModel ? undefined : file, activity, retryThisLoad, options?.onLoadError);
     const localAdmission = createLocalIfcLoadAdmission(file, { isCurrent, signal: metadataAbort.signal, onCancel: () => settleLoadUi(),
       onFailure: error => {
+        const candidate = useViewerStore.getState().models.get(modelId);
+        if (!initialized && candidate?.sourceFile === file && candidate.loadState === 'pending' && !candidate.geometryResult) updateModel(modelId, { sourceReadRefused: true });
         const message = formatLoadError(error, file.name, 'ifc_model_load');
         if (initialized) updateModel(modelId, { loadState: 'error', loadError: message });
         if (surfaceStaleDeployment(error)) noteStaleDeploymentLoadFailure(file);

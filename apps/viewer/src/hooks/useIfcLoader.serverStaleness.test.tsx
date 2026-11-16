@@ -261,6 +261,7 @@ for (const publishes of [false, true]) it(`#10264 server failure ${publishes ? '
     assert.equal(errors.length, 1);
     assert.match(errors[0], /server stream failed after first geometry/);
     assert.equal(useViewerStore.getState().models.get('partial-server')?.loadState, 'error');
+    assert.equal(useViewerStore.getState().models.get('partial-server')?.sourceReadRefused, undefined, 'published server geometry is admitted even if completion fails');
     assert.equal(useViewerStore.getState().loading, false);
     assert.equal(reads, 0);
     assert.equal(engineInits, 0, 'no implicit local fallback after server publication');

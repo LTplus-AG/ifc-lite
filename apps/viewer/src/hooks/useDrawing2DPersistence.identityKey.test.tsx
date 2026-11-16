@@ -137,7 +137,7 @@ describe('drawing persistence is keyed by the placement identity (#7035)', () =>
     assert.equal(hasPersistedMarkupEntryFor('refused-source'), 'pending');
     if (edited) await act(async () => { useViewerStore.getState().createSheet({ paperId: 'A4_PORTRAIT' }); });
     const sheet = useViewerStore.getState().activeSheet;
-    await act(async () => { useViewerStore.getState().updateModel('refused-source', { loadState: 'error', loadError: 'Local memory admission refused this source' }); });
+    await act(async () => { useViewerStore.getState().updateModel('refused-source', { sourceReadRefused: true, loadState: 'error', loadError: 'Local memory admission refused this source' }); });
     await waitFor(() => hasPersistedMarkupEntryFor('refused-source') !== 'pending', 'refused source persistence to settle without a hash');
     assert.equal(fullSourcePasses() - before.full, 0, 'a failed provisional model must not launch the full-source identity worker');
     assert.equal(legacyPasses() - before.legacy, 0);
@@ -145,6 +145,27 @@ describe('drawing persistence is keyed by the placement identity (#7035)', () =>
     assert.equal(useViewerStore.getState().models.get('refused-source')?.sourceContentHash, undefined);
     assert.deepEqual(legacyShapedKeys(), []);
     if (edited) assert.equal(useViewerStore.getState().activeSheet, sheet, 'unsaved edit remains in memory without a source read');
+  });
+
+  it('#10264 persists markup and sheets after an admitted model errors with displayed geometry', async () => {
+    const bytes = bytesOf(24), file = sourceFile(bytes, 'partial-server.ifc');
+    await open(loadedModel('partial-server', file, bytes, {
+      sourceContentHash: undefined, loadState: 'error',
+      geometryResult: { meshes: [], totalTriangles: 1, totalVertices: 3, coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false,
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+      } },
+    }));
+    await act(async () => {
+      useViewerStore.setState({ measure2DResults: [measure('partial-model-markup')] });
+      useViewerStore.getState().createSheet({ paperId: 'A4_PORTRAIT' });
+    });
+    await waitFor(() => localStorage.getItem(sheetStorageKey(identityOf(bytes))) !== null, 'partial model sheet saved');
+    assert.deepEqual(storedMeasures(identityOf(bytes)), ['partial-model-markup'], 'published error models still persist markup');
+    const saved = JSON.parse(localStorage.getItem(sheetStorageKey(identityOf(bytes)))!) as { sheet: DrawingSheet };
+    assert.deepEqual(saved.sheet, useViewerStore.getState().activeSheet);
+    assert.equal(useViewerStore.getState().models.get('partial-server')?.sourceContentHash, identityOf(bytes));
   });
 
   it('new saves use the identity key, without a pass over the file', async () => {

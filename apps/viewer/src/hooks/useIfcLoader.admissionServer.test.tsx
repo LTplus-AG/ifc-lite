@@ -101,3 +101,26 @@ for (const kind of ['primary', 'federated'] as const) for (const archive of ['st
     }
   });
 }
+
+for (const provisional of [true, false]) it(`#10264 preflight marks only an unadmitted provisional source, provisional=${provisional}`, async () => {
+  const oldMemory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+  Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 4 });
+  const source = new File([step], 'refused-source.ifc'), blob = new Blob([step]);
+  Object.defineProperty(source, 'size', { value: 1.26e9 });
+  Object.defineProperty(source, 'slice', { value: blob.slice.bind(blob) });
+  let reads = 0;
+  Object.defineProperty(source, 'arrayBuffer', { value: () => { reads++; throw new Error('unadmitted source read'); } });
+  const candidate = fixtureModel('candidate', { sourceFile: source, loadState: provisional ? 'pending' : 'complete' });
+  useViewerStore.setState(fixtureModels(candidate));
+  const errors: string[] = [];
+  try {
+    await act(async () => { await api.loadFile(source, { kind: 'primary', modelId: 'candidate' }, { onLoadError: message => errors.push(message) }); });
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /local processing memory budget/);
+    assert.equal(reads, 0);
+    assert.equal(useViewerStore.getState().models.get('candidate')?.sourceReadRefused, provisional ? true : undefined,
+      'refusal must never poison an already admitted model, even when the retry reuses its File and ID');
+  } finally {
+    if (oldMemory) Object.defineProperty(navigator, 'deviceMemory', oldMemory); else Reflect.deleteProperty(navigator, 'deviceMemory');
+  }
+});

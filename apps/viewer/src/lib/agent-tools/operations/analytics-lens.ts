@@ -9,9 +9,9 @@ import { metadata, idSchema, jsonSchema, removedSchema, checkpoint } from './ana
 function inspect() {
   const s = useViewerStore.getState();
   return { lenses: s.savedLenses, activeId: s.activeLensId, matched: s.lensColorMap.size,
-    hiddenIds: [...s.lensHiddenIds], counts: [...s.lensRuleCounts], legend: s.lensAutoColorLegend };
+    hiddenIds: [...s.lensHiddenIds], rule_members: [...s.lensRuleEntityIds], counts: [...s.lensRuleCounts], legend: s.lensAutoColorLegend };
 }
-const output = { type: 'object', properties: { lenses: { type: 'array' }, activeId: { type: ['string', 'null'] }, matched: { type: 'integer' }, hiddenIds: { type: 'array', items: { type: 'integer' } }, counts: { type: 'array' }, legend: { type: 'array' } }, required: ['lenses', 'activeId', 'matched', 'hiddenIds', 'counts', 'legend'], additionalProperties: false };
+const output = { type: 'object', properties: { lenses: { type: 'array' }, activeId: { type: ['string', 'null'] }, matched: { type: 'integer' }, hiddenIds: { type: 'array', items: { type: 'integer' } }, counts: { type: 'array' }, rule_members: { type: 'array' }, legend: { type: 'array' } }, required: ['lenses', 'activeId', 'matched', 'hiddenIds', 'counts', 'rule_members', 'legend'], additionalProperties: false };
 export const analyticsLensOperations = [
   viewerOperation(metadata('lens.state', 'lens', 'Read saved rule/auto-color definitions and effective matched/hidden output.', ['read'], output), emptySchema, inspect),
   viewerOperation<{ content_json: string }>(metadata('lens.import', 'lens', 'Import/upsert native lens JSON array, including Rules filters, actions and auto-color settings; uses native validation and explicit save outcomes.', ['configuration'], output), jsonSchema, (i, c) => {

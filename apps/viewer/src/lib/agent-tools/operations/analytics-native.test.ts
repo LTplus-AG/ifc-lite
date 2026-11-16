@@ -35,12 +35,18 @@ import { analyticsSchedulePlaybackOperations } from './analytics-schedule-playba
 import { analyticsScheduleGenerateOperations } from './analytics-schedule-generate';
 import { analyticsDrawingMarkupOperations } from './analytics-drawing-markup';
 import { analyticsDrawingSheetOperations } from './analytics-drawing-sheets';
+import { analyticsListControlOperations } from './analytics-list-controls';
+import { analyticsLensControlOperations } from './analytics-lens-controls';
+import { analyticsScheduleControlOperations } from './analytics-schedule-controls';
+import { analyticsDrawingControlOperations } from './analytics-drawing-controls';
+import { dxfPlaneDrawingMapper } from '@/hooks/dxfReferencePlane';
+import { computeAnimationFrame } from '@/components/viewer/schedule/schedule-animator';
 import { measuredDimensionValue } from '@/store/slices/drawing2DDimensions';
 import { blankDocument } from '@/lib/document/presets';
 import { modelOverviewDashboard } from '@/lib/charts/presets';
 import { listRunDefinition, listRunModels } from '@/lib/lists/run-provenance';
 
-const entries = [...analyticsListOperations, ...analyticsChartOperations, ...analyticsLensOperations, ...analyticsMeasurementOperations, ...analyticsDocumentOperations, ...analyticsCostScheduleOperations, ...analyticsDrawingAppearanceOperations, ...analyticsScheduleEditOperations, ...analyticsAppearanceOperations, ...analyticsScheduleGenerateOperations, ...analyticsDrawingMarkupOperations, ...analyticsDrawingSheetOperations, ...analyticsSchedulePlaybackOperations, ...analyticsPresentationOperations, ...analyticsDrawingExportOperations, ...analyticsChartReportOperations, ...analyticsMeasurementSettingOperations, ...analyticsAppearanceSettingOperations, ...analyticsDrawingSettingOperations];
+const entries = [...analyticsListControlOperations, ...analyticsLensControlOperations, ...analyticsScheduleControlOperations, ...analyticsDrawingControlOperations, ...analyticsListOperations, ...analyticsChartOperations, ...analyticsLensOperations, ...analyticsMeasurementOperations, ...analyticsDocumentOperations, ...analyticsCostScheduleOperations, ...analyticsDrawingAppearanceOperations, ...analyticsScheduleEditOperations, ...analyticsAppearanceOperations, ...analyticsScheduleGenerateOperations, ...analyticsDrawingMarkupOperations, ...analyticsDrawingSheetOperations, ...analyticsSchedulePlaybackOperations, ...analyticsPresentationOperations, ...analyticsDrawingExportOperations, ...analyticsChartReportOperations, ...analyticsMeasurementSettingOperations, ...analyticsAppearanceSettingOperations, ...analyticsDrawingSettingOperations];
 let context: OperationContext;
 async function seed(count: 1 | 2 = 1) {
   resetFeaturesForTest(); await seedCoincidentWalls(count, 4);
@@ -79,6 +85,51 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     const stored = useViewerStore.getState().listResult; assert.ok(stored);
     assert.equal(stored.rows.length, 4); assert.equal(listRunDefinition(stored)?.id, list.id);
     assert.deepEqual(listRunModels(stored)?.models.map(row => row.id), ['A', 'B']);
+  });
+  it('native group X-ray uses exact federated members, toggles off and never releases a successor visibility owner', async () => {
+    await seed(2); const { model: _model, ...viewer } = context;
+    const input = { key: 'level-1', members: [{ model_id: 'A', express_id: 1 }, { model_id: 'B', express_id: 1 }], channel: 'ghost' };
+    await run('lists.presentMembers', input, viewer);
+    assert.deepEqual(useViewerStore.getState().ghostExceptEntities, new Set([1, 101]));
+    await run('lists.presentMembers', input, viewer); assert.equal(useViewerStore.getState().ghostExceptEntities, null);
+    await run('lists.presentMembers', input, viewer);
+    useViewerStore.setState({ ghostExceptEntities: new Set([2]) });
+    await run('lists.releaseVisibility', {}, viewer); assert.deepEqual(useViewerStore.getState().ghostExceptEntities, new Set([2]));
+  });
+  it('native column pencil preserves identity/order/custom labels and refuses a stale concurrent definition', async () => {
+    const definition: ListDefinition = { ...list, columns: [{ id: 'rating', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', label: 'Specified rating' }, ...list.columns] };
+    useViewerStore.setState({ listDefinitions: [definition] });
+    const input = { id: definition.id, column_id: 'rating', expected_json: JSON.stringify(definition), source: 'quantity', set_name: 'Qto_WallBaseQuantities', property_name: 'NetVolume' };
+    await run('lists.editColumn', input);
+    const next = useViewerStore.getState().listDefinitions[0]; assert.deepEqual(next.columns.map(column => column.id), ['rating', 'name']);
+    assert.equal(next.columns[0].label, 'Specified rating');
+    const result = await run<{ columns: { propertyName: string }[] }>('lists.run', { id: definition.id, offset: 0, limit: 5 });
+    assert.equal(result.columns[0].propertyName, 'NetVolume');
+    await assert.rejects(run('lists.editColumn', input), /changed since inspection/);
+  });
+  it('native Lens rule switch with equal membership remains isolated and releases only its current claim', async () => {
+    useViewerStore.setState({ activeLensId: 'same', lensRuleEntityIds: new Map([['a', [1, 2]], ['b', [1, 2]]]), lensRuleIsolation: null, isolatedEntities: null });
+    await run('lens.ruleMembers', { id: 'a', expected_lens_id: 'same', action: 'isolate' });
+    await run('lens.ruleMembers', { id: 'b', expected_lens_id: 'same', action: 'isolate' });
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([1, 2]));
+    await run('lens.ruleMembers', { id: 'b', expected_lens_id: 'same', action: 'isolate' }); assert.equal(useViewerStore.getState().isolatedEntities, null);
+    await assert.rejects(run('lens.ruleMembers', { id: 'a', expected_lens_id: 'replaced', action: 'select' }), /changed/);
+    const data = await run<{ data: { classes: string[] } }>('lens.discover', { properties: true, quantities: true, classifications: true, materials: true });
+    assert.ok(data.data.classes.includes('IfcWall'));
+  });
+  it('native Gantt move is one undoable reorder and full animation settings validate without an IFC model', async () => {
+    useViewerStore.setState({ editEnabled: true, scheduleData: null, scheduleSourceModelId: null, scheduleIsEdited: false });
+    await run('schedule.initialize'); await run('schedule.import', { format: 'csv', text: 'Name,Start,Finish\nFirst,2026-01-05,2026-01-06\nSecond,2026-01-06,2026-01-07\n' });
+    const order = useViewerStore.getState().scheduleData?.tasks.map(row => row.globalId); assert.ok(order);
+    const moved = await run<{ order: string[] }>('schedule.moveTask', { id: order[0], new_index: 1, expected_order: order }); assert.deepEqual(moved.order, [order[1], order[0]]);
+    await run('schedule.history', { action: 'undo' }); assert.deepEqual(useViewerStore.getState().scheduleData?.tasks.map(row => row.globalId), order);
+    const { model: _model, ...viewer } = context; const previous = useViewerStore.getState().animationSettings;
+    const input = { expected_json: JSON.stringify(previous), settings: { ...previous, paletteIntensity: 0.75, colorizeByTaskType: true, hideUntaskedProducts: true } };
+    await run('schedule.configureAnimation', input, viewer);
+    const frame = computeAnimationFrame(useViewerStore.getState().scheduleData, Date.parse('2026-01-05T12:00:00Z'), useViewerStore.getState().animationSettings, undefined, [1, 2]);
+    assert.deepEqual(frame.hiddenIds, new Set([1, 2]));
+    await assert.rejects(run('schedule.configureAnimation', input, viewer), /changed since inspection/);
+    await assert.rejects(run('schedule.configureAnimation', { ...input, settings: { ...input.settings, palette: { ...input.settings.palette, COMPLETED: [1, 1, 1, 2] } } }, viewer));
   });
   it('does not publish rows when native query cancellation is requested', async () => {
     useViewerStore.setState({ listDefinitions: [list] }); const abort = new AbortController(); context.signal = abort.signal;
@@ -222,11 +273,20 @@ describe('native analytics operations (#10525 deeper automation)', () => {
       dimensions2D: [{ id: 'on-cut', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 0.5, orientation: 'aligned', plane }],
       drawing2DDisplayOptions: { ...useViewerStore.getState().drawing2DDisplayOptions, showScanSection: false } });
     const { model: _model, ...viewerContext } = context;
+    const text = await run<{ id: string }>('drawing.addText', { position: [1, 1], text: 'Native typography', font_size: 12, color: '#000000', background: '#ffffff', border: '#000000' }, viewerContext);
+    const original = useViewerStore.getState().textAnnotations2D.find(row => row.id === text.id);
+    await run('drawing.styleText', { id: text.id, expected_json: JSON.stringify(original), font_size: 24, color: '#123456', background: '#ffffff', border: '#654321' }, viewerContext);
+    const imported = await run<{ id: string }>('drawing.importDxf', { filename: 'reference.dxf', units: 'm', register_to_drawing_plane: true,
+      content: '0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n10\n20\n20\n11\n12\n21\n22\n0\nENDSEC\n0\nEOF\n' }, viewerContext);
+    await run('drawing.centerDxf', { id: imported.id }, viewerContext);
+    const underlay = useViewerStore.getState().dxfUnderlays.find(row => row.id === imported.id); assert.ok(underlay?.referenceFrame);
+    const mapped = dxfPlaneDrawingMapper(underlay, useViewerStore.getState(), drawing.config.plane); assert.ok(mapped);
+    const center = mapped({ x: 11, y: 21 }); assert.ok(Math.abs(center.x - 2) < 1e-8); assert.ok(Math.abs(center.y) < 1e-8);
     for (const format of ['svg', 'dxf', 'pdf'] as const) {
       const result = await run<{ artifact: { artifact_id: string; bytes: number } }>('drawing.export', { format, use_display_scale: false, scale: 100 }, viewerContext);
       assert.ok(result.artifact.bytes > 100);
       const read = await readArtifact(context.host, result.artifact.artifact_id, 0, 65536); const bytes = Buffer.from(read.data, 'base64');
-      if (format === 'svg') { assert.match(bytes.toString('utf8'), /<svg/); assert.match(bytes.toString('utf8'), /4000/); }
+      if (format === 'svg') { assert.match(bytes.toString('utf8'), /<svg/); assert.match(bytes.toString('utf8'), /4000/); assert.match(bytes.toString('utf8'), /Native typography/); assert.match(bytes.toString('utf8'), /#123456/); }
       if (format === 'dxf') { assert.match(bytes.toString('latin1'), /SECTION/); assert.match(bytes.toString('latin1'), /4000/); }
       if (format === 'pdf') assert.match(bytes.toString('latin1'), /^%PDF-/);
     }

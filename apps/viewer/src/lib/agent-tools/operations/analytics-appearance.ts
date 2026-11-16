@@ -6,7 +6,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
 import { getGlobalRenderer } from '@/hooks/useBCF';
-import { AppearancePreviewSession } from '@/lib/appearance/preview';
+import { compareNativeAppearancePreview } from '@/lib/appearance/appearance-native-preview';
 import { appearanceRevision, commitAppearance } from '@/lib/appearance/command';
 import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client';
 import { prepareAppearanceSnapshot } from '@/lib/appearance/snapshot';
@@ -44,8 +44,8 @@ export function compareAnalyticsAppearancePreview(host: ToolHost, id: string, mo
   if (!candidate || candidate.modelId !== modelId) throw new Error('Unknown appearance candidate for this host/model.');
   if (candidate.applying) throw new Error('The native appearance candidate is being applied.');
   if (appearanceRevision(modelId) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw new Error('Appearance model or renderer changed. Prepare a new candidate.');
-  if (original && !candidate.originalShown) candidate.stage.session.cancel();
-  else if (!original && candidate.originalShown) { const session = new AppearancePreviewSession(candidate.renderer); session.stage(candidate.stage.groups); candidate.stage.session = session; }
+  const session = compareNativeAppearancePreview(candidate.renderer, candidate.stage.groups, candidate.originalShown ? null : candidate.stage.session, original);
+  if (session) candidate.stage.session = session;
   candidate.originalShown = original;
   return { preview_visible: !original, model_id: modelId, preview_token: id };
 }
@@ -76,6 +76,8 @@ export async function prepareAnalyticsAppearanceCandidate(i: { source_id: string
 export function inspectAnalyticsAppearanceCandidate(host: ToolHost, id: string, modelId: string) {
   const candidate = owned(host).get(id);
   if (!candidate || candidate.modelId !== modelId) throw new Error('Unknown appearance candidate for this host/model.');
+  if (candidate.applying) throw new Error('The native appearance candidate is being applied.');
+  if (appearanceRevision(modelId) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw new Error('Appearance model or renderer changed. Prepare a new candidate.');
   return { model_id: candidate.modelId, revision: candidate.revision, plan: candidate.prepared.plan, groups: candidate.stage.groups,
     original_shown: Boolean(candidate.originalShown), applying: Boolean(candidate.applying) };
 }

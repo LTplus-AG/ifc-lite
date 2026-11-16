@@ -1646,6 +1646,9 @@ importers:
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../parser
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
     devDependencies:
       '@mergifyio/vitest':
         specifier: ^2026.10.11

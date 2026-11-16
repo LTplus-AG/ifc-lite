@@ -11,13 +11,14 @@
  */
 
 import { signedDistance } from '../region.js';
+import type { MapPoint } from '../types.js';
 import type { CandidateCategory, CandidateFact, LevelBasis } from './facts.js';
 import { asString, type DecodedEntity } from './reader.js';
 import {
   base,
   belowGround,
   facadeReason,
-  footprintDoubt,
+  exclusionDoubt,
   groundDoubt,
   hostOf,
   hostOfOpening,
@@ -152,18 +153,21 @@ export function descentVerdict(ctx: CandidateContext, entity: DecodedEntity, cat
   const sources = readSources(ctx, entity, category);
   const external = isExternal(ctx.reader, entity);
   const body = readDescentBody(ctx, entity);
+  // Null: no footprint, so inside and outside are unknown (never "infinitely far outside").
   const d = signedDistance(ctx.footprint, loc.position);
+  const outsideAt = (p: MapPoint) => (signedDistance(ctx.footprint, p) ?? 0) > 0;
   // Outside is decisive (an explicit `false` is often an authoring default): by placement, by any body corner, or,
   // when the body cannot be read, by a placement within the boundary tolerance (it may be placed at its inner end).
   const outside =
-    d > 0 ? 'placed outside the footprint'
-    : body.points.some((p) => signedDistance(ctx.footprint, { x: p[0], y: p[1] }) > 0) ? 'its body reaches outside the footprint'
+    d === null ? null
+    : d > 0 ? 'placed outside the footprint'
+    : body.points.some((p) => outsideAt({ x: p[0], y: p[1] })) ? 'its body reaches outside the footprint'
     : !body.complete && Math.abs(d) <= ctx.boundaryTolerance ? `placed within ${ctx.boundaryTolerance} m of the outline and its body cannot be fully read`
     : null;
-  // Inside a footprint that fills courtyards proves nothing: such a stair is kept.
-  const doubt = footprintDoubt(ctx, d);
+  // The one exclusion rule: an uncertain position, no footprint, or one that fills courtyards or misses part: kept.
+  const doubt = exclusionDoubt(ctx, loc.positionCertain, d);
   if (!external && !outside && !doubt) {
-    return skip(`interior ${category}: placed ${Math.abs(d).toFixed(2)} m inside the footprint${body.complete ? ' and its body lies inside it' : ''}${external === false ? '; IsExternal = false' : ''}`);
+    return skip(`interior ${category}: placed ${Math.abs(d!).toFixed(2)} m inside the footprint${body.complete ? ' and its body lies inside it' : ''}${external === false ? '; IsExternal = false' : ''}`);
   }
   // Below ground by its storey, else by its placement height.
   const evidence = descentEvidence(ctx, entity, sources.placement!.level, body);

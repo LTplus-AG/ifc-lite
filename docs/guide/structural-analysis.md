@@ -171,7 +171,8 @@ Four other values move between an attribute and a relationship or property set:
   which is where the downgrade finds it again. Otherwise both are reported lost,
   also when the member already has a matching property set. The downgrade
   reads an IFC4 member's property set with that one point aspect as its
-  location.
+  location, unless the set gives `Location` properties: their order cannot be
+  checked against the aspect, so the thicknesses are reported and not written.
 
 These also need an unedited full export.
 

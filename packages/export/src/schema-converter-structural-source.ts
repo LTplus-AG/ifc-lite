@@ -6,7 +6,6 @@
  */
 import { deterministicGlobalId, getCanonicalEntityName, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
-import { refId } from './schema-ifc2x3-records.js';
 import { decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
@@ -81,6 +80,13 @@ export class SourceRecords {
   }
 }
 
+/** An entity reference slot, with STEP whitespace and comments around it allowed (#10248). */
+export function slotRef(token: string | undefined): number | null {
+  const start = skipStepTrivia(token ?? '', 0);
+  const m = start < 0 ? null : /^#\s*(\d+)/.exec(token!.slice(start));
+  return m && skipStepTrivia(token!, start + m[0].length) === token!.length ? Number(m[1]) : null;
+}
+
 /** Whether the slot is the unset marker `$`, with STEP whitespace and comments around it allowed (#10248). */
 export function slotUnset(token: string): boolean {
   const start = skipStepTrivia(token, 0);
@@ -113,13 +119,13 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
   const quoted = `'${name}'`;
   const rels = source.ids('IFCRELDEFINESBYPROPERTIES');
   const candidates = rels.filter((rel) => {
-    const pset = refId(source.slots(rel)?.[5]);
+    const pset = slotRef(source.slots(rel)?.[5]);
     return source.type(pset) === 'IFCPROPERTYSET' && source.slots(pset)?.[2]?.trim() === quoted;
   });
   if (!candidates.length) return [];
   const members = candidates.map((rel) => {
-    const pset = refId(source.slots(rel)![5])!;
-    return { rel, pset, propIds: (listItems(source.slots(pset)![4]) ?? []).map(refId) };
+    const pset = slotRef(source.slots(rel)![5])!;
+    return { rel, pset, propIds: (listItems(source.slots(pset)![4]) ?? []).map(slotRef) };
   });
   // A carrier is exclusive when its relationship is the only record naming its set, and its set the only one naming each property.
   const uses = checkExclusive ? source.referrers(new Set(members.flatMap(({ pset, propIds }) => [pset, ...propIds.filter((p): p is number => p !== null)]))) : undefined;
@@ -129,7 +135,7 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
       const propName = stepString(source.slots(p)?.[0]);
       if (p !== null && propName !== null) props.set(propName, p);
     }
-    const related = (listItems(source.slots(rel)![4]) ?? []).map(refId).filter((r): r is number => r !== null);
+    const related = (listItems(source.slots(rel)![4]) ?? []).map(slotRef).filter((r): r is number => r !== null);
     const exclusive = uses ? uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1) : undefined;
     return { rel, pset, related, props, exclusive };
   });

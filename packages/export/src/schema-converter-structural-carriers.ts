@@ -30,10 +30,9 @@
 import { deterministicGlobalId } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
 import {
-  bareMeasure, conversionMode, isSubtype, namesWithheld, readCarrierSets, slotUnset, SourceRecords, stepString, writeCarrierSet,
+  bareMeasure, conversionMode, isSubtype, namesWithheld, readCarrierSets, slotRef, slotUnset, SourceRecords, stepString, writeCarrierSet,
   type ConversionMode, type StructuralRewrite,
 } from './schema-converter-structural-source.js';
-import { refId } from './schema-ifc2x3-records.js';
 import { readStepSlots, replaceStepArgument } from './step-argument-parser.js';
 
 /** The property set an IFC2X3 load group carries when it was an IFC4 IfcStructuralLoadCase. */
@@ -99,9 +98,9 @@ export class StructuralCarriers {
     for (const id of source.ids('IFCRELASSIGNSTOPRODUCT')) {
       const args = source.slots(id);
       if (args?.length !== 7 || stepString(args[2]) !== CAUSES) continue;
-      const action = refId(args[6]);
+      const action = slotRef(args[6]);
       if (action === null || !isSubtype(schema, source.type(action), 'IfcStructuralAction')) continue;
-      for (const r of (listItems(args[4]) ?? []).map(refId)) {
+      for (const r of (listItems(args[4]) ?? []).map(slotRef)) {
         if (r !== null && isSubtype(schema, source.type(r), 'IfcStructuralReaction')) causes.set(action, (causes.get(action) ?? new Set<number>()).add(r));
       }
     }
@@ -198,7 +197,7 @@ export class StructuralCarriers {
   causeOf(entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): number | null {
     // The added relationship names ids the source has; an IFC4 target withholds none, so none is checked.
     if (this.mode !== 'upgrade' || !this.ids || withheld?.size || !IFC2X3_ACTIONS.has(entity)) return null;
-    const reaction = refId(args[CAUSED_BY]);
+    const reaction = slotRef(args[CAUSED_BY]);
     return reaction !== null && this.reactions.has(reaction) ? reaction : null;
   }
 
@@ -241,12 +240,12 @@ function soleModelItems(source: SourceRecords): Map<number, Map<number, number |
   const owners = new Map<number, Set<number>>();
   for (const id of source.ids('IFCRELASSIGNSTOGROUP')) {
     const args = source.slots(id);
-    const model = refId(args?.[6]);
+    const model = slotRef(args?.[6]);
     if (!args || model === null || source.type(model) !== 'IFCSTRUCTURALANALYSISMODEL') continue;
     const items = models.get(model) ?? new Map<number, number | null>();
-    for (const item of (listItems(args[4]) ?? []).map(refId)) {
+    for (const item of (listItems(args[4]) ?? []).map(slotRef)) {
       if (item === null || !isSubtype('IFC2X3', source.type(item), 'IfcStructuralItem')) continue;
-      items.set(item, refId(source.slots(item)?.[OBJECT_PLACEMENT]));
+      items.set(item, slotRef(source.slots(item)?.[OBJECT_PLACEMENT]));
       owners.set(item, (owners.get(item) ?? new Set<number>()).add(model));
     }
     models.set(model, items);

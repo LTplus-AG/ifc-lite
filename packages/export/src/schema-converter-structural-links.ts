@@ -1,17 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Matches rust/export/src/schema_structural_links.rs (#9668). */
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { isSubtype, slotUnset } from './schema-converter-structural-source.js';
+import { isSubtype, slotRef, slotUnset } from './schema-converter-structural-source.js';
 import { convertEntityType } from './schema-converter.js';
 import { listItems } from './schema-converter-structural-axes.js';
-import { skipStepTrivia } from './step-slot-grammar.js';
-
-/** An entity reference slot, with STEP whitespace and comments around it allowed (#10248). */
-function slotRef(token: string | undefined): number | null {
-  const start = skipStepTrivia(token ?? '', 0);
-  const m = start < 0 ? null : /^#\s*(\d+)/.exec(token!.slice(start));
-  return m && skipStepTrivia(token!, start + m[0].length) === token!.length ? Number(m[1]) : null;
-}
 
 /** Whether IFC4 `keyword` converts to an IFC2X3 subtype of `parent`. */
 const becomes = (keyword: string | undefined, parent: string): boolean =>

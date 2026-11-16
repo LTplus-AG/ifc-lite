@@ -19,13 +19,13 @@
  * Reads the source store, so only an unedited full export arms it.
  */
 import { listItems } from './schema-converter-structural-axes.js';
-import { bareMeasure, conversionMode, readCarrierSets, slotUnset, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
-import { refId } from './schema-ifc2x3-records.js';
+import { bareMeasure, conversionMode, readCarrierSets, slotRef, slotUnset, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
 import { parseStepNumber } from './step-slot-grammar.js';
 
 const THICKNESS_PSET = 'Pset_StructuralSurfaceMemberVaryingThickness';
 const ENTITY = 'IFCSTRUCTURALSURFACEMEMBERVARYING';
 const NAMES = ['Thickness1', 'Thickness2', 'Thickness3'];
+const THICKNESS_LOCATED = `${THICKNESS_PSET} gives Location properties, which cannot be checked against the IfcShapeAspect order; IFC2X3 SubsequentThickness and VaryingThicknessLocation are not written`;
 export const THICKNESS_WRITTEN = `IFC2X3 SubsequentThickness is held in IFC4 as ${THICKNESS_PSET} Thickness1 to Thickness3`;
 const THICKNESS_READ = `${THICKNESS_PSET} Thickness1 to Thickness3 are written as the IFC2X3 Thickness and SubsequentThickness, located by the one IfcShapeAspect of the member's representation`;
 
@@ -44,24 +44,26 @@ export class StructuralThickness {
   private readonly aspects = new Map<number, number[]>();
   /** Aspects IFC2X3 admits as VaryingThicknessLocation: each representation one point (WR62, WR63); both directions require it. */
   private readonly pointAspects = new Set<number>();
-  /** Member id -> its three thicknesses from a source property set, or [] when it has more than one set. */
+  /** Member id -> its three thicknesses from a source property set, or [] when it has more than one set or one gives locations. */
   private readonly psets = new Map<number, string[]>();
+  /** Members whose property set gives LocationNLocal/LocationNGlobal, which the aspect order cannot be checked against. */
+  private readonly located = new Set<number>();
 
   fromStore(source: SourceRecords, from: string, to: string): void {
     const mode = conversionMode(from, to);
     if (!mode || !source.ids(ENTITY).length) return;
     this.mode = mode;
     // Only the aspects of a varying member's representation are ever asked for.
-    const shapes = new Set(source.ids(ENTITY).map((m) => refId(source.slots(m)?.[6])));
+    const shapes = new Set(source.ids(ENTITY).map((m) => slotRef(source.slots(m)?.[6])));
     for (const id of source.ids('IFCSHAPEASPECT')) {
-      const shape = refId(source.slots(id)?.[4]);
+      const shape = slotRef(source.slots(id)?.[4]);
       if (shape === null || !shapes.has(shape)) continue;
       const list = this.aspects.get(shape) ?? [];
       list.push(id);
       this.aspects.set(shape, list);
-      const representations = (listItems(source.slots(id)?.[0] ?? '') ?? []).map(refId);
+      const representations = (listItems(source.slots(id)?.[0] ?? '') ?? []).map(slotRef);
       if (representations.length && representations.every((r) => {
-        const items = (listItems(source.slots(r)?.[3] ?? '') ?? []).map(refId);
+        const items = (listItems(source.slots(r)?.[3] ?? '') ?? []).map(slotRef);
         return items.length === 1 && ['IFCCARTESIANPOINT', 'IFCPOINTONSURFACE'].includes(source.type(items[0]) ?? '');
       })) this.pointAspects.add(id);
     }
@@ -72,17 +74,24 @@ export class StructuralThickness {
         // A value in its own unit would need converting; only one in the project's length unit is read.
         return args && slotUnset(args[3] ?? '$') ? thickness(args[2]) : null;
       });
+      const givesLocations = [...set.props.keys()].some((name) => /^Location[123](?:Local|Global)$/.test(name));
       for (const member of set.related) {
         if (source.type(member) !== ENTITY) continue;
-        // A member with two such property sets keeps neither reading.
-        this.psets.set(member, this.psets.has(member) || values.includes(null) ? [] : values as string[]);
+        if (givesLocations) this.located.add(member);
+        // A member with two such property sets, or one giving locations, keeps no reading.
+        this.psets.set(member, this.psets.has(member) || givesLocations || values.includes(null) ? [] : values as string[]);
       }
     }
   }
 
+  /** IFC4 -> IFC2X3: why a member's property set is not written as IFC2X3 thicknesses, when that is not reported otherwise. */
+  refusal(id: number): string | undefined {
+    return this.mode === 'downgrade' && this.located.has(id) ? THICKNESS_LOCATED : undefined;
+  }
+
   /** The one aspect of a representation slot, or null. */
   private aspectOf(representation: string | undefined): number | null {
-    const found = this.aspects.get(refId(representation) ?? -1);
+    const found = this.aspects.get(slotRef(representation) ?? -1);
     return found?.length === 1 ? found[0] : null;
   }
 
@@ -98,7 +107,7 @@ export class StructuralThickness {
     const values = [args[8], ...listItems(args[9]) ?? []].map(thickness);
     if (values.length !== 3 || values.includes(null)) return [];
     // Held only where the location comes back too, so the round trip is exact.
-    const location = refId(args[10]);
+    const location = slotRef(args[10]);
     if (location === null || this.aspectOf(args[6]) !== location || !this.pointAspects.has(location)) return [];
     const existing = this.psets.get(id);
     if (existing) {

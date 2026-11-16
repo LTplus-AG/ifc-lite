@@ -6,6 +6,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { extractModelFacts } from '../src/model/extract.js';
+import { completeness, readSlabOutline } from '../src/model/outline.js';
+import { ModelReader } from '../src/model/reader.js';
 import { parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
 
 const extract = async (extra: (b: Extra) => void) =>
@@ -229,11 +231,11 @@ describe('item 5: roofing that is not a slab counts, over the hole\'s whole area
 });
 
 describe('mapped slab outlines use the mapped-item reader', () => {
-  const mappedSlab = (b: Extra, leaf: number) => {
+  const mappedSlab = (b: Extra, leaf: number, x = 0, y = 0) => {
     const ctx = b.add(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#${b.add("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$)")},$,.MODEL_VIEW.,$)`);
     const rep = b.add(`IFCSHAPEREPRESENTATION(#${ctx},'Body','SweptSolid',(#${leaf}))`);
     const map = b.add(`IFCREPRESENTATIONMAP(#${b.axis(0, 0, 0)},#${rep})`);
-    const target = b.add(`IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#${b.add('IFCCARTESIANPOINT((0.,0.,0.))')},$,$)`);
+    const target = b.add(`IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#${b.add(`IFCCARTESIANPOINT((${x},${y},0.))`)},$,$)`);
     return b.add(`IFCMAPPEDITEM(#${map},#${target})`);
   };
   const addSlab = (b: Extra, body: number) => b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Platte gemappt',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([body])},$,.FLOOR.)`));
@@ -258,6 +260,51 @@ describe('mapped slab outlines use the mapped-item reader', () => {
     })).footprint;
     expect(fp.source).toBe('slab-outline');
     expect(fp.courtyardRings).toHaveLength(1);
+  });
+
+  it('applies a mapped target translation to the outline and its hole (#10503 review round 6)', async () => {
+    const store = await parseStep(syntheticHouse({ slab: false, extra: (b) => {
+      const loop = (points: Array<[number, number]>) => b.add(`IFCPOLYLINE((${[...points, points[0]].map(([x, y]) => `#${b.pt2(x, y)}`).join(',')}))`);
+      const profile = b.add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#${loop([[0, 0], [20, 0], [20, 10], [0, 10]])},(#${loop([[6, 3], [14, 3], [14, 7], [6, 7]])}))`);
+      const solid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 0)},#${b.dir(0, 0, -1)},0.3)`);
+      addSlab(b, mappedSlab(b, solid, 3, 4));
+    } }));
+    const reader = new ModelReader(store);
+    const outline = readSlabOutline(reader, reader.idsOfType('IFCSLAB').at(-1)!);
+    expect(outline.rings[0]).toEqual([[3, 4, 0], [23, 4, 0], [23, 14, 0], [3, 14, 0], [3, 4, 0]]);
+    expect(outline.holes[0]).toEqual([[9, 7, 0], [17, 7, 0], [17, 11, 0], [9, 11, 0], [9, 7, 0]]);
+  });
+
+  it('does not call a Y-tilted mapped slab a complete plan outline (#10503 review round 6)', async () => {
+    const store = await parseStep(syntheticHouse({ slab: false, extra: (b) => {
+      const profile = b.add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${b.add(`IFCPOLYLINE((#${b.pt2(0, 0)},#${b.pt2(20, 0)},#${b.pt2(20, 10)},#${b.pt2(0, 10)},#${b.pt2(0, 0)}))`)})`);
+      const solid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 0)},#${b.dir(0, 0, -1)},0.3)`);
+      const ctx = b.add(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#${b.add("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$)")},$,.MODEL_VIEW.,$)`);
+      const rep = b.add(`IFCSHAPEREPRESENTATION(#${ctx},'Body','SweptSolid',(#${solid}))`);
+      const map = b.add(`IFCREPRESENTATIONMAP(#${b.axis(0, 0, 0)},#${rep})`);
+      const angle = Math.PI / 4;
+      const target = b.add(`IFCCARTESIANTRANSFORMATIONOPERATOR3D(#${b.dir(Math.cos(angle), 0, -Math.sin(angle))},#${b.dir(0, 1, 0)},#${b.add('IFCCARTESIANPOINT((0.,0.,0.))')},$,#${b.dir(Math.sin(angle), 0, Math.cos(angle))})`);
+      const item = b.add(`IFCMAPPEDITEM(#${map},#${target})`);
+      b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Tilted mapped slab',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([item])},$,.FLOOR.)`));
+    } }));
+    const reader = new ModelReader(store);
+    const outline = readSlabOutline(reader, reader.idsOfType('IFCSLAB').at(-1)!);
+    expect(completeness(outline)).not.toBe('complete');
+  });
+
+  it('keeps a hollow Boolean cutter unreadable until its retained island can be represented (#10503 review round 6)', async () => {
+    const store = await parseStep(syntheticHouse({ slab: false, extra: (b) => {
+      const loop = (points: Array<[number, number]>) => b.add(`IFCPOLYLINE((${[...points, points[0]].map(([x, y]) => `#${b.pt2(x, y)}`).join(',')}))`);
+      const slab = b.rectExtrusion(10, 5, 20, 10, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
+      const cutterProfile = b.add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#${loop([[6, 3], [14, 3], [14, 7], [6, 7]])},(#${loop([[9, 4], [11, 4], [11, 6], [9, 6]])}))`);
+      const cutter = b.add(`IFCEXTRUDEDAREASOLID(#${cutterProfile},#${b.axis(0, 0, -1)},#${b.dir(0, 0, 1)},2.)`);
+      const body = b.add(`IFCBOOLEANRESULT(.DIFFERENCE.,#${slab},#${cutter})`);
+      b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Slab with hollow cutter',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([body])},$,.FLOOR.)`));
+    } }));
+    const reader = new ModelReader(store);
+    const outline = readSlabOutline(reader, reader.idsOfType('IFCSLAB').at(-1)!);
+    expect(outline.voids).toBe(true);
+    expect(outline.holes).toHaveLength(0);
   });
 });
 

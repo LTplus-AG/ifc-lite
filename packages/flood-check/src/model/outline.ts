@@ -136,12 +136,13 @@ export function readSlabOutline(reader: ModelReader, slabId: number): OutlineRea
     const profile = profilePoints(reader, profileId);
     if (!profile || profile.length < 3) continue;
     const position = reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
-    // A profile only stands for the plan outline when it lies in a horizontal plane and is swept straight along its normal:
-    // an oblique ExtrudedDirection moves the top profile sideways, so the base alone would miss part of the slab.
-    if (!position || Math.abs(position.z[2]) < 0.99) continue;
+    const placed = position && composeFrames(frame!, position);
+    // Check the composed frame: a mapped item's target can tilt a locally horizontal extrusion.
+    if (!placed || Math.abs(placed.z[2]) < 0.99) continue;
     const direction = extrusionDirection(reader, solid.expressId);
-    if (!direction || Math.hypot(direction[0], direction[1]) > 1e-6) continue;
-    const placed = composeFrames(frame!, position);
+    if (!direction) continue;
+    const worldDirection = [0, 1, 2].map((axis) => placed.x[axis]! * direction[0] + placed.y[axis]! * direction[1] + placed.z[axis]! * direction[2]);
+    if (Math.hypot(worldDirection[0]!, worldDirection[1]!) > 1e-6 * Math.hypot(...worldDirection)) continue;
     fromBody.rings.push(profile.map(([x, y]) => applyFrame(placed, [x, y, 0])));
     fromBody.readable++;
     const h = bodyHoles(reader, item, frame!);
@@ -203,7 +204,12 @@ function bodyHoles(reader: ModelReader, item: number, placed: Frame = IDENTITY):
 function verticalPrism(reader: ModelReader, id: number | null, outer: Frame = IDENTITY): { plan: Vec3[]; low: number[]; high: number[]; zMin: number; zMax: number } | null {
   const solid = reader.entity(id);
   if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') return null;
-  const profile = profilePoints(reader, asRef(reader.attr(solid, 'SweptArea')));
+  const profileId = asRef(reader.attr(solid, 'SweptArea'));
+  const profileEntity = reader.entity(profileId);
+  // A hollow cutter leaves an island inside its outer boundary. Reading only
+  // that boundary as a hole would erase material the Boolean result retains.
+  if (profileEntity?.type === 'IFCARBITRARYPROFILEDEFWITHVOIDS' && asRefList(reader.attr(profileEntity, 'InnerCurves')).length > 0) return null;
+  const profile = profilePoints(reader, profileId);
   const depth = asNumber(reader.attr(solid, 'Depth'));
   const position = reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
   const direction = extrusionDirection(reader, solid.expressId);

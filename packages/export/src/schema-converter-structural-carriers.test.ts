@@ -469,13 +469,16 @@ describe('varying thickness with property-set locations #9668', () => {
     // A location given another way (a bounded value) still counts.
     const bounded = await convert(ifc4.replace("IFCPROPERTYLISTVALUE('Location1Local',$,(IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.)),$)", "IFCPROPERTYBOUNDEDVALUE('Location1Local',$,$,IFCLENGTHMEASURE(1.),$,$)"), 'IFC2X3');
     expect(line(bounded.step, 20)).toContain(',.SHELL.,0.2,$,$);');
+    expect(bounded.warnings).toContain('gives Location properties');
     // Not writable anyway (a second aspect): the location reason is not given.
     const twoAspects = await convert(ifc4.replace('#20=', "#18=IFCSHAPEASPECT((#14),$,$,.T.,#15);\n#20="), 'IFC2X3');
     expect(line(twoAspects.step, 20)).toContain(',.SHELL.,0.2,$,$);');
     expect(twoAspects.warnings).not.toContain('gives Location properties');
-    // The member's own Thickness unset: Thickness1 still fills it (WR61).
+    // The member's own Thickness unset: written as without a set, so it stays unset and IFC2X3's required slots are reported.
     const ownUnset = await convert(ifc4.replace(',.SHELL.,0.2);', ',.SHELL.,$);'), 'IFC2X3');
-    expect(line(ownUnset.step, 20)).toContain(',.SHELL.,0.2,$,$);');
+    expect(line(ownUnset.step, 20)).toContain(',.SHELL.,$,$,$);');
+    expect(ownUnset.warnings).toContain('gives Location properties');
+    expect(ownUnset.warnings).toContain('where IFC2X3 requires a value');
   });
 
   it('does not count a located set as holding the thicknesses on the upgrade', async () => {

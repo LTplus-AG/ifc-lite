@@ -32,7 +32,8 @@ const THICKNESS_READ = `${THICKNESS_PSET} Thickness1 to Thickness3 are written a
 /** Whether a property record is a single or list value with no value: `$` or `()`. Anything else, or unreadable, counts as a value. */
 function emptyValue(type: string | undefined, args: readonly string[] | undefined): boolean {
   if (!args || (type !== 'IFCPROPERTYSINGLEVALUE' && type !== 'IFCPROPERTYLISTVALUE')) return false;
-  return slotUnset(args[2] ?? '') || listItems(args[2] ?? '')?.length === 0;
+  const value = args[2] ?? '';
+  return slotUnset(value) || (listItems(value) ?? []).length === 0 && value.trim().startsWith('(');
 }
 
 /** The bare number of a thickness token, `0.2` or `IFCPOSITIVELENGTHMEASURE(0.2)`, or null unless positive. */
@@ -133,10 +134,9 @@ export class StructuralThickness {
     // IFC2X3's VaryingThickness starts with Thickness (WR61 requires it).
     const own = thickness(args[8]);
     if (own !== null && parseStepNumber(own) !== parseStepNumber(first)) return undefined;
-    const base = [...args.slice(0, 8), own === null ? first : args[8]];
-    // Writable but for the set's locations: Thickness1 is still the member's thickness; the rest is not written.
-    if (this.located.has(id)) return { body: `${ENTITY}(${[...base, '$', '$'].join(',')})`, losses: [THICKNESS_LOCATED] };
-    const values = [...base, `(${rest.join(',')})`, `#${aspect}`];
+    // Writable but for the set's locations: written as without a set, with the reason.
+    if (this.located.has(id)) return { body: `${ENTITY}(${[...args, '$', '$'].join(',')})`, losses: [THICKNESS_LOCATED] };
+    const values = [...args.slice(0, 8), own === null ? first : args[8], `(${rest.join(',')})`, `#${aspect}`];
     return { body: `${ENTITY}(${values.join(',')})`, losses: [THICKNESS_READ] };
   }
 

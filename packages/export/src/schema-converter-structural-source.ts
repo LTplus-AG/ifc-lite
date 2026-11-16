@@ -4,6 +4,7 @@
  * run for, memoized reads of source records, subtype tests, and the property-set
  * carrier some of them write into the target file and read back from the source.
  */
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getCanonicalEntityName, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
 import { decodeRange } from './source-ref-bounds.js';
@@ -106,10 +107,8 @@ export function stepString(token: string | undefined): string | null {
   const text = token ?? '';
   const start = skipStepTrivia(text, 0);
   if (start < 0 || text[start] !== "'") return null;
-  // The closing quote: STEP writes a quote inside a string as ''.
-  let end = start + 1;
-  while (end < text.length && (text[end] !== "'" || text[end + 1] === "'")) end += text[end] === "'" ? 2 : 1;
-  return end < text.length && skipStepTrivia(text, end + 1) === text.length ? text.slice(start + 1, end) : null;
+  const end = stepStringLiteralEnd(text, start);
+  return end > start && skipStepTrivia(text, end) === text.length ? text.slice(start + 1, end - 1) : null;
 }
 
 /** A property set attached by an IfcRelDefinesByProperties, read from the source. */

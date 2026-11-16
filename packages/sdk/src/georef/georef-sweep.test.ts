@@ -39,11 +39,6 @@ const BASE = `#1=IFCPROJECT('0YvCT2_$X3_xJG3rzD8L_8',$,'P',$,$,$,$,(#5),#91);
 #6=IFCSITE('1Pbuu0tu59NfhrTsztVBK1',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);
 #90=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #91=IFCUNITASSIGNMENT((#90));`;
-const GEO = `${BASE}
-#95=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#20=IFCPROJECTEDCRS('EPSG:2056','d',$,$,$,$,#95);
-#21=IFCMAPCONVERSION(#5,#20,1.,2.,3.,$,$,$);`;
-const SET = { ProjectedCRS: { Name: 'EPSG:2056', MapUnit: 'METRE' }, MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 } };
 
 /** A convention-set pair: MapConversion set #b+3, ProjectedCRS set #b+6. */
 const sets = (b: number, eastings: number) => `#${b}=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCREAL(${eastings}.),$);
@@ -69,8 +64,6 @@ async function reparsed(bim: BimContext): Promise<GeoreferencingState> {
   const { store } = await parseModel(new TextEncoder().encode(String(bim.export.ifc())), { disableWorkerScan: true });
   return readGeoreferencing(store);
 }
-};
-
 
 type Fixture = { schema: string; data: string; entities: Array<{ id: number; attrs: string[] }> };
 

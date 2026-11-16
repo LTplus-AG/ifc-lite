@@ -31,6 +31,7 @@ export const siteContextRu = {
   "siteContext.refusal.unknownCrs": "Систему координат модели ({crs}) не удалось привести к LV95.",
   "siteContext.refusal.outsideSwitzerland": "Окружение участка доступно для участков в Швейцарии; эта модель расположена в другом месте.",
   "siteContext.refusal.heightDatum": "Высоты окружения указаны в LN02; в модели указано {datum}. Системы высот не смешиваются.",
+  "siteContext.refusal.heightUnknown": "Высоты окружения в LN02; в модели не указана система высот, и для этого формата она не предполагается. Укажите систему высот, чтобы загрузить окружение вокруг модели.",
   "siteContext.refusal.openEditor": "Добавить привязку",
   "siteContext.card.title": "Окружение участка",
   "siteContext.card.category": "Категория",

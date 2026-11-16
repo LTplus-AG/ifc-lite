@@ -18,6 +18,7 @@ import { siteRadiusFor } from '@/hooks/ingest/siteContextLoad';
 import { __setSiteContextWorkerFactoryForTest, type SiteContextWorkerLike } from './site-context-client';
 import type { SiteContextWorkerRequest, SiteContextWorkerResponse } from './site-context-job';
 import { loadSiteContext, type SiteContextAddModel } from './site-context-fetch';
+import { arriveInScene, expectSceneMatchesCategories } from '@/test/site-context-scene';
 
 const initial = useViewerStore.getState();
 const swisstopo = { datasetId: 'swissalti3d', text: '© swisstopo', licence: 'OGD', termsUrl: 'https://example.invalid', restrictions: [], termsVerifiedOn: '2026-11-15' };
@@ -44,7 +45,14 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const state = () => useViewerStore.getState();
 const removed: string[] = [];
 const added: string[] = [];
-const addModel: SiteContextAddModel = async (_file, { name }) => { added.push(name); return `model:${name}:${added.length}`; };
+const kindOf = (name: string) => (name.endsWith('Terrain') ? 'terrain' : name.endsWith('Parcel') ? 'parcel' : 'buildings') as 'terrain' | 'parcel' | 'buildings';
+/** Stands in for useIfc().addModel → the shared loader: the model enters the scene through the one arrival step. */
+const addModel: SiteContextAddModel = async (_file, { name, siteContextArrival }) => {
+  added.push(name);
+  const id = `model:${name}:${added.length}`;
+  arriveInScene(id, kindOf(name), siteContextArrival);
+  return id;
+};
 const base = { anchorModelId: 'anchor', centre: { x: 2_600_000, y: 1_200_000 }, radius: 100 as const, imagery: false, addModel, removeModel: (id: string) => { removed.push(id); } };
 
 beforeEach(() => {
@@ -69,6 +77,7 @@ test('a run cancelled while its model is being added does not touch the run star
   const secondAbort = state().siteContextAbort;
   release('model:stale-terrain'); // the first run's addModel finishes now
   await first;
+  expectSceneMatchesCategories();
   assert.equal(state().siteContextAbort, secondAbort, 'the second run is still the current one');
   assert.equal(secondAbort?.signal.aborted, false, 'the second run was not aborted');
   assert.equal(workers[1].terminated, false, 'the second run\'s worker keeps running');
@@ -78,6 +87,7 @@ test('a run cancelled while its model is being added does not touch the run star
   workers[1].category('terrain');
   workers[1].complete();
   await second;
+  expectSceneMatchesCategories();
   assert.equal(state().siteContextCategories.terrain?.status, 'done');
 });
 
@@ -87,6 +97,7 @@ test('success clears the request record, and a GLB dropped afterwards is not jud
   workers[0].category('terrain');
   workers[0].complete();
   await run;
+  expectSceneMatchesCategories();
   assert.equal(state().siteContextRequest, null);
   // A parcel-only document (as a CLI GLB's parcel sibling is): without a request it falls back to the default.
   const parcelOnly: SiteContextDocument = { crs: 'EPSG:2056', verticalCrs: 'EPSG:5728', origin: [0, 0, 0], layers: [{ kind: 'parcel', features: [], attribution: [], issues: [], complete: true }] };
@@ -98,6 +109,7 @@ test('an error clears the request record', async () => {
   const run = loadSiteContext({ ...base, categories: ['terrain'] });
   workers[0].fail();
   await run;
+  expectSceneMatchesCategories();
   assert.equal(state().siteContextRequest, null);
   assert.equal(state().siteContextAbort, null);
 });
@@ -106,6 +118,7 @@ test('a cancel clears the request record', async () => {
   const run = loadSiteContext({ ...base, categories: ['terrain'] });
   state().abortSiteContextRequest();
   await run;
+  expectSceneMatchesCategories();
   assert.equal(state().siteContextRequest, null);
 });
 
@@ -122,6 +135,7 @@ test('removing the anchor model ends the run: request cleared, and the detached 
   workers[0].category('terrain');
   workers[0].complete();
   await run;
+  expectSceneMatchesCategories();
   assert.deepEqual(added, [], 'a run that is no longer current loads no model');
   assert.equal(state().siteContextCategories.terrain?.status, 'idle');
 });
@@ -137,6 +151,7 @@ test('clearing all models ends the run: request cleared, and the detached run ad
   workers[0].category('terrain');
   workers[0].complete();
   await run;
+  expectSceneMatchesCategories();
   assert.deepEqual(added, []);
 });
 
@@ -149,6 +164,7 @@ test('when the replacement fails to load, the previous model stays and the categ
   workers[0].category('terrain');
   workers[0].complete();
   await run;
+  expectSceneMatchesCategories();
   assert.deepEqual(removed, [], 'the previous terrain is not removed');
   const terrain = state().siteContextCategories.terrain;
   assert.equal(terrain?.status, 'error');
@@ -166,6 +182,7 @@ test('an addModel that throws fails its category, the next categories still load
   workers[0].category('parcel');
   workers[0].complete();
   await run;
+  expectSceneMatchesCategories();
   assert.equal(state().siteContextAbort, null, 'the run settled');
   assert.equal(state().siteContextRequest, null);
   const terrain = state().siteContextCategories.terrain;

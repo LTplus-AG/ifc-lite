@@ -23,15 +23,18 @@ const isSiteContext = (reference: ModelSpatialReference): boolean => reference.s
 
 /**
  * The owner's height rule for site context (heights in LN02, EPSG:5728)
- * placed against another model: one that states no vertical datum at all is
- * taken as LN02, with the assumption recorded so the UI warns; one that states
- * any other datum (LHN95, or a name that does not resolve) is refused rather
- * than mixed. `null` when neither or both sides are site context.
+ * placed against another model: an IFC model that states no vertical datum
+ * at all is taken as LN02, with the assumption recorded so the UI warns; one
+ * that states any other datum (LHN95, or a name that does not resolve) is
+ * refused rather than mixed. The assumption was decided for IFC only: any
+ * other format with no vertical datum (LandXML, a scan, a point cloud) is
+ * refused, as federation refuses an unknown vertical datum elsewhere
+ * (#10481 review). `null` when neither or both sides are site context.
  */
 export function siteContextVerticalPolicy(source: ModelSpatialReference, target: ModelSpatialReference): UnknownVerticalPolicy | null {
   if (isSiteContext(source) === isSiteContext(target)) return null;
   const other = isSiteContext(source) ? target : source;
-  return verticalDeclaration(other) === undefined ? 'assume-compatible' : 'refuse';
+  return verticalDeclaration(other) === undefined && other.sourceMetadata?.format === 'ifc' ? 'assume-compatible' : 'refuse';
 }
 
 /**

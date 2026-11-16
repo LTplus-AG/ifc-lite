@@ -38,7 +38,7 @@ export type SiteContextAnchor =
     /** The model's own building for the buildings layer: its EGID, else its footprint in EPSG:2056. */
     subject?: { egid?: string; footprint?: Array<Array<{ x: number; y: number }>> };
   }
-  | { ok: false; reason: 'not-georeferenced' | 'unknown-crs' | 'outside-switzerland' | 'height-datum'; detail?: string };
+  | { ok: false; reason: 'not-georeferenced' | 'unknown-crs' | 'outside-switzerland' | 'height-datum' | 'height-unknown'; detail?: string };
 
 /** The placement a model's geometry is in: the reference it was aligned to, else its own. */
 export function modelPlacement(model: FederatedModel, mutations = useViewerStore.getState().georefMutations.get(model.id)): {
@@ -107,6 +107,8 @@ export async function resolveSiteContextAnchor(modelId: string): Promise<SiteCon
   const heights = siteContextPlacementReference(own.spatialReference) ?? own.spatialReference;
   const declaredOther = siteContextHeightRefusal(heights);
   if (declaredOther) return { ok: false, reason: 'height-datum', detail: declaredOther };
+  // LN02 is assumed for an IFC model that states no datum; for any other format nothing is assumed.
+  if (!verticalDeclared(heights) && heights.sourceMetadata?.format !== 'ifc') return { ok: false, reason: 'height-unknown' };
   // Renderer-space bounds and meshes are east/up/south metres: project them through the canonical
   // renderer frame, as federation does, not a source's native axes or units (#10481 review). The raw
   // `own` reference still answers the CRS-name and map-unit questions below.

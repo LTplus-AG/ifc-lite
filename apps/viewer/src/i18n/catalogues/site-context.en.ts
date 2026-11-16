@@ -30,6 +30,7 @@ export const siteContextEn = {
   'siteContext.refusal.unknownCrs': 'The model\'s CRS ({crs}) could not be resolved to LV95.',
   'siteContext.refusal.outsideSwitzerland': 'Site context is available for sites in Switzerland; this model is placed elsewhere.',
   'siteContext.refusal.heightDatum': 'Site context heights are LN02; this model declares {datum}. The height systems are not mixed.',
+  'siteContext.refusal.heightUnknown': 'Site context heights are LN02; this model states no vertical datum, and for this format none is assumed. Set its vertical datum to load site context around it.',
   'siteContext.refusal.openEditor': 'Add georeferencing',
   'siteContext.card.title': 'Site context',
   'siteContext.card.category': 'Category',

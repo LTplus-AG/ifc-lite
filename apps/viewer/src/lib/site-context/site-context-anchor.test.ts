@@ -12,11 +12,12 @@
 
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import type { CoordinateInfo } from '@ifc-lite/geometry';
+import type { CoordinateInfo, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { MapConversion } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
 import { siteContextAnchorRefusal } from '@/hooks/ingest/siteContextLoad';
+import { siteContextVerticalPolicy } from '@/hooks/ingest/ifcGeorefAssumptions';
 import { spatialReferenceFromIfc } from '@/lib/geo/ifc-spatial-reference';
 import { resolveSiteContextAnchor, siteContextPlacementReference } from './site-context-anchor';
 
@@ -83,4 +84,19 @@ test('a source with native axes and units (north/east/up, US survey feet) is cen
   // The renderer's bounds are east/up/south metres: the centre is 110 m east and 30 m north of the conversion origin.
   assert.ok(anchor.ok && Math.abs(anchor.centre.x - (2_600_000 + 110)) < 0.01, `easting ${anchor.ok && anchor.centre.x}`);
   assert.ok(anchor.ok && Math.abs(anchor.centre.y - (1_200_000 + 30)) < 0.01, `northing ${anchor.ok && anchor.centre.y}`);
+});
+
+test('a non-IFC model with no vertical datum is not assumed to be LN02: the policy refuses and the panel says why (#10481 review)', async () => {
+  const contextRef = { ...swissModel('ctx', 1).spatialReference!, sourceMetadata: { format: 'site-context' } } as ModelSpatialReference;
+  const ifcNoDatum = swissModel('ifc', 1).spatialReference!;
+  const scanNoDatum = { ...ifcNoDatum, sourceMetadata: { format: 'las' } } as ModelSpatialReference;
+  // The decided rule, for IFC only: no datum is assumed LN02 (with a warning).
+  assert.equal(siteContextVerticalPolicy(contextRef, ifcNoDatum), 'assume-compatible');
+  assert.equal(siteContextVerticalPolicy(ifcNoDatum, contextRef), 'assume-compatible');
+  // Any other format: nothing is assumed.
+  assert.equal(siteContextVerticalPolicy(contextRef, scanNoDatum), 'refuse');
+  assert.equal(siteContextVerticalPolicy(scanNoDatum, contextRef), 'refuse');
+  const scan = { ...swissModel('scan', 1), spatialReference: scanNoDatum } as unknown as FederatedModel;
+  seed(scan);
+  assert.deepEqual(await resolveSiteContextAnchor('scan'), { ok: false, reason: 'height-unknown' });
 });

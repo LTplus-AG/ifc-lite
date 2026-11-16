@@ -108,6 +108,7 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
         <p className="text-xs text-warn">
           {anchor.reason === 'height-datum'
             ? t('siteContext.refusal.heightDatum', { datum: anchor.detail ?? '' })
+            : anchor.reason === 'height-unknown' ? t('siteContext.refusal.heightUnknown')
             : anchor.reason === 'unknown-crs'
               ? t('siteContext.refusal.unknownCrs', { crs: anchor.detail ?? '' })
               : t('siteContext.refusal.notGeoreferenced')}

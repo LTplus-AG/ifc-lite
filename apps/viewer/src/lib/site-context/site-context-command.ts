@@ -54,6 +54,9 @@ export async function openSiteContext(): Promise<void> {
     case 'height-datum':
       toast.info(t('siteContext.refusal.heightDatum', { datum: anchor.detail ?? '' }));
       return;
+    case 'height-unknown':
+      toast.info(t('siteContext.refusal.heightUnknown'));
+      return;
     case 'outside-switzerland':
       toast.info(t('siteContext.refusal.outsideSwitzerland'));
   }

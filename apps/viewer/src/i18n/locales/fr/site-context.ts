@@ -31,6 +31,7 @@ export const siteContextFr = {
   "siteContext.refusal.unknownCrs": "Le SCR du modèle ({crs}) n’a pas pu être résolu en LV95.",
   "siteContext.refusal.outsideSwitzerland": "Le contexte du site est disponible pour les sites en Suisse ; ce modèle est situé ailleurs.",
   "siteContext.refusal.heightDatum": "Les altitudes du contexte sont en LN02 ; ce modèle déclare {datum}. Les systèmes altimétriques ne sont pas mélangés.",
+  "siteContext.refusal.heightUnknown": "Les altitudes du contexte sont en LN02 ; ce modèle n’indique aucun système altimétrique, et pour ce format aucun n’est supposé. Définissez son système altimétrique pour charger le contexte autour.",
   "siteContext.refusal.openEditor": "Ajouter un géoréférencement",
   "siteContext.card.title": "Contexte du site",
   "siteContext.card.category": "Catégorie",

@@ -175,8 +175,10 @@ export const createSiteContextSlice: StateCreator<SiteContextSlice, [], [], Site
 
   beginSiteContextRequest: (request, abort) => {
     get().siteContextAbort?.abort();
-    const categories: SiteContextSlice['siteContextCategories'] = {};
-    // A category being fetched again still points at the model that is loaded until a new one replaces it.
+    // A request changes only the kinds it asks for: the others keep their records (and their
+    // models stay in the scene, #10481 review). A kind fetched again still points at its loaded
+    // model until a new one arrives and replaces it.
+    const categories: SiteContextSlice['siteContextCategories'] = { ...get().siteContextCategories };
     for (const kind of request.categories) {
       const loaded = get().siteContextCategories[kind];
       categories[kind] = { status: 'fetching', issues: [], attribution: [], ...(loaded?.modelId ? { modelId: loaded.modelId, anchorModelId: loaded.anchorModelId } : {}) };

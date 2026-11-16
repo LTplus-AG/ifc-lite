@@ -31,6 +31,7 @@ export const siteContextDe = {
   "siteContext.refusal.unknownCrs": "Das KBS des Modells ({crs}) konnte nicht nach LV95 aufgelöst werden.",
   "siteContext.refusal.outsideSwitzerland": "Die Umgebung ist für Standorte in der Schweiz verfügbar; dieses Modell liegt anderswo.",
   "siteContext.refusal.heightDatum": "Die Höhen der Umgebung sind LN02; dieses Modell gibt {datum} an. Die Höhensysteme werden nicht vermischt.",
+  "siteContext.refusal.heightUnknown": "Die Höhen der Umgebung sind LN02; dieses Modell gibt kein Höhensystem an, und für dieses Format wird keines angenommen. Legen Sie sein Höhensystem fest, um die Umgebung darum zu laden.",
   "siteContext.refusal.openEditor": "Georeferenzierung hinzufügen",
   "siteContext.card.title": "Umgebung",
   "siteContext.card.category": "Kategorie",

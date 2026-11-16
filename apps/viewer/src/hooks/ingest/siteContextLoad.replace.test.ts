@@ -22,16 +22,17 @@ import type { SiteContextWorkerRequest, SiteContextWorkerResponse } from '@/lib/
 import { loadSiteContext } from '@/lib/site-context/site-context-fetch';
 import type { ModelLoadOptions } from '../modelLoadOptions.js';
 import { loadSiteContextModel } from './siteContextLoad';
+import { expectSceneMatchesCategories } from '@/test/site-context-scene';
 
 const initial = useViewerStore.getState();
 
-function terrainGlb(): Uint8Array {
+function terrainGlb(kind: 'terrain' | 'parcel' = 'terrain'): Uint8Array {
   const doc: SiteContextDocument = {
     crs: 'EPSG:2056', verticalCrs: 'EPSG:5728', origin: [2_600_000, 1_200_000, 500],
     layers: [{
-      kind: 'terrain',
+      kind,
       features: [{
-        id: 'terrain:chunk:r0c0', ifcType: 'IfcGeographicElement', name: 'Terrain r0c0', origin: [2_600_000, 1_200_000, 500],
+        id: `${kind}:r0c0`, ifcType: kind === 'parcel' ? 'IfcSite' : 'IfcGeographicElement', name: `${kind} r0c0`, origin: [2_600_000, 1_200_000, 500],
         mesh: { positions: new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]) },
         attributes: { PredefinedType: 'TERRAIN' }, provenance: {},
       }],
@@ -57,6 +58,7 @@ async function load(modelId: string, bytes: Uint8Array, options: Pick<ModelLoadO
     loadSibling: () => {}, onError: (_code, message) => { errors.push(message); },
     ...(options.siteContextArrival ? { arrival: options.siteContextArrival } : {}),
   });
+  expectSceneMatchesCategories();
   return registered && errors.length === 0 ? modelId : null;
 }
 
@@ -81,17 +83,20 @@ afterEach(() => { __setSiteContextWorkerFactoryForTest(null); useViewerStore.set
 
 let next = 0;
 /** The panel: the real fetch orchestrator, its addModel the real shared loader. */
-async function loadFromPanel(): Promise<string> {
+async function loadFromPanel(kind: 'terrain' | 'parcel' = 'terrain', anchorModelId = 'anchor'): Promise<string> {
   const run = loadSiteContext({
-    anchorModelId: 'anchor', centre: { x: 2_600_000, y: 1_200_000 }, radius: 100, categories: ['terrain'], imagery: false,
-    addModel: (_file, { name, siteContextArrival }) => load(`panel-${++next}`, terrainGlb(), { siteContextArrival }).then((id) => { if (id) useViewerStore.getState().updateModel(id, { name }); return id; }),
+    anchorModelId, centre: { x: 2_600_000, y: 1_200_000 }, radius: 100, categories: [kind], imagery: false,
+    addModel: (_file, { name, siteContextArrival }) => load(`panel-${++next}`, terrainGlb(kind), { siteContextArrival }).then((id) => { if (id) useViewerStore.getState().updateModel(id, { name }); return id; }),
     removeModel: (id) => useViewerStore.getState().removeModel(id),
   });
-  worker.send({ type: 'category', kind: 'terrain', bytes: terrainGlb(), hasGeometry: true, complete: true, attribution: [], issues: [] } as Omit<SiteContextWorkerResponse, 'id'>);
+  expectSceneMatchesCategories();
+  worker.send({ type: 'category', kind, bytes: terrainGlb(kind), hasGeometry: true, complete: true, attribution: [], issues: [] } as Omit<SiteContextWorkerResponse, 'id'>);
   worker.send({ type: 'complete', stats: { requests: 1, bytes: 1, cacheHits: 0 } } as Omit<SiteContextWorkerResponse, 'id'>);
   await run;
-  return terrains().at(-1)!;
+  expectSceneMatchesCategories();
+  return [...useViewerStore.getState().siteContextModels].filter(([, r]) => r.kind === kind).map(([id]) => id).at(-1)!;
 }
+
 
 test('panel terrain, then a dropped terrain GLB: one terrain in the scene, and the category points at it', async () => {
   const fromPanel = await loadFromPanel();
@@ -145,7 +150,19 @@ test('panel terrain loaded twice: the second replaces the first, new one in befo
 test('only the arriving kind is replaced: a loaded parcel stays when terrain arrives', async () => {
   useViewerStore.setState((s) => ({ models: new Map([...s.models, ['parcel-model', fixtureModel('parcel-model')]]) }));
   useViewerStore.getState().registerSiteContextModel('parcel-model', { kind: 'parcel', attribution: [], issues: [], complete: true, origin: [0, 0, 0] });
+  useViewerStore.getState().recordArrivedSiteContextCategory('parcel', { status: 'done', modelId: 'parcel-model' });
   await load('dropped', terrainGlb());
   assert.equal(useViewerStore.getState().siteContextModels.get('parcel-model')?.kind, 'parcel');
   assert.ok(inScene().includes('parcel-model'));
+});
+
+test('a terrain-only load around model B leaves the parcel loaded around model A, with its record and note', async () => {
+  const parcel = await loadFromPanel('parcel', 'A');
+  await loadFromPanel('terrain', 'B');
+  const state = useViewerStore.getState();
+  assert.ok(state.models.has(parcel), 'the parcel is still in the scene');
+  assert.equal(state.siteContextCategories.parcel?.modelId, parcel, 'and its category record still points at it');
+  assert.equal(state.siteContextCategories.parcel?.anchorModelId, 'A', 'loaded around A');
+  assert.equal(state.siteContextCategories.terrain?.anchorModelId, 'B');
+  expectSceneMatchesCategories();
 });

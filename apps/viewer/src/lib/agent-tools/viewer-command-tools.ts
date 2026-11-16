@@ -90,7 +90,7 @@ export const viewerCommandTools: Record<keyof typeof VIEWER_COMMAND_SPECS, Agent
   } },
   viewer_commands: { needs: 'none', async run(_host, args) {
     keys(args, ['query', 'command_id', 'offset', 'limit']);
-    const query = boundedString(args, 'query', 200) ?? '';
+    const query = boundedString(args, 'query', 200, true) ?? '';
     const id = boundedString(args, 'command_id', 300);
     const offset = integer(args, 'offset', 0, 0, Number.MAX_SAFE_INTEGER);
     const limit = integer(args, 'limit', 25, 1, 50);

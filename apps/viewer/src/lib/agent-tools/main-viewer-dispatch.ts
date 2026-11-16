@@ -207,15 +207,15 @@ export interface DispatchContext {
   canEdit?: () => boolean;
 }
 
-/**
- * Run one tool call against the main viewer. Never throws: every failure,
- * including a refused tool name, comes back as an error result.
- */
 /** A tool's success as an outcome: every success path carries the edit and image a tool returned. */
 function succeeded(out: ToolOutput): AgentToolResult {
   return { text: out.text, structured: out.structured, isError: false, ...(out.edit ? { edit: out.edit } : {}), ...(out.image ? { image: out.image } : {}) };
 }
 
+/**
+ * Run one tool call against the main viewer. Never throws: every failure,
+ * including a refused tool name, comes back as an error result.
+ */
 export async function dispatchMainViewerTool(
   host: ToolHost,
   toolName: string,

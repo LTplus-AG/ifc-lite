@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { operationArtifactSpecs, operationArtifactTools } from './operation-artifact-tools';
-import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
+import { boundedString, integer, invalid, keys } from './tool-args';
 import type { AgentInputSchema, AgentTool, ToolOutput } from './types';
 
 const executionSchema = { type: 'object', properties: {
@@ -41,7 +41,6 @@ export const OPERATION_SPECS = {
   },
 } as const;
 const output = (structured: unknown): ToolOutput => ({ text: JSON.stringify(structured), structured });
-function invalid(message: string): never { throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message }); }
 function jobId(args: Record<string, unknown>) {
   if (Object.keys(args).some(key => key !== 'job_id') || typeof args.job_id !== 'string' || args.job_id.length > 200) invalid('Provide only job_id.');
   return args.job_id;
@@ -54,21 +53,18 @@ export const operationTools: Record<keyof typeof OPERATION_SPECS, AgentTool> = {
     return output(viewerOperationCoverage());
   } },
   viewer_operations: { needs: 'none', async run(_host, args) {
-    if (Object.keys(args).some(key => !['query', 'operation_id', 'offset', 'limit'].includes(key))) invalid('Unknown discovery argument.');
-    if (args.query !== undefined && (typeof args.query !== 'string' || args.query.length > 200)) invalid('Invalid query.');
-    if (args.operation_id !== undefined && (typeof args.operation_id !== 'string' || args.operation_id.length > 200)) invalid('Invalid operation_id.');
-    const offset = args.offset ?? 0, limit = args.limit ?? 25;
-    if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0) invalid('Invalid offset.');
-    if (typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) invalid('Invalid limit.');
+    keys(args, ['query', 'operation_id', 'offset', 'limit']);
+    const query = boundedString(args, 'query', 200, true) ?? '';
+    const operationId = boundedString(args, 'operation_id', 200);
+    const offset = integer(args, 'offset', 0, 0, Number.MAX_SAFE_INTEGER), limit = integer(args, 'limit', 25, 1, 50);
     const { viewerOperations, rankOperations, operationOwners, describeOperation, operationUnavailable, unknownOperationMessage } = await import('./operations/registry');
     // An exact operation_id describes that operation; query only ranks a search.
-    const matching = typeof args.operation_id === 'string' ? viewerOperations().filter(op => op.id === args.operation_id)
-      : rankOperations(typeof args.query === 'string' ? args.query : '');
-    const hint = matching.length ? undefined : typeof args.operation_id === 'string'
-      ? unknownOperationMessage(args.operation_id)
+    const matching = operationId ? viewerOperations().filter(op => op.id === operationId) : rankOperations(query);
+    const hint = matching.length ? undefined : operationId
+      ? unknownOperationMessage(operationId)
       : `No operation matched. Use task words (hide, colorize, measure, section, screenshot, export) or an owner family: ${operationOwners().join(', ')}. Omit query to list all. Find entities with query_entities.`;
     return output({ total: matching.length, offset, next_offset: offset + limit < matching.length ? offset + limit : null, ...(hint ? { hint } : {}),
-      operations: matching.slice(offset, offset + limit).map(op => args.operation_id ? { ...describeOperation(op), unavailable: operationUnavailable(op) }
+      operations: matching.slice(offset, offset + limit).map(op => operationId ? { ...describeOperation(op), unavailable: operationUnavailable(op) }
         : { id: op.id, version: op.version, owner: op.owner, description: op.description, effects: op.effects, capability: op.capability, needs: op.needs, unavailable: operationUnavailable(op) }) });
   } },
   viewer_operation_inspect: { needs: 'none', async run(host, args, ctx) {

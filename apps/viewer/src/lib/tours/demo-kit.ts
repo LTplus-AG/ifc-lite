@@ -39,6 +39,7 @@ export function waitForModelSettled(timeoutMs = 180_000, signal?: AbortSignal): 
   const settled = (s: ViewerState) => s.models.size > 0 && !s.loading && !s.geometryStreamingActive;
   return new Promise((resolve, reject) => {
     if (settled(store.getState())) { resolve(); return; }
+    if (signal?.aborted) { reject(signal.reason ?? new Error('aborted')); return; }
     const stop = () => { window.clearTimeout(timer); unsub(); signal?.removeEventListener('abort', onAbort); };
     const onAbort = () => { stop(); reject(signal?.reason ?? new Error('aborted')); };
     const timer = window.setTimeout(() => {

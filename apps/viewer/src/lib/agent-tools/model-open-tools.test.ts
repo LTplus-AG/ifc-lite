@@ -10,11 +10,11 @@
  */
 
 import '@/test/setup-dom.js';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { registerAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
-import { modelOpenTools, MODEL_OPEN_SPECS } from './model-open-tools';
+import { modelOpenTools, MODEL_OPEN_SPECS, OPEN_MODEL_WAIT_MS } from './model-open-tools';
 import { VIEWER_COMMAND_SPECS } from './viewer-command-tools';
 import type { ToolCallContext, ToolHost, ToolOutput } from './types';
 
@@ -25,8 +25,9 @@ const run = (args: Record<string, unknown>, ctx: ToolCallContext = granted) =>
 
 const realFetch = globalThis.fetch;
 let fetched: string[] = [];
+let respond = (): Response => new Response(new Uint8Array([73, 83, 79]), { status: 200 });
 let calls: Array<{ kind: 'replace' | 'add' | 'stack'; names: string[] }> = [];
-let behaviour: 'load' | 'error' = 'load';
+let behaviour: 'load' | 'error' | 'nothing' | 'hang' = 'load';
 let unregister: () => void = () => {};
 
 function model(id: string, name: string) {
@@ -39,7 +40,9 @@ async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[]): Promi
   // Like useIfcLoader: clearing the previous error bumps loadErrorSeq before the load runs.
   useViewerStore.getState().setError(null);
   useViewerStore.setState({ loading: true });
+  if (behaviour === 'hang') return new Promise(() => {});
   await Promise.resolve();
+  if (behaviour === 'nothing') { useViewerStore.setState({ loading: false }); return 'none'; }
   if (behaviour === 'error') {
     useViewerStore.setState((s) => ({ loading: false, error: 'bad STEP', loadErrorSeq: s.loadErrorSeq + 1 }));
     return null;
@@ -52,9 +55,10 @@ async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[]): Promi
 
 beforeEach(() => {
   fetched = []; calls = []; behaviour = 'load';
+  respond = () => new Response(new Uint8Array([73, 83, 79]), { status: 200 });
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     fetched.push(String(input));
-    return new Response(new Uint8Array([73, 83, 79]), { status: 200 });
+    return respond();
   }) as typeof fetch;
   unregister = registerAgentModelLoader({
     loadFile: async (file) => { await fakeLoad('replace', [file]); },
@@ -85,7 +89,7 @@ describe('viewer_open_model', () => {
     const out = await run({ sample: 'demo' });
     assert.deepEqual(calls, [{ kind: 'replace', names: ['building-architecture.ifc'] }]);
     assert.match(fetched[0], /\/samples\/building-architecture\.ifc$/);
-    assert.deepEqual(out.structured, { mode: 'replace', models: [{ model_id: 'm-1-building-architecture.ifc', name: 'building-architecture.ifc', schema: 'IFC4', new: true }] });
+    assert.deepEqual(out.structured, { mode: 'replace', state: 'loaded', models: [{ model_id: 'm-1-building-architecture.ifc', name: 'building-architecture.ifc', schema: 'IFC4', new: true }] });
     assert.match(out.text, /model_id m-1-building-architecture\.ifc/);
   });
 
@@ -132,5 +136,47 @@ describe('viewer_open_model', () => {
   it('refuses when no file loader is mounted', async () => {
     unregister();
     await assert.rejects(run({ sample: 'demo' }), { code: 'UNSUPPORTED_OPERATION', message: /no file loader/ });
+  });
+  it('treats an explicit null like a wrong value, not as absent', async () => {
+    await assert.rejects(run({ sample: null }), { code: 'INVALID_INPUT', message: /sample must be one of/ });
+    await assert.rejects(run({ sample: 'demo', mode: null }), { code: 'INVALID_INPUT', message: /mode must be one of/ });
+  });
+
+  it('names a download from Content-Disposition and survives a malformed escape', async () => {
+    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename="tower.ifc"' } });
+    await run({ url: 'https://example.com/download?id=5' });
+    assert.deepEqual(calls, [{ kind: 'replace', names: ['tower.ifc'] }]);
+    respond = () => new Response(new Uint8Array([1]), { status: 200 });
+    await run({ url: 'https://example.com/a%E0%A4.ifc', mode: 'add' });
+    assert.equal(calls[1].names[0], 'a%E0%A4.ifc');
+  });
+
+  it('stops reading a body without a length once it passes the limit', async () => {
+    let pulled = 0;
+    const chunk = new Uint8Array(64 * 1024 * 1024);
+    respond = () => new Response(new ReadableStream({ pull(controller) { pulled++; controller.enqueue(chunk); } }), { status: 200 });
+    await assert.rejects(run({ url: 'https://example.com/huge.ifc' }), { code: 'INVALID_INPUT', message: /larger than/ });
+    assert.ok(pulled <= 10, `read ${pulled} chunks, not the whole stream`);
+    assert.deepEqual(calls, []);
+  });
+
+  it('reports a load that opened no model as a failure, not success', async () => {
+    behaviour = 'nothing';
+    await assert.rejects(run({ sample: 'demo' }), { code: 'UNSUPPORTED_OPERATION', message: /did not open/ });
+  });
+
+  it('answers within the call budget while a long load continues, and says not to retry', async () => {
+    behaviour = 'hang';
+    mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+    try {
+      const pending = run({ sample: 'demo' });
+      while (calls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+      mock.timers.tick(OPEN_MODEL_WAIT_MS);
+      const out = await pending;
+      assert.equal((out.structured as { state: string }).state, 'loading');
+      assert.match(out.text, /Do not retry/);
+    } finally {
+      mock.timers.reset();
+    }
   });
 });

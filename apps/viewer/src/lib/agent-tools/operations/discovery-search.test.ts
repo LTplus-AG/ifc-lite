@@ -10,6 +10,11 @@ import { rankOperations, viewerOperations } from './registry';
 const top = (query: string, n = 3) => rankOperations(query).slice(0, n).map(op => op.id);
 
 describe('agent discovery ranker', () => {
+  it('does not tie validation words to every operation that takes express_ids', () => {
+    const first = top('validate model', 10);
+    assert.ok(first.includes('model.audit'), first.join(', '));
+    assert.ok(!first.some(id => /^(selection|visibility|appearance)\./.test(id)), first.join(', '));
+  });
   it('splits ids, camelCase and separators, and agrees on inflections', () => {
     assert.deepEqual(tokenize('appearance.resetAll'), ['appearanc', 'reset', 'all']);
     assert.deepEqual(tokenize('idsStudio load_BCF-file'), ['ids', 'studio', 'load', 'bcf', 'file']);

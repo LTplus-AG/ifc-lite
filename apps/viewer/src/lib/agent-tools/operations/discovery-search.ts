@@ -29,7 +29,8 @@ const SYNONYMS: readonly (readonly string[])[] = [
   ['select', 'selection', 'pick', 'choose'],
   ['export', 'download', 'save'],
   ['clash', 'collision', 'conflict', 'interference'],
-  ['ids', 'validate', 'validation', 'check', 'verify', 'audit'],
+  // Not 'ids': tokenize splits express_ids into it, so it would tie validation to every entity operation.
+  ['validate', 'validation', 'check', 'verify', 'audit'],
   ['bcf', 'issue', 'topic'],
   ['wall', 'slab', 'door', 'window', 'column', 'beam', 'roof', 'stair', 'element', 'entity', 'object', 'product'],
   ['delete', 'remove', 'erase'],
@@ -86,10 +87,6 @@ function fieldScore(token: string, field: Set<string>): number {
 }
 
 /**
- * Ranks `items` against a natural-language query. An empty (or stopword-only)
- * query returns every item in its original order; items matching no token are dropped.
- */
-/**
  * Tokenized fields per item, per `fields` function: the operation catalogue is
  * fixed, so it is tokenized once rather than on every query. Pass a stable
  * (module-level) `fields` function to benefit; object items only are cached.
@@ -109,6 +106,10 @@ function indexOf<T>(item: T, fields: (item: T) => SearchFields): Indexed {
   return indexed;
 }
 
+/**
+ * Ranks `items` against a natural-language query. An empty (or stopword-only)
+ * query returns every item in its original order; items matching no token are dropped.
+ */
 export function rankSearch<T>(items: readonly T[], query: string, fields: (item: T) => SearchFields): T[] {
   const tokens = [...new Set(tokenize(query, true))];
   if (tokens.length === 0) return [...items];

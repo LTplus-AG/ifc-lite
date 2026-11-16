@@ -37,7 +37,13 @@ const MODES = ['replace', 'add'] as const;
 
 /** Largest file the tab downloads for an agent. */
 export const OPEN_MODEL_MAX_BYTES = 512 * 1024 * 1024;
-const SETTLE_TIMEOUT_MS = 180_000;
+/**
+ * How long the call waits for the load after starting it. The tab answers
+ * every call within 60 s (`CALL_LIMITS.callTimeoutMs`), so a longer load is
+ * reported as still running, never as a failure: it has already replaced or
+ * joined the models and must not be retried.
+ */
+export const OPEN_MODEL_WAIT_MS = 45_000;
 
 export const MODEL_OPEN_SPECS = {
   viewer_open_model: {
@@ -77,8 +83,32 @@ function parseArgs(args: Record<string, unknown>, state: ViewerState): OpenReque
   return { source, mode: mode ?? 'replace' };
 }
 
-function fileNameOf(url: URL): string {
-  return decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() ?? '') || 'model.ifc';
+/** The file name: Content-Disposition's, else the URL's last path segment. */
+function fileNameOf(url: URL, res: Response): string {
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1];
+  const raw = named ?? url.pathname.split('/').filter(Boolean).pop() ?? '';
+  let name = raw;
+  try { name = decodeURIComponent(raw); } catch { /* keep the raw segment */ }
+  return name.split(/[\\/]/).pop() || 'model.ifc';
+}
+
+/** The body, refusing once it passes the limit rather than after buffering all of it (chunked or compressed bodies have no usable length). */
+async function readLimited(res: Response, url: URL): Promise<Blob> {
+  const tooBig = () => fail(ToolErrorCode.INVALID_INPUT, `${url.href} is larger than ${OPEN_MODEL_MAX_BYTES} bytes, the limit for an agent download.`);
+  if (Number(res.headers.get('content-length')) > OPEN_MODEL_MAX_BYTES) tooBig();
+  if (!res.body) return res.blob();
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > OPEN_MODEL_MAX_BYTES) { void reader.cancel(); tooBig(); }
+    chunks.push(value);
+  }
+  return new Blob(chunks as BlobPart[]);
 }
 
 async function download(url: URL, signal?: AbortSignal): Promise<File> {
@@ -91,12 +121,10 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
       `The tab could not fetch ${url.href}. The server must allow cross-origin requests (CORS) from this viewer.`);
   }
   if (!res.ok) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `Fetching ${url.href} returned HTTP ${res.status}.`);
-  const size = Math.max(Number(res.headers.get('content-length')) || 0, 0);
-  if (size > OPEN_MODEL_MAX_BYTES) fail(ToolErrorCode.INVALID_INPUT, `The file is ${size} bytes; the limit is ${OPEN_MODEL_MAX_BYTES}.`);
-  const blob = await res.blob();
-  if (blob.size > OPEN_MODEL_MAX_BYTES) fail(ToolErrorCode.INVALID_INPUT, `The file is ${blob.size} bytes; the limit is ${OPEN_MODEL_MAX_BYTES}.`);
-  const file = new File([blob], fileNameOf(url));
-  if (!isSupportedModelFile(file)) invalid(`${file.name} is not a model file the viewer opens (IFC, IFCX, glTF/GLB, point clouds, splats).`);
+  const file = new File([await readLimited(res, url)], fileNameOf(url, res));
+  if (!isSupportedModelFile(file)) {
+    invalid(`${file.name} is not a model file the viewer opens (IFC, IFCX, glTF/GLB, point clouds, splats). The URL path or its Content-Disposition must end in the file's extension.`);
+  }
   return file;
 }
 
@@ -137,31 +165,36 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   }
 
   const before = new Set(state.models.keys());
-  if (request.mode === 'add') {
-    if (await loader.addModel(files[0]) === null) {
-      fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not add ${files[0].name}: ${store.getState().error ?? 'see the viewer for details'}.`);
-    }
-  } else {
-    await (files.length > 1 ? loader.loadStack(files) : loader.loadFile(files[0]));
-    // A load start clears the previous error (which bumps the seq too); only a set error is a failure.
+  const name = files.length > 1 ? 'the layer stack' : files[0].name;
+  // From here the load changes the session whatever happens to this call: it is not cancellable.
+  if (ctx.commitState) ctx.commitState.committing = true;
+  const deadline = Date.now() + OPEN_MODEL_WAIT_MS;
+  const load: Promise<string | null | void> = request.mode === 'add' ? loader.addModel(files[0])
+    : files.length > 1 ? loader.loadStack(files) : loader.loadFile(files[0]);
+  const loaded = await Promise.race([load.then((id) => ({ id })), wait(OPEN_MODEL_WAIT_MS).then(() => null)]);
+  if (loaded) {
     const after = store.getState();
-    if (after.error && after.loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load the model: ${after.error}`);
+    if (after.error && after.loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${after.error}`);
+    if (loaded.id === null) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not add ${name}. See the viewer for details.`);
   }
-  try {
-    await waitForModelSettled(SETTLE_TIMEOUT_MS, ctx.signal);
-  } catch {
-    fail(ctx.signal?.aborted ? ToolErrorCode.CANCELLED : ToolErrorCode.INTERNAL_ERROR,
-      'The model is still loading in the tab. Check model_list later.');
-  }
-
+  const settled = loaded !== null && await waitForModelSettled(Math.max(0, deadline - Date.now())).then(() => true, () => false);
   const models = [...store.getState().models.values()].map((m) => ({
     model_id: m.id, name: m.name, schema: m.schemaVersion ?? null, new: !before.has(m.id),
   }));
   const added = models.filter((m) => m.new);
-  const text = [`Loaded ${added.map((m) => `${m.name} (model_id ${m.model_id})`).join(', ') || 'the model'}.`,
-    `${models.length} model(s) now open. Next: query_entities with a model_id, or viewer_screenshot to look at the view.`].join(' ');
-  return { text, structured: { mode: request.mode, models } };
+  if (loaded && added.length === 0) {
+    // loadFile can return without an error and without opening a model (an underlay drape, a geometry-kernel refusal).
+    fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. See the viewer for why.`);
+  }
+  const phase = !loaded ? 'loading' : settled ? 'loaded' : 'streaming';
+  const text = phase === 'loading'
+    ? `${name} is still loading after ${OPEN_MODEL_WAIT_MS / 1000} s; it continues in the tab. Do not retry: call model_list until it appears.`
+    : [`Loaded ${added.map((m) => `${m.name} (model_id ${m.model_id})`).join(', ')}${phase === 'streaming' ? '; geometry is still streaming' : ''}.`,
+      `${models.length} model(s) now open. Next: query_entities with a model_id, or viewer_screenshot to look at the view.`].join(' ');
+  return { text, structured: { mode: request.mode, state: phase, models } };
 }
+
+const wait = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
 
 export const modelOpenTools: Record<keyof typeof MODEL_OPEN_SPECS, AgentTool> = {
   viewer_open_model: { needs: 'none', run: (_host, args, ctx) => openModel(args, ctx) },

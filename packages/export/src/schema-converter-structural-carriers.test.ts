@@ -545,3 +545,15 @@ describe('carrier property set with a duplicate property name #9668', () => {
     expect(up.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
   });
 });
+
+// #9668 review (PR #10551): a short source record must not abort the prepass.
+describe('carrier prepass on a truncated property set #9668', () => {
+  it('converts the file, reading no carrier from it', async () => {
+    const ifc2x3 = model('IFC2X3', `${OWNER}
+#20=IFCSTRUCTURALLOADGROUP('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,$,$);
+#32=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'${LOAD_CASE_PSET}');
+#33=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#32);`);
+    const { step } = await convert(ifc2x3, 'IFC4');
+    expect(line(step, 20)).toMatch(/^#20=IFCSTRUCTURALLOADGROUP\(/);
+  });
+});

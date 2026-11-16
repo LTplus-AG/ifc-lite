@@ -90,9 +90,10 @@ export function slotRef(token: string | undefined): number | null {
 }
 
 /** Whether the slot is the unset marker `$`, with STEP whitespace and comments around it allowed (#10248). */
-export function slotUnset(token: string): boolean {
-  const start = skipStepTrivia(token, 0);
-  return start >= 0 && token[start] === '$' && skipStepTrivia(token, start + 1) === token.length;
+export function slotUnset(token: string | undefined): boolean {
+  const text = token ?? '';
+  const start = skipStepTrivia(text, 0);
+  return start >= 0 && text[start] === '$' && skipStepTrivia(text, start + 1) === text.length;
 }
 
 /** The bare number of `token`, given as such or wrapped as `TYPE(n)`, or null when it is not a finite number. */
@@ -133,7 +134,7 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
   if (!candidates.length) return [];
   const members = candidates.map((rel) => {
     const pset = slotRef(source.slots(rel)![5])!;
-    return { rel, pset, propIds: (listItems(source.slots(pset)![4]) ?? []).map(slotRef) };
+    return { rel, pset, propIds: (listItems(source.slots(pset)?.[4] ?? '') ?? []).map(slotRef) };
   });
   // A carrier is exclusive when its relationship is the only record naming its set, and its set the only one naming each property.
   const uses = checkExclusive ? source.referrers(new Set(members.flatMap(({ pset, propIds }) => [pset, ...propIds.filter((p): p is number => p !== null)]))) : undefined;
@@ -148,7 +149,7 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
     // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32). A set that does
     // not still counts as present (for ambiguity checks) but gives no property and is never consumed.
     if (duplicate) props = new Map();
-    const related = (listItems(source.slots(rel)![4]) ?? []).map(slotRef).filter((r): r is number => r !== null);
+    const related = (listItems(source.slots(rel)?.[4] ?? '') ?? []).map(slotRef).filter((r): r is number => r !== null);
     const exclusive = uses ? uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1) : undefined;
     return { rel, pset, related, props, exclusive };
   });

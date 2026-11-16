@@ -49,8 +49,12 @@ const scaled = (v, k) => v.map((c) => c * k);
 const unit = (a) => { const l = Math.hypot(...a); return l > 1e-12 ? a.map((c) => c / l) : null; };
 /** `v` with its component along each unit axis removed, as a unit vector; null when nothing is left. */
 const normalTo = (v, ...axes) => unit(axes.reduce((a, n) => sub(a, scaled(n, dot(a, n))), v));
-/** The schema's default x for a unit z axis (`IfcFirstProjAxis`): (1, 0, 0), or (0, 1, 0) when z is exactly (1, 0, 0). */
-const defaultX = (z) => (z[0] === 1 && z[1] === 0 && z[2] === 0 ? [0, 1, 0] : [1, 0, 0]);
+/**
+ * The default x for a unit z axis (`IfcFirstProjAxis`): (1, 0, 0), else
+ * (0, 1, 0) when z lies along x, where the schema leaves nothing (or only
+ * rounding noise) to project. The same threshold as rust/retained-native's oracle.
+ */
+const defaultX = (z) => (Math.abs(z[0]) > 0.999999 ? [0, 1, 0] : [1, 0, 0]);
 /** A point in `f`'s axes, in its parent's. */
 const apply = (f, p) => [0, 1, 2].map((i) => f.o[i] + f.x[i] * p[0] + f.y[i] * p[1] + f.z[i] * p[2]);
 const rotate = (f, v) => [0, 1, 2].map((i) => f.x[i] * v[0] + f.y[i] * v[1] + f.z[i] * v[2]);
@@ -125,19 +129,23 @@ function transformOperator(step, id) {
   const r = step.get(id);
   if (r?.type !== 'IFCCARTESIANTRANSFORMATIONOPERATOR3D' && r?.type !== 'IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM') return null;
   const o = coords(step, refOf(r.args[2]));
-  if (!o) return null;
-  const z = unit(coords(step, refOf(r.args[4])) ?? [0, 0, 1]);
+  // An omitted direction is undefined; a given one that does not read is null.
+  const given = (i) => (refOf(r.args[i]) === undefined ? undefined : coords(step, refOf(r.args[i])));
+  const [axis1, axis2, axis3] = [given(0), given(1), given(4)];
+  if (!o || axis1 === null || axis2 === null || axis3 === null) return null;
+  const z = unit(axis3 ?? [0, 0, 1]);
   if (!z) return null;
-  const x = normalTo(coords(step, refOf(r.args[0])) ?? defaultX(z), z);
+  const x = normalTo(axis1 ?? defaultX(z), z);
   if (!x) return null;
   // `IfcSecondProjAxis`: Axis2, else (0, 1, 0), made normal to z and x; a mirror keeps its sign.
   // Without Axis2, a default that lies in the z-x plane leaves nothing; then z x x, a rotation.
-  const axis2 = coords(step, refOf(r.args[1]));
   const y = normalTo(axis2 ?? [0, 1, 0], z, x) ?? (axis2 ? null : cross(z, x));
   if (!y) return null;
+  // The schema requires every scale > 0; a zero one would collapse the map onto LocalOrigin.
   const s = numberOf(r.args[3]) ?? 1;
   const s2 = numberOf(r.args[5]) ?? s;
   const s3 = numberOf(r.args[6]) ?? s;
+  if (!(s > 0 && s2 > 0 && s3 > 0)) return null;
   return { o, x: scaled(x, s), y: scaled(y, s2), z: scaled(z, s3) };
 }
 
@@ -145,12 +153,14 @@ function transformOperator(step, id) {
  * The topology vertices of one representation, in its product's axes: its
  * own items when it is an `IfcTopologyRepresentation`, and those of every
  * mapped item's source representation. Null when a mapped item that holds
- * topology cannot be followed (a map nested over 8 deep, a map, origin or
- * target this oracle does not read): fewer vertices would check less.
+ * topology cannot be followed (a map cycle, an origin or target this oracle
+ * does not read): fewer vertices would check less. A mapped item whose map
+ * does not resolve holds nothing, and is skipped.
  */
-function representationVertices(step, rep, depth = 0) {
+function representationVertices(step, rep, path = new Set()) {
   if (!rep) return [];
-  if (depth > 8) return null;
+  if (path.has(rep.id)) return null;
+  const inner = new Set(path).add(rep.id);
   const topology = rep.type === 'IFCTOPOLOGYREPRESENTATION';
   const points = [];
   for (const ref of rep.args[3] ?? []) {
@@ -161,8 +171,8 @@ function representationVertices(step, rep, depth = 0) {
       continue;
     }
     const map = step.get(refOf(item.args[0]));
-    if (map?.type !== 'IFCREPRESENTATIONMAP') return null;
-    const mapped = representationVertices(step, step.get(refOf(map.args[1])), depth + 1);
+    if (map?.type !== 'IFCREPRESENTATIONMAP') continue;
+    const mapped = representationVertices(step, step.get(refOf(map.args[1])), inner);
     if (mapped?.length === 0) continue;
     const origin = axisPlacement(step, refOf(map.args[0]));
     const target = transformOperator(step, refOf(item.args[1]));

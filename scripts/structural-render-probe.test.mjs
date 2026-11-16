@@ -93,27 +93,40 @@ test('#9668 topology oracle: follows a mapped topology representation, origin th
 });
 
 test('#9668 topology oracle: a mapped topology it cannot follow leaves the member unplaced, not checked on fewer vertices', async () => {
-  // The direct edge stays; the mapped one sits behind an unreadable MappingOrigin, or nine nested maps.
+  // The direct edge #15 stays beside the mapped one (drawn on [11, 4, 3]-[11, 12, 3]).
   const direct = MAPPED_MEMBER.replace('(#54,#48)', '(#54,#48,#15)');
-  const unreadable = direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#99,#15)');
+  const cases = {
+    unreadableOrigin: direct.replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#99,#15)'),
+    unreadableAxis: direct.replace('#43=IFCDIRECTION((0.,1.,0.))', '#43=IFCDIRECTION(($,$,$))'),
+    zeroScale: direct.replace('$,#45,2.,#44', '$,#45,0.,#44'),
+    // A map whose source representation maps itself, holding the topology edge too.
+    cycle: direct.replace("#48=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#47))",
+      "#48=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#47));#60=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#14,#62));#61=IFCREPRESENTATIONMAP(#41,#60);#62=IFCMAPPEDITEM(#61,#46)")
+      .replace('#42=IFCREPRESENTATIONMAP(#41,#15)', '#42=IFCREPRESENTATIONMAP(#41,#60)'),
+  };
+  const id = 'IFC4/IfcStructuralCurveMember';
+  const both = { byId: new Map([[30, [ribbon(30, [1, 2, 3], [5, 2, 3]), ribbon(30, [11, 4, 3], [11, 12, 3])]]]), frame: {} };
+  for (const [name, body] of Object.entries(cases)) {
+    const step = ifc4(body);
+    assert.deepEqual(topologyPoints(step, 30), [], name);
+    const file = { path: `${name}.ifc`, schema: 'IFC4', step };
+    // Refused whether the mesh covers only the direct edge or both.
+    for (const drawn of [meshesOf([ribbon(30, [1, 2, 3], [5, 2, 3])]), both]) {
+      const res = await score(renderMembers, id, file, [[`meshes:${name}.ifc`, drawn]]);
+      assert.equal(res.status, 'fail', name);
+      assert.match(res.reason, /no topology representation this oracle can place/, name);
+    }
+  }
+  // Followed: both edges, with nine nested maps or beside a mapped item whose map does not resolve.
+  assert.equal(topologyPoints(ifc4(direct), 30).length, 4);
   let deep = direct;
   for (let i = 0; i < 9; i += 1) {
     const from = i === 0 ? '#15' : `#${70 + 2 * (i - 1) + 1}`;
     deep += `#${70 + 2 * i}=IFCREPRESENTATIONMAP(#41,${from});#${70 + 2 * i + 1}=IFCSHAPEREPRESENTATION($,'Reference','MappedRepresentation',(#${90 + i}));#${90 + i}=IFCMAPPEDITEM(#${70 + 2 * i},#46);`;
   }
-  deep = deep.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#86,#46)');
-  const id = 'IFC4/IfcStructuralCurveMember';
-  for (const [name, body] of [['unreadable', unreadable], ['deep', deep]]) {
-    const step = ifc4(body);
-    assert.deepEqual(topologyPoints(step, 30), [], name);
-    const file = { path: `${name}.ifc`, schema: 'IFC4', step };
-    const drawn = meshesOf([ribbon(30, [1, 2, 3], [5, 2, 3])]);
-    const res = await score(renderMembers, id, file, [[`meshes:${name}.ifc`, drawn]]);
-    assert.notEqual(res.status, 'pass', name);
-  }
-  // Eight nested maps are still followed.
-  const eight = deep.replace('#47=IFCMAPPEDITEM(#86,#46)', '#47=IFCMAPPEDITEM(#84,#46)');
-  assert.equal(topologyPoints(ifc4(eight), 30).length, 4);
+  assert.equal(topologyPoints(ifc4(deep.replace('#47=IFCMAPPEDITEM(#42,#46)', '#47=IFCMAPPEDITEM(#86,#46)')), 30).length, 4);
+  const dangling = direct.replace('#53=IFCMAPPEDITEM(#52,#46)', '#53=IFCMAPPEDITEM(#98,#46)');
+  assert.equal(topologyPoints(ifc4(dangling), 30).length, 4);
 });
 
 test('#9668 topology oracle: schema default axes (IfcFirstProjAxis, IfcSecondProjAxis)', () => {
@@ -122,6 +135,9 @@ test('#9668 topology oracle: schema default axes (IfcFirstProjAxis, IfcSecondPro
   const mirror = MAPPED_MEMBER.replace("#40=IFCCARTESIANPOINT((1.,0.,0.))", "#40=IFCCARTESIANPOINT((1.,2.,0.))")
     .replace("#43=IFCDIRECTION((0.,1.,0.))", "#43=IFCDIRECTION((-1.,0.,0.))").replace("$,#45,2.,#44", "$,#45,1.,#44");
   assert.deepEqual(near(topologyPoints(ifc4(mirror), 30)), [[10, 4, 3], [6, 4, 3]]);
+  // A target whose Axis3 is -x and Axis1 omitted takes x = (0, 1, 0): (1, 0, 0) would leave nothing.
+  const minusX = MAPPED_MEMBER.replace('#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#43,$,#45,2.,#44)', '#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#45,1.,#49);#49=IFCDIRECTION((-1.,0.,0.))');
+  assert.deepEqual(near(topologyPoints(ifc4(minusX), 30)), [[11, 3, 3], [11, 7, 3]]);
   // A placement z near (but not) x with no RefDirection takes x from (1, 0, 0).
   const tilted = ifc4(MEMBER().replace("#21=IFCAXIS2PLACEMENT3D(#20,$,$)", "#23=IFCDIRECTION((3.,0.,1.));#21=IFCAXIS2PLACEMENT3D(#20,#23,$)"));
   const r = Math.sqrt(10);

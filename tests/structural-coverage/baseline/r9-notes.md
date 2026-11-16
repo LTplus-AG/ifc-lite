@@ -20,4 +20,10 @@ The row stays partial on its convert cell, which is out of scope here.
 
 ## Regression evidence
 
-`node --test scripts/structural-render-probe.test.mjs`: `#9668 topology oracle: follows a mapped topology representation, origin then target` fails against the R8 `lib/topology.mjs` (4 pass, 1 fail) and passes against R9 (5 pass). It checks a non-identity MappingOrigin and a rotating, scaling MappingTarget, that a mapped shape representation without topology yields no vertices, and that a mesh on the unmapped edge still fails.
+`node --test scripts/structural-render-probe.test.mjs` runs 7 tests. Against the R8 `lib/topology.mjs` the three new oracle tests fail; against R9 all 7 pass.
+
+- `follows a mapped topology representation, origin then target`: a non-identity MappingOrigin and a rotating, scaling MappingTarget; a mapped shape representation without topology yields no vertices; a mesh on the unmapped edge still fails.
+- `a mapped topology it cannot follow leaves the member unplaced`: an unreadable MappingOrigin, an unreadable Axis1, a zero scale and a map cycle each make the member unplaced (fail, "no topology representation this oracle can place"), even with a mesh on every edge, never checked on the direct edge alone. Nine nested maps and a dangling body map beside topology are still followed.
+- `schema default axes`: `IfcSecondProjAxis` defaults y to (0, 1, 0), so a mirroring target keeps its sign; `IfcFirstProjAxis` defaults x to (1, 0, 0) unless z lies along x (|z.x| > 0.999999, as rust/retained-native's oracle).
+
+The default-x rule is shared with `IfcAxis2Placement3D`, where it was |z.x| > 0.9. The R9 summary is byte-identical before and after that change.

@@ -93,6 +93,11 @@ describe('ifc-lite georef check', () => {
 });
 
 describe('ifc-lite georef fix', () => {
+  it('refuses an --out that is the input file', async () => {
+    expect(await run(['fix', p('zone-prefix.ifc'), '--out', p('zone-prefix.ifc')])).toBe(1);
+    expect(stderr).toMatch(/never overwrites its input/);
+  });
+
   it('zone prefix: applies the stripped Easting, writes --out, and the written file checks clean', async () => {
     expect(await run(['fix', p('zone-prefix.ifc'), '--out', p('zone-fixed.ifc'), '--json'])).toBe(0);
     const out = json<FixJson>();

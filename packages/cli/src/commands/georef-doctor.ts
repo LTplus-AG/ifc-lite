@@ -13,6 +13,7 @@
  */
 
 import { writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { extractGeoreferencingOnDemand, parseModel } from '@ifc-lite/parser';
 import { readGeoreferencing, type GeorefCheckReport, type GeorefFixPlan } from '@ifc-lite/sdk';
 import { createHeadlessContext } from '../loader.js';
@@ -80,6 +81,10 @@ function parseDoctorArgs(args: string[], subcommand: 'check' | 'fix'): DoctorArg
     throw new GeorefUsageError('--out, --apply, --value, --dry-run and --accept-approximate-datum belong to georef fix (or check --fix)');
   }
   if (fix && !booleans.has('--dry-run') && !single.has('--out')) throw new GeorefUsageError('georef fix writes a new file: pass --out F (or --dry-run to only show the plan)');
+  const out = single.get('--out');
+  if (out !== undefined && resolve(out) === resolve(positionals[0])) {
+    throw new GeorefUsageError('georef fix never overwrites its input: pass a different --out path');
+  }
   return {
     file: positionals[0], json: booleans.has('--json'), allowNetwork: booleans.has('--allow-network'), fix,
     dryRun: booleans.has('--dry-run'), acceptApproximateDatum: booleans.has('--accept-approximate-datum'),

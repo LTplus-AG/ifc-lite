@@ -704,7 +704,7 @@ export function useIfcLoader() {
         useViewerStore.getState().setLoadingFileName(file.name);
         loadedBufferByteLength = source.byteLength;
         loadStage = 'server-fetch';
-        return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId, initializeModel), isStale, completeServerLoad);
+        return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId, initialized ? undefined : initializeModel), isStale, completeServerLoad);
       };
       localAdmission.setServer(async parsedBytes => !serverAttempted && target.kind === 'primary' && !useViewerStore.getState().mergeLayers && serverUploadsEnabled() && geometryKernel.serverEnabled
         ? tryServer({ byteLength: parsedBytes }) : false);

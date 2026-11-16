@@ -416,3 +416,30 @@ for (const outcome of ['refusal', 'same-id-refusal', 'dialog-cancel', 'loading-c
     if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
   }
 });
+
+for (const archive of [false, true]) it(`#10264 ordinary acquired ${archive ? 'ZIP' : 'STEP'} retries the local engine after partial server failure`, async () => {
+  useViewerStore.setState(fixtureModels(fixtureModel('prior-model')));
+  const prior = useViewerStore.getState().models;
+  const step = new Uint8Array(await file('model.ifc').arrayBuffer());
+  // Ordinary STEP is above the adaptive worker threshold; ZIP never uses that fast path.
+  const source = archive ? new File([zipSync({ 'model.ifc': step }) as BlobPart], 'ordinary-small.ifcZIP')
+    : new File([step as BlobPart, ' '.repeat(2 * 1024 * 1024)], 'ordinary-medium.ifc');
+  let acquired = 0, serverBatches = 0;
+  const read = source.arrayBuffer.bind(source);
+  Object.defineProperty(source, 'arrayBuffer', { value: () => { acquired++; return read(); } });
+  mock.method(IfcServerClient.prototype, 'parseParquetStream', async (_source: Parameters<IfcServerClient['parseParquetStream']>[0], batch: Parameters<IfcServerClient['parseParquetStream']>[1]) => {
+    assert.equal(acquired, 1, 'ordinary source acquisition precedes this server attempt');
+    assert.notEqual(useViewerStore.getState().models, prior, 'this attempt already committed its scene reset');
+    batch({ meshes: PARQUET_RESULT.meshes, batch_number: 0, decode_time_ms: 0 });
+    serverBatches++;
+    assert.equal(useViewerStore.getState().geometryResult?.totalTriangles, 1);
+    throw new Error('ordinary server stream failed after first geometry');
+  });
+  const errors: string[] = [];
+  await act(async () => { await api!.loadFile(source, undefined, { onLoadError: message => errors.push(message) }); });
+  assert.equal(serverBatches, 1, 'the failure occurs after real batch publication');
+  assert.equal(engineInits, 1, 'ordinary acquired source must reach local WASM fallback');
+  assert.equal(document.querySelector('[role="alertdialog"]') !== null, false, 'no consent decision is involved');
+  assert.equal(errors.length, 1, 'the deliberately failing local-engine sentinel settles the fallback attempt');
+  assert.equal(useViewerStore.getState().loading, false);
+});

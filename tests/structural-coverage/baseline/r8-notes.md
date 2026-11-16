@@ -11,7 +11,7 @@ The full summary comparison has exactly these six changed cells, including reaso
 | Row | Level | R7 -> R8 | Why |
 |---|---|---|---|
 | IFC2X3/IfcStructuralLoadLinearForce | read | partial -> pass | Index each activity's `subsequentLoads` through the existing recursive load indexer. All 131 previously omitted records (of 263) already exist in the product read model with matching components, including AxisVM #7359 referenced by #7360. |
-| IFC4X3/IfcRelConnectsStructuralActivity | read | partial -> pass | Accept the extractor's normalized activity/item pair in either STEP orientation, requiring the endpoint families and actual `appliesToGlobalId` link. Portal relations #89 and #92 reverse the endpoints; all 20 links now receive credit. |
+| IFC4X3/IfcRelConnectsStructuralActivity | read | partial -> pass | Accept the extractor's normalized activity/item pair in either STEP orientation, requiring the activity's `appliesToGlobalId` to name the item and, when the item is a structural item, the item's `activityGlobalIds` to name the activity. Portal relations #89 and #92 reverse the endpoints; all 20 links now receive credit. |
 | IFC4/IfcSurfaceReinforcementArea | read | fail -> pass | Product fix #10530 already on main exposes the standalone reinforcement result; this passes even with the original read probe. |
 | IFC4/IfcSurfaceReinforcementArea | card | fail -> pass | Product fix #10530 already on main exposes the reinforcement card data; no card probe change. |
 | IFC4X3/IfcSurfaceReinforcementArea | read | fail -> pass | Product fix #10530 already on main exposes the standalone reinforcement result; this passes even with the original read probe. |
@@ -24,6 +24,6 @@ The same product source and complete, checksum-verified corpus scored 105/119 ro
 `node --test scripts/structural-read-observation.test.mjs` against the original `read.mjs`: four existing tests pass, both new tests fail (`fail` where `pass` is expected). Against the corrected probe: all six pass.
 
 - `#9668 read indexes subsequent loads recursively and still rejects wrong or missing values`: checks direct subsequent loads and configuration descendants, with wrong-value and absent-load controls.
-- `#9668 read accepts normalized activity links in either STEP orientation and rejects unrelated ends`: checks both orientations, with wrong-target, absent-activity and absent-item controls.
+- `#9668 read accepts normalized activity links in either STEP orientation and rejects unrelated ends`: checks both orientations, with wrong-target, absent-activity and item-end-missing-link controls.
 
 Tests exercise the probe's observable verdicts using stated invariants and schema-positioned STEP records; no product source or fixture was changed.

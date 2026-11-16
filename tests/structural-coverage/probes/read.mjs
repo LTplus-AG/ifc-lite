@@ -60,7 +60,10 @@ const LINKS = {
   IfcRelConnectsStructuralMember: ['RelatingStructuralMember', 'RelatedStructuralConnection', (ix, a, b) => ix.byGuid.get(a)?.connectionGlobalIds?.includes(b) && ix.byGuid.get(b)?.memberGlobalIds?.includes(a)],
   IfcRelConnectsStructuralActivity: ['RelatingElement', 'RelatedStructuralActivity',
     // Some writers swap the two ends (portal-demo.ifc); the read model carries the link either way.
-    (ix, a, b) => Boolean(a && b) && (ix.byGuid.get(b)?.appliesToGlobalId === a || ix.byGuid.get(a)?.appliesToGlobalId === b)],
+    // A physical IfcElement end is not in the structural read model, so only a structural item end is checked.
+    (ix, a, b) => [[a, b], [b, a]].some(([item, activity]) => Boolean(item && activity)
+      && ix.byGuid.get(activity)?.appliesToGlobalId === item
+      && (!ix.byGuid.has(item) || ix.byGuid.get(item).activityGlobalIds?.includes(activity)))],
   // IFC2X3 only: the member carries the physical element's model-local id.
   IfcRelConnectsStructuralElement: ['RelatingElement', 'RelatedStructuralMember', (ix, _a, b, rawFrom) => ix.byGuid.get(b)?.physicalElementIds?.includes(rawFrom?.ref)],
 };

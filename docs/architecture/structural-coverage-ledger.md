@@ -4,21 +4,21 @@
 
 The scorecard of the structural domain hill climb ([#9668](https://github.com/LTplus-AG/ifc-lite/issues/9668)): one row per concrete entity of the IFC structural analysis domain per schema, derived from the generated schema tables, plus capability rows. Every status below comes from a probe that ran (`tests/structural-coverage/`), never from a typed opinion.
 
-**Total: 106 / 119 rows** (met 93, partial 26, missing 0). **Cells: 755.5 / 774.** A met row counts 1, a partial row 0.5; a passing cell 1, a partial cell 0.5. The score may only go up: `node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r8.json` fails when the total, the cell score, any row or any cell drops.
+**Total: 106 / 119 rows** (met 93, partial 26, missing 0). **Cells: 756 / 774.** A met row counts 1, a partial row 0.5; a passing cell 1, a partial cell 0.5. The score may only go up: `node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r9.json` fails when the total, the cell score, any row or any cell drops.
 
 | Level | Score | Pass | Partial | Fail | Skip | Not written |
 |---|---|---|---|---|---|---|
 | fixture | 110 / 110 | 110 | 0 | 0 | 0 | 0 |
 | read | 109.5 / 110 | 109 | 1 | 0 | 0 | 0 |
 | card | 99.5 / 100 | 99 | 1 | 0 | 0 | 0 |
-| render | 42 / 43 | 41 | 2 | 0 | 0 | 0 |
+| render | 42.5 / 43 | 42 | 1 | 0 | 0 | 0 |
 | create | 110 / 110 | 110 | 0 | 0 | 0 | 0 |
 | edit | 110 / 110 | 110 | 0 | 0 | 0 | 0 |
 | remove | 110 / 110 | 110 | 0 | 0 | 0 | 0 |
 | convert | 56 / 72 | 49 | 14 | 9 | 0 | 0 |
 | capability | 8.5 / 9 | 8 | 1 | 0 | 0 | 0 |
 
-Summary: `tests/structural-coverage/baseline/r8.json`, scored over 27 corpus files (`tests/structural-coverage/corpus.json`).
+Summary: `tests/structural-coverage/baseline/r9.json`, scored over 27 corpus files (`tests/structural-coverage/corpus.json`).
 
 ✅ pass · ◐ partial · ❌ fail · ⏸ skip · `·` probe not written yet · – not applicable (the rule is in `notApplicable()` of `tests/structural-coverage/catalogue.mjs`).
 
@@ -78,7 +78,7 @@ Summary: `tests/structural-coverage/baseline/r8.json`, scored over 27 corpus fil
 | `IfcStructuralAnalysisModel` | group | ✅ | ✅ | ✅ | – | ✅ | ✅ | ✅ | ◐ | ◐ partial | **convert** partial: 1 problem(s) over 2 record(s): structural/analysis-models/slab_01.ifc#19: SharedPlacement null, was "#IFCLOCALPLACEMENT" |
 | `IfcStructuralCurveAction` | activity | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ◐ partial | **convert** fail: 2 problem(s) over 2 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#51: lost; ifcopenshell/structural_analysis_curve.ifc#317: lost |
 | `IfcStructuralCurveConnection` | item | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ◐ partial | **convert** partial: 4 problem(s) over 4 record(s): structural/analysis-models/slab_01.ifc#62: Axis null, was "#IFCDIRECTION"; structural/analysis-models/slab_01.ifc#72: Axis null, was "#IFCDIRECTION"; structural/analysi… |
-| `IfcStructuralCurveMember` | item | ✅ | ✅ | ✅ | ◐ | ✅ | ✅ | ✅ | ◐ | ◐ partial | **render** partial: 1 problem(s) over 708 record(s): 1 of 708 member(s) not drawn at the file's coordinates, e.g. structural/analysis-models/cantilever_01.ifc#133 (the file gives it no topology representation)<br>**convert** partial: 2 problem(s) over 3 record(s): ifcopenshell/generated_structural_edge_curve.ifc: 2 of 2 IfcStructuralCurveMember record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. OwnerHistory: required val… |
+| `IfcStructuralCurveMember` | item | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ◐ partial | **convert** partial: 2 problem(s) over 3 record(s): ifcopenshell/generated_structural_edge_curve.ifc: 2 of 2 IfcStructuralCurveMember record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. OwnerHistory: required val… |
 | `IfcStructuralCurveMemberVarying` | item | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ◐ partial | **convert** partial: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#33: Axis null, was "#IFCDIRECTION" |
 | `IfcStructuralCurveReaction` | activity | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ◐ partial | **convert** fail: 4 problem(s) over 4 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#57: lost; ifcopenshell/structural_analysis_curve.ifc#2773: lost; ifcopenshell/structural_analysis_curve.ifc#2781: lo… |
 | `IfcStructuralLinearAction` | activity | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
@@ -165,7 +165,7 @@ Summary: `tests/structural-coverage/baseline/r8.json`, scored over 27 corpus fil
 
 ```bash
 node tests/structural-coverage/score.mjs   # names the fetch command for any absent corpus file, then exits 2
-node tests/structural-coverage/score.mjs --out tests/structural-coverage/.out/summary.json --check tests/structural-coverage/baseline/r8.json
+node tests/structural-coverage/score.mjs --out tests/structural-coverage/.out/summary.json --check tests/structural-coverage/baseline/r9.json
 cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json   # only when a round is accepted
 node scripts/generate-structural-coverage-ledger.mjs
 ```

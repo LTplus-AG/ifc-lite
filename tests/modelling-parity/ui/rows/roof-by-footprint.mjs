@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { roofGeometry } from '../lib/oracles.mjs';
+import { roofAssemblies, roofGeometry } from '../lib/oracles.mjs';
 import { task } from '../lib/driver.mjs';
 import { escape, oracleModel, tool, typeFields } from '../lib/model-ui.mjs';
 
@@ -25,7 +25,7 @@ export default {
       await s.harness.aim([14, -12, 12], [2.5, 2, 1.5], { pin: false });
       const shot = await s.shot('roof');
       const { step, text } = await oracleModel(s);
-      const roofs = [...step.of('IFCROOF'), ...step.of('IFCSLAB').filter((x) => x.args?.[8]?.enum === 'ROOF')];
+      const roofs = roofAssemblies(step);
       // Reuse the geometric SDK oracle: slabs, full-height prisms and mono-pitch
       // plates cannot pass as a hip even if their IFC label says HIP_ROOF.
       const sloped = roofGeometry(step, await meshIfc(text), {
@@ -34,9 +34,9 @@ export default {
       });
       return {
         tasks, notes, evidence: [shot],
-        metrics: { roofBaseZ: roofs[0] ? step.placement(roofs[0].id).origin[2] : null, clickedZ: 3 },
+        metrics: { roofBaseZ: roofs[0] ? step.placement(roofs[0].root.id).origin[2] : null, clickedZ: 3 },
         checks: [
-          { name: 'a roof element exists (IfcRoof or IfcSlab ROOF)', ok: roofs.length >= 1, detail: `${roofs.length} roof elements` },
+          { name: 'exactly one roof assembly exists (or a standalone IfcRoof/IfcSlab ROOF)', ok: roofs.length === 1, detail: `${roofs.length} roofs` },
           { name: 'the roof is sloped (hip by footprint)', ok: sloped === true, detail: sloped === true ? 'four 30-degree planes, low eaves, high centre and volume pass the native-mesh oracle' : sloped },
         ],
       };

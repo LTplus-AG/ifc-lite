@@ -102,11 +102,35 @@ export function copiedPlansMatch(reference, floors) {
   });
 }
 
+/** One IfcRoof and its IfcRelAggregates roof slabs form one measured roof.
+ * Loose roof slabs remain separate; unrelated spatial/type relationships do not
+ * confer ownership. Keep every IfcRoof as a root, even in malformed nesting.
+ */
+export function roofAssemblies(step) {
+  const roofs = step.of('IFCROOF');
+  const slabs = step.of('IFCSLAB').filter(e => e.args?.[8]?.enum === 'ROOF');
+  const slabById = new Map(slabs.map(e => [e.id,e]));
+  const owned = new Set();
+  const assemblies = roofs.map(root => {
+    const ids = new Set(step.of('IFCRELAGGREGATES')
+      .filter(rel => rel.args?.[4]?.ref === root.id)
+      .flatMap(rel => (rel.args?.[5] ?? []).map(ref => ref.ref)));
+    const parts = [...ids].filter(id => slabById.has(id)).map(id => slabById.get(id));
+    for (const part of parts) owned.add(part.id);
+    return {root,parts};
+  });
+  return [...assemblies, ...slabs.filter(slab => !owned.has(slab.id)).map(root => ({root,parts:[]}))];
+}
+
 /** Judge only the exported roof, using the SDK oracle's sampled envelope and volume. */
 export function roofGeometry(step, meshes, expected) {
-  const roofs = [...step.of('IFCROOF'), ...step.of('IFCSLAB').filter(e => e.args?.[8]?.enum === 'ROOF')];
+  const roofs = roofAssemblies(step);
   if (roofs.length !== 1) return `expected one roof, found ${roofs.length}`;
-  return judgeRoof(meshes.get(roofs[0].id)?.parts ?? [], expected);
+  const {root,parts} = roofs[0];
+  // Assembly geometry lives on the parts. Directly represented roofs/slabs
+  // still use their own mesh, and cannot borrow geometry from other elements.
+  const elements = parts.length ? parts : [root];
+  return judgeRoof(elements.flatMap(e => meshes.get(e.id)?.parts ?? []), expected);
 }
 
 /** Complete bipartite assignment: export ordering must not change the verdict. */

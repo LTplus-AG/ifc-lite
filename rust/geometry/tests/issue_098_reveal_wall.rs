@@ -176,10 +176,19 @@ const PINNED_OPEN_EDGES: Option<i64> = None;
 // unpaired edge is split at the vertices lying within 0.1 mm of it, the
 // remaining gap is identical to the parent's: 14.643 m and 57.551 m of
 // boundary. The default build improved at the same commit (30 -> 20).
+// #10381: 166 -> 152 (manifold gate alone) and 436 -> 430 (both gates). The
+// post-cut sliver pass keeps a bisection only when the census measure improves
+// (`facet_weld::adopt`), so the fallback keeps fewer split points: 501 -> 378
+// and 493 -> 368 triangles. The dropped unpaired edges are T-junctions those
+// splits left. Volume (32.714 / 33.835 m3) and area (175.388 / 151.205 m2) are
+// unchanged to 1e-3, the opening still falls back to its 56-triangle AABB, and
+// once every unpaired edge is split at the vertices within 0.1 mm of it the gap
+// is the same 14.643 m (8 edges) and 57.551 m (171 edges) as before. The
+// default and topology-gate builds read 18 (was 20).
 #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(166);
+const PINNED_OPEN_EDGES: Option<i64> = Some(152);
 #[cfg(all(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(436);
+const PINNED_OPEN_EDGES: Option<i64> = Some(430);
 
 #[test]
 fn reveal_wall_openings_do_not_leave_flaps() {

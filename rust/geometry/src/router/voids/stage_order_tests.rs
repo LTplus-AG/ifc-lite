@@ -182,33 +182,27 @@ fn malformed_recut_runs_before_the_flap_clip() {
     assert!(same_mesh(&out, &expected), "recut must run before the flap clip");
 }
 
-/// Longest / shortest edge, as `facet_weld` measures a sliver.
-fn worst_aspect(mesh: &Mesh) -> f64 {
-    let at = |i: u32| {
-        let b = i as usize * 3;
-        Vector3::new(mesh.positions[b] as f64, mesh.positions[b + 1] as f64, mesh.positions[b + 2] as f64)
-    };
-    mesh.indices
-        .chunks_exact(3)
-        .map(|t| {
-            let e = [(at(t[0]) - at(t[1])).norm(), (at(t[1]) - at(t[2])).norm(), (at(t[2]) - at(t[0])).norm()];
-            e.iter().copied().fold(0.0, f64::max) / e.iter().copied().fold(f64::INFINITY, f64::min)
-        })
-        .fold(0.0, f64::max)
-}
-
-/// The exact tail ends with the #1007 sliver refinement: a long, thin wall cut
-/// by a mesh cutter keeps no triangle past the 8:1 bar. Without the pass the
-/// wall's 4 m x 0.2 m top face alone is a 20:1 pair.
+/// The exact tail ends with the #1007 sliver pass under the census rule
+/// (`facet_weld::adopt`). A long, thin wall cut by a mesh cutter comes out
+/// closed, with no sliver by the census measure and no triangle thinner than
+/// the wall's own 4 m x 0.2 m top face, which is 20:1 however it is split.
+/// The tail has run the pass: putting its output through the pass again
+/// changes nothing. Bisecting regardless, as the tail used to, leaves a
+/// thinner triangle than the cut had.
 #[test]
 fn exact_tail_output_keeps_no_sliver() {
+    use crate::mesh_check::triangle_shape;
     let host = box_mesh([-2.0, -0.1, 0.0], [2.0, 0.1, 3.0]);
-    assert!(worst_aspect(&host) > 8.0, "the fixture must start with slivers");
     let ctx = context(vec![mesh_cutter([-0.5, -0.3, 1.0], [0.5, 0.3, 2.0], Some(Vector3::y()))]);
     let out = GeometryRouter::new().cut_in_frame(host.clone(), &ctx, 1, world_host_bounds(&host), false);
     assert!(crate::exact_topology::strict_closed_mesh(&out));
-    let aspect = worst_aspect(&out);
-    assert!(aspect <= 8.0 + 1e-6, "sliver of {aspect}:1 left by the exact tail");
+    let (shape, uncut) = (triangle_shape(&out), triangle_shape(&host));
+    assert_eq!(shape.slivers, 0, "sliver of {}:1 left by the exact tail", shape.max_aspect);
+    assert!(shape.max_aspect <= uncut.max_aspect + 1e-6, "{} past the wall's own {}", shape.max_aspect, uncut.max_aspect);
+    let again = crate::facet_weld::refine_slivers_if_better(out.clone());
+    assert!((&again.positions, &again.indices) == (&out.positions, &out.indices), "the tail must have run the pass");
+    let bisected = triangle_shape(&crate::facet_weld::refine_high_aspect_slivers(&out));
+    assert!(bisected.max_aspect > shape.max_aspect, "the fixture must tell the rule from the bare bisection");
 }
 
 /// `R_z(deg)` then translate to `at`, applied to f32 positions.

@@ -110,7 +110,7 @@ for (const provisional of [true, false]) it(`#10264 preflight marks only an unad
   Object.defineProperty(source, 'slice', { value: blob.slice.bind(blob) });
   let reads = 0;
   Object.defineProperty(source, 'arrayBuffer', { value: () => { reads++; throw new Error('unadmitted source read'); } });
-  const candidate = fixtureModel('candidate', { sourceFile: source, loadState: provisional ? 'pending' : 'complete' });
+  const candidate = { ...fixtureModel('candidate'), sourceFile: source, loadState: provisional ? 'pending' as const : 'complete' as const, geometryResult: null };
   useViewerStore.setState(fixtureModels(candidate));
   const errors: string[] = [];
   try {

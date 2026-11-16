@@ -27,6 +27,7 @@ import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureR
 import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { createModelLoadCompletion } from './ingest/modelLoadCompletion.js';
+import { pendingPrimarySession, waitForPrimaryInitialization } from './ingest/pendingPrimarySession.js';
 import { beginGeometryKernel, openGeometryEvents, runPickStart, claimFastGeometry, ADAPTIVE_SYNC_THRESHOLD_BYTES } from './ingest/geometryEventSource.js';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
@@ -196,7 +197,7 @@ export function useIfcLoader() {
   // Committed model sessions and pending admission attempts have separate ownership.
   const loadSessionRef = useRef(0);
   const admissionSessionRef = useRef(0);
-  const pendingPrimarySessionRef = useRef<{ value: number } | null>(null);
+  const pendingPrimarySessionRef = useRef<ReturnType<typeof pendingPrimarySession> | null>(null);
 
   const {
     setLoading,
@@ -265,8 +266,10 @@ export function useIfcLoader() {
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // An unadmitted primary supersedes pending admissions, not the displayed model's hydration.
     const admissionSession = target.kind === 'primary' ? ++admissionSessionRef.current : admissionSessionRef.current;
-    const sessionOwner = target.kind === 'primary' ? { value: loadSessionRef.current } : pendingPrimarySessionRef.current ?? { value: loadSessionRef.current };
-    if (target.kind === 'primary') pendingPrimarySessionRef.current = sessionOwner;
+    const primarySession = target.kind === 'primary' ? pendingPrimarySession(loadSessionRef.current) : null;
+    const joiningPrimary = primarySession ? null : pendingPrimarySessionRef.current;
+    const sessionOwner = primarySession ?? joiningPrimary ?? { value: loadSessionRef.current };
+    if (primarySession) pendingPrimarySessionRef.current = primarySession;
     let currentSession = sessionOwner.value;
     const modelId = target.modelId ?? crypto.randomUUID();
     const processedModel = options?.processedModel && normalizedProcessedModel(options.processedModel); // one hash spelling for the record and the server
@@ -281,17 +284,16 @@ export function useIfcLoader() {
     let modelCompletion: ReturnType<typeof createModelLoadCompletion> | undefined;
     let initialized = false, primaryCommitted = false;
     const releaseCanceller = installModelLoadCanceller(target.kind, () => {
-      cancelled = true;
+      cancelled = true; primarySession?.settle(false);
       if (target.kind === 'primary' && primaryCommitted && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
       metadataAbort.abort();
       abortGeometry?.();
     }, () => cancelOwnedStream, activity, () => initialized, target.kind === 'primary'); // #5849: federated cancellation preserves loaded models
-    // Every end of this load, completed or failed: the last live load ends the shared UI (L2).
     const settleLoadUi = (progress: Parameters<typeof settleOwnedLoadUi>[1] = null) => settleOwnedLoadUi(releaseCanceller, progress, modelId);
 
     const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
     const showLoadError = loadFailureReporter(processedModel ? undefined : file, activity, retryThisLoad, options?.onLoadError);
-    const localAdmission = createLocalIfcLoadAdmission(file, { isCurrent, signal: metadataAbort.signal, onCancel: () => settleLoadUi(),
+    const localAdmission = createLocalIfcLoadAdmission(file, { isCurrent, signal: metadataAbort.signal, onCancel: () => { primarySession?.settle(false); settleLoadUi(); },
       onFailure: error => {
         const candidate = useViewerStore.getState().models.get(modelId);
         if (!initialized && candidate?.sourceFile === file && candidate.loadState === 'pending' && !candidate.geometryResult) updateModel(modelId, { sourceReadRefused: true });
@@ -301,17 +303,17 @@ export function useIfcLoader() {
         else showLoadError(message, classifyLoadError(error, 'ifc_model_load'));
         settleLoadUi();
       },
-      finish: () => { metadataAbort.abort(); releaseCanceller(); } });
+      finish: () => { primarySession?.settle(false); metadataAbort.abort(); releaseCanceller(); } });
 
     setLoading(true);
     useViewerStore.getState().setLoadingFileName(file.name);
     setError(null);
 
     // Capture visibility before admission and the federated cold-tier drain.
-    // The drain remains outside total_elapsed_ms (#2385).
     const wasHidden = visibilityWitness();
     const federatedHead = target.kind === 'federated' && !processedModel ? await localAdmission.preflight() : undefined;
     if (federatedHead === null || isStale()) return;
+    if (joiningPrimary && (!await waitForPrimaryInitialization(joiningPrimary.ready, metadataAbort.signal) || isStale())) { settleLoadUi(); return; }
 
     {
       const scene = target.kind === 'federated' && !processedModel ? getGlobalRenderer()?.getScene() : undefined;
@@ -325,7 +327,6 @@ export function useIfcLoader() {
       }
     }
 
-    // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
     const trace = loadTracer.startLoad(modelId, { journey: target.kind === 'federated' ? 'J4' : 'J1', modelKind: target.kind }, totalStartTime); // #6956
     publishLoadTrace(modelId, trace); // #6979: streaming upload, finalize, BVH and search spans land on this load
@@ -441,6 +442,7 @@ export function useIfcLoader() {
           // A non-federated load has no layer stack behind it (#1717).
           useViewerStore.getState().clearLayerStack();
         }
+        primarySession?.settle(true);
         shardGeneration = instancedShardGeneration(); // after our own reset: a later one supersedes our shards
 
         // Reset memory accounting so per-load summaries don't accumulate across files.
@@ -2143,7 +2145,7 @@ export function useIfcLoader() {
       }));
       settleLoadUi();
     } finally {
-      settleResumable();
+      settleResumable(); primarySession?.settle(false);
       if (target.kind === 'primary' && pendingPrimarySessionRef.current === sessionOwner) pendingPrimarySessionRef.current = null;
       metadataAbort.abort();
       // #1959: every exit releases its ownership; actual freeing still waits

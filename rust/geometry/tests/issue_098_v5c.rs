@@ -99,68 +99,17 @@ fn voided_wall() -> Mesh {
 // fallback recovers most, and the volume-safe batched-difference accept keeps the
 // exact (cleaner) batched cut instead of the sequential re-jitter. Together with
 // the off-plane fix this brings the wall from ~2072 open edges (badly torn) to
-// ~108 with the removed volume unchanged. Guard against regression past that.
-// #3440/#3871: under an accept gate (`csg_manifold_gate`, `csg_topology_gate`)
-// the boolean accept seam REJECTS a kernel result carrying a torn or
-// non-manifold edge, and the router falls back. On this fixture that fallback
-// is measurably WORSE than the tear it replaces, which is precisely why both
-// features are off by default. Where it regresses, the assertion below is not
-// relaxed - it is REPLACED by the measured value, so the gated build stays
-// green while still failing the moment the number moves in either direction.
-// The thing to fix is the FALLBACK path (the #635 AABB box-cut the void router
-// reaches when the exact cut is discarded), not the bar; when it is fixed,
-// these pins should go and the default bar apply to every build.
-//
-// The two gates read different defect classes and reject different hosts, so
-// each combination is measured separately rather than assumed. `None` means
-// the real bar still holds in that configuration and is left to do its job.
-// #4640 made `csg_topology_gate` alone converge on the default result (92
-// unpaired edges and 33.399 m3), so that configuration no longer carries a
-// known fallback regression or a pin. The manifold-gated configurations still
-// take the measured worse fallback and remain pinned below.
-#[cfg(not(any(feature = "csg_manifold_gate", feature = "csg_topology_gate")))]
-const PINNED_OPEN_EDGES: Option<i64> = None;
-#[cfg(not(any(feature = "csg_manifold_gate", feature = "csg_topology_gate")))]
-const PINNED_VOLUME_M3: Option<f64> = None;
-
-#[cfg(all(not(feature = "csg_manifold_gate"), feature = "csg_topology_gate"))]
-const PINNED_OPEN_EDGES: Option<i64> = None;
-#[cfg(all(not(feature = "csg_manifold_gate"), feature = "csg_topology_gate"))]
-const PINNED_VOLUME_M3: Option<f64> = None;
-
-// #5131: 416 -> 422 and 24.956 -> 24.977 m3. The stray-shard sweep now keeps
-// faces whose centroid is within 1 mm of the reference host; the manifold-gate
-// fallback carried a few such slivers and now keeps them, which also reads
-// 0.021 m3 more of the wall. Both gates together stayed at 552 / 24.103.
-//
-// #5573 (#5410): 422 -> 214 and 24.977 -> 33.474 m3 (manifold gate alone);
-// 552 -> 702 and 24.103 -> 34.559 m3 (both gates). Profile-hole side walls
-// are now wound out of the solid, and plan-rotated walls whose openings author
-// no depth are cut in the wall's own frame, so the gated fallback no longer
-// loses a third of the wall: both volumes now sit next to the default build's
-// 33.398 m3. Its unpaired edges moved in opposite directions under the two
-// gate combinations, so both are re-measured here, not assumed.
-//
-// #7952: 214 -> 224 (manifold gate alone), moved by #7607 (5b730c6fdb) alone;
-// its parent reads 214 and the reading has not moved since. The fallback still
-// runs after the same five rejected Difference results (one of them now has 1
-// over-used edge where it had 5). The surface is the
-// same: 33.475 m3 against 33.474, and 152.174 m2 against 152.174. It is
-// triangulated with more T-vertices, from #7607's collinear operand seam split
-// and its shared-kernel changes. Once every unpaired edge is split at the
-// vertices lying within 0.1 mm of it, the remaining gap is SHORTER than the
-// parent's: 58.933 m of boundary against 67.505 m. The volume pin stays. Both
-// gates read 702 / 34.559, unchanged, and the default build improved
-// (74 -> 70).
-#[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(224);
-#[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-const PINNED_VOLUME_M3: Option<f64> = Some(33.474);
-
-#[cfg(all(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(702);
-#[cfg(all(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
-const PINNED_VOLUME_M3: Option<f64> = Some(34.559);
+// ~108 with the removed volume unchanged, and the site-frame cut (#10435) to 18.
+// Guard against regression past that.
+// #3440/#3871: the accept gates (`csg_manifold_gate`, `csg_topology_gate`)
+// used to reject this wall's exact cut and fall back to a worse result, so
+// the gated builds carried measured pins instead of the bars (224 and 702
+// unpaired edges at their last reading). Cut in the frame of its site
+// placement, the kernel results pass both checks at the accept paths (no
+// torn result, no over-used edge), so no fallback runs: 18 unpaired edges,
+// which arise after those paths as in the default build, and IfcOpenShell
+// 0.8.2's volume (31.421 m3) in every build, so the bars below apply to
+// all of them.
 
 #[test]
 fn v5c_dense_reveal_wall_not_torn() {
@@ -168,29 +117,7 @@ fn v5c_dense_reveal_wall_not_torn() {
     let open = open_edges(&voided);
     let vol = mesh_volume(&voided);
     println!("[V5C] tris={} vol={vol:.3} openEdges={open}", voided.triangle_count());
-    match PINNED_OPEN_EDGES {
-        None => assert!(open < 160, "V5C re-fragmented: {open} unpaired edges (was ~108)"),
-        Some(pinned) => assert_eq!(
-            open, pinned,
-            "known regression under the accept gate(s) this build enables: the \
-             rejected cut falls back to a result with {pinned} unpaired edges \
-             against the default build's ~108. A different number means the gate \
-             or the fallback moved and the regression needs re-measuring, not \
-             re-pinning."
-        ),
-    }
-    // Before #5573 the volume was the more serious half: the gated fallback
-    // removed a fifth to a quarter more of the wall. It now lands within ~1.2
-    // m3 of the default build's ~33.4 (a little over, not under); the pins keep
-    // any further movement visible.
-    match PINNED_VOLUME_M3 {
-        None => assert!(vol > 30.0, "V5C under-cut: volume {vol:.3} m³ collapsed (was ~33.4)"),
-        Some(pinned) => assert!(
-            (vol - pinned).abs() < 0.01,
-            "known regression under the accept gate(s) this build enables: the \
-             fallback leaves {vol:.3} m³ against the pinned {pinned:.3} m³ (the \
-             default build's ~33.4). A different number means the gate or the \
-             fallback moved and this needs re-measuring."
-        ),
-    }
+    assert!(open <= 18, "V5C re-fragmented: {open} unpaired edges (was 18)");
+    // IfcOpenShell 0.8.2 reads 31.421 m3 for this cut wall (41.373 uncut).
+    assert!((vol - 31.421).abs() < 31.421 * 5.0e-4, "V5C volume {vol:.3} m³, IfcOpenShell 31.421");
 }

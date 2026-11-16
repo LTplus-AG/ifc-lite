@@ -26,6 +26,7 @@ import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { gridPlacementDependents, remeshContextRoots, roofPlaneDependents } from './entity-subgraph.js';
+import { REMESH_CONTEXT_TYPES } from './remesh-context-roots.js';
 
 export type RemeshCause = 'shape' | 'created' | 'hostsChanged';
 
@@ -69,7 +70,7 @@ export function expandAffectedSet(
   const openingTargets = [...targets].some((id) => IfcTypeEnumFromString(typeOf(store, view, id) ?? '') === IfcTypeEnum.IfcOpeningElement);
   for (const id of context) {
     const type = typeOf(store, view, id);
-    if (!type || type === 'IFCPROJECT' || type.startsWith('IFCREL')) continue;
+    if (!type || (REMESH_CONTEXT_TYPES as readonly string[]).includes(type) || type.startsWith('IFCREL')) continue;
     if (cause !== 'shape') {
       out.add(id);
       continue;

@@ -28,7 +28,7 @@ const realFetch = globalThis.fetch;
 let fetched: string[] = [];
 let respond: () => Response;
 let calls: Array<{ kind: 'replace' | 'add' | 'stack'; names: string[] }> = [];
-let behaviour: 'load' | 'error' | 'nothing' | 'hang' | 'closed' | 'unrelated-error' = 'load';
+let behaviour: 'load' | 'error' | 'nothing' | 'hang' | 'closed' | 'unrelated-error' | 'null-add' = 'load';
 let unregister: () => void = () => {};
 
 function model(id: string, name: string) {
@@ -44,6 +44,8 @@ async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[], onErro
   if (behaviour === 'hang') return new Promise(() => {});
   await Promise.resolve();
   if (behaviour === 'nothing') { useViewerStore.setState({ loading: false }); return 'none'; }
+  // An add that registered nothing and reported no error of its own (superseded, cancelled, stale deployment).
+  if (behaviour === 'null-add') { useViewerStore.setState({ loading: false }); return null; }
   const models = new Map(kind === 'add' ? useViewerStore.getState().models : []);
   const id = primaryId ?? `m-${calls.length}-${files[0].name}`;
   if (behaviour === 'error') {
@@ -342,8 +344,8 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await run({ sample: 'demo' });
     behaviour = 'error';
     await assert.rejects(run({ sample: 'demo', mode: 'add' }), { code: 'INTERNAL_ERROR', message: /bad STEP/ });
-    behaviour = 'nothing';
-    await assert.rejects(run({ sample: 'demo', mode: 'add' }), 'an add that registered nothing is never success');
+    behaviour = 'null-add';
+    await assert.rejects(run({ sample: 'demo', mode: 'add' }), { code: 'UNSUPPORTED_OPERATION', message: /did not open/ });
   });
 
   it('a stray quote inside an unquoted value does not swallow the next header (#9523 code review)', async () => {
@@ -361,5 +363,28 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await run({ sample: 'demo' });
     assert.equal(await nameFor('attachment; filename=Plan, Inline Wall.ifc'), 'Plan, Inline Wall.ifc');
     assert.equal(await nameFor("attachment; filename=a.ifc, attachment; filename*=UTF-8''b.ifc"), 'a.ifc');
+  });
+  it('reports a stack that failed before clearing, over an older open stack (#9523 code review)', async () => {
+    serveStackSample();
+    await run({ sample: 'layers-demo' });
+    unregister();
+    unregister = registerAgentModelLoader({
+      loadFile: async () => {}, addModel: async () => null,
+      // Like loadFederatedIfcx's format check: report and return before clearAllModels.
+      loadStack: async (files) => { useViewerStore.getState().setError(`File "${files[0].name}" is not an IFCX file. Federated loading only supports IFCX files.`); },
+    });
+    await assert.rejects(run({ sample: 'layers-demo', mode: 'replace' }), { code: 'INTERNAL_ERROR', message: /not an IFCX file/ });
+  });
+
+  it('parses Content-Disposition edge cases with one grammar (#9523 code review)', async () => {
+    const nameFor = async (header: string) => {
+      respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': header } });
+      await run({ url: 'https://example.com/download.ifc', mode: 'add' });
+      return calls.at(-1)!.names[0];
+    };
+    await run({ sample: 'demo' });
+    assert.equal(await nameFor('attachment; filename=a=", attachment; filename=b.ifc'), 'download.ifc', 'a broken first value falls back to the URL');
+    assert.equal(await nameFor('attachment; filename="q.ifc", attachment; filename=b.ifc'), 'q.ifc');
+    assert.equal(await nameFor('inline'), 'download.ifc');
   });
 });

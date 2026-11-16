@@ -95,29 +95,22 @@ function percentDecoded(text: string, charset = 'utf-8'): string {
   }
 }
 
-/** `Content-Disposition` parameters by lower-case name, quoted strings unescaped. */
+/**
+ * One parameter (`; name=value`), sticky. A quoted value is a quoted-string; a bare value runs to the next
+ * `;` or to a comma that starts another disposition or filename parameter: a repeated header arrives
+ * joined with ', ', and only the first header is read.
+ */
+const DISPOSITION_PARAM = /;\s*([^\s=;,]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|((?:(?!,\s*(?:(?:attachment|inline)\s*(?:;|$)|filename\*?\s*=))[^;])*))\s*/iy;
+
+/** `Content-Disposition` parameters by lower-case name, quoted strings unescaped; the first value of a name wins. */
 function dispositionParams(header: string): Map<string, string> {
-  // A repeated header arrives joined with ', ': parse only the first, which ends at a comma outside a
-  // quoted value that starts another disposition (`attachment;`, `inline;`) or a filename parameter.
-  let first = header;
-  const boundary = /,\s*(?:(?:attachment|inline)\s*(?:;|$)|filename\*?\s*=)/iy;
-  for (let i = 0, quoted = false, afterEquals = false; i < header.length; i++) {
-    const c = header[i];
-    if (quoted) {
-      if (c === '\\') i++;
-      else if (c === '"') quoted = false;
-    } else if (c === '"' && afterEquals) {
-      quoted = true; // a quoted-string only starts a parameter value
-    } else if (c === ',') {
-      boundary.lastIndex = i;
-      if (boundary.test(header)) { first = header.slice(0, i); break; }
-    }
-    if (c === '=') afterEquals = true;
-    else if (!/\s/.test(c)) afterEquals = false;
-  }
-  // The leading ';' also reads a header without a disposition type (`filename="x.ifc"`).
+  const trimmed = header.trim();
+  // Skip the disposition type; a header without one (`filename="x.ifc"`) starts with its first parameter.
+  const text = /^[^;]*=/.test(trimmed) ? `;${trimmed}` : trimmed.slice(Math.max(0, trimmed.indexOf(';')));
   const params = new Map<string, string>();
-  for (const [, key, quoted, bare] of `;${first}`.matchAll(/;\s*([^\s=;,]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]*))/g)) {
+  DISPOSITION_PARAM.lastIndex = 0;
+  for (let m = DISPOSITION_PARAM.exec(text); m; m = DISPOSITION_PARAM.exec(text)) {
+    const [, key, quoted, bare] = m;
     if (!params.has(key.toLowerCase())) params.set(key.toLowerCase(), quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare.trim());
   }
   return params;
@@ -132,9 +125,11 @@ function dispositionParams(header: string): Map<string, string> {
 function fileNameOf(url: URL, res: Response): string {
   const params = dispositionParams(res.headers.get('content-disposition') ?? '');
   const extended = /^([^']*)'[^']*'(.+)$/.exec(params.get('filename*') ?? '');
-  const raw = extended ? percentDecoded(extended[2], extended[1])
-    : params.get('filename') || percentDecoded(url.pathname.split('/').filter(Boolean).pop() ?? '');
-  return raw.split(/[\\/]/).pop() ?? '';
+  const lastSegment = (path: string) => path.split(/[\\/]/).pop() ?? '';
+  const declared = lastSegment(extended ? percentDecoded(extended[2], extended[1]) : params.get('filename') ?? '');
+  const fromPath = lastSegment(percentDecoded(url.pathname.split('/').filter(Boolean).pop() ?? ''));
+  // The declared name wins when it names a model file; otherwise the URL path may still name one.
+  return declared && (isSupportedModelFile(new File([], declared)) || !fromPath) ? declared : fromPath;
 }
 
 /**
@@ -263,8 +258,20 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   const isMine = (m: { model_id: string; name: string }) => (request.mode === 'add' ? m.model_id === loaded.id
     : stack ? stackNames.has(m.name) : m.model_id === primaryId);
 
+  // The stack loader reports failures only through the store, sometimes before it clears anything, so an
+  // earlier stack's same-named layers may still be open: read its own error first. It is recognised by the
+  // loader's messages, so an unrelated error elsewhere in the tab cannot fail a stack that loaded.
+  const stackFailure = () => {
+    const { error, loadErrorSeq } = store.getState();
+    return stack && error && loadErrorSeq !== state.loadErrorSeq && /federated IFCX loading failed|federated loading|is not an IFCX file/i.test(error) ? error : null;
+  };
+  const early = stackFailure();
+  if (early) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${early}`);
+
   // Models can register just after the loader resolves: wait until the pipeline is idle, which needs no model.
   const settled = await waitForLoadIdle(deadline - Date.now());
+  const late = stackFailure();
+  if (late) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${late}`);
   let mine = snapshot().filter(isMine);
   if (mine.length === 0 && settled && !loadError) {
     // Rare path: give a registration queued behind the loader one task before concluding.
@@ -275,9 +282,6 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
     if (loadError) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${loadError}`);
     if (typeof loaded.id === 'string') fail(ToolErrorCode.STATE_CHANGED, `${name} was added, then closed by another load in the tab. Check model_list.`);
     if (!settled && loaded.id !== null) return stillLoading();
-    // The stack loader reports failures only through the store (its failure path leaves no layers open).
-    const { error, loadErrorSeq } = store.getState();
-    if (stack && error && loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${error}`);
     // No error and no model of ours: an underlay drape, a cancel, or another load won.
     fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. Check model_list and the viewer.`);
   }

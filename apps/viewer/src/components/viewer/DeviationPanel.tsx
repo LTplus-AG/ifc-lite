@@ -204,9 +204,10 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     setRunning(true);
     runStampRef.current = captureAnalysisStamp(true);
     try {
-      const { result, read, revision: readRevision, durationMs } = await computeNativeDeviation(renderer, DEVIATION_CLIP_RANGE_M);
-      setStats({ triangles: result.bvhTriangles, points: result.pointsProcessed, durationMs });
-      readRevisionRef.current = readRevision;
+      const { read } = await computeNativeDeviation(renderer, DEVIATION_CLIP_RANGE_M, ({ result, revision: readRevision, durationMs }) => {
+        setStats({ triangles: result.bvhTriangles, points: result.pointsProcessed, durationMs });
+        readRevisionRef.current = readRevision;
+      });
       setDistances(read);
     } catch (err) {
       // A COPC LOD re-run that landed during this readback superseded it

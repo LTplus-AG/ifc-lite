@@ -14,7 +14,7 @@ export class NativeDeviationReadError extends Error {
 /** One admitted GPU dispatch and readback; the UI and operation await this exact native path.
  * GPU work cannot be cancelled after dispatch. Callers must authorize before admission.
  */
-export async function computeNativeDeviation(renderer: Pick<Renderer, 'computeDeviations' | 'readDeviationDistances'>, clipRange: number) {
+export async function computeNativeDeviation(renderer: Pick<Renderer, 'computeDeviations' | 'readDeviationDistances'>, clipRange: number, onComputed?: (stage: { result: Awaited<ReturnType<Renderer['computeDeviations']>>; revision: number; durationMs: number }) => void) {
   const placement = placementSnapshot(useViewerStore.getState());
   const t0 = performance.now();
   noteDeviationWrite(renderer);
@@ -27,6 +27,9 @@ export async function computeNativeDeviation(renderer: Pick<Renderer, 'computeDe
   if (state.pointCloudDeviationHalfRange === 0.05 && result.suggestedHalfRange !== 0.05) state.setPointCloudDeviationHalfRange(result.suggestedHalfRange);
   state.setPointCloudColorMode('deviation');
   const revision = useViewerStore.getState().pointCloudDeviationRevision;
+  // Publish the admitted run before awaiting readback: native COPC can replace
+  // it during this await, and the UI needs this revision to queue its refresh.
+  onComputed?.({ result, revision, durationMs: performance.now() - t0 });
   let read: Awaited<ReturnType<Renderer['readDeviationDistances']>>;
   try { read = await renderer.readDeviationDistances(); }
   catch (error) { throw new NativeDeviationReadError(revision, error); }

@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "key": "packages/site-context/src/terrain-mesh.ts",
+  "mutation": "tests/evidence/site-context-terrain-frame/behaviour.oracle.patch",
+  "why": "Reverse application keeps every export but stops subtracting the chunk origin height from terrain vertices, so origin + position lands H0 metres too high and the terrain-height and frame tests (a known EPSG:2056 point recovered to sub-millimetre) go red."
+}

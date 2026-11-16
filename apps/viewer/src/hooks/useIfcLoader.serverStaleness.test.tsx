@@ -420,10 +420,11 @@ for (const outcome of ['refusal', 'same-id-refusal', 'dialog-cancel', 'loading-c
 for (const archive of [false, true]) it(`#10264 ordinary acquired ${archive ? 'ZIP' : 'STEP'} retries the local engine after partial server failure`, async () => {
   useViewerStore.setState(fixtureModels(fixtureModel('prior-model')));
   const prior = useViewerStore.getState().models;
-  const step = new Uint8Array(await file('model.ifc').arrayBuffer());
-  // Ordinary STEP is above the adaptive worker threshold; ZIP never uses that fast path.
-  const source = archive ? new File([zipSync({ 'model.ifc': step }) as BlobPart], 'ordinary-small.ifcZIP')
-    : new File([step as BlobPart, ' '.repeat(2 * 1024 * 1024)], 'ordinary-medium.ifc');
+  const header = new Uint8Array(await file('model.ifc').arrayBuffer());
+  const step = new Uint8Array(151 * 1024 * 1024); step.fill(32); step.set(header);
+  // A real acquired source above the 150 MiB streaming threshold, below the 4 GiB memory warning.
+  const source = archive ? new File([zipSync({ 'model.ifc': step }, { level: 0 }) as BlobPart], 'ordinary-medium.ifcZIP')
+    : new File([step as BlobPart], 'ordinary-medium.ifc');
   let acquired = 0, serverBatches = 0;
   const read = source.arrayBuffer.bind(source);
   Object.defineProperty(source, 'arrayBuffer', { value: () => { acquired++; return read(); } });

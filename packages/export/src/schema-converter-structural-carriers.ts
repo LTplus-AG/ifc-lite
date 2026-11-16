@@ -47,7 +47,7 @@ const CAUSED_BY = 10;
 const OBJECT_PLACEMENT = 5;
 const IFC2X3_ACTIONS = new Set(['IFCSTRUCTURALPOINTACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION', 'IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']);
 
-export const CAUSED_BY_AMONG = "IFC2X3 CausedBy names one of several reactions a source 'Causes' relationship holds; IFC4 keeps that relationship, but IFC2X3 CausedBy cannot be restored from it";
+export const CAUSED_BY_AMONG = "IFC2X3 CausedBy names one of several reactions the source's 'Causes' relationships hold for the action; IFC4 keeps them, but IFC2X3 CausedBy cannot be restored from them";
 export const CAUSED_BY_WRITTEN = "IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes' from the action to the reaction, as IFC4 holds it";
 const CAUSED_BY_READ = "an IfcRelAssignsToProduct named 'Causes' from an action to one point reaction also fills the IFC2X3 CausedBy";
 const LOAD_CASE_WRITTEN = `IfcStructuralLoadCase is written as an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set holding ${COEFFICIENTS}`;
@@ -76,8 +76,8 @@ export class StructuralCarriers {
     this.mode = conversionMode(from, to);
     if (!this.mode) return;
     const schema = from as 'IFC2X3' | 'IFC4';
-    const causes = [...IFC2X3_ACTIONS, 'IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALSURFACEACTION'].some((t) => source.ids(t).length)
-      ? this.readCauses(source, schema) : new Map<number, Set<number>>();
+    const actions = [...IFC2X3_ACTIONS, 'IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALSURFACEACTION'].some((t) => source.ids(t).length);
+    const causes = actions ? this.readCauses(source, schema) : new Map<number, Set<number>>();
     if (this.mode === 'downgrade') {
       // IFC2X3 CausedBy names one reaction, and IFC2X3 has only point reactions.
       for (const [action, reactions] of causes) {
@@ -87,7 +87,7 @@ export class StructuralCarriers {
       return;
     }
     this.causesWritten = causes;
-    this.reactions = new Set(source.ids('IFCSTRUCTURALPOINTREACTION'));
+    if (actions) this.reactions = new Set(source.ids('IFCSTRUCTURALPOINTREACTION'));
     if (source.ids('IFCSTRUCTURALANALYSISMODEL').length) {
       for (const [model, items] of soleModelItems(source)) this.findSharedPlacement(source, model, items);
     }
@@ -184,7 +184,11 @@ export class StructuralCarriers {
     const reaction = refId(args[CAUSED_BY]);
     if (reaction === null || !this.reactions.has(reaction)) return null;
     const written = this.causesWritten.get(id);
-    if (written) return !written.has(reaction) ? null : written.size === 1 ? CAUSED_BY_WRITTEN : CAUSED_BY_AMONG;
+    if (written) {
+      // Source 'Causes' relationships naming other reactions only: IFC4 has no place for this one, so it is reported omitted.
+      if (!written.has(reaction)) return null;
+      return written.size === 1 ? CAUSED_BY_WRITTEN : CAUSED_BY_AMONG;
+    }
     const guid = deterministicGlobalId(`ifc2x3-caused-by:${args[0].trim()}:#${reaction}`);
     this.pending.push(`#${this.ids()}=IFCRELASSIGNSTOPRODUCT('${guid}',${args[1]},'${CAUSES}',$,(#${reaction}),$,#${id});`);
     return CAUSED_BY_WRITTEN;

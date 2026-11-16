@@ -291,7 +291,7 @@ describe('CausedBy beside a source Causes relationship #9668', () => {
     const both = ifc2x3.replace("(#23),$,#21);", "(#20,#23),$,#21);");
     const up = await convert(both, 'IFC4');
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/^#30=.*'Causes',\$,\(#20,#23\),\$,#21\);$/)]);
-    expect(up.warnings).toContain('IFC2X3 CausedBy names one of several reactions');
+    expect(up.warnings).toContain("IFC2X3 CausedBy names one of several reactions the source's 'Causes' relationships hold");
     expect(up.warnings).not.toContain('CausedBy is written as');
     expect(up.warnings).not.toContain('CausedBy has no slot in IFC4');
   });
@@ -300,5 +300,6 @@ describe('CausedBy beside a source Causes relationship #9668', () => {
     const odd = ifc2x3.replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.').replace(/^#30=.*$/m, '');
     const up = await convert(odd, 'IFC4');
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
+    expect(up.warnings).toContain('IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted');
   });
 });

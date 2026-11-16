@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { MutablePropertyView } from './mutable-property-view.js';
 import { recordCompoundMutation, undoRecordedMutationOperations } from './compound-recording.js';
 import { cooperativeOverlay } from './cooperative-overlay-access.js';
@@ -50,4 +50,29 @@ it('#8452 restores an edited journal row whose original successor was removed by
   undoRecordedMutationOperations(view, 1, () => { throw Error('Expected compound undo'); });
   expect(view.getMutations()).toEqual(before);
   expect(view.getNewEntities().map(row => row.expressId)).toEqual([a, b]);
+});
+
+
+it('#8452 clones appended journal rows as one detached batch without visiting old history', () => {
+  const view = new MutablePropertyView(null, 'journal-batch');
+  for (let i = 0; i < 200; i++) view.createEntity('IfcCartesianPoint', [[i, 0, 0]]);
+  let retained: ReturnType<MutablePropertyView['getMutations']>[number] | undefined;
+  const clones = vi.spyOn(globalThis, 'structuredClone');
+  let rowClones = 0, batches = 0;
+  try {
+    view.runAtomic(draft => {
+      for (let i = 0; i < 35; i++) draft.createEntity('IfcCartesianPoint', [[i, 1, 0]]);
+      retained = draft.getMutations(234)[0];
+    });
+    for (const [value] of clones.mock.calls) {
+      if (value && typeof value === 'object' && 'type' in value && value.type === 'CREATE_ENTITY') rowClones++;
+      if (Array.isArray(value) && value.length === 35 && value.every(row => row.type === 'CREATE_ENTITY')) batches++;
+    }
+  } finally { clones.mockRestore(); }
+  expect(rowClones).toBe(0);
+  expect(batches).toBe(1);
+  expect(view.getMutationCount()).toBe(235);
+  expect(retained).toBeDefined();
+  retained!.attributeName = 'changed after publication';
+  expect(view.getMutations().at(-1)?.attributeName).not.toBe('changed after publication');
 });

@@ -953,6 +953,16 @@ passing structural guard as a no-regression verdict.
 Lesson: reducing retained allocation does not by itself bound the next edit's
 latency; weak-table maintenance can charge an entire session to one insertion.
 
+The record-owned candidate preserved the sustained witness and the small-model
+wall insertion returned to the base range. Its original screen then stopped on
+consistent hosted-window regression, leaving larger authoring pairs and F5
+unrun. A paired ordinary allocation diagnostic found identical graph/journal
+cardinality but extra per-row serialization calls in `finishHistory`: the old
+path cloned the appended journal as one array. Clone only that appended batch
+at one boundary, preserving draft detachment and avoiding serialization setup
+per mutation. The batching correction remains unqualified until fresh
+acceptance; neither earlier candidate's samples qualify it.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every

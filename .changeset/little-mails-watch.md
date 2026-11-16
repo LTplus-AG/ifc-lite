@@ -27,3 +27,5 @@ Release completed transaction indexes and collect evicted read snapshots during 
 Keep borrow and exposure state in the shared attribute barrier to avoid duplicate weak-collection lookups and cache metadata allocations.
 
 Keep attribute barriers on their owning records as non-enumerable metadata, avoiding a session-wide weak-table insertion during a bounded edit. Metadata stays out of cloned and exported records.
+
+Clone appended mutation-journal rows as one detached batch instead of invoking serialization separately for each new mutation.

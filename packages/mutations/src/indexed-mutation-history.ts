@@ -200,7 +200,9 @@ export function finishHistory(original: Mutation[], next: Mutation[]) {
   const base = stores.get(original), draft = stores.get(next);
   if (!base || draft?.base !== base) return undefined;
   const changed = [...draft.reads].filter(([id, row]) => !draft.removed.has(id) && !sameOverlayValue(base.get(id), row));
-  const added = [...draft.nodes.values()].map(node => structuredClone(node.row));
+  // One clone boundary for the appended batch, as on the whole-array path.
+  // Per-row calls multiply serialization setup during bounded creation (#8452).
+  const added = draft.nodes.size ? structuredClone([...draft.nodes.values()].map(node => node.row)) : [];
   const deleted = [...draft.removed];
   const updates = changed.map(([id, row]) => [id, structuredClone(row)] as const);
   const history: CompoundInverse['history'] = [

@@ -29,3 +29,5 @@ Keep borrow and exposure state in the shared attribute barrier to avoid duplicat
 Keep attribute barriers on their owning records as non-enumerable metadata, avoiding a session-wide weak-table insertion during a bounded edit. Metadata stays out of cloned and exported records.
 
 Clone appended mutation-journal rows as one detached batch instead of invoking serialization separately for each new mutation.
+
+Avoid typed-map work when both override indexes are empty and reuse the sparse draft's known map kind for positional reference queries.

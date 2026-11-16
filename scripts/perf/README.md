@@ -963,6 +963,17 @@ at one boundary, preserving draft detachment and avoiding serialization setup
 per mutation. The batching correction remains unqualified until fresh
 acceptance; neither earlier candidate's samples qualify it.
 
+The batched candidate still stopped on the original hosted-window screen.
+Record metadata had extra installation calls, but bounded CPU attribution did
+not establish that as the cause: both sources used dictionary properties and
+attribute observation had the same sparse sample count. Do not trade away its
+clone or alias contracts on call counts alone. A cold engine-event diagnostic
+instead exposed additional deoptimizations in empty typed override lookup and
+the new proxy reference-slot dispatch. Empty override indexes need no typed
+lookup; the proxy already knows whether its base is an entity map. Those
+bounded corrections retain nonempty and unresolved-source candidates and still
+require timing qualification.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every

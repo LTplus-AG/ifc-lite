@@ -123,12 +123,12 @@ export class MutableOverlayState {
       this.nextAllocatedId = maxExistingId;
     }
   }
-
   /** Snapshot candidate ids for effective attribute reads. Includes named,
    * positional and type overrides even when written without journal records;
    * callers apply their normal live-entity and attribute-layout checks. */
   getAttributeOverrideEntityIds(createdTypes?: readonly string[], referencedId?: number): number[] {
     if (createdTypes || referencedId !== undefined) {
+      if (this.overriddenEntities.size === 0 && this.overriddenSourceIds.size === 0) return [];
       const rows = referencedId === undefined
         ? createdTypes!.flatMap(type => [...this.overriddenEntities.ofType(type)])
         : [...this.overriddenEntities.referencing(referencedId)].filter(row => !createdTypes || createdTypes.some(type => type.toUpperCase() === row.type.toUpperCase()));

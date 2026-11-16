@@ -24,7 +24,8 @@ export function materializeOverlay(state: OverlaySnapshot): OverlaySnapshot {
 
 function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): Change; dispose(): void } {
   const reads = new Map<K, V>(), removed = new Set<K>(), inserted = new Set<K>();
-  const localEntities = base instanceof NewEntityMap ? new NewEntityMap() : null;
+  const baseEntities = base instanceof NewEntityMap ? base : null;
+  const localEntities = baseEntities ? new NewEntityMap() : null;
   let retired = false;
   let ordering: Map<number, number> | undefined;
   const positionOf = (id: number): number => ordering?.get(id) ?? (base instanceof NewEntityMap
@@ -85,9 +86,9 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
       while (next !== null && !has(next as K)) next = base.successorOf(next);
       return next ?? (inserted.values().next().value as number | undefined) ?? null;
     };
-    if (name === 'referenceSlotIds' && base instanceof NewEntityMap) return function* (type: string, slot: number, target: number | null) {
+    if (name === 'referenceSlotIds' && localEntities) return function* (type: string, slot: number, target: number | null) {
       const seen = new Set<number>();
-      for (const id of base.referenceSlotIds(type, slot, target)) {
+      for (const id of baseEntities!.referenceSlotIds(type, slot, target)) {
         if (removed.has(id as K) || reads.has(id as K)) continue;
         seen.add(id); yield id;
       }

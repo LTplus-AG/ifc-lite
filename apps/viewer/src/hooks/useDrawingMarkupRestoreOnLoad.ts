@@ -65,7 +65,7 @@
  */
 
 import { mergeRestoredMeasures, mergeRestoredDimensions } from '@/lib/export/drawing-annotation-restore';
-import { restorableDrawingAnnotationRecords, restoredDrawingAnnotations } from '@/lib/export/drawing-annotations';
+import { canReadDrawingAnnotations, restorableDrawingAnnotationRecords, restoredDrawingAnnotations } from '@/lib/export/drawing-annotations';
 import { useLoadWindowHold } from './loadWindow.js';
 import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -152,6 +152,10 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
   if (restoredForModel.has(modelId)
     && restoredForModel.get(modelId)?.deref() === useViewerStore.getState().models.get(modelId)?.sourceFile) return;
   if (useViewerStore.getState().activeModelId !== modelId) return;
+  const state = useViewerStore.getState();
+  const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
+  // Do not mark a loading model attempted or request a parse until it is readable.
+  if (!canReadDrawingAnnotations(store)) return;
   if (!markupFieldsEmpty()) {
     // Something else (a user drawing) already populated this model's
     // fields — never overwrite it.
@@ -167,9 +171,7 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     // #9621: precedence gates the WRITE, not a candidate's worker request.
     // With overlays hidden this hook is the only parse producer. Keep it
     // parallel with the hash, while still skipping provably blank sources.
-    const state = useViewerStore.getState();
-    const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
-    if (requestParse && store && hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
+    if (requestParse && hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
       ensureParseFor([{ store, mutationView: state.getMutationView(modelId) ?? undefined }]);
     }
     if (!awaitingLocalStorageDecision.has(modelId)) {
@@ -188,9 +190,6 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     return;
   }
 
-  const state = useViewerStore.getState();
-  const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
-  if (!store) return;
   const annotations = restoredDrawingAnnotations(store, modelId, state.getMutationView(modelId) ?? undefined);
   if (!hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
     markRestored(modelId);

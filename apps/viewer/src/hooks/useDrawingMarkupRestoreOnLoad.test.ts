@@ -29,6 +29,7 @@ import { useViewerStore } from '@/store/index.js';
 import { collectChangedModels } from '@/lib/export/model-changes.js';
 import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
+import { readDrawingAnnotations, restoredDrawingAnnotations } from '@/lib/export/drawing-annotations';
 import { __resetSymbolicAnnotationsCacheForTests, ensureParseFor, getParseFor } from './symbolic-parse-cache.js';
 import {
   tryRestoreDrawingMarkup,
@@ -426,6 +427,34 @@ it('load window: single-model cache hit restores nothing between the record turn
     await probe.dispose();
   }
 });
+
+for (const missing of ['entityIndex', 'byType', 'byId', 'getEntity'] as const) {
+  it(`#10502: skips a loading/non-IFC store without ${missing} and retries when ready`, async () => {
+    __resetDrawingMarkupRestoreForTests();
+    __resetSymbolicAnnotationsCacheForTests();
+    const modelId = `incomplete-${missing}`;
+    const dimension = { id: 'ready-dimension', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 1, orientation: 'aligned' };
+    const saved = JSON.stringify({ item: { kind: 'dimension', value: dimension }, plane: { axis: 'down', position: 1, flipped: false } });
+    const source = fixture().replace('IfcLite:Markup:Measure', 'ordinary')
+      .replace('ENDSEC;\nEND-ISO', `#60=IFCANNOTATION('0Annot000000000000060d',#4,'Dimension','${saved}','IfcLite:DrawingAnnotation:1',$,$);\nENDSEC;\nEND-ISO`);
+    const store = await seedStore(modelId, source);
+    useViewerStore.setState({ dimensions2D: [], tagAnnotations2D: [] });
+    const target = missing === 'byType' || missing === 'byId' ? store.entityIndex : store;
+    const descriptor = Object.getOwnPropertyDescriptor(target, missing)!;
+    Reflect.deleteProperty(target, missing);
+    try {
+      assert.deepEqual(readDrawingAnnotations(store), []);
+      assert.equal(restoredDrawingAnnotations(store, modelId), null);
+      assert.doesNotThrow(() => tryRestoreDrawingMarkup(modelId, true));
+      assert.equal(getParseFor(store), undefined, 'incomplete stores must not request a symbolic parse');
+      assert.deepEqual(useViewerStore.getState().dimensions2D, []);
+    } finally {
+      Object.defineProperty(target, missing, descriptor);
+    }
+    tryRestoreDrawingMarkup(modelId, true);
+    assert.deepEqual(useViewerStore.getState().dimensions2D, [dimension], 'skipping must not mark the loading model restored');
+  });
+}
 
 it('#9296: mixed automatic annotations and saved markup both restore', async () => {
   __resetDrawingMarkupRestoreForTests();

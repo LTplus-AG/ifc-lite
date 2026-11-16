@@ -35,9 +35,18 @@ export interface DrawingAnnotations {
   absorbed?: ReadonlySet<string>;
 }
 
+/** Loading and non-IFC models may expose only part of the store contract. */
+export function canReadDrawingAnnotations(store: IfcDataStore | null | undefined): store is IfcDataStore {
+  return typeof store?.entityIndex?.byType?.get === 'function'
+    && typeof store.entityIndex.byId?.get === 'function'
+    && typeof store.entities?.getTypeName === 'function'
+    && typeof store.getEntity === 'function';
+}
+
 /** Read our editable payload; ordinary imported annotations remain untouched. */
 export function readDrawingAnnotations(store: IfcDataStore, view?: MutablePropertyView) {
   const records: { id: number; identity: string; saved: Saved }[] = [];
+  if (!canReadDrawingAnnotations(store)) return records;
   for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCANNOTATION'])) {
     const record = effectiveMetadataRecord(store, expressId, view);
     if (!record || record.attributes[4] !== OBJECT_TYPE || typeof record.attributes[3] !== 'string') continue;

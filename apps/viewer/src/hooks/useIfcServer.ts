@@ -63,7 +63,7 @@ export function useIfcServer() {
   const loadFromServer = useCallback(async (
     /** The IFC to upload, or a model the server already processed (then `buffer` is unused: there are no bytes here). */
     file: File | ProcessedModelSource,
-    buffer: ArrayBuffer | SharedArrayBuffer,
+    buffer: Pick<ArrayBuffer, 'byteLength'>,
     /**
      * Optional staleness check — returns true if this load has been
      * superseded. Same contract as `loadFromCache`'s (useIfcCache.ts:194):
@@ -74,12 +74,25 @@ export function useIfcServer() {
     isStale: (() => boolean) | undefined,
     signal: AbortSignal | undefined,
     modelId: string,
+    /** Replace the prior scene only once server geometry is available. */
+    beforePublish?: () => void,
   ): Promise<boolean> => {
-    cancelProperties(modelId);
+    if (!beforePublish) cancelProperties(modelId);
     const { setProgress, setGeometryResult } = useViewerStore.getState();
     // A processed model has no fallback, so its failures reach the caller to be worded; an
     // upload's stay silent here and fall back to local processing.
     const processed = isProcessedModelRef(file);
+    let published = false;
+    const publishGeometry: typeof setGeometryResult = result => {
+      if (beforePublish) {
+        const progress = useViewerStore.getState().progress;
+        beforePublish();
+        setProgress(progress);
+      }
+      if (!published) cancelProperties(modelId);
+      published = true;
+      setGeometryResult(result);
+    };
     try {
       setProgress({ phase: 'Connecting to server', percent: 5 });
 
@@ -197,7 +210,7 @@ export function useIfcServer() {
               hasLargeCoordinates: false,
             };
 
-            setGeometryResult({
+            publishGeometry({
               meshes: [...allMeshes], // Clone to trigger re-render
               totalVertices,
               totalTriangles,
@@ -251,7 +264,7 @@ export function useIfcServer() {
           hasLargeCoordinates: streamMetadata?.coordinate_info?.is_geo_referenced ?? false,
         };
 
-        setGeometryResult({
+        publishGeometry({
           meshes: allMeshes,
           totalVertices,
           totalTriangles,
@@ -329,7 +342,7 @@ export function useIfcServer() {
 
         // Set all geometry at once
         setProgress({ phase: 'Rendering geometry', percent: 80 });
-        setGeometryResult({
+        publishGeometry({
           meshes: allMeshes,
           totalVertices: result.stats.total_vertices,
           totalTriangles: result.stats.total_triangles,
@@ -349,7 +362,9 @@ export function useIfcServer() {
       setProgress({ phase: 'Complete', percent: 100 });
       return true;
     } catch (err) {
-      if (processed) throw err; // a processed model's failure shows in its card
+      // After replacing the scene, report the server failure rather than ask
+      // for a local fallback consent whose Cancel could not restore that scene.
+      if (processed || (beforePublish && published)) throw err;
       console.error('[useIfc] Server parse failed:', err);
       return false;
     }

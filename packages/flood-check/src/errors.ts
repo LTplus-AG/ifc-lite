@@ -10,14 +10,51 @@ export class FloodCheckError extends Error {
   }
 }
 
-/** Why a model cannot be read for the check (more codes follow with the check itself). Never guessed around. */
+/** The hazard service answered, but not with an image this package can read exactly. */
+export class HazardResponseError extends FloodCheckError {}
+
+/** The hazard service could not be reached, timed out, or answered with an HTTP error. */
+export class HazardRequestError extends FloodCheckError {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+  }
+}
+
+/** One opaque colour that matched no legend entry and is not an antialiasing blend of two entries. */
+export interface UnexplainedColour {
+  rgb: [number, number, number];
+  pixels: number;
+}
+
+/**
+ * The response contains opaque colours that match no legend entry in
+ * significant numbers. The published style has changed, so no decoded class
+ * can be trusted until the legend in this package is updated.
+ */
+export class HazardStyleChangedError extends FloodCheckError {
+  constructor(
+    message: string,
+    readonly unexplainedPixels: number,
+    readonly totalPixels: number,
+    readonly colours: readonly UnexplainedColour[],
+  ) {
+    super(message);
+  }
+}
+
+/** Why a model cannot be checked against a provider. Never guessed around. */
 export type RefusalCode =
   | 'not-georeferenced'
   | 'geographic-crs'
   | 'crs-unrecognised'
   | 'crs-mismatch'
+  | 'vertical-datum-mismatch'
+  | 'vertical-datum-unrecognised'
   | 'georeference-implausible'
+  | 'request-too-large'
   | 'ambiguous-map-scale'
+  | 'outside-provider-extent'
+  | 'no-candidates'
   | 'ambiguous-building'
   | 'world-coordinate-system';
 

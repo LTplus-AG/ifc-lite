@@ -68,7 +68,8 @@ async function chain(slabs: Slabs, w: Walls) {
 /** The expected worst quality of a chain. */
 function expected(slabs: Slabs, w: Walls): FootprintQuality {
   if (slabs === 'given' || slabs === 'slab readable') return 'complete';
-  if (slabs === 'slab with voids') return 'voids-filled';
+  // The synthetic house has no slab above, so the profile's hole is open to the sky: a courtyard (guarded locally), never complete.
+  if (slabs === 'slab with voids') return 'courtyard-ring';
   if (slabs === 'slab partly readable') return 'partial';
   if (w !== 'walls full loop') return 'hull';
   return slabs === 'slab unreadable' ? 'partial' : 'complete';
@@ -123,7 +124,7 @@ describe('decisions that rest on an uncertain ground storey or footprint keep th
     expect(footprintDoubt(ctx({ footprintQuality: { hullLike: false, partial: false } }), -5)).toBeNull();
   });
 
-  it('a door with no IsExternal on a voids-filled slab, far from its outer outline (a courtyard façade), is kept', async () => {
+  it('a door with no IsExternal on a slab whose profile hole is open to the sky, far from its outer outline (a courtyard façade), is kept', async () => {
     const facts = extractModelFacts(await parseStep(syntheticHouse({
       verticalDatum: 'LN02',
       slab: false,
@@ -132,8 +133,9 @@ describe('decisions that rest on an uncertain ground storey or footprint keep th
         b.contain(b.storeys.eg.id, b.add(`IFCDOOR(${b.guid()},$,'Hoftür',$,$,#${b.place(b.storeys.eg.pl, 10, 3, 0)},$,$,2.1,1.,.DOOR.,$,$)`));
       },
     })), { expectedCrs: 'EPSG:2056' });
-    expect(footprintConcerns(facts.footprint).worst).toBe('voids-filled');
-    expect(facts.candidates.find((c) => c.name === 'Hoftür')?.selectedBecause).toMatch(/fills courtyards/);
+    // The hole is a courtyard (open ground, `courtyard-ring`), so the door faces its outline and is kept as façade.
+    expect(footprintConcerns(facts.footprint).worst).toBe('courtyard-ring');
+    expect(facts.candidates.find((c) => c.name === 'Hoftür')?.selectedBecause).toMatch(/within 1 m of the footprint outline/);
   });
 });
 

@@ -11,6 +11,9 @@
  * accessible name (#5603).
  */
 export const viewerShellEn = {
+  'viewerShell.localIfcMemory.title': 'This model may exceed available memory',
+  'viewerShell.localIfcMemory.continue': 'Continue loading',
+  'viewerShell.localIfcMemory.description': 'This model may need about {estimated} GiB of memory. The browser reports at most 8 GiB, so the available memory may be higher. Continuing on a device with insufficient memory can crash this tab. Cancel to stop this load, or use a smaller model or the native CLI/server.',
   'viewerShell.star.title': 'Enjoying IFC Lite?',
   'viewerShell.star.detail': 'A GitHub star helps others discover it.',
   'viewerShell.star.action': 'Star on GitHub',

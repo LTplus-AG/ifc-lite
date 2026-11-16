@@ -28,10 +28,11 @@
 //! A cap with only its floor in its plane removes nothing there: an opening
 //! the host already has. Nor is a cap seated where host material past it
 //! reaches its plane over the footprint: a face through the plane, or one
-//! from past the cap that ends at the plane strictly inside the footprint
-//! (its mesh may be split there). Material may continue there with no floor
-//! face, and a moved cap would cut into it. Both keep the plain cut, which can
-//! also refuse a body that truly ends at a floor there.
+//! from past the cap, not lying along it, that ends at the plane strictly
+//! inside the footprint (its mesh may be split there). Material may continue there with no floor
+//! face, and a moved cap would cut into it. Both keep the plain cut. The
+//! guard can also refuse a body that truly ends at a floor there; that case
+//! keeps the plain cut too.
 
 use super::extension::{extend_prism_caps, tri_touches_slab_footprint};
 use super::frame::PrismFrame;
@@ -115,6 +116,14 @@ fn faces_along(t: &PTri, d: V3) -> Option<bool> {
     (turn.abs() > 0.5 * norm(normal)).then_some(turn > 0.0)
 }
 
+/// Whether `t` lies within about 8 deg of the cap planes: a flush face whose
+/// depth over the footprint drifts past the allowance, not a face running on
+/// through the plane.
+fn cap_parallel(t: &PTri, d: V3) -> bool {
+    let normal = tri_normal(t.p[0], t.p[1], t.p[2]);
+    dot(normal, d).abs() >= 0.99 * norm(normal)
+}
+
 /// Extend the end caps of `pf` where the swept slab is empty, then seat each
 /// cap that host faces lie flush with over its footprint.
 pub(super) fn extend_and_seat_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[(V3, V3)]) -> FlushSeats {
@@ -164,10 +173,11 @@ pub(super) fn extend_and_seat_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[
                 continue;
             }
             // Material past the cap that reaches its plane: through it in one
-            // triangle, or ending in the band strictly inside the footprint,
-            // where its mesh may be split at the plane.
+            // triangle, or, not lying along the cap, ending in the band
+            // strictly inside the footprint, where its mesh may be split at
+            // the plane.
             if beyond {
-                if inside || depths_over_footprint(t, pf, -pad).is_some() {
+                if inside || (!cap_parallel(t, pf.d) && depths_over_footprint(t, pf, -pad).is_some()) {
                     crossed = true;
                     break;
                 }
@@ -181,8 +191,8 @@ pub(super) fn extend_and_seat_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[
             }
             reach = if high { reach.max(hi) } else { reach.min(lo) };
         }
-        // Only a floor in the plane, or a face through it: the plain cut
-        // (module doc).
+        // Only a floor in the plane, or material past the cap reaching its
+        // plane: the plain cut (module doc).
         if !removes || crossed {
             continue;
         }

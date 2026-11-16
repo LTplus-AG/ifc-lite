@@ -58,6 +58,10 @@ enum Host {
     /// face inside the recess is split at the interface plane: no single
     /// triangle runs through the plane there.
     SplitMeshedAtInterface,
+    /// A full-length core with the finish only over `x` in [0, 1.5]: the
+    /// finish ends inside the recess, and its end face rises from the
+    /// interface into the prism only.
+    FinishEndsInRecess,
 }
 
 fn wall(site_at: [f64; 3], site_turn_deg: f64, wall_turn_deg: f64, wall_y: f64, recess: Recess, host: Host) -> String {
@@ -130,6 +134,11 @@ END-ISO-10303-21;
             Host::CoreAndFinish => "#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#46,#47));".to_string(),
             Host::SplitUnderRecess => split_bodies(),
             Host::SplitMeshedAtInterface => split_meshed_bodies(),
+            Host::FinishEndsInRecess => format!(
+                "{}{}#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#63,#67));",
+                extrusion(60, 0.0, WALL_LENGTH, 0.0, CORE),
+                extrusion(64, 0.0, 1.5, CORE, CORE + FINISH),
+            ),
         },
     )
 }
@@ -318,7 +327,7 @@ fn a_recess_ending_on_an_interface_a_kilometre_out_cuts_a_closed_solid() {
                                 Host::CoreAndFinish => {
                                     excess.abs() <= 5.0e-4 && (surface - analytic_area(recess)).abs() <= 5.0e-3
                                 }
-                                Host::SplitUnderRecess | Host::SplitMeshedAtInterface => {
+                                Host::SplitUnderRecess | Host::SplitMeshedAtInterface | Host::FinishEndsInRecess => {
                                     (-5.0e-4..=2.0e-3).contains(&excess)
                                 }
                             }
@@ -426,6 +435,38 @@ fn a_recess_over_a_body_meshed_at_the_interface_keeps_the_plain_cut() {
                             "{recess:?} site {site_at:?} wall turn {wall_turn} y {wall_y:.3}: \
                              {open} open edges, volume {excess:+.6} m3 off analytic{}",
                             describe_pin(&pin),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} of 48 placements are wrong:\n{}", failures.len(), failures.join("\n"));
+}
+
+/// A finish that ends inside the recess, over a core that runs on. The
+/// finish's end face rises from the interface into the prism: no material
+/// past the cap, so it must not keep the cap from being seated. Counted as
+/// running through the plane, it left the plain cut, 0.73 litres over at the
+/// kilometre site, wall turn 0, offset 2.274 (main 575b0c34f4 reads the same);
+/// seated, every placement here is within 0.49 litres (#10346 review).
+#[test]
+fn a_finish_ending_inside_the_recess_does_not_block_the_seat() {
+    let expected = WALL_LENGTH * WALL_HEIGHT * CORE + 1.5 * WALL_HEIGHT * FINISH - 0.5 * RECESS * FINISH;
+    let mut failures = Vec::new();
+    for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
+        for site_at in [[0.0; 3], [1000.0, 800.0, 0.0]] {
+            for wall_turn in [0.0, 90.0] {
+                for step in 0..6 {
+                    let wall_y = 2.0 + 0.137 * f64::from(step);
+                    let content = wall(site_at, 0.0, wall_turn, wall_y, recess, Host::FinishEndsInRecess);
+                    let voids = build_void_index_like_production(&content);
+                    let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
+                    let (open, excess) = (open_edges(&mesh), mesh_volume(&mesh) - expected);
+                    if open != 0 || excess.abs() > 6.0e-4 {
+                        failures.push(format!(
+                            "{recess:?} site {site_at:?} wall turn {wall_turn} y {wall_y:.3}: \
+                             {open} open edges, volume {excess:+.6} m3 off analytic"
                         ));
                     }
                 }

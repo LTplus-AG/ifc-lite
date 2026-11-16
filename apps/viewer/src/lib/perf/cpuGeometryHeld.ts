@@ -85,6 +85,7 @@ export function createCpuGeometryAccount(): { visit: CpuGeometryVisitor; result(
     else buffers.set(buffer, { bytes, owners: 1 << index, kind });
   };
   const result = (walkMs = 0): CpuGeometryHeld => {
+    const snapshot = ownerStats.map(stats => ({ ...stats }));
     const byKind: Record<CpuGeometryKind, number> = { positions: 0, normals: 0, indices: 0, other: 0 };
     let totalBytes = 0, sharedBytes = 0;
     for (const { bytes, owners, kind } of buffers.values()) {
@@ -94,12 +95,12 @@ export function createCpuGeometryAccount(): { visit: CpuGeometryVisitor; result(
       if (!single) sharedBytes += bytes;
       for (let i = 0; i < ownerStats.length; i++) {
         if (!(owners & (1 << i))) continue;
-        ownerStats[i].reachableBytes += bytes;
-        if (single) ownerStats[i].exclusiveBytes += bytes;
+        snapshot[i].reachableBytes += bytes;
+        if (single) snapshot[i].exclusiveBytes += bytes;
       }
     }
     const owners: Record<string, CpuGeometryOwnerBytes> = {};
-    for (const [name, i] of ownerIndex) owners[name] = ownerStats[i];
+    for (const [name, i] of ownerIndex) owners[name] = snapshot[i];
     return { totalBytes, buffers: buffers.size, byKind, sharedBytes, owners, walkMs };
   };
   return { visit, result };

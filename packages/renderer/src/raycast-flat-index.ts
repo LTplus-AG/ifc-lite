@@ -136,7 +136,8 @@ export class RaycastFlatIndex {
 
   /** Diagnostic (#10264): the pieces this index still references and its BVH arrays. */
   visitCpuGeometry(visit: CpuGeometryVisitor): void {
-    for (const piece of this.flat?.pieces ?? []) visitMeshArrays('pick.raycastIndex', piece, visit);
+    const pieces = new Set([...(this.flat?.pieces ?? []), ...(this.bvhPieces ?? [])]);
+    for (const piece of pieces) visitMeshArrays('pick.raycastIndex', piece, visit);
     this.bvh.visitArrays((array) => visit('pick.bvh', array, 'other'));
   }
 

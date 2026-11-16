@@ -78,14 +78,14 @@ describe('scene CPU geometry walk (#10264)', () => {
     assert.equal(buffers.size, 0);
   });
 
-  it('visits each holder, the queue from its read index, and a colour-merged mesh once', async () => {
+  it('visits each holder, the entire retained queue, and a colour-merged mesh once', async () => {
     const { visitSceneCpuGeometry } = await load();
     const a = mesh(3), merged = mesh(3, { entityIds: new Uint32Array(3) }), queued = [mesh(1), mesh(2)];
     const textured = mesh(3, { uvs: new Float32Array(6) });
     const drawable = {};
     const texturedSources = new WeakMap([[drawable, { positions: textured.positions,
       fields: [textured.indices, textured.normals, textured.uvs, undefined].map((f) => f && new WeakRef(f)) }]]);
-    const template = { positions: new Float32Array(6), normals: new Float32Array(6), indices: new Uint32Array(3), instanceData: new ArrayBuffer(64), canonicalAnchors: new Float64Array(3) };
+    const template = { positions: new Float32Array(6), normals: new Float32Array(6), indices: new Uint32Array(3), instanceData: new ArrayBuffer(64), canonicalAnchors: new Float64Array(3), canonicalMatrixTranslations: new Float32Array(3) };
     const visits: string[] = [];
     visitSceneCpuGeometry({
       buckets: new Map([['k', { meshData: [a, merged] }]]),
@@ -98,8 +98,8 @@ describe('scene CPU geometry walk (#10264)', () => {
     const count = (owner: string) => visits.filter((v) => v.startsWith(`${owner}:`)).length;
     assert.equal(count('scene.buckets'), 3 + 4);       // a: 3 arrays, merged: 3 + entityIds
     assert.equal(count('scene.meshDataMap'), 3 + 4);   // merged listed under ids 1 and 2, visited once
-    assert.deepEqual(visits.filter((v) => v.startsWith('scene.meshQueue:')), ['scene.meshQueue:positions:24', 'scene.meshQueue:normals:24', 'scene.meshQueue:indices:8']);
-    assert.equal(count('scene.instancedTemplates'), 5); // 3 arrays + instance records + anchors
+    assert.deepEqual(visits.filter((v) => v.startsWith('scene.meshQueue:')), ['scene.meshQueue:positions:12', 'scene.meshQueue:normals:12', 'scene.meshQueue:indices:4', 'scene.meshQueue:positions:24', 'scene.meshQueue:normals:24', 'scene.meshQueue:indices:8']);
+    assert.equal(count('scene.instancedTemplates'), 6); // 3 arrays + instance records + anchors + translations
     assert.equal(count('scene.textured'), 4);           // positions, indices, normals, uvs
   });
 

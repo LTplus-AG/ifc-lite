@@ -426,7 +426,7 @@ test('#10506 CPU geometry sampling distinguishes missing, failed and timed-out h
   assert.deepEqual(await sampleCpuGeometry(() => Promise.reject(new Error('rejected walk')), 0, 100), { status: 'error', error: 'rejected walk' });
   assert.deepEqual(await sampleCpuGeometry(() => new Promise(() => {}), 0, 5), { status: 'timeout' });
   assert.equal((await sampleCpuGeometry(() => ({}), 0, 100)).status, 'error');
-  const measured = await sampleCpuGeometry(() => ({ totalBytes: 84, buffers: 3, owners: {} }), 1, 100);
+  const measured = await sampleCpuGeometry(() => ({ totalBytes: 84, buffers: 3, owners: {}, triangles: 1 }), 100, 100);
   assert.equal(measured.status, 'available');
   assert.equal(measured.held.totalBytes, 84);
   assert.equal(measured.held.bytesPerTriangle, 84);

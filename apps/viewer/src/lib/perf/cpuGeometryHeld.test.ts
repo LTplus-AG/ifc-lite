@@ -102,6 +102,18 @@ describe('CPU geometry held (#10264)', () => {
     }
   });
 
+  it('returns independent repeatable accounting snapshots (#10506)', async () => {
+    const { createCpuGeometryAccount } = await load();
+    const account = createCpuGeometryAccount();
+    account.visit('store.models', new Float32Array(4), 'positions');
+    const first = account.result();
+    assert.deepEqual(account.result(), first);
+    account.visit('store.models', new Float32Array(4), 'positions');
+    const second = account.result();
+    assert.equal(first.owners['store.models'].exclusiveBytes, 16);
+    assert.equal(second.owners['store.models'].exclusiveBytes, 32);
+  });
+
   it('reports a holder-only buffer as exclusive to that holder', async () => {
     const { createCpuGeometryAccount } = await load();
     const account = createCpuGeometryAccount();

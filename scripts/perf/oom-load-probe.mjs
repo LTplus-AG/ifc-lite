@@ -108,7 +108,13 @@ const PAGE_PROBE = () => {
 /** In page: the viewer's "CPU geometry held" walk (#10264 S0), or null on a viewer without the hook. */
 const CPU_GEOMETRY_PROBE = async () => {
   const hook = globalThis.__ifc_lite_cpu_geometry_held__;
-  return typeof hook === 'function' ? await hook() : null;
+  if (typeof hook !== 'function') return null;
+  const held = await hook();
+  const state = globalThis.__ifc_lite_viewer_store__?.getState();
+  const models = [...(state?.models?.values?.() ?? [])];
+  const results = models.length ? models.map(model => model.geometryResult) : [state?.geometryResult];
+  const triangles = results.reduce((sum, result) => sum + (result?.totalTriangles ?? 0), 0);
+  return { ...held, triangles };
 };
 /** Sample the walk every this many 2 s polls (it walks every mesh, so not every poll). */
 const CPU_GEOMETRY_EVERY = 5;

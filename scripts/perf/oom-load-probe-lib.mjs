@@ -303,7 +303,7 @@ export async function sampleCpuGeometry(evaluate, triangles, timeoutMs) {
   try {
     return await withTimeout(Promise.resolve().then(evaluate).then(raw => {
       if (raw === null || raw === undefined) return { status: 'unavailable' };
-      const held = cpuGeometrySummary(raw, triangles);
+      const held = cpuGeometrySummary(raw, raw.triangles ?? triangles);
       return held ? { status: 'available', held } : { status: 'error', error: 'Invalid CPU geometry diagnostic result' };
     }), timeoutMs, () => ({ status: 'timeout' }));
   } catch (error) {

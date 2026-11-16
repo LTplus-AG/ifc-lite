@@ -39,7 +39,7 @@ export interface SceneCpuGeometryHost {
   meshDataMap: Map<number, readonly MeshData[]>;
   meshQueue: readonly MeshData[];
   meshQueueReadIndex: number;
-  instancedTemplateCpu: readonly ((Partial<MeshArrays> & { instanceData?: ArrayBuffer; canonicalAnchors?: Float64Array }) | undefined)[];
+  instancedTemplateCpu: readonly ((Partial<MeshArrays> & { instanceData?: ArrayBuffer; canonicalAnchors?: Float64Array; canonicalMatrixTranslations?: Float32Array }) | undefined)[];
   texturedMeshes: readonly object[];
   texturedSources: WeakMap<object, { positions: Float32Array; fields: readonly (WeakRef<object> | undefined)[] }>;
   fragmentPieces: { visitMeshes(visit: (mesh: MeshData) => void): void };
@@ -55,12 +55,13 @@ export function visitSceneCpuGeometry(scene: SceneCpuGeometryHost, visit: CpuGeo
     if (md.entityIds?.length) { if (seen.has(md)) continue; seen.add(md); }
     visitMeshArrays('scene.meshDataMap', md, visit);
   }
-  for (let i = scene.meshQueueReadIndex; i < scene.meshQueue.length; i++) visitMeshArrays('scene.meshQueue', scene.meshQueue[i], visit);
+  for (let i = 0; i < scene.meshQueue.length; i++) visitMeshArrays('scene.meshQueue', scene.meshQueue[i], visit);
   for (const cpu of scene.instancedTemplateCpu) {
     if (!cpu) continue;
     visitMeshArrays('scene.instancedTemplates', cpu, visit);
     if (cpu.instanceData) visit('scene.instancedTemplates', new Uint8Array(cpu.instanceData), 'other');
     if (cpu.canonicalAnchors) visit('scene.instancedTemplates', cpu.canonicalAnchors, 'other');
+    if (cpu.canonicalMatrixTranslations) visit('scene.instancedTemplates', cpu.canonicalMatrixTranslations, 'other');
   }
   for (const drawable of scene.texturedMeshes) {
     const source = scene.texturedSources.get(drawable);

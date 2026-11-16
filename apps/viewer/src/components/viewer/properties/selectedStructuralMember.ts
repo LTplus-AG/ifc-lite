@@ -4,7 +4,7 @@
 
 import { structuralCounterparts, type StructuralExtraction, type StructuralMemberInfo } from '@ifc-lite/parser';
 
-type StructuralRecordInfo = StructuralExtraction[Exclude<keyof StructuralExtraction, 'hasStructural' | 'loadsTruncated'>][number];
+type StructuralRecordInfo = NonNullable<StructuralExtraction[Exclude<keyof StructuralExtraction, 'hasStructural' | 'loadsTruncated'>]>[number];
 /** A read-model record with its EXPRESS type (result groups and analysis models carry none of their own). */
 export interface StructuralRecord { type: string; info: StructuralRecordInfo; member: boolean }
 
@@ -18,9 +18,12 @@ function indexOf(data: StructuralExtraction) {
     for (const info of rows) {
       const record = { type: type ?? (info as { type: string }).type, info, member };
       if (!index!.byId.has(info.expressId)) index!.byId.set(info.expressId, record);
-      index!.byGuid.set(info.globalId, [...(index!.byGuid.get(info.globalId) ?? []), record]);
+      if ('globalId' in info && info.globalId) {
+        index!.byGuid.set(info.globalId, [...(index!.byGuid.get(info.globalId) ?? []), record]);
+      }
     }
   };
+  add(data.reinforcementAreas ?? [], null);
   add(data.members, null, true);
   add(data.connections, null);
   add(data.activities, null);

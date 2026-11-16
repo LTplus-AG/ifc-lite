@@ -198,6 +198,8 @@ export interface StructuralAnalysisModelInfo {
 }
 
 export interface StructuralExtraction {
+  /** Standalone or referenced IFC4/IFC4X3 reinforcement results, indexed by local express id. */
+  reinforcementAreas?: StructuralLoadInfo[];
   analysisModels: StructuralAnalysisModelInfo[];
   members: StructuralMemberInfo[];
   connections: StructuralConnectionInfo[];

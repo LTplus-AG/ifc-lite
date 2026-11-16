@@ -19,6 +19,13 @@ Counterpart rows let you select the linked physical or analytical object.
 The card is read-only. The ledger's card probes are still unwritten; a readable
 record does not imply full card coverage.
 
+IFC4 and IFC4X3 surface reinforcement results are available in the parser read
+model as `reinforcementAreas`, including standalone records, and in the SDK as
+`bim.structural.data().reinforcementAreas`. Their two ordered
+reinforcement lists and optional shear ratio retain the file's values. A result
+referenced by a load configuration also appears on the owning activity's card;
+it can be inspected directly by its model-local express id.
+
 Supports and loads appear as clickable glyphs when their geometry and values
 can be resolved. Use **Supports & loads** in the command palette to toggle them.
 All load groups are shown together; there is no load-case selector. Reaction

@@ -9,7 +9,7 @@ import { listItems } from './schema-converter-structural-axes.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
-import { parseStepNumber } from './step-slot-grammar.js';
+import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { namedExpressIds, referencesAnyExpressId } from './step-ref-scan.js';
 
 export type ConversionMode = 'upgrade' | 'downgrade' | null;
@@ -55,6 +55,7 @@ export class SourceRecords {
     for (const entry of this.store.entityIndex.byId.values()) {
       const text = decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength);
       const args = text.slice(Math.max(0, text.indexOf('(')));
+      if (!referencesAnyExpressId(args, targets)) continue;
       for (const t of namedExpressIds(args, targets)) uses.set(t, (uses.get(t) ?? 0) + 1);
     }
     return uses;
@@ -77,6 +78,12 @@ export class SourceRecords {
     }
     return this.cache.get(id);
   }
+}
+
+/** Whether the slot is the unset marker `$`, with STEP whitespace and comments around it allowed (#10248). */
+export function slotUnset(token: string): boolean {
+  const start = skipStepTrivia(token, 0);
+  return start >= 0 && token[start] === '$' && skipStepTrivia(token, start + 1) === token.length;
 }
 
 /** The bare number of `token`, given as such or wrapped as `TYPE(n)`, or null when it is not a finite number. */

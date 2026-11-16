@@ -269,6 +269,15 @@ ${geometry}
     expect(line((await convert(unit, 'IFC2X3')).step, 20)).toContain(',.SHELL.,0.2,$,$);');
   });
 
+  it('requires each location representation to hold exactly one point, on the way up and down', async () => {
+    const twoPoints = IFC2X3.replace("#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));", "#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7,#7));");
+    expect(records((await convert(twoPoints, 'IFC4')).step, 'IFCPROPERTYSET')).toEqual([]);
+    const onSurface = IFC2X3.replace("#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));", "#18=IFCPLANE(#8);\n#19=IFCPOINTONSURFACE(#18,0.,0.);\n#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#19));");
+    const up = await convert(onSurface, 'IFC4');
+    expect(records(up.step, 'IFCPROPERTYSET')).toHaveLength(1);
+    expect(line((await convert(up.step, 'IFC2X3')).step, 20)).toMatch(/,0\.2,\(0\.25,0\.3\),#17\);$/);
+  });
+
   it('writes no property set when the location is not the one aspect of the representation', async () => {
     const { step } = await convert(IFC2X3.replace('#17=', "#18=IFCSHAPEASPECT((#14),$,$,.T.,#15);\n#17="), 'IFC4');
     expect(records(step, 'IFCPROPERTYSET')).toEqual([]);

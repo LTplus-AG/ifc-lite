@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Matches rust/export/src/schema_structural_links.rs (#9668). */
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { isSubtype } from './schema-converter-structural-source.js';
+import { isSubtype, slotUnset } from './schema-converter-structural-source.js';
 import { convertEntityType } from './schema-converter.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
@@ -13,11 +13,6 @@ function slotRef(token: string | undefined): number | null {
   return m && skipStepTrivia(token!, start + m[0].length) === token!.length ? Number(m[1]) : null;
 }
 
-/** Whether the slot is the unset marker `$`, with STEP whitespace and comments around it allowed (#10248). */
-export function slotUnset(token: string): boolean {
-  const start = skipStepTrivia(token, 0);
-  return start >= 0 && token[start] === '$' && skipStepTrivia(token, start + 1) === token.length;
-}
 
 /** Whether IFC4 `keyword` converts to an IFC2X3 subtype of `parent`. */
 const becomes = (keyword: string | undefined, parent: string): boolean =>

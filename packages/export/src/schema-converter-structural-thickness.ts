@@ -16,8 +16,7 @@
  * Reads the source store, so only an unedited full export arms it.
  */
 import { listItems } from './schema-converter-structural-axes.js';
-import { bareMeasure, conversionMode, readCarrierSets, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
-import { slotUnset } from './schema-converter-structural-links.js';
+import { bareMeasure, conversionMode, readCarrierSets, slotUnset, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { parseStepNumber } from './step-slot-grammar.js';
 
@@ -40,7 +39,7 @@ export class StructuralThickness {
   private mode: ConversionMode = null;
   /** IfcProductDefinitionShape id -> the IfcShapeAspects naming it. */
   private readonly aspects = new Map<number, number[]>();
-  /** Aspects IFC2X3 admits as VaryingThicknessLocation: each representation one point (WR62, WR63). */
+  /** Aspects IFC2X3 admits as VaryingThicknessLocation: each representation one point (WR62, WR63); both directions require it. */
   private readonly pointAspects = new Set<number>();
   /** Member id -> its three thicknesses from a source property set, or [] when it has more than one set. */
   private readonly psets = new Map<number, string[]>();
@@ -90,7 +89,8 @@ export class StructuralThickness {
     if (this.mode !== 'upgrade' || entity !== ENTITY || !this.ids || withheld?.size || args.length !== 11) return false;
     const values = [args[8], ...listItems(args[9]) ?? []].map(thickness);
     const location = refId(args[10]);
-    if (values.length !== 3 || values.includes(null) || location === null || this.aspectOf(args[6]) !== location) return false;
+    // The same location rule as the downgrade, so what this writes comes back.
+    if (values.length !== 3 || values.includes(null) || location === null || this.aspectOf(args[6]) !== location || !this.pointAspects.has(location)) return false;
     // A property set the member already has holds the thicknesses only when its values are these.
     const existing = this.psets.get(id);
     if (existing) return existing.length === 3 && existing.every((v, i) => parseStepNumber(v) === parseStepNumber(values[i]!));

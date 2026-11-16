@@ -29,9 +29,8 @@
  */
 import { deterministicGlobalId } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
-import { slotUnset } from './schema-converter-structural-links.js';
 import {
-  bareMeasure, conversionMode, isSubtype, namesWithheld, readCarrierSets, SourceRecords, stepString, writeCarrierSet,
+  bareMeasure, conversionMode, isSubtype, namesWithheld, readCarrierSets, slotUnset, SourceRecords, stepString, writeCarrierSet,
   type ConversionMode, type StructuralRewrite,
 } from './schema-converter-structural-source.js';
 import { refId } from './schema-ifc2x3-records.js';

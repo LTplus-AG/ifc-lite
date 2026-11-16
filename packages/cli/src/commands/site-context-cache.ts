@@ -4,13 +4,17 @@
 
 /**
  * A response cache on disk for the geodata client, keyed the way its cache
- * hook expects (URL plus `Range`). One `<sha256>.bin` body and one
- * `<sha256>.json` header file per response; the JSON is written last, so a
- * half-written entry reads as a miss.
+ * hook expects (URL plus `Range`). One `<sha256>.entry` file per response
+ * holds its metadata and body together: written to a temporary name unique
+ * to the writer, then renamed into place. A rename replaces the file
+ * atomically, so a reader sees the previous entry or the new one, never a
+ * body that does not belong to its metadata, even when two commands share
+ * the cache directory (#10480 review). Entries written by an earlier layout
+ * (`.json` + `.bin`) are not read; those responses are fetched again.
  */
 
-import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { CachedResponse, FetchLike, ResponseCache } from '@ifc-lite/geodata-ch';
@@ -27,32 +31,62 @@ interface Meta {
   headers: Record<string, string>;
 }
 
+/** Write `bytes` to `target` through a temporary file of this writer's own, removed if publishing fails. */
+async function publish(target: string, bytes: Uint8Array): Promise<void> {
+  const tmp = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tmp, bytes);
+    await rename(tmp, target);
+  } catch (err) {
+    await unlink(tmp).catch((cleanup: unknown) => {
+      if ((cleanup as NodeJS.ErrnoException).code !== 'ENOENT') console.warn(`[site-context] could not remove ${tmp}:`, cleanup);
+    });
+    throw err;
+  }
+}
+
+/** Entry layout: u32 (LE) metadata length, metadata JSON, body. */
+function packEntry(meta: Meta, body: ArrayBuffer): Uint8Array {
+  const head = new TextEncoder().encode(JSON.stringify(meta));
+  const out = new Uint8Array(4 + head.length + body.byteLength);
+  new DataView(out.buffer).setUint32(0, head.length, true);
+  out.set(head, 4);
+  out.set(new Uint8Array(body), 4 + head.length);
+  return out;
+}
+
+function unpackEntry(bytes: Uint8Array): { meta: Meta; body: ArrayBuffer } | null {
+  if (bytes.byteLength < 4) return null;
+  const headLength = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0, true);
+  if (4 + headLength > bytes.byteLength) return null;
+  const meta = JSON.parse(new TextDecoder().decode(bytes.subarray(4, 4 + headLength))) as Meta;
+  // A copy: `readFile` returns a Buffer, whose `slice` is a view onto the whole entry.
+  const body = new Uint8Array(bytes.byteLength - 4 - headLength);
+  body.set(bytes.subarray(4 + headLength));
+  return { meta, body: body.buffer };
+}
+
 export function diskCache(dir: string): ResponseCache & { hits: number; writes: number } {
-  const path = (key: string) => join(dir, createHash('sha256').update(key).digest('hex'));
+  const path = (key: string) => join(dir, `${createHash('sha256').update(key).digest('hex')}.entry`);
   const cache = {
     hits: 0,
     writes: 0,
     async get(key: string): Promise<CachedResponse | undefined> {
-      const p = path(key);
-      let meta: Meta;
+      let bytes: Uint8Array;
       try {
-        meta = JSON.parse(await readFile(`${p}.json`, 'utf-8')) as Meta;
+        bytes = await readFile(path(key));
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
         throw err;
       }
-      if (meta.key !== key) return undefined;
-      const body = await readFile(`${p}.bin`);
+      const entry = unpackEntry(bytes);
+      if (!entry || entry.meta.key !== key) return undefined;
       cache.hits++;
-      return { status: meta.status, headers: meta.headers, body: body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer };
+      return { status: entry.meta.status, headers: entry.meta.headers, body: entry.body };
     },
     async set(key: string, value: CachedResponse): Promise<void> {
       await mkdir(dir, { recursive: true });
-      const p = path(key);
-      await writeFile(`${p}.bin`, new Uint8Array(value.body));
-      const meta: Meta = { key, status: value.status, headers: value.headers };
-      await writeFile(`${p}.json.tmp`, JSON.stringify(meta));
-      await rename(`${p}.json.tmp`, `${p}.json`);
+      await publish(path(key), packEntry({ key, status: value.status, headers: value.headers }, value.body));
       cache.writes++;
     },
   };
@@ -66,8 +100,8 @@ export const offlineFetch: FetchLike = async (input) => {
 
 /**
  * The 3D Tiles byte cache on disk: one `<sha256(url)>.bin` per tileset JSON or
- * tile, written to a temporary name and renamed, so a half-written file is
- * never read. The swisstopo index JSON files are 5–12 MB each; caching them
+ * tile, written to a temporary name unique to the writer and renamed, so a
+ * half-written file is never read and two writers of one tile both finish. The swisstopo index JSON files are 5–12 MB each; caching them
  * makes a repeated site a handful of tile requests.
  */
 export function tilesDiskCache(dir: string): TilesCache & { hits: number; writes: number } {
@@ -87,9 +121,7 @@ export function tilesDiskCache(dir: string): TilesCache & { hits: number; writes
     },
     async set(url: string, bytes: Uint8Array): Promise<void> {
       await mkdir(dir, { recursive: true });
-      const p = path(url);
-      await writeFile(`${p}.tmp`, bytes);
-      await rename(`${p}.tmp`, p);
+      await publish(path(url), bytes);
       cache.writes++;
     },
   };

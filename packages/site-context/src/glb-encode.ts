@@ -167,6 +167,11 @@ export function encodeSiteContextGlb(doc: SiteContextDocument): Uint8Array {
     delete json.buffers;
     delete json.accessors;
   }
+  // glTF 2.0 requires at least one item wherever these arrays are present: an empty layer
+  // (a failed terrain read, no parcel) leaves its group node without children (#10480 review).
+  if (json.meshes?.length === 0) delete json.meshes;
+  if (json.materials?.length === 0) delete json.materials;
+  for (const node of json.nodes ?? []) if (node.children?.length === 0) delete node.children;
   const jsonBytes = pad(new TextEncoder().encode(JSON.stringify(json)), 0x20);
   const binBytes = bin.length > 0 ? pad(concat(bin.parts, bin.length), 0) : null;
   const total = 12 + 8 + jsonBytes.byteLength + (binBytes ? 8 + binBytes.byteLength : 0);

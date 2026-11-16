@@ -109,6 +109,8 @@ export interface GltfJson {
   accessors?: GltfAccessor[];
   bufferViews?: Array<{ buffer: number; byteOffset?: number; byteLength: number; target?: number }>;
   buffers?: Array<{ byteLength: number }>;
+  /** Extensions a reader must understand; this reader understands none. */
+  extensionsRequired?: string[];
 }
 
 /** Plain colours so the file reads in any glTF viewer. */

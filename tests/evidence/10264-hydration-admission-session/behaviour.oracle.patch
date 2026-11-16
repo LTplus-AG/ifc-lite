@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/hooks/useIfcLoader.ts
++++ b/apps/viewer/src/hooks/useIfcLoader.ts
+@@ -266,7 +266,7 @@
+     const { resetViewerState, clearAllModels } = useViewerStore.getState();
+     // An unadmitted primary supersedes pending admissions, not the displayed model's hydration.
+     const admissionSession = target.kind === 'primary' ? ++admissionSessionRef.current : admissionSessionRef.current;
+-    const primarySession = target.kind === 'primary' ? pendingPrimarySession(++loadSessionRef.current) : null;
++    const primarySession = target.kind === 'primary' ? pendingPrimarySession(loadSessionRef.current) : null;
+     const joiningPrimary = primarySession ? null : pendingPrimarySessionRef.current;
+     const sessionOwner = primarySession ?? joiningPrimary ?? { value: loadSessionRef.current };
+     if (primarySession) pendingPrimarySessionRef.current = primarySession;

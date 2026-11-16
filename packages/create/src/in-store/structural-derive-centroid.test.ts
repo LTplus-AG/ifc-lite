@@ -127,7 +127,7 @@ describe('structural derive idealises an asymmetric section through its centroid
     }
   });
 
-  it('refuses an asymmetric I the geometry reader refuses (#10377)', async () => {
+  it('refuses an asymmetric I it cannot idealise (#10377)', async () => {
     const store = await new IfcParser().parseColumnar(new TextEncoder().encode(STEP).buffer as ArrayBuffer);
     const axes = structuralPhysicalAxes(store);
     expect(axes.has(304), 'depth 30 mm under flanges of 20 + 15 mm').toBe(false);

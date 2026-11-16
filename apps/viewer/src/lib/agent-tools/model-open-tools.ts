@@ -49,7 +49,7 @@ export const OPEN_MODEL_WAIT_MS = CALL_LIMITS.callTimeoutMs - 15_000;
 export const MODEL_OPEN_SPECS = {
   viewer_open_model: {
     description: 'Open a model in the viewer tab and wait until it has loaded. Pass `sample` for a bundled model '
-      + `(${Object.entries(OPEN_MODEL_SAMPLES).map(([id, s]) => `${id}: ${s.about}`).join('; ')}) or \`url\` for an https IFC/IFCX/GLB/point-cloud file the tab can fetch (CORS, no credentials). `
+      + `(${Object.entries(OPEN_MODEL_SAMPLES).map(([id, s]) => `${id}: ${s.about}`).join('; ')}) or \`url\` for an https model file whose path ends in its extension, fetched by the tab (CORS, no credentials). `
       + '`mode` is `replace` (default when nothing is loaded) or `add` to federate with the loaded models; it is required while models are loaded. '
       + 'Replacing models with unexported edits is refused. Returns the loaded models with their model_id. Requires the commands and edits permission.',
     inputSchema: { type: 'object', properties: {
@@ -84,67 +84,18 @@ function parseArgs(args: Record<string, unknown>, state: ViewerState): OpenReque
   return { source, mode: mode ?? 'replace' };
 }
 
-/** Percent-decode `text` as UTF-8, or byte-per-character for ISO-8859-1; as given when malformed. */
-function percentDecoded(text: string, charset = 'utf-8'): string {
-  if (/^iso-8859-1$/i.test(charset)) return text.replace(/%([0-9a-f]{2})/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+/** The file name: the URL path's last segment, percent-decoded (as given when its escapes are malformed). */
+function fileNameOf(url: URL): string {
+  const segment = url.pathname.split('/').filter(Boolean).pop() ?? '';
   try {
-    return decodeURIComponent(text);
+    return decodeURIComponent(segment);
   } catch (err) {
-    console.warn('[viewer_open_model] keeping a malformed percent-escape as is:', text, err);
-    return text;
+    console.warn('[viewer_open_model] keeping a malformed percent-escape as is:', segment, err);
+    return segment;
   }
 }
 
-/**
- * One parameter (`; name=value`), sticky. A quoted value is a quoted-string; a bare value runs to the next
- * `;` or to a comma that starts another disposition or filename parameter: a repeated header arrives
- * joined with ', ', and only the first header is read.
- */
-/** Where a second, comma-joined header starts: another disposition, or a filename parameter. */
-const NEXT_HEADER = String.raw`,\s*(?:(?:attachment|inline)\s*(?:;|$)|filename\*?\s*=)`;
-const DISPOSITION_PARAM = new RegExp(String.raw`;\s*([^\s=;,]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|((?:(?!${NEXT_HEADER})[^;])*))\s*`, 'iy');
-
-/** `Content-Disposition` parameters by lower-case name, quoted strings unescaped; the first value of a name wins. */
-function dispositionParams(header: string): Map<string, string> {
-  const trimmed = header.trim();
-  // Skip the disposition type; a header without one (`filename="x.ifc"`) starts with its first parameter.
-  const text = /^[^;]*=/.test(trimmed) ? `;${trimmed}` : trimmed.slice(Math.max(0, trimmed.indexOf(';')));
-  const params = new Map<string, string>();
-  for (let at = 0; at < text.length;) {
-    DISPOSITION_PARAM.lastIndex = at;
-    const m = DISPOSITION_PARAM.exec(text);
-    if (m) {
-      const [, key, quoted, bare] = m;
-      if (!params.has(key.toLowerCase())) params.set(key.toLowerCase(), (quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare).trim());
-      at = DISPOSITION_PARAM.lastIndex;
-      continue;
-    }
-    // Not a parameter (`; foo`, `;;`, junk after a quoted value): skip to the next ';', unless the next header starts first.
-    const next = text.indexOf(';', at + 1);
-    const nextHeader = text.slice(at).search(new RegExp(NEXT_HEADER, 'i'));
-    if (next === -1 || (nextHeader !== -1 && at + nextHeader < next)) break;
-    at = next;
-  }
-  return params;
-}
-
-/**
- * The name from Content-Disposition (RFC 6266: `filename*`, `charset'lang'value`,
- * wins over `filename`), else the URL's last path segment; empty when neither
- * names a file, so the extension check refuses it. Cross-origin, the header is
- * only readable when the server exposes it (Access-Control-Expose-Headers).
- */
-function fileNameOf(url: URL, res: Response): string {
-  const params = dispositionParams(res.headers.get('content-disposition') ?? '');
-  const extended = /^([^']*)'[^']*'(.+)$/.exec(params.get('filename*') ?? '');
-  const lastSegment = (path: string) => path.split(/[\\/]/).pop() ?? '';
-  const declared = lastSegment(extended ? percentDecoded(extended[2], extended[1]) : params.get('filename') ?? '');
-  const fromPath = lastSegment(percentDecoded(url.pathname.split('/').filter(Boolean).pop() ?? ''));
-  // A declared name with an extension wins, even when it is not a model file: a server labelling the body
-  // `error.html` is refused rather than replacing the user's models with it. One without (`house`, parse junk)
-  // says nothing about the type, so the URL path names the file.
-  return /\.[a-z0-9]+$/i.test(declared) ? declared : fromPath || declared;
-}
+const MODEL_FORMATS = 'IFC, IFCX, glTF/GLB, Rhino 3DM, LandXML, point clouds, splats';
 
 /**
  * The body as a File, refusing once it passes the limit rather than after
@@ -183,6 +134,11 @@ async function readLimited(res: Response, url: URL, name: string): Promise<File>
 }
 
 async function download(url: URL, signal?: AbortSignal): Promise<File> {
+  // The name, and so the format, comes from the URL path alone: refused before any network or state change.
+  const name = fileNameOf(url);
+  if (!isSupportedModelFile(new File([], name))) {
+    invalid(`${name || url.href} is not a model file the viewer opens (${MODEL_FORMATS}). Use a URL whose path ends in the file's extension.`);
+  }
   let res: Response;
   try {
     res = await fetch(url, { credentials: 'omit', signal });
@@ -192,13 +148,12 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
       `The tab could not fetch ${url.href}. The server must allow cross-origin requests (CORS) from this viewer.`);
   }
   if (!res.ok) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `Fetching ${url.href} returned HTTP ${res.status}.`);
-  const file = await readLimited(res, url, fileNameOf(url, res));
-  // Refused here, before a replace could close the open models for nothing.
-  if (file.size === 0) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `${url.href} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
-  if (!isSupportedModelFile(file)) {
-    invalid(`${file.name || 'The download'} is not a model file the viewer opens (IFC, IFCX, glTF/GLB, point clouds, splats). `
-      + (res.headers.get('content-disposition') ? 'The name comes from the server\'s Content-Disposition header.' : 'Use a URL whose path ends in the file\'s extension.'));
+  // An error or sign-in page served under a model URL must not replace the user's models.
+  if (/^text\/html\b/i.test(res.headers.get('content-type') ?? '')) {
+    fail(ToolErrorCode.UNSUPPORTED_OPERATION, `${url.href} returned an HTML page, not a model. Nothing was loaded.`);
   }
+  const file = await readLimited(res, url, name);
+  if (file.size === 0) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `${url.href} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
   return file;
 }
 
@@ -265,7 +220,6 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
     structured: { mode: request.mode, state: 'loading', loading: name, models: request.mode === 'add' ? snapshot().filter((m) => !m.new).map(publicModel) : [] },
   });
   const loaded = await within(load.then((id) => ({ id }), (err: unknown) => {
-    if (err instanceof ToolExecutionError) throw err;
     // The loader's own reason (onError) is more specific than the exception that ended it.
     return fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${loadError ?? (err instanceof Error ? err.message : String(err))}`);
   }), deadline - Date.now());

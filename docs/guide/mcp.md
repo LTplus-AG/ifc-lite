@@ -449,9 +449,9 @@ Images need a bridge that forwards them: it says so with `features: ["image-cont
 
 ### Opening a model
 
-`viewer_open_model` lets the agent open a model itself and waits until it has loaded. Pass `sample` for a model bundled with the viewer (`demo`, `demo-rev-b`, `hello-wall`, `infra-bridge`, `layers-demo`) or `url` for an `https` IFC, IFCX, glTF/GLB or point-cloud file. The tab fetches the URL without credentials, so the server must allow cross-origin requests. `mode` is `replace` or `add` (federate); it may be omitted only when nothing is loaded. The result lists every open model with its `model_id`, so the agent can go straight to `query_entities`.
+`viewer_open_model` lets the agent open a model itself and waits until it has loaded. Pass `sample` for a model bundled with the viewer (`demo`, `demo-rev-b`, `hello-wall`, `infra-bridge`, `layers-demo`) or `url` for an `https` model file whose path ends in its extension (IFC, IFCX, glTF/GLB, Rhino 3DM, LandXML, point clouds, splats). The tab fetches the URL without credentials, so the server must allow cross-origin requests. An HTML response (an error or sign-in page) and an empty body are refused before anything changes; downloads are capped at 512 MiB. `mode` is `replace` or `add` (federate); it may be omitted only when nothing is loaded. The result lists every open model with its `model_id`, so the agent can go straight to `query_entities`.
 
-It needs the commands-and-edits grant. Replacing models that have unexported edits is refused with `STATE_CHANGED`, since the agent cannot answer the confirmation a user would get; use `mode: "add"` or ask the user to export first. Loads use the same path as the welcome card and the command palette.
+The call answers within about 45 seconds: a longer load is reported as `state: "loading"` and continues in the tab; do not retry it, poll `model_list`. It needs the commands-and-edits grant. Replacing models that have unexported edits is refused with `STATE_CHANGED`, since the agent cannot answer the confirmation a user would get; use `mode: "add"` or ask the user to export first. Loads use the same path as the welcome card and the command palette.
 
 For the proposed path from palette entry points to complete panel and tool workflows, see the [viewer automation plan](../architecture/viewer-automation-plan.md).
 

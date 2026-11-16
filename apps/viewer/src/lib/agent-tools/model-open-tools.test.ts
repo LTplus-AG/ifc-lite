@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { useViewerStore } from '@/store';
-import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { registerAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
 import { modelOpenTools, MODEL_OPEN_SPECS, OPEN_MODEL_WAIT_MS } from './model-open-tools';
 import { VIEWER_COMMAND_SPECS } from './viewer-command-tools';
@@ -169,19 +168,6 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await assert.rejects(run({ sample: 'demo', mode: null }), { code: 'INVALID_INPUT', message: /mode must be one of/ });
   });
 
-  it('names a download from Content-Disposition and survives a malformed escape', async () => {
-    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename="tower.ifc"' } });
-    await run({ url: 'https://example.com/download?id=5' });
-    assert.deepEqual(calls, [{ kind: 'replace', names: ['tower.ifc'] }]);
-    // RFC 6266: filename* (with its charset and language) wins over filename.
-    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': `attachment; filename="export.bin"; filename*=UTF-8'en'Tour%20A.ifc` } });
-    await run({ url: 'https://example.com/download?id=6', mode: 'add' });
-    assert.equal(calls.at(-1)!.names[0], 'Tour A.ifc');
-    respond = () => new Response(new Uint8Array([1]), { status: 200 });
-    await run({ url: 'https://example.com/a%E0%A4.ifc', mode: 'add' });
-    assert.equal(calls.at(-1)!.names[0], 'a%E0%A4.ifc');
-  });
-
   it('stops reading a body without a length once it passes the limit', async () => {
     let pulled = 0;
     const chunk = new Uint8Array(64 * 1024 * 1024);
@@ -220,14 +206,6 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     assert.deepEqual(calls, []);
   });
 
-  it('uses the URL path when filename is empty, and never invents a name', async () => {
-    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename=""' } });
-    await run({ url: 'https://example.com/scan.glb' });
-    assert.equal(calls.at(-1)!.names[0], 'scan.glb');
-    respond = () => new Response(new Uint8Array([1]), { status: 200 });
-    await assert.rejects(run({ url: 'https://example.com/', mode: 'add' }), { code: 'INVALID_INPUT', message: /not a model file/ });
-  });
-
   it('lists no models while a replace is still loading, and says the old ones are closing', async () => {
     useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
     behaviour = 'hang';
@@ -263,28 +241,6 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     assert.deepEqual(calls, []);
   });
 
-  it('reads Content-Disposition variants: no type, ISO-8859-1, quoted escapes, first value wins (#9523 code review)', async () => {
-    const nameFor = async (header: string) => {
-      respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': header } });
-      await run({ url: 'https://example.com/download', mode: 'add' });
-      return calls.at(-1)!.names[0];
-    };
-    assert.equal(await nameFor('filename="model.ifc"'), 'model.ifc');
-    assert.equal(await nameFor("attachment; filename*=ISO-8859-1''Gr%FCn.ifc"), 'Grün.ifc');
-    assert.equal(await nameFor('attachment; filename="a\\"b.ifc"'), 'a"b.ifc');
-    assert.equal(await nameFor('attachment; filename="first.ifc"; filename="second.ifc"'), 'first.ifc');
-  });
-  it('reads only the first of repeated Content-Disposition headers (#9523 code review)', async () => {
-    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: [['content-disposition', 'attachment; filename=a.ifc'], ['content-disposition', 'attachment; filename=b.ifc']] });
-    await run({ url: 'https://example.com/download' });
-    assert.equal(calls.at(-1)!.names[0], 'a.ifc');
-  });
-  it('keeps a quoted comma inside a file name (#9523 code review)', async () => {
-    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename="plan, inline view.ifc"' } });
-    await run({ url: 'https://example.com/download' });
-    assert.equal(calls.at(-1)!.names[0], 'plan, inline view.ifc');
-  });
-
   it('does not claim a model another load opened meanwhile (#9523 code review)', async () => {
     unregister();
     unregister = registerAgentModelLoader({
@@ -308,11 +264,6 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await assert.rejects(run({ sample: 'demo' }), { code: 'UNSUPPORTED_OPERATION', message: /did not open/ });
   });
 
-  it('keeps an unquoted file name that contains a comma (#9523 code review)', async () => {
-    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename=plan, v2.ifc' } });
-    await run({ url: 'https://example.com/download' });
-    assert.equal(calls.at(-1)!.names[0], 'plan, v2.ifc');
-  });
   it('recognises a reopened layer stack, whose layer ids repeat (#9523 code review)', async () => {
     serveStackSample();
     await run({ sample: 'layers-demo' });
@@ -349,22 +300,6 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await assert.rejects(run({ sample: 'demo', mode: 'add' }), { code: 'UNSUPPORTED_OPERATION', message: /did not open/ });
   });
 
-  it('a stray quote inside an unquoted value does not swallow the next header (#9523 code review)', async () => {
-    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename=5"pipe.ifc, attachment; filename=b.ifc' } });
-    await run({ url: 'https://example.com/download' });
-    assert.equal(calls.at(-1)!.names[0], '5"pipe.ifc');
-  });
-
-  it('cuts a repeated header only at a real boundary, and reads the first header only (#9523 code review)', async () => {
-    const nameFor = async (header: string) => {
-      respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': header } });
-      await run({ url: 'https://example.com/download', mode: 'add' });
-      return calls.at(-1)!.names[0];
-    };
-    await run({ sample: 'demo' });
-    assert.equal(await nameFor('attachment; filename=Plan, Inline Wall.ifc'), 'Plan, Inline Wall.ifc');
-    assert.equal(await nameFor("attachment; filename=a.ifc, attachment; filename*=UTF-8''b.ifc"), 'a.ifc');
-  });
   it('reports a stack that failed before clearing, over an older open stack (#9523 code review)', async () => {
     serveStackSample();
     await run({ sample: 'layers-demo' });
@@ -377,24 +312,6 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await assert.rejects(run({ sample: 'layers-demo', mode: 'replace' }), { code: 'INTERNAL_ERROR', message: /not an IFCX file/ });
   });
 
-  it('parses Content-Disposition edge cases with one grammar (#9523 code review)', async () => {
-    const nameFor = async (header: string) => {
-      respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': header } });
-      await run({ url: 'https://example.com/download.ifc', mode: 'add' });
-      return calls.at(-1)!.names[0];
-    };
-    await run({ sample: 'demo' });
-    assert.equal(await nameFor('attachment; filename=a=", attachment; filename=b.ifc'), 'download.ifc', 'a name without an extension says nothing about the type');
-    assert.equal(await nameFor('attachment; filename="house"'), 'download.ifc');
-    assert.equal(await nameFor('attachment; filename=" "'), 'download.ifc', 'a blank quoted name is no name');
-    assert.equal(await nameFor("attachment; foo, filename*=UTF-8''b.ifc; filename=c.ifc"), 'download.ifc', 'skipping never crosses into a second header');
-    await assert.rejects(nameFor('inline; filename="error.html"'), { code: 'INVALID_INPUT', message: /error\.html.*Content-Disposition/ }, 'a declared non-model body is refused');
-    assert.equal(await nameFor('attachment; foo; filename=x.ifc'), 'x.ifc', 'a valueless parameter is skipped');
-    assert.equal(await nameFor('attachment;; filename=y.ifc'), 'y.ifc');
-    assert.equal(await nameFor(`attachment; filename="z.ifc"junk; filename*=UTF-8''w.ifc`), 'w.ifc');
-    assert.equal(await nameFor('attachment; filename="q.ifc", attachment; filename=b.ifc'), 'q.ifc');
-    assert.equal(await nameFor('inline'), 'download.ifc');
-  });
   it('an unrelated stack-like error after the stack registered does not fail it (#9523 code review)', async () => {
     serveStackSample();
     unregister();
@@ -418,14 +335,31 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     unregister = registerAgentModelLoader({ loadFile: async () => { throw new Error('blob revoked'); }, addModel: async () => null, loadStack: async () => {} });
     await assert.rejects(run({ sample: 'demo' }), { code: 'INTERNAL_ERROR', message: /blob revoked/ });
   });
-  it('a rejected loader keeps its own reason and error code (#9523 code review)', async () => {
+
+  it('a rejected loader keeps its own reason (#9523 code review)', async () => {
     unregister();
     unregister = registerAgentModelLoader({
       loadFile: async (_file, _id, onError) => { onError('Unsupported IFC schema'); throw new Error('worker exited'); },
-      addModel: async () => { throw new ToolExecutionError({ code: ToolErrorCode.STATE_CHANGED, message: 'superseded' }); },
-      loadStack: async () => {},
+      addModel: async () => null, loadStack: async () => {},
     });
     await assert.rejects(run({ sample: 'demo' }), { code: 'INTERNAL_ERROR', message: /Unsupported IFC schema/ });
-    await assert.rejects(run({ sample: 'demo', mode: 'add' }), { code: 'STATE_CHANGED' });
+  });
+
+  it('names a URL download from its path only, and refuses before fetching when the path is not a model (#9523 code review)', async () => {
+    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename="other.glb"' } });
+    await run({ url: 'https://example.com/files/Tower%20A.ifc' });
+    assert.equal(calls.at(-1)!.names[0], 'Tower A.ifc', 'decoded path name; Content-Disposition is not used');
+    await run({ url: 'https://example.com/a%E0%A4.ifc', mode: 'add' });
+    assert.equal(calls.at(-1)!.names[0], 'a%E0%A4.ifc', 'a malformed escape is kept as is');
+    const before = fetched.length;
+    await assert.rejects(run({ url: 'https://example.com/download?id=5', mode: 'add' }), { code: 'INVALID_INPUT', message: /path ends in the file's extension/ });
+    assert.equal(fetched.length, before, 'nothing was fetched');
+  });
+
+  it('refuses an HTML page served under a model URL before anything changes (#9523 code review)', async () => {
+    useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
+    respond = () => new Response('<html>sign in</html>', { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });
+    await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /HTML page/ });
+    assert.deepEqual(calls, []);
   });
 });

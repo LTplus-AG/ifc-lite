@@ -115,7 +115,7 @@ function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | 
   for (const member of plan.surfaceMembers) {
     const what = `the surface member of element #${member.elementId}`;
     try {
-      prepareStructuralFace(member.boundary.map((p) => toLocal(member.storeyId, p)));
+      prepareStructuralFace(member.boundary.map((p) => toLocal(member.storeyId, p)), member.openings.map(ring => ring.map(p => toLocal(member.storeyId, p))));
     } catch (error) {
       refuse(what, `has a bad boundary (${error instanceof Error ? error.message : String(error)})`);
     }
@@ -177,7 +177,7 @@ function writePlan(
   for (const member of plan.surfaceMembers) {
     const { anchor, toLocal } = placementOf(member.storeyId);
     const { memberId } = addStructuralSurfaceMemberToStore(editor, anchor, {
-      Boundary: member.boundary.map(toLocal), Thickness: member.thickness, PredefinedType: 'SHELL',
+      Boundary: member.boundary.map(toLocal), Openings: member.openings.map(ring => ring.map(toLocal)), Thickness: member.thickness, PredefinedType: 'SHELL',
     });
     memberIds.push(memberId);
     link(member.elementId, memberId);

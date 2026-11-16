@@ -9,7 +9,8 @@
  */
 
 import { vecCross as cross, vecLen as length } from '../ifc-creator-math.js';
-import type { PrismFact, Vec3 } from './structural-derive-types.js';
+import { prepareStructuralFace } from './_structural-face.js';
+import type { PhysicalElementFact, SkippedElement, PrismFact, Vec3 } from './structural-derive-types.js';
 
 export const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -131,4 +132,25 @@ export function prismSection(prism: PrismFact): number | null {
   const f = prismFrame(prism);
   if (typeof f === 'string') return null;
   return [f.long, f.short, f.depth].sort((a, b) => b - a)[1];
+}
+
+/** Through-openings only; report the opening id rather than hiding it on its host. */
+export function plateOpenings(element: PhysicalElementFact, plate: { boundary: Vec3[]; thickness: number }, normal: Vec3, tolerance: number, skipped: SkippedElement[]): Vec3[][] {
+  const carried: Vec3[][] = [];
+  for (const opening of element.openings ?? []) {
+    const reject = (detail: string) => skipped.push({ elementId: opening.expressId, type: 'IfcOpeningElement', name: opening.name, reason: 'no-idealisable-shape', detail: `Opening of #${element.expressId}: ${detail}` });
+    const prism = opening.prism;
+    if (!prism) { reject(opening.shapeIssue ?? 'unreadable body'); continue; }
+    if (!prism.outlineExact) { reject('profile outline is known only as bounds'); continue; }
+    const along = dot(prism.extrusion, normal);
+    if (!(length(prism.extrusion) > 0) || Math.abs(along) / length(prism.extrusion) < Math.cos(Math.PI / 180)) { reject('opening extrusion is oblique to the plate normal (more than 1 degree)'); continue; }
+    const distances = prism.outline.map(p => dot(sub(p, plate.boundary[0]), normal));
+    const depthTolerance = Math.max(1, plate.thickness, length(prism.extrusion)) * 1e-6;
+    if (!distances.every(d => Math.min(d, d + along) <= -plate.thickness / 2 + depthTolerance && Math.max(d, d + along) >= plate.thickness / 2 - depthTolerance)) { reject('opening does not span the plate thickness (not through)'); continue; }
+    const ring = prism.outline.map((p, i) => sub(p, scale(normal, distances[i])));
+    try { prepareStructuralFace(plate.boundary, [...carried, ring], tolerance); }
+    catch (error) { reject(error instanceof Error ? error.message : String(error)); continue; }
+    carried.push(ring);
+  }
+  return carried;
 }

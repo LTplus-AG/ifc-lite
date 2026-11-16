@@ -11,7 +11,7 @@ import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { vecLen as length } from '../ifc-creator-math.js';
 import { prepareStructuralFace } from './_structural-face.js';
 import { pointInPolygon } from './room-footprint-offset.js';
-import { curveElementLine, idealisePlate, prismSection, add, sub, scale, dot } from './structural-derive-idealise.js';
+import { curveElementLine, idealisePlate, plateOpenings, prismSection, add, sub, scale, dot } from './structural-derive-idealise.js';
 import { clusterEnds, joinEnds, SegmentGrid } from './structural-derive-joints.js';
 import {
   DEFAULT_DERIVATION_OPTIONS,
@@ -140,7 +140,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     if ('issue' in plate) { skip(element, 'no-idealisable-shape', plate.issue); continue; }
     const face = checkFace(plate.boundary);
     if ('issue' in face) skip(element, 'no-idealisable-shape', face.issue);
-    else surfaces.push({ member: { elementId: element.expressId, storeyId: element.storeyId, ...plate, loadBearing }, normal: face.normal });
+    else surfaces.push({ member: { elementId: element.expressId, storeyId: element.storeyId, ...plate, openings: plateOpenings(element, plate, face.normal, tolerance, skipped), loadBearing }, normal: face.normal });
   }
 
   const footingGrid = new SegmentGrid(2);

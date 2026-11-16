@@ -313,7 +313,7 @@ function profileOutline(reader: GeometryEntityReader, profile: Entity | null): {
   if (type === 'IFCARBITRARYCLOSEDPROFILEDEF' || type === 'IFCARBITRARYPROFILEDEFWITHVOIDS') {
     const outer = curveRing(reader, reader.entity(refId(a[2]) ?? 0));
     if (typeof outer === 'string') return outer;
-    // A profile with voids is read by its outer outline (surface members do not carry openings), but its
+    // A profile with voids is read by its outer outline (profile voids are not carried), but its
     // material centroid subtracts them. An unreadable void leaves the centroid out, not wrong.
     let centroid: Flat | undefined = ringCentroid(outer);
     if (type === 'IFCARBITRARYPROFILEDEFWITHVOIDS') {

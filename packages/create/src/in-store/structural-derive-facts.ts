@@ -80,6 +80,16 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
   const structural = liveStructuralExtraction(store, view);
   // Containment as the session has it (created, moved and deleted elements), resolved for every element at once.
   const storeyOf = effectiveStoreyResolver(store, effectiveSpatialContext(store, view));
+  const openings = new Map<number, NonNullable<PhysicalElementFact['openings']>>();
+  for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCRELVOIDSELEMENT'])) {
+    const attrs = read(expressId)?.attributes;
+    const host = refId(attrs?.[4]), id = refId(attrs?.[5]);
+    if (host === null || id === null || read(id)?.type.toUpperCase() !== 'IFCOPENINGELEMENT') continue;
+    const name = read(id)?.attributes[2];
+    const list = openings.get(host) ?? [];
+    list.push({ expressId: id, name: typeof name === 'string' ? name : null, ...readElementShape(reader, id, metres, false) });
+    openings.set(host, list);
+  }
   const elements: PhysicalElementFact[] = [];
   for (const { expressId, type: stepType } of iterateEffectiveEntityIds(store, view, expandTypes([...DERIVATION_CLASSES], store.schemaVersion))) {
     const type = normalizeIfcTypeName(stepType);
@@ -91,6 +101,7 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
       storeyId: storeyOf(expressId) ?? null,
       loadBearing: null,
       idealised: false,
+      openings: openings.get(expressId),
     };
     if (FOOTINGS.has(type)) {
       const placementId = refId(read(expressId)?.attributes[5]);

@@ -45,8 +45,13 @@
  * the thinnest side (slabs), or the profile's centre line swept along the
  * extrusion when the profile is a near-rectangle thinner than the depth
  * (walls). Thickness is that thinnest side. Oblique extrusions and profiles
- * read only as bounds (I-shapes, circles) are skipped. Openings and profile
- * voids are not carried: the surface member covers the outer outline. A
+ * read only as bounds (I-shapes, circles) are skipped. Profile voids are not
+ * carried. Physical openings are carried as inner rings
+ * projected onto the mid-plane when their readable single extrusion is parallel
+ * to its normal within one degree and spans the thickness. Unreadable or
+ * inexact profiles, oblique openings, recesses, zero-area rings, openings within
+ * the derive tolerance of the boundary (including doors at the base), and
+ * overlapping or touching openings are skipped with a reason in the report. A
  * rounded rectangle is read as its rectangle (square corners).
  *
  * Joints. Axes run through section centres, so a column top stops below the
@@ -155,6 +160,7 @@ export interface PhysicalElementFact {
   /** Straight Axis representation, world metres. */
   axis?: [Vec3, Vec3];
   prism?: PrismFact;
+  openings?: Array<{ expressId: number; name: string | null; prism?: PrismFact; shapeIssue?: string }>;
   /** Why no prism was read. */
   shapeIssue?: string;
   /** Body bounds in world metres; read for footings and piles only. */
@@ -226,6 +232,7 @@ export interface PlannedSurfaceMember {
   elementId: number;
   storeyId: number | null;
   boundary: Vec3[];
+  openings: Vec3[][];
   thickness: number;
   loadBearing: MemberLoadBearing;
 }

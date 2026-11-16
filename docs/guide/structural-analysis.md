@@ -80,6 +80,16 @@ measures, then Apply. Derivation creates linked analytical records from beams,
 columns, members, slabs and walls, with supports from footings. It is a geometric
 starting point that needs engineering review.
 
+Surface members carry readable through-openings as inner face bounds. Their
+extrusion must align with the plate normal within one degree and span its
+thickness. The profile is projected onto the analytical mid-plane. Openings
+within the derive tolerance of the outer boundary (such as doors at a wall base),
+oblique openings, recesses, unreadable profiles and overlapping or touching
+openings are skipped with reasons in the plan. Profile voids are not carried.
+The loaded-model surface builder also accepts `Openings: Point3D[][]` alongside
+`Boundary`; each ring must be simple, coplanar and strictly inside the boundary,
+with no overlap or contact between rings.
+
 ```bash
 ifc-lite derive-structural model.ifc --dry-run --json
 ifc-lite derive-structural model.ifc --out analytical.ifc

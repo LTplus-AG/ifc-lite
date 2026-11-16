@@ -22,9 +22,10 @@ export function materializeOverlay(state: OverlaySnapshot): OverlaySnapshot {
     [key, key === 'mutationHistory' ? materializeHistory(value as OverlaySnapshot['mutationHistory']) : value && typeof value === 'object' ? materializers.get(value)?.() ?? value : value])) as OverlaySnapshot;
 }
 
-function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): Change } {
+function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): Change; dispose(): void } {
   const reads = new Map<K, V>(), removed = new Set<K>(), inserted = new Set<K>();
   const localEntities = base instanceof NewEntityMap ? new NewEntityMap() : null;
+  let retired = false;
   let ordering: Map<number, number> | undefined;
   const positionOf = (id: number): number => ordering?.get(id) ?? (base instanceof NewEntityMap
     ? inserted.has(id as K) ? base.creationOrderEnd() + localEntities!.positionOf(id) : base.positionOf(id) : Infinity);
@@ -59,6 +60,13 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
   function* values(): MapIterator<V> { for (const key of keys()) yield get(key)!; }
   const target = base instanceof NewEntityMap ? new NewEntityMap() : new Map<K, V>();
   const value = new Proxy(target, { get(_target, name) {
+    // Temporary maps have weak exposure callbacks whose targets survive until
+    // the current JS job ends. Release their indexes at scope completion.
+    // A caller retaining the draft can still use its private rows afterwards.
+    if (retired) {
+      retired = false;
+      for (const [key, row] of reads) localEntities?.set(key as number, row as NewEntity);
+    }
     if (name === 'size') return size;
     if (name === 'positionOf' && localEntities) return positionOf;
     if (name === 'creationOrderEnd' && base instanceof NewEntityMap) return () => base.creationOrderEnd() + localEntities!.creationOrderEnd();
@@ -135,7 +143,7 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
     return Reflect.get(_target, name, _target);
   } }) as T;
   materializers.set(value, () => new Map(entries()));
-  return { value, changes() {
+  return { value, dispose() { localEntities?.clear(); retired = true; }, changes() {
     const before = new Map<K, V>(), after = new Map<K, V>();
     const candidates = [...new Set([...reads.keys(), ...removed])];
     // Inverse replay re-inserts forgotten records. Preserve their original
@@ -184,18 +192,18 @@ function sparseSet<T>(base: Set<T>): { value: Set<T>; changes(): Change } {
 
 export function sparseOverlay(original: OverlaySnapshot) {
   const state = { ...original };
-  const fields: Array<{ key: keyof OverlaySnapshot; changes(): Change }> = [];
+  const fields: Array<{ key: keyof OverlaySnapshot; changes(): Change; dispose?(): void }> = [];
   for (const key of Object.keys(original) as Array<keyof OverlaySnapshot>) {
     const base = original[key];
     const draft = base instanceof Map ? sparseMap(base as Map<unknown, unknown>) : base instanceof Set ? sparseSet(base as Set<unknown>) : null;
     if (draft) {
       Object.assign(state, { [key]: draft.value });
-      fields.push({ key, changes: draft.changes });
+      fields.push({ key, changes: draft.changes, ...('dispose' in draft ? { dispose: draft.dispose } : {}) });
     }
   }
   const history = forkHistory(original.mutationHistory);
   state.mutationHistory = history;
-  return { state, finish(after: OverlaySnapshot, record: boolean) {
+  return { state, dispose() { for (const field of fields) field.dispose?.(); }, finish(after: OverlaySnapshot, record: boolean) {
     const changes = fields.map(field => ({ ...field, ...field.changes() }));
     const beforeSmall = { ...original, mutationHistory: [] } as OverlaySnapshot;
     const afterSmall = { ...after, mutationHistory: [] } as OverlaySnapshot;

@@ -21,3 +21,5 @@ Read attachment metadata GUIDs through borrowed snapshots during export so a sav
 Invalidate planning classifications when product GUIDs or placement classes change, preserving unresolved attachment notices and unreadable-placement refusals.
 
 Avoid cold reference-projection allocations for small relationship classes while bounding direct lookup work.
+
+Release completed transaction indexes and collect evicted read snapshots during synchronous sessions, while preserving retained draft views and already exposed mutable aliases.

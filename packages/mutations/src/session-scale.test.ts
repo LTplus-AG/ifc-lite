@@ -319,3 +319,37 @@ it.each([0, 40])('#8452 reference-slot queries track growth, unresolved hosts, d
   }));
   expect(ids(null)).toEqual([]);
 });
+
+it('#8452 reference queries track an already exposed row adopted by another map', () => {
+  const first = new NewEntityMap();
+  const row = { expressId: 1, type: 'IfcRelVoidsElement', attributes: [null, null, null, null, '#40', '#50'] };
+  first.set(1, row);
+  const alias = row.attributes;
+  const second = new NewEntityMap([[1, row]]);
+  alias[4] = '#60';
+  expect([...second.referenceSlotIds(row.type, 4, 40)]).toEqual([]);
+  expect([...second.referenceSlotIds(row.type, 4, 60)]).toEqual([1]);
+  expect([...second.referencing(40)]).toEqual([]);
+  expect([...second.referencing(60)].map(e => e.expressId)).toEqual([1]);
+});
+
+it.each([false, true])('#8452 retained drafts preserve private aliases and reference queries after completion (abort=%s)', abort => {
+  const view = new MutablePropertyView(null, 'retired');
+  const row = view.createEntity('IfcRelVoidsElement', [null, null, null, null, '#40', '#50']);
+  let retained!: MutablePropertyView;
+  let alias!: unknown[];
+  const edit = () => view.runAtomic(draft => {
+    retained = draft;
+    alias = draft.getNewEntity(row.expressId)!.attributes;
+    alias[4] = '#60';
+    if (abort) throw new Error('abort');
+  });
+  if (abort) expect(edit).toThrow('abort'); else edit();
+  // Rebuild a retired index, then mutate the previously returned array again.
+  expect(retained.getNewEntityReferenceSlotIds(row.type, 4, 60)).toEqual([row.expressId]);
+  alias[4] = '#70';
+  expect(retained.getNewEntityReferenceSlotIds(row.type, 4, 60)).toEqual([]);
+  expect([...retained.getNewEntitiesReferencing(70)].map(e => e.expressId)).toEqual([row.expressId]);
+  expect(view.getNewEntityReferenceSlotIds(row.type, 4, abort ? 40 : 60)).toEqual([row.expressId]);
+  expect([...view.getNewEntitiesReferencing(70)]).toEqual([]);
+});

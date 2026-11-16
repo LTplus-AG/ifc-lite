@@ -1232,7 +1232,9 @@ unmodified row without copying it into the draft. Use the ordinary getters or
 mutation methods for writes. `StoreEditor.readNewEntity` provides the same
 read-only borrow. `readNewEntityKinds(type?)`, `hasNewEntity(id)` and
 `getNewEntityCount()` answer enumeration and membership without reading any
-payload.
+payload. The read snapshot cache is bounded, and completed atomic transactions
+release temporary indexes even during a long synchronous session. Retained
+draft views remain private and rebuild their indexes when queried again.
 
 `planFootprintRoof(footprint, edgeSlopes, overhang)` exposes the same pure planner
 used by the roof builder for previews. Coordinates and overhang share a length

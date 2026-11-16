@@ -18,7 +18,10 @@ const borrows = new WeakMap<NewEntity, { row: NewEntity; slot: number }>();
 // A session owns its live rows, so weak keys alone do not bound the retained
 // frozen copies. A finite FIFO keeps hot reads cheap without a second model.
 const BORROW_CACHE_LIMIT = 65_536;
-const borrowSlots: Array<WeakRef<NewEntity>> = [];
+// WeakRef targets stay alive until the current JavaScript job ends. A long
+// synchronous authoring/export session must be able to collect evicted rows
+// before returning to the event loop, so retain only this bounded FIFO.
+const borrowSlots: NewEntity[] = [];
 let nextBorrowSlot = 0;
 
 /** Cooperative cloning may unwrap our own data barrier, never a caller getter. */
@@ -59,9 +62,13 @@ function writeAttributes(this: NewEntity, next: NewEntity['attributes']): void {
 export function observeEntityAttributes(entity: NewEntity, exposed: ExposureListener): void {
   const previous = barriers.get(entity);
   if (previous) {
-    if (previous.listeners === exposed) return;
-    if (typeof previous.listeners === 'function') previous.listeners = new Set([previous.listeners]);
-    previous.listeners.add(exposed);
+    if (previous.listeners !== exposed) {
+      if (typeof previous.listeners === 'function') previous.listeners = new Set([previous.listeners]);
+      previous.listeners.add(exposed);
+    }
+    // A previously returned array can change without another getter, including
+    // after a transaction rebuilds its temporary reference indexes.
+    if (escaped.has(entity)) exposed(entity);
     return;
   }
   const descriptor = Object.getOwnPropertyDescriptor(entity, 'attributes');
@@ -108,10 +115,10 @@ export function readEntitySnapshot(entity: NewEntity): NewEntity {
     return Object.freeze(copy);
   });
   if (barriers.has(entity) && !escaped.has(entity)) {
-    const previous = borrowSlots[nextBorrowSlot]?.deref();
+    const previous = borrowSlots[nextBorrowSlot];
     if (previous && borrows.get(previous)?.slot === nextBorrowSlot) borrows.delete(previous);
     borrows.set(entity, { row, slot: nextBorrowSlot });
-    borrowSlots[nextBorrowSlot] = new WeakRef(entity);
+    borrowSlots[nextBorrowSlot] = entity;
     nextBorrowSlot = (nextBorrowSlot + 1) % BORROW_CACHE_LIMIT;
   }
   return row;

@@ -12,8 +12,10 @@ export function runSparseAtomic<T>(view: MutablePropertyView, edit: (draft: Muta
   const access = cooperativeOverlay(view), revision = view.getMutationRevision();
   const nextExpressId = view.peekNextExpressId();
   const original = access.capture(), guard = guardMutableEntities(original);
+  let dispose: (() => void) | undefined;
   try {
     const transaction = sparseOverlay(original);
+    dispose = transaction.dispose;
     const draft = access.draft({ ...transaction.state });
     const result = edit(draft);
     if (result !== null && (typeof result === 'object' || typeof result === 'function')
@@ -29,5 +31,8 @@ export function runSparseAtomic<T>(view: MutablePropertyView, edit: (draft: Muta
     guard.validate();
     access.publish(prepared.publish(), prepared.changedIds);
     return { result, inverse: prepared.inverse, written: prepared.written };
-  } finally { guard.dispose(); }
+  } finally {
+    guard.dispose();
+    dispose?.();
+  }
 }

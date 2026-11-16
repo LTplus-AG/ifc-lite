@@ -75,6 +75,7 @@ function indexExtraction(x) {
     if (!fields.has(type)) fields.set(type, new Set());
     for (const k of Object.keys(info)) fields.get(type).add(k);
   };
+  for (const area of x.reinforcementAreas ?? []) put('resource', area);
   for (const m of x.members) put('item', m);
   for (const c of x.connections) put('item', c);
   for (const a of x.activities) put('activity', a);

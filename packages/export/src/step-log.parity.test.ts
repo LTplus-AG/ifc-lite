@@ -177,7 +177,8 @@ describe('mutation-log STEP export parity with the Rust writer (#5941)', () => {
       configure(view, store);
       for (const entity of c.log.newEntities ?? []) view.restoreNewEntity(entity);
       view.importMutations(JSON.stringify(c.log));
-      expect(() => new StepExporter(store, view).export({ schema: 'IFC4', timeStamp: fixture.timeStamp })).toThrow(c.error);
+      const georefMutations = (c.log as { georefMutations?: StepExportOptions['georefMutations'] }).georefMutations;
+      expect(() => new StepExporter(store, view).export({ schema: 'IFC4', timeStamp: fixture.timeStamp, ...(georefMutations ? { georefMutations } : {}) })).toThrow(c.error);
     });
   }
 

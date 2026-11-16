@@ -49,6 +49,7 @@ import { roomCommandTool } from './room-command.js';
 import { designPlaceTools } from './design-place.js';
 import { storeyFollowUpTools } from './storey-follow-ups.js';
 import { storeyTools } from './storeys.js';
+import { georeferencingWriteTool } from './georef.js';
 
 interface MutationContext {
   m: ReturnType<typeof resolveModel>;
@@ -375,6 +376,7 @@ export const mutationTools: Tool[] = [
   entitySetAttribute,
   entityCreate,
   entityDelete,
+  georeferencingWriteTool,
   mutationBatch,
   mutationDiff,
   mutationUndo,

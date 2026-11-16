@@ -24,7 +24,7 @@
 
 import type { IfcDataStore, EntityExtractor } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
-import { escapeStepString, toStepReal } from './step-serialization.js';
+import { escapeStepString, textEdit, toStepReal } from './step-serialization.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
 import { reportMapUnitUnsupported, resolveMapUnitReference } from './step-map-unit.js';
 
@@ -124,14 +124,14 @@ export function applyGeoreferencingMutations(
     const attrMap = pass.modifiedAttributes.get(entityId)!;
     const crs = gm.projectedCRS;
     let changed = false;
-    if (crs.name !== undefined) { attrMap.set('Name', String(crs.name)); changed = true; }
-    if (crs.description !== undefined) { attrMap.set('Description', String(crs.description)); changed = true; }
-    if (crs.geodeticDatum !== undefined) { attrMap.set('GeodeticDatum', String(crs.geodeticDatum)); changed = true; }
-    if (crs.verticalDatum !== undefined) { attrMap.set('VerticalDatum', String(crs.verticalDatum)); changed = true; }
-    if (crs.mapProjection !== undefined) { attrMap.set('MapProjection', String(crs.mapProjection)); changed = true; }
-    if (crs.mapZone !== undefined) { attrMap.set('MapZone', String(crs.mapZone)); changed = true; }
+    if (crs.name !== undefined) { attrMap.set('Name', textEdit(crs.name)); changed = true; }
+    if (crs.description !== undefined) { attrMap.set('Description', textEdit(crs.description)); changed = true; }
+    if (crs.geodeticDatum !== undefined) { attrMap.set('GeodeticDatum', textEdit(crs.geodeticDatum)); changed = true; }
+    if (crs.verticalDatum !== undefined) { attrMap.set('VerticalDatum', textEdit(crs.verticalDatum)); changed = true; }
+    if (crs.mapProjection !== undefined) { attrMap.set('MapProjection', textEdit(crs.mapProjection)); changed = true; }
+    if (crs.mapZone !== undefined) { attrMap.set('MapZone', textEdit(crs.mapZone)); changed = true; }
     if (crs.mapUnit !== undefined) {
-      const mapUnitRef = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, pass.effective, ctx);
+      const mapUnitRef = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, ctx);
       // A refused unit clears MapUnit rather than leaving the file's own in
       // place: the caller asked for a DIFFERENT unit, so the one already
       // there is known to be wrong, and `$` is the only honest answer this
@@ -180,6 +180,21 @@ export function applyGeoreferencingMutations(
     if (mc.xAxisAbscissa !== undefined) { attrMap.set('XAxisAbscissa', String(mc.xAxisAbscissa)); changed = true; }
     if (mc.xAxisOrdinate !== undefined) { attrMap.set('XAxisOrdinate', String(mc.xAxisOrdinate)); changed = true; }
     if (mc.scale !== undefined) { attrMap.set('Scale', String(mc.scale)); changed = true; }
+    // FactorX/Y/Z exist only on IFC4X3's IfcMapConversionScaled. Editing them
+    // on a plain IfcMapConversion would need a class change this branch does
+    // not make, so it is refused rather than silently dropped.
+    const factors = requestedFactors(mc, pass.warnings);
+    if (factors) {
+      if (pass.effective.byType.get('IFCMAPCONVERSIONSCALED')?.includes(entityId)) {
+        // Raw values, like the six attributes above (and the Rust twin).
+        attrMap.set('FactorX', String(mc.factorX));
+        attrMap.set('FactorY', String(mc.factorY));
+        attrMap.set('FactorZ', String(mc.factorZ));
+        changed = true;
+      } else {
+        reportGeorefWarning(pass.warnings, FACTORS_ON_UNSCALED_WARNING);
+      }
+    }
     if (changed) {
       pass.modifiedEntities.add(entityId);
       // Same as the IfcProjectedCRS branch above, effect gate included.
@@ -202,52 +217,20 @@ export function applyGeoreferencingMutations(
     const proj = crs.mapProjection ? `'${escapeStepString(String(crs.mapProjection))}'` : '$';
     const zone = crs.mapZone ? `'${escapeStepString(String(crs.mapZone))}'` : '$';
     let mapUnitRef = '$';
-    // `!== undefined`, matching the existing-CRS path above: an empty MapUnit is
-    // a unit this exporter cannot express, not an absent request, and the caller
-    // has to be told so rather than quietly getting `$`.
+    // `!== undefined`, as in the existing-CRS path: an empty MapUnit is one this exporter cannot express, and the caller is told.
     if (crs.mapUnit !== undefined) {
-      const resolved = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, pass.effective, ctx);
+      const resolved = resolveMapUnitReference(String(crs.mapUnit), pass.newGeorefLines, ctx);
       if (resolved === null) reportMapUnitUnsupported(pass.warnings, String(crs.mapUnit));
       else mapUnitRef = `#${resolved}`;
     }
     pass.newGeorefLines.push(`#${crsId}=IFCPROJECTEDCRS(${name},${desc},${datum},${vDatum},${proj},${zone},${mapUnitRef});`);
     pass.newEntityCount++;
 
-    // Find IfcGeometricRepresentationContext as SourceCRS for MapConversion
-    const contextId = findPreferredGeometricRepresentationContextId(pass.effective, ctx);
-
-    if (contextId) {
-      const mc = gm.mapConversion || {};
-      const mcId = ctx.allocateExpressId();
-      const eastings = toStepReal(Number(mc.eastings) || 0);
-      const northings = toStepReal(Number(mc.northings) || 0);
-      const height = toStepReal(Number(mc.orthogonalHeight) || 0);
-      const abscissa = mc.xAxisAbscissa !== undefined ? toStepReal(Number(mc.xAxisAbscissa)) : '$';
-      const ordinate = mc.xAxisOrdinate !== undefined ? toStepReal(Number(mc.xAxisOrdinate)) : '$';
-      const scale = mc.scale !== undefined ? toStepReal(Number(mc.scale)) : '$';
-      // IfcMapConversion(SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight, XAxisAbscissa, XAxisOrdinate, Scale)
-      pass.newGeorefLines.push(`#${mcId}=IFCMAPCONVERSION(#${contextId},#${crsId},${eastings},${northings},${height},${abscissa},${ordinate},${scale});`);
-      pass.newEntityCount++;
-    } else {
-      reportMapConversionRefused(pass.warnings);
-    }
+    if (gm.mapConversion) createMapConversion(pass, ctx, crsId, gm.mapConversion, gm.sourceCrs);
+    else if (!existingMcIds?.length && !gm.sourceCrs?.length) throw new Error(`${UNPLANNED_REFUSAL} no position was given for the new IfcProjectedCRS.`);
   } else if (gm.mapConversion && !existingMcIds?.length && existingCrsIds?.length) {
     // CRS exists but no MapConversion — create just the conversion
-    const contextId = findPreferredGeometricRepresentationContextId(pass.effective, ctx);
-    if (contextId) {
-      const mc = gm.mapConversion;
-      const mcId = ctx.allocateExpressId();
-      const eastings = toStepReal(Number(mc.eastings) || 0);
-      const northings = toStepReal(Number(mc.northings) || 0);
-      const height = toStepReal(Number(mc.orthogonalHeight) || 0);
-      const abscissa = mc.xAxisAbscissa !== undefined ? toStepReal(Number(mc.xAxisAbscissa)) : '$';
-      const ordinate = mc.xAxisOrdinate !== undefined ? toStepReal(Number(mc.xAxisOrdinate)) : '$';
-      const scale = mc.scale !== undefined ? toStepReal(Number(mc.scale)) : '$';
-      pass.newGeorefLines.push(`#${mcId}=IFCMAPCONVERSION(#${contextId},#${existingCrsIds[0]},${eastings},${northings},${height},${abscissa},${ordinate},${scale});`);
-      pass.newEntityCount++;
-    } else {
-      reportMapConversionRefused(pass.warnings);
-    }
+    createMapConversion(pass, ctx, existingCrsIds[0], gm.mapConversion, gm.sourceCrs);
   } else if (gm.mapConversion && !existingMcIds?.length && !existingCrsIds?.length) {
     // A map conversion was requested, but there is no IfcProjectedCRS to
     // reference as TargetCRS: none was requested (the first branch above
@@ -258,6 +241,106 @@ export function applyGeoreferencingMutations(
   }
 }
 
+/**
+ * FILE_SCHEMA identifiers whose schema declares `IfcMapConversionScaled`.
+ * Of the schemas bundled in `packages/codegen/schemas/`, only `IFC4X3.exp`
+ * (`IFC4X3_DEV_923b0514`, a post-RC4 development snapshot of what was
+ * released as IFC4X3_ADD2) declares it; `IFC4_ADD2_TC1`, `IFC4X1` and
+ * `IFC4X2` do not, and no `IFC4X3_RC*` schema is bundled to say otherwise.
+ * `IFC4X3` is the bare family identifier, which this exporter writes as
+ * `IFC4X3_ADD2` (#5351). Anything else, the RC identifiers among them, fails
+ * closed.
+ */
+const SCALED_FILE_SCHEMAS: ReadonlySet<string> = new Set(['IFC4X3', 'IFC4X3_ADD2']);
+
+/** Whether a file declaring FILE_SCHEMA `fileSchema` may contain `IfcMapConversionScaled`. */
+export function declaresMapConversionScaled(fileSchema: string): boolean {
+  return SCALED_FILE_SCHEMAS.has(fileSchema.trim().toUpperCase());
+}
+
+function scaledUndeclaredWarning(fileSchema: string): string {
+  return `Cannot write IfcMapConversionScaled into a file declaring FILE_SCHEMA ${fileSchema}: that schema does not declare it (only IFC4X3 / IFC4X3_ADD2 do). FactorX/FactorY/FactorZ were not written, and the IfcMapConversion was written without them.`;
+}
+
+/** A partial factor triple: IfcMapConversionScaled declares all three as mandatory. */
+const PARTIAL_FACTORS_WARNING =
+  'Cannot write IfcMapConversionScaled: FactorX, FactorY and FactorZ are all mandatory and must be finite numbers, and the triple given was not. The factors were not written.';
+
+/** Factors requested for a record that is a plain IfcMapConversion. */
+const FACTORS_ON_UNSCALED_WARNING =
+  'Cannot write FactorX/FactorY/FactorZ onto an existing IfcMapConversion: they exist only on IfcMapConversionScaled, and this edit does not change the class. The factors were not written.';
+
+type MapConversionRequest = NonNullable<NonNullable<StepExportOptions['georefMutations']>['mapConversion']>;
+
+/**
+ * Create an IfcMapConversion from a request. A create needs the whole position
+ * (Eastings, Northings, OrthogonalHeight): a partial edit whose target record
+ * no longer exists (deleted since) is refused with a warning, never written
+ * with the missing fields guessed as 0.
+ */
+function createMapConversion(pass: ExportPass, ctx: GeorefContext, crsId: number, mc: MapConversionRequest, sourceCrs: readonly number[] | undefined): void {
+  const given = (v: unknown) => v !== undefined && v !== null && !Number.isNaN(Number(v));
+  if (![mc.eastings, mc.northings, mc.orthogonalHeight].every(given)) {
+    // An unplanned caller (the viewer) never reads warnings: it gets a thrown error, not a 0-filled or dropped position.
+    if (!sourceCrs?.length) throw new Error(`${UNPLANNED_REFUSAL} ${MAP_CONVERSION_INCOMPLETE_WARNING}`);
+    reportGeorefWarning(pass.warnings, MAP_CONVERSION_INCOMPLETE_WARNING);
+    return;
+  }
+  // The planner names the SourceCRS; a host that does not plan (the viewer) leaves it to the file's own contexts.
+  const contextId = sourceCrs === undefined || sourceCrs.length === 0 ? findPreferredGeometricRepresentationContextId(pass.effective, ctx)
+    : sourceCrs.find((id) => pass.effective.typeOf(id) === 'IFCGEOMETRICREPRESENTATIONCONTEXT') ?? null;
+  if (!contextId) return reportMapConversionRefused(pass.warnings);
+  pass.newGeorefLines.push(mapConversionLine(ctx.allocateExpressId(), contextId, crsId, mc, pass.warnings, pass.schemaToken));
+  pass.newEntityCount++;
+}
+
+/**
+ * The requested FactorX/Y/Z, or `null` when none was asked for. A partial
+ * triple is reported and treated as none: IfcMapConversionScaled has no
+ * optional factor, and filling the gap with 1.0 would be a guessed scale.
+ */
+function requestedFactors(mc: MapConversionRequest, warnings?: string[]): [number, number, number] | null {
+  const given = [mc.factorX, mc.factorY, mc.factorZ];
+  // A null is a factor nobody gave (`Number(null)` is 0, a mandatory FactorX of 0).
+  if (given.every((f) => f == null)) return null;
+  if (given.some((f) => f == null || !Number.isFinite(Number(f)))) {
+    if (warnings) reportGeorefWarning(warnings, PARTIAL_FACTORS_WARNING);
+    return null;
+  }
+  return given.map(Number) as [number, number, number];
+}
+
+/**
+ * A new IfcMapConversion line — or IFC4X3's IfcMapConversionScaled when all
+ * three factors were requested (its first eight attributes are the
+ * supertype's, FactorX/Y/Z follow).
+ */
+function mapConversionLine(id: number, contextId: number, crsId: number, mc: MapConversionRequest, warnings: string[], fileSchema: string): string {
+  const eastings = toStepReal(Number(mc.eastings) || 0);
+  const northings = toStepReal(Number(mc.northings) || 0);
+  const height = toStepReal(Number(mc.orthogonalHeight) || 0);
+  const abscissa = mc.xAxisAbscissa !== undefined ? toStepReal(Number(mc.xAxisAbscissa)) : '$';
+  const ordinate = mc.xAxisOrdinate !== undefined ? toStepReal(Number(mc.xAxisOrdinate)) : '$';
+  const scale = mc.scale !== undefined ? toStepReal(Number(mc.scale)) : '$';
+  // IfcMapConversion(SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight, XAxisAbscissa, XAxisOrdinate, Scale)
+  const head = `#${contextId},#${crsId},${eastings},${northings},${height},${abscissa},${ordinate},${scale}`;
+  let factors = requestedFactors(mc, warnings);
+  if (factors && !declaresMapConversionScaled(fileSchema)) {
+    reportGeorefWarning(warnings, scaledUndeclaredWarning(fileSchema));
+    factors = null;
+  }
+  return factors
+    ? `#${id}=IFCMAPCONVERSIONSCALED(${head},${factors.map(toStepReal).join(',')});`
+    : `#${id}=IFCMAPCONVERSION(${head});`;
+}
+
+const UNPLANNED_REFUSAL = 'Georeferencing was not exported:';
+const MAP_CONVERSION_INCOMPLETE_WARNING = 'Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight are all required.';
+
+function reportGeorefWarning(warnings: string[], message: string): void {
+  warnings.push(message);
+  console.warn(`[StepExporter] ${message}`);
+}
 
 /**
  * Record that a requested IfcMapConversion could not be written. Emitting it

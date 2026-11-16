@@ -7,6 +7,7 @@ import type { StoreApi } from 'zustand';
 import type { ViewerState } from '@/store';
 import { hasAppearanceHistoryEntry } from '@/lib/appearance/history';
 import { applyRedoToView, applyUndoToView } from '@/store/slices/mutation-history-apply';
+import { leavesPartialPosition } from '@/lib/geo/complete-position';
 import { georefPatch } from '@/store/slices/mutation-history-replay';
 import { inverseMutationTargets, revertedMutationIds } from '@/store/slices/mutation-inverse-registry';
 import { mutationPermissionForModels, type MutationDenialReason } from '@/store/mutation-permission';
@@ -57,6 +58,8 @@ function replayable(mutation: Mutation): boolean {
     default: return false;
   }
 }
+
+class PartialPositionError extends Error {}
 
 function applyTarget(store: StoreApi<ViewerState>, mutation: Mutation, direction: 'undo' | 'redo'): void {
   if (georef(mutation)) {
@@ -138,7 +141,13 @@ export function revertChangeOperation(store: StoreApi<ViewerState>, requested: C
       applyTarget(store, mutation, 'undo');
       applied.push(mutation);
     }
+    // A position taken out from under a later edit would leave a conversion the export refuses: keep it as it was.
+    if (live.modelIds.some(modelId => leavesPartialPosition(store.getState(), modelId))) throw new PartialPositionError();
   } catch (error) {
+    if (error instanceof PartialPositionError) {
+      for (const mutation of applied.reverse()) applyTarget(store, mutation, 'redo');
+      return { ok: false, reason: 'newer-conflict' };
+    }
     const rollbackErrors: unknown[] = [];
     for (const mutation of applied.reverse()) {
       try { applyTarget(store, mutation, 'redo'); }

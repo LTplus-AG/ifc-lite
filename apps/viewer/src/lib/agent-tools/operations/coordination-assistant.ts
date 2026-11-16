@@ -24,7 +24,7 @@ export const coordinationAssistantOperations = [
         if (useAssistant.getState().snapshot?.id !== i.evidence_id) throw new Error('Assistant evidence changed before request admission.');
         const { assistantAttachmentsForSend, removeAssistantAttachments } = await import('@/lib/assistant/attachment-library');
         const attachments = i.attachment_id ? assistantAttachmentsForSend(i.attachment_id, i.evidence_id) : {};
-        c.checkpoint?.();
+        c.checkpoint?.(); if (useAssistant.getState().snapshot?.id !== i.evidence_id || useAssistant.getState().status === 'streaming') throw new Error('Native assistant evidence or request ownership changed before admission.');
         const pending = sendAssistant(i.prompt, useViewerStore.getState().chatActiveModel, ASSISTANT_PROXY_URL, attachments);
         owned = useAssistant.getState().controller; if (c.signal?.aborted) cancel(); const success = await pending; if (success && i.attachment_id) removeAssistantAttachments(i.attachment_id); return success;
       });

@@ -209,14 +209,16 @@ impl CutFrame {
     fn root_of(host: &DecodedEntity, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Option<Self> {
         let placement = decoder.resolve_optional(host, slot::IfcProduct::OBJECT_PLACEMENT.index()).ok()??;
         let base = *placement::chain(&placement, decoder).ok()?.last()?;
-        if base.kind != LinkKind::Local || !decoder.is_site_placement(base.id) {
+        if base.kind != LinkKind::Local {
             return None;
         }
         let base_entity = decoder.decode_by_id(base.id).ok()?;
         let mut root = placement::resolve_chain(&base_entity, decoder).ok()?;
         router.scale_transform(&mut root);
         let moves = root != Matrix4::identity() && root.iter().all(|v| v.is_finite()) && root.try_inverse().is_some();
-        if !moves {
+        // The site lookup reads the source once per model; a root that moves
+        // nothing never needs it.
+        if !moves || !decoder.is_site_placement(base.id) {
             return None;
         }
         let mut in_root = placement::resolve_chain_relative(&placement, &base_entity, decoder).ok()?;

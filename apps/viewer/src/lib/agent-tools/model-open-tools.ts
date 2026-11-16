@@ -111,21 +111,45 @@ const tooLarge = (url: URL) => `${shown(url)} is larger than ${OPEN_MODEL_MAX_BY
 /** Starts like an HTML document, after any whitespace, comment or XML declaration. */
 const HTML_START = /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<(?:!doctype\s+html|html|head|body|title|meta)[\s>]/i;
 
+/** A complete small document is an API response, not a model: real models do not fit in this many bytes. */
+const SMALL_BODY_BYTES = 64 * 1024;
+
 /**
- * Why the body is plainly not a model (`null` when it may be one), checked before a replace can close the
- * open models. Only content no model file can start with is refused, so the loader's own detection (zipped
- * IFC under .ifc, magic-routed point clouds, long LandXML prologs) still decides everything else.
+ * Why the loader could not open this body (`null` when it can), decided with the loader's own routing
+ * (`detectPointCloudFormat`, `headIsZip`, `detectFormat`, LandXML and splats by name) and checked before a
+ * replace can close the open models. Small JSON or XML bodies are read whole: an API error is small, a model
+ * is not, so `{"message":"Forbidden"}` or `<Error>` is refused without guessing at keys.
  */
-function notAModel(file: File, head: string): string | null {
+async function unloadableBecause(file: File): Promise<string | null> {
+  const headBuffer = await file.slice(0, 4096).arrayBuffer();
+  const head = new TextDecoder().decode(headBuffer);
   if (HTML_START.test(head)) return 'an HTML page';
-  const start = head.trimStart();
+  const whole = file.size <= SMALL_BODY_BYTES ? await file.text() : null;
   const ext = /\.[^.]+$/.exec(file.name.toLowerCase())?.[0];
-  if (ext === '.ifcx') return start.startsWith('{') && /"error"\s*:/.test(head) && !/"header"\s*:/.test(head) ? 'a JSON error response' : null;
-  if (start.startsWith('{') || start.startsWith('[')) return 'a JSON response';
-  // S3, Azure and similar stores answer with an XML <Error> document.
-  if (/^(?:<\?xml[^>]*>\s*)?<(?:Error|error)[\s>]/.test(start)) return 'an XML error response';
-  if (ext !== '.xml' && start.startsWith('<')) return 'an XML or HTML document';
+  if (ext === '.splat') return null; // headerless binary, routed by name
+  if (ext === '.xml') {
+    // LandXML is routed by name; its parser needs a LandXML root.
+    if (!head.trimStart().startsWith('<')) return 'a non-XML response';
+    return whole !== null && !/<LandXML\b/.test(whole) ? 'an XML document without a LandXML root (an error response?)' : null;
+  }
+  const [{ detectPointCloudFormat }, { headIsZip }, { detectFormat }] = await Promise.all([
+    import('@/hooks/ingest/pointCloudIngest'), import('@/hooks/ingest/sourceBuffers'), import('@ifc-lite/parser'),
+  ]);
+  if (detectPointCloudFormat(file.name, headBuffer) || headIsZip(headBuffer)) return null;
+  const format = detectFormat(headBuffer);
+  if (format === 'unknown') return 'content the viewer does not recognise (an error response?)';
+  if (format === 'ifcx' && whole !== null && !hasIfcxHeader(whole)) return 'a JSON response without an IFCX header';
   return null;
+}
+
+function hasIfcxHeader(text: string): boolean {
+  try {
+    const value: unknown = JSON.parse(text);
+    return typeof value === 'object' && value !== null && 'header' in value;
+  } catch (err) {
+    console.warn('[viewer_open_model] a small JSON body did not parse:', err);
+    return false;
+  }
 }
 
 /**
@@ -193,8 +217,8 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
   if (Number(res.headers.get('content-length')) > OPEN_MODEL_MAX_BYTES) refuse(tooLarge(source), ToolErrorCode.INVALID_INPUT);
   const file = await readLimited(res, source, name);
   if (file.size === 0) refuse(`${shown(source)} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
-  const notModel = notAModel(file, await file.slice(0, 4096).text());
-  if (notModel) refuse(`${shown(source)} returned ${notModel}, not a model. Nothing was loaded.`);
+  const reason = await unloadableBecause(file);
+  if (reason) refuse(`${shown(source)} returned ${reason}, not a model. Nothing was loaded.`);
   return file;
 }
 

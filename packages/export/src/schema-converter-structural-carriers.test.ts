@@ -410,6 +410,8 @@ ${geometry.replace('(#16),', aspect)}
   it('says nothing about Causes for a CausedBy that names no point reaction', async () => {
     const up = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.'), 'IFC4');
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
+    // No Causes message of any kind, the unconverted-varying note included.
+    expect(up.warnings).not.toContain("'Causes'");
     expect(up.warnings).not.toContain('stays unconverted');
     expect(up.warnings).toContain('IFCSTRUCTURALLINEARACTIONVARYING has no representation in IFC4; record remains unconverted');
   });

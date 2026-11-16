@@ -11,7 +11,7 @@ import { dimensionGraphics } from '@/lib/drawing2d-markup/dimension-graphics';
 import { customPlaneCenter } from '@/store/slices/section-plane-center';
 
 import { removeEmbeddedDrawingMarkup } from '@/lib/drawing2d-markup/drawing-markup-embedded-sweep';
-import { drawingAnnotationAnchor } from './drawing-annotation-anchor';
+import { drawingAnnotationAnchor, drawingAnnotationLengthUnitScale } from './drawing-annotation-anchor';
 import { embeddedMarkupIdentity } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
 import { sourceMarkupGlobalId } from '@/lib/drawing2d-markup/drawing-markup-restore';
 import { validElementTags } from '@/lib/drawing/tag-persistence';
@@ -122,7 +122,8 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
       && current.get(key(saved.item))?.some(plane => isDimensionOnPlane({ plane: saved.plane }, plane))));
   if (!items.length && !replaceable.length && !legacy.size) return view;
   // Preserve native entity identities and geometry when reopening unchanged IFC.
-  if (!legacy.size && JSON.stringify(replaceable.map(({ saved }) => saved.item)) === JSON.stringify(items)
+  if (!legacy.size && drawingAnnotationLengthUnitScale(store, view) === drawingAnnotationLengthUnitScale(store)
+    && JSON.stringify(replaceable.map(({ saved }) => saved.item)) === JSON.stringify(items)
     && replaceable.every(({ saved }) => JSON.stringify(saved.plane) === JSON.stringify(saved.item.kind === 'dimension' ? saved.item.value.plane ?? input.plane : input.plane)
       && sameDrawingLayout(saved, input))) return view;
   const base = view ?? new MutablePropertyView(store.properties ?? null, 'drawing-export');

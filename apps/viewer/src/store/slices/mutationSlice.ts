@@ -1022,7 +1022,7 @@ export const createMutationSlice: StateCreator<
       type Written = { entity: 'projectedCRS' | 'mapConversion'; field: string; value: string | number; oldValue?: string | number };
       const written: Written[] = fields.map((f) => ({ entity, ...f }));
       const pending = { ...modelMuts, [entity]: entityMuts } as GeorefMutationData;
-      const completion = positionCompletion(state.models.get(modelId)?.ifcDataStore, pending);
+      const completion = positionCompletion(state.models.get(modelId)?.ifcDataStore, pending, state.mutationViews.get(modelId));
       const conversionMuts = { ...(entity === 'mapConversion' ? entityMuts : modelMuts.mapConversion) } as Record<string, unknown>;
       for (const done of completion) {
         conversionMuts[done.field] = done.value;

@@ -17,6 +17,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { HeadlessBackend } from '../headless.js';
 import { BimContext } from '../context.js';
 import { readGeoreferencing } from './read.js';
+import { sourceOrderConflicts } from './epset-locator.js';
 import { GeoreferencingError, type GeoreferencingState } from './types.js';
 
 function step(schema: string, data: string): Uint8Array {
@@ -250,4 +251,17 @@ describe('a fact the effective view cannot answer is unknown, and the write refu
     expect((error as GeoreferencingError).code).toBe('UNSUPPORTED_RECORD');
     expect((error as GeoreferencingError).message).toMatch(/#7 \(IFCBUILDING\) was retyped/);
   });
+});
+
+it('native conversion trust ignores shadowed out-of-order convention sets before and after view creation (#10382 review)', async () => {
+  const duplicate = "#133=IFCPROPERTYSET('0eeeeeeeeeeeeeeeeeeeee',$,'ePSet_MapConversion',$,(#30,#31,#32));";
+  const data = `${CRS_FIXTURE}\n${duplicate}\n${EPSETS}\n${ATTACH(6)}`;
+  const { store } = await parseModel(step('IFC4', data), { disableWorkerScan: true });
+  expect(sourceOrderConflicts(store).length).toBeGreaterThan(0);
+  const backend = new HeadlessBackend(store, 'm.ifc', 'model');
+  const bim = new BimContext({ backend });
+  expect(bim.georef.get().MapConversion?.Eastings).toBe(1);
+  expect(bim.georef.get().untrusted).toBeUndefined();
+  backend.ensureEditor();
+  expect(bim.georef.get().untrusted).toBeUndefined();
 });

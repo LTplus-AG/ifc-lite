@@ -63,7 +63,11 @@ export class GeoreferencingSession {
     // A snapshot: the caller may change what it gets without changing the session's own record of its writes.
     const state = structuredClone(this.read());
     const view = this.deps.view();
-    if (!view) { const why = sourceOrderConflicts(this.deps.store); return why.length > 0 ? { ...state, untrusted: why } : state; }
+    if (!view) {
+      const native = (state.MapConversion && state.MapConversion.type !== 'ePSet_MapConversion') || state.RigidOperation;
+      const why = native ? [] : sourceOrderConflicts(this.deps.store);
+      return why.length > 0 ? { ...state, untrusted: why } : state;
+    }
     const { reasons, foreign } = this.trust(state, view);
     const untrusted = Object.entries(reasons).filter(([part]) => part !== 'site' || state.site).flatMap(([, why]) => why);
     if (untrusted.length === 0) return state;

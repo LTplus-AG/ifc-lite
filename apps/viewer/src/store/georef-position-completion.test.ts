@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { it } from 'node:test';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { positionCompletion } from '@/lib/geo/complete-position';
 import assert from 'node:assert/strict';
 import { IfcParser, extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { exportModelStep } from '@/lib/export/model-step-export';
@@ -50,8 +52,8 @@ async function withModel(run: (dataStore: IfcDataStore) => Promise<void>, text =
   }
 }
 
-const exported = async (dataStore: IfcDataStore, mutations: GeorefMutationData | undefined) => extractGeoreferencingOnDemand(await parse(new TextDecoder().decode(
-  (await exportModelStep({ modelId: 'm', dataStore, options: { schema: 'IFC4', applyMutations: true, georefMutations: mutations as never }, scheduleState: null })).content as Uint8Array)));
+const exported = async (dataStore: IfcDataStore, mutations: GeorefMutationData | undefined, mutationView?: MutablePropertyView) => extractGeoreferencingOnDemand(await parse(new TextDecoder().decode(
+  (await exportModelStep({ modelId: 'm', dataStore, mutationView, options: { schema: 'IFC4', applyMutations: true, georefMutations: mutations as never }, scheduleState: null })).content as Uint8Array)));
 
 for (const [name, fields, expected] of flows) {
   it(`${name}: the stored position is complete, undoable, and exports the picked values with 0 for the rest`, async () => {
@@ -135,4 +137,37 @@ it('a received CRS without a conversion arrives with an explicit zero position (
     assert.equal(geo?.mapConversion?.northings, 0);
   }, NO_GEOREF);
   assert.equal(receivedGeorefMutations({ projectedCRS: crs as never, mapConversion: { eastings: 7 } as never }).mapConversion?.eastings, 7, 'a received conversion is kept');
+});
+
+it('a deleted source conversion needs complete replacement coordinates (#10382 review)', async () => {
+  const dataStore = await parse(CRS_ONLY.replace('ENDSEC;\nEND-ISO', '#41=IFCMAPCONVERSION(#20,#40,10.,20.,30.,$,$,$);\nENDSEC;\nEND-ISO'));
+  const view = new MutablePropertyView(dataStore.properties, 'm');
+  const pending = { mapConversion: { eastings: 99 } };
+  assert.deepEqual(positionCompletion(dataStore, pending, view), []);
+  view.deleteEntity(41);
+  const complete = positionCompletion(dataStore, pending, view);
+  assert.deepEqual(complete, [{ field: 'northings', value: 20 }, { field: 'orthogonalHeight', value: 30 }]);
+  const mapConversion = { ...pending.mapConversion, ...Object.fromEntries(complete.map(({ field, value }) => [field, value])) };
+  const geo = await exported(dataStore, { mapConversion }, view);
+  assert.notEqual(geo?.mapConversion?.id, 41, 'the deleted conversion is replaced, not edited in place');
+  assert.deepEqual([geo?.mapConversion?.eastings, geo?.mapConversion?.northings, geo?.mapConversion?.orthogonalHeight], [99, 20, 30]);
+});
+
+it('a deleted source CRS needs a complete replacement position (#10382 review)', async () => {
+  const dataStore = await parse(CRS_ONLY);
+  const view = new MutablePropertyView(dataStore.properties, 'm');
+  const pending = { projectedCRS: { name: 'EPSG:2056' } };
+  assert.deepEqual(positionCompletion(dataStore, pending, view), []);
+  view.deleteEntity(40);
+  const completion = positionCompletion(dataStore, pending, view);
+  assert.deepEqual(completion, [
+    { field: 'eastings', value: 0 },
+    { field: 'northings', value: 0 },
+    { field: 'orthogonalHeight', value: 0 },
+  ]);
+  const mapConversion = Object.fromEntries(completion.map(({ field, value }) => [field, value]));
+  const geo = await exported(dataStore, { ...pending, mapConversion }, view);
+  assert.notEqual(geo?.projectedCRS?.id, 40, 'the deleted CRS is replaced');
+  assert.equal(geo?.projectedCRS?.name, 'EPSG:2056');
+  assert.deepEqual([geo?.mapConversion?.eastings, geo?.mapConversion?.northings, geo?.mapConversion?.orthogonalHeight], [0, 0, 0]);
 });

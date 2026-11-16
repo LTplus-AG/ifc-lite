@@ -974,6 +974,18 @@ lookup; the proxy already knows whether its base is an entity map. Those
 bounded corrections retain nonempty and unresolved-source candidates and still
 require timing qualification.
 
+The cold-path follow-up removed only the proxy dispatch deoptimization. The
+original session still had an unrelated source override, so its override index
+was not empty. The opening candidate path decoded that unrelated relationship
+and resolved schema attributes just to reject its class, unlike canonical
+source enumeration. Classify only the sparse source override domain through
+that canonical iterator first; retain missing class metadata conservatively,
+and do not enumerate the created bucket again. The real IFC regression locks
+out unrelated payload reads while retaining source retypes, deletion and
+unreadable-host refusal. The original bounded allocation diagnostic then
+matched base's clone count and graph/journal cardinality. Throughput remains
+unqualified until the unchanged acceptance protocol passes.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every

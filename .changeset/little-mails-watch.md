@@ -31,3 +31,5 @@ Keep attribute barriers on their owning records as non-enumerable metadata, avoi
 Clone appended mutation-journal rows as one detached batch instead of invoking serialization separately for each new mutation.
 
 Avoid typed-map work when both override indexes are empty and reuse the sparse draft's known map kind for positional reference queries.
+
+Classify sparse source opening candidates through canonical effective entity metadata before resolving their payloads, preserving unresolved candidates, retypes and refusal behavior.

@@ -32,7 +32,7 @@ for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
     const input: DrawingAnnotations = {
       measures: [{ id: 'm', start: { x: 0, y: 0 }, end: { x: 5, y: 0 }, distance: 5 }],
       dimensions: [{ id: 'd', a: { x: 0, y: 1 }, b: { x: 5, y: 1 }, offset: 0.5, orientation: 'aligned' }],
-      tags: [{ tag: { id: 't', modelId: 'model', entityId: wall, anchor: { x: 2, y: 0 }, offset: { x: 0, y: 0.3 }, template: 'auto' }, label: 'Wall mark' }],
+      tags: [{ tag: { id: 't', modelId: 'model', entityId: wall, anchor: { x: 2, y: 0 }, offset: { x: 0, y: 0.3 }, template: 'auto' }, label: 'T'.repeat(250) + ' · ≈ 1000 m²' }],
       plane: { axis: 'down', position: 1, flipped: false }, storeyId, paperScale: 100,
     };
     const first = decode(new StepExporter(source, prepareDrawingAnnotations(source, undefined, input)).export({ schema: Schema }).content);
@@ -44,6 +44,8 @@ for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
     assert.equal(saved.length, 3);
     const { effectiveMetadataRecord } = await import('@ifc-lite/parser');
     const tagId = saved.find(record => record.saved.item.kind === 'tag')!.id;
+    assert.ok(Array.from(String(effectiveMetadataRecord(reopened, tagId)?.attributes[2])).length <= 255, 'IfcAnnotation.Name is an IfcLabel');
+    assert.ok((reopened.entityIndex.byType.get('IFCTEXTLITERAL') ?? []).some(id => effectiveMetadataRecord(reopened, id)?.attributes[0] === input.tags[0].label), 'the literal retains the complete tag label');
     const tagContainment = (reopened.entityIndex.byType.get('IFCRELCONTAINEDINSPATIALSTRUCTURE') ?? [])
       .map(id => effectiveMetadataRecord(reopened, id)!.attributes).find(attrs => Array.isArray(attrs[4]) && attrs[4].includes(tagId));
     assert.equal(tagContainment?.[5], source.entityIndex.byType.get('IFCBUILDINGSTOREY')![1]);

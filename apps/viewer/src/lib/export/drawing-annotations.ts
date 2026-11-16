@@ -158,7 +158,7 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
       const text = emit('IfcTextLiteral', [label, ref(textAxes), '.RIGHT.']);
       const shape = emit('IfcShapeRepresentation', [ref(context), 'Annotation', 'Annotation2D', [...curves.map(ref), ref(text)]]);
       const product = emit('IfcProductDefinitionShape', [null, null, [ref(shape)]]);
-      const attributes = [guid(), owner, label, JSON.stringify({ item, plane: input.plane } satisfies Saved), OBJECT_TYPE, ref(placement), ref(product)];
+      const attributes = [guid(), owner, Array.from(label).slice(0, 255).join(''), JSON.stringify({ item, plane: input.plane } satisfies Saved), OBJECT_TYPE, ref(placement), ref(product)];
       if (anchor.schema === 'IFC4X3') attributes.push(null);
       const annotation = add('IfcAnnotation', attributes);
       add('IfcRelContainedInSpatialStructure', [guid(), owner, null, null, [ref(annotation)], ref(item.kind === 'tag' ? containingStorey(store, draft, item.value.entityId) ?? input.storeyId : input.storeyId)]);

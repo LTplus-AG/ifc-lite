@@ -19,6 +19,7 @@ const out = (value: unknown) => ({ native_json: JSON.stringify(value) });
 const meta = (id: string, description: string, network = false) => ({
   id,
   owner: 'clash',
+  features: network ? (['ai.assistant'] as const) : [],
   description,
   effects: network ? (['network'] as const) : (['configuration'] as const),
   capability: 'commands-and-edits' as const,

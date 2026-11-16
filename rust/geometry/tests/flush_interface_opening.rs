@@ -453,6 +453,18 @@ fn a_recess_over_a_body_meshed_at_the_interface_keeps_the_plain_cut() {
 #[test]
 fn a_finish_ending_inside_the_recess_does_not_block_the_seat() {
     let expected = WALL_LENGTH * WALL_HEIGHT * CORE + 1.5 * WALL_HEIGHT * FINISH - 0.5 * RECESS * FINISH;
+    // The core untouched; the finish loses half the recess square front and
+    // back and the strip of its end face the recess crosses, and gains the
+    // reveals: the far side and two ends mid-wall, one end at the top, where
+    // its top face loses a strip as well.
+    let reveal = RECESS * FINISH;
+    let surface = |recess: Recess| {
+        box_area(WALL_LENGTH, CORE, WALL_HEIGHT) + box_area(1.5, FINISH, WALL_HEIGHT) - RECESS * RECESS - reveal
+            + match recess {
+                Recess::FromInterface => 2.0 * reveal,
+                Recess::ToInterfaceAtTop => reveal,
+            }
+    };
     let mut failures = Vec::new();
     for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
         for site_at in [[0.0; 3], [1000.0, 800.0, 0.0]] {
@@ -463,10 +475,11 @@ fn a_finish_ending_inside_the_recess_does_not_block_the_seat() {
                     let voids = build_void_index_like_production(&content);
                     let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
                     let (open, excess) = (open_edges(&mesh), mesh_volume(&mesh) - expected);
-                    if open != 0 || excess.abs() > 6.0e-4 {
+                    let surface_off = area(&mesh) - surface(recess);
+                    if open != 0 || excess.abs() > 6.0e-4 || surface_off.abs() > 5.0e-3 {
                         failures.push(format!(
                             "{recess:?} site {site_at:?} wall turn {wall_turn} y {wall_y:.3}: \
-                             {open} open edges, volume {excess:+.6} m3 off analytic"
+                             {open} open edges, volume {excess:+.6} m3 and surface {surface_off:+.4} m2 off analytic"
                         ));
                     }
                 }

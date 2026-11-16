@@ -459,10 +459,10 @@ fn a_finish_ending_inside_the_recess_does_not_block_the_seat() {
     // its top face loses a strip as well.
     let reveal = RECESS * FINISH;
     let surface = |recess: Recess| {
-        box_area(WALL_LENGTH, CORE, WALL_HEIGHT) + box_area(1.5, FINISH, WALL_HEIGHT) - RECESS * RECESS - reveal
+        box_area(WALL_LENGTH, CORE, WALL_HEIGHT) + box_area(1.5, FINISH, WALL_HEIGHT) - RECESS * RECESS
             + match recess {
-                Recess::FromInterface => 2.0 * reveal,
-                Recess::ToInterfaceAtTop => reveal,
+                Recess::FromInterface => reveal,
+                Recess::ToInterfaceAtTop => 0.0,
             }
     };
     let mut failures = Vec::new();

@@ -110,58 +110,50 @@ const tooLarge = (url: URL) => `${shown(url)} is larger than ${OPEN_MODEL_MAX_BY
 
 /**
  * `text` after its markup prolog: whitespace, processing instructions (`<?xml ?>`), comments and a DOCTYPE
- * other than HTML's. A linear scan, so no crafted body can make it backtrack.
+ * other than HTML's. A linear scan, so no crafted body can make it backtrack. An unterminated prolog item
+ * leaves the rest as is.
  */
 function afterProlog(text: string): string {
   let at = 0;
   for (;;) {
     while (at < text.length && /\s/.test(text[at])) at++;
     const close = text.startsWith('<?', at) ? '?>' : text.startsWith('<!--', at) ? '-->'
-      : /^<!doctype(?!\s+html)/i.test(text.slice(at, at + 14)) ? '>' : null;
-    if (!close) return text.slice(at);
-    const end = text.indexOf(close, at + 2);
-    if (end === -1) return '';
-    at = end + close.length;
+      : /^<!doctype(?!\s+html\b)/i.test(text.slice(at, at + 64)) ? '>' : null;
+    const end = close ? text.indexOf(close, at + 2) : -1;
+    if (end === -1) return text.slice(at);
+    at = end + close!.length;
   }
 }
 
-/** Text model formats whose files start with a word, so a word-led text body is not taken for an error. */
-const TEXT_MODEL_HEADER = /^(?:ISO-10303-21|ply\b|# \.PCD|VERSION\b|FIELDS\b)/;
-
-/** Bodies up to this size are read whole to recognise an error response; bigger ones are never refused for content. */
+/** Bodies up to this size are read whole to recognise a JSON or XML error response. HTML is looked for in this much of any body. */
 const ERROR_BODY_MAX_BYTES = 64 * 1024;
 
 /**
  * Why the body is an error response rather than a model (`null` otherwise), checked before a replace can close
  * the open models. Routing stays the loader's: this refuses only what no model format can be, so it never
- * refuses a file the loader would open. An HTML page; a small body that parses whole as JSON without an IFCX
- * `header` (every IFCX document has one); a small XML document whose root is an error or fault element; a
- * small plain-text body that starts with a word and is not a text model header (`Access Denied`).
+ * refuses a file the loader would open. An HTML page; a small body that parses whole as JSON and is not an
+ * IFCX document (every IFCX document has a `header`); a small XML document whose root is an error, exception
+ * or fault element. A plain-text error is not recognised and reaches the loader.
  */
 async function errorResponseKind(file: File): Promise<string | null> {
   const small = file.size <= ERROR_BODY_MAX_BYTES;
-  const text = small ? await file.text() : await file.slice(0, 4096).text();
-  const body = afterProlog(text);
+  const body = afterProlog(await file.slice(0, ERROR_BODY_MAX_BYTES).text());
   if (/^<(?:!doctype\s+html|html|head|body|title|meta)[\s>]/i.test(body)) return 'an HTML page';
   if (!small) return null;
   if (body.startsWith('<')) {
-    // The root's name only: a bounded slice keeps the match linear whatever the body holds.
-    const root = /^<([\w.:-]{1,128})/.exec(body.slice(0, 256))?.[1] ?? '';
-    return /(?:Error|Exception|Fault|^error$|^AccessDenied$)/.test(root.split(':').pop() ?? '') ? 'an XML error response' : null;
+    // The root's local name only: a bounded slice keeps the match linear whatever the body holds.
+    const root = (/^<([\w.:-]{1,128})/.exec(body.slice(0, 256))?.[1] ?? '').split(':').pop() ?? '';
+    return /error|exception|fault|accessdenied/i.test(root) ? 'an XML error response' : null;
   }
-  if (body.startsWith('{') || body.startsWith('[')) {
-    let value: unknown;
-    try {
-      value = JSON.parse(text);
-    } catch (err) {
-      console.debug('[viewer_open_model] a small body starting like JSON is not JSON; left to the loader:', err);
-      return null;
-    }
-    return typeof value === 'object' && value !== null && !Array.isArray(value) && 'header' in value ? null : 'a JSON response';
+  if (!/^[{["]/.test(body)) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch (err) {
+    console.debug('[viewer_open_model] a small body starting like JSON is not JSON; left to the loader:', err);
+    return null;
   }
-  // Printable text only (a binary model has control bytes), led by a word that no text model starts with.
-  if (/^[A-Za-z"]/.test(body) && !TEXT_MODEL_HEADER.test(body) && !/[\x00-\x08\x0e-\x1f]/.test(text)) return 'a plain-text response';
-  return null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && 'header' in value ? null : 'a JSON response';
 }
 
 /**

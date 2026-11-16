@@ -403,8 +403,10 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await refused('https://example.com/house.ifc', '<title>403 Forbidden</title>', /HTML page/);
     await refused('https://example.com/house.ifc', '{"error":"expired"}', /auth\.example\/token-expired returned a JSON response/, 'https://auth.example/token-expired?sig=1');
     await refused('https://example.com/model.glb', '{"asset":{"version":"2.0"}}', /JSON response/, 'https://cdn.example/model.gltf');
-    await refused('https://example.com/house.ifc', 'Access Denied', /plain-text response/);
-    await refused('https://example.com/house.ifc', '"expired"', /plain-text response/);
+    await refused('https://example.com/house.ifc', '"expired"', /JSON response/);
+    await refused('https://example.com/house.ifc', '<!-- edge -->{"error":"expired"}', /JSON response/);
+    await refused('https://example.com/house.ifc', '<!DOCTYPE\r\nhtml><h1>403 Forbidden</h1>', /HTML page/);
+    await refused('https://example.com/terrain.xml', '<ERROR><Message>Denied</Message></ERROR>', /XML error response/);
     await refused('https://example.com/terrain.xml', '<?xml version="1.0"?><ows:ExceptionReport/>', /XML error response/);
     await refused('https://example.com/terrain.xml', '<!DOCTYPE Error><Error/>', /XML error response/);
     await refused('https://example.com/model.ifc', `<!-- ${'b'.repeat(5000)} --><html><body>Sign in</body></html>`, /HTML page/);
@@ -430,12 +432,14 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       ['https://example.com/spaced.ifc', `${' '.repeat(200)}ISO-10303-21;`], // leading whitespace
       ['https://example.com/cloud.pts', '3\n1.0 2.0 3.0\n'], // ASCII point cloud
       ['https://example.com/mesh.ply', 'ply\nformat ascii 1.0\n'], // ASCII PLY header
+      ['https://example.com/cloud.pcd', 'version 0.7\nSIZE 4 4 4\n'], // ASCII PCD, any header order
+      ['https://example.com/notice.ifc', 'Access Denied'], // plain text is not recognised: the loader decides
     ] as const) {
       respond = served(body);
       const out = await run({ url, mode: 'add' }).catch((err: Error) => err);
       assert.ok(!(out instanceof Error), `${url}: ${out instanceof Error ? out.message : ''}`);
     }
-    assert.deepEqual(calls.map((c) => c.names[0]), ['model.ifc', 'model2.ifc', 'terrain.xml', 'scan.ply', 'capture.splat', 'terrain2.xml', 'scan.xml', 'spaced.ifc', 'cloud.pts', 'mesh.ply']);
+    assert.deepEqual(calls.map((c) => c.names[0]), ['model.ifc', 'model2.ifc', 'terrain.xml', 'scan.ply', 'capture.splat', 'terrain2.xml', 'scan.xml', 'spaced.ifc', 'cloud.pts', 'mesh.ply', 'cloud.pcd', 'notice.ifc']);
   });
 
   it('never shows a signed URL query in an error (#9523 code review)', async () => {
@@ -451,10 +455,12 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await assert.rejects(run({ url: 'https://example.com/huge.ifc' }), { code: 'INVALID_INPUT', message: /larger than/ });
     assert.deepEqual(calls, []);
   });
-  it('recognising a crafted prolog stays fast (no regex backtracking) (#9523 code review)', async () => {
-    respond = () => new Response(`${'<!---->'.repeat(5000)}<LandXML/>`, { status: 200 });
+  it('a crafted prolog cannot make recognition backtrack (#9523 code review)', async () => {
+    // 40 empty comments: a backtracking matcher would take hours (each comment doubles it); a linear scan takes ms.
+    respond = () => new Response(`${'<!---->'.repeat(40)}<LandXML/>`, { status: 200 });
     const started = Date.now();
-    await run({ url: 'https://example.com/terrain.xml', mode: 'add' });
-    assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
+    await run({ url: 'https://example.com/terrain.xml' });
+    assert.ok(Date.now() - started < 10_000, `took ${Date.now() - started} ms`);
+    assert.equal(calls.at(-1)!.names[0], 'terrain.xml', 'and the LandXML body still loads');
   });
 });

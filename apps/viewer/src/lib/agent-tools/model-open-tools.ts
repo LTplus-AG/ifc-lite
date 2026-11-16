@@ -20,6 +20,7 @@ import { collectChangedModels, totalChangeCount } from '@/lib/export/model-chang
 import { isSupportedModelFile, PICKER_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { DEMO_KIT_PATHS, fetchSampleFile, waitForLoadIdle } from '@/lib/tours/demo-kit';
 import { getAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
+import { nonModelContentReason } from '@/hooks/ingest/nonModelContent';
 import { CALL_LIMITS } from '@/lib/agent-bridge/call-admission';
 import { assertGranted, fail, invalid, keys, oneOf, type ToolErrorCodeValue } from './tool-args';
 import type { AgentInputSchema, AgentTool, ToolCallContext, ToolOutput } from './types';
@@ -173,9 +174,8 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
   if (Number(res.headers.get('content-length')) > OPEN_MODEL_MAX_BYTES) refuse(tooLarge(source), ToolErrorCode.INVALID_INPUT);
   const file = await readLimited(res, source, name);
   if (file.size === 0) refuse(`${shown(source)} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
-  // The loader's own pre-reset check, run here too so the agent hears which URL served the error before
-  // anything else is checked (unexported edits, the grant).
-  const { nonModelContentReason } = await import('@/hooks/ingest/nonModelContent');
+  // The loader's own pre-reset check, run here too so the agent hears which URL served the error before the
+  // unexported-edits check and the grant recheck.
   const notAModel = await nonModelContentReason(file);
   if (notAModel) refuse(`${shown(source)} returned ${notAModel}, not a model. Nothing was loaded.`);
   return file;

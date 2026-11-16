@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { NON_MODEL_REASONS } from '@/hooks/ingest/nonModelContent';
+import { NON_MODEL_MESSAGE } from './non-model-reasons';
 
 /** Content refusals only: never generic SyntaxError, decoder bounds or I/O errors.
  * Header readers receive completed byte reads; interrupted HTTP ranges have
@@ -38,6 +38,5 @@ const CONTENT_REFUSALS = [
   /^(?:XYZ|PTS|CSV): file does not look like ASCII point data$/,
   /^Invalid IFCX file(?: "[^"\r\n]*")?: (?:JSON parse error - SyntaxError: [\s\S]+|missing or invalid header\.ifcxVersion)$/,
   /^Unknown file format\. Expected IFC \(STEP\) or IFCX \(JSON\)\.$/,
-  // #9523: built from the reasons themselves, so a reworded reason stays classified.
-  new RegExp(`^The file is (?:${Object.values(NON_MODEL_REASONS).map((r) => r.replace(/[.*+?^${'$'}{}()|[\]\\]/g, '\\$&')).join('|')}), not a model\\.$`),
+  NON_MODEL_MESSAGE, // #9523: built from the reasons themselves, so a reworded reason stays classified
 ];

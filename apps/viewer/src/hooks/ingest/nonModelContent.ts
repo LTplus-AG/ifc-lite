@@ -9,25 +9,13 @@
  * model format can be is recognised, and routing stays with the loaders.
  */
 
+import { NON_MODEL_REASONS, type NonModelReason } from '@/lib/non-model-reasons';
 import { headIsZip } from './sourceBuffers';
 
 /** Bodies up to this size are read whole to recognise a JSON or XML error response; HTML is looked for in this much of any body. */
 export const NON_MODEL_SCAN_BYTES = 64 * 1024;
 
-/** Every reason {@link nonModelContentReason} gives; the invalid-input classifier is built from these. */
-export const NON_MODEL_REASONS = {
-  html: 'an HTML page',
-  json: 'a JSON response',
-  ifcxHeader: 'a JSON document without an IFCX header.ifcxVersion',
-  xmlError: 'an XML error response',
-  notStep: 'text that is neither STEP nor an IFC ZIP',
-} as const;
-export type NonModelReason = (typeof NON_MODEL_REASONS)[keyof typeof NON_MODEL_REASONS];
-
-/** The message every refusal carries, matched by the invalid-input classifier. */
-export function nonModelContentMessage(reason: NonModelReason): string {
-  return `The file is ${reason}, not a model.`;
-}
+export { NON_MODEL_REASONS, nonModelContentMessage, type NonModelReason } from '@/lib/non-model-reasons';
 
 /**
  * `text` after its markup prolog: whitespace, processing instructions (`<?xml ?>`), comments and a DOCTYPE
@@ -40,7 +28,9 @@ export function afterProlog(text: string): string {
     while (at < text.length && /\s/.test(text[at])) at++;
     let close: string | null = text.startsWith('<?', at) ? '?>' : text.startsWith('<!--', at) ? '-->' : null;
     if (!close && /^<!doctype/i.test(text.slice(at, at + 9))) {
-      if (/^<!doctype\s*html\b/i.test(text.slice(at, at + 1024))) return text.slice(at); // HTML's doctype is the document
+      let name = at + 9;
+      while (name < text.length && /\s/.test(text[name])) name++;
+      if (/^html\b/i.test(text.slice(name, name + 5))) return text.slice(at); // HTML's doctype is the document
       const gt = text.indexOf('>', at), subset = text.indexOf('[', at);
       close = subset !== -1 && (gt === -1 || subset < gt) ? ']>' : '>';
     }
@@ -60,33 +50,49 @@ const XML_ERROR_SUFFIX = /(?:Error|Exception|Fault)(?:Report|Response)?$/;
  * Why `file` is an error response rather than a model (`null` when it may be a model). Text only (binary content
  * is left to the loaders): an HTML page; for a small body, JSON that is not an IFCX document (whose
  * `header.ifcxVersion` names IFCX) or XML whose root is an error element; under an IFC name (.ifc, .ifczip),
- * text that never mentions STEP's ISO-10303-21. `scan`, when given, is the file's first
+ * text that does not start (after whitespace and comments) like STEP. `scan`, when given, is the file's first
  * {@link NON_MODEL_SCAN_BYTES} bytes, so a caller that already read them is not read twice.
  */
 export async function nonModelContentReason(file: File, scan?: ArrayBuffer): Promise<NonModelReason | null> {
   const buffer = scan ?? await file.slice(0, NON_MODEL_SCAN_BYTES).arrayBuffer();
   const bytes = new Uint8Array(buffer);
   if (bytes.length === 0 || headIsZip(buffer)) return null;
-  // A control byte in the first 512 means binary: no text rule applies (a headerless .splat can start with '<').
-  if (bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32))) return null;
   const text = new TextDecoder().decode(bytes);
   const body = afterProlog(text);
-  if (HTML_START.test(body)) return NON_MODEL_REASONS.html;
+  // A control byte in the first 512 means binary, so only a full HTML document start (doctype or <html>) counts:
+  // a headerless .splat can start with '<a '.
+  const binary = bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32));
+  if (binary ? /^<(?:!doctype\s*html|html)[\s>]/i.test(body) : HTML_START.test(body)) return NON_MODEL_REASONS.html;
+  if (binary) return null;
   const whole = file.size <= NON_MODEL_SCAN_BYTES;
   if (whole && body.startsWith('<')) {
     const root = (/^<([\w.:-]{1,128})/.exec(body.slice(0, 256))?.[1] ?? '').split(':').pop() ?? '';
     if (XML_ERROR_NAMES.has(root.toLowerCase()) || XML_ERROR_SUFFIX.test(root)) return NON_MODEL_REASONS.xmlError;
   }
   if (whole && /^[{["]/.test(body)) {
-    const reason = jsonReason(body);
+    const reason = jsonReason(body, /\.ifcx$/i.test(file.name));
     if (reason) return reason;
   }
-  // Under an IFC name the loader treats unknown content as STEP; every STEP file names ISO-10303-21 near its start.
-  if (/\.(?:ifc|ifczip)$/i.test(file.name) && !/^\s*[{[]/.test(text) && !/ISO[- ]10303-21/.test(text)) return NON_MODEL_REASONS.notStep;
+  // Under an IFC name the loader treats unknown content as STEP. STEP starts with ISO (the format router's own
+  // test), after whitespace and any comments; JSON goes to the IFCX loader; blank content is the loader's to judge.
+  const lead = afterStepComments(text);
+  if (/\.(?:ifc|ifczip)$/i.test(file.name) && lead.length > 0 && !/^iso/i.test(lead) && !/^[{[]/.test(lead)) return NON_MODEL_REASONS.notStep;
   return null;
 }
 
-function jsonReason(body: string): NonModelReason | null {
+/** `text` after leading whitespace and STEP comments; linear. */
+function afterStepComments(text: string): string {
+  let at = 0;
+  for (;;) {
+    while (at < text.length && /\s/.test(text[at])) at++;
+    if (!text.startsWith('/*', at)) return text.slice(at);
+    const end = text.indexOf('*/', at + 2);
+    if (end === -1) return '';
+    at = end + 2;
+  }
+}
+
+function jsonReason(body: string, ifcxName: boolean): NonModelReason | null {
   let value: unknown;
   try {
     value = JSON.parse(body);
@@ -96,5 +102,7 @@ function jsonReason(body: string): NonModelReason | null {
   }
   if (typeof value !== 'object' || value === null || Array.isArray(value) || !('header' in value)) return NON_MODEL_REASONS.json;
   const header = (value as { header?: { ifcxVersion?: unknown } }).header;
-  return typeof header?.ifcxVersion === 'string' && header.ifcxVersion.toLowerCase().includes('ifcx') ? null : NON_MODEL_REASONS.ifcxHeader;
+  if (typeof header?.ifcxVersion === 'string' && header.ifcxVersion.toLowerCase().includes('ifcx')) return null;
+  // Only an .ifcx name makes a header-shaped JSON plausibly a broken IFCX document; anywhere else it is an API envelope.
+  return ifcxName ? NON_MODEL_REASONS.ifcxHeader : NON_MODEL_REASONS.json;
 }

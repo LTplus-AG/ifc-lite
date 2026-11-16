@@ -1,8 +1,8 @@
 --- a/apps/viewer/src/hooks/useIfcLoader.ts
 +++ b/apps/viewer/src/hooks/useIfcLoader.ts
-@@ -694,7 +694,7 @@
+@@ -706,7 +706,7 @@
          loadStage = 'server-fetch';
-         return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId, initializeModel), isStale, completeServerLoad);
+         return handleServerLoadAttempt(() => loadFromServer(file, source, () => isStale(), metadataAbort.signal, modelId, initialized ? undefined : initializeModel), isStale, completeServerLoad);
        };
 -      localAdmission.setServer(async parsedBytes => !file.name.endsWith('ZIP') && !serverAttempted && target.kind === 'primary' && !useViewerStore.getState().mergeLayers && serverUploadsEnabled() && geometryKernel.serverEnabled
 +      localAdmission.setServer(async parsedBytes => !serverAttempted && target.kind === 'primary' && !useViewerStore.getState().mergeLayers && serverUploadsEnabled() && geometryKernel.serverEnabled

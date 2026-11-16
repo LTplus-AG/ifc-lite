@@ -49,7 +49,7 @@ import { basename, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { writeDenseIfc } from './gen-dense-ifc.mjs';
-import { DIALOG_BUTTONS, GENERIC_MODEL_ERROR, MEMORY_WARNING, classify, cpuGeometrySummary, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { DIALOG_BUTTONS, GENERIC_MODEL_ERROR, MEMORY_WARNING, classify, sampleCpuGeometry, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
 import { GPU_ARGS } from './retained-qual-browser.mjs';
 import { chromePids, memoryOf } from './scenoptic-bench-sampling.mjs';
 import { openAndWaitInteractive, openViewerPage, startViewerServer } from './viewer-load-probe.mjs';
@@ -229,8 +229,10 @@ export async function runProbe(opts) {
         const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 15000, () => null);
         if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
         if (st && ++polls % CPU_GEOMETRY_EVERY === 0) {
-          const held = cpuGeometrySummary(await withTimeout(page.evaluate(CPU_GEOMETRY_PROBE).catch(() => null), 15000, () => null), st.tris);
-          if (held) log({ t: (Date.now() - t0) / 1000, cpuGeometryHeld: held, pssMiB: lastPssMiB === null ? null : Math.round(lastPssMiB) });
+          const measurement = await sampleCpuGeometry(() => page.evaluate(CPU_GEOMETRY_PROBE), st.tris, 15000);
+          log({ t: (Date.now() - t0) / 1000, cpuGeometryMeasurement: measurement.status,
+            ...(measurement.held ? { cpuGeometryHeld: measurement.held } : { diagnosticError: measurement.error }),
+            pssMiB: lastPssMiB === null ? null : Math.round(lastPssMiB) });
         }
         if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? GENERIC_MODEL_ERROR; return; }
         if (obs.decision === 'none') {
@@ -271,7 +273,11 @@ export async function runProbe(opts) {
       if (obs.interactive) {
         // Settled figure next to summed process memory: a few sampler ticks after interactive so PSS reflects it.
         await new Promise((r) => setTimeout(r, 3000));
-        const held = cpuGeometrySummary(await withTimeout(page.evaluate(CPU_GEOMETRY_PROBE).catch(() => null), 30000, () => null), last?.tris ?? 0);
+        const measurement = await sampleCpuGeometry(() => page.evaluate(CPU_GEOMETRY_PROBE), last?.tris ?? 0, 30000);
+        result.cpuGeometryMeasurement = measurement.status;
+        if (measurement.error) result.cpuGeometryError = measurement.error;
+        log({ t: (Date.now() - t0) / 1000, settled: true, cpuGeometryMeasurement: measurement.status, diagnosticError: measurement.error });
+        const held = measurement.held;
         if (held) {
           result.cpuGeometryHeld = { ...held, settledPssMiB: lastPssMiB === null ? null : Math.round(lastPssMiB) };
           log({ t: (Date.now() - t0) / 1000, settled: true, cpuGeometryHeld: result.cpuGeometryHeld });

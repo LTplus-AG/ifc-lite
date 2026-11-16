@@ -296,3 +296,17 @@ export function cpuGeometrySummary(held, triangles) {
   return { totalMiB: mib(held.totalBytes), totalBytes: held.totalBytes, buffers: held.buffers, sharedMiB: mib(held.sharedBytes ?? 0), byKindMiB, owners,
     bytesPerTriangle: triangles > 0 ? Math.round((held.totalBytes / triangles) * 10) / 10 : null, walkMs: Math.round(held.walkMs ?? 0) };
 }
+
+
+// Keep diagnostic failure distinct from a viewer version without the hook (#10506).
+export async function sampleCpuGeometry(evaluate, triangles, timeoutMs) {
+  try {
+    return await withTimeout(Promise.resolve().then(evaluate).then(raw => {
+      if (raw === null || raw === undefined) return { status: 'unavailable' };
+      const held = cpuGeometrySummary(raw, triangles);
+      return held ? { status: 'available', held } : { status: 'error', error: 'Invalid CPU geometry diagnostic result' };
+    }), timeoutMs, () => ({ status: 'timeout' }));
+  } catch (error) {
+    return { status: 'error', error: error instanceof Error ? error.message : String(error) };
+  }
+}

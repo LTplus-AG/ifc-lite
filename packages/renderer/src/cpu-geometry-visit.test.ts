@@ -54,6 +54,30 @@ describe('scene CPU geometry walk (#10264)', () => {
     walk();
     assert.equal(calls.filter(entry => entry.owner === 'scene.fragmentPieces' || entry.owner === 'scene.streamWork').reduce((sum, entry) => sum + entry.bytes, 0), 0);
   });
+  it('counts a built batch snapshot after its bucket drops the mesh (#10506)', async () => {
+    const { visitSceneCpuGeometry } = await load();
+    const retained = mesh(3);
+    const batch = { id: 90 } as Parameters<StreamingFragmentPieces['record']>[0];
+    const fragments = new StreamingFragmentPieces();
+    const bucket = { batchedMesh: batch, meshData: [retained] };
+    fragments.recordBuilt(bucket);
+    bucket.meshData.length = 0;
+    const source = {
+      buckets: new Map(), meshDataMap: new Map(), meshQueue: [], meshQueueReadIndex: 0,
+      instancedTemplateCpu: [], texturedMeshes: [], texturedSources: new WeakMap(),
+      fragmentPieces: fragments, streamWork: new StreamAssembly(),
+    };
+    const buffers = new Set<ArrayBufferLike>();
+    visitSceneCpuGeometry(source, (_owner, array) => buffers.add(array.buffer));
+    assert.ok(buffers.has(retained.positions.buffer));
+    assert.ok(buffers.has(retained.normals.buffer));
+    assert.ok(buffers.has(retained.indices.buffer));
+    fragments.retainOnly([]);
+    buffers.clear();
+    visitSceneCpuGeometry(source, (_owner, array) => buffers.add(array.buffer));
+    assert.equal(buffers.size, 0);
+  });
+
   it('visits each holder, the queue from its read index, and a colour-merged mesh once', async () => {
     const { visitSceneCpuGeometry } = await load();
     const a = mesh(3), merged = mesh(3, { entityIds: new Uint32Array(3) }), queued = [mesh(1), mesh(2)];

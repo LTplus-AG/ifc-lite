@@ -6,7 +6,7 @@ The viewer keeps the CPU copy of every flat mesh (`positions`, `normals`, `indic
 
 ## The figure: CPU geometry held
 
-`__ifc_lite_cpu_geometry_held__()` (installed with the other viewport debug hooks in `apps/viewer/src/lib/viewport-debug-hooks.ts`) walks the typed-array geometry and index buffers held by the listed store, scene, and raycast-index owners. It includes streaming `fragmentPieces` and `streamWork` arrays under `scene.fragmentPieces` and `scene.streamWork`; these are released from that owner at finalize. It returns:
+`__ifc_lite_cpu_geometry_held__()` (installed with the other viewport debug hooks in `apps/viewer/src/lib/viewport-debug-hooks.ts`) walks the typed-array geometry and index buffers held by the listed store, scene, and raycast-index owners. It includes streaming `fragmentPieces` and `streamWork` arrays under `scene.fragmentPieces` and `scene.streamWork`; transient records are released at finalize; built-batch snapshots remain counted until their batch records retire. It returns:
 
 | Field | Meaning |
 |---|---|
@@ -170,3 +170,5 @@ S1 (GPU pick that draws the existing batches) is the first consumer to move off 
 - On the ephemeral path flat entities have no world box at all, so S1 cannot fall back to box picks there. It must answer from the GPU, or S4 must keep per-entity boxes.
 - The pick lane carries the entity, not the representation item (`geometryItemId`); item-level picks need the open question in the design note answered.
 - Hide / isolate (S2) is the stage that must land before any release: today's failure mode there is visible geometry disappearing, which is worse than the note assumed.
+
+Probe diagnostic status: samples and settled results report cpuGeometryMeasurement as available, unavailable (viewer has no hook), error (with a diagnostic message), or timeout. A failed walk is never silently treated as an absent hook. scene.fragmentPieces includes retained built-batch snapshots and its drawn-mesh memo, even when a bucket no longer holds those arrays.

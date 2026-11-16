@@ -16,6 +16,7 @@
  */
 
 import { cached, structuralDataOf } from '../lib/packages.mjs';
+import { isStructuralItem } from '../lib/step.mjs';
 import { equal, normalize, show, verdict } from '../lib/values.mjs';
 
 const NO_FIELD = Symbol('no field');
@@ -55,18 +56,18 @@ function referenceValues(got, raw, step, types) {
   return got;
 }
 
-/** A STEP record of a structural item (member or connection, including the varying subtypes). */
-export const isStructuralItem = (e) => Boolean(e) && /^IFCSTRUCTURAL(CURVE|SURFACE|POINT)(MEMBER|CONNECTION)/.test(e.type);
-
 /** Relationship end attributes and how the read model is expected to carry the link, by catalogue root. */
 const LINKS = {
   IfcRelConnectsStructuralMember: ['RelatingStructuralMember', 'RelatedStructuralConnection', ({ ix, a, b }) => ix.byGuid.get(a)?.connectionGlobalIds?.includes(b) && ix.byGuid.get(b)?.memberGlobalIds?.includes(a)],
   IfcRelConnectsStructuralActivity: ['RelatingElement', 'RelatedStructuralActivity',
     // Some writers swap the two ends (portal-demo.ifc); the read model carries the link either way.
-    // A physical IfcElement end is not in the structural read model, so only a structural item end is checked.
-    ({ ix, a, b, rawA, rawB, step }) => [[a, b, rawA], [b, a, rawB]].some(([item, activity, rawItem]) => item
-      && ix.byGuid.get(activity)?.appliesToGlobalId === item
-      && (!isStructuralItem(step.get(rawItem)) || ix.byGuid.get(item)?.activityGlobalIds?.includes(activity)))],
+    // A physical IfcElement end is not in the structural read model and is exempt from the item-side check;
+    // a structural item or an unresolved reference is not.
+    ({ ix, a, b, rawA, rawB, step }) => [[a, b, rawA], [b, a, rawB]].some(([item, activity, rawItem]) => {
+      if (!item || ix.byGuid.get(activity)?.appliesToGlobalId !== item) return false;
+      const end = step.get(rawItem);
+      return (end && !isStructuralItem(end)) || Boolean(ix.byGuid.get(item)?.activityGlobalIds?.includes(activity));
+    })],
   // IFC2X3 only: the member carries the physical element's model-local id.
   IfcRelConnectsStructuralElement: ['RelatingElement', 'RelatedStructuralMember', ({ ix, b, rawA }) => ix.byGuid.get(b)?.physicalElementIds?.includes(rawA?.ref)],
 };

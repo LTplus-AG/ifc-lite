@@ -132,3 +132,6 @@ export function readStep(text) {
     count: (type) => of(type).length,
   };
 }
+
+/** A STEP record of a structural item: a member or connection, including the varying subtypes. */
+export const isStructuralItem = (e) => Boolean(e) && /^IFCSTRUCTURAL(CURVE|SURFACE|POINT)(MEMBER|CONNECTION)/.test(e.type);

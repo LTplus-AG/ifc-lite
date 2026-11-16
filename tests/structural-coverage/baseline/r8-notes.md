@@ -24,6 +24,6 @@ The same product source and complete, checksum-verified corpus scored 105/119 ro
 `node --test scripts/structural-read-observation.test.mjs` against the original `read.mjs`: four existing tests pass, both new tests fail (`fail` where `pass` is expected). Against the corrected probe: all six pass.
 
 - `#9668 read indexes subsequent loads recursively and still rejects wrong or missing values`: checks direct subsequent loads and configuration descendants, with wrong-value and absent-load controls.
-- `#9668 read accepts normalized activity links in either STEP orientation and rejects unrelated ends`: checks both orientations, with wrong-target, absent-activity, item-end-missing-link and dropped-structural-item controls, plus a physical-element end that passes.
+- `#9668 read accepts normalized activity links in either STEP orientation and rejects unrelated ends`: checks both orientations, with wrong-target, absent-activity, item-end-missing-link dropped-structural-item and dangling-reference controls, plus a physical-element end that passes.
 
 Tests exercise the probe's observable verdicts using stated invariants and schema-positioned STEP records; no product source or fixture was changed.

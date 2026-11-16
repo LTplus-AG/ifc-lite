@@ -101,8 +101,12 @@ test('#9668 read accepts normalized activity links in either STEP orientation an
     rejects(await run(swapped, { target: 'other' }), 'link');
     rejects(await run(swapped, { activity: false }), 'link');
     rejects(await run(swapped, { itemActivities: [] }), 'link');
-    // A structural item the read model dropped still fails; a physical element end is exempt.
+    // A structural item the read model dropped still fails.
     rejects(await run(swapped, { item: false }), 'link');
-    assert.equal((await run(swapped, { item: false, itemType: 'IFCBEAM' })).status, 'pass');
   }
+  // A physical element end is not in the structural read model and is exempt; a dangling end is not.
+  assert.equal((await run(false, { item: false, itemType: 'IFCBEAM' })).status, 'pass');
+  rejects(await check('IfcRelConnectsStructuralActivity', [], { RelatingElement: '#9', RelatedStructuralActivity: '#3' },
+    { ...empty(), activities: [{ expressId: 3, type: 'IfcStructuralPointAction', globalId: 'activity', appliesToGlobalId: '#9' }] },
+    "#3=IFCSTRUCTURALPOINTACTION('activity');", 'IFC4X3'), 'link');
 });

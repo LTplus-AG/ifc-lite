@@ -40,7 +40,10 @@ describe('site frame', () => {
     expect(new Set(chunks.map((f) => f.origin.join())).size).toBe(chunks.length);
     for (const f of chunks) {
       expect(f.origin[2]).toBe(doc.origin[2]);
-      for (const v of f.mesh!.positions) expect(Math.abs(v)).toBeLessThanOrEqual(64 + 50);
+      // One assertion per chunk, not one per coordinate (120 000 expect calls took 1.7 s).
+      let largest = 0;
+      for (const v of f.mesh!.positions) largest = Math.max(largest, Math.abs(v));
+      expect(largest).toBeLessThanOrEqual(64 + 50);
     }
   });
 });

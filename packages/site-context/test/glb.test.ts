@@ -4,13 +4,15 @@
 
 /** The GLB format: exact round trip, plain-glTF readability and lossless origins. */
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { resolveCrs } from '@ifc-lite/geo';
 import { buildSiteContext } from '../src/build.js';
 import { decodeSiteContextGlb, SiteContextFormatError } from '../src/glb-decode.js';
 import { encodeSiteContextGlb } from '../src/glb-encode.js';
 import type { GltfJson } from '../src/glb-format.js';
 import { paraboloid, stubGeodata } from './stub-geodata.js';
 import { prismFeature, stubReader } from './tiles-support.js';
+import { expectSameDocument } from './same-document.js';
 
 async function sampleDoc() {
   return buildSiteContext({
@@ -34,11 +36,29 @@ function gltfJson(glb: Uint8Array): GltfJson {
 }
 
 describe('site-context GLB', () => {
+  // One-time setup outside the tests' 5 s budget: @ifc-lite/geo builds its EPSG:2056 transformer on
+  // first use (about 0.24 s locally, warm disk). 30 s is generous on purpose: this is not a
+  // performance check, only a guard against a hang.
+  beforeAll(async () => {
+    await resolveCrs({ epsg: 2056 });
+  }, 30_000);
+
   it('decodes to exactly the document it was encoded from', async () => {
     const doc = await sampleDoc();
     expect(doc.layers.map((l) => l.issues.length).reduce((a, b) => a + b)).toBeGreaterThan(0);
     const back = decodeSiteContextGlb(encodeSiteContextGlb(doc));
-    expect(back).toEqual(doc);
+    expectSameDocument(back, doc);
+  });
+
+  it('the exact comparison still sees one flipped bit in a mesh and one changed attribute', async () => {
+    const doc = await sampleDoc();
+    const flipped = decodeSiteContextGlb(encodeSiteContextGlb(doc));
+    const positions = flipped.layers[0].features[0].mesh!.positions;
+    new Uint8Array(positions.buffer, positions.byteOffset, 4)[0] ^= 1;
+    expect(() => expectSameDocument(flipped, doc)).toThrow(/typed array/);
+    const renamed = decodeSiteContextGlb(encodeSiteContextGlb(doc));
+    renamed.layers[0].features[0].name += ' ';
+    expect(() => expectSameDocument(renamed, doc)).toThrow();
   });
 
   it('is a valid plain glTF 2.0 binary: header, chunks, one node per feature, POSITION bounds', async () => {
@@ -135,7 +155,7 @@ describe('site-context GLB', () => {
     old.set(padded, 20);
     old.set(bin, 20 + padded.length);
     const back = decodeSiteContextGlb(old);
-    expect(back.layers[0]).toEqual(doc.layers[0]);
+    expectSameDocument(back.layers[0], doc.layers[0]);
     expect(back.layers[2].features.map((f) => [f.subject, f.mesh!.parts, f.mesh!.indices.length])).toEqual(
       doc.layers[2].features.map((f) => [undefined, undefined, f.mesh!.indices.length]),
     );

@@ -271,3 +271,12 @@ export function getEffectiveGeoreference(
     transformMatrix: original?.transformMatrix,
   };
 }
+
+/** Display suffix for the map unit declared by an IfcProjectedCRS. */
+export function mapUnitDisplaySuffix(unit: string | undefined): 'm' | 'ftUS' | 'ft' {
+  const mapUnit = unit?.toUpperCase();
+  if (!mapUnit) return 'm';
+  if (mapUnit.includes('US') && mapUnit.includes('FOOT')) return 'ftUS';
+  if (mapUnit.includes('FOOT') || mapUnit.includes('FEET')) return 'ft';
+  return 'm';
+}

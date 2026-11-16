@@ -30,6 +30,7 @@ import { computeOrthogonalHeightForBaseAltitude } from '@/lib/geo/cesium-placeme
 import {
   detectScaleUnitMismatch,
   mergeMapConversion,
+  mapUnitDisplaySuffix,
   mergeProjectedCRS,
   resolveEpsetMapUnitScale,
   supportsStandardGeoreferencing,
@@ -142,13 +143,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     );
   }, [mergedConversion, mergedCRS, coordinateInfo, lengthUnitScale]);
 
-  const mapUnitSuffix = useMemo(() => {
-    const mapUnit = mergedCRS?.mapUnit?.toUpperCase();
-    if (!mapUnit) return 'm';
-    if (mapUnit.includes('US') && mapUnit.includes('FOOT')) return 'ftUS';
-    if (mapUnit.includes('FOOT') || mapUnit.includes('FEET')) return 'ft';
-    return 'm';
-  }, [mergedCRS?.mapUnit]);
+  const mapUnitSuffix = mapUnitDisplaySuffix(mergedCRS?.mapUnit);
 
   /**
    * Given a target world altitude (metres) for the model's ground floor

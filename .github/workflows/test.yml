@@ -587,6 +587,8 @@ jobs:
               # scripts/generate-enum-reconciliation.mjs checks this generated ledger (#5365).
               - 'docs/architecture/schema-enum-reconciliation.md'
             geometry:
+              - 'scripts/ci-rust-metrics.mjs'
+              - 'scripts/ci-rust-metrics.test.mjs'
               - 'rust/geometry/**'
               - 'rust/core/**'
               - 'rust/processing/**'

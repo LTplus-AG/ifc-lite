@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 import { isInvalidInputError } from '@/lib/invalid-input-errors';
 import { NON_MODEL_REASONS, nonModelContentMessage } from '@/lib/non-model-reasons';
-import { afterProlog, nonModelContentReason } from './nonModelContent';
+import { afterProlog, nonModelContentReason, textStartsLikeStep } from './nonModelContent';
 import { FORMAT_HEAD_BYTES } from './sourceBuffers';
 
 const step = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
@@ -49,6 +49,7 @@ it('#9523 recognises error responses under any model name', async () => {
     ['<ERROR><Message>Denied</Message></ERROR>', 'terrain.xml', /XML error response/],
     ['<!DOCTYPE Error [<!ENTITY x "a>b">]><Error/>', 'terrain.xml', /XML error response/],
     ['Access Denied', 'house.ifc', /neither STEP/],
+    [new Uint8Array([0xff, 0xfe, ...Array.from('Access denied').flatMap((c) => [c.charCodeAt(0), 0])]), 'house.ifc', /neither STEP/],
     ['nope', 'pack.ifczip', /neither STEP/],
   ];
   for (const [body, name, expected] of cases) assert.match(String(await reason(body, name)), expected, `${name}: ${String(body).slice(0, 40)}`);
@@ -107,4 +108,9 @@ it('#9523 refusals are classified as invalid input, not crashes', () => {
   for (const r of Object.values(NON_MODEL_REASONS)) {
     assert.equal(isInvalidInputError(new Error(nonModelContentMessage(r)), nonModelContentMessage(r)), true, r);
   }
+});
+
+it('#9523 textStartsLikeStep: the shared STEP rule, past whitespace and comments', () => {
+  for (const text of ['ISO-10303-21;', '  /* x */ ISO-10303-21;', 'iso 10303-21;', 'ISO10303-21;']) assert.equal(textStartsLikeStep(text), true, text);
+  for (const text of ['/* unterminated ISO-10303-21;', 'Isolation failure', '', 'Error: expected ISO-10303-21']) assert.equal(textStartsLikeStep(text), false, text);
 });

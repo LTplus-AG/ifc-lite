@@ -42,3 +42,18 @@ it('#9523 still admits STEP (also behind leading whitespace) and ZIP sources', a
     assert.deepEqual(failures, [], file.name);
   }
 });
+
+it('#9523 a load superseded before the content check reads no further and reports nothing', async () => {
+  const file = new File([`{"error":"expired"}${' '.repeat(100_000)}`], 'house.ifc');
+  let reads = 0;
+  const realSlice = file.slice.bind(file);
+  Object.defineProperty(file, 'slice', { value: (start?: number, end?: number) => { reads++; return realSlice(start, end); } });
+  const failures: unknown[] = [];
+  let finished = 0;
+  const admission = createLocalIfcLoadAdmission(file, { isCurrent: () => false, signal: new AbortController().signal,
+    onCancel: () => assert.fail('no consent prompt expected'), onFailure: (error) => failures.push(error), finish: () => { finished++; } });
+  assert.equal(await admission.preflight(), null);
+  assert.equal(reads, 1, 'only the 4 KiB head was read');
+  assert.deepEqual(failures, [], 'a stale load reports nothing');
+  assert.equal(finished, 1);
+});

@@ -71,7 +71,10 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const encoding = utf16Encoding(bytes);
   if (encoding) {
     // A UTF-16 document (an IIS/.NET error page) has NUL bytes but is text: judge it decoded.
-    return HTML_START.test(afterProlog(new TextDecoder(encoding).decode(await readScan(file, first)))) ? NON_MODEL_REASONS.html : null;
+    const decoded = new TextDecoder(encoding).decode(await readScan(file, first));
+    if (HTML_START.test(afterProlog(decoded))) return NON_MODEL_REASONS.html;
+    // The STEP parser reads single-byte text, so UTF-16 content under an IFC name is never STEP it can open.
+    return ifcName ? NON_MODEL_REASONS.notStep : null;
   }
   const headText = new TextDecoder().decode(first); // drops a UTF-8 BOM
   const firstChar = headText.trimStart()[0] ?? '';

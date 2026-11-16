@@ -229,7 +229,8 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   }));
   const stack = files.length > 1;
   const name = stack ? 'the layer stack' : files[0].name;
-  const couldNotLoad = (reason: string): never => fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${reason}`);
+  // A declaration, not a const arrow: TypeScript only ends control flow at calls to declared `never` functions.
+  function couldNotLoad(reason: string): never { return fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${reason}`); }
   let loadError: string | undefined;
   const onError = (message: string) => { loadError = message; };
   // A replace runs under an id chosen here; an add reports its id.

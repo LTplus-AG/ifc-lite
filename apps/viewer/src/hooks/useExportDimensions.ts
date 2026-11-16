@@ -22,13 +22,10 @@ export type ExportDimensionGraphics = (paperScale: number, flip: SectionAxis | {
  * now drawn (`exportableDimensions`), formatted with the viewer's length unit.
  * Dimensions drawn on another cut are left out of every export.
  */
-export function useExportDimensionGraphics(measurements: readonly {
+export function createExportDimensionGraphics(measurements: readonly {
   id: string; start: { x: number; y: number }; end: { x: number; y: number }; distance: number;
-}[]): ExportDimensionGraphics {
-  const dimensions2D = useViewerStore((s) => s.dimensions2D);
-  const plane = useViewerStore((s) => s.drawing2DPlane);
-  const overrides = useViewerStore((s) => s.unitDisplayOverrides);
-  return useMemo(() => {
+}[], state = useViewerStore.getState()): ExportDimensionGraphics {
+  const { dimensions2D, drawing2DPlane: plane, unitDisplayOverrides: overrides } = state;
     const dimensions = exportableDimensions(dimensions2D, plane);
     const format = (metres: number) => formatDimensionValue(metres, overrides);
     return (paperScale, flip) => dimensionGraphicsList([
@@ -40,7 +37,15 @@ export function useExportDimensionGraphics(measurements: readonly {
       format,
       flip: typeof flip === 'string' ? axisFlipForSection(flip) : flip,
     });
-  }, [dimensions2D, plane, overrides, measurements]);
+}
+
+export function useExportDimensionGraphics(measurements: readonly {
+  id: string; start: { x: number; y: number }; end: { x: number; y: number }; distance: number;
+}[]): ExportDimensionGraphics {
+  const dimensions2D = useViewerStore((s) => s.dimensions2D);
+  const plane = useViewerStore((s) => s.drawing2DPlane);
+  const overrides = useViewerStore((s) => s.unitDisplayOverrides);
+  return useMemo(() => createExportDimensionGraphics(measurements), [dimensions2D, plane, overrides, measurements]);
 }
 
 /** How many dimensions every export leaves out because they were drawn on another cut. */

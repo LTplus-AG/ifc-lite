@@ -5,6 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 import { EntityFlags, IfcTypeEnum } from '@ifc-lite/data';
+import { DEFAULT_SECTION_CONFIG, type Drawing2D } from '@ifc-lite/drawing-2d';
 import type { ListDefinition } from '@ifc-lite/lists';
 import type { Lens } from '@ifc-lite/lens';
 import { createBimContext } from '@ifc-lite/sdk';
@@ -24,6 +25,11 @@ import { analyticsCostScheduleOperations } from './analytics-cost-schedule';
 import { analyticsDrawingAppearanceOperations } from './analytics-drawing-appearance';
 import { analyticsScheduleEditOperations } from './analytics-schedule-edit';
 import { analyticsAppearanceOperations } from './analytics-appearance';
+import { analyticsDrawingExportOperations } from './analytics-drawing-export';
+import { analyticsChartReportOperations } from './analytics-chart-report';
+import { analyticsMeasurementSettingOperations } from './analytics-measurement-settings';
+import { analyticsAppearanceSettingOperations } from './analytics-appearance-settings';
+import { analyticsDrawingSettingOperations } from './analytics-drawing-settings';
 import { analyticsPresentationOperations } from './analytics-presentation';
 import { analyticsSchedulePlaybackOperations } from './analytics-schedule-playback';
 import { analyticsScheduleGenerateOperations } from './analytics-schedule-generate';
@@ -34,7 +40,7 @@ import { blankDocument } from '@/lib/document/presets';
 import { modelOverviewDashboard } from '@/lib/charts/presets';
 import { listRunDefinition, listRunModels } from '@/lib/lists/run-provenance';
 
-const entries = [...analyticsListOperations, ...analyticsChartOperations, ...analyticsLensOperations, ...analyticsMeasurementOperations, ...analyticsDocumentOperations, ...analyticsCostScheduleOperations, ...analyticsDrawingAppearanceOperations, ...analyticsScheduleEditOperations, ...analyticsAppearanceOperations, ...analyticsScheduleGenerateOperations, ...analyticsDrawingMarkupOperations, ...analyticsDrawingSheetOperations, ...analyticsSchedulePlaybackOperations, ...analyticsPresentationOperations];
+const entries = [...analyticsListOperations, ...analyticsChartOperations, ...analyticsLensOperations, ...analyticsMeasurementOperations, ...analyticsDocumentOperations, ...analyticsCostScheduleOperations, ...analyticsDrawingAppearanceOperations, ...analyticsScheduleEditOperations, ...analyticsAppearanceOperations, ...analyticsScheduleGenerateOperations, ...analyticsDrawingMarkupOperations, ...analyticsDrawingSheetOperations, ...analyticsSchedulePlaybackOperations, ...analyticsPresentationOperations, ...analyticsDrawingExportOperations, ...analyticsChartReportOperations, ...analyticsMeasurementSettingOperations, ...analyticsAppearanceSettingOperations, ...analyticsDrawingSettingOperations];
 let context: OperationContext;
 async function seed(count: 1 | 2 = 1) {
   resetFeaturesForTest(); await seedCoincidentWalls(count, 4);
@@ -203,6 +209,45 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     await new Promise(resolve => setTimeout(resolve, 10));
     await run('presentation.stop'); const result = await pending;
     assert.equal(result.state, 'cancelled'); assert.equal(result.played, 1); assert.equal(useViewerStore.getState().activeBasketViewId, id);
+  });
+
+  it('exports real composed SVG/DXF/raw PDF and native sheet SVG without mounting a Drawing panel', async () => {
+    const drawing: Drawing2D = { config: { ...DEFAULT_SECTION_CONFIG, plane: { axis: 'y', position: 0, flipped: false }, scale: 100 },
+      lines: [{ line: { start: { x: 0, y: 0 }, end: { x: 4, y: 0 } }, category: 'projection', visibility: 'visible', entityId: 1, ifcType: 'IfcWall', modelIndex: 0, depth: 0 }],
+      cutPolygons: [], projectionPolygons: [], bounds: { min: { x: 0, y: -1 }, max: { x: 4, y: 2 } },
+      stats: { cutLineCount: 0, projectionLineCount: 1, hiddenLineCount: 0, silhouetteLineCount: 0, polygonCount: 0, totalTriangles: 0, processingTimeMs: 0 } };
+    const plane = { axis: 'down' as const, position: 50, flipped: false };
+    useViewerStore.setState({ drawing2D: drawing, drawing2DStatus: 'ready', drawing2DPlane: plane, sheetEnabled: false, activeSheet: null,
+      dxfUnderlays: [], appearanceReferences: new Map(), textAnnotations2D: [], cloudAnnotations2D: [], polygonArea2DResults: [], measure2DResults: [],
+      dimensions2D: [{ id: 'on-cut', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 0.5, orientation: 'aligned', plane }],
+      drawing2DDisplayOptions: { ...useViewerStore.getState().drawing2DDisplayOptions, showScanSection: false } });
+    const { model: _model, ...viewerContext } = context;
+    for (const format of ['svg', 'dxf', 'pdf'] as const) {
+      const result = await run<{ artifact: { artifact_id: string; bytes: number } }>('drawing.export', { format, use_display_scale: false, scale: 100 }, viewerContext);
+      assert.ok(result.artifact.bytes > 100);
+      const read = await readArtifact(context.host, result.artifact.artifact_id, 0, 65536); const bytes = Buffer.from(read.data, 'base64');
+      if (format === 'svg') { assert.match(bytes.toString('utf8'), /<svg/); assert.match(bytes.toString('utf8'), /4000/); }
+      if (format === 'dxf') { assert.match(bytes.toString('latin1'), /SECTION/); assert.match(bytes.toString('latin1'), /4000/); }
+      if (format === 'pdf') assert.match(bytes.toString('latin1'), /^%PDF-/);
+    }
+    useViewerStore.getState().createSheet(); useViewerStore.getState().updateTitleBlockField('project-name', 'Native composed sheet');
+    const sheet = await run<{ artifact: { artifact_id: string } }>('drawing.export', { format: 'svg', use_display_scale: true, scale: 100 }, viewerContext);
+    const read = await readArtifact(context.host, sheet.artifact.artifact_id, 0, 65536); assert.match(Buffer.from(read.data, 'base64').toString('utf8'), /Native composed sheet/);
+  });
+  it('creates a genuine native report PDF with explicit page/title-block controls and no IFC loaded', async () => {
+    const dashboard = { ...modelOverviewDashboard(), charts: [], layout: [] };
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null, dashboards: [dashboard] });
+    const { model: _model, ...viewerContext } = context;
+    const report = await run<{ artifact: { artifact_id: string }; charts: number; pages: number }>('charts.exportReport', { id: dashboard.id, expected_json: JSON.stringify(dashboard), page: { size: 'A4', orientation: 'landscape' }, title_block: { project: 'Native report witness', title: 'Empty report', author: '', date: '2026-11-16', revision: '' }, snapshots: false, save_setup: false }, viewerContext);
+    assert.equal(report.charts, 0); assert.ok(report.pages > 0); const read = await readArtifact(context.host, report.artifact.artifact_id, 0, 65536); assert.match(Buffer.from(read.data, 'base64').toString('latin1'), /^%PDF-/);
+  });
+  it('completes edge and face angle families and exposes finite native inclination readouts', async () => {
+    const edges = await run<{ outcome: { outcome: { degrees: number } } }>('measurements.angleEdges', { points: [[0, 0, 0], [1, 0, 0], [0, 0, 0], [0, 1, 0]] });
+    assert.equal(edges.outcome.outcome.degrees, 90);
+    const faces = await run<{ outcome: { outcome: { degrees: number } } }>('measurements.angleFaces', { points: [[0, 0, 0], [1, 0, 0]], normals: [[1, 0, 0], [0, 1, 0]] }); assert.equal(faces.outcome.outcome.degrees, 90);
+    const s = useViewerStore.getState(); s.startMeasurement({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 }); s.updateMeasurement({ x: 0, y: 5, z: 0, screenX: 0, screenY: 0 }); s.finalizeMeasurement();
+    const readouts = await run<{ distances: { inclination: { percent: number | null; percent_unbounded: boolean }; formatted: string }[] }>('measurements.readouts');
+    const vertical = readouts.distances.at(-1); assert.equal(vertical?.inclination.percent, null); assert.equal(vertical?.inclination.percent_unbounded, true); assert.match(vertical?.formatted ?? '', /vertical/i);
   });
 
 });

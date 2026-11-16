@@ -27,7 +27,7 @@ export const analyticsScheduleGenerateOperations = [
     return { extraction: generatedExtraction(preview.extraction, i.work_plan_name.trim() || null), groups: preview.groupCount, products: preview.productCount, finish: preview.finishDate, empty: preview.empty };
   }),
   operation<Input & { expected_json: string }>({ ...metadata('schedule.generate', 'gantt', 'Apply the native Generate dialog workflow against an exact inspected timeline snapshot. Replaces its pending schedule and enables native construction animation; preserves native edit/role locks.', ['model', 'view'], output), policy: { model: 'native-reviewed' } }, {
-    type: 'object', properties: { ...schema.properties, expected_json: { type: 'string', minLength: 2, maxLength: 1000000 } }, required: ['settings', 'work_plan_name', 'expected_json'], additionalProperties: false,
+    type: 'object', properties: { settings, work_plan_name: { type: 'string', maxLength: 10000 }, expected_json: { type: 'string', minLength: 2, maxLength: 1000000 } }, required: ['settings', 'work_plan_name', 'expected_json'], additionalProperties: false,
   } satisfies JSONSchemaType<Input & { expected_json: string }>, (i, c) => {
     const s = useViewerStore.getState(); const denial = mutationDenial(s, c.model.id); if (denial) throw new Error(denial);
     if (s.scheduleData && s.scheduleSourceModelId !== c.model.id) throw new Error('The timeline belongs to a different model.');

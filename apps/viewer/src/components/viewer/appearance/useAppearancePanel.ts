@@ -114,6 +114,14 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     useViewerStore.getState().saveAppearanceDraft({ intent, modelId, sourceId, scope, settings, previewEnabled });
   }, [intent, modelId, sourceId, scope, settings, previewEnabled]);
 
+  // Store-backed automation and the panel controls share one logical draft.
+  useEffect(() => useViewerStore.subscribe((state, previous) => {
+    const next = state.appearanceDraft;
+    if (!next || next === previous.appearanceDraft || JSON.stringify(next) === JSON.stringify({ intent, modelId, sourceId, scope, settings, previewEnabled })) return;
+    setChosenModel(next.modelId); setSourceId(next.sourceId); setScope(next.scope);
+    setSettings(next.settings); setPreviewEnabled(next.previewEnabled);
+  }), [intent, modelId, sourceId, scope, settings, previewEnabled]);
+
   useEffect(() => {
     mounted.current = true;
     const ownedPlanner = createAppearancePlanner();

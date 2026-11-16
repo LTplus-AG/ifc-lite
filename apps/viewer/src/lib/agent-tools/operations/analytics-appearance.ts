@@ -17,8 +17,8 @@ import type { ToolHost } from '../types';
 import { entityExists } from '../refs';
 import { operation, referenceSchema } from './contract';
 import { metadata, idSchema, checkpoint } from './analytics-common';
-interface Settings extends AppearanceDraftSettings { representationPolicy: 'preserve' | 'evaluatedOccurrence' }
-const settingsSchema: JSONSchemaType<Settings> = {
+export interface Settings extends AppearanceDraftSettings { representationPolicy: 'preserve' | 'evaluatedOccurrence' }
+export const settingsSchema: JSONSchemaType<Settings> = {
   type: 'object', properties: {
     representationPolicy: { type: 'string', enum: ['preserve', 'evaluatedOccurrence'] }, kind: { type: 'string', enum: ['existingUv', 'planar', 'box'] }, plane: { type: 'string', enum: ['xy', 'xz', 'yz'] },
     repeatU: { type: 'number', exclusiveMinimum: 0, maximum: 10000 }, repeatV: { type: 'number', exclusiveMinimum: 0, maximum: 10000 },

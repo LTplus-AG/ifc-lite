@@ -7,7 +7,7 @@
  * point-cloud scan band, and the exports that render all of them together.
  */
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useEffect } from 'react';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { useIfc } from '@/hooks/useIfc';
@@ -18,6 +18,7 @@ import { useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } fr
 import { drawingModelCenter } from '@/hooks/dxfDrawingBounds';
 import { dxfPlaneDrawingMapper, dxfDrawingDeltaToPlacement } from '@/hooks/dxfReferencePlane';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
+import { publishDrawingExportFrame } from '@/lib/drawing/export-view-frame';
 import { useDrawingExport } from '@/hooks/useDrawingExport';
 import type { DrawingViewModel } from './useDrawingViewModel';
 
@@ -107,6 +108,8 @@ export function useDrawingLayers(vm: DrawingViewModel) {
     legacyPointClouds: geometryResult?.pointClouds,
     outline: { enabled: displayOptions.scanSectionOutline, maxGap: displayOptions.scanSectionOutlineMaxGap },
   });
+
+  useEffect(() => { publishDrawingExportFrame({ isPinned: vm.isPinned, cachedSheetTransformRef: vm.cachedSheetTransformRef }); }, [vm.isPinned, vm.cachedSheetTransformRef]);
 
   const { handleExportSVG, handleExportDXF, handleExportPDF, handlePrint, getExportDimensionGraphics } = useDrawingExport({
     // Only the drawing on screen exports: a dialog left open while the cut

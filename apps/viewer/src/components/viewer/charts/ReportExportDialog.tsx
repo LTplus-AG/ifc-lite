@@ -22,8 +22,8 @@ import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
-import { browserReportSeams, generateReportPdf, type ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
-import { createSnapshotCapture } from '@/lib/export/report/snapshots';
+import { type ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
+import { exportPreparedChartReport } from '@/lib/export/report/export-prepared-chart-report';
 import { recordActivity } from '@/lib/activity/activity-journal';
 import { largestBucketIds } from '@/lib/charts/buckets';
 import { isRecordedChart, resolveChartSource } from '@/lib/charts/chart-source';
@@ -31,7 +31,7 @@ import { chartSourceMessage } from '@/lib/charts/chart-source-message';
 import { useChartSourceContext } from './useChartSourceContext';
 
 /** Title-block fields offered, in order; values seeded from the drawing sheet's title block when present. */
-const FIELDS: Array<[string, string]> = [['project', 'Project'], ['title', 'Report title'], ['author', 'Prepared by'], ['date', 'Date'], ['revision', 'Revision']];
+import { REPORT_FIELDS as FIELDS, reportTitleBlock } from '@/lib/export/report/settings';
 
 export interface ReportExportDialogProps {
   dashboard: DashboardSpec | null;
@@ -86,18 +86,16 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
   const run = useCallback(async () => {
     if (!dashboard) return;
     setBusy(true);
-    const captureNeeded = snapshots && dashboard.charts.some((chart) => !isRecordedChart(chart) && (aggregations.get(chart.id)?.categories.length ?? 0) > 0);
-    const snapshot = seams || !captureNeeded ? null : createSnapshotCapture();
     try {
       // Outside ExportDialogShell, so it records itself in the activity tray (#6925).
       const result = await recordActivity(
         { kind: 'export', title: 'activityTray.job.export', subject: dashboard.name },
         async () => {
-          const s = await (seams ? seams() : browserReportSeams(snapshots ? snapshot?.capture ?? null : null));
-          const pdf = await generateReportPdf({
+          const s = seams ? await seams() : undefined;
+          const pdf = await exportPreparedChartReport({
             name: dashboard.name,
             page,
-            titleBlock: Object.fromEntries(FIELDS.map(([k, label]) => [label, fields[k] ?? ''])),
+            titleBlock: reportTitleBlock(fields),
             snapshots,
             charts: dashboard.charts.map((c) => {
               const source = resolveChartSource(c, { source: c.source, columns: [], rows: [], fingerprint: '' }, savedContent);
@@ -105,7 +103,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
                 snapshot: !isRecordedChart(c), message: chartSourceMessage(source, t) };
             }),
             snapshotIds: (chartId) => largestBucketIds(aggregations.get(chartId)),
-          }, s);
+          }, { seams: s });
           downloadBlob(pdf.blob, `${sanitizeFilename(dashboard.name, { fallback: 'report' })}-report.pdf`);
           return pdf;
         },
@@ -119,7 +117,6 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
       console.error('[Charts] report export failed', err);
       toast.error(err instanceof Error ? `Report export failed: ${err.message}` : 'Report export failed');
     } finally {
-      snapshot?.restore();
       setBusy(false);
     }
   }, [dashboard, aggregations, page, snapshots, fields, seams, onSaveReportSetup, savedContent, t]);

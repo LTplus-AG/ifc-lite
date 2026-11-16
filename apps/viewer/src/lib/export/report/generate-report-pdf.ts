@@ -99,7 +99,6 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
     createDoc: async (format, orientation) => {
       const { jsPDF } = await import('jspdf');
       const autoTable = (await import('jspdf-autotable')).default;
-      await import('svg2pdf.js');
       const doc = new jsPDF({ orientation, unit: 'pt', format });
       const parser = new DOMParser();
       return {
@@ -115,6 +114,7 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
         textWidth: (t) => doc.getTextWidth(t),
         addImage: (bytes, format, x, y, w, h) => { doc.addImage(bytes, format, x, y, w, h); },
         svg: async (svg, x, y, w, h) => {
+          await import('svg2pdf.js/dist/svg2pdf.es.min.js');
           const parsed = parser.parseFromString(svg, 'image/svg+xml');
           const error = parsed.querySelector('parsererror');
           if (error) throw new Error(`Chart SVG did not parse: ${error.textContent ?? ''}`);

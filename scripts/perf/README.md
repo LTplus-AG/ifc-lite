@@ -986,6 +986,42 @@ unreadable-host refusal. The original bounded allocation diagnostic then
 matched base's clone count and graph/journal cardinality. Throughput remains
 unqualified until the unchanged acceptance protocol passes.
 
+
+The corrected source `7f4becc2` completed the original exclusive cohort
+`f81010cd`: all authoring pairs, the sustained default-heap witness, and all
+hardware F5 runs were recovered from the original receipt after a client-host
+shutdown. STEP/mesh/undo identities match the frozen base. Retained authoring
+memory is lower, selected joins stay bounded as unrelated openings grow, and
+the fixed-height planner's warm query avoids product payload reads; its cold
+index still reads the product inventory and required writes remain unchanged.
+
+**Verdict: improvements measured; overall acceptance not satisfied.** The small
+hosted-window insertion remains slower beyond the run's observed interquartile
+noise floor. Wall insertion and several larger-size cells have unresolved
+scatter, so neither an early-stop escape nor a median paired ratio establishes
+blanket no-regression acceptance. The original screen is a stop condition, not
+a slowdown allowance. A matching authoring A/A reference was not collected.
+
+Both sources fail the unchanged F5 edit-latency target. Load, orbit, five real
+edits and undos, hardware admission, fixture identity and mesh counts pass;
+the separate profile edit is excluded from those five timings. Existing phase
+measurements put most elapsed edit time after the mutation, through mesh
+replacement and drain. That localizes further investigation but does not
+identify a single rendering cause or waive the target. The issue's three
+residual mechanisms have supporting evidence; a full issue or row pass and
+push remain blocked. Do not rerun blindly or turn exit status into a verdict.
+
+Maintainer scope decision: the broader loaded-tower latency target is now
+tracked separately in #10535. This PR must still remove the small-session
+hosted-window slowdown and preserve the measured authoring gains under the
+original paired noise gate; the F5 failure is not relabelled as a pass.
+
+Preparation lesson: a viewer/typecheck build does not guarantee the CLI loader
+used by the external SDK worker exists. The preceding cohort failed before
+model creation, with no operations or fresh pairs. Repair only the missing
+generated CLI graph and check every required protocol artifact before another
+exclusive window; preserve that failed receipt instead of reusing its outputs.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every

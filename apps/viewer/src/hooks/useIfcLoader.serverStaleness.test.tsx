@@ -248,7 +248,7 @@ for (const publishes of [false, true]) it(`#10264 server failure ${publishes ? '
       assert.ok(dialog, 'the mounted host must visibly request consent before any replacement');
       assert.match(dialog.textContent ?? '', /available memory/);
       assert.equal(useViewerStore.getState().models, prior, 'pre-publication Cancel can preserve the prior scene');
-      const activityId = useActivityJournal.getState().jobs.findLast(job => job.subject === source.name && job.outcome === 'running')?.id;
+      const activityId = useActivityJournal.getState().jobs.filter(job => job.subject === source.name && job.outcome === 'running').at(-1)?.id;
       assert.ok(activityId, 'the warning belongs to a running activity');
       click(dialog.querySelector('button')!);
       await pending;

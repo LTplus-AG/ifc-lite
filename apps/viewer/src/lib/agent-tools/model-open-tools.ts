@@ -100,7 +100,9 @@ function percentDecoded(text: string, charset = 'utf-8'): string {
  * `;` or to a comma that starts another disposition or filename parameter: a repeated header arrives
  * joined with ', ', and only the first header is read.
  */
-const DISPOSITION_PARAM = /;\s*([^\s=;,]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|((?:(?!,\s*(?:(?:attachment|inline)\s*(?:;|$)|filename\*?\s*=))[^;])*))\s*/iy;
+/** Where a second, comma-joined header starts: another disposition, or a filename parameter. */
+const NEXT_HEADER = String.raw`,\s*(?:(?:attachment|inline)\s*(?:;|$)|filename\*?\s*=)`;
+const DISPOSITION_PARAM = new RegExp(String.raw`;\s*([^\s=;,]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|((?:(?!${NEXT_HEADER})[^;])*))\s*`, 'iy');
 
 /** `Content-Disposition` parameters by lower-case name, quoted strings unescaped; the first value of a name wins. */
 function dispositionParams(header: string): Map<string, string> {
@@ -113,13 +115,13 @@ function dispositionParams(header: string): Map<string, string> {
     const m = DISPOSITION_PARAM.exec(text);
     if (m) {
       const [, key, quoted, bare] = m;
-      if (!params.has(key.toLowerCase())) params.set(key.toLowerCase(), quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare.trim());
+      if (!params.has(key.toLowerCase())) params.set(key.toLowerCase(), (quoted !== undefined ? quoted.replace(/\\(.)/g, '$1') : bare).trim());
       at = DISPOSITION_PARAM.lastIndex;
       continue;
     }
     // Not a parameter (`; foo`, `;;`, junk after a quoted value): skip to the next ';', unless the next header starts first.
     const next = text.indexOf(';', at + 1);
-    const nextHeader = text.slice(at).search(/,\s*(?:attachment|inline)\s*(?:;|$)/i);
+    const nextHeader = text.slice(at).search(new RegExp(NEXT_HEADER, 'i'));
     if (next === -1 || (nextHeader !== -1 && at + nextHeader < next)) break;
     at = next;
   }
@@ -138,9 +140,10 @@ function fileNameOf(url: URL, res: Response): string {
   const lastSegment = (path: string) => path.split(/[\\/]/).pop() ?? '';
   const declared = lastSegment(extended ? percentDecoded(extended[2], extended[1]) : params.get('filename') ?? '');
   const fromPath = lastSegment(percentDecoded(url.pathname.split('/').filter(Boolean).pop() ?? ''));
-  // A declared name wins, even when it is not a model file: a server labelling the body `error.html` is refused,
-  // rather than replacing the user's models with it.
-  return declared || fromPath;
+  // A declared name with an extension wins, even when it is not a model file: a server labelling the body
+  // `error.html` is refused rather than replacing the user's models with it. One without (`house`, parse junk)
+  // says nothing about the type, so the URL path names the file.
+  return /\.[a-z0-9]+$/i.test(declared) ? declared : fromPath || declared;
 }
 
 /**
@@ -193,7 +196,8 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
   // Refused here, before a replace could close the open models for nothing.
   if (file.size === 0) fail(ToolErrorCode.UNSUPPORTED_OPERATION, `${url.href} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);
   if (!isSupportedModelFile(file)) {
-    invalid(`${file.name || 'The download'} is not a model file the viewer opens (IFC, IFCX, glTF/GLB, point clouds, splats). Use a URL whose path ends in the file's extension (a cross-origin Content-Disposition name is only readable when the server exposes that header).`);
+    invalid(`${file.name || 'The download'} is not a model file the viewer opens (IFC, IFCX, glTF/GLB, point clouds, splats). `
+      + (res.headers.get('content-disposition') ? 'The name comes from the server\'s Content-Disposition header.' : 'Use a URL whose path ends in the file\'s extension.'));
   }
   return file;
 }
@@ -260,8 +264,11 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
     // Placeholder records have no data yet, and a replace may be closing the old models: list only models an add keeps.
     structured: { mode: request.mode, state: 'loading', loading: name, models: request.mode === 'add' ? snapshot().filter((m) => !m.new).map(publicModel) : [] },
   });
-  const loaded = await within(load.then((id) => ({ id }), (err: unknown) => fail(ToolErrorCode.INTERNAL_ERROR,
-    `The viewer could not load ${name}: ${err instanceof Error ? err.message : String(err)}`)), deadline - Date.now());
+  const loaded = await within(load.then((id) => ({ id }), (err: unknown) => {
+    if (err instanceof ToolExecutionError) throw err;
+    // The loader's own reason (onError) is more specific than the exception that ended it.
+    return fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${loadError ?? (err instanceof Error ? err.message : String(err))}`);
+  }), deadline - Date.now());
   if (!loaded) return stillLoading();
   // This call's own records: an add's returned id (none when it failed), a replace's chosen id, and for the
   // stack (no per-call id, layer ids repeat across loads) its exact file names: a stack load clears every

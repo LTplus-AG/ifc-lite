@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { useViewerStore } from '@/store';
+import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { registerAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
 import { modelOpenTools, MODEL_OPEN_SPECS, OPEN_MODEL_WAIT_MS } from './model-open-tools';
 import { VIEWER_COMMAND_SPECS } from './viewer-command-tools';
@@ -383,8 +384,11 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       return calls.at(-1)!.names[0];
     };
     await run({ sample: 'demo' });
-    await assert.rejects(nameFor('attachment; filename=a=", attachment; filename=b.ifc'), { code: 'INVALID_INPUT' }, 'the first header names a non-model file');
-    await assert.rejects(nameFor('inline; filename="error.html"'), { code: 'INVALID_INPUT', message: /error\.html/ }, 'a declared non-model body is refused');
+    assert.equal(await nameFor('attachment; filename=a=", attachment; filename=b.ifc'), 'download.ifc', 'a name without an extension says nothing about the type');
+    assert.equal(await nameFor('attachment; filename="house"'), 'download.ifc');
+    assert.equal(await nameFor('attachment; filename=" "'), 'download.ifc', 'a blank quoted name is no name');
+    assert.equal(await nameFor("attachment; foo, filename*=UTF-8''b.ifc; filename=c.ifc"), 'download.ifc', 'skipping never crosses into a second header');
+    await assert.rejects(nameFor('inline; filename="error.html"'), { code: 'INVALID_INPUT', message: /error\.html.*Content-Disposition/ }, 'a declared non-model body is refused');
     assert.equal(await nameFor('attachment; foo; filename=x.ifc'), 'x.ifc', 'a valueless parameter is skipped');
     assert.equal(await nameFor('attachment;; filename=y.ifc'), 'y.ifc');
     assert.equal(await nameFor(`attachment; filename="z.ifc"junk; filename*=UTF-8''w.ifc`), 'w.ifc');
@@ -413,5 +417,15 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     unregister();
     unregister = registerAgentModelLoader({ loadFile: async () => { throw new Error('blob revoked'); }, addModel: async () => null, loadStack: async () => {} });
     await assert.rejects(run({ sample: 'demo' }), { code: 'INTERNAL_ERROR', message: /blob revoked/ });
+  });
+  it('a rejected loader keeps its own reason and error code (#9523 code review)', async () => {
+    unregister();
+    unregister = registerAgentModelLoader({
+      loadFile: async (_file, _id, onError) => { onError('Unsupported IFC schema'); throw new Error('worker exited'); },
+      addModel: async () => { throw new ToolExecutionError({ code: ToolErrorCode.STATE_CHANGED, message: 'superseded' }); },
+      loadStack: async () => {},
+    });
+    await assert.rejects(run({ sample: 'demo' }), { code: 'INTERNAL_ERROR', message: /Unsupported IFC schema/ });
+    await assert.rejects(run({ sample: 'demo', mode: 'add' }), { code: 'STATE_CHANGED' });
   });
 });

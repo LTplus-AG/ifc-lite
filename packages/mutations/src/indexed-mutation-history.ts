@@ -9,7 +9,9 @@ type Node = { row: Mutation; previous: string | null; next: string | null; posit
 const stores = new WeakMap<Mutation[], History>();
 class History {
   readonly nodes = new Map<string, Node>();
-  readonly entities = new Map<number, Set<string>>();
+  // Creation usually contributes one journal row per entity. Keep that ID
+  // inline, promoting only multi-row entities to a collection (#8452).
+  readonly entities = new Map<number, string | Set<string>>();
   readonly reads = new Map<string, Mutation>();
   readonly removed = new Map<string, { mutation: Mutation; beforeId: string | null }>();
   head: string | null = null;
@@ -58,15 +60,30 @@ class History {
     let id = this.first();
     while (id !== null) { yield this.get(id); id = this.next(id); }
   }
+  indexEntity(entityId: number, id: string): void {
+    const bucket = this.entities.get(entityId);
+    if (bucket === undefined) this.entities.set(entityId, id);
+    else if (typeof bucket === 'string') {
+      if (bucket !== id) this.entities.set(entityId, new Set([bucket, id]));
+    } else bucket.add(id);
+  }
+  unindexEntity(entityId: number, id: string): void {
+    const bucket = this.entities.get(entityId);
+    if (typeof bucket === 'string') {
+      if (bucket === id) this.entities.delete(entityId);
+    } else if (bucket) {
+      bucket.delete(id);
+      if (!bucket.size) this.entities.delete(entityId);
+      else if (bucket.size === 1) this.entities.set(entityId, bucket.values().next().value!);
+    }
+  }
   append(row: Mutation): void {
     if (this.has(row.id)) throw new Error('Duplicate mutation journal identity');
     const node: Node = { row, previous: this.tail, next: null, position: ++this.position };
     if (this.tail !== null) this.nodes.get(this.tail)!.next = row.id;
     else this.head = row.id;
     this.tail = row.id; this.nodes.set(row.id, node);
-    let bucket = this.entities.get(row.entityId);
-    if (!bucket) this.entities.set(row.entityId, bucket = new Set());
-    bucket.add(row.id); this.length++; this.order = undefined;
+    this.indexEntity(row.entityId, row.id); this.length++; this.order = undefined;
   }
   erase(id: string): void {
     const own = this.nodes.get(id);
@@ -76,8 +93,7 @@ class History {
       if (own.next !== null) this.nodes.get(own.next)!.previous = own.previous;
       else this.tail = own.previous;
       this.nodes.delete(id);
-      const bucket = this.entities.get(own.row.entityId);
-      bucket?.delete(id); if (!bucket?.size) this.entities.delete(own.row.entityId);
+      this.unindexEntity(own.row.entityId, id);
     } else if (this.base?.has(id) && !this.removed.has(id)) {
       const next = this.next(id);
       this.removed.set(id, { mutation: structuredClone(this.base.get(id)), beforeId: next !== null && this.base.has(next) ? next : null });
@@ -89,18 +105,17 @@ class History {
     const own = this.nodes.get(id);
     if (own) {
       if (own.row.entityId !== row.entityId) {
-        const bucket = this.entities.get(own.row.entityId);
-        bucket?.delete(id); if (!bucket?.size) this.entities.delete(own.row.entityId);
+        this.unindexEntity(own.row.entityId, id);
       }
       own.row = row;
     } else this.reads.set(id, row);
-    let bucket = this.entities.get(row.entityId);
-    if (!bucket) this.entities.set(row.entityId, bucket = new Set());
-    bucket.add(id);
+    this.indexEntity(row.entityId, id);
   }
   entityIds(id: number): string[] {
     const ids = new Set(this.base?.entityIds(id));
-    for (const key of this.entities.get(id) ?? []) ids.add(key);
+    const bucket = this.entities.get(id);
+    if (typeof bucket === 'string') ids.add(bucket);
+    else for (const key of bucket ?? []) ids.add(key);
     return [...ids].filter(key => this.has(key) && this.get(key).entityId === id)
       .sort((a, b) => this.positionOf(a) - this.positionOf(b));
   }

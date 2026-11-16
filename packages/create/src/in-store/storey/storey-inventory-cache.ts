@@ -51,6 +51,7 @@ export function storeyInventoryCache(
   }
   // Parsed/deferred tables may finish streaming without an overlay write.
   // Invalidate on the same source identities/revisions used by indexed reads.
+  // @raw-entity-enumeration-ok source identity and size checks only; readStoreyInventory enumerates through AnchorEntityReader's effective IDs, and changes.take() invalidates overlay edits below.
   const sourceSignature = [store.source, store.entityIndex, store.entityIndex.byType, store.entityIndex.byId.size,
     store.deferredEntityIndex, store.deferredEntityIndex?.size, store.entities?.typeRevision, store.entities?.expressId?.length];
   if (entry.sourceSignature && sourceSignature.some((value, i) => value !== entry.sourceSignature![i])) {

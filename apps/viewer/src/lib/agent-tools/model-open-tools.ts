@@ -21,6 +21,7 @@ import { isSupportedModelFile, PICKER_FILE_EXTENSIONS } from '@/services/support
 import { DEMO_KIT_PATHS, fetchSampleFile, waitForLoadIdle } from '@/lib/tours/demo-kit';
 import { getAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
 import { nonModelContentReason } from '@/hooks/ingest/nonModelContent';
+import { NON_MODEL_REASONS } from '@/lib/non-model-reasons';
 import { CALL_LIMITS } from '@/lib/agent-bridge/call-admission';
 import { assertGranted, fail, invalid, keys, oneOf, type ToolErrorCodeValue } from './tool-args';
 import type { AgentInputSchema, AgentTool, ToolCallContext, ToolOutput } from './types';
@@ -170,7 +171,7 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
     return fail(code, message);
   };
   if (!res.ok) refuse(`Fetching ${shown(source)} returned HTTP ${res.status}.`);
-  if (/^(?:text\/html|application\/xhtml\+xml)\b/i.test(res.headers.get('content-type') ?? '')) refuse(`${shown(source)} returned an HTML page, not a model. Nothing was loaded.`);
+  if (/^(?:text\/html|application\/xhtml\+xml)\b/i.test(res.headers.get('content-type') ?? '')) refuse(`${shown(source)} returned ${NON_MODEL_REASONS.html}. Nothing was loaded.`);
   if (Number(res.headers.get('content-length')) > OPEN_MODEL_MAX_BYTES) refuse(tooLarge(source), ToolErrorCode.INVALID_INPUT);
   const file = await readLimited(res, source, name);
   if (file.size === 0) refuse(`${shown(source)} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);

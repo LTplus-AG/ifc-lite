@@ -23,10 +23,14 @@ async function preflight(file: File): Promise<{ head: ArrayBuffer | null; failur
 }
 
 it('#9523 refuses a .ifc or .ifczip that is neither STEP nor ZIP before the scene reset', async () => {
-  for (const file of [new File(['Access Denied'], 'house.ifc'), new File(['<h1>403</h1>'], 'house.IFC'), new File(['nope'], 'pack.ifczip')]) {
+  for (const [file, reason] of [
+    [new File(['Access Denied'], 'house.ifc'), /neither STEP nor an IFC ZIP/],
+    [new File(['<h1>403</h1>'], 'house.IFC'), /an HTML page/],
+    [new File(['nope'], 'pack.ifczip'), /neither STEP nor an IFC ZIP/],
+  ] as const) {
     const { head, failures } = await preflight(file);
     assert.equal(head, null, file.name);
-    assert.match(String(failures[0]), /^Error: The file is /, file.name);
+    assert.match(String(failures[0]), new RegExp(`^Error: The file is .*${reason.source}`), file.name);
   }
 });
 

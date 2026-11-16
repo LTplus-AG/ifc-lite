@@ -48,7 +48,6 @@ const XML_ERROR_SUFFIX = /(?:Error|Exception|Fault)(?:Report|Response)?$/;
 
 /** STEP's first line, after whitespace and comments (case-insensitive, with or without the hyphen). */
 const STEP_MARKER = /^ISO[- ]?10303-21/i;
-const STEP_ANYWHERE = /ISO[- ]?10303-21/i;
 
 /**
  * Why the loaders could not open `file` (`null` when they may): an error response saved or served as a model,
@@ -68,11 +67,13 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const routed = detectFormat(first);
   if (routed === 'glb' || routed === '3dm') return null;
   const ifcName = /\.(?:ifc|ifczip)$/i.test(file.name);
-  // A UTF-16 document (an IIS/.NET error page) has NUL bytes but is text: it is decoded, then judged like text.
+  // A UTF-16 document (an IIS/.NET error page) has NUL bytes but is text: it is judged decoded.
   const utf16 = utf16Encoding(bytes);
   if (utf16 && ifcName) {
+    // No loader opens UTF-16 under an IFC name: say what it is (an error page, STEP to re-save, or neither).
     const decoded = new TextDecoder(utf16).decode(await readScan(file, first));
-    return STEP_ANYWHERE.test(decoded) ? NON_MODEL_REASONS.utf16Step : NON_MODEL_REASONS.notStep;
+    if (HTML_START.test(afterProlog(decoded))) return NON_MODEL_REASONS.html;
+    return textStartsLikeStep(decoded) ? NON_MODEL_REASONS.utf16Step : NON_MODEL_REASONS.notStep;
   }
   const decode = (buffer: ArrayBuffer) => new TextDecoder(utf16 ?? 'utf-8').decode(buffer); // drops the BOM
   const headText = decode(first);

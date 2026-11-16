@@ -14,7 +14,7 @@
   "dependencies": {
     "@ifc-lite/data": "^6.4.0",
     "@ifc-lite/geometry": "^8.1.0",
-    "@ifc-lite/parser": "^9.9.0",
+    "@ifc-lite/parser": "^10.0.0 || ^9.9.0",
     "three": "^0.186.1"
   },
   "devDependencies": {

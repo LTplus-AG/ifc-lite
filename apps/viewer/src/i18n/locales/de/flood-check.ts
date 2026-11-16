@@ -1,0 +1,44 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const floodCheckDe = {
+  "floodCheck.section.title": "Oberflächenabfluss",
+  "floodCheck.section.intro": "Prüft Türen, Fenster, Öffnungen und Anlagen nahe am Boden gegen die Gefährdungskarte Oberflächenabfluss des Bundes (BAFU): welche innerhalb oder unterhalb der daneben kartierten Tiefenklasse liegen.",
+  "floodCheck.section.screeningOnly": "Eine Grobprüfung gegen eine publizierte Gefährdungskarte, keine Überflutungssimulation. Die Karte ist nicht rechtsverbindlich, und als nicht betroffen dargestellte Flächen können dennoch betroffen sein.",
+  "floodCheck.section.showHazard": "Gefährdungskarte Oberflächenabfluss auf das Gelände legen",
+  "floodCheck.section.hazardNeedsTerrain": "Laden Sie oben das Gelände der Umgebung, um die Karte darauf zu sehen.",
+  "floodCheck.section.hazardFailed": "Die Gefährdungskarte Oberflächenabfluss konnte nicht aufgelegt werden: {reason}",
+  "floodCheck.section.groundStorey": "Erdgeschoss",
+  "floodCheck.section.groundStoreyGuess": "Nicht angegeben (die Prüfung schätzt)",
+  "floodCheck.section.groundStoreyGuessNote": "Ein geschätztes Erdgeschoss kann das Untergeschoss sein, daher erhält kein Element ein günstiges Ergebnis. Geben Sie es an, um eines zu ermöglichen.",
+  "floodCheck.section.run": "Hochwasserprüfung starten",
+  "floodCheck.section.rerun": "Erneut prüfen",
+  "floodCheck.section.cancel": "Abbrechen",
+  "floodCheck.section.running": "Modell, Gefährdungskarte und Gelände werden gelesen…",
+  "floodCheck.section.refused": "Die Prüfung wurde verweigert: {reason}",
+  "floodCheck.outcome.exposed": "Exponiert",
+  "floodCheck.outcome.openEnded": "Tiefenklasse ohne Obergrenze",
+  "floodCheck.outcome.withinRange": "Innerhalb des Klassenbereichs",
+  "floodCheck.outcome.aboveRange": "Über dem kartierten Klassenbereich",
+  "floodCheck.outcome.noRunoffMapped": "Kein Abfluss kartiert (nicht «sicher»)",
+  "floodCheck.outcome.unclassified": "Nicht festgestellt",
+  "floodCheck.summary.checked": "{count} Elemente geprüft",
+  "floodCheck.summary.noRunoffNotSafe": "«Kein Abfluss kartiert» heisst, die Karte zeigt neben dem Element keinen. Es heisst nicht, dass das Element sicher ist.",
+  "floodCheck.summary.showColours": "Geprüfte Elemente nach Ergebnis einfärben",
+  "floodCheck.summary.selectHint": "Wählen Sie ein Element, um sein Ergebnis und sein Property Set zu sehen.",
+  "floodCheck.summary.heightConfirmed": "Höhenbezug am Gelände neben den Türen des Erdgeschosses geprüft.",
+  "floodCheck.summary.heightUnconfirmed": "Höhenbezug nicht bestätigt, daher erhält kein Element ein günstiges Ergebnis: {reasons}.",
+  "floodCheck.summary.notes": "Hinweise und Vorbehalte ({count})",
+  "floodCheck.summary.disclaimer": "Haftungsausschluss und Grenzen des Herausgebers",
+  "floodCheck.summary.source": "Quelle: {source}. Datenstand {date}.",
+  "floodCheck.summary.requests": "{requests} Anfragen, {size}",
+  "floodCheck.legend.hazardTitle": "Gefährdungskarte Oberflächenabfluss (BAFU), Fliesstiefe",
+  "floodCheck.legend.hazardCaveat": "Modelliert, seltene bis sehr seltene Ereignisse. Nicht rechtsverbindlich; nicht markierte Flächen können dennoch betroffen sein.",
+  "floodCheck.legend.verdictTitle": "Hochwasser-Grobprüfung",
+  "floodCheck.legend.verdictCaveat": "Exposition aus der publizierten Gefährdungskarte gelesen. Keine Überflutungssimulation.",
+  "floodCheck.card.heading": "Grobprüfung Oberflächenabfluss",
+  "floodCheck.card.notInModel": "Aus der in dieser Sitzung ausgeführten Hochwasserprüfung; nicht in das Modell geschrieben.",
+} satisfies Catalogue;

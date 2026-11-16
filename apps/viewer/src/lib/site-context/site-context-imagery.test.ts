@@ -11,7 +11,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { meshPlanBox, planFineDrape, remapUvs, settleImages, swissimageLayer, swissimageRequest, withRequestTimeout } from './site-context-imagery';
+import { meshPlanBox, planFineDrape, remapUvs, runoffHazardLayer, settleImages, swissimageLayer, wmsMapRequest, withRequestTimeout } from './site-context-imagery';
 
 // A 600 m site split into 4 × 4 chunks of 150 m, as the core does at 300 m radius.
 const SITE = [2_680_528, 1_251_142, 2_681_128, 1_251_742] as const;
@@ -33,12 +33,27 @@ test('the fine drape takes the chunks around the model, and the request stays wi
   // The centre lies on the corner shared by the four middle chunks.
   assert.deepEqual([...fine.indices].sort((a, b) => a - b), [5, 6, 9, 10]);
   assert.deepEqual(fine.box, [2_680_678, 1_251_292, 2_680_978, 1_251_592]);
-  const request = swissimageRequest(swissimageLayer(), fine.box, 0.1)!;
+  const request = wmsMapRequest(swissimageLayer(), fine.box, 0.1)!;
   assert.equal(request.groundSampleDistance, 0.1);
   assert.deepEqual([request.width, request.height], [3000, 3000]);
   assert.match(request.url, /BBOX=2680678%2C1251292%2C2680978%2C1251592/);
-  const coarse = swissimageRequest(swissimageLayer(), SITE)!;
+  const coarse = wmsMapRequest(swissimageLayer(), SITE)!;
   assert.equal(coarse.groundSampleDistance, 0.25);
+  assert.match(coarse.url, /FORMAT=image%2Fjpeg/);
+  assert.doesNotMatch(coarse.url, /TRANSPARENT/);
+});
+
+test('the overland flow map is asked for as a transparent PNG over the same box at the same pixel size as the imagery', () => {
+  const imagery = wmsMapRequest(swissimageLayer(), SITE)!;
+  const hazard = wmsMapRequest(runoffHazardLayer(), SITE)!;
+  assert.equal(new URL(hazard.url).hostname, 'wms.geo.admin.ch');
+  assert.equal(new URL(hazard.url).searchParams.get('LAYERS'), 'ch.bafu.gefaehrdungskarte-oberflaechenabfluss');
+  assert.equal(new URL(hazard.url).searchParams.get('FORMAT'), 'image/png');
+  assert.equal(new URL(hazard.url).searchParams.get('TRANSPARENT'), 'TRUE');
+  assert.equal(hazard.mime, 'image/png');
+  assert.deepEqual([hazard.width, hazard.height, hazard.groundSampleDistance], [imagery.width, imagery.height, imagery.groundSampleDistance]);
+  assert.equal(new URL(hazard.url).searchParams.get('BBOX'), new URL(imagery.url).searchParams.get('BBOX'));
+  assert.equal(runoffHazardLayer().attribution.text, '© FOEN');
 });
 
 test('remapped UVs put the same ground point at the same place in the fine texture', () => {

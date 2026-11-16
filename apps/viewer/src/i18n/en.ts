@@ -106,6 +106,7 @@ import { landXmlTerrainExportEn } from './catalogues/landxml-terrain-export.en';
 import { rhinoExportEn } from './catalogues/rhino-export.en';
 import { terrainImageryEn } from './catalogues/terrain-imagery.en';
 import { siteContextEn } from './catalogues/site-context.en';
+import { floodCheckEn } from './catalogues/flood-check.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
 import { placementPanelEn } from './catalogues/placement-panel.en';
@@ -259,6 +260,7 @@ export const en = {
   ...landXmlTerrainExportEn,
   ...terrainImageryEn,
   ...siteContextEn,
+  ...floodCheckEn,
   ...structuralPropertiesEn,
   ...appearancePanelEn,
   ...appearancePickersEn,

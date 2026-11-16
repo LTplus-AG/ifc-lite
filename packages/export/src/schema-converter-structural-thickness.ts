@@ -33,7 +33,8 @@ const THICKNESS_READ = `${THICKNESS_PSET} Thickness1 to Thickness3 are written a
 function emptyValue(type: string | undefined, args: readonly string[] | undefined): boolean {
   if (!args || (type !== 'IFCPROPERTYSINGLEVALUE' && type !== 'IFCPROPERTYLISTVALUE')) return false;
   const value = args[2] ?? '';
-  return slotUnset(value) || (listItems(value) ?? []).length === 0 && value.trim().startsWith('(');
+  // listItems skips STEP trivia and returns null for anything that is not a readable list.
+  return slotUnset(value) || listItems(value)?.length === 0;
 }
 
 /** The bare number of a thickness token, `0.2` or `IFCPOSITIVELENGTHMEASURE(0.2)`, or null unless positive. */
@@ -125,17 +126,20 @@ export class StructuralThickness {
     return ['SubsequentThickness', 'VaryingThicknessLocation'];
   }
 
-  /** IFC4 -> IFC2X3: the IFC2X3 member body from its property set and its one aspect, or undefined. */
+  /**
+   * IFC4 -> IFC2X3: the IFC2X3 member body from its property set and its one
+   * aspect, or undefined. A member whose set gives locations is written as
+   * without a set, with the reason.
+   */
   rewrite(id: number, entity: string, args: readonly string[]): StructuralRewrite | undefined {
     if (this.mode !== 'downgrade' || entity !== ENTITY || args.length !== 9) return undefined;
+    if (this.located.has(id)) return { body: `${ENTITY}(${[...args, '$', '$'].join(',')})`, losses: [THICKNESS_LOCATED] };
     const [first, ...rest] = this.psets.get(id) ?? [];
     const aspect = this.aspectOf(args[6]);
     if (first === undefined || aspect === null || !this.pointAspects.has(aspect)) return undefined;
     // IFC2X3's VaryingThickness starts with Thickness (WR61 requires it).
     const own = thickness(args[8]);
     if (own !== null && parseStepNumber(own) !== parseStepNumber(first)) return undefined;
-    // Writable but for the set's locations: written as without a set, with the reason.
-    if (this.located.has(id)) return { body: `${ENTITY}(${[...args, '$', '$'].join(',')})`, losses: [THICKNESS_LOCATED] };
     const values = [...args.slice(0, 8), own === null ? first : args[8], `(${rest.join(',')})`, `#${aspect}`];
     return { body: `${ENTITY}(${values.join(',')})`, losses: [THICKNESS_READ] };
   }

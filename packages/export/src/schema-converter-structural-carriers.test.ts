@@ -461,7 +461,7 @@ describe('varying thickness with property-set locations #9668', () => {
     const plain = await convert(ifc4.replace(',(#40,#41,#42,#43));', ',(#40,#41,#42));'), 'IFC2X3');
     expect(line(plain.step, 20)).toMatch(/,0\.2,\(0\.25,0\.3\),#17\);$/);
     // An empty location property gives no location.
-    for (const blank of ["'Location1Local',$,$,$)", "'Location1Local',$,(),$)"]) {
+    for (const blank of ["'Location1Local',$,$,$)", "'Location1Local',$,(),$)", "'Location1Local',$,/* none */(),$)"]) {
       const empty = await convert(ifc4.replace("'Location1Local',$,(IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.)),$)", blank), 'IFC2X3');
       expect(line(empty.step, 20)).toMatch(/,0\.2,\(0\.25,0\.3\),#17\);$/);
       expect(empty.warnings).not.toContain('gives Location properties');
@@ -471,9 +471,10 @@ describe('varying thickness with property-set locations #9668', () => {
     expect(line(bounded.step, 20)).toContain(',.SHELL.,0.2,$,$);');
     expect(bounded.warnings).toContain('gives Location properties');
     // Not writable anyway (a second aspect): the location reason is not given.
+    // The reason is given whatever else would have stopped the thicknesses (here a second aspect).
     const twoAspects = await convert(ifc4.replace('#20=', "#18=IFCSHAPEASPECT((#14),$,$,.T.,#15);\n#20="), 'IFC2X3');
     expect(line(twoAspects.step, 20)).toContain(',.SHELL.,0.2,$,$);');
-    expect(twoAspects.warnings).not.toContain('gives Location properties');
+    expect(twoAspects.warnings).toContain('gives Location properties');
     // The member's own Thickness unset: written as without a set, so it stays unset and IFC2X3's required slots are reported.
     const ownUnset = await convert(ifc4.replace(',.SHELL.,0.2);', ',.SHELL.,$);'), 'IFC2X3');
     expect(line(ownUnset.step, 20)).toContain(',.SHELL.,$,$,$);');

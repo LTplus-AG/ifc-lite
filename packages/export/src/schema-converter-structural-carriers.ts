@@ -183,11 +183,11 @@ export class StructuralCarriers {
    */
   noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null {
     const reaction = this.causeOf(entity, args, withheld);
-    if (reaction === null) return null;
+    if (reaction === null || !this.ids) return null;
     const written = this.causesWritten.get(id) ?? new Set<number>();
     if (!written.has(reaction)) {
       const guid = deterministicGlobalId(`ifc2x3-caused-by:${args[0].trim()}:#${reaction}`);
-      this.pending.push(`#${this.ids!()}=IFCRELASSIGNSTOPRODUCT('${guid}',${args[1]},'${CAUSES}',$,(#${reaction}),$,#${id});`);
+      this.pending.push(`#${this.ids()}=IFCRELASSIGNSTOPRODUCT('${guid}',${args[1]},'${CAUSES}',$,(#${reaction}),$,#${id});`);
     }
     // The downgrade restores CausedBy only for an action with exactly one cause.
     const total = written.size + (written.has(reaction) ? 0 : 1);

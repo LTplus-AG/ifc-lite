@@ -407,6 +407,13 @@ ${geometry.replace('(#16),', aspect)}
     expect(up.warnings).not.toContain('stays unconverted');
   });
 
+  it('says nothing about Causes for a CausedBy that names no point reaction', async () => {
+    const up = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.'), 'IFC4');
+    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
+    expect(up.warnings).not.toContain("'Causes'");
+    expect(up.warnings).toContain('IFCSTRUCTURALLINEARACTIONVARYING has no representation in IFC4; record remains unconverted');
+  });
+
   it('reports nothing about Causes when the prepass is not armed', async () => {
     const result = new StepExporter(await parse(varying('(#16),'))).export({ schema: 'IFC4', subsetEntityIds: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 20, 30]) });
     const step = new TextDecoder().decode(result.content);

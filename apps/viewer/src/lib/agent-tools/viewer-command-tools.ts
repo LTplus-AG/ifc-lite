@@ -4,6 +4,7 @@
 
 /** Palette and agent share the mounted commands, host callbacks and live prerequisites. */
 import { operationTools, OPERATION_SPECS } from './operation-tools';
+import { screenshotTools, SCREENSHOT_SPECS } from './viewport-screenshot-tool';
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { getAgentCommandHost } from '@/lib/agent-bridge/command-host';
 import type { Command } from '@/components/viewer/commandPaletteSearch';
@@ -13,6 +14,7 @@ import type { AgentInputSchema, AgentTool, ToolCallContext, ToolOutput } from '.
 
 export const VIEWER_COMMAND_SPECS = {
   ...OPERATION_SPECS,
+  ...SCREENSHOT_SPECS,
   viewer_select: {
     description: 'Replace the native viewer selection with express_ids from one model. Validates every entity before changing either selection channel. Use query_entities to find ids, then run frame/hide/basket commands. An empty array clears selection. Requires commands and edits permission.',
     inputSchema: { type: 'object', properties: {
@@ -94,6 +96,7 @@ function assertGranted(ctx: ToolCallContext): void {
 
 export const viewerCommandTools: Record<keyof typeof VIEWER_COMMAND_SPECS, AgentTool> = {
   ...operationTools,
+  ...screenshotTools,
   viewer_select: { needs: 'store', async run(_host, model, args, ctx) {
     assertGranted(ctx);
     keys(args, ['model_id', 'express_ids']);

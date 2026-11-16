@@ -183,7 +183,7 @@ never carrying `pendingMutations` (`georeferencing` reports a queued
 
 `georeferencing_write` sets, updates or removes a model's georeferencing
 (IfcProjectedCRS + IfcMapConversion; IFC4X3 IfcMapConversionScaled; IFC2X3
-ePSet_MapConversion/ePSet_ProjectedCRS on the IfcProject), or writes the IfcSite
+ePSet_MapConversion/ePSet_ProjectedCRS), or writes the IfcSite
 position (action `site`), and refuses, naming the missing input, rather than
 guess a CRS, unit or scale. `georeferencing_check` diagnoses the georeferencing
 and plans fixes; `georeferencing_fix` applies only the ones that go through the

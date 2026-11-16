@@ -315,11 +315,11 @@ For an `IfcSlab` host, `place_opening` accepts `Position: [x, y]` (opening centr
     `XAxisAbscissa`/`XAxisOrdinate`). IFC4/IFC4X3 get `IfcProjectedCRS` +
     `IfcMapConversion` (IFC4X3 with `FactorX/Y/Z`: `IfcMapConversionScaled`);
     IFC2X3 gets the `ePSet_MapConversion`/`ePSet_ProjectedCRS` property sets
-    on the IfcProject (sets found on IfcSite move there on update). Action
+    on IfcSite (updates preserve an existing host). Action
     `site` writes `Site.RefLatitude`/`RefLongitude` (decimal degrees) and
     `RefElevation` on the IfcSite. It fails closed with the missing input in
     `details.missing`: no CRS, map unit, scale or factor is guessed; a model
-    without an `IfcGeometricRepresentationContext` (IFC2X3: IfcProject) is
+    without an `IfcGeometricRepresentationContext` (IFC2X3: IfcSite) is
     refused; an existing georeferencing is replaced only with `replace: true`;
     contradicting values are refused. The write is saved by `export_ifc` /
     `model_save`. Each write is one operation: `mutation_undo` takes the whole

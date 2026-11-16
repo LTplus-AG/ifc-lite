@@ -3,12 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
 import { emptySchema } from './contract';
-import { coordination, idSchema, textSchema } from './coordination-common';
+import { modelCoordination, coordination, idSchema, textSchema } from './coordination-common';
 function saved(id: string) { const flow = useViewerStore.getState().savedFlows.find(flow => flow.doc.id === id); if (!flow) throw new Error('Unknown saved flow.'); return flow; }
 export const coordinationFlowOperations = [
   coordination('flow.read', 'Inspect saved workflows, active graph, terminal result, errors and warnings.', ['read'], emptySchema, () => {
-    const s = useViewerStore.getState(); return { saved: s.savedFlows, active_id: s.activeFlowId, document: s.flowDoc, running: s.flowRunning,
+    const s = useViewerStore.getState(); return { active_model_id: s.activeModelId, mutation_version: s.mutationVersion, geometry_version: s.geometryContentVersion, saved: s.savedFlows, active_id: s.activeFlowId, document: s.flowDoc, running: s.flowRunning,
       result: s.flowLastRun, error: s.flowLastError, warnings: s.flowRunWarnings, progress: s.flowProgress };
+  }),
+  coordination('flow.artifacts', 'Read metadata for native generated workflow PDFs without copying binary data.', ['read'], emptySchema, () => ({ artifacts: useViewerStore.getState().flowArtifacts.map(({ blob: _blob, ...artifact }) => artifact) })),
+  coordination<{ artifact_id: string; expected_document_signature: string }>('flow.exportArtifact', 'Return a host-owned artifact for an exact native generated PDF and its source-document signature.', ['artifact'], {
+    type: 'object', properties: { artifact_id: { type: 'string', minLength: 1, maxLength: 200 }, expected_document_signature: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['artifact_id', 'expected_document_signature'], additionalProperties: false,
+  }, async (i, c) => {
+    const artifact = useViewerStore.getState().flowArtifacts.find(artifact => artifact.id === i.artifact_id && artifact.documentSignature === i.expected_document_signature);
+    if (!artifact) throw new Error('Native workflow artifact changed or no longer exists.');
+    c.checkpoint?.(); return c.artifacts.create({ filename: artifact.name.toLowerCase().endsWith('.pdf') ? artifact.name : artifact.name + '.pdf', mimeType: 'application/pdf', data: artifact.blob });
   }),
   coordination('flow.validate', 'Validate the active workflow wiring and inspect exact native node availability without running it.', ['read'], emptySchema, async () => {
     const doc = useViewerStore.getState().flowDoc; if (!doc) throw new Error('Open a workflow first.');
@@ -16,7 +24,7 @@ export const coordinationFlowOperations = [
     if (doc.nodes.some(node => node.type.startsWith('ai.'))) await ensureFlowAiNodes();
     const registry = flowRegistry(); return { wiring: validateFlowWiring(doc, registry), availability: checkAvailability(doc, registry, viewerFlowFeatures(false)) };
   }),
-  coordination('flow.analyze', 'Execute the active graph through the native Flow scheduler with an explicit read-only core/model/table node allowlist. Returns terminal node reports and outputs; does not run scripts, network, publication or model-writing nodes.', ['read'], emptySchema, async (_, c) => {
+  modelCoordination('flow.analyze', 'Execute the active graph through the native Flow scheduler with an explicit read-only core/model/table node allowlist. Returns terminal node reports and outputs; does not run scripts, network, publication or model-writing nodes.', ['read'], emptySchema, async (_, c) => {
     const s = useViewerStore.getState(), doc = s.flowDoc; if (!doc) throw new Error('Open a workflow first.');
     const [{ runFlow, MemoCache, validateFlowWiring }, { parseCapabilities }, { flowRegistry }, { viewerTableAccess }] = await Promise.all([
       import('@ifc-lite/flow'), import('@ifc-lite/extensions'), import('@/lib/flow/runner'), import('@/lib/flow/viewer-tables'),
@@ -46,6 +54,19 @@ export const coordinationFlowOperations = [
   coordination('flow.export', 'Export a saved flow with the native CLI-compatible serializer.', ['artifact'], idSchema, async (i, c) => {
     const { flowToJson } = await import('@/lib/flow/persistence'); const doc = saved(i.id).doc; c.checkpoint?.();
     return c.artifacts.create({ filename: 'workflow.flow.json', mimeType: 'application/json', data: flowToJson(doc) });
+  }),
+  coordination<{ expected_json: string; document_json: string }>('flow.replaceDocument', 'Replace the editable graph using the native strict Flow parser and an exact current-document guard. Cancels an active graph run through the native setFlowDoc action.', ['configuration'], {
+    type: 'object', properties: { expected_json: { type: 'string', maxLength: 1000000 }, document_json: { type: 'string', maxLength: 1000000 } }, required: ['expected_json', 'document_json'], additionalProperties: false,
+  }, async (i, c) => {
+    const { parseFlowDocument } = await import('@ifc-lite/flow'); const { flowToJson } = await import('@/lib/flow/persistence'); const document = parseFlowDocument(i.document_json);
+    return c.commit(() => {
+      const state = useViewerStore.getState(); if (!state.flowDoc || flowToJson(state.flowDoc) !== i.expected_json) throw new Error('Flow document changed; refresh the native serialized document before replacing.');
+      if (state.flowDoc.id !== document.id) throw new Error('Editing a graph must preserve its id; import a separate graph to change identity.');
+      state.setFlowDoc(document); return { id: document.id, dirty: true };
+    });
+  }),
+  coordination('flow.serialize', 'Read the exact native serialization used for guarded graph editing and CLI export.', ['read'], emptySchema, async () => {
+    const { flowToJson } = await import('@/lib/flow/persistence'); const doc = useViewerStore.getState().flowDoc; if (!doc) throw new Error('Open a workflow first.'); return { document_json: flowToJson(doc) };
   }),
   coordination('flow.import', 'Import serialized workflow JSON through the native flow parser and bounded storage.', ['configuration'], textSchema, async (i, c) => {
     const { parseFlowDocument } = await import('@ifc-lite/flow'); const doc = parseFlowDocument(i.value);

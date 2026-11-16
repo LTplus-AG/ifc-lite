@@ -44,7 +44,7 @@ export function cardDraftNoteKey(result: SavedCardDrafts) {
 }
 
 /** One topic per eligible card, saved as a draft batch the BCF drafts dialog then reviews. */
-export type ReviewCommit = <T>(write: () => Promise<T>) => Promise<T>;
+export type ReviewCommit = <T extends { saved: boolean }>(write: () => Promise<T>) => Promise<T>;
 const directCommit: ReviewCommit = write => write();
 export async function draftTopicsFromCards(name: string, cards: readonly CoordinationCard[], commit: ReviewCommit = directCommit): Promise<SavedCardDrafts> {
   const state = useViewerStore.getState();

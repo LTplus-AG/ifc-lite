@@ -12,7 +12,8 @@
  * - useIfcFederation: Multi-model federation, addModel, ID offsets, RTC alignment, IFCX layers
  */
 
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
+import { attachCoordinationModelAdder } from '@/services/coordination-loader';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { IfcQuery } from '@ifc-lite/query';
@@ -83,6 +84,7 @@ export function useIfc() {
     resolveGlobalId,
     realignFederation,
   } = useIfcFederation(loadFile);
+  useEffect(() => attachCoordinationModelAdder(addModel), [addModel]);
 
   // Memoize query to prevent recreation on every render
   // For single-model backward compatibility

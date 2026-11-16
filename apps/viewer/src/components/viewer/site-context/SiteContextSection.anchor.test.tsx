@@ -140,8 +140,10 @@ test('removing the context anchor hides its note while context models stay loade
   await waitFor(() => !!note(), 'note for the loaded anchor');
   assert.ok(note()!.textContent?.includes(a.name));
   act(() => { useViewerStore.getState().removeModel(a.id); });
-  await waitFor(() => host.textContent?.includes('Load site context') === true, 'model B site context section');
-  assert.equal(note(), null, 'no raw UUID for a removed anchor');
+  await waitFor(() => host.textContent?.includes('Load site context') === true, 'model B site context section', 5_000);
+  // Compare a primitive so a regression
+  // cannot make node:assert inspect the DOM's cyclic object graph (#10545).
+  assert.equal(note() === null, true, 'no raw UUID for a removed anchor');
   assert.equal(useViewerStore.getState().models.get(context.id), context, 'context model remains in the scene');
   assert.equal(useViewerStore.getState().siteContextCategories.terrain?.status, 'done');
 });

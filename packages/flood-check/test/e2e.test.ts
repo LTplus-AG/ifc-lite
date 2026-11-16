@@ -8,7 +8,8 @@
  * hazard layout, and terrain comes from a stub grid.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { fixture as fetchedFixture } from './fixture.js';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { IfcParser } from '@ifc-lite/parser';
 import { describe, expect, it } from 'vitest';
@@ -182,8 +183,8 @@ describe('repo fixtures', () => {
     await expect(runFloodCheck(facts, provider, flatGrid(0, 'EPSG:5728', 'EPSG:2056'))).rejects.toBeInstanceOf(FloodCheckRefusal);
   });
 
-  const miniBim = fileURLToPath(new URL('../../../tests/models/georeferencer/MiniBIM-3.1-DO_01_VORM.ifc', import.meta.url));
-  it.skipIf(!existsSync(miniBim))('runs a Revit-exported model (MiniBIM, EPSG:28992) end to end with a stub provider in its CRS (fixture: pnpm fixtures)', async () => {
+  const { path: miniBim, present: hasMiniBim } = fetchedFixture('georeferencer/MiniBIM-3.1-DO_01_VORM.ifc');
+  it.skipIf(!hasMiniBim)('runs a Revit-exported model (MiniBIM, EPSG:28992) end to end with a stub provider in its CRS (fixture: pnpm fixtures)', async () => {
     const store = await parseFile(miniBim);
     // Without a stated ground storey the ±0.00 pick is only a guess (so nothing is excluded by its level).
     expect(extractModelFacts(store).groundStorey).toMatchObject({ level: 3.5, basis: 'project-zero' });
@@ -201,6 +202,10 @@ describe('repo fixtures', () => {
     expect(count('door')).toBe(10);
     expect(count('wall-opening')).toBe(15);
     expect(count('slab-opening')).toBe(4);
+    // The doors' bodies are mapped items (Revit): read, their levels are exact. The 45 mapped equipment items lie on the
+    // first floor and above (7.40 m to 28.40 m), proven above the scope now that their bodies are read, so they are skipped.
+    expect(facts.candidates.filter((c) => c.category === 'door').every((c) => !c.levelIsUpperEstimate)).toBe(true);
+    expect(facts.skipped.filter((sk) => sk.reason === 'equipment above the ground storey')).toHaveLength(45);
 
     // The Swiss provider refuses this model outright.
     const bafu = createBafuRunoffProvider({ fetch: (() => { throw new Error('must not fetch'); }) as unknown as typeof fetch });

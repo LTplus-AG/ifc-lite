@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -12,12 +12,16 @@ import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { prepareDrawingAnnotations, readDrawingAnnotations, restoredDrawingAnnotations, type DrawingAnnotations } from './drawing-annotations';
 
+const localPython = join(homedir(), 'modelling-parity/venv/bin/python');
+const python = process.env.IFCOPENSHELL_PYTHON ?? process.env.PARITY_PYTHON ?? (existsSync(localPython) ? localPython : 'python3');
+const oracleAvailable = spawnSync(python, ['-c', 'import ifcopenshell, ifcopenshell.validate, pytest'], { stdio: 'ignore' }).status === 0;
+
 const parse = (text: string | Uint8Array) => new IfcParser().parseColumnar(
   (typeof text === 'string' ? new TextEncoder().encode(text) : text).slice().buffer as ArrayBuffer);
 const decode = (v: string | Uint8Array) => typeof v === 'string' ? v : new TextDecoder().decode(v);
-const stable = (text: string) => text.replace(/FILE_NAME\([^\n]*/, 'FILE_NAME(timestamp ignored)');
+const stable = (text: string) => text.replace(/(FILE_NAME\('(?:[^']|'')*',)'(?:[^']|'')*'/, "$1'<timestamp>'");
 for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
-  it(`#9296: ${Schema} dimensions and bound tags survive IFC export/reopen/export`, async () => {
+  it(`#9296: ${Schema} dimensions and bound tags survive IFC export/reopen/export`, async t => {
     const creator = new IfcCreator({ Name: 'Annotations', Schema, Timestamp: 0 });
     creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
     const upper = creator.addIfcBuildingStorey({ Name: 'Upper', Elevation: 3 });
@@ -56,16 +60,19 @@ for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
     assert.equal(kept.entityIndex.byType.get('IFCANNOTATION')?.length, 4, 'markup never restored must survive a new edit');
     const cleared = await parse(new StepExporter(reopened, prepareDrawingAnnotations(reopened, undefined, { ...input, measures: [], dimensions: [], tags: [], absorbed: new Set(saved.map(record => record.identity)) })).export({ schema: Schema }).content);
     assert.equal(cleared.entityIndex.byType.get('IFCANNOTATION')?.length ?? 0, 0, 'an explicit clear removes only restored annotations');
-    const folder = mkdtempSync(join(tmpdir(), 'annotations-'));
-    try {
-      const file = join(folder, 'export.ifc');
-      const python = process.env.PARITY_PYTHON ?? join(homedir(), 'modelling-parity/venv/bin/python');
-      for (const content of [first, decode(new StepExporter(cleared).export({ schema: Schema }).content)]) {
-        writeFileSync(file, content);
-        const result = spawnSync(python, [resolve('../../tools/ifcopenshell_reference/validate_export.py'), file], { encoding: 'utf8' });
-        assert.equal(result.status, 0, `${result.error ?? ''}\n${result.stdout}\n${result.stderr}`);
-      }
-    } finally { rmSync(folder, { recursive: true, force: true }); }
+    await t.test('EXPRESS validation of authored and cleared annotations', {
+      skip: !oracleAvailable && !process.env.IFCOPENSHELL_PYTHON ? 'IfcOpenShell unavailable; schema-conformance CI runs this with IFCOPENSHELL_PYTHON' : false,
+    }, () => {
+      const folder = mkdtempSync(join(tmpdir(), 'annotations-'));
+      try {
+        const file = join(folder, 'export.ifc');
+        for (const content of [first, decode(new StepExporter(cleared).export({ schema: Schema }).content)]) {
+          writeFileSync(file, content);
+          const result = spawnSync(python, [resolve('../../tools/ifcopenshell_reference/validate_export.py'), file], { encoding: 'utf8' });
+          assert.equal(result.status, 0, `${result.error ?? ''}\n${result.stdout}\n${result.stderr}`);
+        }
+      } finally { rmSync(folder, { recursive: true, force: true }); }
+    });
   });
   it(`#9296: ${Schema} no markup leaves export byte-identical`, async () => {
     const creator = new IfcCreator({ Name: 'Unchanged', Schema, Timestamp: 0 });

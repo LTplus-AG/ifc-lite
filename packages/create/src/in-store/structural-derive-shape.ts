@@ -313,7 +313,7 @@ function profileOutline(reader: GeometryEntityReader, profile: Entity | null): {
   if (type === 'IFCARBITRARYCLOSEDPROFILEDEF' || type === 'IFCARBITRARYPROFILEDEFWITHVOIDS') {
     const outer = curveRing(reader, reader.entity(refId(a[2]) ?? 0));
     if (typeof outer === 'string') return outer;
-    // A profile with voids is read by its outer outline (surface members do not carry openings), but its
+    // A profile with voids is read by its outer outline (profile voids are not carried), but its
     // material centroid subtracts them. An unreadable void leaves the centroid out, not wrong.
     let centroid: Flat | undefined = ringCentroid(outer);
     if (type === 'IFCARBITRARYPROFILEDEFWITHVOIDS') {
@@ -346,7 +346,8 @@ function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placem
   const solidFrame = axis3d(reader, position);
   const dir = pointOf(reader, direction, 'IFCDIRECTION');
   const depth = num(depthValue);
-  const outline = profileOutline(reader, reader.entity(refId(sweptArea) ?? 0));
+  const profile = reader.entity(refId(sweptArea) ?? 0);
+  const outline = profileOutline(reader, profile);
   if (typeof outline === 'string') return outline;
   const unitDir = dir && unit(dir);
   if (!solidFrame || !unitDir || depth === null || depth <= 0) return 'extrusion is unreadable';
@@ -356,6 +357,8 @@ function readPrism(reader: GeometryEntityReader, rep: Entity | undefined, placem
     outline: outline.points.map(([x, y]) => toWorld([x, y, 0])),
     extrusion: sub(toWorld(scale(unitDir, depth)), toWorld([0, 0, 0])),
     outlineExact: outline.exact,
+    ...(['IFCARBITRARYPROFILEDEFWITHVOIDS', 'IFCRECTANGLEHOLLOWPROFILEDEF'].includes(upper(profile)) ? { profileHasVoids: true } : {}),
+    ...(upper(profile) === 'IFCROUNDEDRECTANGLEPROFILEDEF' ? { outlineRounded: true } : {}),
     ...(outline.centroid ? { centroid: toWorld([outline.centroid[0], outline.centroid[1], 0]) } : {}),
   };
 }

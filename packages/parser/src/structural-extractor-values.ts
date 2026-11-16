@@ -47,6 +47,17 @@ export function structuralRoleOf(type: string): StructuralRole | undefined {
   return undefined;
 }
 
+/** Source buckets for rooted structural records and non-root reinforcement results. */
+export function structuralSourceIds(byType: ReadonlyMap<string, readonly number[]>): Set<number> {
+  const ids = new Set<number>();
+  for (const [type, entries] of byType) {
+    if ((type.startsWith('IFCSTRUCTURAL') || type === 'IFCSURFACEREINFORCEMENTAREA') && structuralRoleOf(type)) {
+      for (const id of entries) ids.add(id);
+    }
+  }
+  return ids;
+}
+
 export function structuralActivityKind(type: string): 'Action' | 'Reaction' | 'Unknown' {
   const chain = getInheritanceChain(type).map((c) => c.toUpperCase());
   if (chain.includes('IFCSTRUCTURALACTION')) return 'Action';

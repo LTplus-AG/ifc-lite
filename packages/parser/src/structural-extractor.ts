@@ -73,6 +73,7 @@ import {
   structuralActivityKind as activityKind,
   structuralRoleOf as roleOf,
   structuralRootFields as rootFields,
+  structuralSourceIds,
   type StructuralRole,
 } from './structural-extractor-values.js';
 
@@ -119,13 +120,7 @@ export function extractStructuralOnDemand(
   // Candidate source ids are the structural classes plus the relation classes
   // below. The effective iterator removes tombstones and folds in created and
   // retyped records before the extractor reads their attributes.
-  const sourceIds = new Set<number>();
-  for (const [typeKey, ids] of byType) {
-    if (!typeKey.startsWith('IFCSTRUCTURAL') && typeKey !== 'IFCSURFACEREINFORCEMENTAREA') continue;
-    const role = roleOf(typeKey);
-    if (!role) continue;
-    for (const id of ids) sourceIds.add(id);
-  }
+  const sourceIds = structuralSourceIds(byType);
 
   for (const type of RELATION_TYPES) for (const id of byType.get(type) ?? []) sourceIds.add(id);
   const typeMutations = view?.getTypeMutations?.();

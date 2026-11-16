@@ -201,6 +201,10 @@ describe('repo fixtures', () => {
     expect(count('door')).toBe(10);
     expect(count('wall-opening')).toBe(15);
     expect(count('slab-opening')).toBe(4);
+    // The doors' bodies are mapped items (Revit): read, their levels are exact. The 45 mapped equipment items lie on the
+    // first floor and above (7.40 m to 28.40 m), proven above the scope now that their bodies are read, so they are skipped.
+    expect(facts.candidates.filter((c) => c.category === 'door').every((c) => !c.levelIsUpperEstimate)).toBe(true);
+    expect(facts.skipped.filter((sk) => sk.reason === 'equipment above the ground storey')).toHaveLength(45);
 
     // The Swiss provider refuses this model outright.
     const bafu = createBafuRunoffProvider({ fetch: (() => { throw new Error('must not fetch'); }) as unknown as typeof fetch });

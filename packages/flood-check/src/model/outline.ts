@@ -18,6 +18,7 @@
  * composite curves) counts as an unreadable item.
  */
 
+import { placedItems } from './mapped.js';
 import { arcPoints, type Pt2 } from './arc.js';
 import { applyFrame, axisPlacementFrame, IDENTITY, type Frame, type Vec3 } from './placement.js';
 import { asEnum, asNumber, asRef, asRefList, asString, type ModelReader } from './reader.js';
@@ -310,13 +311,17 @@ export function readBody(reader: ModelReader, productId: number): BodyReading {
     const rep = reader.entity(repId);
     const identifier = rep ? asString(reader.attr(rep, 'RepresentationIdentifier')) : null;
     if (!rep || (identifier !== null && NON_SOLID.has(identifier))) continue;
-    for (const item of asRefList(reader.attr(rep, 'Items'))) {
-      out.items++;
-      const before = out.corners.length;
-      const clipped = readExtrusion(reader, item, out.corners);
-      if (out.corners.length > before) {
-        out.readable++;
-        if (clipped) out.clipped++;
+    // Every leaf counts: an ordinary item, or each item of a mapped representation (`mapped.ts`), placed by its map.
+    for (const top of asRefList(reader.attr(rep, 'Items'))) {
+      for (const { item, frame } of placedItems(reader, top)) {
+        out.items++;
+        if (!frame) continue;
+        const before = out.corners.length;
+        const clipped = readExtrusion(reader, item, out.corners, frame);
+        if (out.corners.length > before) {
+          out.readable++;
+          if (clipped) out.clipped++;
+        }
       }
     }
   }
@@ -324,7 +329,7 @@ export function readBody(reader: ModelReader, productId: number): BodyReading {
 }
 
 /** Reads one item's corners into `out`; true when they come from a clipped solid's first operand. */
-function readExtrusion(reader: ModelReader, item: number, out: Vec3[]): boolean {
+function readExtrusion(reader: ModelReader, item: number, out: Vec3[], placed: Frame = IDENTITY): boolean {
   // A DIFFERENCE's first operand bounds the solid from outside: its lowest point is no higher than the solid's.
   const unwrapped = unwrapClipping(reader, item);
   const solid = reader.entity(unwrapped?.solid);
@@ -340,8 +345,8 @@ function readExtrusion(reader: ModelReader, item: number, out: Vec3[]): boolean 
   const position = reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
   if (!position) return false;
   for (const [x, y] of profile) {
-    out.push(applyFrame(position, [x, y, 0]));
-    out.push(applyFrame(position, [x + dir[0] * depth, y + dir[1] * depth, dir[2] * depth]));
+    out.push(applyFrame(placed, applyFrame(position, [x, y, 0])));
+    out.push(applyFrame(placed, applyFrame(position, [x + dir[0] * depth, y + dir[1] * depth, dir[2] * depth])));
   }
   return unwrapped!.subtracted;
 }

@@ -239,6 +239,12 @@ entities, properties and containment from the parsed store. No meshing.
   a Boolean UNION) while others do, the footprint misses its area:
   `footprint.partial` is set, the slab is in `skipped`, a warning says so and
   no element gets a reassuring outcome (`partial-footprint`).
+  **Bodies given as `IfcMappedItem`** (how Revit exports doors, windows and
+  equipment) are read through their `RepresentationMap`, placed by
+  `MappingTarget · MappingOrigin` (the geometry engine's order; the target's
+  axes follow `IfcBaseAxis`, so an omitted Axis2 can mirror), with a uniform
+  scale applied; nested maps are followed up to 8 deep, a map met again is a
+  cycle, and a non-uniform scale is refused: those items count as unreadable.
   **Every geometry reader reports what it could not read**
   (`src/model/outline.ts`): bodies, slab outlines and wall axes are read item
   by item, every item, and each read returns the items present and the items

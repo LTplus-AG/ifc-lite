@@ -32,6 +32,7 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
+const NO_GEOREF = CRS_ONLY.replace(/#40=.*\n/, '');
 const parse = (text: string) => new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer as ArrayBuffer, { disableWorkerScan: true });
 const flows: Array<[string, Array<{ field: string; value: number }>, Record<string, number>]> = [
   ['map pick without terrain height', [{ field: 'eastings', value: 2600000 }, { field: 'northings', value: 1200000 }], { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 }],
@@ -39,10 +40,10 @@ const flows: Array<[string, Array<{ field: string; value: number }>, Record<stri
   ['single-field save', [{ field: 'orthogonalHeight', value: 12 }], { eastings: 0, northings: 0, orthogonalHeight: 12 }],
 ];
 
-async function withModel(run: (dataStore: IfcDataStore) => Promise<void>) {
+async function withModel(run: (dataStore: IfcDataStore) => Promise<void>, text = CRS_ONLY) {
   const store = useViewerStore;
   const before = store.getState();
-  const dataStore = await parse(CRS_ONLY);
+  const dataStore = await parse(text);
   store.setState({ models: new Map([['m', { id: 'm', ifcDataStore: dataStore }]]) as never, editEnabled: true, georefMutations: new Map(), undoStacks: new Map(), redoStacks: new Map() });
   try { await run(dataStore); } finally {
     store.setState({ editEnabled: before.editEnabled, models: before.models, georefMutations: before.georefMutations, undoStacks: before.undoStacks, redoStacks: before.redoStacks });
@@ -97,4 +98,41 @@ it('the room mirror publishes the effective conversion, so a peer is never sent 
   const context = createRoomSpatialContext(await parse(CRS_ONLY), undefined, { mapConversion: { eastings: 5 } }) as { georeferencing?: { mapConversion?: Record<string, unknown> } };
   const mc = context.georeferencing?.mapConversion;
   assert.deepEqual([mc?.eastings, mc?.northings, mc?.orthogonalHeight], [5, 0, 0]);
+});
+
+it('creating a CRS on a file with no georeferencing stores a position with it, and the export keeps both', async () => {
+  await withModel(async (dataStore) => {
+    useViewerStore.getState().setGeorefFields('m', 'projectedCRS', [{ field: 'name', value: 'EPSG:2056' }, { field: 'mapUnit', value: 'METRE' }]);
+    const stored = useViewerStore.getState().georefMutations.get('m');
+    assert.deepEqual([stored?.mapConversion?.eastings, stored?.mapConversion?.northings, stored?.mapConversion?.orthogonalHeight], [0, 0, 0]);
+    const geo = await exported(dataStore, stored);
+    assert.equal(geo?.projectedCRS?.name, 'EPSG:2056');
+    assert.equal(geo?.mapConversion?.eastings, 0);
+    useViewerStore.getState().undo('m');
+    assert.equal(useViewerStore.getState().georefMutations.get('m'), undefined, 'the CRS and its position are one undo step');
+  }, NO_GEOREF);
+});
+
+it('the EPSG pick (CRS fields, then the conversion defaults, one batch id) undoes as one step and never leaves a CRS without a position', async () => {
+  await withModel(async () => {
+    const batch = 'epsg-batch';
+    const s = useViewerStore.getState();
+    s.setGeorefFields('m', 'projectedCRS', [{ field: 'name', value: 'EPSG:2056' }], batch);
+    useViewerStore.getState().setGeorefFields('m', 'mapConversion', [{ field: 'eastings', value: 0 }, { field: 'northings', value: 0 }, { field: 'orthogonalHeight', value: 0 }, { field: 'scale', value: 1 }], batch);
+    useViewerStore.getState().undo('m');
+    assert.equal(useViewerStore.getState().georefMutations.get('m'), undefined);
+  }, NO_GEOREF);
+});
+
+it('a received CRS without a conversion arrives with an explicit zero position (a recipient with no CRS record exports it whole)', async () => {
+  const { receivedGeorefMutations } = await import('@/lib/collab/room-spatial-context');
+  const crs = { id: 0, name: 'EPSG:2056' };
+  const received = receivedGeorefMutations({ projectedCRS: crs as never });
+  assert.deepEqual(received.mapConversion, { eastings: 0, northings: 0, orthogonalHeight: 0 });
+  await withModel(async (dataStore) => {
+    const geo = await exported(dataStore, received as never);
+    assert.equal(geo?.projectedCRS?.name, 'EPSG:2056');
+    assert.equal(geo?.mapConversion?.northings, 0);
+  }, NO_GEOREF);
+  assert.equal(receivedGeorefMutations({ projectedCRS: crs as never, mapConversion: { eastings: 7 } as never }).mapConversion?.eastings, 7, 'a received conversion is kept');
 });

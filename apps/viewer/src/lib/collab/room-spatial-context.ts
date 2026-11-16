@@ -96,6 +96,18 @@ export function createRoomSpatialContext(
   return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
 }
 
+/**
+ * The pending georeference a recipient holds for received facts. A CRS the sender had without a conversion arrives with
+ * an explicit zero position, like the panel's own edits: a recipient with no CRS record would otherwise export a CRS
+ * with no position, which the exporter refuses.
+ */
+export function receivedGeorefMutations(georeferencing: Pick<GeoreferenceInfo, 'mapConversion' | 'projectedCRS'>) {
+  return {
+    mapConversion: georeferencing.mapConversion ?? (georeferencing.projectedCRS ? { eastings: 0, northings: 0, orthogonalHeight: 0 } : undefined),
+    projectedCRS: georeferencing.projectedCRS,
+  };
+}
+
 /** STEP resource ids have no counterpart in a root-only room snapshot. */
 export function roomGeoreference(georef: GeoreferenceInfo | null): GeoreferenceInfo | null {
   return georef ? {

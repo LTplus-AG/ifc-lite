@@ -13,6 +13,7 @@
 
 import { extractLengthUnitScale } from '@ifc-lite/parser';
 import { georeferencingReadTool } from './georef.js';
+import { georeferencingCheckTool } from './georef-doctor.js';
 import type { ComparisonOp, EntityData, QueryFilter } from '@ifc-lite/sdk';
 import type { Tool } from './types.js';
 import { findByGlobalId, fmtInt, okResult, paginate, resolveGlobalIds, resolveModel } from './util.js';
@@ -634,5 +635,6 @@ export const entityQueryTools: Tool[] = [
   materialsList,
   classificationsList,
   georeferencingReadTool,
+  georeferencingCheckTool,
   units,
 ];

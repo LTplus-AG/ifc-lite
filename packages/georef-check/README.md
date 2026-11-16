@@ -92,7 +92,8 @@ Each fix also carries `apply`, a machine-readable statement of how it can be app
 |---|---|---|
 | `georef.update` | the changes edit the model's effective IfcMapConversion / IfcProjectedCRS (or IFC2X3 ePSets), including adding a conversion beside an existing CRS | `input: { ProjectedCRS?, MapConversion? }` with EXPRESS attribute names; `userSupplied` lists the `null` fields. A CRS rename also lists the old CRS's other fields, which the write API makes the caller restate |
 | `georef.set` | the model has no map conversion and no CRS: one grouped write of the whole georeferencing | as above; `userSupplied` names what only the user can supply (the EPSG code, the map position) |
-| `manual` | IfcSite latitude/longitude, IfcRigidOperation, placements, an IfcGeographicCRS, a record that is not the effective one, a CRS defined by WKT, or a file with several IfcMapConversions (the write API refuses those) | `reason` |
+| `georef.site` | the changes are only IfcSite RefLatitude / RefLongitude / RefElevation of one site: one `bim.georef.setSite(input)` | `input: { siteId?, RefLatitude?, RefLongitude?, RefElevation? }` (decimal degrees); `userSupplied` lists the `null` fields as `IfcSite.<attribute>` |
+| `manual` | an IfcSite change mixed with other changes, IfcRigidOperation, placements, an IfcGeographicCRS, a record that is not the effective one, a CRS defined by WKT, or a file with several IfcMapConversions (the write API refuses those) | `reason` |
 
 ## Levels of Georeferencing
 

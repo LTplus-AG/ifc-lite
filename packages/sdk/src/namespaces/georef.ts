@@ -4,11 +4,19 @@
 
 import type { BimBackend } from '../types.js';
 import type {
+  GeorefCheckOptions,
+  GeorefCheckReport,
+  GeorefFixPlan,
+  GeorefFixPlanOptions,
+  GeorefFixResult,
+  GeorefSiteInput,
+  GeorefSiteWriteResult,
   GeoreferencingSetInput,
   GeoreferencingState,
   GeoreferencingUpdateInput,
   GeoreferencingWriteResult,
 } from '../georef/types.js';
+import { planGeorefFixes } from '../georef/doctor/plan.js';
 
 /**
  * `bim.georef` — read and write a model's georeferencing.
@@ -68,5 +76,47 @@ export class GeorefNamespace {
   /** Remove the georeferencing (map conversions, CRSs, IFC2X3 ePSets). */
   remove(modelId?: string): GeoreferencingWriteResult {
     return this.impl().write({ action: 'remove' }, modelId);
+  }
+
+  /**
+   * Write IfcSite RefLatitude / RefLongitude (decimal degrees, WGS84) and
+   * RefElevation (project length units). One undo step.
+   *
+   * @example
+   * bim.georef.setSite({ RefLatitude: 46.94809, RefLongitude: 7.44744, RefElevation: 540 });
+   */
+  setSite(input: GeorefSiteInput, modelId?: string): GeorefSiteWriteResult {
+    const impl = this.impl();
+    if (!impl.writeSite) throw new Error('georef.setSite: not available on this backend.');
+    return impl.writeSite(input, modelId);
+  }
+
+  /**
+   * Diagnose the georeferencing (`@ifc-lite/georef-check`) with the EPSG
+   * catalogue and CRS engine wired in. Offline unless `allowNetwork`; the
+   * checks a missing capability prevented are in `skipped`. A session with
+   * unsaved edits is checked as it would be exported.
+   *
+   * @example
+   * const report = await bim.georef.check();
+   * const plan = bim.georef.planFixes(report);
+   * bim.georef.fix(plan); // the `ready` fixes only
+   */
+  check(options: GeorefCheckOptions = {}, modelId?: string): Promise<GeorefCheckReport> {
+    const impl = this.impl();
+    if (!impl.check) throw new Error('georef.check: not available on this backend.');
+    return impl.check(options, modelId);
+  }
+
+  /** Which of a report's fixes can be applied, which need a value, and why the rest cannot. Pure. */
+  planFixes(report: GeorefCheckReport, options: GeorefFixPlanOptions = {}): GeorefFixPlan {
+    return planGeorefFixes(report, options);
+  }
+
+  /** Apply a plan's `ready` fixes (re-checked: write API only, nothing user-supplied left open, no checker caveat). */
+  fix(plan: GeorefFixPlan, modelId?: string): GeorefFixResult {
+    const impl = this.impl();
+    if (!impl.fix) throw new Error('georef.fix: not available on this backend.');
+    return impl.fix(plan, modelId);
   }
 }

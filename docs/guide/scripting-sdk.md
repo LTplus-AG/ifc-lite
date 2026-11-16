@@ -290,7 +290,7 @@ The CLI and MCP compose the shared `@ifc-lite/sdk/headless` implementation. Quer
 
 ## Georeferencing
 
-`bim.georef` reads and writes a model's georeferencing on headless contexts (`openModel`, the CLI, MCP). IFC4 and IFC4X3 get `IfcProjectedCRS` + `IfcMapConversion` (IFC4X3 with `FactorX/Y/Z`: `IfcMapConversionScaled`); IFC2X3 gets the `ePSet_MapConversion` / `ePSet_ProjectedCRS` property sets on the IfcSite. A write is held in the session and lands in the file with the next `bim.export.ifc()`.
+`bim.georef` reads and writes a model's georeferencing on headless contexts (`openModel`, the CLI, MCP). IFC4 and IFC4X3 get `IfcProjectedCRS` + `IfcMapConversion` (IFC4X3 with `FactorX/Y/Z`: `IfcMapConversionScaled`); IFC2X3 gets the `ePSet_MapConversion` / `ePSet_ProjectedCRS` property sets on IfcSite (updates preserve an existing host). A write is held in the session and lands in the file with the next `bim.export.ifc()`.
 
 ```typescript
 import { readFile, writeFile } from 'node:fs/promises';
@@ -319,7 +319,9 @@ Writes fail closed and throw a `GeoreferencingError` whose `code` says why and w
 - `set` on a georeferenced model is refused unless `replace: true`, which removes the existing map conversions, CRSs and their `IfcWellKnownText` and writes one map conversion (for the 3D `Model` context); `result.notes` names any other context that loses its conversion.
 - Contradictions are refused: an angle and an `XAxisAbscissa`/`XAxisOrdinate` vector that disagree, half a vector, factors outside FILE_SCHEMA `IFC4X3` / `IFC4X3_ADD2`, unknown keys, factors on a plain `IfcMapConversion` (use `set` with `replace`), or an `update` that renames the CRS while keeping the old datum or unit.
 
-`get()` reports EXPRESS attribute names plus `rotationDegrees`, `source`, `storage` and `pending`. `readGeoreferencing(store)` gives the same shape for a parsed store without a session. `bim.georef` does no reprojection and never computes latitude/longitude; IfcSite `RefLatitude`/`RefLongitude` are left untouched and reported in `notes`.
+`get()` reports EXPRESS attribute names plus `rotationDegrees`, `source`, `storage` and `pending`. `readGeoreferencing(store)` gives the same shape for a parsed store without a session. `set`/`update` leave IfcSite `RefLatitude`/`RefLongitude` untouched and say so in `notes`; `setSite({ RefLatitude, RefLongitude, RefElevation })` writes them (decimal degrees, written as `IfcCompoundPlaneAngleMeasure`; RefElevation in project length units), as one undo step.
+
+`check()`, `planFixes()` and `fix()` are the georeferencing doctor: what is wrong, which fixes the write API can apply, and applying them. See [Georeferencing](georeferencing.md).
 
 ## Embedding programmatically
 

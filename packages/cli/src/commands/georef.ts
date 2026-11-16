@@ -6,8 +6,8 @@
  * ifc-lite georef <subcommand> <file.ifc> ...
  *
  * Read and write a model's georeferencing through `bim.georef`. Subcommands
- * live in {@link GEOREF_SUBCOMMANDS}; a new one (e.g. a `check`) is one more
- * entry there plus a help row.
+ * live in {@link GEOREF_SUBCOMMANDS}; `check` and `fix` (the doctor) are in
+ * `georef-doctor.ts`.
  */
 
 import { writeFile } from 'node:fs/promises';
@@ -17,6 +17,7 @@ import { createHeadlessContext, loadIfcFile } from '../loader.js';
 import { fatal, printJson } from '../output.js';
 import { GeorefUsageError, georefInputFromArgs, parseGeorefArgs } from './georef-args.js';
 import { describeGeoreferencing, verifyWritten } from './georef-format.js';
+import { georefCheckCommand, georefFixCommand } from './georef-doctor.js';
 
 export const GEOREF_HELP = `
   ifc-lite georef — read and write georeferencing (IfcMapConversion / IfcProjectedCRS)
@@ -27,6 +28,10 @@ export const GEOREF_HELP = `
                            --eastings E --northings N --height H [options] [--replace] [--json]
     ifc-lite georef update <file.ifc> --out F [options] [--json]
     ifc-lite georef remove <file.ifc> --out F [--json]
+    ifc-lite georef check  <file.ifc> [--json] [--fail-on error|warning|info|none] [--allow-network]
+    ifc-lite georef fix    <file.ifc> --out F [--apply ID]... [--value PATH=V]... [--dry-run]
+                           [--accept-approximate-datum] [--allow-network] [--fail-on L] [--json]
+                           (same as: georef check <file.ifc> --fix --out F ...)
 
   CRS (IfcProjectedCRS):
     --crs NAME | --epsg CODE   Name, e.g. EPSG:2056 (--epsg 2056 writes "EPSG:2056")
@@ -42,7 +47,19 @@ export const GEOREF_HELP = `
     --factor-x X --factor-y Y --factor-z Z IFC4X3 / IFC4X3_ADD2 files only: writes IfcMapConversionScaled
 
   IFC2X3 has no such entities: set/update/remove write the ePSet_MapConversion and
-  ePSet_ProjectedCRS property sets on the IfcSite, which ifc-lite and other readers understand.
+  ePSet_ProjectedCRS property sets on IfcSite; updates preserve an existing host.
+
+  check: what is wrong with the georeferencing (finding codes, severity, suggested fixes)
+  and the Level of Georeferencing found. Exit 1 when a finding at or above --fail-on
+  (default error) exists. Offline: EPSG definitions outside the bundled index and datum
+  grids need --allow-network; checks that could not run are listed under "Not checked".
+
+  fix: applies only fixes that go through this write API with every value known, never one
+  the checker marks uncertain; shows each change; writes --out and checks it again.
+    --apply ID       use this fix instead of its finding's preferred one (ids are in the check output)
+    --value P=V      supply a value only you know: ProjectedCRS.Name=EPSG:2056, MapConversion.Eastings=…,
+                     IfcSite.RefLatitude=47.1 (decimal degrees)
+    --accept-approximate-datum   allow a site position derived through a Helmert approximation
 
   Refusals (exit 1, nothing written): a missing CRS, unit or offset; an unsupported unit;
   no IfcGeometricRepresentationContext (IFC2X3: no IfcSite); an existing georeferencing
@@ -60,6 +77,8 @@ export const GEOREF_SUBCOMMANDS: Record<string, Subcommand> = {
   set: { run: (args) => writeCommand('set', args) },
   update: { run: (args) => writeCommand('update', args) },
   remove: { run: (args) => writeCommand('remove', args) },
+  check: { run: georefCheckCommand },
+  fix: { run: georefFixCommand },
 };
 
 export async function georefCommand(args: string[]): Promise<void> {

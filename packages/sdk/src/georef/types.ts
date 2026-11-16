@@ -180,8 +180,39 @@ export class GeoreferencingError extends Error {
   }
 }
 
+/**
+ * `bim.georef.setSite()`: IfcSite RefLatitude / RefLongitude in decimal
+ * degrees (WGS84; south and west negative), RefElevation in project length
+ * units. Written as IfcCompoundPlaneAngleMeasure to the millionth of a second.
+ */
+export interface GeorefSiteInput {
+  /** The IfcSite to write; needed only when the model has more than one. */
+  siteId?: number;
+  RefLatitude?: number;
+  RefLongitude?: number;
+  RefElevation?: number;
+}
+
+export interface GeorefSiteWriteResult {
+  siteId: number;
+  /** Decimal degrees (RefElevation: project units); null when unset. */
+  before: Record<'RefLatitude' | 'RefLongitude' | 'RefElevation', number | null>;
+  after: Record<'RefLatitude' | 'RefLongitude' | 'RefElevation', number | null>;
+  /** The values as written: compound angles `[d, m, s, millionths]`, RefElevation as given. */
+  written: { RefLatitude?: number[]; RefLongitude?: number[]; RefElevation?: number };
+}
+
 /** Optional local-backend support for `bim.georef`. */
 export interface GeoreferencingBackendMethods {
   get(modelId?: string): GeoreferencingState;
   write(request: GeoreferencingWriteRequest, modelId?: string): GeoreferencingWriteResult;
+  writeSite?(input: GeorefSiteInput, modelId?: string): GeorefSiteWriteResult;
+  check?(options: GeorefCheckOptions, modelId?: string): Promise<GeorefCheckReport>;
+  fix?(plan: GeorefFixPlan, modelId?: string): GeorefFixResult;
 }
+
+export type {
+  GeorefCheckOptions, GeorefCheckReport, GeorefCrsResolution, GeorefDatumShift, GeorefFixPlan, GeorefFixPlanOptions, GeorefFixResult,
+  GeorefPlannedFix, GeorefPlannedFixStatus, GeorefPlannedWrite, GeorefSiteDerivation,
+} from './doctor/types.js';
+import type { GeorefCheckOptions, GeorefCheckReport, GeorefFixPlan, GeorefFixResult } from './doctor/types.js';

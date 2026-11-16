@@ -213,7 +213,7 @@ export type {
   GeoreferencingBackendMethods, GeoreferencingErrorCode, GeoreferencingSetInput, GeoreferencingState, GeoreferencingUpdateInput,
   GeoreferencingWriteRequest, GeoreferencingWriteResult, GeorefMapConversionAttributes, GeorefMapConversionState, GeorefMapUnitDecision,
   GeorefProjectedCRSAttributes, GeorefProjectedCRSState, GeorefRigidOperationState, GeorefSiteLocationState, GeorefSource, GeorefStorage,
-} from './georef/types.js';
+  GeorefCheckOptions, GeorefCheckReport, GeorefFixPlan, GeorefFixPlanOptions, GeorefFixResult, GeorefPlannedFix, GeorefSiteInput, GeorefSiteWriteResult, } from './georef/types.js';
 
 // IDS — full validation, facets, constraints, translation
 export { IDSNamespace, IDSAuthoringNamespace, IDSAuthoringDocument } from './namespaces/ids.js';

@@ -102,12 +102,12 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Category | Tools |
 |----------|-------|
 | Discovery | `model_info`, `model_list`, `model_load`, `model_unload`, `schema_describe` |
-| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `units`, `cost_data`, `cost_evaluate` |
+| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get` *(planned)*, `raycast` *(planned)* |
 | Clash | `clash_check`, `clash_matrix` |
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` *(planned)* |
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview` *(planned)*, `ids_infer` *(planned)*, `ids_coverage` *(planned)*, `ids_test` *(planned)* |
-| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
+| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
 
 | Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
@@ -315,13 +315,26 @@ For an `IfcSlab` host, `place_opening` accepts `Position: [x, y]` (opening centr
     `XAxisAbscissa`/`XAxisOrdinate`). IFC4/IFC4X3 get `IfcProjectedCRS` +
     `IfcMapConversion` (IFC4X3 with `FactorX/Y/Z`: `IfcMapConversionScaled`);
     IFC2X3 gets the `ePSet_MapConversion`/`ePSet_ProjectedCRS` property sets
-    on the IfcSite. It fails closed with the missing input in
+    on IfcSite (updates preserve an existing host). Action
+    `site` writes `Site.RefLatitude`/`RefLongitude` (decimal degrees) and
+    `RefElevation` on the IfcSite. It fails closed with the missing input in
     `details.missing`: no CRS, map unit, scale or factor is guessed; a model
     without an `IfcGeometricRepresentationContext` (IFC2X3: IfcSite) is
     refused; an existing georeferencing is replaced only with `replace: true`;
     contradicting values are refused. The write is saved by `export_ifc` /
     `model_save`. Each write is one operation: `mutation_undo` takes the whole
     write back, never part of it.
+
+!!! tip "Georeferencing: check and fix"
+    `georeferencing_check` returns the `bim.georef.check()` report (LoGeoRef,
+    findings with stable codes, checks skipped for lack of a capability) and a
+    fix plan in which every fix has a status: `ready`, `needs-value` (pass the
+    listed paths in `values`, from the user), `review` (the checker marks it
+    uncertain; never applied), `manual`, `alternative` (pass its id in
+    `apply`) or `conflict`. `georeferencing_fix` takes the same `apply`,
+    `values` and `accept_approximate_datum` inputs, applies the `ready` fixes
+    in the session and returns the check after them. Both run offline unless
+    `allow_network` is set. See [Georeferencing](georeferencing.md).
 
 !!! tip "Schema reach beyond IFC4"
     The parser's entity registry is generated from IFC4_ADD2_TC1, and both

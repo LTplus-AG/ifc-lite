@@ -46,6 +46,7 @@ on:
       - 'packages/flow/**'
       - 'packages/flow-nodes/**'
       - 'packages/geometry/**'
+      - 'packages/georef-check/**'
       - 'packages/geo/**'
       - 'packages/geodata-ch/**'
       - 'packages/ids/**'

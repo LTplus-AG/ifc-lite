@@ -3,13 +3,12 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { effectiveReferencers } from '@ifc-lite/export';
 import { AnchorEntityReader } from './resolve-anchor.js';
+import { sourceInventorySignature } from './source-inventory-signature.js';
 
 const TYPE = 'IFCRELCONNECTSPATHELEMENTS';
 const orders = new WeakMap<IfcDataStore, Map<string, { signature: unknown[]; ranks: Map<number, number> }>>();
 function sourceOrder(store: IfcDataStore, type: string): ReadonlyMap<number, number> {
-  // @raw-entity-enumeration-ok identity and size checks only; the canonical reader enumerates below.
-  const signature = [store.source, store.entityIndex, store.entityIndex.byType, store.entityIndex.byId.size,
-    store.deferredEntityIndex, store.deferredEntityIndex?.size, store.entities.typeRevision, store.entities.expressId.length];
+  const signature = sourceInventorySignature(store);
   let types = orders.get(store);
   if (!types) orders.set(store, types = new Map());
   let memo = types.get(type);

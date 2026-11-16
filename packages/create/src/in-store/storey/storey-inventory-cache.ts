@@ -3,6 +3,7 @@ import type { EntityChangeTracker, MutablePropertyView } from '@ifc-lite/mutatio
 import type { AnchorEntityReader } from '../resolve-anchor.js';
 import type { StoreyInventory, StoreyRelationship } from './storey-model.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { sourceInventorySignature } from '../source-inventory-signature.js';
 
 export interface SpatialGraph {
   readonly relationships: readonly StoreyRelationship[];
@@ -51,9 +52,7 @@ export function storeyInventoryCache(
   }
   // Parsed/deferred tables may finish streaming without an overlay write.
   // Invalidate on the same source identities/revisions used by indexed reads.
-  // @raw-entity-enumeration-ok source identity and size checks only; readStoreyInventory enumerates through AnchorEntityReader's effective IDs, and changes.take() invalidates overlay edits below.
-  const sourceSignature = [store.source, store.entityIndex, store.entityIndex.byType, store.entityIndex.byId.size,
-    store.deferredEntityIndex, store.deferredEntityIndex?.size, store.entities?.typeRevision, store.entities?.expressId?.length];
+  const sourceSignature = sourceInventorySignature(store);
   if (entry.sourceSignature && sourceSignature.some((value, i) => value !== entry.sourceSignature![i])) {
     entry.graph = undefined; entry.planner = undefined; entry.dirty.clear();
   }

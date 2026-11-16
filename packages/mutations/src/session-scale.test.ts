@@ -320,6 +320,21 @@ it.each([0, 40])('#8452 reference-slot queries track growth, unresolved hosts, d
   expect(ids(null)).toEqual([]);
 });
 
+it('#10420 warmed 33-row slot projections follow repeated retained-array edits', () => {
+  const view = new MutablePropertyView(null, 'retained-slot-projection');
+  const rows = Array.from({ length: 33 }, () => view.createEntity('IfcRelVoidsElement', [null, null, null, null, '#40', '#50']));
+  const attributes = view.getNewEntity(rows[0].expressId)!.attributes;
+  const ids = (target: number) => view.getNewEntityReferenceSlotIds('IFCRELVOIDSELEMENT', 4, target);
+  expect(ids(40)).toEqual(rows.map(row => row.expressId));
+  attributes[4] = '#60';
+  expect(ids(40)).toEqual(rows.slice(1).map(row => row.expressId));
+  expect(ids(60)).toEqual([rows[0].expressId]);
+  // The same retained array can change again without another getter.
+  attributes[4] = '#70';
+  expect(ids(60)).toEqual([]);
+  expect(ids(70)).toEqual([rows[0].expressId]);
+});
+
 it('#8452 reference queries track an already exposed row adopted by another map', () => {
   const first = new NewEntityMap();
   const row = { expressId: 1, type: 'IfcRelVoidsElement', attributes: [null, null, null, null, '#40', '#50'] };

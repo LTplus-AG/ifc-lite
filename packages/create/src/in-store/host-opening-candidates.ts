@@ -4,6 +4,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { refId } from './host-geometry-frame.js';
+import { sourceInventorySignature } from './source-inventory-signature.js';
 const TYPE = 'IFCRELVOIDSELEMENT';
 const sources = new WeakMap<IfcDataStore, { signature: unknown[]; buckets: Map<number | null, number[]>; order: Map<number, number> }>();
 
@@ -32,9 +33,7 @@ function openingOverrideIds(store: IfcDataStore, view: MutablePropertyView): num
 export function hostOpeningCandidates(store: IfcDataStore, host: number, view?: MutablePropertyView | null): Iterable<number> {
   const reader = new AnchorEntityReader(store, view);
   if (!view || typeof view.getNewEntityReferenceSlotIds !== 'function') return reader.ids(TYPE);
-  // @raw-entity-enumeration-ok source identity/size only; canonical reader supplies records.
-  const signature = [store.source, store.entityIndex, store.entityIndex.byType, store.entityIndex.byId.size,
-    store.deferredEntityIndex, store.deferredEntityIndex?.size, store.entities.typeRevision, store.entities.expressId.length];
+  const signature = sourceInventorySignature(store);
   let source = sources.get(store);
   if (!source || signature.some((v, i) => v !== source!.signature[i])) {
     source = { signature, buckets: new Map(), order: new Map() };

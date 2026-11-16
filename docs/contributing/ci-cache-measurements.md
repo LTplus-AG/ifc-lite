@@ -16,8 +16,9 @@ CI step durations below are wall time, not CPU time or billing-weighted minutes.
 - Retained Rust uses one Cargo archive owner for the native and WASM target
   tree, rather than restoring/saving the same paths twice. The setup action
   already installs the required Rust toolchain and exposes its exact cache hit.
-  A new namespace avoids inheriting the overlapping archives; its first hosted
-  qualification is cold. No time saving is asserted for this correction.
+  Keep the existing `rust-retained-runtime` namespace (the larger restored
+  archive) to reuse compatible objects instead of forcing an empty cache.
+  No time saving is asserted for this correction.
 - Keep retained, default, no-default-feature, each CSG gate, combined gates,
   and native/browser coverage distinct. CSG still cleans only geometry artifacts
   between test legs to bound disk; compatible dependency objects stay available.
@@ -83,8 +84,8 @@ JSONL is uploaded even on failure.
 
 Use full successful qualifications, not replay-only runs, to compare the same
 feature commands. Inspect compile seconds and artifact reuse separately from
-execution seconds and archive restore/save steps. The first new cache key is
-cold; compare later warm restores before claiming any cache saving. Further
+execution seconds and archive restore/save steps. Compare exact and fallback
+restores, and later warm qualifications, before claiming any cache saving. Further
 sharing is justified only by compatible artifact reuse and end-to-end results,
 without deleting any feature configuration or acceptance test.
 

@@ -2951,7 +2951,7 @@ jobs:
       - uses: ./.github/actions/setup-wasm-build
         id: retained_cache
         with:
-          cache-prefix: ci-rust-retained-unified-v1
+          cache-prefix: rust-retained-runtime
       # Hosted Ubuntu images ship a matched chromedriver; the runner image has
       # only Chrome. Fetch the Chrome-for-Testing driver for the EXACT installed
       # Chrome build once onto the runner volume.

@@ -55,3 +55,34 @@ END-ISO-10303-21;`);
     expect(bulk).not.toHaveBeenCalled();
   } finally { bulk.mockRestore(); }
 });
+
+it('#8452 exporting attachment metadata leaves authored arrays unexposed to later transactions', async () => {
+  const bytes = new TextEncoder().encode(`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('metadata.ifc','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;`);
+  const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer);
+  const view = new MutablePropertyView(null, 'attachment-export');
+  view.setExpressIdWatermark(1);
+  const column = view.createEntity('IfcColumn', ['0000000000000000000002', null, 'Column', null, null, null, null, null, '.COLUMN.']);
+  view.setProperty(column.expressId, 'IfcLite_StoreyAttachment', 'TopBinding', 'above');
+  const changes = view.trackEntityChanges();
+  try {
+    expect(changes.take()?.size).toBe(0);
+    const options = { schema: 'IFC4' as const, applyMutations: true, timeStamp: '1970-01-01T00:00:00' };
+    const exported = new StepExporter(store, view).export(options).content;
+    expect(new TextDecoder().decode(exported)).toContain("'IfcLite_StoreyAttachment'");
+    expect(changes.take()?.size).toBe(0);
+    expect(new StepExporter(store, view).export(options).content).toEqual(exported);
+    // Mutable callers still expose their arrays: export must use borrowed reads,
+    // rather than suppressing the transaction's alias tracking globally.
+    expect(view.getNewEntity(column.expressId)?.attributes[0]).toBe('0000000000000000000002');
+    expect([...changes.take() ?? []]).toEqual([column.expressId]);
+  } finally { changes.dispose(); }
+});

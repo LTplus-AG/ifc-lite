@@ -60,8 +60,10 @@ export class SourceRecords {
     return uses;
   }
 
-  // @raw-entity-enumeration-ok conversion prepass is enabled only for an unedited full-source export
-  ids(type: string): readonly number[] { return this.store.entityIndex.byType.get(type) ?? []; }
+  ids(type: string): readonly number[] {
+    // @raw-entity-enumeration-ok conversion prepass is enabled only for an unedited full-source export (step-pass-builder.ts)
+    return this.store.entityIndex.byType.get(type) ?? [];
+  }
 
   type(id: number | null): string | undefined {
     // @raw-entity-enumeration-ok same unedited source-only prepass

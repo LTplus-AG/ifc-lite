@@ -15,7 +15,6 @@
  *
  * Reads the source store, so only an unedited full export arms it.
  */
-import type { IfcDataStore } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
 import { conversionMode, namesWithheld, readCarrierSets, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
 import { refId } from './schema-ifc2x3-records.js';
@@ -43,9 +42,8 @@ export class StructuralThickness {
   /** Member id -> its three thicknesses from a source property set, or [] when it has more than one set. */
   private readonly psets = new Map<number, string[]>();
 
-  fromStore(store: IfcDataStore, from: string, to: string): void {
+  fromStore(source: SourceRecords, from: string, to: string): void {
     const mode = conversionMode(from, to);
-    const source = new SourceRecords(store);
     if (!mode || !source.ids(ENTITY).length) return;
     this.mode = mode;
     for (const id of source.ids('IFCSHAPEASPECT')) {

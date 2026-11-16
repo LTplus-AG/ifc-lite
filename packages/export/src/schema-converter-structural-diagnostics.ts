@@ -4,7 +4,8 @@ import { getSchemaRegistryForVersion, getCanonicalEntityName, type IfcDataStore 
 import { convertEntityType } from './schema-converter.js';
 import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
-import { CAUSED_BY_WRITTEN, StructuralCarriers } from './schema-converter-structural-carriers.js';
+import { CAUSED_BY_WRITTEN, SHARED_PLACEMENT_KEPT, StructuralCarriers } from './schema-converter-structural-carriers.js';
+import { SourceRecords } from './schema-converter-structural-source.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
 import { StructuralVarying } from './schema-converter-structural-varying.js';
@@ -28,8 +29,9 @@ export class StructuralDiagnostics {
     if (from === 'IFC2X3') this.axes.fromStore(store);
     else this.links.fromStore(store);
     this.varying.fromStore(store, from, to);
-    this.carriers.fromStore(store, from, to);
-    this.thickness.fromStore(store, from, to);
+    const source = new SourceRecords(store);
+    this.carriers.fromStore(source, from, to);
+    this.thickness.fromStore(source, from, to);
   }
 
   /** The exporter's express-id allocator, for the records the prepasses add. */
@@ -102,6 +104,10 @@ export class StructuralDiagnostics {
     if (this.thickness.note(id, entity, args, withheld)) {
       carried.add('SubsequentThickness').add('VaryingThicknessLocation');
       this.record(THICKNESS_WRITTEN);
+    }
+    if (this.carriers.keepsSharedPlacement(id)) {
+      carried.add('SharedPlacement');
+      this.record(SHARED_PLACEMENT_KEPT);
     }
     if (carried.size) this.carried.set(id, carried);
     const attrs = this.links.link(entity, args);

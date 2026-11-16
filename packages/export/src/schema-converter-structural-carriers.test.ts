@@ -58,6 +58,15 @@ describe('CausedBy IFC2X3 <-> IFC4 #9668', () => {
     expect(records((await convert(withRel, 'IFC4')).step, 'IFCRELASSIGNSTOPRODUCT')).toHaveLength(1);
   });
 
+  it('reads two Causes relationships naming the same reaction as one cause', async () => {
+    const ifc4 = model('IFC4', `${OWNER}
+#20=IFCSTRUCTURALPOINTREACTION('0KQ0efL39PrP5DeqBwaUNp',#5,'R',$,$,#9,$,#12,.GLOBAL_COORDS.);
+#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);
+#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#20),$,#21);
+#31=IFCRELASSIGNSTOPRODUCT('1bbbbbbbbbbbbbbbbbbbbb',#5,'Causes',$,(#20),$,#21);`);
+    expect(line((await convert(ifc4, 'IFC2X3')).step, 21)).toContain(',.F.,#20,.TRUE_LENGTH.);');
+  });
+
   it('fills CausedBy only from one relationship naming one point reaction', async () => {
     const ifc4 = model('IFC4', `${OWNER}
 #20=IFCSTRUCTURALPOINTREACTION('0KQ0efL39PrP5DeqBwaUNp',#5,'R',$,$,#9,$,#12,.GLOBAL_COORDS.);
@@ -99,6 +108,26 @@ describe('IfcStructuralAnalysisModel.SharedPlacement IFC2X3 -> IFC4 #9668', () =
     expect(line(step, 22)).toContain(",'Beam',$,$,#10,");
   });
 
+  it('places by neither model an item two models would place differently', async () => {
+    // Model 1 shares #9 (its items on #9 and #10); model 2 shares #10 (its items on #10 and #14), all equal copies.
+    const twoModels = ifc2x3('#10').replace('#31=', `#14=IFCLOCALPLACEMENT($,#8);
+#23=IFCSTRUCTURALCURVEMEMBER('1XciGbSFPUkgAKmWK4M6tc',#5,'M2',$,$,#14,$,.RIGID_JOINED_MEMBER.);
+#32=IFCSTRUCTURALANALYSISMODEL('4rBQGmCZHSd9Yn0gS5NyiS',#5,'Model 2',$,$,.LOADING_3D.,$,$,$);
+#33=IFCRELASSIGNSTOGROUP('2rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#21,#23),$,#32);
+#31=`);
+    const { step } = await convert(twoModels, 'IFC4');
+    expect(line(step, 21)).toContain(",'N',$,$,#10,");
+    expect(line(step, 30)).toMatch(/,\$\);$/);
+    expect(line(step, 32)).toMatch(/,\$\);$/);
+  });
+
+  it('does not report a SharedPlacement every grouped item keeps as lost on the downgrade', async () => {
+    const up = (await convert(ifc2x3('#9'), 'IFC4')).step;
+    const down = await convert(up, 'IFC2X3');
+    expect(down.warnings).not.toContain('SharedPlacement has no slot in IFC2X3; its value is omitted');
+    expect(down.warnings).toContain('it is kept as the ObjectPlacement of every grouped structural item');
+  });
+
   it('leaves it unset when the items use different placements', async () => {
     const { step } = await convert(ifc2x3('#13').replace('#12=', '#13=IFCLOCALPLACEMENT(#9,#8);\n#12='), 'IFC4');
     expect(line(step, 30)).toBe("#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,$);");
@@ -129,6 +158,15 @@ describe('IfcStructuralLoadCase IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     expect(line(up.step, 21)).toBe("#21=IFCSTRUCTURALLOADCASE('2gUSy$VNbHyPCNtxi3Mz27',#5,'No weight',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,$,$,$);");
     expect(line(up.step, 22)).toMatch(/^#22=IFCSTRUCTURALLOADGROUP\(/);
     expect([...records(up.step, 'IFCPROPERTYSET'), ...records(up.step, 'IFCPROPERTYLISTVALUE'), ...records(up.step, 'IFCPROPERTYSINGLEVALUE'), ...records(up.step, 'IFCRELDEFINESBYPROPERTIES')]).toEqual([]);
+  });
+
+  it('reads typed coefficients, and leaves a malformed list to the loss report', async () => {
+    const typed = IFC4.replace('(0.,0.,-1.));', '(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-1.)));');
+    const down = await convert(typed, 'IFC2X3');
+    expect(records(down.step, 'IFCPROPERTYLISTVALUE')[0]).toContain('(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-1.))');
+    const malformed = await convert(IFC4.replace('(0.,0.,-1.));', '(0.,-1.));'), 'IFC2X3');
+    expect(records(malformed.step, 'IFCPROPERTYLISTVALUE')).toEqual([]);
+    expect(malformed.warnings).toContain('IFCSTRUCTURALLOADCASE.SelfWeightCoefficients has no slot in IFC2X3');
   });
 
   it('keeps a carrier property set that a type object also names', async () => {

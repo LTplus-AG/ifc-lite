@@ -328,7 +328,8 @@ function convertRecord(
 
   // A structural rewrite replaces the withheld reference it was written for (an IFC4
   // load configuration); one still naming a withheld id falls to the check below.
-  const rewritten = structuralDiagnostics?.rewrite(Number(match[1].slice(1)), entityType, args, withheldRefIds);
+  const expressId = Number(match[1].slice(1));
+  const rewritten = structuralDiagnostics?.rewrite(expressId, entityType, args, withheldRefIds);
   if (rewritten === null) return null;
   if (rewritten) return `${prefix}${rewritten};`;
   // A record whose attribute list references an id this export is OMITTING
@@ -340,7 +341,7 @@ function convertRecord(
   if (withheldRefIds && withheldRefIds.size > 0 && referencesAnyExpressId(attrsRaw, withheldRefIds)) {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
-  structuralDiagnostics?.inspect(Number(match[1].slice(1)), line, fromSchema, toSchema);
+  structuralDiagnostics?.inspect(expressId, line, fromSchema, toSchema);
   if (structuralAxis) return `${prefix}${newType}(${args.join(',')},${structuralAxis});`;
   const structural = structuralAttributes(entityType, args, fromSchema, toSchema);
   if (structural !== null) return `${prefix}${newType}(${structural});`;

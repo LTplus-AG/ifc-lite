@@ -34,7 +34,6 @@ fn split_sections(payload: &[u8]) -> Vec<Vec<u8>> {
 fn empty_data_model() -> DataModel {
     DataModel {
         entities: vec![],
-        total_entities: 0,
         property_sets: vec![],
         quantity_sets: vec![],
         relationships: vec![],
@@ -62,7 +61,6 @@ fn empty_data_model() -> DataModel {
 fn serializes_and_reads_back_association_tables() {
     let mut dm = DataModel {
         entities: vec![],
-        total_entities: 0,
         property_sets: vec![],
         quantity_sets: vec![],
         relationships: vec![],
@@ -202,7 +200,6 @@ fn serializes_and_reads_back_association_tables() {
 fn serializes_and_reads_back_property_values_json() {
     let dm = DataModel {
         entities: vec![],
-        total_entities: 0,
         property_sets: vec![PropertySet {
             pset_id: 42,
             pset_name: "Pset_WallCommon".into(),

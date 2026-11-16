@@ -83,11 +83,12 @@ pub fn extract_data_model<T>(content: &T) -> DataModel
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    extract_data_model_with(content, DataModelOptions::default())
+    extract_data_model_with(content, DataModelOptions::default()).model
 }
 
 /// Extract the data model, building entity metadata only for the rows
-/// `options.entities` asks for.
+/// `options.entities` asks for. Returns it with the number of STEP instances
+/// the scan saw ([`DataModelExtraction`]).
 ///
 /// [`DataModelEntities::Rooted`] narrows the table to exactly what
 /// [`DataModelEntities::apply`] leaves, but it does so BEFORE the metadata is
@@ -105,7 +106,7 @@ where
 /// `DataModelEntities::All` is the default path and is untouched by this: it
 /// borrows the full job list rather than copying it, and its metadata pass
 /// still runs in the same `rayon::join` beside the other extractors.
-pub fn extract_data_model_with<T>(content: &T, options: DataModelOptions) -> DataModel
+pub fn extract_data_model_with<T>(content: &T, options: DataModelOptions) -> DataModelExtraction
 where
     T: AsRef<[u8]> + ?Sized,
 {
@@ -219,7 +220,6 @@ where
 
     let mut model = DataModel {
         entities,
-        total_entities,
         property_sets,
         quantity_sets,
         relationships,
@@ -234,7 +234,7 @@ where
     // needs the extracted row, so it runs here -- on the narrowed table rather
     // than on every instance in the file. A no-op for `All`.
     options.entities.apply(&mut model);
-    model
+    DataModelExtraction { model, total_entities }
 }
 
 /// The `IfcRelAssociates*` tables, with the length-unit scale they resolve

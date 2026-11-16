@@ -15,11 +15,11 @@ async function archive(layout: 'unicode' | 'zip64'): Promise<Uint8Array<ArrayBuf
   if (layout === 'unicode') {
     const zip = new JSZip();
     zip.file('Gebäude.ifc', step); zip.file('wall.png', image);
-    return zip.generateAsync({ type: 'uint8array' }); // real UTF-8 + Unicode Path fields, including their CRC
+    return new Uint8Array(await zip.generateAsync({ type: 'uint8array' })); // real UTF-8 + Unicode Path fields, including their CRC
   }
   const size = strToU8(step).length, extra = new Uint8Array(16), sizes = new DataView(extra.buffer);
   sizes.setUint32(0, size, true); sizes.setUint32(8, size, true);
-  const bytes = zipSync({ 'model.ifc': strToU8(step), 'wall.png': image }, { level: 0, extra: { 0x0001: extra } });
+  const bytes = new Uint8Array(zipSync({ 'model.ifc': strToU8(step), 'wall.png': image }, { level: 0, extra: { 0x0001: extra } }));
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), directory = view.getUint32(bytes.length - 22 + 16, true);
   // Model sizes use the actual ZIP64 extra; EOCD remains within ordinary small-file limits.
   for (const offset of [18, 22, directory + 20, directory + 24]) view.setUint32(offset, 0xffffffff, true);

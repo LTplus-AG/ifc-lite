@@ -254,9 +254,15 @@ ${geometry}
 #42=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#41);
 #20=`);
     const kept = await convert(matching, 'IFC4');
-    expect(kept.warnings).toContain('IFC2X3 SubsequentThickness is written as');
-    const unset = await convert(matching.replace('(0.25,0.3),#17)', '(0.25,0.3),$)'), 'IFC4');
-    expect(unset.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
+    expect(kept.warnings).toContain('IFC2X3 SubsequentThickness is held in IFC4');
+    expect(kept.warnings).not.toContain('has no slot in IFC4');
+    expect(records(kept.step, 'IFCPROPERTYSET')).toHaveLength(1);
+    // The other aspect of the representation is the location: thickness is held, the location is not.
+    const elsewhere = await convert(matching.replace('#17=', "#18=IFCSHAPEASPECT((#14),$,$,.T.,#15);\n#17="), 'IFC4');
+    expect(elsewhere.warnings).toContain('IFC2X3 SubsequentThickness is held in IFC4');
+    expect(elsewhere.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.VaryingThicknessLocation has no slot in IFC4');
+    expect(elsewhere.warnings).not.toContain('SubsequentThickness has no slot');
+    expect(records(elsewhere.step, 'IFCPROPERTYSET')).toHaveLength(1);
   });
 
   it('reports the thicknesses lost when an existing property set holds other values', async () => {
@@ -269,9 +275,10 @@ ${geometry}
     expect(up.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
   });
 
-  it('writes no property set for an unset location, even where the representation has no single aspect', async () => {
+  it('holds the thicknesses but not an unset location, even where the representation has no single aspect', async () => {
     const up = await convert(IFC2X3.replace(',#15,.SHELL.', ',$,.SHELL.').replace('(0.25,0.3),#17)', '(0.25,0.3),$)'), 'IFC4');
-    expect(records(up.step, 'IFCPROPERTYSET')).toEqual([]);
+    expect(records(up.step, 'IFCPROPERTYSET')).toHaveLength(1);
+    expect(up.warnings).not.toContain('has no slot in IFC4');
   });
 
   it('leaves an IFC4 member whose location aspect is not points, or whose thickness has its own unit, to the previous handling', async () => {
@@ -285,8 +292,10 @@ ${geometry}
   it('requires each location representation to hold exactly one point, on the way up and down', async () => {
     const twoPoints = IFC2X3.replace("#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));", "#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7,#7));");
     const twoUp = await convert(twoPoints, 'IFC4');
-    expect(records(twoUp.step, 'IFCPROPERTYSET')).toEqual([]);
-    expect(twoUp.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness has no slot in IFC4');
+    // The thicknesses are held; the location, which IFC2X3 would not admit back, is reported lost.
+    expect(records(twoUp.step, 'IFCPROPERTYSET')).toHaveLength(1);
+    expect(twoUp.warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.VaryingThicknessLocation has no slot in IFC4');
+    expect(twoUp.warnings).not.toContain('SubsequentThickness has no slot');
     // Down: a valid IFC4 file whose aspect representation then gets a second point.
     const valid = (await convert(IFC2X3, 'IFC4')).step;
     const twoDown = valid.replace("#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));", "#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7,#7));");
@@ -298,9 +307,10 @@ ${geometry}
     expect(line((await convert(up.step, 'IFC2X3')).step, 20)).toMatch(/,0\.2,\(0\.25,0\.3\),#17\);$/);
   });
 
-  it('writes no property set when the location is not the one aspect of the representation', async () => {
-    const { step } = await convert(IFC2X3.replace('#17=', "#18=IFCSHAPEASPECT((#14),$,$,.T.,#15);\n#17="), 'IFC4');
-    expect(records(step, 'IFCPROPERTYSET')).toEqual([]);
+  it('reports the location lost when it is not the one aspect of the representation', async () => {
+    const { step, warnings } = await convert(IFC2X3.replace('#17=', "#18=IFCSHAPEASPECT((#14),$,$,.T.,#15);\n#17="), 'IFC4');
+    expect(records(step, 'IFCPROPERTYSET')).toHaveLength(1);
+    expect(warnings).toContain('IFCSTRUCTURALSURFACEMEMBERVARYING.VaryingThicknessLocation has no slot in IFC4');
   });
 
   it('leaves an IFC4 member whose Thickness differs from Thickness1 to the previous handling', async () => {

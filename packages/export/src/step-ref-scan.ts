@@ -26,13 +26,15 @@ export function referencesAnyExpressId(attrsRaw: string, ids: ReadonlySet<number
 
 /**
  * The members of `ids` that `attrsRaw` names outside strings and comments, in
- * one scan.
+ * one scan; a shared empty set when it names none.
  */
-export function namedExpressIds(attrsRaw: string, ids: ReadonlySet<number>): Set<number> {
-  const named = new Set<number>();
-  if (ids.size > 0) forEachExpressRef(attrsRaw, (id) => { if (ids.has(id)) named.add(id); return false; });
-  return named;
+export function namedExpressIds(attrsRaw: string, ids: ReadonlySet<number>): ReadonlySet<number> {
+  let named: Set<number> | null = null;
+  if (ids.size > 0) forEachExpressRef(attrsRaw, (id) => { if (ids.has(id)) (named ??= new Set()).add(id); return false; });
+  return named ?? NO_IDS;
 }
+
+const NO_IDS: ReadonlySet<number> = new Set();
 
 /**
  * Calls `visit` with each `#id` in `attrsRaw` outside strings and comments,

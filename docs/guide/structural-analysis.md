@@ -166,8 +166,9 @@ Four other values move between an attribute and a relationship or property set:
   source left it empty.
 - An IFC2X3 varying surface member with three thicknesses gets
   `Pset_StructuralSurfaceMemberVaryingThickness` (`Thickness1` to
-  `Thickness3`). Its location aspect must be the one aspect of the member's
-  representation, which is where the downgrade finds it again.
+  `Thickness3`). The location comes back on the downgrade only when it is the
+  one aspect of the member's representation and each of its representations
+  holds one point; otherwise it is reported lost.
 
 These also need an unedited full export.
 

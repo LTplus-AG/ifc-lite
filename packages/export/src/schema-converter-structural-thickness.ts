@@ -23,7 +23,7 @@ import { parseStepNumber } from './step-slot-grammar.js';
 const THICKNESS_PSET = 'Pset_StructuralSurfaceMemberVaryingThickness';
 const ENTITY = 'IFCSTRUCTURALSURFACEMEMBERVARYING';
 const NAMES = ['Thickness1', 'Thickness2', 'Thickness3'];
-export const THICKNESS_WRITTEN = `IFC2X3 SubsequentThickness is written as ${THICKNESS_PSET} Thickness1 to Thickness3; the IfcShapeAspect locating them stays on the member's representation`;
+export const THICKNESS_WRITTEN = `IFC2X3 SubsequentThickness is held in IFC4 as ${THICKNESS_PSET} Thickness1 to Thickness3`;
 const THICKNESS_READ = `${THICKNESS_PSET} Thickness1 to Thickness3 are written as the IFC2X3 Thickness and SubsequentThickness, located by the one IfcShapeAspect of the member's representation`;
 
 /** The bare number of a thickness token, `0.2` or `IFCPOSITIVELENGTHMEASURE(0.2)`, or null unless positive. */
@@ -83,21 +83,28 @@ export class StructuralThickness {
     return found?.length === 1 ? found[0] : null;
   }
 
-  /** IFC2X3 -> IFC4: adds the property set for a member's thicknesses. True when IFC4 holds them. */
-  note(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
+  /**
+   * IFC2X3 -> IFC4: the attributes of a varying member IFC4 holds elsewhere.
+   * SubsequentThickness, in a matching property set the member has or one this
+   * adds; VaryingThicknessLocation too when its aspect is the representation's
+   * one point aspect, which the downgrade takes back (WR62, WR63).
+   */
+  note(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): readonly string[] {
     // The added property set names only the member; an IFC4 target withholds none, so none is checked.
-    if (this.mode !== 'upgrade' || entity !== ENTITY || !this.ids || withheld?.size || args.length !== 11) return false;
+    if (this.mode !== 'upgrade' || entity !== ENTITY || !this.ids || withheld?.size || args.length !== 11) return [];
     const values = [args[8], ...listItems(args[9]) ?? []].map(thickness);
-    if (values.length !== 3 || values.includes(null)) return false;
-    // The same location rule as the downgrade, so what IFC4 holds comes back, with a property set written or kept.
-    const location = refId(args[10]);
-    if (location === null || this.aspectOf(args[6]) !== location || !this.pointAspects.has(location)) return false;
-    // A property set the member already has holds the thicknesses only when its values are these.
+    if (values.length !== 3 || values.includes(null)) return [];
     const existing = this.psets.get(id);
-    if (existing) return existing.length === 3 && existing.every((v, i) => parseStepNumber(v) === parseStepNumber(values[i]!));
-    const properties = values.map((v, i) => `IFCPROPERTYSINGLEVALUE('${NAMES[i]}',$,IFCPOSITIVELENGTHMEASURE(${v}),$)`);
-    this.pending.push(...writeCarrierSet(this.ids, `ifc2x3-thickness:${args[0].trim()}`, args[1], THICKNESS_PSET, id, properties));
-    return true;
+    if (existing) {
+      // A property set the member already has holds the thicknesses only when its values are these.
+      if (existing.length !== 3 || existing.some((v, i) => parseStepNumber(v) !== parseStepNumber(values[i]!))) return [];
+    } else {
+      const properties = values.map((v, i) => `IFCPROPERTYSINGLEVALUE('${NAMES[i]}',$,IFCPOSITIVELENGTHMEASURE(${v}),$)`);
+      this.pending.push(...writeCarrierSet(this.ids, `ifc2x3-thickness:${args[0].trim()}`, args[1], THICKNESS_PSET, id, properties));
+    }
+    const location = refId(args[10]);
+    const located = location !== null && this.aspectOf(args[6]) === location && this.pointAspects.has(location);
+    return located ? ['SubsequentThickness', 'VaryingThicknessLocation'] : ['SubsequentThickness'];
   }
 
   /** IFC4 -> IFC2X3: the IFC2X3 member body from its property set and its one aspect, or undefined. */

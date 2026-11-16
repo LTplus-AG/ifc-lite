@@ -76,8 +76,8 @@ export function SiteContextSection({ modelId, loadContext = importContextLoader 
   const error = useViewerStore((s) => s.siteContextError);
   // One site context per scene: when it was loaded around another model, say so here.
   const otherAnchorName = useViewerStore((s) => {
-    const other = Object.values(s.siteContextCategories).find((c) => c?.anchorModelId && c.anchorModelId !== modelId && c.modelId);
-    return other ? (s.models.get(other.anchorModelId!)?.name ?? other.anchorModelId!) : null;
+    const other = Object.values(s.siteContextCategories).find((c) => c?.anchorModelId && c.anchorModelId !== modelId && s.models.has(c.anchorModelId) && c.modelId);
+    return other ? s.models.get(other.anchorModelId!)?.name : null;
   });
   const { addModel, removeModel } = useIfc();
   // The last request's choices survive the panel closing and reopening (it remounts).

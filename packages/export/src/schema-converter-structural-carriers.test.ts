@@ -555,5 +555,7 @@ describe('carrier prepass on a truncated property set #9668', () => {
 #33=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#32);`);
     const { step } = await convert(ifc2x3, 'IFC4');
     expect(line(step, 20)).toMatch(/^#20=IFCSTRUCTURALLOADGROUP\(/);
+    expect(records(step, 'IFCSTRUCTURALLOADCASE')).toEqual([]);
+    for (const id of [32, 33]) expect(line(step, id)).toBeDefined();
   });
 });

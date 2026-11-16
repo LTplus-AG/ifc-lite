@@ -137,6 +137,28 @@ describe('a body given as a mapped item', () => {
     expect(await door(extra)).toMatchObject({ levelIsUpperEstimate: true });
   });
 
+  it('a mapped representation over the leaf-work budget is wholly unreadable instead of expanded without bound', async () => {
+    const d = await door(mappedDoor((b) => {
+      const [item] = leaf()(b);
+      return Array.from({ length: 5000 }, () => item!);
+    }));
+    expect(d.levelIsUpperEstimate).toBe(true);
+  });
+
+  it('a mapped chain beyond the depth cap is unreadable without throwing from model extraction', async () => {
+    const d = await door(mappedDoor((b, ctx) => {
+      let item = leaf()(b)[0]!;
+      for (let depth = 0; depth < 9; depth++) {
+        const rep = b.add(`IFCSHAPEREPRESENTATION(#${ctx},'Body','MappedRepresentation',(#${item}))`);
+        const map = b.add(`IFCREPRESENTATIONMAP(#${b.axis(0, 0, 0)},#${rep})`);
+        const target = b.add(`IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#${b.add('IFCCARTESIANPOINT((0.,0.,0.))')},$,$)`);
+        item = b.add(`IFCMAPPEDITEM(#${map},#${target})`);
+      }
+      return [item];
+    }));
+    expect(d.levelIsUpperEstimate).toBe(true);
+  });
+
   it('a non-uniform scale is refused as unreadable (an upper estimate), a uniform one is applied', async () => {
     expect(await door(mappedDoor(leaf(), { scale2: 2 }))).toMatchObject({ levelIsUpperEstimate: true });
     const scaled = await door(mappedDoor(leaf(0, -1), { scale: 0.5 }));

@@ -112,9 +112,18 @@ describe('footprint source chains', () => {
     let checked = 0;
     let withheld = 0;
     let controlFavourable = 0;
+    const expectedWorst: Record<string, string> = {
+      'given|walls full loop': 'complete', 'given|walls partial loop': 'complete', 'given|no walls': 'complete',
+      'slab readable|walls full loop': 'complete', 'slab readable|walls partial loop': 'complete', 'slab readable|no walls': 'complete',
+      'slab with voids|walls full loop': 'courtyard-ring', 'slab with voids|walls partial loop': 'courtyard-ring', 'slab with voids|no walls': 'courtyard-ring',
+      'slab partly readable|walls full loop': 'partial', 'slab partly readable|walls partial loop': 'partial', 'slab partly readable|no walls': 'partial',
+      'slab unreadable|walls full loop': 'partial', 'slab unreadable|walls partial loop': 'hull', 'slab unreadable|no walls': 'hull',
+      'no slab|walls full loop': 'complete', 'no slab|walls partial loop': 'hull', 'no slab|no walls': 'hull',
+    };
     for (const [slabs, w] of rows) {
       const facts = await chain(slabs, w);
       const worst = footprintConcerns(facts.footprint).worst;
+      expect(worst, `${slabs}, ${w}: footprint quality`).toBe(expectedWorst[`${slabs}|${w}`]);
       if (worst === 'complete') {
         for (const paint of paints) {
           const r = checkFloodExposure(facts, raster(paint), flatTerrain(499.95), opts);

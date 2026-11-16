@@ -19,11 +19,16 @@ import { asNumber, asRef, asRefList, type ModelReader } from './reader.js';
 import { axisPlacementFrame, composeFrames, cross, dot, IDENTITY, normalize, readDirection, readPoint, type Frame, type Vec3 } from './placement.js';
 
 export const MAX_MAP_DEPTH = 8;
+export const MAX_MAPPED_ITEMS = 4096;
 
 /** One leaf item to read, placed by `frame`; null `frame`: an item that cannot be placed (counted, never read). */
 export interface PlacedItem {
   item: number;
   frame: Frame | null;
+}
+
+export interface MappedWorkBudget {
+  remaining: number;
 }
 
 const project = (v: Vec3, on: Vec3): Vec3 => {
@@ -66,19 +71,27 @@ function operatorFrame(reader: ModelReader, id: number | null): Frame | null {
  * in the item's own coordinates: itself for an ordinary item, the mapped
  * representation's items (recursively) for an `IfcMappedItem`.
  */
-export function placedItems(reader: ModelReader, item: number, outer: Frame = IDENTITY, depth = 0, path: ReadonlySet<number> = new Set()): PlacedItem[] {
-  const e = reader.entity(item);
-  if (!e || e.type !== 'IFCMAPPEDITEM') return [{ item, frame: outer }];
-  const mapId = asRef(reader.attr(e, 'MappingSource'));
-  const map = reader.entity(mapId);
-  const rep = map ? reader.entity(asRef(reader.attr(map, 'MappedRepresentation'))) : null;
-  const target = operatorFrame(reader, asRef(reader.attr(e, 'MappingTarget')));
-  const originRef = map ? reader.attr(map, 'MappingOrigin') : null;
-  const origin = originRef === null || originRef === undefined ? IDENTITY : axisPlacementFrame(reader, originRef);
-  if (!map || !rep || mapId === null || !target || !origin || depth >= MAX_MAP_DEPTH || path.has(mapId)) return [{ item, frame: null }];
-  const frame = composeFrames(outer, composeFrames(target, origin));
-  const inner = new Set(path).add(mapId);
-  const out: PlacedItem[] = [];
-  for (const child of asRefList(reader.attr(rep, 'Items'))) out.push(...placedItems(reader, child, frame, depth + 1, inner));
-  return out.length > 0 ? out : [{ item, frame: null }];
+export function placedItems(reader: ModelReader, item: number, outer: Frame = IDENTITY, depth = 0, path: ReadonlySet<number> = new Set(), budget: MappedWorkBudget = { remaining: MAX_MAPPED_ITEMS }): PlacedItem[] {
+  const walk = (current: number, frame: Frame, level: number, ancestors: ReadonlySet<number>): PlacedItem[] | null => {
+    if (--budget.remaining < 0) return null;
+    const e = reader.entity(current);
+    if (!e || e.type !== 'IFCMAPPEDITEM') return [{ item: current, frame }];
+    const mapId = asRef(reader.attr(e, 'MappingSource'));
+    const map = reader.entity(mapId);
+    const rep = map ? reader.entity(asRef(reader.attr(map, 'MappedRepresentation'))) : null;
+    const target = operatorFrame(reader, asRef(reader.attr(e, 'MappingTarget')));
+    const originRef = map ? reader.attr(map, 'MappingOrigin') : null;
+    const origin = originRef === null || originRef === undefined ? IDENTITY : axisPlacementFrame(reader, originRef);
+    if (!map || !rep || mapId === null || !target || !origin || level >= MAX_MAP_DEPTH || ancestors.has(mapId)) return null;
+    const placed = composeFrames(frame, composeFrames(target, origin));
+    const nextAncestors = new Set(ancestors).add(mapId);
+    const out: PlacedItem[] = [];
+    for (const child of asRefList(reader.attr(rep, 'Items'))) {
+      const leaves = walk(child, placed, level + 1, nextAncestors);
+      if (!leaves) return null;
+      out.push(...leaves);
+    }
+    return out.length > 0 ? out : null;
+  };
+  return walk(item, outer, depth, path) ?? [{ item, frame: null }];
 }

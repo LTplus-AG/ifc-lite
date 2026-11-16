@@ -20,7 +20,7 @@
  */
 
 import { insideRing } from '../geom.js';
-import { placedItems } from './mapped.js';
+import { MAX_MAPPED_ITEMS, placedItems, type MappedWorkBudget } from './mapped.js';
 import { curvePoints, profilePoints } from './curves.js';
 import { applyFrame, axisPlacementFrame, IDENTITY, type Frame, type Vec3 } from './placement.js';
 import { asEnum, asNumber, asRef, asRefList, asString, type ModelReader } from './reader.js';
@@ -185,7 +185,10 @@ function bodyHoles(reader: ModelReader, item: number): { holes: Vec3[][]; unknow
       unknown = true;
       continue;
     }
-    if (cut.zMin > base.zMin + 1e-6 || cut.zMax < base.zMax - 1e-6) continue; // a recess: slab material stays under it
+    if (cut.zMin > base.zMin + 1e-6 || cut.zMax < base.zMax - 1e-6) {
+      unknown = true;
+      continue;
+    }
     const inside = (q: Vec3) => insideRing({ x: q[0], y: q[1] }, base.plan.map(([x, y]) => ({ x, y })));
     const mids = cut.plan.map((a, k) => { const b = cut.plan[(k + 1) % cut.plan.length]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0] as Vec3; });
     if ([...cut.plan, ...mids].every(inside)) holes.push(cut.plan);
@@ -204,10 +207,11 @@ function verticalPrism(reader: ModelReader, id: number | null): { plan: Vec3[]; 
   const dirEntity = reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection')));
   const d = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
   if (!profile || profile.length < 3 || depth === null || !position || !d || d.some((v) => v === null)) return null;
-  if (Math.abs(position.z[2]) < 0.99 || Math.hypot(d[0] ?? 0, d[1] ?? 0) > 1e-6 * Math.hypot(...(d as number[]))) return null;
+  const worldDirection = [0, 1, 2].map((axis) => position.x[axis]! * (d[0] as number) + position.y[axis]! * (d[1] as number) + position.z[axis]! * (d[2] as number));
+  if (Math.abs(position.z[0]) > 1e-6 || Math.abs(position.z[1]) > 1e-6 || Math.hypot(worldDirection[0]!, worldDirection[1]!) > 1e-6 * Math.hypot(...worldDirection)) return null;
   const plan = profile.map(([x, y]) => applyFrame(position, [x, y, 0]));
-  const z0 = plan[0][2];
-  const z1 = applyFrame(position, [0, 0, Math.sign(d[2] as number) * depth])[2] - position.origin[2] + z0;
+  const z0 = Math.min(...plan.map((p) => p[2]));
+  const z1 = z0 + worldDirection[2]! * depth;
   return { plan, zMin: Math.min(z0, z1), zMax: Math.max(z0, z1) };
 }
 
@@ -259,6 +263,7 @@ export function readBody(reader: ModelReader, productId: number): BodyReading {
   const product = reader.entity(productId);
   const shape = reader.entity(asRef(reader.attr(product, 'Representation')));
   const out: BodyReading = { items: 0, readable: 0, corners: [], clipped: 0 };
+  const budget: MappedWorkBudget = { remaining: MAX_MAPPED_ITEMS };
   if (!shape) return out;
   for (const repId of asRefList(reader.attr(shape, 'Representations'))) {
     const rep = reader.entity(repId);
@@ -266,7 +271,7 @@ export function readBody(reader: ModelReader, productId: number): BodyReading {
     if (!rep || (identifier !== null && NON_SOLID.has(identifier))) continue;
     // Every leaf counts: an ordinary item, or each item of a mapped representation (`mapped.ts`), placed by its map.
     for (const top of asRefList(reader.attr(rep, 'Items'))) {
-      for (const { item, frame } of placedItems(reader, top)) {
+      for (const { item, frame } of placedItems(reader, top, IDENTITY, 0, new Set(), budget)) {
         out.items++;
         if (!frame) continue;
         const before = out.corners.length;
@@ -315,14 +320,17 @@ export function extrusionRegions(reader: ModelReader, productId: number): { regi
   const product = reader.entity(productId);
   const shape = reader.entity(asRef(reader.attr(product, 'Representation')));
   const regions: Vec3[][][] = [];
+  const budget: MappedWorkBudget = { remaining: MAX_MAPPED_ITEMS };
   let complete = true;
   for (const repId of asRefList(reader.attr(shape, 'Representations'))) {
     const rep = reader.entity(repId);
     const identifier = rep ? asString(reader.attr(rep, 'RepresentationIdentifier')) : null;
     if (!rep || (identifier !== null && NON_SOLID.has(identifier))) continue;
     for (const top of asRefList(reader.attr(rep, 'Items'))) {
-      for (const { item, frame } of placedItems(reader, top)) {
+      for (const { item, frame } of placedItems(reader, top, IDENTITY, 0, new Set(), budget)) {
         const solid = reader.entity(item);
+        const swept = solid ? reader.entity(asRef(reader.attr(solid, 'SweptArea'))) : null;
+        if (swept?.type === 'IFCARBITRARYPROFILEDEFWITHVOIDS' && asRefList(reader.attr(swept, 'InnerCurves')).length > 0) complete = false;
         const profile = solid?.type === 'IFCEXTRUDEDAREASOLID' ? profilePoints(reader, asRef(reader.attr(solid, 'SweptArea'))) : null;
         const depth = solid ? asNumber(reader.attr(solid, 'Depth')) : null;
         const dirEntity = solid ? reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection'))) : null;

@@ -36,9 +36,34 @@ describe('item 8: a slab hole cut by a Boolean DIFFERENCE is read and classified
     expect(fp.quality?.worst).toBe('complete');
     expect(fp.quality?.notes.join()).toMatch(/wholly roofed/);
   });
-  it('a shallow cut (a recess that leaves slab material under it) is no hole even with no roof above it', async () => {
+  it('a shallow cut (a recess that leaves slab material under it) is never filled as a hole', async () => {
     const fp = (await extract(cutSlab(box(-0.1, 1)))).footprint;
-    expect(fp.source).toBe('slab-outline');
+    expect(fp.source).toBe('slab-outline-voids-filled');
+    expect(fp.courtyardRings).toBeUndefined();
+  });
+  it('two partial-depth cuts that jointly remove the slab thickness remain unreadable until their combined effect is proven', async () => {
+    const fp = (await extract((b) => {
+      const slab = b.rectExtrusion(10, 5, 20, 10, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
+      const lowerHalf = b.rectExtrusion(10, 5, 8, 4, 0.2, b.axis(0, 0, -0.3), b.dir(0, 0, 1));
+      const first = b.add(`IFCBOOLEANRESULT(.DIFFERENCE.,#${slab},#${lowerHalf})`);
+      const upperHalf = b.rectExtrusion(10, 5, 8, 4, 0.2, b.axis(0, 0, 0.1), b.dir(0, 0, -1));
+      const second = b.add(`IFCBOOLEANRESULT(.DIFFERENCE.,#${first},#${upperHalf})`);
+      b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Platte mit versetzten Schnitten',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([second])},$,.FLOOR.)`));
+    })).footprint;
+    expect(fp.source).toBe('slab-outline-voids-filled');
+    expect(fp.courtyardRings).toBeUndefined();
+  });
+  it('a slightly tilted cut is not treated as a vertical through hole', async () => {
+    const fp = (await extract((b) => {
+      const slab = b.rectExtrusion(10, 5, 20, 10, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
+      const angle = 8 * Math.PI / 180;
+      const tilted = b.rectExtrusion(0, 0, 8, 4, 2, b.axis(10, 5, -1, b.dir(0, Math.sin(angle), Math.cos(angle)), b.dir(1, 0, 0)), b.dir(0, 0, 1));
+      const body = b.add(`IFCBOOLEANRESULT(.DIFFERENCE.,#${slab},#${tilted})`);
+      b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Platte mit geneigtem Schnitt',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([body])},$,.FLOOR.)`));
+      const roof = b.rectExtrusion(10, 5, 20, 10, 0.3, b.axis(0, 0, 2), b.dir(0, 0, 1));
+      b.contain(b.storeys.og.id, b.add(`IFCSLAB(${b.guid()},$,'Decke über Schnitt',$,$,#${b.place(b.storeys.og.pl, 0, 0, 0)},#${b.shape([roof])},$,.FLOOR.)`));
+    })).footprint;
+    expect(fp.source).toBe('slab-outline-voids-filled');
     expect(fp.courtyardRings).toBeUndefined();
   });
   it('a cut that crosses the slab\'s edge (a notch) stays voids-filled: its effect on the outline is not read', async () => {
@@ -82,6 +107,16 @@ describe('item 5: roofing that is not a slab counts, over the hole\'s whole area
   });
   it('an IfcPlate over only half the hole leaves it open', async () => {
     expect(await courtyards(flat('IFCPLATE', '$,.CURTAIN_PANEL.', 5, 10))).toBe(1);
+  });
+  it('a roofing profile with its own void does not roof the courtyard', async () => {
+    const roofWithVoid = (b: Extra) => {
+      const pt = (x: number, y: number) => b.add(`IFCCARTESIANPOINT((${x}.,${y}.))`);
+      const loop = (pts: Array<[number, number]>) => b.add(`IFCPOLYLINE((${[...pts, pts[0]].map(([x, y]) => `#${pt(x, y)}`).join(',')}))`);
+      const profile = b.add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#${loop([[4, 2], [16, 2], [16, 8], [4, 8]])},(#${loop([[6, 3], [14, 3], [14, 7], [6, 7]])}))`);
+      const solid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 3)},#${b.dir(0, 0, 1)},0.1)`);
+      b.contain(b.storeys.eg.id, b.add(`IFCROOF(${b.guid()},$,'Dach mit Aussparung',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLAT_ROOF.)`));
+    };
+    expect(await courtyards(roofWithVoid)).toBe(1);
   });
 });
 

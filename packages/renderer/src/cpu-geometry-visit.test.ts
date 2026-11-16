@@ -103,6 +103,22 @@ describe('scene CPU geometry walk (#10264)', () => {
     assert.equal(count('scene.textured'), 4);           // positions, indices, normals, uvs
   });
 
+  it('skips detached raw buffers and continues visiting live geometry (#10506)', async () => {
+    const { visitSceneCpuGeometry } = await load();
+    const instanceData = new ArrayBuffer(16), captured = new ArrayBuffer(32);
+    structuredClone([instanceData, captured], { transfer: [instanceData, captured] });
+    const live = mesh(3);
+    const calls: ArrayBufferView[] = [];
+    visitSceneCpuGeometry({
+      buckets: new Map(), meshDataMap: new Map(), meshQueue: [], meshQueueReadIndex: 0,
+      instancedTemplateCpu: [{ instanceData, ...live }], texturedMeshes: [], texturedSources: new WeakMap(),
+      fragmentPieces: { visitMeshes: () => {} },
+      streamWork: { visitMeshes: visit => visit(live, captured, new Uint8Array(1)) },
+    }, (_owner, array) => calls.push(array));
+    assert.equal(calls.filter(array => array.buffer === live.positions.buffer).length, 2);
+    assert.equal(calls.reduce((sum, array) => sum + array.byteLength, 0), 2 * (36 + 36 + 12) + 1);
+  });
+
   it('visits a released (zero-length) mesh without inventing bytes', async () => {
     const { visitMeshArrays } = await load();
     const sizes: number[] = [];

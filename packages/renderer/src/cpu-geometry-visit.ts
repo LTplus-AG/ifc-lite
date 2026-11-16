@@ -59,7 +59,7 @@ export function visitSceneCpuGeometry(scene: SceneCpuGeometryHost, visit: CpuGeo
   for (const cpu of scene.instancedTemplateCpu) {
     if (!cpu) continue;
     visitMeshArrays('scene.instancedTemplates', cpu, visit);
-    if (cpu.instanceData) visit('scene.instancedTemplates', new Uint8Array(cpu.instanceData), 'other');
+    if (cpu.instanceData?.byteLength) visit('scene.instancedTemplates', new Uint8Array(cpu.instanceData), 'other');
     if (cpu.canonicalAnchors) visit('scene.instancedTemplates', cpu.canonicalAnchors, 'other');
     if (cpu.canonicalMatrixTranslations) visit('scene.instancedTemplates', cpu.canonicalMatrixTranslations, 'other');
   }
@@ -77,7 +77,7 @@ export function visitSceneCpuGeometry(scene: SceneCpuGeometryHost, visit: CpuGeo
   scene.fragmentPieces.visitMeshes(mesh => visitMeshArrays('scene.fragmentPieces', mesh, visit));
   scene.streamWork.visitMeshes((mesh, bytes, salts) => {
     if (mesh) visitMeshArrays('scene.streamWork', mesh, visit);
-    if (bytes) visit('scene.streamWork', bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes, 'other');
+    if (bytes?.byteLength) visit('scene.streamWork', bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes, 'other');
     if (salts) visit('scene.streamWork', salts, 'other');
   });
 }

@@ -128,9 +128,12 @@ export class StructuralVarying {
     return first.includes(type) && loads.every((l) => l !== null && this.typeOf(l) === type) ? found[0].id : undefined;
   }
 
-  /** IFC2X3 -> IFC4: whether this IFC2X3 varying action stays unconverted (no IFC4 entity holds it then). */
+  /**
+   * IFC2X3 -> IFC4, when this prepass is armed: whether this IFC2X3 varying
+   * action stays unconverted (no IFC4 entity holds it then). False when unarmed.
+   */
   staysUnconverted(entity: string, args: readonly string[]): boolean {
-    return KINDS.some((k) => k.ifc2x3 === entity) && !this.upgradeLoads(entity, args);
+    return this.mode === 'upgrade' && !!this.ids && KINDS.some((k) => k.ifc2x3 === entity) && !this.upgradeLoads(entity, args);
   }
 
   /** The kind and loads of an IFC2X3 varying action `toIfc4` converts, or undefined. */

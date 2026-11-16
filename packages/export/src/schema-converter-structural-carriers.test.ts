@@ -395,7 +395,7 @@ ${geometry.replace('(#16),', aspect)}
     const up = await convert(varying('(#16),'), 'IFC4');
     expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
-    expect(up.warnings).toContain("CausedBy of a varying action that stays unconverted is not written as a 'Causes' relationship");
+    expect(up.warnings).toContain("CausedBy of a varying action that stays unconverted is kept only in that IFC2X3 record");
     expect(up.warnings).not.toContain('CausedBy is written as');
   });
 
@@ -403,5 +403,12 @@ ${geometry.replace('(#16),', aspect)}
     const up = await convert(varying('(#14,#16,#16),'), 'IFC4');
     expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(/);
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/'Causes',\$,\(#20\),\$,#30\);$/)]);
+    expect(up.warnings).toContain('CausedBy is written as');
+    expect(up.warnings).not.toContain('stays unconverted');
+  });
+
+  it('reports nothing about Causes when the prepass is not armed', async () => {
+    const result = new StepExporter(await parse(varying('(#16),'))).export({ schema: 'IFC4', subsetEntityIds: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 20, 30]) });
+    expect(result.stats.warnings.join('\n')).not.toContain("'Causes'");
   });
 });

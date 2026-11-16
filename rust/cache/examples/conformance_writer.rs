@@ -7,11 +7,23 @@
 //! against it. Not a distributed tool; the CLI is a later slice.
 //!
 //!   cargo run -p ifc-lite-cache --example conformance_writer -- <in.ifc> <out.ifclite>
+//!   cargo run -p ifc-lite-cache --example conformance_writer -- --deflated-length <payload>
+//!
+//! The second form prints the length of a raw chunk payload under the
+//! writer's own compressor, so the gate can check a raw chunk was stored raw
+//! because compressing it was not strictly smaller.
 
-use ifc_lite_cache::{build_cache, CacheOptions};
+use ifc_lite_cache::{build_cache, deflate_raw_len, CacheOptions};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let [flag, payload] = args.as_slice() {
+        if flag == "--deflated-length" {
+            let bytes = std::fs::read(payload).unwrap_or_else(|error| panic!("read {payload}: {error}"));
+            println!("{}", deflate_raw_len(&bytes));
+            return;
+        }
+    }
     let [input, output] = args.as_slice() else {
         eprintln!("usage: conformance_writer <in.ifc> <out.ifclite>");
         std::process::exit(2);

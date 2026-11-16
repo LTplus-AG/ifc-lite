@@ -357,9 +357,10 @@ jobs:
               - 'packages/cache/src/**'
               - 'scripts/cache-native-conformance.mjs'
               - 'scripts/lib/cache-native-*.mjs'
-              # Its oracles read the TS type/relationship tables and the
-              # committed samples, so a change to either runs it too.
+              # Its oracles read the TS type/relationship tables, the TS
+              # parser and the committed samples, so a change to any runs it.
               - 'packages/data/src/**'
+              - 'packages/parser/src/**'
               - 'apps/viewer/public/samples/**'
             # AGENTS.md is the instruction file every agent reads, and
             # scripts/check-agents-md-size.mjs gates its size and line length.

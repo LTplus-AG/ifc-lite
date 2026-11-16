@@ -117,13 +117,20 @@ pub(crate) fn store(meshes: &[CacheMesh], members: &[usize], compress: bool) -> 
         aabb: aabb(meshes, members),
     };
     if compress && stored.bytes.len() >= GEOMETRY_CHUNK_COMPRESS_MIN_BYTES {
-        let deflated = miniz_oxide::deflate::compress_to_vec(&stored.bytes, 6);
+        let deflated = deflate_raw(&stored.bytes);
         if deflated.len() < stored.bytes.len() {
             stored.bytes = deflated;
             stored.flags = CHUNK_FLAG_DEFLATE_RAW;
         }
     }
     stored
+}
+
+/// The writer's one chunk compressor: raw DEFLATE (no zlib header), the
+/// `DeflateRaw` storage. The conformance gate reads its output length through
+/// [`crate::deflate_raw_len`] to check a raw chunk was not compressible.
+pub(crate) fn deflate_raw(bytes: &[u8]) -> Vec<u8> {
+    miniz_oxide::deflate::compress_to_vec(bytes, 6)
 }
 
 #[cfg(test)]

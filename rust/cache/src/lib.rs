@@ -122,6 +122,15 @@ pub enum CacheError {
     TooManyTypeNames(usize),
 }
 
+/// The length of `payload` under the writer's own chunk compressor. For
+/// `scripts/cache-native-conformance.mjs` only: a chunk stored raw above the
+/// compression floor must not have been strictly smaller compressed, and only
+/// the writer's compressor can say so.
+#[doc(hidden)]
+pub fn deflate_raw_len(payload: &[u8]) -> usize {
+    geometry::chunks::deflate_raw(payload).len()
+}
+
 /// Build a complete `.ifclite` cache for `source` (the IFC STEP bytes).
 pub fn build_cache(source: &[u8], options: CacheOptions) -> Result<(Vec<u8>, CacheStats), CacheError> {
     build::build(source, &options)

@@ -63,6 +63,7 @@ import { fileURLToPath } from 'node:url';
 import { compareDecodedModel } from './lib/cache-native-decoded.mjs';
 import { compareGeometryOracle, decodedWorldPoints, LIMITATIONS } from './lib/cache-native-geometry-oracle.mjs';
 import { compareModelOracle } from './lib/cache-native-model-oracle.mjs';
+import { nativeDeflatedLength, payload, stored } from './lib/cache-native-storage.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE_DIST = join(ROOT, 'packages/cache/dist/index.js');
@@ -107,6 +108,9 @@ if (![CACHE_DIST, DATA_DIST, PARSER_DIST].every(existsSync)) {
   process.exit(1);
 }
 const cache = await import(CACHE_DIST);
+// The TS writer's own chunk compressor (`sections/geometry-codec.ts`), which
+// the package index does not re-export.
+const { deflateRaw: tsDeflateRaw } = await import(join(ROOT, 'packages/cache/dist/sections/geometry-codec.js'));
 const data = await import(DATA_DIST);
 const parser = await import(PARSER_DIST);
 
@@ -297,8 +301,8 @@ async function compareGeometry(label, nativeBytes, native, tsBytes, ts) {
     assert.ok(native.bytes.subarray(at, at + 24).equals(ts.bytes.subarray(at, at + 24)), `${where} AABB`);
     assert.equal(t.chunks[i].uncompressedLength, n.chunks[i].uncompressedLength, `${where} uncompressedLength`);
     assert.equal(t.chunks[i].meshCount, n.chunks[i].meshCount, `${where} meshCount`);
-    const payloadN = await payload(native.bytes, n.chunks[i], where + ' (native)');
-    const payloadT = await payload(ts.bytes, t.chunks[i], where + ' (TS)');
+    const payloadN = await payload(cache, native.bytes, n.chunks[i], where + ' (native)', nativeDeflatedLength(writerBin, work));
+    const payloadT = await payload(cache, ts.bytes, t.chunks[i], where + ' (TS)', async (raw) => (await tsDeflateRaw(raw)).length);
     assert.ok(payloadN.equals(payloadT), `${where}: uncompressed payload differs from byte ${firstDifference(payloadN, payloadT)}`);
     if (n.chunks[i].flags & cache.GeometryChunkFlags.DeflateRaw) compressed++;
     if (n.chunks[i].flags !== t.chunks[i].flags) flagDiffers++;
@@ -310,29 +314,6 @@ async function compareGeometry(label, nativeBytes, native, tsBytes, ts) {
   return { chunks: n.chunks.length, compressed, flagDiffers };
 }
 
-function stored(sectionBytes, info) {
-  return sectionBytes.subarray(info.byteOffset, info.byteOffset + info.byteLength);
-}
-
-/**
- * The uncompressed chunk record, after checking the storage representation
- * against it: raw storage is the payload itself; deflated storage inflates to
- * exactly `uncompressedLength` bytes, is strictly smaller, and was only
- * chosen above the 64 KiB floor.
- */
-async function payload(sectionBytes, info, where) {
-  const bytes = Buffer.from(stored(sectionBytes, info));
-  if (!(info.flags & cache.GeometryChunkFlags.DeflateRaw)) {
-    assert.equal(info.flags, 0, `${where}: unknown chunk flags`);
-    assert.equal(bytes.length, info.uncompressedLength, `${where}: raw chunk stores its payload`);
-    return bytes;
-  }
-  assert.ok(bytes.length < info.uncompressedLength, `${where}: deflate kept only when strictly smaller`);
-  assert.ok(info.uncompressedLength >= cache.GEOMETRY_CHUNK_COMPRESS_MIN_BYTES, `${where}: deflate only above the floor`);
-  const inflated = Buffer.from(await cache.inflateRaw(bytes));
-  assert.equal(inflated.length, info.uncompressedLength, `${where}: inflates to uncompressedLength`);
-  return inflated;
-}
 
 /** Every mesh field as exact bits, so a NaN or -0 cannot compare loosely. */
 function meshRecords(meshes) {

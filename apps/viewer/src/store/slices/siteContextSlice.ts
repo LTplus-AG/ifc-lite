@@ -41,6 +41,8 @@ export interface SiteContextCategoryState {
   status: SiteContextCategoryStatus;
   /** The model this category loaded as, once it has. */
   modelId?: string;
+  /** The model the loaded category was fetched around: one site context per scene, shown in every section. */
+  anchorModelId?: string;
   issues: SiteContextIssue[];
   attribution: Attribution[];
 }
@@ -254,8 +256,8 @@ export const siteContextTeardown = defineSliceTeardown(
     'model-removed': (scope, state) => {
       const categories = state.siteContextCategories ?? {};
       const stale = Object.entries(categories).filter(([, c]) => c?.modelId === scope.modelId);
-      // Removing the model a run fetches around ends that run: the handle is dropped (not
-      // called; a teardown is pure), so the run is no longer current and writes nothing more.
+      // Removing the model a run fetches around ends that run: the handle is dropped (a teardown
+      // may not act), the run sees it is no longer current and aborts itself (site-context-fetch).
       const endsRun = state.siteContextRequest?.anchorModelId === scope.modelId;
       if (!state.siteContextModels?.has(scope.modelId) && stale.length === 0 && !endsRun) return {};
       const models = new Map(state.siteContextModels);

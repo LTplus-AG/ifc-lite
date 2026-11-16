@@ -20,6 +20,7 @@ export const siteContextFr = {
   "siteContext.section.crsAssumed": "Le SCR a été déduit de son nom ({crs}).",
   "siteContext.section.heightAssumed": "Ce modèle n’indique aucun système altimétrique ; ses altitudes seront considérées comme LN02.",
   "siteContext.section.mapUnitAssumed": "L’unité cartographique de ce modèle est lue en mètres ; une unité illisible est lue de la même façon, donc les mètres sont supposés. Vérifiez l’unité si le contexte n’est pas au bon endroit.",
+  "siteContext.section.otherAnchor": "Le contexte du site dans la scène a été chargé autour de {model}. Il n’y en a qu’un par scène : le charger ici le remplace.",
   "siteContext.section.stats": "{requests} requêtes, {size}, {seconds} s ({cacheHits} depuis le cache)",
   "siteContext.status.idle": "Non chargé",
   "siteContext.status.fetching": "Chargement…",

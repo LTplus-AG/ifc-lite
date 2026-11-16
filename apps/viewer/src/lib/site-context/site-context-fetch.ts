@@ -50,6 +50,12 @@ export async function loadSiteContext(options: LoadSiteContextOptions): Promise<
     anchorModelId: options.anchorModelId, centre: options.centre, radius: options.radius,
     categories: options.categories, imagery: options.imagery, startedAt: Date.now(),
   }, abort);
+  // A run detached by the slice (its anchor model removed, all models cleared) is aborted
+  // here, by the run itself: a teardown only drops the handle, since it may not act (#10481 review).
+  let settled = false;
+  const unsubscribe = useViewerStore.subscribe((state) => {
+    if (!settled && state.siteContextAbort !== abort && !abort.signal.aborted) abort.abort();
+  });
   const started = performance.now();
   const drape = options.drapeImagery
     ?? (async (modelId: string, signal: AbortSignal) => (await import('./site-context-imagery')).drapeSiteContextImagery(modelId, signal));
@@ -66,12 +72,10 @@ export async function loadSiteContext(options: LoadSiteContextOptions): Promise<
       store().setSiteContextCategory(abort, kind, { status: 'error' });
       return;
     }
-    // A category loaded again replaces the earlier one rather than stacking a
-    // second copy of the same surface in the same place (z-fighting, doubled
-    // attribution rows). Only once the new one has arrived with geometry.
-    for (const [previousId, record] of store().siteContextModels) {
-      if (record.kind === kind) options.removeModel(previousId);
-    }
+    // A category loaded again replaces the earlier one (one site context per scene) rather
+    // than stacking a second copy of the same surface (z-fighting, doubled attribution rows).
+    // The new model goes in first; the old one leaves only once it has (#10481 review).
+    const previous = [...store().siteContextModels].filter(([, record]) => record.kind === kind).map(([id]) => id);
     const file = new File([category.bytes.slice().buffer], siteContextFileName(kind));
     const modelId = await options.addModel(file, { name: siteContextModelName(kind) });
     if (!current()) {
@@ -79,7 +83,18 @@ export async function loadSiteContext(options: LoadSiteContextOptions): Promise<
       if (modelId) options.removeModel(modelId);
       return;
     }
-    store().setSiteContextCategory(abort, kind, { status: categoryStatusOf(modelId !== null, category.complete), ...(modelId ? { modelId } : {}) });
+    if (!modelId) {
+      // The replacement did not load: the previous model stays, and the category says why.
+      const kept = store().siteContextCategories[kind];
+      store().setSiteContextCategory(abort, kind, {
+        status: 'error',
+        issues: [...(kept?.issues ?? []), { code: 'site-context-load-failed', severity: 'error', message: `the new ${kind} could not be loaded${previous.length ? '; the previous one is still shown' : ''}` }],
+        ...(previous.length ? { modelId: previous[0] } : {}),
+      });
+      return;
+    }
+    for (const id of previous) options.removeModel(id);
+    store().setSiteContextCategory(abort, kind, { status: categoryStatusOf(true, category.complete), modelId, anchorModelId: options.anchorModelId });
     if (!modelId || kind !== 'terrain' || !options.imagery) return;
     try {
       await drape(modelId, abort.signal);
@@ -109,10 +124,12 @@ export async function loadSiteContext(options: LoadSiteContextOptions): Promise<
       abort.signal,
     );
     await chain;
+    settled = true;
     if (abort.signal.aborted) store().settleAbortedSiteContextRun(abort);
     else store().finishSiteContextRequest(abort, { ...stats, elapsedMs: performance.now() - started });
   } catch (error) {
     await chain;
+    settled = true;
     if (isAbort(error) || abort.signal.aborted) {
       // Settles only this run, and only if it is still the current one: never the run after it.
       store().settleAbortedSiteContextRun(abort);
@@ -123,6 +140,7 @@ export async function loadSiteContext(options: LoadSiteContextOptions): Promise<
     store().setSiteContextError(abort, message);
     store().finishSiteContextRequest(abort, stats, message);
   } finally {
+    unsubscribe();
     supersession.signal.removeEventListener('abort', onSuperseded);
     supersession.stop();
   }

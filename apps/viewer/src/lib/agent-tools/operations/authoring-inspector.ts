@@ -46,7 +46,7 @@ export const inspectorOperations = [
     type: 'object', properties: { kind: kindSchema, channel: { type: 'string', enum: ['type', 'layers'] }, express_id: { type: 'integer', minimum: 0 }, expected_defaults: { type: 'string', maxLength: 200000 } }, required: ['kind', 'channel', 'express_id', 'expected_defaults'], additionalProperties: false,
   }, async (i, c) => {
     const { AUTHORED_KINDS } = await import('@/lib/commands/modeling/authored-kinds'); assertToolActive(c);
-    if (i.express_id) { const ref = resolveRef(c.model, { express_id: i.express_id }), type = c.model.bim.entity(ref).type;
+    if (i.express_id) { const ref = resolveRef(c.model, { express_id: i.express_id }), type = c.model.bim.entity(ref)?.type;
       if (type !== (i.channel === 'type' ? AUTHORED_KINDS[i.kind].type : 'IfcMaterialLayerSet')) throw new Error('The chosen entity has the wrong native IFC type.'); }
     return out(c.commit(() => { expected(i.expected_defaults); const s = useViewerStore.getState(), picks = { ...(i.channel === 'type' ? s.authoringDefaults.typeIds : s.authoringDefaults.layerSetIds) };
       if (i.express_id) picks[i.kind] = { modelId: c.model.id, expressId: i.express_id }; else delete picks[i.kind];

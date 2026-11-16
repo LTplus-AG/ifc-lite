@@ -16,7 +16,8 @@ async function inspect(c: OperationContext, id: number) {
   const s = useViewerStore.getState(), view = s.mutationViews.get(c.model.id);
   const properties = view?.getForEntity(id) ?? c.model.store.properties.getForEntity(id);
   const inherited = effectiveTypeProperties(c.model.store, id, view);
-  return { properties, inherited, IfcClass: c.model.bim.entity({ modelId: c.model.id, expressId: id }).type };
+  const entity = c.model.bim.entity({ modelId: c.model.id, expressId: id }); if (!entity) throw new Error('Native entity is no longer available.');
+  return { properties, inherited, IfcClass: entity.type };
 }
 export const propertyInspectorOperations = [
   operation<{ express_id: number }>(meta('properties.inherited.read', 'Read native occurrence and inherited type property sets, with an exact snapshot for lossless occurrence overrides.'), {
@@ -40,7 +41,7 @@ export const propertyInspectorOperations = [
   operation<{ express_id: number; IfcClass: string; PredefinedType: string; expected_class: string }>(meta('properties.reassignClass', 'Reassign the exact element IFC class/PredefinedType using the native Properties writer inside one rollback-capable transaction. expected_class guards against a concurrent retype; native keyword/export constraints remain authoritative.', true), {
     type: 'object', properties: { express_id: { type: 'integer', minimum: 1 }, IfcClass: { type: 'string', pattern: '^Ifc[A-Za-z][A-Za-z0-9_]*$', maxLength: 200 }, PredefinedType: { type: 'string', maxLength: 100 }, expected_class: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['express_id', 'IfcClass', 'PredefinedType', 'expected_class'], additionalProperties: false,
   }, async (i, c) => { const { runInspectorEdit } = await import('@/components/viewer/model-inspector/inspector-edits'); resolveRef(c.model, { express_id: i.express_id }); assertToolActive(c);
-    if (c.model.bim.entity({ modelId: c.model.id, expressId: i.express_id }).type !== i.expected_class) throw new Error('IFC class changed. Inspect again.');
+    if (c.model.bim.entity({ modelId: c.model.id, expressId: i.express_id })?.type !== i.expected_class) throw new Error('IFC class changed. Inspect again.');
     const ok = c.commit(() => runInspectorEdit(c.model.id, tx => { if (!tx.store.setEntityType(c.model.id, i.express_id, i.IfcClass, i.PredefinedType || null)) throw new Error('Native retype refused.'); return []; }));
     if (!ok) throw new Error('The native retype transaction refused this change.'); return out({ IfcClass: i.IfcClass, express_id: i.express_id });
   }),

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { operation, emptySchema, pointSchema, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
@@ -23,8 +24,8 @@ function inspect() {
 function expected(value: number) { if (useViewerStore.getState().modelPlacement.revision !== value) throw new Error('The placement revision changed. Inspect again.'); }
 export const placementOperations = [
   operation({ ...meta('placement.read', 'Read native whole-model placements and the current numerical preview. Engineering coordinates are IFC Z-up metres; rotations are radians.'), effects: ['read'], capability: 'read' }, emptySchema, () => out(inspect())),
-  operation<{ delta: [number, number, number]; model_ids?: string[]; placement_revision: number }>(meta('placement.translation.preview', 'Start an explicit native reposition session for the selected model or an explicit model_ids set and preview a numerical engineering Z-up metre translation. Refuses an existing interactive preview.'), {
-    type: 'object', properties: { delta: pointSchema, model_ids: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1 } }, placement_revision: { type: 'integer', minimum: 0 } }, required: ['delta', 'placement_revision'], additionalProperties: false,
+  operation<{ delta: [number, number, number]; model_ids?: string[] | null; placement_revision: number }>(meta('placement.translation.preview', 'Start an explicit native reposition session for the selected model or an explicit model_ids set and preview a numerical engineering Z-up metre translation. Refuses an existing interactive preview.'), {
+    type: 'object', properties: { delta: pointSchema, model_ids: { type: 'array', nullable: true, minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1 } }, placement_revision: { type: 'integer', minimum: 0 } }, required: ['delta', 'placement_revision'], additionalProperties: false,
   }, (i, c) => { gate(c); expected(i.placement_revision); const s = useViewerStore.getState(); if (s.modelPlacement.preview) throw new Error('Finish or cancel the existing reposition preview first.');
     return out(c.commit(() => { const ids = i.model_ids ?? [c.model.id]; if (!ids.includes(c.model.id)) throw new Error('The operation model must be among the explicitly moved models.'); s.openReposition(ids); useViewerStore.getState().previewModelTranslation(i.delta); return inspect(); }));
   }),
@@ -49,7 +50,7 @@ export const placementOperations = [
   }),
   operation<{ entity: 'mapConversion' | 'projectedCRS'; fields: Array<{ field: string; value: string | number; oldValue: string | number | null }> }>(meta('georeference.edit', 'Set a validated native georeferencing field batch as one native history operation. Exact current expected values are required. Existing field casing follows the georeference API.', true), {
     type: 'object', properties: { entity: { type: 'string', enum: ['mapConversion', 'projectedCRS'] }, fields: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'object', properties: {
-      field: { type: 'string', minLength: 1, maxLength: 80 }, value: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'number' }] }, oldValue: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'number' }, { type: 'null' }] },
+      field: { type: 'string', minLength: 1, maxLength: 80 }, value: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'number' }] }, oldValue: { anyOf: [{ type: 'string', maxLength: 2000 }, { type: 'number' }, { type: 'null' }] } as unknown as JSONSchemaType<string | number | null>,
     }, required: ['field', 'value', 'oldValue'], additionalProperties: false } } }, required: ['entity', 'fields'], additionalProperties: false,
   }, async (i, c) => {
     const [{ getEffectiveGeoreference, supportsStandardGeoreferencing }, { isReadOnlyCoordinateOperation }] = await Promise.all([import('@/lib/geo/effective-georef'), import('@/components/viewer/properties/georef-notices')]); assertToolActive(c);

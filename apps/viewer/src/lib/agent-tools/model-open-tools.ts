@@ -97,13 +97,23 @@ function percentDecoded(text: string, charset = 'utf-8'): string {
 
 /** `Content-Disposition` parameters by lower-case name, quoted strings unescaped. */
 function dispositionParams(header: string): Map<string, string> {
-  // A repeated header arrives joined with ', ': parse only the first, which ends at a comma outside quotes
-  // that starts another disposition (`attachment;`, `inline;`) or a filename parameter.
+  // A repeated header arrives joined with ', ': parse only the first, which ends at a comma outside a
+  // quoted value that starts another disposition (`attachment;`, `inline;`) or a filename parameter.
   let first = header;
-  for (let i = 0, quoted = false; i < header.length; i++) {
-    if (header[i] === '\\' && quoted) i++;
-    else if (header[i] === '"') quoted = !quoted;
-    else if (header[i] === ',' && !quoted && /^,\s*(?:(?:attachment|inline)\s*(?:;|$)|filename\*?\s*=)/i.test(header.slice(i))) { first = header.slice(0, i); break; }
+  const boundary = /,\s*(?:(?:attachment|inline)\s*(?:;|$)|filename\*?\s*=)/iy;
+  for (let i = 0, quoted = false, afterEquals = false; i < header.length; i++) {
+    const c = header[i];
+    if (quoted) {
+      if (c === '\\') i++;
+      else if (c === '"') quoted = false;
+    } else if (c === '"' && afterEquals) {
+      quoted = true; // a quoted-string only starts a parameter value
+    } else if (c === ',') {
+      boundary.lastIndex = i;
+      if (boundary.test(header)) { first = header.slice(0, i); break; }
+    }
+    if (c === '=') afterEquals = true;
+    else if (!/\s/.test(c)) afterEquals = false;
   }
   // The leading ';' also reads a header without a disposition type (`filename="x.ifc"`).
   const params = new Map<string, string>();
@@ -246,18 +256,15 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   });
   const loaded = await within(load.then((id) => ({ id })), deadline - Date.now());
   if (!loaded) return stillLoading();
-  // This call's own records. The stack loader has no per-call id and its layer ids repeat across loads,
-  // so after a stack replace its layers are recognised by exact file name.
+  // This call's own records: an add's returned id (none when it failed), a replace's chosen id, and for the
+  // stack (no per-call id, layer ids repeat across loads) its exact file names: a stack load clears every
+  // model before composing, so after it only this load's layers carry those names.
   const stackNames = new Set(files.map((f) => f.name));
-  const ownId = typeof loaded.id === 'string' ? loaded.id : primaryId;
-  const isMine = (m: { model_id: string; name: string }) => (ownId ? m.model_id === ownId : stackNames.has(m.name));
+  const isMine = (m: { model_id: string; name: string }) => (request.mode === 'add' ? m.model_id === loaded.id
+    : stack ? stackNames.has(m.name) : m.model_id === primaryId);
 
   // Models can register just after the loader resolves: wait until the pipeline is idle, which needs no model.
   const settled = await waitForLoadIdle(deadline - Date.now());
-  // The stack loader reports failures only through the store; check that first, since a failed stack
-  // replace can leave an earlier stack's same-named layers open.
-  const { error, loadErrorSeq } = store.getState();
-  if (stack && error && loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${error}`);
   let mine = snapshot().filter(isMine);
   if (mine.length === 0 && settled && !loadError) {
     // Rare path: give a registration queued behind the loader one task before concluding.
@@ -268,6 +275,9 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
     if (loadError) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${loadError}`);
     if (typeof loaded.id === 'string') fail(ToolErrorCode.STATE_CHANGED, `${name} was added, then closed by another load in the tab. Check model_list.`);
     if (!settled && loaded.id !== null) return stillLoading();
+    // The stack loader reports failures only through the store (its failure path leaves no layers open).
+    const { error, loadErrorSeq } = store.getState();
+    if (stack && error && loadErrorSeq !== state.loadErrorSeq) fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${error}`);
     // No error and no model of ours: an underlay drape, a cancel, or another load won.
     fail(ToolErrorCode.UNSUPPORTED_OPERATION, `The viewer did not open ${name} as a model. Check model_list and the viewer.`);
   }

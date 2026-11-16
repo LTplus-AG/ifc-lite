@@ -324,11 +324,32 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     assert.equal((out.structured as { state: string }).state, 'loaded');
   });
 
-  it('reports a failed stack load through the store error, even over an older stack (#9523 code review)', async () => {
+  it('reports a failed stack load through the store error (#9523 code review)', async () => {
+    unregister();
+    unregister = registerAgentModelLoader({
+      loadFile: async () => {}, addModel: async () => null,
+      // Like loadFederatedIfcxFromBuffers: clear every model, then fail through the store.
+      loadStack: async () => {
+        useViewerStore.setState({ models: new Map() as never });
+        useViewerStore.getState().setError('Federated IFCX loading failed: bad layer');
+      },
+    });
     serveStackSample();
-    await run({ sample: 'layers-demo' });
+    await assert.rejects(run({ sample: 'layers-demo' }), { code: 'INTERNAL_ERROR', message: /bad layer/ });
+  });
+
+  it('never counts an already-open same-named model as a failed add (#9523 code review)', async () => {
+    await run({ sample: 'demo' });
     behaviour = 'error';
-    await assert.rejects(run({ sample: 'layers-demo', mode: 'replace' }), { code: 'INTERNAL_ERROR', message: /bad STEP/ });
+    await assert.rejects(run({ sample: 'demo', mode: 'add' }), { code: 'INTERNAL_ERROR', message: /bad STEP/ });
+    behaviour = 'nothing';
+    await assert.rejects(run({ sample: 'demo', mode: 'add' }), 'an add that registered nothing is never success');
+  });
+
+  it('a stray quote inside an unquoted value does not swallow the next header (#9523 code review)', async () => {
+    respond = () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-disposition': 'attachment; filename=5"pipe.ifc, attachment; filename=b.ifc' } });
+    await run({ url: 'https://example.com/download' });
+    assert.equal(calls.at(-1)!.names[0], '5"pipe.ifc');
   });
 
   it('cuts a repeated header only at a real boundary, and reads the first header only (#9523 code review)', async () => {

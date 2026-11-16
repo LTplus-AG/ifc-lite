@@ -109,9 +109,14 @@ describe('session: pending fields survive the deletion of the CRS the conversion
     const m = await open('IFC4', GEO);
     m.bim.georef.update({ MapConversion: { Eastings: 99 } });
     m.bim.store.removeEntity({ modelId: 'model', expressId: 20 });
-    expect(m.bim.georef.get().MapConversion?.Eastings).toBe(99);
+    const state = m.bim.georef.get();
     const file = await reparsed(m.bim);
-    if (file.MapConversion) expect(file.MapConversion.Eastings).toBe(99);
+    // The invariant: get() is what the re-parse reads, or get() says it is untrusted. Neither half may be skipped.
+    if (!state.untrusted?.length) {
+      expect(state.MapConversion).toEqual(file.MapConversion);
+      expect(file.MapConversion?.Eastings).toBe(99); // a re-parse that reads nothing would make the equality vacuous
+    }
+    else expect(state.untrusted.join(' ')).toMatch(/#20|CRS|deleted/i);
   });
 });
 

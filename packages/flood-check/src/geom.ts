@@ -21,6 +21,68 @@ export function insideRing(p: MapPoint, ring: readonly MapPoint[]): boolean {
   return inside;
 }
 
+const orientation = (a: MapPoint, b: MapPoint, c: MapPoint): number => {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const acx = c.x - a.x;
+  const acy = c.y - a.y;
+  const cross = abx * acy - aby * acx;
+  const tolerance = 1e-12 * Math.max(1, Math.abs(abx * acy), Math.abs(aby * acx));
+  return Math.abs(cross) <= tolerance ? 0 : Math.sign(cross);
+};
+
+function onSegment(p: MapPoint, a: MapPoint, b: MapPoint): boolean {
+  if (orientation(a, b, p) !== 0) return false;
+  const tolerance = 1e-9;
+  return p.x >= Math.min(a.x, b.x) - tolerance && p.x <= Math.max(a.x, b.x) + tolerance &&
+    p.y >= Math.min(a.y, b.y) - tolerance && p.y <= Math.max(a.y, b.y) + tolerance;
+}
+
+/** Inclusive segment intersection: a shared endpoint, touch or collinear overlap counts. */
+export function segmentsIntersect(a: MapPoint, b: MapPoint, c: MapPoint, d: MapPoint): boolean {
+  const abC = orientation(a, b, c);
+  const abD = orientation(a, b, d);
+  const cdA = orientation(c, d, a);
+  const cdB = orientation(c, d, b);
+  if (abC !== abD && cdA !== cdB) return true;
+  return (abC === 0 && onSegment(c, a, b)) || (abD === 0 && onSegment(d, a, b)) ||
+    (cdA === 0 && onSegment(a, c, d)) || (cdB === 0 && onSegment(b, c, d));
+}
+
+function ringsTouchOrCross(a: readonly MapPoint[], b: readonly MapPoint[]): boolean {
+  for (let i = 0; i < a.length; i++) {
+    const a0 = a[i];
+    const a1 = a[(i + 1) % a.length];
+    for (let j = 0; j < b.length; j++) {
+      if (segmentsIntersect(a0, a1, b[j], b[(j + 1) % b.length])) return true;
+    }
+  }
+  return false;
+}
+
+/** True only when a simple ring lies strictly inside another without touching or crossing its boundary. */
+export function ringContainsRing(inner: readonly MapPoint[], outer: readonly MapPoint[]): boolean {
+  return inner.length >= 3 && outer.length >= 3 && !ringsTouchOrCross(inner, outer) && insideRing(inner[0], outer);
+}
+
+/** True only when every edge of a ring stays inside the union, with boundary crossings treated as uncertainty. */
+export function ringContainedInUnion(inner: readonly MapPoint[], outers: readonly (readonly MapPoint[])[]): boolean {
+  if (inner.length < 3 || outers.length === 0) return false;
+  if (outers.some((outer) => ringsTouchOrCross(inner, outer))) return false;
+  const inUnion = (p: MapPoint) => outers.some((outer) => insideRing(p, outer));
+  for (let i = 0; i < inner.length; i++) {
+    const a = inner[i];
+    const b = inner[(i + 1) % inner.length];
+    if (!inUnion(a) || !inUnion({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })) return false;
+  }
+  return true;
+}
+
+/** True when two rings touch, cross, or one lies inside the other. */
+export function ringsOverlap(a: readonly MapPoint[], b: readonly MapPoint[]): boolean {
+  return a.length >= 3 && b.length >= 3 && (ringsTouchOrCross(a, b) || insideRing(a[0], b) || insideRing(b[0], a));
+}
+
 function closestOnSegment(p: MapPoint, a: MapPoint, b: MapPoint): MapPoint {
   const dx = b.x - a.x;
   const dy = b.y - a.y;

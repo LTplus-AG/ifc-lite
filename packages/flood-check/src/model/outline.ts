@@ -19,10 +19,10 @@
  * curves) counts as an unreadable item.
  */
 
-import { insideRing } from '../geom.js';
+import { ringContainsRing } from '../geom.js';
 import { MAX_MAPPED_ITEMS, placedItems, type MappedWorkBudget } from './mapped.js';
 import { curvePoints, profilePoints } from './curves.js';
-import { applyFrame, axisPlacementFrame, IDENTITY, type Frame, type Vec3 } from './placement.js';
+import { applyFrame, axisPlacementFrame, composeFrames, IDENTITY, type Frame, type Vec3 } from './placement.js';
 import { asEnum, asNumber, asRef, asRefList, asString, type ModelReader } from './reader.js';
 
 
@@ -107,28 +107,29 @@ export interface OutlineReading extends Reading {
  * read gives its own ring; an item that cannot be read is counted, not dropped.
  */
 export function readSlabOutline(reader: ModelReader, slabId: number): OutlineReading {
-  const footprint = representationItems(reader, slabId, 'FootPrint');
+  const budget: MappedWorkBudget = { remaining: MAX_MAPPED_ITEMS };
+  const footprint = representationItems(reader, slabId, 'FootPrint').flatMap((top) => placedItems(reader, top, IDENTITY, 0, new Set(), budget));
   const fromFootprint: OutlineReading = { rings: [], items: footprint.length, readable: 0, voids: footprint.length > 1, holes: [] };
-  for (const item of footprint) {
-    const pts = curvePoints(reader, item);
+  for (const { item, frame } of footprint) {
+    const pts = frame ? curvePoints(reader, item) : null;
     if (!pts || pts.length < 3) continue;
-    fromFootprint.rings.push(pts.map(([x, y]) => [x, y, 0]));
+    fromFootprint.rings.push(pts.map(([x, y]) => applyFrame(frame!, [x, y, 0])));
     fromFootprint.readable++;
   }
-  const body = representationItems(reader, slabId, 'Body');
+  const body = representationItems(reader, slabId, 'Body').flatMap((top) => placedItems(reader, top, IDENTITY, 0, new Set(), budget));
   if (footprint.length > 0 && completeness(fromFootprint) === 'complete') {
     // The FootPrint gives the outer curves only; the Body's holes (inner curves read, or a Boolean cut whose shape is not)
     // still count, never a complete outline with a filled courtyard.
-    for (const item of body) {
-      const h = bodyHoles(reader, item);
+    for (const { item, frame } of body) {
+      const h = frame ? bodyHoles(reader, item, frame) : { holes: [], unknown: true };
       if (h.unknown) fromFootprint.voids = true;
       fromFootprint.holes.push(...h.holes);
     }
     return fromFootprint;
   }
   const fromBody: OutlineReading = { rings: [], items: body.length, readable: 0, voids: false, holes: [] };
-  for (const item of body) {
-    const unwrapped = unwrapClipping(reader, item);
+  for (const { item, frame } of body) {
+    const unwrapped = frame ? unwrapClipping(reader, item) : null;
     const solid = reader.entity(unwrapped?.solid);
     if (!unwrapped || !solid || solid.type !== 'IFCEXTRUDEDAREASOLID') continue;
     const profileId = asRef(reader.attr(solid, 'SweptArea'));
@@ -141,9 +142,10 @@ export function readSlabOutline(reader: ModelReader, slabId: number): OutlineRea
     const dirEntity = reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection')));
     const d = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
     if (!d || d.some((v) => v === null) || Math.hypot(d[0] ?? 0, d[1] ?? 0) > 1e-6 * Math.hypot(...(d as number[]))) continue;
-    fromBody.rings.push(profile.map(([x, y]) => applyFrame(position, [x, y, 0])));
+    const placed = composeFrames(frame!, position);
+    fromBody.rings.push(profile.map(([x, y]) => applyFrame(placed, [x, y, 0])));
     fromBody.readable++;
-    const h = bodyHoles(reader, item);
+    const h = bodyHoles(reader, item, frame!);
     if (h.unknown) fromBody.voids = true;
     fromBody.holes.push(...h.holes);
   }
@@ -158,13 +160,14 @@ export function readSlabOutline(reader: ModelReader, slabId: number): OutlineRea
  * read (a Boolean DIFFERENCE's second operand, or an inner curve that cannot be
  * read).
  */
-function bodyHoles(reader: ModelReader, item: number): { holes: Vec3[][]; unknown: boolean } {
+function bodyHoles(reader: ModelReader, item: number, placed: Frame = IDENTITY): { holes: Vec3[][]; unknown: boolean } {
   const unwrapped = unwrapClipping(reader, item);
   if (!unwrapped) return { holes: [], unknown: false };
   const solid = reader.entity(unwrapped.solid);
   const profile = solid ? reader.entity(asRef(reader.attr(solid, 'SweptArea'))) : null;
   const inner = profile?.type === 'IFCARBITRARYPROFILEDEFWITHVOIDS' ? asRefList(reader.attr(profile, 'InnerCurves')) : [];
-  const position = !solid || reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
+  const localPosition = !solid || reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
+  const position = localPosition ? composeFrames(placed, localPosition) : null;
   const holes: Vec3[][] = [];
   let unknown = false;
   for (const c of inner) {
@@ -176,29 +179,29 @@ function bodyHoles(reader: ModelReader, item: number): { holes: Vec3[][]; unknow
   // Boolean cuts: a DIFFERENCE whose second operand is a vertical prism cutting through the slab's whole thickness, wholly
   // inside its outline, is a hole in plan; one that leaves slab material under it (a recess) is none; anything else (a
   // notch at the edge, a half space or clipping, an intersection, an operand not read) is a hole whose shape is not read.
-  const base = verticalPrism(reader, unwrapped.solid);
+  const base = verticalPrism(reader, unwrapped.solid, placed);
   const seen = new Set<number>();
   for (let e = reader.entity(item); e && (e.type === 'IFCBOOLEANRESULT' || e.type === 'IFCBOOLEANCLIPPINGRESULT') && !seen.has(e.expressId); e = reader.entity(asRef(reader.attr(e, 'FirstOperand')))) {
     seen.add(e.expressId);
-    const cut = e.type === 'IFCBOOLEANRESULT' && asEnum(reader.attr(e, 'Operator')) === 'DIFFERENCE' ? verticalPrism(reader, asRef(reader.attr(e, 'SecondOperand'))) : null;
+    const cut = e.type === 'IFCBOOLEANRESULT' && asEnum(reader.attr(e, 'Operator')) === 'DIFFERENCE' ? verticalPrism(reader, asRef(reader.attr(e, 'SecondOperand')), placed) : null;
     if (!cut || !base) {
       unknown = true;
       continue;
     }
-    if (cut.zMin > base.zMin + 1e-6 || cut.zMax < base.zMax - 1e-6) {
+    if (cut.low.some((z) => z > base.zMin + 1e-6) || cut.high.some((z) => z < base.zMax - 1e-6)) {
       unknown = true;
       continue;
     }
-    const inside = (q: Vec3) => insideRing({ x: q[0], y: q[1] }, base.plan.map(([x, y]) => ({ x, y })));
-    const mids = cut.plan.map((a, k) => { const b = cut.plan[(k + 1) % cut.plan.length]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0] as Vec3; });
-    if ([...cut.plan, ...mids].every(inside)) holes.push(cut.plan);
+    const baseRing = base.plan.map(([x, y]) => ({ x, y }));
+    const cutRing = cut.plan.map(([x, y]) => ({ x, y }));
+    if (ringContainsRing(cutRing, baseRing)) holes.push(cut.plan);
     else unknown = true;
   }
   return { holes, unknown };
 }
 
 /** An extrusion swept straight up or down from a horizontal profile: its plan outline and height range; null otherwise. */
-function verticalPrism(reader: ModelReader, id: number | null): { plan: Vec3[]; zMin: number; zMax: number } | null {
+function verticalPrism(reader: ModelReader, id: number | null, outer: Frame = IDENTITY): { plan: Vec3[]; low: number[]; high: number[]; zMin: number; zMax: number } | null {
   const solid = reader.entity(id);
   if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') return null;
   const profile = profilePoints(reader, asRef(reader.attr(solid, 'SweptArea')));
@@ -207,12 +210,16 @@ function verticalPrism(reader: ModelReader, id: number | null): { plan: Vec3[]; 
   const dirEntity = reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection')));
   const d = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
   if (!profile || profile.length < 3 || depth === null || !position || !d || d.some((v) => v === null)) return null;
-  const worldDirection = [0, 1, 2].map((axis) => position.x[axis]! * (d[0] as number) + position.y[axis]! * (d[1] as number) + position.z[axis]! * (d[2] as number));
-  if (Math.abs(position.z[0]) > 1e-6 || Math.abs(position.z[1]) > 1e-6 || Math.hypot(worldDirection[0]!, worldDirection[1]!) > 1e-6 * Math.hypot(...worldDirection)) return null;
-  const plan = profile.map(([x, y]) => applyFrame(position, [x, y, 0]));
-  const z0 = Math.min(...plan.map((p) => p[2]));
-  const z1 = z0 + worldDirection[2]! * depth;
-  return { plan, zMin: Math.min(z0, z1), zMax: Math.max(z0, z1) };
+  const placed = composeFrames(outer, position);
+  const worldDirection = [0, 1, 2].map((axis) => placed.x[axis]! * (d[0] as number) + placed.y[axis]! * (d[1] as number) + placed.z[axis]! * (d[2] as number));
+  if (Math.abs(placed.z[0]) > 1e-6 || Math.abs(placed.z[1]) > 1e-6 || Math.hypot(worldDirection[0]!, worldDirection[1]!) > 1e-6 * Math.hypot(...worldDirection)) return null;
+  const plan = profile.map(([x, y]) => applyFrame(placed, [x, y, 0]));
+  const highPoints = plan.map((p) => [p[0] + worldDirection[0]! * depth, p[1] + worldDirection[1]! * depth, p[2] + worldDirection[2]! * depth] as Vec3);
+  const low = plan.map((p) => Math.min(p[2], p[2] + worldDirection[2]! * depth));
+  const high = plan.map((p) => Math.max(p[2], p[2] + worldDirection[2]! * depth));
+  const zMin = Math.min(...plan.map((p) => p[2]), ...highPoints.map((p) => p[2]));
+  const zMax = Math.max(...plan.map((p) => p[2]), ...highPoints.map((p) => p[2]));
+  return { plan, low, high, zMin, zMax };
 }
 
 /** A wall's `Axis`: one polyline per readable curve, in object coordinates (raw file units). */
@@ -221,12 +228,13 @@ export interface AxisReading extends Reading {
 }
 
 export function readWallAxis(reader: ModelReader, wallId: number): AxisReading {
-  const items = representationItems(reader, wallId, 'Axis');
+  const budget: MappedWorkBudget = { remaining: MAX_MAPPED_ITEMS };
+  const items = representationItems(reader, wallId, 'Axis').flatMap((top) => placedItems(reader, top, IDENTITY, 0, new Set(), budget));
   const out: AxisReading = { lines: [], items: items.length, readable: 0 };
-  for (const item of items) {
-    const pts = curvePoints(reader, item);
+  for (const { item, frame } of items) {
+    const pts = frame ? curvePoints(reader, item) : null;
     if (!pts || pts.length < 2) continue;
-    out.lines.push(pts.map(([x, y]) => [x, y, 0]));
+    out.lines.push(pts.map(([x, y]) => applyFrame(frame!, [x, y, 0])));
     out.readable++;
   }
   return out;

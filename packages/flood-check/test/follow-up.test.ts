@@ -66,6 +66,33 @@ describe('item 8: a slab hole cut by a Boolean DIFFERENCE is read and classified
     expect(fp.source).toBe('slab-outline-voids-filled');
     expect(fp.courtyardRings).toBeUndefined();
   });
+  it('a near-tolerance tilt is checked at every profile vertex before it can become a roofed hole', async () => {
+    const fp = (await extract((b) => {
+      const slab = b.rectExtrusion(5, 50, 10, 100, 0.3, b.axis(0, 0, 0), b.dir(0, 0, 1));
+      const tilt = 5e-7;
+      const cut = b.rectExtrusion(5, 50, 8, 98, 0.30001, b.axis(0, 0, 0.0000395, b.dir(0, tilt, 1), b.dir(1, 0, 0)), b.dir(0, -tilt, 1));
+      const body = b.add(`IFCBOOLEANRESULT(.DIFFERENCE.,#${slab},#${cut})`);
+      b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Platte mit fast waagerechtem Schnitt',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([body])},$,.FLOOR.)`));
+      const roof = b.rectExtrusion(5, 50, 10, 100, 0.3, b.axis(0, 0, 2), b.dir(0, 0, 1));
+      b.contain(b.storeys.og.id, b.add(`IFCSLAB(${b.guid()},$,'Decke über Schnitt',$,$,#${b.place(b.storeys.og.pl, 0, 0, 0)},#${b.shape([roof])},$,.FLOOR.)`));
+    })).footprint;
+    expect(fp.source).toBe('slab-outline-voids-filled');
+    expect(fp.courtyardRings).toBeUndefined();
+  });
+  it('a cut edge that exits and re-enters a concave slab between all corner and midpoint probes is not a hole', async () => {
+    const fp = (await extract((b) => {
+      const pt = (x: number, y: number) => b.pt2(x, y);
+      const loop = (points: Array<[number, number]>) => b.add(`IFCPOLYLINE((${[...points, points[0]].map(([x, y]) => `#${pt(x, y)}`).join(',')}))`);
+      const outline = loop([[0, 0], [10, 0], [10, 10], [4, 10], [4, 3], [3, 3], [3, 10], [0, 10]]);
+      const profile = b.add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${outline})`);
+      const slabSolid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 0)},#${b.dir(0, 0, 1)},0.3)`);
+      const cut = b.rectExtrusion(5, 5, 6, 2, 2, b.axis(0, 0, -1), b.dir(0, 0, 1));
+      const body = b.add(`IFCBOOLEANRESULT(.DIFFERENCE.,#${slabSolid},#${cut})`);
+      b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Platte mit Aussparung',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([body])},$,.FLOOR.)`));
+    })).footprint;
+    expect(fp.source).toBe('slab-outline-voids-filled');
+    expect(fp.courtyardRings).toBeUndefined();
+  });
   it('a cut that crosses the slab\'s edge (a notch) stays voids-filled: its effect on the outline is not read', async () => {
     expect((await extract(cutSlab(box(-1, 2, 8, 4, 18)))).footprint.source).toBe('slab-outline-voids-filled');
   });
@@ -117,6 +144,49 @@ describe('item 5: roofing that is not a slab counts, over the hole\'s whole area
       b.contain(b.storeys.eg.id, b.add(`IFCROOF(${b.guid()},$,'Dach mit Aussparung',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLAT_ROOF.)`));
     };
     expect(await courtyards(roofWithVoid)).toBe(1);
+  });
+  it('a narrow notch through a roof is not missed by coverage samples', async () => {
+    const roofWithNotch = (b: Extra) => {
+      const pt = (x: number, y: number) => b.pt2(x, y);
+      const outline = b.add(`IFCPOLYLINE((${[[4, 2], [9.9, 2], [9.9, 5], [10.1, 5], [10.1, 2], [16, 2], [16, 8], [4, 8], [4, 2]].map(([x, y]) => `#${pt(x, y)}`).join(',')}))`);
+      const profile = b.add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${outline})`);
+      const solid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 3)},#${b.dir(0, 0, 1)},0.1)`);
+      b.contain(b.storeys.eg.id, b.add(`IFCROOF(${b.guid()},$,'Dach mit schmaler Aussparung',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([solid])},$,.FLAT_ROOF.)`));
+    };
+    expect(await courtyards(roofWithNotch)).toBe(1);
+  });
+});
+
+describe('mapped slab outlines use the mapped-item reader', () => {
+  const mappedSlab = (b: Extra, leaf: number) => {
+    const ctx = b.add(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#${b.add("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$)")},$,.MODEL_VIEW.,$)`);
+    const rep = b.add(`IFCSHAPEREPRESENTATION(#${ctx},'Body','SweptSolid',(#${leaf}))`);
+    const map = b.add(`IFCREPRESENTATIONMAP(#${b.axis(0, 0, 0)},#${rep})`);
+    const target = b.add(`IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#${b.add('IFCCARTESIANPOINT((0.,0.,0.))')},$,$)`);
+    return b.add(`IFCMAPPEDITEM(#${map},#${target})`);
+  };
+  const addSlab = (b: Extra, body: number) => b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Platte gemappt',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([body])},$,.FLOOR.)`));
+
+  it('reads inner profile curves of a mapped slab and keeps its courtyard', async () => {
+    const fp = (await extract((b) => {
+      const loop = (points: Array<[number, number]>) => b.add(`IFCPOLYLINE((${[...points, points[0]].map(([x, y]) => `#${b.pt2(x, y)}`).join(',')}))`);
+      const profile = b.add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#${loop([[0, 0], [20, 0], [20, 10], [0, 10]])},(#${loop([[6, 3], [14, 3], [14, 7], [6, 7]])}))`);
+      const solid = b.add(`IFCEXTRUDEDAREASOLID(#${profile},#${b.axis(0, 0, 0)},#${b.dir(0, 0, -1)},0.3)`);
+      addSlab(b, mappedSlab(b, solid));
+    })).footprint;
+    expect(fp.source).toBe('slab-outline');
+    expect(fp.courtyardRings).toHaveLength(1);
+  });
+
+  it('reads a Boolean cut inside a mapped slab and keeps its courtyard', async () => {
+    const fp = (await extract((b) => {
+      const solid = b.rectExtrusion(10, 5, 20, 10, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
+      const cut = b.rectExtrusion(10, 5, 8, 4, 2, b.axis(0, 0, -1), b.dir(0, 0, 1));
+      const difference = b.add(`IFCBOOLEANRESULT(.DIFFERENCE.,#${solid},#${cut})`);
+      addSlab(b, mappedSlab(b, difference));
+    })).footprint;
+    expect(fp.source).toBe('slab-outline');
+    expect(fp.courtyardRings).toHaveLength(1);
   });
 });
 

@@ -32,16 +32,15 @@ describe('the courtyard guard', () => {
     expect(r.results[0].outcome).toBe('exposed');
   });
 
-  it('recognises a courtyard ring that two overlapping rings cover only together', () => {
+  it('does not treat a ring crossing separate boundaries as a proven courtyard', () => {
     // A = 0..6 x 0..10 and B = 4..10 x 0..10 overlap; the courtyard C = 2..8 x 1..9 lies in neither alone.
     const rings = [sq(0, 0, 6, 10), sq(4, 0, 10, 10), sq(2, 1, 8, 9)];
     const door = candidate({ name: 'Hoftür', position: { x: E0 + 5, y: N0 + 1 }, level: 500 });
     const facts = boxFacts([door], { footprint: { rings, source: 'given', fromElements: [] } });
     const raster = syntheticRaster(E0 - 10, N0 - 10, 60, 60, 0.5, (p) => (inBox(p, 2, 1, 8, 9) ? deep : CELL_NO_RUNOFF));
     const r = checkFloodExposure(facts, raster, flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
-    // The courtyard is recognised, so its ground (the deep class) is sampled: exposed. Unrecognised, the door would be anchored
-    // on the outer façade 1+ m away (anchor-moved). Before the automated review of 0b30b84 a courtyard was filled: courtyard-ring.
-    expect(r.results[0].outcome).toBe('exposed');
+    // Ring-to-union containment is uncertain where the candidate boundary crosses the covering rings, so no favourable result is given.
+    expect(r.results[0].outcome).toBe('unclassified');
   });
 });
 

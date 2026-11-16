@@ -3,9 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
+import { requireFixtures } from './fixture.js';
 
 describe('CI fixture policy', () => {
-  it.skipIf(process.env.GITHUB_ACTIONS !== 'true' && process.env.IFC_LITE_REQUIRE_FIXTURES !== '1')('reaches flood-check tests through Turbo', () => {
-    expect(process.env.IFC_LITE_REQUIRE_FIXTURES).toBe('1');
+  it('observes the fixture policy in Node tests, revert-oracle, and local runs', () => {
+    const required = process.env.IFC_LITE_REQUIRE_FIXTURES === '1';
+    if (process.env.GITHUB_JOB === 'node-tests') expect(required).toBe(true);
+    if (process.env.GITHUB_JOB === 'revert-oracle') expect(required).toBe(false);
+    expect(requireFixtures(process.env.IFC_LITE_REQUIRE_FIXTURES)).toBe(required);
   });
 });

@@ -21,7 +21,24 @@ import { skipStepComment } from './step-comment-skip.js';
  * Short-circuits rather than collecting every reference the text contains.
  */
 export function referencesAnyExpressId(attrsRaw: string, ids: ReadonlySet<number>): boolean {
-  if (ids.size === 0) return false;
+  return ids.size > 0 && forEachExpressRef(attrsRaw, (id) => ids.has(id));
+}
+
+/**
+ * The members of `ids` that `attrsRaw` names outside strings and comments, in
+ * one scan.
+ */
+export function namedExpressIds(attrsRaw: string, ids: ReadonlySet<number>): Set<number> {
+  const named = new Set<number>();
+  if (ids.size > 0) forEachExpressRef(attrsRaw, (id) => { if (ids.has(id)) named.add(id); return false; });
+  return named;
+}
+
+/**
+ * Calls `visit` with each `#id` in `attrsRaw` outside strings and comments,
+ * stopping at the first call that returns true; returns whether one did.
+ */
+function forEachExpressRef(attrsRaw: string, visit: (id: number) => boolean): boolean {
   for (let i = 0; i < attrsRaw.length; i++) {
     const ch = attrsRaw[i];
     if (ch === '/' && attrsRaw[i + 1] === '*') {
@@ -42,7 +59,7 @@ export function referencesAnyExpressId(attrsRaw: string, ids: ReadonlySet<number
         digits += attrsRaw[j];
         j++;
       }
-      if (digits.length > 0 && ids.has(Number(digits))) return true;
+      if (digits.length > 0 && visit(Number(digits))) return true;
       i = j - 1;
     }
   }

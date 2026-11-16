@@ -101,7 +101,8 @@ describe('IfcStructuralAnalysisModel.SharedPlacement IFC2X3 -> IFC4 #9668', () =
   });
 
   it('reads equal copies of one local placement as that placement, and places the items by it', async () => {
-    const { step } = await convert(ifc2x3('#10'), 'IFC4');
+    // The item on the higher-id copy is listed first, so the lowest id, not the first item, is chosen.
+    const { step } = await convert(ifc2x3('#10').replace('(#20,#21,#22)', '(#21,#20,#22)'), 'IFC4');
     expect(line(step, 30)).toBe("#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#9);");
     expect(line(step, 21)).toBe("#21=IFCSTRUCTURALPOINTCONNECTION('1IIB7Cy$HI3REa9CT8boqX',#5,'N',$,$,#9,$,$,$);");
     // The beam is not a structural item, so it keeps its own placement.
@@ -258,6 +259,14 @@ ${geometry}
   it('writes no property set for an unset location, even where the representation has no single aspect', async () => {
     const up = await convert(IFC2X3.replace(',#15,.SHELL.', ',$,.SHELL.').replace('(0.25,0.3),#17)', '(0.25,0.3),$)'), 'IFC4');
     expect(records(up.step, 'IFCPROPERTYSET')).toEqual([]);
+  });
+
+  it('leaves an IFC4 member whose location aspect is not points, or whose thickness has its own unit, to the previous handling', async () => {
+    const up = (await convert(IFC2X3, 'IFC4')).step;
+    const polyline = up.replace("#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));", "#18=IFCPOLYLINE((#7,#7));\n#16=IFCSHAPEREPRESENTATION(#13,'Reference','Curve',(#18));");
+    expect(line((await convert(polyline, 'IFC2X3')).step, 20)).toContain(',.SHELL.,0.2,$,$);');
+    const unit = up.replace(/IFCPOSITIVELENGTHMEASURE\(0\.25\),\$\)/, 'IFCPOSITIVELENGTHMEASURE(250.),#7)');
+    expect(line((await convert(unit, 'IFC2X3')).step, 20)).toContain(',.SHELL.,0.2,$,$);');
   });
 
   it('writes no property set when the location is not the one aspect of the representation', async () => {

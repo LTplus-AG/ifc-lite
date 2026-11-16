@@ -10,7 +10,7 @@ import { refId } from './schema-ifc2x3-records.js';
 import { decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { parseStepNumber } from './step-slot-grammar.js';
-import { referencesAnyExpressId } from './step-ref-scan.js';
+import { namedExpressIds, referencesAnyExpressId } from './step-ref-scan.js';
 
 export type ConversionMode = 'upgrade' | 'downgrade' | null;
 
@@ -55,8 +55,7 @@ export class SourceRecords {
     for (const entry of this.store.entityIndex.byId.values()) {
       const text = decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength);
       const args = text.slice(Math.max(0, text.indexOf('(')));
-      if (!referencesAnyExpressId(args, targets)) continue;
-      for (const t of targets) if (referencesAnyExpressId(args, new Set([t]))) uses.set(t, (uses.get(t) ?? 0) + 1);
+      for (const t of namedExpressIds(args, targets)) uses.set(t, (uses.get(t) ?? 0) + 1);
     }
     return uses;
   }

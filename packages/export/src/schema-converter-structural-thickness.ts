@@ -17,6 +17,7 @@
  */
 import { listItems } from './schema-converter-structural-axes.js';
 import { bareMeasure, conversionMode, readCarrierSets, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
+import { slotUnset } from './schema-converter-structural-links.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { parseStepNumber } from './step-slot-grammar.js';
 
@@ -39,6 +40,8 @@ export class StructuralThickness {
   private mode: ConversionMode = null;
   /** IfcProductDefinitionShape id -> the IfcShapeAspects naming it. */
   private readonly aspects = new Map<number, number[]>();
+  /** Aspects IFC2X3 admits as VaryingThicknessLocation: each representation one point (WR62, WR63). */
+  private readonly pointAspects = new Set<number>();
   /** Member id -> its three thicknesses from a source property set, or [] when it has more than one set. */
   private readonly psets = new Map<number, string[]>();
 
@@ -54,11 +57,18 @@ export class StructuralThickness {
       const list = this.aspects.get(shape) ?? [];
       list.push(id);
       this.aspects.set(shape, list);
+      const representations = (listItems(source.slots(id)?.[0] ?? '') ?? []).map(refId);
+      if (representations.length && representations.every((r) => {
+        const items = (listItems(source.slots(r)?.[3] ?? '') ?? []).map(refId);
+        return items.length === 1 && ['IFCCARTESIANPOINT', 'IFCPOINTONSURFACE'].includes(source.type(items[0]) ?? '');
+      })) this.pointAspects.add(id);
     }
     for (const set of readCarrierSets(source, THICKNESS_PSET, false)) {
       const values = NAMES.map((name) => {
         const prop = set.props.get(name);
-        return source.type(prop ?? null) === 'IFCPROPERTYSINGLEVALUE' ? thickness(source.slots(prop!)?.[2]) : null;
+        const args = source.type(prop ?? null) === 'IFCPROPERTYSINGLEVALUE' ? source.slots(prop!) : undefined;
+        // A value in its own unit would need converting; only one in the project's length unit is read.
+        return args && slotUnset(args[3] ?? '$') ? thickness(args[2]) : null;
       });
       for (const member of set.related) {
         if (source.type(member) !== ENTITY) continue;
@@ -94,7 +104,7 @@ export class StructuralThickness {
     if (this.mode !== 'downgrade' || entity !== ENTITY || args.length !== 9) return undefined;
     const [first, ...rest] = this.psets.get(id) ?? [];
     const aspect = this.aspectOf(args[6]);
-    if (first === undefined || aspect === null) return undefined;
+    if (first === undefined || aspect === null || !this.pointAspects.has(aspect)) return undefined;
     // IFC2X3's VaryingThickness starts with Thickness (WR61 requires it).
     const own = thickness(args[8]);
     if (own !== null && parseStepNumber(own) !== parseStepNumber(first)) return undefined;

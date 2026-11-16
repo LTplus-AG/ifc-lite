@@ -67,3 +67,14 @@ it('#8452 evicts cold borrowed copies without changing a held snapshot or a muta
   expect(held.attributes).toEqual([[1, 2, 3]]);
   expect(readEntitySnapshot(first).attributes).toEqual([[4, 5, 6]]);
 });
+
+it('#8452 rereads a caller accessor whose value changes independently of the observed setter', () => {
+  let attributes: NewEntity['attributes'] = [[1, 2, 3]];
+  const row: NewEntity = { expressId: 1, type: 'IfcCartesianPoint', attributes: [] };
+  Object.defineProperty(row, 'attributes', { configurable: true, enumerable: true, get() { return attributes; } });
+  observeEntityAttributes(row, () => {});
+  const held = readEntitySnapshot(row);
+  attributes = [[4, 5, 6]];
+  expect(readEntitySnapshot(row).attributes).toEqual([[4, 5, 6]]);
+  expect(held.attributes).toEqual([[1, 2, 3]]);
+});

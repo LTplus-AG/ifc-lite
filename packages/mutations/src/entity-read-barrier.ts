@@ -74,7 +74,9 @@ export function observeEntityAttributes(entity: NewEntity, exposed: ExposureList
   if (descriptor && !descriptor.configurable) { exposed(entity); return; }
   const value = descriptor && 'value' in descriptor
     ? descriptor.value as NewEntity['attributes'] : withoutEntityExposure(() => entity.attributes);
-  barriers.set(entity, { value, listeners: exposed, escaped: false, borrow: undefined, ...(descriptor?.get || descriptor?.set ? { descriptor } : {}) });
+  // Caller accessors can change independently of our setter. Only ordinary
+  // data attributes have a stable value suitable for the frozen-borrow memo.
+  barriers.set(entity, { value, listeners: exposed, escaped: false, borrow: undefined, ...(descriptor?.get || descriptor?.set ? { descriptor, escaped: true } : {}) });
   Object.defineProperty(entity, 'attributes', {
     enumerable: descriptor?.enumerable ?? true, configurable: true,
     get: readAttributes,

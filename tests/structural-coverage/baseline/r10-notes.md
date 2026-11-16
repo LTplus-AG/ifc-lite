@@ -12,19 +12,19 @@ The full summary comparison against R9 has exactly eight changed cells, includin
 |---|---|---|---|
 | IFC2X3/IfcStructuralPointAction | read | partial -> pass | Fixture: generated point action #48 now sets `CausedBy` to point reaction #66. The unchanged read probe sees the populated reference. |
 | IFC2X3/IfcStructuralPointAction | card | partial -> pass | Same fixture change; the unchanged card probe shows it. |
-| IFC2X3/IfcStructuralPointAction | convert | pass -> pass | With the fixture alone this cell drops to partial (`CausedBy` null after the round trip). The product fix below keeps it at pass. |
+| IFC2X3/IfcStructuralPointAction | convert | pass -> pass (context, not a change) | With the fixture alone this cell drops to partial (`CausedBy` null after the round trip). The product fix below keeps it at pass. |
 | IFC2X3/IfcStructuralLinearAction | convert | partial -> pass | Product: IFC4 deleted `CausedBy` and holds it as an `IfcRelAssignsToProduct` named `Causes` (IFC4 IfcStructuralAction change note). The upgrade writes that relationship; the downgrade fills `CausedBy` from it. #50 and #72 now come back with reaction `0KQ0efL39PrP5DeqBwaUNp`. |
 | IFC2X3/IfcStructuralPlanarAction | convert | partial -> pass | Same `CausedBy` carrier; #52 now comes back. |
 | IFC2X3/IfcStructuralSurfaceMemberVarying | convert | partial -> pass | Product: IFC4 gives varying thickness by `Pset_StructuralSurfaceMemberVaryingThickness` (IFC4 IfcStructuralSurfaceMemberVarying). When the location is the one point `IfcShapeAspect` of the member's representation (IFC2X3 WR62, WR63), the upgrade writes Thickness1 to Thickness3 and the downgrade restores `SubsequentThickness` with that aspect as the location; otherwise both are reported lost. Fixture #40's aspect #38 qualifies. |
 | IFC4/IfcStructuralLoadCase | convert | partial -> pass | Product: the downgrade writes an `IfcStructuralLoadGroup` with an `IFC4 IfcStructuralLoadCase` property set holding `SelfWeightCoefficients`; the upgrade restores the load case and leaves the set out. All four records come back as the load case with their coefficients. |
 | IFC4/IfcBoundaryEdgeCondition | convert | partial -> pass | Probe correction (below). |
-| IFC4/IfcStructuralAnalysisModel | convert | partial -> partial (reason) | Product: the upgrade writes `SharedPlacement` when the grouped items use one local placement or equal copies (IFC4 informal proposition 2; IFC2X3 gives each product its own placement record). slab_01 #19 now comes back. beam_01 #72 left it empty in the IFC4 source, so it now comes back filled: the IFC2X3 file cannot say it was empty. IFC4's informal proposition 1 says it shall be provided when items are grouped. |
+| IFC4/IfcStructuralAnalysisModel | convert | partial -> partial (reason) | Product: the upgrade writes `SharedPlacement` when the grouped items use one local placement or equal copies (IFC4 informal proposition 2; IFC2X3 gives each product its own placement record). slab_01 #19 now comes back. beam_01 #72 left it empty in the IFC4 source, so it now comes back filled: the IFC2X3 file cannot say it was empty. IFC4's informal proposition 1 says it shall be provided when items are grouped. Unlike `Axis` below, the value is not invented: it is the placement every grouped item already uses. |
 
 ## Probe correction
 
 `probes/convert.mjs`: in an IFC4 resource row, an `IfcBoolean` false in one of IFC4's six stiffness SELECTs may come back as the zero measure. IFC2X3 holds these values as a plain REAL where 0 means free and -1 rigid, so false and a zero measure (both free) become the same `0.` and the upgrade writes the measure. The excuse is keyed on the slot's declared IFC4 type, nothing else. Records affected: slab_01 #74 and #79, structure_01 #107 and #163.
 
-Regression test: `convert (#9668): an IFC4 stiffness false may come back as the zero measure IFC2X3 forces, and nothing else is excused` in `scripts/generate-structural-coverage-ledger.test.mjs`. Against the R9 probe it fails (the false-to-zero case is rejected); against the R10 probe it passes, and it still rejects a non-zero measure, a swapped slot, an empty slot and a non-stiffness slot.
+Regression test: `convert (#9668): an IFC4 stiffness false may come back as the zero measure IFC2X3 forces, and nothing else is excused` in `scripts/generate-structural-coverage-ledger.test.mjs`. Run against the R9 probe (R9 did not change `probes/convert.mjs`), it fails: the false-to-zero case is rejected; against the R10 probe it passes, and it still rejects a non-zero measure, a swapped slot, an empty slot and a non-stiffness slot.
 
 ## Fixture
 
@@ -40,4 +40,6 @@ Regression test: `convert (#9668): an IFC4 stiffness false may come back as the 
 - IFC4 curve member and surface member (generated files): no `IfcOwnerHistory` in the source; IFC2X3 requires one and the converter does not invent one (#4686).
 - IFC4 curve connection and curve member varying `Axis`: no IFC2X3 slot.
 - IFC4 surface member varying: the source has no thickness data; IFC2X3 requires `SubsequentThickness` LIST [2:?].
+- IFC4 IfcRelConnectsStructuralActivity: three relationships name curve or surface reactions or the curve action, which become `IfcProxy` in IFC2X3 (see above), so `RelatedStructuralActivity` does not conform there.
+- IFC4 IfcStructuralCurveMember: besides the missing `OwnerHistory`, beam_01 #86 loses `Axis` (no IFC2X3 slot; carrying it as profile orientation is not done).
 - IFC4 IfcStructuralAnalysisModel: beam_01 #72 left `SharedPlacement` empty, and IFC2X3 cannot record that it was.

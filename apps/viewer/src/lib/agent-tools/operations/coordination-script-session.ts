@@ -66,7 +66,7 @@ export const coordinationScriptSessionOperations = [
   })),
   coordination('assistant.read', 'Read the native evidence assistant conversation, terminal messages, streaming status, evidence id and root budget without exposing provider credentials.', ['read'], emptySchema, async () => {
     const { useAssistant } = await import('@/lib/assistant/conversation'); const s = useAssistant.getState();
-    return { messages: s.messages, status: s.status, model: useViewerStore.getState().chatActiveModel, error: s.error, evidence_id: s.snapshot?.id ?? null, budget: s.budget, output: s.output };
+    return { messages: s.messages, status: s.status, model: useViewerStore.getState().chatActiveModel, error: s.error, evidence_id: s.snapshot?.id ?? s.archived?.id ?? null, budget: s.budget, output: s.output };
   }),
   coordination('assistant.cancel', 'Cancel the native evidence assistant request through its provider AbortController and conversation lifecycle.', ['configuration'], emptySchema, async (_, c) => {
     const { useAssistant, cancelAssistant } = await import('@/lib/assistant/conversation');

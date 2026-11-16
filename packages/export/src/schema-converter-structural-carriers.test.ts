@@ -280,18 +280,31 @@ describe('CausedBy beside a source Causes relationship #9668', () => {
 #21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);
 #30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#23),$,#21);`);
 
-  it('adds no second cause and reports CausedBy lost', async () => {
+  it('keeps CausedBy beside a source Causes naming another reaction, and reports it not restorable', async () => {
     const up = await convert(ifc2x3, 'IFC4');
-    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/^#30=.*'Causes',\$,\(#23\),\$,#21\);$/)]);
-    expect(up.warnings).toContain('IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted');
-    expect(up.warnings).not.toContain('CausedBy is written as');
+    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([
+      expect.stringMatching(/^#30=.*'Causes',\$,\(#23\),\$,#21\);$/),
+      expect.stringMatching(/'Causes',\$,\(#20\),\$,#21\);$/),
+    ]);
+    expect(up.warnings).toContain('IFC2X3 CausedBy is one of several reactions');
+    expect(up.warnings).not.toContain('CausedBy has no slot in IFC4');
+  });
+
+  it("writes a Causes relationship for an action even when another action's names the same reaction", async () => {
+    const other = ifc2x3.replace("(#23),$,#21);", "(#20),$,#22);").replace('#30=', "#22=IFCSTRUCTURALLINEARACTION('0CpCw3$DzVlut_KQsd7u6Y',#5,'B',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.);\n#30=");
+    const up = await convert(other, 'IFC4');
+    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([
+      expect.stringMatching(/^#30=.*'Causes',\$,\(#20\),\$,#22\);$/),
+      expect.stringMatching(/'Causes',\$,\(#20\),\$,#21\);$/),
+    ]);
+    expect(up.warnings).toContain("IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes'");
   });
 
   it('keeps a source Causes naming the reaction among others, and reports it not restorable', async () => {
     const both = ifc2x3.replace("(#23),$,#21);", "(#20,#23),$,#21);");
     const up = await convert(both, 'IFC4');
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/^#30=.*'Causes',\$,\(#20,#23\),\$,#21\);$/)]);
-    expect(up.warnings).toContain("IFC2X3 CausedBy names one of several reactions the source's 'Causes' relationships hold");
+    expect(up.warnings).toContain('IFC2X3 CausedBy is one of several reactions');
     expect(up.warnings).not.toContain('CausedBy is written as');
     expect(up.warnings).not.toContain('CausedBy has no slot in IFC4');
   });

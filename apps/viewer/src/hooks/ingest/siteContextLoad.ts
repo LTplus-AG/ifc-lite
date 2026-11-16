@@ -29,12 +29,12 @@ import { toast } from '@/components/ui/toast';
 import { captureModelLoaded, snapshotFromGeometry } from '../../utils/loadTelemetry.js';
 import { LOAD_COMPLETE } from '../modelLoadCanceller.js';
 import { sourceArrayBuffer } from './sourceBuffers.js';
-import { findReferenceSpatialModel } from './federationAlign.js';
 import { siteContextHeightRefusal } from './ifcGeorefAssumptions.js';
 import { applyInitialHiddenState } from './initialHiddenState.js';
 import { siteContextViewerModel, siteContextModelName, terrainPlanBox } from '@/lib/site-context/site-context-model';
 import { parcelDisplayWidth } from '@/lib/site-context/parcel-outline';
 import { siteContextFileName, singleCategoryDocument } from '@/lib/site-context/site-context-glb';
+import { siteContextPlacementReference } from '@/lib/site-context/site-context-anchor';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
 export interface SiteContextLoadOptions {
@@ -67,13 +67,14 @@ export interface SiteContextLoadOptions {
  * the card shows: its express ids in this model, name and how it was matched.
  */
 export function subjectOf(layer: SiteContextLayer): { expressIds: number[]; name: string; method: string; overlap?: number } | null {
-  const index = layer.features.findIndex((feature) => feature.subject === true);
-  if (index < 0) return null;
-  const feature = layer.features[index];
+  // Every feature marked subject: the tiles can split one building (one EGID) into several objects.
+  const indices = layer.features.flatMap((feature, index) => (feature.subject === true ? [index] : []));
+  if (indices.length === 0) return null;
+  const feature = layer.features[indices[0]];
   const match = feature.provenance.subjectMatch;
   const method = match && typeof match === 'object' && !Array.isArray(match) && typeof match.method === 'string' ? match.method : 'unknown';
   const overlap = match && typeof match === 'object' && !Array.isArray(match) && typeof match.overlap === 'number' ? match.overlap : undefined;
-  return { expressIds: [index + 1], name: feature.name, method, ...(overlap !== undefined ? { overlap } : {}) };
+  return { expressIds: indices.map((index) => index + 1), name: feature.name, method, ...(overlap !== undefined ? { overlap } : {}) };
 }
 
 const hasGeometry = (layer: SiteContextLayer): boolean =>
@@ -132,7 +133,7 @@ export async function loadSiteContextModel(options: SiteContextLoadOptions): Pro
   try {
     const source = sourceArrayBuffer(options.buffer, 'source.arrayBuffer');
     const doc = decodeSiteContextGlb(new Uint8Array(source));
-    const anchor = findReferenceSpatialModel()?.placement.spatialReference;
+    const anchor = siteContextPlacementReference() ?? undefined;
     const refusal = siteContextAnchorRefusal(anchor);
     if (refusal) {
       options.onError('height-datum-mismatch', refusal);

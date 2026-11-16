@@ -16,7 +16,7 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { resolveProjectionId } from '@/lib/geo/reproject';
 import { mapUnitAssumedMetres } from '@/lib/geo/ifc-spatial-reference';
-import { extractModelSpatialPlacement, type ModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
+import { extractModelSpatialPlacement, findReferenceSpatialModel, type ModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
 import { siteContextHeightRefusal } from '@/hooks/ingest/ifcGeorefAssumptions';
 import { modelEgid, modelFootprint } from './site-context-subject';
 
@@ -82,6 +82,15 @@ function verticalDeclared(reference: ModelSpatialReference): boolean {
   return reference.vertical !== undefined || (typeof reference.sourceMetadata?.verticalDatum === 'string' && reference.sourceMetadata.verticalDatum.trim() !== '');
 }
 
+/**
+ * The reference a loaded site context is placed against: the federation's
+ * reference model, else `fallback`. The section's height statements and the
+ * load's refusal both read it, so they always describe the same model.
+ */
+export function siteContextPlacementReference(fallback?: ModelSpatialReference): ModelSpatialReference | null {
+  return findReferenceSpatialModel()?.placement.spatialReference ?? fallback ?? null;
+}
+
 /** Resolve the model `modelId` as a site-context anchor. */
 export async function resolveSiteContextAnchor(modelId: string): Promise<SiteContextAnchor> {
   const model = useViewerStore.getState().models.get(modelId);
@@ -93,7 +102,9 @@ export async function resolveSiteContextAnchor(modelId: string): Promise<SiteCon
     const name = frame.spatialReference.sourceMetadata?.projectedCrsName;
     return { ok: false, reason: 'unknown-crs', detail: typeof name === 'string' ? name : undefined };
   }
-  const declaredOther = siteContextHeightRefusal(own.spatialReference);
+  // Heights are judged on what the load places against, not on the selected model alone (#10481 review).
+  const heights = siteContextPlacementReference(own.spatialReference) ?? own.spatialReference;
+  const declaredOther = siteContextHeightRefusal(heights);
   if (declaredOther) return { ok: false, reason: 'height-datum', detail: declaredOther };
   const projected = projectedCentre(model, frame);
   const centre = projected ? await toLv95(crs, projected[0], projected[1]) : null;
@@ -111,7 +122,7 @@ export async function resolveSiteContextAnchor(modelId: string): Promise<SiteCon
     ok: true,
     centre,
     ...(own.spatialReference.confidence === 'assumed' && own.spatialReference.horizontal ? { crsAssumedFromName: own.spatialReference.horizontal.id } : {}),
-    heightAssumed: !verticalDeclared(own.spatialReference),
+    heightAssumed: !verticalDeclared(heights),
     mapUnitAssumed: mapUnitAssumedMetres(own.spatialReference),
   };
 }

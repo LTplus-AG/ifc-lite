@@ -8,13 +8,18 @@
  * The sibling of `terrainImageryDrape.ts` for site context, not a bend of it:
  * that planner projects LandXML vertices through the document's CRS. Here the
  * core already emitted UVs over the terrain's plan box (u east, v south), so
- * the drape is one WMS GetMap for exactly that box in EPSG:2056 and the same
- * texture path: a one-texel border in the flat terrain colour
+ * the drape is WMS GetMap requests for plan boxes in EPSG:2056, with the
+ * same texture path. A drape makes up to two requests: a fine one (10 cm) for
+ * the chunks around the model, for eye-level views, and a coarse one (25 cm or
+ * coarser, within the texture size limit) for the rest of the site, since one
+ * 10 cm image of a large site would exceed the texture limit. Both share the
+ * abort signal, the allowlist and the cache, and carry the same attribution.
+ * The texture path is a one-texel border in the flat terrain colour
  * (`borderedTexture`), clamp-to-edge sampling, and the terrain meshes replaced
  * by textured copies on the GPU and in the store, as `applyDrape` does.
  *
  * WMS returns an image covering the requested box exactly at the requested
- * pixel size, so the core's UVs map onto it unchanged. The request goes
+ * pixel size, so the core's UVs map onto it unchanged. Each request goes
  * through the swisstopo host allowlist and the response cache.
  */
 

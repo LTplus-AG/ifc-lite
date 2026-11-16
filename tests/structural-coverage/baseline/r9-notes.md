@@ -20,7 +20,7 @@ The row stays partial on its convert cell, which is out of scope here.
 
 ## Regression evidence
 
-`node --test scripts/structural-render-probe.test.mjs` runs 7 tests. Against the R8 `lib/topology.mjs` the three new oracle tests fail; against R9 all 7 pass.
+`node --test scripts/structural-render-probe.test.mjs` runs 10 tests. Against the R8 `lib/topology.mjs` and `render-members.mjs`, the six new oracle tests fail; against R9 all 10 pass.
 
 - `follows a mapped topology representation, origin then target`: a non-identity MappingOrigin and a rotating, scaling MappingTarget; a mapped shape representation without topology yields no vertices; a mesh on the unmapped edge still fails.
 - `a mapped topology it cannot follow leaves the member unplaced`: an unreadable MappingOrigin, an unreadable or zero origin Axis, an unreadable target Axis1, a zero scale and a map cycle through topology each make the member unplaced (fail, "the oracle cannot follow its placement or mapped topology", kept apart from "the file gives it no topology representation"), even with a mesh on every edge, never checked on the direct edge alone. Seventeen and 1200 nested maps, a dangling map, and a cycle among maps without topology beside topology are followed, with the same result in either member order. More than 10000 vertices through a representation's mapped items, in any item order, are unplaced; direct topology is read whole, as in R8. The walk is iterative and memoised per file, so each map is walked once at any nesting; a map that yields no vertices is skipped before its frames are read. A direction must be an `IfcDirection`.

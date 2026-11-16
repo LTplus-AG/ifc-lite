@@ -177,8 +177,9 @@ function transformOperator(step, id) {
 /** A representation's items; none when the record is not a representation. */
 const itemsOf = (rep) => (/REPRESENTATION$/.test(rep?.type ?? '') && Array.isArray(rep.args[3]) ? rep.args[3] : []);
 
-/** A mapped item's map and the representation it maps, or null when the map does not resolve. */
+/** A mapped item's map and the representation it maps; null for another item, or a map that does not resolve. */
 function mappedSource(step, item) {
+  if (item?.type !== 'IFCMAPPEDITEM') return null;
   const map = step.get(refOf(item.args[0]));
   return map?.type === 'IFCREPRESENTATIONMAP' ? { map, source: step.get(refOf(map.args[1])) } : null;
 }
@@ -203,8 +204,8 @@ function holdsTopology(step, rep) {
     if (!r || seen.has(r.id)) continue;
     seen.add(r.id);
     for (const ref of itemsOf(r)) {
-      const item = step.get(refOf(ref));
-      if (item?.type === 'IFCMAPPEDITEM') stack.push(mappedSource(step, item)?.source);
+      const mapped = mappedSource(step, step.get(refOf(ref)));
+      if (mapped) stack.push(mapped.source);
       else if (r.type === 'IFCTOPOLOGYREPRESENTATION' && topologyVertices(step, refOf(ref)).length) held = true;
     }
   }
@@ -238,8 +239,7 @@ function representationVertices(step, root) {
       // First visit: its sources go first. An open source is an ancestor: a cycle, left to `combine`.
       open.add(rep.id);
       for (const ref of itemsOf(rep)) {
-        const item = step.get(refOf(ref));
-        const source = item?.type === 'IFCMAPPEDITEM' ? mappedSource(step, item)?.source : undefined;
+        const source = mappedSource(step, step.get(refOf(ref)))?.source;
         if (source && !memo.has(source.id) && !open.has(source.id)) stack.push(source);
       }
       continue;
@@ -259,18 +259,19 @@ function combine(step, rep, memo) {
   for (const ref of itemsOf(rep)) {
     const id = refOf(ref);
     const item = step.get(id);
-    if (item?.type !== 'IFCMAPPEDITEM') {
+    const { map, source } = mappedSource(step, item) ?? {};
+    if (!map) {
       if (topology) for (const p of topologyVertices(step, id)) points.push(p);
       continue;
     }
-    const { map, source } = mappedSource(step, item) ?? {};
     if (!source) continue;
     // Not yet memoised: open, so back into a cycle; refused only when it reaches topology.
     const mapped = memo.has(source.id) ? memo.get(source.id) : holdsTopology(step, source) ? null : [];
-    if (mapped?.length === 0) continue;
-    const origin = mapped && axisPlacement(step, refOf(map.args[0]));
-    const target = mapped && transformOperator(step, refOf(item.args[1]));
-    mappedCount += mapped?.length ?? 0;
+    if (!mapped) return null;
+    if (!mapped.length) continue;
+    const origin = axisPlacement(step, refOf(map.args[0]));
+    const target = transformOperator(step, refOf(item.args[1]));
+    mappedCount += mapped.length;
     if (!origin || !target || mappedCount > MAX_MAPPED_VERTICES) return null;
     const frame = compose(target, origin);
     for (const p of mapped) points.push(apply(frame, p));

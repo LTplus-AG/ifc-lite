@@ -43,11 +43,7 @@ export function outcomeCss(outcome: Outcome): string {
   return `rgb(${Math.round(r * 255)} ${Math.round(g * 255)} ${Math.round(b * 255)})`;
 }
 
-/**
- * Viewport colour per checked element, keyed by global id. An element whose
- * outcome reports through its door or window (an opening it fills) is the
- * candidate's own express id, so every result colours exactly one entity.
- */
+/** Viewport colour per checked element (one per result, its candidate), keyed by global id. */
 export function floodVerdictOverrides(
   result: Pick<FloodCheckResult, 'results'>,
   toGlobalId: (expressId: number) => number,

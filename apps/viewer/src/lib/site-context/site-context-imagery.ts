@@ -237,21 +237,24 @@ function coreMeshes(meshes: readonly MeshData[]): MeshData[] {
   });
 }
 
-/** Imagery as given, or the hazard map over the imagery (or over the flat terrain colour). */
+/**
+ * One layer as given, or the hazard map over the imagery. `borderedTexture`
+ * frames the result in the flat terrain colour, which also shows through
+ * wherever the hazard map alone is transparent (no runoff modelled).
+ */
 function composeLevel(level: DrapeLevel, flat: readonly [number, number, number], imagery: ImageBitmap | null, hazard: ImageBitmap | null): DrapeTexture {
   const { width, height } = level;
-  if (!hazard && imagery) return borderedTexture(imagery, width, height, flat);
+  if (!imagery || !hazard) {
+    const single = imagery ?? hazard;
+    if (!single) throw new Error('No map layer arrived to drape.');
+    return borderedTexture(single, width, height, flat);
+  }
   const canvas = new OffscreenCanvas(width, height);
   const context = canvas.getContext('2d');
   if (!context) throw new Error('This browser cannot compose the drape texture (no 2D canvas).');
-  if (imagery) context.drawImage(imagery, 0, 0, width, height);
-  else {
-    const [r, g, b] = flat.map((channel) => Math.round(Math.min(1, Math.max(0, channel)) * 255));
-    context.fillStyle = `rgb(${r}, ${g}, ${b})`;
-    context.fillRect(0, 0, width, height);
-  }
+  context.drawImage(imagery, 0, 0, width, height);
   // The publisher's legend colours, unaltered (no opacity): the viewport legend shows the same swatches.
-  if (hazard) context.drawImage(hazard, 0, 0, width, height);
+  context.drawImage(hazard, 0, 0, width, height);
   return borderedTexture(canvas, width, height, flat);
 }
 

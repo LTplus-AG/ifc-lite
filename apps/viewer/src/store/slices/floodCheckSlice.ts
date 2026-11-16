@@ -54,7 +54,6 @@ export interface FloodCheckSlice {
   failFloodCheck: (run: AbortController, error: { message: string; code: string | null }) => void;
   /** User cancel or a run that saw its own abort: the run is forgotten, an earlier result is not restored. */
   cancelFloodCheck: () => void;
-  clearFloodCheck: () => void;
   setFloodColoursShown: (shown: boolean) => void;
 }
 
@@ -82,11 +81,6 @@ export const createFloodCheckSlice: StateCreator<FloodCheckSlice, [], [], FloodC
     const run = get().floodCheck;
     if (run?.status !== 'running') return;
     run.abort?.abort();
-    set({ floodCheck: null });
-  },
-
-  clearFloodCheck: () => {
-    get().floodCheck?.abort?.abort();
     set({ floodCheck: null });
   },
 

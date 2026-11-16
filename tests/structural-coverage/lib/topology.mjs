@@ -74,7 +74,8 @@ function coords(step, id) {
 function direction(step, value) {
   const id = refOf(value);
   if (id === undefined) return undefined;
-  return step.get(id)?.type === 'IFCDIRECTION' ? unit(coords(step, id) ?? [0, 0, 0]) : null;
+  const c = step.get(id)?.type === 'IFCDIRECTION' ? coords(step, id) : null;
+  return c && unit(c);
 }
 
 /**
@@ -177,11 +178,12 @@ function transformOperator(step, id) {
 /** A representation's items; none when the record is not a representation. */
 const itemsOf = (rep) => (/REPRESENTATION$/.test(rep?.type ?? '') && Array.isArray(rep.args[3]) ? rep.args[3] : []);
 
-/** A mapped item's map and the representation it maps; null for another item, or a map that does not resolve. */
+/** A mapped item's map and the representation it maps; null for another item, or a map or source that does not resolve. */
 function mappedSource(step, item) {
   if (item?.type !== 'IFCMAPPEDITEM') return null;
   const map = step.get(refOf(item.args[0]));
-  return map?.type === 'IFCREPRESENTATIONMAP' ? { map, source: step.get(refOf(map.args[1])) } : null;
+  const source = map?.type === 'IFCREPRESENTATIONMAP' ? step.get(refOf(map.args[1])) : undefined;
+  return source ? { map, source } : null;
 }
 
 /** Per parsed file: memoised answers keyed by representation id. */
@@ -264,7 +266,6 @@ function combine(step, rep, memo) {
       if (topology) for (const p of topologyVertices(step, id)) points.push(p);
       continue;
     }
-    if (!source) continue;
     // Not yet memoised: open, so back into a cycle; refused only when it reaches topology.
     const mapped = memo.has(source.id) ? memo.get(source.id) : holdsTopology(step, source) ? null : [];
     if (!mapped) return null;

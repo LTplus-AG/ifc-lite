@@ -65,7 +65,7 @@ export function SiteContextSection({ modelId }: { modelId: string }) {
   const error = useViewerStore((s) => s.siteContextError);
   const { addModel, removeModel } = useIfc();
   // The last request's choices survive the panel closing and reopening (it remounts).
-  const last = useViewerStore.getState().siteContextRequest;
+  const last = useViewerStore.getState().siteContextLastChoice;
   const [radius, setRadius] = useState<SiteContextRadius>(last?.radius ?? 200);
   const [selected, setSelected] = useState<ReadonlySet<SiteContextLayerKind>>(new Set(last?.categories ?? ['terrain', 'parcel', 'buildings']));
   const [imagery, setImagery] = useState(last?.imagery ?? true);

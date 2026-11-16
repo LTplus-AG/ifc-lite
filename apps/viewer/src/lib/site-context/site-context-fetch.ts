@@ -54,12 +54,16 @@ export async function loadSiteContext(options: LoadSiteContextOptions): Promise<
   const drape = options.drapeImagery
     ?? (async (modelId: string, signal: AbortSignal) => (await import('./site-context-imagery')).drapeSiteContextImagery(modelId, signal));
 
+  // This run's identity is its controller: it writes only while it is the current run, so a
+  // cancelled, replaced or detached run never touches a newer run's state (#10481 review).
+  const current = (): boolean => !abort.signal.aborted && store().isSiteContextRunCurrent(abort);
+
   const loadCategory = async (category: SiteContextCategoryMessage): Promise<void> => {
-    if (abort.signal.aborted) return;
+    if (!current()) return;
     const { kind } = category;
-    store().setSiteContextCategory(kind, { issues: category.issues, attribution: category.attribution });
+    store().setSiteContextCategory(abort, kind, { issues: category.issues, attribution: category.attribution });
     if (!category.hasGeometry) {
-      store().setSiteContextCategory(kind, { status: 'error' });
+      store().setSiteContextCategory(abort, kind, { status: 'error' });
       return;
     }
     // A category loaded again replaces the earlier one rather than stacking a
@@ -70,18 +74,22 @@ export async function loadSiteContext(options: LoadSiteContextOptions): Promise<
     }
     const file = new File([category.bytes.slice().buffer], siteContextFileName(kind));
     const modelId = await options.addModel(file, { name: siteContextModelName(kind) });
-    if (abort.signal.aborted) return;
-    store().setSiteContextCategory(kind, { status: categoryStatusOf(modelId !== null, category.complete), ...(modelId ? { modelId } : {}) });
+    if (!current()) {
+      // The run ended while its model was being added: that model belongs to no run, so take it out again.
+      if (modelId) options.removeModel(modelId);
+      return;
+    }
+    store().setSiteContextCategory(abort, kind, { status: categoryStatusOf(modelId !== null, category.complete), ...(modelId ? { modelId } : {}) });
     if (!modelId || kind !== 'terrain' || !options.imagery) return;
     try {
       await drape(modelId, abort.signal);
     } catch (error) {
-      if (isAbort(error)) return;
+      if (isAbort(error) || !current()) return;
       console.error('[site-context] imagery drape failed:', error);
-      const current = store().siteContextCategories.terrain;
-      store().setSiteContextCategory('terrain', {
+      const terrain = store().siteContextCategories.terrain;
+      store().setSiteContextCategory(abort, 'terrain', {
         status: 'partial',
-        issues: [...(current?.issues ?? []), {
+        issues: [...(terrain?.issues ?? []), {
           code: 'imagery-failed', severity: 'warning',
           message: `aerial imagery could not be draped: ${error instanceof Error ? error.message : String(error)}`,
         }],
@@ -95,23 +103,25 @@ export async function loadSiteContext(options: LoadSiteContextOptions): Promise<
     const stats = await buildSiteContextInWorker(
       { centre: options.centre, radius: options.radius, categories: options.categories, ...(options.subject ? { subject: options.subject } : {}) },
       {
-        onProgress: (progress) => { if (!abort.signal.aborted) store().setSiteContextProgress(progress); },
+        onProgress: (progress) => { if (current()) store().setSiteContextProgress(abort, progress); },
         onCategory: (category) => { chain = chain.then(() => loadCategory(category)); },
       },
       abort.signal,
     );
     await chain;
-    if (!abort.signal.aborted) store().finishSiteContextRequest({ ...stats, elapsedMs: performance.now() - started });
+    if (abort.signal.aborted) store().settleAbortedSiteContextRun(abort);
+    else store().finishSiteContextRequest(abort, { ...stats, elapsedMs: performance.now() - started });
   } catch (error) {
     await chain;
     if (isAbort(error) || abort.signal.aborted) {
-      store().abortSiteContextRequest();
+      // Settles only this run, and only if it is still the current one: never the run after it.
+      store().settleAbortedSiteContextRun(abort);
       return;
     }
     const message = error instanceof Error ? error.message : String(error);
     const stats = error instanceof SiteContextBuildError && error.stats ? { ...error.stats, elapsedMs: performance.now() - started } : null;
-    store().setSiteContextError(message);
-    store().finishSiteContextRequest(stats, message);
+    store().setSiteContextError(abort, message);
+    store().finishSiteContextRequest(abort, stats, message);
   } finally {
     supersession.signal.removeEventListener('abort', onSuperseded);
     supersession.stop();

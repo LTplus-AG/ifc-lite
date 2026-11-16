@@ -9,6 +9,7 @@
  */
 
 import { vecCross as cross, vecLen as length } from '../ifc-creator-math.js';
+import { openingSection } from './structural-opening-section.js';
 import { prepareStructuralFace } from './_structural-face.js';
 import type { PhysicalElementFact, SkippedElement, PrismFact, Vec3 } from './structural-derive-types.js';
 
@@ -142,12 +143,8 @@ export function plateOpenings(element: PhysicalElementFact, plate: { boundary: V
     const prism = opening.prism;
     if (!prism) { reject(opening.shapeIssue ?? 'unreadable body'); continue; }
     if (!prism.outlineExact) { reject('profile outline is known only as bounds'); continue; }
-    const along = dot(prism.extrusion, normal);
-    if (!(length(prism.extrusion) > 0) || Math.abs(along) / length(prism.extrusion) < Math.cos(Math.PI / 180)) { reject('opening extrusion is oblique to the plate normal (more than 1 degree)'); continue; }
-    const distances = prism.outline.map(p => dot(sub(p, plate.boundary[0]), normal));
-    const depthTolerance = Math.max(1, plate.thickness, length(prism.extrusion)) * 1e-6;
-    if (!distances.every(d => Math.min(d, d + along) <= -plate.thickness / 2 + depthTolerance && Math.max(d, d + along) >= plate.thickness / 2 - depthTolerance)) { reject('opening does not span the plate thickness (not through)'); continue; }
-    const ring = prism.outline.map((p, i) => sub(p, scale(normal, distances[i])));
+    const ring = openingSection(prism, plate.boundary[0], normal, plate.thickness, tolerance);
+    if (typeof ring === 'string') { reject(ring); continue; }
     try { prepareStructuralFace(plate.boundary, [...carried, ring], tolerance); }
     catch (error) { reject(error instanceof Error ? error.message : String(error)); continue; }
     carried.push(ring);

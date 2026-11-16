@@ -102,7 +102,7 @@ describe('surface opening builder', () => {
 });
 
 /** Wall extruded upwards; openings extruded across its thickness. Slab has a vertical stair opening. */
-function physicalModel() {
+function physicalModel(planOpenings = false) {
   const records: string[] = [];
   let id = 100;
   const add = (s: string) => { records.push(`#${++id}=${s};`); return id; };
@@ -116,13 +116,27 @@ function physicalModel() {
     return add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${rep}))`);
   };
   const product = (type: string, name: string, shape: number | null) => add(`${type}('0${String(id).padStart(21,'0')}',#4,'${name}',$,$,#20,${shape ? '#'+shape : '$'},$${type==='IFCSLAB'?',.FLOOR.':''})`);
-  const wall = product('IFCWALL','wall',solid([0,0,0],[0,0,1],10,0.4,4));
+  const wall = product('IFCWALL','wall',solid([0,planOpenings ? 0.165 : 0,0],[0,0,1],10,planOpenings ? 0.33 : 0.4,4));
   const slab = product('IFCSLAB','slab',solid([20,0,0],[0,0,1],10,8,0.3));
   const opening = (host: number, name: string, origin: number[], axis = [0,-1,0], depth = 0.6, w=1,h=1, unreadable=false) => {
     const opening = product('IFCOPENINGELEMENT', name, unreadable ? null : solid(origin,axis,w,h,depth));
     add(`IFCRELVOIDSELEMENT('0${String(id).padStart(21,'0')}',#4,$,$,#${host},#${opening})`);
     return opening;
   };
+  if (planOpenings) {
+    opening(wall,'plan window',[1,0.165,0.75],[0,0,1],1.82,0.91,0.37);
+    opening(wall,'plan recess',[-1,0.165,0.75],[0,0,1],1.82,0.91,0.1);
+    // U profile: the mid-plane crosses its two legs, giving two intervals.
+    const points = [[-3,-0.3],[-1,-0.3],[-1,0.3],[-1.5,0.3],[-1.5,-0.25],[-2.5,-0.25],[-2.5,0.3],[-3,0.3],[-3,-0.3]];
+    const curve = add(`IFCPOLYLINE((${points.map(p => '#'+pt(p)).join(',')}))`);
+    const profile = add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${curve})`);
+    const pos = add(`IFCAXIS2PLACEMENT3D(#${pt([0,0,0.75])},$,$)`);
+    const body = add(`IFCEXTRUDEDAREASOLID(#${profile},#${pos},#${dir([0,0,1])},1.82)`);
+    const rep = add(`IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#${body}))`);
+    const shape = add(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${rep}))`);
+    const cut = product('IFCOPENINGELEMENT','two intervals',shape);
+    add(`IFCRELVOIDSELEMENT('0twointervals0000000000',#4,$,$,#${wall},#${cut})`);
+  }
   opening(wall,'window1',[-2,0.3,2]);
   opening(wall,'window2',[2,0.3,2]);
   opening(wall,'door',[0,0.3,1],[0,-1,0],0.6,1,2);
@@ -136,6 +150,42 @@ function physicalModel() {
 }
 
 describe('derive physical openings', () => {
+  it('carries a plan window swept vertically at its original sill height', async () => {
+    const s = await session(physicalModel(true));
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    const wall = facts.elements.find(e => e.type === 'IfcWall')!;
+    wall.openings = wall.openings!.filter(o => o.name === 'plan window');
+    const plan = planStructuralDerivation(facts);
+    const holes = plan.surfaceMembers.find(m => m.elementId === wall.expressId)!.openings;
+    expect(holes).toHaveLength(1);
+    expect(holes[0]).toHaveLength(4);
+    for (const [axis, min, max] of [[0,0.545,1.455],[1,0.165,0.165],[2,0.75,2.57]]) {
+      expect(Math.min(...holes[0].map(p => p[axis]))).toBeCloseTo(min, 8);
+      expect(Math.max(...holes[0].map(p => p[axis]))).toBeCloseTo(max, 8);
+    }
+    expect(plan.report.skipped).toEqual([]);
+  });
+  it('rejects a section that shifts between the two wall faces', async () => {
+    const s = await session(physicalModel(true));
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    const wall = facts.elements.find(e => e.type === 'IfcWall')!;
+    wall.openings = wall.openings!.filter(o => o.name === 'plan window');
+    const prism = wall.openings[0].prism!;
+    prism.outline = prism.outline.map(([x,y,z]) => [x + 2 * y, y, z]);
+    const plan = planStructuralDerivation(facts);
+    expect(plan.surfaceMembers.find(m => m.elementId === wall.expressId)!.openings).toEqual([]);
+    expect(plan.report.skipped[0].detail).toContain('section changes across plate faces');
+  });
+  it.each([['plan recess','not through'], ['two intervals','2 intervals']])('skips %s with its section reason', async (name, reason) => {
+    const s = await session(physicalModel(true));
+    const facts = readStructuralDerivationFacts(s.store, s.editor);
+    const wall = facts.elements.find(e => e.type === 'IfcWall')!;
+    wall.openings = wall.openings!.filter(o => o.name === name);
+    const plan = planStructuralDerivation(facts);
+    expect(plan.surfaceMembers.find(m => m.elementId === wall.expressId)!.openings).toEqual([]);
+    expect(plan.report.skipped).toHaveLength(1);
+    expect(plan.report.skipped[0].detail).toContain(reason);
+  });
   it('uses the derive margin at the edge and refuses a shallow recess near the back face', async () => {
     const s = await session(physicalModel());
     const facts = readStructuralDerivationFacts(s.store, s.editor);

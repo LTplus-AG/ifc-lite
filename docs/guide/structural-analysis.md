@@ -81,8 +81,11 @@ columns, members, slabs and walls, with supports from footings. It is a geometri
 starting point that needs engineering review.
 
 Surface members carry readable through-openings as inner face bounds. Their
-extrusion must align with the plate normal within one degree and span its
-thickness. The profile is projected onto the analytical mid-plane. Openings
+extrusion must be parallel or perpendicular to the plate normal within one
+degree. A normal extrusion projects its profile onto the analytical mid-plane;
+an in-plane extrusion sweeps the single interval cut through its profile. The
+sections on both plate faces must match the mid-plane section within the derive
+tolerance, so the opening spans the full thickness. Openings
 within the derive tolerance of the outer boundary (such as doors at a wall base),
 oblique openings, recesses, unreadable profiles and overlapping or touching
 openings are skipped with reasons in the plan. Profile voids are not carried.

@@ -47,8 +47,10 @@
  * (walls). Thickness is that thinnest side. Oblique extrusions and profiles
  * read only as bounds (I-shapes, circles) are skipped. Profile voids are not
  * carried. Physical openings are carried as inner rings
- * projected onto the mid-plane when their readable single extrusion is parallel
- * to its normal within one degree and spans the thickness. Unreadable or
+ * on the mid-plane when their readable single extrusion is parallel or
+ * perpendicular to its normal within one degree. In-plane sweeps require one
+ * profile intersection interval; sections on both faces must match the middle
+ * within the derive tolerance. Unreadable or
  * inexact profiles, oblique openings, recesses, zero-area rings, openings within
  * the derive tolerance of the boundary (including doors at the base), and
  * overlapping or touching openings are skipped with a reason in the report. A

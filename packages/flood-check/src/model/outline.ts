@@ -18,6 +18,7 @@
  * composite curves) counts as an unreadable item.
  */
 
+import { insideRing } from '../geom.js';
 import { placedItems } from './mapped.js';
 import { arcPoints, type Pt2 } from './arc.js';
 import { applyFrame, axisPlacementFrame, IDENTITY, type Frame, type Vec3 } from './placement.js';
@@ -249,13 +250,49 @@ function bodyHoles(reader: ModelReader, item: number): { holes: Vec3[][]; unknow
   const inner = profile?.type === 'IFCARBITRARYPROFILEDEFWITHVOIDS' ? asRefList(reader.attr(profile, 'InnerCurves')) : [];
   const position = !solid || reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
   const holes: Vec3[][] = [];
-  let unknown = unwrapped.subtracted;
+  let unknown = false;
   for (const c of inner) {
     const pts = position ? curvePoints(reader, c) : null;
     if (!pts || pts.length < 3) unknown = true;
     else holes.push(pts.map(([x, y]) => applyFrame(position!, [x, y, 0])));
   }
+  if (!unwrapped.subtracted) return { holes, unknown };
+  // Boolean cuts: a DIFFERENCE whose second operand is a vertical prism cutting through the slab's whole thickness, wholly
+  // inside its outline, is a hole in plan; one that leaves slab material under it (a recess) is none; anything else (a
+  // notch at the edge, a half space or clipping, an intersection, an operand not read) is a hole whose shape is not read.
+  const base = verticalPrism(reader, unwrapped.solid);
+  const seen = new Set<number>();
+  for (let e = reader.entity(item); e && (e.type === 'IFCBOOLEANRESULT' || e.type === 'IFCBOOLEANCLIPPINGRESULT') && !seen.has(e.expressId); e = reader.entity(asRef(reader.attr(e, 'FirstOperand')))) {
+    seen.add(e.expressId);
+    const cut = e.type === 'IFCBOOLEANRESULT' && asEnum(reader.attr(e, 'Operator')) === 'DIFFERENCE' ? verticalPrism(reader, asRef(reader.attr(e, 'SecondOperand'))) : null;
+    if (!cut || !base) {
+      unknown = true;
+      continue;
+    }
+    if (cut.zMin > base.zMin + 1e-6 || cut.zMax < base.zMax - 1e-6) continue; // a recess: slab material stays under it
+    const inside = (q: Vec3) => insideRing({ x: q[0], y: q[1] }, base.plan.map(([x, y]) => ({ x, y })));
+    const mids = cut.plan.map((a, k) => { const b = cut.plan[(k + 1) % cut.plan.length]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0] as Vec3; });
+    if ([...cut.plan, ...mids].every(inside)) holes.push(cut.plan);
+    else unknown = true;
+  }
   return { holes, unknown };
+}
+
+/** An extrusion swept straight up or down from a horizontal profile: its plan outline and height range; null otherwise. */
+function verticalPrism(reader: ModelReader, id: number | null): { plan: Vec3[]; zMin: number; zMax: number } | null {
+  const solid = reader.entity(id);
+  if (!solid || solid.type !== 'IFCEXTRUDEDAREASOLID') return null;
+  const profile = profilePoints(reader, asRef(reader.attr(solid, 'SweptArea')));
+  const depth = asNumber(reader.attr(solid, 'Depth'));
+  const position = reader.attr(solid, 'Position') == null ? IDENTITY : axisPlacementFrame(reader, reader.attr(solid, 'Position'));
+  const dirEntity = reader.entity(asRef(reader.attr(solid, 'ExtrudedDirection')));
+  const d = dirEntity && Array.isArray(dirEntity.attributes[0]) ? dirEntity.attributes[0].map(asNumber) : null;
+  if (!profile || profile.length < 3 || depth === null || !position || !d || d.some((v) => v === null)) return null;
+  if (Math.abs(position.z[2]) < 0.99 || Math.hypot(d[0] ?? 0, d[1] ?? 0) > 1e-6 * Math.hypot(...(d as number[]))) return null;
+  const plan = profile.map(([x, y]) => applyFrame(position, [x, y, 0]));
+  const z0 = plan[0][2];
+  const z1 = applyFrame(position, [0, 0, Math.sign(d[2] as number) * depth])[2] - position.origin[2] + z0;
+  return { plan, zMin: Math.min(z0, z1), zMax: Math.max(z0, z1) };
 }
 
 /** A wall's `Axis`: one polyline per readable curve, in object coordinates (raw file units). */

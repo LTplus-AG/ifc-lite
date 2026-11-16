@@ -221,7 +221,10 @@ entities, properties and containment from the parsed store. No meshing.
   the outlines of the ground storey's floor slabs (`FootPrint` curve or the
   extruded `Body` profile; `slab-outline`, or `slab-outline-voids-filled`
   when the slab has holes whose shape is not read: a `FootPrint` of more than
-  one curve, or a Boolean DIFFERENCE). The inner curves of a slab profile are
+  one curve, or a Boolean cut other than a vertical prism through the whole
+  slab and wholly inside it: a notch at the edge, a half space or clipping,
+  an intersection). A through cut is read as a hole and classified below; a
+  shallow cut (a recess) leaves slab material under it and is no hole. The inner curves of a slab profile are
   read as holes, also under a `FootPrint`: one under 1 m² stays closed; one
   wholly roofed (every point of a grid clipped to the hole and just inside
   each edge and corner lies under the outer outline of a slab more than 1 m

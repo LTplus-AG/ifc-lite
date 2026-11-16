@@ -24,13 +24,12 @@ import { planGeorefFixes } from '../georef/doctor/plan.js';
  * IFC4 and IFC4X3 write `IfcProjectedCRS` + `IfcMapConversion` (IFC4X3:
  * `IfcMapConversionScaled` when FactorX/Y/Z are given); IFC2X3 writes the
  * `ePSet_MapConversion` / `ePSet_ProjectedCRS` property sets the readers
- * already understand, on the IfcProject (buildingSMART user guide v2.0;
- * sets found on IfcSite are moved there by the next update). Writes are held in the session and land in the file
+ * already understand. Writes are held in the session and land in the file
  * with the next `bim.export.ifc()`.
  *
  * Writes fail closed and throw a `GeoreferencingError` naming the missing
  * input: no CRS, map unit, scale or factor is ever assumed; a model without
- * a representation context (IFC2X3: without an IfcProject) is refused; an
+ * a representation context (IFC2X3: without an IfcSite) is refused; an
  * existing georeferencing is replaced only with `replace: true`; and values
  * that would contradict each other (an angle and a vector that disagree, a
  * CRS renamed while keeping the old datum) are refused.

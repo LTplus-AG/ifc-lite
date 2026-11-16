@@ -228,16 +228,15 @@ describe('fix() re-checks the safety rules of a plan it is handed', () => {
 });
 
 describe('IFC2X3 convention sets on IfcSite', () => {
-  it('reported, then moved to IfcProject by the fix, values unchanged', async () => {
+  it('reports migration as manual and leaves the existing host unchanged', async () => {
     const model = await open(fixture('epset-on-site'));
     try {
-      const { report, result, after, text } = await fixAndRecheck(model);
+      const { report, plan, result, after } = await fixAndRecheck(model);
       expect(codes(report)).toEqual(['EPSET_NOT_ON_PROJECT']);
-      expect(result.applied).toEqual(['EPSET_NOT_ON_PROJECT.1']);
-      expect(codes(after)).toEqual([]);
-      expect(after.facts.ePSetHosts).toEqual(['IfcProject']);
-      expect(after.facts.ePSet?.operation).toMatchObject({ eastings: 2_600_000, northings: 1_199_650, orthogonalHeight: 540, scale: 0.001 });
-      expect(text).not.toMatch(/IFCRELDEFINESBYPROPERTIES\([^;]*\(#12\),/);
+      expect(fix(plan, 'EPSET_NOT_ON_PROJECT.1').status).toBe('manual');
+      expect(result.applied).toEqual([]);
+      expect(codes(after)).toEqual(['EPSET_NOT_ON_PROJECT']);
+      expect(after.facts.ePSetHosts).toEqual(['IfcSite']);
     } finally { model.close(); }
   });
 });

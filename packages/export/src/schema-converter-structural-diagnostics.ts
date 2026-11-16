@@ -113,6 +113,8 @@ export class StructuralDiagnostics {
       this.record(cause ?? THICKNESS_WRITTEN);
       this.carried.set(id, carried);
     }
+    const notice = this.thickness.notice(id, entity);
+    if (notice) this.record(notice);
     const attrs = this.links.link(entity, args);
     const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] }
       : this.varying.rewrite(entity, args, carried) ?? this.carriers.rewrite(id, entity, args, withheld) ?? this.thickness.rewrite(id, entity, args);

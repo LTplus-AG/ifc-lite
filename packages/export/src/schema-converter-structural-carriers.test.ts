@@ -470,7 +470,6 @@ describe('varying thickness with property-set locations #9668', () => {
     const bounded = await convert(ifc4.replace("IFCPROPERTYLISTVALUE('Location1Local',$,(IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.)),$)", "IFCPROPERTYBOUNDEDVALUE('Location1Local',$,$,IFCLENGTHMEASURE(1.),$,$)"), 'IFC2X3');
     expect(line(bounded.step, 20)).toContain(',.SHELL.,0.2,$,$);');
     expect(bounded.warnings).toContain('gives Location properties');
-    // Not writable anyway (a second aspect): the location reason is not given.
     // The reason is given whatever else would have stopped the thicknesses (here a second aspect).
     const twoAspects = await convert(ifc4.replace('#20=', "#18=IFCSHAPEASPECT((#14),$,$,.T.,#15);\n#20="), 'IFC2X3');
     expect(line(twoAspects.step, 20)).toContain(',.SHELL.,0.2,$,$);');

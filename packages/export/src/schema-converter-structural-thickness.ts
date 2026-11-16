@@ -126,14 +126,14 @@ export class StructuralThickness {
     return ['SubsequentThickness', 'VaryingThicknessLocation'];
   }
 
-  /**
-   * IFC4 -> IFC2X3: the IFC2X3 member body from its property set and its one
-   * aspect, or undefined. A member whose set gives locations is written as
-   * without a set, with the reason.
-   */
+  /** IFC4 -> IFC2X3: why a member's property set is not read, when its set gives locations; the generic path writes the member. */
+  notice(id: number, entity: string): string | undefined {
+    return this.mode === 'downgrade' && entity === ENTITY && this.located.has(id) ? THICKNESS_LOCATED : undefined;
+  }
+
+  /** IFC4 -> IFC2X3: the IFC2X3 member body from its property set and its one aspect, or undefined. */
   rewrite(id: number, entity: string, args: readonly string[]): StructuralRewrite | undefined {
-    if (this.mode !== 'downgrade' || entity !== ENTITY || args.length !== 9) return undefined;
-    if (this.located.has(id)) return { body: `${ENTITY}(${[...args, '$', '$'].join(',')})`, losses: [THICKNESS_LOCATED] };
+    if (this.mode !== 'downgrade' || entity !== ENTITY || args.length !== 9 || this.located.has(id)) return undefined;
     const [first, ...rest] = this.psets.get(id) ?? [];
     const aspect = this.aspectOf(args[6]);
     if (first === undefined || aspect === null || !this.pointAspects.has(aspect)) return undefined;

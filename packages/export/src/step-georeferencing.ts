@@ -242,7 +242,6 @@ export function applyGeoreferencingMutations(
   }
 }
 
-
 /**
  * FILE_SCHEMA identifiers whose schema declares `IfcMapConversionScaled`.
  * Of the schemas bundled in `packages/codegen/schemas/`, only `IFC4X3.exp`
@@ -302,7 +301,7 @@ function createMapConversion(pass: ExportPass, ctx: GeorefContext, crsId: number
  */
 function requestedFactors(mc: MapConversionRequest, warnings?: string[]): [number, number, number] | null {
   const given = [mc.factorX, mc.factorY, mc.factorZ];
-  // A null is a factor nobody gave: `Number(null)` is 0, which would write a mandatory FactorX of 0.
+  // A null is a factor nobody gave (`Number(null)` is 0, a mandatory FactorX of 0).
   if (given.every((f) => f == null)) return null;
   if (given.some((f) => f == null)) {
     if (warnings) reportGeorefWarning(warnings, PARTIAL_FACTORS_WARNING);

@@ -13,7 +13,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { parseModel } from '@ifc-lite/parser';
-import { PropertyValueType } from '@ifc-lite/data';
 import { HeadlessBackend } from '../headless.js';
 import { BimContext } from '../context.js';
 import { readGeoreferencing } from './read.js';
@@ -44,7 +43,6 @@ const GEO = `${BASE}
 #95=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #20=IFCPROJECTEDCRS('EPSG:2056','d',$,$,$,$,#95);
 #21=IFCMAPCONVERSION(#5,#20,1.,2.,3.,$,$,$);`;
-const STOREY = "#8=IFCBUILDINGSTOREY('1Pbuu0tu59NfhrTsztVBK3',$,'L1',$,$,$,$,$,.ELEMENT.,0.);";
 const SET = { ProjectedCRS: { Name: 'EPSG:2056', MapUnit: 'METRE' }, MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400 } };
 
 /** A convention-set pair: MapConversion set #b+3, ProjectedCRS set #b+6. */
@@ -71,17 +69,7 @@ async function reparsed(bim: BimContext): Promise<GeoreferencingState> {
   const { store } = await parseModel(new TextEncoder().encode(String(bim.export.ifc())), { disableWorkerScan: true });
   return readGeoreferencing(store);
 }
-async function trueOrUntrusted(bim: BimContext): Promise<void> {
-  const state = bim.georef.get();
-  if (state.untrusted) return;
-  expect(comparable(state)).toEqual(comparable(await reparsed(bim)));
-}
-const refusal = (fn: () => unknown): GeoreferencingError => {
-  try { fn(); } catch (err) { if (err instanceof GeoreferencingError) return err; throw err; }
-  throw new Error('expected a GeoreferencingError');
 };
-const sourceContextOf = (text: string) => Number(/IFCMAPCONVERSION\(#(\d+),/.exec(text)?.[1]);
-const conventionSetCount = (text: string) => (text.match(/IFCPROPERTYSET\([^;]*'ePSet_MapConversion'/gi) ?? []).length;
 
 
 type Fixture = { schema: string; data: string; entities: Array<{ id: number; attrs: string[] }> };

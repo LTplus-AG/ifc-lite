@@ -328,3 +328,33 @@ it('#9296: choosing an off-plane first dimension preserves every exported frame'
   const after = decode(new StepExporter(store, prepared).export({ schema: 'IFC4' }).content);
   assert.equal(stable(after), stable(before), 'unrestored plan dimensions and bound tags retain every STEP record');
 });
+
+it('#9296: refuses unit changes with a retained frame instead of corrupting its native geometry', async () => {
+  const { source: base, input } = await fixture('IFC4');
+  const lengthUnit = base.entityIndex.byType.get('IFCSIUNIT')!.find(id => String(attribute(base, id, 1)).replaceAll('.', '') === 'LENGTHUNIT')!;
+  const mm = new MutablePropertyView(base.properties, 'millimetre-frames');
+  mm.setPositionalAttribute(lengthUnit, 2, '.MILLI.');
+  const source = await parse(new StepExporter(base, mm).export({ schema: 'IFC4' }).content);
+  const a = { ...input, dimensions: [], tags: [] };
+  const first = await parse(new StepExporter(source, prepareDrawingAnnotations(source, undefined, a)).export({ schema: 'IFC4' }).content);
+  const b = { ...a, measures: [{ ...a.measures[0], id: 'unabsorbed' }], plane: { axis: 'front' as const, position: 4, flipped: false } };
+  const before = decode(new StepExporter(first, prepareDrawingAnnotations(first, undefined, b)).export({ schema: 'IFC4' }).content);
+  const mixed = await parse(before);
+  const records = readDrawingAnnotations(mixed);
+  assert.equal(records.length, 2);
+  assert.deepEqual(curveLengths(mixed, records[1].id), [5000], 'retained five-metre geometry is stored in millimetres');
+  const restored = restoredDrawingAnnotations(mixed, 'reopened')!;
+  assert.equal(restored.measure2DResults.length, 1);
+  const owned = { ...a, measures: restored.measure2DResults, absorbed: new Set([records[0].identity]) };
+  const metres = new MutablePropertyView(mixed.properties, 'metres-with-retained-frame');
+  metres.setPositionalAttribute(lengthUnit, 2, null);
+  const revision = metres.getMutationRevision();
+  for (const drawing of [owned, { ...owned, measures: [] }, null]) {
+    assert.throws(() => prepareDrawingAnnotations(mixed, metres, drawing), /Cannot change IFC length units.*retained annotations/);
+    assert.equal(metres.getMutationRevision(), revision, 'refusal never mutates the live export view');
+  }
+  const { viewerDrawingAnnotations } = await import('./viewer-drawing-annotations');
+  assert.throws(() => viewerDrawingAnnotations('not-the-active-model', mixed, metres), /Cannot change IFC length units.*retained annotations/);
+  const unchanged = decode(new StepExporter(mixed, prepareDrawingAnnotations(mixed, undefined, owned)).export({ schema: 'IFC4' }).content);
+  assert.equal(stable(unchanged), stable(before), 'unchanged units preserve every frame and native record');
+});

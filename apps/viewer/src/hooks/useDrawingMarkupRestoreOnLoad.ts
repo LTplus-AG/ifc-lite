@@ -64,7 +64,7 @@
  * suddenly injects the model's embedded markup over what the user just drew.
  */
 
-import { restoredDrawingAnnotations } from '@/lib/export/drawing-annotations';
+import { readDrawingAnnotations, restoredDrawingAnnotations } from '@/lib/export/drawing-annotations';
 import { useLoadWindowHold } from './loadWindow.js';
 import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -191,13 +191,12 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
   const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
   if (!store) return;
   const annotations = restoredDrawingAnnotations(store, modelId, state.getMutationView(modelId) ?? undefined);
-  if (annotations) {
-    markRestored(modelId);
-    useViewerStore.setState({ ...annotations, dimension2DUndo: [], dimension2DRedo: [] });
-    return;
-  }
   if (!hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
     markRestored(modelId);
+    if (annotations) {
+      absorbEmbeddedMarkup(modelId, readDrawingAnnotations(store, state.getMutationView(modelId) ?? undefined).map(record => record.identity));
+      useViewerStore.setState({ ...annotations, dimension2DUndo: [], dimension2DRedo: [] });
+    }
     return;
   }
   const result = restoreDrawingMarkupFromModel(modelId);
@@ -212,7 +211,8 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     result.polygonArea2DResults.length +
     result.textAnnotations2D.length +
     result.cloudAnnotations2D.length +
-    result.dimensions2D.length;
+    result.dimensions2D.length +
+    (annotations ? annotations.measure2DResults.length + annotations.dimensions2D.length + annotations.tagAnnotations2D.length : 0);
   if (total === 0) return;
 
   // Re-check immediately before writing: resolving `result` above is
@@ -222,12 +222,14 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
 
   // Before the write: the save subscription persists the set with it.
   absorbEmbeddedMarkup(modelId, restoredEmbeddedMarkupIdentities(modelId, result));
+  if (annotations) absorbEmbeddedMarkup(modelId, readDrawingAnnotations(store, state.getMutationView(modelId) ?? undefined).map(record => record.identity));
   useViewerStore.setState({
-    measure2DResults: result.measure2DResults,
+    measure2DResults: [...result.measure2DResults, ...(annotations?.measure2DResults ?? [])],
     polygonArea2DResults: result.polygonArea2DResults,
     textAnnotations2D: result.textAnnotations2D,
     cloudAnnotations2D: result.cloudAnnotations2D,
-    dimensions2D: result.dimensions2D,
+    dimensions2D: [...result.dimensions2D, ...(annotations?.dimensions2D ?? [])],
+    ...(annotations ? { tagAnnotations2D: annotations.tagAnnotations2D, drawing2DPlane: annotations.drawing2DPlane } : {}),
     dimension2DUndo: [],
     dimension2DRedo: [],
   });

@@ -426,3 +426,22 @@ it('load window: single-model cache hit restores nothing between the record turn
     await probe.dispose();
   }
 });
+
+it('#9296: mixed automatic annotations and saved markup both restore', async () => {
+  __resetDrawingMarkupRestoreForTests();
+  __resetSymbolicAnnotationsCacheForTests();
+  const saved = JSON.stringify({ item: { kind: 'tag', value: { id: 'bound-tag', entityId: 50, anchor: { x: 1, y: 2 }, offset: { x: 0, y: 0 }, template: 'auto' }, label: 'Door' }, plane: { axis: 'down', position: 1, flipped: false } });
+  const mixed = fixture().replace('ENDSEC;\nEND-ISO', `#60=IFCANNOTATION('0Annot000000000000060d',#4,'Tag','${saved}','IfcLite:DrawingAnnotation:1',$,$);\nENDSEC;\nEND-ISO`);
+  const store = await seedStore('mixed', mixed);
+  useViewerStore.setState({ dimensions2D: [], tagAnnotations2D: [] });
+  const release = fakeWasmReplyWith(oneMeasureFlat());
+  ensureParseFor([store]);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  release();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  tryRestoreDrawingMarkup('mixed');
+  assert.equal(useViewerStore.getState().measure2DResults.length, 1);
+  assert.equal(useViewerStore.getState().tagAnnotations2D[0]?.id, 'bound-tag');
+  const { absorbedEmbeddedMarkupFor } = await import('@/lib/drawing2d-markup/drawing-markup-absorbed');
+  assert.equal(absorbedEmbeddedMarkupFor('mixed').size, 2, 'both annotation generations keep persistent ownership');
+});

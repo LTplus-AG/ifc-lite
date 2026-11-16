@@ -32,7 +32,8 @@ export async function exportModelStep(input: {
   const dataStore = portable?.dataStore ?? input.dataStore;
   const view = portable ? portable.mutationView : input.mutationView;
   const serialized = prepareAppearanceSerialization(modelId, dataStore, options.applyMutations !== false ? view : undefined);
-  const result = await new StepExporter(dataStore, options.applyMutations === false ? serialized.view : viewerDrawingAnnotations(modelId, dataStore, serialized.view)).exportAsync({
+  const toSourceId = (id: number) => portable ? portable.toSourceIds(new Set([id]))?.values().next().value : id;
+  const result = await new StepExporter(dataStore, options.applyMutations === false ? serialized.view : viewerDrawingAnnotations(modelId, dataStore, serialized.view, toSourceId)).exportAsync({
     ...options,
     hiddenEntityIds: portable ? portable.toSourceIds(options.hiddenEntityIds) ?? undefined : options.hiddenEntityIds,
     isolatedEntityIds: portable ? portable.toSourceIds(options.isolatedEntityIds) : options.isolatedEntityIds,

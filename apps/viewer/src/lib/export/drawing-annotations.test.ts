@@ -45,6 +45,11 @@ for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
     const view = prepareDrawingAnnotations(reopened, undefined, input);
     const second = decode(new StepExporter(reopened, view).export({ schema: Schema }).content);
     assert.equal(stable(second), stable(first), 'unchanged reopen preserves every STEP record');
+    const late = { ...input, measures: [{ ...input.measures[0], id: 'late-measure' }], dimensions: [], tags: [] };
+    const kept = await parse(new StepExporter(reopened, prepareDrawingAnnotations(reopened, undefined, late)).export({ schema: Schema }).content);
+    assert.equal(kept.entityIndex.byType.get('IFCANNOTATION')?.length, 4, 'markup never restored must survive a new edit');
+    const cleared = await parse(new StepExporter(reopened, prepareDrawingAnnotations(reopened, undefined, { ...input, measures: [], dimensions: [], tags: [], absorbed: new Set(saved.map(record => record.identity)) })).export({ schema: Schema }).content);
+    assert.equal(cleared.entityIndex.byType.get('IFCANNOTATION')?.length ?? 0, 0, 'an explicit clear removes only restored annotations');
     const folder = mkdtempSync(join(tmpdir(), 'annotations-'));
     try {
       const file = join(folder, 'export.ifc'); writeFileSync(file, first);

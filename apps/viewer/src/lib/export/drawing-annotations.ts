@@ -25,11 +25,13 @@ export interface DrawingAnnotations {
   paperScale: number;
   /** Absolute IFC translation removed from the rendered drawing, metres. */
   ifcOffset?: number[];
+  /** Persisted identities actually restored into the drawing session. */
+  absorbed?: ReadonlySet<string>;
 }
 
 /** Read our editable payload; ordinary imported annotations remain untouched. */
 export function readDrawingAnnotations(store: IfcDataStore, view?: MutablePropertyView) {
-  const records: { id: number; saved: Saved }[] = [];
+  const records: { id: number; identity: string; saved: Saved }[] = [];
   for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCANNOTATION'])) {
     const record = effectiveMetadataRecord(store, expressId, view);
     if (!record || record.attributes[4] !== OBJECT_TYPE || typeof record.attributes[3] !== 'string') continue;
@@ -40,7 +42,7 @@ export function readDrawingAnnotations(store: IfcDataStore, view?: MutableProper
       if (!saved.item || !['measure', 'dimension', 'tag'].includes(saved.item.kind)
         || typeof saved.item.value?.id !== 'string') continue;
       if (!validSaved(saved)) continue;
-      records.push({ id: expressId, saved });
+      records.push({ id: expressId, identity: typeof record.attributes[0] === 'string' ? record.attributes[0] : `#${expressId}`, saved });
     } catch (error) {
       console.warn('Cannot restore drawing annotation', expressId, error);
     }
@@ -77,7 +79,10 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
     ...input.tags.map(({ tag: { modelId: _modelId, ...value }, label }) => ({ kind: 'tag' as const, value, label })),
   ];
   const existing = readDrawingAnnotations(store, view);
-  if (!items.length && !existing.length) return view;
+  const key = (item: Item) => `${item.kind}:${item.value.id}`;
+  const current = new Set(items.map(key));
+  const replaceable = existing.filter(({ identity, saved }) => input.absorbed?.has(identity) || current.has(key(saved.item)));
+  if (!items.length && !replaceable.length) return view;
   // Preserve native entity identities and geometry when reopening unchanged IFC.
   if (JSON.stringify(existing.map(({ saved }) => saved.item)) === JSON.stringify(items)
     && existing.every(({ saved }) => JSON.stringify(saved.plane) === JSON.stringify(input.plane))) return view;
@@ -86,13 +91,14 @@ export function prepareDrawingAnnotations(store: IfcDataStore, view: MutableProp
     const editor = new StoreEditor(store, draft);
     // Only delete the annotation itself: never trust file-supplied resource ids
     // as deletion authority over unrelated entities.
-    for (const { id } of existing) {
+    for (const { id } of replaceable) {
       for (const { expressId } of iterateEffectiveEntityIds(store, draft, ['IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELASSIGNSTOPRODUCT'])) {
         const record = effectiveMetadataRecord(store, expressId, draft);
         if (Array.isArray(record?.attributes[4]) && record.attributes[4].length === 1 && record.attributes[4][0] === `#${id}`) editor.removeEntity(expressId);
       }
       editor.removeEntity(id);
     }
+    if (!items.length) return draft;
     const anchor = resolveSpatialAnchor(store, input.storeyId, draft);
     if (!anchor.rootContextId) throw new Error('Drawing annotations need a representation context');
     const ref = (id: number) => `#${id}`;

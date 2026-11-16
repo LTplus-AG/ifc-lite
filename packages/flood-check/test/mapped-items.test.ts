@@ -18,10 +18,16 @@ import { parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
 type Op = { axis1?: string; axis2?: string; origin?: [number, number, number]; scale?: number; axis3?: string; scale2?: number; scale3?: number };
 
 /** A door in the east façade (IsExternal) whose only body is a mapped item; `inner` builds the mapped representation's items. */
-const mappedDoor = (inner: (b: Extra, ctx: number) => number[], op: Op = {}, originZ = 0) => (b: Extra) => {
+const mappedDoor = (
+  inner: (b: Extra, ctx: number) => number[],
+  op: Op = {},
+  originZ = 0,
+  originPlacement?: (b: Extra) => number,
+) => (b: Extra) => {
   const ctx = b.add(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#${b.add("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$)")},$,.MODEL_VIEW.,$)`);
   const rep = b.add(`IFCSHAPEREPRESENTATION(#${ctx},'Body','SweptSolid',(${inner(b, ctx).map((i) => `#${i}`).join(',')}))`);
-  const map = b.add(`IFCREPRESENTATIONMAP(#${b.axis(0, 0, originZ)},#${rep})`);
+  const mapOrigin = originPlacement?.(b) ?? b.axis(0, 0, originZ);
+  const map = b.add(`IFCREPRESENTATIONMAP(#${mapOrigin},#${rep})`);
   const pt = b.add(`IFCCARTESIANPOINT((${(op.origin ?? [0, 0, 0]).map((v) => v.toFixed(3)).join(',')}))`);
   const nonUniform = op.scale2 !== undefined || op.scale3 !== undefined;
   const target = b.add(
@@ -51,6 +57,35 @@ describe('a body given as a mapped item', () => {
     const d = await door(mappedDoor(leaf(0, -1), {}, 1));
     expect(d.levelIsUpperEstimate).toBe(false);
     expect(d.level).toBeCloseTo(500, 6);
+  });
+
+  it('composes a translated MappingOrigin before a rotated, translated MappingTarget (engine order)', async () => {
+    const extra = (b: Extra) => mappedDoor(
+      leaf(2),
+      { axis1: `#${b.dir(0, 1, 0)}`, origin: [10, 0, 0] },
+      0,
+      (bb) => bb.axis(2, 0, 0),
+    )(b);
+    const d = await door(extra);
+    expect(d.levelIsUpperEstimate).toBe(false);
+    // Engine matrix T·O: source centre (2.5,0) + origin (2,0), rotated by T's
+    // +90° X axis and translated (10,0), then placed at the door (20,5).
+    expect(localOf(d.position).x).toBeCloseTo(30, 3);
+    expect(localOf(d.position).y).toBeCloseTo(9.5, 3);
+  });
+
+  it('composes a rotated MappingOrigin before a translated MappingTarget (engine order)', async () => {
+    const extra = (b: Extra) => mappedDoor(
+      leaf(2),
+      { origin: [10, 0, 0] },
+      0,
+      (bb) => bb.axis(0, 0, 0, bb.dir(0, 0, 1), bb.dir(0, 1, 0)),
+    )(b);
+    const d = await door(extra);
+    expect(d.levelIsUpperEstimate).toBe(false);
+    // MappingOrigin turns source +X into +Y; the target then adds (10,0).
+    expect(localOf(d.position).x).toBeCloseTo(30, 3);
+    expect(localOf(d.position).y).toBeCloseTo(7.5, 3);
   });
 
   it('applies the target\'s rotation: a leaf 2 m along the map\'s x lands 2 m along the door\'s y when Axis1 is +Y', async () => {

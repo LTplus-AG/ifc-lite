@@ -254,7 +254,8 @@ entities, properties and containment from the parsed store. No meshing.
   by item, every item, and each read returns the items present and the items
   read; a slab whose body holds two extrusions gives two rings, and one with
   an unreadable item is `partial`. A Boolean DIFFERENCE is read through its
-  outer operand and marks a slab outline as voids-filled.
+  outer operand: a supported through cut becomes a hole; an unsupported cut
+  marks the slab outline as voids-filled.
   **The footprint's quality is one record that only accumulates**
   (`src/model/footprint.ts`, `footprint.quality`): every source tried that
   could not be read, or only in part (a slab, an external wall's placement
@@ -338,8 +339,8 @@ entities, properties and containment from the parsed store. No meshing.
   and used. It is an **upper estimate** — it can flag but never clear
   (`level-upper-estimate`) — whenever the element's own body or the body of
   the opening it fills exists but cannot be read, in whole or in part (a
-  Brep, an `IfcMappedItem`, a Boolean UNION), or is absent where it alone
-  defines the level (an opening without a body; a light well without one).
+  Brep, an unreadable `IfcMappedItem`, a Boolean UNION), or is absent where it
+  alone defines the level (an opening without a body; a light well without one).
   Stairs and ramps are always upper estimates (entry at the terrain). An
   element with no readable placement is not placed: it is skipped and named
   in a warning. **A placement alone is never exact**: a door or window is

@@ -36,8 +36,8 @@ describe('item 8: a slab hole cut by a Boolean DIFFERENCE is read and classified
     expect(fp.quality?.worst).toBe('complete');
     expect(fp.quality?.notes.join()).toMatch(/wholly roofed/);
   });
-  it('a shallow cut (a recess that leaves slab material under it) is no hole: the outline is complete', async () => {
-    const fp = (await extract(cutSlab(box(-0.1, 1), deck))).footprint;
+  it('a shallow cut (a recess that leaves slab material under it) is no hole even with no roof above it', async () => {
+    const fp = (await extract(cutSlab(box(-0.1, 1)))).footprint;
     expect(fp.source).toBe('slab-outline');
     expect(fp.courtyardRings).toBeUndefined();
   });

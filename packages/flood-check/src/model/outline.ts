@@ -14,8 +14,9 @@
  * Readable: extrusions of rectangle and arbitrary closed profiles, polylines
  * and indexed poly-curves (arcs through their stored points); a Boolean
  * DIFFERENCE or INTERSECTION is bounded by its first operand (flagged
- * `subtracted`), a UNION is unreadable. Everything else (B-reps, mapped items,
- * composite curves) counts as an unreadable item.
+ * `subtracted`), a UNION is unreadable. Mapped items are followed through
+ * their representation maps; unsupported leaf geometry (B-reps, composite
+ * curves) counts as an unreadable item.
  */
 
 import { insideRing } from '../geom.js';

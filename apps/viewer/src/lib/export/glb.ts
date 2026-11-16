@@ -48,8 +48,8 @@ export async function exportGlbFromGeometry(
 ): Promise<Uint8Array> {
   const meshes = opts.meshes ?? (geometryResult.meshes as MeshData[]);
   const gp = createProcessor();
-  await gp.init();
   try {
+    await gp.init();
     // The meshes are in the viewer's shifted render frame; hand the exporter the
     // frame so the GLB root puts them back at their IFC world position (#7734).
     const glb = gp.exportGlbFromMeshes(

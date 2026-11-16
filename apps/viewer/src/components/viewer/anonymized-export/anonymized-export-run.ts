@@ -39,7 +39,12 @@ export function anonymizedStem(fileStem: string): string {
  * offered for download here (the CLI has `--guid-map` for local correlation).
  */
 export function runAnonymizedExport(args: RunAnonymizedExportArgs): AnonymizeResult {
-  const result = exportAnonymizedSubset(args.store, args.includedIds, args.options);
-  downloadFile(result.content, `${anonymizedStem(args.fileStem)}.ifc`, 'text/plain');
+  const { result, filename } = produceAnonymizedExport(args);
+  downloadFile(result.content, filename, 'text/plain');
   return result;
+}
+
+/** Same native anonymizer without a browser download side effect. */
+export function produceAnonymizedExport(args: RunAnonymizedExportArgs) {
+  return { result: exportAnonymizedSubset(args.store, args.includedIds, args.options), filename: `${anonymizedStem(args.fileStem)}.ifc` };
 }

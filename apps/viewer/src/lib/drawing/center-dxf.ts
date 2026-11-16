@@ -8,7 +8,7 @@ import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
 import { dxfWorldShift, dxfUnderlayDrawingBounds, type DxfMapToWorld } from '@/hooks/useDxfUnderlay';
 import { drawingModelCenter } from '@/hooks/dxfDrawingBounds';
 import { dxfPlaneDrawingMapper, dxfDrawingDeltaToPlacement } from '@/hooks/dxfReferencePlane';
-export function centerDxfPlacement(entry: DxfUnderlayState, drawing: Drawing2D, sourceDrawing: Drawing2D | null, coordinateInfo: GeometryResult['coordinateInfo'], mirrorX: boolean, frame: DxfMapToWorld, state: ViewerState) {
+export function centerDxfPlacement(entry: DxfUnderlayState, drawing: Drawing2D, sourceDrawing: Drawing2D | null, coordinateInfo: GeometryResult['coordinateInfo'] | undefined, mirrorX: boolean, frame: DxfMapToWorld, state: ViewerState) {
   const zero = { ...entry, placement: { ...entry.placement, offsetX: 0, offsetY: 0 } };
   const mapper = entry.referenceFrame ? dxfPlaneDrawingMapper(zero, state, drawing.config.plane) : undefined;
   if (entry.referenceFrame && !mapper) return { error: 'unavailableReference' } as const;

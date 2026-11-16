@@ -31,8 +31,8 @@ export async function exportCsvFromBytes(
   createProcessor: () => CsvProcessor = () => new GeometryProcessor(),
 ): Promise<string> {
   const gp = createProcessor();
-  await gp.init();
   try {
+    await gp.init();
     const csv = gp.exportCsv(bytes, mode, opts.delimiter ?? ',', opts.includeProperties ?? false);
     if (csv == null) throw new Error('CSV export returned no data');
     // Viewer CSV exports are UI-sized; decode to keep the string contract.

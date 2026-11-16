@@ -165,5 +165,10 @@ test('#9296: automatic drawing export remaps a portable room storey', async () =
     assert.equal(containment?.[5], sourceStorey, 'containment uses the portable source storey, not the viewer id');
     const relationship = exported.entityIndex.byType.get('IFCRELASSIGNSTOPRODUCT')![0];
     assert.equal(effectiveMetadataRecord(exported, relationship)?.attributes[6], sourceWindow, 'the tag binds the source window, not viewer #2');
+    useViewerStore.setState({ activeStorey: { modelId, expressId: 999999 } });
+    const stale = await exportModelStep({ modelId, dataStore, mutationView: undefined, options: OPTIONS, scheduleState: null });
+    const fallback = await parse(stale.content);
+    assert.equal(fallback.entityIndex.byType.get('IFCANNOTATION')?.length, 2, 'unmapped active storey retains measurements and bound tags');
+
   } finally { useViewerStore.setState(previous, true); }
 });

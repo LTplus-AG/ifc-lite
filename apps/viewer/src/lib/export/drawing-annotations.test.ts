@@ -232,3 +232,24 @@ it('#9296: reconciliation compares geometry even when another item shares the au
   const automatic = { ...a, id: 'b' };
   assert.deepEqual(mergeRestoredMeasures([a, b], [automatic]), [b, automatic]);
 });
+
+it('#9296: an equal item ID on another unabsorbed cut survives export', async () => {
+  const { source, input } = await fixture('IFC4');
+  const a = { ...input, dimensions: [], tags: [] };
+  const first = await parse(new StepExporter(source, prepareDrawingAnnotations(source, undefined, a)).export({ schema: 'IFC4' }).content);
+  const b = { ...a, plane: { axis: 'front' as const, position: 4, flipped: false } };
+  const second = await parse(new StepExporter(first, prepareDrawingAnnotations(first, undefined, b)).export({ schema: 'IFC4' }).content);
+  const records = readDrawingAnnotations(second);
+  assert.equal(records.length, 2);
+  assert.deepEqual(records.map(record => record.saved.plane), [a.plane, b.plane]);
+});
+
+it('#9296: float32 symbolic coordinates reconcile with full-precision measurements', async () => {
+  const { mergeRestoredMeasures } = await import('./drawing-annotation-restore');
+  const automatic = { id: 'a', start: { x: 12.3, y: 45.6 }, end: { x: 123.4, y: 567.8 }, distance: 533.89 };
+  const points = new Float32Array([automatic.start.x, automatic.start.y, automatic.end.x, automatic.end.y]);
+  const saved = { ...automatic, id: 'legacy', start: { x: points[0], y: points[1] }, end: { x: points[2], y: points[3] } };
+  assert.deepEqual(mergeRestoredMeasures([saved], [automatic]), [automatic]);
+  assert.equal(mergeRestoredMeasures([saved, saved], [automatic]).length, 2, 'one-to-one multiplicity survives');
+  assert.equal(mergeRestoredMeasures([{ ...saved, end: { x: 125, y: 570 } }], [automatic]).length, 2, 'distinct geometry survives');
+});

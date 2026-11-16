@@ -152,6 +152,24 @@ type the IFC2X3 action admits. An IFC4 action also needs a `PredefinedType` of
 previous handling.
 Both need an unedited full export.
 
+Four other values move between an attribute and a relationship or property set:
+
+- An IFC2X3 action's `CausedBy` becomes an `IfcRelAssignsToProduct` named
+  `Causes` from the action to the reaction, as IFC4 holds it. The downgrade
+  keeps that relationship and fills `CausedBy` when it names one point reaction.
+- An IFC4 `IfcStructuralLoadCase` becomes an `IfcStructuralLoadGroup` with an
+  `IFC4 IfcStructuralLoadCase` property set holding `SelfWeightCoefficients`.
+  The upgrade turns a `LOAD_CASE` group carrying it back into the load case.
+- The upgrade writes `IfcStructuralAnalysisModel.SharedPlacement` when the
+  grouped structural items use one placement, or equal copies of one. It fills
+  this even where the IFC4 source left it empty.
+- An IFC2X3 varying surface member with three thicknesses gets
+  `Pset_StructuralSurfaceMemberVaryingThickness` (`Thickness1` to
+  `Thickness3`). Its location aspect must be the one aspect of the member's
+  representation, which is where the downgrade finds it again.
+
+These also need an unedited full export.
+
 The viewer's read and review surfaces do not provide a structural schema
 conversion editor. Conversion is not lossless for all records. The ledger
 checks IFC2X3 to IFC4 and back, and IFC4 to IFC2X3 and back, separately.

@@ -13,7 +13,7 @@ function slotRef(token: string | undefined): number | null {
 }
 
 /** Whether the slot is the unset marker `$`, with STEP whitespace and comments around it allowed (#10248). */
-function slotUnset(token: string): boolean {
+export function slotUnset(token: string): boolean {
   const start = skipStepTrivia(token, 0);
   return start >= 0 && token[start] === '$' && skipStepTrivia(token, start + 1) === token.length;
 }

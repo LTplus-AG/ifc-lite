@@ -76,7 +76,9 @@ const IFC4_TO_IFC2X3: Map<string, string> = new Map([
   // IFC2X3 folds load cases into `IfcStructuralLoadGroup` with
   // `PredefinedType=.LOAD_CASE.` and no `SelfWeightCoefficients` slot — a
   // strict attribute-name prefix, so the trim path below reconciles it
-  // without help from `BY_NAME_ATTR_REMAP_TYPES`.
+  // without help from `BY_NAME_ATTR_REMAP_TYPES`. An unedited full export
+  // instead carries the coefficients in a property set
+  // (`schema-converter-structural-carriers.ts`).
   ['IFCSTRUCTURALLOADCASE', 'IFCSTRUCTURALLOADGROUP'],
   // IfcStructuralCurveAction/SurfaceAction(IFC4) rename to
   // IfcStructuralLinearAction/PlanarAction(IFC2X3): both carry the same
@@ -290,7 +292,10 @@ export function convertStepLine(
   let converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural);
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.apply(converted, toSchema);
-  if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
+  if (toSchema === 'IFC2X3') {
+    if (enums && fromSchema === 'IFC4') converted = enums.structural.fillCausedBy(Number(/^\s*#(\d+)/.exec(converted)?.[1]), converted, withheldRefIds);
+    return (slots ?? new Ifc2x3SlotFill()).apply(converted);
+  }
   if (toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || /=\s*IFCSTRUCTURAL/i.test(converted))) ifc4Slots?.apply(converted);
   return converted;
 }
@@ -325,7 +330,8 @@ function convertRecord(
 
   // A structural rewrite replaces the withheld reference it was written for (an IFC4
   // load configuration); one still naming a withheld id falls to the check below.
-  const rewritten = structuralDiagnostics?.rewrite(entityType, args, withheldRefIds);
+  const rewritten = structuralDiagnostics?.rewrite(Number(match[1].slice(1)), entityType, args, withheldRefIds);
+  if (rewritten === null) return null;
   if (rewritten) return `${prefix}${rewritten};`;
   // A record whose attribute list references an id this export is OMITTING
   // (`withheldRefIds`, #4206) cannot carry that reference forward, no matter

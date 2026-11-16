@@ -4,6 +4,8 @@ import { getSchemaRegistryForVersion, getCanonicalEntityName, type IfcDataStore 
 import { convertEntityType } from './schema-converter.js';
 import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
+import { CAUSED_BY_READ, CAUSED_BY_WRITTEN, StructuralCarriers } from './schema-converter-structural-carriers.js';
+import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
 import { StructuralVarying } from './schema-converter-structural-varying.js';
 import { readStepSlots } from './step-argument-parser.js';
@@ -15,13 +17,32 @@ export class StructuralDiagnostics {
   readonly axes = new StructuralAxes();
   readonly links = new StructuralLinks();
   readonly varying = new StructuralVarying();
+  readonly carriers = new StructuralCarriers();
+  readonly thickness = new StructuralThickness();
   private readonly losses = new Map<string, number>();
+  /** Source record id -> attributes the target holds elsewhere (`note*`), which `inspect` does not report lost. */
+  private readonly carried = new Map<number, ReadonlySet<string>>();
 
   /** The source prepasses for an IFC2X3 <-> IFC4 export; the caller arms them only for an unedited full export. */
   fromStore(store: IfcDataStore, from: string, to: string): void {
     if (from === 'IFC2X3') this.axes.fromStore(store);
     else this.links.fromStore(store);
     this.varying.fromStore(store, from, to);
+    this.carriers.fromStore(store, from, to);
+    this.thickness.fromStore(store, from, to);
+  }
+
+  /** The exporter's express-id allocator, for the records the prepasses add. */
+  set ids(next: () => number) { this.varying.ids = next; this.carriers.ids = next; this.thickness.ids = next; }
+
+  /** Records the prepasses added, to append after the source records. */
+  added(): string[] { return [...this.varying.added(), ...this.carriers.added(), ...this.thickness.added()]; }
+
+  /** IFC4 -> IFC2X3: already converted record `id`, an action's CausedBy filled from its 'Causes' relationship. */
+  fillCausedBy(id: number, line: string, withheld: ReadonlySet<number> | undefined): string {
+    const filled = this.carriers.fillCausedBy(id, line, withheld);
+    if (filled !== line) this.record(CAUSED_BY_READ);
+    return filled;
   }
 
   inspect(line: string, from: string, to: string): void {
@@ -46,12 +67,14 @@ export class StructuralDiagnostics {
       return;
     }
     const tgt = (meta.allAttributes ?? meta.attributes).map(a => a.name);
+    const carried = this.carried.get(Number(/^\s*#(\d+)/.exec(line)?.[1]));
     src.forEach((attr, i) => {
       // CONST is intrinsic to IFC2X3 linear/planar actions, not lost data.
       if (attr.name === 'PredefinedType' && rec.slots[i]?.trim() === '.CONST.'
         && ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION'].includes(rec.type)) return;
       if (attr.name === 'DestabilizingLoad' && rec.slots[i]?.trim() === '$' && to === 'IFC2X3')
         this.record(destabilizingUnknown(rec.type));
+      if (carried?.has(attr.name)) return;
       if (!tgt.includes(attr.name) && rec.slots[i] && !['$', '*', ''].includes(rec.slots[i].trim())) {
         const effect = attr.name === 'ConditionCoordinateSystem' ? '; restraint directions in that coordinate system are not preserved' : '';
         this.record(`${rec.type}.${attr.name} has no slot in ${to}; its value is omitted${effect}`);
@@ -64,14 +87,25 @@ export class StructuralDiagnostics {
 
   /**
    * A record written as another entity from source-derived facts (`StructuralLinks`,
-   * `StructuralVarying`, each armed only for its schema pair): the target record body,
-   * reported because the class changes. A body still naming a `withheld` id is
-   * refused, and then nothing is reported.
+   * `StructuralVarying`, `StructuralCarriers`, `StructuralThickness`, each armed only for its schema pair):
+   * the target record body, or `null` for a carrier record the target leaves out.
+   * A body still naming a `withheld` id is refused, and then nothing is reported.
    */
-  rewrite(entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | undefined {
+  rewrite(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null | undefined {
+    const carried = new Set<string>();
+    if (this.carriers.noteCause(id, entity, args, withheld)) {
+      carried.add('CausedBy');
+      this.record(CAUSED_BY_WRITTEN);
+    }
+    if (this.thickness.note(id, entity, args, withheld)) {
+      carried.add('SubsequentThickness').add('VaryingThicknessLocation');
+      this.record(THICKNESS_WRITTEN);
+    }
+    if (carried.size) this.carried.set(id, carried);
     const attrs = this.links.link(entity, args);
-    const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] } : this.varying.rewrite(entity, args);
-    if (!rewrite || (withheld && referencesAnyExpressId(rewrite.body, withheld))) return undefined;
+    const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] }
+      : this.varying.rewrite(entity, args, carried) ?? this.carriers.rewrite(id, entity, args, withheld) ?? this.thickness.rewrite(id, entity, args);
+    if (!rewrite || (withheld && rewrite.body !== null && referencesAnyExpressId(rewrite.body, withheld))) return undefined;
     rewrite.losses.forEach((loss) => this.record(loss));
     return rewrite.body;
   }

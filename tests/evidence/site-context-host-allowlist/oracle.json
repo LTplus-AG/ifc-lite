@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "key": "packages/site-context/src/host-allowlist.ts",
+  "mutation": "tests/evidence/site-context-host-allowlist/behaviour.oracle.patch",
+  "why": "Reverse application keeps every export but drops the host check from swisstopoOnlyFetch, so a URL off geo.admin.ch reaches the network fetch: the allowlist test that refuses another host before anything is sent and the CLI test whose STAC page links to another host go red."
+}

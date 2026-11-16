@@ -65,6 +65,7 @@
   "packages/semantic": 0,
   "packages/server-bin": 2,
   "packages/server-client": 1,
+  "packages/site-context": 0,
   "packages/solar": 1,
   "packages/source-autodesk": 0,
   "packages/source-bimcollab": 0,

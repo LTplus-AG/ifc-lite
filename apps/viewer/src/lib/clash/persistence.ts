@@ -603,10 +603,10 @@ export function saveExclusions(rules: readonly ClashExclusionRule[]): SaveResult
 }
 
 /** Download the user's presets (customs + modified built-ins) as a JSON file. */
-export function exportPresets(presets: ClashPreset[]): void {
+export function exportPresets(presets: ClashPreset[], emit: (content: string, filename: string, mime: string) => void = downloadFile): void {
   const custom = presets.filter((p) => !p.builtin || builtinDiffersFromDefault(p));
   const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: custom }, null, 2);
-  downloadFile(json, 'clash-rules.clash-presets.json', 'application/json');
+  emit(json, 'clash-rules.clash-presets.json', 'application/json');
   trackExportCompleted({ format: 'json', surface: 'clash_results' });
 }
 

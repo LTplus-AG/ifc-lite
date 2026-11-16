@@ -280,3 +280,51 @@ for (const variant of [{ paperScale: 50 }, { ifcOffset: [10, 0, 0] }]) {
     assert.equal(readDrawingAnnotations(changed).length, 2, 'editing the owned frame preserves its unabsorbed neighbour');
   });
 }
+
+for (const change of ['prefix', 'assignment'] as const) {
+  it(`#9296: annotation geometry uses the exported length unit after ${change} changes`, async () => {
+    const { source: base, input } = await fixture('IFC4');
+    const lengthUnit = base.entityIndex.byType.get('IFCSIUNIT')!.find(id => String(effectiveMetadataRecord(base, id)?.attributes[1]).replaceAll('.', '') === 'LENGTHUNIT')!;
+    assert.ok(lengthUnit);
+    const mm = new MutablePropertyView(base.properties, 'millimetre-source');
+    mm.setPositionalAttribute(lengthUnit, 2, '.MILLI.');
+    const source = await parse(new StepExporter(base, mm).export({ schema: 'IFC4' }).content);
+    const drawing = { ...input, dimensions: [], tags: [] };
+    const withAnnotations = await parse(new StepExporter(source, prepareDrawingAnnotations(source, undefined, drawing)).export({ schema: 'IFC4' }).content);
+    for (const store of [source, withAnnotations]) {
+      const view = new MutablePropertyView(store.properties, 'metre-export');
+      if (change === 'prefix') view.setPositionalAttribute(lengthUnit, 2, null);
+      else {
+        const editor = new StoreEditor(store, view);
+        const unit = editor.addEntity('IfcSIUnit', ['*', '.LENGTHUNIT.', null, '.METRE.']).expressId;
+        const assignment = editor.addEntity('IfcUnitAssignment', [[`#${unit}`]]).expressId;
+        view.setPositionalAttribute(store.entityIndex.byType.get('IFCPROJECT')![0], 8, `#${assignment}`);
+      }
+      const prepared = prepareDrawingAnnotations(store, view, { ...drawing, absorbed: new Set(readDrawingAnnotations(store).map(record => record.identity)) });
+      const exported = await parse(new StepExporter(store, prepared).export({ schema: 'IFC4' }).content);
+      const { extractLengthUnitScale } = await import('@ifc-lite/parser');
+      assert.equal(extractLengthUnitScale(exported.source, exported.entityIndex), 1);
+      const annotation = readDrawingAnnotations(exported)[0];
+      assert.deepEqual(curveLengths(exported, annotation.id), [5], '5 metres must remain 5 native metre units');
+      const placement = Number(attribute(exported, annotation.id, 5));
+      const axis = Number(attribute(exported, placement, 1));
+      assert.deepEqual(attribute(exported, Number(attribute(exported, axis, 0)), 0), [0, 0, 1]);
+    }
+  });
+}
+
+it('#9296: choosing an off-plane first dimension preserves every exported frame', async () => {
+  const { source, input } = await fixture('IFC4');
+  const front = { ...input.dimensions[0], id: 'front-first', plane: { axis: 'front' as const, position: 4, flipped: false } };
+  const plan = { ...input.dimensions[0], id: 'plan-second', plane: input.plane };
+  const drawing = { ...input, measures: [], dimensions: [front, plan] };
+  const before = decode(new StepExporter(source, prepareDrawingAnnotations(source, undefined, drawing)).export({ schema: 'IFC4' }).content);
+  const store = await parse(before);
+  const restored = restoredDrawingAnnotations(store, 'reopened')!;
+  assert.deepEqual(restored.dimensions2D, [front]);
+  const { restorableDrawingAnnotationRecords } = await import('./drawing-annotations');
+  const prepared = prepareDrawingAnnotations(store, undefined, { ...drawing, dimensions: restored.dimensions2D, tags: [],
+    plane: restored.drawing2DPlane, absorbed: new Set(restorableDrawingAnnotationRecords(store).map(record => record.identity)) });
+  const after = decode(new StepExporter(store, prepared).export({ schema: 'IFC4' }).content);
+  assert.equal(stable(after), stable(before), 'unrestored plan dimensions and bound tags retain every STEP record');
+});

@@ -271,3 +271,17 @@ ${geometry}
     expect(line(step, 20)).toContain(',.SHELL.,0.5,$,$);');
   });
 });
+
+// #9668 final review: a source 'Causes' relationship naming another reaction.
+describe('CausedBy beside a different Causes relationship #9668', () => {
+  it('adds no second cause and reports CausedBy lost', async () => {
+    const ifc2x3 = model('IFC2X3', `${OWNER}
+#20=IFCSTRUCTURALPOINTREACTION('0KQ0efL39PrP5DeqBwaUNp',#5,'R',$,$,#9,$,#12,.GLOBAL_COORDS.);
+#23=IFCSTRUCTURALPOINTREACTION('1KQ0efL39PrP5DeqBwaUNp',#5,'R2',$,$,#9,$,#12,.GLOBAL_COORDS.);
+#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);
+#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#23),$,#21);`);
+    const up = await convert(ifc2x3, 'IFC4');
+    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toHaveLength(1);
+    expect(up.warnings).toContain('IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted');
+  });
+});

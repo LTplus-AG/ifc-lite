@@ -101,8 +101,8 @@ export interface CarrierSet {
   readonly exclusive: boolean;
 }
 
-/** Every property set named `name` in the source, with what it relates to. */
-export function readCarrierSets(source: SourceRecords, name: string): CarrierSet[] {
+/** Every property set named `name` in the source, with what it relates to. `exclusive`, which reads every record, is false unless `checkExclusive`. */
+export function readCarrierSets(source: SourceRecords, name: string, checkExclusive = true): CarrierSet[] {
   const quoted = `'${name}'`;
   const rels = source.ids('IFCRELDEFINESBYPROPERTIES');
   const candidates = rels.filter((rel) => {
@@ -115,7 +115,7 @@ export function readCarrierSets(source: SourceRecords, name: string): CarrierSet
     return { rel, pset, propIds: (listItems(source.slots(pset)![4]) ?? []).map(refId) };
   });
   // A carrier is exclusive when its relationship is the only record naming its set, and its set the only one naming each property.
-  const uses = source.referrers(new Set(members.flatMap(({ pset, propIds }) => [pset, ...propIds.filter((p): p is number => p !== null)])));
+  const uses = !checkExclusive ? new Map<number, number>() : source.referrers(new Set(members.flatMap(({ pset, propIds }) => [pset, ...propIds.filter((p): p is number => p !== null)])));
   return members.map(({ rel, pset, propIds }) => {
     const props = new Map<string, number>();
     for (const p of propIds) {

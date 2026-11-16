@@ -115,6 +115,8 @@ export class StructuralDiagnostics {
       : this.varying.rewrite(entity, args, carried) ?? this.carriers.rewrite(id, entity, args, withheld) ?? this.thickness.rewrite(id, entity, args);
     if (!rewrite || (withheld && rewrite.body !== null && referencesAnyExpressId(rewrite.body, withheld))) return undefined;
     rewrite.losses.forEach((loss) => this.record(loss));
+    // A rewritten record skips `inspect`, which would free this.
+    this.carried.delete(id);
     return rewrite.body;
   }
 

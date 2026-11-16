@@ -177,7 +177,9 @@ export class StructuralCarriers {
     if (this.mode !== 'upgrade' || !this.ids || withheld?.size || !IFC2X3_ACTIONS.has(entity)) return false;
     const reaction = refId(args[CAUSED_BY]);
     if (reaction === null) return false;
-    if (this.causesWritten.get(id)?.has(reaction)) return true;
+    const written = this.causesWritten.get(id);
+    // A source 'Causes' naming another reaction would make two causes; IFC4 keeps the source's, and CausedBy is reported lost.
+    if (written) return written.has(reaction);
     const guid = deterministicGlobalId(`ifc2x3-caused-by:${args[0].trim()}:#${reaction}`);
     this.pending.push(`#${this.ids()}=IFCRELASSIGNSTOPRODUCT('${guid}',${args[1]},'${CAUSES}',$,(#${reaction}),$,#${id});`);
     return true;

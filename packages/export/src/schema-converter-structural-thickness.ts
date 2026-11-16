@@ -55,7 +55,7 @@ export class StructuralThickness {
       list.push(id);
       this.aspects.set(shape, list);
     }
-    for (const set of readCarrierSets(source, THICKNESS_PSET)) {
+    for (const set of readCarrierSets(source, THICKNESS_PSET, false)) {
       const values = NAMES.map((name) => {
         const prop = set.props.get(name);
         return source.type(prop ?? null) === 'IFCPROPERTYSINGLEVALUE' ? thickness(source.slots(prop!)?.[2]) : null;

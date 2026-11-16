@@ -19,7 +19,7 @@ const stable = (text: string) => text.replace(/FILE_NAME\([^\n]*/, 'FILE_NAME(ti
 for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
   it(`#9296: ${Schema} dimensions and bound tags survive IFC export/reopen/export`, async () => {
     const creator = new IfcCreator({ Name: 'Annotations', Schema, Timestamp: 0 });
-    const storey = creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
+    creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
     const upper = creator.addIfcBuildingStorey({ Name: 'Upper', Elevation: 3 });
     creator.addIfcWall(upper, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
     const source = await parse(creator.toIfc().content);

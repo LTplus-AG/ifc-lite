@@ -10,7 +10,7 @@
 export const NON_MODEL_REASONS = {
   html: 'an HTML page, not a model',
   json: 'a JSON response, not a model',
-  ifcxHeader: 'a JSON document without an IFCX header.ifcxVersion string, not an IFCX model',
+  ifcxHeader: 'a JSON document without a valid IFCX header.ifcxVersion, not an IFCX model',
   xmlError: 'an XML error response, not a model',
   notStep: 'content that is neither STEP nor an IFC ZIP',
   utf16Step: 'STEP saved as UTF-16, which the parser cannot read; save it as UTF-8',

@@ -257,7 +257,7 @@ if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries))
       'the normal build and test lanes provide the compatibility verdict.',
   );
 }
-const { production, test: testEntries, ignored, inert, warnings, cargoLockChanged } = classifyDiff(entries);
+const { production, test: testEntries, ignored, inert, warnings, cargoLockChanged } = classifyDiff(entries, (path) => ({ before: gitShow(ROOT, mergeBase, path), after: gitShow(ROOT, headSha, path) }));
 resultContext = {
   ...resultContext,
   production: production.map((entry) => entry.path),
@@ -269,9 +269,9 @@ for (const w of warnings) console.log(`  WARNING: ${w}`);
 // package.json `"version"` fields and the matching Cargo.toml version
 // literals — no test can observe a version bump. `isVersionOnlyManifestDiff`
 // checks the actual diff content of every `production` file (not just its
-// name), so a real dependency/scripts/exports edit in the same file still
-// requires a test as before. See revert-oracle-version-bump.mjs for the
-// full rationale and the false-negative it is written against.
+// name), so a scripts/exports edit in the same file still requires a test;
+// classifyDiff already ignores dependency-version-only package.json. See
+// revert-oracle-version-bump.mjs for the rationale and the false negative.
 if (
   opts.ci &&
   production.length > 0 &&

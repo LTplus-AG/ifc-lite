@@ -58,12 +58,17 @@ export function plan(env, { api, cwd, download }) {
     const runId = env.NIGHTLY_RUN_ID;
     const red = `the red nightly run ${env.NIGHTLY_RUN_URL}`;
     const skip = (notice) => ({ probe: '', notice });
-    const { adapter, shards, total, aggregateOnly } = failedTarget(jobsOf(repo, api, runId));
+    const jobs = jobsOf(repo, api, runId);
+    const { adapter, shards, total, aggregateOnly } = failedTarget(jobs);
     const target = { adapter, shards };
     const aggregateNote = aggregateOnly ? ' The corpus aggregate also failed with every shard green; a probe cannot re-run it, so read its log.' : '';
     if (!adapter && aggregateOnly) return skip(`No bisect for ${red}: only the corpus aggregate failed, with every shard green (a cross-shard check, the product merge, the exclusion report, or a matrix that never expanded). A probe cannot re-run the aggregate, so read its log.`);
-    // Only the coverage record failed: report-scheduled-failure already said so, and there is nothing to bisect.
-    if (!adapter && shards.length === 0) return skip('');
+    // No lane job failed, yet the run is red: name what did not succeed rather than staying silent (#10629 review r4603499517).
+    if (!adapter && shards.length === 0) {
+      const notGreen = jobs.filter((j) => j?.conclusion !== 'success').map((j) => `${j?.name} (${j?.conclusion ?? 'no conclusion'})`);
+      const missing = jobs.some((j) => j?.name === 'native-adapter') ? '' : ' native-adapter is not in the run\'s job listing.';
+      return skip(`No bisect for ${red}: no native-adapter or corpus shard job failed, so there is nothing to re-run.${missing} Jobs that did not succeed: ${notGreen.join(', ') || 'none listed'}. Read their logs in the run.`);
+    }
     // One bisect at a time: red nights in a row share their last green commit, so a second one would redo the first.
     const running = ['in_progress', 'queued'].flatMap((status) => api(`repos/${repo}/actions/workflows/${BISECT_FILE}/runs?status=${status}&per_page=100`)?.workflow_runs ?? []).filter((r) => String(r.id) !== String(env.GITHUB_RUN_ID));
     if (running.length > 0) return skip(`No new bisect for ${red}: one is already running (${running[0].html_url}) over an overlapping range. If its verdict does not explain this night, bisect by hand: ${resume('<last green sha>', '<red sha>', 'confirm', target)}.`);

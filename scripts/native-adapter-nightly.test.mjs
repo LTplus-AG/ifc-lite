@@ -269,10 +269,6 @@ test('the bisect re-runs exactly what failed, and posts on the labelled tracking
   assert.deepEqual(target(RED_JOBS).shards, '[1]');
   const adapterOnly = target([job('native-adapter', 'timed_out'), ...FULL_GREEN.slice(1)]);
   assert.deepEqual([adapterOnly.adapter, adapterOnly.shards], ['true', '']);
-  // The lane passed and only the record failed: nothing to bisect, nothing posted.
-  const lanePassed = target(FULL_GREEN);
-  assert.equal(lanePassed.probe, '');
-  assert.deepEqual(posted(lanePassed.calls), []);
   // The start notice opens the issue when the reporter did not, labelled.
   const created = adapterOnly.calls.find((c) => c[0] === 'issue' && c[1] === 'create');
   assert.deepEqual([arg(created, '--title'), arg(created, '--label')], [TITLE, 'nightly-red']);
@@ -328,12 +324,21 @@ test('a red night a probe cannot reproduce, or another bisect already covers, is
     const p = plan(context, root, { EVENT: 'workflow_run' }, { api: { [JOBS(1)]: { jobs }, ...api }, record });
     assert.equal(p.status, 0, p.stdout);
     assert.equal(p.outputs.probe, '', 'nothing probed');
+    assert.deepEqual(posted(p.calls), [], 'plan posts nothing; next posts the notice');
     return p.outputs.notice;
   };
   const record = { last_green: shas[0], head: shas[2] };
   // Only the aggregate failed, every shard green: re-running shards would call a real break a flake.
   const aggregate = notice([job('native-adapter', 'success'), job('Native corpus (shard 0/2)', 'success'), job('Native corpus (shard 1/2)', 'success'), job('Native corpus result', 'failure')], record);
   assert.match(aggregate, /only the corpus aggregate failed, with every shard green/); // @source-text-assertion-ok subject is the CLI's own output
+  // #10629 review r4603499517: the lane passed and the run is red anyway (here the nightly-range job). The notice
+  // names the job, and next posts it on the issue, so the red night is never silent.
+  const lanePassed = notice([...FULL_GREEN, job('Nightly coverage range', 'failure')], record);
+  assert.match(lanePassed, /no native-adapter or corpus shard job failed.*Jobs that did not succeed: Nightly coverage range \(failure\)/); // @source-text-assertion-ok subject is the CLI's own output
+  const told = run(context, BISECT, ['next'], { cwd: root, world: { labels: [{ name: 'nightly-red' }] }, env: { ...NIGHTLY, PLAN_RESULT: 'success', PROBE: '', NOTICE: lanePassed } });
+  assert.deepEqual(posted(told.calls), [lanePassed]);
+  // A lane that never reported is not called green.
+  assert.match(notice([job('Native corpus result', 'skipped')], record), /native-adapter is not in the run's job listing/); // @source-text-assertion-ok subject is the CLI's own output
   // Red on the very commit the last green run passed: nothing in the repo changed.
   const same = notice(RED_JOBS, { last_green: shas[2], head: shas[2] });
   assert.match(same, /ran the same commit as the last green run .* the cause is outside the repo/); // @source-text-assertion-ok subject is the CLI's own output

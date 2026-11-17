@@ -475,7 +475,7 @@ test('every real workflow job `if:` reads exactly as a YAML parser reads it', ()
   assert.ok(compared > 50, `compared only ${compared} conditions`);
   // #10628's finding: past the first line, revert-oracle names its filters.
   const oracle = splitJobs(readFileSync(join(dir, 'test.yml'), 'utf8')).find((j) => j.id === 'revert-oracle');
-  assert.deepEqual(gatingFilters(oracle.text), ['frontend', 'rust', 'revert_oracle']);
+  assert.deepEqual(gatingFilters(oracle.text), ['frontend', 'rust', 'perf_ratchet', 'revert_oracle']);
 });
 
 test('an unreadable job `if:` is a NAMED failure of the check', () => {

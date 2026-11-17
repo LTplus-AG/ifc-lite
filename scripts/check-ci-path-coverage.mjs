@@ -220,13 +220,12 @@ for (const file of workflowFiles) {
   jobCount += jobs.length;
 
   for (const job of jobs) {
-    const { named } = job;
     let globs;
     if (rel === FILTER_WORKFLOW) {
-      if (named === null) {
+      if (job.named === null) {
         globs = prPaths; // may itself be null = everything
       } else {
-        const unknown = named.filter((n) => !filters.has(n));
+        const unknown = job.named.filter((n) => !filters.has(n));
         if (unknown.length > 0) {
           console.error(
             `❌ check-ci-path-coverage: job ${job.id} gates on unknown filter(s) ` +
@@ -234,7 +233,7 @@ for (const file of workflowFiles) {
           );
           process.exit(1);
         }
-        globs = named.flatMap((n) => filters.get(n));
+        globs = job.named.flatMap((n) => filters.get(n));
         if (prPaths !== null) {
           console.error(
             `❌ check-ci-path-coverage: ${rel} has BOTH on.pull_request.paths and ` +

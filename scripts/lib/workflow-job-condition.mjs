@@ -17,7 +17,7 @@
  * FAILS CLOSED. An `if:` it cannot read throws: returning `null` or a partial
  * expression would claim the job runs on more paths than it does.
  */
-export function jobCondition(jobText, jobId = 'job') {
+export function jobCondition(jobText, jobId = '(unnamed)') {
   const lines = jobText.split('\n');
   const at = lines.findIndex((l) => /^ {4}if:/.test(l));
   if (at === -1) return null;

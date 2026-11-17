@@ -665,14 +665,12 @@ jobs:
               - 'scripts/perf/instructions-report.mjs'
               - 'scripts/perf/elf-rw-loads.mjs'
               - '.github/workflows/test.yml'
-            # Inputs of the changed-tests revert oracle that no frontend/rust
-            # glob carries. Its own output so a canary-only or ceiling-only PR
-            # runs `build` (the oracle needs its artifacts) and `revert-oracle`,
-            # not the nine-job frontend lane. check-ci-path-coverage flags
-            # them once the job's multi-line `if:` is read in full.
+            # Revert-oracle inputs no other filter carries (perf_ratchet holds
+            # tests/perf-ratchets/**). Its own output so a canary-only PR runs
+            # `build` (the oracle needs its artifacts) and `revert-oracle`, not
+            # the nine-job frontend lane.
             revert_oracle:
               - 'tests/extensions/**'
-              - 'tests/perf-ratchets/**'
             docs:
               - 'tests/fixtures/cli-retained/**'
               - 'tests/manifests/**'
@@ -1056,7 +1054,8 @@ jobs:
     needs: [changes, build]
     if: >-
       github.event_name == 'pull_request' &&
-      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.revert_oracle == 'true') &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true' ||
+       needs.changes.outputs.perf_ratchet == 'true' || needs.changes.outputs.revert_oracle == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt') &&
       needs.changes.outputs.batch != 'true'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}

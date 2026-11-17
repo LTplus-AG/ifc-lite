@@ -1,0 +1,36 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+[package]
+name = "ifc-lite-cache"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Native writer for the browser-readable .ifclite binary cache (@ifc-lite/cache format v28)"
+# Not published until the crate's public surface and CLI distribution are
+# settled (#9584): slice 2 is the library writer and its conformance only.
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ifc-lite-core.workspace = true
+ifc-lite-geometry.workspace = true
+ifc-lite-processing.workspace = true
+# Raw (headerless) deflate for the geometry chunks: what the reader's
+# `DecompressionStream('deflate-raw')` takes. miniz_oxide directly, not flate2,
+# so the stored bytes cannot change with whichever flate2 backend another
+# workspace member's features select.
+miniz_oxide = "0.9"
+# The header's full-file xxhash64 (`@ifc-lite/cache` `utils/hash.ts`). Already
+# in the graph through ifc-lite-core; MIT, see rust/core/Cargo.toml.
+twox-hash = { version = "2.1", default-features = false, features = ["xxhash64"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+ifc-lite-testkit = { path = "../testkit" }
+rayon.workspace = true

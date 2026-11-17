@@ -59,13 +59,14 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { useTranslation } from '@/i18n';
 import { beginActivity, discardActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
+import { ExportWarningDetails } from './ExportWarningDetails';
 import { CaptureExportNotice } from './CaptureExportNotice';
 
 /** What one export run produced, rendered as the result `<Alert>`.
  * `warnings` are the exporter's own diagnostics, listed beneath it so a
  * summary such as "2 warnings" never stands without its reasons (#7335).
  */
-export type ExportDialogShellResult = { message: string; warnings?: readonly string[] } & (
+export type ExportDialogShellResult = { message: string; warnings?: readonly string[]; warningLimit?: number } & (
   | { success: boolean; cancelled?: false }
   | { success: false; cancelled: true }
 );
@@ -253,18 +254,7 @@ export function ExportDialogShell({
             <AlertDescription>{result.message}</AlertDescription>
           </Alert>
         )}
-        {result?.warnings?.length ? (
-          <details className="text-xs text-muted-foreground border rounded p-2">
-            <summary className="cursor-pointer select-none">
-              {t('geometryExport.shell.warningsSummary', { count: result.warnings.length })}
-            </summary>
-            <ul className="list-disc pl-4 mt-1 space-y-0.5 break-words">
-              {result.warnings.map((warning, index) => (
-                <li key={index}>{warning}</li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
+        {result?.warnings?.length ? <ExportWarningDetails warnings={result.warnings} limit={result.warningLimit} /> : null}
         {resultDetails}
       </div>
 

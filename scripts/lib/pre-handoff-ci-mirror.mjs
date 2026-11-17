@@ -11,7 +11,12 @@
  */
 import { gatingFilters, matchesAny, parseFilterBlock, splitJobs } from './ci-path-coverage.mjs';
 
-/** A job's `if:` as one line; test.yml writes long ones as `>-` block scalars. */
+/**
+ * A job's `if:` as one line; test.yml writes long ones as `>-` block scalars.
+ * gatingFilters reads only the first line. Teaching it to unfold makes
+ * check-ci-path-coverage newly (and correctly) flag revert-oracle inputs, a
+ * test.yml filter change tracked separately.
+ */
 function jobCondition(jobText) {
   const lines = jobText.split('\n');
   const at = lines.findIndex((line) => /^ {4}if:/.test(line));

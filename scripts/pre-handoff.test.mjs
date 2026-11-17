@@ -99,23 +99,30 @@ const MIRROR_WORKFLOW = `jobs:
     if: needs.changes.outputs.frontend == 'true'
 `;
 
+function write(root, path, text) {
+  mkdirSync(join(root, path, '..'), { recursive: true });
+  writeFileSync(join(root, path), text);
+}
+
 /** A git repo whose origin/main is one commit behind HEAD, with stub gate scripts. */
 function mirrorRepo(t, { changed, oracleExit = 0, driftExit = 0 }) {
   const root = mkdtempSync(join(tmpdir(), 'handoff-mirror-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
-  const write = (path, text) => { mkdirSync(join(root, path, '..'), { recursive: true }); writeFileSync(join(root, path), text); };
+  const commit = (files) => {
+    for (const [path, text] of Object.entries(files)) write(root, path, text);
+    git('add', '-A');
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'commit');
+  };
   git('init', '-q', '-b', 'main');
-  write('package.json', '{}');
-  write('.github/workflows/test.yml', MIRROR_WORKFLOW);
-  write('scripts/check-test-revert-oracle.mjs', `console.log('oracle', process.argv.slice(2).join(' ')); process.exit(${oracleExit});`);
-  write('scripts/check-ui-drift.mjs', `process.exit(${driftExit});`);
-  git('add', '-A');
-  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'base');
+  commit({
+    'package.json': '{}',
+    '.github/workflows/test.yml': MIRROR_WORKFLOW,
+    'scripts/check-test-revert-oracle.mjs': `process.exit(${oracleExit});`,
+    'scripts/check-ui-drift.mjs': `process.exit(${driftExit});`,
+  });
   git('update-ref', 'refs/remotes/origin/main', 'HEAD');
-  for (const [path, text] of Object.entries(changed)) write(path, text);
-  git('add', '-A');
-  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'change');
+  commit(changed);
   return root;
 }
 
@@ -176,12 +183,11 @@ test('a missing base skips the oracle with the reason and still runs ui-drift', 
 test('an unbuilt workspace dependency is named as a missing prerequisite', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'handoff-unbuilt-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const write = (path, text) => { mkdirSync(join(root, path, '..'), { recursive: true }); writeFileSync(join(root, path), text); };
-  write('package.json', '{}');
-  write('packages/app/package.json', JSON.stringify({ scripts: { test: 'node --test' }, devDependencies: { '@x/lib': 'workspace:*' } }));
-  write('packages/app/witness.test.mjs', '');
-  write('packages/app/node_modules/@x/lib/package.json', JSON.stringify({ name: '@x/lib', main: 'dist/index.js', scripts: { build: 'tsc' } }));
+  write(root, 'package.json', '{}');
+  write(root, 'packages/app/package.json', JSON.stringify({ scripts: { test: 'node --test' }, devDependencies: { '@x/lib': 'workspace:*' } }));
+  write(root, 'packages/app/witness.test.mjs', '');
+  write(root, 'packages/app/node_modules/@x/lib/package.json', JSON.stringify({ name: '@x/lib', main: 'dist/index.js', scripts: { build: 'tsc' } }));
   assert.match(oraclePrerequisites(root, { test: 'packages/app/witness.test.mjs' }, 'unused'), /built packages \(1 unbuilt, e\.g\. @x\/lib; run pnpm build\)/);
-  write('packages/app/node_modules/@x/lib/dist/index.js', '');
+  write(root, 'packages/app/node_modules/@x/lib/dist/index.js', '');
   assert.equal(oraclePrerequisites(root, { test: 'packages/app/witness.test.mjs' }, 'unused'), null);
 });

@@ -109,6 +109,9 @@ export function homeStoreyOf(inventory: StoreyInventory, elementId: number): num
 
 /** Live slabs and pending targets by GlobalId, read once per inventory. */
 const targetIndexes = new WeakMap<StoreyInventory, Map<string, { id: number; type: string }>>();
+const targetHints = new WeakMap<StoreyInventory, ReadonlyMap<number, number>>();
+/** @internal Validated plan candidates avoid rebuilding the whole slab GUID index. */
+export function hintTopAttachmentTargets(inventory: StoreyInventory, hints: ReadonlyMap<number, number>): void { targetHints.set(inventory, hints); }
 function targetByGlobalId(inventory: StoreyInventory, globalId: string): { id: number; type: string } | null {
   let index = targetIndexes.get(inventory);
   if (!index) {
@@ -146,7 +149,10 @@ export function readTopAttachment(inventory: StoreyInventory, elementId: number)
       const binding = recordedBinding(inventory, elementId) ?? (next?.expressId === storey.expressId ? 'relative' : 'explicit');
       return { targetStoreyId: storey.expressId, kind: 'storey', binding, source: 'ifclite' };
     }
-    const element = targetByGlobalId(inventory, own);
+    const targetHint = targetHints.get(inventory)?.get(elementId);
+    const hinted = targetHint === undefined ? null : inventory.reader.entity(targetHint);
+    const element = hinted?.attributes[0] === own && UNDERSIDE_TYPES.has(hinted.type.toUpperCase())
+      ? { id: targetHint!, type: hinted.type.toUpperCase() } : targetByGlobalId(inventory, own);
     if (element && UNDERSIDE_TYPES.has(element.type)) {
       const holder = homeStoreyOf(inventory, element.id);
       // A slab no storey holds cannot be followed through a storey edit.

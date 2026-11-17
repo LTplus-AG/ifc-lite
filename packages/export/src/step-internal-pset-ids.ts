@@ -15,7 +15,7 @@ export function internalPropertySetIds(ctx: PropertySetContext, entityId: number
   const view = ctx.mutationView;
   const named = view?.getAttributeMutationsForEntity(entityId).find(m => m.name === 'GlobalId');
   const positional = view?.getPositionalMutationsForEntity(entityId);
-  const created = view?.getNewEntity(entityId);
+  const created = view?.readNewEntity?.(entityId) ?? view?.getNewEntity(entityId);
   const source = created ? null : entityLineText(ctx, entityId);
   const guid = positional?.has(0) ? positional.get(0) : named ? named.value : created?.attributes[0]
     ?? (source ? /^\s*#\d+\s*=\s*IFC\w+\s*\(\s*'([^']+)'/i.exec(source)?.[1] : null);

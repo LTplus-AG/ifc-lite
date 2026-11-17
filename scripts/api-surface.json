@@ -8181,6 +8181,7 @@
     "EffectiveChange: interface",
     "EffectiveChangeKind: type",
     "EffectiveEntityId: interface",
+    "EntityChangeTracker: interface",
     "EntityEnumerationSource: interface",
     "EntityIdentityResolver: interface",
     "EntityOperation: type",

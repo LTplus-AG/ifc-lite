@@ -312,6 +312,7 @@ pub(super) fn collate(
         &unsupported_items,
         budget_refusals.into_inner().unwrap_or_else(|p| p.into_inner()),
     );
+    super::budget_report::warn_if_refused(&diag);
     (!diag.is_empty()).then_some(diag)
 }
 

@@ -54,7 +54,7 @@ for (const convert of [true, false]) {
     assert.ok(trigger);
     click(trigger);
     if (convert) {
-      const schema = [...document.querySelectorAll('[role="combobox"]')].find(b => b.textContent?.includes('IFC4'));
+      const schema = [...document.querySelectorAll('[role="combobox"]')].find(b => b.textContent?.trim().startsWith('IFC4'));
       assert.ok(schema);
       press(schema, 'ArrowDown');
       await advance(0);

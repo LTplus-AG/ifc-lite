@@ -26,6 +26,14 @@
  * crates are referenced via a path dependency, so a line lacking `path =` is
  * never treated as version-only here.
  *
+ * One narrower carve-out is a maintainer policy, not an unobservability claim:
+ * `isDependencyVersionOnlyPackageJson` (bottom of this file) ignores a
+ * package.json whose parsed JSON differs only in `dependencies`,
+ * `devDependencies` or `optionalDependencies` version specs. Reverting the
+ * manifest without its (ignored) lockfile is not a coherent experiment, so the
+ * build and test lanes judge such a bump (#10492, #10562). Peer ranges are a
+ * published contract and stay production.
+ *
  * Pure functions over diff text, same shape as `revert-oracle.mjs`, so this
  * is tested against synthetic fixtures without touching git.
  */
@@ -163,4 +171,66 @@ export function isVersionOnlyManifestDiff(path, diffText, contents = {}) {
     }
   }
   return true;
+}
+
+// Not `peerDependencies`: a peer range is a published consumer contract, and
+// tests assert on it (sdk-peer-contract.test.ts, template-peer-ranges.test.ts).
+const DEPENDENCY_FIELDS = new Set(['dependencies', 'devDependencies', 'optionalDependencies']);
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+function parseObject(text) {
+  const value = parseCanonicalJson(text);
+  return isPlainObject(value) ? value : null;
+}
+
+/** A semver version or x-range: `1`, `1.2`, `1.x`, `1.2.x`, `1.2.3-rc.1+b`. Never a tag, path or URL. */
+const VERSION_RE = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?|\.[xX*])?|\.[xX*](?:\.[xX*])?)?$/;
+const COMPARATOR_RE = new RegExp(`^(?:[~^]|[<>]=?|=)?${VERSION_RE.source.slice(1)}`);
+
+/**
+ * A numeric registry version range: comparator sets joined by `||`, or a
+ * `a - b` hyphen range. Anything else (`npm:` alias, `workspace:`, `file:`,
+ * git URL, a path, a tarball, a dist-tag such as `next15` or `*`) changes
+ * WHAT is installed or floats, and stays production.
+ */
+const isVersionSpec = (value) => typeof value === 'string' && value.trim() === value
+  && value.split('||').every((part) => {
+    const tokens = part.trim().split(/\s+/);
+    return tokens.length === 3 && tokens[1] === '-'
+      ? VERSION_RE.test(tokens[0]) && VERSION_RE.test(tokens[2])
+      : tokens.every((token) => COMPARATOR_RE.test(token));
+  });
+
+/** Same dependency names in the same order; a changed value is a version spec on both sides. */
+function sameDependencyNames(before, after) {
+  if (!isPlainObject(before) || !isPlainObject(after)) return false;
+  const names = Object.keys(before);
+  return names.join('\0') === Object.keys(after).join('\0')
+    && names.every((name) => typeof before[name] === 'string' && (before[name] === after[name]
+      || (isVersionSpec(before[name]) && isVersionSpec(after[name]))));
+}
+
+/**
+ * A Dependabot-shaped package.json bump: decided from the parsed merge-base and
+ * head JSON, not from diff lines. `dependencies`, `devDependencies` and
+ * `optionalDependencies` may differ only in version specs; every other field,
+ * `peerDependencies` included, must be identical (key order included, since
+ * `exports` is order-sensitive). Adding or removing a dependency, or any edit
+ * to `scripts`, `exports`, `main`, ... is production. Fail-closed: an unreadable, unparseable or non-canonical side
+ * (which also rejects duplicate keys) returns false.
+ *
+ * @param {string} path repo-relative path of the changed file
+ * @param {(path: string) => { before?: string, after?: string }} readSides merge-base/head text
+ */
+export function isDependencyVersionOnlyPackageJson(path, readSides) {
+  if (!NPM_MANIFEST_RE.test(path)) return false;
+  const sides = readSides(path);
+  const before = parseObject(sides?.before);
+  const after = parseObject(sides?.after);
+  if (!before || !after) return false;
+  const keys = Object.keys(before);
+  if (keys.join('\0') !== Object.keys(after).join('\0')) return false;
+  return keys.every((key) => DEPENDENCY_FIELDS.has(key)
+    ? sameDependencyNames(before[key], after[key])
+    : JSON.stringify(before[key]) === JSON.stringify(after[key]));
 }

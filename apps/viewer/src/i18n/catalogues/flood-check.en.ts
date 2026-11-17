@@ -5,6 +5,10 @@
 /** Surface-runoff screening: the Georeference panel section, the viewport legends and the property-panel card. */
 export const floodCheckEn = {
   'floodCheck.section.title': 'Surface runoff',
+  'floodCheck.section.needsSwissGeoref': 'The surface runoff check needs an IFC model georeferenced in Switzerland. See Site context above for what is missing.',
+  'floodCheck.palette.label': 'Surface runoff check',
+  'floodCheck.ribbon.label': 'Runoff',
+  'floodCheck.ribbon.tooltip': 'Screen doors, windows and openings near the ground against the federal overland flow map',
   'floodCheck.section.intro': 'Screens doors, windows, openings and equipment near the ground against the federal overland flow map (BAFU): which ones sit within or below the depth class mapped next to them.',
   'floodCheck.section.screeningOnly': 'A screening against a published hazard map, not a flood simulation. The map is not legally binding, and areas it shows unaffected may still be affected.',
   'floodCheck.section.showHazard': 'Drape the overland flow map on the terrain',

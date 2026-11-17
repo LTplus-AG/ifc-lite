@@ -42,4 +42,8 @@ export const floodCheckRu = {
   "floodCheck.legend.verdictCaveat": "Угроза определена по опубликованной карте опасности. Не моделирование наводнения.",
   "floodCheck.card.heading": "Проверка поверхностного стока",
   "floodCheck.card.notInModel": "Из проверки, выполненной в этом сеансе; в модель не записано.",
+  "floodCheck.section.needsSwissGeoref": "Для проверки поверхностного стока нужна IFC-модель с геопривязкой в Швейцарии. Чего не хватает — см. «Окружение участка» выше.",
+  "floodCheck.palette.label": "Проверка поверхностного стока",
+  "floodCheck.ribbon.label": "Сток",
+  "floodCheck.ribbon.tooltip": "Проверить двери, окна и проёмы у земли по карте опасности поверхностного стока",
 } satisfies Catalogue;

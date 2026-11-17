@@ -1068,3 +1068,12 @@ Third-party Tauri bridges do not expose this contract; select WASM with
 `preferNative: false`. Native Rust consumers use
 `ProcessingRequest::full_pass().skip_voids(true)` with the shared `process` API.
 This is independent of `OpeningFilterMode`, which also controls filling visibility.
+
+Geometry diagnostics report safety work limits separately from unsupported or
+failed items. `budgetRefusals` identifies the budget, `limit`, and `reached`
+(the demand including the refused attempt or list), the affected `productId`,
+`productType` and `GlobalId` when available, and the refused `sourceId`.
+The viewer console and CLI geometry reports show these refusals even in builds
+without observability. Unsupported/failed item counts exclude budget refusals.
+
+Representation work-budget diagnostics carry `totalBudgetRefusals` and at most sixteen `budgetRefusals` details. Each detail names its budget, limit, reached demand, source id and owning product (including type products and GlobalId where available). Identical refusals are counted once per router drain; suppressed representation policies remain suppressed. Retained transactions return their refusal directly rather than adding a second model-lifetime log. The Load Report marks budget-only loads as incomplete and lists known affected products.

@@ -60,8 +60,23 @@ test('discovery and execution use the same live section feature prerequisites', 
     assert.match((listed.structured as { operations: Array<{ unavailable?: string }> }).operations[0].unavailable ?? '', /tools.section/, id);
   }
 });
-test('section.customDistance refuses distances beyond the coordinate bound', async () => {
-  const result = await execute('section.customDistance', { distance: 1e308 });
-  assert.equal(result.isError, true);
-  assert.match(result.text, /1e9/);
+test('section.customDistance enforces [-1e9, 1e9] on both ends and refuses NaN', async () => {
+  // Non-finite numbers stop at schema validation (Ajv strictNumbers), before the handler.
+  for (const distance of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const result = await execute('section.customDistance', { distance });
+    assert.equal(result.isError, true, String(distance));
+    assert.match(result.text, /must be number/, String(distance));
+  }
+  // Finite values past either limit stop at the handler's range check.
+  for (const distance of [1e9 + 1, -1e9 - 1, 1e308, -1e308]) {
+    const result = await execute('section.customDistance', { distance });
+    assert.equal(result.isError, true, String(distance));
+    assert.match(result.text, /1e9/, String(distance));
+  }
+  // The limits themselves pass the bound; with no custom plane active the next refusal is the plane check.
+  for (const distance of [1e9, -1e9, 0]) {
+    const result = await execute('section.customDistance', { distance });
+    assert.doesNotMatch(result.text, /1e9/, String(distance));
+    assert.match(result.text, /custom plane/, String(distance));
+  }
 });

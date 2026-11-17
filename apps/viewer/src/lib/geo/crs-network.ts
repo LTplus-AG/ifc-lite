@@ -13,11 +13,13 @@
  * caller resolves a projection through.
  */
 
+import { isFeatureEnabled } from '../features/index.js';
 import {
   configureCrsDiagnostics,
   configureCrsLoaders,
   epsgIoDefinitionLoader,
   projCdnGridLoader,
+  type CrsLoaders,
 } from '@ifc-lite/geo';
 
 /**
@@ -27,10 +29,17 @@ import {
  */
 const underNodeTest = typeof process !== 'undefined' && !!process.env.NODE_TEST_CONTEXT;
 
-configureCrsLoaders({
-  epsgDefinition: epsgIoDefinitionLoader(),
-  gridFile: underNodeTest ? null : projCdnGridLoader(),
-});
+/** Apply the viewer's policy when a request is made, after runtime configuration. */
+export function createViewerCrsLoaders(skipGrids: boolean): CrsLoaders {
+  const definition = epsgIoDefinitionLoader();
+  const grid = projCdnGridLoader();
+  return {
+    epsgDefinition: async (code) => isFeatureEnabled('privacy.third-party') ? definition(code) : null,
+    gridFile: skipGrids ? null : async (filename) => isFeatureEnabled('privacy.third-party') ? grid(filename) : null,
+  };
+}
+
+configureCrsLoaders(createViewerCrsLoaders(underNodeTest));
 
 configureCrsDiagnostics((message, cause) => {
   if (cause === undefined) console.warn(message);

@@ -15,6 +15,8 @@ import { assertStructuralBuilderSchema } from './_structural-stiffness.js';
 export type StructuralSurfaceMemberType = 'BENDING_ELEMENT' | 'MEMBRANE_ELEMENT' | 'SHELL' | 'USERDEFINED' | 'NOTDEFINED';
 export interface StructuralSurfaceMemberInStoreParams {
   Boundary: Point3D[];
+  /** Inner rings, in the same storey-local metres as Boundary. */
+  Openings?: Point3D[][];
   Type?: 'IfcStructuralSurfaceMember' | 'IfcStructuralSurfaceMemberVarying';
   PredefinedType?: StructuralSurfaceMemberType;
   Thickness?: number;
@@ -41,7 +43,7 @@ export function addStructuralSurfaceMemberToStore(editor: StoreEditor, anchor: S
   if (varying && anchor.schema === 'IFC2X3' && (params.Thickness == null || !params.SubsequentThickness || params.SubsequentThickness.length < 2 || !params.SubsequentThickness.every(v => Number.isFinite(v) && v > 0) || !params.VaryingThicknessLocation || editor.getEntityType(params.VaryingThicknessLocation) !== 'IfcShapeAspect')) throw new Error('addStructuralSurfaceMemberToStore: IFC2X3 varying requires Thickness, SubsequentThickness (at least two positive values) and VaryingThicknessLocation (IfcShapeAspect)');
   if (anchor.schema !== 'IFC2X3' && (params.SubsequentThickness !== undefined || params.VaryingThicknessLocation !== undefined)) throw new Error('addStructuralSurfaceMemberToStore: thickness stations exist only in IFC2X3');
   const copyAspect = varying && anchor.schema === 'IFC2X3' ? prepareThicknessAspect(editor, params.VaryingThicknessLocation!, 1 + params.SubsequentThickness!.length, store) : undefined;
-  const face = prepareStructuralFace(params.Boundary);
+  const face = prepareStructuralFace(params.Boundary, params.Openings);
   const globalId = productGuid(params, anchor.guidRandom); // validated before anything is written
   const thickness = params.Thickness == null ? null : toNativeLength(anchor, params.Thickness);
   const result = emitStructuralFace(editor, anchor, face);

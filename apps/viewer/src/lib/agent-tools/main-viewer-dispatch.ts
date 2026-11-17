@@ -8,9 +8,10 @@
  * Only {@link MAIN_VIEWER_TOOL_ALLOWLIST} (reads) and
  * {@link MAIN_VIEWER_EDIT_TOOLS} (property and attribute edits, refused unless
  * the call's `canEdit` says the user allows them) are reachable. Every other
- * name is refused even where the playground implements it: creating or
- * deleting entities, the inline viewer, BCF, clash, exports and model
- * load/save are not part of this surface. Each call is routed to exactly one model (see `resolveModel`), so a
+ * name is refused except for the viewer-native command tools: creating or
+ * deleting entities, the inline viewer and headless model load/save are not
+ * part of this surface. Palette commands can launch the native workflows
+ * (including exports) after the user grants commands and edits. Each call is routed to exactly one model (see `resolveModel`), so a
  * federated session never mixes models in one answer.
  *
  * This module is meant to be imported lazily, by the bridge client that hands
@@ -22,9 +23,11 @@ import { isAbortError } from '@/lib/runs/abort';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 import { CATALOG } from '@/components/mcp/data';
 import { assertDispatchActive, cancelledDispatch } from './cancellation.js';
+import { viewerCommandTools, VIEWER_COMMAND_SPECS } from './viewer-command-tools.js';
 import { readTools } from './read-tools.js';
 import { measureTools } from './measure-tools.js';
 import { bsddTools } from './bsdd-tools.js';
+import { isFeatureEnabled } from '../features/index.js';
 import { costTools } from './cost-tools.js';
 import { mainViewerIdsTools } from './main-viewer-ids.js';
 import { EDIT_TOOL_NAMES, editNotAllowed, editTools, isEditTool } from './edit-tools.js';
@@ -45,7 +48,7 @@ export const MAIN_VIEWER_TOOL_ALLOWLIST = [
 /** The edit tools, served only while the user allows the agent to edit. Each is a `mutate`-scope catalog tool. */
 export const MAIN_VIEWER_EDIT_TOOLS = EDIT_TOOL_NAMES;
 
-export type MainViewerToolName = (typeof MAIN_VIEWER_TOOL_ALLOWLIST)[number] | (typeof MAIN_VIEWER_EDIT_TOOLS)[number];
+export type MainViewerToolName = (typeof MAIN_VIEWER_TOOL_ALLOWLIST)[number] | (typeof MAIN_VIEWER_EDIT_TOOLS)[number] | keyof typeof VIEWER_COMMAND_SPECS;
 
 const SHARED_TOOLS: Record<string, AgentTool> = {
   ...readTools, ...measureTools, ...bsddTools, ...costTools, ...mainViewerIdsTools,
@@ -53,6 +56,10 @@ const SHARED_TOOLS: Record<string, AgentTool> = {
 
 /** The tool behind each allowlisted or edit tool name, and nothing else. */
 export function mainViewerTool(name: string): AgentTool | undefined {
+  if (Object.hasOwn(viewerCommandTools, name)) return viewerCommandTools[name as keyof typeof viewerCommandTools];
+  // bSDD is an outside service; a host can switch those off (`lib/features`).
+  if (name in bsddTools && !isFeatureEnabled('privacy.third-party')) return undefined;
+  // Edits with `edit.model` off are refused at the write (`dataMutationPermission`, 'switched-off').
   if (isEditTool(name)) return editTools[name];
   return (MAIN_VIEWER_TOOL_ALLOWLIST as readonly string[]).includes(name) ? SHARED_TOOLS[name] : undefined;
 }

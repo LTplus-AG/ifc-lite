@@ -40,6 +40,11 @@ inputs:
     required: false
     default: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
 
+outputs:
+  cache-hit:
+    description: 'Exact Cargo archive hit; empty when using a persistent warm target'
+    value: ${{ steps.cargo-cache.outputs.cache-hit }}
+
 runs:
   using: composite
   steps:
@@ -50,6 +55,7 @@ runs:
       run: rustup show
 
     - name: Cargo cache
+      id: cargo-cache
       # Skipped only where the job set a warm CARGO_TARGET_DIR (the persistent
       # ifclite-rust runner); every other runner keeps rust-cache.
       if: env.CARGO_TARGET_DIR == ''

@@ -7,6 +7,7 @@ import assert from 'node:assert';
 
 import {
   offersCesium,
+  mapUnitDisplaySuffix,
   detectScaleUnitMismatch,
   getEffectiveGeoreference,
   getEffectiveHorizontalScale,
@@ -732,4 +733,11 @@ END-ISO-10303-21;
     assert.equal(offersCesium({ projectedCRS: { id: 3, name: '', wellKnownText: 'PROJCRS["x"]' }, mapConversion: mc }), true);
     assert.equal(offersCesium({ source: 'siteLocation', projectedCRS: { id: 3, name: 'EPSG:4326' }, mapConversion: mc }), false);
   });
+});
+
+it('map-unit display suffix preserves raw millimetre and foot units (#10382 review)', () => {
+  for (const unit of ['MILLIMETRE', 'MILLIMETRES', 'MILLIMETER', 'MILLIMETERS', 'millimetre']) assert.equal(mapUnitDisplaySuffix(unit), 'mm');
+  for (const unit of ['METRE', 'METER', undefined]) assert.equal(mapUnitDisplaySuffix(unit), 'm');
+  assert.equal(mapUnitDisplaySuffix('FOOT'), 'ft');
+  assert.equal(mapUnitDisplaySuffix('US SURVEY FOOT'), 'ftUS');
 });

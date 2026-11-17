@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { createContext, useContext, type ReactNode } from 'react';
 import { Sparkles } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
@@ -38,7 +39,8 @@ export function useAssistantAction({ source: explicit, labelKey = 'assistant.exp
   // Subscribed so a Data validation side switch re-resolves the panel's subject.
   useValidationSourceChoice(s => s.choice);
   const source = useViewerStore(s => explicit ?? panelSource(panel, s));
-  if (!source) return null;
+  // Every panel's "Discuss with AI" entry comes through here, so this one check hides them all.
+  if (!source || !isFeatureEnabled('ai.assistant')) return null;
   return {
     id: 'assistant',
     label: t(labelKey),

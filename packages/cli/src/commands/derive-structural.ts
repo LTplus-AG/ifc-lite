@@ -112,5 +112,6 @@ function printReport(report: StructuralDerivationReport, nothingWritten: string 
   if (c.freeEnds) process.stderr.write(`${c.freeEnds} free member end(s) meet no other member or support\n`);
   if (report.unconnectedEnds.length) process.stderr.write(`${report.unconnectedEnds.length} node(s) touch a member or surface they are not connected to\n`);
   for (const s of report.skipped) process.stderr.write(`skipped #${s.elementId} ${s.type}${s.name ? ` "${s.name}"` : ''}: ${s.reason} (${s.detail})\n`);
+  for (const s of report.skippedOpenings) process.stderr.write(`skipped opening #${s.openingId} of host #${s.hostId}${s.name ? ` "${s.name}"` : ''}: ${s.reason} (${s.detail})\n`);
   if (nothingWritten) process.stderr.write(`${nothingWritten}\n`);
 }

@@ -41,6 +41,7 @@ import {
   type WindowInStoreParams,
 } from '@ifc-lite/create';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { positionCompletion } from '@/lib/geo/complete-position.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { unionEntityBounds } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
@@ -52,7 +53,6 @@ import { authoredDataStore } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
 import { effectiveStoreyId } from '@/lib/effective-storey';
 import { copyElements, copySources, withHostedFillings } from '@/lib/commands/modeling/copy-elements';
-import { newMutationBatchId } from './mutation-batch-tags.js';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { remeshGridPlacementAfterCommit } from './mutation-grid-remesh';
 import { presentEntityRotation, rotateImplicitRefEntity } from './mutation-rotate-entity.js';
@@ -85,7 +85,7 @@ import { splitLinear, splitWall } from './mutation-split.js';
 import { splitSlab } from './mutation-split-slab.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
-import { withMutationBatchTags } from './mutation-batch-tags.js';
+import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
 import { canMutateData, canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
 import { clearViewAndTypeOverrides, syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
@@ -272,7 +272,9 @@ export interface MutationSlice extends CostUndoMethods {
   setGeorefFields: (
     modelId: string,
     entity: 'projectedCRS' | 'mapConversion',
-    fields: Array<{ field: string; value: string | number; oldValue?: string | number }>
+    fields: Array<{ field: string; value: string | number; oldValue?: string | number }>,
+    /** One undo step with other writes made under the same id (the EPSG pick writes the CRS and its conversion). */
+    batch?: string,
   ) => void;
   /** Get merged georef mutations for a model */
   getGeorefMutations: (modelId: string) => GeorefMutationData | undefined;
@@ -1006,7 +1008,7 @@ export const createMutationSlice: StateCreator<
     get().setGeorefFields(modelId, entity, [{ field, value, oldValue }]);
   },
 
-  setGeorefFields: (modelId, entity, fields) => {
+  setGeorefFields: (modelId, entity, fields, batch) => {
     if (fields.length === 0) return;
     if (!canMutate(get(), modelId)) return;
     set((state) => {
@@ -1016,22 +1018,37 @@ export const createMutationSlice: StateCreator<
       for (const entry of fields) {
         entityMuts[entry.field] = entry.value;
       }
-      newGeorefMuts.set(modelId, { ...modelMuts, [entity]: entityMuts });
+      // An edit that leaves the map position incomplete completes it here, in the same undo step (see complete-position.ts).
+      type Written = { entity: 'projectedCRS' | 'mapConversion'; field: string; value: string | number; oldValue?: string | number };
+      const written: Written[] = fields.map((f) => ({ entity, ...f }));
+      const pending = { ...modelMuts, [entity]: entityMuts } as GeorefMutationData;
+      const completion = positionCompletion(state.models.get(modelId)?.ifcDataStore, pending, state.mutationViews.get(modelId));
+      const conversionMuts = { ...(entity === 'mapConversion' ? entityMuts : modelMuts.mapConversion) } as Record<string, unknown>;
+      for (const done of completion) {
+        conversionMuts[done.field] = done.value;
+        written.push({ entity: 'mapConversion', field: done.field, value: done.value });
+      }
+      newGeorefMuts.set(modelId, { ...modelMuts, [entity]: entityMuts, ...(completion.length ? { mapConversion: conversionMuts as Partial<MapConversion> } : {}) });
 
       // Track undo
-      const nextMutations: Mutation[] = fields.map(entry => ({
-        id: `mut_georef_${entity}_${entry.field}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      const nextMutations: Mutation[] = written.map(entry => ({
+        id: `mut_georef_${entry.entity}_${entry.field}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         type: 'UPDATE_ATTRIBUTE',
         timestamp: Date.now(),
         modelId,
         entityId: 0, // georef entities don't map to a specific element
-        attributeName: `georef.${entity}.${entry.field}`,
+        attributeName: `georef.${entry.entity}.${entry.field}`,
         oldValue: entry.oldValue,
         newValue: entry.value,
         propName: entry.field,
-        psetName: entity,
+        psetName: entry.entity,
       }));
-      return { georefMutations: newGeorefMuts, ...recordHistory(state, modelId, nextMutations) };
+      // An edit and its completion are one undo step (and one row in the Changes panel).
+      const batchId = batch ?? (nextMutations.length > 1 ? newMutationBatchId() : null);
+      return {
+        georefMutations: newGeorefMuts, ...recordHistory(state, modelId, nextMutations),
+        ...(batchId ? { mutationBatchTags: withMutationBatchTags(state.mutationBatchTags, nextMutations.map((m) => m.id), batchId) } : {}),
+      };
     });
   },
 

@@ -18,7 +18,7 @@ interface BaseRequest {
   destructive?: boolean;
 }
 
-export interface ConfirmOptions extends BaseRequest {}
+export interface ConfirmOptions extends BaseRequest { signal?: AbortSignal }
 export interface PromptOptions extends BaseRequest {
   defaultValue?: string;
 }
@@ -28,7 +28,7 @@ type DialogRequest = (
   | { kind: 'prompt'; options: PromptOptions; resolve: (value: string | null) => void; opener: HTMLElement | null }
 ) & { id: number; container: HTMLElement | undefined };
 
-let enqueue: ((request: DialogRequest) => void) | null = null;
+let enqueue: ((request: DialogRequest) => () => void) | null = null;
 let nextRequestId = 0;
 
 function captureOpener(container?: HTMLElement): HTMLElement | null {
@@ -42,8 +42,13 @@ function captureOpener(container?: HTMLElement): HTMLElement | null {
 /** Ask for consent without blocking the browser's event loop. */
 export function confirmDialog(options: ConfirmOptions, container?: HTMLElement): Promise<boolean> {
   return new Promise((resolve) => {
-    if (!enqueue) { resolve(false); return; }
-    enqueue({ id: nextRequestId++, kind: 'confirm', options, resolve, container, opener: captureOpener(container) });
+    if (!enqueue || options.signal?.aborted) { resolve(false); return; }
+    let cancel: (() => void) | undefined;
+    const abort = () => cancel?.();
+    const finish = (value: boolean) => { options.signal?.removeEventListener('abort', abort); resolve(value); };
+    cancel = enqueue({ id: nextRequestId++, kind: 'confirm', options, resolve: finish, container, opener: captureOpener(container) });
+    options.signal?.addEventListener('abort', abort, { once: true });
+    if (options.signal?.aborted) abort();
   });
 }
 
@@ -81,6 +86,12 @@ export function ConfirmDialogHost() {
     enqueue = (request) => {
       pendingRef.current.push(request);
       setRequests([...pendingRef.current]);
+      return () => {
+        pendingRef.current = pendingRef.current.filter(candidate => candidate !== request);
+        setRequests([...pendingRef.current]);
+        if (request.kind === 'confirm') request.resolve(false);
+        else request.resolve(null);
+      };
     };
     return () => {
       enqueue = null;

@@ -193,6 +193,13 @@ configureCrsDiagnostics((message, cause) => console.warn(message, cause ?? ''));
 Height of the EGM96 geoid above the WGS84 ellipsoid, in metres:
 `ellipsoidal height = orthometric height + undulation`.
 
+### `wellKnownCrsCode(name)`
+
+The EPSG code (as a string, e.g. `'2056'`) an authoring tool's CRS label names, when it is
+one of the explicit aliases `resolveCrs` accepts by name (`'CH1903+ / LV95'`, `'LV95'`,
+`'Amersfoort / RD New'`, ...), else `undefined`. Exact labels only, case-insensitive; it never
+guesses from coordinates. Synchronous, no network.
+
 ### `@ifc-lite/geo/proj4`
 
 The definition-string layer underneath `resolveCrs` (`resolveProjection`,

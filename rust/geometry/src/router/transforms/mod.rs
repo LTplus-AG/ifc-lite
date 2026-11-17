@@ -4,6 +4,7 @@
 
 //! Placement and transformation: axis placement parsing, coordinate transforms, RTC offset.
 
+pub(crate) mod cut_frame;
 pub(crate) mod mapped;
 mod mesh_world;
 pub(crate) use mesh_world::{WorldFrame, LARGE_MAPPED_ORIGIN_M};
@@ -109,7 +110,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<ObjectPlacement> {
-        let Some(mut transform) = placement::resolve_object_placement(element, decoder)? else {
+        let Some(mut transform) = self.placement_in_frame(element, decoder)? else {
             return Ok(ObjectPlacement { transform: Matrix4::identity(), placed: false });
         };
         self.scale_transform(&mut transform);
@@ -186,7 +187,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Matrix4<f64>> {
-        Ok(placement::resolve_object_placement(element, decoder)?.unwrap_or_else(Matrix4::identity))
+        Ok(self.placement_in_frame(element, decoder)?.unwrap_or_else(Matrix4::identity))
     }
 
     /// Exact counterpart to `resolve_scaled_placement`: refuses a world

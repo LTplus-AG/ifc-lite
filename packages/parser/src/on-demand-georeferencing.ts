@@ -155,17 +155,16 @@ function loadGeorefEntities(store: IfcDataStore): LoadedGeorefEntities | null {
                 }
 
                 // For IfcProjectedCRS, also resolve the MapUnit reference (attribute [6])
-                // so the georef extractor can determine the actual unit scale
+                // so the georef extractor can determine the actual unit scale.
+                // Two hops past the unit: an IfcConversionBasedUnit carries its
+                // scale in IfcMeasureWithUnit -> IfcSIUnit. Pulling in only the
+                // unit itself left `resolveMeasureWithUnit` nothing to read, so a
+                // conversion-based unit outside the name table (ifc-lite's own
+                // `US SURVEY FOOT`) read back as the METRE default: a silent
+                // 3.28x error in the map position.
                 if (typeName === 'IFCPROJECTEDCRS' && entity.attributes) {
                     const mapUnitAttr = entity.attributes[6];
-                    const mapUnitRefId = typeof mapUnitAttr === 'number' ? mapUnitAttr : null;
-                    if (mapUnitRefId && !entityMap.has(mapUnitRefId)) {
-                        const unitRef = byId.get(mapUnitRefId);
-                        if (unitRef) {
-                            const unitEntity = extractor.extractEntity(unitRef);
-                            if (unitEntity) entityMap.set(mapUnitRefId, unitEntity);
-                        }
-                    }
+                    include(typeof mapUnitAttr === 'number' ? mapUnitAttr : null, 2);
                 }
             }
         }

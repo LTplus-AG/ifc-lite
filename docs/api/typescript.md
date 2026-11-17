@@ -53,6 +53,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/bcf-api`](https://www.npmjs.com/package/@ifc-lite/bcf-api) | BCF API (OpenCDE) REST client for connecting to BCF servers |
 | [`@ifc-lite/charts`](https://www.npmjs.com/package/@ifc-lite/charts) | Headless chart data binding for IFC-Lite: aggregate model rows into buckets that keep their element ids, build ECharts options, render SVG |
 | [`@ifc-lite/documents-api`](https://www.npmjs.com/package/@ifc-lite/documents-api) | OpenCDE Documents API 1.0 client: select, download, query and upload documents against a buildingSMART Documents API server |
+| [`@ifc-lite/flood-check`](https://www.npmjs.com/package/@ifc-lite/flood-check) | Headless check of a georeferenced building model against a surface-runoff hazard map (Swiss BAFU provider included) |
 | [`@ifc-lite/flow`](https://www.npmjs.com/package/@ifc-lite/flow) | Keyed-data graph runtime for BIM workflows: typed ports, item/list/group lifting, memoised evaluation, and element tracking for re-runnable graphs |
 | [`@ifc-lite/flow-nodes`](https://www.npmjs.com/package/@ifc-lite/flow-nodes) | Standard node library for @ifc-lite/flow over the ifc-lite SDK: model reads and writes, tables, viewer, and a sandboxed Script node |
 | [`@ifc-lite/geodata-ch`](https://www.npmjs.com/package/@ifc-lite/geodata-ch) | Typed headless client for Swiss federal geodata (address search, parcels, swissALTI3D terrain, swissBUILDINGS3D tiles, swissTLM3D features, ÖREB) as site context in LV95 |
@@ -69,6 +70,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/rhino3dm`](https://www.npmjs.com/package/@ifc-lite/rhino3dm) | Lazy Rhino 3dm reader and writer: .3dm bytes to plain RhinoImport data, encoded ifc-lite RhinoScene data to .3dm |
 | [`@ifc-lite/rules`](https://www.npmjs.com/package/@ifc-lite/rules) | Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite |
 | [`@ifc-lite/semantic`](https://www.npmjs.com/package/@ifc-lite/semantic) | Portable semantic datasets, profiles, validation and IFC identity resolution |
+| [`@ifc-lite/site-context`](https://www.npmjs.com/package/@ifc-lite/site-context) | Site context as data for Swiss projects: swissALTI3D terrain, the cadastral parcel and neighbouring swissBUILDINGS3D buildings around a georeferenced model, in one EPSG:2056 frame, as a self-describing GLB |
 | [`@ifc-lite/source-autodesk`](https://www.npmjs.com/package/@ifc-lite/source-autodesk) | Autodesk Forma and Data Exchange cloud-source provider for ifc-lite |
 | [`@ifc-lite/source-bimcollab`](https://www.npmjs.com/package/@ifc-lite/source-bimcollab) | BIMcollab Documents file-source provider for ifc-lite |
 | [`@ifc-lite/source-buildagil`](https://www.npmjs.com/package/@ifc-lite/source-buildagil) | buildagil openCDE documents file-source provider for ifc-lite |

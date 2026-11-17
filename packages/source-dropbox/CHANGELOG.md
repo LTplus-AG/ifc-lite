@@ -1,5 +1,12 @@
 # @ifc-lite/source-dropbox
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [[`dbb660f`](https://github.com/LTplus-AG/ifc-lite/commit/dbb660fecb80156fa194656005d5c4cfb2eed3ae)]:
+  - @ifc-lite/plugin-api@0.6.0
+
 ## 0.4.0
 
 ### Minor Changes

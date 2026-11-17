@@ -41,15 +41,30 @@ export interface FeatureDefinition {
 }
 
 export const FEATURE_GROUPS = [
+  { id: 'files', label: 'Files and models' },
   { id: 'tools', label: 'Viewport tools' },
   { id: 'view', label: 'Display and presentation' },
   { id: 'check', label: 'Checking and coordination' },
   { id: 'data', label: 'Data and quantities' },
+  { id: 'edit', label: 'Editing' },
   { id: 'automate', label: 'Automation' },
+  { id: 'ai', label: 'AI' },
+  { id: 'collab', label: 'Collaboration' },
+  { id: 'export', label: 'Export' },
   { id: 'privacy', label: 'Telemetry and privacy' },
+  { id: 'help', label: 'Help' },
 ] as const satisfies readonly FeatureGroupDefinition[];
 
 export const FEATURE_CATALOGUE = [
+  { id: 'files.local', group: 'files', label: 'Open local files',
+    description: 'Opening and adding models from the device: the Open and Add model commands, drag and drop onto the viewer, refresh from disk and the recent files list.' },
+  { id: 'files.federation-setup', group: 'files', label: 'Federation setup files',
+    description: 'Saving the current set of models and their alignment as a setup file, and opening one.' },
+  { id: 'files.sources', group: 'files', label: 'Cloud sources',
+    description: 'The Cloud sources panel, which connects to common data environments and file services to open models from them.' },
+  { id: 'files.samples', group: 'files', label: 'Sample models',
+    description: 'The sample project and the layers demo on the start screen and in empty panels. Guided tours that load the sample project go too.' },
+
   { id: 'tools.measure', group: 'tools', label: 'Measure',
     description: 'The Measure tool and the Measurements panel.' },
   { id: 'tools.section', group: 'tools', label: 'Section',
@@ -106,10 +121,27 @@ export const FEATURE_CATALOGUE = [
   { id: 'data.time-series', group: 'data', label: 'Time series',
     description: 'The time-series panel, which reads sensor data from a database the user connects.' },
 
+  { id: 'edit.model', group: 'edit', label: 'Edit model data',
+    description: 'Edit mode and everything behind it: changing properties and attributes, creating, moving and deleting elements, the Model workspace, the Author tab, change sets, and starting a blank model.' },
+  { id: 'edit.placement', group: 'edit', label: 'Reposition models',
+    description: 'Moving a whole model and editing its georeferencing: the Reposition command and the Placement panel.' },
+
   { id: 'automate.scripting', group: 'automate', label: 'Scripting',
     description: 'The Script panel and the script templates in the command palette.' },
   { id: 'automate.flows', group: 'automate', label: 'Flows',
     description: 'The Flow panel: node-based automation.' },
+
+  { id: 'automate.extensions', group: 'automate', label: 'Extensions',
+    description: 'Installing and running extensions and profiles. When off, installed extensions are not started.' },
+
+  { id: 'ai.assistant', group: 'ai', label: 'AI assistant',
+    description: 'Every AI feature: the Assistant panel, the AI chat in the Script panel, "Discuss with AI", the IDS and Flow assistants, extension ideas, the local agent bridge and the AI key settings.' },
+
+  { id: 'collab.sessions', group: 'collab', label: 'Live sessions',
+    description: 'Sharing a model in a live session with other people. Also needs a collaboration server configured in the build.' },
+
+  { id: 'export.files', group: 'export', label: 'Export',
+    description: 'Saving the model as a file: the export commands in the File tab, the command palette and the element menu, export of a changed model, positioned point cloud and splat downloads, and downloads from scripts and extensions.' },
 
   { id: 'privacy.analytics', group: 'privacy', label: 'Product analytics',
     description: 'Anonymous usage analytics sent to the analytics service configured in the build, and the setting that lets a user opt out.' },
@@ -117,6 +149,13 @@ export const FEATURE_CATALOGUE = [
     description: 'The page-view analytics script of the hosting platform.' },
   { id: 'privacy.notice', group: 'privacy', label: 'Privacy notice',
     description: 'The first-visit notice about the local action log and hosted analytics.' },
+  { id: 'privacy.third-party', group: 'privacy', label: 'Third-party services',
+    description: 'Services outside the deployment that the viewer uses on its own: the hosted icon font, map tiles for georeferenced models, the buildingSMART Data Dictionary tab (through the deployment\'s proxy) and the 3D world context.' },
+
+  { id: 'help.tours', group: 'help', label: 'Guided tours',
+    description: 'The interactive tours, their invitations and the learning hub.' },
+  { id: 'help.product-links', group: 'help', label: 'Product links',
+    description: 'Links that lead out of the viewer to the product: the website and the LLM page, and the prompt to star the project.' },
 ] as const satisfies readonly FeatureDefinition[];
 
 export type FeatureId = (typeof FEATURE_CATALOGUE)[number]['id'];

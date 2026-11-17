@@ -261,11 +261,25 @@ fn a_placement_cycle_is_refused_counted_and_not_memoised() {
     let before = decoder.refused_records();
     let node = decoder.decode_by_id(10).unwrap();
     assert!(resolve_chain(&node, &mut decoder).is_err());
+    // Relative to itself a cyclic placement is refused too, not the identity.
+    let own = decoder.decode_by_id(12).unwrap();
+    assert!(super::resolve_chain_relative(&own, &own, &mut decoder).is_err());
     assert_eq!(
         decoder.refused_records(),
         before,
         "one record is counted once"
     );
+}
+
+/// A placement with no readable `RelativePlacement` is refused relative to
+/// itself, as `resolve_chain` refuses it, not read as the identity.
+#[test]
+fn an_unreadable_placement_is_refused_relative_to_itself() {
+    let file = CYCLE.replace("#13=IFCLOCALPLACEMENT(#10,#1);", "#14=IFCLOCALPLACEMENT($,$);");
+    let mut decoder = EntityDecoder::new(&file);
+    let own = decoder.decode_by_id(14).expect("placement");
+    assert!(resolve_chain(&own, &mut decoder).is_err());
+    assert!(super::resolve_chain_relative(&own, &own, &mut decoder).is_err());
 }
 
 #[test]
@@ -451,4 +465,59 @@ fn issue_7779_ten_thousand_products_seven_deep_memo_benchmark() {
         samples[1],
         samples[1] / samples[0]
     );
+}
+
+/// A site, a storey under it, a wall under the storey and an opening under
+/// the wall, with the site placed at `site`.
+fn site_chain(site: &str) -> String {
+    format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
+FILE_NAME('t.ifc','2024-01-01T00:00:00',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+{site}\n\
+#10=IFCLOCALPLACEMENT($,#3);\n\
+#4=IFCCARTESIANPOINT((0.1,0.7,3.3));\n\
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);\n\
+#11=IFCLOCALPLACEMENT(#10,#5);\n\
+#6=IFCCARTESIANPOINT((12.3,4.56,0.));\n\
+#7=IFCDIRECTION((0.6,0.8,0.));\n\
+#8=IFCAXIS2PLACEMENT3D(#6,$,#7);\n\
+#12=IFCLOCALPLACEMENT(#11,#8);\n\
+#9=IFCCARTESIANPOINT((1.7,0.,0.9));\n\
+#20=IFCAXIS2PLACEMENT3D(#9,$,$);\n\
+#13=IFCLOCALPLACEMENT(#12,#20);\n\
+#14=IFCLOCALPLACEMENT(#11,#20);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    )
+}
+
+/// A placement relative to its chain's root is composed from the links below
+/// the root only, so moving the root leaves it bit for bit the same. That is
+/// what lets a voided host be cut the same wherever its site is.
+#[test]
+fn a_placement_relative_to_its_root_does_not_see_the_root() {
+    let at_origin = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#3=IFCAXIS2PLACEMENT3D(#1,$,$);";
+    let moved = "#1=IFCCARTESIANPOINT((-0.287565,12.57709,-193.548));\n\
+#2=IFCDIRECTION((0.8660254037844387,-0.5,0.));\n#3=IFCAXIS2PLACEMENT3D(#1,$,#2);";
+    let relative = |site: &str, leaf: u32, base: u32| {
+        let content = site_chain(site);
+        let mut decoder = EntityDecoder::new(&content);
+        let leaf = decoder.decode_by_id(leaf).expect("leaf placement");
+        let base = decoder.decode_by_id(base).expect("base placement");
+        resolve_chain_relative(&leaf, &base, &mut decoder).expect("relative placement")
+    };
+    for leaf in [11, 12, 13] {
+        assert_eq!(relative(moved, leaf, 10), relative(at_origin, leaf, 10), "#{leaf} relative to the root");
+    }
+    // At the origin the root is the identity, so this is the world transform.
+    let content = site_chain(at_origin);
+    let mut decoder = EntityDecoder::new(&content);
+    let wall = decoder.decode_by_id(12).expect("wall placement");
+    assert_eq!(relative(at_origin, 12, 10), resolve_chain(&wall, &mut decoder).expect("world"));
+    // A base that is not on the chain: the links below the shared storey.
+    let across = relative(moved, 14, 12);
+    assert_eq!(across, relative(at_origin, 14, 12));
+    let expected = relative(at_origin, 12, 11).try_inverse().expect("rigid") * relative(at_origin, 14, 11);
+    assert_eq!(across, expected);
+    assert_eq!(relative(moved, 12, 12), nalgebra::Matrix4::identity());
 }

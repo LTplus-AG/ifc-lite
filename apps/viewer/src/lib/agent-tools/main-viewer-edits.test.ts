@@ -20,6 +20,7 @@ import { mainViewerBridgeTools } from '@/lib/agent-bridge/session';
 import { WALL_GID, WALL_ID, model, parseHelloWall, parseStep, seed, viewerHost } from '@/test/agent-tools-fixture';
 import { MAIN_VIEWER_EDIT_TOOLS, dispatchMainViewerTool, type AgentToolResult } from './main-viewer-dispatch.js';
 import { createMainViewerEditor } from './main-viewer-edits.js';
+import { VIEWER_COMMAND_SPECS } from './viewer-command-tools';
 import { mainViewerToolDefinitions } from './main-viewer-tool-definitions.js';
 import type { AgentEdit } from './types.js';
 
@@ -203,7 +204,7 @@ describe('edit tool definitions (#9523)', () => {
       assert.equal(definition?.readOnly, false, name);
       assert.ok(definition?.inputSchema.properties.model_id, `${name} takes model_id`);
     }
-    assert.ok(definitions.filter((tool) => !tool.readOnly).every((tool) => (MAIN_VIEWER_EDIT_TOOLS as readonly string[]).includes(tool.name)),
+    assert.ok(definitions.filter((tool) => !tool.readOnly).every((tool) => (MAIN_VIEWER_EDIT_TOOLS as readonly string[]).includes(tool.name) || (Object.hasOwn(VIEWER_COMMAND_SPECS, tool.name) && !VIEWER_COMMAND_SPECS[tool.name as keyof typeof VIEWER_COMMAND_SPECS].readOnly)),
       'nothing else is labelled as changing the model');
   });
 

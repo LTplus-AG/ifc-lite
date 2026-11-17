@@ -18,8 +18,10 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcTypeEnum } from '@ifc-lite/data';
+import { StepExporter } from '@ifc-lite/export';
+import { IfcParser, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import type { ListDefinition } from '@ifc-lite/lists';
-import { blur, cleanup, click, render, type, waitFor } from '@/test/render.js';
+import { blur, cleanup, click, render, type, press, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
@@ -40,7 +42,6 @@ const definition: ListDefinition = {
     { id: 'class', source: 'attribute', propertyName: 'Class' },
     { id: 'length', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length' },
   ],
-  grouping: { columnId: 'class', columnIds: ['class'], sumColumnIds: ['length'], view: 'nested' },
 };
 
 /** The Length total the table shows in its footer: what a person reads, not the stored rows. */
@@ -104,6 +105,15 @@ async function openSchedule(): Promise<HTMLElement> {
   assert.ok(run, 'the library offers the list');
   click(run);
   await waitFor(() => s().listResult !== null && ui.querySelector('div.sticky') !== null, 'the schedule opens');
+  for (const [index, text] of [[1, 'Group by this column'], [2, 'Sum']] as const) {
+    const options = ui.querySelectorAll('button[aria-label="Column options"]')[index];
+    assert.ok(options);
+    press(options, 'ArrowDown');
+    await waitFor(() => [...document.querySelectorAll('[role^="menuitem"]')].some(el => el.textContent?.includes(text)), 'column menu');
+    const item = [...document.querySelectorAll('[role^="menuitem"]')].find(el => el.textContent?.includes(text));
+    assert.ok(item);
+    click(item);
+  }
   return ui;
 }
 
@@ -136,5 +146,48 @@ describe('an open wall schedule follows a length typed in the Model inspector (#
     act(() => s().undo(MODEL_ID));
     assert.equal(input(ui, 'Length in metres').value, '5.00');
     await waitFor(() => footerLength(ui) === 10, 'and follows the undo back');
+  });
+  it('keeps the refresh live when remeshing publishes while the scheduled run starts (#9296)', async () => {
+    const ui = await openSchedule();
+    assert.equal(footerLength(ui), 10);
+    let published = false;
+    const unsubscribe = useViewerStore.subscribe((next, before) => {
+      if (!published && next.listExecuting && !before.listExecuting) {
+        published = true;
+        // The real remesh publication replaces models/providers, without a new
+        // semantic edit. Land it before the list's next animation frame.
+        queueMicrotask(() => act(() => s().replaceEntityMeshes(MODEL_ID,
+          new Map([[toGlobalIdFromModels(s().models, MODEL_ID, wall),
+            next.models.get(MODEL_ID)!.geometryResult!.meshes.filter(mesh =>
+              mesh.expressId === toGlobalIdFromModels(next.models, MODEL_ID, wall))]]))));
+      }
+    });
+    try {
+      type(input(ui, 'Length in metres'), '6');
+      blur(input(ui, 'Length in metres'));
+      await waitFor(() => footerLength(ui) === 11, 'the remeshed schedule follows the edit');
+      assert.equal(published, true);
+      assert.deepEqual(groupLengths(ui), [11]);
+      const assertExport = async (expected: number) => {
+        const model = s().models.get(MODEL_ID)!;
+        const bytes = new StepExporter(model.ifcDataStore!, s().mutationViews.get(MODEL_ID))
+          .export({ schema: 'IFC4', applyMutations: true }).content;
+        const reopened = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+          { disableWorkerScan: true });
+        const ids = s().listResult!.rows.map(row => row.entityId);
+        const total = ids.reduce((sum, id) => sum + (extractQuantitiesOnDemand(reopened, id)
+          .find(set => set.name === 'Qto_WallBaseQuantities')?.quantities.find(q => q.name === 'Length')?.value ?? 0), 0);
+        assert.equal(total, expected);
+      };
+      await assertExport(11);
+      act(() => s().undo(MODEL_ID));
+      await waitFor(() => footerLength(ui) === 10, 'undo restores schedule quantities');
+      assert.deepEqual(groupLengths(ui), [10]);
+      await assertExport(10);
+      act(() => s().redo(MODEL_ID));
+      await waitFor(() => footerLength(ui) === 11, 'redo restores edited schedule quantities');
+      assert.deepEqual(groupLengths(ui), [11]);
+      await assertExport(11);
+    } finally { unsubscribe(); }
   });
 });

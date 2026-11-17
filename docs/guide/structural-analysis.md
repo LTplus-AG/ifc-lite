@@ -19,6 +19,13 @@ Counterpart rows let you select the linked physical or analytical object.
 The card is read-only. The ledger's card probes are still unwritten; a readable
 record does not imply full card coverage.
 
+IFC4 and IFC4X3 surface reinforcement results are available in the parser read
+model as `reinforcementAreas`, including standalone records, and in the SDK as
+`bim.structural.data().reinforcementAreas`. Their two ordered
+reinforcement lists and optional shear ratio retain the file's values. A result
+referenced by a load configuration also appears on the owning activity's card;
+it can be inspected directly by its model-local express id.
+
 Supports and loads appear as clickable glyphs when their geometry and values
 can be resolved. Use **Supports & loads** in the command palette to toggle them.
 All load groups are shown together; there is no load-case selector. Reaction
@@ -79,6 +86,24 @@ prepare the plan, inspect moved and unconnected ends, acknowledge the native
 measures, then Apply. Derivation creates linked analytical records from beams,
 columns, members, slabs and walls, with supports from footings. It is a geometric
 starting point that needs engineering review.
+
+Surface members carry readable through-openings as inner face bounds. Their
+extrusion must be parallel or perpendicular to the plate normal within one
+degree. A normal extrusion projects its profile onto the analytical mid-plane;
+an in-plane extrusion sweeps the single interval cut through its profile. The
+sections on both plate faces must match the mid-plane section within the derive
+tolerance, so the opening spans the full thickness. Openings
+within the derive tolerance of the outer boundary (such as doors at a wall base),
+oblique openings, recesses, unreadable profiles and overlapping or touching
+openings are skipped with reasons in `plan.report.skippedOpenings` (opening id, host id and reason),
+counted separately in `report.counts.skippedOpenings`; `report.skipped` and
+`report.counts.skipped` describe physical elements only. Both IfcOpeningElement
+and IfcOpeningStandardCase are accepted. Through checks use the derive tolerance
+in metres and sample the actual plate faces, including slightly oblique slabs.
+Profile voids are not carried.
+The loaded-model surface builder also accepts `Openings: Point3D[][]` alongside
+`Boundary`; each ring must be simple, coplanar and strictly inside the boundary,
+with no overlap or contact between rings.
 
 ```bash
 ifc-lite derive-structural model.ifc --dry-run --json

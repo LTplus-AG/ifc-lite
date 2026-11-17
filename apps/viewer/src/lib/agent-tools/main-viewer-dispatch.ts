@@ -3,19 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The tool surface the main viewer serves to a local agent (#9523).
- *
- * Only {@link MAIN_VIEWER_TOOL_ALLOWLIST} (reads) and
- * {@link MAIN_VIEWER_EDIT_TOOLS} (property and attribute edits, refused unless
- * the call's `canEdit` says the user allows them) are reachable. Every other
- * name is refused except for the viewer-native command tools: creating or
- * deleting entities, the inline viewer and headless model load/save are not
- * part of this surface. Palette commands can launch the native workflows
- * (including exports) after the user grants commands and edits. Each call is routed to exactly one model (see `resolveModel`), so a
- * federated session never mixes models in one answer.
- *
- * This module is meant to be imported lazily, by the bridge client that hands
- * calls to it; nothing on the viewer's eager path imports it.
+ * The main viewer serves a fixed tool allowlist, native palette commands and a
+ * schema-driven operation gateway. Reads, edits and declared native effects keep
+ * their live permissions and feature gates. Model-scoped tools resolve exactly
+ * one target; viewer/session operations declare that they require no model.
+ * This module is loaded by the local agent connection, off the eager viewer path.
  */
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
@@ -31,7 +23,7 @@ import { isFeatureEnabled } from '../features/index.js';
 import { costTools } from './cost-tools.js';
 import { mainViewerIdsTools } from './main-viewer-ids.js';
 import { EDIT_TOOL_NAMES, editNotAllowed, editTools, isEditTool } from './edit-tools.js';
-import type { AgentEdit, AgentTool, ModelHandle, ReadyModel, ToolHost, ToolNeeds } from './types.js';
+import type { AgentEdit, AgentTool, AgentToolImage, ModelHandle, ReadyModel, ToolHost, ToolNeeds, ToolOutput } from './types.js';
 
 /** Every tool the main viewer serves. Each must be a `read`-scope catalog tool (enforced by test). */
 export const MAIN_VIEWER_TOOL_ALLOWLIST = [
@@ -73,6 +65,8 @@ export interface AgentToolResult {
   hint?: string;
   /** What an edit tool changed. Tab-side only: the result frame carries `structured`, not this. */
   edit?: AgentEdit;
+  /** An image for the agent; the result frame carries it only when the bridge supports images. */
+  image?: AgentToolImage;
 }
 
 const LEGACY_ALIASES = new Set(['legacy', LEGACY_MUTATION_MODEL_ID]);
@@ -142,7 +136,7 @@ function hasStore(model: ModelHandle): model is ReadyModel {
 }
 
 /** The model as a tool may read it, or a specific refusal saying why it cannot. */
-function usableModel(model: ModelHandle, needs: Exclude<ToolNeeds, 'none'>, tool: string): ReadyModel {
+export function usableModel(model: ModelHandle, needs: Exclude<ToolNeeds, 'none'>, tool: string): ReadyModel {
   const usable = needs === 'store' ? STORE_IS_ENOUGH.has(model.status) : model.status === 'ready';
   if (usable && hasStore(model)) return model;
   const status = model.status === 'ready' ? 'no-data' : model.status;
@@ -193,12 +187,12 @@ function assertModelCurrent(host: ToolHost, model: ReadyModel): void {
 }
 
 /** Settle as cancelled the moment `signal` aborts, instead of waiting on a lookup that cannot be interrupted. */
-function untilAborted<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal | undefined, committed: () => boolean = () => false): Promise<T> {
   if (!signal) return work;
   return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(cancelledDispatch());
-    if (signal.aborted) { abort(); return; }
-    signal.addEventListener('abort', abort, { once: true });
+    const abort = () => { if (!committed()) reject(cancelledDispatch()); };
+    if (signal.aborted && !committed()) { abort(); return; }
+    if (!signal.aborted) signal.addEventListener('abort', abort, { once: true });
     work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
   });
 }
@@ -211,6 +205,11 @@ export interface DispatchContext {
    * starts and again at the write. Absent means read-only.
    */
   canEdit?: () => boolean;
+}
+
+/** A tool's success as an outcome: every success path carries the edit and image a tool returned. */
+function succeeded(out: ToolOutput): AgentToolResult {
+  return { text: out.text, structured: out.structured, isError: false, ...(out.edit ? { edit: out.edit } : {}), ...(out.image ? { image: out.image } : {}) };
 }
 
 /**
@@ -233,19 +232,20 @@ export async function dispatchMainViewerTool(
     }
     const input = (args ?? {}) as Record<string, unknown>;
     assertDispatchActive(ctx.signal);
+    const commitState: { committed: boolean; committing?: boolean } = { committed: false };
     if (tool.needs === 'none') {
-      const out = await untilAborted(tool.run(host, input, ctx), ctx.signal);
-      return { text: out.text, structured: out.structured, isError: false };
+      const out = await untilAborted(tool.run(host, input, { ...ctx, commitState }), ctx.signal, () => commitState.committed || commitState.committing === true);
+      return succeeded(out);
     }
     const model = usableModel(resolveModel(host, input), tool.needs, toolName);
     const stillCurrent = () => assertModelCurrent(host, model);
     const out = await untilAborted(
-      tool.run(host, model, input, { signal: ctx.signal, checkpoint: stillCurrent, canEdit: ctx.canEdit }), ctx.signal);
+      tool.run(host, model, input, { signal: ctx.signal, checkpoint: stillCurrent, canEdit: ctx.canEdit, commitState }), ctx.signal, () => commitState.committed || commitState.committing === true);
     // An edit is written synchronously and is in the undo history: report it as done.
-    if (out.edit) return { text: out.text, structured: out.structured, isError: false, edit: out.edit };
+    if (commitState.committed || out.edit) return succeeded(out);
     // The work read whatever the store held; answer only if that is still this model.
     stillCurrent();
-    return { text: out.text, structured: out.structured, isError: false };
+    return succeeded(out);
   } catch (caught) {
     const err = isAbortError(caught) ? cancelledDispatch() : caught;
     if (err instanceof ToolExecutionError) {

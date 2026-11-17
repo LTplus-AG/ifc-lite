@@ -63,19 +63,23 @@ export function isPrefsConfigured(manifest: PluginManifest, prefs: Record<string
     .every((pref) => Boolean(prefs[pref.name]?.trim()));
 }
 
-export function saveSourcePrefs(providerId: string, values: Record<string, string>): void {
+export function saveSourcePrefs(providerId: string, values: Record<string, string>): boolean {
   try {
     localStorage.setItem(PREFS_KEY_PREFIX + providerId, JSON.stringify(values));
+    return true;
   } catch (err) {
     console.warn(`[sources] Failed to save prefs for "${providerId}" (storage unavailable?)`, err);
+    return false;
   }
 }
 
 /** Clears saved preferences (including any stored API key) for a provider. */
-export function clearSourcePrefs(providerId: string): void {
+export function clearSourcePrefs(providerId: string): boolean {
   try {
     localStorage.removeItem(PREFS_KEY_PREFIX + providerId);
+    return true;
   } catch (err) {
     console.warn(`[sources] Failed to clear prefs for "${providerId}"`, err);
+    return false;
   }
 }

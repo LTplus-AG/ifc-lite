@@ -21,7 +21,7 @@ import type { DraftBatch } from '@/lib/bcf-drafts/draft-types';
 import { sameTarget, type DispatchReport, type PublicationConnection } from '@/lib/bcf-publication/outbox-dispatch';
 import { draftPublicationId, planDraftPublication } from '@/lib/bcf-publication/outbox-plan';
 import { preflightPublication, type PreflightReport } from '@/lib/bcf-publication/outbox-preflight';
-import { publishDraftBatch } from '@/lib/bcf-publication/outbox-publish';
+import { useBcfPublicationReview, publishNativeBcfReview } from '@/lib/bcf-publication/review-candidate';
 import { preselectTopicTypes, publicationRules, unknownTopicTypes, type TopicTypeChoice } from '@/lib/bcf-publication/outbox-server-rules';
 import { publicationCounts } from '@/lib/bcf-publication/outbox-state';
 import { useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
@@ -48,6 +48,7 @@ export interface BCFPublicationPanelProps {
 
 export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicationPanelProps) {
   const { t } = useTranslation();
+  const candidate = useBcfPublicationReview(state => state.candidate);
   const { config, connect } = useBcfConnection();
   const [projects, setProjects] = useState<BcfProjectDto[] | null>(null);
   const [projectId, setProjectId] = useState('');
@@ -66,6 +67,10 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   // user has not checked.
   const targetKey = `${config?.serverUrl ?? ''}\u0000${projectId}`;
   useEffect(() => { setTopicTypes({}); setPreflight(null); setReport(null); }, [targetKey]);
+  useEffect(() => {
+    if (!candidate || candidate.batchId !== batch.id || candidate.target.serverUrl !== config?.serverUrl || candidate.target.userId !== config?.userId) return;
+    setProjectId(candidate.target.projectId); setTopicTypes(candidate.topicTypes); setPreflight(candidate.preflight);
+  }, [candidate, batch.id, config?.serverUrl, config?.userId, targetKey]);
 
   useEffect(() => {
     setProjects(null); setConnection(null);
@@ -111,7 +116,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   });
   const publish = () => act(async () => {
     if (!target || !connection) return;
-    const published = await publishDraftBatch(batch, target, connection, { timeoutMs: 60_000, topicTypes });
+    const published = await publishNativeBcfReview(batch, target, connection, topicTypes);
     if (!published) { setError(t('bcfDrafts.publish.storageRefused')); return; }
     setReport(published.report);
     if (published.report.preflight) adopt(published.report.preflight);
@@ -127,7 +132,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
       <label className="flex items-center gap-2">
         {t('bcfDrafts.publish.project')}
         <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={projectId}
-          disabled={!projects?.length || busy} onChange={event => { setProjectId(event.target.value); setPreflight(null); setReport(null); }}>
+          disabled={!projects?.length || busy} onChange={event => { useBcfPublicationReview.setState({ candidate: null }); setProjectId(event.target.value); setPreflight(null); setReport(null); }}>
           {(projects ?? []).map(project => <option key={project.project_id} value={project.project_id}>{project.name ?? project.project_id}</option>)}
         </select>
       </label>
@@ -153,7 +158,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
         <label key={type} className="flex flex-wrap items-center gap-2 rounded bg-warn-surface px-2 py-1">
           {t('bcfDrafts.publish.topicType', { type })}
           <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={topicTypes[type] ?? ''} disabled={busy}
-            onChange={event => setTopicTypes(current => ({ ...current, [type]: event.target.value }))}>
+            onChange={event => { useBcfPublicationReview.setState({ candidate: null }); setTopicTypes(current => ({ ...current, [type]: event.target.value })); }}>
             {allowed.map(option => <option key={option} value={option}>{option}</option>)}
           </select>
         </label>

@@ -11,6 +11,10 @@
     "value": "{ms} ms",
     "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
   },
+  "agentBridge.panel.repeated": {
+    "value": "×{count}",
+    "reason": "Runtime count with a multiplication sign; no English prose."
+  },
   "alignmentSection.axisFallback": {
     "value": "IfcAlignment #{id}",
     "reason": "alignmentSection.axisFallback: IfcAlignment is the exact IFC entity name; the hash introduces the supplied entity identifier."

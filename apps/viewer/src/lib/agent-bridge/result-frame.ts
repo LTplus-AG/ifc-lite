@@ -16,13 +16,19 @@
  * tool value the viewer cannot compute (a volume of an open shell, say)
  * arrives as `null`, never as an invalid frame (pinned by a test).
  *
+ * Images: an outcome's `image` becomes an MCP image block only when the
+ * bridge's `welcome` advertised `image-content`; an older bridge would refuse
+ * the whole result, so it gets a text line asking for an update instead.
+ *
  * A result the bridge would refuse (over `BRIDGE_LIMITS.maxResultBytes`, or
  * nested too deep, or with too many values) would fail the call, so it is
  * cut down here instead, with a note telling the agent what happened and how
- * to ask for less.
+ * to ask for less. Images are dropped first, with their own note.
  */
 
-import { BRIDGE_LIMITS, parseTabMessage, type BridgeCallResult, type BridgeResultMessage } from '@ifc-lite/mcp/bridge-protocol';
+import {
+  BRIDGE_LIMITS, parseTabMessage, type BridgeCallResult, type BridgeImageContent, type BridgeResultMessage,
+} from '@ifc-lite/mcp/bridge-protocol';
 import type { AgentBridgeEdit } from './state';
 
 /** A tool outcome, as `dispatchMainViewerTool` returns it. */
@@ -34,7 +40,13 @@ export interface ToolOutcome {
   hint?: string;
   /** What an edit changed, for the activity log only; never sent (the frame carries `structured`). */
   edit?: AgentBridgeEdit;
+  /** An image for the agent, sent as an image block when the bridge supports it. */
+  image?: Omit<BridgeImageContent, 'type'>;
 }
+
+/** Sent in place of an image when the bridge did not advertise `image-content`. */
+export const IMAGE_NEEDS_NEWER_BRIDGE = '[This result includes an image, but the connected ifc-lite MCP bridge cannot forward images. '
+  + 'Update it and pair again: npx @ifc-lite/mcp@latest --bridge]';
 
 /** Room left in a frame for the envelope, the note and JSON escaping slack. */
 const ENVELOPE_RESERVE_BYTES = 4096;
@@ -43,9 +55,17 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** The MCP `CallToolResult` the stdio server would have returned for this outcome. */
-export function toCallToolResult(outcome: ToolOutcome): BridgeCallResult {
+/**
+ * The MCP `CallToolResult` the stdio server would have returned for this
+ * outcome. `imageContent`: the bridge's welcome listed `image-content`.
+ */
+export function toCallToolResult(outcome: ToolOutcome, imageContent = false): BridgeCallResult {
   const content: BridgeCallResult['content'] = [{ type: 'text', text: outcome.text }];
+  if (outcome.image && !outcome.isError) {
+    content.push(imageContent
+      ? { type: 'image', data: outcome.image.data, mimeType: outcome.image.mimeType }
+      : { type: 'text', text: IMAGE_NEEDS_NEWER_BRIDGE });
+  }
   if (outcome.isError) {
     return {
       content,
@@ -99,22 +119,35 @@ export function buildResultFrame(
 ): ResultFrame {
   const frame = (r: BridgeCallResult): string =>
     JSON.stringify({ type: 'result', sessionId, id, result: r } satisfies BridgeResultMessage);
-  const refusal = (json: string, r: BridgeCallResult): string | null => {
+  // A frame is its result's JSON inside a fixed envelope, so a result's size is
+  // its frame's size minus the envelope: one encode per check, not a re-stringify.
+  const empty: BridgeCallResult = { content: [] };
+  const envelopeBytes = byteLength(frame(empty)) - byteLength(JSON.stringify(empty));
+  const resultBytes = (json: string): number => byteLength(json) - envelopeBytes;
+  const refusal = (json: string): string | null => {
     const checked = parseTabMessage(json);
     if (!checked.ok) return checked.error;
-    const bytes = byteLength(JSON.stringify(r));
+    const bytes = resultBytes(json);
     return bytes > maxResultBytes ? `result is ${bytes} bytes; the limit is ${maxResultBytes}` : null;
   };
   const full = frame(result);
-  const why = refusal(full, result);
+  const why = refusal(full);
   if (why === null) return { json: full, truncated: false };
 
-  const originalBytes = byteLength(JSON.stringify(result));
-  const text = result.content
-    .map((block) => (block.type === 'text' && typeof block.text === 'string' ? block.text : ''))
-    .join('\n');
+  const originalBytes = resultBytes(full);
+  const texts = result.content.filter((block) => block.type === 'text');
+  const images = result.content.length - texts.length;
+  if (images > 0) {
+    // Drop the images first: the text and structured content usually fit without them.
+    const imageNote = `[The viewer dropped ${images} image(s): the result (${originalBytes} bytes) is more than the bridge accepts (${why}). `
+      + 'Ask for a smaller image (e.g. a lower max_width or JPEG).]';
+    const withoutImages: BridgeCallResult = { ...result, content: [...texts, { type: 'text', text: imageNote }] };
+    const json = frame(withoutImages);
+    if (refusal(json) === null) return { json, truncated: true };
+  }
+  const text = texts.map((block) => block.text).join('\n');
   const note = `\n\n[Truncated by the viewer: the full result (${originalBytes} bytes) is more than the bridge accepts `
-    + `(${why}). Ask for less: a smaller limit, fewer fields, or one model_id.]`;
+    + `(${why})${images > 0 ? `, so its ${images} image(s) were dropped` : ''}. Ask for less: a smaller limit, fewer fields, or one model_id.]`;
   const code = isPlainObject(result.structuredContent) && typeof result.structuredContent.code === 'string'
     ? result.structuredContent.code : undefined;
   const marker = { truncated: true, originalBytes, limitBytes: maxResultBytes, ...(code ? { code } : {}) };
@@ -128,7 +161,7 @@ export function buildResultFrame(
       ...(result.isError ? { isError: true } : {}),
     };
     const json = frame(cut);
-    if (refusal(json, cut) === null || budget === 0) return { json, truncated: true };
+    if (refusal(json) === null || budget === 0) return { json, truncated: true };
     budget = Math.floor(budget / 2);
   }
 }

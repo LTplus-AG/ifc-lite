@@ -35,6 +35,7 @@
  */
 
 import {
+  BRIDGE_FEATURE_IMAGE_CONTENT,
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
   normalizePairingCode,
@@ -260,6 +261,8 @@ export class BridgeClient {
           sessionId: msg.sessionId,
           limits: this.limits,
           maxResultBytes: this.opts.maxResultBytes ?? BRIDGE_LIMITS.maxResultBytes,
+          // Images only to a bridge that said it forwards them; an older one refuses the whole result.
+          imageContent: msg.features?.includes(BRIDGE_FEATURE_IMAGE_CONTENT) === true,
           now: this.now,
           dispatch: this.opts.dispatch,
           modelIdFor: this.opts.modelIdFor,

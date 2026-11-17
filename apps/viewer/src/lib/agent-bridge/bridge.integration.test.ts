@@ -275,6 +275,34 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     } finally { release(); }
   });
 
+  it('executes model-free numerical operations over real MCP transport with live grants (#10525 follow-up)', async () => {
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null });
+    const discovered = await mcp.request('tools/call', { name: 'viewer_operations', arguments: { operation_id: 'measurements.distance' } });
+    assert.equal(discovered.isError, undefined, JSON.stringify(discovered));
+    const invoke = () => mcp.request('tools/call', { name: 'viewer_operation_execute', arguments: {
+      operation_id: 'measurements.distance', input: { start: [0, 0, 0], end: [3, 4, 0] },
+      idempotency_key: 'wire-distance',
+    } });
+    assert.equal((await invoke()).isError, true, 'read-only transport refuses view effects');
+    let seen = listChanged();
+    setAgentBridgePermission('read-write');
+    await until(() => listChanged() > seen, 'operation execution listed after grant');
+    const first = await invoke();
+    assert.equal(first.isError, undefined, JSON.stringify(first));
+    assert.equal((first.structuredContent as { result: { distance: number } }).result.distance, 5);
+    const count = useViewerStore.getState().measurements.length;
+    assert.equal((await invoke()).isError, undefined);
+    assert.equal(useViewerStore.getState().measurements.length, count, 'wire retry is deduplicated');
+    seen = listChanged();
+    setAgentBridgePermission('read-only');
+    await until(() => listChanged() > seen, 'operation execution removed after revoke');
+    assert.equal((await invoke()).isError, true, 'revoked grant refuses even a cached write outcome');
+    const read = await mcp.request('tools/call', { name: 'viewer_operation_inspect', arguments: {
+      operation_id: 'measurements.read',
+    } });
+    assert.equal(read.isError, undefined, JSON.stringify(read));
+  });
+
   it('the bridge shutting down ends the tab\'s session as bridge-shutdown', async () => {
     closed = true;
     await running.close();

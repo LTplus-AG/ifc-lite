@@ -36,6 +36,7 @@ import {
   supportsStandardGeoreferencing,
 } from '@/lib/geo/effective-georef';
 import { detectDoubleGeoreference } from '@/lib/geo/double-georeference';
+import { realignLoadedModels, MissingAlignmentSourceError } from '@/lib/geo/realign-loaded-models';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
@@ -76,7 +77,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const cesiumSourceModelId = useViewerStore(s => s.cesiumSourceModelId);
   const models = useViewerStore(s => s.models);
   const loading = useViewerStore(s => s.loading);
-  const { addModel, clearAllModels } = useIfc();
+  const { addModel } = useIfc();
   // This model's global-id bracket, scoping `LocationMap`'s KMZ export
   // (`withInstancedMeshes`) to just its own GPU-instanced occurrences — without
   // it, a federation of more than one loaded model leaks every OTHER model's
@@ -181,60 +182,18 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   }, [models.size]);
 
   const reloadModelsForAlignment = useCallback(async () => {
-    const state = useViewerStore.getState();
-    const snapshot = Array.from(state.models.values()).sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
-    const missingSource = snapshot.find(model => !model.sourceFile);
-    if (snapshot.length < 2) {
-      setShowReloadPrompt(false);
-      return;
-    }
-    if (missingSource) {
-      toast.error(t('properties.georef.reloadMissingSource', { name: missingSource.name }));
-      return;
-    }
-
     try {
-      clearAllModels();
-      const failed: string[] = [];
-      for (const model of snapshot) {
-        const sourceFile = model.sourceFile;
-        if (!sourceFile) continue;
-        const reloadedModelId = await addModel(sourceFile, {
-          name: model.name,
-          modelId: model.id,
-          loadedAt: model.loadedAt,
-          visible: model.visible,
-          collapsed: model.collapsed,
-        });
-        if (!reloadedModelId) {
-          // Do NOT throw: `clearAllModels()` has already run, so an early exit
-          // leaves the federation half-rebuilt — every model after this one is
-          // simply gone, and the only feedback is a "reload failed" toast that
-          // says nothing about how many survived. The sibling rebuild in
-          // `useFileCommands.tsx:317-320` avoids this by validating every read
-          // BEFORE clearing and refusing the whole refresh; that is not
-          // available here, because a model's failure is only observable once
-          // `addModel` has tried to load it. So keep going, reload everything
-          // that can be reloaded, and name what could not.
-          failed.push(model.name);
-          continue;
-        }
-        if (model.visible === false) {
-          useViewerStore.getState().setModelVisibility(model.id, false);
-        }
-      }
+      const result = await realignLoadedModels(addModel);
       setShowReloadPrompt(false);
-      if (failed.length > 0) {
-        toast.error(t('properties.georef.reloadPartial', {
-          loaded: formatLocaleNumber(locale, snapshot.length - failed.length), total: formatLocaleNumber(locale, snapshot.length), failed: formatLocaleList(locale, failed),
-        }));
-      } else {
-        toast.success(t('properties.georef.reloadSuccess'));
-      }
+      if (result.state === 'partial') toast.error(t('properties.georef.reloadPartial', {
+        loaded: formatLocaleNumber(locale, result.loaded), total: formatLocaleNumber(locale, result.total), failed: formatLocaleList(locale, result.failed),
+      }));
+      else if (result.state === 'completed') toast.success(t('properties.georef.reloadSuccess'));
     } catch (error) {
-      toast.error(error instanceof Error ? t('properties.georef.reloadFailedWithMessage', { message: error.message }) : t('properties.georef.reloadFailed'));
+      if (error instanceof MissingAlignmentSourceError) toast.error(t('properties.georef.reloadMissingSource', { name: error.modelName }));
+      else toast.error(error instanceof Error ? t('properties.georef.reloadFailedWithMessage', { message: error.message }) : t('properties.georef.reloadFailed'));
     }
-  }, [addModel, clearAllModels, locale, t]);
+  }, [addModel, locale, t]);
 
   const handleSave = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string, value: string | number) => {
     if (!modelId || !setGeorefField) return;

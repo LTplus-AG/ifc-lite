@@ -58,6 +58,10 @@ export type ReadyModel = ModelHandle & { store: IfcDataStore };
 export type BsddClient = Pick<BsddNamespace, 'search' | 'fetchClassInfo' | 'getPropertySets' | 'searchRelatedClasses'>;
 
 export interface ToolHost {
+  /** Main-viewer SDK, available before any model is loaded. */
+  bim?: BimContext;
+  /** Ends host-owned analysis jobs when the agent connection closes. */
+  lifetimeSignal?: AbortSignal;
   /** Every model the host holds, in display order. Read live on each call. */
   models(): ModelHandle[];
   bsdd: BsddClient;
@@ -111,6 +115,8 @@ export interface ModelEditor {
 }
 
 export interface ToolCallContext {
+  /** Set only by a native synchronous commit; cancellation cannot claim it rolled back. */
+  commitState?: { committed: boolean; committing?: boolean };
   /** Cancellation of the call; tools check it between asynchronous phases. */
   signal?: AbortSignal;
   /**
@@ -127,12 +133,20 @@ export interface ToolCallContext {
   canEdit?: () => boolean;
 }
 
+/** An image a tool returns alongside its text: `data` is base64 of the file bytes. */
+export interface AgentToolImage {
+  data: string;
+  mimeType: 'image/png' | 'image/jpeg';
+}
+
 /** What a tool returns on success. Failures are thrown as `ToolExecutionError`. */
 export interface ToolOutput {
   text: string;
   structured: unknown;
   /** Set by edit tools: what the call changed. */
   edit?: AgentEdit;
+  /** Set by tools that show the agent something (`viewer_screenshot`). Hosts that cannot carry images drop it. */
+  image?: AgentToolImage;
 }
 
 /**

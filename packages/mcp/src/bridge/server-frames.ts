@@ -37,7 +37,14 @@ export function parseServerMessage(text: string): ParseResult<BridgeServerMessag
   switch (raw.type) {
     case 'welcome':
       if (typeof raw.sessionId !== 'string' || !isPermission(raw.permission)) return { ok: false, error: 'malformed welcome' };
-      return { ok: true, value: raw as unknown as BridgeWelcomeMessage };
+      // `features` is optional (older bridges omit it); anything but strings is dropped, never fatal.
+      return {
+        ok: true,
+        value: {
+          ...(raw as unknown as BridgeWelcomeMessage),
+          features: Array.isArray(raw.features) ? raw.features.filter((f): f is string => typeof f === 'string') : [],
+        },
+      };
     case 'call':
       if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string' || typeof raw.name !== 'string' || !isRecord(raw.arguments)) {
         return { ok: false, error: 'malformed call' };

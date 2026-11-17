@@ -3,14 +3,21 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette and agent share the mounted commands, host callbacks and live prerequisites. */
+import { operationTools, OPERATION_SPECS } from './operation-tools';
+import { screenshotTools, SCREENSHOT_SPECS } from './viewport-screenshot-tool';
+import { modelOpenTools, MODEL_OPEN_SPECS } from './model-open-tools';
+import { assertGranted, boundedString, integer, invalid, keys } from './tool-args';
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { getAgentCommandHost } from '@/lib/agent-bridge/command-host';
 import type { Command } from '@/components/viewer/commandPaletteSearch';
 import { resolveRef } from './refs';
-import { assertDispatchActive } from './cancellation';
-import type { AgentInputSchema, AgentTool, ToolCallContext, ToolOutput } from './types';
+import { nearestIds, rankSearch, type SearchFields } from './operations/discovery-search';
+import type { AgentInputSchema, AgentTool, ToolOutput } from './types';
 
 export const VIEWER_COMMAND_SPECS = {
+  ...OPERATION_SPECS,
+  ...SCREENSHOT_SPECS,
+  ...MODEL_OPEN_SPECS,
   viewer_select: {
     description: 'Replace the native viewer selection with express_ids from one model. Validates every entity before changing either selection channel. Use query_entities to find ids, then run frame/hide/basket commands. An empty array clears selection. Requires commands and edits permission.',
     inputSchema: { type: 'object', properties: {
@@ -24,7 +31,7 @@ export const VIEWER_COMMAND_SPECS = {
     readOnly: true,
   },
   viewer_commands: {
-    description: 'Discover the live viewer command palette. Search by task, then inspect an exact command_id. Returns availability and no-argument input schemas. Commands launch native actions or interactive panels; opening a panel does not perform its workflow. Call again after changing selection or viewer state.',
+    description: 'Discover the live viewer command palette. Search by natural-language task (ranked), then inspect an exact command_id. Returns availability and no-argument input schemas. Commands launch native actions or interactive panels; opening a panel does not perform its workflow. Call again after changing selection or viewer state.',
     inputSchema: { type: 'object', properties: {
       query: { type: 'string', maxLength: 200 },
       command_id: { type: 'string', maxLength: 300 },
@@ -42,9 +49,7 @@ export const VIEWER_COMMAND_SPECS = {
   },
 } as const;
 
-function invalid(message: string): never {
-  throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message });
-}
+const commandFields = (command: Command): SearchFields => ({ primary: [command.id, command.label, command.category], secondary: [command.keywords] });
 
 function commands(): readonly Command[] {
   const host = getAgentCommandHost();
@@ -63,34 +68,12 @@ function unavailable(command: Command): string | undefined {
   return availability.status === 'disabled' ? availability.reasonKey : undefined;
 }
 
-function boundedString(args: Record<string, unknown>, key: string, max: number): string | undefined {
-  const value = args[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== 'string' || !value.trim() || value.length > max) invalid(`${key} must be a nonempty string of at most ${max} characters.`);
-  return value;
-}
-
-function keys(args: Record<string, unknown>, allowed: readonly string[]): void {
-  if (Object.keys(args).some(key => !allowed.includes(key))) invalid('Unknown argument. Use the tool input schema.');
-}
-
-function integer(args: Record<string, unknown>, key: string, fallback: number, max: number): number {
-  const value = args[key] === undefined ? fallback : args[key];
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < (key === 'limit' ? 1 : 0) || value > max) invalid(`Invalid ${key}.`);
-  return value;
-}
-
 function output(structured: unknown): ToolOutput { return { structured, text: JSON.stringify(structured) }; }
 
-function assertGranted(ctx: ToolCallContext): void {
-  assertDispatchActive(ctx.signal);
-  if (!ctx.canEdit?.()) throw new ToolExecutionError({
-    code: ToolErrorCode.READ_ONLY,
-    message: 'The tab has not allowed palette commands and edits. The user must enable them in the local agent connection panel.',
-  });
-}
-
 export const viewerCommandTools: Record<keyof typeof VIEWER_COMMAND_SPECS, AgentTool> = {
+  ...operationTools,
+  ...screenshotTools,
+  ...modelOpenTools,
   viewer_select: { needs: 'store', async run(_host, model, args, ctx) {
     assertGranted(ctx);
     keys(args, ['model_id', 'express_ids']);
@@ -107,14 +90,19 @@ export const viewerCommandTools: Record<keyof typeof VIEWER_COMMAND_SPECS, Agent
   } },
   viewer_commands: { needs: 'none', async run(_host, args) {
     keys(args, ['query', 'command_id', 'offset', 'limit']);
-    const query = boundedString(args, 'query', 200)?.toLowerCase();
+    const query = boundedString(args, 'query', 200, true) ?? '';
     const id = boundedString(args, 'command_id', 300);
-    const offset = integer(args, 'offset', 0, Number.MAX_SAFE_INTEGER);
-    const limit = integer(args, 'limit', 25, 50);
-    const matches = commands().filter(command => (!id || command.id === id)
-      && (!query || `${command.id} ${command.label} ${command.keywords} ${command.category}`.toLowerCase().includes(query)));
+    const offset = integer(args, 'offset', 0, 0, Number.MAX_SAFE_INTEGER);
+    const limit = integer(args, 'limit', 25, 1, 50);
+    const all = commands();
+    // An exact command_id inspects that command; query only ranks a search.
+    const matches = id ? all.filter(command => command.id === id)
+      : rankSearch(all, query, commandFields);
+    const hint = matches.length ? undefined : id
+      ? `Unknown command_id. Nearest: ${nearestIds(all, id, commandFields, command => command.id).join(', ') || 'none'}.`
+      : `No command matched. Try task words or a category: ${[...new Set(all.map(command => command.category))].join(', ')}. Omit query to list all.`;
     return output({ total: matches.length, offset,
-      next_offset: offset + limit < matches.length ? offset + limit : null,
+      next_offset: offset + limit < matches.length ? offset + limit : null, ...(hint ? { hint } : {}),
       commands: matches.slice(offset, offset + limit).map(command => {
         const reason = unavailable(command);
         return { command_id: command.id, label: command.label, category: command.category,

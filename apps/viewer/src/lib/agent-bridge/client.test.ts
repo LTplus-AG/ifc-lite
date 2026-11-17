@@ -114,6 +114,8 @@ function call(socket: FakeSocket, id: string, name = 'count_entities', args: Rec
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+const textOf = (block: BridgeResultMessage['result']['content'][number]): string => (block.type === 'text' ? block.text : '');
+
 /** A dispatch that waits for its signal, recording what it saw. */
 function blockingDispatch() {
   const seen: { name: string; signal: AbortSignal; resolve: (outcome: ToolOutcome) => void }[] = [];
@@ -287,7 +289,7 @@ describe('local agent bridge client: calls (#9523)', () => {
     await flush();
     const result = h.socket().results()[0].result;
     assert.ok(new TextEncoder().encode(JSON.stringify(result)).byteLength <= 50_000, 'the result fits the limit');
-    const text = String(result.content[0].text);
+    const text = textOf(result.content[0]);
     assert.match(text, /\[Truncated by the viewer: the full result \(\d+ bytes\) is more than the bridge accepts/);
     assert.ok(text.startsWith('xxxx'), 'it keeps the start of the text');
     assert.equal((result.structuredContent as { truncated: boolean }).truncated, true);
@@ -307,8 +309,8 @@ describe('local agent bridge client: calls (#9523)', () => {
     await flush();
     const results = h.socket().results();
     assert.deepEqual(results.map((r) => r.id), ['big', 'deep'], 'both frames pass parseTabMessage');
-    assert.match(String(results[0].result.content[0].text), /result is \d+ bytes; the limit is 4194304/);
-    assert.match(String(results[1].result.content[0].text), /^deep\n\n\[Truncated by the viewer/);
+    assert.match(textOf(results[0].result.content[0]), /result is \d+ bytes; the limit is 4194304/);
+    assert.match(textOf(results[1].result.content[0]), /^deep\n\n\[Truncated by the viewer/);
   });
 
   it('the activity log has tool, model, duration and outcome, never arguments or results', async () => {

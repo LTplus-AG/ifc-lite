@@ -352,11 +352,11 @@ const AGENT_BRIDGE_TAILS = new Set(('row.title row.description row.connect dialo
   + 'ended.bridgeShutdown ended.connectionLost ended.pageHidden dialog.unverified dialog.target dialog.replaces '
   + 'failure.framed ended.flooded row.showActivity row.hideActivity failure.permissionPrompt dialog.permissionWait '
   + 'chip.connectedEdits panel.sinceEdits panel.allowEdits panel.allowEditsHint panel.editsCeiling panel.edit panel.editChange '
-  + 'panel.editDeleted panel.editUnchanged').split(' '));
+  + 'panel.editDeleted panel.editUnchanged panel.repeated').split(' '));
 const AGENT_BRIDGE_PARAMETERS: Record<string, readonly string[]> = {
   'dialog.reads': ['port'], 'dialog.target': ['port'], 'dialog.replaces': ['port'], 'panel.since': ['port', 'time'], 'panel.error': ['code'], 'panel.duration': ['ms'],
   'failure.unreachable': ['port'], 'failure.origin': ['origin'], 'panel.sinceEdits': ['port', 'time'], 'panel.editChange': ['after', 'before', 'entity', 'field'],
-  'panel.editDeleted': ['before', 'entity', 'field'], 'panel.editUnchanged': ['after', 'entity', 'field'],
+  'panel.editDeleted': ['before', 'entity', 'field'], 'panel.editUnchanged': ['after', 'entity', 'field'], 'panel.repeated': ['count'],
 };
 
 export function lazyMessageParameters(key: string): readonly string[] | null {

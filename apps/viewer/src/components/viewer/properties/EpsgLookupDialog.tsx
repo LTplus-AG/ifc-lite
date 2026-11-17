@@ -9,13 +9,10 @@
  * and works offline once the bundle is loaded.
  */
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Search, Globe } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
-import {
-  lookupEpsgByCode,
-  searchEpsgIndex,
-} from '@ifc-lite/data';
+import { searchViewerEpsg } from './epsg-search';
 import {
   Dialog,
   DialogContent,
@@ -29,7 +26,7 @@ import { Button } from '@/components/ui/button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { EpsgLookupError } from './EpsgLookupError';
 
-import { MAX_STARTER_RESULTS, COMMON_CRS, getStarterResults, toDialogResult, writeRecentCode, type EpsgResult } from './epsg-lookup-results';
+import { MAX_STARTER_RESULTS, COMMON_CRS, getStarterResults, writeRecentCode, type EpsgResult } from './epsg-lookup-results';
 export type { EpsgResult } from './epsg-lookup-results';
 
 // ── Dialog component ───────────────────────────────────────────────────
@@ -64,27 +61,13 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
     setErrorKey(null);
   }, []);
 
-  const localIndex = useMemo(
-    () => COMMON_CRS.map(crs => ({ ...crs, _s: `${crs.code} ${crs.name} ${crs.area} ${crs.datum ?? ''} ${crs.projection ?? ''}`.toLowerCase() })),
-    [],
-  );
-
   const search = useCallback(async (searchQuery: string) => {
     const trimmed = searchQuery.trim();
     if (!trimmed) {
       return;
     }
 
-    const queryLower = trimmed.toLowerCase();
-    const isCode = /^\d+$/.test(trimmed);
-    const localMatches = localIndex
-      .filter(c => isCode ? c.code.startsWith(trimmed) : c._s.includes(queryLower))
-      .slice(0, 10);
-
-    if (localMatches.length > 0) {
-      setResults(localMatches);
-    }
-
+    let localMatches: EpsgResult[] = [];
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -92,24 +75,9 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
     setErrorKey(null);
 
     try {
-      const resolved = isCode
-        ? await lookupEpsgByCode(trimmed, { prefix: true, limit: 25 })
-        : await searchEpsgIndex(trimmed, { limit: 25 });
-      if (controller.signal.aborted) return;
-
-      const authoritativeMatches = Array.isArray(resolved) ? resolved : resolved ? [resolved] : [];
-      const dedupedResults: EpsgResult[] = [];
-      const seenCodes = new Set<string>();
-      for (const candidate of [
-        ...localMatches.map(result => ({ code: result.code, result })),
-        ...authoritativeMatches.map(entry => ({ code: entry.code, result: toDialogResult(entry) })),
-      ]) {
-        if (seenCodes.has(candidate.code)) continue;
-        seenCodes.add(candidate.code);
-        dedupedResults.push(candidate.result);
-        if (dedupedResults.length >= 25) break;
-      }
-
+      const dedupedResults = await searchViewerEpsg(trimmed, controller.signal, matches => {
+        localMatches = matches; if (matches.length > 0) setResults(matches);
+      });
       if (dedupedResults.length > 0) {
         setResults(dedupedResults);
         setErrorKey(null);
@@ -126,7 +94,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [localIndex]);
+  }, []);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;

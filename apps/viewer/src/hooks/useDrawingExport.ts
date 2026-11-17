@@ -2,16 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { useMemo } from 'react';
 import { resolvedElementTags, elementTagsSvg } from '@/lib/drawing/element-tags';
 import { escapeTagXml as escapeXml, elementTagsDxf, drawElementTagsPdf } from '@/lib/drawing/element-tag-export';
-import { useCallback } from 'react';
 import { buildDxfUnderlaySvg, drawDxfUnderlaysPdf, mappedDxfUnderlayOptions } from '@/lib/export/drawing-vector-underlays';
 import { drawingReferenceSvg, snapshotDrawingReferences, rasterizeReferenceLayer } from '@/lib/export/drawing-raster-references';
 import type React from 'react';
 import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type UseTranslationResult } from '@/i18n';
 import { recordActivity } from '@/lib/activity/activity-journal';
 import { pdfLineStyleFor } from '@/lib/export/pdf-line-style';
 import {
@@ -21,12 +21,9 @@ import {
   exportToDXF,
   formatScaleFactorLabel,
   makeEntityKey, isPolygonCutLine,
-  fitRasterPixels,
-  type RasterFit,
   type Drawing2D,
   type DrawingSheet,
   type TitleBlockExtras,
-  type PdfScaleLayout,
 } from '@ifc-lite/drawing-2d';
 import { computePdfSectionLayout, makeSectionMapPoint } from '@/hooks/pdfSectionLayout';
 import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
@@ -40,7 +37,9 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { buildDxfExportTransform, resolveDxfExportGeoreference } from '@/hooks/dxfExportGeoref';
-import { downloadDxf } from '@/hooks/dxfDownload';
+import { createDxfDownload } from '@/hooks/dxfDownload';
+import { rasterizeSvgToPngDataUrl, SHEET_PDF_DPI } from './drawing-svg-raster';
+export { rasterizeSvgToPngDataUrl, SHEET_PDF_DPI, MAX_SHEET_RASTER_PIXELS, MAX_SHEET_RASTER_DIMENSION_PX } from './drawing-svg-raster';
 import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMath';
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
@@ -49,7 +48,7 @@ import { drawCutPolygonsPdf, isPagePoint, prepareCutPolygonsPdf, type PdfCutPoly
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
 import { boundsWithDimensions, dimensionsToSvg, drawDimensionsPdf } from '@/lib/export/dimension-export';
-import { noticeOtherCutDimensionsLeftOut, useExportDimensionGraphics } from '@/hooks/useExportDimensions';
+import { noticeOtherCutDimensionsLeftOut, useExportDimensionGraphics, type ExportDimensionGraphics } from '@/hooks/useExportDimensions';
 
 function tryDrawingSvg(generate: () => string | null): string | null {
   try { return generate(); }
@@ -85,144 +84,7 @@ function buildScanSectionSvg(
   return svg;
 }
 
-/**
- * Dots per inch of paper the sheet raster is built at.
- *
- * Fixed, with no UI control anywhere: `handleExportPDF` is a single toolbar
- * action. That is why the ceiling below CAPS rather than REFUSES — a refusal
- * would have no setting to send the user to, and the sheet's paper size is
- * the deliverable, not a preference.
- */
-export const SHEET_PDF_DPI = 300;
-
-/**
- * Pixel budget for one sheet raster, taken from WebKit's own canvas cap
- * rather than picked as a round number: `CanvasBase::maxCanvasArea()`
- * (Source/WebCore/html/CanvasBase.cpp) returns `8192 * 8192` on the iOS
- * family and `16384 * 16384` elsewhere. The lower of the two is the one that
- * has to hold, because a canvas over the cap does not report itself:
- * `CanvasBase::validateArea()` logs a console warning and returns false, the
- * canvas gets no backing store, `getContext('2d')` still returns a live
- * context, the paint calls become no-ops, and `toDataURL()` then returns the
- * literal string `"data:,"` — `encodeDataURL(RefPtr<ImageBuffer>&&)` in
- * Source/WebCore/platform/graphics/ImageUtilities.cpp returns `"data:,"_s`
- * for a null buffer. Nothing throws at any point.
- *
- * At {@link SHEET_PDF_DPI} that cap binds from ANSI D upwards. The papers
- * that need it are the big ones — ARCH E is 14400 x 10800 = 155,520,000 px
- * and A0 is 14043 x 9933 = 139,489,119 px, both far past even the desktop
- * cap's memory cost (155.5 Mpx x 4 bytes = 622 MB for the bitmap alone).
- *
- * NOT verified in any real browser. The value and the failure mode are read
- * off WebKit's source; Chrome's and Firefox's caps differ and are not
- * modelled, and Safari's separate TOTAL canvas-memory limit is a second
- * ceiling this budget cannot rule out — which is why the raster result is
- * validated below as well as sized.
- */
-export const MAX_SHEET_RASTER_PIXELS = 8192 * 8192;
-
-/**
- * Per-side cap: the side length WebKit's non-iOS area cap is expressed as,
- * and the same number `@ifc-lite/drawing-2d` already uses for the 3D-view
- * PDF's shaded underlay (`MAX_SHADING_DIMENSION_PX`). No registry paper
- * reaches it at {@link SHEET_PDF_DPI} (ARCH E's long side is 14400 px); it
- * exists for a custom paper size, which `DrawingSheet.paper` permits.
- */
-export const MAX_SHEET_RASTER_DIMENSION_PX = 16_384;
-
-/** A raster, plus what it cost to fit it inside the budget. */
-interface SheetRaster {
-  dataUrl: string;
-  fit: RasterFit;
-}
-
-/**
- * Rasterize an SVG string to a PNG data URL, sized to exactly `widthMm` x
- * `heightMm` on paper (issues #2941/#2942). The sheet frame, title block and
- * scale bar only exist inside `generateSheetSVG` — SVG, Print and the
- * DXF-underlay path all render that exact string and the reporter confirmed
- * those are correct. Rather than re-deriving a second, independent sheet
- * layout for jsPDF's vector primitives (the "v1" PDF path below did exactly
- * that and dropped the frame/scale bar entirely, and used
- * `displayOptions.scale` instead of the sheet's own scale), rasterize the
- * SAME svg the working exporters use so the PDF cannot drift from them.
- *
- * The pixel grid comes from `fitRasterPixels`, the same helper the 3D-view
- * PDF's shaded underlay uses, so the two raster paths cannot drift into two
- * different cap policies. It scales BOTH sides by one factor, so a capped
- * sheet is blurrier and never mis-scaled: the caller still places the image
- * across the full paper rectangle in millimetres, never at `px / dpi`.
- *
- * `fit.capped` is returned rather than swallowed. A user who asked for a
- * 300 dpi sheet and silently got 104 is the same defect as a blank page, one
- * step quieter.
- */
-function rasterizeSvgToPngDataUrl(
-  svgString: string,
-  widthMm: number,
-  heightMm: number,
-  dpi = SHEET_PDF_DPI,
-): Promise<SheetRaster> {
-  return new Promise((resolve, reject) => {
-    const fit = fitRasterPixels(
-      widthMm,
-      heightMm,
-      dpi,
-      MAX_SHEET_RASTER_PIXELS,
-      MAX_SHEET_RASTER_DIMENSION_PX,
-    );
-    const { widthPx, heightPx } = fit;
-
-    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = widthPx;
-        canvas.height = heightPx;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Canvas 2D context unavailable');
-        // The sheet SVG already paints its own white background rect, but a
-        // canvas starts transparent — belt-and-braces against a transparent
-        // PDF page if that rect is ever clipped away.
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, widthPx, heightPx);
-        ctx.drawImage(img, 0, 0, widthPx, heightPx);
-
-        const dataUrl = canvas.toDataURL('image/png');
-        // The pixel budget above is necessary, not sufficient. Safari
-        // enforces a separate TOTAL canvas-memory limit, and any browser can
-        // fail a 100+ MB allocation on a low-memory device; in both cases the
-        // buffer is simply absent and this comes back as `"data:,"` with no
-        // exception raised. Handing that to `jsPDF.addImage` produces a
-        // decoder complaint about a PNG signature, which tells the user
-        // nothing they can act on — and if a browser ever returned a valid
-        // all-white PNG instead, the export would "succeed" with a blank
-        // page. Refuse the result here, naming the way out.
-        if (!dataUrl.startsWith('data:image/png')) {
-          throw new Error(
-            `the browser returned an empty ${widthPx}x${heightPx} px canvas for this ` +
-            `${Math.round(widthMm)}x${Math.round(heightMm)} mm sheet. Try a smaller paper ` +
-            `size, or use the SVG export, which is vector and has no pixel limit.`,
-          );
-        }
-        resolve({ dataUrl, fit });
-      } catch (err) {
-        reject(err instanceof Error ? err : new Error('Failed to rasterize sheet SVG'));
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Failed to load sheet SVG for PDF export'));
-    };
-    img.src = url;
-  });
-}
-
-interface UseDrawingExportParams {
+export interface UseDrawingExportParams {
   drawing: Drawing2D | null;
   displayOptions: {
     showHiddenLines: boolean;
@@ -260,7 +122,11 @@ interface UseDrawingExportParams {
   cachedSheetTransformRef?: React.MutableRefObject<CachedSheetTransform | null>;
 }
 
-interface UseDrawingExportResult {
+export interface NativeDrawingArtifact { blob: Blob; filename: string; warnings: string[] }
+export interface UseDrawingExportResult {
+  createSvgArtifact(): NativeDrawingArtifact;
+  createDxfArtifact(): NativeDrawingArtifact;
+  createPdfArtifact(scaleFactor?: number): Promise<NativeDrawingArtifact>;
   getExportDimensionGraphics: (paperScale: number) => ReturnType<ReturnType<typeof useExportDimensionGraphics>>;
   formatDistance: (distance: number) => string;
   handleExportSVG: () => void;
@@ -274,7 +140,7 @@ interface UseDrawingExportResult {
   handlePrint: () => void;
 }
 
-function useDrawingExport({
+export function createDrawingExport({
   drawing,
   displayOptions,
   sectionPlane,
@@ -282,7 +148,6 @@ function useDrawingExport({
   entityColorMap,
   overridesEnabled,
   overrideEngine,
-  measure2DResults,
   polygonArea2DResults,
   textAnnotations2D,
   cloudAnnotations2D,
@@ -294,33 +159,29 @@ function useDrawingExport({
   scanSection,
   isPinned = false,
   cachedSheetTransformRef,
-}: UseDrawingExportParams): UseDrawingExportResult {
-  const { t } = useTranslation();
+}: UseDrawingExportParams, services: { t: UseTranslationResult['t']; dimensionGraphicsAt: ExportDimensionGraphics; warn?: (message: string) => void }): UseDrawingExportResult {
+  const { t, dimensionGraphicsAt } = services;
   // Georef inputs for the DXF export (PR #1871 review, P1): placement edits
   // applied in CesiumPlacementEditor live in `georefMutations` (per model
   // id), not in `ifcDataStore`, and in a federation the georef frame is the
   // ANCHOR model's, not necessarily the legacy store's. Subscribe to the
   // same store fields ViewportContainer's Cesium georef memo reads so
   // `resolveDxfExportGeoreference` sees the identical inputs.
-  const storeModels = useViewerStore((s) => s.models);
-  const anchorModelIdOverride = useViewerStore((s) => s.anchorModelIdOverride);
-  const georefMutations = useViewerStore((s) => s.georefMutations);
+  const { models: storeModels, anchorModelIdOverride, georefMutations } = useViewerStore.getState();
   // Georef edits replace the map, but subscribe to mutationVersion too so the
   // dependency is explicit (matches ViewportContainer / useAnchorGeoreference).
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const dimensionGraphicsAt = useExportDimensionGraphics(measure2DResults); // on the current cut only
 
   // One properties cache per export, shared by every cut polygon it styles.
-  const cutPolygonStyleContext = useCallback((): CutPolygonStyleContext => ({
+  const cutPolygonStyleContext = (): CutPolygonStyleContext => ({
     useIfcMaterials: activePresetId === 'preset-3d-colors',
     entityColorMap,
     overridesEnabled,
     overrideEngine,
     getElementProperties: makePropertiesGetter(storeModels, ifcDataStore),
-  }), [activePresetId, entityColorMap, overridesEnabled, overrideEngine, storeModels, ifcDataStore]);
+  });
 
   // Generate SVG that matches the canvas rendering exactly
-  const generateExportSVG = useCallback((): string | null => {
+  const generateExportSVG = (): string | null => {
     if (!drawing) return null;
 
     const { bounds } = drawing;
@@ -578,11 +439,11 @@ function useDrawingExport({
     svg += dimensionsToSvg(dims, (x, y) => ({ x: flipX ? -x : x, y: flipY ? -y : y }), mmToModel);
     svg += '</svg>';
     return svg;
-  }, [drawing, displayOptions, cutPolygonStyleContext, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection, dimensionGraphicsAt]);
+  };
 
   // Generate SVG with drawing sheet (frame, title block, scale bar)
   // This generates coordinates directly in paper mm space (like the canvas rendering)
-  const generateSheetSVG = useCallback((): string | null => {
+  const generateSheetSVG = (): string | null => {
     if (!drawing || !activeSheet) return null;
 
     const { bounds } = drawing;
@@ -794,26 +655,22 @@ function useDrawingExport({
 
     svg += '</svg>';
     return svg;
-    // `sectionPlane.axis` and `isPinned` are read INSIDE this callback (via
-    // `resolveSheetTransform`) and so must be here. Both were previously
-    // held up only by invariants elsewhere — `drawing` happens to change
-    // identity when the axis changes, and the canvas rewrote the cache on
-    // every fresh draw — neither of which this callback controls.
-    // `cachedSheetTransformRef` is a ref: stable identity, read at call time.
-  }, [drawing, activeSheet, displayOptions, cutPolygonStyleContext, dxfUnderlays, scanSection, sectionPlane.axis, isPinned, dimensionGraphicsAt]);
-  // Export SVG
-  const handleExportSVG = useCallback(() => {
-    // Use sheet export if enabled, otherwise raw drawing export
-    const svg = tryDrawingSvg(() => (sheetEnabled && activeSheet) ? generateSheetSVG() : generateExportSVG());
-    if (!svg) return;
-    const stem = (sheetEnabled && activeSheet)
+  };
+  const createSvgArtifact = (): NativeDrawingArtifact => {
+    const svg = sheetEnabled && activeSheet ? generateSheetSVG() : generateExportSVG();
+    if (!svg) throw new Error('No completed native drawing is available.');
+    const stem = sheetEnabled && activeSheet
       ? `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`
       : `section-${sectionPlane.axis}-${sectionPlane.position}`;
-    downloadFile(svg, `${stem}.svg`, 'image/svg+xml');
+    return { blob: new Blob([svg], { type: 'image/svg+xml' }), filename: `${stem}.svg`, warnings: [] };
+  };
+  const handleExportSVG = () => {
+    try { const artifact = createSvgArtifact(); downloadFile(artifact.blob, artifact.filename, 'image/svg+xml'); }
+    catch (error) { toast.error(error instanceof Error ? error.message : String(error)); return; }
     trackExportCompleted({ format: 'svg', surface: 'drawing_panel' });
     posthog.capture('drawing_exported', { format: 'svg', axis: sectionPlane.axis, sheet_enabled: sheetEnabled });
     noticeOtherCutDimensionsLeftOut(t);
-  }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane, t]);
+  };
   // Export DXF (issue #1861). Unlike SVG, DXF has no paper space, so this
   // always exports the raw model-space drawing (sheet frame/title block are
   // not represented) — real-world metres, with a plan ('down') section
@@ -823,9 +680,9 @@ function useDrawingExport({
   // The point-cloud scan overlay (issue #1805) is likewise deliberately
   // excluded: it is a raster-like screen aid (tens of thousands of circles),
   // not vector content — SVG export carries it (opt-in) instead.
-  const getExportDimensionGraphics = useCallback((paperScale: number) => dimensionGraphicsAt(paperScale, sectionPlane.axis), [dimensionGraphicsAt, sectionPlane.axis]);
-  const handleExportDXF = useCallback(() => {
-    if (!drawing) return;
+  const getExportDimensionGraphics = (paperScale: number) => dimensionGraphicsAt(paperScale, sectionPlane.axis);
+  const createDxfArtifact = (): NativeDrawingArtifact => {
+    if (!drawing) throw new Error('No completed native drawing is available.');
     const isCustomPlane = sectionPlane.custom !== undefined;
     // Anchor-model effective georef, INCLUDING user placement edits
     // (georefMutations) — see resolveDxfExportGeoreference's docs. The
@@ -864,17 +721,16 @@ function useDrawingExport({
       dimensions: dimensionGraphicsAt(displayOptions.scale, sectionPlane.axis),
     });
     const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
-    downloadDxf(dxf, `${stem}.dxf`);
+    const artifact = createDxfDownload(dxf, `${stem}.dxf`);
+    const warnings = artifact.hadUnmappable ? ['Some characters have no DXF R12 text encoding and were exported as "?".'] : [];
+    for (const message of warnings) services.warn?.(message);
+    return { blob: artifact.blob, filename: artifact.filename, warnings: [...warnings] };
+  };
+  const handleExportDXF = () => {
+    try { const artifact = createDxfArtifact(); downloadFile(artifact.blob, artifact.filename, 'application/dxf'); }
+    catch (error) { toast.error(error instanceof Error ? error.message : String(error)); return; }
     trackExportCompleted({ format: 'dxf', surface: 'drawing_panel' });
-    posthog.capture('drawing_exported', {
-      format: 'dxf',
-      axis: sectionPlane.axis,
-      georeferenced: isGeoreferenced,
-    });
-  }, [
-    drawing, dxfUnderlays, displayOptions.scale, displayOptions.showHiddenLines, displayOptions.showScanSection, scanSection.outline,
-    sectionPlane, ifcDataStore, coordinateInfo, storeModels, anchorModelIdOverride, georefMutations, mutationVersion, dimensionGraphicsAt,
-  ]);
+  };
   // Export scaled PDF (issue #2042): a true-vector PDF sized so the
   // requested scale ("1:N") is EXACT — the page itself is sized to the
   // drawing extent + margin (via computePdfScaleLayout) rather than fit
@@ -899,8 +755,10 @@ function useDrawingExport({
   // `lib/lists/export/pdf.ts` writes a Lists/schedule report through
   // `jspdf-autotable` with no `addImage` at all. That is a table, not a
   // drawing. The 3D view export, `lib/export/view-pdf/`, IS a raster.)
-  const handleExportPDF = useCallback((scaleFactor?: number) => {
-    if (!drawing) return;
+  const createPdfArtifact = async (scaleFactor?: number, deliver?: (artifact: NativeDrawingArtifact) => void): Promise<NativeDrawingArtifact> => {
+    const warnings: string[] = [];
+    const warn = (message: string) => { warnings.push(message); services.warn?.(message); };
+    if (!drawing) throw new Error('No completed native drawing is available.');
 
     // Drawing Sheet mode (#2941: frame/title block/scale bar missing from
     // the PDF; #2942: nothing in the PDF is to scale). Root cause for both:
@@ -931,14 +789,10 @@ function useDrawingExport({
     // PDF that is not the sheet and is not to scale" vs "the correct sheet
     // at the correct scale, rasterized". Correctness won.
     //
-    // Vector would require re-deriving the whole sheet — frame, title
-    // block, scale bar, north arrow, and the drawing transform — against
-    // jsPDF's own primitives, because no SVG-import plugin is installed
-    // (apps/viewer depends on `jspdf` and `jspdf-autotable`; there is no
-    // `svg2pdf.js`). That is a second, independent implementation of
-    // `generateSheetSVG` that would then have to be kept in step with it —
-    // exactly the drift the v1 path already demonstrated. It is a real
-    // follow-up, not a hidden cost.
+    // This shared producer preserves the established native raster sheet.
+    // Converting its complete layout to vector is a separate output change
+    // that needs its own sheet/scale oracle, rather than part of exposing
+    // the existing exporter to another caller.
     //
     // The route for a user who needs vector today is the SVG export, which
     // is not an approximation of this: `handleExportSVG` above emits the
@@ -950,10 +804,10 @@ function useDrawingExport({
     // vector — see `useDrawingExport.pdfVectorPaths.test.tsx`, which pins
     // both halves of that split.
     if (sheetEnabled && activeSheet) {
-      const svg = tryDrawingSvg(generateSheetSVG);
-      if (!svg) return;
+      const svg = generateSheetSVG();
+      if (!svg) throw new Error('No completed native sheet is available.');
       const { widthMm, heightMm } = activeSheet.paper;
-      void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
+      return recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
         subject: `${activeSheet.name} · PDF` }, async () => {
           const { jsPDF } = await import('jspdf');
           const { dataUrl, fit } = await rasterizeSvgToPngDataUrl(svg, widthMm, heightMm);
@@ -972,7 +826,7 @@ function useDrawingExport({
             // 300" under rounding, which reads as a no-op notice, and
             // overstating the resolution delivered is the direction that
             // misleads.
-            toast.info(
+            warn(
               `Sheet rasterized at ${Math.floor(fit.effectiveDpi)} dpi instead of ` +
               `${SHEET_PDF_DPI} — a ${Math.round(widthMm)}x${Math.round(heightMm)} mm sheet ` +
               `exceeds the browser's canvas limit at full resolution. Use the SVG export ` +
@@ -981,7 +835,7 @@ function useDrawingExport({
           }
 
           const stem = `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`;
-          downloadFile(doc.output('blob'), `${stem}.pdf`, 'application/pdf');
+          const artifact = { blob: doc.output('blob'), filename: `${stem}.pdf`, warnings: [...warnings] };
           trackExportCompleted({ format: 'pdf', surface: 'drawing_panel' });
           posthog.capture('drawing_exported', {
             format: 'pdf',
@@ -993,10 +847,9 @@ function useDrawingExport({
             raster_dpi: Math.floor(fit.effectiveDpi),
             raster_capped: fit.capped,
           });
-      }).catch((err: unknown) => {
-        toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
+          deliver?.(artifact);
+          return artifact;
       });
-      return;
     }
 
     const effectiveScale = scaleFactor ?? displayOptions.scale ?? 100;
@@ -1010,29 +863,18 @@ function useDrawingExport({
     // coordinates (showstopper found on PR #2119).
     const currentAxis = sectionPlane.axis;
     const dimensionSnapshot = dimensionGraphicsAt(effectiveScale, currentAxis);
-    let layout: PdfScaleLayout;
-    try {
-      layout = computePdfSectionLayout(boundsWithDimensions(drawing.bounds, dimensionSnapshot), currentAxis, effectiveScale, 10);
-    } catch (err) {
-      toast.error(err instanceof Error ? t('section2d.export.invalidScaleDetail', { error: err.message }) : t('section2d.export.invalidScale'));
-      return;
-    }
+    const layout = computePdfSectionLayout(boundsWithDimensions(drawing.bounds, dimensionSnapshot), currentAxis, effectiveScale, 10);
     const mapPoint = makeSectionMapPoint(currentAxis, layout);
 
     // Prepared before the reference snapshot is taken, so a throw here cannot
     // strand it.
-    let cutPolygons: PdfCutPolygon[];
-    try { cutPolygons = prepareCutPolygonsPdf(drawing.cutPolygons, cutPolygonStyleContext(), mapPoint); }
-    catch (error) { toast.error(error instanceof Error ? t('section2d.export.pdfFailed', { error: error.message }) : t('section2d.export.pdfFailedGeneric')); return; }
-
-    let referenceSnapshot: ReturnType<typeof snapshotDrawingReferences>;
-    try { referenceSnapshot = snapshotDrawingReferences(useViewerStore.getState(), drawing.config.plane); }
-    catch (error) { toast.error(error instanceof Error ? error.message : t('section2d.export.pdfFailedGeneric')); return; }
+    const cutPolygons = prepareCutPolygonsPdf(drawing.cutPolygons, cutPolygonStyleContext(), mapPoint);
+    const referenceSnapshot = snapshotDrawingReferences(useViewerStore.getState(), drawing.config.plane);
     // Own mapped vectors at click time; model/reference edits during async export
     // cannot replace the geometry whose bounds/scale were used above.
     const vectorSnapshot = structuredClone(dxfUnderlays);
     const tagSnapshot = resolvedElementTags(drawing);
-    void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
+    return recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
       subject: `section-${sectionPlane.axis}-${sectionPlane.position} · PDF` }, async () => {
       try {
         const { jsPDF } = await import('jspdf');
@@ -1100,21 +942,26 @@ function useDrawingExport({
         // formatting (round to 2dp, strip trailing zeros) instead of
         // re-deriving it.
         const stem = `section-${sectionPlane.axis}-${sectionPlane.position}-1-${formatScaleFactorLabel(effectiveScale)}`;
-        downloadFile(doc.output('blob'), `${stem}.pdf`, 'application/pdf');
+        const artifact = { blob: doc.output('blob'), filename: `${stem}.pdf`, warnings: [...warnings] };
         trackExportCompleted({ format: 'pdf', surface: 'drawing_panel' });
         posthog.capture('drawing_exported', {
           format: 'pdf',
           axis: sectionPlane.axis,
           scale_factor: effectiveScale,
         });
+        deliver?.(artifact);
+        return artifact;
       } finally { referenceSnapshot.release(); }
-    }).catch((err: unknown) => {
-      toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
     });
-  }, [drawing, dxfUnderlays, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG, cutPolygonStyleContext, dimensionGraphicsAt, t]);
+  };
+
+  const handleExportPDF = (scaleFactor?: number) => {
+    void createPdfArtifact(scaleFactor, artifact => downloadFile(artifact.blob, artifact.filename, 'application/pdf'))
+      .catch((error: unknown) => toast.error(error instanceof Error ? t('section2d.export.pdfFailed', { error: error.message }) : t('section2d.export.pdfFailedGeneric')));
+  };
 
   // Print handler
-  const handlePrint = useCallback(() => {
+  const handlePrint = () => {
     // Use sheet export if enabled, otherwise raw drawing export
     const svg = tryDrawingSvg(() => (sheetEnabled && activeSheet) ? generateSheetSVG() : generateExportSVG());
     if (!svg) return;
@@ -1180,9 +1027,10 @@ function useDrawingExport({
     `);
     printWindow.document.close();
     noticeOtherCutDimensionsLeftOut(t);
-  }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane, t]);
+  };
 
   return {
+    createSvgArtifact, createDxfArtifact, createPdfArtifact,
     getExportDimensionGraphics,
     formatDistance,
     handleExportSVG,
@@ -1192,5 +1040,17 @@ function useDrawingExport({
   };
 }
 
+function useDrawingExport(params: UseDrawingExportParams): UseDrawingExportResult {
+  const { t } = useTranslation();
+  const models = useViewerStore(s => s.models); const anchor = useViewerStore(s => s.anchorModelIdOverride);
+  const georef = useViewerStore(s => s.georefMutations); const revision = useViewerStore(s => s.mutationVersion);
+  const dimensionGraphicsAt = useExportDimensionGraphics(params.measure2DResults);
+  return useMemo(() => createDrawingExport(params, { t, dimensionGraphicsAt, warn: message => toast.info(message) }), [
+    t, dimensionGraphicsAt, models, anchor, georef, revision, params.drawing, params.displayOptions, params.sectionPlane,
+    params.activePresetId, params.entityColorMap, params.overridesEnabled, params.overrideEngine, params.measure2DResults,
+    params.polygonArea2DResults, params.textAnnotations2D, params.cloudAnnotations2D, params.sheetEnabled, params.activeSheet,
+    params.dxfUnderlays, params.ifcDataStore, params.coordinateInfo, params.scanSection, params.isPinned, params.cachedSheetTransformRef,
+  ]);
+}
 export { useDrawingExport };
 export default useDrawingExport;

@@ -33,6 +33,8 @@ export interface CallRunnerOptions {
   sessionId: string;
   limits: CallLimits;
   maxResultBytes: number;
+  /** The bridge's welcome listed `image-content`: outcome images are sent as image blocks. */
+  imageContent: boolean;
   now: () => number;
   dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutcome>;
   modelIdFor?(args: Record<string, unknown>): string | null;
@@ -175,7 +177,7 @@ export class CallRunner {
   private reply(call: BridgeCallMessage, outcome: ToolOutcome): void {
     if (!this.live()) return;
     try {
-      const frame = buildResultFrame(this.opts.sessionId, call.id, toCallToolResult(outcome), this.opts.maxResultBytes);
+      const frame = buildResultFrame(this.opts.sessionId, call.id, toCallToolResult(outcome, this.opts.imageContent), this.opts.maxResultBytes);
       if (frame.truncated) warn(`the result of ${call.name} was more than the bridge accepts and was truncated`);
       this.opts.send(frame.json);
     } catch (err) {

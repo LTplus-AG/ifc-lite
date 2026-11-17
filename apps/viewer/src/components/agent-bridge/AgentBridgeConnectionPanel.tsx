@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { getLocale, registerEnglish, useTranslation } from '@/i18n';
 import { formatLocaleDate } from '@/i18n/intlFormat';
 import { agentBridgeEn } from '@/i18n/catalogues/agent-bridge.en';
+import { useViewerStore } from '@/store';
 import {
   disconnectLiveAgentBridge, dismissAgentBridgeOutcome, requestAgentBridgeDialog, setLiveAgentBridgePermission,
   useAgentBridgeState, type AgentBridgeActivity, type AgentBridgeEdit, type AgentBridgeStatus,
@@ -43,6 +44,7 @@ function EditSummary({ edit }: { edit: AgentBridgeEdit }) {
 
 function ActivityRow({ entry }: { entry: AgentBridgeActivity }) {
   const { t } = useTranslation();
+  const modelName = useViewerStore((s) => (entry.modelId ? s.models.get(entry.modelId)?.name : undefined));
   const outcome = entry.outcome === 'ok' ? t('agentBridge.panel.ok')
     : entry.outcome === 'cancelled' ? t('agentBridge.panel.cancelled')
       : t('agentBridge.panel.error', { code: entry.errorCode ?? '' });
@@ -54,7 +56,10 @@ function ActivityRow({ entry }: { entry: AgentBridgeActivity }) {
           ? <Pencil className="h-3 w-3 shrink-0 self-center text-status-warn" aria-label={t('agentBridge.panel.edit')} />
           : null}
         <span className="min-w-0 flex-1 truncate font-mono">{entry.tool}</span>
-        <span className="max-w-24 truncate text-muted-foreground">{entry.modelId ?? t('agentBridge.panel.noModel')}</span>
+        {entry.count !== undefined && entry.count > 1 && <span className="tabular-nums text-muted-foreground" data-agent-bridge-activity-count>{t('agentBridge.panel.repeated', { count: entry.count })}</span>}
+        <span className="max-w-32 truncate text-muted-foreground" title={entry.modelId ?? undefined}>
+          {entry.modelId ? (modelName ?? entry.modelId) : t('agentBridge.panel.noModel')}
+        </span>
         <span className="tabular-nums text-muted-foreground">{t('agentBridge.panel.duration', { ms: Math.round(entry.durationMs) })}</span>
         <span className={cn(entry.outcome === 'error' && 'text-destructive')}>{outcome}</span>
       </span>

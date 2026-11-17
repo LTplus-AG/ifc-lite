@@ -23,7 +23,7 @@ import type { ToolHost } from '@/lib/agent-tools/types';
 import { BridgeClient, type BridgeClientOptions, type LocalNetworkPermission } from './client';
 import {
   AGENT_BRIDGE_ACTIVITY_LIMIT, getAgentBridgeState, registerAgentBridgeControls, updateAgentBridgeState,
-  type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
+  foldActivity, type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
 } from './state';
 import { isFramed } from './pairing-fragment';
 import { ENDED_KEYS } from './outcome-keys';
@@ -105,7 +105,7 @@ function flushActivity(): void {
   if (pendingRows.length === 0) return;
   const rows = pendingRows.reverse();
   pendingRows = [];
-  updateAgentBridgeState({ activity: [...rows, ...getAgentBridgeState().activity].slice(0, AGENT_BRIDGE_ACTIVITY_LIMIT) });
+  updateAgentBridgeState({ activity: foldActivity([...rows, ...getAgentBridgeState().activity]).slice(0, AGENT_BRIDGE_ACTIVITY_LIMIT) });
 }
 
 function resetActivity(): void {
@@ -127,7 +127,8 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
     return;
   }
   active?.disconnect();
-  const host = createMainViewerToolHost(useViewerStore, bim, { editor: createMainViewerEditor(useViewerStore) });
+  const lifetime = new AbortController();
+  const host = createMainViewerToolHost(useViewerStore, bim, { editor: createMainViewerEditor(useViewerStore), lifetimeSignal: lifetime.signal });
   resetActivity();
   updateAgentBridgeState({ activity: [] });
   let wasConnected = false;
@@ -143,6 +144,7 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
     WebSocket,
     probePermission: queryLocalNetworkPermission,
     onStatus: (status) => {
+      if (status.kind !== 'connected' && status.kind !== 'connecting') lifetime.abort();
       if (active !== client) return;
       if (status.kind !== 'connected' && status.kind !== 'connecting') flushActivity();
       updateAgentBridgeState({ status });

@@ -208,6 +208,23 @@ export interface Chart3DLink {
   selectionFor: (aggregation: Aggregation) => ChartSelection;
 }
 
+/** Native bucket selection shared by the chart click handler and automation. */
+export function selectNativeChartItems(aggregation: Aggregation, items: readonly ChartItem[], focusMode: ChartFocusMode): void {
+  const ids = [...idsForItems(aggregation, items)];
+  const buckets = items.flatMap((item): ChartBucketIdentity[] => {
+    const identity = chartBucketIdentity(aggregation, item); return identity ? [identity] : [];
+  });
+  selectChartIds(ids); presentChartIds(ids, focusMode);
+  const state = useViewerStore.getState();
+  state.setChartSlice(ids.length > 0 ? new Set(ids) : null, aggregation.spec.id, buckets, state.selectionRevision);
+  if (state.chartColorIn3D) state.registerOverlayLayer({ id: CHART_OVERLAY_LAYER_ID, priority: CHART_OVERLAY_PRIORITY, hiddenIds: null,
+    colorOverrides: chartColorOverrides(aggregation, ids.length ? new Set(ids) : null, focusMode, buckets) });
+}
+export function clearNativeChartSelection(): void {
+  const state = useViewerStore.getState(); state.clearEntitySelection(); state.setChartSlice(null);
+  releaseChartVisibility(); state.removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
+}
+
 export function useChart3DLink(): Chart3DLink {
   const focusMode = useViewerStore((s) => s.chartFocusMode);
   const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
@@ -216,23 +233,10 @@ export function useChart3DLink(): Chart3DLink {
   const chartSlice = useViewerStore((s) => s.chartSlice);
 
   const selectItems = useCallback((aggregation: Aggregation, items: readonly ChartItem[]) => {
-    const ids = [...idsForItems(aggregation, items)];
-    const buckets = items.flatMap((item): ChartBucketIdentity[] => {
-      const identity = chartBucketIdentity(aggregation, item);
-      return identity ? [identity] : [];
-    });
-    selectChartIds(ids);
-    presentChartIds(ids, focusMode);
-    const state = useViewerStore.getState();
-    state.setChartSlice(ids.length > 0 ? new Set(ids) : null, aggregation.spec.id, buckets, state.selectionRevision);
+    selectNativeChartItems(aggregation, items, focusMode);
   }, [focusMode]);
 
-  const clearSelection = useCallback(() => {
-    const state = useViewerStore.getState();
-    state.clearEntitySelection();
-    state.setChartSlice(null);
-    releaseChartVisibility();
-  }, []);
+  const clearSelection = useCallback(() => { clearNativeChartSelection(); }, []);
 
   const clearSelectionIfOwned = useCallback((sourceId: string, slice: Set<number>, buckets: readonly ChartBucketIdentity[]) => {
     const state = useViewerStore.getState();

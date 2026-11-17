@@ -3,6 +3,10 @@
     "value": "{ms} ms",
     "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
   },
+  "agentBridge.panel.repeated": {
+    "value": "×{count}",
+    "reason": "Runtime count with a multiplication sign; no English prose."
+  },
   "align.mode.centre": {
     "value": "Centre",
     "reason": "French uses the same spelling « Centre » for this contextual label; reviewed against its feature meaning."

@@ -57,6 +57,7 @@ import type { ScriptResult, SandboxConfig } from '@ifc-lite/sandbox';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { useViewerStore } from '@/store';
 import { SANDBOX_ABORT_MESSAGE } from '@/lib/sandboxAbort.js';
+import { cancelNativeScriptRun } from '@/lib/scripts/native-script-runner';
 import { useSandbox } from './useSandbox.js';
 
 const CONFIG: SandboxConfig = { limits: { memoryBytes: 64 * 1024 * 1024, timeoutMs: 10_000 } };
@@ -432,6 +433,17 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     const state = useViewerStore.getState();
     assert.equal(state.scriptLastResult, null, "the run must not publish over what reset() cleared");
     assert.equal(state.scriptLastError, null, "the run must not publish an error over what reset() cleared");
+  });
+
+  it('explicit native cancellation before sandbox creation prevents guest effects while ordinary supersession still drains (#10525)', async () => {
+    await act(async () => {
+      const pending = execute1!(GATED);
+      const epoch = useViewerStore.getState().scriptRunEpoch;
+      assert.equal(cancelNativeScriptRun(epoch), true);
+      assert.equal(await pending, null);
+      assert.equal(gates.length, 0, 'a cancelled preparation never enters the guest or starts its host effect');
+    });
+    assert.equal(useViewerStore.getState().scriptExecutionState, 'idle');
   });
 
   it("a second execute() on the SAME instance makes the first resolve null to its own caller", async () => {

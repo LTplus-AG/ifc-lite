@@ -378,7 +378,7 @@ describe('CausedBy beside a source Causes relationship #9668', () => {
 });
 
 // #9668 review (PR #10551): a varying action StructuralVarying leaves unconverted
-// (as generated_structural_coverage_ifc2x3.ifc #58: one aspect representation, three loads)
+// (one aspect representation for three loads, as generated_structural_coverage_ifc2x3.ifc #58 held before R12)
 // is no IFC4 product, so no 'Causes' relationship may name it.
 describe('CausedBy of an unconverted varying action #9668', () => {
   const geometry = `#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);

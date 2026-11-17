@@ -81,7 +81,8 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
     if (!open || !shareCandidate) return;
     const state = useViewerStore.getState();
     if (shareCandidate.mutationVersion !== state.mutationVersion || shareCandidate.geometryVersion !== state.geometryContentVersion || shareCandidate.roomId !== state.collabRoomId) { useCollabShareReview.setState({ candidate: null }); return; }
-    setScope(shareCandidate.scope); setRole(shareCandidate.role);
+    // Apply the agent's choice once; afterwards the dialog's own controls own scope and role.
+    setScope(shareCandidate.scope); setRole(shareCandidate.role); useCollabShareReview.setState({ candidate: null });
   }, [open, shareCandidate]);
   const [link, setLink] = useState<string>('');
   // Room creation in flight (no room yet) / invite mint in flight.

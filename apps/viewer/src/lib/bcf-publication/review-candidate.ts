@@ -26,15 +26,18 @@ export function stageBcfPublicationReview(batch: DraftBatch, target: Publication
 /** Only the existing native Publish click calls this: staging a candidate is never approval. */
 export async function publishNativeBcfReview(batch: DraftBatch, target: PublicationTarget, connection: PublicationConnection, topicTypes: TopicTypeChoice) {
   const candidate = useBcfPublicationReview.getState().candidate;
+  // A staged candidate is spent by the first publish attempt, whatever its outcome, so a stale
+  // or failed one never blocks the native Publish button.
+  const release = () => { if (candidate && useBcfPublicationReview.getState().candidate === candidate) useBcfPublicationReview.setState({ candidate: null }); };
+  const stale = (message: string): never => { release(); throw new Error(message); };
   if (candidate?.batchId === batch.id) {
-    if ((candidate.target.serverUrl !== target.serverUrl || candidate.target.projectId !== target.projectId || candidate.target.userId !== target.userId) || JSON.stringify(candidate.topicTypes) !== JSON.stringify(topicTypes) || candidate.modifiedAt !== batch.modifiedAt) throw new Error('The staged BCF publication changed. Check the current candidate before publishing.');
+    if ((candidate.target.serverUrl !== target.serverUrl || candidate.target.projectId !== target.projectId || candidate.target.userId !== target.userId) || JSON.stringify(candidate.topicTypes) !== JSON.stringify(topicTypes) || candidate.modifiedAt !== batch.modifiedAt) stale('The staged BCF publication changed. Check the current candidate before publishing.');
     const existing = (await readPublication(draftPublicationId(batch.id, target)))?.record;
     const current = await planDraftPublication(batch, existing, target, undefined, { rules: publicationRules(connection), topicTypes });
     // Entry ids of a not-yet-persisted plan are random. Bind wire digests and source batch, not those fresh ids.
     const wire = (plan: PublicationPlan) => plan.record.entries.map(entry => `${entry.digest}:${entry.state}:${entry.receipt?.remoteGuid ?? ''}`).sort();
-    if (JSON.stringify(wire(current)) !== JSON.stringify(wire(candidate.plan))) throw new Error('The durable publication outbox changed. Prepare and review the candidate again.');
+    if (JSON.stringify(wire(current)) !== JSON.stringify(wire(candidate.plan))) stale('The durable publication outbox changed. Prepare and review the candidate again.');
   }
-  const result = await publishDraftBatch(batch, target, connection, { timeoutMs: 60_000, topicTypes });
-  if (result && useBcfPublicationReview.getState().candidate === candidate) useBcfPublicationReview.setState({ candidate: null });
-  return result;
+  try { return await publishDraftBatch(batch, target, connection, { timeoutMs: 60_000, topicTypes }); }
+  finally { if (candidate?.batchId === batch.id) release(); }
 }

@@ -74,7 +74,12 @@ it('offers Derive on a physical-only model and names it in the mode controls\' r
   assert.equal(reason('vis:structural-both'), 'commandPalette.availability.structural',
     'the reason drops Derive once it is unavailable');
 
-  act(() => useViewerStore.setState({ collabRole: null }));
+  act(() => useViewerStore.setState({ collabRole: null, editEnabled: false }));
+  assert.equal(reason('model:derive-structural'), 'mutationPermission.editModeRequired',
+    'turning Edit mode off updates Derive at once');
+
+  act(() => useViewerStore.setState({ editEnabled: true }));
+  assert.equal(disabled('model:derive-structural'), false);
   click(control('model:derive-structural'));
   await waitFor(() => [...document.querySelectorAll('[role="dialog"]')]
     .some((dialog) => dialog.textContent?.includes(resolve('commandPalette.tool.deriveStructural.label'))),

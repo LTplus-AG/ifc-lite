@@ -15,7 +15,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { StructuralAnalytical, StructuralBoth, StructuralDerive, StructuralPhysical, StructuralSupports } from '@/icons';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { structuralGlyphsVisible } from '@/lib/visibility/structural-view';
+import { structuralGlyphsMasked, structuralGlyphsVisible } from '@/lib/visibility/structural-view';
 import { paletteAvailability } from '../../palette-availability';
 import { surfaceCommand, type SurfaceCommandId } from '../../surface-command-registry';
 import { usePersistentToolHosts } from '../../PersistentToolHosts';
@@ -28,9 +28,9 @@ type StructuralCommandId = typeof IDS[number] & SurfaceCommandId;
 /** Why each control cannot run now, or null; the palette's own availability rules. */
 function useStructuralBlocks(): Record<StructuralCommandId, TranslationKey | null> {
   const hosts = usePersistentToolHosts();
-  // Only the inputs the rules read: camera and pointer updates reach the store too.
+  // Only the inputs the rules read, Derive's write permission included: camera and pointer updates reach the store too.
   const inputs = useViewerStore(useShallow((s) => [s.models, s.ifcDataStore, s.mutationViews, s.mutationVersion,
-    s.structuralViewMode, s.loading, s.collabRole, s.session, s.isMobile]));
+    s.structuralViewMode, s.loading, s.collabRole, s.session, s.isMobile, s.editEnabled, s.activeModelId, s.serverPropertiesRuns]));
   return useMemo(() => {
     const state = useViewerStore.getState();
     const out = {} as Record<StructuralCommandId, TranslationKey | null>;
@@ -52,7 +52,7 @@ export function StructuralRibbonGroup() {
     const reason = blocks[id];
     return reason ? { 'aria-disabled': true, tooltip: t(reason), 'data-unavailable-reason': reason } : {};
   };
-  const glyphsMasked = glyphPreference && mode === 'physical';
+  const glyphsMasked = structuralGlyphsMasked({ structuralGlyphs: glyphPreference }, mode);
 
   return (
     <RibbonGroup label={t('ribbon.view.structuralGroup')}>

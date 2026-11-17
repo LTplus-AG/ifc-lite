@@ -215,9 +215,10 @@ describe('Camera gates resetPresetTracking() on whether orbit actually applied (
 
     finishPreset(camera, 'top');
     const secondClick = poseOf(camera);
+    // The top preset sits exactly on the pole (#9501): the roll lives in `up`.
     assert.notDeepStrictEqual(
-      secondClick.position,
-      firstClick.position,
+      secondClick.up,
+      firstClick.up,
       'clicking the same preset twice must still roll 90 degrees -- a rejected orbit must not have reset tracking',
     );
   });
@@ -233,8 +234,8 @@ describe('Camera gates resetPresetTracking() on whether orbit actually applied (
     finishPreset(camera, 'top');
     const secondClick = poseOf(camera);
     assert.notDeepStrictEqual(
-      secondClick.position,
-      firstClick.position,
+      secondClick.up,
+      firstClick.up,
       'clicking the same preset twice must still roll 90 degrees -- a non-finite orbit must not have reset tracking',
     );
   });
@@ -256,8 +257,8 @@ describe('Camera gates resetPresetTracking() on whether orbit actually applied (
     finishPreset(camera, 'top');
     const secondClick = poseOf(camera);
     assert.deepStrictEqual(
-      secondClick.position,
-      firstClick.position,
+      secondClick.up,
+      firstClick.up,
       'an applied orbit must still reset preset tracking (positive control): the next click on the same preset restarts the cycle rather than rolling',
     );
   });

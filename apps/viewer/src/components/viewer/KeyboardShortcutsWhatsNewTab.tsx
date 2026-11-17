@@ -107,11 +107,12 @@ export function WhatsNewTab() {
           own independent version (e.g. parser may be ahead of the viewer), so
           without this the highest row reads as "the version" — issue #1107,
           item 2. */}
-      <div className="flex items-baseline justify-between gap-2 border-b border-border/60 pb-2 mb-1">
+      {/* Wraps: the hint takes its own line when both do not fit (#8802). */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 border-b border-border/60 pb-2 mb-1">
         <span className="text-sm font-semibold">
           {t('keyboardShortcuts.whatsNew.currentVersion', { version: viewerVersion })}
         </span>
-        <span className="text-2xs text-muted-foreground shrink-0">
+        <span className="text-2xs text-muted-foreground">
           {t('keyboardShortcuts.whatsNew.perPackageHint')}
         </span>
       </div>
@@ -169,7 +170,7 @@ export function WhatsNewTab() {
       })}
 
       {/* Legend */}
-      <div className="pt-3 border-t flex items-center justify-center gap-4 text-2xs text-muted-foreground">
+      <div className="pt-3 border-t flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-2xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <Plus className="h-3 w-3 text-emerald-500" /> {t('keyboardShortcuts.whatsNew.legendFeature')}
         </span>

@@ -24,7 +24,7 @@ function SpecChanges({ spec, onSpec, onBatch }: { spec: SpecRow; onSpec: (on: bo
         <span className="font-medium break-words">{spec.name}</span>{' '}
         <span className="text-2xs text-muted-foreground">{t(`idsAgent.change.${spec.change}`)}</span>
         {spec.preview && <span className="block text-muted-foreground">{t('idsAgent.preview', { applicable: spec.preview.applicable })}</span>}
-        {spec.diagnostics.length > 0 && <span className="block text-amber-700 dark:text-amber-400">{t('idsAgent.diagnostics', { count: spec.diagnostics.length })}</span>}
+        {spec.diagnostics.length > 0 && <span className="block text-warn">{t('idsAgent.diagnostics', { count: spec.diagnostics.length })}</span>}
       </label>
     </div>
     <ul className="pl-5 space-y-1">
@@ -62,7 +62,7 @@ export function IdsAgentProposal({ proposal, selection, onSelection }: {
       </ul>
       <p className="text-muted-foreground">{t('idsAgent.selected', { selected: view.counts.selected, total: view.counts.batches })}</p>
     </section>
-    {view.unresolved.length > 0 && <section aria-label={t('idsAgent.unresolved')} className="rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-0.5">
+    {view.unresolved.length > 0 && <section aria-label={t('idsAgent.unresolved')} className="rounded border border-warn-border bg-warn-surface p-2 space-y-0.5">
       <p className="font-medium">{t('idsAgent.unresolved')}</p>
       <ol className="list-decimal pl-4">{view.unresolved.map(item => <li key={item.id} className="break-words">
         {t('idsAgent.unresolvedItem', { statement: item.statement, category: item.category, reason: item.reason })}</li>)}</ol>

@@ -18,7 +18,7 @@
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength } from './anchor.js';
-import { assertPositiveFinite, ownerHistoryRef } from './_emit-helpers.js';
+import { assertPositiveFinite, emitSurfaceStyle, ownerHistoryRef, type SurfaceStyleColor } from './_emit-helpers.js';
 import { conformsTo, schemaAttributes, schemaRegistry } from './schema-attributes.js';
 import { relateOneToManyInStore, type OneToManyResult } from './relate.js';
 import type { AuthoringAnchor } from './element-type.js';
@@ -32,6 +32,18 @@ export interface MaterialInStoreParams {
   Description?: string;
   /** IFC4+ only, e.g. 'concrete', 'insulation'. */
   Category?: string;
+  /**
+   * The material's appearance: a hex string (`#rgb`, `#rrggbb`, `#rrggbbaa`) or
+   * channels in 0..1. Written as an IfcMaterialDefinitionRepresentation holding
+   * a styled IfcSurfaceStyle, so the colour belongs to the material rather than
+   * to each element drawn with it. Needs a representation context.
+   */
+  Color?: SurfaceStyleColor | string;
+}
+
+export interface MaterialInStoreOptions {
+  /** The IfcGeometricRepresentationContext the appearance is drawn in (required with `Color`). */
+  representationContextId?: number | null;
 }
 
 export interface MaterialLayerInStoreParams {
@@ -76,11 +88,47 @@ function add(editor: StoreEditor, type: string, attrs: unknown[]): number {
   return editor.addEntity(type, attrs as EditorAttributes).expressId;
 }
 
-export function addMaterialToStore(editor: StoreEditor, anchor: AuthoringAnchor, params: MaterialInStoreParams): { materialId: number } {
+export function addMaterialToStore(
+  editor: StoreEditor,
+  anchor: AuthoringAnchor,
+  params: MaterialInStoreParams,
+  options: MaterialInStoreOptions = {},
+): { materialId: number; definitionRepresentationId?: number } {
   const op = 'addMaterialToStore';
   if (typeof params.Name !== 'string' || params.Name.length === 0) throw new Error(`${op}: Name is required`);
   const registry = schemaRegistry(anchor.schema, op);
-  return { materialId: add(editor, 'IfcMaterial', schemaAttributes(registry, 'IfcMaterial', { ...params }, op)) };
+  const { Color, ...attributes } = params;
+  const color = Color === undefined ? null : parseMaterialColor(Color, op);
+  const contextId = options.representationContextId ?? null;
+  if (color && contextId === null) throw new Error(`${op}: Color needs a geometric representation context, and the model has none`);
+  const materialId = add(editor, 'IfcMaterial', schemaAttributes(registry, 'IfcMaterial', attributes, op));
+  if (!color || contextId === null) return { materialId };
+  // IfcMaterialDefinitionRepresentation -> IfcStyledRepresentation('Style', 'Material')
+  // -> IfcStyledItem(no item) -> the surface style, the chain IFC reserves for a
+  // material's own appearance (and the one IfcOpenShell and Revit write).
+  const { styleRefId } = emitSurfaceStyle(editor, anchor.schema ?? 'IFC4', color, params.Name);
+  const styledItemId = add(editor, 'IfcStyledItem', [null, [`#${styleRefId}`], null]);
+  const representationId = add(editor, 'IfcStyledRepresentation', [`#${contextId}`, 'Style', 'Material', [`#${styledItemId}`]]);
+  const definitionRepresentationId = add(editor, 'IfcMaterialDefinitionRepresentation', [null, null, [`#${representationId}`], `#${materialId}`]);
+  return { materialId, definitionRepresentationId };
+}
+
+const HEX_COLOR = /^#?(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+/** A hex string or channels, refused rather than baked into the file as black when malformed. */
+function parseMaterialColor(color: SurfaceStyleColor | string, op: string): SurfaceStyleColor {
+  if (typeof color !== 'string') {
+    if (![color.red, color.green, color.blue, color.alpha ?? 1].every(v => Number.isFinite(v) && v >= 0 && v <= 1)) {
+      throw new Error(`${op}: Color channels must be numbers in 0..1`);
+    }
+    return color;
+  }
+  const trimmed = color.trim();
+  if (!HEX_COLOR.test(trimmed)) throw new Error(`${op}: Color "${color}" is not a hex colour (#rgb, #rrggbb or #rrggbbaa)`);
+  let digits = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
+  if (digits.length === 3) digits = [...digits].map(d => d + d).join('');
+  const channel = (i: number) => parseInt(digits.slice(i, i + 2), 16) / 255;
+  return { red: channel(0), green: channel(2), blue: channel(4), alpha: digits.length === 8 ? channel(6) : 1 };
 }
 
 export function addMaterialLayerSetToStore(

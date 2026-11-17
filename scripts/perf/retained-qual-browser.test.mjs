@@ -25,6 +25,21 @@ test('software flags name SwiftShader, hardware flags never do', () => {
   assert.ok([...GPU_ARGS.swiftshader, ...GPU_ARGS.hardware].includes('--enable-unsafe-webgpu'));
 });
 
+test('7955: a hardware launch asks Chrome for the high-performance adapter, a software launch does not', async () => {
+  // Pop is a hybrid laptop: without a preference Chrome's default WebGPU adapter was the NVIDIA GPU on 2026-11-01 and
+  // the Intel iGPU on 2026-11-04, so one cohort's viewer rows could be measured on two different GPUs.
+  const { launchFresh } = await import('./retained-qual-browser.mjs');
+  const launched = {};
+  for (const gpu of ['hardware', 'swiftshader']) {
+    const page = { on: () => {} };
+    const context = { pages: () => [page], on: () => {}, close: async () => {} };
+    const chromium = { launchPersistentContext: async (_path, options) => { launched[gpu] = options.args; return context; } };
+    await (await launchFresh({ gpu, headed: true, chromium })).close();
+  }
+  assert.ok(launched.hardware.includes('--use-webgpu-power-preference=default-high-performance'));
+  assert.ok(!launched.swiftshader.some(arg => arg.startsWith('--use-webgpu-power-preference')));
+});
+
 test('one loss printed at several sites counts once (largest per-site count, never the sum)', () => {
   const lines = ['[WebGPU] Device lost: x (reason: unknown)', '[Renderer] GPU device lost — halting rendering until re-init: x', '[Viewport] GPU device lost: x', 'unrelated'];
   assert.equal(deviceLossCount(lines), 1);

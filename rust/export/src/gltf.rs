@@ -44,9 +44,11 @@ use serde_json::{json, Value};
 
 // Split-out submodules (kept child modules so they can reach this module's private
 // assembler internals via `super`; the code moved verbatim, so output is unchanged).
+mod element_nodes;
 mod from_meshes;
 mod matrix;
 mod texture;
+use element_nodes::SceneNodes;
 use texture::{GltfTextures, TextureInfo, TextureTable, ViewTexture};
 
 // The infallible assembler is crate-private (#7675); only its tests name it.
@@ -137,6 +139,17 @@ pub struct GltfOptions {
     /// without the `gltf-textures` Cargo feature, the export is refused with
     /// [`ExportError::UnsupportedOption`] rather than silently dropping it.
     pub textures: bool,
+    /// Group each element's part nodes under one node per IFC element, named
+    /// by its `GlobalId` (#9011), so a tool that identifies objects by node
+    /// name can map a picked or loaded object back to its element. Each element
+    /// node sits directly under the scene and carries a copy of the scene
+    /// root's translation and site rotation (f64 translation, unit quaternion),
+    /// so every part keeps its exact world pose; geometry, accessors, materials
+    /// and the binary chunk are unchanged. An element without a usable
+    /// `GlobalId` keeps its own node, unnamed. Applies to every from-bytes
+    /// assembler (in-memory GLB, bounded GLB, multi-buffer glTF). Default
+    /// `false`: one unnamed root over every part, byte-identical to before.
+    pub name_by_global_id: bool,
 }
 
 impl Default for GltfOptions {
@@ -154,6 +167,7 @@ impl Default for GltfOptions {
             layer_slicing: false,
             single_pass_budget_bytes: 0,
             textures: false,
+            name_by_global_id: false,
         }
     }
 }
@@ -245,6 +259,13 @@ impl GltfOptions {
         self
     }
 
+    /// See [`GltfOptions::name_by_global_id`].
+    #[must_use]
+    pub fn with_name_by_global_id(mut self, yes: bool) -> Self {
+        self.name_by_global_id = yes;
+        self
+    }
+
     /// The assemblers other than the in-memory GLB one cannot carry textures.
     fn refuse_textures(&self, assembler: &'static str) -> Result<(), ExportError> {
         match self.textures {
@@ -316,6 +337,9 @@ struct Scene {
 
 #[derive(Serialize)]
 struct Node {
+    // The element's `GlobalId` on an element node (#9011); absent otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     mesh: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -460,39 +484,23 @@ struct Buffer {
 
 // ── Build ───────────────────────────────────────────────────────────────────
 
-/// Precomputed visibility filter. The express-id allow/deny lists and the hidden-type
-/// set are hashed ONCE per export instead of linearly scanned per mesh — `mesh_visible`
-/// ran `Vec::contains` over `opts.hidden`/`opts.isolated`/`opts.hidden_types` for every
-/// mesh, i.e. O(meshes × filter_len), and on the bounded path it ran in BOTH passes.
-/// Same decisions as the old scan, so no output changes.
+/// Precomputed visibility filter: the shared id/type filters
+/// ([`crate::visibility::ElementFilter`], hashed once per export) plus glTF's
+/// geometry sanity gate.
 struct VisibilityFilter {
-    hidden: FxHashSet<u32>,
-    isolated: FxHashSet<u32>,
-    isolated_active: bool,
-    hidden_types: FxHashSet<String>,
+    ids: crate::visibility::ElementFilter,
 }
 
 impl VisibilityFilter {
     fn new(opts: &GltfOptions) -> Self {
-        Self {
-            hidden: opts.hidden.iter().copied().collect(),
-            isolated: opts.isolated.iter().flatten().copied().collect(),
-            isolated_active: opts.isolated.is_some(),
-            hidden_types: opts.hidden_types.iter().cloned().collect(),
-        }
+        Self { ids: crate::visibility::ElementFilter::new(&opts.hidden, opts.isolated.as_deref(), &opts.hidden_types) }
     }
 
     fn visible(&self, mesh: &MeshData) -> bool {
         if mesh.geometry_class == crate::mesh_input::GEOM_CLASS_INSTANCED_TYPE {
             return false; // instanced type library duplicates occurrence geometry
         }
-        if self.hidden.contains(&mesh.express_id) {
-            return false;
-        }
-        if self.isolated_active && !self.isolated.contains(&mesh.express_id) {
-            return false;
-        }
-        if self.hidden_types.contains(&mesh.ifc_type) {
+        if !self.ids.keeps(mesh.express_id, &mesh.ifc_type) {
             return false;
         }
         // Geometry sanity: matching, non-empty, triangulated.
@@ -1050,6 +1058,7 @@ fn push_occurrence_node(
     let mesh_node = nodes.len() as u32;
     let (translation, scale) = dequant.map_or((None, None), |(c, h)| (Some(c), Some(h)));
     nodes.push(Node {
+        name: None,
         rotation: None,
         mesh: Some(mesh),
         children: None,
@@ -1062,6 +1071,7 @@ fn push_occurrence_node(
         return mesh_node;
     }
     nodes.push(Node {
+        name: None,
         rotation: None,
         mesh: None,
         children: Some(vec![mesh_node]),
@@ -1267,7 +1277,7 @@ fn build_gltf(
     ch: &mut Chunker,
 ) -> (Gltf, GltfStats) {
     let (lighting, frame) = ((lit, emissive), (space, rtc_zup, site_zup));
-    build_gltf_with(views, include_metadata, model_id, lighting, frame, quantize, ch, TextureTable::default())
+    build_gltf_with(views, include_metadata, model_id, lighting, frame, quantize, ch, TextureTable::default(), false)
 }
 
 /// Centre of the emitted geometry in world coordinates, before the root transform.
@@ -1355,7 +1365,7 @@ fn emit_flat_gltf(
     meshes: &mut Vec<Mesh>, materials: &mut Vec<Material>,
     material_map: &mut FxHashMap<(i32, i32, i32, i32), u32>,
     textures: &mut TextureTable, stats: &mut GltfStats, nodes: &mut Vec<Node>,
-    element_node_indices: &mut Vec<u32>,
+    scene_parts: &mut SceneNodes,
 ) {
     // ── Pass 2: flat remainder, content-hash deduped ────────────────────────────
     // The rep-identity collator only groups geometry it can prove shareable. Many
@@ -1442,6 +1452,7 @@ fn emit_flat_gltf(
         }
         let node_idx = nodes.len() as u32;
         nodes.push(Node {
+            name: None,
             rotation: None,
             mesh: Some(mesh_idx),
             children: None,
@@ -1450,7 +1461,7 @@ fn emit_flat_gltf(
             matrix: None,
             extras: node_extras(include_metadata, mesh.express_id, mesh.ifc_type, mesh.global_id, model_id),
         });
-        element_node_indices.push(node_idx);
+        scene_parts.push(node_idx, mesh.express_id, mesh.global_id);
     }
 }
 
@@ -1464,7 +1475,7 @@ fn emit_instanced_gltf(
     model_id: Option<&str>, ch: &mut Chunker<'_>, accessors: &mut Vec<Accessor>,
     meshes: &mut Vec<Mesh>, materials: &mut Vec<Material>,
     material_map: &mut FxHashMap<(i32, i32, i32, i32), u32>,
-    stats: &mut GltfStats, nodes: &mut Vec<Node>, element_node_indices: &mut Vec<u32>,
+    stats: &mut GltfStats, nodes: &mut Vec<Node>, scene_parts: &mut SceneNodes,
 ) {
     // ── Pass 2: instanced templates ─────────────────────────────────────────────
     for (template, keep, m_ref_inv) in instanced {
@@ -1532,7 +1543,7 @@ fn emit_instanced_gltf(
                 );
                 let extras = node_extras(include_metadata, occ_view.express_id, occ_view.ifc_type, occ_view.global_id, model_id);
                 let node_idx = push_occurrence_node(&mut *nodes, mesh_idx, matrix, dequant, extras);
-                element_node_indices.push(node_idx);
+                scene_parts.push(node_idx, occ_view.express_id, occ_view.global_id);
             }
         }
     }
@@ -1616,6 +1627,7 @@ fn build_gltf_with(
     quantize: bool,
     ch: &mut Chunker,
     mut textures: TextureTable,
+    name_by_global_id: bool,
 ) -> (Gltf, GltfStats) {
     // Pre-filter once so both passes (centre, then bake) see exactly the same set.
     let visible: Vec<&MeshView> = views.iter().filter(|v| view_ok(v)).collect();
@@ -1630,7 +1642,7 @@ fn build_gltf_with(
     let mut accessors: Vec<Accessor> = Vec::new();
     let mut meshes: Vec<Mesh> = Vec::new();
     let mut nodes: Vec<Node> = Vec::new();
-    let mut element_node_indices: Vec<u32> = Vec::new();
+    let mut scene_parts = SceneNodes::new(name_by_global_id);
 
     let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0, unverified_instance_groups: 0 };
 
@@ -1641,34 +1653,21 @@ fn build_gltf_with(
     emit_flat_gltf(
         &flat, &visible, scene_center, quantize, (lit, emissive), include_metadata,
         model_id, &mut *ch, &mut accessors, &mut meshes, &mut materials,
-        &mut material_map, &mut textures, &mut stats, &mut nodes, &mut element_node_indices,
+        &mut material_map, &mut textures, &mut stats, &mut nodes, &mut scene_parts,
     );
     emit_instanced_gltf(
         instanced, &visible, scene_center, (space, rtc_zup, site_zup), quantize,
         (lit, emissive), include_metadata, model_id, &mut *ch, &mut accessors,
         &mut meshes, &mut materials, &mut material_map, &mut stats, &mut nodes,
-        &mut element_node_indices,
+        &mut scene_parts,
     );
     stats.materials = materials.len();
 
     // Single root node carries the model-wide centre (omitted when ~zero) and
-    // parents every element node, so the scene has exactly one top-level node.
+    // parents every part node, so the scene has exactly one top-level node;
+    // or, opted in, one such node per element (#9011, `SceneNodes`).
     let (root_translation, site_rotation) = scene_root(scene_center, space, rtc_zup, site_zup);
-    let scene_nodes = if element_node_indices.is_empty() {
-        Vec::new()
-    } else {
-        let root_idx = nodes.len() as u32;
-        nodes.push(Node {
-            rotation: site_rotation,
-            mesh: None,
-            children: Some(element_node_indices),
-            translation: root_translation,
-            scale: None,
-            matrix: None,
-            extras: None,
-        });
-        vec![root_idx]
-    };
+    let scene_nodes = scene_parts.finish(&mut nodes, root_translation, site_rotation);
 
     // Flush the final (or only) chunk. The 4 GiB-per-buffer guard lives in `flush`; for
     // the single-buffer GLB path this is the same assert (and message) as before, so the
@@ -1877,7 +1876,7 @@ fn try_export_glb_from_result(
         let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, usize::MAX, None);
         let (gltf, stats) = build_gltf_with(
             views, opts.include_metadata, opts.model_id.as_deref(), (opts.lit, opts.emissive),
-            (space, rtc_zup, site_zup), opts.quantize, &mut ch, textures,
+            (space, rtc_zup, site_zup), opts.quantize, &mut ch, textures, opts.name_by_global_id,
         );
         refuse_empty(&stats)?;
         let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
@@ -2000,7 +1999,7 @@ fn export_gltf_streaming_impl(
     let mut nodes: Vec<Node> = Vec::new();
     let mut materials: Vec<Material> = Vec::new();
     let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
-    let mut element_node_indices: Vec<u32> = Vec::new();
+    let mut scene_parts = SceneNodes::new(opts.name_by_global_id);
     let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0, unverified_instance_groups: 0 };
     let mut adapt = |name: String, bytes: Vec<u8>| sink(GltfBuffer { name, bytes });
     let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, chunk_cap, Some(&mut adapt));
@@ -2060,7 +2059,8 @@ fn export_gltf_streaming_impl(
                 }
                 let node_idx = nodes.len() as u32;
                 nodes.push(Node {
-            rotation: None,
+                    name: None,
+                    rotation: None,
                     mesh: Some(mesh_idx),
                     children: None,
                     translation,
@@ -2071,7 +2071,7 @@ fn export_gltf_streaming_impl(
                         m.global_id.as_deref(), opts.model_id.as_deref(),
                     ),
                 });
-                element_node_indices.push(node_idx);
+                scene_parts.push(node_idx, m.express_id, m.global_id.as_deref());
             }
         }),
     );
@@ -2084,21 +2084,7 @@ fn export_gltf_streaming_impl(
         let (space, rtc_zup, site_zup) = site_restore(&meta_result);
         scene_root(scene_center, space, rtc_zup, site_zup.as_deref())
     };
-    let scene_nodes = if element_node_indices.is_empty() {
-        Vec::new()
-    } else {
-        let root_idx = nodes.len() as u32;
-        nodes.push(Node {
-            rotation: site_rotation,
-            mesh: None,
-            children: Some(element_node_indices),
-            translation: root_translation,
-            scale: None,
-            matrix: None,
-            extras: None,
-        });
-        vec![root_idx]
-    };
+    let scene_nodes = scene_parts.finish(&mut nodes, root_translation, site_rotation);
     ch.flush();
 
     let asset_extras = opts.include_metadata.then(|| {
@@ -2711,7 +2697,7 @@ fn plan_bounded_glb(
     let mut nodes: Vec<Node> = Vec::new();
     let mut materials: Vec<Material> = Vec::new();
     let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
-    let mut element_node_indices: Vec<u32> = Vec::new();
+    let mut scene_parts = SceneNodes::new(opts.name_by_global_id);
     let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0, unverified_instance_groups: 0 };
     // key -> (mesh_idx, dequant center, dequant half). center/half are dummy
     // zeros/ones on the f32 path (node scale stays None), the per-mesh dequant
@@ -2973,6 +2959,7 @@ fn plan_bounded_glb(
             push_occurrence_node(&mut nodes, emitted.mesh_idx, matrix, dequant, extras)
         } else {
             nodes.push(Node {
+                name: None,
                 rotation: None,
                 mesh: Some(emitted.mesh_idx),
                 children: None,
@@ -2983,7 +2970,7 @@ fn plan_bounded_glb(
             });
             nodes.len() as u32 - 1
         };
-        element_node_indices.push(node_idx);
+        scene_parts.push(node_idx, meta.express_id, meta.global_id.as_deref());
     }
     stats.materials = materials.len();
 
@@ -3027,21 +3014,7 @@ fn plan_bounded_glb(
 
     let (root_translation, site_rotation) =
         scene_root(scene_center, space, rtc_zup, site_zup.as_deref());
-    let scene_nodes = if element_node_indices.is_empty() {
-        Vec::new()
-    } else {
-        let root_idx = nodes.len() as u32;
-        nodes.push(Node {
-            rotation: site_rotation,
-            mesh: None,
-            children: Some(element_node_indices),
-            translation: root_translation,
-            scale: None,
-            matrix: None,
-            extras: None,
-        });
-        vec![root_idx]
-    };
+    let scene_nodes = scene_parts.finish(&mut nodes, root_translation, site_rotation);
 
     let asset_extras = opts.include_metadata.then(|| {
         json!({

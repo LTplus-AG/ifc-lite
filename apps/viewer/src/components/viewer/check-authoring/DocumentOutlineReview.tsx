@@ -15,6 +15,7 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { prepareDocumentDraft, type DocumentOutline, type OutlineBlock } from '@/lib/check-authoring/document-outline';
+import { liveRowsText } from '@/lib/check-authoring/live-rows-text';
 import { saveDocumentDraft } from '@/lib/check-authoring/save';
 import { resolveValidationTableState } from '@/lib/document/resolve-validation-table';
 import type { ValidationTableSource } from '@/lib/document/types';
@@ -39,7 +40,7 @@ function LiveTable({ block, evidence }: { block: Extract<OutlineBlock, { kind: '
   return <p className="break-words">
     <span className="font-medium">{block.title ?? t('checkAuthoring.validationTable')}</span>{' '}
     <span className="text-muted-foreground">{state.status === 'ok' && state.kind === 'validation'
-      ? t('checkAuthoring.liveRows', { count: state.model.totalRows, rows: block.rows, target })
+      ? liveRowsText(t, block.rows, state.model.totalRows, target)
       : t(state.status === 'rule-not-found' ? 'checkAuthoring.liveRuleMissing' : 'checkAuthoring.liveNoReport', { target })}</span>
   </p>;
 }

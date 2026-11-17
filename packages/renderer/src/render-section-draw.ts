@@ -29,6 +29,7 @@ import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
 import type { ExtraClipPlane } from './clip-types.js';
+import { sectionBoxCapDraws, sectionBoxClipPlanes } from './section-box-caps.js';
 
 /** World-space AABB in the renderer's Y-up frame. */
 export type ModelBounds = {
@@ -72,6 +73,9 @@ export function drawSectionOverlays(
 ): void {
     const { options, viewProj, modelBounds } = ctx;
     const extras = ctx.extraPlanes ?? [];
+    // The section box clips every cap like it clips the model, and has a cap per face (#8696).
+    const clipBox = options.clipBox?.enabled ? options.clipBox : null;
+    const boxPlanes = clipBox ? sectionBoxClipPlanes(clipBox) : [];
 
     // The selected / hovered elements' cap polygons take their highlight colour (a
     // no-op while unchanged), so the cut face reads as part of the element.
@@ -130,7 +134,7 @@ export function drawSectionOverlays(
                     showOutlines,
                     capStyle: showFills ? capDrawStyle(style, ctx.pixelRatio) : undefined,
                 },
-                extras,
+                [...extras, ...boxPlanes],
             );
         }
 
@@ -159,8 +163,32 @@ export function drawSectionOverlays(
             },
             extras.flatMap((plane) => plane.id === undefined ? [] : [{
                 key: plane.id,
-                clippedBy: [...(primary ? [primary] : []), ...extras.filter((other) => other !== plane)],
+                clippedBy: [...(primary ? [primary] : []), ...extras.filter((other) => other !== plane), ...boxPlanes],
             }]),
+        );
+    }
+
+    // The box faces' caps, in the box's own cap style, each clipped by the faces around it and
+    // by every cutting plane.
+    if (clipBox && cap?.hasExtraGeometry() && modelBounds) {
+        const showFills = clipBox.showCap !== false;
+        const style = { ...DEFAULT_CAP_STYLE, ...clipBox.capStyle };
+        const primary = ctx.primaryPlane ?? null;
+        cap.drawExtras(
+            pass,
+            {
+                axis: 'down',
+                position: 0,
+                bounds: modelBounds,
+                viewProj,
+                rteViewProj: ctx.rteViewProj,
+                rteCamera: ctx.rteCamera,
+                sectionExcludedIds: options.sectionExcludedIds,
+                showFills,
+                showOutlines: clipBox.showOutlines !== false,
+                capStyle: showFills ? capDrawStyle(style, ctx.pixelRatio) : undefined,
+            },
+            sectionBoxCapDraws(clipBox, [...(primary ? [primary] : []), ...extras]),
         );
     }
 }

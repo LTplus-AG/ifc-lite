@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "12.1.0",
+  "version": "12.3.0",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -10,6 +10,8 @@
     "apps/*"
   ],
   "scripts": {
+    "ui-drift": "node scripts/check-ui-drift.mjs --report",
+    "ui-drift:update": "node scripts/check-ui-drift.mjs --update",
     "dev": "pnpm build && pnpm --filter viewer dev",
     "dev:api": "zsh -lc 'set -a; source \"api/.env.local\"; set +a; PORT=3001 tsx scripts/dev-chat-api.ts'",
     "dev:bcf-test-server": "tsx scripts/dev-bcf-test-server.ts",
@@ -38,6 +40,7 @@
     "test:diff-decode-leaks": "bash scripts/test-diff-decode-leaks.sh",
     "test:snap-edges": "node scripts/test-snap-edges.mjs",
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
+    "check:store-import-cycles": "node scripts/check-store-import-cycles.mjs",
     "check:ci-path-coverage": "node scripts/check-ci-path-coverage.mjs",
     "check:ci-aggregate-coverage": "node scripts/check-ci-aggregate-coverage.mjs",
     "check:workflow-report-paths": "node scripts/check-workflow-report-paths.mjs",
@@ -121,6 +124,7 @@
     "check:bim-globals": "pnpm turbo build --filter=@ifc-lite/sandbox && node scripts/generate-bim-globals.mjs --check",
     "verify:epsg": "pnpm --filter @ifc-lite/data verify:epsg",
     "generate:epsg-index": "tsx scripts/generate-epsg-index.ts",
+    "generate:epsg-extents": "tsx scripts/generate-epsg-extents.ts",
     "check:templates": "pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates",
     "check:codegen-sync": "node scripts/check-codegen-sync.mjs",
     "check:generated": "node scripts/check-generated.mjs",
@@ -199,8 +203,8 @@
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",
       "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch",
       "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch",
-      "wkt-parser@1.5.6": "patches/wkt-parser@1.5.6.patch",
-      "typedoc@0.28.20": "patches/typedoc@0.28.20.patch"
+      "typedoc@0.28.20": "patches/typedoc@0.28.20.patch",
+      "@luma.gl/splats@9.4.2": "patches/@luma.gl__splats@9.4.2.patch"
     }
   }
 }

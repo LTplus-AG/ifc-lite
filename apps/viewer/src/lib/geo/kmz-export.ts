@@ -123,6 +123,22 @@ export function resolveKmzHeading(
 }
 
 /**
+ * KMZ absolute altitude through the same guard as the position and heading:
+ * a #9480 unit-slipped site raises the height the World view uses, and a KMZ
+ * read off the authored OrthogonalHeight would sit that far below it.
+ */
+export function resolveKmzAltitude(
+  conversion: MapConversion,
+  crs: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
+  lengthUnitScale: number,
+  coordinateInfo: CoordinateInfo | undefined,
+): number {
+  const mapScale = resolveMapUnitToMetreScale(crs?.mapUnitScale, lengthUnitScale);
+  const effective = effectiveMapConversionForGeometry(conversion, mapScale, coordinateInfo);
+  return computeKmzAltitude(effective.orthogonalHeight, crs, lengthUnitScale, coordinateInfo);
+}
+
+/**
  * A georeference that has ALREADY been merged with pending edits — what a panel
  * holding `mergedConversion`/`mergedCRS` props has in hand, and what
  * {@link buildKmzForModel} produces after extracting from the data store.
@@ -196,7 +212,7 @@ export async function buildKmzForResolvedGeoref(
   const heading = resolveKmzHeading(conversion, crs, lengthUnitScale, coordinateInfo);
   const opts = {
     latLon,
-    altitude: computeKmzAltitude(conversion.orthogonalHeight, crs, lengthUnitScale, coordinateInfo),
+    altitude: resolveKmzAltitude(conversion, crs, lengthUnitScale, coordinateInfo),
     xAxisAbscissa: heading.xAxisAbscissa,
     xAxisOrdinate: heading.xAxisOrdinate,
     meshes,

@@ -14,7 +14,7 @@
 
 import type { MeshData } from './types.js';
 import type { AABB, CoordinateInfo, Vec3 } from './coordinate-types.js';
-import { resolveWasmMetadataFrame, type RtcFrame } from './rtc-frame.js';
+import { finiteVec3, resolveWasmMetadataFrame, type RtcFrame } from './rtc-frame.js';
 import { inferWasmRtcApplied } from './coordinate-rtc-policy.js';
 export type { AABB, CoordinateInfo, Vec3 } from './coordinate-types.js';
 
@@ -79,10 +79,9 @@ export class CoordinateHandler {
     private appliedWasmRtcOffset: Vec3 | null = null;
     private wasmRtcFrame: RtcFrame | undefined = undefined;
     private lengthUnitScale: number | undefined = undefined;
+    private siteOrigin: Vec3 | undefined = undefined;
 
-    /**
-     * Check if a coordinate value is reasonable (not corrupted garbage)
-     */
+    /** Check if a coordinate value is reasonable (not corrupted garbage) */
     private isReasonableValue(value: number): boolean {
         return Number.isFinite(value) && Math.abs(value) < this.MAX_REASONABLE_COORD;
     }
@@ -218,9 +217,7 @@ export class CoordinateHandler {
         };
     }
 
-    /**
-     * Check if coordinate shift is needed
-     */
+    /** Check if coordinate shift is needed */
     needsShift(bounds: AABB): boolean {
         const maxCoord = Math.max(
             Math.abs(bounds.min.x), Math.abs(bounds.max.x),
@@ -231,9 +228,7 @@ export class CoordinateHandler {
         return maxCoord > NORMAL_COORD_THRESHOLD_M;
     }
 
-    /**
-     * Calculate centroid (center point) from bounds
-     */
+    /** Calculate centroid (center point) from bounds */
     calculateCentroid(bounds: AABB): Vec3 {
         return {
             x: (bounds.min.x + bounds.max.x) / 2,
@@ -380,8 +375,9 @@ export class CoordinateHandler {
      * `process()` consumer read the re-based bounds as if they were absolute
      * — losing the site offset that georeferencing math needs (#2526).
      */
-    private wasmMetadataProps(): Pick<CoordinateInfo, 'wasmRtcOffset' | 'wasmRtcFrame' | 'lengthUnitScale'> {
+    private wasmMetadataProps(): Pick<CoordinateInfo, 'wasmRtcOffset' | 'wasmRtcFrame' | 'lengthUnitScale' | 'siteOrigin'> {
         return {
+            ...(this.siteOrigin ? { siteOrigin: { ...this.siteOrigin } } : {}),
             ...(this.appliedWasmRtcOffset ? { wasmRtcOffset: { ...this.appliedWasmRtcOffset } } : {}),
             ...(this.wasmRtcFrame ? { wasmRtcFrame: { ...this.wasmRtcFrame } } : {}),
             ...(this.lengthUnitScale !== undefined ? { lengthUnitScale: this.lengthUnitScale } : {}),
@@ -607,9 +603,11 @@ export class CoordinateHandler {
         lengthUnitScale: number | undefined,
         rtcOffset: Vec3 | null,
         exactFrame?: RtcFrame,
+        siteOrigin?: ArrayLike<number> | null,
     ): void {
         const frame = resolveWasmMetadataFrame(rtcOffset, exactFrame);
         this.lengthUnitScale = lengthUnitScale;
+        this.siteOrigin = finiteVec3(siteOrigin);
         this.appliedWasmRtcOffset = rtcOffset ? { ...rtcOffset } : null;
         this.wasmRtcApplied = rtcOffset !== null;
         // Calling this setter explicitly asserts WASM provenance. Legacy
@@ -633,6 +631,7 @@ export class CoordinateHandler {
         this.appliedWasmRtcOffset = null;
         this.wasmRtcFrame = undefined;
         this.lengthUnitScale = undefined;
+        this.siteOrigin = undefined;
         this.boundsRecoveryFallbackCount = 0;
     }
 }

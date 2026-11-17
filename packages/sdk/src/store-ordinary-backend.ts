@@ -2,13 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
+import { addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement, type WallAutojoinIndex } from '@ifc-lite/create';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { EntityRef, StoreBackendMethods } from './types.js';
+import type { TopConstraintParams } from './store-top-types.js';
 
 /** Existing ordinary creation methods, without adding required backend members. */
 export type OrdinaryStoreBackendMethods = Pick<StoreBackendMethods,
   'addWall' | 'addColumn' | 'addSlab' | 'addBeam' | 'addSpace' | 'addRoof' | 'addPlate' | 'addMember'>;
+
+/** Each member of a parameter union without the SDK-only top constraint. */
+type WithoutTop<T> = T extends unknown ? Omit<T, 'TopConstraint'> : never;
 
 /** Resolve each call against its live model and delegate the IFC commit to
  * create's atomic dispatcher (#6232 D5). Anchor resolution retains its strict
@@ -16,21 +20,28 @@ export type OrdinaryStoreBackendMethods = Pick<StoreBackendMethods,
  * behavior outside this factory; MCP supplies its compound-recording draft. */
 export function createOrdinaryStoreBackend(
   resolve: (modelId: string) => Pick<CostStoreModelResolution, 'modelId' | 'store' | 'editor' | 'mutationView'>,
+  wallIndex?: WallAutojoinIndex,
 ): OrdinaryStoreBackendMethods {
-  const add = (modelId: string, storeyId: number, element: OrdinaryInStoreElement): EntityRef => {
+  const add = (modelId: string, storeyId: number, element: OrdinaryInStoreElement, top?: TopConstraintParams['TopConstraint']): EntityRef & { notices?: string[] } => {
     const model = resolve(modelId);
     const anchor = resolveSpatialAnchor(model.store, storeyId, model.mutationView);
-    const expressId = addOrdinaryElementInStore(model.editor, anchor, element);
-    return { modelId: model.modelId, expressId };
+    const notices: string[] = [];
+    const expressId = addOrdinaryElementInStore(model.editor, anchor, element, { store: model.store, top: top ?? 'auto', notices, wallIndex });
+    return { modelId: model.modelId, expressId, ...(notices.length ? { notices } : {}) };
+  };
+  // The top constraint is the SDK's own field: the builders never see it.
+  const split = <T extends object>(params: T): [WithoutTop<T>, TopConstraintParams['TopConstraint']] => {
+    const { TopConstraint, ...rest } = params as T & TopConstraintParams;
+    return [rest as WithoutTop<T>, TopConstraint];
   };
   return {
-    addWall: (modelId, storeyId, params) => add(modelId, storeyId, { kind: 'wall', params }),
-    addColumn: (modelId, storeyId, params) => add(modelId, storeyId, { kind: 'column', params }),
+    addWall: (modelId, storeyId, params) => { const [p, top] = split(params); return add(modelId, storeyId, { kind: 'wall', params: p }, top); },
+    addColumn: (modelId, storeyId, params) => { const [p, top] = split(params); return add(modelId, storeyId, { kind: 'column', params: p }, top); },
     addSlab: (modelId, storeyId, params) => add(modelId, storeyId, { kind: 'slab', params }),
-    addBeam: (modelId, storeyId, params) => add(modelId, storeyId, { kind: 'beam', params }),
+    addBeam: (modelId, storeyId, params) => { const [p, top] = split(params); return add(modelId, storeyId, { kind: 'beam', params: p }, top); },
     addSpace: (modelId, storeyId, params) => add(modelId, storeyId, { kind: 'space', params }),
     addRoof: (modelId, storeyId, params) => add(modelId, storeyId, { kind: 'roof', params }),
     addPlate: (modelId, storeyId, params) => add(modelId, storeyId, { kind: 'plate', params }),
-    addMember: (modelId, storeyId, params) => add(modelId, storeyId, { kind: 'member', params }),
+    addMember: (modelId, storeyId, params) => { const [p, top] = split(params); return add(modelId, storeyId, { kind: 'member', params: p }, top); },
   };
 }

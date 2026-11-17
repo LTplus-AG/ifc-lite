@@ -19,7 +19,10 @@ import {
   MAX_DEPTH_NUDGE_HASH,
   ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL,
   ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES,
-  PERSPECTIVE_DEPTH_NUDGE_PER_STEP,
+  PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT,
+  PERSPECTIVE_DEPTH_NUDGE_LEVELS,
+  PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL,
+  PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE,
   PERSPECTIVE_OVERLAY_DEPTH_LIFT,
 } from './shaders/depth-nudge.wgsl.js';
 
@@ -103,9 +106,22 @@ describe('depth nudge (#6729)', () => {
     assert.ok(ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL >= 4 * DEPTH_UNIT);
   });
 
-  it('perspective keeps its step and lift', () => {
-    assert.equal(PERSPECTIVE_DEPTH_NUDGE_PER_STEP, 1e-6);
+  it('perspective keeps its step per level and its lift', () => {
+    // Half the old per-hash step, still above the ~2e-7 relative noise of float depth.
+    assert.equal(PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL, 5e-7);
     assert.equal(PERSPECTIVE_OVERLAY_DEPTH_LIFT, 5e-5);
+  });
+
+  it('perspective: the top hash moves a facade surface less than a panel\'s offset, out to 150 m (#7955)', () => {
+    // WGSL nudgedClipZ: level = zHash >> shift.
+    assert.equal(MAX_DEPTH_NUDGE_HASH >> PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT, PERSPECTIVE_DEPTH_NUDGE_LEVELS - 1);
+    assert.ok(PERSPECTIVE_DEPTH_NUDGE_LEVELS >= 32, `${PERSPECTIVE_DEPTH_NUDGE_LEVELS} levels`);
+    // Reverse-Z NDC depth near / d scaled by 1 + k puts the surface at d / (1 + k).
+    const shift = (d: number) => d - d / (1 + PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE);
+    assert.ok(shift(100) <= 0.0016, `${shift(100)} m at 100 m`);
+    assert.ok(shift(150) <= 0.0025, `${shift(150)} m at 150 m`);
+    // The unbounded nudge it replaces moved 25 mm at 100 m.
+    assert.ok(shift(100) < 0.1 * MAX_DEPTH_NUDGE_HASH * 1e-6 * 100);
   });
 });
 

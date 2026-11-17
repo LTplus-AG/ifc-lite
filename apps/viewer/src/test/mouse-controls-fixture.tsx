@@ -53,6 +53,8 @@ export function mountMouseControls(overrides: Partial<UseMouseControlsParams> = 
     pick: async () => null,
     pickRect: async () => [],
     raycastScene: () => null, // wheel zoom surface pick (#5393): empty space
+    getPickClipRevision: () => 0,
+    getPickGeometryRevision: () => 0,
   } as unknown as Renderer;
   const state = useViewerStore.getState();
 

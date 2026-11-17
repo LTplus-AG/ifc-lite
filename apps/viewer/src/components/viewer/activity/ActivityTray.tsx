@@ -93,12 +93,16 @@ export function ActivityTrayButton() {
 }
 
 /** Phones have no status bar: the overflow menu opens the same list in a dialog. */
-export function ActivityTrayDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function ActivityTrayDialog({ open, onOpenChange, announce = true }: {
+  open: boolean; onOpenChange: (open: boolean) => void;
+  /** Extra entry points reuse the shell's existing completion announcer. */
+  announce?: boolean;
+}) {
   const { t } = useTranslation();
   return (
     <>
       {/* Mounted with the overflow-menu entry, not the dialog, so it speaks while the tray is closed. */}
-      <ActivityAnnouncer />
+      {announce && <ActivityAnnouncer />}
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent aria-describedby={undefined} className="max-w-sm gap-0 p-0">
           {open && <Suspense fallback={null}><ActivityTrayList

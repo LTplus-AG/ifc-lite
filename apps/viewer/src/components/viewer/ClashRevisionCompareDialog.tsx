@@ -119,11 +119,23 @@ function Bucket({ title, clashes, tone }: BucketProps) {
   );
 }
 
-export function ClashRevisionCompareDialog() {
+interface ClashRevisionCompareDialogProps {
+  /** Controlled from a panel header action (#8802): no trigger renders then. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function ClashRevisionCompareDialog({ open: openProp, onOpenChange }: ClashRevisionCompareDialogProps = {}) {
   const { t } = useTranslation();
   const original = useOriginalClashBaseline(state => state.finding);
-  const [open, setOpen] = useState(false);
-  useEffect(() => { if (original) setOpen(true); }, [original]);
+  const [innerOpen, setInnerOpen] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : innerOpen;
+  const setOpen = useCallback((next: boolean) => {
+    if (!controlled) setInnerOpen(next);
+    onOpenChange?.(next);
+  }, [controlled, onOpenChange]);
+  useEffect(() => { if (original) setOpen(true); }, [original, setOpen]);
   const clashResult = useViewerStore((s) => s.clashResult);
   const models = useViewerStore((s) => s.models);
 
@@ -172,11 +184,13 @@ export function ClashRevisionCompareDialog() {
       setOpen(next);
       if (!next) { setComparison(null); useOriginalClashBaseline.setState({ finding: null }); }
     }}>
-      <DialogTrigger asChild>
-        <IconButton label={t('clashTools.revisionCompare.triggerTooltip')} className="h-7 w-7">
-          <GitCompare className="h-4 w-4" />
-        </IconButton>
-      </DialogTrigger>
+      {!controlled && (
+        <DialogTrigger asChild>
+          <IconButton label={t('clashTools.revisionCompare.triggerTooltip')} className="h-7 w-7">
+            <GitCompare className="h-4 w-4" />
+          </IconButton>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

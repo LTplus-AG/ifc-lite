@@ -111,7 +111,7 @@ test('assistant artifact proposals are reviewed by the native engines and saved 
   const saved = await store(page, (state) => state.listDefinitions.find((list) => list.name === 'Walls and slabs')?.columns.map((column) => `${column.psetName ?? ''}.${column.propertyName}`));
   expect(saved).toEqual(['.Name', 'Qto_WallBaseQuantities.NetSideArea', 'Pset_SlabCommon.FireRating']);
   await review.getByRole('button', { name: 'Open in the list editor', exact: true }).click();
-  await expect(page.getByText('Edit List', { exact: true })).toBeVisible();
+  await expect(page.getByText('Edit list', { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('p13-list-opened.png') });
   await page.getByRole('button', { name: 'Close Lists', exact: true }).click();
 

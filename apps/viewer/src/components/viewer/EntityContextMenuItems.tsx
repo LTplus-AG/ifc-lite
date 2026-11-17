@@ -5,8 +5,9 @@
 import { useId, type ElementType } from 'react';
 import { ChevronRight, CopyPlus } from 'lucide-react';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
-import { surfaceCommand, type SurfaceCommandId, type SurfaceCommandState } from './surface-commands';
+import { surfaceCommand, type SurfaceCommandId, type SurfaceCommandState } from './surface-command-registry';
 import { runSurfaceCommand } from './surface-command-run';
+import { isSurfaceCommandAvailable } from './surface-command-features';
 import { DUPLICATE_CONTEXT_DIRECTIONS } from './surface-commands-context';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
@@ -43,13 +44,13 @@ type MenuItemProps = MenuItemViewProps & (
 function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShortcut, title, tone = 'default', commandId, extensionCommandId }: MenuItemProps) {
   const descriptionId = useId();
   const iconClass = tone === 'destructive'
-    ? 'h-4 w-4 text-red-500 dark:text-red-400'
+    ? 'h-4 w-4 text-danger'
     : 'h-4 w-4 text-muted-foreground';
   const focusClass = tone === 'destructive'
-    ? 'focus:bg-red-50 focus:text-red-700 dark:focus:bg-red-950/40 dark:focus:text-red-300'
+    ? 'focus:bg-danger-surface focus:text-danger'
     : 'focus:bg-muted';
   return (
-    <ContextMenuItem asChild disabled={disabled}>
+    <ContextMenuItem asChild disabled={disabled} className={focusClass}>
       <button
         type="button"
         data-command-id={commandId}
@@ -58,7 +59,7 @@ function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShort
         aria-describedby={disabled && title ? descriptionId : undefined}
         title={title}
         disabled={disabled}
-        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm outline-none ${focusClass}`}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm outline-none"
         onClick={onClick}
       >
         <Icon className={iconClass} />
@@ -79,6 +80,7 @@ export type CommandMenuItemProps = Omit<MenuItemViewProps, 'icon' | 'label' | 's
 export function CommandMenuItem({ commandId, commandState, ...props }: CommandMenuItemProps) {
   const { t } = useTranslation();
   const command = surfaceCommand(commandId, 'context');
+  if (!isSurfaceCommandAvailable(command)) return null;
   return <MenuItem {...props} commandId={command.id}
     icon={command.contextIcon ?? command.icon}
     label={t(command.contextLabelKey ?? command.labelKey, command.contextLabelParams?.(commandState))}
@@ -93,6 +95,7 @@ export function DuplicateItems({ onDuplicate, canEdit, reason }: {
 }) {
   const { t } = useTranslation();
   const duplicate = surfaceCommand('context:duplicate', 'context');
+  if (!isSurfaceCommandAvailable(duplicate)) return null;
   const commandState = { canEditInSession: canEdit };
   const disabled = !duplicate.enabled(commandState);
   return (

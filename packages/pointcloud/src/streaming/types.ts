@@ -40,8 +40,24 @@ export interface PointSourceInfo {
  */
 export interface StreamingPointSource {
   open(signal?: AbortSignal): Promise<PointSourceInfo>;
+  /**
+   * Optional: restart an opened source from its first point at a new stride
+   * and origin. Hosts prefer it to `close()` plus a fresh source, so a source
+   * can keep what `open()` learnt instead of reading the file again (#8777).
+   */
+  reopen?(options: PointSourceReopenOptions, signal?: AbortSignal): Promise<PointSourceInfo>;
   next(maxPoints: number, signal?: AbortSignal): Promise<DecodedPointChunk | null>;
   close(): void;
+}
+
+/**
+ * The stride and origin `StreamingPointSource.reopen()` applies. Both replace
+ * the source's own, so omitting `originOffset` means no origin; every other
+ * option is kept.
+ */
+export interface PointSourceReopenOptions {
+  stride: number;
+  originOffset?: readonly [number, number, number];
 }
 
 /**

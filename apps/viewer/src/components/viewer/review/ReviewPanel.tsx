@@ -14,7 +14,6 @@ import '@/i18n/catalogues/review-workspace.register';
 
 import { useMemo, useState } from 'react';
 import { ListChecks, RefreshCw } from 'lucide-react';
-import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { cardTitle } from '@/lib/review/bcf-draft';
@@ -57,7 +56,7 @@ export function ReviewPanel({ onClose }: { onClose?: () => void }) {
 
   return (
     <AnalysisPanel icon={<ListChecks />} title={t('reviewWorkspace.title')} onClose={onClose}
-      actions={<IconButton label={t('reviewWorkspace.refresh')} className="h-7 w-7" onClick={refresh}><RefreshCw className="h-4 w-4" /></IconButton>}>
+      actions={[{ id: 'review-refresh', label: t('reviewWorkspace.refresh'), icon: <RefreshCw className="h-4 w-4" />, onSelect: refresh }]}>
       <div className="min-h-0 flex-1 overflow-y-auto" data-review-panel>
         <ResultView source={t('reviewWorkspace.title')}
           header={<ResultSource source={t('reviewWorkspace.source')} models={modelList}

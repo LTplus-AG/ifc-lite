@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
-import { isTextEntryTarget } from '@/lib/keyboard-event';
+import { isPressableTarget, isTextEntryTarget } from '@/lib/keyboard-event';
 import { KEYBOARD_PRIORITY, registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { addTranslation, subtractTranslation, parseMoveLength, toRenderTranslation, translationAtDistance,
   type Translation, type MoveConstraint } from '@/lib/model-placement/translation';
@@ -76,10 +76,7 @@ export function RepositionRuntimeHost() {
     const removeCancel = registerKeyboardCommand('reposition.cancel', () => {
       useViewerStore.getState().closeReposition();
     }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeOverlay });
-    const eligibleTarget = (event: KeyboardEvent) => {
-      const target = event.target;
-      return !isTextEntryTarget(event) && !(target instanceof HTMLElement && target.closest('button, summary, a[href], [role=button]'));
-    };
+    const eligibleTarget = (event: KeyboardEvent) => !isTextEntryTarget(event) && !isPressableTarget(event);
     const removeApply = registerKeyboardCommand('reposition.apply', (event) => {
       if (!eligibleTarget(event)) return false;
       apply();

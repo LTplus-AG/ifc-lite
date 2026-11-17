@@ -13,40 +13,36 @@
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { act, useEffect, useState } from 'react';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import { resolveEnglish } from '@/i18n/registry';
-import { CommandPalette } from './CommandPalette.js';
+import { EVENT_OPEN_COMMAND_PALETTE, emitOpenCommandPalette } from '@/lib/tours/events';
+import { advance, cleanup, click, render, type as typeInto, waitFor, press } from '@/test/render.js';
+import { CommandPaletteHost } from './CommandPaletteHost.js';
 
-const mounted: Array<{ root: Root; container: HTMLElement }> = [];
-function render(open: boolean, onOpenChange: (open: boolean) => void): HTMLElement {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  act(() => {
-    root.render(
-      <BimReactContext.Provider value={{} as BimContext}>
-        <CommandPalette open={open} onOpenChange={onOpenChange} />
-      </BimReactContext.Provider>,
-    );
-  });
-  mounted.push({ root, container });
-  return container;
+function PaletteLauncher() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const launch = () => setOpen(true);
+    window.addEventListener(EVENT_OPEN_COMMAND_PALETTE, launch);
+    return () => window.removeEventListener(EVENT_OPEN_COMMAND_PALETTE, launch);
+  }, []);
+  return (
+    <BimReactContext.Provider value={{} as BimContext}>
+      <button type="button" aria-expanded={open} onClick={emitOpenCommandPalette}>
+        {resolveEnglish('commandPalette.ariaLabel')}
+      </button>
+      <CommandPaletteHost open={open} onOpenChange={setOpen} />
+    </BimReactContext.Provider>
+  );
 }
-function unmountAll(): void {
-  for (const { root, container } of mounted.splice(0)) {
-    act(() => root.unmount());
-    container.remove();
-  }
-}
-after(unmountAll);
+after(cleanup);
 
 beforeEach(() => {
-  unmountAll();
+  cleanup();
   // The registry gates this format on a loaded model (`requires: 'model'`).
   useViewerStore.setState({
     anonymizedExportRequested: false,
@@ -55,29 +51,33 @@ beforeEach(() => {
 });
 after(() => { useViewerStore.setState({ ifcDataStore: null }); });
 
-/** Flush the `requestAnimationFrame` `runCommand` defers a non-`immediate`
- *  command's action to. */
-async function advance(ms: number): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
-  });
-}
-
 describe('CommandPalette — export:anonymized', () => {
-  it('running the command opens the anonymized export dialog and closes the palette', async () => {
-    let open = true;
-    const onOpenChange = (next: boolean) => { open = next; };
-    render(open, onOpenChange);
+  it('running the command retains the export dialog after the lazy palette closes (#8947)', async () => {
+    const container = render(<PaletteLauncher />);
+    const launcher = container.querySelector('button');
+    assert.ok(launcher);
+    assert.equal(launcher.getAttribute('aria-expanded'), 'false');
+    assert.equal(document.body.querySelector('[role="combobox"]'), null);
+    launcher.focus();
+    click(launcher);
+    await waitFor(() => document.body.querySelector('[role="combobox"]') !== null,
+      'the lazy palette must open from its launcher');
 
     // Radix portals the dialog content onto `document.body`, not the
     // container it was rendered into (`apps/viewer/AGENTS.md` viewer-test
     // recipe).
-    const input = document.body.querySelector('input') as HTMLInputElement;
+    const input = document.body.querySelector<HTMLInputElement>('[role="combobox"]');
     assert.ok(input, 'no search input');
-    act(() => {
-      input.value = 'Export anonymized';
-      input.dispatchEvent(new window.Event('input', { bubbles: true }));
-    });
+    assert.equal(launcher.getAttribute('aria-expanded'), 'true');
+    press(input, 'Escape');
+    await waitFor(() => document.activeElement === launcher,
+      'first-load handoff must restore the original launcher, not the removed loading button');
+    click(launcher);
+    await waitFor(() => document.body.querySelector('[role="combobox"]') !== null,
+      'the retained palette must reopen');
+    const reopened = document.body.querySelector<HTMLInputElement>('[role="combobox"]');
+    assert.ok(reopened);
+    typeInto(reopened, 'Export anonymized');
 
     const option = [...document.body.querySelectorAll('[role="option"]')].find(
       (el) => /^Export anonymized subset/i.test(el.textContent ?? ''),
@@ -89,13 +89,15 @@ describe('CommandPalette — export:anonymized', () => {
     act(() => {
       option.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
     });
-    await advance(10);
-
     const title = resolveEnglish('anonymizedExport.dialog.title');
+    await waitFor(() => [...document.body.querySelectorAll('[role="dialog"]')]
+      .some((d) => d.textContent?.includes(title)), 'the anonymized export dialog must open');
+    await advance(20);
     assert.ok(
       [...document.body.querySelectorAll('[role="dialog"]')].some((d) => d.textContent?.includes(title)),
-      'the anonymized export dialog must open',
+      'the anonymized export dialog must stay mounted after the palette closes',
     );
-    assert.equal(open, false, 'the palette must close after running a command');
+    assert.equal(launcher.getAttribute('aria-expanded'), 'false', 'the palette state must close');
+    assert.equal(document.body.querySelector('[role="combobox"]'), null, 'the palette must leave the DOM');
   });
 });

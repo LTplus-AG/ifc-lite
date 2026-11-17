@@ -81,14 +81,14 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
         // is short by ~3px (#5826). `inset-x-0` keeps width unchanged — the
         // surrounding row separates items with dedicated `Separator`s, so
         // only height needs the hit-slop.
-        'relative flex items-center gap-1 rounded-md border px-1.5 py-0.5 transition-colors after:absolute after:inset-x-0 after:-top-0.5 after:-bottom-0.5 after:content-[\'\'] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-        flavor
-          ? 'border-primary/40 bg-primary/5 text-foreground hover:bg-primary/10'
-          : 'border-dashed border-muted-foreground/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+        // Same ghost item as its status-bar neighbours (#8802 R1): the old
+        // outlined pill read as the bar's one button.
+        'relative flex items-center gap-1.5 rounded px-1 -mx-1 transition-colors hover:text-foreground after:absolute after:inset-x-0 after:-top-1 after:-bottom-1 after:content-[\'\'] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        flavor ? 'text-foreground' : 'text-muted-foreground',
       )}
     >
-      <Palette className="h-3.5 w-3.5" />
-      <span className="max-w-[140px] truncate text-2xs font-medium">{label}</span>
+      <Palette className={cn('h-3.5 w-3.5', flavor && 'text-primary')} />
+      <span className="max-w-36 truncate">{label}</span>
     </button>
   );
 }

@@ -1,9 +1,0 @@
---- a/rust/processing/src/element/session_retained/presentation/surface_rows.rs
-+++ b/rust/processing/src/element/session_retained/presentation/surface_rows.rs
-@@ -15,5 +15,5 @@
-     let det = normal.dot(&normal);
-     if !det.is_finite() || det == 0. { return None; }
-     let (v, w) = (q.cross(&f).dot(&normal) / det, e.cross(&q).dot(&normal) / det);
-+    Some([1. - v - w, v, w])
--    Some([v, w, 1. - v - w])
- }

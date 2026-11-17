@@ -117,7 +117,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
         <div className="grid gap-4 py-4">
           {/* current → target */}
           <div className="flex items-center gap-2 rounded-md border border-sky-200/70 bg-sky-50/40 px-3 py-2.5 dark:border-sky-900/60 dark:bg-sky-950/20">
-            <code className="flex-1 truncate font-mono text-2xs text-zinc-500 dark:text-zinc-400" title={entityType}>{entityType}</code>
+            <code className="flex-1 truncate font-mono text-2xs text-muted-foreground" title={entityType}>{entityType}</code>
             <ArrowRight className="h-3.5 w-3.5 shrink-0 text-sky-400" />
             <code
               className={cn(
@@ -133,7 +133,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
           {/* quick picks */}
           {quickTargets.length > 0 && (
             <div className="space-y-1.5">
-              <span className="block text-2xs font-medium uppercase tracking-wide text-zinc-400">{t('propertyEditor.reassign.common')}</span>
+              <span className="block text-2xs font-medium uppercase tracking-wide text-muted-foreground">{t('propertyEditor.reassign.common')}</span>
               <div className="flex flex-wrap gap-1.5">
                 {quickTargets.map((t) => (
                   <button
@@ -144,7 +144,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
                       'rounded-full border px-2.5 py-1 font-mono text-2xs transition-colors',
                       trimmedTarget === t
                         ? 'border-sky-400 bg-sky-500/10 text-sky-700 dark:text-sky-300'
-                        : 'border-zinc-200 text-zinc-600 hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-sky-950/30',
+                        : 'border-border text-muted-foreground hover:border-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/30',
                     )}
                   >
                     {t.replace(/^Ifc/, '')}
@@ -177,7 +177,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
             </Field>
           )}
 
-          <p className="text-2xs leading-relaxed text-zinc-400 dark:text-zinc-500">
+          <p className="text-2xs leading-relaxed text-muted-foreground">
             {t('propertyEditor.reassign.help')}
           </p>
         </div>
@@ -218,13 +218,13 @@ export function ReassignBadge({ modelId, entityId, entityType }: { modelId: stri
   return (
     <div className="flex items-center gap-1.5 rounded-md border border-sky-200/70 bg-sky-50/50 px-2 py-1 text-2xs dark:border-sky-900/60 dark:bg-sky-950/25">
       <Replace className="h-3 w-3 shrink-0 text-sky-500" />
-      <span className="text-zinc-500 dark:text-zinc-400">{t('propertyEditor.reassign.badge')}</span>
+      <span className="text-muted-foreground">{t('propertyEditor.reassign.badge')}</span>
       <ArrowRight className="h-3 w-3 shrink-0 text-sky-400" />
       <code className="font-mono font-medium text-sky-600 dark:text-sky-300">{pending.newType}</code>
       {pending.predefinedType && (
         <code className="font-mono text-sky-500/80 dark:text-sky-300/70">· {pending.predefinedType}</code>
       )}
-      <span className="ml-auto text-zinc-400 dark:text-zinc-500">{t('propertyEditor.reassign.onExport')}</span>
+      <span className="ml-auto text-muted-foreground">{t('propertyEditor.reassign.onExport')}</span>
     </div>
   );
 }

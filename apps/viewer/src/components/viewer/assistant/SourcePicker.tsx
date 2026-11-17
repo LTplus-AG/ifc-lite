@@ -81,7 +81,7 @@ export function SourcePicker({ current, onAttach, onCancel }: {
             return <li key={source} data-source={source} className="rounded border border-border p-2 space-y-1.5" aria-current={source === current || undefined}>
               <div className="flex items-baseline justify-between gap-2">
                 <span className="font-semibold">{title}</span>
-                <span className={state.ready ? 'text-right text-emerald-700 dark:text-emerald-400' : 'text-right text-muted-foreground'}>
+                <span className={state.ready ? 'text-right text-ok' : 'text-right text-muted-foreground'}>
                   {t(state.status.labelKey, state.status.params)}
                 </span>
               </div>

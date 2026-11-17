@@ -13,13 +13,16 @@ import {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { EntityRef } from './types.js';
 import { entityRefToString, stringToEntityRef } from './types.js';
-import { useViewerStore } from './index.js';
+import type { ViewerState } from './index.js';
+import { getViewerState } from './viewerStoreHandle.js';
 import { toGlobalIdFromModels } from './globalId.js';
-import { isTypeVisible } from './typeVisibilityFilter.js';
+import { resolveViewHiddenEntities, retypedClasses } from '../lib/visibility/structural-view';
+import { isMeshTypeVisible } from './typeVisibilityFilter.js';
 import { collectAggregatedDescendants, type AggregationRelationships } from '../utils/aggregation.js';
 import { effectiveSpatialMembers } from '../lib/effective-spatial-members.js';
+import { objectIdentity } from '../utils/objectIdentity.js';
 
-type ViewerStateSnapshot = ReturnType<typeof useViewerStore.getState>;
+type ViewerStateSnapshot = ViewerState;
 
 type VisibleCandidate = {
   globalId: number;
@@ -40,27 +43,28 @@ export type BasketInputSource = 'selection' | 'hierarchy' | 'visible' | 'empty';
 type CacheEntry = { key: string; refs: EntityRef[] };
 let _visibleCache: CacheEntry | null = null;
 
+/** Murmur3 finalizer: a plain sum and xor of ids repeats across different sets (#10247). */
+const mixId = (n: number): number => {
+  let h = Math.imul(n ^ (n >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+};
+
 function digestNumberSet(values: Iterable<number>): string {
-  let count = 0;
-  let xor = 0;
-  let sum = 0;
+  let count = 0, xor = 0, sum = 0;
   for (const v of values) {
-    const n = Number.isFinite(v) ? (v | 0) : 0;
-    count++;
-    xor ^= n;
-    sum = (sum + (n >>> 0)) >>> 0;
+    const mixed = mixId(Number.isFinite(v) ? (v | 0) : 0);
+    count++; xor ^= mixed; sum = (sum + mixed) >>> 0;
   }
   return `${count}:${xor >>> 0}:${sum >>> 0}`;
 }
 
 export function visibilityFingerprint(state: ViewerStateSnapshot): string {
-  const tv = state.typeVisibility;
-
-  // Include per-model visible flag and geometry mesh count so the cache
-  // invalidates when model visibility is toggled or geometry finishes loading.
+  // Per model: visible flag, mesh count (streaming growth), and geometry and
+  // store identity (both are replaced, e.g. by a collab reconstruct).
   const modelParts: string[] = [];
   for (const [modelId, model] of state.models) {
-    modelParts.push(`${modelId}:${model.visible ? 1 : 0}:${model.geometryResult?.meshes?.length ?? 0}`);
+    modelParts.push(`${modelId}:${model.visible ? 1 : 0}:${model.geometryResult?.meshes?.length ?? 0}:${objectIdentity(model.geometryResult)}:${objectIdentity(model.ifcDataStore)}`);
   }
   modelParts.sort();
 
@@ -70,12 +74,13 @@ export function visibilityFingerprint(state: ViewerStateSnapshot): string {
     state.classFilter ? digestNumberSet(state.classFilter.ids) : 'none',
     digestNumberSet(state.lensHiddenIds),
     digestNumberSet(state.selectedStoreys),
-    tv.spaces ? 1 : 0,
-    tv.spatialZones ? 1 : 0,
-    tv.openings ? 1 : 0,
-    tv.virtualElements ? 1 : 0,
-    tv.site ? 1 : 0,
-    tv.ifcAnnotations ? 1 : 0,
+    JSON.stringify(state.typeVisibility), state.structuralViewMode,
+    state.mutationVersion,
+    // The structural mask, storey isolation and candidates read these objects
+    // themselves; a collab reconstruct replaces them without a version bump.
+    // The top-level store and geometry are read only in single-model mode.
+    objectIdentity(state.mutationViews),
+    state.models.size === 0 ? `${objectIdentity(state.ifcDataStore)}.${objectIdentity(state.geometryResult)}` : '-',
     state.models.size,
     modelParts.join(';'),
     state.geometryResult?.meshes?.length ?? 0,
@@ -97,13 +102,6 @@ function dedupeRefs(refs: EntityRef[]): EntityRef[] {
     out.push(ref);
   }
   return out;
-}
-
-function matchesTypeVisibility(ifcType: string | undefined, typeVisibility: ViewerStateSnapshot['typeVisibility']): boolean {
-  // Shared mapping (`typeVisibilityFilter.ts`) so the basket's visible set,
-  // the viewport mesh filter and the GLB export never drift. `site` also hides
-  // `IfcGeographicElement` terrain (issue #1480).
-  return isTypeVisible(ifcType, typeVisibility);
 }
 
 function getDataStoreForModel(state: ViewerStateSnapshot, modelId: string): IfcDataStore | null {
@@ -350,6 +348,9 @@ function computeStoreyIsolation(state: ViewerStateSnapshot): Set<number> | null 
 
 function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[] {
   const candidates: VisibleCandidate[] = [];
+  // Shared mapping (`typeVisibilityFilter.ts`) so the basket's visible set and
+  // the viewport mesh filter never drift (#1480, #10119).
+  const retyped = retypedClasses(state);
 
   if (state.models.size > 0) {
     for (const [modelId, model] of state.models) {
@@ -359,7 +360,7 @@ function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[
       if (!model.geometryResult) continue;
       const offset = model.idOffset ?? 0;
       for (const mesh of model.geometryResult.meshes) {
-        if (!matchesTypeVisibility(mesh.ifcType, state.typeVisibility)) continue;
+        if (!isMeshTypeVisible(mesh, state.typeVisibility, state.structuralViewMode, retyped)) continue;
         const globalId = mesh.expressId;
         candidates.push({
           globalId,
@@ -371,7 +372,7 @@ function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[
     }
   } else if (state.geometryResult) {
     for (const mesh of state.geometryResult.meshes) {
-      if (!matchesTypeVisibility(mesh.ifcType, state.typeVisibility)) continue;
+      if (!isMeshTypeVisible(mesh, state.typeVisibility, state.structuralViewMode, retyped)) continue;
       candidates.push({
         globalId: mesh.expressId,
         modelId: 'legacy',
@@ -423,7 +424,7 @@ export function computeIsolationFilterSet(state: ViewerStateSnapshot): Set<numbe
 function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
   const candidates = collectVisibleCandidates(state);
 
-  const globalHidden = new Set<number>(state.hiddenEntities);
+  const globalHidden = new Set<number>(resolveViewHiddenEntities(state));
   for (const id of state.lensHiddenIds) {
     globalHidden.add(id);
   }
@@ -442,7 +443,7 @@ function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
 }
 
 /** `ignoreIsolatedEntities`: as if `isolatedEntities` were unset, so a panel's own isolation does not filter its own rows (#6368). */
-export function getVisibleBasketEntityRefsFromStore(ignoreIsolatedEntities = false, live = useViewerStore.getState()): EntityRef[] {
+export function getVisibleBasketEntityRefsFromStore(ignoreIsolatedEntities = false, live = getViewerState()): EntityRef[] {
   const state = ignoreIsolatedEntities && live.isolatedEntities !== null ? { ...live, isolatedEntities: null } : live;
   const key = visibilityFingerprint(state);
   if (_visibleCache?.key === key) return _visibleCache.refs;
@@ -466,7 +467,7 @@ export function getVisibleBasketEntityRefsFromStore(ignoreIsolatedEntities = fal
  * Resolve active entity selection into basket refs.
  * Explicit selected entities are preferred; if empty, selected storeys are expanded.
  */
-export function getBasketSelectionRefsFromStore(state = useViewerStore.getState()): EntityRef[] {
+export function getBasketSelectionRefsFromStore(state = getViewerState()): EntityRef[] {
 
   const expandedSelection = getExpandedSelectionRefs(state);
   if (expandedSelection.length > 0) {
@@ -481,7 +482,7 @@ export function getBasketSelectionRefsFromStore(state = useViewerStore.getState(
  * Priority: explicit hierarchy source snapshot -> selected storeys -> selected hierarchy container/entity.
  */
 export function getHierarchyBasketEntityRefsFromStore(): EntityRef[] {
-  const state = useViewerStore.getState();
+  const state = getViewerState();
 
   if (state.hierarchyBasketSelection.size > 0) {
     const hierarchyRefs = Array.from(state.hierarchyBasketSelection).map((key) => stringToEntityRef(key));
@@ -532,7 +533,7 @@ export function getSmartBasketInputFromStore(): { refs: EntityRef[]; source: Bas
 /** "Is the basket shown?" — every basket element is isolated. A subset test, not equality: a basket that
  *  WIDENED a foreign isolation (#4527) is shown too, and "Show active basket" would evict the foreign ids. */
 export function isBasketIsolationActiveFromStore(): boolean {
-  const state = useViewerStore.getState();
+  const state = getViewerState();
   if (state.pinboardEntities.size === 0 || state.isolatedEntities === null) return false;
   for (const id of basketToGlobalIds(state)) {
     if (!state.isolatedEntities.has(id)) return false;
@@ -541,7 +542,7 @@ export function isBasketIsolationActiveFromStore(): boolean {
 }
 
 export function getVisibleBasketStatsFromStore(): BasketVisibleStats {
-  const state = useViewerStore.getState();
+  const state = getViewerState();
   const visibleRefs = getVisibleBasketEntityRefsFromStore();
   const visibleKeys = new Set<string>(visibleRefs.map(entityRefToString));
   let removeCount = 0;

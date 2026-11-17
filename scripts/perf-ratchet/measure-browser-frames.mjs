@@ -21,7 +21,7 @@
  *
  * WHAT IS GATED. Only the rows in RATCHETED_FRAME_METRICS, the ones the
  * same-build repeatability evidence supports
- * (scripts/perf/evidence/gpu-frame-timing-6975/frame-ratchet/repeatability.json,
+ * (tests/fixtures/frame-ratchet-6975/repeatability.json,
  * recomputed by scripts/perf/frame-ratchet-evidence.test.mjs). Every other row
  * goes to `informational`: shown in the report, never compared. Main-thread
  * times and load frame counts move by tens of percent between runs of one

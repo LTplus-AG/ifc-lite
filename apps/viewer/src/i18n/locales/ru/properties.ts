@@ -5,6 +5,9 @@
 import type { Catalogue } from '../../registry';
 
 export const propertiesRu = {
+  "properties.spatialLocation.storeyLabel": "Этаж",
+  "properties.spatialLocation.elevationLabel": "Отметка этажа",
+  "properties.spatialLocation.heightLabel": "Высота этажа",
   "properties.panel.occurrenceQuantitiesHeading": "Количественные характеристики экземпляра",
   "properties.panel.typeQuantitiesHeading": "Унаследованные количественные характеристики типа",
   "properties.propertySet.unnamed": "Безымянный набор свойств",
@@ -15,6 +18,10 @@ export const propertiesRu = {
   "properties.quantitySet.type.count": "Количество",
   "properties.quantitySet.type.weight": "Масса",
   "properties.quantitySet.type.time": "Время",
+  "properties.quantitySet.fromGeometry": "Обновлено по геометрии",
+  "properties.quantitySet.fromGeometryHint": "Этот набор пересчитан по изменённой геометрии элемента. При экспорте он заменяет значения из файла.",
+  "properties.quantitySet.updateEdited": "Обновлять количества изменённых элементов",
+  "properties.quantitySet.updateEditedHint": "Выкл.: базовые количества остаются такими, как в файле, даже после изменения формы.",
   "properties.assemblyBadge.tooltip": "Выбрать родительскую сборку",
   "properties.assemblyBadge.label": "Часть сборки",
   "properties.spatialLocation.elevationDisplay": "{sign}{value}м",
@@ -187,6 +194,7 @@ export const propertiesRu = {
   "properties.modelMetadata.sourceModel": "Исходная модель",
   "properties.modelMetadata.fileInformationHeading": "Информация о файле",
   "properties.modelMetadata.fileSize": "Размер файла",
+  "properties.modelMetadata.fileSizeAsLoaded": "Размер файла (при загрузке)",
   "properties.modelMetadata.loadedAt": "Загружено в",
   "properties.modelMetadata.parseTime": "Время анализа",
   "properties.modelMetadata.parseTimeValue": "{ms} мс",
@@ -204,6 +212,7 @@ export const propertiesRu = {
   "properties.modelMetadata.notAvailable": "Н/Д",
   "properties.modelMetadata.buildingStoreys": "Этажи зданий",
   "properties.modelMetadata.elementsWithGeometry": "Элементы с геометрией",
+  "properties.modelMetadata.triangles": "Треугольники",
   "properties.modelMetadata.maxExpressId": "Макс. Express ID",
   "properties.modelMetadata.classificationSystemsHeading": "Системы классификации",
   "properties.modelMetadata.classificationUnresolved": "Системы классификации присутствуют, но недоступны в данном источнике данных",

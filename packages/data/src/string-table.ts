@@ -9,7 +9,7 @@
 
 export class StringTable {
   private strings: string[] = [''];
-  private index: Map<string, number> = new Map([['', 0]]);
+  private index: Map<string, number> | undefined = new Map([['', 0]]);
 
   readonly NULL_INDEX = -1;
 
@@ -23,14 +23,8 @@ export class StringTable {
   static fromArray(strings: string[]): StringTable {
     const table = new StringTable();
     table.strings = strings.length > 0 && strings[0] === '' ? strings.slice() : ['', ...strings];
-    table.index = new Map();
-    for (let i = 0; i < table.strings.length; i++) {
-      // First occurrence wins so duplicate inputs (rare but possible
-      // after manual concatenation) don't shadow the canonical index.
-      if (!table.index.has(table.strings[i])) {
-        table.index.set(table.strings[i], i);
-      }
-    }
+    // Indexed reads need only the array; hashing every string blocks hydration.
+    table.index = undefined;
     return table;
   }
   
@@ -56,14 +50,15 @@ export class StringTable {
       return this.NULL_INDEX;
     }
     
-    const existing = this.index.get(value);
+    const index = this.ensureIndex();
+    const existing = index.get(value);
     if (existing !== undefined) {
       return existing;
     }
     
     const newIndex = this.strings.length;
     this.strings.push(value);
-    this.index.set(value, newIndex);
+    index.set(value, newIndex);
     return newIndex;
   }
   
@@ -71,16 +66,26 @@ export class StringTable {
    * Check if string exists
    */
   has(value: string): boolean {
-    return this.index.has(value);
+    return this.ensureIndex().has(value);
   }
   
   /**
    * Get index of string (returns -1 if not found)
    */
   indexOf(value: string): number {
-    return this.index.get(value) ?? -1;
+    return this.ensureIndex().get(value) ?? -1;
   }
   
+  private ensureIndex(): Map<string, number> {
+    if (this.index) return this.index;
+    const index = new Map<string, number>();
+    for (let i = 0; i < this.strings.length; i++) {
+      if (!index.has(this.strings[i])) index.set(this.strings[i], i);
+    }
+    this.index = index;
+    return index;
+  }
+
   /**
    * Get all strings (for debugging/export)
    */

@@ -81,14 +81,29 @@ export function octDecode(bx: number, by: number): [number, number, number] {
 }
 
 /**
+ * A lattice origin shared by several encodes, so their records concatenate
+ * into one batch (the streamed fragments of one bucket, see
+ * scene-stream-assembly.ts). Any lattice-aligned origin at or below the data
+ * decodes to the same exact positions: `quantMin` and `q·step` are both integer
+ * multiples of 2^-10 (main.wgsl.ts), so only the u16 range constrains it.
+ */
+export interface LatticeFrame {
+  /** Unset: the first encode picks one with equal headroom on both sides of its data. */
+  min?: [number, number, number];
+}
+
+/**
  * Quantize a 28-byte interleaved batch vertex buffer (pos f32x3 + normal
  * f32x3 + entityId u32, `strideFloats` = 7) into the 12-byte layout.
  * Returns null when any axis extent exceeds the u16 lattice range — the
- * caller keeps the f32 buffer then.
+ * caller keeps the f32 buffer then. With `lattice`, the data is encoded
+ * against its shared origin whenever it fits that origin's range, else against
+ * its own (the result's `quantMin` says which).
  */
 export function quantizeInterleaved(
   vertexData: Float32Array,
   strideFloats: number,
+  lattice?: LatticeFrame,
 ): QuantizedVertexData | null {
   const vertexCount = (vertexData.length / strideFloats) | 0;
   if (vertexCount === 0) {
@@ -111,15 +126,26 @@ export function quantizeInterleaved(
   }
 
   // Lattice-align the origin DOWNWARD so every q stays >= 0.
-  const qminX = Math.floor(minX / QUANT_STEP) * QUANT_STEP;
-  const qminY = Math.floor(minY / QUANT_STEP) * QUANT_STEP;
-  const qminZ = Math.floor(minZ / QUANT_STEP) * QUANT_STEP;
+  let qminX = Math.floor(minX / QUANT_STEP) * QUANT_STEP;
+  let qminY = Math.floor(minY / QUANT_STEP) * QUANT_STEP;
+  let qminZ = Math.floor(minZ / QUANT_STEP) * QUANT_STEP;
   if (
     (maxX - qminX) > MAX_QUANT_EXTENT ||
     (maxY - qminY) > MAX_QUANT_EXTENT ||
     (maxZ - qminZ) > MAX_QUANT_EXTENT
   ) {
     return null;
+  }
+  if (lattice) {
+    // Centre the data in the u16 range, leaving room for later encodes on either side.
+    const centred = (qmin: number, max: number): number =>
+      qmin - Math.floor(Math.floor((MAX_QUANT_EXTENT - (max - qmin)) / QUANT_STEP) / 2) * QUANT_STEP;
+    lattice.min ??= [centred(qminX, maxX), centred(qminY, maxY), centred(qminZ, maxZ)];
+    const [px, py, pz] = lattice.min;
+    if (px <= minX && py <= minY && pz <= minZ
+      && maxX - px <= MAX_QUANT_EXTENT && maxY - py <= MAX_QUANT_EXTENT && maxZ - pz <= MAX_QUANT_EXTENT) {
+      qminX = px; qminY = py; qminZ = pz;
+    }
   }
 
   // Pass 2: encode.
@@ -144,4 +170,62 @@ export function quantizeInterleaved(
   }
 
   return { vertexData: out, quantMin: [qminX, qminY, qminZ], step: QUANT_STEP };
+}
+
+/** Share of one entity's surface that may collapse on the lattice before its batch stays f32 (#9068). */
+export const MAX_COLLAPSED_AREA_FRACTION = 0.01;
+
+/**
+ * True when snapping a batch onto the lattice would visibly destroy shape:
+ * some entity loses more than `MAX_COLLAPSED_AREA_FRACTION` of its triangle
+ * area to triangles that become zero-area. Sub-millimetre slivers occur in
+ * most models and stay quantized; small round members (Ø≈2 mm rods, railing
+ * bars, thin pipes) collapse wholesale and must not (#9068).
+ *
+ * `quantMin` is lattice-aligned, so `round(p / QUANT_STEP)` is the node
+ * `quantizeInterleaved` writes; the integer cross product is exact.
+ */
+export function latticeCollapsesGeometry(
+  vertexData: Float32Array,
+  strideFloats: number,
+  indices: Uint32Array,
+): boolean {
+  const vertexCount = (vertexData.length / strideFloats) | 0;
+  const ids = new Uint32Array(vertexData.buffer, vertexData.byteOffset, vertexData.length);
+  const nodes = new Int32Array(vertexCount * 3);
+  for (let v = 0; v < vertexCount; v++) {
+    for (let axis = 0; axis < 3; axis++) nodes[v * 3 + axis] = Math.round(vertexData[v * strideFloats + axis] / QUANT_STEP);
+  }
+  // Merged batches keep each entity's triangles contiguous: accumulate a run,
+  // judge it when the entity changes (an entity split across runs is summed).
+  const totals = new Map<number, { area: number; collapsed: number }>();
+  let runId = -1, runArea = 0, runCollapsed = 0;
+  const flush = (): void => {
+    if (runId < 0) return;
+    const entry = totals.get(runId) ?? { area: 0, collapsed: 0 };
+    entry.area += runArea; entry.collapsed += runCollapsed;
+    totals.set(runId, entry);
+  };
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    const a = indices[t], b = indices[t + 1], c = indices[t + 2];
+    const pa = a * strideFloats, pb = b * strideFloats, pc = c * strideFloats;
+    const ux = vertexData[pb] - vertexData[pa], uy = vertexData[pb + 1] - vertexData[pa + 1], uz = vertexData[pb + 2] - vertexData[pa + 2];
+    const vx = vertexData[pc] - vertexData[pa], vy = vertexData[pc + 1] - vertexData[pa + 1], vz = vertexData[pc + 2] - vertexData[pa + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const area = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (!(area > 0)) continue;
+    const id = ids[pa + 6];
+    if (id !== runId) { flush(); runId = id; runArea = 0; runCollapsed = 0; }
+    runArea += area;
+    const na = a * 3, nb = b * 3, nc = c * 3;
+    const qux = nodes[nb] - nodes[na], quy = nodes[nb + 1] - nodes[na + 1], quz = nodes[nb + 2] - nodes[na + 2];
+    const qvx = nodes[nc] - nodes[na], qvy = nodes[nc + 1] - nodes[na + 1], qvz = nodes[nc + 2] - nodes[na + 2];
+    // Integer lattice offsets: every product is exact, so zero means collapsed.
+    if (quy * qvz - quz * qvy === 0 && quz * qvx - qux * qvz === 0 && qux * qvy - quy * qvx === 0) runCollapsed += area;
+  }
+  flush();
+  for (const { area, collapsed } of totals.values()) {
+    if (collapsed > area * MAX_COLLAPSED_AREA_FRACTION) return true;
+  }
+  return false;
 }

@@ -132,7 +132,7 @@ function ListSourceEditor({ block, source, onChange }: { block: TableBlock; sour
       </div>
       <div className="text-muted-foreground" data-table-summary>
         {t('document.block.tableSummary', { columns: list.columns.length, view })}
-        {list.columns.length > MANY_COLUMNS && <span className="ml-1 text-amber-700">{t('document.block.tableManyColumns')}</span>}
+        {list.columns.length > MANY_COLUMNS && <span className="ml-1 text-warn">{t('document.block.tableManyColumns')}</span>}
       </div>
     </>
   );

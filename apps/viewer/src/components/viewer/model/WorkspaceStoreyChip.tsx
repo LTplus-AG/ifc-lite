@@ -19,35 +19,27 @@
  * and raises a notice: nothing can be drawn until it has one.
  */
 
-import { useMemo } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Eye, EyeOff, Layers, TriangleAlert } from 'lucide-react';
-import { useViewerStore, type ViewerState } from '@/store';
+import { useViewerStore } from '@/store';
+import { mutationDenial } from '@/store/mutation-permission';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
-import { toGlobalIdFromModels } from '@/store/globalId';
+import { activateStorey, isStoreyIsolated } from '@/lib/storeys/storey-session';
 import { useTranslation } from '@/i18n';
 import { editableModels, modelStoreys, type WorkspaceStorey } from '@/lib/commands/modeling/workspace-storeys';
 import { HudChip, HudItem, HudNotice, HudPopover, HudPopoverContent, HudPopoverTrigger } from '../../viewport-ui/hud';
+import { StoreyPickerActions } from './storeys/StoreyPickerActions';
 import { StoreyPicker, formatStoreyElevation, type StoreyPickerGroup } from './StoreyPicker';
+import { COPY_TO_STOREYS_EVENT } from '@/lib/actions/copy-to-storeys-open';
+import { Spinner } from '@/components/ui/spinner';
+import { Button } from '@/components/ui/button';
 import { StoreyContextControl } from './StoreyContextControl';
 
-function isIsolated(s: ViewerState, modelId: string, storeyId: number): boolean {
-  return s.levelDisplayMode === 'solo' && s.selectedStoreys.has(toGlobalIdFromModels(s.models, modelId, storeyId));
-}
+const CopyToStoreys = lazy(() => import('./storeys/CopyToStoreys').then(module => ({ default: module.CopyToStoreys })));
 
 /** Move the session to `storey`, keeping the command and the isolation (the chip and the plan header). */
 export function pickWorkspaceStorey(storey: WorkspaceStorey): void {
-  const s = useViewerStore.getState();
-  const session = s.session;
-  if (!session) return;
-  const isolated = session.storeyId !== null && isIsolated(s, session.modelId, session.storeyId);
-  if (storey.modelId === session.modelId) {
-    if (storey.expressId !== session.storeyId) s.setSessionStorey(storey.expressId);
-  } else {
-    const command = session.activeCommandId ?? undefined;
-    s.exitModelWorkspace();
-    useViewerStore.getState().enterModelWorkspace({ modelId: storey.modelId, storeyId: storey.expressId, command });
-  }
-  if (isolated) applyLevelDisplayMode('solo', [{ modelId: storey.modelId, expressId: storey.expressId }]);
+  activateStorey(useViewerStore.getState(), storey.modelId, storey.expressId);
 }
 
 /** The storey list per editable model, while a session is open (the chip and the plan header). */
@@ -63,11 +55,20 @@ export function useWorkspaceStoreyGroups(): StoreyPickerGroup[] {
   }, [open, models, mutationVersion]);
 }
 
-export function WorkspaceStoreyChip() {
+export function WorkspaceStoreyControl() {
   const { t } = useTranslation();
+  const pickedStorey = useRef(false);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const session = useViewerStore((s) => s.session);
-  const isolated = useViewerStore((s) => (s.session?.storeyId != null ? isIsolated(s, s.session.modelId, s.session.storeyId) : false));
+  const isolated = useViewerStore((s) => (s.session?.storeyId != null ? isStoreyIsolated(s, s.session.modelId, s.session.storeyId) : false));
   const groups = useWorkspaceStoreyGroups();
+  const copyDenial = useViewerStore((s) => s.session ? mutationDenial(s, s.session.modelId) : null);
+  useEffect(() => {
+    const show = () => { pickedStorey.current = false; setCopyOpen(true); setOpen(true); };
+    window.addEventListener(COPY_TO_STOREYS_EVENT, show);
+    return () => window.removeEventListener(COPY_TO_STOREYS_EVENT, show);
+  }, []);
 
   if (!session) return null;
   const group = groups.find((g) => g.modelId === session.modelId);
@@ -88,13 +89,13 @@ export function WorkspaceStoreyChip() {
 
   return (
     <>
-      <HudItem region="top-left" order={0}>
-        <HudPopover>
+      <div data-workspace-storey-control className="min-w-0">
+        <HudPopover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setCopyOpen(false); }}>
           {/* Half a rem inside the 13rem chip cap, so even a long storey name
               (truncated, full name in its tooltip) keeps an 8px gap to the
               top-center lane that starts at 14rem (#6315). */}
           <HudChip
-            className="max-w-[12.5rem]"
+            className="h-6 max-w-64 border-0 bg-transparent px-1 shadow-none"
             icon={<Layers aria-hidden className="h-3.5 w-3.5 shrink-0 text-overlay-accent" />}
             toggle={current ? {
               onClick: toggleIsolation,
@@ -121,11 +122,18 @@ export function WorkspaceStoreyChip() {
               {current && <StoreyContextControl />}
             </span>
           </HudChip>
-          <HudPopoverContent align="start" className="p-1">
-            <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={pickWorkspaceStorey} />
+          <HudPopoverContent onCloseAutoFocus={(event) => { if (pickedStorey.current) {
+            pickedStorey.current = false;
+            const planOnly = document.querySelector('[data-model-layout="plan"]') !== null;
+            const canvas = document.querySelector<HTMLElement>(planOnly ? '[data-plan-focus-target]' : '[data-testid="model-3d-panel"] canvas') ?? document.querySelector<HTMLElement>('[data-plan-focus-target]');
+            if (canvas) { event.preventDefault(); canvas.focus(); }
+          } }} align="start" className="p-1">
+            {copyOpen ? <Suspense fallback={<div className="flex h-64 w-64 items-center justify-center p-2"><Spinner label={t('storeyManager.copy.title')} /></div>}><CopyToStoreys onBack={() => setCopyOpen(false)} onDone={() => { setOpen(false); setCopyOpen(false); }} /></Suspense> : <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={storey => { pickedStorey.current = true; pickWorkspaceStorey(storey); }} />}
+            {!copyOpen && <Button size="sm" variant="ghost" disabled={copyDenial !== null} title={copyDenial ? t('storeyManager.copy.readOnly', { reason: copyDenial }) : undefined} onClick={() => setCopyOpen(!copyOpen)}>{t('storeyManager.copy.title')}</Button>}
+            {!copyOpen && <StoreyPickerActions />}
           </HudPopoverContent>
         </HudPopover>
-      </HudItem>
+      </div>
       {!current && (
         <HudItem region="top-center" order={1}>
           <HudNotice

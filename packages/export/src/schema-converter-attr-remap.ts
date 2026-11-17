@@ -69,6 +69,17 @@ export const BY_NAME_ATTR_REMAP_TYPES = new Set([
 ]);
 
 /**
+ * True for an IfcGridPlacement record still in its source layout on a
+ * conversion across IFC4X3 (#9026 item 14). The type keeps its name, but IFC4X3
+ * puts the inherited `PlacementRelTo` first, so neither list is a positional
+ * prefix of the other and an untouched record has its values in the wrong
+ * slots. A record already at the target's arity was lifted by `GridFrames`.
+ */
+export function isGridPlacementInSourceLayout(entityType: string, argCount: number, targetCount: number): boolean {
+  return entityType === 'IFCGRIDPLACEMENT' && argCount !== targetCount;
+}
+
+/**
  * Reconcile a renamed entity's attribute list by matching attribute NAMES
  * between the source and target schema tables, rather than by position.
  *

@@ -126,9 +126,12 @@ fn an_unreadable_items_list_fails_the_product() {
 #[test]
 fn issue_7781_product_logical_refusal_publishes_only_when_admission_is_accepted() {
     let cap = crate::representation::MAX_WALK_LEVELS as usize;
-    let source = PRODUCT.replace(
-        "(#10,#14)",
-        &format!("({})", vec!["#10"; cap + 1].join(",")),
+    // #9102: a first root read is free, so body #24 is listed twice; its
+    // ignored slots still count, and the repeat is one over the allowance.
+    let slots = vec!["$"; cap].join(",");
+    let source = PRODUCT.replace("(#20,#21,#22)", "(#20,#21,#24,#24)").replace(
+        "#23=",
+        &format!("#24=IFCSHAPEREPRESENTATION($,'Body','CSG',(#15,{slots}));#23="),
     );
     let mut decoder = EntityDecoder::new(&source);
     let (router, calls) = recording_router();
@@ -142,10 +145,6 @@ fn issue_7781_product_logical_refusal_publishes_only_when_admission_is_accepted(
         router.take_unsupported_items().is_empty(),
         "unaccepted reply owns the report"
     );
-    assert!(
-        decoder.get_cached(10).is_none(),
-        "over-budget root list never decodes its first member"
-    );
     program.accept(reply, &router).ok().unwrap();
     assert_eq!(
         router
@@ -154,8 +153,8 @@ fn issue_7781_product_logical_refusal_publishes_only_when_admission_is_accepted(
         Some(&1)
     );
     let parts = program.drain_parts(&router, &mut decoder).unwrap();
-    assert!(parts.iter().all(Mesh::is_empty));
-    assert!(calls.borrow().is_empty());
+    assert_eq!(parts.iter().map(Mesh::triangle_count).sum::<usize>(), 36);
+    assert_eq!(*calls.borrow(), [10, 11, 15], "only the admitted roots mesh");
     assert!(
         router.take_unsupported_items().is_empty(),
         "no duplicate report on drain"

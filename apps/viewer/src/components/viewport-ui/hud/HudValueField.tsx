@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent, type PointerEvent, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type Ref } from 'react';
 import { cn } from '@/lib/utils';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 
@@ -115,6 +115,15 @@ export function HudValueField({
   // commits: a field opened by Tab (or a click) and left untouched keeps its
   // value, so blurring it — say, by clicking in the viewport — writes nothing.
   const typed = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // An edit opened on the shown value selects it, so the first key replaces it
+  // rather than appending (#9094). A digit typed elsewhere is the start of the
+  // new value: its caret stays at the end, so a quick "4.5" keeps the "4".
+  // State, not a ref: a request while already open changes nothing else, and must still render.
+  const [selectRequest, setSelectRequest] = useState(0);
+  useLayoutEffect(() => {
+    if (selectRequest > 0) inputRef.current?.select();
+  }, [selectRequest]);
   const dragRef = useRef<{ pointerId: number; startX: number; startValue: number; moved: boolean } | null>(
     null,
   );
@@ -170,6 +179,7 @@ export function HudValueField({
     setDraft(initial ?? value.toFixed(precision));
     // A caller-supplied draft is a digit the user typed elsewhere.
     typed.current = initial !== undefined;
+    if (initial === undefined) setSelectRequest((n) => n + 1);
     setEditing(true);
   }
 
@@ -255,6 +265,7 @@ export function HudValueField({
   if (editing) {
     return (
       <input
+        ref={inputRef}
         disabled={disabled}
         type="text"
         inputMode="decimal"

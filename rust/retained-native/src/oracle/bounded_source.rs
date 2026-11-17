@@ -51,7 +51,8 @@ pub(super) struct Chain {
     pub host: u32,
     pub host_frame: [f64;16],
     pub clips: Vec<(u32,[f64;16])>,
-    pub solid_cuts: bool,
+    /// Non-halfspace SecondOperands: each is subtracted like an opening, if it is an extrusion.
+    pub solids: Vec<u32>,
 }
 pub(super) fn chain(product:u32,decoder:&mut EntityDecoder)->Option<Chain> {
     chain_with_reason(product,decoder,&mut String::new())
@@ -76,7 +77,7 @@ fn chain_with_reason(product:u32,decoder:&mut EntityDecoder,reason:&mut String)-
     let items=body_items(product,decoder)?;
     if items.len()!=1{*reason=format!("multi-item body: {} items",items.len());return None;}
     let mut frame=IDENTITY;
-    let mut cursor=items[0];let mut visited=HashSet::new();let mut clips=Vec::new();let mut solids=false;
+    let mut cursor=items[0];let mut visited=HashSet::new();let mut clips=Vec::new();let mut solids=Vec::new();
     while visited.insert(cursor) && visited.len()<=128 {
         let node=decoder.decode_by_id(cursor).ok()?;
         if node.ifc_type==IfcType::IfcMappedItem {
@@ -95,11 +96,11 @@ fn chain_with_reason(product:u32,decoder:&mut EntityDecoder,reason:&mut String)-
             cursor=node.get_ref(slot::IfcCsgSolid::TREE_ROOT_EXPRESSION.index())?;continue;
         }
         if !node.ifc_type.is_subtype_of(IfcType::IfcBooleanResult) {
-            return Some(Chain{host:cursor,host_frame:frame,clips,solid_cuts:solids});
+            return Some(Chain{host:cursor,host_frame:frame,clips,solids});
         }
         if node.get(slot::IfcBooleanResult::OPERATOR.index())?.as_enum()?.trim_matches('.')!="DIFFERENCE" {*reason=format!("unsupported node #{}: non-Difference Boolean",node.id);return None;}
         let right=decoder.decode_by_id(node.get_ref(slot::IfcBooleanResult::SECOND_OPERAND.index())?).ok()?;
-        if right.ifc_type.is_subtype_of(IfcType::IfcHalfSpaceSolid) {clips.push((right.id,frame));}else{solids=true;}
+        if right.ifc_type.is_subtype_of(IfcType::IfcHalfSpaceSolid) {clips.push((right.id,frame));}else{solids.push(right.id);}
         cursor=node.get_ref(slot::IfcBooleanResult::FIRST_OPERAND.index())?;
     }
     None

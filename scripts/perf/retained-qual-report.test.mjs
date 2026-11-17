@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compare, format, readRows } from './retained-qual-report.mjs';
@@ -98,4 +98,92 @@ test('8413: a change confined to longTaskMs is a column and a real movement', ()
   const report = compare([...only('base', 100), ...only('branch', 160)]);
   assert.equal(column(report, 'longTaskMs').real, true);
   assert.equal(column(report, 'longTaskMs').direction, 'higher');
+});
+
+test('7955: native rows from separate invocations pair by pairing id and round, and only by it', async () => {
+  const { writeResult } = await import('./retained-qual-lib.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'rep-native-'));
+  const host = { hostname: 'same-host', machineIdSha256: 'machine-a' };
+  // Every invocation is written by writeResult and read back with its own result.json; only the named fields vary.
+  const cohort = (name, { pairingId, startedAt }) => [['base', 1, 100], ['branch', 1, 90], ['base', 2, 101], ['branch', 2, 91]].map(([side, round, wallMs]) => {
+    const out = join(dir, `${name}-${side}-${round}`);
+    writeResult(out, { kind: 'native-retained-memory', startedAt: startedAt(side, round), pairingId: pairingId(side),
+      host: { ...host, loadAtStart: { load1: wallMs, load5: round } } }, [{ side, path: 'advanced_model', round, ok: true, wallMs, candidates: 4, published: 3 }]);
+    return out;
+  });
+  try {
+    // Distinct invocations (startedAt) under one pairing id: paired by the id.
+    const shared = compare(readRows(cohort('shared', { pairingId: () => 'cohort-a', startedAt: (side, round) => `${side}-${round}` })));
+    assert.equal(shared.flags.unpaired, false);
+    assert.equal(column(shared, 'wallMs').pairedN, 2);
+    // Identical startedAt on every row, base and branch under different ids: the id alone keeps them apart.
+    const split = compare(readRows(cohort('split', { pairingId: side => `cohort-${side}`, startedAt: () => 'same-start' })));
+    assert.equal(split.flags.unpaired, true);
+    assert.equal(column(split, 'wallMs').pairedN, 0);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('7955: without a machine id, rows from separate invocations never pair on static host attributes', async () => {
+  const { writeResult } = await import('./retained-qual-lib.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'rep-nomachine-'));
+  try {
+    const inputs = [];
+    for (const [side, round, wallMs] of [['base', 1, 100], ['branch', 1, 90], ['base', 2, 101], ['branch', 2, 91]]) {
+      const out = join(dir, `${side}-${round}`);
+      writeResult(out, { kind: 'native-retained-memory', startedAt: `${side}-${round}`, pairingId: 'cohort-a',
+        host: { hostname: 'container', cpuModel: 'x', cpuCount: 8, machineIdSha256: null, loadAtStart: { load1: 1, load5: 1 } } },
+        [{ side, path: 'advanced_model', round, ok: true, wallMs, candidates: 4, published: 3 }]);
+      inputs.push(out);
+    }
+    const report = compare(readRows(inputs));
+    assert.equal(report.flags.unpaired, true);
+    assert.ok(report.fixtures.every(f => f.columns.every(c => c.pairedN === 0)));
+    // One invocation (both arms, one host record) still pairs without a machine id.
+    const host = { hostname: 'container', machineIdSha256: null, loadAtStart: { load1: 1, load5: 1 } };
+    const one = [...rows('base', [100, 101]), ...rows('branch', [90, 91])].map(r => ({ ...r, provenance: { host, startedAt: 'one-run' } }));
+    assert.equal(compare(one).flags.unpaired, false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('7955: separate unpaired invocations on one machine stay separate fixtures, never pooled', () => {
+  const host = (load1) => ({ hostname: 'pop', machineIdSha256: 'machine-a', loadAtStart: { load1, load5: 1 } });
+  const run = (startedAt, branchMs, load1) => [...rows('base', [100, 101]), ...rows('branch', branchMs)]
+    .map(r => ({ ...r, kind: 'viewer', provenance: { kind: 'viewer', host: host(load1), startedAt } }));
+  // A/B base X vs branch Y, then base X vs branch Z: two comparisons, not one pooled one.
+  const report = compare([...run('run-y', [120, 121], 1), ...run('run-z', [80, 81], 2)]);
+  assert.equal(report.fixtures.length, 2);
+  assert.equal(report.flags.unpaired, false);
+  assert.deepEqual(report.fixtures.map(f => column({ fixtures: [f] }, 'totalMs').branchMedian).sort(), [120.5, 80.5].sort());
+  // A single-arm run beside an A/B run does not flip the A/B fixture to unpaired.
+  const single = rows('branch', [90, 91]).map(r => ({ ...r, kind: 'viewer', provenance: { kind: 'viewer', host: host(3), startedAt: 'single' } }));
+  const mixed = compare([...run('run-y', [120, 121], 1), ...single]);
+  assert.equal(mixed.fixtures.length, 2);
+  assert.ok(mixed.fixtures.some(f => f.base === 2 && f.branch === 2 && column({ fixtures: [f] }, 'totalMs').pairedN === 2));
+});
+
+test('7955: a shared pairing id without any host record never pairs separate invocations', () => {
+  const native = (side, round, startedAt) => ({ side, path: 'advanced_model', round, ok: true, wallMs: side === 'base' ? 100 : 90,
+    kind: 'native-retained-memory', provenance: { kind: 'native-retained-memory', pairingId: 'cohort-a', startedAt } });
+  const report = compare([native('base', 1, 'b1'), native('branch', 1, 'r1'), native('base', 2, 'b2'), native('branch', 2, 'r2')]);
+  assert.equal(report.flags.unpaired, true);
+  assert.ok(report.fixtures.every(f => f.columns.every(c => c.pairedN === 0)));
+});
+
+test('7955: two invocations started in the same millisecond are still two invocations', async () => {
+  const { writeResult } = await import('./retained-qual-lib.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'rep-same-ms-'));
+  try {
+    const host = { hostname: 'pop', machineIdSha256: 'machine-a', loadAtStart: { load1: 1, load5: 1 } };
+    const inputs = ['base', 'branch'].map(side => {
+      const out = join(dir, side);
+      writeResult(out, { kind: 'cli-retained-export', startedAt: '2026-11-03T06:00:00.000Z', host },
+        [{ side, path: '/m/a.ifc', round: 1, ok: true, totalMs: side === 'base' ? 100 : 90 }]);
+      return out;
+    });
+    const ids = inputs.map(input => JSON.parse(readFileSync(join(input, 'result.json'), 'utf8')).invocationId);
+    assert.ok(ids.every(Boolean) && ids[0] !== ids[1], 'each invocation records its own id');
+    const report = compare(readRows(inputs));
+    assert.equal(report.flags.unpaired, true);
+    assert.equal(report.fixtures.length, 2);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { clashObjectIdentity, clashPairId, matchedClashObjects, sameClashObject } from '../object-identity.js';
 import { clashMemberSet, inClashSet } from '../members.js';
 import { inferClashSeverity } from '../disciplines.js';
 import { isExcluded, qualifiedKey } from '../exclude.js';
@@ -92,6 +93,7 @@ export async function runClash(
   // silently keep whichever submesh's record happened to be produced first,
   // which can be the shallower — or entirely clean — one. See `mostSevere`.
   const seen = new Map<string, number>();
+  const identity = clashObjectIdentity(elements);
   let droppedPairs = 0;
   // A single GLOBAL candidate-pair budget across the whole run (not per rule),
   // so `maxCandidatePairs` is an honest end-to-end guardrail.
@@ -136,10 +138,12 @@ export async function runClash(
           matchedKeysB!.add(el.key);
         }
       }
+      const matchedElements = matchedClashObjects([...groupA, ...(groupB ?? [])].map(index => elements[index]));
       const coverageEntry: ClashRuleCoverage = {
         rule: rule.id,
         matchedA: groupA.length,
         matchedB: groupB ? groupB.length : null,
+        matchedElements,
         matchedKeysA: [...matchedKeysA].sort(),
         matchedKeysB: matchedKeysB ? [...matchedKeysB].sort() : null,
         ...(membersA ? { fromMembersA: true } : {}),
@@ -176,10 +180,9 @@ export async function runClash(
         }
         const elA = elements[rec.a];
         const elB = elements[rec.b];
-        // Same durable key + model = one entity split across geometry sub-prims
-        // (common in IFC5/USD), not a self-clash. Filter here so every kernel —
-        // TS or WASM, regardless of how its broad phase dedups — behaves alike.
-        if (elA.key === elB.key && elA.model === elB.model) continue;
+        // Sub-prims share the model/ref, even when occurrence keys differ.
+        // Repeated GlobalIds with distinct refs are distinct objects (#9259).
+        if (sameClashObject(elA, elB)) continue;
         if (
           exclusions &&
           isExcluded(exclusions, qualifiedKey(elA.model, elA.key), qualifiedKey(elB.model, elB.key))
@@ -187,7 +190,7 @@ export async function runClash(
           continue;
         }
 
-        const id = clashId(elA, elB, rule.id);
+        const id = clashPairId(rule.id, identity.pairKey(elA), identity.pairKey(elB));
         const existingIndex = seen.get(id);
         if (existingIndex !== undefined) {
           // A second record for an (A, B) entity pair already reported once
@@ -197,12 +200,12 @@ export async function runClash(
           // (a real clash outranks a mere touch), penetration depth / gap
           // second.
           if (mostSevere(rec, clashes[existingIndex])) {
-            clashes[existingIndex] = toClash(id, rec, elA, elB, rule);
+            clashes[existingIndex] = toClash(id, rec, identity.toRef(elA), identity.toRef(elB), rule);
           }
           continue;
         }
         seen.set(id, clashes.length);
-        clashes.push(toClash(id, rec, elA, elB, rule));
+        clashes.push(toClash(id, rec, identity.toRef(elA), identity.toRef(elB), rule));
       }
     }
   } finally {
@@ -239,14 +242,14 @@ function withoutMembership(rule: ClashRule): ClashRule {
 function toClash(
   id: string,
   rec: NarrowRecord,
-  elA: ClashElement,
-  elB: ClashElement,
+  elA: ClashElementRef,
+  elB: ClashElementRef,
   rule: ClashRule,
 ): Clash {
   return {
     id,
-    a: toRef(elA),
-    b: toRef(elB),
+    a: elA,
+    b: elB,
     rule: rule.id,
     status: rec.status,
     distance: rec.distance,
@@ -258,10 +261,6 @@ function toClash(
     bounds: rec.bounds,
     severity: rule.severity ?? inferClashSeverity(elA.tag, elB.tag),
   };
-}
-
-function toRef(el: ClashElement): ClashElementRef {
-  return { key: el.key, ref: el.ref, model: el.model, tag: el.tag, name: el.name };
 }
 
 /**
@@ -285,14 +284,6 @@ function mostSevere(
   const rankDiff = rank[candidate.status] - rank[current.status];
   if (rankDiff !== 0) return rankDiff < 0;
   return candidate.distance < current.distance;
-}
-
-/** Stable, deterministic clash identity from the two durable keys + rule. */
-function clashId(a: ClashElement, b: ClashElement, ruleId: string): string {
-  const ka = `${a.model} ${a.key}`;
-  const kb = `${b.model} ${b.key}`;
-  const [lo, hi] = ka < kb ? [ka, kb] : [kb, ka];
-  return `${ruleId} ${lo} ${hi}`;
 }
 
 function byKeyThenRule(x: Clash, y: Clash): number {

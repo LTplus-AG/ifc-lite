@@ -93,7 +93,7 @@ describe('Document panel manual validation report (#6401)', () => {
       useViewerStore.getState().setManualAnswer('fp-annex', 'b', { status: 'warning', comment: 'Annex observation' });
     }
     const ui = render(<DocumentPanel />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
     click(menuItem('Validation report')!);
     await settle();
@@ -148,7 +148,7 @@ describe('Document panel manual validation report (#6401)', () => {
 
   it('adds a frozen snapshot of the checklist and the active model\'s answers, and Refresh re-takes it', async () => {
     const ui = render(<DocumentPanel />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
     const item = menuItem('Validation report');
     assert.ok(item, 'the menu offers the one validation report entry');
@@ -197,7 +197,7 @@ describe('Document panel manual validation report (#6401)', () => {
     });
     useViewerStore.getState().setManualAnswer('fp-annex', 'a', { status: 'fail' });
     const ui = render(<DocumentPanel />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
     click(menuItem('Validation report')!);
     await settle();
@@ -248,7 +248,7 @@ describe('Document panel manual validation report (#6401)', () => {
     const state = useViewerStore.getState();
     state.removeManualChecklist(state.manualLibrary.activeId!);
     const ui = render(<DocumentPanel />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
     const item = menuItem('Validation report');
     assert.equal(item?.getAttribute('aria-disabled'), 'true');
@@ -270,7 +270,7 @@ describe('Document panel manual validation report (#6401)', () => {
     useViewerStore.getState().setManualAnswer(fingerprint, 'b', { status: 'warning', comment: 'Structure-only observation' });
     useViewerStore.getState().selectManualChecklist(architectureId);
     const ui = render(<DocumentPanel />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
     click(menuItem('Validation report')!);
     await settle();
@@ -365,7 +365,7 @@ describe('Document panel manual validation report (#6401)', () => {
     useViewerStore.getState().duplicateManualChecklist(architectureId, 'Legacy structure');
     useViewerStore.getState().setManualAnswer('fp-tower', 'a', { status: 'fail' });
     const ui = render(<DocumentPanel />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     const addManual = async () => {
       openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
       click(menuItem('Validation report')!);

@@ -18,6 +18,7 @@
  * - Error-to-LLM feedback loop for failed scripts
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type DragEvent } from 'react';
 import { X, Send, Square, Trash2, Paperclip, ArrowDown, Zap, Wrench } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -49,6 +50,7 @@ import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/ll
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
 import { getModelContext, parseCSV } from '@/lib/llm/context-builder';
 import { collectActiveFileAttachments } from '@/lib/attachments';
+import { attachmentAdmission, MAX_ATTACHMENTS_PER_MESSAGE } from './chat/attachment-admission';
 import { MAX_PDF_ATTACHMENT_BYTES } from '@/lib/llm/document-text';
 import { attachPdfDocument, createDocumentUploadGate, shouldContinueDocumentUploadBatch } from '@/lib/llm/document-upload';
 import { getPrimaryRootCause, type RepairScope, type ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
@@ -90,7 +92,6 @@ const OUTPUT_TOKEN_RESERVE = 9_000;
 const MIN_INPUT_BUDGET = 8_000;
 const MAX_RECENT_MESSAGES = 48;
 const MAX_INLINE_IMAGE_DATA_URL_CHARS = 1_200_000;
-const MAX_ATTACHMENTS_PER_MESSAGE = 6;
 const MAX_TEXT_ATTACHMENT_BYTES = 512_000;
 const MAX_IMAGE_ATTACHMENT_BYTES = 8_000_000;
 
@@ -186,7 +187,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const setAutoExecute = useViewerStore((s) => s.setChatAutoExecute);
   const addAttachment = useViewerStore((s) => s.addChatAttachment);
   const removeAttachment = useViewerStore((s) => s.removeChatAttachment);
-  const clearAttachments = useViewerStore((s) => s.clearChatAttachments);
   const clearMessages = useViewerStore((s) => s.clearChatMessages);
   const resetScriptEditorForNewChat = useViewerStore((s) => s.resetScriptEditorForNewChat);
   const pendingPrompt = useViewerStore((s) => s.chatPendingPrompt);
@@ -649,7 +649,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
     const clearPendingAttachmentsOnce = () => {
       if (pendingAttachmentsCleared) return;
-      clearAttachments();
+      for (const attachment of attachments) useViewerStore.getState().removeChatAttachment(attachment.id);
       pendingAttachmentsCleared = true;
     };
 
@@ -704,7 +704,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   }, [
     status, activeModel, attachments,
     addMessage, setChatStatus, finalizeAssistant,
-    setChatError, setChatAbortController, clearAttachments, setChatUsage, resizeInput,
+    setChatError, setChatAbortController, setChatUsage, resizeInput,
     buildRepairPromptFromLiveState, triggerAutoRepair, execute, extensionHost,
     setChatToolReady, handleAuthoringResponse, setScriptPanelVisible,
     t,
@@ -830,12 +830,12 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     const model = getModelById(activeModel);
     const supportsImages = model?.supportsImages ?? false;
     const supportsFileAttachments = model?.supportsFileAttachments ?? true;
-    let remainingSlots = Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - attachments.length);
     const documentBatch = documentUploads.begin();
+    const acceptAttachment = attachmentAdmission(documentBatch.current, addAttachment, setChatError);
 
     for (const file of Array.from(files)) {
       if (!documentBatch.current()) break;
-      if (remainingSlots <= 0) {
+      if (useViewerStore.getState().chatAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
         setChatError(`You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
         break;
       }
@@ -863,8 +863,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             imageBase64: base64,
             isImage: true,
           };
-          addAttachment(attachment);
-          remainingSlots -= 1;
+          acceptAttachment(attachment);
           continue;
         }
         // Extract PDF text locally so the same bounded document context works
@@ -878,8 +877,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             setChatError(`PDF attachments must be smaller than ${Math.round(MAX_PDF_ATTACHMENT_BYTES / 1_000_000)} MB.`);
             continue;
           }
-          await attachPdfDocument(file, documentBatch, addAttachment);
-          remainingSlots -= 1;
+          await attachPdfDocument(file, documentBatch, acceptAttachment);
           continue;
         }
         // Excel / ODS binaries — we can't parse them yet, but we don't want
@@ -899,8 +897,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             isSpreadsheetBinary: true,
             textContent: `[Binary spreadsheet ${file.name} (${Math.round(file.size / 1024)} KB). Export to CSV for full content access.]`,
           };
-          addAttachment(attachment);
-          remainingSlots -= 1;
+          acceptAttachment(attachment);
           continue;
         }
         // Text-based files — CSV, TSV, JSON, TXT and Markdown.
@@ -926,14 +923,13 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           attachment.csvColumns = columns;
           attachment.csvData = rows;
         }
-        addAttachment(attachment);
-        remainingSlots -= 1;
+        acceptAttachment(attachment);
       } catch (error) {
         if (!shouldContinueDocumentUploadBatch(error)) break;
         setChatError(`Could not read ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-  }, [activeModel, addAttachment, attachments.length, setChatError, documentUploads]);
+  }, [activeModel, addAttachment, setChatError, documentUploads]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -1038,8 +1034,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     >
       {/* Drag overlay */}
       {isDragging && (
-        <div className="absolute inset-0 z-50 bg-blue-500/10 border-2 border-dashed border-blue-500 rounded-md flex items-center justify-center pointer-events-none">
-          <div className="flex flex-col items-center gap-2 text-blue-500">
+        <div className="absolute inset-0 z-50 bg-active-surface border-2 border-dashed border-active-border rounded-md flex items-center justify-center pointer-events-none">
+          <div className="flex flex-col items-center gap-2 text-active">
             <Paperclip className="h-8 w-8" />
             <span className="text-sm font-medium">{t('chat.panel.dropOverlay')}</span>
           </div>
@@ -1078,7 +1074,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           label={keyStateAnthropic || keyStateOpenai ? t('chat.panel.manageKeysLabel') : t('chat.panel.addKeyLabel')}
           size="icon-xs"
           onClick={() => openByokModal(modelSource === 'openai' ? 'openai' : 'anthropic')}
-          className={keyStateAnthropic || keyStateOpenai ? 'text-emerald-500' : ''}
+          className={keyStateAnthropic || keyStateOpenai ? 'text-ok' : ''}
         >
           <KeyRound className="h-3.5 w-3.5" />
         </IconButton>
@@ -1107,7 +1103,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           onClick={() => openByokModal(needsAnthropicKey ? 'anthropic' : 'openai')}
           className="w-full border-b bg-amber-500/10 px-3 py-2 text-left text-xs hover:bg-amber-500/15 transition-colors flex items-center gap-2"
         >
-          <KeyRound className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+          <KeyRound className="h-3.5 w-3.5 text-warn" />
           <span>
             <strong>
               {t('chat.panel.keyNeededStrong', {
@@ -1195,11 +1191,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           </div>
         )}
 
-        {/* Post-authoring install CTA — rendered INLINE at the end of
-            the conversation, directly under the generated code, so the
-            "now install it" step is impossible to miss. Highlighted
-            (ring + accent) the moment a workflow is authored. */}
-        {chatToolReady && status === 'idle' && (
+        {/* Extension installation stays beside authored code when the host
+            enables extensions. Both the CTA and dialog honour that gate. */}
+        {isFeatureEnabled('automate.extensions') && chatToolReady && status === 'idle' && (
           <div className="mx-3 my-3 rounded-lg border-2 border-primary bg-primary/10 p-3 shadow-sm ring-2 ring-primary/30">
             <div className="flex items-center gap-2 mb-1">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -1324,7 +1318,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       {/* Promote-to-tool dialog, opened from the post-authoring CTA.
           `source` was snapshotted from the editor at open time. */}
       <PromoteToolDialog
-        open={promoteFromChat.open}
+        open={isFeatureEnabled('automate.extensions') && promoteFromChat.open}
         source={promoteFromChat.source}
         onClose={() => setPromoteFromChat((p) => ({ ...p, open: false }))}
       />
@@ -1402,7 +1396,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 <div className="flex items-center gap-1.5 cursor-default">
                   <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all ${displayUsage.pct >= 90 ? 'bg-destructive' : displayUsage.pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                      className={`h-full rounded-full transition-all ${displayUsage.pct >= 90 ? 'bg-danger-solid' : displayUsage.pct >= 70 ? 'bg-warn-solid' : 'bg-ok-solid'
                         }`}
                       style={{ width: `${Math.min(100, displayUsage.pct)}%` }}
                     />

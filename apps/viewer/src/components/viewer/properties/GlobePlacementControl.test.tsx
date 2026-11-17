@@ -27,11 +27,22 @@ it('choosing Exact sets and persists the globe placement the bridge reads', () =
 });
 
 it('reports what Auto resolved to and the anchor-error estimate in centimetres', () => {
-  useViewerStore.setState({ cesiumGlobePlacement: 'auto', cesiumGlobePlacementStatus: { mode: 'exact', anchorErrorMetres: 0.034 } });
+  useViewerStore.setState({ cesiumGlobePlacement: 'auto', cesiumGlobePlacementStatus: { mode: 'exact', anchorErrorMetres: 0.034, prescribed: null } });
   const ui = render(<GlobePlacementControl />);
   const text = ui.textContent ?? '';
   assert.match(text, /Every vertex placed through the map projection\./);
   assert.match(text, /Anchor error estimate: 3\.4 cm/);
-  act(() => useViewerStore.setState({ cesiumGlobePlacementStatus: { mode: 'anchor', anchorErrorMetres: 0.0021 } }));
+  act(() => useViewerStore.setState({ cesiumGlobePlacementStatus: { mode: 'anchor', anchorErrorMetres: 0.0021, prescribed: null } }));
   assert.match(ui.textContent ?? '', /Placed by one anchor point\..*Anchor error estimate: 0\.2 cm/);
+});
+
+it('names the IfcRigidOperation when Auto follows it, and warns when an explicit Anchor contradicts it', () => {
+  useViewerStore.setState({ cesiumGlobePlacement: 'auto', cesiumGlobePlacementStatus: { mode: 'exact', anchorErrorMetres: 0.002, prescribed: 'exact' } });
+  const ui = render(<GlobePlacementControl />);
+  assert.match(ui.textContent ?? '', /IfcRigidOperation: the coordinates are map coordinates/);
+  assert.equal(ui.querySelector('[role="note"]'), null, 'no warning while Auto follows the file');
+  act(() => useViewerStore.setState({ cesiumGlobePlacement: 'anchor', cesiumGlobePlacementStatus: { mode: 'anchor', anchorErrorMetres: 0.002, prescribed: 'exact' } }));
+  assert.match(ui.querySelector('[role="note"]')?.textContent ?? '', /Anchor only approximates them/);
+  act(() => useViewerStore.setState({ cesiumGlobePlacement: 'anchor', cesiumGlobePlacementStatus: { mode: 'anchor', anchorErrorMetres: 0.002, prescribed: null } }));
+  assert.equal(ui.querySelector('[role="note"]'), null, 'no warning for a map conversion on its anchor');
 });

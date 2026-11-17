@@ -10,7 +10,7 @@
  * meshes without them:
  *   - `localBounds`: pre-placement object-space AABB (#1474), f32 at the source.
  *   - `localToWorld`: resolved IfcLocalPlacement chain, row-major 4x4 f64 (#1474).
- *   - `shadingColor`: authored SurfaceColour when distinct from `color`, f32.
+ *   - `shadingColor`: authored RGB DiffuseColour when distinct from SurfaceColour, f32.
  *
  * Layout: one presence-flags byte, then each present payload in flag order.
  * Absent stays absent: nothing is derived from `origin`, chunk AABBs or

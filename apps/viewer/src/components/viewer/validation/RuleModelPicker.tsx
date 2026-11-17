@@ -18,7 +18,7 @@
 import { Check } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 
-const UNSELECTED_MODEL_CLASSES = 'border-zinc-200 text-muted-foreground hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800';
+const UNSELECTED_MODEL_CLASSES = 'border-border text-muted-foreground hover:bg-muted';
 const SELECTED_MODEL_CLASSES = 'border-primary bg-primary/10 font-medium text-foreground';
 
 export interface RuleModelPickerModel {
@@ -91,7 +91,7 @@ export function RuleModelPicker({ models, value, onChange }: RuleModelPickerProp
         })}
       </div>
       {notLoaded.length > 0 && (
-        <p className="text-2xs text-amber-600 dark:text-amber-500">
+        <p className="text-2xs text-warn">
           {t('validationEditor.modelPicker.notLoaded', { count: notLoaded.length })}
         </p>
       )}

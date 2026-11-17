@@ -102,7 +102,7 @@ export function EntityHeaderActions() {
       <IconButton
         label={t('properties.entityHeaderActions.zoomTo')}
         size="icon-xs"
-        className="rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700"
+       
         onClick={() => {
           if (selectedEntityId && cameraCallbacks.frameSelection) {
             cameraCallbacks.frameSelection();
@@ -114,7 +114,7 @@ export function EntityHeaderActions() {
       <IconButton
         label={isGhosted ? t('properties.entityHeaderActions.clearShowInContext') : t('properties.entityHeaderActions.showInContext')}
         size="icon-xs"
-        className={`rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700 ${isGhosted ? 'text-primary' : ''}`}
+        className={isGhosted ? 'text-primary' : undefined}
         onClick={() => {
           if (!selectedEntityId) return;
           if (isGhosted) {
@@ -163,7 +163,7 @@ export function EntityHeaderActions() {
       <IconButton
         label={selectedEntityId && isEntityVisible(selectedEntityId) ? t('properties.entityHeaderActions.hide') : t('properties.entityHeaderActions.show')}
         size="icon-xs"
-        className="rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700"
+       
         onClick={() => {
           if (selectedEntityId) {
             toggleEntityVisibility(selectedEntityId);

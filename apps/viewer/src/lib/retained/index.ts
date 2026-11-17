@@ -3,11 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The retained kernel as the viewer sees it (#7955 M2). Only a
+ * The retained kernel as the viewer sees it (#7955 M2). A
  * `VITE_RETAINED_GEOMETRY=on` build resolves `@ifc-lite/viewer-retained` here;
- * the default build gets `off.ts` (`null`). Importing this module does no work
- * and fetches nothing: the host Worker and engine load on the first retained
- * load.
+ * a `lazy` build resolves it to `lazy.tsx`, which imports this module
+ * dynamically; the default build gets `off.ts` (`null`). Importing this module
+ * does no work and fetches nothing: the host Worker and engine load on the
+ * first retained load.
  */
 
 import { useViewerStore } from '@/store';

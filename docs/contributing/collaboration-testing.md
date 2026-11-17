@@ -258,8 +258,7 @@ checks the single-slot guest keeps `globalId === expressId`. The built viewer
 is pointed at the relay through the `ifc-lite:collab:server-url` /
 `ifc-lite:collab:enabled` `localStorage` overrides, so an unmodified build is
 what runs. Set `E2E_EVIDENCE_DIR` to also write the run's JSON and screenshots
-to a directory; the recorded run lives in
-`docs/architecture/evidence/federation-scope/`. The project is opt-in (CI's
+to a directory. The project is opt-in (CI's
 required lanes select `viewer-e2e-ci` by name).
 
 Headless equivalents:
@@ -296,8 +295,7 @@ the guest's export against the owner's room counts and the textured wall's
 byte-exact pixels/UVs. Two controls show the gate at work: slowed blob uploads
 (Copy withheld, "Leave (abandons upload)", an abandoned room has no geometry)
 and the owner's websocket frames held back (Copy withheld in `confirming`
-until the relay's state vector covers the owner's). Numbers and screenshots of
-one run: `docs/architecture/evidence/share-seed-ready/`. The spec skips, with a
+until the relay's state vector covers the owner's). The spec skips, with a
 pointer, when the fixture, the wasm runtime, the viewer build or the relay
 build is missing.
 

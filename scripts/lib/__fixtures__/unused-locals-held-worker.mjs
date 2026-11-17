@@ -8,6 +8,6 @@ if (process.argv[1]?.endsWith('/unused-locals-worker.mjs')) {
   await fetch(`${process.env.UNUSED_LOCALS_GATE}/${encodeURIComponent(dir)}?pid=${process.pid}`, {
     signal: AbortSignal.timeout(15000),
   });
-  if (process.env.UNUSED_LOCALS_FAIL_EXEC_PACKAGE === dir) process.env.PATH = '/missing-unused-locals-compiler';
+  if (process.env.UNUSED_LOCALS_FAIL_EXEC_PACKAGE === dir) Object.defineProperty(process, 'execPath', { value: '/missing-unused-locals-compiler' });
   if (process.env.UNUSED_LOCALS_KILL_PACKAGE === dir) process.kill(process.pid, 'SIGKILL');
 }

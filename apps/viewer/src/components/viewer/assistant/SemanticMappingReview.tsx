@@ -57,7 +57,7 @@ export function SemanticMappingReview({ proposal, origin, passages }: { proposal
   };
   return <ReviewFrame label={t('semanticAssist.mappingTitle')} title={proposal.title}>
     <p className="text-muted-foreground break-all">{t('semanticAssist.mappingRevision', { revision: proposal.modelRevision })}</p>
-    {!review.modelId && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('semanticAssist.mappingUnscoped')}</p>}
+    {!review.modelId && <p role="alert" className="rounded border border-warn-border bg-warn-surface p-2">{t('semanticAssist.mappingUnscoped')}</p>}
     <ol className="space-y-2">{review.rows.map((row, index) => <li key={index} className="rounded border border-border p-1.5 space-y-1">
       <div className="flex items-start gap-2">
         <input id={`${id}-${index}`} type="checkbox" checked={approved.has(index)} disabled={!row.approvable || saved}
@@ -71,12 +71,12 @@ export function SemanticMappingReview({ proposal, origin, passages }: { proposal
       </div>
       {row.mapping.rationale && <p className="text-muted-foreground break-words">{row.mapping.rationale}</p>}
       {row.spans.map(({ span, check }, spanIndex) => <SpanQuote key={spanIndex} span={span} check={check} />)}
-      {row.issues.length > 0 && <ul className="text-2xs text-amber-700 dark:text-amber-400">{row.issues.map(issue => <li key={issue}>{t(ISSUE[issue])}</li>)}</ul>}
+      {row.issues.length > 0 && <ul className="text-2xs text-warn">{row.issues.map(issue => <li key={issue}>{t(ISSUE[issue])}</li>)}</ul>}
     </li>)}</ol>
     {proposal.unsupported.length > 0 && <div><p className="font-medium">{t('semanticAssist.unsupported')}</p>
       <ul className="list-disc pl-4">{proposal.unsupported.map((item, index) => <li key={index} className="break-words">{item.text} — {item.reason}</li>)}</ul></div>}
     <Button size="sm" className="h-7" disabled={!chosen.length || saved} onClick={() => void save()}>{t('semanticAssist.mappingSave', { count: chosen.length })}</Button>
-    {saved && <p aria-live="polite" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2">{t('semanticAssist.saved')}</p>}
+    {saved && <p aria-live="polite" className="rounded border border-ok-border bg-ok-surface p-2">{t('semanticAssist.saved')}</p>}
     {error && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">{error}</p>}
     <ContentStorageNotice status={status} retry={semanticReviewLibrary.retry} restore={semanticReviewLibrary.restore} />
   </ReviewFrame>;

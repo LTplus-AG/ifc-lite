@@ -57,6 +57,21 @@ runner exit 1. There is no soft path.
   count object: `{"candidates": N, "published": M}`. Its `--summary` must name a
   fresh per-run path; an existing file is rejected before the command starts.
 
+## CLI and native sample deadlines
+
+Both `retained-qual-cli.mjs` and `retained-qual-native-memory.mjs` accept
+`--timeout-ms N` (positive integer milliseconds, default **2700000**, 45 minutes).
+This leaves more than three times the observed roughly 14-minute Holter CLI sample
+or 14-minute native model-set run. The CLI budget includes its `--version` startup
+control and export; native applies it to the entire command, including all models.
+Each row records `timeoutMs`. Expiry kills the command's POSIX process group
+(including `/usr/bin/time` and descendant workers), records `ok:false` with
+`error:"timeout"`, and excludes the row from summaries. Teardown has a further
+5-second bound. The CLI continues the next sample; native writes its single failed
+row and exits 1, so a cohort driver must continue subsequent invocations on failure.
+The CLI records the bounded final 8192 bytes of stderr as `stderrTail`, including
+on startup-control failure, process failure, timeout, or report-validation failure.
+
 ## The first retained frame
 
 All times are the page's `performance.now()`, reported as milliseconds from the file
@@ -107,12 +122,15 @@ fixtures [{path, bytes, sha256}], order, rounds, samples, rows, failures, summar
 ```
 
 The viewer runner records per-row GPU adapter, browser version, `softwareAdapter`, `webgpuDeviceLosses`, the
-browser-reported logical processor count (`hardwareConcurrency`; not an observed worker count), fixture hash and served-dist digest are recorded. A
+browser-reported logical processor count (`hardwareConcurrency`; not an observed worker count), the observed page
+worker count (`pageWorkersCreated`, `pageWorkersPeakLive`, `pageWorkersByScript`: dedicated workers the page thread
+constructed, from a wrapped `Worker` constructor; workers started inside a worker, such as the SDK's private one,
+are not visible), fixture hash and served-dist digest are recorded. A
 software adapter (SwiftShader) is named; viewer `--require-hardware-gpu` refuses it.
 Browser-memory does not record adapter/software/device-loss fields and does not
 support `--require-hardware-gpu`.
 
-`exclusivity.exclusive` is **true** only inside an `ifc-fleet --kind benchmark` job
+`exclusivity.exclusive` is **true** only inside an exclusive benchmark job
 (`IFC_WORKER_KIND=benchmark`, the job id becomes the receipt) or when the submitter passes
 `--exclusive-receipt ID`; the runner records `verified: false` (it cannot verify
 admission) and refuses a flag that contradicts an ordinary job. Every other run,
@@ -133,6 +151,14 @@ like-for-like) and prints numbers only. For the M11-I report-only viewer A/B use
 actual pre-I base and final head; the pre-M-series baseline has no retained consumer
 and cannot be an arm.
 
+Native memory is one process per sample, so a paired native cohort is one runner invocation per
+(fixture, side, round): pass each the same `--pairing-id` and its `--round N`, and the reporter pairs
+base and branch rows by that id and round (otherwise each invocation is its own unpaired set).
+Pairing across invocations also needs the same host with a machine id (`/etc/machine-id` or
+`/var/lib/dbus/machine-id`, recorded as `machineIdSha256`). Matching static attributes alone do not
+prove one machine, so rows without a machine id never pair across invocations, and the native
+runner refuses `--pairing-id` on such a host rather than produce a cohort that cannot pair.
+
 ## Real GPU on Pop
 
 Headless Chrome returns the NVIDIA adapter but loses the device on the first canvas
@@ -140,9 +166,14 @@ present. Use `--gpu hardware --headed` on a **private** Xvfb (never `:0`/`:1`), 
 `DISPLAY` set to it, and `--require-hardware-gpu`. `--gpu swiftshader` (default, the
 `viewer-retained` e2e flags) is a software adapter and is labelled so in every row.
 
+Pop has two GPUs (Intel iGPU and NVIDIA). The renderer asks for the default adapter, and
+Chrome's default changed between runs (NVIDIA on 2026-11-01, Intel on 2026-11-04), so
+`--gpu hardware` launches Chrome with `--use-webgpu-power-preference=default-high-performance`.
+Check `gpuAdapter` in the rows: every sample of one cohort should name the same adapter.
+
 Reports preserve runner kind, host, commits, engine/binary identities and exclusivity.
-Only unique successful samples from the same invocation and round are paired;
-different workflows stay separate. Each column reports base, branch and matched n;
+Only unique successful samples from the same invocation (or the same `--pairing-id` on one
+machine-id-identified host) and round are paired; different workflows stay separate. Each column reports base, branch and matched n;
 nullable coverage is marked incomplete and medians use matched finite rounds only.
 Unavailable PSS stays null; coverage records readable/attempted process samples and
 complete/partial tree samples. Partial trees never count as a measured total.

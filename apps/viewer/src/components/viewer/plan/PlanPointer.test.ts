@@ -16,10 +16,11 @@ import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
-import { commandPointerDown, getCommandRuntime, writeCommandField } from '@/lib/commands/modeling/runtime';
+import { commandPointerDown, commandPointerMove, getCommandRuntime, writeCommandField } from '@/lib/commands/modeling/runtime';
 import { solveCommandSnap } from '@/lib/commands/modeling/snap-solve';
+import { createIfcGridSource, type GridAxisLine } from '@/lib/snap/sources/ifc-grid';
 import type { Vec2 } from '@/lib/snap/types';
-import { createPlanCutSource } from './plan-cut-source';
+import { createPlanCutSource, planCutLinework } from './plan-cut-source';
 import { resolvePlanSnap, type PlanPointerInput } from './PlanPointer';
 
 /** A cut outline corner at (2, 2): 10 px/m, so the 12 px radius is 1.2 m. */
@@ -42,12 +43,23 @@ describe('PlanPointer on the shared solver (#6232 M2.4)', () => {
 
     const runtime = getCommandRuntime();
     const bare = solveCommandSnap(runtime, runtime.ctx!.workplane!, { cursor: [2.3, 2.2], metresPerPixel: 0.1, sources: [cut], mods: { shiftKey: false, altKey: false } });
-    assert.deepEqual(bare?.local, [2.3, 2.2], 'the modelling profile has no plancut source');
+    assert.deepEqual(bare?.local, [2, 2], 'without the plan cut, the construction increment still applies');
+    assert.equal(bare?.winner?.kind, 'grid', 'the modelling profile has no plancut source');
   });
 
   it('Alt and the snap toggle both suspend snapping', () => {
     assert.deepEqual(resolvePlanSnap(input([2.3, 2.2], { mods: { shiftKey: false, altKey: true } }))?.local, [2.3, 2.2]);
     assert.deepEqual(resolvePlanSnap(input([2.3, 2.2], { snapping: false }))?.local, [2.3, 2.2]);
+  });
+
+  it('Alt and the snap toggle mark the point as on the workplane, as in 3D (#9201)', () => {
+    assert.equal(resolvePlanSnap(input([2.3, 2.2], { mods: { shiftKey: false, altKey: true } }))?.winner?.kind, 'workplane');
+    assert.equal(resolvePlanSnap(input([2.3, 2.2], { snapping: false }))?.winner?.kind, 'workplane');
+  });
+
+  it('a window keeps its unmarked pointer with snapping suspended (#9201)', () => {
+    useViewerStore.getState().startCommand('window.place');
+    assert.equal(resolvePlanSnap(input([2.3, 2.2], { snapping: false }))?.winner, null);
   });
 
   it('a typed length holds the end on its circle, and the result is on the workplane in render space', () => {
@@ -66,5 +78,50 @@ describe('PlanPointer on the shared solver (#6232 M2.4)', () => {
   it('does nothing without a running command', () => {
     useViewerStore.getState().endCommand('cancel');
     assert.equal(resolvePlanSnap(input([1, 1])), null);
+  });
+});
+
+/**
+ * #9026 item 23. Two real axes cross at (6, 6) under a 0.3 m column, whose cut
+ * outline is what the plan offers as corners, midpoints and edges. A corner is
+ * 0.21 m from the crossing and outranks it, inside the 12 px radius at any
+ * zoom below about 57 px/m.
+ */
+describe('a column on a grid crossing (#9026 item 23)', () => {
+  const AXES: GridAxisLine[] = [
+    { gridId: 7, axisId: 71, AxisTag: '2', family: 'U', a: [6, -2], b: [6, 14] },
+    { gridId: 7, axisId: 72, AxisTag: 'B', family: 'V', a: [-2, 6], b: [14, 6] },
+  ];
+  const grid = createIfcGridSource({ modelId: 'grid', version: () => 0, storeyId: () => 40, loadAxes: () => AXES });
+  const column = createPlanCutSource(() => planCutLinework(
+    [{ entityId: 1, ifcType: 'IfcColumn', outer: [[5.85, 5.85], [6.15, 5.85], [6.15, 6.15], [5.85, 6.15]], holes: [] }], [],
+  ));
+  const at = (local: Vec2, pxPerMetre: number) => input(local, { metresPerPixel: 1 / pxPerMetre, planSources: [grid, column] });
+
+  for (const zoom of [100, 30, 12]) {
+    it(`a click on the crossing lands on it at ${zoom} px/m, and names both axes`, () => {
+      const snap = resolvePlanSnap(at([6, 6], zoom))!;
+      assert.deepEqual(snap.local, [6, 6]);
+      assert.equal(snap.winner?.kind, 'gridIntersection');
+      assert.deepEqual(snap.winner?.gridIntersection?.IntersectingAxes, [71, 72]);
+    });
+
+    it(`at ${zoom} px/m the crossing wins even after the pointer came past a corner`, () => {
+      const past = resolvePlanSnap(at([6.15, 6.15], zoom))!;
+      assert.deepEqual(past.local, [6.15, 6.15], 'on the way in, the corner holds');
+      commandPointerMove(past);
+      assert.deepEqual(resolvePlanSnap(at([6, 6], zoom))!.local, [6, 6]);
+    });
+  }
+
+  it('a pointer on the column corner still lands on the corner', () => {
+    const snap = resolvePlanSnap(at([6.14, 6.15], 30))!;
+    assert.deepEqual(snap.local, [6.15, 6.15]);
+    assert.equal(snap.winner?.kind, 'endpoint');
+  });
+
+  it('a pointer a few pixels off the crossing still ranks the corner first', () => {
+    const snap = resolvePlanSnap(at([6.05, 6.05], 30))!;
+    assert.deepEqual(snap.local, [6.15, 6.15]);
   });
 });

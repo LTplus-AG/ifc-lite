@@ -5,6 +5,11 @@
 import type { Catalogue } from '../../registry';
 
 export const idsPanelRu = {
+  "idsPanel.targetFilter.title": "Объекты для проверки",
+  "idsPanel.targetFilter.enabled": "Фильтровать объекты перед проверкой",
+  "idsPanel.targetFilter.nextRun": "Эти фильтры применяются к следующей проверке выбранной модели. Область существующих результатов остаётся прежней.",
+  "idsPanel.targetFilter.wholeModel": "Проверить всю выбранную модель по правилам применимости IDS.",
+  "idsPanel.targetFilter.result": "После фильтрации: {countDisplay} объектов-кандидатов. Эта проверка не охватывает всю модель.",
   "idsPanel.title": "Проверка IDS",
   "idsPanel.status.passed": "Пройдено",
   "idsPanel.status.failed": "Не пройдено",
@@ -41,9 +46,6 @@ export const idsPanelRu = {
   "idsPanel.entityAriaLabelFailed": "{name} - {type} - Не пройдено",
   "idsPanel.hideDetails": "Скрыть подробности",
   "idsPanel.showDetails": "Показать подробности",
-  "idsPanel.openFileTitle": "Открыть файл IDS",
-  "idsPanel.idsFiles": "Файлы IDS",
-  "idsPanel.allFiles": "Все файлы",
   "idsPanel.validationComplete": "Проверка завершена",
   "idsPanel.validatingSpecification": "Проверка спецификации {current} из {total}",
   "idsPanel.checkingEntities": "Проверка сущностей {processed} / {total}",

@@ -9,6 +9,7 @@
  * W for itself. Each tool PR adds its row here beside its rail entry.
  */
 
+import { isLazyEditCommand } from './lazy-edit-commands';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { useViewerStore } from '@/store';
 import type { CommandId } from './types.js';
@@ -25,8 +26,23 @@ export function launchModelCommand(id: CommandId, opts: { drawsOnWorkplane?: boo
   if (s.workspaceMode !== 'model' && !s.enterModelWorkspace()) return false;
   const now = useViewerStore.getState();
   if ((opts.drawsOnWorkplane ?? true) && sessionWorkplaneBlock(now)) return false;
-  now.startCommand(id);
+  const started = now.startCommand(id);
+  if (started instanceof Promise && isLazyEditCommand(id)) return true;
   return useViewerStore.getState().session?.activeCommandId === id;
+}
+
+/**
+ * Slab and Roof are one command, `slab.place`, told apart by its class: the
+ * Slab entry leaves the roof class (a plate stays a plate), the Roof entry
+ * takes it, and the session raises the plane for a roof (`authoringSessionSlice`).
+ */
+export function launchSlabTool(tool: 'slab' | 'roof'): boolean {
+  const s = useViewerStore.getState();
+  const current = s.authoringDefaults.slabClass;
+  if (tool === 'roof') {
+    if (current !== 'roof') s.setAuthoringDefaults({ slabClass: 'roof' });
+  } else if (current === 'roof') s.setAuthoringDefaults({ slabClass: 'slab' });
+  return launchModelCommand('slab.place');
 }
 
 function workspaceKeysLive(): boolean {
@@ -37,8 +53,12 @@ function workspaceKeysLive(): boolean {
 export function bindModelWorkspaceKeys(): () => void {
   const active = workspaceKeysLive;
   const disposers = [
+    registerKeyboardCommand('model.layoutPlan', () => useViewerStore.getState().setModelLayout('plan'), { active }),
+    registerKeyboardCommand('model.layoutSplit', () => useViewerStore.getState().setModelLayout('split'), { active }),
+    registerKeyboardCommand('model.layout3d', () => useViewerStore.getState().setModelLayout('3d'), { active }),
     registerKeyboardCommand('model.wall', () => launchModelCommand('wall.place'), { active }),
-    registerKeyboardCommand('model.slab', () => launchModelCommand('slab.place'), { active }),
+    registerKeyboardCommand('model.slab', () => launchSlabTool('slab'), { active }),
+    registerKeyboardCommand('model.roof', () => launchSlabTool('roof'), { active }),
     registerKeyboardCommand('model.column', () => launchModelCommand('column.place'), { active }),
     registerKeyboardCommand('model.beam', () => launchModelCommand('beam.place'), { active }),
     registerKeyboardCommand('model.room', () => launchModelCommand('room.place'), { active }),
@@ -55,6 +75,8 @@ export function bindModelWorkspaceKeys(): () => void {
     registerKeyboardCommand('model.pasteInPlace', () => pasteShortcut(launchModelCommand, true), { active }),
     registerKeyboardCommand('model.array', () => launchModelCommand('element.array'), { active }),
     registerKeyboardCommand('model.move', () => launchModelCommand('element.move'), { active }),
+    registerKeyboardCommand('model.mirror', () => launchModelCommand('element.mirror'), { active }),
+    registerKeyboardCommand('model.offset', () => launchModelCommand('element.offset'), { active }),
     registerKeyboardCommand('model.rotate', () => launchModelCommand('element.rotate'), { active }),
     registerKeyboardCommand('model.stair', () => launchModelCommand('stair.place'), { active }),
     registerKeyboardCommand('model.railing', () => launchModelCommand('railing.place'), { active }),

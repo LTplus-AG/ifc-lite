@@ -129,6 +129,45 @@ afterEach(async () => {
 });
 
 describe('drawing persistence is keyed by the placement identity (#7035)', () => {
+  for (const edited of [false, true]) it(`#10264 does not hash refused provisional source with unsaved sheet edit=${edited}`, async () => {
+    const bytes = bytesOf(23);
+    const file = sourceFile(bytes, 'refused-before-read.ifc');
+    const before = { full: fullSourcePasses(), legacy: legacyPasses() };
+    await open(loadedModel('refused-source', file, bytes, { loadState: 'streaming-geometry', sourceContentHash: undefined }), false);
+    assert.equal(hasPersistedMarkupEntryFor('refused-source'), 'pending');
+    if (edited) await act(async () => { useViewerStore.getState().createSheet({ paperId: 'A4_PORTRAIT' }); });
+    const sheet = useViewerStore.getState().activeSheet;
+    await act(async () => { useViewerStore.getState().updateModel('refused-source', { sourceReadRefused: true, loadState: 'error', loadError: 'Local memory admission refused this source' }); });
+    await waitFor(() => hasPersistedMarkupEntryFor('refused-source') !== 'pending', 'refused source persistence to settle without a hash');
+    assert.equal(fullSourcePasses() - before.full, 0, 'a failed provisional model must not launch the full-source identity worker');
+    assert.equal(legacyPasses() - before.legacy, 0);
+    assert.equal(wholeFileReads, 0);
+    assert.equal(useViewerStore.getState().models.get('refused-source')?.sourceContentHash, undefined);
+    assert.deepEqual(legacyShapedKeys(), []);
+    if (edited) assert.equal(useViewerStore.getState().activeSheet, sheet, 'unsaved edit remains in memory without a source read');
+  });
+
+  it('#10264 persists markup and sheets after an admitted model errors with displayed geometry', async () => {
+    const bytes = bytesOf(24), file = sourceFile(bytes, 'partial-server.ifc');
+    await open(loadedModel('partial-server', file, bytes, {
+      sourceContentHash: undefined, loadState: 'error',
+      geometryResult: { meshes: [], totalTriangles: 1, totalVertices: 3, coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false,
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+      } },
+    }));
+    await act(async () => {
+      useViewerStore.setState({ measure2DResults: [measure('partial-model-markup')] });
+      useViewerStore.getState().createSheet({ paperId: 'A4_PORTRAIT' });
+    });
+    await waitFor(() => localStorage.getItem(sheetStorageKey(identityOf(bytes))) !== null, 'partial model sheet saved');
+    assert.deepEqual(storedMeasures(identityOf(bytes)), ['partial-model-markup'], 'published error models still persist markup');
+    const saved = JSON.parse(localStorage.getItem(sheetStorageKey(identityOf(bytes)))!) as { sheet: DrawingSheet };
+    assert.deepEqual(saved.sheet, useViewerStore.getState().activeSheet);
+    assert.equal(useViewerStore.getState().models.get('partial-server')?.sourceContentHash, identityOf(bytes));
+  });
+
   it('new saves use the identity key, without a pass over the file', async () => {
     const bytes = bytesOf(1);
     const file = sourceFile(bytes);
@@ -185,6 +224,39 @@ describe('drawing persistence is keyed by the placement identity (#7035)', () =>
     await act(async () => { useViewerStore.setState({ measure2DResults: [measure('drawn')] }); });
     assert.deepEqual(storedMeasures(identityOf(bytes)), ['drawn']);
     assert.equal(fullSourcePasses() - before, 0);
+  });
+
+  it('markup drawn while the identity resolves is saved when nothing was stored before (#10076 review)', async () => {
+    const bytes = bytesOf(5);
+    const file = sourceFile(bytes);
+    await open(loadedModel('m1', file, bytes, { sourceContentHash: undefined, loadState: 'streaming-geometry' }), false);
+    await settle();
+    assert.equal(hasPersistedMarkupEntryFor('m1'), 'pending', 'setup: the restore is still in flight');
+    // Drawn while the restore holds saves off.
+    await act(async () => { useViewerStore.setState({ measure2DResults: [measure('drawn-meanwhile')] }); });
+    await act(async () => { useViewerStore.getState().updateModel('m1', { sourceContentHash: identityOf(bytes) }); });
+    await waitFor(() => hasPersistedMarkupEntryFor('m1') !== 'pending', 'the restore to settle on the identity');
+    await settle();
+    assert.deepEqual(liveMeasures(), ['drawn-meanwhile']);
+    assert.deepEqual(storedMeasures(identityOf(bytes)), ['drawn-meanwhile'], 'saved without a further change');
+  });
+
+  it('a dimension drawn while a stored entry resolves stays undoable, and undo keeps the restored ones (#10286 review)', async () => {
+    const bytes = bytesOf(6);
+    const file = sourceFile(bytes);
+    const dimension = (id: string) => ({ id, a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 0.5, orientation: 'aligned' as const });
+    saveDrawing2DEntry(identityOf(bytes), { ...entryWith([]), dimensions2D: [dimension('saved')] });
+    await open(loadedModel('m1', file, bytes, { sourceContentHash: undefined, loadState: 'streaming-geometry' }), false);
+    await settle();
+    assert.equal(hasPersistedMarkupEntryFor('m1'), 'pending', 'setup: the restore is still in flight');
+    await act(async () => { useViewerStore.getState().addDimension2D(dimension('drawn-meanwhile')); });
+    await act(async () => { useViewerStore.getState().updateModel('m1', { sourceContentHash: identityOf(bytes) }); });
+    await waitFor(() => hasPersistedMarkupEntryFor('m1') !== 'pending', 'the restore to settle on the identity');
+    await settle();
+    const liveDims = () => useViewerStore.getState().dimensions2D.map((d) => d.id).sort();
+    assert.deepEqual(liveDims(), ['drawn-meanwhile', 'saved']);
+    await act(async () => { useViewerStore.getState().undoDimension2D(); });
+    assert.deepEqual(liveDims(), ['saved'], 'undo removes only what was drawn meanwhile');
   });
 });
 
@@ -357,6 +429,30 @@ describe('markup saved under the legacy key is moved to the identity key (#7035)
 
     await open(loadedModel('second', sourceFile(bytes), bytes));
     assert.deepEqual(loadDrawing2DEntry(identityOf(bytes), DEFAULTS)?.sectionConfig, SECTION, 'and the next load carries it over');
+    assert.equal(localStorage.getItem(keyFor(legacyKeyOf(bytes))), null);
+  });
+
+  // PR #10083 review: the read-back check must cover the absorbed set too.
+  it('keeps the legacy entry when its absorbed embedded markup is all that is left to move and the write fails', async () => {
+    const bytes = bytesOf(44);
+    const absorbed = ['0Annot000000000000050d'];
+    saveDrawing2DEntry(legacyKeyOf(bytes), { ...entryWith([]), absorbedEmbeddedMarkup: absorbed }); // a deliberate deletion
+    saveDrawing2DEntry(identityOf(bytes), entryWith([])); // same markup and options, no absorbed set
+    const identityKey = keyFor(identityOf(bytes));
+    const realSetItem = localStorage.setItem.bind(localStorage);
+    const quota = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+      if (key === identityKey) throw new Error('simulated quota exceeded');
+      realSetItem(key, value);
+    });
+    try {
+      await open(loadedModel('first', sourceFile(bytes), bytes));
+    } finally {
+      quota.mock.restore();
+    }
+    assert.deepEqual(loadDrawing2DEntry(legacyKeyOf(bytes), DEFAULTS)?.absorbedEmbeddedMarkup, absorbed, 'the only record of the deletion is not removed');
+
+    await open(loadedModel('second', sourceFile(bytes), bytes));
+    assert.deepEqual(loadDrawing2DEntry(identityOf(bytes), DEFAULTS)?.absorbedEmbeddedMarkup, absorbed, 'and the next load carries it over');
     assert.equal(localStorage.getItem(keyFor(legacyKeyOf(bytes))), null);
   });
 

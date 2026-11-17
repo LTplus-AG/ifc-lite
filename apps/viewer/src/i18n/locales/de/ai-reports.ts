@@ -1,0 +1,48 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const aiReportsDe = {
+  'aiReports.language': 'Sprache des Berichtstexts',
+  'aiReports.languageHint': 'Der Berichtstext wird in dieser Sprache angefordert. Die Sprache des Viewers bleibt unverändert.',
+  'aiReports.draftWithAi': 'Bericht mit KI entwerfen',
+  'aiReports.requestPrompt': 'Entwirf einen Berichtstext zu diesen Belegen für die Koordinationsprüfung, mit typisierten Berichtsaussagen. {instruction}',
+  'aiReports.languageMismatch': 'Die Antwort gibt als Sprache {declared} an, nicht die gewählte Sprache {chosen}. Entwerfen Sie erneut oder wählen Sie diese Sprache.',
+  'aiReports.claims': 'Anhand erfasster Belege geprüfte Aussagen',
+  'aiReports.noClaims': 'Diese Antwort enthält keine typisierten Aussagen. Nur die Zeilenverweise wurden geprüft; überprüfen Sie jede Aussage selbst.',
+  'aiReports.statusSupported': 'Durch Daten gestützt',
+  'aiReports.statusUnverifiable': 'Nicht überprüfbar',
+  'aiReports.statusContradicted': 'Widerlegt',
+  'aiReports.claimEdited': 'Von Ihnen bearbeitet',
+  'aiReports.editClaim': 'Aussage bearbeiten',
+  'aiReports.claimText': 'Text der Aussage',
+  'aiReports.saveClaim': 'Bearbeiteten Text verwenden',
+  'aiReports.cancelEdit': 'Abbrechen',
+  'aiReports.removeClaim': 'Aussage entfernen',
+  'aiReports.contradictedBlocks': { one: '{count} Aussage widerspricht den erfassten Belegen. Bearbeiten oder entfernen Sie sie vor dem Speichern.', other: '{count} Aussagen widersprechen den erfassten Belegen. Bearbeiten oder entfernen Sie sie vor dem Speichern.' },
+  'aiReports.unknownCitation': '{citation}: nicht in den erfassten Belegen enthalten',
+  'aiReports.factLine': '{citation} {field}: behauptet {claimed}',
+  'aiReports.reportRecord': 'KI-Bericht · {language} · Revision {revision} · Belege erfasst {capturedAt}',
+  'aiReports.blockOrigins': 'Textblöcke: {generated} von KI erzeugt, {edited} von Personen bearbeitet.',
+  'aiReports.refreshEvidence': 'Belege aktualisieren',
+  'aiReports.refreshHint': 'Erfasst die native Quelle erneut, prüft jede Aussage erneut und erzeugt unveränderten KI-Text neu. Ihre Bearbeitungen bleiben erhalten, sofern Sie unten nichts anderes wählen.',
+  'aiReports.refreshClaim': '{id}: {before} → {after}; {changed} geändert, {missing} fehlend',
+  'aiReports.conflicts': 'Bearbeitete Blöcke, die die Aktualisierung ändern würde',
+  'aiReports.noConflicts': 'Kein bearbeiteter Block ist betroffen.',
+  'aiReports.replaceEdit': 'Meine Bearbeitung durch den neu erzeugten Text ersetzen',
+  'aiReports.removeEdit': 'Diesen bearbeiteten Block entfernen; die Aktualisierung erzeugt ihn nicht mehr',
+  'aiReports.yourText': 'Ihr Text',
+  'aiReports.regeneratedText': 'Neu erzeugter Text',
+  'aiReports.applyRefresh': 'Aktualisierung anwenden',
+  'aiReports.cancelRefresh': 'Aktualisierung verwerfen',
+  'aiReports.refreshApplied': 'Belege aktualisiert. Geänderte und fehlende Fakten sind im Dokument markiert.',
+  'aiReports.originGenerated': 'Von KI erzeugt',
+  'aiReports.originEdited': 'KI-Text bearbeitet',
+  'aiReports.sourceUnsupported': 'Diese Berichtsquelle kann in diesem Viewer nicht erneut erfasst werden.',
+  'aiReports.noNativeResult': 'Für diese Quelle ist kein natives Ergebnis verfügbar. Führen Sie sie in ihrem Bereich aus und aktualisieren Sie dann die Belege.',
+  'aiReports.analysisStale': 'Das native Ergebnis ist veraltet: Das Modell wurde nach der Ausführung geändert. Führen Sie sie in ihrem Bereich erneut aus und aktualisieren Sie dann die Belege.',
+  'aiReports.documentChanged': 'Das Dokument wurde geändert, während die Aktualisierung geöffnet war. Aktualisieren Sie die Belege erneut.',
+  'aiReports.modelsChanged': 'Die geladenen Modelle unterscheiden sich von denen, für die dieser Bericht entworfen wurde. Die Aussagen werden anhand der geladenen Modelle erneut geprüft.',
+} satisfies Catalogue;

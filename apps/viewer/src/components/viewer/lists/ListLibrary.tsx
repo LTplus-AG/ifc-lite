@@ -9,12 +9,13 @@
  * views) to keep that file under the module-size budget.
  */
 
-import { Plus, Play, FileSpreadsheet, Trash2, Download, Upload, Pencil, Copy } from 'lucide-react';
+import { Plus, Play, FileSpreadsheet, Trash2, Download, Pencil, Copy, Table2 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 import { LIST_PRESETS } from '@/lib/lists';
 import type { ListDefinition } from '@/lib/lists';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -30,7 +31,6 @@ interface ListLibraryProps {
   onDuplicate: (def: ListDefinition) => void;
   onDelete: (id: string) => void;
   onExport: (def: ListDefinition) => void;
-  onImport: () => void;
 }
 
 export function ListLibrary({
@@ -44,89 +44,56 @@ export function ListLibrary({
   onDuplicate,
   onDelete,
   onExport,
-  onImport,
 }: ListLibraryProps) {
   const { t } = useTranslation();
+  const rowProps = { activeListId, executing, hasData, onExecute, onDuplicate };
+  // New list and Import live in the panel header (#8802); the library is the
+  // saved lists beside the templates, side by side once the dock is wide.
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      {/* Actions */}
-      <div className="flex items-center gap-1 px-3 py-2 border-b">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onCreateNew}
-          disabled={!hasData}
-          className="text-xs h-7"
-        >
-          <Plus className="h-3 w-3 mr-1" />
-          {t('lists.library.newList')}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onImport} className="text-xs h-7">
-          <Upload className="h-3 w-3 mr-1" />
-          {t('lists.library.import')}
-        </Button>
-      </div>
-
-      <ScrollArea className="flex-1">
-        {/* User's saved lists */}
-        {definitions.length > 0 && (
-          <div className="px-3 py-2">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              {t('lists.library.savedLists')}
-            </span>
-            <div className="mt-1 space-y-1">
-              {definitions.map(def => (
-                <ListItem
-                  key={def.id}
-                  definition={def}
-                  isActive={activeListId === def.id}
-                  executing={executing && activeListId === def.id}
-                  hasData={hasData}
-                  onExecute={onExecute}
-                  onEdit={onEdit}
-                  onDuplicate={onDuplicate}
-                  onDelete={onDelete}
-                  onExport={onExport}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {definitions.length > 0 && <Separator className="my-1" />}
-
-        {/* Presets */}
-        <div className="px-3 py-2">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            {t('lists.library.templates')}
-          </span>
-          <div className="mt-1 space-y-1">
-            {LIST_PRESETS.map(preset => (
-              <ListItem
-                key={preset.id}
-                definition={preset}
-                isActive={activeListId === preset.id}
-                executing={executing && activeListId === preset.id}
-                hasData={hasData}
-                onExecute={onExecute}
-                onDuplicate={onDuplicate}
-                isPreset
+    <ScrollArea className="flex-1 min-h-0">
+      <div className="@container">
+        <div className="flex flex-col @3xl:flex-row">
+          <section aria-label={t('lists.library.savedLists')} className="shrink-0 border-b border-border @3xl:w-80 @3xl:border-b-0 @3xl:border-r">
+            {definitions.length === 0 ? (
+              <EmptyState
+                align="start"
+                className="pt-4"
+                icon={<Table2 />}
+                title={t('lists.library.emptyTitle')}
+                description={t('lists.library.emptyDescription')}
+                action={(
+                  <Button size="sm" className="h-7 gap-1.5" onClick={onCreateNew} disabled={!hasData}>
+                    <Plus className="h-3.5 w-3.5" />
+                    {t('lists.library.newList')}
+                  </Button>
+                )}
               />
-            ))}
-          </div>
+            ) : (
+              <div className="px-3 py-2">
+                <h3 className={SECTION_LABEL}>{t('lists.library.savedLists')}</h3>
+                {definitions.map(def => (
+                  <ListItem key={def.id} definition={def} {...rowProps} onEdit={onEdit} onDelete={onDelete} onExport={onExport} />
+                ))}
+              </div>
+            )}
+          </section>
+          <section aria-label={t('lists.library.templates')} className="min-w-0 flex-1 px-3 py-2">
+            <h3 className={SECTION_LABEL}>{t('lists.library.templates')}</h3>
+            <div className="grid grid-cols-1 gap-x-4 @lg:grid-cols-2 @5xl:grid-cols-3">
+              {LIST_PRESETS.map(preset => <ListItem key={preset.id} definition={preset} {...rowProps} isPreset />)}
+            </div>
+          </section>
         </div>
-      </ScrollArea>
-    </div>
+      </div>
+    </ScrollArea>
   );
 }
 
-// ============================================================================
-// List Item
-// ============================================================================
+const SECTION_LABEL = 'mb-1 text-xs font-semibold text-muted-foreground';
 
 interface ListItemProps {
   definition: ListDefinition;
-  isActive: boolean;
+  activeListId: string | null;
   executing: boolean;
   hasData: boolean;
   onExecute: (def: ListDefinition) => void;
@@ -137,23 +104,22 @@ interface ListItemProps {
   isPreset?: boolean;
 }
 
-function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit, onDuplicate, onDelete, onExport, isPreset }: ListItemProps) {
+function ListItem({ definition, activeListId, executing: anyExecuting, hasData, onExecute, onEdit, onDuplicate, onDelete, onExport, isPreset }: ListItemProps) {
   const { t } = useTranslation();
+  const isActive = activeListId === definition.id;
+  const executing = anyExecuting && isActive;
   return (
     <div
-      className={`group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm hover:bg-muted/50 ${
-        isActive ? 'bg-muted' : ''
-      }`}
+      className={cn('group flex h-7 items-center gap-2 rounded-md px-2 hover:bg-muted/50', isActive && 'bg-muted')}
     >
-      <button type="button" disabled={!hasData} className="flex flex-1 min-w-0 items-center gap-2 text-left focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed" onClick={() => onExecute(definition)}>
+      <button type="button" disabled={!hasData} className="flex flex-1 min-w-0 items-center gap-2 text-left text-xs focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed" onClick={() => onExecute(definition)}>
         <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0"><span className="block truncate text-xs font-medium">{definition.name}</span>
-        {definition.description && (
-          <span className="block truncate text-xs text-muted-foreground">{definition.description}</span>
-        )}
-        </span>
+        {/* The name keeps its width until it alone overflows, then truncates
+            (full name on hover); the description takes what is left (#8802). */}
+        <span className="min-w-0 truncate font-medium" title={definition.name} data-list-name>{definition.name}</span>
+        {definition.description && <span className="min-w-0 flex-1 truncate text-muted-foreground">{definition.description}</span>}
       </button>
-      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
         {executing ? (
           <Spinner size="sm" />
         ) : (

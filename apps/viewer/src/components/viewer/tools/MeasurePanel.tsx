@@ -8,8 +8,8 @@
  *
  *  - `MeasureToolbar` — the bar in the HUD's top-center region (mode, snap,
  *    geo XYZ, the Measurements panel, clear, close);
- *  - `MeasureGeoReadout` + `MeasureHint` — the bottom-center readout and
- *    the one hint line;
+ *  - `MeasurePointHud`, `MeasureGeoReadout` + `MeasureHint` — the
+ *    bottom-center readouts and the one hint line;
  *  - `MeasurementOverlays` — the world-anchored lines, labels and snap
  *    glyphs.
  *
@@ -23,12 +23,11 @@ import { useViewerStore } from '@/store';
 import { MeasurementOverlays } from './MeasurementVisuals';
 import { AngleRadiusVisuals } from './AngleRadiusVisuals';
 import { MeasureToolbar } from './MeasureToolbar';
-import { MeasureGeoReadout, MeasureHint } from './MeasureHudReadouts';
+import { MeasureGeoReadout, MeasureHint, MeasurePointHud } from './MeasureHudReadouts';
 
 export function MeasureOverlay() {
   const measurements = useViewerStore((s) => s.measurements);
   const finishedVisible = useViewerStore((s) => s.sceneState.measurements.visible);
-  const pendingMeasurePoint = useViewerStore((s) => s.pendingMeasurePoint);
   const activeMeasurement = useViewerStore((s) => s.activeMeasurement);
   const snapTarget = useViewerStore((s) => s.snapTarget);
   const snapVisualization = useViewerStore((s) => s.snapVisualization);
@@ -39,6 +38,8 @@ export function MeasureOverlay() {
   const polylineMeasurements = useViewerStore((s) => s.polylineMeasurements);
   const angleMeasurements = useViewerStore((s) => s.angleMeasurements);
   const radiusMeasurements = useViewerStore((s) => s.radiusMeasurements);
+  const measurePointLast = useViewerStore((s) => s.measurePointLast);
+  const measureMode = useViewerStore((s) => s.measureMode);
 
   // Cursor position lives in a ref (no re-renders on mouse move); the snap
   // indicator position is state, updated only when the snap target changes.
@@ -91,11 +92,14 @@ export function MeasureOverlay() {
     <>
       <div ref={overlayRef} className="absolute left-0 top-0 h-0 w-0" />
       <MeasureToolbar />
+      <MeasurePointHud />
       <MeasureGeoReadout />
       <MeasureHint />
       <MeasurementOverlays
         measurements={finishedVisible ? measurements : []}
-        pending={pendingMeasurePoint}
+        // Point mode's placed point, drawn with the pending-point mark. Only in
+        // Point mode, so a placed point never shows up in another mode.
+        pending={measureMode === 'point' ? measurePointLast : null}
         activeMeasurement={activeMeasurement}
         snapTarget={snapTarget}
         snapVisualization={snapVisualization}

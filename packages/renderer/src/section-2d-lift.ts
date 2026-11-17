@@ -44,6 +44,22 @@ export interface CutPolygon2D {
    *  window part) instead of the uniform cap fill. Absent ⇒ uniform cap style +
    *  per-`ifcType` fallback, unchanged. */
   color?: [number, number, number, number];
+  /** Optional per-polygon hatch. When present, overrides the upload's capStyle hatch
+   *  fields for this polygon only. Absent ⇒ unchanged (capStyle applies). */
+  hatch?: {
+    /** Same ids as `Section2DOverlayCapStyle.patternId` (0 = none). */
+    patternId: number;
+    /** Defaults to `capStyle.spacingPx`. */
+    spacingPx?: number;
+    /** Defaults to `capStyle.angleRad`. */
+    angleRad?: number;
+    /** Defaults to `capStyle.widthPx`. */
+    widthPx?: number;
+    /** Defaults to `capStyle.secondaryAngleRad`. */
+    secondaryAngleRad?: number;
+    /** Hatch line colour (RGBA 0–1); defaults to `capStyle.strokeColor`. */
+    strokeColor?: [number, number, number, number];
+  };
 }
 
 export interface DrawingLine2D {
@@ -143,7 +159,7 @@ export interface CapPolygonRange {
   vertexCount: number;
 }
 
-/** Interleaved `[x, y, z, r, g, b, a]` cap vertices plus their triangle indices. */
+/** Interleaved cap vertices ({@link CAP_FILL_VERTEX_ATTRIBUTES} layout) plus their triangle indices. */
 export interface CapFillGeometry {
   vertices: Float32Array;
   indices: Uint32Array;
@@ -151,8 +167,61 @@ export interface CapFillGeometry {
   ranges: CapPolygonRange[];
 }
 
-/** Floats per cap fill vertex: position (3) + RGBA (4). */
-export const CAP_FILL_VERTEX_FLOATS = 7;
+/**
+ * One cap fill vertex, offsets in floats. The cap fill pipeline's vertex
+ * buffer layout is built from this table, and a test checks the fill shader's
+ * `VertexInput` against it.
+ *
+ *  - `hatchA` = patternId, spacingPx, angleRad, widthPx
+ *  - `hatchB` = secondaryAngleRad, override mask ({@link CAP_HATCH_OVERRIDE}), 0, 0
+ *  - `hatchStroke` = hatch stroke RGBA
+ *
+ * The hatch floats are per polygon ({@link CutPolygon2D.hatch}); a field whose
+ * mask bit is clear falls back to the uniform cap style in the shader.
+ */
+export const CAP_FILL_VERTEX_ATTRIBUTES = [
+  { name: 'position', shaderLocation: 0, offset: 0, floats: 3 },
+  { name: 'color', shaderLocation: 1, offset: 3, floats: 4 },
+  { name: 'hatchA', shaderLocation: 2, offset: 7, floats: 4 },
+  { name: 'hatchB', shaderLocation: 3, offset: 11, floats: 4 },
+  { name: 'hatchStroke', shaderLocation: 4, offset: 15, floats: 4 },
+] as const;
+
+/** Floats per cap fill vertex: position (3) + RGBA (4) + hatch (3 × 4). */
+export const CAP_FILL_VERTEX_FLOATS = 19;
+
+/**
+ * Bits of the per-vertex hatch override mask (`hatchB.y`). A set bit means the
+ * polygon supplies that field; a clear bit means the shader uses the uniform
+ * cap style. A mask rather than sentinels, because 0 and negative angles are
+ * valid values.
+ */
+export const CAP_HATCH_OVERRIDE = {
+  patternId: 1,
+  spacingPx: 2,
+  angleRad: 4,
+  widthPx: 8,
+  secondaryAngleRad: 16,
+  strokeColor: 32,
+} as const;
+
+/** The 12 hatch floats (`hatchA`, `hatchB`, `hatchStroke`) shared by one polygon's vertices. */
+function capHatchFloats(hatch: CutPolygon2D['hatch']): number[] {
+  if (!hatch) return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  let mask = CAP_HATCH_OVERRIDE.patternId;
+  const field = (value: number | undefined, bit: number): number => {
+    if (value === undefined) return 0;
+    mask |= bit;
+    return value;
+  };
+  const spacing = field(hatch.spacingPx, CAP_HATCH_OVERRIDE.spacingPx);
+  const angle = field(hatch.angleRad, CAP_HATCH_OVERRIDE.angleRad);
+  const width = field(hatch.widthPx, CAP_HATCH_OVERRIDE.widthPx);
+  const angle2 = field(hatch.secondaryAngleRad, CAP_HATCH_OVERRIDE.secondaryAngleRad);
+  if (hatch.strokeColor) mask |= CAP_HATCH_OVERRIDE.strokeColor;
+  const stroke = hatch.strokeColor ?? [0, 0, 0, 0];
+  return [hatch.patternId, spacing, angle, width, angle2, mask, 0, 0, stroke[0], stroke[1], stroke[2], stroke[3]];
+}
 
 /** Key of an element in a {@link CapHighlight}: its model (omit to match the id in every model) and express id. */
 export function capHighlightKey(modelIndex: number | undefined, expressId: number): string {
@@ -230,6 +299,9 @@ export function buildCapFillGeometry(
     // fill shader falls back to the uniform cap style (architectural fill +
     // hatch) byte-identically — see fs_main.
     const color: [number, number, number, number] = polygon.color ?? [0, 0, 0, -1];
+    // Per-polygon hatch, the same opt-in: absent ⇒ override mask 0, so every
+    // hatch field comes from the uniform cap style exactly as before.
+    const hatch = capHatchFloats(polygon.hatch);
 
     const outerRing: Pt[] = outer.map((p) => ({ x: p.x, z: p.y }));
     const holeRings: Pt[][] = polygon.polygon.holes
@@ -249,6 +321,7 @@ export function buildCapFillGeometry(
         origin ? y3d - origin[1] : y3d,
         origin ? z3d - origin[2] : z3d,
         color[0], color[1], color[2], color[3],
+        ...hatch,
       );
       vertexOffset++;
     }

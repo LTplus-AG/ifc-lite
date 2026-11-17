@@ -14,6 +14,7 @@ import { buildParseResult } from '@/lib/overlay-parse/symbolic-parse.js';
 import { placeRoomSymbolic, remapRoomSymbolicOwners, roomSymbolicSource } from './room-symbolic-source.js';
 import { joiner, localIdOf, ownerShare } from '@/test/collab-room-harness.js';
 import { roomStepExportSource } from './room-step-export.js';
+import { exportModelStep } from '@/lib/export/model-step-export.js';
 import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets.js';
 import { StepExporter } from '@ifc-lite/export';
 
@@ -48,7 +49,7 @@ function withTaggedQuantityRoot(source: Uint8Array): Uint8Array {
 describe('portable room STEP source (#4604)', () => {
   it('preserves unchanged exact psets, qsets and unprojected root attributes', async () => {
     const control = new Uint8Array(await readFile(new URL(
-      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      '../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc',
       import.meta.url,
     )));
     const bytes = withTaggedQuantityRoot(control);
@@ -94,7 +95,7 @@ describe('portable room STEP source (#4604)', () => {
 
   it('exports peer Tag edits and member-level quantity deletion', async () => {
     const control = new Uint8Array(await readFile(new URL(
-      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      '../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc',
       import.meta.url,
     )));
     const bytes = withTaggedQuantityRoot(control);
@@ -129,7 +130,7 @@ describe('portable room STEP source (#4604)', () => {
 
   it('exports deletion of an existing portable property set', async () => {
     const bytes = new Uint8Array(await readFile(new URL(
-      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      '../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc',
       import.meta.url,
     )));
     const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
@@ -163,7 +164,7 @@ describe('portable room STEP source (#4604)', () => {
 
   it('retains the PDF annotation source and maps its owner into the room id space', async () => {
     const bytes = new Uint8Array(await readFile(new URL(
-      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      '../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc',
       import.meta.url,
     )));
     const blobs = new collab.MemoryBlobStore();
@@ -183,7 +184,7 @@ describe('portable room STEP source (#4604)', () => {
   it('retains exact IFCZIP model and texture paths for a fresh room binding', async () => {
     modelAppearanceAssets.clear();
     const step = new Uint8Array(await readFile(new URL(
-      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      '../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc',
       import.meta.url,
     )));
     const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lWkmWQAAAABJRU5ErkJggg==', 'base64'));
@@ -308,7 +309,7 @@ describe('portable room STEP source (#4604)', () => {
 
   it('verifies room sources with the blob store custom hasher', async () => {
     const bytes = new Uint8Array(await readFile(new URL(
-      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      '../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc',
       import.meta.url,
     )));
     const custom = (value: Uint8Array) => collab.fnv128(value).split('').reverse().join('');
@@ -320,7 +321,7 @@ describe('portable room STEP source (#4604)', () => {
 
   it('retries transient blob read failures and reports the final failure', async () => {
     const bytes = new Uint8Array(await readFile(new URL(
-      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      '../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc',
       import.meta.url,
     )));
     let reads = 0;
@@ -356,7 +357,7 @@ describe('portable room STEP source (#4604)', () => {
 
   it('keeps snapshot-only roots selectable when a room adds them after the portable source', async () => {
     const bytes = new Uint8Array(await readFile(new URL(
-      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      '../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc',
       import.meta.url,
     )));
     const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
@@ -401,7 +402,7 @@ describe('portable room STEP source (#4604)', () => {
 
   it('does not publish a model after the room closes during sidecar fetch', async () => {
     const bytes = new Uint8Array(await readFile(new URL(
-      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      '../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc',
       import.meta.url,
     )));
     const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
@@ -434,7 +435,7 @@ describe('portable room STEP source (#4604)', () => {
   it('aborts a pending room texture decode when the room is torn down', async () => {
     modelAppearanceAssets.clear();
     const step = new Uint8Array(await readFile(new URL(
-      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      '../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc',
       import.meta.url,
     )));
     const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lWkmWQAAAABJRU5ErkJggg==', 'base64'));
@@ -477,7 +478,7 @@ describe('portable room STEP source (#4604)', () => {
 
   it('falls back to IFCX when the room deletes a root that remains in the frozen STEP source', async () => {
     const bytes = new Uint8Array(await readFile(new URL(
-      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      '../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc',
       import.meta.url,
     )));
     const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
@@ -497,12 +498,18 @@ describe('portable room STEP source (#4604)', () => {
     assert.ok(model?.ifcDataStore);
     assert.equal(roomStepExportSource(model.ifcDataStore, undefined, model.id), null,
       'portable export must not resurrect the deleted annotation');
+    // #10045: the single STEP export refuses instead of writing the tabular room store.
+    await assert.rejects(
+      exportModelStep({ modelId: model.id, dataStore: model.ifcDataStore, options: { schema: 'IFC4' }, scheduleState: null }),
+      (error: unknown) => error instanceof Error && error.name === 'StepRecordsUnavailableError'
+        && (error as Error & { reason?: string }).reason === 'roomMoved',
+    );
     guest.reconstructor.teardown();
   });
 });
 
 it('rejected room declarations stay quarantined across initial join, reconstruction and STEP export (#6643, Q9Xc/Q9Xo)', async context => {
-  const control = new Uint8Array(await readFile(new URL('../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc', import.meta.url)));
+  const control = new Uint8Array(await readFile(new URL('../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc', import.meta.url)));
   const bytes = withTaggedQuantityRoot(control); const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
   const doc = collab.createCollabDoc(); const blobs = new collab.MemoryBlobStore(); const slot = collab.modelSlotRef('m0');
   await ownerShare(doc, blobs, [{ modelId: 'typed', name: 'typed.ifc', store, isIfcx: false, meshes: [], idOffset: 0, schemaVersion: 'IFC4', fileName: 'typed.ifc', portableStepSource: bytes }], new Map([['typed', slot]]));
@@ -530,7 +537,7 @@ it('rejected room declarations stay quarantined across initial join, reconstruct
 });
 
 it('room STEP comparison retains genuine explicit nominal type changes (#6643, Q9Xh)', async () => {
-  const control = new Uint8Array(await readFile(new URL('../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc', import.meta.url)));
+  const control = new Uint8Array(await readFile(new URL('../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.ifc', import.meta.url)));
   const bytes = withTaggedQuantityRoot(control); const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
   const doc = collab.createCollabDoc(); const blobs = new collab.MemoryBlobStore(); const slot = collab.modelSlotRef('m0');
   await ownerShare(doc, blobs, [{ modelId: 'typed', name: 'typed.ifc', store, isIfcx: false, meshes: [], idOffset: 0, schemaVersion: 'IFC4', fileName: 'typed.ifc', portableStepSource: bytes }], new Map([['typed', slot]]));

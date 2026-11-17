@@ -78,6 +78,12 @@ export function createQueryAdapter(
   const PaginationError = options.paginationError ?? Error;
   const normalizeTypePropertyValue = options.normalizeTypePropertyValue ??
     ((value: unknown) => value as string | number | boolean | null);
+  /** The mutation view, only once it holds edits: an untouched session reads the store as parsed. */
+  function liveView(): MutablePropertyView | undefined {
+    const view = mutationView();
+    return view?.hasPendingChanges() ? view : undefined;
+  }
+
   function entityData(ref: EntityRef): EntityData | null {
     const pending = overlay();
     if (pending?.deleted.has(ref.expressId)) return null;
@@ -217,7 +223,7 @@ export function createQueryAdapter(
     return out;
   }
 
-  return {
+  const adapter: QueryBackendMethods = {
     entities(descriptor: QueryDescriptor): EntityData[] {
       const pending = overlay();
       const requested = descriptor.types && descriptor.types.length > 0
@@ -299,14 +305,16 @@ export function createQueryAdapter(
     attributes,
     properties: (ref: EntityRef) => properties(ref),
     quantities,
+    // Relationship-derived reads resolve through the live mutation view, so what
+    // this session authored reads back before export (#9296); read-only keeps the store path.
     classifications(ref: EntityRef): ClassificationData[] {
-      return extractClassificationsOnDemand(store, ref.expressId);
+      return extractClassificationsOnDemand(store, ref.expressId, liveView());
     },
     materials(ref: EntityRef): MaterialData | null {
-      return extractMaterialsOnDemand(store, ref.expressId);
+      return extractMaterialsOnDemand(store, ref.expressId, liveView());
     },
     typeProperties(ref: EntityRef): TypePropertiesData | null {
-      const info = extractTypePropertiesOnDemand(store, ref.expressId);
+      const info = extractTypePropertiesOnDemand(store, ref.expressId, liveView());
       if (!info) return null;
       return {
         typeName: info.typeName,
@@ -319,7 +327,7 @@ export function createQueryAdapter(
       };
     },
     documents(ref: EntityRef): DocumentData[] {
-      return extractDocumentsOnDemand(store, ref.expressId);
+      return extractDocumentsOnDemand(store, ref.expressId, liveView());
     },
     relationships(ref: EntityRef): EntityRelationshipsData {
       const result = extractRelationshipsOnDemand(store, ref.expressId);
@@ -376,4 +384,5 @@ export function createQueryAdapter(
       return out.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
     },
   };
+  return adapter;
 }

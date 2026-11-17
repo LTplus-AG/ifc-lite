@@ -25,9 +25,37 @@ export function sectionExclusions(device: GPUDevice): SectionExclusions {
   if (!table) { table = new SectionExclusions(device); tables.set(device, table); }
   return table;
 }
+export const SECTION_EXCLUSIONS_GROUP = 3;
+
+// WebGPU before gpuweb#4946 (Nov 2024) still requires a bind group at every
+// slot of a pipeline layout, even an empty one; current Dawn treats empty
+// layouts as holes. Padded slots are therefore always bound explicitly (#9060).
+const empties = new WeakMap<GPUDevice, { layout: GPUBindGroupLayout; group: GPUBindGroup }>();
+function empty(device: GPUDevice): { layout: GPUBindGroupLayout; group: GPUBindGroup } {
+  let entry = empties.get(device);
+  if (!entry) {
+    const layout = device.createBindGroupLayout({ label: 'empty-padding-bgl', entries: [] });
+    entry = { layout, group: device.createBindGroup({ label: 'empty-padding', layout, entries: [] }) };
+    empties.set(device, entry);
+  }
+  return entry;
+}
+export const emptyBindGroupLayout = (device: GPUDevice): GPUBindGroupLayout => empty(device).layout;
+export const emptyBindGroup = (device: GPUDevice): GPUBindGroup => empty(device).group;
+
 export function withSectionExclusions(device: GPUDevice, layouts: GPUBindGroupLayout[]): GPUBindGroupLayout[] {
-  while (layouts.length < 3) layouts.push(device.createBindGroupLayout({ entries: [] }));
+  for (let slot = 0; slot < SECTION_EXCLUSIONS_GROUP; slot++) layouts[slot] ??= emptyBindGroupLayout(device);
   return [...layouts, sectionExclusions(device).layout];
+}
+
+/**
+ * Bind the exclusion table at group 3 and an empty group at every slot from
+ * `firstPadded` up to it: the slots `withSectionExclusions` padded for this
+ * pipeline. Slots below `firstPadded` are the caller's own groups.
+ */
+export function bindSectionExclusions(pass: GPUBindingCommandsMixin, device: GPUDevice, firstPadded = SECTION_EXCLUSIONS_GROUP): void {
+  for (let slot = firstPadded; slot < SECTION_EXCLUSIONS_GROUP; slot++) pass.setBindGroup(slot, emptyBindGroup(device));
+  pass.setBindGroup(SECTION_EXCLUSIONS_GROUP, sectionExclusions(device).bindGroup);
 }
 class SectionExclusions {
   readonly layout: GPUBindGroupLayout;

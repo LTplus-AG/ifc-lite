@@ -40,7 +40,7 @@
 # COST. Deliberately cheap and non-blocking; it MUST NOT become a required
 # check:
 #   - weekly `schedule` + on-demand `workflow_dispatch`, the same profile as
-#     determinism.yml / wide-arithmetic.yml;
+#     determinism.yml;
 #   - `push` ONLY on the paths that can invalidate the result: the diff
 #     engine, the geometry kernel and the wasm bundle it is measured through,
 #     the CLI adapter that builds the fingerprints, and the harness itself.
@@ -58,7 +58,7 @@ name: Content-matching fixture
 on:
   schedule:
     # Weekly, Tuesday 05:23 UTC. A day and minute no other weekly lane uses
-    # (determinism Mon 03:17, wide-arithmetic Wed 04:29, moonshot Sun 06:41).
+    # (determinism Mon 03:17, moonshot Sun 06:41).
     - cron: '23 5 * * 2'
   workflow_dispatch:
   push:
@@ -140,7 +140,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -226,5 +226,6 @@ jobs:
       jobs: content-matching-fixture
       result: ${{ needs.content-matching-fixture.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

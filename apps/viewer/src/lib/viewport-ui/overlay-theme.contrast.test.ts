@@ -19,7 +19,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { contrastRatio, type Rgba } from '@/test/contrast/wcag';
-import { getThemeClearColor } from '@/utils/viewportUtils';
+import { getThemeClearColor, VIEWPORT_CANVAS_HEX } from '@/utils/viewportUtils';
 import type { ThemeMode } from '@/store/slices/uiSlice';
 import {
   COLORFUL_CANVAS_GRADIENT_STOPS,
@@ -140,8 +140,8 @@ describe('overlay palette contrast against the canvas (#5483)', () => {
 
 describe('token to renderer colour (#5483)', () => {
   it('tokenToRgba keeps the sRGB encoding the clear colour and line uniforms use', () => {
-    // #1a1b26 is the dark clear colour; getThemeClearColor spells it as 0.102/0.106/0.149.
-    const [r, g, b, a] = tokenToRgba('#1a1b26');
+    // The dark clear colour is the --surface-canvas hex, spelt as 0..1 sRGB.
+    const [r, g, b, a] = tokenToRgba(VIEWPORT_CANVAS_HEX.dark);
     const [cr, cg, cb] = getThemeClearColor('dark');
     assert.ok(Math.abs(r - cr) < 0.001 && Math.abs(g - cg) < 0.001 && Math.abs(b - cb) < 0.001);
     assert.equal(a, 1);

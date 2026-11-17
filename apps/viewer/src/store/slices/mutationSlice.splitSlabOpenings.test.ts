@@ -197,6 +197,33 @@ for (const unit of ['metre', 'millimetre'] as const) {
   });
 }
 
+for (const unit of ['metre', 'millimetre'] as const) {
+  it(`${unit}: a slab hung from the level meshes below it, and a split keeps its opening and its top (#9198)`, async t => {
+    if (!existsSync(wasmPath)) { t.skip('Run pnpm build:wasm for the physical slab opening oracle'); return; }
+    await seedModelingSession({ unit, storeyOffset: [3, 3] });
+    const slab = built(state().addSlab(MODEL_ID, STOREY, { Position: [0, 0, 0], Width: 4, Depth: 3, Thickness: 0.2, ExtrudedDirection: [0, 0, -1] }));
+    const opening = built(state().addHostedFill(MODEL_ID, slab, { kind: 'opening', params: { Position: [0.5, 1.5], Width: 0.4, Depth: 0.6 } }));
+    const whole = meshSlabs(exportText()).get(slab);
+    assert.ok(whole?.length, 'the hung slab has a real WASM mesh');
+    assert.equal(insideMesh(whole, [5, -0.1, -4.5]), true, 'its material is below the level');
+    assert.equal(insideMesh(whole, [5, 0.1, -4.5]), false, 'and nothing stands above it');
+    assert.equal(insideMesh(whole, [3.5, -0.1, -4.5]), false, 'the opening cuts through it');
+
+    const split = state().splitSlabByLine(MODEL_ID, slab, [1, -1], [1, 4]);
+    assert.ok(split.ok, split.ok ? '' : split.reason);
+    if (!split.ok) return;
+    const added = [split.left.expressId, split.right.expressId].find(id => id !== slab)!;
+    const { store, view } = target();
+    assert.equal(readHostedFill(store, opening, view)?.hostId, added, 'the opening follows its piece');
+    const meshes = meshSlabs(exportText()), cut = meshes.get(added), kept = meshes.get(slab);
+    assert.ok(cut?.length && kept?.length, 'both pieces have real WASM meshes');
+    assert.equal(insideMesh(cut, [3.5, -0.1, -4.5]), false, 'the carried opening still cuts its new host');
+    assert.equal(insideMesh(cut, [3.9, -0.1, -4.5]), true, 'beside it is solid, below the level');
+    assert.equal(insideMesh(kept, [5, -0.1, -4.5]), true, 'the larger piece stays below the level');
+    assert.equal(insideMesh(kept, [5, 0.1, -4.5]), false, 'and keeps its top there');
+  });
+}
+
 // #6232 / #6589: cosine-only frame checks admitted 1e-4 rad rotations and
 // tilts. The plan reader adds only the element origin, so these real shapes
 // must refuse before changing a cut's world placement or rewriting the slab.

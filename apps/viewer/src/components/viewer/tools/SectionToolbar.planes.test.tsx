@@ -105,7 +105,7 @@ const addPlane = (label: string) => {
 const openPlaneMenu = () => openMenu(bar().querySelector('[data-testid="section-plane-menu"]')!);
 
 describe('with no plane yet (#7545)', () => {
-  it('shows the four ways to add one instead of a row of controls, and says what to do', () => {
+  it('shows the five ways to add one instead of a row of controls, and says what to do', () => {
     renderTool();
     assert.equal(chips().length, 0);
     assert.equal(bar().querySelector('[data-testid="section-active-row"]'), null, 'no row of controls without a plane');
@@ -113,10 +113,23 @@ describe('with no plane yet (#7545)', () => {
     assert.ok(empty);
     assert.deepEqual(
       [...empty.querySelectorAll('button')].map((b) => b.textContent?.trim()),
-      ['Down (Z)', 'Front (Y)', 'Side (X)', 'Face…'],
+      ['Down (Z)', 'Front (Y)', 'Side (X)', 'Face…', 'Box'],
     );
-    assert.match(hint(), /Add a plane to start cutting/);
+    assert.match(hint(), /Choose a plane or a box to start cutting/);
+    assert.match(empty.textContent ?? '', /^New cut:/);
+    for (const b of empty.querySelectorAll('button')) assert.ok(b.title, `"${b.textContent}" explains itself on hover`);
     assert.equal(s().sectionPickMode, false, 'nothing is armed behind the user');
+  });
+
+  it('puts the ways to start a cut on row 2, under the heading, Views and close (#8672)', () => {
+    renderTool();
+    // Booleans and strings only: a failing assert on a DOM node makes node:test inspect the whole jsdom graph and hang.
+    const [row1, row2] = [...bar().children] as HTMLElement[];
+    assert.match(row1?.textContent ?? '', /Section/i, 'the heading says which tool is open');
+    assert.match(row1?.textContent ?? '', /Views/, 'Views keeps its label');
+    assert.equal(!!row1?.querySelector('[data-testid="section-empty-add"]'), false, 'the ways to start a cut are not on row 1');
+    assert.equal(row2?.dataset.testid, 'section-start-row', 'row 2 is the start row');
+    assert.equal(!!row2?.querySelector('[data-testid="section-empty-add"]'), true, 'the ways to start a cut are on row 2');
   });
 
   it('a button adds plane A, cutting; the chip, the row of controls and the hint follow', () => {
@@ -127,7 +140,7 @@ describe('with no plane yet (#7545)', () => {
     assert.equal(s().sectionPlane.enabled, true);
     assert.ok(bar().querySelector('[data-testid="section-active-row"]'));
     assert.equal(bar().querySelector('[data-testid="section-empty-add"]'), null);
-    assert.doesNotMatch(hint(), /Add a plane to start/);
+    assert.doesNotMatch(hint(), /to start cutting/);
   });
 
   it('Face… arms a pick that adds the first plane', () => {
@@ -322,6 +335,7 @@ describe('the plane menu (#7545)', () => {
     const side = s().sectionPlane.id;
     openPlaneMenu();
     assert.equal(menuItem('Side (X)').getAttribute('aria-checked'), 'true', 'the plane\'s current direction is marked');
+    for (const label of ['Down (Z)', 'Front (Y)', 'Side (X)', 'Face…']) assert.ok(menuItem(label).title, `${label} explains itself on hover, as in the Add menu`);
     click(menuItem('Front (Y)'));
     assert.equal(s().sectionPlane.id, side, 'same plane');
     assert.equal(s().sectionPlane.axis, 'front');

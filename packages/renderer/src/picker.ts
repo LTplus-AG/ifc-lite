@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { sectionExclusions, withSectionExclusions } from './section-exclusions.js';
+import { bindSectionExclusions, sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 /**
  * GPU-based object picking
  */
@@ -11,7 +11,8 @@ import { WebGPUDevice } from './device.js';
 import type { Mesh, PickResult, PickClipState } from './types.js';
 import { resolvePickSample, resolvePickedExpressId } from './pick-resolve.js';
 import type { InstancedTemplateGPU } from './scene.js';
-import { PointPicker, decodePickSample, type PointPickNode } from './point-picker.js';
+import { decodePickSample, type PointPicker, type PointPickNode } from './point-picker.js';
+import { pointCloudSupport } from './point-cloud-support.js';
 import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
 import { restoreRtePickWorld, unprojectPickSample } from './pick-world-position.js';
 import {
@@ -429,7 +430,7 @@ export class Picker {
 
     sectionExclusions(this.device).update(clip?.sectionExcludedIds);
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
+    bindSectionExclusions(pass, this.device, 1);
     for (let i = 0; i < meshes.length; i++) {
       const mesh = meshes[i];
       if (!mesh) continue;
@@ -471,7 +472,7 @@ export class Picker {
         clip,
       );
       pass.setPipeline(this.instancedPickPipeline);
-      pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
+      bindSectionExclusions(pass, this.device, 1);
       pass.setBindGroup(0, this.instancedPickBindGroup);
       for (const [i, it] of instancedTemplates.entries()) {
         pass.setVertexBuffer(0, it.vertexBuffer);
@@ -482,10 +483,10 @@ export class Picker {
       }
     }
 
-    if (pointNodes && pointNodes.length > 0) {
-      if (!this.pointPicker) {
-        this.pointPicker = new PointPicker(this.webgpuDevice);
-      }
+    // Point nodes only exist where point-cloud support is installed (the root
+    // entry), which is also what provides the point picker.
+    if (pointNodes && pointNodes.length > 0) this.pointPicker ??= pointCloudSupport()?.createPointPicker(this.webgpuDevice) ?? null;
+    if (pointNodes && pointNodes.length > 0 && this.pointPicker) {
       const sz = pointSizing ?? { sizeMode: 0, worldRadius: 0.02, pointSizePx: 4 };
       // Point clouds share both RTE section and crop discards with their colour pass.
       this.pointPicker.drawIntoPass(pass, pointNodes, viewProj, { width, height }, {

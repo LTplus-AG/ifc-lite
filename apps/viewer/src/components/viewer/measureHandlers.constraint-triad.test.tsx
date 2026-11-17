@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { render, cleanup } from '@/test/render.js';
 import type { MeasurementConstraintEdge } from '@/store/types';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-import { handleMeasureDown } from './measureHandlers.js';
+import { handleMeasureDown } from './distanceClick.js';
 import { AxisHelper } from './AxisHelper.js';
 
 afterEach(cleanup);
@@ -49,6 +49,7 @@ function constraintFromPointerDown(): MeasurementConstraintEdge {
     },
     camera: { projectToScreen: (p: { x: number; y: number }) => ({ x: p.x, y: p.y }) },
     mouseState: { isDragging: false },
+    activeMeasurementRef: { current: null },
     edgeLockStateRef: { current: { edge: null, meshExpressId: null, edgeT: 0, lockStrength: 0, isCorner: false, cornerValence: 0 } },
     hiddenEntitiesRef: { current: new Set() },
     isolatedEntitiesRef: { current: null },

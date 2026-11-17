@@ -15,10 +15,9 @@ import { Viewport } from './Viewport';
 import { useWindowFileDrop } from './useWindowFileDrop';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
-import { ViewportWelcomeCard } from './ViewportWelcomeCard';
+import { ViewportWelcome } from './welcome/ViewportWelcome';
 import { useReloadResume } from '@/hooks/useReloadResume';
 import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
-import { WelcomeFooterChips } from './WelcomeFooterChips';
 import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
@@ -32,6 +31,7 @@ import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
 import { MeasurementSceneLayer } from './scene/MeasurementSceneLayer';
 import { BasepointOverlay } from './BasepointOverlay';
+import { StructuralGlyphLayer } from './structural/StructuralGlyphLayer';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
 import { BCFOverlay } from './bcf/BCFOverlay';
@@ -40,14 +40,15 @@ import { CesiumPlacementGizmo } from './placement/CesiumPlacementGizmo';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
 import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
-import { isTypeVisible } from '@/store/typeVisibilityFilter';
+import { isMeshTypeVisible } from '@/store/typeVisibilityFilter';
+import { useRetypedClasses } from '@/hooks/useViewerSelectors';
 import { hasInstancedShards } from '@/store/instancedShardModels';
 import { isVisibleResultEmpty } from '@/lib/visibility/effective-empty';
 import { useVisibilityIsolation } from '@/hooks/useVisibilityIsolation';
 import { EmptyVisibilityNotice } from './EmptyVisibilityNotice';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGpuOpenGuard } from '@/hooks/useWebGpuOpenGuard';
-import type { RecentFileEntry } from '@/lib/recent-files';
+import { getRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
 import {
   supportsFileSystemAccess,
   openIfcFilesWithHandles,
@@ -65,14 +66,16 @@ import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
+import { reloadActiveModelInPlace } from './reloadActiveModel';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
-import { createBlankIfcFile } from '@/utils/createBlankIfc';
-import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
+import { startBlankModel } from '@/hooks/startBlankModel';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore } from '@ifc-lite/parser';
 import { getEffectiveGeoreference, hasDeclaredCrs, offersCesium } from '@/lib/geo/effective-georef';
 import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
+import { markLoadIntent } from '@/lib/load-intent';
+import { isFeatureEnabled } from '@/lib/features';
 
 /**
  * The primary container for the 3D viewport, managing IFC model loading,
@@ -101,6 +104,8 @@ export function ViewportContainer() {
   const sourceHost = useOptionalSourceHost();
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
+  const retypedClasses = useRetypedClasses();
   const typeViewMode = useViewerStore((s) => s.typeViewMode);
   const setHasTypeGeometry = useViewerStore((s) => s.setHasTypeGeometry);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
@@ -117,7 +122,7 @@ export function ViewportContainer() {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
-  const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
+  const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>(getRecentFiles); // seeded: a fresh visit lists past opens
   const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
   // `webGpuBannerBlurb` is a plain function, not a component — pass this
   // component's own `t` so the banner headline re-renders on a live locale
@@ -165,18 +170,18 @@ export function ViewportContainer() {
           // Scan-based terrain is stamped `IfcGeographicElement`; honour the
           // same type-visibility gate as the mesh path so the Site toggle hides
           // it too (issue #1480).
-          if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
+          if (!isMeshTypeVisible(asset, typeVisibility, structuralViewMode, retypedClasses)) continue;
           collected.push(asset.modelIndex === modelIndex ? asset : { ...asset, modelIndex });
         }
       }
     } else if (geometryResult?.pointClouds) {
       for (const asset of geometryResult.pointClouds) {
-        if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
+        if (!isMeshTypeVisible(asset, typeVisibility, structuralViewMode, retypedClasses)) continue;
         collected.push(asset);
       }
     }
     return collected;
-  }, [storeModels, geometryResult, modelIdToIndex, typeVisibility]);
+  }, [storeModels, geometryResult, modelIdToIndex, typeVisibility, structuralViewMode, retypedClasses]);
 
   // Keep the placement panel context available regardless of map/solar toggles.
   // The Cesium overlay and solar study also consume this effective georeference.
@@ -356,6 +361,7 @@ export function ViewportContainer() {
     const handleSourceDownload = (event: Event) => {
       const detail = (event as SourceDownloadEvent).detail;
       if (detail.items.length === 0) return;
+      markLoadIntent();
       // Take ownership of the items and drop the event's own reference so
       // consumed buffers become collectable as the queue works through them.
       const batch: Array<SourceDownloadItem | null> = [...detail.items];
@@ -384,13 +390,6 @@ export function ViewportContainer() {
             // once and use the sanitized value everywhere downstream.
             const safeName = sanitizeFilename(item.name, { fallback: 'model.ifc' });
             const file = new File([item.buffer], safeName);
-            // Pass an explicit id and treat "registered in the store" as
-            // success: addModel returns null when a concurrent load
-            // (drag-drop, viewport picker) bumps the shared load session,
-            // even though this model finished registering — same recovery
-            // syncSourceModel uses. Without it the toast would falsely report
-            // a failure and the model would get no source tag (no sync
-            // button, no badge, no downloaded-file record).
             const providerTitle =
               sourceHost?.get(item.tag.provider)?.manifest.title ?? item.tag.provider;
             // Isolate each item: a single corrupt or unparseable file must not
@@ -398,10 +397,8 @@ export function ViewportContainer() {
             // ten throws to the outer catch and the other nine silently never
             // load — with one generic toast for the whole batch.
             try {
-              const modelId = crypto.randomUUID();
-              const added = await addModel(file, { name: safeName, modelId });
-              const registered = added !== null || useViewerStore.getState().models.has(modelId);
-              if (registered) {
+              const modelId = await addModel(file, { name: safeName });
+              if (modelId) {
                 useViewerStore.getState().setSourceTag(modelId, item.tag);
                 recordDownloadedSourceFile(item.tag, item.sourceFile);
                 toast.success(`Loaded ${safeName} from ${providerTitle}`);
@@ -432,12 +429,13 @@ export function ViewportContainer() {
   // Window drops on any viewer chrome route through the same guarded loader.
   // Unsupported WebGPU reports through the shared load-error card (#5851).
   const handleDrop = useCallback((dataTransfer: DataTransfer) => {
+    markLoadIntent(); // before any await: start-screen idle work stands down (load-intent.ts)
     // Capture live handles synchronously — the DataTransferItemList is neutered
     // once the drop event returns, so this must run before any await.
     const handlesPromise = handlesFromDataTransfer(dataTransfer);
     const droppedFiles = Array.from(dataTransfer.files);
     const attempt = () => {
-      if (!guardWebGpu(attempt)) return;
+      if (!guardWebGpu(attempt, { replay: 'free' })) return;
       const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(droppedFiles);
       if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
       if (allDropped.length === 0) return;
@@ -471,10 +469,11 @@ export function ViewportContainer() {
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
+    markLoadIntent();
     // Reset while the event still owns this input; Retry uses the captured Files.
     e.target.value = '';
     const attempt = () => {
-      if (!guardWebGpu(attempt)) return;
+      if (!guardWebGpu(attempt, { replay: 'free' })) return;
 
       // DXF reference underlays split off before model routing (issue #1782).
       const { dxfFiles, modelFiles } = splitDxfFiles(files);
@@ -494,6 +493,7 @@ export function ViewportContainer() {
   // live handle per file so the model can be refreshed from disk. Falls back to
   // the hidden <input type="file"> on browsers without the API.
   const handleOpenClick = useCallback(async () => {
+    markLoadIntent(); // the picker may stay open for seconds
     if (!guardWebGpu(() => { void handleOpenClick(); })) return;
     if (!supportsFileSystemAccess()) {
       fileInputRef.current?.click();
@@ -518,83 +518,36 @@ export function ViewportContainer() {
   useReloadResume(webgpu.supported && !webgpu.checking, routeLoad, () => { void handleOpenClick(); });
 
   const handleStartBlank = useCallback(async () => {
-    if (!guardWebGpu(() => { void handleStartBlank(); })) return;
-    const file = createBlankIfcFile();
-    const modelId = crypto.randomUUID();
-    // Must await: loadFile() calls resetViewerState() internally, which
-    // closes any Model workspace session; entering before that races.
-    await loadFile(file, { kind: 'primary', modelId });
-    const state = useViewerStore.getState();
-    if (state.activeModelId !== modelId || state.models.get(modelId)?.loadState !== 'complete') return;
-    if (state.enterModelWorkspace({ modelId })) launchModelCommand('wall.place'); // #6232
+    markLoadIntent();
+    if (!guardWebGpu(() => { void handleStartBlank(); }, { replay: 'on-retry' })) return;
+    try { await startBlankModel(loadFile); }
+    catch (error) {
+      console.error('[ViewportContainer] Start blank failed', error);
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
   }, [guardWebGpu, loadFile]);
 
-  // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced
-  // geometry, so it only takes on a re-load. Re-load the active model IN PLACE
-  // from the File the store ALREADY retains on the model record
-  // (`getActiveModel().sourceFile`, set by upsertModel at load time) — loadFile
-  // re-snapshots `mergeLayers` from the store, so the toggle re-tessellates.
-  // The earlier recent-files-blob-cache source was unreliable (its 150 MB cap
-  // skips real models + a fire-and-forget write races the reload), so it fell to
-  // window.location.reload() which DROPPED the model — the "nothing loads" blank.
+  // Issue #540 "Merge Multilayer Walls" and the Fast/Exact mode take effect on a re-load of the
+  // active model in place; one reload applies every load-time geometry setting. The earlier
+  // recent-files-blob-cache source was unreliable (its 150 MB cap skips real models + a
+  // fire-and-forget write races the reload), so it fell to window.location.reload() which
+  // DROPPED the model — the "nothing loads" blank.
+  const serverProcessedNotice = useCallback(() => toast.info(t('mergeLayersBanner.serverProcessed')), [t]);
   const handleMergeLayersReload = useCallback(async () => {
-    const st = useViewerStore.getState();
-    const file = st.getActiveModel()?.sourceFile;
-    console.log(
-      '[merge-reload] start: mergeLayers=',
-      st.mergeLayers,
-      'activeModel.sourceFile=',
-      file ? `${file.name} (${file.size}B)` : 'NONE',
-    );
-    st.clearMergeLayersPendingReload();
-    if (file) {
-      try {
-        console.log('[merge-reload] re-loading active model in place…');
-        await loadFile(file);
-        const after = useViewerStore.getState();
-        console.log(
-          '[merge-reload] loadFile resolved: meshes=',
-          after.geometryResult?.meshes?.length ?? 0,
-          'models=',
-          after.models?.size ?? 0,
-        );
-      } catch (err) {
-        console.error('[merge-reload] loadFile threw:', err);
-      }
-    } else if (typeof window !== 'undefined') {
-      // No retained File (e.g. blank/new model) — fall back to a full reload
-      // (the toggle is persisted, so the user re-opens the file).
-      console.warn('[merge-reload] no active sourceFile — falling back to window.location.reload()');
-      window.location.reload();
-    }
-  }, [loadFile]);
-
-  // Reload-to-apply for the Fast/Exact geometry mode, mirroring the merge-layers
-  // reload: re-load the active model in place so loadFile re-snapshots the mode
-  // and re-tessellates. Clears BOTH pending flags since one reload applies every
-  // load-time geometry setting.
+    useViewerStore.getState().clearMergeLayersPendingReload();
+    await reloadActiveModelInPlace(loadFile, 'merge-reload', serverProcessedNotice);
+  }, [loadFile, serverProcessedNotice]);
   const handleGeometryModeReload = useCallback(async () => {
     const st = useViewerStore.getState();
-    const file = st.getActiveModel()?.sourceFile;
     st.clearGeometryModePendingReload();
     st.clearMergeLayersPendingReload();
-    if (file) {
-      try {
-        await loadFile(file);
-      } catch (err) {
-        console.error('[geom-mode-reload] loadFile threw:', err);
-      }
-    } else if (typeof window !== 'undefined') {
-      // No retained File — fall back to a full reload (the mode is persisted).
-      console.warn('[geom-mode-reload] no active sourceFile — falling back to window.location.reload()');
-      window.location.reload();
-    }
-  }, [loadFile]);
+    await reloadActiveModelInPlace(loadFile, 'geom-mode-reload', serverProcessedNotice);
+  }, [loadFile, serverProcessedNotice]);
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
   const { hasTypeGeometry, filteredGeometry, geometryVersion, geometryReplacementVersion } = useFilteredGeometry(
-    mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode);
+    mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode, structuralViewMode, retypedClasses);
 
   // Publish to the store so the toolbar can hide the Model/Types switch when
   // there is no type geometry to reveal.
@@ -616,11 +569,10 @@ export function ViewportContainer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mergedGeometryResult, filteredGeometry, geometryVersion]);
 
-  // Shared pure intersection for the renderer and the empty-result notice.
   const computedIsolatedIds = useVisibilityIsolation();
 
   const visibleResultEmpty = useMemo(() => isVisibleResultEmpty({
-    models: storeModels, geometryResult, hiddenEntities,
+    ...useViewerStore.getState(), models: storeModels, geometryResult, hiddenEntities,
   }, {
     meshes: filteredGeometry,
     pointClouds: mergedPointClouds,
@@ -628,55 +580,30 @@ export function ViewportContainer() {
     hasUnenumeratedInstances: [...storeModels].some(([id, model]) => model.visible
       && hasInstancedShards(id) && !model.geometryResult?.instancedGeometryHashes?.size),
   }), [storeModels, geometryResult, filteredGeometry, geometryVersion, mergedPointClouds,
-    computedIsolatedIds, hiddenEntities]);
-
-  // Grid Pattern
-  const GridPattern = () => (
-    <>
-      {/* Light mode grid - subtle gray */}
-      <div 
-        className="absolute inset-0 z-0 pointer-events-none opacity-[0.06] dark:hidden"
-        style={{
-          backgroundImage: `linear-gradient(#3b4261 1px, transparent 1px), linear-gradient(90deg, #3b4261 1px, transparent 1px)`,
-          backgroundSize: '32px 32px',
-          backgroundPosition: '-1px -1px'
-        }}
-      />
-      {/* Dark mode grid - subtle blue/cyan tint */}
-      <div 
-        className="absolute inset-0 z-0 pointer-events-none opacity-[0.12] hidden dark:block"
-        style={{
-          backgroundImage: `linear-gradient(#3b4261 1px, transparent 1px), linear-gradient(90deg, #3b4261 1px, transparent 1px)`,
-          backgroundSize: '32px 32px',
-          backgroundPosition: '-1px -1px'
-        }}
-      />
-    </>
-  );
+    computedIsolatedIds, hiddenEntities, typeVisibility, structuralViewMode, mutationVersion]);
 
   // Empty state when no file is loaded at all (show starting UI)
   // But NOT when models are loaded but just hidden - in that case show empty 3D canvas
   if (!hasLoadedModels && !loading) {
     return (
       <div
-        className="relative h-full w-full bg-white dark:bg-black text-zinc-900 dark:text-zinc-50 overflow-hidden"
+        className="relative h-full w-full bg-zinc-50 dark:bg-[#111219] text-zinc-900 dark:text-zinc-50 overflow-hidden"
         data-viewport
       >
-        <GridPattern />
 
-        <input
+        {isFeatureEnabled('files.local') && <input
           ref={fileInputRef}
           type="file"
           accept={FILE_ACCEPT}
           multiple
           onChange={handleFileSelect}
           className="hidden"
-        />
+        />}
 
         {/* Drop overlay — full window, since the whole window is the drop target (#5845) */}
         {isDragging && createPortal(
           <div className="pointer-events-none fixed inset-0 z-50 bg-primary/10 backdrop-blur-[2px] flex items-center justify-center p-8">
-            <div className="border-4 border-dashed border-primary bg-white/90 dark:bg-black/90 p-12 max-w-2xl w-full text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] transition-all">
+            <div className="border-4 border-dashed border-primary bg-popover/90 p-12 max-w-2xl w-full text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] transition-all">
               <Upload className="h-20 w-20 mx-auto text-primary mb-6" />
               <p className="text-3xl font-black uppercase tracking-tight text-primary">{t('viewportLighting.container.emptyState.dropOverlay.title')}</p>
             </div>
@@ -757,24 +684,18 @@ export function ViewportContainer() {
             beyond scroll reach (the logo used to vanish under the toolbar
             on short viewports). Instead an inner min-h-full column centers
             when there is room and grows scrollably from the top when not. */}
-        <div className="absolute inset-0 z-10 overflow-auto p-4 md:p-8">
+        <div className={`absolute inset-0 z-10 overflow-auto p-4 md:p-8 ${!webgpu.checking && !webgpu.supported ? 'pt-[min(40vh,14rem)] md:pt-[min(40vh,14rem)]' : ''}`}>
           <div className="min-h-full w-full flex flex-col items-center justify-center">
 
-          {/* Main Card — extracted to its own module (#5119) so the privacy
-              footnote had somewhere to land without growing this file. */}
-          <ViewportWelcomeCard
+          {/* The start screen — its own modules (#5119) so this file's
+              frozen size budget never has to grow for it. */}
+          <ViewportWelcome
             webgpu={webgpu}
             onOpenClick={() => { void handleOpenClick(); }}
             onStartBlank={() => { void handleStartBlank(); }}
             recentFiles={recentFiles}
             loadFile={loadFile}
           />
-
-          {/* The old Select / Filter / Analyze feature-card grid was
-              dropped: it repeated toolbar affordances without offering an
-              action, and its height pushed the welcome card off-screen. */}
-
-          <WelcomeFooterChips />
 
           </div>
         </div>
@@ -785,7 +706,7 @@ export function ViewportContainer() {
 
   return (
     <div
-      className="relative h-full w-full bg-zinc-50 dark:bg-black overflow-hidden"
+      className="relative h-full w-full bg-zinc-50 overflow-hidden"
       data-viewport
     >
       {scanRunActive && <Suspense fallback={null}><ScanDetectionOverlay /></Suspense>}
@@ -850,6 +771,7 @@ export function ViewportContainer() {
         <CollabPresenceLayer />
         {bcfOverlayVisible && <BCFOverlay />}
         <BasepointOverlay />
+        <StructuralGlyphLayer isolatedIds={computedIsolatedIds} />
         <ZoneOverlay />
         <MeasurementSceneLayer />
         <ToolOverlays />

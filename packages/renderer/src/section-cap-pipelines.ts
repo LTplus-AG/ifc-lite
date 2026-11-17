@@ -21,11 +21,22 @@
  */
 
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { CAP_FILL_VERTEX_ATTRIBUTES, CAP_FILL_VERTEX_FLOATS } from './section-2d-lift.js';
 
 export interface SectionCapPipelines {
   fill: GPURenderPipeline;
   depth: GPURenderPipeline;
 }
+
+/** The cap fill vertex buffer: position, colour and per-polygon hatch (see `CAP_FILL_VERTEX_ATTRIBUTES`). */
+export const SECTION_CAP_FILL_VERTEX_BUFFER: GPUVertexBufferLayout = {
+  arrayStride: CAP_FILL_VERTEX_FLOATS * 4,
+  attributes: CAP_FILL_VERTEX_ATTRIBUTES.map(({ shaderLocation, offset, floats }) => ({
+    shaderLocation,
+    offset: offset * 4,
+    format: floats === 3 ? 'float32x3' : 'float32x4',
+  })),
+};
 
 export function createSectionCapPipelines(
   device: GPUDevice,
@@ -37,15 +48,7 @@ export function createSectionCapPipelines(
   const vertex: GPUVertexState = {
     module,
     entryPoint: 'vs_main',
-    buffers: [
-      {
-        arrayStride: 28, // 3 position + 4 color = 7 floats
-        attributes: [
-          { shaderLocation: 0, offset: 0, format: 'float32x3' },
-          { shaderLocation: 1, offset: 12, format: 'float32x4' },
-        ],
-      },
-    ],
+    buffers: [SECTION_CAP_FILL_VERTEX_BUFFER],
   };
   const primitive: GPUPrimitiveState = { topology: 'triangle-list', cullMode: 'none' };
   const depthStencil: GPUDepthStencilState = {

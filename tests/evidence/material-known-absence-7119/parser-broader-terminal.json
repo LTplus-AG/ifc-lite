@@ -1,1 +1,0 @@
-{"exitCode": 0, "command": ["pnpm", "test", "--filter=@ifc-lite/parser", "--env-mode=loose", "--concurrency=1", "--", "material", "classification"]}

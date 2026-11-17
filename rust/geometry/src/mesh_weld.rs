@@ -113,6 +113,7 @@ use std::cell::RefCell;
 /// exactly the f32-jittered coplanar normals while keeping any real crease
 /// (normals that differ by more than ~1e-3 in a component) split.
 use crate::grid::NORMAL_QUANT_F32 as NORMAL_QUANT;
+use crate::grid::round_i32;
 
 /// UV quantization grid (~0.001 texel-fraction resolution). Coarse enough to
 /// merge f32 UV jitter on a shared corner, far finer than any real texture seam
@@ -124,15 +125,20 @@ type VKey = (u32, u32, u32, i32, i32, i32, i32, i32);
 
 #[inline]
 fn vkey(p: &[f32], n: &[f32], uv: [f32; 2]) -> VKey {
+    // Test builds count the components quantised without libm (five per key).
+    #[cfg(test)]
+    tests::note_inline_rounds(5);
     (
         p[0].to_bits(),
         p[1].to_bits(),
         p[2].to_bits(),
-        (n[0] * NORMAL_QUANT).round() as i32,
-        (n[1] * NORMAL_QUANT).round() as i32,
-        (n[2] * NORMAL_QUANT).round() as i32,
-        (uv[0] * UV_QUANT).round() as i32,
-        (uv[1] * UV_QUANT).round() as i32,
+        // `round_i32` is `.round() as i32` bit for bit, without a libm call
+        // per component (five per vertex here).
+        round_i32(n[0] * NORMAL_QUANT),
+        round_i32(n[1] * NORMAL_QUANT),
+        round_i32(n[2] * NORMAL_QUANT),
+        round_i32(uv[0] * UV_QUANT),
+        round_i32(uv[1] * UV_QUANT),
     )
 }
 
@@ -206,8 +212,9 @@ pub fn weld_indexed(
     // detector — same length as `nverts` ⇒ nothing collided, the remap is identity.
     // Clear (retain capacity) before use so no stale data leaks in; `remap` is resized
     // to all-zero (every slot is overwritten by `remap[v] = id` below).
-    map.clear();
-    map.reserve(nverts);
+    // O(this mesh), not O(the largest mesh this worker welded): `map` is never
+    // iterated, so replacing an outsized table cannot reach the output.
+    crate::scratch_map::reset_for(map, nverts);
     remap.clear();
     remap.resize(nverts, 0u32);
     first_vert.clear();

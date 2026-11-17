@@ -165,7 +165,7 @@ export function SourceProviderRow({
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-medium">{manifest.title}</span>
             <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-              {canBrowse && <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-600" aria-hidden />}
+              {canBrowse && <CheckCircle2 className="h-3 w-3 shrink-0 text-ok" aria-hidden />}
               {identityLabel ?? t(canBrowse ? 'sources.workspace.ready' : 'sources.workspace.notConnected')}
             </span>
             <SourceLoadedBadge providerId={manifest.name} />

@@ -61,6 +61,8 @@ const renderer = {
     getTarget: () => LOCAL_TARGET,
     getUp: () => ({ x: 0, y: 1, z: 0 }),
     getFOV: () => Math.PI / 4,
+    getProjectionMode: () => 'perspective',
+    getOrthoSize: () => 10,
     getAspect: () => 16 / 9,
     getDistance: () => LOCAL_DISTANCE,
     setPosition: (x: number, y: number, z: number) => {
@@ -69,6 +71,10 @@ const renderer = {
     setTarget: (x: number, y: number, z: number) => {
       applied = { position: applied?.position ?? { x: NaN, y: NaN, z: NaN }, target: { x, y, z } };
     },
+    setProjectionMode: () => {},
+    setUp: () => {},
+    setFOV: () => {},
+    setOrthoSize: () => {},
   }),
 } as unknown as Renderer;
 

@@ -37,6 +37,7 @@ import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
 import { bcfEn } from './catalogues/bcf.en';
 import { bcfDraftsEn } from './catalogues/bcf-drafts.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
+import { clashQualityEn } from './catalogues/clash-quality.en';
 import { clashToolsEn } from './catalogues/clash-tools.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { ionUploadEn } from './catalogues/ion-upload.en';
@@ -102,7 +103,9 @@ import { settingsEn } from './catalogues/settings.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
 import { landXmlEn } from './catalogues/landxml.en';
 import { landXmlTerrainExportEn } from './catalogues/landxml-terrain-export.en';
+import { rhinoExportEn } from './catalogues/rhino-export.en';
 import { terrainImageryEn } from './catalogues/terrain-imagery.en';
+import { siteContextEn } from './catalogues/site-context.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
 import { placementPanelEn } from './catalogues/placement-panel.en';
@@ -116,6 +119,7 @@ import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { miscPanelsBEn } from './catalogues/misc-panels-b.en';
 import { miscPanelsAEn } from './catalogues/misc-panels-a.en';
 import { propertiesEn } from './catalogues/properties.en';
+import { gaussianCaptureEn } from './catalogues/gaussian-capture.en';
 import { georeferencingEn } from './catalogues/georeferencing.en';
 import { propertiesPanelEn } from './catalogues/properties-panel.en';
 import { attributeEditorEn } from './catalogues/attribute-editor.en';
@@ -157,6 +161,7 @@ import { pushPullAlignEn } from './catalogues/push-pull-align.en';
 import { trimExtendEn } from './catalogues/trim-extend.en';
 import { remeshEn } from './catalogues/remesh.en';
 import { storeyContextEn } from './catalogues/storey-context.en';
+import { storeyManagerEn } from './catalogues/storey-manager.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
 import { scriptPanelEn } from './catalogues/script-panel.en';
@@ -235,6 +240,7 @@ export const en = {
   ...trimExtendEn,
   ...remeshEn,
   ...storeyContextEn,
+  ...storeyManagerEn,
   ...documentEn,
   ...documentMenuEn,
   ...drawingUnderlayEn,
@@ -242,6 +248,7 @@ export const en = {
   ...settingsEn,
   ...hierarchyEn,
   ...propertiesEn,
+  ...gaussianCaptureEn,
   ...georeferencingEn,
   ...propertiesPanelEn,
   ...attributeEditorEn,
@@ -251,6 +258,7 @@ export const en = {
   ...landXmlEn,
   ...landXmlTerrainExportEn,
   ...terrainImageryEn,
+  ...siteContextEn,
   ...structuralPropertiesEn,
   ...appearancePanelEn,
   ...appearancePickersEn,
@@ -294,6 +302,7 @@ export const en = {
   ...assistantArtifactsEn,
   ...clashPanelEn,
   ...clashToolsEn,
+  ...clashQualityEn,
   ...bcfEn,
   ...bcfDraftsEn,
   ...layersPanelEn,
@@ -308,6 +317,7 @@ export const en = {
   ...zonesPanelEn,
   ...dataConnectorEn,
   ...geometryExportDialogsEn,
+  ...rhinoExportEn,
   ...miscPanelsBEn,
   ...viewportLightingEn,
   ...miscPanelsAEn,

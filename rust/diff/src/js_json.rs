@@ -72,7 +72,7 @@ pub fn stringify_sorted(value: &JsonValue) -> String {
     out
 }
 
-fn write_value<S: JsonSink>(value: &JsonValue, sort_keys: bool, out: &mut S) {
+pub(crate) fn write_value<S: JsonSink>(value: &JsonValue, sort_keys: bool, out: &mut S) {
     match value {
         JsonValue::Holes(count) => write_holes(*count, true, sort_keys, out),
         JsonValue::Null => out.push_str("null"),

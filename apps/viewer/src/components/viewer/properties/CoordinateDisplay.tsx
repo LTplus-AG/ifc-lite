@@ -25,13 +25,13 @@ export function CoordRow({ label, values, primary, copyName }: {
 }) {
   const copyText = values.map(v => v.value.toFixed(3)).join(', ');
   return (
-    <div className="flex items-start gap-1.5 group/copyrow min-w-0">
+    <div className="flex items-center gap-1.5 group/copyrow min-w-0">
       {label && (
-        <span className="text-2xs font-medium uppercase tracking-wider w-[34px] shrink-0 pt-px text-muted-foreground">
+        <span className="w-12 shrink-0 text-xs text-muted-foreground">
           {label}
         </span>
       )}
-      <span className={`font-mono text-2xs min-w-0 tabular-nums leading-relaxed ${primary ? 'text-foreground' : 'text-muted-foreground'}`}>
+      <span className={`font-mono text-xs min-w-0 flex-1 tabular-nums leading-relaxed ${primary ? 'text-foreground' : 'text-muted-foreground'}`}>
         {values.map((v, i) => (
           <span key={v.axis}>{i > 0 && <>{' '}</>}<CoordVal axis={v.axis} value={v.value} /></span>
         ))}

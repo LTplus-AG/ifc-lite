@@ -43,11 +43,15 @@ interface HostedPlacementParams {
 export interface HostedDoorInStoreParams extends Omit<DoorInStoreParams, 'Position'>, HostedPlacementParams {
   /** Height of the door's bottom above the wall's placement origin (metres). Defaults to 0. */
   Sill?: number;
+  /** IfcDoorType to type the door by. Omitted reuses (or creates) the type named for its size and operation. */
+  TypeId?: number;
 }
 
 export interface HostedWindowInStoreParams extends Omit<WindowInStoreParams, 'Position'>, HostedPlacementParams {
   /** Height of the window's bottom edge above the wall's placement origin (metres). */
   Sill: number;
+  /** IfcWindowType to type the window by. Omitted reuses (or creates) the type named for its size and partitioning. */
+  TypeId?: number;
 }
 
 export interface HostedFillBuildResult {

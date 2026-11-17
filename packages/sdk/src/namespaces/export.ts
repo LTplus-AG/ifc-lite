@@ -12,7 +12,7 @@
 
 import { escapeCsvCell } from '@ifc-lite/export';
 import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
-import type { BimBackend, EntityRef, EntityData, PropertySetData, QuantitySetData } from '../types.js';
+import type { BimBackend, EntityRef, EntityData, EntityAttributeData, PropertySetData, QuantitySetData } from '../types.js';
 
 export interface ExportCsvOptions {
   columns: string[];
@@ -67,6 +67,7 @@ export class ExportNamespace {
       // Fetch properties/quantities once per entity (not per column)
       let psets: PropertySetData[] | null = null;
       let qsets: QuantitySetData[] | null = null;
+      let attrs: EntityAttributeData[] | null = null;
       if (hasDotColumns) {
         psets = this.backend.query.properties(ref);
         qsets = this.backend.query.quantities(ref);
@@ -99,7 +100,7 @@ export class ExportNamespace {
             if (qty?.value != null) { row.push(String(qty.value)); continue; }
           }
 
-          row.push('');
+          row.push(String(this.openingDimension(data, col, () => attrs ??= this.backend.query.attributes(ref)) ?? ''));
         } else {
           row.push('');
         }
@@ -133,6 +134,7 @@ export class ExportNamespace {
       // Fetch properties/quantities once per entity (not per column)
       let psets: PropertySetData[] | null = null;
       let qsets: QuantitySetData[] | null = null;
+      let attrs: EntityAttributeData[] | null = null;
       if (hasDotColumns) {
         psets = this.backend.query.properties(ref);
         qsets = this.backend.query.quantities(ref);
@@ -165,7 +167,7 @@ export class ExportNamespace {
             if (qty?.value != null) { row[col] = qty.value; resolved = true; }
           }
 
-          if (!resolved) row[col] = null;
+          if (!resolved) row[col] = this.openingDimension(data, col, () => attrs ??= this.backend.query.attributes(ref));
         }
       }
       result.push(row);
@@ -255,6 +257,13 @@ export class ExportNamespace {
    */
   download(content: string, filename: string, mimeType?: string): void {
     this.backend.export.download(content, filename, mimeType ?? 'text/plain');
+  }
+
+  /** Match CLI resolveColumnValue: supplied quantities win over native opening dimensions. */
+  private openingDimension(data: EntityData, column: string, attributes: () => EntityAttributeData[]): unknown {
+    const opening = /^Qto_(Door|Window)BaseQuantities\.(Width|Height)$/.exec(column);
+    if (!opening || ![`Ifc${opening[1]}`, `Ifc${opening[1]}StandardCase`].includes(data.type)) return null;
+    return attributes().find(attr => attr.name === `Overall${opening[2]}`)?.value ?? null;
   }
 
   /**

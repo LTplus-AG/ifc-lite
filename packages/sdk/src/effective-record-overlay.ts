@@ -15,7 +15,7 @@ export function createEffectiveRecordOverlay(
     isDeleted: id => view.isDeleted(id),
     retypes: () => new Map([...view.getTypeMutations()].map(([id, mutation]) => [id, mutation.newType])),
     effectiveRecord: (id, text, type) => effectiveSourceRecord(view, id, text, type, store.schemaVersion),
-    created: () => view.getNewEntities().map(entity => {
+    created: () => (view.readNewEntities?.() ?? view.getNewEntities()).map(entity => {
       try {
         const effective = effectiveCreatedRecord(view, entity.expressId, store.schemaVersion);
         return effective

@@ -30,6 +30,7 @@ import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { GLBExportDialog } from './GLBExportDialog.js';
+import { geometryExportDialogsRu } from '@/i18n/locales/ru/geometry-export-dialogs';
 
 const STRINGS: Record<string, string> = {
   'geometryExport.glb.triggerButton': 'Export GLB',
@@ -43,7 +44,7 @@ const STRINGS: Record<string, string> = {
   // the trigger is opened, so it is intentionally not asserted here.
   'geometryExport.glb.colorSourceRendering': 'Rendering (apparent colour)',
   'geometryExport.glb.colorSourceRenderingHint':
-    'Uses IfcSurfaceStyleRendering.DiffuseColour when authored, otherwise SurfaceColour. Matches most IFC viewers.',
+    'Uses SurfaceColour, including a numeric DiffuseColour factor. A separate DiffuseColour RGB colour does not replace SurfaceColour.',
   'geometryExport.glb.outputLabel': 'Output',
   'geometryExport.glb.outputFormat': 'glTF Binary',
   'geometryExport.glb.fileExtension': '.glb',
@@ -119,4 +120,16 @@ describe('GLBExportDialog localization (#4918)', () => {
       assert.ok(after.has(`⟦${key}|${text}⟧`), `${key}: must be translated, marked text not found`);
     }
   });
+});
+
+
+it('#8896 Russian rendering guidance preserves SurfaceColour with a numeric diffuse factor', () => {
+  registerLocale('ru-glb-regression', geometryExportDialogsRu);
+  setLocale('ru-glb-regression');
+  render(<GLBExportDialog surface="ribbon" />);
+  const trigger = [...document.body.querySelectorAll('button')].find(button =>
+    button.textContent?.includes('Экспортировать GLB'));
+  assert.ok(trigger);
+  click(trigger);
+  assert.ok(readable().has('Использует SurfaceColour с учётом числового множителя DiffuseColour. Отдельный RGB-цвет DiffuseColour не заменяет SurfaceColour.'));
 });

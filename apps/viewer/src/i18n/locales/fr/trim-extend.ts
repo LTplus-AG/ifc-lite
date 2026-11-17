@@ -1,0 +1,58 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const trimExtendFr = {
+  'trimExtend.label': 'Ajuster/Prolonger',
+  'trimExtend.tool': 'Ajuster / Prolonger',
+  'commands.model.trimExtend': 'Ajuster ou prolonger jusqu’à une limite (espace de travail Modèle)',
+  'commandPalette.tool.trimExtend.label': 'Ajuster / Prolonger',
+  'trimExtend.hint.boundary': 'Cliquez sur la limite : un mur, une poutre, un bord de dalle ou une ligne de grille · Échap pour quitter',
+  'trimExtend.hint.trim': 'Cliquez sur la partie d’un mur ou d’une poutre à raccourcir jusqu’à la limite · maintenez Maj pour prolonger · Retour arrière pour choisir une autre limite · Échap pour recommencer',
+  'trimExtend.hint.extend': 'Cliquez sur l’extrémité d’un mur ou d’une poutre à allonger jusqu’à la limite · maintenez Maj pour ajuster · Retour arrière pour choisir une autre limite · Échap pour recommencer',
+  'trimExtend.noTargets': 'Rien à ajuster ou prolonger ici : choisissez un étage comportant des murs ou des poutres',
+  'trimExtend.needBoundary': 'Choisissez d’abord une limite',
+  'trimExtend.needTarget': 'Cliquez sur un mur ou une poutre à ajuster ou prolonger',
+  'trimExtend.refusedHere': 'Cet élément ne peut pas être ajusté ou prolongé ici : la raison est indiquée à côté',
+  'trimExtend.mode.label': 'Ajuster ou prolonger',
+  'trimExtend.mode.trim': 'Ajuster',
+  'trimExtend.mode.extend': 'Prolonger',
+  'trimExtend.mode.trimTitle': 'Raccourcir l’élément jusqu’à la limite en supprimant le côté sur lequel vous cliquez (maintenez Maj pour prolonger)',
+  'trimExtend.mode.extendTitle': 'Allonger l’extrémité la plus proche de votre clic jusqu’à la limite (maintenez Maj pour ajuster)',
+  'trimExtend.bar.boundary': 'Limite : {name}',
+  'trimExtend.bar.pickBoundary': 'Choisir une limite',
+  'trimExtend.bar.trim': 'Ajuster de {distance} m',
+  'trimExtend.bar.extend': 'Prolonger de {distance} m',
+  'trimExtend.bar.join': 'Jonction {kind}',
+  'trimExtend.boundary.wall': 'Mur {name}',
+  'trimExtend.boundary.beam': 'Poutre {name}',
+  'trimExtend.boundary.slab': 'Bord de dalle de {name}',
+  'trimExtend.boundary.grid': 'Ligne de grille',
+  'trimExtend.boundary.edge': 'Arête',
+  'trimExtend.refused.wallBody': 'Ajustement ou prolongement impossible : le noyau de jonction ne peut pas lire le corps de ce mur',
+  'trimExtend.refused.vertical': 'Ajustement ou prolongement impossible : un élément vertical n’a pas d’axe en plan pour atteindre une limite',
+  'trimExtend.refused.parallel': 'Impossible d’atteindre la limite : l’élément la longe',
+  'trimExtend.refused.boundaryShort': 'Impossible d’atteindre la limite : elle s’arrête avant de croiser l’axe de l’élément',
+  'trimExtend.refused.crossesInside': 'Croise déjà la limite : passez à Ajuster (ou maintenez Maj) pour le raccourcir',
+  'trimExtend.refused.notReached': 'S’arrête avant la limite : passez à Prolonger (ou maintenez Maj) pour l’allonger',
+  'trimExtend.refused.otherEnd': 'La limite se trouve au-delà de l’autre extrémité : cliquez plus près de cette extrémité pour la prolonger',
+  'trimExtend.refused.tooShort': 'Un ajustement ici laisserait moins que la longueur minimale',
+  'trimExtend.refused.alreadyThere': 'Se termine déjà sur la limite',
+  'trimExtend.refused.hosted': {
+    one: 'Un ajustement ici couperait {countDisplay} ouverture, porte ou fenêtre hébergée dans ce mur',
+    many: 'Un ajustement ici couperait {countDisplay} d’ouvertures, portes ou fenêtres hébergées dans ce mur',
+    other: 'Un ajustement ici couperait {countDisplay} ouvertures, portes ou fenêtres hébergées dans ce mur',
+  },
+  'trimExtend.refused.hostedUnreadable': {
+    one: 'Impossible de déterminer la position de {countDisplay} ouverture hébergée dans ce mur ; il n’est donc pas ajusté',
+    many: 'Impossible de déterminer la position de {countDisplay} d’ouvertures hébergées dans ce mur ; il n’est donc pas ajusté',
+    other: 'Impossible de déterminer la position de {countDisplay} ouvertures hébergées dans ce mur ; il n’est donc pas ajusté',
+  },
+  'trimExtend.refused.join': 'Impossible de joindre le mur à la limite : {reason}',
+  'trimExtend.failed': 'Impossible de redimensionner le mur : {reason}',
+  'trimExtend.done.trim': '{name} ajusté',
+  'trimExtend.done.extend': '{name} prolongé',
+  'trimExtend.done.joined': 'joint au mur de limite',
+} satisfies Catalogue;

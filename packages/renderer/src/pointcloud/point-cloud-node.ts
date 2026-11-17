@@ -12,9 +12,10 @@
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import type { PointRenderPipeline } from './point-pipeline.js';
-import { POINT_VERTEX_BYTES } from './point-pipeline.js';
+import { POINT_VERTEX_BYTES } from './point-vertex-layout.js';
 import { PointCloudSpatialIndex } from './point-cloud-spatial-index.js';
 import { disposeKeyedIndexes, keyedSpatialIndex } from './point-cloud-keyed-chunks.js';
+import { isUsableModelMatrix } from './point-cloud-model-matrix.js';
 
 export interface PointCloudGpuChunk {
   vertexBuffer: GPUBuffer;
@@ -84,6 +85,9 @@ export interface PointCloudNode {
   placement?: Float64Array;
 }
 
+// Single-sourced in point-cloud-model-matrix.ts; re-exported for existing importers.
+export { isUsableModelMatrix };
+
 /**
  * Transform an AABB through a column-major 4x4 model matrix and return
  * the axis-aligned box of the result (standard 8-corner fold). Used so
@@ -94,27 +98,6 @@ export interface PointCloudNode {
  * Returns the input box unchanged for a missing/malformed matrix
  * (mirrors `writePointCloudUniforms`' identity fallback).
  */
-/**
- * True when `model` is a usable 4x4: exactly 16 entries, all finite.
- *
- * Single-sourced so the two consumers of `PointCloudNode.model` — the AABB
- * fold below and `writePointCloudUniforms`' GPU write — accept exactly the
- * same matrices. When they disagree, a matrix one accepts and the other
- * rejects puts the reported bounds in a different frame from the rendered
- * points, which is the precise failure this transform exists to prevent.
- * The finiteness check matters because a single NaN propagates to every
- * corner of the box (and to every point on the GPU), so a degenerate matrix
- * must fall back to identity rather than poison the result.
- */
-export function isUsableModelMatrix(
-  model: Float32Array | Float64Array | undefined,
-): model is Float32Array | Float64Array {
-  if (!model || model.length !== 16) return false;
-  for (let i = 0; i < 16; i++) {
-    if (!Number.isFinite(model[i])) return false;
-  }
-  return true;
-}
 
 export function transformAabb(
   bounds: { min: [number, number, number]; max: [number, number, number] },

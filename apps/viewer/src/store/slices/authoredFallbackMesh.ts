@@ -23,7 +23,7 @@ import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '../index.js';
 import type { AuthoredElement } from './authoredElement.js';
-import { profileSectionExtent } from '@ifc-lite/create';
+import { getFootprintRoofPlaneParts, profileSectionExtent } from '@ifc-lite/create';
 import { buildElementMesh, type ElementMeshPayload } from './authoredElementMeshes.js';
 import { authoredDataStore } from './authoredTreeEntry.js';
 import { toGlobalIdFromModels } from '../globalId.js';
@@ -81,6 +81,12 @@ function isLiveWithoutMesh(state: ViewerState, modelId: string, entityId: number
   if (!view?.getNewEntity(entityId) || view.getTombstones().has(entityId)) return false;
   const globalId = toGlobalIdFromModels(state.models, modelId, entityId);
   const meshes = (state.models.get(modelId)?.geometryResult ?? (state.models.size === 0 ? state.geometryResult : null))?.meshes ?? [];
+  const store = authoredDataStore(state, modelId);
+  if (store && view) {
+    const planes = getFootprintRoofPlaneParts(store, view, entityId);
+    const planeIds = new Set(planes.map(id => toGlobalIdFromModels(state.models, modelId, id)));
+    if (planeIds.size > 0 && [...planeIds].every(id => meshes.some(mesh => mesh.expressId === id))) return false;
+  }
   return !meshes.some((mesh) => mesh.expressId === globalId);
 }
 
@@ -165,8 +171,12 @@ function storeyLocalPayload(element: AuthoredElement): ElementMeshPayload {
       const p = element.params;
       return { type: 'window', params: { Width: p.Width, Height: p.Height, FrameThickness: p.FrameThickness ?? 0.05 }, position: p.Position };
     }
-    case 'slab':
-      return { type: 'slab', params: { Width: 0, Depth: 0, Thickness: element.params.Thickness }, corners: profileCorners(element.params) };
+    case 'slab': {
+      // A slab hung from its Position has its underside a thickness below it.
+      const drop = element.params.ExtrudedDirection?.[2] === -1 ? element.params.Thickness : 0;
+      const corners = profileCorners(element.params).map(([x, y, z]): Vec3 => [x, y, z - drop]);
+      return { type: 'slab', params: { Width: 0, Depth: 0, Thickness: element.params.Thickness }, corners };
+    }
     case 'space':
       return { type: 'space', params: { Width: 0, Depth: 0, Height: element.params.Height }, corners: profileCorners(element.params) };
     case 'roof':

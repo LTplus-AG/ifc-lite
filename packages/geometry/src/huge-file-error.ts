@@ -8,7 +8,6 @@
  *
  * wasm-bindgen copies even a SAB-backed byte slice into linear memory. Index
  * tables, metadata fallback indexes and discovery lists share its 4 GiB limit.
- * See docs/architecture/prepass-memory.md for the allocation accounting.
  */
 
 import { WASM_PANIC_STASH_KEY } from './wasm-panic-forward.js';

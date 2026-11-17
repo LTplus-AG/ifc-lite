@@ -198,6 +198,8 @@ impl<'a> ProductControl<'a> {
     pub(super) fn child(&mut self, item: DecodedEntity, offset: Option<(f64, f64, f64)>, router: &GeometryRouter)
         -> Action {
         let mapped = item.ifc_type == IfcType::IfcMappedItem;
+        // A structural member's face takes the member-face rule (#9668).
+        let member_face = router.member_face_selected(&item, self.element);
         match (offset, self.styled) {
             (Some(_), _) if mapped => {
                 let id = item.id;
@@ -205,7 +207,7 @@ impl<'a> ProductControl<'a> {
                 Action::Mapping { role: Role::Single(id) }
             }
             (Some(offset), _) => {
-                self.child = Child::Cache(CacheControl::new(offset));
+                self.child = Child::Cache(CacheControl::new(offset).member_face(member_face));
                 Action::Cache { item, raw: true }
             }
             (None, None) if mapped => {
@@ -213,11 +215,11 @@ impl<'a> ProductControl<'a> {
                 Action::Mapping { role: Role::Parts }
             }
             (None, None) => {
-                self.child = Child::Cache(CacheControl::new(router.rtc_offset()));
+                self.child = Child::Cache(CacheControl::new(router.rtc_offset()).member_face(member_face));
                 Action::Cache { item, raw: false }
             }
             (None, Some(styled)) if !mapped && !styled.textures.is_some_and(|index| index.contains_key(&item.id)) => {
-                self.child = Child::Cache(CacheControl::new(router.rtc_offset()));
+                self.child = Child::Cache(CacheControl::new(router.rtc_offset()).member_face(member_face));
                 Action::StyledCache { item }
             }
             // Per-item sub-meshes, following MappedItem references through the

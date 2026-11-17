@@ -70,9 +70,9 @@ export function CompareSavedRuns({ kind, onReopen }: { kind: RunKind; onReopen: 
                   <Trash2 className="h-3.5 w-3.5" />
                 </IconButton>
               </div>
-              {unsaved && <p className="text-amber-700 dark:text-amber-400">{t('compareAnalysis.reconcile.savedNotStored')}</p>}
+              {unsaved && <p className="text-warn">{t('compareAnalysis.reconcile.savedNotStored')}</p>}
               {refused?.id === run.id && (
-                <div role="alert" className="text-amber-700 dark:text-amber-400">
+                <div role="alert" className="text-warn">
                   <p>{t('compareAnalysis.reconcile.reopenRefused')}</p>
                   <ul className="list-disc pl-4">
                     {refused.refusals.map((refusal, index) => (

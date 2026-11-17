@@ -4,21 +4,17 @@
 
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store/types';
-import { collectMeshedIds } from '@/lib/object-count';
+import { sharedMeshedIds } from '@/lib/object-count';
 import { isModelStreaming, sameModelExceptGeometry, streamingRefreshDue } from '@/lib/streaming-refresh';
 
 type Models = Map<string, FederatedModel>;
 
-/** Which ids each geometry result meshes; one scan per result object. */
-const meshedIdsByResult = new WeakMap<GeometryResult, Set<number>>();
-function meshedIds(result: GeometryResult | null): Set<number> | null {
-  if (!result) return null;
-  let ids = meshedIdsByResult.get(result);
-  if (!ids) meshedIdsByResult.set(result, ids = collectMeshedIds(result));
-  return ids;
+/** Which ids each geometry result meshes; one scan per result object, shared with the tree. */
+function meshedIds(result: GeometryResult | null): ReadonlySet<number> | null {
+  return result ? sharedMeshedIds(result) : null;
 }
 
-function sameIds(a: Set<number> | null, b: Set<number> | null): boolean {
+function sameIds(a: ReadonlySet<number> | null, b: ReadonlySet<number> | null): boolean {
   if (a === b) return true;
   if (!a || !b || a.size !== b.size) return false;
   for (const id of a) if (!b.has(id)) return false;
@@ -96,6 +92,12 @@ export function createHierarchyModelsSelector(): (state: { models: Models; geome
       output = models;
       outputAt = now;
       frames = new Map([...models].map(([id, model]) => [id, model.geometryResult?.coordinateInfo]));
+      // Scan what this output meshes NOW. `appendGeometryBatchPatch` pushes onto
+      // the meshes array this result shares with the next one, so a first scan
+      // at comparison time already sees the new element and calls the two equal:
+      // the element stays out of the tree's mesh set, filed under "Other", until
+      // the next change (#9026). A streaming model is never compared by id.
+      for (const model of models.values()) if (!isModelStreaming(model)) meshedIds(model.geometryResult);
     }
     return output!;
   };

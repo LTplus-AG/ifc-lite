@@ -28,8 +28,16 @@ pub fn export_step(content: &[u8], opts: &StepOptions) -> std::io::Result<String
     export_step_with_stats(content, opts).map(|(s, _)| s)
 }
 
-/// Like [`export_step`] but also returns coverage stats.
+/// Like [`export_step`] but also returns coverage stats. For named warnings,
+/// use [`export_step_with_diagnostics`]; this legacy return type is unchanged.
 pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> std::io::Result<(String, StepStats)> {
+    export_step_with_diagnostics(content, opts).map(|(text, stats, _)| (text, stats))
+}
+
+/// Export STEP text, coverage counters and named conversion diagnostics.
+/// Unlike the legacy stats-only API, this reports which structural fields
+/// cannot survive the target schema without changing `StepStats`'s layout.
+pub fn export_step_with_diagnostics(content: &[u8], opts: &StepOptions) -> std::io::Result<(String, StepStats, Vec<String>)> {
     // Presized for a full re-export, where the output is within a small factor
     // of the source. Not for a subset: 200 MB filtered to a few records would
     // reserve 200 MB, and on wasm that linear memory never comes back.
@@ -43,11 +51,11 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> std::io::Re
     // always a schema-conversion failure (`emit` also propagates those through
     // this same `io::Result`, see `schema_unrepresented::UnrepresentedEntityError`'s
     // `From` impl) — genuinely fallible now, unlike the `.expect` this replaced.
-    let stats = emit(content, opts, &mut buf)?;
+    let (stats, warnings) = emit(content, opts, &mut buf)?;
     // Every byte came from the source by way of `from_utf8_lossy`, or from a
     // `format!`, so this validates rather than converts.
     let out = String::from_utf8(buf).expect("the writer emits UTF-8");
-    Ok((out, stats))
+    Ok((out, stats, warnings))
 }
 
 /// [`export_step_with_stats`], writing as it goes instead of returning the file.
@@ -70,6 +78,11 @@ pub fn export_step_to_writer<W: std::io::Write>(
     opts: &StepOptions,
     w: &mut W,
 ) -> std::io::Result<StepStats> {
+    export_step_to_writer_with_diagnostics(content, opts, w).map(|(stats, _)| stats)
+}
+
+/// Streaming counterpart of [`export_step_with_diagnostics`].
+pub fn export_step_to_writer_with_diagnostics<W: std::io::Write>(content: &[u8], opts: &StepOptions, w: &mut W) -> std::io::Result<(StepStats, Vec<String>)> {
     use std::io::Write as _;
     let mut buffered = std::io::BufWriter::with_capacity(1 << 20, w);
     let stats = emit(content, opts, &mut buffered)?;
@@ -99,12 +112,38 @@ fn write_synthesized<W: std::io::Write>(
     out.write_all(b"\n")
 }
 
+/// Property mutations grouped by (entity, pset) in first-seen order, and how
+/// many were refused: only an entity actually present in the export takes
+/// one, and only a value that is one STEP value (EXPORT-STEP-26).
+#[allow(clippy::type_complexity)]
+fn group_property_mutations<'a>(
+    mutations: &'a [crate::PropMutation],
+    included: &HashSet<u32>,
+) -> (Vec<((u32, String), Vec<(&'a str, &'a str)>)>, usize) {
+    let mut refused = 0usize;
+    let mut groups: Vec<((u32, String), Vec<(&str, &str)>)> = Vec::new();
+    let mut index_of: HashMap<(u32, String), usize> = HashMap::new();
+    for m in mutations {
+        if !included.contains(&m.express_id) || !crate::step_slot::is_step_value(&m.value) {
+            refused += 1;
+            continue;
+        }
+        let key = (m.express_id, m.pset_name.clone());
+        let idx = *index_of.entry(key.clone()).or_insert_with(|| {
+            groups.push((key.clone(), Vec::new()));
+            groups.len() - 1
+        });
+        groups[idx].1.push((m.prop_name.as_str(), m.value.as_str()));
+    }
+    (groups, refused)
+}
+
 #[allow(clippy::type_complexity)]
 fn emit<W: std::io::Write>(
     content: &[u8],
     opts: &StepOptions,
     out: &mut W,
-) -> std::io::Result<StepStats> {
+) -> std::io::Result<(StepStats, Vec<String>)> {
     // 1. Index every entity line (preserve source order). A repeated id keeps
     // its last record, as core does, and the rest are counted (#7682,
     // EXPORT-STEP-11).
@@ -161,7 +200,8 @@ fn emit<W: std::io::Write>(
         owner_histories.into_iter().find(|id| included.contains(id)),
     );
     // IFC4-required `$` slots (#5307) and enum members the target lacks (#5365).
-    let mut checks = crate::schema_enum::ConversionChecks::new();
+    let mut ids = crate::step_ids::IdAllocator::after(max_id);
+    let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_schema, &schema, opts, true, |id, start| index.is_kept(id, start), || ids.allocate());
     // The synthesized property sets below are filled whenever the OUTPUT is
     // IFC2X3, not only when a conversion runs: an IFC2X3 source needs no
     // conversion, and the records this exporter writes for it still have to be
@@ -187,11 +227,10 @@ fn emit<W: std::io::Write>(
     // repointed referrers both go through it. Its own module: the pass has four
     // rules now and every one of them is a file that came out wrong without it.
     // One allocator for the copies and the property sets after them
-    // (#7682, EXPORT-STEP-9).
-    let mut ids = crate::step_ids::IdAllocator::after(max_id);
+    // (#7682, EXPORT-STEP-9), the one `checks` drew from above.
     let resolved = crate::step_cow::resolve(&opts.copy_on_write, content, line_of, &included, &muts_by_id, &mut ids);
     let copies_refused = resolved.refused;
-    let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id);
+    let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id); flatten.retain_grids(|id| included.contains(&id));
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
@@ -200,10 +239,13 @@ fn emit<W: std::io::Write>(
     // family's file identifier (IFC4X3 is written as IFC4X3_ADD2, #5351).
     let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, &schema);
     crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
+    // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
+    use std::io::Write as _;
+    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, targets_ifc2x3);
 
     let mut written = 0usize;
     for id in order {
-        if included.contains(id) && !flatten.drops(*id) {
+        if included.contains(id) && !flatten.drops(*id) && !checks.drops(*id) {
             if let Some(&(s, e)) = line_of.get(id) {
                 let raw = String::from_utf8_lossy(&content[s..e]);
                 // Apply root-attribute edits first (original-schema positions), then convert.
@@ -223,11 +265,11 @@ fn emit<W: std::io::Write>(
                         &mut slot_fill,
                         Some(&mut checks),
                     )?;
-                    out.write_all(converted.as_bytes())?;
+                    body.write_all(converted.as_bytes())?;
                 } else {
-                    out.write_all(edited.as_bytes())?;
+                    body.write_all(edited.as_bytes())?;
                 }
-                out.write_all(b"\n")?;
+                body.write_all(b"\n")?;
                 written += 1;
             }
         }
@@ -255,11 +297,11 @@ fn emit<W: std::io::Write>(
                     &mut slot_fill,
                     Some(&mut checks),
                 )?;
-                out.write_all(converted.as_bytes())?;
+                body.write_all(converted.as_bytes())?;
             } else {
-                out.write_all(renumbered.as_bytes())?;
+                body.write_all(renumbered.as_bytes())?;
             }
-            out.write_all(b"\n")?;
+            body.write_all(b"\n")?;
             written += 1;
         }
     }
@@ -267,24 +309,7 @@ fn emit<W: std::io::Write>(
     // 4. Synthesize new property sets from property mutations (fresh ids past
     // max_id). Every mutation that does not reach the file is counted
     // (#7682, EXPORT-STEP-10).
-    let mut property_mutations_refused = 0usize;
-    // Group props by (entity, pset) preserving first-seen order.
-    let mut groups: Vec<((u32, String), Vec<(&str, &str)>)> = Vec::new();
-    let mut index_of: HashMap<(u32, String), usize> = HashMap::new();
-    for m in &opts.property_mutations {
-        // Only attach to entities actually present in the export, and only a
-        // value that is one STEP value (EXPORT-STEP-26).
-        if !included.contains(&m.express_id) || !crate::step_slot::is_step_value(&m.value) {
-            property_mutations_refused += 1;
-            continue;
-        }
-        let key = (m.express_id, m.pset_name.clone());
-        let idx = *index_of.entry(key.clone()).or_insert_with(|| {
-            groups.push((key.clone(), Vec::new()));
-            groups.len() - 1
-        });
-        groups[idx].1.push((m.prop_name.as_str(), m.value.as_str()));
-    }
+    let (groups, mut property_mutations_refused) = group_property_mutations(&opts.property_mutations, &included);
     for ((express_id, pset_name), props) in &groups {
         // One property set costs one id per property plus one for the set
         // and one for the relationship, reserved together: a group that does
@@ -298,7 +323,7 @@ fn emit<W: std::io::Write>(
         let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
         for (pname, value) in props {
             let line = format!("#{next}=IFCPROPERTYSINGLEVALUE({},$,{},$);", quoted(pname), value);
-            write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
+            write_synthesized(&mut body, line, targets_ifc2x3, &mut slot_fill)?;
             prop_refs.push(next);
             next += 1;
             written += 1;
@@ -311,18 +336,19 @@ fn emit<W: std::io::Write>(
             quoted(pset_name),
             refs_str
         );
-        write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
+        write_synthesized(&mut body, line, targets_ifc2x3, &mut slot_fill)?;
         let line = format!(
             "#{rid}=IFCRELDEFINESBYPROPERTIES('{}',$,$,$,(#{express_id}),#{psid});",
             crate::schema_convert::placeholder_guid(rid),
         );
-        write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
+        write_synthesized(&mut body, line, targets_ifc2x3, &mut slot_fill)?;
         written += 2;
     }
 
+    written = written.checked_add_signed(checks.finish(body)?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
-    Ok(StepStats {
+    Ok((StepStats {
         total: order.len(),
         written,
         copies_refused,
@@ -336,7 +362,7 @@ fn emit<W: std::io::Write>(
         attribute_values_dropped: checks.attribute_values_dropped,
         property_mutations_refused,
         duplicate_records_dropped: index.duplicates.len(),
-    })
+    }, checks.warnings()))
 }
 
 #[cfg(test)]

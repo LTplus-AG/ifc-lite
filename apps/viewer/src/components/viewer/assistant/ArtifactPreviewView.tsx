@@ -25,7 +25,7 @@ export function ArtifactPreviewView({ preview }: { preview: ArtifactPreview }) {
     <p className="font-medium">{t(analysis ? 'assistantArtifacts.analysisRows' : 'assistantArtifacts.matched', { count: preview.matched })}</p>
     {analysis && <p className="text-muted-foreground">{t('assistantArtifacts.analysisSource', { source: t(SOURCE_TITLES[preview.rowSource ?? 'elements']) })}</p>}
     {analysis && preview.unlinkedRows !== undefined && preview.unlinkedRows > 0 && <p className="text-muted-foreground">{t('assistantArtifacts.analysisUnlinked', { count: preview.unlinkedRows })}</p>}
-    {preview.matched === 0 && <output className="block rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistantArtifacts.empty')}</output>}
+    {preview.matched === 0 && <output className="block rounded border border-warn-border bg-warn-surface p-2">{t('assistantArtifacts.empty')}</output>}
     <ul aria-label={t(analysis ? 'assistantArtifacts.analysisPopulation' : 'assistantArtifacts.populationLabel')} className="space-y-0.5">
       {preview.population.map((model) => <li key={model.modelId} className="flex gap-2">
         <span className="min-w-0 flex-1 truncate">{model.name}</span><span className="tabular-nums">{t(analysis ? 'assistantArtifacts.analysisRows' : 'assistantArtifacts.populationCount', { count: model.count })}</span>

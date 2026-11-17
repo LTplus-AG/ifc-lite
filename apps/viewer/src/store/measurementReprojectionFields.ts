@@ -30,11 +30,10 @@
  * Keep this module dependency-free: `viewportUtils.ts` imports it and must
  * stay a pure, store-free unit.
  *
- * NOT every field holding a `MeasurePoint` belongs here. `pendingMeasurePoint`
- * (the legacy click-click flow's first point) and `snapTarget` also carry
- * screen coordinates and are deliberately absent from BOTH sides; adding one
- * here without an arm in the reprojection pass would not compile, which is
- * the intended way to have that conversation.
+ * NOT every field holding a `MeasurePoint` belongs here. `snapTarget` also
+ * carries screen coordinates and is deliberately absent from BOTH sides;
+ * adding it here without an arm in the reprojection pass would not compile,
+ * which is the intended way to have that conversation.
  */
 
 /**
@@ -61,6 +60,11 @@ export const REPROJECTED_MEASUREMENT_FIELDS = {
   activeRadius: 'nullable',
   /** Finished radius measurements (#2737 item 2). */
   radiusMeasurements: 'list',
+  /** Point mode's placed point, drawn as a marker (#8770). */
+  measurePointLast: 'nullable',
+  /** Point mode's hovered point (#8770). Not reprojected but dropped: once the
+   * camera moves it is no longer the point under the cursor (#8828). */
+  measurePointLive: 'nullable',
 } as const satisfies Record<string, ReprojectedFieldKind>;
 
 /** Field names of {@link REPROJECTED_MEASUREMENT_FIELDS}. */

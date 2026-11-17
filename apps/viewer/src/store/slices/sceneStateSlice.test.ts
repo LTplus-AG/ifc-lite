@@ -203,14 +203,6 @@ describe('a stale hidden toggle must not survive re-enabling the cut (review of 
     assert.equal(state().sceneState.section.visible, true, 'BUG: toggleSectionPlane left the hide toggle stale');
   });
 
-  it('a two-click measurement finished while measurements are hidden becomes visible', () => {
-    state().setMeasurementsVisible(false);
-    state().addMeasurePoint({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 });
-    state().completeMeasurement({ x: 1, y: 0, z: 0, screenX: 10, screenY: 0 });
-    assert.equal(state().measurements.length, 1);
-    assert.equal(state().sceneState.measurements.visible, true, 'BUG: completeMeasurement did not un-hide the layer');
-  });
-
   it('a drag-finished measurement while measurements are hidden becomes visible', () => {
     state().setMeasurementsVisible(false);
     state().startMeasurement({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 });

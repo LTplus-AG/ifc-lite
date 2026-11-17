@@ -87,11 +87,11 @@ export function ClashGroupApply({ draft, clashes, enabled, origin, onApplied }: 
         {t('clashApply.targetActive', { name: activeName })}
       </label>
     </fieldset>
-    {plan && !plan.ok && <p role="alert" className="text-amber-700 dark:text-amber-400">{t(`clashApply.planRefused.${plan.reason}`)}</p>}
+    {plan && !plan.ok && <p role="alert" className="text-warn">{t(`clashApply.planRefused.${plan.reason}`)}</p>}
     {ready && <div aria-live="polite" className="space-y-1">
       <p>{t('clashApply.planAdded', { groups: ready.added.length, findings: ready.added.reduce((sum, group) => sum + group.count, 0) })}</p>
       {!ready.base.created && <p>{t('clashApply.planKept', { count: ready.keptGroups })}</p>}
-      {ready.movedFindings > 0 && <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-1">
+      {ready.movedFindings > 0 && <div className="rounded border border-warn-border bg-warn-surface p-2 space-y-1">
         <p>{t('clashApply.planMoved', { count: ready.movedFindings })}</p>
         <ul className="pl-3">{ready.moved.map(entry => <li key={`${entry.from}\u0000${entry.to}`}>{t('clashApply.planMovedRow', entry)}</li>)}</ul>
         {ready.removedGroups.length > 0 && <p>{t('clashApply.planRemoved', { names: ready.removedGroups.join(', ') })}</p>}

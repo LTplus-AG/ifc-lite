@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
+import { clickPanelAction, panelHeader } from './panel-header.helpers';
 
 const fixture = join(process.cwd(), 'tests/models/ara3d/AC20-FZK-Haus.ifc');
 
@@ -74,7 +75,7 @@ test('German AI report: checked claims, contradicted claim edit, refresh reconci
   });
   // Local builds may ship without a configured default model; the recorded answer is the same either way.
   await page.evaluate(() => (globalThis as unknown as Store<{ chatActiveModel: string }>).__ifc_lite_viewer_store__.setState({ chatActiveModel: 'openai/gpt-free' }));
-  await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await clickPanelAction(page, panelHeader(page, 'Clash detection'), 'Discuss with AI');
   const assistant = page.getByRole('region', { name: 'Assistant', exact: true });
   await assistant.getByText('Review report draft', { exact: true }).click();
   await assistant.getByLabel('Narrative language', { exact: true }).selectOption('de');

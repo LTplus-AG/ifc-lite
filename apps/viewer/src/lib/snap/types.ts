@@ -47,11 +47,13 @@ export type Guide =
   | { kind: 'circle'; center: Vec2; radius: number; role: GuideRole };
 
 export interface SnapCandidate {
+  /** Decimal construction increment in metres, for the live HUD. */
+  increment?: number;
   kind: SnapKind;
   /** The snap target itself (for an edge: the closest point on it to the cursor). */
   local: Vec2;
   elevation?: number;
-  source: 'mesh' | 'semantic' | 'linework' | 'grid' | 'ifc-grid' | 'inference';
+  source: 'mesh' | 'semantic' | 'linework' | 'grid' | 'ifc-grid' | 'inference' | 'workplane';
   entity?: { modelId: string; expressId: number };
   /** Actual axis references of an IFC grid crossing, for persisted placement. */
   gridIntersection?: { IntersectingAxes: readonly [number, number] };
@@ -127,6 +129,10 @@ export interface SnapProfile {
   angleStepDeg?: number;
   /** A held winner survives until it is this many pixels beyond the radius or beaten by this margin. */
   hysteresisPx?: number;
+  /** Kinds that win over any tier while the pointer is within `aimedPx` of one (see `aimedOr`). */
+  aimedKinds?: readonly SnapKind[];
+  /** Absent or 0: only a pointer exactly on the target counts. */
+  aimedPx?: number;
 }
 
 export interface SnapResult {

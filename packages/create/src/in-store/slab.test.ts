@@ -50,6 +50,23 @@ describe('addSlabToStore', () => {
     expect(solid?.attributes[3]).toBe(0.3); // extrusion = Thickness
   });
 
+  // #9198: a hung slab extrudes along -Z from its Position; nothing else is a slab direction.
+  it('hangs from Position along ExtrudedDirection [0, 0, -1], and refuses any other direction', () => {
+    const anchor = { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 };
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(40), view);
+    const result = addSlabToStore(editor, anchor, { Position: [0, 0, 0], Width: 4, Depth: 3, Thickness: 0.3, ExtrudedDirection: [0, 0, -1] });
+    const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
+    const directionRef = byId.get(result.solidId)?.attributes[2] as string;
+    expect(byId.get(Number(directionRef.slice(1)))?.attributes[0]).toEqual([0, 0, -1]);
+
+    for (const bad of [[1, 0, -1], [5, 5, 1], [0, 0, 0.5]]) {
+      expect(() => addSlabToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), anchor, {
+        Position: [0, 0, 0], Width: 4, Depth: 3, Thickness: 0.3, ExtrudedDirection: bad as [0, 0, -1],
+      })).toThrow(/ExtrudedDirection/);
+    }
+  });
+
   it('rejects non-positive dimensions', () => {
     const view = new MutablePropertyView(null, 'm1');
     const editor = new StoreEditor(makeStore(10), view);

@@ -64,6 +64,10 @@ export function slabExtrusionBase(
  * its extrusion direction is flipped so it grows downward from it. Push /
  * pull needs it: a bigger depth moves the top face in the first case and the
  * underside in the second (#6232 C4).
+ *
+ * `allowPlanTurn` also takes an element turned about the vertical: still a
+ * vertical extrusion of its outline, which is all its quantities need, though
+ * the plan readers that cut and drag it work in the storey's axes and refuse it.
  */
 export function slabExtrusionFrame(
   dataStore: IfcDataStore,
@@ -72,6 +76,7 @@ export function slabExtrusionFrame(
   elementAxisPlacementId: number,
   solidAttrs: readonly unknown[],
   depth: number,
+  allowPlanTurn = false,
 ): { base: number; up: boolean } | null {
   const read: Read = (id) => (id === null ? null : readAttributes(dataStore, view, editor, id));
   const reader: GeometryEntityReader = {
@@ -84,7 +89,8 @@ export function slabExtrusionFrame(
   // #6589: a cosine-only check admits rotations of order sqrt(EPS).
   // Compare the actual orthonormal frame components, including the small
   // transverse components that the origin-only plan reader cannot retain.
-  if (!placement || Math.abs(placement.x[0] - 1) > EPS || Math.abs(placement.x[1]) > EPS
+  const axisAligned = !!placement && Math.abs(placement.x[0] - 1) <= EPS && Math.abs(placement.x[1]) <= EPS;
+  if (!placement || (!axisAligned && !allowPlanTurn)
     || Math.abs(placement.x[2]) > EPS || Math.abs(placement.z[0]) > EPS
     || Math.abs(placement.z[1]) > EPS || Math.abs(placement.z[2] - 1) > EPS) return null;
 

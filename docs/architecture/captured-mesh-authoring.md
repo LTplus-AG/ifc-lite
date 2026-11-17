@@ -41,7 +41,7 @@ the removed object; Redo restores its identity and appearance.
 The GLB path converges through `parseGlbViewerModel`. The capture decoder
 preserves source UVs, original embedded albedo PNG/JPEG images, and node matrix
 or translation/rotation/scale transforms. Unsupported PBR maps and alpha
-modes are explicitly refused; see [capture evidence](evidence/captured-glb/README.md).
+modes are explicitly refused; see [capture evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/captured-glb/README.md).
 
 Extend that canonical decoder or replace it in the same path; do not hide this
 gap by requiring users to convert their captures to IFC first. Unsupported
@@ -91,7 +91,7 @@ Preview graphics failure disables Create and offers a local preview reload.
 The original model, image/PDF draft controls, and main camera remain independent.
 
 Actual WebGPU creation, original-image export, normal re-import, and picking are
-recorded in [captured UI acceptance](evidence/captured-ui/README.md).
+recorded in [captured UI acceptance](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/captured-ui/README.md).
 
 Destination eligibility is independent of load order or prior object selection: a loaded IFC4/IFC4X3 spatial model is offered even before its lazy mutation view exists. Creation initializes or reuses the canonical view, preserving prior edits. The created object activates its destination model so the shared Undo action targets that creation. Drawing-to-IfcAnnotation creation uses the same destination and selection helpers.
 

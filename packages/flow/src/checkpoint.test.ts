@@ -11,7 +11,7 @@
  * owner.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CheckpointNotPortableError, checkpointProposal, createCheckpoint, graphDigest, resumeOutputs, type FlowCheckpoint } from './checkpoint-record.js';
 import {
   approveCheckpoint, CheckpointError, claimCheckpoint, finishCheckpoint, MemoryCheckpointStore, parseCheckpoint,
@@ -413,3 +413,243 @@ it('#7039 refuses removal or inflation of the approved root budget', async () =>
   }
   expect(parseCheckpoint(JSON.parse(JSON.stringify(approved))).budget).toEqual({ maxRequests: 2, requests: 1 });
 });
+
+it('recovers old locks only for dead writers, keeping live and recent locks (lifecycle audit)', async () => {
+  const { mkdtemp, mkdir, writeFile, utimes, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const { FileCheckpointStore } = await import('./checkpoint-file.js');
+  const dead = spawnSync(process.execPath, ['-e', '']).pid;
+  const root = await mkdtemp(join(tmpdir(), 'checkpoint-lock-'));
+  try {
+    const path = join(root, 'review.json'), lock = `${path}.lock`;
+    const checkpoint = await paused();
+    const store = new FileCheckpointStore(path);
+    await mkdir(lock);
+    const owner = join(lock, await checkpointOwner(dead));
+    await writeFile(owner, '');
+    expect(await store.write(checkpoint, null)).toBe(false);
+    const old = new Date(Date.now() - 120_000);
+    await utimes(owner, old, old);
+    expect(await store.write(checkpoint, null)).toBe(true);
+    await mkdir(lock);
+    const live = join(lock, await checkpointOwner(process.pid));
+    await writeFile(live, ''); await utimes(live, old, old);
+    expect(await store.write(checkpoint, 1)).toBe(false);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it('#9540 a delayed reaper cannot remove a replacement writer before its CAS', async () => {
+  const { mkdtemp, mkdir, writeFile, utimes, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const dead = spawnSync(process.execPath, ['-e', '']).pid;
+  const root = await mkdtemp(join(tmpdir(), 'checkpoint-race-'));
+  let resumeReaper!: () => void, resumeWriter!: () => void;
+  const reaperGate = new Promise<void>(resolve => { resumeReaper = resolve; });
+  const writerGate = new Promise<void>(resolve => { resumeWriter = resolve; });
+  let reaperEntered!: () => void, writerEntered!: () => void;
+  const reaperReady = new Promise<void>(resolve => { reaperEntered = resolve; });
+  const writerReady = new Promise<void>(resolve => { writerEntered = resolve; });
+  let firstWrite: Promise<boolean> | undefined, secondWrite: Promise<boolean> | undefined;
+  try {
+    const path = join(root, 'review.json'), lock = `${path}.lock`, owner = await checkpointOwner(dead);
+    await mkdir(lock); await writeFile(join(lock, owner), '');
+    const old = new Date(Date.now() - 120_000); await utimes(join(lock, owner), old, old);
+    // Intercept the real filesystem boundary, not a newly added private method:
+    // the witness remains loadable when the oracle restores pre-fix production.
+    let intercepted = false;
+    vi.doMock('node:fs/promises', async () => {
+      const fs = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+      return { ...fs, unlink: async (target: Parameters<typeof fs.unlink>[0]) => {
+        if (!intercepted && target === join(lock, owner)) {
+          intercepted = true; reaperEntered(); await reaperGate;
+        }
+        return fs.unlink(target);
+      }, rm: async (target: Parameters<typeof fs.rm>[0], options: Parameters<typeof fs.rm>[1]) => {
+        // The recursive-release mutant must hit the same pause, so CAS cannot
+        // hide its deletion of the replacement owner's critical section.
+        if (!intercepted && target === lock) {
+          intercepted = true; reaperEntered(); await reaperGate;
+        }
+        return fs.rm(target, options);
+      } };
+    });
+    vi.resetModules();
+    const { FileCheckpointStore } = await import('./checkpoint-file.js');
+    const checkpoint = await paused(), first = new FileCheckpointStore(path), second = new FileCheckpointStore(path);
+    const load = second.load.bind(second);
+    second.load = async () => { writerEntered(); await writerGate; return load(); };
+    firstWrite = first.write(checkpoint, null);
+    // Pre-fix writers refuse the stale directory without ever reaching unlink.
+    expect(await Promise.race([reaperReady.then(() => 'reaping'), firstWrite.then(() => 'completed')])).toBe('reaping');
+    secondWrite = second.write(checkpoint, null); await writerReady;
+    resumeReaper();
+    expect(await firstWrite).toBe(false);
+    // The replacement owns the real critical section but has not published a
+    // checkpoint yet. CAS alone cannot hide deletion of its live lock here.
+    expect(await new FileCheckpointStore(path).write(checkpoint, null)).toBe(false);
+    resumeWriter(); expect(await secondWrite).toBe(true);
+  } finally {
+    resumeReaper(); resumeWriter();
+    await Promise.allSettled([firstWrite, secondWrite].filter((p): p is Promise<boolean> => p !== undefined));
+    vi.doUnmock('node:fs/promises'); vi.resetModules();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('#9540 refuses a legacy lock file without changing it or the checkpoint', async () => {
+  const { mkdtemp, writeFile, readFile, readdir, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { FileCheckpointStore } = await import('./checkpoint-file.js');
+  const root = await mkdtemp(join(tmpdir(), 'checkpoint-legacy-'));
+  try {
+    const path = join(root, 'review.json'), checkpoint = await paused();
+    const store = new FileCheckpointStore(path);
+    expect(await store.write(checkpoint, null)).toBe(true);
+    const before = await readFile(path, 'utf-8');
+    await writeFile(`${path}.lock`, '');
+    await expect(store.write(checkpoint, 1)).rejects.toThrow('has no PID');
+    expect(await readFile(`${path}.lock`, 'utf-8')).toBe('');
+    expect(await readFile(path, 'utf-8')).toBe(before);
+    expect((await readdir(root)).sort()).toEqual(['review.json', 'review.json.lock']);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+async function oldIdentityLock(overrides: Partial<TestLockIdentity> = {}) {
+  const fs = await import('node:fs/promises');
+  const { join } = await import('node:path'); const { tmpdir } = await import('node:os');
+  const { FileCheckpointStore } = await import('./checkpoint-file.js');
+  const root = await fs.mkdtemp(join(tmpdir(), 'checkpoint-identity-'));
+  const path = join(root, 'review.json'), lock = `${path}.lock`, local = await testLockIdentity();
+  const owner = testOwnerName({ ...local, ...overrides });
+  await fs.mkdir(lock); await fs.writeFile(join(lock, owner), '');
+  const old = new Date(Date.now() - 120_000); await fs.utimes(join(lock, owner), old, old);
+  return { fs, root, path, lock, local, owner, checkpoint: await paused(), store: new FileCheckpointStore(path),
+    cleanup: () => fs.rm(root, { recursive: true, force: true }) };
+}
+
+for (const field of ['start', 'boot'] as const) {
+  it(`#9540 identity retires a prior ${field} at a still-live reused PID`, async context => {
+    const local = await testLockIdentity();
+    if (!local[field]) context.skip('Requires Linux procfs process/boot identity');
+    const different = field === 'start' ? (local.start === '0' ? '1' : '0') : (local.boot === '0000000000000000' ? '1111111111111111' : '0000000000000000');
+    const f = await oldIdentityLock(field === 'start' ? { start: different } : { boot: different });
+    try { expect(await f.store.write(f.checkpoint, null)).toBe(true); }
+    finally { await f.cleanup(); }
+  });
+}
+
+it('#9540 identity refuses foreign-host liveness even when that PID is dead locally', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const local = await testLockIdentity();
+  const f = await oldIdentityLock({ pid: spawnSync(process.execPath, ['-e', '']).pid, host: local.host === '0000000000000000' ? '1111111111111111' : '0000000000000000' });
+  try {
+    await expect(f.store.write(f.checkpoint, null)).rejects.toThrow(`Checkpoint lock ${f.lock} is from another host`);
+    expect(await f.fs.readdir(f.lock)).toContain(f.owner);
+  } finally { await f.cleanup(); }
+});
+
+it('#9540 EPERM at PID 1 preserves the old owner and reports its lock path', async context => {
+  let code: string | undefined;
+  try { process.kill(1, 0); }
+  catch (error) { code = (error as NodeJS.ErrnoException).code; }
+  if (code !== 'EPERM') {
+    context.skip('Requires an unprivileged process denied signaling PID 1');
+    return;
+  }
+  const f = await oldIdentityLock({ pid: 1 });
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  try {
+    expect(await f.store.write(f.checkpoint, null)).toBe(false);
+    expect(await f.fs.readFile(`${f.lock}/${f.owner}`, 'utf8')).toBe('');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Cannot establish liveness'));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(f.lock));
+  } finally { warn.mockRestore(); await f.cleanup(); }
+});
+
+for (const missing of [{}, { start: null }, { boot: null }, { start: null, boot: null }]) {
+  it(`#9540 identity preserves a live owner and diagnoses unknown capabilities ${JSON.stringify(missing)}`, async () => {
+    const f = await oldIdentityLock(missing); const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      expect(await f.store.write(f.checkpoint, null)).toBe(false);
+      expect(await f.fs.readdir(f.lock)).toContain(f.owner);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`live PID ${process.pid}`));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(f.lock));
+    } finally { warn.mockRestore(); await f.cleanup(); }
+  });
+}
+
+it('#9540 identity diagnoses unrecognized or unsafe owner records without deleting them', async () => {
+  const { join } = await import('node:path');
+  for (const unsafe of [false, true]) {
+    const f = await oldIdentityLock();
+    try {
+      const name = unsafe ? testOwnerName({ ...f.local, pid: Number.MAX_SAFE_INTEGER + 1 }) : 'unknown-owner';
+      await f.fs.rename(join(f.lock, f.owner), join(f.lock, name));
+      await expect(f.store.write(f.checkpoint, null)).rejects.toThrow('process identity');
+      expect(await f.fs.readdir(f.lock)).toEqual([name]);
+    } finally { await f.cleanup(); }
+  }
+});
+
+it('#9540 orphan cleanup reaps only old retired local candidates, including an empty mkdir crash', async () => {
+  const fs = await import('node:fs/promises'); const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os'); const { spawnSync } = await import('node:child_process');
+  const { FileCheckpointStore } = await import('./checkpoint-file.js');
+  const root = await fs.mkdtemp(join(tmpdir(), 'checkpoint-orphan-'));
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  try {
+    const path = join(root, 'review.json'), local = await testLockIdentity();
+    const dead = { ...local, pid: spawnSync(process.execPath, ['-e', '']).pid };
+    const old = new Date(Date.now() - 120_000), future = new Date(Date.now() + 86_400_000);
+    const names = [
+      `review.json.lock.${testOwnerName(dead)}`,
+      `review.json.lock.${testOwnerName(dead)}`,
+      `review.json.lock.${testOwnerName(local)}`,
+      `review.json.lock.${testOwnerName({ ...dead, host: local.host === '0000000000000000' ? '1111111111111111' : '0000000000000000' })}`,
+      `review.json.lock!${testOwnerName(dead)}`,
+      `review.json.lock.${testOwnerName(dead)}`,
+      `review.json.lock.${testOwnerName(dead)}`,
+      'review.json.lock.unrecognized',
+    ];
+    for (let i = 0; i < names.length; i++) {
+      const candidate = join(root, names[i]);
+      if (i === 5) await fs.writeFile(candidate, 'not a candidate directory');
+      else await fs.mkdir(candidate);
+      if (i !== 1) await fs.utimes(candidate, i === 6 ? future : old, i === 6 ? future : old);
+    }
+    expect(await new FileCheckpointStore(path).write(await paused(), null)).toBe(true);
+    const remaining = await fs.readdir(root);
+    expect(remaining).not.toContain(names[0]);
+    for (const name of names.slice(1)) expect(remaining).toContain(name);
+  } finally { warn.mockRestore(); await fs.rm(root, { recursive: true, force: true }); }
+});
+
+async function checkpointOwner(pid: number): Promise<string> {
+  return testOwnerName(await testLockIdentity(pid));
+}
+
+// Independent on-disk fixtures: do not import the production identity module,
+// which the whole-production revert oracle intentionally removes (#9540).
+interface TestLockIdentity { pid: number; host: string; boot: string | null; start: string | null }
+async function testLockIdentity(pid = process.pid): Promise<TestLockIdentity> {
+  const { createHash } = await import('node:crypto');
+  const { readFile } = await import('node:fs/promises');
+  const { hostname } = await import('node:os');
+  const fingerprint = (value: string) => createHash('sha256').update(value).digest('hex').slice(0, 16);
+  const proc = async (path: string) => readFile(path, 'utf8').catch((error: unknown) => {
+    if (['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) return null;
+    throw error;
+  });
+  const boot = await proc('/proc/sys/kernel/random/boot_id'), stat = await proc(`/proc/${pid}/stat`);
+  return { pid, host: fingerprint(hostname()), boot: boot ? fingerprint(boot.trim()) : null,
+    start: stat ? stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/)[19] : null };
+}
+function testOwnerName({ pid, host, boot, start }: TestLockIdentity): string {
+  // Unique fixture token with the protocol's UUID field layout.
+  return `${pid}-v2-${host}-${boot ?? 'u'}-${start ?? 'u'}-${crypto.randomUUID()}`;
+}

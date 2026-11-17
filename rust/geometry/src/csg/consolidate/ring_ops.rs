@@ -22,6 +22,33 @@ const RIM_NOISE_OF_SIZE: f64 = 1.0 / 8192.0;
 /// uses this numeric value as a cap in caller units; its behavior is unchanged.
 const RIM_NOISE_CAP: f64 = 1.0 / 4096.0;
 
+/// Test shorthand for [`weld_near_coincident_2d_tracked`]: the welded ring only.
+#[cfg(test)]
+pub(super) fn weld_near_coincident_2d(
+    ring: &[nalgebra::Point2<f64>],
+) -> Vec<nalgebra::Point2<f64>> {
+    weld_near_coincident_2d_tracked(ring).0
+}
+
+/// Whether `p` and `q` are within the cross-bucket conform's reach of each
+/// other, on both axes.
+pub(super) fn within_conform_tol(p: nalgebra::Point2<f64>, q: nalgebra::Point2<f64>) -> bool {
+    let tol = super::conform::CONFORM_TOL;
+    (p.x - q.x).abs() <= tol && (p.y - q.y).abs() <= tol
+}
+
+/// A ring vertex [`weld_near_coincident_2d_tracked`] merged onto a kept neighbour
+/// from farther away than the cross-bucket conform reconciles.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Welded {
+    pub(super) kept: nalgebra::Point2<f64>,
+    pub(super) dropped: nalgebra::Point2<f64>,
+    /// `dropped` came before `kept` in ring order: the last vertex, merged
+    /// onto the first by the closing merge, and whatever had been merged onto
+    /// that last vertex. Otherwise it came after `kept`.
+    pub(super) before: bool,
+}
+
 /// Merge consecutive near-coincident 2D contour vertices BEFORE the union/earcut.
 ///
 /// The exact mesh-arrangement kernel correctly preserves two distinct rim points
@@ -47,12 +74,15 @@ const RIM_NOISE_CAP: f64 = 1.0 / 4096.0;
 /// genuine 1 mm chamfer on a long steel member. This runs in the already-
 /// non-exact consolidation post-pass; it does NOT touch the exact kernel's
 /// interner/predicates (no float weld in the determinism path).
-pub(super) fn weld_near_coincident_2d(
+///
+/// Also returns each vertex merged away from more than `CONFORM_TOL` off its
+/// kept neighbour, in the order `conform::restore` reads it back.
+pub(super) fn weld_near_coincident_2d_tracked(
     ring: &[nalgebra::Point2<f64>],
-) -> Vec<nalgebra::Point2<f64>> {
+) -> (Vec<nalgebra::Point2<f64>>, Vec<Welded>) {
     let n = ring.len();
     if n < 4 {
-        return ring.to_vec();
+        return (ring.to_vec(), Vec::new());
     }
     let (mut minx, mut miny, mut maxx, mut maxy) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     for p in ring {
@@ -63,12 +93,16 @@ pub(super) fn weld_near_coincident_2d(
     }
     let extent = (maxx - minx).max(maxy - miny);
     if !extent.is_finite() || extent <= 0.0 {
-        return ring.to_vec();
+        return (ring.to_vec(), Vec::new());
     }
     // extent · 2⁻¹³ rounded DOWN to a power of two, capped at an absolute
     // 2⁻¹² m so big rings can't swallow mm-scale features ⇒ exact, deterministic.
     let eps = (floor_pow2(extent) * RIM_NOISE_OF_SIZE).min(RIM_NOISE_CAP);
     let eps2 = eps * eps;
+    // Every merge is recorded, near or far, and `welded[tail..]` is what was
+    // merged onto the last vertex of `kept`: the closing merge can still move
+    // that onto `first`. The near ones go once every `kept` is final.
+    let (mut welded, mut tail): (Vec<Welded>, usize) = (Vec::new(), 0);
     let mut kept: Vec<nalgebra::Point2<f64>> = Vec::with_capacity(n);
     for &p in ring {
         let dup = kept.last().is_some_and(|q| {
@@ -78,6 +112,9 @@ pub(super) fn weld_near_coincident_2d(
         });
         if !dup {
             kept.push(p);
+            tail = welded.len();
+        } else if let Some(&q) = kept.last() {
+            welded.push(Welded { kept: q, dropped: p, before: false });
         }
     }
     // close-the-loop check: last vs first.
@@ -87,12 +124,21 @@ pub(super) fn weld_near_coincident_2d(
         let dy = last.y - first.y;
         if dx * dx + dy * dy < eps2 {
             kept.pop();
+            // What was merged onto `last` now sits ahead of `first`. Reversed,
+            // because the restore walks the record backwards and inserts each
+            // one directly before `first`.
+            welded[tail..].reverse();
+            for w in &mut welded[tail..] {
+                *w = Welded { kept: first, before: true, ..*w };
+            }
+            welded.push(Welded { kept: first, dropped: last, before: true });
         }
     }
+    welded.retain(|w| !within_conform_tol(w.dropped, w.kept));
     if kept.len() >= 3 {
-        kept
+        (kept, welded)
     } else {
-        ring.to_vec()
+        (ring.to_vec(), Vec::new())
     }
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/cli",
-  "version": "0.44.0",
+  "version": "0.46.0",
   "description": "CLI toolkit for IFC files — query, validate, export, create, and script BIM data",
   "type": "module",
   "bin": {
@@ -40,7 +40,10 @@
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/flow": "workspace:^",
     "@ifc-lite/flow-nodes": "workspace:^",
+    "@ifc-lite/geo": "workspace:^",
+    "@ifc-lite/geodata-ch": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
+    "@ifc-lite/georef-check": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",
@@ -50,14 +53,19 @@
     "@ifc-lite/oci": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/rhino3dm": "workspace:^",
     "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/semantic": "workspace:^",
+    "@ifc-lite/site-context": "workspace:^",
+    "@ifc-lite/tiles3d": "workspace:^",
     "@ifc-lite/viewer-core": "workspace:^",
     "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {
+    "ajv": "^8.17.1",
+    "rhino3dm": "8.35.0",
     "@ifc-lite/bcf-api": "workspace:^",
     "@mergifyio/vitest": "^2026.10.11",
     "@types/node": "^26.6.4",

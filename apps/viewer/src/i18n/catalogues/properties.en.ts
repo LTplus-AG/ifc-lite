@@ -27,6 +27,10 @@ export const propertiesEn = {
   'properties.quantitySet.type.count': 'Count',
   'properties.quantitySet.type.weight': 'Weight',
   'properties.quantitySet.type.time': 'Time',
+  'properties.quantitySet.fromGeometry': 'Updated from geometry',
+  'properties.quantitySet.fromGeometryHint': 'This set was recomputed from the element’s edited geometry. The file’s own values for it are replaced on export.',
+  'properties.quantitySet.updateEdited': 'Update quantities of edited elements',
+  'properties.quantitySet.updateEditedHint': 'Off: base quantities stay as the file wrote them, even after a shape edit.',
   // AssemblyBadge
   'properties.assemblyBadge.tooltip': 'Select the parent assembly',
   'properties.assemblyBadge.label': 'Part of Assembly',
@@ -36,6 +40,9 @@ export const propertiesEn = {
   'properties.spatialLocation.heightDisplay': '{value}m',
   'properties.spatialLocation.elevationTooltip': 'Elevation: {sign}{value}m from ground',
   'properties.spatialLocation.heightTooltip': 'Height: {value}m to next storey',
+  'properties.spatialLocation.storeyLabel': 'Storey',
+  'properties.spatialLocation.elevationLabel': 'Storey elevation',
+  'properties.spatialLocation.heightLabel': 'Storey height',
 
   // Shared field-row labels, reused across ClassificationCard, DocumentCard
   // and any other card rendering the same generic "label / value" row.
@@ -228,6 +235,7 @@ export const propertiesEn = {
   'properties.modelMetadata.sourceModel': 'Source Model',
   'properties.modelMetadata.fileInformationHeading': 'File Information',
   'properties.modelMetadata.fileSize': 'File Size',
+  'properties.modelMetadata.fileSizeAsLoaded': 'File Size (as loaded)',
   'properties.modelMetadata.loadedAt': 'Loaded At',
   'properties.modelMetadata.parseTime': 'Parse Time',
   'properties.modelMetadata.parseTimeValue': '{ms} ms',
@@ -245,6 +253,7 @@ export const propertiesEn = {
   'properties.modelMetadata.notAvailable': 'N/A',
   'properties.modelMetadata.buildingStoreys': 'Building Storeys',
   'properties.modelMetadata.elementsWithGeometry': 'Elements with Geometry',
+  'properties.modelMetadata.triangles': 'Triangles',
   'properties.modelMetadata.maxExpressId': 'Max Express ID',
   'properties.modelMetadata.classificationSystemsHeading': 'Classification Systems',
   'properties.modelMetadata.classificationUnresolved': 'Classification systems present, but unavailable on this data source',

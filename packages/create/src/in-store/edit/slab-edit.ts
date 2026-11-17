@@ -32,6 +32,8 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { PART_TYPE } from '../roof-plane-parts.js';
+import { ROOF_FOOTPRINT_PSET } from '../roof-footprint.js';
 import {
   asExpressIdRef,
   asCoordinateTriple,
@@ -54,6 +56,8 @@ export type SlabLikeType = 'IfcSlab' | 'IfcRoof' | 'IfcPlate' | 'IfcSpace';
 
 const SLAB_LIKE_STEP_TYPES: Record<string, SlabLikeType> = {
   IFCSLAB: 'IfcSlab',
+  IFCSLABSTANDARDCASE: 'IfcSlab',
+  IFCSLABELEMENTEDCASE: 'IfcSlab',
   IFCROOF: 'IfcRoof',
   IFCPLATE: 'IfcPlate',
   IFCSPACE: 'IfcSpace',
@@ -230,6 +234,9 @@ export function resolveSlabEditChain(
   if (!rawType) return null;
   const elementType = stepTypeToSlabLike(rawType);
   if (!elementType) return null;
+  // A roof by footprint is one solid per plane, rebuilt from its definition by
+  // `editFootprintRoofInStore`; editing its first plane as a slab would leave the rest and the definition behind.
+  if (elementType === 'IfcRoof' && view.getPropertyValue(expressId, ROOF_FOOTPRINT_PSET, 'EdgeSlopes') !== null) return null;
 
   const scale = lengthUnitScale;
   if (!Number.isFinite(scale) || scale <= 0) return null;
@@ -239,6 +246,7 @@ export function resolveSlabEditChain(
   const placementOrigin = chain.coordinates;
 
   const elementAttrs = readAttributes(dataStore, view, editor, expressId);
+  if (elementAttrs?.[4] === PART_TYPE) return null;
   if (!elementAttrs) return null;
   const productShapeId = asExpressIdRef(elementAttrs[6]);
   if (productShapeId === null) return null;

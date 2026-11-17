@@ -107,6 +107,8 @@ export const listsRu = {
   "lists.library.import": "Импортировать",
   "lists.library.savedLists": "Сохранённые списки",
   "lists.library.templates": "Шаблоны",
+  "lists.library.emptyTitle": "Сохранённых списков пока нет",
+  "lists.library.emptyDescription": "Начните с шаблона или создайте свой.",
   "lists.library.run": "Запустить",
   "lists.library.runListAriaLabel": "Выполнить список {name}",
   "lists.library.edit": "Редактировать",

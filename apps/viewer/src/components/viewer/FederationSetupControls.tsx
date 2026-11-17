@@ -17,6 +17,7 @@
  * the tag editor for a one-model session - the tags travel in this file.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Anchor, Check, FileWarning } from 'lucide-react';
 import {
@@ -45,18 +46,19 @@ const EVENT_OPEN = 'ifc-lite:open-federation-setup';
 function confidenceBadge(match: FederationSetupSlotMatch): { labelKey: TranslationKey; icon: typeof Check; tone: string } {
   switch (match.confidence) {
     case 'content':
-      return { labelKey: 'federationSetupControls.confidence.content', icon: Check, tone: 'text-emerald-600 dark:text-emerald-400' };
+      return { labelKey: 'federationSetupControls.confidence.content', icon: Check, tone: 'text-ok' };
     case 'name-size':
-      return { labelKey: 'federationSetupControls.confidence.nameSize', icon: Check, tone: 'text-emerald-600 dark:text-emerald-400' };
+      return { labelKey: 'federationSetupControls.confidence.nameSize', icon: Check, tone: 'text-ok' };
     case 'name-only':
-      return { labelKey: 'federationSetupControls.confidence.nameOnly', icon: FileWarning, tone: 'text-amber-600 dark:text-amber-400' };
+      return { labelKey: 'federationSetupControls.confidence.nameOnly', icon: FileWarning, tone: 'text-warn' };
     case 'none':
-      return { labelKey: 'federationSetupControls.confidence.none', icon: AlertTriangle, tone: 'text-red-600 dark:text-red-400' };
+      return { labelKey: 'federationSetupControls.confidence.none', icon: AlertTriangle, tone: 'text-danger' };
   }
 }
 
 export function FederationSetupControls() {
   const { t } = useTranslation();
+  const enabled = isFeatureEnabled('files.federation-setup');
   const { exportFederationSetup, matchFederationSetup, applyFederationSetup } = useFederationSetup();
 
   const setupFileInputRef = useRef<HTMLInputElement>(null);
@@ -68,11 +70,13 @@ export function FederationSetupControls() {
   const handleSave = useCallback(() => {
     void exportFederationSetup().then((result) => {
       if (!result.ok) toast.error(result.error);
-      else toast.success('Federation setup saved.');
+      else toast.success(t('federationSetupControls.saved'));
     });
-  }, [exportFederationSetup]);
+  }, [exportFederationSetup, t]);
 
   useEffect(() => {
+    // The palette and ribbon rows are gated; the events they dispatch are too.
+    if (!enabled) return;
     const onSave = () => handleSave();
     const onOpen = () => setupFileInputRef.current?.click();
     window.addEventListener(EVENT_SAVE, onSave);
@@ -81,7 +85,7 @@ export function FederationSetupControls() {
       window.removeEventListener(EVENT_SAVE, onSave);
       window.removeEventListener(EVENT_OPEN, onOpen);
     };
-  }, [handleSave]);
+  }, [enabled, handleSave]);
 
   const handleSetupFileSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -90,16 +94,16 @@ export function FederationSetupControls() {
     void file.text().then((text) => {
       const result = parseFederationSetupFile(text);
       if (!result.ok) {
-        toast.error(`Not a valid federation setup file: ${result.error}`);
+        toast.error(t('federationSetupControls.invalid', { reason: result.error }));
         return;
       }
       setPendingSetup(result.setup);
       toast.info(
-        `Loaded a setup with ${result.setup.slots.length} model slot${result.setup.slots.length === 1 ? '' : 's'} — now pick the model file(s) to match against it.`,
+        t('federationSetupControls.pickSources', { count: result.setup.slots.length }),
       );
       modelFilesInputRef.current?.click();
     });
-  }, []);
+  }, [t]);
 
   const handleModelFilesSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -119,25 +123,28 @@ export function FederationSetupControls() {
     void applyFederationSetup(pendingSetup, matches).then((result) => {
       setApplying(false);
       closeReview();
-      if (result.outcome === 'failed') {
-        toast.error('Could not restore the federation setup — none of the saved models were found.');
-        return;
-      }
-      const parts: string[] = [`Restored ${result.restoredCount}/${result.totalSlots} model(s)`];
-      if (result.missingSlots.length > 0) parts.push(`missing: ${result.missingSlots.join(', ')}`);
-      if (result.mismatchedSlots.length > 0) parts.push(`same name, different content: ${result.mismatchedSlots.join(', ')}`);
-      if (result.anchorMissing) parts.push('alignment anchor could not be restored');
-      if (result.taggedSlotsMissing.length > 0) parts.push(`tags not restored for: ${result.taggedSlotsMissing.join(', ')}`);
+      // #8566: a found file can be refused by the canonical loader. Preserve
+      // its reason even when no slot succeeds; missing sources are separate.
+      const parts: string[] = [t('federationSetupControls.result.restored', {
+        restored: result.restoredCount, total: result.totalSlots,
+      })];
+      if (result.missingSlots.length > 0) parts.push(t('federationSetupControls.result.missing', { names: result.missingSlots.join(', ') }));
+      if (result.mismatchedSlots.length > 0) parts.push(t('federationSetupControls.result.mismatched', { names: result.mismatchedSlots.join(', ') }));
+      if (result.anchorMissing) parts.push(t('federationSetupControls.result.anchorMissing'));
+      if (result.taggedSlotsMissing.length > 0) parts.push(t('federationSetupControls.result.tagsMissing', { names: result.taggedSlotsMissing.join(', ') }));
+      if (result.failedSlots.length > 0) parts.push(t('federationSetupControls.result.failed', {
+        slots: result.failedSlots.map((f) => t('federationSetupControls.result.failedSlot', { name: f.name, reason: f.reason })).join(', '),
+      }));
       const message = parts.join(' — ');
       if (result.outcome === 'restored' && !result.anchorMissing) toast.success(message);
       else toast.error(message);
     });
-  }, [matches, pendingSetup, applyFederationSetup, closeReview]);
+  }, [matches, pendingSetup, applyFederationSetup, closeReview, t]);
 
   return (
     <>
       <ModelTagsCommand />
-      <input
+      {enabled && <><input
         ref={setupFileInputRef}
         type="file"
         accept=".json,application/json"
@@ -150,7 +157,7 @@ export function FederationSetupControls() {
         multiple
         className="hidden"
         onChange={handleModelFilesSelected}
-      />
+      /></>}
       <Dialog open={matches !== null} onOpenChange={(open) => { if (!open) closeReview(); }}>
         <DialogContent>
           <DialogHeader>
@@ -166,7 +173,7 @@ export function FederationSetupControls() {
               return (
                 <div
                   key={match.slotIndex}
-                  className="flex items-center gap-2 px-2 py-1.5 border border-zinc-200 dark:border-zinc-800 rounded text-sm"
+                  className="flex items-center gap-2 px-2 py-1.5 border border-border rounded text-sm"
                 >
                   {match.slot.anchor && <Anchor className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />}
                   <span className="truncate flex-1">{match.slot.name}</span>

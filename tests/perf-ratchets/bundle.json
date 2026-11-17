@@ -1,20 +1,20 @@
 {
   "family": "bundle",
-  "description": "Transfer and boot size of what the viewer ships, measured by scripts/perf-ratchet/measure-bundle.mjs from the build job's artifacts: brotli (quality 11, node zlib) of the engine WASM, and raw bytes of the viewer's main entry chunk and of every JS file dist/index.html loads eagerly (eager bytes are the blocking ceiling, #7002). Viewer JS is gated raw because brotli-11 of it jumps by ~0.5% on a same-length timestamp change; its brotli sizes are reported, not gated (#7007). Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job.",
+  "description": "Transfer and boot size of what the viewer ships, measured by scripts/perf-ratchet/measure-bundle.mjs from the build job's artifacts: raw bytes of the engine WASM, of the viewer's main entry chunk, of every JS file dist/index.html loads eagerly (eager bytes are the blocking ceiling, #7002) and of the parser worker's own chunk, which every cold load fetches, compiles and evaluates before it can parse. Everything is gated raw because brotli-11 does not track its input smoothly: the viewer JS jumps by ~0.5% on a same-length timestamp change (#7007), and edits that left the engine WASM's raw size unchanged moved its brotli size by more than a PR's typical growth (scripts/perf/README.md). Brotli sizes, the engine WASM's among them, are reported, not gated. Raising a ceiling is a human PR with a justification (docs/guide/performance.md, 'Perf ratchet ceilings'); lowering is the daily perf-ratchet-lower.yml job.",
   "entries": [
     {
-      "id": "engine-wasm-brotli",
-      "metric": "brotli-bytes",
+      "id": "engine-wasm-bytes",
+      "metric": "raw-bytes",
       "unit": "bytes",
-      "description": "packages/wasm/pkg/ifc-lite_bg.wasm, the single-thread engine bundle",
-      "ceiling": 2424348,
+      "description": "raw size of packages/wasm/pkg/ifc-lite_bg.wasm, the single-thread engine bundle; its brotli size is reported, not gated",
+      "ceiling": 10528309,
       "tolerance": {
         "kind": "relative",
-        "value": 0.005
+        "value": 0.001
       },
       "provenance": {
-        "commit": "cc0ec0f32a6be468e67e3451ec70a91bea59304d",
-        "measuredAt": "2026-11-01T15:30:46.869Z"
+        "commit": "f725948231c73db0afeb6183577d87d80e2c5bd6",
+        "measuredAt": "2026-11-16T11:21:59.889Z"
       }
     },
     {
@@ -22,14 +22,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of the single <script type=\"module\" src> chunk of apps/viewer/dist/index.html",
-      "ceiling": 3071506,
+      "ceiling": 2184003,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "00acb022037cd56ca2d5803f28e50f3ab374cb84",
-        "measuredAt": "2026-11-01T06:07:29.000Z"
+        "commit": "3c86942bc77b156a582a273ea7c38bea4d4b55eb",
+        "measuredAt": "2026-11-11T10:47:00.000Z"
       }
     },
     {
@@ -37,14 +37,29 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "summed raw size of every JS file dist/index.html loads eagerly: the module <script src> plus <link rel=modulepreload>",
-      "ceiling": 17977112,
+      "ceiling": 17761137,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "12f8c69c313a9ce7a33a591ec833bed181d86668",
-        "measuredAt": "2026-11-01T10:08:12.156Z"
+        "commit": "3e5b79659becb6e30c18c48825149468dd0aec29",
+        "measuredAt": "2026-11-11T07:18:06.896Z"
+      }
+    },
+    {
+      "id": "viewer-parser-worker-js-bytes",
+      "metric": "raw-bytes",
+      "unit": "bytes",
+      "description": "raw size of apps/viewer/dist/assets/parser.worker-*.js, the parser worker's own chunk (chunks it imports on demand are not counted)",
+      "ceiling": 4491334,
+      "tolerance": {
+        "kind": "relative",
+        "value": 0.001
+      },
+      "provenance": {
+        "commit": "4f8f7934bba2d3f34d68ea7251287d0d6bcdcdfb",
+        "measuredAt": "2026-11-12T08:53:00.000Z"
       }
     }
   ]

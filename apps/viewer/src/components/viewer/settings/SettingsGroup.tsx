@@ -6,6 +6,7 @@
  *  row in it. Shared so every section reads the same. */
 
 import type { ReactNode } from 'react';
+import { ACTIVE_STATE_CLASS } from '@/components/ui/active-state';
 
 export function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -16,21 +17,28 @@ export function SettingsGroup({ title, children }: { title: string; children: Re
   );
 }
 
-export function SettingsRow({ label, hint, htmlFor, children }: {
+export function SettingsRow({ label, hint, hintRole, htmlFor, icon, children }: {
   label: string;
   hint?: string;
+  /** `status` when the hint reports the outcome of an action, so it is announced. */
+  hintRole?: 'status';
   /** The control's id, so clicking the label focuses / toggles it. Omit for
    *  a `SettingsChoice`, which names itself with its own legend. */
   htmlFor?: string;
+  /** Decorative; the label carries the meaning. */
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center sm:gap-4">
-      <div className="min-w-0">
-        {htmlFor
-          ? <label htmlFor={htmlFor} className="text-sm">{label}</label>
-          : <span className="text-sm" aria-hidden="true">{label}</span>}
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      <div className="flex min-w-0 items-start gap-2">
+        {icon && <span className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true">{icon}</span>}
+        <div className="min-w-0">
+          {htmlFor
+            ? <label htmlFor={htmlFor} className="text-sm">{label}</label>
+            : <span className="text-sm" aria-hidden="true">{label}</span>}
+          {hint && <p role={hintRole} className="text-xs text-muted-foreground">{hint}</p>}
+        </div>
       </div>
       <div className="max-w-full shrink-0">{children}</div>
     </div>
@@ -53,7 +61,7 @@ export function SettingsChoice<T extends string>({ id, label, value, options, on
         <label
           key={option.value}
           className={`cursor-pointer rounded px-2.5 py-1 text-xs transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${
-            value === option.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            value === option.value ? ACTIVE_STATE_CLASS : 'text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
           <input

@@ -135,8 +135,28 @@ describe('primary load cancel (#5849)', () => {
     assert.equal(after.loading, false);
     assert.equal(after.loadingFileName, null);
     assert.equal(after.progress, null);
-    assert.equal(after.error, null);
+    assert.equal(after.error, 'stale error from an earlier attempt', 'a federated add owns no error to clear');
     assert.equal(after.activeLoadCanceller, null);
+  });
+
+  it('a federated Cancel keeps the error and Retry another load reported meanwhile (#5849)', () => {
+    assert.ok(installModelLoadCanceller);
+    const s = store.getState();
+    s.setLoading(true);
+    s.setProgress({ phase: 'Processing geometry', percent: 30 });
+    installModelLoadCanceller('federated', () => {});
+    // An overlapping load failed while this add was streaming.
+    const retry = () => {};
+    s.setError('first.ifc failed to parse');
+    s.setLastLoadRetry(retry);
+
+    store.getState().activeLoadCanceller?.();
+
+    const after = store.getState();
+    assert.equal(after.loading, false, 'the cancelled add ends its own spinner');
+    assert.equal(after.progress, null);
+    assert.equal(after.error, 'first.ifc failed to parse', 'the other load\'s error survives');
+    assert.equal(after.lastLoadRetry, retry, 'and so does its Retry');
   });
 });
 

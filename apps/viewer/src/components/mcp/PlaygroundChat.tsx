@@ -30,13 +30,14 @@ import {
   useState,
 } from 'react';
 import { modelSwapNotice, type SwapModelRef } from './playground-model-swap.js';
-import { anthropicErrorMessage, createAnthropicClient, type AnthropicCredentials } from '@/lib/llm/anthropic-client';
+import { anthropicErrorMessage } from '@/lib/llm/anthropic-client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowUp, Check, ChevronDown, ChevronRight, Download, KeyRound, RefreshCcw, Wrench } from 'lucide-react';
+import { ArrowUp, ChevronDown, ChevronRight, RefreshCcw, Square, Wrench } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { cn } from '@/lib/utils';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
 import { resolveLiveMessage, type LiveTranslationMessage } from '@/i18n/live-message';
 import { getApiKeys, subscribeApiKeys, type ApiKeyConfig } from '@/services/api-keys';
 import {
@@ -49,13 +50,10 @@ import { ByokKeyModal } from '@/components/viewer/chat/ByokKeyModal';
 import { PLAYGROUND_REQUEST_SOURCE } from '@/components/viewer/chat/byok-audit-sources';
 import {
   anthropicToolDefinitions,
-  dispatch,
-  type AnthropicToolDef,
   type DispatchContext,
   type LoadedPlaygroundModel,
-  type ToolDispatchResult,
 } from './playground-dispatcher';
-import { playgroundFiles, formatBytes as formatFileBytes } from './playground-files';
+import { formatBytes as formatFileBytes } from './playground-files';
 import {
   playgroundUploads,
   usePlaygroundUploads,
@@ -64,55 +62,12 @@ import {
   type UploadedFile,
 } from './playground-uploads';
 import { Paperclip, X } from 'lucide-react';
-const MAX_TOOL_CALLS = 25;
-const MAX_TOKENS = 16_384; // Opus 5 thinks by default; 4096 truncated the tool loop. Under the SDK's non-streaming cap.
-const SYSTEM_PROMPT = `You are a BIM/IFC analyst driving @ifc-lite/mcp tools against a pre-loaded model. Be terse — the user is technical and time-pressed.
-
-Voice rules (strict):
-- NO greetings, preambles, sign-offs, or apologies. Skip "Sure!", "Done!", "Here's…", "Let me know if…".
-- NO emojis. Ever.
-- NO unprompted follow-up menus ("Would you like to…?", "I can also…"). The user will ask if they want more.
-- Aim for 1-3 short lines per reply unless the user asked for analysis.
-- When a tool call already prints the result inline, your text reply can be empty or one short sentence at most.
-- Markdown is fine for tables / data, but skip it for short confirmations.
-
-Tool etiquette:
-- Prefer tool calls over guessing — query_entities, get_entity, properties_unique, materials_list, geometry_volume/area, model_audit, bsdd_* are all available.
-- MUTATION IS ALLOWED. The full read+write surface is wired here, not just read-only. When the user asks to set, change, add, delete, create, batch-edit, etc., go ahead — call entity_set_property, entity_set_attribute, entity_create, entity_delete, entity_delete_property, mutation_batch directly. Don't refuse, don't ask "are you sure?", don't suggest they "run this in the stdio MCP instead". Browser-local model, undo via mutation_undo, save via model_save.
-- BCF authoring is also live: bcf_topic_create, bcf_topic_update, bcf_topic_close, bcf_viewpoint_create. The .bcf auto-stages after every BCF call — the user just clicks the pill.
-- Clash detection: for a general "find/run clashes" request on the single loaded model, call clash_check with NO a/b (every element vs every other). clash_matrix is INTER-discipline only (MEP×structure, HVAC×arch, …) and returns nothing on a single-discipline or architectural model — use it ONLY when the user explicitly asks for the discipline matrix. To turn clashes into BCF, call clash_bcf_export (rich topics: framed viewpoint + clashing components + severity/distance metadata) — NOT bcf_topic_create. It stages its own .bcf pill, so don't call bcf_export after.
-- The 3D viewer is INLINE on this page. When the user asks any 3D action (open, isolate, colorize, section, fly to, etc.), call viewer_open / viewer_* DIRECTLY. Do NOT call viewer_ask first. viewer_ask is only for when YOU are proactively suggesting the viewer.
-- Quote real GlobalIds + values when you cite something. Don't paraphrase.
-
-File attachments (IDS specs etc.):
-- The user can drag-drop .ids files (or any text file) onto the chat. When they do, a system note appears in their message: "[Attached file: foo.ids …]". Use ids_validate / ids_explain with ids_path: "foo.ids" — the playground resolves the upload behind the scenes. Do NOT ask the user to paste raw XML.
-- If the user mentions "this IDS" / "validate against the spec" but no attachment is in this turn, ask them to drop the .ids file onto the chat (don't ask for raw XML).
-
-Downloads (very important):
-- When a tool produces a file (bcf_export, model_save, export_ifc/csv/json, ids_validate), the playground UI automatically renders an inline "Get .bcf" / "Save IFC" / etc. button under that tool call. The user clicks it explicitly — files NEVER download automatically.
-- Don't tell the user "the file is in the Downloads panel" or "click the download button" — the button is right there, redundant. Just confirm what was produced in 1 line.
-- BCF auto-stages: every bcf_topic_* / bcf_viewpoint_create call already produces a fresh .bcf pill. DO NOT call bcf_export afterwards just to "create" the download — it's already there. Only call bcf_export if the user explicitly asks to re-export with custom settings.
-- After mutations, if the user is wrapping up, suggest model_save ONCE so they can grab the edited IFC. Don't keep re-suggesting.`;
-
-// ── message model ──────────────────────────────────────────────────────────
-
-export interface ChatToolCall {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-  result?: ToolDispatchResult;
-  startedAt: number;
-  finishedAt?: number;
-}
-
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
-  displayTextKey?: TranslationKey;
-  toolCalls?: ChatToolCall[];
-  /** True while we're still streaming + looping tool calls. */ pending?: boolean;
-}
+import { runConversation, type ChatMessage, type ChatToolCall } from './playground-conversation';
+import { MARKDOWN_COMPONENTS } from './playground-markdown';
+import { PlaygroundHeader } from './playground-chat-header';
+import { InlineDownload } from './playground-inline-download';
+export { InlineDownload } from './playground-inline-download';
+export type { ChatToolCall } from './playground-conversation';
 
 // ── component ──────────────────────────────────────────────────────────────
 
@@ -141,7 +96,17 @@ export function PlaygroundChat({
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [isStreaming, setStreaming] = useState(false);
+  // Physical dispatch lifetime outlives a user Stop if the tool cannot abort.
+  const dispatchPending = useRef<{ assistantId: string; released: boolean } | null>(null);
+  const [dispatching, setDispatching] = useState(false);
+  const { busy: isStreaming, start, reset } = useAsyncRun({ key: model, label: 'playground conversation' });
+  useEffect(() => {
+    // A new IFC model retires any stopped tool's lock; written here, not during
+    // render, so a discarded render cannot release it.
+    dispatchPending.current = null;
+    setDispatching(false);
+    setMessages(prior => prior.map(message => message.pending ? { ...message, pending: false } : message));
+  }, [model]);
   const [error, setError] = useState<LiveTranslationMessage | null>(null); const errorText = resolveLiveMessage(t, error);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -210,68 +175,105 @@ export function PlaygroundChat({
         setError({ key: 'mcp.playgroundChat.anthropicKeyRequired' });
         return;
       }
-      setError(null);
-      setStreaming(true);
+      return start(async ({ signal, isCurrent }) => {
+        const loadId = loadCounter.current;
+        setError(null);
 
-      // Prepend a tiny system-note prefix when files were attached so the
-      // agent knows the upload exists and how to reference it. Per-kind
-      // hints so the agent picks the right tool without guessing.
-      const attachNote = attached.length > 0
-        ? attached.map((u) => describeAttachment(u)).join('\n') + '\n\n'
-        : '';
-      const fullPrompt = attachNote + prompt;
+        // Prepend a tiny system-note prefix when files were attached so the
+        // agent knows the upload exists and how to reference it. Per-kind
+        // hints so the agent picks the right tool without guessing.
+        const attachNote = attached.length > 0
+          ? attached.map((u) => describeAttachment(u)).join('\n') + '\n\n'
+          : '';
+        const fullPrompt = attachNote + prompt;
 
-      const userMessage: ChatMessage = { id: rid(), role: 'user', text: fullPrompt };
-      const assistantMessage: ChatMessage = {
-        id: rid(),
-        role: 'assistant',
-        text: '',
-        toolCalls: [],
-        pending: true,
-      };
-      setMessages((m) => [...m, userMessage, assistantMessage]);
+        const userMessage: ChatMessage = { id: rid(), role: 'user', text: fullPrompt };
+        const assistantMessage: ChatMessage = {
+          id: rid(),
+          role: 'assistant',
+          text: '',
+          toolCalls: [],
+          pending: true,
+        };
+        const attempt = { assistantId: assistantMessage.id, released: false };
+        setMessages((m) => [...m, userMessage, assistantMessage]);
 
-      const credentials = { apiKey: keys.anthropicKey, workspaceId: keys.anthropicWorkspaceId };
-      try {
-        await runConversation({
-          credentials,
-          modelId: selectedModel,
-          tools,
-          history: [...messages, userMessage],
-          model,
-          assistantId: assistantMessage.id,
-          getDispatchContext: dispatchContext ?? (() => ({})),
-          onUpdate: (patch) => setMessages((m) =>
-            m.map((msg) => (msg.id === assistantMessage.id ? { ...msg, ...patch } : msg)),
-          ),
-        });
-      } catch (err) {
-        setMessages((m) =>
-          m.map((msg) =>
-            msg.id === assistantMessage.id
-              ? msg.text
-                ? { ...msg, pending: false }
-                : {
-                    ...msg,
-                    pending: false,
-                    text: t('mcp.playgroundChat.requestFailed'),
-                    displayTextKey: 'mcp.playgroundChat.requestFailed',
-                  }
-              : msg,
-          ),
-        );
-        setError({ text: anthropicErrorMessage(err, credentials.workspaceId) });
-      } finally {
-        setStreaming(false);
-      }
+        const credentials = { apiKey: keys.anthropicKey, workspaceId: keys.anthropicWorkspaceId };
+        try {
+          await runConversation({
+            credentials,
+            signal,
+            modelId: selectedModel,
+            tools,
+            history: [...messages, userMessage],
+            model,
+            assistantId: assistantMessage.id,
+            getDispatchContext: dispatchContext ?? (() => ({})),
+            onDispatchChange: pending => {
+              if (loadCounter.current !== loadId || attempt.released) return;
+              dispatchPending.current = pending ? attempt : null;
+              setDispatching(pending);
+            },
+            onToolResult: call => {
+              // loadCounter owns IFC-swap discards; force-release seals cancellation.
+              if (loadCounter.current !== loadId || attempt.released) return;
+              setMessages(prior => prior.map(message => message.id === assistantMessage.id
+                ? { ...message, toolCalls: message.toolCalls?.map(previous => previous.id === call.id ? call : previous) }
+                : message));
+            },
+            onUpdate: (patch) => { if (isCurrent()) setMessages((m) =>
+              m.map((msg) => (msg.id === assistantMessage.id ? { ...msg, ...patch } : msg)),
+            ); },
+          });
+        } catch (err) {
+          if (!isCurrent()) return;
+          setMessages((m) =>
+            m.map((msg) =>
+              msg.id === assistantMessage.id
+                ? msg.text
+                  ? { ...msg, pending: false }
+                  : {
+                      ...msg,
+                      pending: false,
+                      text: t('mcp.playgroundChat.requestFailed'),
+                      displayTextKey: 'mcp.playgroundChat.requestFailed',
+                    }
+                : msg,
+            ),
+          );
+          setError({ text: anthropicErrorMessage(err, credentials.workspaceId) });
+        }
+      });
     },
-    [keys.anthropicKey, keys.anthropicWorkspaceId, selectedModel, model, tools, messages, dispatchContext],
+    [start, keys.anthropicKey, keys.anthropicWorkspaceId, selectedModel, model, tools, messages, dispatchContext, t],
   );
+
+  const stop = () => {
+    if (!isStreaming && dispatchPending.current) {
+      const attempt = dispatchPending.current;
+      attempt.released = true;
+      dispatchPending.current = null;
+      setDispatching(false);
+      setMessages(prior => prior.map(message => message.id === attempt.assistantId
+        ? { ...message, toolCalls: message.toolCalls?.map(call => call.result ? call : {
+            ...call, finishedAt: Date.now(), result: {
+              text: 'Cancelled while the tool was still running; outcome unknown. Do not retry mutations automatically.',
+              structured: null, isError: true, errorCode: 'CANCELLED',
+            },
+          }) }
+        : message));
+      return;
+    }
+    reset();
+    setMessages(prior => prior.map(message => message.pending
+      ? { ...message, pending: false, ...(message.text ? {} : { displayTextKey: 'mcp.playgroundChat.stopped' as const }) }
+      : message));
+  };
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = input.trim();
-    if ((!trimmed && pendingAttachments.length === 0) || isStreaming) return;
+    if ((!trimmed && pendingAttachments.length === 0) || isStreaming || dispatchPending.current) return;
     const attachedThisTurn = pendingAttachments;
     setInput('');
     setPendingNames([]);
@@ -332,6 +334,7 @@ export function PlaygroundChat({
   }
 
   // ── render ──────────────────────────────────────────────────────────────
+  const canStop = isStreaming || dispatching;
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0f0f12] text-[#ede4d3]">
       <PlaygroundHeader
@@ -368,6 +371,8 @@ export function PlaygroundChat({
         </div>
       )}
 
+      {/* Dropping files supplements the adjacent keyboard-accessible attach button and file input. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <form
         onSubmit={onSubmit}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -386,7 +391,7 @@ export function PlaygroundChat({
               <span
                 key={f.name}
                 className="inline-flex items-center gap-1.5 rounded-full border border-[#d6ff3f]/30 bg-[#d6ff3f]/10 px-2 py-1 text-2xs"
-                style={{ ...{ fontFamily: '"JetBrains Mono", monospace' }, color: '#d6ff3f' }}
+                style={{ fontFamily: '"JetBrains Mono", monospace', color: '#d6ff3f' }}
               >
                 <Paperclip size={11} />
                 <span className="max-w-[180px] truncate" title={f.name}>{f.name}</span>
@@ -454,18 +459,21 @@ export function PlaygroundChat({
             style={{ fontFamily: '"Bricolage Grotesque", system-ui, sans-serif' }}
           />
           <button
-            type="submit"
-            disabled={(!input.trim() && pendingAttachments.length === 0) || isStreaming || !model || !keys.anthropicKey}
+            type={canStop ? 'button' : 'submit'}
+            onClick={canStop ? stop : undefined}
+            disabled={!canStop && ((!input.trim() && pendingAttachments.length === 0) || !model || !keys.anthropicKey)}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#d6ff3f] text-[#0a0a0c] transition-opacity disabled:opacity-30"
-            aria-label={t('mcp.playgroundChat.send')}
+            aria-label={t(canStop ? 'chat.panel.stopGeneratingTooltip' : 'mcp.playgroundChat.send')}
           >
-            {isStreaming ? <Spinner size="sm" /> : <ArrowUp size={14} strokeWidth={2.5} />}
+            {canStop ? <Square size={14} fill="currentColor" /> : <ArrowUp size={14} strokeWidth={2.5} />}
           </button>
         </div>
         <p className="mt-1.5 text-2xs text-white/40">
-          {uploads.length > 0
-            ? t('mcp.playgroundChat.footerHintWithAttachments', { tools: tools.length, count: uploads.length })
-            : t('mcp.playgroundChat.footerHintNoAttachments', { tools: tools.length })}
+          {!isStreaming && dispatching
+            ? t('mcp.playgroundChat.finishingTool')
+            : uploads.length > 0
+              ? t('mcp.playgroundChat.footerHintWithAttachments', { tools: tools.length, count: uploads.length })
+              : t('mcp.playgroundChat.footerHintNoAttachments', { tools: tools.length })}
         </p>
         {dragOver && (
           <div
@@ -476,84 +484,6 @@ export function PlaygroundChat({
           </div>
         )}
       </form>
-    </div>
-  );
-}
-
-// ── header / key entry + model picker ─────────────────────────────────────
-
-function PlaygroundHeader({
-  hasKey,
-  maskedKey,
-  onOpenKeyModal,
-  selectedModel,
-  anthropicModels,
-  onChangeModel,
-}: {
-  hasKey: boolean;
-  maskedKey: string;
-  onOpenKeyModal: () => void;
-  selectedModel: string;
-  anthropicModels: ReturnType<typeof getByokModelsForSource>;
-  onChangeModel: (modelId: string) => void;
-}): ReactNode {
-  const { t } = useTranslation(); return (
-    <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-2.5">
-      <div className="flex items-center gap-2">
-        <span
-          className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[#d6ff3f]"
-          aria-hidden
-        />
-        <span
-          className="text-2xs uppercase tracking-[0.22em] text-white/60"
-          style={{ fontFamily: '"JetBrains Mono", monospace' }}
-        >
-          {t('mcp.playgroundChat.brand')}
-        </span>
-      </div>
-
-      <div className="flex items-center gap-2">
-        {/* Model picker — Anthropic-only because the playground driver uses
-            Anthropic's native tools API. The dropdown's styling mirrors the
-            key-status pill so the two affordances read as a single cluster. */}
-        <label
-          className="inline-flex items-center gap-1 rounded border border-white/15 bg-white/[0.03] px-1.5 py-1 text-2xs text-white/70"
-          style={{ fontFamily: '"JetBrains Mono", monospace' }}
-          title={t('mcp.playgroundChat.modelTooltip')}
-        >
-          <span className="text-white/40">{t('mcp.playgroundChat.modelLabel')}</span>
-          <select
-            value={selectedModel}
-            onChange={(e) => onChangeModel(e.target.value)}
-            className="bg-transparent text-2xs outline-none [&>option]:bg-[#0a0a0c] [&>option]:text-white"
-            style={{ fontFamily: '"JetBrains Mono", monospace' }}
-            aria-label={t('mcp.playgroundChat.selectModelAria')}
-          >
-            {anthropicModels.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* Key-status pill — opens the shared BYOK modal so the playground
-            and the viewer chat share one trust-focused entry surface. */}
-        <button
-          onClick={onOpenKeyModal}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded border px-2 py-1 text-2xs',
-            hasKey
-              ? 'border-[#d6ff3f]/40 text-[#d6ff3f] hover:bg-[#d6ff3f]/5'
-              : 'border-orange-400/40 text-orange-300 hover:bg-orange-400/5',
-          )}
-          style={{ fontFamily: '"JetBrains Mono", monospace' }}
-          aria-label={hasKey ? t('mcp.playgroundChat.manageKeyAria') : t('mcp.playgroundChat.addKeyAria')}
-        >
-          <KeyRound size={11} />
-          {hasKey ? t('mcp.playgroundChat.keySetLabel', { masked: maskedKey }) : t('mcp.playgroundChat.setKeyLabel')}
-        </button>
-      </div>
     </div>
   );
 }
@@ -747,441 +677,9 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
   );
 }
 
-// ── conversation runner ───────────────────────────────────────────────────
-
-interface AnthropicTextBlock {
-  type: 'text';
-  text: string;
-}
-interface AnthropicToolUseBlock {
-  type: 'tool_use';
-  id: string;
-  name: string;
-  input: Record<string, unknown>;
-}
-type AnthropicAssistantBlock = AnthropicTextBlock | AnthropicToolUseBlock;
-
-interface AnthropicToolResultBlock {
-  type: 'tool_result';
-  tool_use_id: string;
-  content: string;
-  is_error?: boolean;
-}
-
-interface RunOpts {
-  credentials: AnthropicCredentials;
-  /** Anthropic model id (e.g. `claude-sonnet-4-6`, `claude-opus-4-7`). */
-  modelId: string;
-  tools: AnthropicToolDef[];
-  history: ChatMessage[];
-  model: LoadedPlaygroundModel;
-  assistantId: string;
-  getDispatchContext: () => DispatchContext;
-  onUpdate: (patch: Partial<ChatMessage>) => void;
-}
-
-type ApiMessage =
-  | { role: 'user'; content: string | Array<AnthropicToolResultBlock | { type: 'text'; text: string }> }
-  | { role: 'assistant'; content: AnthropicAssistantBlock[] };
-
-/**
- * Rebuild the Anthropic message list from React state.
- *
- * Anthropic's hard contract: every `tool_use` block in an assistant message
- * MUST be followed by a user message whose first blocks are matching
- * `tool_result`s. The naive shape (assistant turn → standalone user
- * tool_result message → standalone user text message) breaks that contract
- * the moment the user asks a follow-up after a tool round, because the
- * NEW user text lands AFTER the tool_result, separating it from the
- * tool_use by an extra turn (and yielding a double-user pair, which the
- * Messages API now merges into one turn rather than rejecting — the
- * tool_result-must-come-first ordering below is the part that still
- * matters, and the model-swap notice at #2471 deliberately relies on
- * consecutive user turns being accepted).
- *
- * Fix: merge an assistant turn's pending tool_results into the very next
- * user turn as combined blocks (`[tool_result_*…, { type:'text', text }]`).
- * If no next user turn exists yet (mid-conversation, agent still wrapping
- * up), fall through to a standalone tool_result user message — that is
- * the in-loop intermediate shape and Anthropic accepts it.
- */
-function buildApiMessages(history: ChatMessage[]): ApiMessage[] {
-  const out: ApiMessage[] = [];
-  let i = 0;
-  while (i < history.length) {
-    const m = history[i];
-    if (m.role === 'user') {
-      out.push({ role: 'user', content: m.text });
-      i += 1;
-      continue;
-    }
-
-    // role === 'assistant'
-    //
-    // CRITICAL block ordering: Anthropic's tool-use protocol expects
-    // `text` (and `thinking`) blocks BEFORE `tool_use` blocks within an
-    // assistant turn. If a `text` block follows a `tool_use` block in the
-    // same turn, the API treats the tool_use as cancelled by the model's
-    // subsequent reasoning and rejects the next user message's
-    // tool_result with "tool_use ids were found without tool_result
-    // blocks immediately after". We were building [tool_use, text] which
-    // tripped exactly that check; the docs example sequences as
-    // [text, tool_use_1, tool_use_2, …]. Mirror that here.
-    const blocks: AnthropicAssistantBlock[] = [];
-    if (m.text) blocks.push({ type: 'text', text: m.text });
-    if (m.toolCalls) {
-      for (const tc of m.toolCalls) {
-        blocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.args });
-      }
-    }
-    if (blocks.length > 0) out.push({ role: 'assistant', content: blocks });
-
-    // Anthropic requires every tool_use to be paired with a tool_result in
-    // the next user message. Synthesise a stub for any that finished
-    // without a recorded result (HMR cleared state, dispatch interrupted,
-    // etc.) so we never emit a malformed sequence.
-    const results: AnthropicToolResultBlock[] = (m.toolCalls ?? []).map((tc) => ({
-      type: 'tool_result',
-      tool_use_id: tc.id,
-      content: tc.result?.text ?? '(tool call did not complete in this session — ignore and continue)',
-      is_error: tc.result?.isError ?? true,
-    }));
-
-    if (results.length === 0) {
-      i += 1;
-      continue;
-    }
-
-    // Try to fold the next user turn's text into the same user message
-    // so we never create a double-user pair (which Anthropic also rejects).
-    const next = history[i + 1];
-    if (next && next.role === 'user') {
-      out.push({
-        role: 'user',
-        content: [...results, { type: 'text', text: next.text }],
-      });
-      i += 2;
-    } else {
-      out.push({ role: 'user', content: results });
-      i += 1;
-    }
-  }
-  return out;
-}
-
-/**
- * Walk the apiMessages list and confirm every `tool_use` block has a
- * matching `tool_result` block in the immediately-following user message.
- * Throws (caught by runConversation) if not. This exists so we fail in
- * code we can fix instead of mysteriously erroring at Anthropic.
- */
-function assertToolUseShape(messages: ApiMessage[]): void {
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i];
-    if (m.role !== 'assistant') continue;
-    const toolUseIds: string[] = [];
-    for (const block of m.content) {
-      if (typeof block === 'object' && block.type === 'tool_use') toolUseIds.push((block as { id: string }).id);
-    }
-    if (toolUseIds.length === 0) continue;
-    const next = messages[i + 1];
-    if (!next || next.role !== 'user' || typeof next.content === 'string') {
-      throw new Error(`assistant turn ${i} has tool_use but next turn isn't a user-with-blocks message`);
-    }
-    const resultIds = new Set<string>();
-    for (const block of next.content) {
-      if (typeof block === 'object' && block.type === 'tool_result') {
-        resultIds.add((block as { tool_use_id: string }).tool_use_id);
-      }
-    }
-    const missing = toolUseIds.filter((id) => !resultIds.has(id));
-    if (missing.length > 0) {
-      throw new Error(`tool_use without matching tool_result at turn ${i}: ${missing.join(', ')}`);
-    }
-  }
-}
-
-async function runConversation(opts: RunOpts): Promise<void> {
-  const client = createAnthropicClient(opts.credentials);
-  const apiMessages = buildApiMessages(opts.history);
-
-  // Compact, opt-in diagnostic logging. The previous version dumped the
-  // full apiMessages payload (including raw user prompts, attachment text,
-  // tool args, and tool results) on every request — fine for development,
-  // but a privacy footgun for a BYOK feature where users own the API key
-  // and don't expect their conversation to land in browser devtools.
-  // Anything heavier than the one-line summary is now gated behind a
-  // localStorage flag the user has to set explicitly.
-  const wantsVerbose = (() => {
-    try {
-      return typeof window !== 'undefined' && window.localStorage?.getItem('ifclite-playground-debug') === '1';
-    } catch {
-      return false;
-    }
-  })();
-  // eslint-disable-next-line no-console
-  console.debug(`[playground-chat] → ${apiMessages.length} messages`);
-  if (wantsVerbose) {
-    // eslint-disable-next-line no-console
-    console.groupCollapsed('[playground-chat] full payload (debug)');
-    // eslint-disable-next-line no-console
-    console.log(JSON.parse(JSON.stringify(apiMessages)));
-    // eslint-disable-next-line no-console
-    console.groupEnd();
-  }
-
-  try {
-    assertToolUseShape(apiMessages);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[playground-chat] FAILED tool-use shape assertion before sending:', err);
-    throw err;
-  }
-
-  const accumulated: { text: string; toolCalls: ChatToolCall[] } = { text: '', toolCalls: [] };
-  let toolCallCount = 0;
-
-  // Loop: each iteration is a single Anthropic round-trip. Stops when the
-  // assistant finishes without requesting more tools, or when we hit the cap.
-  while (true) {
-    const res = await client.messages.create({
-      model: opts.modelId,
-      max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
-      tools: opts.tools as unknown as Parameters<typeof client.messages.create>[0]['tools'],
-      messages: apiMessages as Parameters<typeof client.messages.create>[0]['messages'],
-    });
-
-    const blocks = res.content as AnthropicAssistantBlock[];
-    const newToolCalls: ChatToolCall[] = [];
-    let newText = '';
-    for (const block of blocks) {
-      if (block.type === 'text') newText += block.text;
-      else if (block.type === 'tool_use') {
-        newToolCalls.push({
-          id: block.id,
-          name: block.name,
-          args: block.input ?? {},
-          startedAt: Date.now(),
-        });
-      }
-    }
-
-    if (newText) accumulated.text += (accumulated.text ? '\n' : '') + newText;
-    if (newToolCalls.length > 0) accumulated.toolCalls.push(...newToolCalls);
-    opts.onUpdate({ text: accumulated.text, toolCalls: accumulated.toolCalls });
-
-    // Push the assistant turn into the rolling history regardless of whether
-    // there are more tools — Anthropic requires the full assistant block list.
-    apiMessages.push({ role: 'assistant', content: blocks });
-
-    if (newToolCalls.length === 0 || res.stop_reason !== 'tool_use') {
-      // Done.
-      opts.onUpdate({ text: accumulated.text, toolCalls: accumulated.toolCalls, pending: false });
-      return;
-    }
-
-    if (toolCallCount + newToolCalls.length > MAX_TOOL_CALLS) {
-      // Cap reached — synthesise an error tool_result so Claude can wrap up.
-      const cap: AnthropicToolResultBlock[] = newToolCalls.map((tc) => ({
-        type: 'tool_result',
-        tool_use_id: tc.id,
-        content: `Stopped: this playground caps at ${MAX_TOOL_CALLS} tool calls per request. Summarise what you have so far.`,
-        is_error: true,
-      }));
-      apiMessages.push({ role: 'user', content: cap });
-      for (const tc of newToolCalls) {
-        tc.result = {
-          text: `Stopped at cap (${MAX_TOOL_CALLS}).`,
-          structured: null,
-          isError: true,
-          errorCode: 'CAP_REACHED',
-        };
-        tc.finishedAt = Date.now();
-      }
-      opts.onUpdate({ toolCalls: accumulated.toolCalls });
-      // Continue once more so Claude can produce a final text answer.
-      continue;
-    }
-
-    // Run each tool, build tool_result blocks. Re-pull the dispatch context
-    // every iteration so the viewer controller stays fresh if the user
-    // mounts/unmounts the panel mid-conversation.
-    const results: AnthropicToolResultBlock[] = [];
-    for (const tc of newToolCalls) {
-      const ctx = opts.getDispatchContext();
-      const dispatched = await dispatch(opts.model, tc.name, tc.args, ctx);
-      tc.result = dispatched;
-      tc.finishedAt = Date.now();
-      results.push({
-        type: 'tool_result',
-        tool_use_id: tc.id,
-        content: dispatched.text,
-        is_error: dispatched.isError,
-      });
-    }
-    toolCallCount += newToolCalls.length;
-    opts.onUpdate({ toolCalls: accumulated.toolCalls });
-    apiMessages.push({ role: 'user', content: results });
-  }
-}
-
 function rid(): string {
   return Math.random().toString(36).slice(2, 11);
 }
-
-/**
- * InlineDownload — chartreuse "Get .bcf" / "Save IFC" pill that surfaces
- * directly under the tool-call header whenever a tool produced a file. The
- * file is already in the playgroundFiles store (so the sidebar Downloads
- * panel mirrors it); this is the discoverable, in-context offer right next
- * to the action that produced it.
- *
- * UX rules baked in:
- *   • The artifact NEVER auto-downloads. The user has to click.
- *   • After a click, the button shows "Saved" for ~2s so the user has
- *     visible feedback without losing the affordance to re-download.
- *   • Re-clicking re-runs the download — useful if the user closed the
- *     prompt by accident.
- */
-export function InlineDownload({
-  download,
-}: {
-  download: NonNullable<ToolDispatchResult['download']>;
-}): ReactNode {
-  const { t } = useTranslation();
-  const [savedAt, setSavedAt] = useState<number | null>(null);
-  const justSaved = savedAt != null && Date.now() - savedAt < 2000;
-  useEffect(() => {
-    if (savedAt == null) return;
-    const t = setTimeout(() => setSavedAt(null), 2000);
-    return () => clearTimeout(t);
-  }, [savedAt]);
-
-  return (
-    <div className="border-t border-white/5 px-3 py-2">
-      <button aria-label={justSaved ? t('mcp.playgroundChat.savedLabel') : download.label}
-        onClick={() => {
-          playgroundFiles.download(download.fileId);
-          setSavedAt(Date.now());
-        }}
-        className={cn(
-          'group flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left transition-colors',
-          justSaved ? 'bg-white/10' : 'bg-[#d6ff3f] hover:bg-[#e6ff66]',
-        )}
-        style={justSaved ? { color: '#d6ff3f' } : { color: '#0a0a0c' }}
-      >
-        <span className="flex min-w-0 items-center gap-2.5">
-          <span
-            className={cn(
-              'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded',
-              justSaved ? 'bg-white/10' : 'bg-black/10',
-            )}
-          >
-            {justSaved ? <Check size={14} strokeWidth={2.6} /> : <Download size={14} strokeWidth={2.4} />}
-          </span>
-          <span className="flex min-w-0 flex-col leading-tight">
-            <span
-              className="truncate text-sm font-semibold"
-              style={{ fontFamily: '"Bricolage Grotesque", system-ui, sans-serif' }}
-            >
-              {justSaved ? t('mcp.playgroundChat.savedLabel') : download.label}
-            </span>
-            <span
-              className={cn('truncate text-2xs', justSaved ? 'text-white/50' : 'text-black/55')}
-              style={{ fontFamily: '"JetBrains Mono", monospace' }}
-            >
-              {download.filename} · {formatFileBytes(download.size)}
-            </span>
-          </span>
-        </span>
-      </button>
-    </div>
-  );
-}
-
-// ── markdown rendering ────────────────────────────────────────────────────
-//
-// Tailwind utility set scoped to the chat. Headings stay quiet (the chat
-// already structures the conversation). Tables get hairline borders.
-// Inline code + code blocks pick up JetBrains Mono so they read like the
-// tool-call cards.
-
-const MARKDOWN_COMPONENTS = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h1: (props: any) => <h3 className="mt-3 mb-1 text-base font-semibold" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h2: (props: any) => <h4 className="mt-3 mb-1 text-sm font-semibold" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h3: (props: any) => <h5 className="mt-2 mb-1 text-sm font-semibold" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  p: (props: any) => <p className="my-1.5 first:mt-0 last:mb-0" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ul: (props: any) => <ul className="my-1.5 ml-4 list-disc space-y-0.5" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ol: (props: any) => <ol className="my-1.5 ml-4 list-decimal space-y-0.5" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  li: (props: any) => <li className="leading-snug" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  strong: (props: any) => <strong className="font-semibold text-white" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  em: (props: any) => <em className="italic text-white/95" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  a: (props: any) => (
-    <a className="text-[#d6ff3f] underline-offset-2 hover:underline" target="_blank" rel="noreferrer" {...props} />
-  ),
-  // react-markdown v9 dropped the legacy `inline` prop, so we infer block
-  // vs inline from className (fenced blocks get `language-…`) and content
-  // (block code carries trailing newlines). When it's a block we render
-  // a raw <code> here and let the `pre` override below own the wrapper —
-  // doing the wrapping ourselves used to nest <pre> inside the <p>
-  // react-markdown emits for surrounding text, tripping React's DOM
-  // nesting validator.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  code: ({ className, children, ...props }: any) => {
-    const cls = typeof className === 'string' ? className : '';
-    const text = Array.isArray(children) ? children.join('') : String(children ?? '');
-    const isBlock = cls.startsWith('language-') || /\n/.test(text);
-    if (isBlock) {
-      return (
-        <code className={cn(cls, 'block')} style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props}>
-          {children}
-        </code>
-      );
-    }
-    return (
-      <code
-        className={cn(
-          'rounded bg-white/10 px-1 py-0.5 text-xs text-[#d6ff3f]',
-          cls,
-        )}
-        style={{ fontFamily: '"JetBrains Mono", monospace' }}
-        {...props}
-      >
-        {children}
-      </code>
-    );
-  },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pre: (props: any) => (
-    <pre className="my-2 overflow-x-auto rounded bg-black/40 p-3 text-xs leading-snug" style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />
-  ),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  table: (props: any) => <div className="my-2 overflow-x-auto rounded border border-white/10">
-    <table className="w-full border-collapse text-xs" {...props} />
-  </div>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  thead: (props: any) => <thead className="bg-white/[0.04]" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  th: (props: any) => <th className="border-b border-white/10 px-2.5 py-1.5 text-left text-2xs uppercase tracking-[0.18em] text-white/70"
-    style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  td: (props: any) => <td className="border-b border-white/5 px-2.5 py-1.5 align-top" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  blockquote: (props: any) => <blockquote className="my-2 border-l-2 border-white/20 pl-3 italic text-white/70" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  hr: (props: any) => <hr className="my-3 border-white/10" {...props} />,
-};
 
 // Tiny re-export so the playground page can show an empty-state CTA.
 export { RefreshCcw };

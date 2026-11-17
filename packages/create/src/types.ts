@@ -187,6 +187,14 @@ export interface WallParams extends ElementAttributes {
   Height: number;
   /** Rectangular openings in the wall */
   Openings?: RectangularOpening[];
+  /**
+   * `IfcWallTypeEnum` value (IFC4/IFC4X3; IFC2X3 `IfcWall` has no PredefinedType, so passing one
+   * there throws). Default `NOTDEFINED`. Checked against the target schema at runtime: RETAININGWALL
+   * and WAVEWALL are IFC4X3-only, ELEMENTEDWALL is deprecated in IFC4, and the deprecated STANDARD
+   * and POLYGONAL are refused. USERDEFINED requires `ObjectType`.
+   */
+  PredefinedType?: 'MOVABLE' | 'PARAPET' | 'PARTITIONING' | 'PLUMBINGWALL' | 'SHEAR' | 'SOLIDWALL'
+    | 'ELEMENTEDWALL' | 'RETAININGWALL' | 'WAVEWALL' | 'USERDEFINED' | 'NOTDEFINED';
 }
 
 /** Slab: extruded rectangle or arbitrary profile */
@@ -203,6 +211,8 @@ export interface SlabParams extends ElementAttributes {
   Profile?: Point2D[];
   /** Rectangular openings in the slab */
   Openings?: RectangularOpening[];
+  /** `IfcSlabTypeEnum` value, checked against the target schema. Default `FLOOR`. */
+  PredefinedType?: string;
 }
 
 /** Column: extruded rectangle profile */
@@ -215,6 +225,8 @@ export interface ColumnParams extends ElementAttributes {
   Depth: number;
   /** Column height (Z) */
   Height: number;
+  /** `IfcColumnTypeEnum` value (IFC4/IFC4X3 only), checked against the target schema. Default `COLUMN`. */
+  PredefinedType?: string;
 }
 
 /** Beam: extruded rectangle profile along an axis */
@@ -227,6 +239,8 @@ export interface BeamParams extends ElementAttributes {
   Width: number;
   /** Beam height (depth of section) */
   Height: number;
+  /** `IfcBeamTypeEnum` value (IFC4/IFC4X3 only), checked against the target schema. Default `BEAM`. */
+  PredefinedType?: string;
 }
 
 /** Stair: simplified parametric stair (straight run) */
@@ -429,6 +443,12 @@ export interface SpaceParams extends ElementAttributes {
   LongName?: string;
   /** Custom profile outline (overrides Width/Depth) */
   Profile?: Point2D[];
+  /**
+   * `IfcSpaceTypeEnum` value (IFC2X3: the `IfcInternalOrExternalEnum` of `InteriorOrExteriorSpace`),
+   * checked against the target schema. Default `INTERNAL`, except IFC4X3, which deprecates INTERNAL
+   * and EXTERNAL (use `Pset_SpaceCommon.IsExternal`) and so defaults to `NOTDEFINED`.
+   */
+  PredefinedType?: string;
 }
 
 /** Curtain wall: planar curtain wall panel */
@@ -570,6 +590,18 @@ export interface ProjectParams {
   Currency?: string;
   Author?: string;
   Organization?: string;
+  /**
+   * STEP header `FILE_NAME.name`, e.g. `'tiny-house.ifc'`. Defaults to
+   * `'created.ifc'`. At most 256 characters (ISO 10303-21 `STRING (256)`).
+   */
+  FileName?: string;
+  /**
+   * STEP header `FILE_DESCRIPTION.description`: one string, or several for
+   * several list entries (e.g. a `ViewDefinition [...]` entry plus free text).
+   * Defaults to `'Created by ifc-lite'`. Each entry at most 256 characters; an
+   * empty array is rejected, because the attribute is `LIST [1:?]`.
+   */
+  FileDescription?: string | string[];
   /**
    * Fixed creation instant (epoch milliseconds or Date) used for the FILE_NAME
    * header timestamp, IfcOwnerHistory.CreationDate, and the default

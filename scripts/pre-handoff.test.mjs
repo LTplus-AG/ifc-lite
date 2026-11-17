@@ -45,3 +45,37 @@ test('#7955 a registered witness with an unavailable runner is explicitly skippe
   const rows = runGates(root, [{ name: 'witness', unavailable, args: ['-e', 'process.exit(9)'] }], () => {});
   assert.equal(rows[0].result, 'SKIPPED');
 });
+
+test('an oracle over contrast harness tests is a named gap, not a launch failure, when the harness has no browser', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'handoff-contrast-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'apps/viewer/src/test/contrast'), { recursive: true });
+  writeFileSync(join(root, 'package.json'), '{}');
+  writeFileSync(join(root, 'apps/viewer/package.json'), '{"scripts":{"test":"tsx --test"}}');
+  const harnessTest = 'apps/viewer/src/test/contrast/x.contrast.test.tsx';
+  const plainTest = 'apps/viewer/src/test/contrast/plain.test.ts';
+  writeFileSync(join(root, harnessTest), "import { withThemedPage } from './render-harness.js';\n");
+  writeFileSync(join(root, plainTest), "import { contrastRatio } from './wcag';\n");
+
+  const missing = oraclePrerequisites(root, { test: harnessTest }, 'unused', () => 'missing');
+  assert.match(missing, /Google Chrome for the contrast harness \(1 test file\(s\)/);
+  assert.equal(runGates(root, [{ name: 'witness', unavailable: missing, args: ['-e', 'process.exit(9)'] }], () => {})[0].result, 'SKIPPED');
+  assert.doesNotMatch(oraclePrerequisites(root, { test: harnessTest }, 'unused', () => 'system-chrome') ?? '', /contrast harness/);
+  // Counted, not thrown: oraclePrerequisites catches a probe error, so a throw here would pass unnoticed.
+  let probes = 0;
+  const counted = () => { probes += 1; return 'missing'; };
+  assert.doesNotMatch(oraclePrerequisites(root, { test: plainTest }, 'unused', counted) ?? '', /contrast/);
+  assert.equal(probes, 0, 'a test that does not use the harness is never probed');
+});
+
+test('a contrast browser probe that cannot run is a named gap, not a thrown failure', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'handoff-contrast-probe-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'apps/viewer/src/test'), { recursive: true });
+  writeFileSync(join(root, 'package.json'), '{}');
+  writeFileSync(join(root, 'apps/viewer/package.json'), '{"scripts":{"test":"tsx --test"}}');
+  const dynamic = 'apps/viewer/src/test/dynamic.layout.test.tsx';
+  writeFileSync(join(root, dynamic), "const h = await import('@/test/contrast/render-harness.js');\n");
+  const broken = () => { throw new Error('contrast browser probe failed: tsx exited 1\nstack'); };
+  assert.match(oraclePrerequisites(root, { test: dynamic }, 'unused', broken), /a contrast browser answer \(contrast browser probe failed: tsx exited 1\)/);
+});

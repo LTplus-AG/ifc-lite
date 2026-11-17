@@ -9,6 +9,7 @@
  * Focus on structural invariants, not exact values.
  */
 
+import { runSkipVoidsContracts } from './lib/wasm-skip-voids-contracts.mjs';
 import { runColdLoadContracts } from './lib/wasm-cold-load-contracts.mjs';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
@@ -74,7 +75,6 @@ const GEOREF_AVAILABLE = fixtureAvailable(GEOREF_IFC, 'georef', 'Georef tests');
 const LAYERED_AVAILABLE = fixtureAvailable(LAYERED_IFC, 'layered-wall', 'geometryClass pin');
 const SPACES_AVAILABLE = fixtureAvailable(SPACES_IFC, 'spaces', 'Energy-model tests');
 
-// Initialize WASM
 console.log('📦 Loading WASM...');
 const wasmBuffer = readFileSync(WASM_BIN);
 const ownershipWasmExports = initSync(wasmBuffer);
@@ -82,12 +82,12 @@ console.log('✅ WASM initialized\n');
 
 const columnContent = COLUMN_AVAILABLE ? readFileSync(COLUMN_IFC, 'utf-8') : '';
 
-// Create API
 const api = new IfcAPI();
 
 let passed = 0;
 let failed = 0;
 let skipped = 0;
+runSkipVoidsContracts({ test, skip, IfcAPI });
 
 /**
  * A test (or a whole fixture-gated block of them) that did NOT run.
@@ -121,6 +121,8 @@ runScanOutlineContracts({ test }); // #6871, fixture-free
 (await import('./lib/wasm-stray-apostrophe-contracts.mjs')).runStrayApostropheContracts(api, test); // #7541, fixture-free
 await (await import('./lib/wasm-scan-refusal-contracts.mjs')).runScanRefusalContracts(api, test); // #7393, fixture-free
 await (await import('./lib/wasm-extrusion-bridge-contracts.mjs')).runExtrusionBridgeContracts(test, ROOT_DIR); // #6306
+await (await import('./lib/rhino-export-contract.mjs')).runRhinoExportContracts(api, test, skip, ROOT_DIR); // Rhino .3dm, hello-wall
+(await import('./lib/usd-export-contract.mjs')).runUsdExportContracts(api, test, skip, ROOT_DIR);
 if (!COLUMN_AVAILABLE) {
   skip('IFC-backed WASM contracts', `column fixture missing — ${FIXTURES_HINT}`);
   finishContractRun(api, passed, failed, skipped);
@@ -796,16 +798,16 @@ test('exportGlb returns a binary glTF (GLB magic "glTF") with real meshes', () =
   assert.ok(glbBytes instanceof Uint8Array, 'GLB should be a Uint8Array');
   assert.ok(glbBytes.length > 20, 'GLB should be non-trivial');
   assert.deepEqual(Array.from(glbBytes.slice(0, 4)), [0x67, 0x6c, 0x54, 0x46]); // "glTF"
-  // Guard that the export actually carried geometry. The IFC source must cross
-  // the boundary as a Uint8Array; if it ever arrived empty (e.g. a string coerced
-  // to zero bytes), the GLB would still be structurally valid yet declare zero
-  // meshes — caught here.
+  // Guard that the export carried geometry. The IFC source must cross the boundary
+  // as a Uint8Array; arriving empty (e.g. a string coerced to zero bytes), the GLB
+  // would still be structurally valid yet declare zero meshes — caught here.
   const dv = new DataView(glbBytes.buffer, glbBytes.byteOffset, glbBytes.byteLength);
   const jsonLen = dv.getUint32(12, true);
   const gltf = JSON.parse(Buffer.from(glbBytes.buffer, glbBytes.byteOffset + 20, jsonLen).toString('utf-8'));
   assert.ok(Array.isArray(gltf.meshes) && gltf.meshes.length > 0, 'GLB should declare meshes');
 });
 
+(await import('./lib/wasm-glb-element-node-contracts.mjs')).runGlbElementNodeContracts(api, test, assert, columnContent, glbBytes); // #9011
 // exportGlbFromMeshes assembles a GLB straight from flattened mesh arrays (the viewer's
 // GPU meshes) and fails closed on malformed counts — exercised HERE through the real wasm
 // boundary, since the Rust-level tests can't prove the JS throw contract.
@@ -1412,38 +1414,10 @@ if (SPACES_AVAILABLE) {
     `${SPACES_IFC} missing — ${FIXTURES_HINT}`);
 }
 
-// ===== OpenUSD (.usda) export boundary =====
-// The vitest suites all MOCK the wasm boundary (AGENTS.md §Geometry & WASM), so
-// this is the real-WASM assertion for IfcAPI.exportUsd. hello-wall is git-tracked
-// (unlike tests/models/*), so the export runs on any checkout with a built runtime.
+// ===== IFCX export boundary (git-tracked hello-wall) =====
 const HELLO_WALL = join(ROOT_DIR, 'apps/landing/samples/hello-wall.ifc');
 if (existsSync(HELLO_WALL)) {
   const wallBytes = new Uint8Array(readFileSync(HELLO_WALL));
-  const usdBytes = api.exportUsd(wallBytes);
-  const usda = usdBytes instanceof Uint8Array ? new TextDecoder().decode(usdBytes) : '';
-
-  test('exportUsd returns a real Z-up USDA stage (/World, meshes, IFC metadata) with no non-finite coords', () => {
-    assert.ok(usdBytes instanceof Uint8Array, 'USD should be a Uint8Array');
-    assert.ok(usdBytes.length > 100, 'USD should be non-trivial');
-    assert.ok(usda.startsWith('#usda 1.0'), 'starts with the USDA magic line');
-    assert.match(usda, /upAxis\s*=\s*"Z"/, 'Z-up stage');
-    assert.match(usda, /metersPerUnit\s*=\s*1/, 'metres (no scale conversion)');
-    assert.ok(usda.includes('def Xform "World"'), 'has the /World root Xform');
-    assert.match(usda, /def Mesh "|class Mesh "/, 'authored at least one mesh or prototype');
-    assert.match(usda, /point3f\[\] points =/, 'meshes carry local points');
-    assert.ok(usda.includes('ifc:class'), 'carries IFC metadata as custom attributes');
-    // The IFC source must cross the boundary as real bytes: an empty input would
-    // still yield a structurally valid header but zero geometry — caught above.
-    // Rust gates non-finite coords out of the stage; assert none slipped through.
-    assert.ok(!/(?<![A-Za-z])(nan|-?inf)(?![A-Za-z])/i.test(usda), 'no NaN/Inf tokens in the stage');
-  });
-
-  test('exportUsd is deterministic (byte-identical across two calls on the same input)', () => {
-    const again = api.exportUsd(wallBytes);
-    assert.ok(again instanceof Uint8Array);
-    assert.equal(new TextDecoder().decode(again), usda, 'USD export must be deterministic');
-  });
-
   // ===== IFCX header, across the language boundary =====
   // The Rust exporter and the TypeScript writers each hold their own copy of
   // the version value (`IFCX_VERSION` in rust/export/src/ifc5.rs, and in
@@ -1465,7 +1439,7 @@ if (existsSync(HELLO_WALL)) {
     assert.ok(!('version' in header), 'the pre-#2556 `version` key must not come back');
   });
 } else {
-  skip('export contracts (USD / IFCX) over hello-wall',
+  skip('export contracts (IFCX) over hello-wall',
     `apps/landing/samples/hello-wall.ifc missing — ${FIXTURES_HINT}`);
 }
 

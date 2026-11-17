@@ -19,8 +19,12 @@ import {
   type ActiveRadius,
   type AngleKind,
   type AngleMeasurement,
+  type PointerInput,
   type MeasureMode,
+  type MeasurePoint,
+  type Measurement,
 } from '@/store/types';
+import type { PlacedMeasurePoint } from '@/store/slices/measurePointSlice';
 import { formatDistance } from '../formatDistance';
 import { formatThreePointAngle, threePointAngle, type ThreePointAngle } from './three-point-angle';
 import { edgePairAngle, facePairAngle, formatAnglePair, type AnglePairOutcome } from './edge-face-angle';
@@ -35,12 +39,13 @@ export const ANGLE_KIND_LABELS: ReadonlyArray<readonly [AngleKind, TranslationKe
   ['faces', 'measure.angleKind.faces.label', 'measure.angleKind.faces.hint'],
 ];
 
-/** The four measure modes in UI order, with their label keys. */
+/** The five measure modes in UI order, with their label keys. */
 export const MEASURE_MODE_LABELS: ReadonlyArray<readonly [MeasureMode, TranslationKey]> = [
   ['drag', 'measure.mode.distance'],
   ['polyline', 'measure.mode.polyline'],
   ['angle', 'measure.mode.angle'],
   ['radius', 'measure.mode.radius'],
+  ['point', 'measure.mode.point'],
 ];
 
 /**
@@ -70,15 +75,48 @@ export interface MeasureHintState {
   activePolyline: ActivePolyline | null;
   activeRadius: ActiveRadius | null;
   activeMeasurement: ActiveMeasurement | null;
+  measurePointLast: MeasurePoint | null;
+  pointerInput: PointerInput;
 }
+
+/**
+ * Tap wording for the hints a tap can act on (#8879): no click, Shift, Esc or
+ * Enter, none of which a touch user has. Polyline and Radius in progress name
+ * the ✓ in List, touch's finish (#8991).
+ */
+const TOUCH_HINT_KEYS: Partial<Record<TranslationKey, TranslationKey>> = {
+  'measure.hint.dragStart': 'measure.hint.dragStartTouch',
+  'measure.hint.dragActive': 'measure.hint.dragActiveTouch',
+  'measure.hint.pointStart': 'measure.hint.pointStartTouch',
+  'measure.hint.pointActive': 'measure.hint.pointActiveTouch',
+  'measure.hint.polylineStart': 'measure.hint.polylineStartTouch',
+  'measure.hint.radiusStart': 'measure.hint.radiusStartTouch',
+  'measure.hint.polylineActive': 'measure.hint.polylineActiveTouch',
+  'measure.hint.radiusActive': 'measure.hint.radiusActiveTouch',
+  'measure.hint.faces.first': 'measure.hint.faces.firstTouch',
+  'measure.hint.faces.second': 'measure.hint.faces.secondTouch',
+  'measure.hint.edges.firstStart': 'measure.hint.edges.firstStartTouch',
+  'measure.hint.edges.firstEnd': 'measure.hint.edges.firstEndTouch',
+  'measure.hint.edges.secondStart': 'measure.hint.edges.secondStartTouch',
+  'measure.hint.edges.secondEnd': 'measure.hint.edges.secondEndTouch',
+  'measure.hint.points.apex': 'measure.hint.points.apexTouch',
+  'measure.hint.points.first': 'measure.hint.points.firstTouch',
+  'measure.hint.points.second': 'measure.hint.points.secondTouch',
+};
 
 /**
  * The one hint line for the HUD's bottom-center region. In angle and radius
  * modes `activeMeasurement` is always null (the drag gate refuses to start
  * one), so those branches name the gesture that actually works instead of
- * falling through to "Drag to measure".
+ * falling through to "Click to set the start point". After a tap the hint is
+ * tap-worded where {@link TOUCH_HINT_KEYS} has a variant (#8879).
  */
 export function measureHintKey(s: MeasureHintState): TranslationKey {
+  const key = mouseHintKey(s);
+  return s.pointerInput === 'touch' ? TOUCH_HINT_KEYS[key] ?? key : key;
+}
+
+function mouseHintKey(s: MeasureHintState): TranslationKey {
   switch (s.measureMode) {
     case 'polyline':
       return s.activePolyline ? 'measure.hint.polylineActive' : 'measure.hint.polylineStart';
@@ -88,7 +126,38 @@ export function measureHintKey(s: MeasureHintState): TranslationKey {
       return s.activeRadius ? 'measure.hint.radiusActive' : 'measure.hint.radiusStart';
     case 'drag':
       return s.activeMeasurement ? 'measure.hint.dragActive' : 'measure.hint.dragStart';
+    case 'point':
+      return s.measurePointLast ? 'measure.hint.pointActive' : 'measure.hint.pointStart';
   }
+}
+
+export interface MeasureLivePointState {
+  measureMode: MeasureMode;
+  activeMeasurement: ActiveMeasurement | null;
+  measurements: readonly Measurement[];
+  measurePointLive: MeasurePoint | null;
+  measurePointLast: PlacedMeasurePoint | null;
+}
+
+/**
+ * The point every coordinate readout shows, and whether it is still moving. A
+ * reading that is not live names the stored measurement it came from, so the
+ * readout can carry that measurement's Stale badge once its model moves (#8828).
+ * Point mode reads its own hover/placed point (#8770) and nothing else, so a
+ * distance endpoint never shows up as a picked point there. Every other mode
+ * keeps the rule the readouts always had: the moving end of the current drag,
+ * else the end of the last finished distance.
+ */
+export type MeasureLivePoint = { point: MeasurePoint; live: true } | { point: MeasurePoint; live: false; id: string };
+
+export function measureLivePoint(s: MeasureLivePointState): MeasureLivePoint | null {
+  if (s.measureMode === 'point') {
+    if (s.measurePointLive) return { point: s.measurePointLive, live: true };
+    return s.measurePointLast ? { point: s.measurePointLast, live: false, id: s.measurePointLast.id } : null;
+  }
+  if (s.activeMeasurement) return { point: s.activeMeasurement.current, live: true };
+  const last = s.measurements[s.measurements.length - 1];
+  return last ? { point: last.end, live: false, id: last.id } : null;
 }
 
 /**

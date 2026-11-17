@@ -134,8 +134,8 @@ describe('BCF parser rejects a coordinate that is not a real number (#2466)', ()
   });
 
   it('drops an orthogonal camera whose ViewToWorldScale is not a real number', async () => {
-    // This one becomes the orthographic half-height, which `getOrthoSize()`
-    // hands back into a saved viewpoint — so it persists past the session.
+    // The viewer halves this full view height at the camera boundary; without
+    // validation, a non-finite value could persist into a later saved viewpoint.
     const bytes = await malformedArchive('OrthogonalCamera.bcf', (xml) =>
       xml.replace(/<ViewToWorldScale>[^<]*<\/ViewToWorldScale>/, '<ViewToWorldScale>NaN</ViewToWorldScale>'));
     const { viewpoint } = await firstViewpoint(bytes);

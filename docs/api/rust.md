@@ -691,12 +691,17 @@ pub fn meshed_representations(element, representations) -> impl Iterator; // = S
 `NestedMaps::Expand { max_depth, max_levels }` bounds branching work in the
 walker. Use `MAX_WALK_LEVELS` (65,536) as the default allowance.
 Two independent counters share that limit: mapped-level attempts (after depth
-and cycle checks, before resolving the source) and total `Items` members.
-Every expanded occurrence pays again, including repeated valid DAG nodes. Each full list
-is charged before allocating or decoding its members, including ignored
-non-reference members. Product representations share the counters; each public
-walk call starts fresh. This bounds expansion work, not source parsing or
-visitor-owned computation.
+and cycle checks, before resolving the source) and `Items` members. Every
+attempt pays, distinct mapped item or not, because each one expands a shared
+source. A first read of a distinct `Items` list pays only for references that
+repeat an earlier one in the same list; its distinct items are bounded by the
+file itself and free, so one wide list of distinct items is never refused
+(#9102). A repeated read pays every member, including repeated valid DAG nodes
+and ignored non-reference members.
+Each charge is admitted before allocating or decoding the list's members.
+Product representations share the counters; each public walk call starts
+fresh. This bounds expansion work, not source parsing or visitor-owned
+computation.
 
 Exhaustion reports one `WalkRefusal::Budget { max_levels }` and stops the entire
 walk, unwinding every entered level. A root-list refusal identifies the
@@ -780,10 +785,12 @@ API assessment; no new cargo-semver-checks measurement is claimed.
 The ordinary renderer remains owned by GeometryProgram/MappingControl. Its
 separate internal Class X policy (#7873) gives each controller invocation two
 independent 65,536 allowances: reached mapped attempts and materialized Items
-members. The four source-list boundaries precharge the full list, including
-ignored non-reference members, before decoding it. Repeated DAG occurrences
-pay again; cache hits and don't-bake skips can avoid child-list charges, but
-still pay their mapped attempt. Existing path/depth checks take precedence.
+members. Every mapped attempt pays, including cache hits and don't-bake skips,
+which avoid child-list charges but still pay their attempt. The four
+source-list boundaries charge a repeated list in full, including ignored
+non-reference members, before decoding it; a controller's first read of a
+distinct list pays only for its repeated references (#9102). Existing
+path/depth checks take precedence.
 
 A typed logical refusal is distinct from resource/cancellation `ProgramStop`.
 Root refusal returns an error. Nested refusal reports once under its parent's
@@ -1308,6 +1315,10 @@ pub use gltf::{export_gltf_streaming, try_export_glb, try_export_glb_from_meshes
 // assembler carries them; `quantize`, the bounded GLB and multi-buffer glTF
 // refuse with `ExportError::UnsupportedOption`, and a textured mesh whose
 // appearance is incomplete is `ExportError::IncompleteAppearance`, never solid colour.
+// `GltfOptions::with_name_by_global_id(true)` (default off, #9011) makes each IFC
+// element one node under the scene, named by its `GlobalId`, holding its part
+// nodes, with a copy of the root's translation and site rotation, so poses,
+// geometry and materials are unchanged. All three from-bytes assemblers apply it.
 pub use ifc_lite_processing::TessellationQuality;
 pub use hbjson::Model;
 pub use ifc5::{export_ifc5, Ifc5Options};
@@ -1317,6 +1328,7 @@ pub use kmz::{ifc_angle_to_kml_heading, try_export_kmz_collada_from_meshes, KmzO
 pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 pub use step::{export_step, export_step_json, export_step_with_stats,
+               export_step_with_diagnostics, export_step_to_writer_with_diagnostics,
                AttrMutation, PropMutation, StepOptions, StepStats};
 // A `MutablePropertyView.exportMutations()` log, applied with byte parity to
 // the TypeScript `StepExporter` (#5941). `MutationLog::from_json` reads the log.
@@ -1401,7 +1413,15 @@ edited models through `StepExporter`, and its georeferencing edits are not
 applied (reported in `MergedStats::warnings`), as the TypeScript bake passes
 none.
 
-`export_step_with_stats` returns `StepStats`. `total` and `written` describe
+`export_step_with_diagnostics` returns `(String, StepStats, Vec<String>)`;
+`export_step_to_writer_with_diagnostics` streams the output and returns
+`(StepStats, Vec<String>)`. The warning list exposes named conversion losses.
+For example, downgrading an IFC4 point connection with
+`ConditionCoordinateSystem` reports that its restraint directions are not
+preserved. Inspect these warnings alongside the counters.
+
+`export_step_with_stats` retains its `(String, StepStats)` return type and
+counter-only contract. `total` and `written` describe
 the selected entity set. The remaining counters are validity or refusal
 signals that callers should inspect: `copies_refused` counts copy-on-write
 edits that were not emitted, `refused_refs` counts out-of-range STEP
@@ -1581,7 +1601,12 @@ impl IfcAPI {
         isolated: &[u32],
         hidden_types_csv: String,
         lit: Option<bool>,
+        emissive: Option<bool>,
     ) -> Result<Vec<u8>, JsValue>;
+
+    /// `export_glb` with each element one node named by its GlobalId (#9011)
+    #[wasm_bindgen(js_name = exportGlbNamedByGlobalId)]
+    pub fn export_glb_named_by_global_id(/* the same parameters */) -> Result<Vec<u8>, JsValue>;
 
     /// Export CSV (entities / properties / quantities / spatial)
     #[wasm_bindgen(js_name = exportCsv)]
@@ -1916,3 +1941,7 @@ browser source-keyword recovery. `RouterDrain::take` drains router-wide counters
 at the corresponding job or batch boundary. Both schedulers still plan and
 produce through `produce_element_meshes_owned` and its immutable context/session.
 Native worker caches and browser wire/source ownership stay scheduler-owned.
+
+## Diff value projection
+
+`ifc_lite_diff::fingerprint::canonical_value_string` exposes the text portion of property-value normalization for adapters. Strings remain verbatim; non-finite scalar numbers use their ECMAScript tokens; arrays and objects use the diff engine’s sorted-key JSON form. Null, booleans and finite numbers return `None` because they retain their scalar type. This shares serialization with fingerprint generation instead of introducing an adapter-specific JSON encoding.

@@ -20,6 +20,7 @@ import { cleanup } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
+import { formFactorState } from '@/test/form-factor-state';
 
 const MODEL_ID = 'model-a';
 
@@ -52,7 +53,7 @@ describe('ViewerLayout — unexported-edits unload guard (#5604)', () => {
   beforeEach(() => {
     useViewerStore.setState({
       models: new Map([[MODEL_ID, makeModel()]]),
-      isMobile: false,
+      ...formFactorState(false),
       leftPanelCollapsed: true,
       rightPanelCollapsed: true,
       mutationViews: new Map(),

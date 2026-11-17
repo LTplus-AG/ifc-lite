@@ -89,7 +89,7 @@ export function TourSpotlight({ targetEl }: { targetEl: HTMLElement }) {
         width="100%"
         height="100%"
         mask="url(#tour-spotlight-mask)"
-        className="fill-black/35 dark:fill-black/50"
+        className="fill-scrim/35 dark:fill-scrim/50"
       />
       <rect
         {...hole}

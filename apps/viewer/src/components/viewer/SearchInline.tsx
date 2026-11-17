@@ -41,12 +41,14 @@ import {
   pushRecentSearch,
   clearRecentSearches,
 } from '@/lib/search/recent-searches';
+import { useInlineSearchFocus } from './inline-search-focus';
 import { VimCycleHint, RecentsPopoverBody, SearchPopoverBody } from './SearchInlinePopoverBody';
 
 const DEBOUNCE_MS = 80;
 const RESULT_LIMIT = 50;
 
-export function SearchInline() {
+/** `compact`: the 28px field the ribbon's 32px tab strip hosts (#8802 R1). */
+export function SearchInline({ compact = false }: { compact?: boolean } = {}) {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -140,7 +142,9 @@ export function SearchInline() {
         t1.push(record.index);
       } else {
         t0.push({ id: m.id, ifcDataStore: m.ifcDataStore });
-        if (record?.status === 'building') building += 1;
+        // Still indexing until ready or failed: the build waits for a load to
+        // settle (useSearchIndex), so a model can have no record or a pending one.
+        if (record?.status !== 'error' && record?.status !== 'ready') building += 1;
       }
     }
     return { tier0Models: t0, tier1Indexes: t1, indexingCount: building };
@@ -295,14 +299,7 @@ export function SearchInline() {
     if (current) applySelection(current, false);
   }, [searchVimCycle, applySelection]);
 
-  /** Global `/` and ⌘F / Ctrl+F shortcuts to focus the field. */
-  useEffect(() => {
-    return registerKeyboardCommand('search.focus', () => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-      setSearchOpen(true);
-    }, { allowInTextEntry: (event) => event.ctrlKey || event.metaKey });
-  }, [setSearchOpen]);
+  useInlineSearchFocus(inputRef);
 
   useEffect(() => registerKeyboardCommand('search.openAdvancedFromField', () => {
     setSearchOpen(false);
@@ -403,7 +400,7 @@ export function SearchInline() {
       }}
     >
       <PopoverAnchor asChild>
-        <div ref={containerRef} className="relative w-72">
+        <div ref={containerRef} className="relative w-72 max-w-full">
           <Input
             ref={inputRef}
             type="text"
@@ -416,7 +413,7 @@ export function SearchInline() {
             }}
             onFocus={() => setSearchOpen(true)}
             onKeyDown={handleInputKeyDown}
-            className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9')}
+            className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9', compact && 'h-7 bg-raised text-xs shadow-none')}
             // Input renders a native input; the combobox role permits its expanded state.
             // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
             role="combobox"
@@ -432,11 +429,9 @@ export function SearchInline() {
                 type="button"
                 aria-label={t('searchModal.inline.clearFiltersAriaLabel')}
                 title={t('searchModal.inline.clearFiltersAriaLabel')}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  clearAllFilterGroups();
-                }}
-                className="rounded p-1 text-muted-foreground transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={clearAllFilterGroups}
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -446,16 +441,14 @@ export function SearchInline() {
               aria-label={hasFilters ? t('searchModal.inline.advancedFilterActiveAriaLabel', { count: activeRuleCount }) : t('searchModal.inline.advancedFilter')}
               aria-pressed={hasFilters}
               title={t('searchModal.inline.advancedFilterTitle', { keys: shortcutLabel('search.openAdvanced') })}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                openAdvancedFilter();
-              }}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={openAdvancedFilter}
               className={cn(
                 // Height-only hit-slop to 24px (#5826); `inset-x-0` avoids the 2px neighbour gap.
                 'relative flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors after:absolute after:inset-x-0 after:-top-px after:-bottom-px after:content-[""] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                 hasFilters
                   ? 'bg-primary/10 text-primary hover:bg-primary/15'
-                  : 'text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800',
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               )}
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -476,7 +469,7 @@ export function SearchInline() {
           `handleInputKeyDown` above), so autofocus into — and back out
           of — the content is suppressed on both ends. Radix still owns
           Esc and outside-click dismissal (`onOpenChange` above) and the
-          `PointerEvent`s a `mousedown`-based row pick needs pass through
+          `PointerEvent`s a pointer row pick needs pass through
           unchanged, since neither listener intercepts them.
           `onFocusOutside` is suppressed for the Anchor: the input is a
           SIBLING of Content, not a descendant of it, so — without this —
@@ -507,7 +500,7 @@ export function SearchInline() {
           if (target && containerRef.current?.contains(target)) e.preventDefault();
         }}
         style={{ width: 'var(--radix-popper-anchor-width)' }}
-        className="w-72 rounded-md border border-zinc-200 bg-white p-0 shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
+        className="w-72 rounded-md border border-border bg-popover p-0 shadow-lg"
       >
         {showRecents ? (
           <RecentsPopoverBody

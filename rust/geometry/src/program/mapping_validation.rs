@@ -317,11 +317,11 @@ pub(super) fn map(
 ) -> SourceResult<(DecodedEntity, Vec<DecodedEntity>)> {
     let representation =
         representation(map, decoder).map_err(|error| error.into_common(selection))?;
-    let count = representation
+    let members = representation
         .get(slot::IfcRepresentation::ITEMS.index())
         .and_then(AttributeValue::as_list)
-        .map_or(0, |items| items.len());
-    budget.materialize_items(count)?;
+        .unwrap_or(&[]);
+    budget.materialize_items(representation.id, members)?;
     let items = items(&representation, decoder).map_err(|error| error.into_common(selection))?;
     Ok((representation, items))
 }

@@ -6,12 +6,16 @@ import type { TranslationValue } from '../types';
 
 /** The Model inspector side panel (charter #6232, M2). IFC class names and unit symbols stay untranslated. */
 export const modelInspectorEn = {
+  "modelInspector.multipleModels": "Select elements from one model to edit them together.",
+  'modelInspector.unavailable': 'Unavailable element',
+  'modelInspector.multiple': '{count} selected elements',
   'modelInspector.panel.title': 'Model inspector',
   'modelInspector.close': 'Close the Model inspector',
   'modelInspector.empty.noSession': 'Enter the Model workspace to edit',
   'modelInspector.empty.enter': 'Model',
   'modelInspector.empty.noModel': 'Load or start a model first',
   'modelInspector.empty.idle': 'Pick a tool in the rail, or select an element',
+  'modelInspector.empty.command': 'This tool has no defaults to edit here. Its options are in the bar over the viewport.',
   'modelInspector.header.defaults': 'Defaults · {kind}',
   'modelInspector.header.selection': '{ifcClass} #{id}',
   'modelInspector.header.selectionOnStorey': '{ifcClass} #{id} · {storey}',
@@ -71,5 +75,9 @@ export const modelInspectorEn = {
   'modelInspector.layers.defaultsHint': 'New elements get these layers.',
   'modelInspector.layers.needName': 'Name each new material',
   'modelInspector.layers.needLayer': 'Give every layer a thickness greater than zero',
+  'modelInspector.layers.typeScope': { one: 'Changes {countDisplay} element of this type, with its joins and generated rooms.', other: 'Changes {countDisplay} elements of this type, with their joins and generated rooms.' },
+  'modelInspector.layers.typeOwnLayers': { one: '{countDisplay} uses a different layer set or material and keeps it.', other: '{countDisplay} use a different layer set or material and keep it.' },
+  'modelInspector.layers.notFollowed': { one: '{countDisplay} element kept its previous body:', other: '{countDisplay} elements kept their previous body:' },
+  'modelInspector.layers.keptBody': '{name}: {reason}',
   'modelInspector.hosting.title': 'Hosting',
 } as const satisfies Record<string, TranslationValue>;

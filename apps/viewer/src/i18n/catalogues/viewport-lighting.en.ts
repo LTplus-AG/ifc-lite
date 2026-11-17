@@ -29,45 +29,60 @@ import type { TranslationValue } from '../types';
  * translated here.
  */
 export const viewportLightingEn = {
+  "viewportLighting.container.loadErrorCard.sourceTooLarge": "This IFC file exceeds the size the in-browser engine can load. Each source must be smaller than {limit}. Export smaller files or use the native CLI/server.",
   // ── ViewportContainer.tsx — empty/welcome state ──────────────────────
   'viewportLighting.container.emptyState.dropOverlay.title': 'Drop File to Load',
   'viewportLighting.container.emptyState.webgpuBanner.heading': 'WebGPU Not Available',
   'viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport': 'Check Browser Support',
   'viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers':
-    'Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 18+',
+    'Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 26+',
   'viewportLighting.container.emptyState.webgpuBanner.hideTroubleshooting': 'Hide Troubleshooting',
   'viewportLighting.container.emptyState.webgpuBanner.showTroubleshooting': 'Show Troubleshooting',
-  'viewportLighting.container.emptyState.logoAlt': 'IFClite Logo',
-  'viewportLighting.container.emptyState.title': 'IFClite',
-  'viewportLighting.container.emptyState.tagline': 'IFC toolkit for the open web',
+  'viewportLighting.container.emptyState.heading': 'Open a model',
+  'viewportLighting.container.emptyState.lead.returning': 'Pick a file from your computer, or continue where you left off.',
+  'viewportLighting.container.emptyState.lead.firstVisit': 'Pick a file from your computer, or start from one of the samples below.',
+  'viewportLighting.container.emptyState.hostOpens.heading': 'No model open',
+  'viewportLighting.container.emptyState.hostOpens.lead': 'Open a model from the page that brought you here.',
+  'viewportLighting.container.emptyState.recentFiles.reopen': 'Reopen',
+  'viewportLighting.container.emptyState.recentFiles.locate': 'Locate…',
+  'viewportLighting.container.emptyState.recentFiles.locateHint': 'Too large to keep in this browser. Choose the file again to open it.',
+  'viewportLighting.container.emptyState.noModel.heading': 'No model handy?',
+  'viewportLighting.container.emptyState.noModel.demoHint': 'A small sample building',
+  'viewportLighting.container.emptyState.noModel.layersHint': 'Stack .ifcx layers',
+  'viewportLighting.container.emptyState.noModel.llmHint': 'Connect an agent via MCP',
+  'viewportLighting.container.emptyState.scene.layerOf': 'Layer {index} of {count} · {file}',
+  'viewportLighting.container.emptyState.scene.metres': '{value} m',
   'viewportLighting.container.emptyState.openButton.checking': 'Checking WebGPU...',
   'viewportLighting.container.emptyState.openButton.open': 'Open model file',
   'viewportLighting.container.emptyState.openButton.required': 'WebGPU Required',
-  'viewportLighting.container.emptyState.dragDropHint': 'or drop files here',
-  'viewportLighting.container.emptyState.orDivider': 'or',
+  'viewportLighting.container.emptyState.dragDropHint': 'Or drop files anywhere in the viewport:',
+  // Family names for the format list under the hint; the extensions come
+  // from `DROP_FORMAT_GROUPS` in services/supported-model-files.ts.
+  'viewportLighting.container.emptyState.formats.ifc': 'IFC',
+  'viewportLighting.container.emptyState.formats.gltf': 'glTF',
+  'viewportLighting.container.emptyState.formats.rhino': 'Rhino',
+  'viewportLighting.container.emptyState.formats.pointClouds': 'Point clouds',
+  'viewportLighting.container.emptyState.formats.terrain': 'Terrain',
+  'viewportLighting.container.emptyState.formats.underlays': 'Underlays',
+  'viewportLighting.container.emptyState.formats.splats': 'Splats',
   'viewportLighting.container.emptyState.startBlank': 'Start blank',
   'viewportLighting.container.emptyState.openFromCloud': 'Open from cloud',
   'viewportLighting.container.emptyState.driveWithLlm': 'Drive with any LLM',
-  'viewportLighting.container.emptyState.footerCaption': 'new untitled project · or LLM via MCP',
-  'viewportLighting.container.emptyState.recentFiles.heading': 'Recent Files',
+  'viewportLighting.container.emptyState.recentFiles.heading': 'Recent',
   // Privacy footnote (#5119): the visible line itself is the shared
   // `keyboardShortcuts.privacy.banner` key; this is only the tooltip on the
   // click-through to the About tab where the WASM/F12 detail lives.
   'viewportLighting.container.emptyState.privacyDetailsHint': 'How your data stays on your device',
-  // First-run primary action (#5840): the demo-kit sample, loaded through
-  // the same `loadFile` as any user file.
-  'viewportLighting.container.emptyState.loadDemo.button': 'Load demo project',
-  'viewportLighting.container.emptyState.loadDemo.caption': 'A small sample building. No account, nothing uploaded.',
+  // The demo-kit sample (#5840), loaded through the same `loadFile` as any
+  // user file. Listed under "No model handy?", after the user's own file.
+  'viewportLighting.container.emptyState.loadDemo.button': 'Demo project',
   'viewportLighting.container.emptyState.loadDemo.failed': 'The demo project could not be loaded. Check your connection and try again.',
-  'viewportLighting.container.emptyState.layersDemo': 'Try the Layers demo',
+  'viewportLighting.container.emptyState.layersDemo': 'Layers demo',
   'viewportLighting.container.emptyState.footer.discoverPrompt': 'New here?',
   'viewportLighting.container.emptyState.footer.discoverLink': 'ifclite.dev →',
-  'viewportLighting.container.emptyState.footer.shortcutsLabel': 'SHORTCUTS',
+  'viewportLighting.container.emptyState.footer.shortcutsLabel': 'Shortcuts',
   // ── ViewportContainer.tsx — loaded-model "Add Model" drop overlay ────
-  // ── ViewportLoadingCard.tsx — in-viewport load progress + Cancel (#5849) ─
-  'viewportLighting.container.loadingCard.title': 'Loading {name}',
-  'viewportLighting.container.loadingCard.titleFallback': 'Loading model…',
-  'viewportLighting.container.loadingCard.cancel': 'Cancel',
+
   // ── ViewportLoadErrorCard.tsx — one load-error card for every load
   // path: the picker, drop, ?model= autoload and federated adds (#5851) ──
   'viewportLighting.container.loadErrorCard.invalidInput': 'This file is invalid or is not in the expected format. Check the file type, or export a new copy and open it again.',
@@ -78,6 +93,18 @@ export const viewportLightingEn = {
   'viewportLighting.container.loadErrorCard.webgpuUnsupported':
     "This browser can't run the WebGPU renderer this viewer needs. Try a recent Chrome, Edge, Firefox or Safari — see the browser-support link at the top of the viewer.",
   'viewportLighting.container.modelUrlAutoload.malformedUrl': 'The linked model address is not a valid URL.',
+  'viewportLighting.container.processedModelAutoload.malformedLink': 'The model link is incomplete or damaged.',
+  'viewportLighting.container.processedModel.notPrimary': 'A processed model can only be opened as the first model.',
+  'viewportLighting.container.processedModel.noServer': 'No processing server is configured for this viewer, so processed models cannot be opened.',
+  'viewportLighting.container.processedModel.unreachable': 'The configured processing server cannot be reached from this page.',
+  'viewportLighting.container.processedModel.unsupported': 'This browser cannot open processed models: it lacks the Parquet support they need.',
+  'viewportLighting.container.processedModel.notStored': 'This model is not available on the server (yet).',
+  'viewportLighting.container.processedModel.forbidden': 'You have no access to this model.',
+  'viewportLighting.container.processedModel.busy': 'The processing server is busy. Try again in a moment.',
+  'viewportLighting.container.processedModel.serverError': 'The processing server failed to send this model. Try again.',
+  'viewportLighting.container.processedModel.refused': 'The processing server refused this model ({status}).',
+  'viewportLighting.container.processedModel.network': 'The processed model could not be loaded from the server. Check the connection and try again.',
+  'viewportLighting.container.processedModel.unknown': 'The processed model could not be opened, and no cause was reported. Try again.',
   'viewportLighting.container.modelUrlAutoload.crossOrigin':
     "The linked model is hosted on a different site, so it was not loaded for your safety.",
   'viewportLighting.container.modelUrlAutoload.fetchFailed': 'The linked model could not be downloaded: {reason}',
@@ -111,7 +138,7 @@ export const viewportLightingEn = {
   // ── Viewport.tsx — renderer init failure fallback ────────────────────
   'viewportLighting.viewport.renderFailed.title': '3D Rendering Failed',
   'viewportLighting.viewport.renderFailed.browserHint':
-    'Try using Chrome 113+, Edge 113+, or Safari 18+ with WebGPU support.',
+    'Try using Chrome 113+, Edge 113+, or Safari 26+ with WebGPU support.',
 
   // ── FlySpeedIndicator.tsx — fly-mode speed HUD ───────────────────────
   'viewportLighting.flySpeed.label': 'Fly speed {level}/{total}',
@@ -208,4 +235,5 @@ export const viewportLightingEn = {
   'viewportLighting.sunSkyPanel.sunStudy.readout.sunset': 'Sunset',
   'viewportLighting.sunSkyPanel.sunStudy.readout.noon': 'Noon',
   'viewportLighting.sunSkyPanel.sunStudy.readout.site': 'Site',
+  'viewportLighting.mobileToolbar.loadingLabel': 'Loading model…',
 } as const satisfies Record<string, TranslationValue>;

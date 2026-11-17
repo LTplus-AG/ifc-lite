@@ -517,6 +517,7 @@ export class PointCloudSpatialIndex {
     best: { hit: PointCloudRayHit | null },
     slabAxis: -1 | 0 | 1 | 2 = -1,
     slabDir: -1 | 1 = 1,
+    accept?: (point: Vec3) => boolean,
   ): void {
     const r = radiusCells;
     const lead = slabDir * r;
@@ -559,7 +560,7 @@ export class PointCloudSpatialIndex {
             const o = local * 3;
             const p = { x: chunk.positions[o], y: chunk.positions[o + 1], z: chunk.positions[o + 2] };
             const hit = this.testPoint(p, origin, dir, maxDistance, toleranceAt);
-            if (hit && (!best.hit || hit.distance < best.hit.distance)) best.hit = hit;
+            if (hit && (!best.hit || hit.distance < best.hit.distance) && (!accept || accept(p))) best.hit = hit;
           }
         }
       }
@@ -595,23 +596,21 @@ export class PointCloudSpatialIndex {
     /** Normalized 8-word LAS class visibility bitmask (#1783); points of
      *  hidden classes are skipped. Omit/null for "everything visible". */
     classMask?: Uint32Array | null,
+    /** Skips a point without ending the search, so a section-clipped point cannot shadow a visible one behind it. */
+    accept?: (point: Vec3) => boolean,
   ): PointCloudRayHit | null {
     if (this.total === 0 || maxDistance <= 0) return null;
     const bounds = this.getBounds();
     if (!bounds) return null;
 
     const cs = this.cellSize;
-    // Pad the coarse bounding-box cull by the MAX possible dilation
-    // radius (not just one cell): `bounds` is the exact (often
-    // near-zero-thickness, e.g. a flat wall scan) extent of the indexed
-    // points, so an UNPADDED box/ray test would reject a ray that
-    // passes close to — but not exactly through — the box, even though
-    // a point within tolerance sits just past its face. Since the
-    // per-cell dilation radius below can grow up to
-    // `MAX_DILATION_RADIUS_CELLS` cells at long range, the outer cull
-    // must be padded by the same amount or a ray whose only near-miss
-    // is right at the cloud's edge could be rejected before the march
-    // even starts.
+    // Pad the coarse bounding-box cull by the MAX dilation radius, not one
+    // cell: `bounds` is the exact (often near-zero-thickness, e.g. a flat
+    // wall scan) extent of the points, so an UNPADDED test rejects a ray
+    // passing just outside the box though a point within tolerance sits
+    // past its face. The per-cell radius below grows up to
+    // `MAX_DILATION_RADIUS_CELLS` at long range, so the cull pads the same
+    // or a near-miss at the cloud's edge is rejected before the march starts.
     const maxPad = MAX_DILATION_RADIUS_CELLS * cs;
     const paddedBounds = {
       min: { x: bounds.min.x - maxPad, y: bounds.min.y - maxPad, z: bounds.min.z - maxPad },
@@ -691,7 +690,7 @@ export class PointCloudSpatialIndex {
       const slabAxis = radius === prevRadius ? steppedAxis : -1;
       this.testCellNeighborhood(
         cx, cy, cz, radius, origin, dir, tMax, toleranceAt, classMask, visited, best,
-        slabAxis, steppedDir,
+        slabAxis, steppedDir, accept,
       );
       prevRadius = radius;
 

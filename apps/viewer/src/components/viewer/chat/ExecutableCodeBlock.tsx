@@ -196,7 +196,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
           size="icon-xs"
           onClick={handleCopy}
         >
-          {copied ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+          {copied ? <CheckCircle2 className="h-3 w-3 text-ok" /> : <Copy className="h-3 w-3" />}
         </IconButton>
         <IconButton
           label={t('chat.codeBlock.applyToSelection')}
@@ -255,10 +255,10 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
             <Terminal className="h-3 w-3 shrink-0" />
             <span className="text-2xs font-mono uppercase tracking-wider">{t('chat.codeBlock.console')}</span>
             {isRunning && (
-              <Spinner size="xs" className="ml-1 text-blue-500" />
+              <Spinner size="xs" className="ml-1 text-info" />
             )}
             {result?.status === 'success' && (
-              <CheckCircle2 className="h-3 w-3 ml-1 text-emerald-500" />
+              <CheckCircle2 className="h-3 w-3 ml-1 text-ok" />
             )}
             {result?.status === 'error' && (
               <AlertCircle className="h-3 w-3 ml-1 text-destructive" />
@@ -275,7 +275,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
             <div className="bg-muted px-2 py-1.5 text-xs font-mono max-h-[200px] overflow-y-auto">
               {/* Running indicator */}
               {isRunning && (!hasLogs) && (
-                <div className="flex items-center gap-1.5 text-blue-500 py-0.5">
+                <div className="flex items-center gap-1.5 text-info py-0.5">
                   <Spinner size="xs" />
                   <span>{t('chat.codeBlock.executingScript')}</span>
                 </div>
@@ -288,8 +288,8 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
                   className={cn(
                     'flex items-start gap-1.5 py-0.5 leading-relaxed',
                     log.level === 'error' && 'text-destructive',
-                    log.level === 'warn' && 'text-amber-500',
-                    log.level === 'info' && 'text-blue-500',
+                    log.level === 'warn' && 'text-warn',
+                    log.level === 'info' && 'text-info',
                     log.level === 'log' && 'text-foreground',
                   )}
                 >
@@ -310,7 +310,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
 
               {/* Return value */}
               {result?.status === 'success' && result.value !== undefined && result.value !== null && (
-                <div className="flex items-start gap-1.5 py-0.5 text-emerald-500 border-t border-border mt-1 pt-1">
+                <div className="flex items-start gap-1.5 py-0.5 text-ok border-t border-border mt-1 pt-1">
                   <span className="shrink-0 w-3 text-center opacity-60">←</span>
                   <span className="whitespace-pre-wrap break-all">
                     {typeof result.value === 'object'
@@ -322,7 +322,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
 
               {/* Success footer */}
               {result?.status === 'success' && (
-                <div className="flex items-center gap-1 text-emerald-500 border-t border-border mt-1 pt-1">
+                <div className="flex items-center gap-1 text-ok border-t border-border mt-1 pt-1">
                   <CheckCircle2 className="h-3 w-3" />
                   <span>{result.durationMs !== undefined ? t('chat.codeBlock.doneWithDuration', { ms: result.durationMs }) : t('chat.codeBlock.done')}</span>
                 </div>

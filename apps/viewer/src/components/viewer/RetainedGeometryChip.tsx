@@ -11,7 +11,8 @@
  * Renders nothing unless a model carries a retained summary.
  */
 
-import { useState } from 'react';
+import { OPEN_RETAINED_REPORT, registerRetainedReportHost } from './retained-report-destination';
+import { useEffect, useState } from 'react';
 import { Shapes } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -29,13 +30,16 @@ function chipState(summary: RetainedGeometrySummary): 'running' | 'complete' | '
 }
 
 export function RetainedGeometryChip({ reload }: RetainedGeometryChipProps) {
-  // The model object itself: a stable reference until the model changes.
-  const model = useViewerStore((state) => {
-    for (const candidate of state.models.values()) if (candidate.retainedGeometry) return candidate;
+  // Only the summary and source, not the model: streaming geometry replaces the
+  // model record per batch, and the summary changes at most once per interval.
+  const modelId = useViewerStore((state) => {
+    for (const candidate of state.models.values()) if (candidate.retainedGeometry) return candidate.id;
     return null;
   });
-  if (!model?.retainedGeometry) return null;
-  return <RetainedGeometryChipBody modelId={model.id} summary={model.retainedGeometry} sourceFile={model.sourceFile} reload={reload} />;
+  const summary = useViewerStore((state) => (modelId ? state.models.get(modelId)?.retainedGeometry : undefined));
+  const sourceFile = useViewerStore((state) => (modelId ? state.models.get(modelId)?.sourceFile : undefined));
+  if (!modelId || !summary) return null;
+  return <RetainedGeometryChipBody modelId={modelId} summary={summary} sourceFile={sourceFile} reload={reload} />;
 }
 
 function RetainedGeometryChipBody({ modelId, summary, sourceFile, reload }: {
@@ -43,6 +47,12 @@ function RetainedGeometryChipBody({ modelId, summary, sourceFile, reload }: {
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const openReport = () => setOpen(true);
+    window.addEventListener(OPEN_RETAINED_REPORT, openReport);
+    const release = registerRetainedReportHost();
+    return () => { window.removeEventListener(OPEN_RETAINED_REPORT, openReport); release(); };
+  }, []);
   const obligations = useObligationList(summary.obligationsUnmet);
   const state = chipState(summary);
   const refused = summary.refused.length - summary.cancelled;
@@ -65,7 +75,7 @@ function RetainedGeometryChipBody({ modelId, summary, sourceFile, reload }: {
           data-retained-chip={state} className="flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-left hover:bg-accent">
           <Shapes aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 tabular-nums">{label}</span>
-          <span className={state === 'complete' ? 'shrink-0 text-muted-foreground' : 'shrink-0 font-medium text-amber-600 dark:text-amber-400'}>
+          <span className={state === 'complete' ? 'shrink-0 text-muted-foreground' : 'shrink-0 font-medium text-warn'}>
             {t(`retainedGeometry.chip.state.${state}`)}
           </span>
         </button>

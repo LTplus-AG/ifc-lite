@@ -19,7 +19,7 @@
  *   - `MemoryHistorySidecar` — keeps every snapshot + per-entry diff
  *     in RAM. Good for tests and short-lived sessions.
  *   - `IndexedDbHistorySidecar` — same shape, persisted to IDB.
- *   - `attachHistorySidecar(session, sidecar, opts)` — drives a sidecar
+ *   - `attachHistorySidecar(session, sidecar, opts)` (history-driver.ts) — drives a sidecar
  *     from a `CollabSession` by snapshotting on a timer and on demand.
  *
  * A future `AutomergeHistorySidecar` (pending the heavy dep) will
@@ -27,10 +27,6 @@
  */
 
 import type { IfcxFile } from '@ifc-lite/ifcx';
-import type { CollabSession } from '../session.js';
-import { snapshotToIfcx, type SnapshotOptions } from '../snapshot/to-ifcx.js';
-import { extractMinimalLayer } from '../snapshot/minimal-layer.js';
-import * as Y from 'yjs';
 
 export interface HistoryEntry {
   /** Stable id (UUIDv4-like or timestamp-based). */
@@ -296,85 +292,4 @@ export class MemoryHistorySidecar implements HistorySidecar {
     this.entriesByBranch.set('main', []);
     this.counter = 0;
   }
-}
-
-/* ------------------------------------------------------------------ */
-/* Session driver                                                      */
-/* ------------------------------------------------------------------ */
-
-export interface AttachHistoryOptions {
-  /** How often to record a snapshot, ms. Default 60_000. */
-  intervalMs?: number;
-  /** Branch to record on. Default 'main'. */
-  branch?: string;
-  /** Forwarded to `snapshotToIfcx`. */
-  snapshot?: SnapshotOptions;
-  /**
-   * If true (default), include a minimal-layer diff against the
-   * previous entry on the same branch. Diffs make `historySidecar.diff(a, b)`
-   * cheaper to compute.
-   */
-  includeDiff?: boolean;
-}
-
-export interface HistoryDriver {
-  /** Force a snapshot now. */
-  capture(label?: string): Promise<HistoryEntry>;
-  /** Stop the timer. */
-  detach(): void;
-}
-
-/**
- * Drive a `HistorySidecar` from a live `CollabSession`. Records a
- * snapshot every `intervalMs`, plus on-demand via `capture(label)`.
- */
-export function attachHistorySidecar(
-  session: CollabSession,
-  sidecar: HistorySidecar,
-  options: AttachHistoryOptions = {},
-): HistoryDriver {
-  const intervalMs = options.intervalMs ?? 60_000;
-  const branch = options.branch ?? 'main';
-  const includeDiff = options.includeDiff ?? true;
-
-  let lastBaseline: Uint8Array | null = null;
-
-  const capture = async (label?: string): Promise<HistoryEntry> => {
-    const ifcx = snapshotToIfcx(session.doc, options.snapshot);
-    const diff =
-      includeDiff && lastBaseline
-        ? extractMinimalLayer(session.doc, lastBaseline, { snapshot: options.snapshot })
-        : undefined;
-    // Capture the candidate baseline BEFORE record() so we don't read
-    // the doc twice with a window in between, but only commit it to
-    // `lastBaseline` AFTER record() resolves. If persistence rejects,
-    // the next capture must still diff against the previously-recorded
-    // state — otherwise history can silently skip changes.
-    const nextBaseline = Y.encodeStateAsUpdate(session.doc);
-    const entry = await sidecar.record({
-      branch,
-      snapshot: ifcx,
-      diff,
-      label,
-      authorClientId: session.clientId,
-    });
-    lastBaseline = nextBaseline;
-    return entry;
-  };
-
-  const timer = setInterval(() => {
-    void capture().catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error('[collab] history capture failed:', err);
-    });
-  }, intervalMs);
-  // Don't keep Node alive solely for this timer.
-  timer.unref?.();
-
-  return {
-    capture,
-    detach() {
-      clearInterval(timer);
-    },
-  };
 }

@@ -1,0 +1,45 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const extrusionInspectionFr = {
+  'properties.extrusion.heading': 'Sources d’extrusion d’origine',
+  'properties.extrusion.sourceNote': 'Paramètres exacts du profil et de l’extrusion IFC. La profondeur, le rayon et le périmètre sont en mètres ou dans l’unité sélectionnée ; les coordonnées du profil et les translations des repères restent en mètres. Les profils sont la géométrie source avant placement, ouvertures et autres découpes.',
+  'properties.extrusion.loading': 'Lecture des sources d’extrusion sélectionnées…',
+  'properties.extrusion.solid': 'IfcExtrudedAreaSolid #{id}',
+  'properties.extrusion.status': 'Statut',
+  'properties.extrusion.complete': 'Complet',
+  'properties.extrusion.unsupported': 'Non pris en charge',
+  'properties.extrusion.missingSource': 'La définition source n’est pas disponible pour cette occurrence.',
+  'properties.extrusion.sourceModified': 'Source modifiée par CSG',
+  'properties.extrusion.modifiedHint': 'Le profil d’origine peut différer du résultat visible.',
+  'properties.extrusion.yes': 'Oui',
+  'properties.extrusion.no': 'Non',
+  'properties.extrusion.none': 'Aucun',
+  'properties.extrusion.mappingPath': 'Chemin de mappage',
+  'properties.extrusion.depth': 'Profondeur',
+  'properties.extrusion.direction': 'Composantes de ExtrudedDirection',
+  'properties.extrusion.position': 'Position du solide',
+  'properties.extrusion.profile': 'SweptArea',
+  'properties.extrusion.profileType': 'ProfileType',
+  'properties.extrusion.profilePosition': 'Position du profil',
+  'properties.extrusion.placement': 'Placement source',
+  'properties.extrusion.placementNote': 'Les translations du profil et du solide sont converties des unités du fichier IFC en mètres. La translation dans le monde est exprimée en mètres IFC absolus, axe Z vers le haut ; les décalages d’origine de rendu de la visionneuse ne sont pas appliqués. Les vecteurs d’axes incluent l’échelle de mappage.',
+  'properties.extrusion.profileFrame': 'Repère de la position du profil',
+  'properties.extrusion.solidFrame': 'Repère de la position du solide',
+  'properties.extrusion.worldFrame': 'Monde depuis le repère source',
+  'properties.extrusion.translation': 'Translation',
+  'properties.extrusion.xBasis': 'Colonne de base X',
+  'properties.extrusion.yBasis': 'Colonne de base Y',
+  'properties.extrusion.zBasis': 'Colonne de base Z',
+  'properties.extrusion.center': 'centre',
+  'properties.extrusion.radius': 'rayon',
+  'properties.extrusion.normal': 'normale',
+  'properties.extrusion.xAxis': 'axe x',
+  'properties.extrusion.loop': 'Boucle {index}',
+  'properties.extrusion.segments': 'segments',
+  'properties.extrusion.perimeter': 'Périmètre',
+  'properties.extrusion.signedArea': 'Aire signée',
+} satisfies Catalogue;

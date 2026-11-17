@@ -23,6 +23,8 @@
 import {
   addCurtainWallToStore,
   addGridToStore,
+  applyNewElementTop,
+  type TopConstraint,
   resolveSpatialAnchor,
   type CurtainWallBuildResult,
   type CurtainWallInStoreParams,
@@ -83,8 +85,15 @@ export function addCurtainWallIn(
   modelId: string,
   storeyId: number,
   params: CurtainWallInStoreParams,
+  /** `bim.store`'s top constraint, applied in the same edit as headless does; the Model workspace passes none. */
+  top?: TopConstraint | 'auto',
 ): CurtainWallOutcome {
-  const built = writeOnStorey(store, modelId, storeyId, (editor, anchor) => addCurtainWallToStore(editor, anchor, params));
+  const dataStore = modelEditTarget(store.getState(), modelId)?.dataStore;
+  const built = writeOnStorey(store, modelId, storeyId, (editor, anchor) => {
+    const wall = addCurtainWallToStore(editor, anchor, params);
+    if (top !== undefined && dataStore) applyNewElementTop(dataStore, editor, wall.curtainWallId, top, storeyId);
+    return wall;
+  });
   if ('error' in built) return built;
   const partIds = [...built.mullionIds, ...built.transomIds, ...built.panelIds];
   // The curtain wall is the storey's element; its parts join it so Solo and

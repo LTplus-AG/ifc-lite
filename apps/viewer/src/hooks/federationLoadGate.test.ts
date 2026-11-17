@@ -92,6 +92,53 @@ describe('federationLoadGate', () => {
     releaseFederationLoadSlot(id2);
   });
 
+  it('an aborted waiter leaves the queue and never takes a slot (L6)', async () => {
+    // 1000 MB costs 4000 of the default 6144 MB budget, so a second one queues.
+    const blocker = await acquireFederationLoadSlot(1000);
+    const superseded = new AbortController();
+    const waiter = acquireFederationLoadSlot(1000, superseded.signal);
+    const behind = acquireFederationLoadSlot(1000);
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(__getFederationLoadGateStats().queuedCount, 2);
+
+    superseded.abort();
+    await assert.rejects(waiter, (error: unknown) => error instanceof DOMException && error.name === 'AbortError');
+    assert.strictEqual(__getFederationLoadGateStats().queuedCount, 1, 'the aborted waiter is dequeued');
+
+    releaseFederationLoadSlot(blocker);
+    const behindId = await behind;
+    assert.deepStrictEqual(__getFederationLoadGateStats(), { activeCount: 1, queuedCount: 0, activeCostMB: 4000 },
+      'only the live waiter is admitted');
+    releaseFederationLoadSlot(behindId);
+  });
+
+  it('aborting the FIFO head admits a waiter behind it that already fits (L6)', async () => {
+    // 4000 + 2000 of the default 6144 MB budget are taken.
+    const blockerA = await acquireFederationLoadSlot(1000);
+    const blockerB = await acquireFederationLoadSlot(500);
+    const superseded = new AbortController();
+    const big = acquireFederationLoadSlot(1000, superseded.signal);
+    let smallAdmitted = false;
+    const small = acquireFederationLoadSlot(50).then((id) => { smallAdmitted = true; return id; });
+    releaseFederationLoadSlot(blockerB); // 2144 free: small fits, but waits behind big (FIFO)
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(smallAdmitted, false);
+
+    superseded.abort();
+    await assert.rejects(big, { name: 'AbortError' });
+    const smallId = await small;
+    assert.strictEqual(smallAdmitted, true, 'the waiter behind the aborted head is admitted at once');
+    releaseFederationLoadSlot(blockerA);
+    releaseFederationLoadSlot(smallId);
+  });
+
+  it('a signal aborted before acquiring rejects without taking a slot (L6)', async () => {
+    const superseded = new AbortController();
+    superseded.abort();
+    await assert.rejects(acquireFederationLoadSlot(10, superseded.signal), { name: 'AbortError' });
+    assert.strictEqual(__getFederationLoadGateStats().activeCount, 0);
+  });
+
   it('treats negative file size as zero', async () => {
     const id = await acquireFederationLoadSlot(-100);
     assert.strictEqual(__getFederationLoadGateStats().activeCount, 1);

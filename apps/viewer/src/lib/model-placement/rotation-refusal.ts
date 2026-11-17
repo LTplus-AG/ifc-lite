@@ -27,6 +27,7 @@ import type { ViewerState } from '@/store';
 
 export const POINTCLOUD_ROTATION_REFUSAL = 'Pointclouds cannot be rotated. Select only IFC models to rotate.';
 export const LOADING_ROTATION_REFUSAL = 'Wait for the model to finish loading before rotating it.';
+export const GAUSSIAN_ROTATION_REFUSAL = 'Gaussian captures cannot be rotated. Select only IFC models to rotate.';
 
 type RefusalState = Pick<ViewerState, 'models'>;
 
@@ -50,6 +51,8 @@ function kindUnknown(state: RefusalState, modelId: string): boolean {
 export function rotationRefusal(state: RefusalState, ids: Iterable<string>): string | null {
   const list = [...ids];
   if (list.some((id) => state.models.get(id)?.pointCloudHandleId !== undefined)) return POINTCLOUD_ROTATION_REFUSAL;
+  // Rotation bakes into meshes/instances; a capture's placement is renderer-owned.
+  if (list.some((id) => state.models.get(id)?.gaussianSplat)) return GAUSSIAN_ROTATION_REFUSAL;
   if (list.some((id) => kindUnknown(state, id))) return LOADING_ROTATION_REFUSAL;
   return null;
 }

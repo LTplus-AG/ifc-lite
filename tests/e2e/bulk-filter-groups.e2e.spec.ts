@@ -27,7 +27,7 @@ test('Bulk Query unions two filter groups before applying to an authored IFC (#5
   }, STORE, { timeout: 180_000 });
 
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  const modelWorkspace = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  const modelWorkspace = page.locator('[data-command-id="tool:edit-mode"]');
   await modelWorkspace.click();
   await expect(modelWorkspace).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Bulk property editor' }).click();
@@ -48,7 +48,7 @@ test('Bulk Query unions two filter groups before applying to an authored IFC (#5
   await dialog.getByPlaceholder('e.g., Pset_WallCommon').fill('Pset_BulkGroupWitness');
   await dialog.getByPlaceholder('e.g., FireRating').fill('Code');
   await dialog.getByPlaceholder('Value').fill('TWO_GROUPS');
-  await page.screenshot({ path: 'docs/architecture/evidence/bulk-filter-groups-5898/two-groups.png' });
+  await page.screenshot({ path: 'test-results/bulk-filter-groups/two-groups.png' });
   // Hosted SwiftShader may lose the drawing device after the IFC has loaded.
   // Its persistent toast can cover Apply even though Bulk editing itself is
   // healthy. Dismiss only that specific unrelated notice in software-GPU mode;

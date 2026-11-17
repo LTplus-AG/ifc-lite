@@ -15,7 +15,8 @@
  */
 
 import type { Vec2 } from '@/lib/snap/types';
-import type { SlabDrawMode } from '@/store/slices/authoringDefaultsSlice';
+import type { SlabClass, SlabDrawMode } from '@/store/slices/authoringDefaultsSlice';
+import { initialRoof, type RoofGesture } from './roof-place-params.js';
 import { rectOutline } from '../ghost-shapes.js';
 
 export const MIN_SLAB_SIDE = 0.01;
@@ -24,6 +25,7 @@ const CLOSE_TOLERANCE = 1e-6;
 
 export interface SlabPlaceGesture {
   readonly mode: SlabDrawMode;
+  readonly roof: RoofGesture;
   /** Rectangle: the first corner, once clicked. Polygon: the vertices placed. */
   readonly points: readonly Vec2[];
   readonly cursor: Vec2 | null;
@@ -35,7 +37,7 @@ export interface SlabPlaceGesture {
 }
 
 export const initSlabGesture = (mode: SlabDrawMode): SlabPlaceGesture => ({
-  mode, points: [], cursor: null, width: null, depth: null, square: false,
+  mode, roof: initialRoof(), points: [], cursor: null, width: null, depth: null, square: false,
 });
 
 const sign = (v: number) => (v < 0 ? -1 : 1);
@@ -77,6 +79,15 @@ export function previewOutline(g: SlabPlaceGesture): Vec2[] | null {
   }
   const outline = [...g.points, ...(g.cursor ? [g.cursor] : [])];
   return outline.length >= 3 ? outline : null;
+}
+
+/**
+ * The drawn class's body above the workplane (#9198). A floor slab hangs from
+ * the plane, so its top is the level and walls start on it; a roof or plate
+ * sits on the plane.
+ */
+export function slabBodyRange(cls: SlabClass, thickness: number): readonly [number, number] {
+  return cls === 'slab' ? [-thickness, 0] : [0, thickness];
 }
 
 /** Whether a polygon click at `p` lands back on the first vertex (closing it). */

@@ -100,7 +100,7 @@ export function TableMappingCard({ modelId, headers, rows, mapping, onChange, on
     </div>
     <ul>{mapping.columns.map((column, index) => <ColumnRow key={index} column={column} headers={headers}
       onChange={(next) => setColumn(index, next)} onRemove={() => setColumn(index, null)} />)}</ul>
-    {problems.length > 0 && <ul role="alert" className="space-y-0.5 text-amber-700 dark:text-amber-400">
+    {problems.length > 0 && <ul role="alert" className="space-y-0.5 text-warn">
       {problems.map((problem, index) => <li key={index}>{t(`tableMapping.problem.${problem.kind}`,
         { column: problem.column, field: 'field' in problem ? problem.field : '' })}</li>)}</ul>}
     {sample && <div className="space-y-1">

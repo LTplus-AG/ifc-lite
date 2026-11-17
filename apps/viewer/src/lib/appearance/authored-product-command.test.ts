@@ -50,7 +50,7 @@ for (const federated of [false, true]) test(`native multicolour PDF owner is one
       editEnabled: true,
       activeModelId: 'fill', geometryResult: geometry, mutationViews: new Map([['fill', view]]), storeEditors: new Map([['fill', editor]]),
       undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null, modelPlacement: emptyPlacementState() });
-    const request = JSON.parse(await readFile(new URL('../../../../../docs/architecture/evidence/pdf-fill-annotations/page-1-request.json', import.meta.url), 'utf8')) as PdfFillAnnotationRequest;
+    const request = JSON.parse(await readFile(new URL('../../../../../tests/fixtures/appearance/pdf-fill-annotations/page-1-request.json', import.meta.url), 'utf8')) as PdfFillAnnotationRequest;
     request.nextExpressId = view.peekNextExpressId(); request.sourceRevision = appearanceRevision('fill');
     const native = JSON.parse(new TextDecoder().decode(api.planPdfFillAnnotation(source, JSON.stringify(request)))) as PdfFillAnnotationPlan;
     const meshes = new Map<number, readonly MeshData[]>();
@@ -187,7 +187,8 @@ for (const federated of [false, true]) test(`native multicolour PDF owner is one
     assert.equal(roomSource.toSourceIds(null), null, 'no isolation remains no isolation');
     const roomExport = await new StepExporter(roomSource.dataStore, roomSource.mutationView).exportAsync({
       schema: 'IFC4', applyMutations: true, includeGeometry: true,
-      georefMutations: { projectedCRS: { name: 'Room export CRS' } },
+      // The exporter refuses a CRS without a position; the store gives every CRS it creates one (setGeorefFields completes it).
+      georefMutations: { projectedCRS: { name: 'Room export CRS' }, mapConversion: { eastings: 0, northings: 0, orthogonalHeight: 0 } },
     });
     const roomBytes = typeof roomExport.content === 'string'
       ? new TextEncoder().encode(roomExport.content)

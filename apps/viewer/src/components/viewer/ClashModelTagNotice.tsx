@@ -31,7 +31,7 @@ export function ClashModelTagNotice() {
     <div
       role="status"
       data-clash-tag-inputs-changed
-      className="flex items-start gap-2 mx-3 mb-2 p-2 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs"
+      className="flex items-start gap-2 mx-3 mb-2 p-2 rounded-md bg-warn-surface text-warn text-xs"
     >
       <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
       <span>{t('clashTools.modelTagNotice.message')}</span>

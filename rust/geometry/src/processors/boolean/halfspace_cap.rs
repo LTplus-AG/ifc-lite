@@ -5,6 +5,7 @@
 use crate::bool2d::{compute_signed_area, point_in_contour};
 use crate::{Mesh, Point2, Point3, Vector3};
 use crate::math::tol;
+use super::halfspace_section_weld::{snap_to_section, weld_section};
 
 // Test-only seam for the `outer_filled == outer_count` accounting
 // (`cap_half_space_clip`, below): forces `triangulate_polygon_with_holes_refined`
@@ -30,6 +31,14 @@ pub(crate) fn force_cdt_fail_on_ring_for_test(ring: Option<usize>) {
     FORCE_CDT_FAIL_ON_RING.with(|c| c.set(ring));
 }
 
+/// `IFC_LITE_HALFSPACE_CAP_OFF`: the escape hatch, read once per process
+/// like every other output knob, so it cannot change while a pass runs. The
+/// one accessor, shared with `crate::output_policy`.
+pub(crate) fn disabled() -> bool {
+    static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *OFF.get_or_init(|| std::env::var_os("IFC_LITE_HALFSPACE_CAP_OFF").is_some())
+}
+
 /// Close the planar cut left by an unbounded `IfcHalfSpaceSolid` DIFFERENCE.
 ///
 /// `ClippingProcessor::clip_mesh` clips each triangle to the half-plane but
@@ -39,14 +48,15 @@ pub(crate) fn force_cdt_fail_on_ring_for_test(ring: Option<usize>) {
 /// inverted shells (negative signed volume, dozens of open edges).
 ///
 /// A watertight host clipped by a plane has exactly one open boundary — the
-/// section, lying on the cut plane. We weld coincident vertices (the clipper
-/// emits bit-identical coordinates for shared cut points, so an exact f32-bit
-/// key merges them without a tolerance grid that could fuse distinct corners),
-/// chain the on-plane boundary half-edges into loops, classify them into
-/// outer rings and holes by even-odd nesting, triangulate each region with the
-/// kernel's CDT, and append the result wound to face `-clip_normal` (away from
-/// the kept `+clip_normal` material). If the boundary is non-manifold or does
-/// not close (a non-watertight host), we bail and leave the mesh unchanged —
+/// section, lying on the cut plane. We weld coincident vertices on a grid of
+/// 1e-5 of the mesh diagonal ([`weld_section`]), chain the on-plane boundary
+/// half-edges into loops, classify them into outer rings and holes by
+/// even-odd nesting, triangulate each region with the kernel's CDT, and
+/// append the result wound to face `-clip_normal` (away from the kept
+/// `+clip_normal` material). A closed cap then moves the cut wall's section
+/// vertices onto the weld ([`snap_to_section`]). If the
+/// boundary is non-manifold or does not close (a non-watertight host), we
+/// bail and leave the mesh unchanged —
 /// never worse than the uncapped output.
 ///
 /// Returns whether the cut was actually closed. This MUST be measured, never
@@ -69,7 +79,7 @@ pub(crate) fn cap_half_space_clip(
 
     // Escape hatch: revert to the pre-fix (uncapped) plane clip without a
     // rebuild, should the section cap ever misbehave on an unforeseen host.
-    if std::env::var_os("IFC_LITE_HALFSPACE_CAP_OFF").is_some() {
+    if disabled() {
         return false;
     }
     let tri_n = mesh.indices.len() / 3;
@@ -97,39 +107,11 @@ pub(crate) fn cap_half_space_clip(
     // ~1 ULP — both flagged on-plane yet left UNWELDED by an exact-bits key. That
     // 1-ULP gap breaks the boundary chain: a sub-loop dead-ends and is dropped,
     // leaving open edges (a non-watertight slab → "see inside" / no 2D fill).
-    // Quantising to weld_eps (= on_plane_eps, orders of magnitude finer than any
-    // real wall feature) snaps the ULP-twins into one bucket so the loop closes.
+    // Quantising to on_plane_eps (orders of magnitude finer than any real wall
+    // feature) snaps the ULP-twins into one bucket so the loop closes.
     // Single-plane callers (opening cuts) have no such twins, so genuinely
     // distinct corners stay in distinct buckets.
-    let weld_eps = on_plane_eps;
-    let quant = |c: f32| -> i64 { (c as f64 / weld_eps).round() as i64 };
-    let mut weld: HashMap<(i64, i64, i64), u32> = HashMap::new();
-    let mut pos: Vec<Point3<f64>> = Vec::new();
-    let mut on_plane: Vec<bool> = Vec::new();
-    let mut welded: Vec<u32> = Vec::with_capacity(vcount);
-    for i in 0..vcount {
-        let key = (
-            quant(mesh.positions[i * 3]),
-            quant(mesh.positions[i * 3 + 1]),
-            quant(mesh.positions[i * 3 + 2]),
-        );
-        let id = match weld.get(&key) {
-            Some(&id) => id,
-            None => {
-                let p = Point3::new(
-                    mesh.positions[i * 3] as f64,
-                    mesh.positions[i * 3 + 1] as f64,
-                    mesh.positions[i * 3 + 2] as f64,
-                );
-                let id = pos.len() as u32;
-                on_plane.push((p - plane_point).dot(&n).abs() <= on_plane_eps);
-                pos.push(p);
-                weld.insert(key, id);
-                id
-            }
-        };
-        welded.push(id);
-    }
+    let (pos, on_plane, welded) = weld_section(mesh, plane_point, n, on_plane_eps);
 
     // Directed half-edges; an undirected edge with no twin is on the open
     // boundary. Restrict to edges whose endpoints both lie on the cut plane so
@@ -332,5 +314,12 @@ pub(crate) fn cap_half_space_clip(
         }
     }
 
-    outer_count > 0 && outer_filled == outer_count && !boundary_incomplete
+    let capped = outer_count > 0 && outer_filled == outer_count && !boundary_incomplete;
+    // A closed cap: the cut wall takes the weld it is built on. The cap never
+    // reads mesh positions, so the move can wait for the verdict, and a cap
+    // that is refused leaves the cut wall as it came in.
+    if capped {
+        snap_to_section(mesh, plane_point, n, (&pos, &on_plane, &welded));
+    }
+    capped
 }

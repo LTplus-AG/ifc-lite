@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 
 /** Allowed `<Button size="icon…">` count per file, relative to components/. */
 const BASELINE = {
-  'viewer/MobileToolbar.tsx': 5,
+  'viewer/MobileToolbar.tsx': 4,
   'viewer/ViewportOverlays.tsx': 3,
   'viewer/chat/ExecutableCodeBlock.tsx': 1,
   'viewer/drawing/DrawingExportMenu.tsx': 1,

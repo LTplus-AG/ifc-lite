@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createModelMutationView } from '@/utils/model-mutation-view';
 /**
  * Type objects, materials and layer sets written as ordinary undo history
  * (charter #6232, M2.5).
  *
- * `bim.store`'s modelling methods (`createModellingStoreBackend`) validate
+ * `bim.store`'s modelling methods (`createModellingStoreBackendWithoutStoreys`) validate
  * and write through the `@ifc-lite/create` builders, but the script adapter
  * clears the undo history after a relationship write, because it has no
  * command to hang one undo step on. The Model workspace has one: a
@@ -24,13 +25,15 @@ import type { StoreApi } from 'zustand';
 import { MutablePropertyView, StoreEditor, type Mutation, type NewEntity } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { readRelatedLists } from '@ifc-lite/create';
-import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { createModellingStoreBackendWithoutStoreys, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { roomSlotFor } from '@/lib/collab/room-model-target';
 import { mirrorStoreOverlayDelta, snapshotOverlay } from '@/sdk/adapters/store-adapter-cost';
-import { configureMutationView } from '@/utils/configureMutationView';
 import type { ViewerState } from '../index.js';
 
-export type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
+// Without the storey methods (#9200): storey edits have their own history path
+// (`store-adapter-storey`), and leaving them out keeps the storey planners off
+// the boot path, since this module loads at startup.
+export type ModellingMethods = ReturnType<typeof createModellingStoreBackendWithoutStoreys>;
 export type ModellingStore = Pick<StoreApi<ViewerState>, 'getState' | 'setState' | 'subscribe'>;
 
 export interface ModelEditTarget {
@@ -40,14 +43,22 @@ export interface ModelEditTarget {
   readonly editor: StoreEditor;
 }
 
+/** Read-only target for planners: cold inspection must not register live edit state (#8947). */
+export function readModelEditTarget(state: ViewerState, modelId: string): ModelEditTarget | null {
+  const dataStore = state.models.get(modelId)?.ifcDataStore;
+  if (!dataStore) return null;
+  const view = state.mutationViews.get(modelId) ?? createModelMutationView(dataStore, modelId);
+  const editor = state.storeEditors.get(modelId) ?? new StoreEditor(dataStore, view);
+  return { modelId, dataStore, view, editor };
+}
+
 /** A model's parsed data, its mutation view and the store's cached editor, created on first use. */
 export function modelEditTarget(state: ViewerState, modelId: string): ModelEditTarget | null {
   const dataStore = state.models.get(modelId)?.ifcDataStore;
   if (!dataStore) return null;
   let view = state.mutationViews.get(modelId);
   if (!view) {
-    view = new MutablePropertyView(dataStore.properties || null, modelId);
-    configureMutationView(view, dataStore);
+    view = createModelMutationView(dataStore, modelId);
     state.registerMutationView(modelId, view);
   }
   let editor = state.storeEditors.get(modelId);
@@ -72,7 +83,7 @@ export function recordModellingEdit<T>(
   batchId?: string,
 ): T {
   return recordModellingCommit(store, modelId, (editor, dataStore) =>
-    editor.runAtomic((draft) => edit(createModellingStoreBackend(() => ({
+    editor.runAtomic((draft) => edit(createModellingStoreBackendWithoutStoreys(() => ({
       modelId,
       store: dataStore,
       editor: draft,
@@ -103,26 +114,49 @@ export function recordResolvedModellingCommit<T>(
   commit: (editor: StoreEditor, dataStore: IfcDataStore) => T,
   batchId?: string,
   appendOnly = false,
+  /** Publish creation metadata with the room graph while the local overlay is still a draft. */
+  publishCreated?: (result: T, view: MutablePropertyView) => void,
+  registerBeforeRewrite?: (capture: () => void) => void,
 ): T {
   const state = store.getState();
   const { modelId } = target;
   const { dataStore, view, editor } = target;
   const room = roomSlotFor(state, modelId) ? snapshotOverlay(view) : null;
-  // Ordinary builders only append. Rewrites/deletions retain their id-based
+  // Ordinary builders start append-only. Rewrites/deletions retain id-based
   // bookkeeping because forgetting a record can remove earlier journal rows.
   const cursor = appendOnly ? view.getMutationCount() : 0;
-  const seen = appendOnly ? null : new Set(view.getMutations().map(m => m.id));
-  const overlayBefore = appendOnly ? null : new Map(view.getNewEntities().map(e => [e.expressId, e]));
-  const prepared = room ? view.prepareAtomic(draft => commit(new StoreEditor(dataStore, draft), dataStore)) : null;
+  let seen = appendOnly ? null : new Set(view.getMutations().map(m => m.id));
+  let overlayBefore = appendOnly ? null : new Map(view.getNewEntities().map(e => [e.expressId, e]));
+  // Implicit joins promote an append to a rewrite only while its draft is
+  // still unpublished. Non-joining additions never snapshot the session.
+  registerBeforeRewrite?.(() => {
+    if (seen !== null) return;
+    seen = new Set(view.getMutations().map(m => m.id));
+    overlayBefore = new Map(view.getNewEntities().map(e => [e.expressId, e]));
+  });
+  const prepared = room ? view.prepareAtomic(draft => {
+    const draftEditor = new StoreEditor(dataStore, draft);
+    const result = commit(draftEditor, dataStore);
+    if (publishCreated) {
+      // Room encoding reads the same staged records as the builder, without
+      // exposing them to live model readers before publication succeeds.
+      const stagedStore = { ...store, getState: () => {
+        const current = store.getState();
+        return { ...current, getMutationView: (id: string) => id === modelId ? draft : current.getMutationView(id) };
+      } };
+      mirrorStoreOverlayDelta(stagedStore, modelId, draftEditor, dataStore, room, 'modelling', () => publishCreated(result, draft));
+    }
+    return result;
+  }) : null;
   const result = prepared ? prepared.result : commit(editor, dataStore);
   prepared?.commit();
   try {
-    if (room) mirrorStoreOverlayDelta(store, modelId, editor, dataStore, room, 'modelling');
+    if (room && !publishCreated) mirrorStoreOverlayDelta(store, modelId, editor, dataStore, room, 'modelling');
   } catch (error) {
     prepared?.rollback();
     throw error;
   }
-  const written = appendOnly ? view.getMutations(cursor) : view.getMutations().filter(m => !seen!.has(m.id));
+  const written = seen === null ? view.getMutations(cursor) : view.getMutations().filter(m => !seen!.has(m.id));
   if (overlayBefore) stashForgottenRecords(store, modelId, written, overlayBefore);
   store.getState().recordMutationBatch(modelId, written, batchId);
   return result;

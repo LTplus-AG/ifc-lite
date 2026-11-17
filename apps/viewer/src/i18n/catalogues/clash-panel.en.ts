@@ -149,11 +149,8 @@ export const clashPanelEn = {
 
   // Empty / no-match / no-comparison states
   'clashPanel.empty.title': 'No clash results yet',
-  'clashPanel.empty.singleModelHint':
-    'Check this model in seconds: “Detect all clashes” finds every overlap inside it, and “Find duplicates” catches coincident objects — no discipline setup needed.',
-  'clashPanel.empty.multiModelHint':
-    'Detect all clashes, run the discipline matrix, or pick a preset to find conflicts across the loaded models.',
-  'clashPanel.empty.hint': 'Click any result to highlight both elements; expand a row to step through each object.',
+  'clashPanel.empty.singleModelHint': 'Run a check above to find overlaps and duplicates in this model.',
+  'clashPanel.empty.multiModelHint': 'Run a check or pick a preset above to find conflicts across the loaded models.',
   'clashPanel.matrixNoMatch.title': "The matrix didn't apply to this model — it did NOT run.",
   'clashPanel.matrixNoMatch.description':
     'None of the {count} rule(s) matched any elements here, so "0 clashes" doesn\'t mean this model is clean — nothing was actually checked. This rule set is shaped for MEP/HVAC/electrical/fire coordination; it may not describe this model\'s disciplines.',

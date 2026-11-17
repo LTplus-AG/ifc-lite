@@ -77,4 +77,15 @@ describe('#6232 store-adapter modelling surface', () => {
     assert.ok(created.some((c) => c.entityId === rel.expressId && c.ifcType.toUpperCase() === 'IFCRELDEFINESBYTYPE'));
     assert.deepEqual(relationshipMutationCalls, ['m']);
   });
+
+  it('undoes a plain material as one record, and fences undo for a coloured one (its appearance chain is several records)', async () => {
+    const { store, undoCalls, relationshipMutationCalls } = await makeStore();
+    const adapter = createStoreAdapter(store);
+    const plain = adapter.addMaterial('m', { Name: 'Concrete' });
+    assert.deepEqual(undoCalls, [[plain.expressId, 'IFCMATERIAL']]);
+    assert.deepEqual(relationshipMutationCalls, []);
+    adapter.addMaterial('m', { Name: 'Brick', Color: '#aa5533' });
+    assert.equal(undoCalls.length, 1);
+    assert.deepEqual(relationshipMutationCalls, ['m']);
+  });
 });

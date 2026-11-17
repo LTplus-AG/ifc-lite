@@ -31,7 +31,7 @@ export function hierarchyRowSelection(
   if ((node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'other-group') && node.memberGlobalIds) {
     node.memberGlobalIds.forEach((globalId, index) => {
       const expressId = node.expressIds[index];
-      const modelId = node.modelIds[index];
+      const modelId = node.memberModelIds?.[index] ?? node.modelIds[index];
       if (expressId != null && modelId) pushLocal(modelId, expressId, globalId);
       else push(globalId, resolveGlobalId(globalId));
     });

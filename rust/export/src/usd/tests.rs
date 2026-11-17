@@ -9,10 +9,9 @@
 
 use super::emit::emit_attributes;
 use super::fmt::{color_key, escape_str, fmt_f32, fmt_f64, mat_name, sanitize_ident, Namer};
-use super::instance::{
-    emit_instance_occurrence, instances_authorable, run_instanced, usd_transform_rows,
-};
-use super::{export_usd, mesh_emittable, UsdOptions};
+use super::instance::{emit_instance_occurrence, usd_transform_rows};
+use super::{export_usd, UsdOptions};
+use crate::scene_input::{instances_authorable, mesh_emittable, run_instanced};
 use crate::model::{EntityRow, PropValue, PropertySet};
 use ifc_lite_processing::{process_geometry, InstanceRecord, MeshData};
 use std::collections::HashSet;

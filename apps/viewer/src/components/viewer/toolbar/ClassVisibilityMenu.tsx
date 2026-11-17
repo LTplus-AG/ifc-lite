@@ -19,6 +19,7 @@
 
 import React from 'react';
 import {
+  ArrowDownToLine,
   Box,
   BoxSelect,
   Boxes,
@@ -33,7 +34,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { Separator } from '@/components/ui/separator';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { isPreviewTier } from '@/store/constants';
@@ -88,11 +90,17 @@ export function useVisibleClassCount(): { visible: number; total: number } {
     typeVisibility.site,
     typeVisibility.ifcAnnotations,
     typeVisibility.ifcGrid,
+    typeVisibility.structuralGlyphs,
   ];
   return { visible: toggles.filter(Boolean).length, total: toggles.length };
 }
 
 export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start' | 'end' }) {
+  return <DropdownMenuContent align={align} className="w-[300px] p-1.5"><ClassVisibilityControls inMenu /></DropdownMenuContent>;
+}
+
+/** The same settings controls, hosted by a ribbon menu or a keyboard-friendly dialog. */
+export function ClassVisibilityControls({ inMenu = false, onNavigate }: { inMenu?: boolean; onNavigate?: () => void }) {
   const { t } = useTranslation();
   const controlId = React.useId();
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
@@ -115,7 +123,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
   const { visible: visibleClassCount, total: classToggleCount } = useVisibleClassCount();
 
   return (
-    <DropdownMenuContent align={align} className="w-[300px] p-1.5">
+    <>
       {/* Model / Types 3D view switch (#957 follow-up). A type carries a
           RepresentationMap whose shape is drawn at its MappingOrigin; "Types"
           shows that type library, "Model" shows the placed occurrences. The
@@ -157,7 +165,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
             </label>
           </div>
 
-          <DropdownMenuSeparator className="my-1" />
+          <Separator className="my-1" />
         </>
       )}
 
@@ -229,8 +237,15 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
         checked={typeVisibility.ifcGrid}
         onChange={() => toggleTypeVisibility('ifcGrid')}
       />
+      <ClassVisibilityRow
+        icon={<ArrowDownToLine className="h-4 w-4 shrink-0 text-status-ok" />}
+        label={t('classVisibility.structuralGlyphs.label')}
+        description={t('classVisibility.structuralGlyphs.description')}
+        checked={typeVisibility.structuralGlyphs}
+        onChange={() => toggleTypeVisibility('structuralGlyphs')}
+      />
 
-      <DropdownMenuSeparator className="my-1" />
+      <Separator className="my-1" />
 
       {/* Merge multilayer walls rebuilds geometry, so unlike the live
           toggles above it only takes effect on the next model load.
@@ -296,17 +311,18 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
               </span>
             </span>
           </span>
-          <DropdownMenuItem asChild onSelect={() => openSettings('performance')}>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 shrink-0 px-2 text-2xs font-semibold uppercase tracking-wider"
-            >
-              {t('classVisibility.performanceSettings')}
-            </Button>
-          </DropdownMenuItem>
+          <PerformanceSettingsAction inMenu={inMenu} onNavigate={onNavigate}>
+            {t('classVisibility.performanceSettings')}
+          </PerformanceSettingsAction>
         </div>
       )}
-    </DropdownMenuContent>
+    </>
   );
+}
+
+function PerformanceSettingsAction({ inMenu, onNavigate, children }: { inMenu: boolean; onNavigate?: () => void; children: React.ReactNode }) {
+  const open = () => { onNavigate?.(); openSettings('performance'); };
+  const button = <Button size="sm" variant="ghost" className="h-7 shrink-0 px-2 text-2xs font-semibold uppercase tracking-wider"
+    onClick={inMenu ? undefined : open}>{children}</Button>;
+  return inMenu ? <DropdownMenuItem asChild onSelect={open}>{button}</DropdownMenuItem> : button;
 }

@@ -87,6 +87,7 @@ function makeState(
     orthoSize: 50,
     sceneBounds: null,
     orbitAnchorBounds: null,
+    lensShift: { x: 0, y: 0 },
   };
 }
 

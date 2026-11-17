@@ -109,8 +109,6 @@ pub struct ResolvedTextureMap {
     pub texture: TextureSource,
     /// `IfcTextureVertexList.TexCoordsList` as `[u, v]` (0-based storage).
     pub tex_coords: Vec<[f32; 2]>,
-    /// Express id of the `IfcTextureVertexList`, for f64 source readers.
-    pub tex_coords_id: u32,
     /// `TexCoordIndex`: per-triangle 1-based indices into `tex_coords`,
     /// parallel to the face set's `CoordIndex`. `None` when the attribute is
     /// `$` — the spec default, meaning texture vertices pair 1:1 with the face
@@ -264,7 +262,7 @@ fn resolve_triangle_texture_map(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
     texture_cache: &mut FxHashMap<u32, Option<TextureSource>>,
-) -> Option<(u32, ResolvedTextureMap)> {
+) -> Option<(u32, u32, ResolvedTextureMap)> {
     let face_set_id = entity.get_ref(1)?;
 
     // Maps[0] → surface texture.
@@ -321,11 +319,11 @@ fn resolve_triangle_texture_map(
 
     Some((
         face_set_id,
+        tvl_id,
         ResolvedTextureMap {
             texture_id,
             texture,
             tex_coords,
-            tex_coords_id: tvl_id,
             tex_coord_index,
         },
     ))
@@ -339,8 +337,35 @@ pub fn build_texture_index(
     decoder: &mut EntityDecoder,
 ) -> FxHashMap<u32, ResolvedTextureMap> {
     let mut index = FxHashMap::default();
+    scan_texture_maps(content, decoder, |face_set_id, _, resolved| {
+        index.entry(face_set_id).or_insert(resolved);
+    });
+    index
+}
+
+/// [`build_texture_index`], plus the express id of the `IfcTextureVertexList`
+/// each indexed map read, by the same face set id, for f64 source readers: the
+/// index itself stores `f32`. One scan, so both maps agree on the winning map.
+pub fn build_texture_index_with_vertex_lists(
+    content: &[u8],
+    decoder: &mut EntityDecoder,
+) -> (FxHashMap<u32, ResolvedTextureMap>, FxHashMap<u32, u32>) {
+    let (mut index, mut vertex_lists) = (FxHashMap::default(), FxHashMap::default());
+    scan_texture_maps(content, decoder, |face_set_id, tvl_id, resolved| {
+        index.entry(face_set_id).or_insert(resolved);
+        vertex_lists.entry(face_set_id).or_insert(tvl_id);
+    });
+    (index, vertex_lists)
+}
+
+/// Every resolvable map in file order, as `(face set, vertex list, map)`.
+fn scan_texture_maps(
+    content: &[u8],
+    decoder: &mut EntityDecoder,
+    mut visit: impl FnMut(u32, u32, ResolvedTextureMap),
+) {
     if ifc_lite_core::find_keyword(content, b"IFCINDEXEDTRIANGLETEXTUREMAP").is_none() {
-        return index;
+        return;
     }
     let mut texture_cache: FxHashMap<u32, Option<TextureSource>> = FxHashMap::default();
     let mut scanner = EntityScanner::new(content);
@@ -349,12 +374,11 @@ pub fn build_texture_index(
             continue;
         }
         if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-            if let Some((face_set_id, resolved)) =
+            if let Some((face_set_id, tvl_id, resolved)) =
                 resolve_triangle_texture_map(&entity, decoder, &mut texture_cache)
             {
-                index.entry(face_set_id).or_insert(resolved);
+                visit(face_set_id, tvl_id, resolved);
             }
         }
     }
-    index
 }

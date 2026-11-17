@@ -10,7 +10,7 @@ import { GraphicOverrideEngine, PAPER_SIZE_REGISTRY, FRAME_PRESETS, TITLE_BLOCK_
   DEFAULT_TITLE_BLOCK_FIELDS, DEFAULT_SCALE_BAR, DEFAULT_NORTH_ARROW, type DrawingSheet, type Drawing2D } from '@ifc-lite/drawing-2d';
 import { render, cleanup, click } from '@/test/render';
 import { useDrawingWithReferences } from '@/hooks/useReferenceImagesForDrawing';
-import { useViewControls } from '@/hooks/useViewControls';
+import { drawingFitMargin, useViewControls } from '@/hooks/useViewControls';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { useViewerStore } from '@/store';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
@@ -153,7 +153,10 @@ test('Fit includes a registered raster on an otherwise empty section without alt
   const points=images.at(-1)!;assert.ok(points);
   assert.ok(Math.abs((points[0][0]+points[2][0])/2-640)<1e-8);
   assert.ok(Math.abs((points[0][1]+points[2][1])/2-400)<1e-8);
-  assert.ok(points.every(([x,y])=>x>=192 && x<=1088 && y>=119.999999 && y<=680.000001));
-  assert.ok(Math.abs(points[2][1]-points[0][1]-560)<1e-8,'reference fills available height with 15% margins');
+  // The fit margin per side (#8802 R3b): 6% of the 800 px short side, capped at 48 px.
+  const margin=48;
+  assert.equal(drawingFitMargin({width:1280,height:800}),margin);
+  assert.ok(points.every(([x,y])=>x>=margin-1e-6 && x<=1280-margin+1e-6 && y>=margin-1e-6 && y<=800-margin+1e-6));
+  assert.ok(Math.abs(points[2][1]-points[0][1]-(800-2*margin))<1e-8,'reference fills the available height inside the fit margin');
   assert.deepEqual(source.bounds,{min:{x:5000000,y:5000000},max:{x:5000001,y:5000001}});
 });

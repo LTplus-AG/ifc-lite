@@ -26,7 +26,7 @@ test('actual decoded PDF fill plans survive host export and reject stale/cancell
   const api = new IfcAPI();
   try {
     for (const number of [1, 2]) {
-      const request = JSON.parse(await readFile(new URL(`../../../../../../docs/architecture/evidence/pdf-fill-annotations/page-${number}-request.json`, import.meta.url), 'utf8')) as PdfFillAnnotationRequest;
+      const request = JSON.parse(await readFile(new URL(`../../../../../../tests/fixtures/appearance/pdf-fill-annotations/page-${number}-request.json`, import.meta.url), 'utf8')) as PdfFillAnnotationRequest;
       const data = await new IfcParser().parseColumnar(source.slice().buffer);
       const view = new MutablePropertyView(data.properties, 'fill'), editor = new StoreEditor(data, view);
       request.nextExpressId = view.peekNextExpressId();

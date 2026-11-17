@@ -135,9 +135,8 @@ function parseOrthogonalCamera(content: string): BCFOrthogonalCamera | undefined
     return undefined;
   }
 
-  // `viewToWorldScale` becomes the orthographic half-height, which is the
-  // value `getOrthoSize()` hands back into a saved viewpoint — so a
-  // non-finite one persists past the session if it is allowed in (#2461).
+  // BCF stores the full view height; the viewer halves it at the camera
+  // boundary. A non-finite value would still persist if allowed in (#2461).
   const scale = parseFiniteFloat(viewToWorldScale);
   if (scale === undefined) return undefined;
 

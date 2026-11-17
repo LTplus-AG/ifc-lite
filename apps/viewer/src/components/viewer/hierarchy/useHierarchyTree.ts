@@ -2,11 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useTranslation } from '@/i18n';
+import type { LayerGrouping } from './presentationLayerGroups';
+
+import { useMemo, useState, useCallback, useEffect, useReducer } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
-import type { TreeNode, UnifiedStorey, HierarchySortMode } from './types';
+import type { TreeNode, UnifiedStorey, HierarchySortMode, ExpansionLookup } from './types';
 import { readStoredSortMode, persistSortMode } from './hierarchy-sort-storage';
 import { useEffectiveMaterialStores } from '@/hooks/useEffectiveMaterialStores';
 import { usePresentationLayerBuilder } from './usePresentationLayerBuilder';
@@ -16,7 +19,6 @@ import {
   getUnifiedStoreyElements as getUnifiedStoreyElementsFn,
   filterNodes,
   splitNodes,
-  type AuthoredProduct,
   type GroupSubFilter,
 } from './treeDataBuilder';
 import { buildTreeForGrouping, useRevealGlobalId } from './revealGlobalId';
@@ -26,6 +28,8 @@ import {
   collectGeometryReadyModelIds,
 } from './hierarchyGeometry';
 import { flattenVisibleHierarchy, indexHierarchyTree } from './treeProjection';
+import { lazyStructure, scheduleIdle } from './lazyStructure';
+import { collectAuthoredProducts } from './authoredProducts';
 import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
 
 export type { HierarchyMode } from '@/store';
@@ -45,6 +49,8 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false);
   const groupingMode = useViewerStore((state) => state.hierarchyMode);
   const setGroupingMode = useViewerStore((state) => state.setHierarchyMode);
+  const { t, revision: localeRevision } = useTranslation();
+  const [layerGrouping, setLayerGrouping] = useState<LayerGrouping>('none');
   const [sortMode, setSortMode] = useState<HierarchySortMode>(readStoredSortMode);
   // Groups-tab sub-filter (All / Systems / Zones / Other) — session-only state,
   // deliberately not persisted (#1622).
@@ -217,53 +223,48 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const builderReady = (groupingMode !== 'material' || materialReady) && presentationLayers.ready;
   const groupingReady = builderReady && (groupingMode !== 'presentation-layers'
     || presentationMetadataReady(models, ifcDataStore, loading));
-  const authoredProducts = useMemo<AuthoredProduct[]>(() => {
-    const out: AuthoredProduct[] = [];
-    const state = useViewerStore.getState();
-    for (const [modelId, view] of mutationViews) {
-      const getNew = (view as { getNewEntities?: () => Iterable<{ expressId: number; type: string; attributes: unknown[] }> }).getNewEntities;
-      if (typeof getNew !== 'function') continue;
-      for (const ent of getNew.call(view)) {
-        const globalId = modelId === 'legacy' || !models.has(modelId)
-          ? ent.expressId
-          : state.toGlobalId(modelId, ent.expressId);
-        if (!geometricIds.has(globalId)) continue;
-        const rawName = ent.attributes?.[2];
-        out.push({
-          modelId,
-          expressId: ent.expressId,
-          globalId,
-          ifcType: ent.type,
-          name: typeof rawName === 'string' && rawName ? rawName : `${ent.type} #${ent.expressId}`,
-        });
-      }
-    }
-    return out;
+  const authoredProducts = useMemo(
+    () => collectAuthoredProducts(mutationViews, models, ifcDataStore, geometricIds),
     // mutationVersion bumps on every authoring edit; geometricIds tracks the mesh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mutationViews, models, geometricIds, mutationVersion]);
-  // Build the structural tree once per model/mode/mutation input. Search uses
-  // this same complete tree; reveal uses it too. A chevron click only projects
-  // visible rows and never calls the builder.
+    [mutationViews, models, ifcDataStore, geometricIds, mutationVersion],
+  );
+  // One builder call per model/mode/mutation input, at any expansion.
   // hiddenEntities intentionally NOT in deps - visibility computed lazily.
-  const structuralTree = useMemo(
-    (): TreeNode[] => !builderReady ? [] : buildTreeForGrouping(
-      groupingMode, models, ifcDataStore, EXPAND_ALL, isMultiModel, unifiedStoreys, sortMode,
+  const buildFor = useCallback(
+    (expansion: ExpansionLookup): TreeNode[] => !builderReady ? [] : buildTreeForGrouping(
+      groupingMode, models, ifcDataStore, expansion, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
-      georefMutations, mutationViews, materialSourceStores, presentationLayers.builder,
+      georefMutations, mutationViews, materialSourceStores, presentationLayers.builder, layerGrouping, t('hierarchy.layerGrouping.unclassified'), t('hierarchy.layerGrouping.unavailable'), source => t('hierarchy.layerGrouping.noCode', { source: source || t('hierarchy.layerGrouping.classification') }),
     ),
     [groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
-      georefMutations, mutationViews, mutationVersion, materialSourceStores, builderReady, presentationLayers.builder],
+      georefMutations, mutationViews, mutationVersion, materialSourceStores, builderReady, presentationLayers.builder, layerGrouping, localeRevision, t],
   );
-  const treeIndex = useMemo(() => indexHierarchyTree(structuralTree), [structuralTree]);
-  const getExpandedTreeForReveal = useCallback(() => structuralTree, [structuralTree]);
+  // The complete structure (every branch expanded) is what search and reveal
+  // walk and what expansion projects (#5886). It is built lazily: the first
+  // commit of a populated store builds only the rows that can be seen, since
+  // every storey starts collapsed, and the structure follows at idle once the
+  // load has settled, or at once if search or reveal needs it first (NEW-4).
+  const structure = useMemo(() => lazyStructure(() => buildFor(EXPAND_ALL)), [buildFor]);
+  // Once built (idle, search or reveal), expansion projects it: identical rows, no builder call.
+  // The idle build only bumps a counter to re-render: keeping the structure itself in
+  // state would keep the model it was built from (stores, geometry) alive through the
+  // whole next load, whose own idle build cannot run before it settles (#9629 review).
+  const [, structureBuilt] = useReducer((n: number) => n + 1, 0);
+  const projecting = structure.built;
+  useEffect(() => {
+    if (projecting || !builderReady || loading) return;
+    return scheduleIdle(() => { structure.get(); structureBuilt(); });
+  }, [structure, projecting, builderReady, loading]);
+  const treeIndex = useMemo(() => projecting ? indexHierarchyTree(structure.get()) : null, [projecting, structure]);
+  const getExpandedTreeForReveal = useCallback(() => structure.get(), [structure]);
   const revealGlobalId = useRevealGlobalId(getExpandedTreeForReveal, expandedNodes, setExpandedNodes);
   const treeData = useMemo(
     () => searchQuery.trim()
-      ? filterNodes(structuralTree, searchQuery)
-      : flattenVisibleHierarchy(treeIndex, expandedNodes),
-    [structuralTree, treeIndex, searchQuery, expandedNodes],
+      ? filterNodes(structure.get(), searchQuery)
+      : treeIndex ? flattenVisibleHierarchy(treeIndex, expandedNodes) : buildFor(expandedNodes),
+    [structure, treeIndex, buildFor, searchQuery, expandedNodes],
   );
 
   const filteredNodes = treeData;
@@ -276,6 +277,10 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
 
   const toggleExpand = useCallback((nodeId: string) => {
     if (searchQuery.trim()) return;
+    // The first expansion builds the complete structure once, as search and
+    // reveal do, so this and every later toggle only project it (#5886);
+    // rebuilding the visible rows instead rescans membership per toggle.
+    structure.get();
     setExpandedNodes(prev => {
       const next = new Set(prev);
       if (next.has(nodeId)) {
@@ -285,7 +290,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       }
       return next;
     });
-  }, [searchQuery]);
+  }, [searchQuery, structure]);
 
   // Get all elements for a node (handles type groups, ifc-type, unified storeys, single storeys, model contributions, and elements)
   const getNodeElements = useCallback((node: TreeNode): number[] => {
@@ -363,6 +368,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     setSearchQuery,
     groupingMode,
     setGroupingMode,
+    layerGrouping, setLayerGrouping,
     sortMode,
     setSortMode: handleSetSortMode,
     groupFilter,

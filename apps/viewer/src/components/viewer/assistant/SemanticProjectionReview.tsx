@@ -40,7 +40,7 @@ export function SemanticProjectionReview({ proposal }: { proposal: SemanticProje
   };
   return <ReviewFrame label={t('semanticAssist.projectionTitle')} title={proposal.title}>
     {proposal.rationale && <p className="text-muted-foreground break-words">{proposal.rationale}</p>}
-    {denial && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t(mutationDenialKey(denial))}</p>}
+    {denial && <p role="alert" className="rounded border border-warn-border bg-warn-surface p-2">{t(mutationDenialKey(denial))}</p>}
     <ol className="space-y-2">{rows.map((row, index) => <li key={index} className="rounded border border-border p-1.5 space-y-1">
       <p className="break-all"><span className="font-mono text-2xs">{row.projection.field}</span> · {row.projection.resource}</p>
       {row.status === 'ready' ? <div className="flex items-start gap-2">

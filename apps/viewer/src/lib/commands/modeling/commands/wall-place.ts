@@ -27,8 +27,12 @@ import { chainOn, defaultsField, planeZ } from './placement-shared.js';
 import type { CommandContext, CommandField, ModelingCommand } from '../types.js';
 import { joinPlacedWallIn } from '@/store/slices/mutation-wall-joins';
 import { authoringDim, type AuthoringDefaults } from '@/store/slices/authoringDefaultsSlice';
+import { resolveWallTop, recordWallTop, typeWallHeight } from '../wall-top.js';
 
 const wallDims = (d: AuthoringDefaults) => ({ Thickness: authoringDim(d, 'wall', 'Thickness'), Height: authoringDim(d, 'wall', 'Height') });
+/** Up to the storey above, or the default height (`wall-top.ts`). */
+const wallTopOf = (ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId' | 'workplane'>) =>
+  resolveWallTop(ctx.get(), ctx.modelId, ctx.storeyId, planeZ(ctx.workplane));
 
 /** The wall axis the next commit writes: the drawn segment, offset by Align. */
 function wallAxis(g: WallPlaceGesture, d: AuthoringDefaults) {
@@ -43,7 +47,17 @@ const FIELDS: readonly CommandField<WallPlaceGesture>[] = [
   { id: 'length', labelKey: 'modelingCommand.wall.length', unit: 'm', group: 'segment', read: currentLength, write: (g, v) => ({ ...g, length: Math.abs(v) }) },
   { id: 'angle', labelKey: 'modelingCommand.wall.angle', unit: 'deg', group: 'segment', read: currentAngle, write: (g, v) => ({ ...g, angle: v }) },
   defaultsField('thickness', 'wall', 'Thickness', 'modelingCommand.field.thickness'),
-  defaultsField('height', 'wall', 'Height', 'modelingCommand.field.height'),
+  // The height the next wall gets: the storey spacing while it goes to the
+  // storey above. Typing a height means that height: the wall becomes fixed.
+  {
+    ...defaultsField<WallPlaceGesture>('height', 'wall', 'Height', 'modelingCommand.field.height'),
+    read: (_g, ctx) => wallTopOf(ctx).Height,
+    write: (g, v, ctx) => {
+      if (!(v > 0)) return g;
+      typeWallHeight(ctx.get(), v);
+      return g;
+    },
+  },
 ];
 
 export const WALL_PLACE: ModelingCommand<WallPlaceGesture> = {
@@ -85,12 +99,15 @@ export const WALL_PLACE: ModelingCommand<WallPlaceGesture> = {
     const axis = wallAxis(g, tx.store.authoringDefaults);
     if (!axis || tx.storeyId === null) throw new Error('No wall to place');
     const [start, end] = axis;
-    const { Thickness, Height } = wallDims(tx.store.authoringDefaults);
+    const { Thickness } = wallDims(tx.store.authoringDefaults);
     const z = planeZ(tx.workplane);
+    const top = wallTopOf({ get: () => tx.store, modelId: tx.modelId, storeyId: tx.storeyId, workplane: tx.workplane });
     const wall = tx.store.addWall(tx.modelId, tx.storeyId, {
-      Start: [start[0], start[1], z], End: [end[0], end[1], z], Thickness, Height,
+      Start: [start[0], start[1], z], End: [end[0], end[1], z], Thickness, Height: top.Height,
     });
     if ('error' in wall) throw new Error(`Couldn't add wall: ${wall.error}`);
+    // The attachment is part of the same undo step as the wall.
+    if (top.attachTo) recordWallTop(tx.store, tx.modelId, wall.expressId, top.attachTo);
     // An L at the chained corner (and where the loop closes), a T where an end lands on another wall.
     // Joins are part of the same undo step; a model that cannot take them keeps the wall unjoined.
     const joins = joinPlacedWallIn(tx.api, tx.modelId, tx.storeyId, wall.expressId, chainPartners(g).partners);
@@ -108,8 +125,8 @@ export const WALL_PLACE: ModelingCommand<WallPlaceGesture> = {
   ghost(g, ctx) {
     const axis = wallAxis(g, ctx.get().authoringDefaults);
     if (!ctx.workplane || !axis) return [];
-    const { Thickness, Height } = wallDims(ctx.get().authoringDefaults);
-    const mesh = wallGhostMesh(ctx.workplane, axis[0], axis[1], Thickness, Height, commandGhostId(ctx.get()));
+    const { Thickness } = wallDims(ctx.get().authoringDefaults);
+    const mesh = wallGhostMesh(ctx.workplane, axis[0], axis[1], Thickness, wallTopOf(ctx).Height, commandGhostId(ctx.get()));
     return mesh ? [mesh] : [];
   },
 };

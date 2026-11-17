@@ -7,6 +7,13 @@ impl<'a> MappingControl<'a> {
         self.budget = super::super::mapping_budget::LogicalBudget::with_limit(limit);
     }
 
+    /// Test seam: treat representation `rep`'s Items as already read by this
+    /// walk, so its next read pays (#9102).
+    #[cfg(test)]
+    pub(in crate::program) fn mark_seen(&mut self, rep: u32) {
+        self.budget.mark_seen(rep);
+    }
+
     pub(super) fn new(walk: Walk, action: Action<'a>) -> Self {
         Self {
             retained: None,

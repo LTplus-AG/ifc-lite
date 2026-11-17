@@ -177,12 +177,12 @@ export function LandXmlAssumptionsNotice({ model }: { model: FederatedModel }) {
   const crs = model.spatialReference?.horizontal?.id ?? '';
   return (
     <section
-      className="border-b border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+      className="border-b border-warn-border bg-warn-surface px-3 py-2.5 text-xs text-warn"
       data-landxml-assumptions
     >
       <div className="flex items-center gap-2">
         <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span className="rounded border border-amber-400 px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wide dark:border-amber-700">
+        <span className="rounded border border-warn-border px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wide">
           {t('landXmlGeorefAssumptions.badge')}
         </span>
         <h4 className="font-semibold">{t('landXmlGeorefAssumptions.assumed')}</h4>

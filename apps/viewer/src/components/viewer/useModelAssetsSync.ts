@@ -6,6 +6,7 @@ import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
 import { useModelPlacementPersistence } from './useModelPlacementPersistence.js';
 import { useModelPlacementSync } from './useModelPlacementSync.js';
 import { useModelRotationSync } from './useModelRotationSync.js';
+import { useGaussianRendererBinding } from '@/hooks/ingest/gaussianAssets';
 
 /** Upload assets, reconcile streamed ownership, then compose placement. The order
  * matters: a replacement upload must not wipe the placement applied beforehand. */
@@ -19,5 +20,6 @@ export function useModelAssetsSync(params: UsePointCloudSyncParams & {
   useModelRotationSync();
   usePointCloudSync(params);
   usePointCloudLifecycle(params);
+  useGaussianRendererBinding(params.rendererRef, params.isInitialized); // #8566: no handle crosses renderers
   useModelPlacementSync(params.rendererRef, params.isInitialized, params.modelIdToIndex, params.geometry);
 }

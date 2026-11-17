@@ -24,7 +24,8 @@
 import { AoPass } from './ao-pass.js';
 import type { WebGPUDevice } from './device.js';
 import { EdgePass } from './edge-pass.js';
-import { EdlPass, type EdlPassOptions } from './edl-pass.js';
+import type { EdlPass, EdlPassOptions } from './edl-pass.js';
+import { pointCloudSupport } from './point-cloud-support.js';
 import { SelectionMaskPass, type HoveredMesh, type SelectableMesh } from './selection-mask-pass.js';
 import type { InstancedMaskFrame } from './selection-mask-pipelines.js';
 import type { Mat4 } from './types.js';
@@ -163,7 +164,10 @@ export class PostPassChain {
 
     // Eye-dome lighting runs last so it darkens every layer above uniformly.
     if (frame.edl) {
-      this.edl ??= this.build('eye-dome lighting', () => new EdlPass(this.device, this.sampleCount));
+      // EDL is requested only with point clouds loaded, so the support that
+      // created them is installed (`point-cloud-support.ts`).
+      const createEdl = pointCloudSupport()?.createEdlPass;
+      if (createEdl) this.edl ??= this.build('eye-dome lighting', () => createEdl(this.device, this.sampleCount));
       this.edl?.apply(
         frame.encoder,
         { targetView: frame.targetView, depthView: frame.depthView },

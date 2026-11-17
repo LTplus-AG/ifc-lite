@@ -78,14 +78,14 @@ export function FlowCreateReview() {
         </details>}
         <p>{t('flowAssistant.createCapabilities', { capabilities: review.proposal.capabilities.join(', ') || t('assistant.none') })}</p>
         {review.proposal.writers.length > 0 && <p>{t('flowAssistant.createWriters', { nodes: review.proposal.writers.join(', ') })}</p>}
-        {review.proposal.unavailable.length > 0 && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2 break-words">
+        {review.proposal.unavailable.length > 0 && <p role="alert" className="rounded border border-warn-border bg-warn-surface p-2 break-words">
           {t('flowAssistant.createUnavailable', { nodes: review.proposal.unavailable.join('; ') })}</p>}
         <FlowCodeParams code={review.proposal.code} />
         <FlowTrackingImpacts impacts={review.proposal.tracking} />
         <GraphPreview doc={doc} order={review.proposal.order} />
         <details><summary className="cursor-pointer">{t('assistant.flowAfter')}</summary>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{review.proposal.docJson}</pre></details>
-        {blocker && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t(BLOCKER_KEY[blocker])}</p>}
+        {blocker && <p role="alert" className="rounded border border-warn-border bg-warn-surface p-2">{t(BLOCKER_KEY[blocker])}</p>}
         <label className="flex items-start gap-2"><input type="checkbox" checked={review.approved}
           onChange={event => useFlowCreateReview.setState({ approved: event.target.checked })} />{t('flowAssistant.createApproved')}</label>
         <Button size="sm" className="h-7" disabled={!review.approved || !!blocker} onClick={() => run(() => {
@@ -94,7 +94,7 @@ export function FlowCreateReview() {
           panels.openInHome('flow');
         })}>{t('flowAssistant.createApply')}</Button>
       </>}
-      {review.receipt && <div aria-live="polite" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 space-y-2">
+      {review.receipt && <div aria-live="polite" className="rounded border border-ok-border bg-ok-surface p-2 space-y-2">
         <p>{t('flowAssistant.created', { name: review.receipt.created.name })}</p>
         {/* Once the created graph is edited, the edit's own review offers preflight. */}
         {openGraph === review.receipt.created && <FlowPreflight />}

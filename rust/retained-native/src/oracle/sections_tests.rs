@@ -28,3 +28,13 @@ fn issue_7955_fzk_adjacent_breakpoints_integrate_without_relaxing_accuracy() {
         .expect("adjacent topology events must not reject the FZK section");
     assert!((volume - expected).abs() <= RELATIVE * expected, "{volume} != {expected}");
 }
+
+/// A span narrower than rounding has noise for a relative error; it must not stall the sum
+/// (#7955: Snowdon #28109's adjacent-ULP span).
+#[test]
+fn issue_7955_sliver_span_with_noise_converges_absolutely() {
+    let noise = |t: f64, _w: &mut usize| Some(1e-18 * (t * 1e30).sin().abs());
+    let mut work = 1000;
+    assert!(integrate(&noise, 0., 1e-14, 1e-13, &mut work).is_some());
+    assert!(work > 0);
+}

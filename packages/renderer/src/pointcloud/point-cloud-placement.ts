@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { PointCloudAsset } from '@ifc-lite/geometry';
+import { renderableCoordinates } from '../renderable-coordinates.js';
 import { transformAabb, type PointCloudNode } from './point-cloud-node.js';
 
 type Translation = readonly [number, number, number];
@@ -75,6 +77,20 @@ export class PointCloudPlacements {
   }
 }
 
+/** An inline asset's f64 origin (#10029) as a placement baseline. It enters
+ * where a streamed scan's decode origin does, so rendering (RTE), picking,
+ * snapping and bounds read it exactly; a model translation composes on top. */
+function originMatrix(origin: readonly [number, number, number]): Float64Array | null {
+  if (!renderableCoordinates(origin)) return null;
+  const [x, y, z] = origin;
+  return new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
+}
+
+/** The f64 origin matrix of an inline cloud: undefined without an origin, null for an unrenderable one. */
+function pointCloudOriginMatrix(asset: PointCloudAsset): Float64Array | null | undefined {
+  return asset.origin == null ? undefined : originMatrix(asset.origin);
+}
+
 /**
  * A copy of the canonical float64 placement, for CPU callers that compose
  * coordinates with it (#6894). `node.model` is the float32 GPU copy and rounds
@@ -98,4 +114,26 @@ export function unionPointCloudBounds(nodes: Iterable<PointCloudNode | undefined
     }
   }
   return Number.isFinite(min[0]) ? { min, max } : null;
+}
+
+/** Validate each bulk origin once, warning and skipping invalid clouds. */
+export function withPointCloudOrigins(
+  assets: readonly PointCloudAsset[],
+  upload: (asset: PointCloudAsset, origin: Float64Array | undefined) => void,
+): void {
+  for (const asset of assets) {
+    const origin = pointCloudOriginMatrix(asset);
+    if (origin === null) {
+      console.warn(`[PointCloudRenderer] point cloud ${asset.expressId} skipped: origin ${asset.origin!.join(', ')} is not renderable`);
+      continue;
+    }
+    upload(asset, origin);
+  }
+}
+
+/** Single-asset uploads retain the throwing validation contract. */
+export function requirePointCloudOrigin(asset: PointCloudAsset): Float64Array | undefined {
+  const origin = pointCloudOriginMatrix(asset);
+  if (origin === null) throw new Error('Pointcloud origin needs three finite coordinates in the renderable range.');
+  return origin;
 }

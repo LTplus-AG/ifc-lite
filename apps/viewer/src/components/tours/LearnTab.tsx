@@ -11,6 +11,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { TOUR_REGISTRY } from '@/lib/tours/registry';
+import { isTourAvailable } from '@/lib/tours/tour-availability';
 import { isTourCompleted } from '@/lib/tours/storage';
 import { startTour } from '@/lib/tours/controller';
 import type { TourId } from '@/lib/tours/types';
@@ -29,23 +30,27 @@ export function LearnTab({ onClose }: { onClose: () => void }) {
         {t('tours.learnTab.description')}
       </p>
       <div className="divide-y divide-border rounded-md border">
-        {TOUR_REGISTRY.map((tour) => {
+        {TOUR_REGISTRY.filter(isTourAvailable).map((tour) => {
           const done = isTourCompleted(tour.id, tour.version);
           return (
             <div key={tour.id} className="flex items-center gap-3 px-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 text-sm font-medium">
                   {tour.title}
-                  {done && <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-500" aria-label={t('tours.learnTab.completedAriaLabel')} />}
+                  {done && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-ok" aria-label={t('tours.learnTab.completedAriaLabel')} />}
                 </div>
-                <div className="mt-0.5 truncate text-xs text-muted-foreground">{tour.description}</div>
+                <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{tour.description}</div>
               </div>
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {t('tours.learnTab.minutes', { count: tour.minutes })}
-              </span>
-              <Button variant={done ? 'ghost' : 'outline'} size="sm" className="shrink-0" onClick={() => begin(tour.id)}>
-                {done ? t('tours.learnTab.replay') : t('tours.learnTab.start')}
-              </Button>
+              {/* On a phone the duration sits under the button, leaving
+                  the title and description most of the row. */}
+              <div className="flex shrink-0 items-center gap-3 max-sm:flex-col-reverse max-sm:items-end max-sm:gap-0.5">
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {t('tours.learnTab.minutes', { count: tour.minutes })}
+                </span>
+                <Button variant={done ? 'ghost' : 'outline'} size="sm" onClick={() => begin(tour.id)}>
+                  {done ? t('tours.learnTab.replay') : t('tours.learnTab.start')}
+                </Button>
+              </div>
             </div>
           );
         })}

@@ -39,9 +39,8 @@
 
 import { execFileSync } from 'node:child_process';
 import { renderSiblingRow, SIBLING_ROW_JOIN_MARGIN } from './sibling-row.mjs';
-import { keptRowCharge, unreviewableRowCharge } from './run-reviewer.mjs';
+import { keptRowCharge, unreviewableRowCharge, applicabilityReserve, excludedSectionCharge } from './run-reviewer.mjs';
 import { unifiedDiffLineKind } from '../lib/unified-diff.mjs';
-import { applicabilityReserve } from './run-reviewer.mjs';
 import { DEFECT_CLASSES } from './lib/defect-classes.mjs';
 
 /**
@@ -148,7 +147,7 @@ export function promptEnvelopeBytes(input) {
   // Doubled: the count appears in more than one section header, and over-
   // reserving a few bytes is free while under-reserving is the whole defect.
   const countDigits = (n) => 2 * Buffer.byteLength(String(n), 'utf8');
-  let total = PROMPT_BASE_OVERHEAD_BYTES;
+  let total = PROMPT_BASE_OVERHEAD_BYTES + excludedSectionCharge(input?.excluded);
   // THE APPLICABILITY DISCLOSURE IS RENDERED INTO THE PROMPT AND SO IS CHARGED
   // HERE. An upper bound rather than the exact set, because which classes fire
   // is not known until the file set is final: at most one row per class, each
@@ -391,7 +390,7 @@ export const MAX_SEARCH_KEYS = 150;
  * became a cap on a partition so crowded-out sites vanished, and one shared
  * maxBuffer meant an overflow silently returned zero siblings.
  */
-export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec = execFileSync, keep = 6 } = {}) {
+export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec = execFileSync, keep = 6, rankBy = changedPaths } = {}) {
   // `git grep <pattern> <ref>` searches that COMMIT'S TREE. No working tree, no
   // checkout, no dependency on ripgrep being installed on the runner. It also
   // makes the security posture stricter rather than weaker: the tree is read out
@@ -417,7 +416,7 @@ export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec
   } catch {
     return [];                       // exit 1 means no matches, which is normal
   }
-  return rankHits(parseGrep(out, changedPaths), changedPaths).slice(0, keep);
+  return rankHits(parseGrep(out, changedPaths), rankBy).slice(0, keep);
 }
 
 /** Hits from `git grep <ref>` output, minus the paths a sibling is never in. */
@@ -537,6 +536,7 @@ export const SHALLOW_CHECKOUT_REMEDY =
 
 export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = process.cwd(), exec = execFileSync } = {}) {
   const changed = input.files.map((f) => f.path);
+  const touched = input.changedPaths ?? [...changed, ...(input.unreviewable ?? []).map((u) => u.path), ...(input.excluded ?? [])];
   const changedBases = new Set(changed.map((p) => p.split('/').pop()));
   const truncated = [];
   // RESERVED BEFORE THE GREEDY SPENDERS RUN. Siblings are allocated first and
@@ -579,7 +579,7 @@ export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = p
   for (const key of searched) {
     let hits = [];
     try {
-      hits = siblingSites(key, changed, baseRef, { cwd, exec, keep: 6 });
+      hits = siblingSites(key, touched, baseRef, { cwd, exec, keep: 6, rankBy: changed }); // touched filters, shown ranks (#8876, #9027)
     } catch {
       continue;
     }

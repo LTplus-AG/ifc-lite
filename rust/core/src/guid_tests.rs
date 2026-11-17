@@ -85,3 +85,15 @@ fn deterministic_is_the_encoding_of_its_hash() {
         assert_eq!(deterministic(seed), encode(hash128(seed)));
     }
 }
+
+#[test]
+fn decode_bits_inverts_encode_and_refuses_invalid_ids() {
+    let mut x: u128 = 0x0123_4567_89ab_cdef_fedc_ba98_7654_3210;
+    for _ in 0..1000 {
+        assert_eq!(decode_bits(&encode(x)), Some(x));
+        x = x.wrapping_mul(0x2545_f491_4f6c_dd1d_5851_f42d_4c95_7f2d).wrapping_add(0x1405_7b7e_f767_814f);
+    }
+    assert_eq!(decode_bits(&format!("4{}", "0".repeat(21))), None, "first char carries only 2 bits");
+    assert_eq!(decode_bits("short"), None);
+    assert_eq!(decode_bits(&format!("0{}", "-".repeat(21))), None);
+}

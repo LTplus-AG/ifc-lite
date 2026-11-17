@@ -5,6 +5,16 @@
 import type { Catalogue } from '../../registry';
 
 export const miscPanelsBRu = {
+  "federationSetupControls.saved": "Настройки федерации сохранены.",
+  "federationSetupControls.invalid": "Некорректный файл настроек федерации: {reason}",
+  "federationSetupControls.pickSources": "Загружены настройки со слотами моделей: {count}. Выберите соответствующие исходные файлы.",
+  "federationSetupControls.result.restored": "Восстановлено моделей: {restored}/{total}",
+  "federationSetupControls.result.missing": "исходные файлы не найдены: {names}",
+  "federationSetupControls.result.mismatched": "то же имя, другое содержимое: {names}",
+  "federationSetupControls.result.anchorMissing": "не удалось восстановить опорную модель выравнивания",
+  "federationSetupControls.result.tagsMissing": "теги не восстановлены для отсутствующих источников: {names}",
+  "federationSetupControls.result.failed": "исходные файлы найдены, но не загружены: {slots}",
+  "federationSetupControls.result.failedSlot": "{name} ({reason})",
   "pointCloudPanel.title": "Облако точек",
   "pointCloudPanel.close": "Закрыть панель облака точек",
   "pointCloudPanel.assetCount": {
@@ -101,6 +111,8 @@ export const miscPanelsBRu = {
   "shareDialog.youSuffix": "{name} (вы)",
   "shareDialog.guestName": "Гость",
   "shareDialog.roomCreationFailed": "Сессия не создана. Закройте и снова откройте это диалоговое окно, чтобы повторить попытку.",
+  "shareDialog.shareSkipped.noRecords": "Не включены в общую сессию, нет записей IFC для передачи: {models}.",
+  "shareDialog.shareSkipped.allRefused": "Здесь нечего передавать, нет записей IFC для передачи: {models}.",
   "shareDialog.linkCreationFailed": "Создание ссылки не удалось. Проверьте соединение и повторите попытку.",
   "shareDialog.joinedViaInvite": "Вы присоединились по приглашению - передавая его дальше, вы предоставляете те же права доступа. Только администратор сессии может создавать новые ссылки.",
   "shareDialog.onlyAdminCanCreate": "Создавать ссылки-приглашения для этой сессии может только администратор сессии.",

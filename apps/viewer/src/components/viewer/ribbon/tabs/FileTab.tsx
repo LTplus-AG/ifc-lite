@@ -7,6 +7,7 @@
  * open / add / refresh, the exporter fleet, and link-based sharing.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import React from 'react';
 import { AddFile, CloudSources, Loading, OpenFile, SaveFederationSetup, Refresh, Share, CollabsRoom } from '@/icons';
 import { useViewerStore } from '@/store';
@@ -15,7 +16,7 @@ import { isCollabEnabled } from '@/lib/collab/config';
 import { useTranslation } from '@/i18n';
 import type { FileCommands } from '../../toolbar/useFileCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
-import { surfaceCommand } from '../../surface-commands';
+import { surfaceCommand } from '../../surface-command-registry';
 import { RibbonExportGroup } from './RibbonExportGroup';
 import { RIBBON_EXPORT_ICONS } from './ribbon-export-icons';
 import {
@@ -86,14 +87,13 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
           />
         </RibbonSmallStack>
         {[[saveSetup, openSetup], [modelTags]].map((commands) => (
-          <RibbonSmallStack key={commands[0].id} className="gap-1">
+          <RibbonSmallStack key={commands[0].id}>
             {commands.map((command) => (
               <RibbonCommandSmallButton
                 key={command.id}
                 commandId={command.id}
                 icon={command.id === saveSetup.id ? SaveFederationSetup : undefined}
                 tooltip={t(command.labelKey)}
-                className="min-h-6"
                 disabled={!command.enabled({ canEditInSession })}
               />
             ))}
@@ -101,9 +101,13 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
         ))}
       </RibbonGroup>
 
-      <RibbonGroupDivider />
+      {isFeatureEnabled('export.files') && (
+        <>
+          <RibbonGroupDivider />
 
-      <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
+          <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
+        </>
+      )}
 
       {collabEnabled && (
         <>
@@ -132,7 +136,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               active={collabPanelVisible}
               commandContext={{ activateRightPanel: () => useViewerStore.getState().toggleWorkspacePanel('collab', 'ribbon') }}
               badge={collabPeerCount > 0 ? (
-                <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-2xs font-medium text-white">
+                <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-ok-solid px-1 text-2xs font-medium text-solid-foreground">
                   {collabPeerCount + 1}
                 </span>
               ) : undefined}

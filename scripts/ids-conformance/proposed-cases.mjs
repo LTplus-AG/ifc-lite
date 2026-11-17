@@ -5,7 +5,7 @@
 
 /**
  * Generates the corpus test cases proposed upstream in
- * `docs/architecture/ids-studio/upstream/` (IDS-126). Drafts only: they are
+ * `packages/ids/src/__corpus__/proposed-cases/` (IDS-126). Drafts only: they are
  * offered to buildingSMART, never added to the vendored corpus.
  *
  * Every `.ids` is written by `writeIdsXml` (the P-01 writer) from an
@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const OUT = join(REPO, 'docs/architecture/ids-studio/upstream/proposed-corpus-cases');
+const OUT = join(REPO, 'packages/ids/src/__corpus__/proposed-cases');
 
 const simple = (value) => ({ type: 'simpleValue', value });
 const wall = { type: 'entity', name: simple('IFCWALL') };

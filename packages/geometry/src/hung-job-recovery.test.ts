@@ -227,7 +227,7 @@ describe('startHungJobMonitor (#4884)', () => {
         return new StubWorker() as unknown as Worker;
       },
       installHandlers: () => {},
-      setup: [],
+      replaySetup: () => {},
       postChunk: (i, j, cap) => { (workers[i] as StubWorker).postMessage({ jobs: j, cap }); },
       streamEndSent: () => false,
       terminate: (w) => w.terminate(),

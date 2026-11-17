@@ -33,3 +33,14 @@ export interface Section2DOverlayOptions {
   showFills?: boolean;
   showOutlines?: boolean;
 }
+
+/** Per-upload options for `Renderer.setLineOverlay`. */
+export interface LineOverlayOptions {
+  /**
+   * Clip this channel like the model: what the section plane, an extra cutting plane or the clip
+   * box removes is not drawn (#8767). Default false, which draws the lines whole as before. The
+   * viewer sets it for IfcAnnotation lines; reference layers (grid, DXF, alignment) leave it off.
+   * The `centreline` channel ignores it.
+   */
+  sectionClipped?: boolean;
+}

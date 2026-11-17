@@ -28,6 +28,7 @@ import { Boxes, Eye, EyeOff, Filter, Focus, Layers, Palette } from 'lucide-react
 import type { ValidationReport, IDSAuditReport } from '@ifc-lite/ids';
 import type { UseValidationResults } from '@/hooks/validation/useValidationResults';
 import type { IDSFocusMode } from '@/store/slices/idsSlice';
+import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -125,6 +126,7 @@ export function IDSPanelResults({
         summaryClassName="p-3 bg-muted/30"
         summaryProps={tourAnchor(TOUR_ANCHORS.idsSummary)}
         summary={<>
+        {report.targetScope && <p className="mb-2 text-xs font-medium" role="note">{t('idsPanel.targetFilter.result', { countDisplay: formatLocaleNumber(locale, report.targetScope.entityCount) })}</p>}
         {idsMultiModel && !isRules && (
           <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground min-w-0">
             <span className="shrink-0">{t('idsPanel.validate')}</span>
@@ -170,11 +172,11 @@ export function IDSPanelResults({
             <div className="text-muted-foreground">{t('idsPanel.entityResults')}</div>
           </div>
           <div className="bg-background rounded p-2">
-            <div className="font-medium text-green-600">{formatLocaleNumber(locale, report.summary.totalEntitiesPassed)}</div>
+            <div className="font-medium text-ok">{formatLocaleNumber(locale, report.summary.totalEntitiesPassed)}</div>
             <div className="text-muted-foreground">{t('idsPanel.passed')}</div>
           </div>
           <div className="bg-background rounded p-2">
-            <div className="font-medium text-red-600">{formatLocaleNumber(locale, summary.failed)}</div>
+            <div className="font-medium text-danger">{formatLocaleNumber(locale, summary.failed)}</div>
             <div className="text-muted-foreground">{t('idsPanel.failed')}</div>
           </div>
         </div>
@@ -216,7 +218,7 @@ export function IDSPanelResults({
           label={failedLabel}
           variant={failedActive ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-8 w-8 p-0', failedActive && 'text-red-600')}
+          className={cn('h-8 w-8 p-0', failedActive && 'text-danger')}
           aria-pressed={failedActive}
           onClick={handleIsolateFailed}
           disabled={noActiveSpec}
@@ -229,7 +231,7 @@ export function IDSPanelResults({
           label={passedLabel}
           variant={passedActive ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-8 w-8 p-0', passedActive && 'text-green-600')}
+          className={cn('h-8 w-8 p-0', passedActive && 'text-ok')}
           aria-pressed={passedActive}
           onClick={handleIsolatePassed}
           disabled={noActiveSpec}
@@ -294,13 +296,13 @@ export function IDSPanelResults({
             ['isolate', 'idsPanel.focus.isolate', 'idsPanel.focus.isolateTip'],
             ['ghost', 'idsPanel.focus.ghost', 'idsPanel.focus.ghostTip'],
           ] as [IDSFocusMode, TranslationKey, TranslationKey][]).map(([m, labelKey, tipKey]) => (
-            <button
-              key={m} title={t(tipKey)} aria-pressed={focusMode === m}
+            <Button
+              key={m} type="button" variant="toggle" size="segment" title={t(tipKey)} aria-pressed={focusMode === m}
               onClick={() => setFocusMode(m)}
-              className={cn('px-1.5 py-0.5 transition-colors', focusMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+              className="rounded-none px-1.5 font-normal"
             >
               {t(labelKey)}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

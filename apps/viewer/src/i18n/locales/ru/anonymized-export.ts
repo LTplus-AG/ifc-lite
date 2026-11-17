@@ -48,7 +48,7 @@ export const anonymizedExportRu = {
   "anonymizedExport.typeCategoryBar.blockedTitle": "Заблокировано — нажмите, чтобы включить",
   "anonymizedExport.typeCategoryBar.includedTitle": "Включено — нажмите, чтобы заблокировать",
   "anonymizedExport.dialog.title": "Экспорт анонимизированного подмножества",
-  "anonymizedExport.dialog.description": "Объекты, выделенные на 3D-виде справа, экспортируются — все признаки, идентифицирующие проект, удаляются, локальные преобразования сохраняются.",
+  "anonymizedExport.dialog.description": "Экспортируются объекты, выделенные на 3D-виде справа. Анонимизируются только выбранные категории; категории с настройкой «Сохранить» сохраняют исходные значения. Локальные преобразования сохраняются.",
   "anonymizedExport.dialog.otherModelSeedsExcluded": {
     one: "{count} выбранный объект из других моделей не включён",
     few: "{count} выбранных объекта из других моделей не включены",

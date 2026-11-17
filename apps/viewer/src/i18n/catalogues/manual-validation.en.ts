@@ -11,7 +11,7 @@ export const manualValidationEn = {
   'manualValidation.entry.title': 'Manual validation',
   'manualValidation.entry.description': 'Work through a checklist by eye and record Pass, Fail or Warning with a comment for each check.',
   'manualValidation.entry.new': 'New checklist',
-  'manualValidation.entry.open': 'Open .checklist.json',
+  'manualValidation.entry.open': 'Open checklist',
   'manualValidation.entry.recent': 'Recent checklists',
 
   'manualValidation.library.select': 'Select checklist',

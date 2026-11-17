@@ -13,6 +13,7 @@
  * diff that changes matching semantics is worth being able to read on its own.
  */
 
+import { WASM_SOURCE_BYTE_LIMIT, WasmSourceSizeError } from '@ifc-lite/parser';
 import { resolve as translate } from '../i18n/registry.js';
 
 import {
@@ -34,6 +35,9 @@ import {
  *   one, because that is precisely the case the gate exists to exclude.
  */
 export function formatLoadError(err: unknown, fileName?: string, context?: unknown): string {
+  if (err instanceof WasmSourceSizeError) {
+    return translate('viewportLighting.container.loadErrorCard.sourceTooLarge', { limit: `${WASM_SOURCE_BYTE_LIMIT / (1024 ** 3)} GiB` });
+  }
   const kind = classifyLoadError(err, context);
   const subject = fileName ? `"${fileName}"` : 'the model';
   switch (kind) {

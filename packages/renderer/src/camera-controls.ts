@@ -16,6 +16,7 @@
 import type { Vec3 } from './types.js';
 import { acceptZoomStep, captureZoomState, shiftTargetTowardsMouse, zoomOrthographic, zoomPerspective } from './camera-zoom.js';
 import { CAMERA_CONSTANTS as CC } from './constants.js';
+import { viewBasis } from './math.js';
 import type { CameraInternalState } from './camera-state.js';
 import {
   areFiniteNumbers,
@@ -204,9 +205,9 @@ export class CameraControls {
   /**
    * Orbit the camera around a pivot point.
    *
-   * `camera.up` is always world Y — setPresetView positions the camera at phi
-   * ∈ [MIN_PHI, MAX_PHI] (never on the exact pole), so the orbit math never
-   * hits the spherical singularity and no special pole-handling is needed.
+   * `camera.up` is world Y while orbiting. A pose exactly on a pole (the top
+   * and bottom presets, #9501) is first stepped to the edge of the orbit range
+   * by `leavePole`, so the orbit math never hits the spherical singularity.
    * Phi is clamped to [MIN_PHI, π − MIN_PHI], keeping it just off both poles
    * so sinφ stays nonzero in the spherical tangent math. Pattern is the same
    * as yomotsu/camera-controls and Autodesk Viewer.
@@ -224,6 +225,7 @@ export class CameraControls {
     if (!areFiniteNumbers(deltaX, deltaY)) return false;
     if (this.interactionMode === 'pan' || this.interactionMode === 'none') return false;
 
+    this.leavePole();
     this.state.camera.up = { x: 0, y: 1, z: 0 };
 
     const dx = -deltaX * CC.ORBIT_SENSITIVITY;
@@ -252,6 +254,49 @@ export class CameraControls {
 
     this.updateMatrices();
     return true;
+  }
+
+  /**
+   * Step a pose that sits closer to a pole than the orbit range allows back
+   * out to `MIN_PHI` (or `MAX_PHI`), keeping its screen orientation (#9501).
+   *
+   * The top and bottom presets, a horizontal section's "Set view" and a
+   * plan BCF viewpoint look exactly down (or up) the Y axis, so their pose has
+   * no horizontal offset and `camera.up` alone says which way the screen
+   * faces. The orbit math resets `up` to world Y and needs that offset for
+   * its polar tangent; without it a horizontal drag spun nothing and the
+   * first frame snapped to the `-Z` fallback screen orientation. Moving the
+   * camera to the orbit range's edge, on the side opposite screen-up (top) or
+   * along it (bottom), is the pose world Y up draws the same way. The step is
+   * `MIN_PHI` (0.01 rad) and lands inside the drag that asked for it.
+   */
+  private leavePole(): void {
+    const { position, target, up } = this.state.camera;
+    const offset = sub(position, target);
+    const dist = length(offset);
+    if (!isUsableDistance(dist, 1e-6)) return;
+    const cosPhi = offset.y / dist;
+    const poleCos = Math.cos(CC.MIN_PHI);
+    if (Math.abs(cosPhi) <= poleCos) return;
+    const sign = cosPhi > 0 ? 1 : -1;
+
+    // Screen-up's horizontal direction, from the same basis the view matrix
+    // is built with: the raw `up` can be tilted out of the image plane (a
+    // BCF viewpoint whose up is not orthogonal to its direction), and a
+    // vertical or unusable one falls back to `viewBasis`'s -Z hint. Near the
+    // pole screen-up is nearly horizontal, so its horizontal part is usable.
+    const screenUp = viewBasis(position, target, up).up;
+    const upHoriz = Math.hypot(screenUp.x, screenUp.z);
+    if (!(upHoriz > 1e-9)) return;
+    // Top: the camera sits opposite screen-up. Bottom: on its side.
+    const hx = (-sign * screenUp.x) / upHoriz;
+    const hz = (-sign * screenUp.z) / upHoriz;
+    const sinPhi = Math.sin(CC.MIN_PHI);
+    copyInto(this.state.camera.position, {
+      x: target.x + dist * sinPhi * hx,
+      y: target.y + dist * sign * poleCos,
+      z: target.z + dist * sinPhi * hz,
+    });
   }
 
   /**

@@ -41,9 +41,21 @@ function decodedAttr5(text: string): unknown {
   return new EntityExtractor(buffer).extractEntity(ref)?.attributes[5];
 }
 
+// Sets holding a member that is neither a reference nor `$`. Their references
+// are still what Rust's `get_refs` names, but the relationship reader records
+// no edges for such a record (#9192): a full read decodes `14` or `'#14'` as a
+// reference, so the graph would not list exactly what the record names.
+const NOT_PLAIN = new Set([
+  'non-reference members of a set are skipped',
+  'a string that looks like a reference is text',
+  'a nested list holds no direct reference',
+]);
+
 describe.skipIf(vectors.length === 0)('RelatingPropertyDefinition: parity with the Rust reader (#7681)', () => {
   it('has the shared vectors', () => {
     expect(vectors.length).toBeGreaterThan(15);
+    const names = new Set(vectors.map((v) => v.name));
+    for (const name of NOT_PLAIN) expect(names.has(name), name).toBe(true);
   });
 
   for (const v of vectors) {
@@ -61,7 +73,7 @@ describe.skipIf(vectors.length === 0)('RelatingPropertyDefinition: parity with t
       it('extractPropertyRelFast keeps each set member once, or drops the relationship', () => {
         const rel = extractPropertyRelFast(buffer, 0, buffer.length);
         const distinct = [...new Set(want)];
-        if (distinct.length === 0) expect(rel).toBeNull();
+        if (distinct.length === 0 || NOT_PLAIN.has(v.name)) expect(rel).toBeNull();
         else expect(rel).toEqual({ relatedObjects: [50], relatingDefs: distinct });
       });
 

@@ -1,0 +1,56 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const trimExtendDe = {
+  'trimExtend.label': 'Stutzen/Verlängern',
+  'trimExtend.tool': 'Stutzen / Verlängern',
+  'commands.model.trimExtend': 'Bis zu einer Begrenzung stutzen oder verlängern (Modell-Arbeitsbereich)',
+  'commandPalette.tool.trimExtend.label': 'Stutzen / Verlängern',
+  'trimExtend.hint.boundary': 'Klicken Sie auf die Begrenzung: eine Wand, einen Balken, eine Deckenkante oder eine Rasterlinie · Esc beendet',
+  'trimExtend.hint.trim': 'Klicken Sie auf den Teil einer Wand oder eines Balkens, der bis zur Begrenzung gekürzt werden soll · Umschalt gedrückt halten zum Verlängern · Rücktaste wählt eine andere Begrenzung · Esc beginnt neu',
+  'trimExtend.hint.extend': 'Klicken Sie auf das Ende einer Wand oder eines Balkens, das bis zur Begrenzung verlängert werden soll · Umschalt gedrückt halten zum Stutzen · Rücktaste wählt eine andere Begrenzung · Esc beginnt neu',
+  'trimExtend.noTargets': 'Hier gibt es nichts zu stutzen oder zu verlängern: Wählen Sie ein Geschoss mit Wänden oder Balken',
+  'trimExtend.needBoundary': 'Wählen Sie zuerst eine Begrenzung',
+  'trimExtend.needTarget': 'Klicken Sie auf eine Wand oder einen Balken zum Stutzen oder Verlängern',
+  'trimExtend.refusedHere': 'Dieses Bauteil kann hier nicht gestutzt oder verlängert werden: Der Grund steht daneben',
+  'trimExtend.mode.label': 'Stutzen oder verlängern',
+  'trimExtend.mode.trim': 'Stutzen',
+  'trimExtend.mode.extend': 'Verlängern',
+  'trimExtend.mode.trimTitle': 'Bauteil bis zur Begrenzung kürzen und die angeklickte Seite entfernen (Umschalt gedrückt halten zum Verlängern)',
+  'trimExtend.mode.extendTitle': 'Das dem Klick nächstgelegene Ende bis zur Begrenzung verlängern (Umschalt gedrückt halten zum Stutzen)',
+  'trimExtend.bar.boundary': 'Begrenzung: {name}',
+  'trimExtend.bar.pickBoundary': 'Begrenzung wählen',
+  'trimExtend.bar.trim': 'Um {distance} m stutzen',
+  'trimExtend.bar.extend': 'Um {distance} m verlängern',
+  'trimExtend.bar.join': 'Verbindung: {kind}',
+  'trimExtend.boundary.wall': 'Wand {name}',
+  'trimExtend.boundary.beam': 'Balken {name}',
+  'trimExtend.boundary.slab': 'Deckenkante von {name}',
+  'trimExtend.boundary.grid': 'Rasterlinie',
+  'trimExtend.boundary.edge': 'Kante',
+  'trimExtend.refused.wallBody': 'Stutzen oder Verlängern nicht möglich: Der Verbindungskern kann den Körper dieser Wand nicht lesen',
+  'trimExtend.refused.vertical': 'Stutzen oder Verlängern nicht möglich: Ein vertikales Bauteil hat keine Grundrissachse, die eine Begrenzung erreichen kann',
+  'trimExtend.refused.parallel': 'Die Begrenzung kann nicht erreicht werden: Das Bauteil verläuft entlang der Begrenzung',
+  'trimExtend.refused.boundaryShort': 'Die Begrenzung kann nicht erreicht werden: Sie endet, bevor die Linie des Bauteils auf sie trifft',
+  'trimExtend.refused.crossesInside': 'Kreuzt die Begrenzung bereits: Wechseln Sie zu Stutzen (oder halten Sie Umschalt gedrückt), um es zu kürzen',
+  'trimExtend.refused.notReached': 'Endet vor der Begrenzung: Wechseln Sie zu Verlängern (oder halten Sie Umschalt gedrückt), um es zu verlängern',
+  'trimExtend.refused.otherEnd': 'Die Begrenzung liegt hinter dem anderen Ende: Klicken Sie näher an diesem Ende, um es zu verlängern',
+  'trimExtend.refused.tooShort': 'Ein Stutzen an dieser Stelle würde weniger als die Mindestlänge übrig lassen',
+  'trimExtend.refused.alreadyThere': 'Endet bereits an der Begrenzung',
+  'trimExtend.refused.hosted': {
+    one: 'Ein Stutzen an dieser Stelle würde {countDisplay} Öffnung, Tür oder Fenster in dieser Wand abschneiden',
+    other: 'Ein Stutzen an dieser Stelle würde {countDisplay} Öffnungen, Türen oder Fenster in dieser Wand abschneiden',
+  },
+  'trimExtend.refused.hostedUnreadable': {
+    one: 'Die Lage von {countDisplay} Öffnung in dieser Wand ist nicht bestimmbar, daher wird die Wand nicht gestutzt',
+    other: 'Die Lage von {countDisplay} Öffnungen in dieser Wand ist nicht bestimmbar, daher wird die Wand nicht gestutzt',
+  },
+  'trimExtend.refused.join': 'Die Wand kann nicht mit der Begrenzung verbunden werden: {reason}',
+  'trimExtend.failed': 'Die Wandgröße konnte nicht geändert werden: {reason}',
+  'trimExtend.done.trim': '{name} gestutzt',
+  'trimExtend.done.extend': '{name} verlängert',
+  'trimExtend.done.joined': 'mit der Begrenzungswand verbunden',
+} satisfies Catalogue;

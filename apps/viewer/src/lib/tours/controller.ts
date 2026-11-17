@@ -24,8 +24,8 @@
  * and preventDefaults every press.
  */
 
-import { getViewerStoreApi } from '@/store';
-import type { ViewerState } from '@/store';
+import { getViewerStoreApi, type ViewerState } from '@/store';
+import { isTourAvailable } from './tour-availability';
 import { resolveAnchor } from './anchor-resolver';
 import { loadDemoProject, waitForModelSettled } from './demo-kit';
 import { getTour } from './registry';
@@ -77,7 +77,7 @@ export function startTour(id: TourId, source: TourSource): void {
   if (run || useTourStore.getState().status !== 'idle') return;
   if (store.getState().isMobile) return;
   const def = getTour(id);
-  if (!def) return;
+  if (!def || !isTourAvailable(def)) return;
   if (!prereqsMet(def, store.getState())) {
     prereqPending = { def, source };
     patchTourState({ status: 'prereq', tourId: id, source });

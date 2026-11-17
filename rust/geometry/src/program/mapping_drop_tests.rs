@@ -299,9 +299,9 @@ mod diagnostics {
                     None,
                     (0., 0., 0.),
                 )
-                // Root Items costs three; the first child's one-item source
-                // fits, then the second occurrence exhausts the logical budget.
-                .with_logical_limit(4);
+                // Root #32 and the first #20 are two attempts; the second #20
+                // is the third, which exhausts the allowance.
+                .with_logical_limit(2);
                 let capture = Capture::default();
                 let meshes = tracing::subscriber::with_default(capture.clone(), || {
                     program.drain_styled(&router, &mut decoder).unwrap()
@@ -328,7 +328,7 @@ mod diagnostics {
                             ),
                             (
                                 "error".to_owned(),
-                                "Geometry processing error: Representation expansion exceeded the work budget of 4 levels or item references at #20".to_owned()
+                                "Geometry processing error: Representation expansion exceeded the work budget of 2 levels or item references at #20".to_owned()
                             ),
                         ]),
                         tracing::Level::DEBUG,

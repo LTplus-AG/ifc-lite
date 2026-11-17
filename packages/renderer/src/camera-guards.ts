@@ -108,6 +108,20 @@ export function usableOrthoSize(size: number): number | null {
 }
 
 /**
+ * Largest lens shift magnitude in NDC (#8688). Two-point perspective needs
+ * `tan(pitch) / tan(fov / 2)`, about 4 at 60° pitch with a 45° fov, so this
+ * leaves pitches within a few hundredths of a degree of vertical. A finite
+ * `1e39` would otherwise overflow to `-Infinity` in the Float32 projection
+ * matrix and leave the viewport dead (#2441).
+ */
+export const MAX_LENS_SHIFT = 1000;
+
+/** Is `value` a usable lens shift component: finite and within {@link MAX_LENS_SHIFT}? */
+export function isUsableLensShift(value: number): boolean {
+  return Number.isFinite(value) && Math.abs(value) <= MAX_LENS_SHIFT;
+}
+
+/**
  * Are all of `values` finite?
  *
  * The gesture *arguments* — wheel deltas, pointer deltas, walk axes — are a

@@ -17,6 +17,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { ResultView, ResultSource, ResultCoverage } from '../result/ResultView';
 import { ResultState } from '../result/ResultState';
 import { AnalysisResultList } from '../analysis/AnalysisResultList';
@@ -98,7 +99,8 @@ export function BCFTopicList({
       className="h-full"
       header={<ResultSource source={t('bcf.resultChrome.source', { name: projectName || t('bcf.resultChrome.unnamed') })}
         models={[]} population={t('bcf.resultChrome.population', { count: topics.length })} />}
-      coverage={<ResultCoverage status="uncertain" counts={t('bcf.resultChrome.shown', { count: sortedTopics.length })}
+      // An empty workspace has no outcome to qualify: the empty state below says what to do instead.
+      coverage={topics.length > 0 && <ResultCoverage status="uncertain" counts={t('bcf.resultChrome.shown', { count: sortedTopics.length })}
         incomplete={[t('bcf.resultChrome.coverageUnknown')]} />}
       filters={(
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
@@ -175,15 +177,28 @@ export function BCFTopicList({
         )}
       >
         {sortedTopics.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-8 px-4 text-muted-foreground text-sm">
-            <ResultState
-              kind={topics.length > 0 ? 'filtered' : 'no-population'}
-              title={t(topics.length > 0 ? 'bcf.resultChrome.filtered' : 'bcf.topicList.noTopics')}
-              action={topics.length === 0 ? <Button variant="link" size="sm" onClick={onCreateTopic}>{t('bcf.topicList.createFirstTopic')}</Button> : undefined}
-            />
+          <div className="flex flex-col items-center px-4 pb-6">
+            {topics.length > 0 ? (
+              <ResultState kind="filtered" title={t('bcf.resultChrome.filtered')} />
+            ) : (
+              <EmptyState
+                align="start"
+                role="status"
+                data-result-state="no-population"
+                icon={<MessageSquare />}
+                title={t('bcf.topicList.noTopics')}
+                description={t('bcf.topicList.emptyDescription')}
+                action={(
+                  <Button size="sm" className="h-7 gap-1.5" onClick={onCreateTopic}>
+                    <Plus className="h-3.5 w-3.5" />
+                    {t('bcf.topicList.newTopicAria')}
+                  </Button>
+                )}
+              />
+            )}
 
             {/* Email setup nudge */}
-            <div className="mt-6 w-full max-w-xs">
+            <div className="w-full max-w-xs">
               <div className="border border-border rounded-lg p-3 bg-muted/30">
                 {editingEmail ? (
                   <div className="space-y-2">
@@ -226,12 +241,13 @@ export function BCFTopicList({
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-muted-foreground mb-0.5">{t('bcf.topicList.authorLabel')}</p>
-                      <p className={`text-sm truncate ${isDefaultEmail ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
-                        {author}
+                      {/* The shipped default is a placeholder, not an identity: say so in muted text. */}
+                      <p className={isDefaultEmail ? 'text-sm italic text-muted-foreground' : 'text-sm truncate text-foreground'}>
+                        {isDefaultEmail ? t('bcf.topicList.authorNotSet') : author}
                       </p>
                     </div>
                     <Button
-                      variant={isDefaultEmail ? 'default' : 'ghost'}
+                      variant={isDefaultEmail ? 'outline' : 'ghost'}
                       size="sm"
                       onClick={() => {
                         setEmailInput(author);

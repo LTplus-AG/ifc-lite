@@ -26,6 +26,7 @@ fn failed_mesh_release_retires_on_read_success_and_preserves_primary_limit_error
         }
         let mut worker = SmlibWorker::spawn(&executable).unwrap();
         let solid = worker.create_box([0.; 3], [1.; 3]).unwrap();
+        #[cfg(target_os = "linux")]
         let pid = worker.process_id();
         // The oversized peer advertises a mesh beyond any limit; the other peer
         // returns a tiny valid mesh whose mesh handle cannot then be released.
@@ -88,6 +89,8 @@ fn primary_limit_failure_never_caches_worker_retired_by_mesh_cleanup() {
     .unwrap() else {
         panic!("transport handle")
     };
+    // Bound everywhere: the unwrap asserts the worker had a pid; only Linux reads it (/proc).
+    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
     let pid = worker.process_id().unwrap();
     assert!(matches!(
         run(WorkerCommand::Tessellate {

@@ -9,7 +9,9 @@
  * is the class's Width × Height default, or a picked section (I, L, T, U, C,
  * circle, hollow: the bar's Section picker), its underside `Bottom at` above
  * the workplane. The class segment picks `addBeam` or `addMember`. Each
- * beam is one transaction, one undo step.
+ * beam is one transaction, one undo step. Under the "Storey above" default, a
+ * beam whose top lands on the storey above is recorded attached to it, so it
+ * stays under that storey when the level moves (#9296).
  */
 
 import { BeamPlaceProfileBar } from '@/components/viewer/tools/command/ProfileBars';
@@ -21,6 +23,7 @@ import { commandGhostId } from '../ghost.js';
 import { prismGhostMesh, segmentOutline } from '../ghost-shapes.js';
 import type { CommandContext, CommandField, ModelingCommand } from '../types.js';
 import { chainOn, defaultsField, dimOf, planeZ } from './placement-shared.js';
+import { beamTopAttachment, recordWallTop } from '../wall-top.js';
 import { rectangleOnly, sectionExtentOf, sectionGhost, sectionOf } from './linear-section.js';
 import { MIN_WALL_LENGTH, anchorOf, currentAngle, currentLength, endPoint, type WallPlaceGesture } from './wall-place-geometry.js';
 
@@ -87,6 +90,9 @@ export const BEAM_PLACE: ModelingCommand<BeamPlaceGesture> = {
     const params = profile ? { ...ends, Profile: profile } : { ...ends, Width, Height };
     const made = cls === 'member' ? tx.store.addMember(tx.modelId, tx.storeyId, params) : tx.store.addBeam(tx.modelId, tx.storeyId, params);
     if ('error' in made) throw new Error(`Couldn't add the ${cls}: ${made.error}`);
+    // A beam whose top lands on the storey above follows it (`wall-top.ts`), in the same undo step.
+    const attachTo = beamTopAttachment(tx.store, tx.modelId, tx.storeyId, planeZ(tx.workplane) + Bottom + Height);
+    if (attachTo) recordWallTop(tx.store, tx.modelId, made.expressId, attachTo);
     return { created: [made.expressId], authored: [made.expressId], deleted: [], remesh: [made.expressId], select: [made.expressId] };
   },
   afterCommit: (g, _result, ctx) => {

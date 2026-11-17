@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: MPL-2.0
-// Explicit fleet/CI entry point. Never publishes; preserve all failures and skips.
-// @unwired-by-design release qualification invoked under fleet admission by the release owner
+// Explicit CI entry point. Never publishes; preserve all failures and skips.
+// @unwired-by-design release qualification invoked by the release owner
 import { spawnSync } from 'node:child_process';
 import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

@@ -10,6 +10,9 @@
  * rather than pre-building all data upfront during initial parse.
  */
 
+import { readPropertySets, readTypeProperties } from './current-property-sets.js';
+import { propertyRecord, propertyReference } from './current-property-record.js';
+import type { MetadataReadView } from './effective-metadata-record.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { RelationshipType, resolvedTypeName } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
@@ -88,21 +91,13 @@ import { complexPropertyListingValue } from './complex-property-store.js';
 export function extractPsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
-    psetIds: number[]
+    psetIds: number[], view?: MetadataReadView
 ): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
     const result: Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> = [];
 
     for (const psetId of psetIds) {
-        // @raw-entity-enumeration-ok one requested set id is decoded from its source STEP span
-        const psetRef = store.entityIndex.byId.get(psetId) ?? store.deferredEntityIndex?.get(psetId);
-        if (!psetRef) continue;
-
-        // Only extract IFCPROPERTYSET entities (skip quantity sets etc.)
-        if (psetRef.type.toUpperCase() !== 'IFCPROPERTYSET') continue;
-
-        const psetEntity = extractor.extractEntity(psetRef);
-        if (!psetEntity) continue;
-
+        const psetEntity = propertyRecord(store, psetId, view, extractor);
+        if (psetEntity?.type.toUpperCase() !== 'IFCPROPERTYSET') continue;
         const psetAttrs = psetEntity.attributes || [];
         const psetGlobalId = typeof psetAttrs[0] === 'string' ? psetAttrs[0] : undefined;
         const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : ''; // not `PropertySet #<id>` (#3530)
@@ -112,32 +107,26 @@ export function extractPsetsFromIds(
 
         if (Array.isArray(hasProperties)) {
             for (let index = 0; index < hasProperties.length; index++) {
-                const propRef = hasProperties[index];
-                if (typeof propRef !== 'number') continue;
-
-                // @raw-entity-enumeration-ok one referenced property id is decoded from its source STEP span
-                const propEntityRef = store.entityIndex.byId.get(propRef) ?? store.deferredEntityIndex?.get(propRef);
-                if (!propEntityRef) continue;
-
-                const propEntity = extractor.extractEntity(propEntityRef);
+                const propRef = propertyReference(hasProperties[index]);
+                if (propRef === null) continue;
+                const propEntity = propertyRecord(store, propRef, view, extractor);
                 if (!propEntity) continue;
-
                 const propAttrs = propEntity.attributes || [];
                 const propName = typeof propAttrs[0] === 'string' ? propAttrs[0] : '';
                 if (!propName) continue;
 
                 // A complex property is resolved once per store, against the
                 // model's budget, and shared by every entity listing its set (#7675).
-                const parsed = propEntity.type.toUpperCase() === 'IFCCOMPLEXPROPERTY'
+                const parsed = !view && propEntity.type.toUpperCase() === 'IFCCOMPLEXPROPERTY'
                     ? complexPropertyListingValue(store, extractor, psetId, index)
-                    : parsePropertyValueWithComplex(store, extractor, propEntity);
+                    : parsePropertyValueWithComplex(store, extractor, propEntity, undefined, view);
                 const entry: ExtractedProperty = {
                     name: propName,
                     type: parsed.type,
                     value: parsed.value,
                 };
                 copyParsedExtras(entry, parsed);
-                const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs, parsed.dataType);
+                const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs, parsed.dataType, view);
                 if (unit) entry.unit = unit.symbol;
                 if (unit?.siScale !== undefined) entry.unitSiScale = unit.siScale;
                 if (unit?.siOffset !== undefined) entry.unitSiOffset = unit.siOffset;
@@ -171,8 +160,9 @@ export function extractPsetsFromIds(
  */
 export function extractTypePropertiesOnDemand(
     store: IfcDataStore,
-    entityId: number
+    entityId: number, view?: MetadataReadView
 ): TypePropertyInfo | null {
+    if (view) return readTypeProperties(store, entityId, view);
     if (!store.relationships) return null;
 
     // Find type entity via DefinesByType relationship (inverse: element → type)
@@ -235,8 +225,9 @@ export function extractTypePropertiesOnDemand(
  */
 export function extractTypeEntityOwnProperties(
     store: IfcDataStore,
-    typeEntityId: number
+    typeEntityId: number, view?: MetadataReadView
 ): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
+    if (view) return readPropertySets(store, typeEntityId, view);
     // @raw-entity-enumeration-ok the caller selected this one source type entity by id
     const ref = store.entityIndex.byId.get(typeEntityId);
     if (!ref || !store.source?.length) return [];

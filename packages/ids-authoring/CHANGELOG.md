@@ -1,5 +1,23 @@
 # @ifc-lite/ids-authoring
 
+## 0.3.5
+
+### Patch Changes
+
+- [#9865](https://github.com/LTplus-AG/ifc-lite/pull/9865) [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66) Thanks [@louistrue](https://github.com/louistrue)! - The IDS gate builds its defined-type name set on first use from `getIfcDataTypes()`, instead of from `IFC_DATA_TYPES` when the module loads. Same set.
+
+- [#9663](https://github.com/LTplus-AG/ifc-lite/pull/9663) [`23f2f05`](https://github.com/LTplus-AG/ifc-lite/commit/23f2f0562aa2c60d7114769b39431d73d5661f02) Thanks [@louistrue](https://github.com/louistrue)! - IDS Studio: picking a property's data type after entering its value now saves the value with the data type's XSD base. A list of 1 to 5 typed before choosing IFCINTEGER was saved as `xs:restriction base="xs:string"`; it is now `xs:integer`. Some values keep their old base, for example text under an integer type or a pattern. A list like this already saved as `xs:string` under IFCINTEGER shows the IDSL-VAL-002 warning, and its quick fix sets `xs:integer`. `@ifc-lite/ids-authoring` exports the check as `rebaseRestriction`.
+- Updated dependencies [[`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`6cbd92c`](https://github.com/LTplus-AG/ifc-lite/commit/6cbd92c9cd0dc6669c2429c80c9fed354ecee192), [`e15f582`](https://github.com/LTplus-AG/ifc-lite/commit/e15f5824cb0747471e0f2dc15c16ef47972fcb89), [`13ab690`](https://github.com/LTplus-AG/ifc-lite/commit/13ab690f111eeebe7dd2ac28a944feadc98fd5c4), [`9505c27`](https://github.com/LTplus-AG/ifc-lite/commit/9505c2734a8061b62277f034a1bb87ba822a025f), [`358d4bf`](https://github.com/LTplus-AG/ifc-lite/commit/358d4bf05c9a723b169fb93b250c59f7366f0ea9), [`a3fc186`](https://github.com/LTplus-AG/ifc-lite/commit/a3fc1869c457a2262033cb42f72a5157f173fe49), [`6c8cdee`](https://github.com/LTplus-AG/ifc-lite/commit/6c8cdee71b36d120f17bbb2907715695f4952ff8), [`dded228`](https://github.com/LTplus-AG/ifc-lite/commit/dded228fd11fa6a7c514be1f6525f9b3906a0a7c), [`53730fd`](https://github.com/LTplus-AG/ifc-lite/commit/53730fdab891c3463e18680f4a84f0c5674a25b0), [`ef74836`](https://github.com/LTplus-AG/ifc-lite/commit/ef748363a34f40ea69805973372e1476f590218b), [`3a08e6c`](https://github.com/LTplus-AG/ifc-lite/commit/3a08e6c2ee182a6e45741e7d1773a2e4bdc5b986)]:
+  - @ifc-lite/data@7.0.0
+  - @ifc-lite/ids@3.5.0
+
+## 0.3.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ifc-lite/ids@3.4.4
+
 ## 0.3.3
 
 ### Patch Changes

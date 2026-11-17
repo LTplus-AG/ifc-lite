@@ -17,16 +17,17 @@
  */
 
 import {
-  carriesGpuInstancedGeometry,
   convergeGeometryOntoRtcAnchor,
   isOnRtcAnchor,
+  rtcConvergeAction,
   rebaseCoordinateInfoOntoRtcAnchor,
   rebaseOriginByRtcDelta,
   rtcRebaseDeltaFor,
 } from '@ifc-lite/geometry/rtc-rebase';
-import { chooseSharedRtcOffset, federationFrameInfo } from '@ifc-lite/geometry/world-frame';
+import { chooseSharedRtcOffset } from '@ifc-lite/geometry/world-frame';
 import type { Vec3 } from '@ifc-lite/geometry';
 import { toast } from '@/components/ui/toast';
+import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import type { PreAlignmentSnapshot } from '../../store/index.js';
 import { invalidateSpatialIndex } from '../../utils/loadingUtils.js';
@@ -40,7 +41,7 @@ import { isLandXmlSchema } from './landXmlSemantics.js';
  * far would split it; it is converged when its own load settles.
  */
 function hasSettledGeometry(model: FederatedModel): boolean {
-  return model.geometryResult != null
+  return !model.gaussianSplat && model.geometryResult != null
     && model.loadState !== 'pending'
     && model.loadState !== 'streaming-geometry'
     && model.loadState !== 'error';
@@ -56,6 +57,8 @@ function convergeSnapshot(snapshot: PreAlignmentSnapshot, anchor: Readonly<Vec3>
   if (isOnRtcAnchor(snapshot.coordinateInfo, anchor)) return false;
   const delta = rtcRebaseDeltaFor(snapshot.coordinateInfo, anchor);
   snapshot.origins = snapshot.origins.map((origin) => rebaseOriginByRtcDelta(origin, delta));
+  snapshot.clouds = snapshot.clouds?.map((cloud) => (cloud.chunk.pointCount === 0 ? cloud
+    : { ...cloud, origin: rebaseOriginByRtcDelta(cloud.origin, delta) }));
   snapshot.coordinateInfo = rebaseCoordinateInfoOntoRtcAnchor(snapshot.coordinateInfo, anchor);
   return true;
 }
@@ -74,7 +77,7 @@ function adoptMeshlessLandXmlFrame(
   settled: ReadonlyArray<readonly [string, FederatedModel]>,
 ): string[] {
   const meshBearing = settled.filter(([, model]) => (model.geometryResult?.meshes.length ?? 0) > 0);
-  const frame = federationFrameInfo(meshBearing.map(([, model]) => model));
+  const frame = sharedRenderFrame(meshBearing.map(([, model]) => model));
   if (!frame) return [];
   const adopted: string[] = [];
   for (const [modelId, model] of settled) {
@@ -107,13 +110,11 @@ export function convergeFederationRtcFrame(): void {
     return;
   }
 
-  // Refuse up front per model, so the spatial index of a model that will
-  // not move is never withdrawn.
   const instancedIds = new Set(settled.filter(([id]) => hasInstancedShards(id)).map(([, model]) => model.geometryResult!));
-  const movable = settled.filter(([, model]) => {
-    const geometry = model.geometryResult!;
-    return !isOnRtcAnchor(geometry.coordinateInfo, anchor) && !carriesGpuInstancedGeometry(geometry) && !instancedIds.has(geometry);
-  });
+  // Decide up front with the re-base's own rule, so a model it leaves (a
+  // streamed scan, or one on the anchor) or refuses never has its index withdrawn.
+  const movable = settled.filter(([, model]) =>
+    rtcConvergeAction(model.geometryResult!, anchor, (geometry) => instancedIds.has(geometry)) === 'move');
   // Captured BEFORE the move, while each model's `CoordinateInfo` still
   // records the frame it is leaving: everything recorded in that frame outside
   // the geometry has to be shifted by the same vector.

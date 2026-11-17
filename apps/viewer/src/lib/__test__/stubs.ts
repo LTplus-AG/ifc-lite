@@ -85,6 +85,8 @@ export class StubView {
 
   isDeleted(_id: number): boolean { return false; }
   getNewEntities(): OverlayEntity[] { return []; }
+  // These graph fixtures have no property sets or roof-attachment marker (#9296).
+  getPropertyValue(_id: number, _pset: string, _name: string): undefined { return undefined; }
   getTypeMutations(): Map<number, { newType: string }> { return new Map(); }
   // What `@ifc-lite/create`'s effective-entity readers ask a view: this stub holds no overlay of its own
   // (the paired `StubStoreEditor` does), so to them every entity is unknown.

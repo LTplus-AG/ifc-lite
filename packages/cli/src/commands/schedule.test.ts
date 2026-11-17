@@ -850,8 +850,8 @@ describe('scheduleCommand --preset (end to end)', () => {
     const out = await runSchedule(IFC, ['--preset', 'door']);
     const lines = out.trimEnd().split('\n');
     expect(lines[0]).toBe('Mark,Name,FireRating,IsExternal,Width,Height');
-    // D-01 door: Tag=D-01, Name='Door A', IsExternal=true; no FireRating/Width/Height.
-    expect(lines).toContain('D-01,Door A,,true,,');
+    // D-01 has no FireRating; OverallWidth/OverallHeight supply its dimensions (#9354).
+    expect(lines).toContain('D-01,Door A,,true,900,2100');
   });
 
   it('explicit --columns overrides the preset column set (explicit flag wins)', async () => {
@@ -1086,7 +1086,7 @@ describe('scheduleCommand --format md/html (end to end)', () => {
     const lines = out.trimEnd().split('\n');
     expect(lines[0]).toBe('| Mark | Name | FireRating | IsExternal | Width | Height |');
     expect(lines[1]).toBe('| --- | --- | --- | --- | --- | --- |');
-    expect(lines).toContain('| D-01 | Door A |  | true |  |  |');
+    expect(lines).toContain('| D-01 | Door A |  | true | 900 | 2100 |');
   });
 
   it('--format html emits a standalone document escaping the comma+quote door name', async () => {

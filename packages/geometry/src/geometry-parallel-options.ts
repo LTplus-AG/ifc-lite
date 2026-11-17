@@ -59,6 +59,8 @@ export interface ProcessParallelOptions {
    * tessellation tier. `undefined`/`false` ⇒ every cut runs (default).
    */
   skipSmallCuts?: boolean;
+  /** Skip IfcRelVoidsElement cuts; keep authored booleans and filling meshes. */
+  skipVoids?: boolean;
   /**
    * Explicit URL for the wasm-bindgen `.wasm` binary. When provided,
    * forwarded to the geometry workers' init messages so they call

@@ -288,6 +288,90 @@ test('--pr reads the declaration LIVE: the API wins over a stale env payload, an
   assert.equal(run(repo, base, fakeGh({ nonsense: true })).code, 2);
 });
 
+/** A `gh` answering each PR number from `prs`; a number it lacks fails like the API would. */
+function fakeGhByPr(prs) {
+  const dir = mkdtempSync(join(tmpdir(), 'silent-revert-gh-'));
+  cleanup.push(dir);
+  const arms = Object.entries(prs).map(([n, pr]) => `  *pulls/${n}) cat <<'JSON'\n${JSON.stringify(pr)}\nJSON\n  ;;`).join('\n');
+  writeFileSync(join(dir, 'gh'), `#!/bin/sh\ncase "$*" in\n${arms}\n  *) echo "HTTP 502" >&2; exit 1;;\nesac\n`);
+  chmodSync(join(dir, 'gh'), 0o755);
+  return { PATH: `${dir}:${process.env.PATH}`, GITHUB_REPOSITORY: 'o/r' };
+}
+
+const draft = (over = {}) => ({
+  title: 'merge queue: checking #105 on main (abc1234)', body: 'This is a merge queue draft opened by Mergify.', labels: [],
+  user: { login: 'mergify[bot]' }, head: { ref: 'mergify/merge-queue/abc', repo: { full_name: 'o/r' } }, ...over,
+});
+const source = (body = '', title = 'feat(viewer): jump') => ({ title, body, labels: [] });
+
+/** `incident()` as Mergify tests it: the source PR merged onto main on a draft branch. */
+function batchIncident(merges = [['feat', 'Merge of #105']]) {
+  const repo = incident();
+  git(repo, 'switch', '-q', '-c', 'draft', 'main');
+  for (const [branch, message] of merges) git(repo, 'merge', '-q', '--no-ff', '-m', message, branch);
+  git(repo, 'switch', '-q', 'main');
+  return repo;
+}
+
+const BATCH = ['--base', 'main', '--head', 'draft', '--pr', '900'];
+
+test('a Mergify draft is judged on the queued PR behind it, read live', () => {
+  const repo = batchIncident();
+  const declared = run(repo, BATCH, fakeGhByPr({ 900: draft(), 105: source('Reverts #101') }));
+  assert.equal(declared.code, 0, declared.err);
+  assert.match(declared.out, /queued #105 behind Mergify draft #900/);
+  const silent = run(repo, BATCH, fakeGhByPr({ 900: draft(), 105: source() }));
+  assert.equal(silent.code, 1, silent.err);
+  assert.match(silent.err, /Judged on the declarations of queued #105/);
+  const elsewhere = run(repo, BATCH, fakeGhByPr({ 900: draft(), 105: source('Reverts #999') }));
+  assert.equal(elsewhere.code, 1, 'naming a different PR declares nothing about #101');
+  const labelled = run(repo, BATCH, fakeGhByPr({ 900: draft(), 105: { ...source(), labels: [{ name: EXEMPT_LABEL }] } }));
+  assert.equal(labelled.code, 0, labelled.err);
+});
+
+test('only a draft opened by Mergify on its own branch reads other PRs', () => {
+  const repo = batchIncident();
+  for (const over of [
+    { user: { login: 'someone' } },
+    { head: { ref: 'feat/x', repo: { full_name: 'o/r' } } },
+    { head: { ref: 'mergify/merge-queue/abc', repo: { full_name: 'fork/r' } } },
+  ]) {
+    const r = run(repo, BATCH, fakeGhByPr({ 900: draft(over), 105: source('Reverts #101') }));
+    assert.equal(r.code, 1, `not a Mergify draft: ${JSON.stringify(over)}`);
+  }
+});
+
+test('a queued neighbour cannot declare another PR\'s revert', () => {
+  const repo = batchIncident();
+  git(repo, 'switch', '-q', '-c', 'other', 'main');
+  save(repo, { 'other.txt': v('other', 1) }, 'feat: other');
+  git(repo, 'switch', '-q', 'draft');
+  git(repo, 'merge', '-q', '--no-ff', '-m', 'Merge of #106', 'other');
+  git(repo, 'switch', '-q', 'main');
+  const neighbour = run(repo, BATCH, fakeGhByPr({ 900: draft(), 105: source(), 106: source('Reverts #101', 'revert: back out #101') }));
+  assert.equal(neighbour.code, 1, neighbour.err);
+  const own = run(repo, BATCH, fakeGhByPr({ 900: draft(), 105: source('Reverts #101'), 106: source() }));
+  assert.equal(own.code, 0, own.err);
+  assert.match(own.out, /queued #105, #106 behind/);
+});
+
+test('a draft whose sources cannot be read exits 2, and a clean one reads none', () => {
+  const unread = run(batchIncident(), BATCH, fakeGhByPr({ 900: draft() }));
+  assert.equal(unread.code, 2, unread.err);
+  assert.match(unread.err, /could not read PR #105/);
+  const unknown = run(batchIncident([['feat', 'hand-made merge']]), BATCH, fakeGhByPr({ 900: draft(), 105: source('Reverts #101') }));
+  assert.equal(unknown.code, 2, unknown.err);
+  assert.match(unknown.err, /not a `Merge of #N` commit/);
+
+  const repo = newRepo();
+  save(repo, { 'a.txt': v('a', 0) }, 'init');
+  git(repo, 'switch', '-q', '-c', 'draft');
+  save(repo, { 'b.txt': v('b', 0) }, 'not a merge commit, and nothing to declare');
+  git(repo, 'switch', '-q', 'main');
+  const clean = run(repo, BATCH, fakeGhByPr({ 900: draft() }));
+  assert.equal(clean.code, 0, clean.err);
+});
+
 test('a declared revert writes itself to the step summary so a reviewer sees it', () => {
   const repo = incident();
   const dir = mkdtempSync(join(tmpdir(), 'silent-revert-sum-'));

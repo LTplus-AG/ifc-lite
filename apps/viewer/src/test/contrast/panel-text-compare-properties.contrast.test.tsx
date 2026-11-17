@@ -32,7 +32,7 @@ import { PropertiesPanel } from '@/components/viewer/PropertiesPanel.js';
 import { IDSPanel } from '@/components/viewer/IDSPanel.js';
 import { cleanup, click, render } from '@/test/render.js';
 import { parseStep, seedModel } from '@/test/properties-panel-harness.js';
-import { closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
 import {
   assertRenderedTextClears,
   assertForcedClassReddens,
@@ -131,18 +131,18 @@ const SHAPE_HASH_NOTICE = resolve('comparePanel.changeDetail.unchangedShapeHash'
 
 describe('ComparePanel secondary text contrast (#4792, #6205)', () => {
   for (const theme of THEMES) {
-    it(`CountBadge hint, data count, moved/reshaped lines and before/after arrow clear AA in ${theme}`, async () => {
+    it(`CountBadge hint, data count, moved/reshaped lines and before/after arrow clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       mountCompare({ sameBox: false });
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE),
         [COUNT_BADGE_HINT, DATA_COUNT, MOVED_LINE, SIZE_LINE, ARROW], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`"shape hash differs" notice clears AA in ${theme}`, async () => {
+    it(`"shape hash differs" notice clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       mountCompare({ sameBox: true });
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE), [SHAPE_HASH_NOTICE], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`non-vacuousness: text-muted-foreground/60 shrink-0 on ChangeDetailView before/after arrow reddens in ${theme}`, async (t) => {
+    it(`non-vacuousness: text-muted-foreground/60 shrink-0 on ChangeDetailView before/after arrow reddens in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async (t) => {
       mountCompare({ sameBox: false });
       const ratios = await assertForcedClassReddens(theme, ARROW, 'text-muted-foreground/60 shrink-0', WCAG_AA_NORMAL_TEXT, VIEWER_SHELL_SURFACE);
       t.diagnostic(ratios.map((r) => `${r.toFixed(2)}:1`).join(', '));
@@ -151,7 +151,7 @@ describe('ComparePanel secondary text contrast (#4792, #6205)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// PropertiesPanel: world-coordinates section, opened, "Size" row
+// PropertiesPanel: Position disclosure, opened, "Size" row
 // ---------------------------------------------------------------------------
 
 const MODEL_ID = 'm1';
@@ -172,7 +172,11 @@ END-ISO-10303-21;
 const SIZE_LABEL = resolve('properties.panel.sizeLabel');
 const SIZE_VALUE = resolve('properties.panel.sizeDisplay', { x: '2.00', y: '3.00', z: '4.00' });
 
-/** The wall selected, with a 2x3x4 mesh, and the world-coordinates section opened by a click. */
+/**
+ * The wall selected, with a 2x3x4 mesh, and the Position disclosure opened by
+ * a click (#8802 R2 replaced the "World" chip with a labelled Position row
+ * whose disclosure holds the Size row).
+ */
 async function mountPropertiesSize(): Promise<void> {
   const store = await parseStep(WALL_STEP);
   seedModel(MODEL_ID, ID_OFFSET, store, 42);
@@ -182,19 +186,19 @@ async function mountPropertiesSize(): Promise<void> {
     models: new Map([[MODEL_ID, { ...model, geometryResult: { meshes: [boxMesh(42 + ID_OFFSET, [0, 0, 0], [2, 3, 4])] } } as unknown as FederatedModel]]),
   });
   render(<PropertiesPanel />);
-  click(elementWithText(resolve('properties.panel.worldCoordinates')));
+  click(elementWithText(resolve('properties.panel.positionLabel')));
 }
 
 describe('PropertiesPanel "Size" row contrast (#4792, #6205)', () => {
   before(() => localStorage.removeItem(COORDINATES_DISCLOSURE_KEY));
 
   for (const theme of THEMES) {
-    it(`"Size" label and value clear AA in ${theme}`, async () => {
+    it(`"Size" label and value clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await mountPropertiesSize();
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE), [SIZE_LABEL, SIZE_VALUE], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`non-vacuousness: text-[9px] font-medium text-muted-foreground/50 on PropertiesPanel "Size" label reddens in ${theme}`, async (t) => {
+    it(`non-vacuousness: text-[9px] font-medium text-muted-foreground/50 on PropertiesPanel "Size" label reddens in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async (t) => {
       await mountPropertiesSize();
       const ratios = await assertForcedClassReddens(theme, SIZE_LABEL, 'text-[9px] font-medium text-muted-foreground/50', WCAG_AA_NORMAL_TEXT, VIEWER_SHELL_SURFACE);
       t.diagnostic(ratios.map((r) => `${r.toFixed(2)}:1`).join(', '));
@@ -246,7 +250,7 @@ function mountIdsAuditDetail(): void {
 
 describe('IDSAuditSummary issue detail contrast (#4792, #6205)', () => {
   for (const theme of THEMES) {
-    it(`"path", "facet" and detail key labels clear AA in ${theme}`, async () => {
+    it(`"path", "facet" and detail key labels clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       mountIdsAuditDetail();
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE),
         [resolve('idsPanel.audit.path'), resolve('idsPanel.audit.facet'), DETAIL_KEY], WCAG_AA_NORMAL_TEXT);

@@ -13,6 +13,7 @@
 import type React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { ACTIVE_BORDERED_STATE_CLASS } from '@/components/ui/active-state';
 
 /** Section shell — consistent header with an accent rule. */
 export function Section({
@@ -60,7 +61,7 @@ export function Chip({
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
         selected
-          ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+          ? ACTIVE_BORDERED_STATE_CLASS
           : 'border-border bg-background hover:bg-muted',
       )}
     >

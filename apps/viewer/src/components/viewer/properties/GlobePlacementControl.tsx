@@ -25,15 +25,22 @@ export default function GlobePlacementControl() {
     { value: 'exact', label: t('properties.georef.globePlacement.exact') },
   ];
   const errorCm = status?.anchorErrorMetres;
+  const resolved = status?.mode === 'exact'
+    ? t(mode === 'auto' && status.prescribed === 'exact'
+      ? 'properties.georef.globePlacement.resolvedRigid'
+      : 'properties.georef.globePlacement.resolvedExact')
+    : t('properties.georef.globePlacement.resolvedAnchor');
+  // An explicit choice that contradicts what the georeference prescribes.
+  const contradicts = status?.prescribed != null && mode !== 'auto' && mode !== status.prescribed;
   return (
     <div className="ml-5 space-y-1">
       <div className="flex items-center gap-2">
-        <span className="text-xs text-zinc-600 dark:text-zinc-400 flex-1">{t('properties.georef.globePlacement.label')}</span>
+        <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.globePlacement.label')}</span>
         <SegmentedControl size="sm" label={t('properties.georef.globePlacement.label')} value={mode} options={options} onValueChange={setMode} />
       </div>
       {status && (
-        <div className="text-xs text-zinc-500 dark:text-zinc-400">
-          {status.mode === 'exact' ? t('properties.georef.globePlacement.resolvedExact') : t('properties.georef.globePlacement.resolvedAnchor')}
+        <div className="text-xs text-muted-foreground">
+          {resolved}
           {errorCm != null && (
             <span className="ml-1 font-mono">
               {t('properties.georef.globePlacement.estimate', {
@@ -43,7 +50,12 @@ export default function GlobePlacementControl() {
           )}
         </div>
       )}
-      <div className="text-xs text-zinc-400 dark:text-zinc-500">{t('properties.georef.globePlacement.help')}</div>
+      {contradicts && (
+        <div role="note" className="text-xs text-warn">
+          {t('properties.georef.globePlacement.rigidAnchorWarning')}
+        </div>
+      )}
+      <div className="text-xs text-muted-foreground">{t('properties.georef.globePlacement.help')}</div>
     </div>
   );
 }

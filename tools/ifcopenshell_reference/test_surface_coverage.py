@@ -15,7 +15,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location('surface_comparison',
-    ROOT/'docs/architecture/evidence/issue-7292/compare_surface.py')
+    ROOT/'tools/ifcopenshell_reference/compare_surface.py')
 C = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(C)
 F = C.finite
@@ -65,7 +65,7 @@ class FiniteCoverage(unittest.TestCase):
                        'engines':{'ifcopenshell':C.ifcopenshell.version,'shapely':'2.0.7'},
                        'oracle_raw_mesh_sha256':hashlib.sha256(content).hexdigest()}
             (folder/'receipt.json').write_text(json.dumps(receipt))
-            result = subprocess.run([sys.executable,'-B',str(ROOT/'docs/architecture/evidence/issue-7292/compare_surface.py'),
+            result = subprocess.run([sys.executable,'-B',str(ROOT/'tools/ifcopenshell_reference/compare_surface.py'),
                 '--mode','corpus','--fixture',str(fixture),'--oracle-cache',str(folder),
                 '--base',str(folder/'missing-base'),'--candidate',str(folder/'missing-candidate'),
                 '--output',str(folder/'result')],capture_output=True,text=True,timeout=120)
@@ -168,7 +168,7 @@ class FiniteCoverage(unittest.TestCase):
             folder = Path(directory)
             (folder/'candidate.json').write_text(json.dumps(candidate))
             result = subprocess.run([sys.executable,'-B',str(ROOT/
-                'docs/architecture/evidence/issue-7292/compare_surface.py'),
+                'tools/ifcopenshell_reference/compare_surface.py'),
                 '--candidate',str(folder/'candidate.json'),'--output',str(folder/'result')],
                 cwd=ROOT,capture_output=True,text=True,check=False,timeout=300)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)

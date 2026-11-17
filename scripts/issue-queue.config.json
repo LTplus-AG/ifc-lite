@@ -103,8 +103,8 @@
     "",
     "Bots, because they have no work queue to steer. A dependabot bump closes no issue and",
     "never will; failing it teaches contributors that this gate is noise, which is how a gate",
-    "ends up disabled. `github-actions` covers the changeset release PR, which likewise closes",
-    "nothing.",
+    "ends up disabled. `ifc-lite-release-bot` authors the changeset release PR, which likewise",
+    "closes nothing; `github-actions` remains exempt for workflow-authored PRs.",
     "",
     "ADDING A HUMAN HERE IS A REAL DECISION, not a convenience: it removes that person from",
     "the queue entirely. It is a config change so that it is reviewable, and it is a separate",
@@ -114,6 +114,7 @@
   ],
   "exemptLogins": [
     "louistrue",
+    "ifc-lite-release-bot",
     "dependabot",
     "dependabot[bot]",
     "app/dependabot",

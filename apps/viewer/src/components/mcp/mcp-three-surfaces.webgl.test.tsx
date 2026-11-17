@@ -63,6 +63,23 @@ afterEach(() => {
 });
 
 describe('HeroScene on a device that refuses a WebGL context', () => {
+  it('keeps the page available when shader precision queries return null (#9660)', () => {
+    let released = 0;
+    const probe = mock.method(HTMLCanvasElement.prototype, 'getContext', () => ({
+      getShaderPrecisionFormat: () => null,
+      getExtension: (name: string) => name === 'WEBGL_lose_context'
+        ? { loseContext: () => { released++; } } : null,
+    }));
+    try {
+      act(() => root.render(<HeroScene step={0} />));
+      assert.match(container.textContent ?? '', /3D preview unavailable on this device/);
+      assert.equal(released, 1, 'even an unusable context is released');
+      assert.equal(probe.mock.callCount(), 1, 'the renderer never attempts construction');
+    } finally {
+      probe.mock.restore();
+    }
+  });
+
   it('mounts without throwing and paints a caption instead of killing the page', () => {
     // Pre-fix this `act` throws: `createScene` reaches `new
     // THREE.WebGLRenderer` synchronously inside the mount effect.

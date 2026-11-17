@@ -35,7 +35,7 @@ export function ArtifactAmbiguity({ unresolved, onResolve, onAsk }: {
       case 'measure': return t('assistantArtifacts.where.measure');
     }
   };
-  return <fieldset aria-label={t('assistantArtifacts.ambiguityTitle')} className="min-w-0 rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-2">
+  return <fieldset aria-label={t('assistantArtifacts.ambiguityTitle')} className="min-w-0 rounded border border-warn-border bg-warn-surface p-2 space-y-2">
     <p className="font-medium">{t('assistantArtifacts.ambiguityTitle')}</p>
     <p>{t('assistantArtifacts.ambiguityHint')}</p>
     {unresolved.map((resolution, index) => <fieldset key={`${fieldKey(resolution.site)}:${index}`} className="min-w-0 space-y-1">

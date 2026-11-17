@@ -35,30 +35,23 @@
  */
 
 import { readRefId } from './columnar-parser-attributes.js';
-import { isSpaceByte, opensComment, skipComment, skipStringLiteral } from './step-lexing.js';
+import { isSpaceByte, opensComment, skipGap as skipTrivia, skipStringLiteral } from './step-lexing.js';
 
 /** Same bound as `MAX_NESTING_DEPTH` in rust/core/src/parser/tokenizer.rs. */
 const MAX_NESTING_DEPTH = 256;
 
 const KEYWORD = 'IFCPROPERTYSETDEFINITIONSET';
+/** A member that is not an entity reference: a string, number, enum, `*`. */
 const OTHER = -1;
+/** An empty `$` member: no reference, and no decoder reads one as a reference. */
+const NULL = -2;
 
 interface Typed { definitionSet: boolean; args: Value[] }
-/** An entity id (>= 0), `OTHER`, a list, or a typed value. */
+/** An entity id (>= 0), `OTHER`, `NULL`, a list, or a typed value. */
 type Value = number | Value[] | Typed;
 
 function isKeywordByte(b: number): boolean {
     return (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5a) || (b >= 0x61 && b <= 0x7a) || b === 0x5f;
-}
-
-/** Skip whitespace and `/* ... *\/` comments; -1 for a comment that never closes. */
-function skipTrivia(buffer: Uint8Array, pos: number, end: number): number {
-    for (;;) {
-        while (pos < end && isSpaceByte(buffer[pos])) pos++;
-        if (pos >= end || !opensComment(buffer, pos, end)) return pos;
-        pos = skipComment(buffer, pos, end);
-        if (pos < 0) return -1;
-    }
 }
 
 function isDefinitionSetName(buffer: Uint8Array, start: number, stop: number): boolean {
@@ -136,7 +129,7 @@ function readValue(buffer: Uint8Array, pos: number, end: number, depth: number, 
         if (c === 0x2c || c === 0x29 || c === 0x28 || c === 0x27 || isSpaceByte(c) || opensComment(buffer, next, end)) break;
         next++;
     }
-    into.push(OTHER);
+    into.push(b === 0x24 && next === pos + 1 ? NULL : OTHER);
     return next;
 }
 
@@ -153,19 +146,39 @@ function itemsOf(value: Value): Value[] | null {
  * decides whether to collapse it). Empty when the value holds none.
  */
 export function readPropertyDefinitionRefs(buffer: Uint8Array, pos: number, end: number): number[] {
+    return readPropertyDefinitionValue(buffer, pos, end)?.ids ?? [];
+}
+
+/**
+ * {@link readPropertyDefinitionRefs} plus the position after the value, so the
+ * relationship reader can check the record ends there (#9192). `null` when
+ * the value does not tokenize or is not followed by `,` or `)`.
+ *
+ * `plain` is false when a member of the value is anything other than a
+ * reference or an empty `$`: a nested list, a typed value, a string, a number.
+ * `ids` still skips such members, as Rust's `get_refs` does, but the
+ * relationship reader records no edges for the record (#9192): a full read
+ * decodes `14` and `'#14'` as references, and the graph would not hold
+ * exactly the references the record names.
+ */
+export function readPropertyDefinitionValue(
+    buffer: Uint8Array,
+    pos: number,
+    end: number,
+): { ids: number[]; plain: boolean; next: number } | null {
     const parsed: Value[] = [];
     const next = readValue(buffer, pos, end, 0, parsed);
-    if (next < 0) return [];
+    if (next < 0) return null;
     // The value must be followed by the next attribute or the record's own `)`.
     // A set missing its `)` otherwise swallows the record's, and a record Rust
     // refuses to decode would still yield references here.
     const after = skipTrivia(buffer, next, end);
-    if (after < 0 || after >= end || (buffer[after] !== 0x2c && buffer[after] !== 0x29)) return [];
+    if (after < 0 || after >= end || (buffer[after] !== 0x2c && buffer[after] !== 0x29)) return null;
     const value = parsed[0];
 
     let members: Value[];
     if (typeof value === 'number') {
-        return value >= 0 ? [value] : [];
+        return { ids: value >= 0 ? [value] : [], plain: value > 0 || value === NULL, next };
     } else if (Array.isArray(value)) {
         members = value;
     } else {
@@ -173,10 +186,15 @@ export function readPropertyDefinitionRefs(buffer: Uint8Array, pos: number, end:
         members = value.definitionSet && only ? only : value.args;
     }
     const ids: number[] = [];
+    // A typed value other than a definition set (`IFCLABEL(#24,#25)`) is no reference list:
+    // a full read does not take its arguments as the definitions (#9192)
+    let plain = Array.isArray(value) || value.definitionSet;
     for (const member of members) {
         if (typeof member === 'number' && member >= 0) ids.push(member);
+        // `#0` and a bare `#` read as 0 and name no entity: a full read refuses on them (#9192)
+        if (member !== NULL && !(typeof member === 'number' && member > 0)) plain = false;
     }
-    return ids;
+    return { ids, plain, next };
 }
 
 function numericRef(value: unknown): number | null {

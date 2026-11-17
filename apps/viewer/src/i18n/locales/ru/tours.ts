@@ -19,7 +19,6 @@ export const toursRu = {
   "tours.tourHost.cancel": "Отменить",
   "tours.tourHost.loadDemoStack": "Загрузить демонстрационный стек",
   "tours.tourHost.loadDemoProject": "Загрузить демонстрационный проект",
-  "tours.tourInvite.prompt": "Вы здесь впервые?",
   "tours.tourInvite.start": "Пройдите двухминутную экскурсию",
   "tours.tourInvite.dismissAriaLabel": "Отклонить приглашение на тур",
   "tours.tourStepCard.ariaLabel": "Этап тура {step} из {total}: {title}",

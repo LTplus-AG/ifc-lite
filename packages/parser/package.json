@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/parser",
-  "version": "9.8.0",
+  "version": "10.0.0",
   "description": "IFC/STEP parser for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,6 +10,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./structural-glyphs": {
+      "types": "./dist/structural-glyphs.d.ts",
+      "import": "./dist/structural-glyphs.js"
     },
     "./browser": {
       "types": "./dist/browser.d.ts",
@@ -34,6 +38,7 @@
     "jszip": "^3.10.2"
   },
   "devDependencies": {
+    "@ifc-lite/mutations": "workspace:^",
     "@mergifyio/vitest": "^2026.10.11",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"

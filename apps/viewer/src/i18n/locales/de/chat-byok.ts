@@ -1,0 +1,51 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const chatByokDe = {
+  "chatByok.credentialForm.replaceKeyLabel": "Vorhandenen Schlüssel ersetzen",
+  "chatByok.credentialForm.pasteKeyLabel": "Ihren Schlüssel einfügen",
+  "chatByok.credentialForm.hideKeyAria": "Schlüssel ausblenden",
+  "chatByok.credentialForm.showKeyAria": "Schlüssel anzeigen",
+  "chatByok.credentialForm.looksLikeKey": "Sieht wie ein {label}-Schlüssel aus ({masked}).",
+  "chatByok.credentialForm.doesntLookLikeKey": "Das sieht nicht wie ein {label}-Schlüssel aus (erwartetes Präfix {prefix}).",
+  "chatByok.credentialForm.workspaceLabel": "Arbeitsbereich-ID",
+  "chatByok.credentialForm.workspaceOptionalSuffix": "— optional",
+  "chatByok.credentialForm.workspacePlaceholder": "wrkspc_...",
+  "chatByok.credentialForm.workspaceHelp": "Nur nötig, wenn Ihr Schlüssel auf mehrere Arbeitsbereiche zugreift — Anthropic lehnt dann jede Anfrage ab, bis einer angegeben wird. Für einen Schlüssel mit nur einem Arbeitsbereich ist hier keine Angabe nötig.",
+  "chatByok.credentialForm.workspaceInvalidHelp": "Die Eingabe enthält ein Zeichen, das nicht in eine Arbeitsbereich-ID gehört — meist ein beim Kopieren eingefügtes unsichtbares Zeichen. Tippen Sie die ID neu oder fügen Sie sie erneut ein.",
+  "chatByok.credentialForm.saveButton": "Speichern",
+  "chatByok.credentialForm.configuredLabel": "Konfiguriert:",
+  "chatByok.credentialForm.removeButton": "Entfernen",
+  "chatByok.keyModal.title": "Eigenen API-Schlüssel verwenden",
+  "chatByok.keyModal.description": "Schaltet leistungsfähigste Modelle frei. Ihr Schlüssel bleibt in diesem Browser und geht direkt an den Anbieter — niemals über unsere Server.",
+  "chatByok.provider.anthropic": "Anthropic",
+  "chatByok.provider.openai": "OpenAI",
+  "chatByok.keyModal.unlocksLabel": "Schaltet frei:",
+  "chatByok.keyModal.trustBullet1Prefix": "Schlüssel ausschließlich in diesem Browser gespeichert, im",
+  "chatByok.keyModal.trustBulletLocalStorage": "localStorage",
+  "chatByok.keyModal.trustBullet1Suffix": "Jederzeit in den Entwicklertools einsehbar.",
+  "chatByok.keyModal.trustBullet2Prefix": "Jede Anfrage geht an",
+  "chatByok.keyModal.trustBullet2Suffix": ". Prüfen Sie dies in den Entwicklertools → Netzwerk → Filter",
+  "chatByok.keyModal.trustBullet3Prefix": "Der gesamte BYOK-Codepfad ist kurz genug zum Nachlesen.",
+  "chatByok.keyModal.fileListSeparator": " und ",
+  "chatByok.keyModal.walkthroughToggle": "Kein Schlüssel vorhanden? Anleitung in 60 Sekunden",
+  "chatByok.keyModal.walkthroughStep1": "Öffnen Sie die {provider}-Konsole — sie öffnet sich in einem neuen Tab.",
+  "chatByok.keyModal.walkthroughStep2Prefix": "Klicken Sie auf",
+  "chatByok.keyModal.walkthroughStep2CreateKey": "Create Key",
+  "chatByok.keyModal.walkthroughStep2Middle": ", nennen Sie ihn",
+  "chatByok.keyModal.walkthroughStep2CodeName": "ifc-lite",
+  "chatByok.keyModal.walkthroughStep2AnthropicNote": " Beschränken Sie ihn auf einen Arbeitsbereich — für mehrere ist hier zusätzlich eine Arbeitsbereich-ID erforderlich.",
+  "chatByok.keyModal.walkthroughStep3": "Legen Sie ein Ausgabenlimit fest (z. B. 10 $/Monat), damit ein entwendeter Schlüssel keine hohen Kosten verursacht. Der Anbieter setzt das Limit durch.",
+  "chatByok.keyModal.walkthroughStep4": "Kopieren Sie den Schlüssel, kehren Sie hierher zurück und fügen Sie ihn oben ein (das Feld ist bereits fokussiert — drücken Sie einfach",
+  "chatByok.keyModal.openConsoleButton": "{consoleLabel} öffnen",
+  "chatByok.streamingPill.tooltip": "Nachrichten dieses Modells gehen direkt von Ihrem Browser an {host}. Öffnen Sie zur Prüfung die Entwicklertools → Netzwerk und filtern Sie nach {shortHost}.",
+  "chatByok.trustDiagram.ariaLabel": "Diagramm: Anfragen gehen direkt von Ihrem Browser an {apiHost}, nicht über unseren Server.",
+  "chatByok.trustDiagram.activeFlowLabel": "✓ Tatsächlicher Weg Ihrer Anfragen",
+  "chatByok.trustDiagram.browserBox": "Ihr Browser",
+  "chatByok.trustDiagram.httpsDirect": "HTTPS · direkt",
+  "chatByok.trustDiagram.blockedFlowLabel": "✗ Was wir niemals tun",
+  "chatByok.trustDiagram.ourServerBox": "unser Server"
+} satisfies Catalogue;

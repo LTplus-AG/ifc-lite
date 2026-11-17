@@ -43,6 +43,9 @@ import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { createStructuralAdapter } from './headless-backend-structural.js';
 import { createQueryAdapter } from './backend-query.js';
 import { overlayFromView, type PendingOverlay } from './overlay.js';
+import { assertGeorefWritten, GeoreferencingSession } from '../georef/session.js';
+import type { GeoreferencingBackendMethods } from '../georef/types.js';
+import { createGeorefBackendMethods } from '../georef/doctor/backend.js';
 
 
 export class HeadlessBackend implements BimBackend {
@@ -59,6 +62,7 @@ export class HeadlessBackend implements BimBackend {
   viewer: ViewerBackendMethods;
   readonly mutate: MutateBackendMethods;
   readonly style: StyleBackendMethods;
+  readonly georef: GeoreferencingBackendMethods;
   readonly store: StoreBackendMethods;
   readonly spatial: SpatialBackendMethods;
   readonly export: ExportBackendMethods;
@@ -81,6 +85,8 @@ export class HeadlessBackend implements BimBackend {
   readonly checkEntityRef: EntityRefCheck;
   private mutationView: MutablePropertyView | null = null;
   private storeEditor: StoreEditor | null = null;
+  /** This session's georeferencing writes; exported as `georefMutations`. */
+  private readonly georefSession: GeoreferencingSession;
   private readonly disposeRoomCommands: () => void;
   private viewerAttached = false;
   private readonly options: HeadlessBackendOptions;
@@ -133,6 +139,16 @@ export class HeadlessBackend implements BimBackend {
         options,
       ),
     };
+    this.georefSession = new GeoreferencingSession({
+      store,
+      modelId,
+      view: () => this.mutationView,
+      editor: () => this.getOrCreateStoreEditor(),
+    });
+    this.georef = createGeorefBackendMethods({
+      session: this.georefSession, store, assertKnownModelId: (m) => this.assertKnownModelId(m),
+      hasPendingChanges: () => this.hasPendingChanges(), exportIfc: () => this.export.ifc(undefined, {}) as string,
+    });
     const storeAdapter = createHeadlessStoreAdapter(store, modelId, () => this.getOrCreateStoreEditor(), id => this.assertKnownModelId(id), () => this.peerScopes(), options);
     this.store = storeAdapter;
     this.disposeRoomCommands = storeAdapter.disposeRooms;
@@ -194,6 +210,15 @@ export class HeadlessBackend implements BimBackend {
     configureSourceMutationView(this.dataStore, this.mutationView);
     this.storeEditor = new StoreEditor(this.dataStore, this.mutationView);
     return this.storeEditor;
+  }
+
+  /**
+   * Whether this session holds edits an export would write: the mutation
+   * view's, or a georeferencing write (which lives beside the view, like the
+   * viewer's `georefMutations`).
+   */
+  hasPendingChanges(): boolean {
+    return (this.mutationView?.hasPendingChanges() ?? false) || this.georefSession.hasPendingChanges();
   }
 
   /** Expose the mutation view so tools can inspect pending mutations. */
@@ -337,9 +362,11 @@ export class HeadlessBackend implements BimBackend {
           exportOpts.isolatedEntityIds = isolatedIds;
           exportOpts.hiddenEntityIds = new Set<number>();
         }
-        if (this.mutationView) {
-          const exporter = new StepExporter(store, this.mutationView);
-          const result = exporter.export({ schema, ...exportOpts });
+        const georefMutations = this.georefSession.exportMutations();
+        if (this.mutationView || georefMutations) {
+          const exporter = new StepExporter(store, this.mutationView ?? undefined);
+          const result = exporter.export({ schema, ...exportOpts, ...(georefMutations ? { georefMutations } : {}) });
+          assertGeorefWritten(result.stats.georeferencingWarnings, schema);
           return new TextDecoder().decode(result.content);
         }
         return exportToStep(store, exportOpts);

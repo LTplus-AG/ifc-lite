@@ -11,6 +11,9 @@
  * here with the plain cutter, from the same visible meshes, and parked in the
  * store (`sectionExtraCaps`) for `useRenderUpdates` to hand to the renderer.
  *
+ * The section box's faces are cut here too (#8696), keyed by the renderer's
+ * cap key for each face (`section-box-caps.ts`).
+ *
  * Cuts run one at a time through the drawing request queue; a newer input
  * supersedes older ones. A plane is re-cut only when its signature (its geometry
  * and the model state it was cut from) changes, so dragging the active plane
@@ -22,35 +25,42 @@ import { Drawing2DGenerator } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { capCutConfig, capSignature } from '@/lib/section/section-cut-config';
+import { cuttingSectionBoxCapPlanes } from '@/lib/section/section-box-caps';
 import { visibleCutMeshes } from '@/lib/drawing/cut-meshes';
+import { useRetypedClasses } from './useViewerSelectors.js';
 import { createDrawingRequestQueue } from './drawingRequestQueue.js';
+import { isGeometryHeld } from '@/lib/pick-gating';
 
 export function useExtraSectionCaps(
   geometryResult: GeometryResult | null | undefined,
   computedIsolatedIds: ReadonlySet<number> | null | undefined,
 ): void {
   const planes = useViewerStore((s) => s.inactiveSectionPlanes);
+  const sectionPlane = useViewerStore((s) => s.sectionPlane);
   const caps = useViewerStore((s) => s.sectionExtraCaps);
   const activeTool = useViewerStore((s) => s.activeTool);
   const show3DOverlay = useViewerStore((s) => s.drawing2DDisplayOptions.show3DOverlay);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
+  const retypedClasses = useRetypedClasses();
   const hiddenIds = useViewerStore((s) => s.hiddenEntities);
   const isolatedIds = useViewerStore((s) => s.isolatedEntities);
   const setCap = useViewerStore((s) => s.setSectionExtraCap);
   const prune = useViewerStore((s) => s.pruneSectionExtraCaps);
+  const geometryHeld = useViewerStore((s) => isGeometryHeld(s));
 
   const queueRef = useRef<ReturnType<typeof createDrawingRequestQueue> | null>(null);
   if (!queueRef.current) queueRef.current = createDrawingRequestQueue();
   // Bumped whenever what the cuts are made FROM changes, so every parked cap goes stale at once.
   const modelStateRef = useRef({ token: 0, inputs: [] as unknown[] });
-  const inputs = [geometryResult, hiddenIds, isolatedIds, computedIsolatedIds, typeVisibility];
+  const inputs = [geometryResult, hiddenIds, isolatedIds, computedIsolatedIds, typeVisibility, structuralViewMode, retypedClasses, geometryHeld];
   if (inputs.some((v, i) => v !== modelStateRef.current.inputs[i])) {
     modelStateRef.current = { token: modelStateRef.current.token + 1, inputs };
   }
   const modelToken = modelStateRef.current.token;
 
   const wanted = activeTool === 'section' && show3DOverlay && !!geometryResult
-    ? planes.filter((p) => p.enabled)
+    ? [...planes.filter((p) => p.enabled && !p.box), ...cuttingSectionBoxCapPlanes(sectionPlane, planes)]
     : [];
   // Re-run when the set of wanted planes or their geometry changes, not on every store tick.
   const wantedKey = wanted.map((p) => `${p.id}:${capSignature(p)}`).join('|');
@@ -59,6 +69,7 @@ export function useExtraSectionCaps(
     const queue = queueRef.current!;
     prune(wanted.map((p) => p.id));
     const cancel = () => queue.cancel();
+    if (geometryHeld) return cancel;
     if (wanted.length === 0 || !geometryResult) return cancel;
 
     const stale = wanted.filter((p) => caps[p.id]?.signature !== `${modelToken}:${capSignature(p)}`);
@@ -69,7 +80,7 @@ export function useExtraSectionCaps(
       await generator.initialize();
       if (!isCurrent()) return;
       const meshes = visibleCutMeshes(geometryResult.meshes, {
-        typeVisibility, hiddenIds, isolatedIds, computedIsolatedIds,
+        typeVisibility, structuralViewMode, retypedClasses, hiddenIds, isolatedIds, computedIsolatedIds,
       });
       const bounds = geometryResult.coordinateInfo.shiftedBounds;
       for (const plane of stale) {
@@ -97,5 +108,5 @@ export function useExtraSectionCaps(
     return cancel;
     // `caps` is read for staleness only; its own writes must not retrigger the cut.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wantedKey, modelToken, geometryResult]);
+  }, [wantedKey, modelToken, geometryResult, geometryHeld]);
 }

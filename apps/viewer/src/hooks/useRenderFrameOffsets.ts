@@ -29,7 +29,7 @@
 
 import { useMemo } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { federationFrameInfo } from '@ifc-lite/geometry/world-frame';
+import { frameCandidateModels, sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { geometryVolumesSurviveAlignment } from '@/lib/compare/alignmentTrust';
@@ -64,11 +64,11 @@ export function resolveRenderFrame(
   // was aligned to; a legacy single-model load has no federated entry, only
   // one geometry result. The rule itself is shared with the CLI and SDK
   // (`federationFrameInfo`, #4879).
-  const info = federationFrameInfo(models.values(), geometryResult);
+  const info = sharedRenderFrame(models.values(), geometryResult);
   let anchorName: string | null = null;
   let earliest = Infinity;
   let rebased = false;
-  for (const [, m] of models) {
+  for (const m of frameCandidateModels(models.values())) {
     if (m.geometryResult?.coordinateInfo === info && m.loadedAt < earliest) {
       earliest = m.loadedAt;
       anchorName = m.name ?? null;

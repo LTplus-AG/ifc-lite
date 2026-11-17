@@ -152,6 +152,8 @@ describe.each([
 
   it('never trims an entity whose attributes were inserted mid-list, not appended', () => {
     const wrong = notPrefix
+      // Reconciled by name instead (#9026 item 14), see schema-grid-frames.parity.test.ts.
+      .filter(([type]) => type !== 'IFCGRIDPLACEMENT')
       .map(([type, srcN]) => {
         const got = argCount(convertStepLine(makeLine(type, srcN), from, to)!);
         return got === srcN ? null : `${type}: expected ${srcN} args untouched, got ${got}`;

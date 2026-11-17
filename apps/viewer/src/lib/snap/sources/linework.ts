@@ -21,6 +21,8 @@ export interface Linework {
   segments?: readonly (readonly [Vec2, Vec2])[];
   /** Also offer segment midpoints (off for room-layout snapping). */
   midpoints?: boolean;
+  /** Owner of each segment, so the command can resolve its design reference. */
+  segmentEntities?: readonly SnapCandidate['entity'][];
   /**
    * Offer EVERY edge, however far, so extension / parallel / intersection
    * inference can track far lines. Required for profiles that rank inferred
@@ -49,7 +51,7 @@ export function createLineworkSource(lines: Linework | (() => Linework), id = 'l
   return {
     id,
     collect(q: SnapQuery, radius: number, out: SnapCandidate[], hint?: CollectHint): void {
-      const { vertices = [], segments = [], midpoints = false, inference = false } = read();
+      const { vertices = [], segments = [], midpoints = false, inference = false, segmentEntities = [] } = read();
       // Hot path (every pointer move over every line): index loops, no closures.
       for (let i = 0; i < vertices.length; i++) {
         const v = vertices[i];
@@ -57,21 +59,21 @@ export function createLineworkSource(lines: Linework | (() => Linework), id = 'l
       }
       for (let i = 0; i < segments.length; i++) {
         const a = segments[i][0], b = segments[i][1];
-        if (!hint || mayLandNear(hint, radius, a)) out.push({ kind: 'endpoint', local: a, source: 'linework' });
-        if (!hint || mayLandNear(hint, radius, b)) out.push({ kind: 'endpoint', local: b, source: 'linework' });
+        if (!hint || mayLandNear(hint, radius, a)) out.push({ kind: 'endpoint', local: a, source: 'linework', entity: segmentEntities[i] });
+        if (!hint || mayLandNear(hint, radius, b)) out.push({ kind: 'endpoint', local: b, source: 'linework', entity: segmentEntities[i] });
       }
       if (midpoints) {
         for (let i = 0; i < segments.length; i++) {
           const a = segments[i][0], b = segments[i][1];
           const m: Vec2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-          if (!hint || mayLandNear(hint, radius, m)) out.push({ kind: 'midpoint', local: m, source: 'linework' });
+          if (!hint || mayLandNear(hint, radius, m)) out.push({ kind: 'midpoint', local: m, source: 'linework', entity: segmentEntities[i] });
         }
       }
       for (let i = 0; i < segments.length; i++) {
         const a = segments[i][0], b = segments[i][1];
         if (hint && !inference && !mayLandNear(hint, radius, a, b)) continue;
         out.push({
-          kind: 'edge', local: closestOnSegment(q.cursor, a, b), source: 'linework',
+          kind: 'edge', local: closestOnSegment(q.cursor, a, b), source: 'linework', entity: segmentEntities[i],
           guide: { kind: 'segment', a, b, role: 'edge' },
         });
       }

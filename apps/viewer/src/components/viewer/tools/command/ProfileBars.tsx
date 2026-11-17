@@ -22,6 +22,7 @@ import { PROFILE_KIND_LABEL } from '@/lib/profile-section/profile-kinds';
 import { DefaultsProfileEditor } from '../../profile-section/DefaultsProfileEditor';
 import { SectionPreview } from '../../profile-section/SectionPreview';
 import { HudDivider } from '../../../viewport-ui/hud';
+import { useReturnFocusAfterKeyboard } from '../../../viewport-ui/hud/returnFocusAfterKeyboard';
 import type { CommandContext, CommandHudProps } from '@/lib/commands/modeling/types';
 import { BeamPlaceBar } from './PlacementBars';
 
@@ -47,6 +48,7 @@ function ProfilePicker({ owner, ctx, measuring }: { owner: ProfileOwner; ctx: Co
   const { type } = defaults.profiles[owner];
   const shown = authoringShownSection(defaults, owner);
   const kind = t(PROFILE_KIND_LABEL[type]);
+  const focusReturn = useReturnFocusAfterKeyboard(); // a mouse close must leave Enter to the command (#9233)
   return (
     <Popover modal open={!measuring && picked?.owner === owner && picked.ctx === ctx} onOpenChange={(open) => setPickerOpen(owner, ctx, open)}>
       <PopoverTrigger asChild>
@@ -63,7 +65,7 @@ function ProfilePicker({ owner, ctx, measuring }: { owner: ProfileOwner; ctx: Co
         </button>
       </PopoverTrigger>
       <PopoverPortal>
-        <PopoverContent align="center" className="w-72 space-y-2 p-3" onKeyDown={(event) => event.stopPropagation()}>
+        <PopoverContent align="center" className="w-72 space-y-2 p-3" {...focusReturn} onKeyDown={(event) => event.stopPropagation()}>
           <h3 className="text-xs font-medium">{t('profileSection.picker.label')}</h3>
           <DefaultsProfileEditor owner={owner} />
         </PopoverContent>

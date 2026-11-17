@@ -2,11 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readPerfFlag } from './perf/flags.js';
+import { sceneIdentityEnabled, tappedSceneSnapshots, resetSceneIdentityTap } from './perf/sceneIdentityTap.js';
 import { appearanceSourceTriangle, MathUtils, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { useViewerStore } from '@/store';
+import { isSceneSettled } from '@/lib/scene-settled';
+import { geometryRestoreBackstopFires } from './geometry-restore-gate.js';
 
 /** One resident part of an owner as plain data: no buffers, no live objects. */
 export interface ScenePartSnapshot {
@@ -105,12 +108,33 @@ export function installViewportDebugHooks(
   annotationLineVertexCount: () => number,
 ): void {
   const host = globalThis as Record<string, unknown>;
+  const restoreHook = host.__ifc_lite_geometry_restore_test__ as { backstopFires?: number; geometryRestoreBackstopFires?: () => number } | undefined;
+  if (restoreHook) restoreHook.geometryRestoreBackstopFires = geometryRestoreBackstopFires;
   const timingFlag = readPerfFlag('gpuFrameTiming');
   // Opt-in only: a renderer starts with timing off, so the default install
   // still just stores the renderer (#5895 witness contract).
   if (timingFlag === true || timingFlag === 1 || timingFlag === '1') renderer.setGpuFrameTiming(true);
+  // Scoreboard identity pass only (`?perf.sceneIdentity=1`): hash what the scene holds, after the timer.
+  if (sceneIdentityEnabled()) {
+    host.__ifc_lite_scene_identity__ = async (opts?: { perElement?: boolean }) => {
+      const scene = renderer.getScene();
+      const { scenePieceIdentity } = await import('./perf/sceneIdentity.js');
+      // The viewer's own settled check (queued meshes, streaming fragments, pending shards too), so the
+      // scoreboard never hashes a scene that is still filling in (review #9863).
+      const { isSceneSettled } = await import('./scene-settled.js');
+      const settled = isSceneSettled();
+      const tap = tappedSceneSnapshots();
+      const pieces = scenePieceIdentity(scene);
+      return { settled, hydrating: scene.isSceneSnapshotHydrating(), finalizing: scene.isFinalizeInProgress(), instancedEntities: scene.getInstancedEntityCount(),
+        pieces: { pieces: pieces.pieces, elements: pieces.elements, sig: pieces.sig, ...(opts?.perElement ? { perElement: pieces.perElement } : {}) },
+        snapshots: tap.snapshots, pending: tap.pending };
+    };
+  }
   // Constant-time read of the renderer-owned snapshot; no scene collection walks.
   host.__ifc_lite_render_frame__ = () => renderer.getFrameStats();
+  // Constant-time: the viewer's own settled rule (store not streaming, no pending shards, no queued meshes,
+  // no streaming fragments, no finalize running). The load scoreboard gates its interactive mark on it.
+  host.__ifc_lite_scene_settled__ = () => isSceneSettled();
   host.__ifc_lite_render_stats__ = () => ({
     gpuTiming: renderer.getGpuFrameTiming(),
     adapter: renderer.getAdapterInfo(),
@@ -121,10 +145,24 @@ export function installViewportDebugHooks(
     cpuBytes: renderer.getScene().getResidentCpuBytes(),
     // GPU-resident point-cloud points: what COPC LOD bounds by its budget (#6869).
     pointCloudPoints: renderer.getPointCloudPointCount(),
+    // Internal Gaussian adapter residency and pass counters (#8565): no capture contents.
+    gaussianSplats: renderer.gaussianSplats.getStats(),
   });
   // Renderer-owned color evidence for hardware E2E. The RGBA bytes are copied
   // before the production frame submits, so this avoids compositor retention
   // and exposes no scene/model data to the browser test.
+  // Opt-in diagnostic shares the production copy, never schedules a second frame.
+  if (import.meta.env.VITE_GAUSSIAN_SPLATS === 'internal-unqualified') host.__ifc_lite_capture_color_diagnostic__ = async () => {
+    const frame = await renderer.captureColorFrame(true);
+    if (!frame || !frame.duplicate) return null;
+    const base64 = (bytes: Uint8ClampedArray) => {
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(binary);
+    };
+    return { width: frame.width, height: frame.height, metadata: frame.metadata,
+      raw: base64(frame.rgba), duplicate: base64(frame.duplicate), png: await encodeColorFrame(Promise.resolve(frame)) };
+  };
   host.__ifc_lite_capture_color_frame__ = () => encodeColorFrame(renderer.captureColorFrame());
   // The camera's world view-projection, the matrix every mesh draw packs as
   // `uniforms.viewProj` (the depth nudge reads its projection from it, #6729).
@@ -134,6 +172,8 @@ export function installViewportDebugHooks(
     return { hiddenIds: [...current.hiddenIds], isolatedIds: current.isolatedIds ? [...current.isolatedIds] : null };
   };
   host.__ifc_lite_annotation_line_vertices__ = annotationLineVertexCount;
+  // The adapter's own state for an exact handle taken from the store (#8565).
+  host.__ifc_lite_gaussian_handle_state__ = (handle: Parameters<Renderer['gaussianSplats']['getState']>[0]) => renderer.gaussianSplats.getState(handle);
   host.__ifc_lite_visibility_reasons__ = () => activeVisibilityReasons(useViewerStore.getState())
     .map(({ id, resetPolicy }) => ({ id, resetPolicy }));
   host.__ifc_lite_scene_owner__ = (globalId: number): SceneOwnerSnapshot => {
@@ -196,14 +236,19 @@ export function installViewportDebugHooks(
 }
 
 export function clearViewportDebugHooks(): void {
+  resetSceneIdentityTap();
   const host = globalThis as Record<string, unknown>;
   setSourceSegmentScreenProbe(null);
   delete host.__ifc_lite_render_frame__;
+  delete host.__ifc_lite_scene_settled__;
   delete host.__ifc_lite_render_stats__;
+  delete host.__ifc_lite_scene_identity__;
   delete host.__ifc_lite_capture_color_frame__;
+  delete host.__ifc_lite_capture_color_diagnostic__;
   delete host.__ifc_lite_view_projection__;
   delete host.__ifc_lite_render_visibility__;
   delete host.__ifc_lite_annotation_line_vertices__;
+  delete host.__ifc_lite_gaussian_handle_state__;
   delete host.__ifc_lite_visibility_reasons__;
   delete host.__ifc_lite_scene_owner__;
   delete host.__ifc_lite_scene_face_hits__;

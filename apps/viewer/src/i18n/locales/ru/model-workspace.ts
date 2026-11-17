@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelWorkspaceRu = {
+  'modelWorkspace.leave': 'Выйти',
   "modelWorkspace.rail.aria": "Инструменты моделирования",
   "modelWorkspace.rail.hosted": "Проёмы, двери и окна",
   "modelWorkspace.rail.circulation": "Лестницы и ограждения",
@@ -12,6 +13,7 @@ export const modelWorkspaceRu = {
   "modelWorkspace.tool.select": "Выбрать",
   "modelWorkspace.tool.wall": "Стена",
   "modelWorkspace.tool.slab": "Плита",
+  "modelWorkspace.tool.roof": "Крыша",
   "modelWorkspace.tool.column": "Колонна",
   "modelWorkspace.tool.beam": "Балка",
   "modelWorkspace.tool.split": "Разделить",
@@ -26,6 +28,12 @@ export const modelWorkspaceRu = {
   "modelWorkspace.storey.listAria": "Этажи",
   "modelWorkspace.storey.isolate": "Показать только этот этаж",
   "modelWorkspace.storey.showAll": "Показать все этажи",
+  "modelWorkspace.height.value": "Плоскость {height} м",
+  "modelWorkspace.height.title": "Высота над полом этажа, на которой появляются новые элементы",
+  "modelWorkspace.height.field": "Высота плоскости",
+  "modelWorkspace.height.group": "Высота построения над полом этажа",
+  "modelWorkspace.height.floor": "Пол",
+  "modelWorkspace.height.topOfWalls": "Верх стен {height} м",
   "modelWorkspace.noStorey.title": "Нет этажа для рисования",
   "modelWorkspace.noStorey.description": "В этой модели нет IfcBuildingStorey, поэтому стенам не на что опираться.",
   "modelWorkspace.plan.title": "План",
@@ -44,5 +52,5 @@ export const modelWorkspaceRu = {
   "modelWorkspace.layout.plan": "План",
   "modelWorkspace.layout.split": "Разделить",
   "modelWorkspace.layout.3d": "3D",
-  "modelWorkspace.hint.onboarding": "W стена · Shift+S плита · нажмите элемент для редактирования · E выход",
+  "modelWorkspace.hint.onboarding": "W стена · Shift+S плита · нажмите элемент для редактирования · M выход",
 } satisfies Catalogue;

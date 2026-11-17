@@ -15,6 +15,7 @@ import { Anchor, RefreshCw, AlertTriangle, Check } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
+import { Button } from '@/components/ui/button';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -48,9 +49,9 @@ function statusLabelKey(status: FederatedModel['federationAlignmentStatus']): {
 
 const toneClasses = {
   anchor: 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200',
-  ok: 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200',
-  warn: 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-200',
-  neutral: 'border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400',
+  ok: 'border-ok-border bg-ok-surface text-ok',
+  warn: 'border-danger-border bg-danger-surface text-danger',
+  neutral: 'border-border bg-muted text-muted-foreground',
 } as const;
 
 export function FederationAlignmentControls({ modelId }: FederationAlignmentControlsProps) {
@@ -137,7 +138,7 @@ export function FederationAlignmentControls({ modelId }: FederationAlignmentCont
   }, [realignFederation]);
 
   return (
-    <div className="px-2 py-1.5 border-b border-zinc-100 dark:border-zinc-900">
+    <div className="px-2 py-1.5 border-b border-border">
       <div className="flex items-center gap-2 flex-wrap">
         <div
           className={`inline-flex items-center gap-1 px-1.5 py-0.5 border text-2xs font-medium ${toneClasses[badge.tone]}`}
@@ -146,21 +147,23 @@ export function FederationAlignmentControls({ modelId }: FederationAlignmentCont
           <span>{t(badge.textKey)}</span>
         </div>
         {!isAnchor && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="segment"
             onClick={handleSetAnchor}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
+            className="gap-1 px-1.5 [&_svg]:size-2.5"
             title={t('properties.federationAlignment.makeAnchorTooltip')}
           >
-            <Anchor className="h-2.5 w-2.5" />
+            <Anchor />
             {t('properties.federationAlignment.makeAnchor')}
-          </button>
+          </Button>
         )}
         {isAnchor && anchorModelIdOverride === modelId && (
           <button
             type="button"
             onClick={handleClearAnchor}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 border border-zinc-300/50 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground border border-zinc-300/50 dark:border-zinc-700/50 hover:bg-muted transition-colors"
             title={t('properties.federationAlignment.unpinTooltip')}
           >
             {t('properties.federationAlignment.unpin')}
@@ -170,7 +173,7 @@ export function FederationAlignmentControls({ modelId }: FederationAlignmentCont
           type="button"
           onClick={handleRealign}
           disabled={busy}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 border border-zinc-300/50 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground border border-zinc-300/50 dark:border-zinc-700/50 hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
           title={t('properties.federationAlignment.realignTooltip')}
         >
           <RefreshCw className={`h-2.5 w-2.5 ${busy ? 'animate-spin' : ''}`} />

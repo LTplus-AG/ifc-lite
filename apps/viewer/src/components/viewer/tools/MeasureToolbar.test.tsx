@@ -30,7 +30,6 @@ const RESET = {
   angleKind: 'points' as const,
   measurements: [],
   activeMeasurement: null,
-  pendingMeasurePoint: null,
   angleMeasurements: [],
   activeAngle: null,
   activePolyline: null,
@@ -69,7 +68,7 @@ describe('Measure bar placement on the HUD (#5502)', () => {
   it('portals the bar into top-center and the hint into bottom-center', () => {
     renderTool();
     assert.ok(region('top-center').querySelector('[data-testid="measure-toolbar"]'), 'bar is not in top-center');
-    assert.equal(region('bottom-center').textContent?.trim(), 'Drag to measure');
+    assert.equal(region('bottom-center').textContent?.trim(), 'Click to set the start point');
     // Nothing of the tool sits outside the HUD's regions any more (no
     // absolute-positioned card of its own).
     assert.equal(region('top-left').textContent, '');

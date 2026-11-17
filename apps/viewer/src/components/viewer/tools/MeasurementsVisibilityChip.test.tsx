@@ -17,6 +17,8 @@ import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { MeasurementsVisibilityChip } from './MeasurementsVisibilityChip.js';
+import { registerLocale, setLocale } from '@/i18n/registry';
+import { measureFr } from '@/i18n/locales/fr/measure';
 
 const s = () => useViewerStore.getState();
 
@@ -38,12 +40,22 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); setLocale('en'); });
 
 const region = () => document.querySelector<HTMLElement>('[data-hud-region="top-left"]')!;
 const chip = () => [...region().querySelectorAll<HTMLElement>('[data-hud-item]')].find((el) => el.querySelector('button[aria-label="Clear all measurements"]'));
 
 describe('measurements chip (#5893)', () => {
+  it('#8904 renders French singular and plural counts through the chip', () => {
+    registerLocale('fr', measureFr);
+    setLocale('fr');
+    render(<><ViewportHud /><MeasurementsVisibilityChip /></>);
+    act(() => useViewerStore.setState({ measurements: [A_MEASUREMENT] }));
+    assert.match(region().textContent ?? '', /1 mesure\b/);
+    assert.doesNotMatch(region().textContent ?? '', /1 mesures|mesure\(s\)/);
+    act(() => useViewerStore.setState({ measurements: [A_MEASUREMENT, { ...A_MEASUREMENT, id: 'm2' }] }));
+    assert.match(region().textContent ?? '', /2 mesures\b/);
+  });
   it('is absent with nothing measured, and while the Measure tool is open', () => {
     render(<><ViewportHud /><MeasurementsVisibilityChip /></>);
     assert.equal(chip(), undefined, 'nothing measured, no chip');

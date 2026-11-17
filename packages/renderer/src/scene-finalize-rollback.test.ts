@@ -76,7 +76,7 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
     scene['batchedMeshes'] = [batch];
 
     // The production failure: createBuffer throws part-way through the rebuild.
-    scene['rebuildPendingBatches'] = () => {
+    scene['rebuildAndPublishBatches'] = () => {
       throw new RangeError(
         "Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed",
       );
@@ -105,7 +105,7 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
     scene['batchedMeshes'] = [batch, carriedCold];
 
     // Realistic partial rebuild: some batches land, then createBuffer throws.
-    scene['rebuildPendingBatches'] = () => {
+    scene['rebuildAndPublishBatches'] = () => {
       scene['batchedMeshes'].push(carriedCold, partiallyBuilt);
       throw new RangeError("createBuffer failed");
     };
@@ -134,7 +134,7 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
     scene['streamingFragments'] = [fakeBatch(1)];
     scene['partialBatchCache'].set('src:v1', partial);
     scene['partialBatchCacheKeys'].set('src', 'src:v1');
-    scene['rebuildPendingBatches'] = () => { throw new Error('boom'); };
+    scene['rebuildAndPublishBatches'] = () => { throw new Error('boom'); };
 
     assert.throws(() => scene.finalizeStreaming(device, pipeline));
 
@@ -154,7 +154,7 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
     scene['partialBatchCacheKeys'].set('c2:2', 'c2:2:v1');
     scene['partialBatchCache'].set('c3:3:v1', partialUntouched);
     scene['partialBatchCacheKeys'].set('c3:3', 'c3:3:v1');
-    scene['rebuildPendingBatches'] = () => { /* succeeds */ };
+    scene['rebuildAndPublishBatches'] = () => { /* succeeds */ };
 
     scene.finalizeStreaming(device, pipeline);
 
@@ -169,7 +169,7 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
   it('clears the in-progress flag even when the rebuild throws', () => {
     const scene = new Scene();
     scene['streamingFragments'] = [fakeBatch(1)];
-    scene['rebuildPendingBatches'] = () => { throw new Error('boom'); };
+    scene['rebuildAndPublishBatches'] = () => { throw new Error('boom'); };
 
     assert.throws(() => scene.finalizeStreaming(device, pipeline));
     // A stuck flag would wedge every settle-sensitive consumer for the session.
@@ -183,7 +183,7 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
     const replacement = fakeBatch(4);
     scene['streamingFragments'] = [fragment];
     scene['batchedMeshes'] = [untouched, batch];
-    scene['rebuildPendingBatches'] = () => {
+    scene['rebuildAndPublishBatches'] = () => {
       scene['batchedMeshes'].push(untouched, replacement);
     };
 

@@ -37,6 +37,7 @@ import {
   removePointCloudScanCache, setPointCloudScanCacheOrigin,
 } from './pointCloudScanCache.js';
 import { swapZupChunkToYup } from './pointCloudFrame.js';
+import { syncPointCloudRenderFrame, watchPointCloudRenderFrame } from './pointCloudFrameSync.js';
 import { streamPointCloudOrCopc } from './copc/copcLodStream.js';
 
 export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
@@ -101,7 +102,7 @@ export interface PointCloudIngestOptions {
   expressId?: number;
   /** Soft cap on points held on the GPU. Default: 25M. */
   maxPointsInMemory?: number;
-  /** Hard cap on file size in bytes. Default: 4 GB. */
+  /** Hard cap on file size in bytes. Default: per format, see `streamPointCloud`. */
   maxFileSize?: number;
   /**
    * Points retained CPU-side (reservoir-sampled) for the 2D section scan
@@ -133,8 +134,8 @@ export interface PointCloudIngestOptions {
    * IfcMapConversion-derived alignment transform for this scan (issue
    * #1804), computed by the caller from the reference model's
    * georeference (`computePointCloudAlignment`). `undefined` when the
-   * loaded model has no usable `IfcMapConversion` — the scan streams at
-   * its raw native coordinates, exactly as before this feature existed.
+   * loaded model has no usable `IfcMapConversion` — the scan keeps its
+   * native coordinates relative to the shared render origin.
    * When present:
    *   - decoding subtracts a nearby scan origin in f64 before narrowing,
    *     then retargets this alignment to that origin before the first chunk.
@@ -341,15 +342,19 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   // retains its explicit source CRS and can atomically realign it when an IFC
   // anchor loads later; omitting raw scans made model-after-scan order depend
   // on a manual reload.
-  registerPointCloudAlignment(handle, alignment, alignmentEnabled, {
-    sourceSpatialReference: opts.spatialReference,
-    sourceUnit: opts.format === 'las' || opts.format === 'laz' ? 'mapUnit' : 'metre',
-  });
-  if (alignment) {
-    opts.renderer.setPointCloudTransform(
-      handle,
-      alignmentEnabled ? alignment.alignedMatrix : alignment.unalignedMatrix,
-    );
+  try {
+    watchPointCloudRenderFrame(opts.renderer);
+    registerPointCloudAlignment(handle, alignment, alignmentEnabled, {
+      sourceSpatialReference: opts.spatialReference,
+      sourceUnit: opts.format === 'las' || opts.format === 'laz' ? 'mapUnit' : 'metre',
+    });
+    retargetPointCloudDecodeOrigin(opts.renderer, handle, alignment?.decodeOriginOffset ?? [0, 0, 0]);
+  } catch (error) {
+    opts.renderer.removePointCloudAsset(handle);
+    unregisterPointCloudAlignment(handle.id);
+    removePointCloudScanCache(handle.id);
+    onCountChange(-1);
+    throw error;
   }
 
   // Running per-class histogram, pushed to the caller periodically so
@@ -397,6 +402,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       autoOrigin: true,
       onOpen: (info) => {
         opts.onSpatialMetadata?.(info.spatialMetadata);
+        syncPointCloudRenderFrame(opts.renderer);
         if (info.originOffset) { retargetPointCloudDecodeOrigin(opts.renderer, handle, info.originOffset); setPointCloudScanCacheOrigin(handle.id, info.originOffset); }
         opts.onProgress?.({
           phase: info.stride > 1

@@ -200,7 +200,7 @@ export function FilterGroupEditor({
 
       <div className="flex flex-col gap-2">
         {activeRules.length === 0 && (
-          <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
+          <p className="rounded border border-dashed border-border bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:bg-zinc-900/30">
             {t('searchModal.filterBuilder.emptyRulesHint')}
           </p>
         )}

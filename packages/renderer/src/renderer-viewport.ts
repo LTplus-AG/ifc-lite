@@ -107,9 +107,14 @@ export class CanvasCssSize {
   private observer: ResizeObserver | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
-    if (typeof ResizeObserver !== 'function') return;
+    this.observe();
+  }
+
+  /** Resume after destruction without duplicating an active observer. */
+  observe(): void {
+    if (this.observer || typeof ResizeObserver !== 'function') return;
     this.observer = new ResizeObserver(() => { this.cached = null; });
-    this.observer.observe(canvas);
+    this.observer.observe(this.canvas);
   }
 
   /** The cached size; `fresh` re-measures (and re-caches) regardless. */

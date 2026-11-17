@@ -13,6 +13,8 @@ import { serializeValue, ref, getAttributeNamesForSchema } from '@ifc-lite/parse
 import type { PropertySet, QuantitySet, Quantity } from '@ifc-lite/data';
 import type { RandomSource } from '@ifc-lite/encoding';
 import type { EffectiveEntityIndex } from './effective-index.js';
+import { internalPropertySetIds } from './step-internal-pset-ids.js';
+import { derivedSetGlobalIds } from './step-derived-quantities.js';
 import { escapeStepString, toStepReal, quantityTypeToIfcType } from './step-serialization.js';
 import { serializeNominalValue } from './declared-property-type.js';
 import {
@@ -98,7 +100,8 @@ export function generatePropertySetEntities(
     count++;
 
     const propRefs = propertyIds.map(id => `#${id}`).join(',');
-    const globalId = generateGlobalId(random);
+    const stable = internalPropertySetIds(ctx, entityId, pset.name);
+    const globalId = stable?.set ?? generateGlobalId(random);
 
     // #ID=IFCPROPERTYSET('GlobalId',#ownerHistory,'Name',$,(#props));
     const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',${ownerHistoryRef},'${escapeStepString(pset.name)}',$,(${propRefs}));`;
@@ -111,7 +114,7 @@ export function generatePropertySetEntities(
       const relId = ctx.allocateExpressId();
       count++;
 
-      const relGlobalId = generateGlobalId(random);
+      const relGlobalId = stable?.rel ?? generateGlobalId(random);
       // #ID=IFCRELDEFINESBYPROPERTIES('GlobalId',#ownerHistory,$,$,(#entity),#pset);
       const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${ownerHistoryRef},$,$,(#${entityId}),#${psetId});`;
       lines.push(relLine);
@@ -174,7 +177,8 @@ export function generateQuantitySetEntities(
     count++;
 
     const quantRefs = quantityIds.map(id => `#${id}`).join(',');
-    const globalId = generateGlobalId(random);
+    const stable = derivedSetGlobalIds(ctx.mutationView, entityId, qset);
+    const globalId = stable?.set ?? generateGlobalId(random);
 
     // #ID=IFCELEMENTQUANTITY('GlobalId',#ownerHistory,'Name',$,$,(#quants));
     const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',${ownerHistoryRef},'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
@@ -187,7 +191,7 @@ export function generateQuantitySetEntities(
     const relId = ctx.allocateExpressId();
     count++;
 
-    const relGlobalId = generateGlobalId(random);
+    const relGlobalId = stable?.rel ?? generateGlobalId(random);
     const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${ownerHistoryRef},$,$,(#${entityId}),#${qsetId});`;
     lines.push(relLine);
   }

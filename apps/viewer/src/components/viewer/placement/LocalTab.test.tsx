@@ -255,6 +255,7 @@ describe('model repositioning user interactions (#4226)', () => {
       act(() => {
         const s = useViewerStore.getState();
         useViewerStore.setState({ measurements: [{ id: 'distance', start, end: { ...start, x: 1 }, distance: 1 }],
+          measurePointLast: { ...start, id: 'point' }, // #8828: a placed Point-mode point goes stale with the rest
           polylineMeasurements: [], angleMeasurements: [], radiusMeasurements: [], placementStaleMeasurements: new Set(),
           pointCloudDeviationComputed: true, pointCloudColorMode: 'deviation' });
         s.setClashResult({ clashes: [], summary: { total: 0, byRule: {}, byTypePair: {},
@@ -265,6 +266,7 @@ describe('model repositioning user interactions (#4226)', () => {
       const ui = render(<WithPlacementSync renderer={renderer} />);
       type(input(ui, 'Delta X'), '1'); click(button(ui, 'Preview values'));
       assert.ok(useViewerStore.getState().placementStaleMeasurements.has('distance'));
+      assert.ok(useViewerStore.getState().placementStaleMeasurements.has('point'), 'the placed point is not marked stale');
       assert.equal(useViewerStore.getState().clashResult?.summary.total, 0, 'a moving model retains the old report');
       if (finish === 'overwritten-deviation') act(() => {
         noteDeviationWrite(renderer);
@@ -274,6 +276,8 @@ describe('model repositioning user interactions (#4226)', () => {
       click(button(ui, finish === 'apply' ? 'Apply' : 'Cancel repositioning'));
       const s = useViewerStore.getState();
       assert.equal(s.placementStaleMeasurements.has('distance'), finish === 'apply');
+      assert.equal(s.placementStaleMeasurements.has('point'), finish === 'apply');
+      assert.equal(s.measurePointLast?.id, 'point', 'a model move keeps the placed point readable');
       assert.equal(s.clashResult?.summary.total, 0, 'the report remains visible after either decision');
       assert.equal(s.pointCloudDeviationComputed, finish === 'cancel');
       assert.equal(s.pointCloudColorMode, finish === 'cancel' ? 'deviation' : 'rgb');

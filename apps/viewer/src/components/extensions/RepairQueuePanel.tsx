@@ -14,6 +14,7 @@
  * Spec: docs/architecture/ai-customization/06-self-improvement.md §5.
  */
 
+import { isAiChatAvailable } from '@/components/viewer/surface-command-features';
 import { useCallback, useState } from 'react';
 import { CheckCircle2, RefreshCcw, ShieldAlert, Wrench, X } from 'lucide-react';
 import { needsSdkRepair } from '@ifc-lite/extensions';
@@ -77,6 +78,8 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
   // shouldn't spin up sandboxes for every installed extension — that
   // can be expensive when many extensions are installed and outdated.
 
+  // A repair is routed to the AI chat; a host can switch it off (`lib/features`).
+  const chat = isAiChatAvailable();
   const repairItem = (item: RevalidationItem) => {
     if (!version) return;
     queueChatPrompt(buildRepairPrompt(item, version));
@@ -132,7 +135,7 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
 
       <ScrollArea className="flex-1">
         {!version ? (
-          <div className="px-6 py-12 text-center text-sm text-rose-600 dark:text-rose-400">
+          <div className="px-6 py-12 text-center text-sm text-danger">
             {styleInterpolatedValues(t, 'extensionsPanels.repairQueuePanel.sdkUnknown', [
               ['appVersion', <code key="app-version" className="font-mono">{APP_VERSION_CODE}</code>],
             ])}
@@ -147,13 +150,13 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
           </div>
         ) : summary.items.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-            <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+            <CheckCircle2 className="h-8 w-8 text-ok" />
             <div className="text-sm font-medium">{t('extensionsPanels.repairQueuePanel.noInstalledExtensions')}</div>
           </div>
         ) : (
           <ul className="divide-y">
             {summary.items.map((item) => (
-              <RepairRow key={item.extensionId} item={item} onRepair={() => repairItem(item)} />
+              <RepairRow key={item.extensionId} item={item} onRepair={chat ? () => repairItem(item) : undefined} />
             ))}
           </ul>
         )}
@@ -167,22 +170,23 @@ function RepairRow({
   onRepair,
 }: {
   item: RevalidationItem;
-  onRepair: () => void;
+  /** Absent when there is no AI chat to repair in. */
+  onRepair?: () => void;
 }) {
   const { t, locale } = useTranslation();
   const tone =
     item.outcome === 'pass'
-      ? 'text-emerald-600 dark:text-emerald-400'
+      ? 'text-ok'
       : item.outcome === 'skipped'
         ? 'text-muted-foreground'
-        : 'text-rose-600 dark:text-rose-400';
+        : 'text-danger';
   return (
     <li className="px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             {item.outcome === 'pass' ? (
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              <CheckCircle2 className="h-3.5 w-3.5 text-ok" />
             ) : (
               <ShieldAlert className={`h-3.5 w-3.5 ${tone}`} />
             )}
@@ -198,7 +202,7 @@ function RepairRow({
             })}
           </div>
           {item.tests && item.tests.failed > 0 && (
-            <div className="mt-1 text-2xs text-rose-600 dark:text-rose-400">
+            <div className="mt-1 text-2xs text-danger">
               {t('extensionsPanels.repairQueuePanel.testsFailed', {
                 count: item.tests.failed,
                 countDisplay: formatLocaleNumber(locale, item.tests.failed),
@@ -207,7 +211,7 @@ function RepairRow({
             </div>
           )}
         </div>
-        {needsSdkRepair(item) && (
+        {needsSdkRepair(item) && onRepair && (
           <Button size="sm" variant="outline" onClick={onRepair}>
             <Wrench className="mr-1 h-3.5 w-3.5" />
             {t('extensionsPanels.repairQueuePanel.repairLabel')}

@@ -53,11 +53,11 @@ export interface MeshData {
     /** Current triangle corner -> canonical triangle corner. Absent means identity. */
     cornerIndices?: Uint32Array;
   };
-  /** Apparent rendering colour: IfcSurfaceStyleRendering.DiffuseColour
-   *  when authored, otherwise the SurfaceColour. Matches what most IFC
+  /** Apparent rendering colour: SurfaceColour, multiplied by DiffuseColour
+   *  only when authored as a numeric factor. Matches what most IFC
    *  viewers display and what the GLB exporter uses by default. */
   color: [number, number, number, number];
-  /** SurfaceColour, populated by the WASM extractor only when the file
+  /** RGB DiffuseColour, populated by the WASM extractor only when the file
    *  authored a distinct DiffuseColour (so `shadingColor !== color`).
    *  Consumed by the GLB exporter's "Shading" colour-source option.
    *  For basic rendering, use `color` (matches most IFC viewers).
@@ -308,9 +308,9 @@ export interface GridAxis {
  * `source` reference for streaming sources (LAS/LAZ/Potree) and emit
  * multiple chunks per asset.
  *
- * Coordinates in `chunk.positions` are in the entity's local space (any
+ * Coordinates in `chunk.positions` are in the renderer's Y-up frame (any
  * IFCx `usd::xformop` lineage transform has already been baked in by the
- * extractor). The renderer applies its own RTC + Y-up flip on upload.
+ * extractor), relative to {@link PointCloudAsset.origin} when it is set.
  */
 export interface PointCloudAsset {
   /** Express ID of the IFC entity that owns this scan. */
@@ -319,6 +319,13 @@ export interface PointCloudAsset {
   ifcType?: string;
   /** Federation index — set when multiple models are loaded. */
   modelIndex?: number;
+  /** Local-frame origin (renderer Y-up, metres), the same contract as
+   *  {@link MeshData.origin}: world position of point i =
+   *  `origin + chunk.positions[3i..3i+3]`, and `chunk.bbox` is relative to it.
+   *  Kept in f64 so a cloud far from the origin (national-grid coordinates,
+   *  where one f32 step is 0.25 m) keeps its millimetres. Absent means the
+   *  positions are absolute, as before (#10029). */
+  origin?: [number, number, number];
   /** A single chunk of decoded points (positions + optional rgb in 0..1). */
   chunk: {
     positions: Float32Array;

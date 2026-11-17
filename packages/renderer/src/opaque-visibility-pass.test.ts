@@ -14,16 +14,17 @@ function harness(sectionBinding?: GPUBindGroup) {
   let resolve!: () => void;
   let reject!: (error: Error) => void;
   const validation = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
-  const stats = { sync: 0, async: 0, draws: 0, pipelines: 0, textures: 0, destroyed: 0, bindings: [] as { index: number; group: GPUBindGroup }[] };
+  const stats = { sync: 0, async: 0, draws: 0, pipelines: 0, textures: 0, destroyed: 0, bindings: [] as { index: number; group: GPUBindGroup }[], group2AtDraw: [] as unknown[] };
   const pipeline = () => ({ getBindGroupLayout: () => ({}) });
-  const pass = { setPipeline: () => { stats.pipelines++; }, setBindGroup: (index: number, group: GPUBindGroup) => { stats.bindings.push({ index, group }); },
-    drawIndexed: () => { stats.draws++; }, end: () => {} };
+  let group2: unknown;
+  const pass = { setPipeline: () => { stats.pipelines++; }, setBindGroup: (index: number, group: GPUBindGroup) => { stats.bindings.push({ index, group }); if (index === 2) group2 = group; },
+    drawIndexed: () => { stats.draws++; stats.group2AtDraw.push((group2 as { label?: string } | undefined)?.label); }, end: () => {} };
   const encoder = { beginRenderPass: () => pass, finish: () => ({}) } as unknown as GPUCommandEncoder;
   const device = {
     createRenderPipeline: () => { stats.sync++; return pipeline(); },
     createRenderPipelineAsync: async () => { stats.async++; await validation; return pipeline(); },
     createShaderModule: () => ({}), createPipelineLayout: () => ({}),
-    createBindGroupLayout: () => ({}), createBindGroup: () => ({}),
+    createBindGroupLayout: () => ({}), createBindGroup: (d: { label?: string }) => ({ label: d.label ?? 'visibility' }),
     createCommandEncoder: () => encoder,
     createTexture: () => { stats.textures++; return { createView: () => ({}), destroy: () => { stats.destroyed++; } }; },
   } as unknown as GPUDevice;
@@ -33,7 +34,8 @@ function harness(sectionBinding?: GPUBindGroup) {
     fragment: { module, entryPoint: 'fs_main', targets: [{ format: 'rgba8unorm' }] },
     depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' } });
   const begin = (orthographic = true) => visibility.begin(encoder, { colorAttachments: [] }, orthographic, 64, 64);
-  return { visibility, base, begin, stats, resolve, reject };
+  const resume = () => visibility.resume(encoder, { colorAttachments: [] });
+  return { visibility, base, begin, resume, stats, resolve, reject };
 }
 
 test('#6729 pending async validation defers the frame without an unconstrained draw', async () => {
@@ -87,5 +89,42 @@ test('#8015 direct pipeline draws receive the same section exclusions in colour 
     assert.deepEqual(h.stats.bindings.filter(binding => binding.index === 3), [
       { index: 3, group }, { index: 3, group },
     ], 'both passes bind exclusions when the caller sets only mesh and material groups');
+  } finally { h.visibility.destroy(); }
+});
+
+test('#9060 every draw has group 2 bound: padding in perspective and depth, visibility only for variants', async () => {
+  const h = harness({} as GPUBindGroup);
+  try {
+    h.resolve(); await h.visibility.prepare();
+    const perspective = h.begin(false);
+    perspective.setPipeline(h.base); perspective.drawIndexed(3); perspective.end();
+    assert.deepEqual(h.stats.group2AtDraw, ['empty-padding'], 'the base layout pads group 2; perspective must bind it before drawing');
+
+    h.stats.group2AtDraw.length = 0;
+    const ortho = h.begin();
+    ortho.setPipeline(h.base); ortho.drawIndexed(3);
+    ortho.setPipeline({} as GPURenderPipeline); ortho.drawIndexed(3); ortho.end();
+    assert.deepEqual(h.stats.group2AtDraw, ['empty-padding', 'visibility', 'empty-padding'],
+      'geometric depth keeps the base layout; a non-variant draw after a variant gets the padding back');
+  } finally { h.visibility.destroy(); }
+});
+
+test('#9065 review: a replayed padding bind after the pipeline cannot hide the visibility group from a resumed draw', async () => {
+  const h = harness({} as GPUBindGroup);
+  try {
+    h.resolve(); await h.visibility.prepare();
+    h.begin().end();
+    h.stats.group2AtDraw.length = 0;
+    const pass = h.resume();
+    // The deferred transparent instanced draw records exactly this order:
+    // pipeline, then bindSectionExclusions(pass, device, 2), then the draw.
+    pass.setPipeline(h.base);
+    pass.setBindGroup(2, { label: 'empty-padding' } as unknown as GPUBindGroup);
+    pass.drawIndexed(3);
+    pass.setPipeline({} as GPURenderPipeline);
+    pass.drawIndexed(3);
+    pass.end();
+    assert.deepEqual(h.stats.group2AtDraw, ['visibility', 'empty-padding'],
+      'a variant draws against the geometric depth; a non-variant draw gets the padding');
   } finally { h.visibility.destroy(); }
 });

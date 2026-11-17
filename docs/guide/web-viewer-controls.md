@@ -5,29 +5,50 @@ These controls apply to the first-party web viewer, with one model or a federati
 | Gesture | Action |
 | --- | --- |
 | Left drag | Orbit, except when the active tool claims the drag |
-| Shift + left drag | Pan in every tool, including Measure |
+| Shift + left drag | Pan in every tool, including Measure (except to finish a pending distance) |
 | Middle drag | Pan in every tool |
 | Right drag | Fly mode: look around while the button is held; use WASD and Q/E to move, and the wheel to change fly speed |
 | Wheel without right drag | Zoom |
 
 The Select tool uses Ctrl/⌘ + left drag for rectangle selection. In the Measure
-tool, plain left drag starts a drag measurement; Alt + left drag orbits instead.
+tool, Distance takes two clicks: the first sets the start, the second finishes
+(press-drag-release also works). While a start is pending, Shift + click
+finishes on an axis and Esc cancels; Alt + left drag orbits instead.
 In polyline, angle, and radius measurement modes, a left drag orbits and clicks
-place points. Shift + left drag always pans, even when a measurement is active.
+place points.
 
 In the Model workspace, plain left movement and dragging update the active
 command preview without moving the camera. Placement commands commit on
-click; polygon placement still closes on double-click. Room shape editing
+click; polygon placement still closes on double-click. A floor slab's top sits
+at the level and the slab extrudes down, so walls and columns drawn at that
+level stand on it, and a thickness edit keeps its top there. Room shape editing
 grabs a corner on press, previews its movement, and commits on release as one
 Undo/Redo operation. A lost capture, focus loss, or command change cancels the
 owned room drag. A captured drag can finish outside the canvas. Shift + left,
 middle, and right-button navigation keep the controls above.
 
+**Roof** on the Model rail (Shift + Y) draws a roof at the top of the storey's
+walls: the plane rises there while the tool runs, the roof sits on it, and the
+plane comes back down when the tool ends. The **Plane** chip on the 3D view and
+in the plan header shows how far above the storey floor new elements land, and
+sets it for any drawing tool: type a height, or pick Top of walls. A height you
+type, 0 included, stays until you change it or move to another storey. Floor
+puts the plane on the floor and hands the height back: a roof drawn now lands
+there, and the next time Roof starts it raises the plane again.
+
+A plain click on a surface above or below the workplane lands on the point you
+see, so you can draw on top of a slab. Hold **Alt** (⌥ on a Mac), or turn
+snapping off with **S**, to ignore snaps and surfaces: the point lands where
+the pointer's ray meets the workplane, through whatever stands in front, and
+the HUD marks it **On workplane**. Typed locks and Shift still apply. Commands
+that pick an element from the point (doors, windows, openings, trim, split,
+align, push/pull) keep reading the surface, so Alt only suspends their snapping.
+
 While you orbit, a small accent marker shows the fixed point the camera is
 rotating around. The marker follows that point on screen and fades when you
 release the pointer. Panning does not show a pivot marker.
 
-![Orbit pivot marker on building-architecture.ifc](../architecture/evidence/orbit-pivot-marker-5891/mid-orbit.png)
+![Orbit pivot marker on building-architecture.ifc](../assets/orbit-pivot-marker.png)
 
 An embed with camera controls disabled does not fly or navigate. Right-button
 fly is the viewer's established behavior (#4868); it takes priority over the
@@ -50,6 +71,23 @@ this browser and applies to every loaded model.
 
 Right-button fly remains available in every preset when camera controls are
 enabled. Shift + left drag pans in every preset and tool.
+
+### Wheel zoom
+
+Wheel zoom follows the pointer and, in 3D, stops short of the surface under
+it. In the 3D view, the Drawing panel and plans, a wheel notch zooms about 10%
+and eases in over roughly 0.2 s instead of jumping; a trackpad scroll or pinch
+follows your fingers directly. A fast spin or trackpad momentum queues at most
+about three notches, so one flick cannot fly the camera through the model.
+Reversing the wheel, orbiting or panning stops the zoom. Hold Ctrl or Cmd for a
+finer step, or Shift to dolly straight ahead. With the system's reduced-motion
+setting on, each notch applies at once.
+
+**Settings → Display → Navigation → Wheel zoom speed** sets how far a notch
+zooms: Slow (about 5%), Normal (about 10%) or Fast (about 20%). The choice is
+saved in this browser and applies to the 3D view, the Drawing panel and plans.
+Line and page wheel deltas (some Firefox and device setups) zoom as far as the
+pixel deltas other browsers report.
 
 ## Zone volume results
 
@@ -178,6 +216,44 @@ Cancellation between a placement rotation and a map-conversion rotation is
 only expected when the model's original map alignment is known; it is not a
 general validity requirement.
 
+## Storeys
+
+In the Model workspace, the storey chip and the plan's storey picker list the
+storeys of the model you are drawing in. Each list ends with **Add storey
+above** and **Manage storeys…**. **Add storey above** adds a storey above the
+current one, with the next name and the neighbours' floor-to-floor height. The
+new storey becomes the one you draw on at once: the workplane, plan and tools
+move to it, and the storeys above it hide or ghost as usual.
+
+**Manage storeys…** opens the storey manager in the Model inspector. Storeys
+are listed highest first, each with its name, elevation, floor-to-floor height
+and element count. The storey you are drawing on is the checked one. Click a
+row, or use the arrow keys on the checked one, to switch storeys. Edit a name,
+elevation or height in place. Lengths can be typed as `3`, `3,5`, `+3.50 m` or
+`3500 mm`; **Enter** applies the value and **Escape** cancels it. If a value
+can't be applied, the reason appears under the field and nothing changes.
+
+The two edits behave differently:
+
+- **Elevation** moves that storey only. The storeys above stay where they are.
+- **Floor to floor** sets the gap to the storey above, and shifts every storey
+  above by the same amount.
+
+Geometry follows storeys. Everything a storey holds moves with it, including
+hosted doors, windows and openings. Walls drawn with **To storey above** (the
+Wall tool's default, also set from the inspector's **Top** row) follow the
+storey above and resize. Walls with **Fixed height** keep their height. A stair
+whose top tread lands on a storey is refit, so it still lands there exactly.
+While you type, the model shows the result in 3D and the plan, with a summary
+such as "Moves 1 storey · moves 24 elements · resizes 8 walls · refits 1 stair".
+The summary also lists anything the edit leaves as it is, with a way to select
+those elements. The whole edit is one Undo/Redo step.
+
+To delete a storey, use its bin button. An empty storey is deleted straight
+away, with Undo. A storey that holds elements first asks whether to move them
+to another storey (they keep their identity and position) or to delete them
+with it. A model always keeps one storey.
+
 ## Space floors and ceilings
 
 Select a created `IfcSpace`, enter the Model workspace, and choose **Edit space
@@ -267,8 +343,11 @@ are assigned to several layers can appear in each; the viewer does not split
 its faces by layer or automatically apply authored layer visibility/style flags.
 Presentation layers are separate from the IFCX layer stack.
 
-Hiding a presentation layer also hides its curve-only IFC annotations. During
-isolation, symbolic annotation overlays continue to follow their global visibility setting.
+Hiding a presentation layer also hides its curve-only IFC annotations. Annotation
+overlays follow isolation and section clipping. Click an annotation curve, filled
+region or label in 3D to select its owning `IfcAnnotation`, including in large
+models. Thin curves have a four-pixel click tolerance; hidden and clipped portions
+do not select. Grid references remain a separate, unpickable overlay.
 
 ### Orthophoto backgrounds
 
@@ -294,3 +373,21 @@ Backgrounds are resampled to at most 2048 pixels on the longest side. The
 existing raster reader accepts images up to 64 megapixels and 8-bit TIFF
 imagery. A change to the workspace coordinate system hides an old registration
 rather than silently moving it; load the image again after realignment.
+
+The Roof HUD offers Hip, Gable, Mono-pitch and Flat; a preset's pitched edges start
+at 30°. Numbered edges in the preview match the Edge selector. Set Edge slope to 0
+for a gable end, or enter an angle up to 85°. Each edge can have its own slope. Pitch applies one angle to all sloped edges,
+keeping gable ends at 0°. Overhang sets the eave extension in metres. Both update
+the preview without closing the footprint; finish drawing to commit it as one
+undo step.
+Changing the preset, switching the outline mode, or finishing a roof clears
+individual edge slopes; the next roof keeps the preset. The preview uses the same
+planes as the IFC builder.
+
+## Large IFC load warnings
+
+Before local IFC processing, the viewer estimates the memory needed from the source size. If that estimate exceeds the budget and the browser reports less than 8 GiB of device memory, the viewer refuses the local load. At a report of 8 GiB, or when no valid memory report is available, it asks whether to **Continue loading**: browsers cap the report, so a workstation can have more memory than the reported value. Continuing can still exhaust memory and crash the tab. The estimate cannot predict every model's geometry complexity.
+
+The choice applies only to that load. A later file asks again, and cancelling or superseding a pending warning does not authorize loading it. Eligible native-server processing remains available; a server failure must pass the same local decision before falling back to WASM. The independent wasm32 source-size limit remains enforced for local processing.
+
+For IFC ZIPs, the estimate includes the declared expanded model size when bounded metadata inspection can certify it. Archives with Unicode-path or ZIP64 metadata can still load locally when the input is at most 1 MiB, with a hard 64 MiB expanded-model limit checked before and during extraction. This compatibility path never uploads an uninspected archive, and its 64 MiB allowance must pass the device-memory decision first. Larger uninspectable archives require extracting the IFC first or using the native CLI/server.

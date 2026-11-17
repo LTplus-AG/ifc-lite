@@ -39,7 +39,11 @@ pub(super) fn validated_product_shape(
     let shape = decoder
         .decode_by_id(id)
         .map_err(|error| core_error(FailureSite::ProductShape, id, error))?;
-    if shape.ifc_type != IfcType::IfcProductDefinitionShape {
+    // Same admission as `representation::product_shape`: a bare IFC2X3
+    // IfcProductRepresentation only on a structural member (#9668).
+    let bare_structural = shape.ifc_type == IfcType::IfcProductRepresentation
+        && element.ifc_type.is_subtype_of(IfcType::IfcStructuralMember);
+    if shape.ifc_type != IfcType::IfcProductDefinitionShape && !bare_structural {
         return Err(shape_error(
             shape.id,
             ShapeError::NotAProductDefinitionShape(shape.ifc_type),
@@ -76,17 +80,23 @@ pub(super) fn validated_product_shape(
             }
             // Resolve and classify even the Items the meshed selector will skip.
             // This is shallow: no mapping targets or geometry children are read.
-            let count = rep
-                .get(slot::IfcRepresentation::ITEMS.index())
-                .and_then(AttributeValue::as_list)
-                .map_or(0, |items| items.len());
-            if count > (allowance - roots.items) as usize {
+            // A repeated root list pays in full; a first read pays for its
+            // repeated references (#9102).
+            let charge = roots.seen.price(
+                &[],
+                rep.id,
+                rep.get(slot::IfcRepresentation::ITEMS.index())
+                    .and_then(AttributeValue::as_list)
+                    .unwrap_or(&[]),
+            );
+            if charge.cost > (allowance - roots.items) as usize {
                 return Err(StructureError::Budget {
                     entity: rep.id,
                     allowance,
                 });
             }
-            roots.items += count as u32;
+            roots.items += charge.cost as u32;
+            roots.seen.admit(charge);
             let members = reference_members(rep, slot::IfcRepresentation::ITEMS.index(), "Items")?;
             roots
                 .representations

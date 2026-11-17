@@ -72,6 +72,11 @@ export function displayStoreyElevationMeters(
  * Per-model display-elevation lookup for surfaces that label many storeys at
  * once (the hierarchy tree). The effective georeference is resolved lazily and
  * once per model, so a model with no storeys pays nothing.
+ *
+ * The absolute value reads the PARSED placement chain. A storey re-levelled
+ * this session (#9013) passes its live relative elevation, which then differs
+ * from the parsed one: the badge keeps the file's absolute offsets (site,
+ * building, georeference) and adds the live change on top.
  */
 export function createStoreyDisplayElevationResolver(
   store: IfcDataStore | null | undefined,
@@ -86,6 +91,10 @@ export function createStoreyDisplayElevationResolver(
       georef = getEffectiveGeoreference(store, coordinateInfo, mutations);
       georefResolved = true;
     }
-    return displayStoreyElevationMeters(relativeElevationMeters, georef, store, storeyId);
+    const parsed = store.spatialHierarchy?.storeyElevations?.get(storeyId);
+    if (parsed === undefined || Math.abs(relativeElevationMeters - parsed) < 1e-9) {
+      return displayStoreyElevationMeters(relativeElevationMeters, georef, store, storeyId);
+    }
+    return displayStoreyElevationMeters(parsed, georef, store, storeyId) + (relativeElevationMeters - parsed);
   };
 }

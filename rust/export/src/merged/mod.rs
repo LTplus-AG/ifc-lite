@@ -292,7 +292,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         // Emit.
         let source_schema = detect_schema(model.content);
         let converting = crate::schema_convert::needs_conversion(&source_schema, &schema);
-        let flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
+        let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
+        flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {
             if !included.contains(&id) || plan.skip.contains(&id) {
                 continue;
@@ -405,6 +406,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     stats.warnings.extend(slot_fill.warnings());
     stats.warnings.extend(checks.warnings());
     stats.warnings.extend(parents.apply_folds(&mut out)); // #5774 folds, after every model is written
+    // One product per placement in IFC2X3 (#9209); the header holds no record to change.
+    stats.written = stats.written.saturating_add_signed(crate::schema_ifc2x3_placements::place_text_for_schema(&schema, &mut out));
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
     (out, stats)
 }

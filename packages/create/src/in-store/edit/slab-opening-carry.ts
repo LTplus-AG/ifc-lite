@@ -18,13 +18,13 @@ import type { Point2D } from './polygon-clip.js';
 
 export interface SlabOpeningCarry {
   readonly openingId: number;
-  /** Native-unit location in the new host, which starts at the body base. */
+  /** Native-unit location in the new host, whose placement sits at `originZ`. */
   readonly location: [number, number, number];
 }
 
 export function planSlabOpeningCarry(
   env: SplitEnv, sourceId: number, chain: SlabEditChain, cut: readonly Point2D[],
-  cutA: Point2D, cutB: Point2D, baseElevation: number,
+  cutA: Point2D, cutB: Point2D, originZ: number,
 ): SlabOpeningCarry[] {
   const reader = new AnchorEntityReader(env.dataStore, env.view), openingIds = new Set<number>();
   for (const id of reader.ids('IFCRELVOIDSELEMENT')) {
@@ -63,7 +63,7 @@ export function planSlabOpeningCarry(
     moves.push({ openingId, location: [
       read.location[0] + native(chain.placementOrigin[0]),
       read.location[1] + native(chain.placementOrigin[1]),
-      read.location[2] + native(chain.placementOrigin[2] - baseElevation),
+      read.location[2] + native(chain.placementOrigin[2] - originZ),
     ] });
   }
   return moves;

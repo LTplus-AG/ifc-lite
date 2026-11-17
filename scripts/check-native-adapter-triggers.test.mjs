@@ -279,7 +279,7 @@ test('test.yml must call, decide and judge the batch run', (context) => {
     [(t) => t.replace("needs.changes.outputs.batch == 'true' && needs.changes.outputs.noop", "needs.changes.outputs.noop"), 'gated on exactly'],
     [(t) => t.replace(/      native_adapter: \$\{\{ steps\.nativeadapter\.outputs\.native_adapter \}\}\n/, ''), 'must publish native_adapter'],
     [(t) => t.replace(/(        id: nativeadapter\n(?: {8}.*\n)*?) {8}continue-on-error: true\n/, '$1'), 'continue-on-error step with id nativeadapter'],
-    [(t) => t.replace(', perf-ratchet, native-adapter]', ', perf-ratchet]'), 'aggregate must need native-adapter'],
+    [(t) => t.replace(', release-pr, native-adapter]', ', release-pr]'), 'aggregate must need native-adapter'],
   ];
   for (const [fn, expected] of cases) {
     const root = copyTree(context);

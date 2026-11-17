@@ -10,6 +10,7 @@
  * in a log console. AI chat is integrated as a collapsible side panel.
  */
 
+import { isAiChatAvailable } from './surface-command-features';
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useTranslation } from '@/i18n';
 import { ScriptFileControls } from './ScriptFileControls';
@@ -55,6 +56,7 @@ import { cn, formatDuration } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
+import { isFeatureEnabled } from '@/lib/features';
 import { useSandbox } from '@/hooks/useSandbox';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { CodeEditor } from './CodeEditor';
@@ -98,6 +100,8 @@ export function ScriptPanel() {
   const extensionHost = useOptionalExtensionHost();
   const [outputCollapsed, setOutputCollapsed] = useState(false);
   const chatPanelVisible = useViewerStore((s) => s.chatPanelVisible);
+  // The chat pane and "Fix with LLM" are AI; a host can switch it off (`lib/features`).
+  const ai = isAiChatAvailable();
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
 
   // Chat panel width (px) — resizable via drag handle
@@ -186,7 +190,7 @@ export function ScriptPanel() {
   }, [createScript]);
 
   const [promoteOpen, setPromoteOpen] = useState(false);
-  const canPromote = !!extensionHost && editorContent.trim().length > 0;
+  const canPromote = isFeatureEnabled('automate.extensions') && !!extensionHost && editorContent.trim().length > 0;
 
   const handleDeleteConfirm = useCallback(() => {
     if (deleteConfirmId) {
@@ -259,21 +263,21 @@ export function ScriptPanel() {
           )}
 
           {/* AI Chat toggle */}
-          <IconButton
+          {ai && <IconButton
             label={chatPanelVisible ? t('scriptPanel.header.hideAiChat') : t('scriptPanel.header.showAiChat')}
-            variant={chatPanelVisible ? 'default' : 'ghost'}
+            variant="toggle"
             size="icon-xs"
+            aria-pressed={chatPanelVisible}
             onClick={toggleChat}
-            className={cn(chatPanelVisible && 'bg-blue-500 hover:bg-blue-600 text-white')}
             {...tourAnchor(TOUR_ANCHORS.scriptChatToggle)}
           >
             <Bot className="h-3.5 w-3.5" />
-          </IconButton>
+          </IconButton>}
         </div>
 
         <ScriptFileControls />
         {/* Post-authoring install banner keeps the Promote action beside authored code. */}
-        {chatToolReady?.kind === 'script' && (
+        {canPromote && chatToolReady?.kind === 'script' && (
           <div className="shrink-0 border-b bg-primary/15 px-3 py-2.5 ring-1 ring-inset ring-primary/40">
             <div className="flex items-center gap-2.5">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -336,10 +340,8 @@ export function ScriptPanel() {
             <Save className="h-3.5 w-3.5" />
           </IconButton>
 
-          {/* Save-as-tool — the explicit, always-visible bridge from a
-              one-shot script to a persistent toolbar button. A labelled
-              outline button (not a buried icon) so the "keep this"
-              step is discoverable without nagging. */}
+          {/* Save-as-tool keeps authored code as a persistent toolbar action.
+              Installation requires the extensions feature and nonempty code. */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -421,7 +423,7 @@ export function ScriptPanel() {
             </span>
           )}
           {executionState === 'success' && lastResult && (
-            <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+            <span className="text-xs text-ok flex items-center gap-1">
               <CheckCircle2 className="h-3 w-3" />
               {formatDuration(lastResult.durationMs)}
             </span>
@@ -488,7 +490,7 @@ export function ScriptPanel() {
                           {t('scriptPanel.output.sandboxHintSuffix')}
                         </div>
                       )}
-                      <div className="mt-1">
+                      {ai && <div className="mt-1">
                         <Button
                           variant="outline"
                           size="sm"
@@ -497,7 +499,7 @@ export function ScriptPanel() {
                         >
                           {t('scriptPanel.output.fixWithLlmButton')}
                         </Button>
-                      </div>
+                      </div>}
                     </div>
                   </div>
                 )}
@@ -563,7 +565,7 @@ export function ScriptPanel() {
         </DialogContent>
       </Dialog>
 
-      {promoteOpen && extensionHost && (
+      {promoteOpen && canPromote && (
         <PromoteToolDialog
           open={promoteOpen}
           source={editorContent}
@@ -589,14 +591,14 @@ const MemoizedLogLine = memo(function LogLine({ log }: { log: LogEntry }) {
       );
     case 'warn':
       return (
-        <div className="flex items-start gap-1.5 text-yellow-600 dark:text-yellow-400">
+        <div className="flex items-start gap-1.5 text-warn">
           <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
           <span className="whitespace-pre-wrap break-all">{formatted}</span>
         </div>
       );
     case 'info':
       return (
-        <div className="flex items-start gap-1.5 text-blue-600 dark:text-blue-400">
+        <div className="flex items-start gap-1.5 text-info">
           <Info className="h-3 w-3 mt-0.5 shrink-0" />
           <span className="whitespace-pre-wrap break-all">{formatted}</span>
         </div>

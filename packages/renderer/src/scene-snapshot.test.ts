@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { BATCH_CONSTANTS } from './constants.js';
 import { LOD_MIN_TRIANGLES } from './lod-simplify.js';
-import { decodeSceneSnapshot, encodeSceneSnapshot, SCENE_SNAPSHOT_REVISION, sceneSnapshotPolicy, type SceneSnapshot } from './scene-snapshot.js';
+import { decodeSceneSnapshot, encodeSceneSnapshot, encodeSceneSnapshotInSlices, SCENE_SNAPSHOT_REVISION, sceneSnapshotPolicy, type SceneSnapshot } from './scene-snapshot.js';
 
 function snapshot(): SceneSnapshot {
   return {
@@ -53,11 +53,21 @@ describe('scene snapshot format', () => {
     assert.strictEqual(decodeSceneSnapshot(new ArrayBuffer(4)), null);
   });
 
+  it('writes the same bytes a slice at a time, yielding between slices', async () => {
+    const big = snapshot();
+    big.batches = Array.from({ length: 5 }, (_, i) => ({ ...snapshot().batches[0], key: `b${i}`, vertexData: new Uint8Array(1000 + i).fill(i) }));
+    let yields = 0;
+    const sliced = await encodeSceneSnapshotInSlices(big, async () => { yields++; }, 1024);
+    assert.deepStrictEqual(new Uint8Array(await sliced.arrayBuffer()), new Uint8Array(await encoded(big)));
+    assert.ok(yields >= 4, `one yield per filled slice, got ${yields}`);
+    assert.deepStrictEqual(decodeSceneSnapshot(await sliced.arrayBuffer())?.batches.map((b) => b.vertexData.byteLength), [1000, 1001, 1002, 1003, 1004]);
+  });
+
   // If this fails you changed what a batch's bytes mean: bump
   // SCENE_SNAPSHOT_REVISION as well as these values, or stale snapshots draw garbage.
   it('pins the layout constants behind the revision', () => {
-    assert.deepStrictEqual([SCENE_SNAPSHOT_REVISION, BATCH_CONSTANTS.BYTES_PER_VERTEX, LOD_MIN_TRIANGLES], [1, 28, 500]);
-    assert.strictEqual(sceneSnapshotPolicy(true, false, null), '1|28|q|nolod|nochunk');
-    assert.strictEqual(sceneSnapshotPolicy(false, true, { cellSize: 40 }), `1|28|f|lod${LOD_MIN_TRIANGLES}|40`);
+    assert.deepStrictEqual([SCENE_SNAPSHOT_REVISION, BATCH_CONSTANTS.BYTES_PER_VERTEX, LOD_MIN_TRIANGLES], [2, 28, 500]);
+    assert.strictEqual(sceneSnapshotPolicy(true, false, null), '2|28|q|nolod|nochunk');
+    assert.strictEqual(sceneSnapshotPolicy(false, true, { cellSize: 40 }), `2|28|f|lod${LOD_MIN_TRIANGLES}|40`);
   });
 });

@@ -42,7 +42,7 @@ function ActionLine({ preview }: { preview: ActionPreview }) {
   }
   const refusal = preview.reason === 'no-targets' ? 'sceneActions.refusedNoTargets'
     : preview.reason === 'no-bounds' ? 'sceneActions.refusedNoBounds' : 'sceneActions.refusedOutside';
-  return <li className={preview.status === 'refused' ? 'rounded border border-amber-500/40 bg-amber-500/10 p-1.5' : 'p-1.5'}>
+  return <li className={preview.status === 'refused' ? 'rounded border border-warn-border bg-warn-surface p-1.5' : 'p-1.5'}>
     <p><span className="font-semibold">{t(`sceneActions.${action.type}`)}</span> · {details.join(' · ')}</p>
     {preview.groups && <ul className="mt-1 space-y-0.5">{preview.groups.map(group => <li key={group.colour} className="flex items-center gap-1.5">
       <span aria-hidden="true" className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm border border-border"
@@ -67,7 +67,7 @@ function AppliedNote({ result }: { result: ApplyResult }) {
 function RestoreNote({ report }: { report: RestoreReport }) {
   const { t } = useTranslation();
   if (report.channels.some(channel => channel.outcome === 'models-changed')) {
-    return <output className="block rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('sceneActions.modelsChanged')}</output>;
+    return <output className="block rounded border border-warn-border bg-warn-surface p-2">{t('sceneActions.modelsChanged')}</output>;
   }
   const names = (outcome: RestoreReport['channels'][number]['outcome']) => report.channels.filter(channel => channel.outcome === outcome)
     .map(({ channel }) => t(`sceneActions.channel.${channel}`)).join(', ');

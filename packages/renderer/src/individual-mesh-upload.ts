@@ -3,19 +3,37 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * GPU upload of ONE individual mesh piece in its source batch's frame, shared
+ * GPU upload of an entity's mesh pieces in their source batch's frame, shared
  * by selection hydration (`Renderer.createMeshFromData`) and the hover
  * pre-highlight cache (`hover-mesh-cache.ts`, #5390) so both draw geometry
  * bit-coincident with the batch they duplicate. Extracted from `index.ts`.
+ *
+ * An ordinary entity gets one mesh per piece. Above
+ * {@link MERGE_PIECES_ABOVE} pieces that is the wrong shape: a mapped
+ * SurfaceModel can hold 90k items, and three GPU buffers plus a bind group for
+ * each one froze the UI and lost the device (#9192). Those pieces merge into
+ * one mesh per colour and frame, the same partition the batches use.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { colorKey } from './chunk-grid.js';
+import { ENTITY_LANE_ID_SPAN } from './entity-color-table.js';
+import { BATCH_CONSTANTS } from './constants.js';
 import { MathUtils } from './math.js';
+import { MAX_PICK_MESH_CREATION } from './pick-mesh-budget.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import type { Mat4 } from './types.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
+const FLOATS_PER_VERTEX = BATCH_CONSTANTS.BYTES_PER_VERTEX / 4;
 let warnedEntityIdRange = false;
+
+/**
+ * An entity with more pieces than this is copied merged. It shares the pick
+ * budget because both name one limit, the individual buffers a single action
+ * can afford, and because a pick never hydrates such an entity piece by piece.
+ */
+export const MERGE_PIECES_ABOVE = MAX_PICK_MESH_CREATION;
 
 /** Where the piece's source batch keeps its geometry. */
 export interface IndividualMeshFrame {
@@ -33,12 +51,23 @@ export interface IndividualMeshGpu {
   rteOrigin: [number, number, number];
 }
 
-export function uploadIndividualMesh(device: GPUDevice, meshData: MeshData, frame: IndividualMeshFrame): IndividualMeshGpu {
-  const vertexCount = meshData.positions.length / 3;
-  const interleavedRaw = new ArrayBuffer(vertexCount * 7 * 4);
-  const interleaved = new Float32Array(interleavedRaw);
-  const interleavedU32 = new Uint32Array(interleavedRaw);
+/** One GPU mesh standing for `pieces` same-coloured pieces, of one entity or of a pooled selection (#9835). */
+export interface MergedMeshGpu extends IndividualMeshGpu {
+  /**
+   * The piece with the lowest entity id (the first of them): every piece here
+   * shares its model and, unless merged `anyColour`, its colour and finish, and
+   * that id is the anchor a draw needs to rebuild full ids from the 24-bit
+   * vertex lane (entity-color-table.ts).
+   */
+  representative: MeshData;
+  firstPiece: MeshData;
+  lastPiece: MeshData;
+  pieces: number;
+}
 
+/** Write one piece's vertices at `firstVertex` of a merged or single interleaved buffer. */
+function writePieceVertices(interleaved: Float32Array, lanes: Uint32Array, firstVertex: number, meshData: MeshData, frame: IndividualMeshFrame): void {
+  const vertexCount = meshData.positions.length / 3;
   // Build this individual mesh (selection highlight + GPU object-id picker)
   // in the same small local frame as its source batch.
   // CRITICAL: replicate the BATCH's exact two-step f32 path so the highlight
@@ -64,53 +93,191 @@ export function uploadIndividualMesh(device: GPUDevice, meshData: MeshData, fram
     ? (v: number) => Math.round(v * 1024) / 1024
     : (v: number) => v;
   const p = meshData.positions;
+  // Everything below is the same for every vertex of the piece, so it is worked
+  // out once: a pooled selection writes millions of vertices in one go (#9835).
+  const normals = meshData.normals.length > 0 ? meshData.normals : null;
+  let encodedId = meshData.expressId >>> 0;
+  if (encodedId > MAX_ENCODED_ENTITY_ID) {
+    if (!warnedEntityIdRange) {
+      warnedEntityIdRange = true;
+      console.warn('[Renderer] expressId exceeds 24-bit seam-ID encoding range; seam lines may collide.');
+    }
+    encodedId = encodedId & MAX_ENCODED_ENTITY_ID;
+  }
+  // Stamp the SAME high-byte material-colour salt as the batch path
+  // (mergeGeometry) so this individual/selection mesh computes the
+  // identical depth nudge as its source batch — otherwise the highlight
+  // (selection pipeline, reverse-Z 'greater-equal') would z-fight or drop
+  // out against the salted base depth. Low 24 bits stay the picking id.
+  const lane = packEntityLane(encodedId, colorSaltByte(meshData.color));
   for (let i = 0; i < vertexCount; i++) {
-    const base = i * 7;
+    const base = (firstVertex + i) * FLOATS_PER_VERTEX;
     const posBase = i * 3;
     interleaved[base] = so ? snap(fr(p[posBase] + dx)) : snap(p[posBase]);
     interleaved[base + 1] = so ? snap(fr(p[posBase + 1] + dy)) : snap(p[posBase + 1]);
     interleaved[base + 2] = so ? snap(fr(p[posBase + 2] + dz)) : snap(p[posBase + 2]);
-    const hasNormals = meshData.normals.length > 0;
-    interleaved[base + 3] = hasNormals ? meshData.normals[posBase] : 0;
-    interleaved[base + 4] = hasNormals ? meshData.normals[posBase + 1] : 0;
-    interleaved[base + 5] = hasNormals ? meshData.normals[posBase + 2] : 0;
-    let encodedId = meshData.expressId >>> 0;
-    if (encodedId > MAX_ENCODED_ENTITY_ID) {
-      if (!warnedEntityIdRange) {
-        warnedEntityIdRange = true;
-        console.warn('[Renderer] expressId exceeds 24-bit seam-ID encoding range; seam lines may collide.');
-      }
-      encodedId = encodedId & MAX_ENCODED_ENTITY_ID;
-    }
-    // Stamp the SAME high-byte material-colour salt as the batch path
-    // (mergeGeometry) so this individual/selection mesh computes the
-    // identical depth nudge as its source batch — otherwise the highlight
-    // (selection pipeline, reverse-Z 'greater-equal') would z-fight or drop
-    // out against the salted base depth. Low 24 bits stay the picking id.
-    interleavedU32[base + 6] = packEntityLane(encodedId, colorSaltByte(meshData.color));
+    interleaved[base + 3] = normals ? normals[posBase] : 0;
+    interleaved[base + 4] = normals ? normals[posBase + 1] : 0;
+    interleaved[base + 5] = normals ? normals[posBase + 2] : 0;
+    lanes[base + 6] = lane;
   }
+
+}
+
+/** Upload finished geometry, retaining the frame origin separately from the f32 vertices. */
+function uploadGeometry(
+  device: GPUDevice,
+  interleaved: Float32Array,
+  indices: Uint32Array,
+  first: MeshData,
+  frame: IndividualMeshFrame,
+): IndividualMeshGpu {
+  const so = frame.sharedOrigin;
+  const o = first.origin;
+  const origin: [number, number, number] = so ? [so[0], so[1], so[2]] : [o ? o[0] : 0, o ? o[1] : 0, o ? o[2] : 0];
 
   const vertexBuffer = device.createBuffer({
     size: interleaved.byteLength,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
-  device.queue.writeBuffer(vertexBuffer, 0, interleaved);
-
-  const indexBuffer = device.createBuffer({
-    size: meshData.indices.byteLength,
-    usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-  });
-  device.queue.writeBuffer(indexBuffer, 0, meshData.indices);
+  // Nothing allocated here outlives a throw: a caller freeing only what this
+  // returned would otherwise leak the vertex buffer of the mesh that failed.
+  let indexBuffer: GPUBuffer | undefined;
+  try {
+    device.queue.writeBuffer(vertexBuffer, 0, interleaved);
+    indexBuffer = device.createBuffer({
+      size: indices.byteLength,
+      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(indexBuffer, 0, indices);
+  } catch (error) {
+    vertexBuffer.destroy();
+    indexBuffer?.destroy();
+    throw error;
+  }
 
   const transform = MathUtils.identity();
-  transform.m[12] = so ? so[0] : ox;
-  transform.m[13] = so ? so[1] : oy;
-  transform.m[14] = so ? so[2] : oz;
-  return {
-    vertexBuffer,
-    indexBuffer,
-    indexCount: meshData.indices.length,
-    transform,
-    rteOrigin: so ? [so[0], so[1], so[2]] : [ox, oy, oz],
-  };
+  transform.m[12] = origin[0];
+  transform.m[13] = origin[1];
+  transform.m[14] = origin[2];
+  return { vertexBuffer, indexBuffer, indexCount: indices.length, transform, rteOrigin: origin };
+}
+
+export function uploadIndividualMesh(device: GPUDevice, meshData: MeshData, frame: IndividualMeshFrame): IndividualMeshGpu {
+  const interleavedRaw = new ArrayBuffer((meshData.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX);
+  const interleaved = new Float32Array(interleavedRaw);
+  writePieceVertices(interleaved, new Uint32Array(interleavedRaw), 0, meshData, frame);
+  return uploadGeometry(device, interleaved, meshData.indices, meshData, frame);
+}
+
+interface MergeGroup {
+  key: string;
+  /** The first piece's frame: every piece here shares its origin. */
+  frame: IndividualMeshFrame;
+  /** The piece with the lowest entity id so far. */
+  anchor: MeshData;
+  pieces: MeshData[];
+  /** Each piece's own frame: the lattice snap follows the piece's batch. */
+  frames: IndividualMeshFrame[];
+  vertices: number;
+  indices: number;
+}
+
+/**
+ * Partition pieces so each group can draw as one mesh without changing what
+ * any piece looks like: same model, same origin (the f32 fold is per frame, and
+ * a frameless piece keeps its own origin), and within one 2^24 page of entity
+ * ids, so the vertex lane names each entity. A group fills up at `maxBytes`,
+ * one GPU buffer's worth.
+ *
+ * Without `anyColour` a group also shares colour, finish and quantization, as
+ * a batch bucket does, and takes its pieces from anywhere in the list.
+ *
+ * With it and `inOrder`, a group is a RUN: it only takes the piece that follows
+ * its last one, so the list's order is the draw order across groups as well as
+ * within them. Whether the piece's batch is quantized is not a reason to split
+ * there: the snap is applied per piece when its vertices are written.
+ */
+function groupPieces(pieces: readonly MeshData[], frameOf: (meshData: MeshData) => IndividualMeshFrame, maxBytes: number, anyColour: boolean, inOrder: boolean): MergeGroup[] {
+  const groups: MergeGroup[] = [];
+  const open = new Map<string, MergeGroup>();
+  let last: MergeGroup | undefined;
+  for (const piece of pieces) {
+    const vertices = piece.positions.length / 3;
+    const indices = piece.indices.length;
+    if (vertices === 0 || indices === 0) continue;
+    const frame = frameOf(piece);
+    const origin = frame.sharedOrigin ?? piece.origin;
+    const where = `${piece.modelIndex ?? ''}|${Math.floor(piece.expressId / ENTITY_LANE_ID_SPAN)}|${frame.sharedOrigin ? 's' : 'o'}|${origin?.join() ?? ''}`;
+    const key = anyColour ? where : `${where}|${frame.quantized ? 'q' : 'f'}|${colorKey(piece.color, piece.material)}`;
+    let group = inOrder ? (last?.key === key ? last : undefined) : open.get(key);
+    if (group && group.pieces.length > 0
+      && ((group.vertices + vertices) * BATCH_CONSTANTS.BYTES_PER_VERTEX > maxBytes
+        || (group.indices + indices) * BATCH_CONSTANTS.BYTES_PER_INDEX > maxBytes)) group = undefined;
+    if (!group) {
+      group = { key, frame, anchor: piece, pieces: [], frames: [], vertices: 0, indices: 0 };
+      if (!inOrder) open.set(key, group);
+      groups.push(group);
+    }
+    last = group;
+    if (piece.expressId < group.anchor.expressId) group.anchor = piece;
+    group.pieces.push(piece);
+    group.frames.push(frame);
+    group.vertices += vertices;
+    group.indices += indices;
+  }
+  return groups;
+}
+
+/**
+ * Upload an entity's pieces merged: one mesh per group, so the allocations and
+ * draws scale with the entity's colours and frames, not its piece count. A
+ * throw part-way frees what this call already created.
+ *
+ * @param anyColour Keep pieces of every colour and finish together, in the
+ *   order given. Only for meshes drawn as selection highlight alone, which
+ *   reads neither (`fs_main`'s selected branch). The triangles then draw in the
+ *   caller's order, as one copy per piece would: across meshes too, because a
+ *   mesh is a run of adjacent pieces that share a model and origin, and a piece
+ *   of another model or origin in between starts the next mesh. There is no
+ *   regrouping threshold: preserving order can cost one draw per piece for
+ *   interleaved frames, but never more than the per-piece path. The
+ *   representative does not stand for the colour of the rest.
+ */
+export function uploadMergedMeshes(
+  device: GPUDevice,
+  pieces: readonly MeshData[],
+  frameOf: (meshData: MeshData) => IndividualMeshFrame,
+  anyColour = false,
+): MergedMeshGpu[] {
+  const limit = Math.min(device.limits?.maxBufferSize ?? BATCH_CONSTANTS.FALLBACK_MAX_BUFFER_SIZE, BATCH_CONSTANTS.FALLBACK_MAX_BUFFER_SIZE);
+  const maxBytes = Math.floor(limit * BATCH_CONSTANTS.BUFFER_SIZE_SAFETY_FACTOR);
+  const uploaded: MergedMeshGpu[] = [];
+  try {
+    const groups = groupPieces(pieces, frameOf, maxBytes, anyColour, anyColour);
+    for (const group of groups) {
+      const interleavedRaw = new ArrayBuffer(group.vertices * BATCH_CONSTANTS.BYTES_PER_VERTEX);
+      const interleaved = new Float32Array(interleavedRaw);
+      const lanes = new Uint32Array(interleavedRaw);
+      const indices = new Uint32Array(group.indices);
+      let firstVertex = 0;
+      let firstIndex = 0;
+      for (const [i, piece] of group.pieces.entries()) {
+        writePieceVertices(interleaved, lanes, firstVertex, piece, group.frames[i]);
+        const source = piece.indices;
+        for (let i = 0; i < source.length; i++) indices[firstIndex + i] = source[i] + firstVertex;
+        firstIndex += source.length;
+        firstVertex += piece.positions.length / 3;
+      }
+      const representative = group.anchor;
+      uploaded.push({ ...uploadGeometry(device, interleaved, indices, representative, group.frame), representative, firstPiece: group.pieces[0], lastPiece: group.pieces[group.pieces.length - 1], pieces: group.pieces.length });
+    }
+  } catch (error) {
+    for (const mesh of uploaded) {
+      mesh.vertexBuffer.destroy();
+      mesh.indexBuffer.destroy();
+    }
+    throw error;
+  }
+  return uploaded;
 }

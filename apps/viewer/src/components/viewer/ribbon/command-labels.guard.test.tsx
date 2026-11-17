@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import { afterEach, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { click, cleanup, mouseDown, press, render } from '@/test/render.js';
+import { click, cleanup, mouseDown, press, render, waitFor } from '@/test/render.js';
 import { resolve } from '@/i18n/registry';
 import { posthog } from '@/lib/analytics';
 import { setCollabEnabledOverride } from '@/lib/collab/config';
@@ -15,6 +15,7 @@ import { useViewerStore, type RibbonTabId } from '@/store';
 import { SURFACE_COMMANDS, type SurfaceCommandDefinition } from '../surface-commands.js';
 import { EXPORT_COMMANDS } from '../toolbar/export-commands.js';
 import type { FileCommands } from '../toolbar/useFileCommands.js';
+import { PersistentToolHosts } from '../PersistentToolHosts';
 import { RibbonToolbar } from './RibbonToolbar.js';
 import { FileTab } from './tabs/FileTab.js';
 
@@ -45,20 +46,21 @@ it('#6604 federation setup stays compact beside the prominent IFC export and Sav
   assert.deepEqual([...save.parentElement.querySelectorAll('[data-command-id]')]
     .map((button) => button.getAttribute('data-command-id')), setupIds.slice(0, 2));
   for (const button of setupButtons) {
-    assert.ok(button.classList.contains('min-h-6'), 'compact setup targets preserve the 24px minimum');
+    assert.ok(button.classList.contains('h-6'), 'compact setup rows keep the 24px target minimum');
     const icon = button.querySelector('svg');
     assert.ok(icon);
-    assert.ok(icon.classList.contains('h-3.5'), 'setup icons use the small ribbon size');
-    assert.ok(icon.classList.contains('w-3.5'));
+    assert.ok(icon.classList.contains('h-4'), 'setup icons use the small ribbon size');
+    assert.ok(icon.classList.contains('w-4'));
   }
   assert.ok(save.querySelector('svg[data-testid="icon-stub"]'),
     'Save uses the viewer collection rather than the Lucide fallback');
   assert.equal(save.querySelector('span')?.textContent,
     resolve('commandPalette.file.saveFederationSetup.label'), 'the compact row displays the full label');
-  const ifcIcon = container.querySelector('[data-export-command="ifc"] svg');
-  assert.ok(ifcIcon);
-  assert.ok(ifcIcon.classList.contains('h-8'), 'IFC export retains its large icon');
-  assert.ok(ifcIcon.classList.contains('w-8'));
+  // No model: the export cluster is one folded headline control (#8802 R1).
+  const exportIcon = container.querySelector('[data-export-folded] svg');
+  assert.ok(exportIcon);
+  assert.ok(exportIcon.classList.contains('h-5'), 'the export control keeps the headline icon size');
+  assert.ok(exportIcon.classList.contains('w-5'));
 
   let saves = 0;
   const onSave = () => { saves++; };
@@ -132,6 +134,17 @@ it('#5870/#5878 mounts every ribbon command with its registry name across the he
         panelBrowsers++;
         continue;
       }
+      // No model: the export cluster's one disabled placeholder (#8802 R1).
+      // It runs nothing, so it carries the export owner and no command id.
+      if (button.dataset.exportFolded !== undefined) {
+        assert.equal(tab, 'file', 'the folded export control belongs to File');
+        assert.equal(button.dataset.ribbonContentSource, 'export');
+        assert.equal(button.getAttribute('aria-disabled'), 'true', 'the folded export control is inert');
+        assert.equal(button.getAttribute('aria-label'), resolve('ribbon.file.exportGroup'));
+        const reason = document.getElementById(button.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+        assert.equal(reason, resolve('ribbon.file.exportFoldedTooltip'), 'the folded control describes why it is inert');
+        continue;
+      }
       const exportId = button.dataset.exportCommand;
       if (exportId) {
         assert.equal(button.dataset.ribbonContentSource, 'export', `${tab}: ${exportId} declares its export owner`);
@@ -186,6 +199,7 @@ it('#5878 enabled collaboration File controls use registered names', () => {
   assert.ok(commandIds.includes('panel:collab'));
   for (const button of buttons) {
     if (button.dataset.exportExtension) continue;
+    if (button.dataset.exportFolded !== undefined) continue;
     if (button.dataset.exportCommand) {
       const exportCommand = EXPORT_COMMANDS.find((item) => item.id === button.dataset.exportCommand);
       assert.ok(exportCommand);
@@ -263,7 +277,7 @@ it('#5878 Author edit executes through a registered ribbon control; every kind i
     useViewerStore.getState().exitModelWorkspace();
     useViewerStore.setState({ models: new Map(), activeModelId: null });
   }));
-  const container = render(<RibbonToolbar />);
+  const container = render(<PersistentToolHosts><RibbonToolbar /></PersistentToolHosts>);
   const control = (id: string): HTMLButtonElement => {
     const button = container.querySelector<HTMLButtonElement>(`button[data-command-id="${id}"]`);
     assert.ok(button, `${id} is mounted`);
@@ -275,21 +289,22 @@ it('#5878 Author edit executes through a registered ribbon control; every kind i
   const authorControls = [...container.querySelectorAll<HTMLButtonElement>('button[data-command-id^="author:"]')]
     .map((b) => b.dataset.commandId).sort();
   assert.deepEqual(authorControls, ['author:bulk-properties', 'author:import-data', 'author:redo', 'author:undo']);
-  assert.equal(control('author:bulk-properties').dataset.commandTrigger, 'true');
-  assert.equal(control('author:import-data').dataset.commandTrigger, 'true');
+  assert.equal(control('author:bulk-properties').disabled, false, 'persistent bulk host is available');
+  assert.equal(control('author:import-data').disabled, false, 'persistent CSV host is available');
 });
 
-it('#5878 Author dialog trigger opens once and records its registered command', () => {
+it('#5878 Author dialog trigger opens once and records its registered command', async () => {
   act(() => useViewerStore.setState({
     ribbonTab: 'author', ribbonCollapsed: false, ifcDataStore: fixtureDataStore(),
   }));
-  const container = render(<RibbonToolbar />);
+  const container = render(<PersistentToolHosts><RibbonToolbar /></PersistentToolHosts>);
   const trigger = container.querySelector<HTMLButtonElement>('button[data-command-id="author:bulk-properties"]');
   assert.ok(trigger);
   assert.equal(trigger.disabled, false);
   const capture = mock.method(posthog, 'capture', () => undefined);
   click(trigger);
-  assert.ok(document.querySelector('[role="dialog"]'), 'the mounted Bulk Property Editor opens');
+  await waitFor(() => !!document.querySelector('button[aria-label="Target source"]'), 'real Bulk Property Editor body loads');
+  assert.equal(document.querySelectorAll('[role="dialog"]').length, 1, 'one canonical author dialog opens');
   assert.deepEqual(capture.mock.calls.filter((call) => call.arguments[0] === 'command_executed')
     .map((call) => call.arguments), [
     ['command_executed', { command_id: 'author:bulk-properties', surface: 'ribbon' }],

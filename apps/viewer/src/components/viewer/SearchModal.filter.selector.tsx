@@ -41,7 +41,7 @@ export function SearchModalFilterSelector() {
   );
 
   return (
-    <div className="border-b border-zinc-200 px-4 pb-3 pt-4 dark:border-zinc-800">
+    <div className="border-b border-border px-4 pb-3 pt-4">
       <SelectorTextEditor groups={groups} onChange={handleChange} schemaVersion={schemaVersion} />
     </div>
   );

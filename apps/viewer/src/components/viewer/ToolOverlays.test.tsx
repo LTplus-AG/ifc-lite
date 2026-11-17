@@ -77,7 +77,9 @@ describe('ToolOverlays on the TOOL_HUD table (#5503)', () => {
       assert.match(bar.textContent ?? '', new RegExp(en['splitTool.barLabel']));
       const hint = region('bottom-center').querySelector('[data-hud-item] [role="status"]');
       assert.ok(hint, 'the command hint is a bottom-center HUD item');
-      assert.equal(hint.textContent, en['splitTool.hint']);
+      assert.equal(hint.firstElementChild?.textContent, en['splitTool.hint']);
+      // Under it, how to aim through to the workplane (#9201): this command places a point.
+      assert.equal(hint.querySelector('[data-aim-hint]')?.getAttribute('data-aim-hint'), 'offer');
 
       act(() => useViewerStore.getState().setActiveTool('select'));
       assert.equal(region('top-center').querySelectorAll('[data-hud-item]').length, 0);

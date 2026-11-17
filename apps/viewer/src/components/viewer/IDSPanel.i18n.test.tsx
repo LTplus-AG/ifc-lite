@@ -226,7 +226,7 @@ describe('IDSPanel localization (#4918)', () => {
     registerLocale('en-x-ids-pseudo', pseudoCatalogue());
     const ui = render(<IDSPanel onClose={() => {}} />);
     assert.match(ui.textContent ?? '', /IDS Validation/);
-    assert.match(ui.textContent ?? '', /No IDS Loaded/);
+    assert.match(ui.textContent ?? '', /No IDS loaded/);
 
     act(() => setLocale('en-x-ids-pseudo'));
     const text = ui.textContent ?? '';

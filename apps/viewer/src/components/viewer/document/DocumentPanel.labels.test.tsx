@@ -75,7 +75,7 @@ describe('DocumentPanel preview labels (#6741)', () => {
     setLocale('de-6741');
     const texts: string[] = [];
     const ui = render(<DocumentPanel pdfSeams={recordingSeams(texts)} />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     // The captured German context differs from the uncaptured English default ("Page 1 / 1", "22344").
     assert.equal(previewCounter(ui), 'Seite 1 / 1');
     assert.match(previewReport(ui), /Geprüft\s*22\.344/);
@@ -96,7 +96,7 @@ describe('DocumentPanel preview labels (#6741)', () => {
     setLocale('de-6741-held');
     const texts: string[] = [];
     const ui = render(<DocumentPanel pdfSeams={recordingSeams(texts)} />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     assert.equal(previewCounter(ui), 'Seite 1 / 1');
     catalogue['document.print.pageCounter'] = 'Blatt {page} / {total}';
     // A stale active id renders the panel without a document for one pass; ensureActiveDocument

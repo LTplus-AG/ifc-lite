@@ -283,7 +283,7 @@ export function PrivacyPanel() {
                         countDisplay: formatLocaleNumber(locale, proposals.length),
                       })}
                     </div>
-                    <div className="text-2xs text-amber-700 dark:text-amber-400 italic">
+                    <div className="text-2xs text-warn italic">
                       {t('extensionsPanels.privacyPanel.ruleBasedWarning')}
                     </div>
                     <ul className="space-y-1 text-2xs">

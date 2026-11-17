@@ -16,9 +16,16 @@ const LONG_PRESS_MS = 500;
  * Copy button for one displayed value row (#5900). Click copies the value as
  * shown; Shift+click or a long press copies `Name=Value`. It reveals on row
  * hover/focus (the row carries `group/copyrow`) and stays visible on devices
- * without hover, where there is nothing to reveal it.
+ * without hover, where there is nothing to reveal it. `actionLabel` replaces
+ * the generic "Copy {name}" accessible name where the action has one canonical
+ * name across surfaces (#5858: Copy GlobalId).
  */
-export function CopyValueButton({ name, value, className }: { name: string; value: string; className?: string }) {
+export function CopyValueButton({ name, value, className, actionLabel }: {
+  name: string;
+  value: string;
+  className?: string;
+  actionLabel?: string;
+}) {
   const { t } = useTranslation();
   const { copiedKey, copy } = useCopyValue();
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -30,14 +37,14 @@ export function CopyValueButton({ name, value, className }: { name: string; valu
   const copied = copiedKey !== null;
   return (
     <IconButton
-      label={t('properties.copy.valueLabel', { name })}
+      label={actionLabel ?? t('properties.copy.valueLabel', { name })}
       tooltip={t('properties.copy.valueTooltip', { name })}
       tooltipSide="left"
       size="icon-xs"
       className={cn(
         'h-6 w-6 shrink-0 p-0 transition-opacity [&_svg]:size-3',
         copied
-          ? 'text-emerald-600 dark:text-emerald-400'
+          ? 'text-ok'
           : 'text-muted-foreground opacity-0 group-hover/copyrow:opacity-100 group-focus-within/copyrow:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100',
         className,
       )}

@@ -90,9 +90,10 @@ describe('FederationRegistry - toGlobalId / fromGlobalId round-trip', () => {
     const reg = new FederationRegistry();
     reg.reserveModel('landxml', 2);
     reg.publishRange('landxml', 1, 2);
+    reg.registerModel('later', 1);
     reg.publishOverlayRange('landxml', 3, 1_000_002);
     assert.deepEqual(reg.fromGlobalId(1_000_002), { modelId: 'landxml', expressId: 1_000_002 });
-    assert.throws(() => reg.publishOverlayRange('landxml', 1_000_003, 1_000_003), /Invalid overlay range/);
+    assert.throws(() => reg.publishOverlayRange('landxml', 1_000_003, 1_000_003), /not have enough safe entity IDs/);
     assert.throws(() => reg.publishRange('landxml', 3, 3), /Invalid published range/);
   });
 
@@ -237,4 +238,304 @@ describe('FederationRegistry - mutation-overlay id collision with the next model
     // wrong entity with no error surfaced).
     assert.notDeepEqual(resolved, { modelId: 'modelB', expressId: 0 });
   });
+});
+
+describe('FederationRegistry - extending a model whose remaining ids arrive late', () => {
+  it('publishes the added ids of the newest model and moves the next offset behind them', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('meshes-first', 10);
+    assert.throws(() => reg.toGlobalId('meshes-first', 50), /not published/);
+
+    assert.equal(reg.extendModel('meshes-first', 50), 50);
+    assert.equal(reg.toGlobalId('meshes-first', 50), 50);
+    assert.deepEqual(reg.fromGlobalId(50), { modelId: 'meshes-first', expressId: 50 });
+    assert.equal(reg.fromGlobalId(51), null);
+    // Same packing as a model registered with 50 from the start: 50 + 1 gap + headroom.
+    assert.equal(reg.registerModel('next', 5), 1_000_051);
+    // Overlay ids continue after the extended range, with the full headroom.
+    assert.doesNotThrow(() => reg.publishOverlayRange('meshes-first', 51, 1_000_050));
+  });
+
+  it('keeps a later model intact: the earlier one grows into its own headroom only', () => {
+    const reg = new FederationRegistry();
+    const offsetA = reg.registerModel('a', 10);
+    const offsetB = reg.registerModel('b', 20);
+
+    reg.extendModel('a', 50);
+    assert.equal(reg.toGlobalId('a', 50), offsetA + 50);
+    assert.equal(reg.getOffset('b'), offsetB);
+    assert.deepEqual(reg.fromGlobalId(offsetB + 20), { modelId: 'b', expressId: 20 });
+    // The headroom shrank by the 40 ids taken from it; it still ends where it did.
+    assert.throws(() => reg.publishOverlayRange('a', 51, 1_000_011), /not have enough safe entity IDs/);
+    assert.doesNotThrow(() => reg.publishOverlayRange('a', 51, 1_000_010));
+
+    assert.throws(() => reg.extendModel('b', 20 + 2_000_000_000), /safe ID limit/);
+  });
+
+  it('stops an earlier model at the end of its headroom and leaves the later model intact', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('a', 10);
+    const offsetB = reg.registerModel('b', 20);
+    assert.equal(reg.extendModel('a', 2_000_000), 1_000_010, 'published up to the last id before the later model');
+    assert.equal(reg.toGlobalId('a', 1_000_010), 1_000_010);
+    assert.throws(() => reg.toGlobalId('a', 1_000_011), /not published/);
+    assert.deepEqual(reg.fromGlobalId(offsetB), { modelId: 'b', expressId: 0 });
+    assert.throws(() => reg.publishOverlayRange('a', 1_000_011, 1_000_011), /not have enough safe entity IDs/);
+  });
+
+  it('refuses a range that already carries overlay ids: extending across them would alias', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('authored', 10);
+    reg.publishOverlayRange('authored', 11, 12);
+    assert.throws(() => reg.extendModel('authored', 50), /overlay IDs/);
+    assert.throws(() => reg.toGlobalId('authored', 13), /not published/);
+  });
+
+  it('refuses a range that is partly published, and an unknown model', () => {
+    const reg = new FederationRegistry();
+    reg.reserveModel('progressive', 100);
+    reg.publishRange('progressive', 0, 40);
+    assert.throws(() => reg.extendModel('progressive', 200), /partly published/);
+    assert.throws(() => reg.extendModel('unknown', 5), /unknown model/);
+  });
+
+  it('is a no-op for ids the model already owns', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('a', 10);
+    assert.equal(reg.extendModel('a', 4), 10);
+    assert.deepEqual(reg.getGlobalIdRange('a'), { start: 0, end: 10 });
+    assert.equal(reg.registerModel('b', 1), 1_000_011);
+  });
+});
+
+
+describe('FederationRegistry - overlay allocation query', () => {
+  it('requires a registered, fully published base and the next contiguous allocation', () => {
+    const reg = new FederationRegistry();
+    assert.equal(reg.canPublishOverlayFrom('unknown', 1), false);
+    reg.reserveModel('a', 10);
+    assert.equal(reg.canPublishOverlayFrom('a', 11), false);
+    reg.publishRange('a', 0, 5);
+    assert.equal(reg.canPublishOverlayFrom('a', 6), false);
+    reg.publishRange('a', 6, 10);
+    assert.equal(reg.canPublishOverlayFrom('a', 6), false, 'a smaller re-hydrated store cannot reuse published ids');
+    assert.equal(reg.canPublishOverlayFrom('a', 12), false, 'publication cannot leave a hole');
+    assert.equal(reg.canPublishOverlayFrom('a', 11), true);
+    for (const [first, count] of [[11, 0], [11, -1], [11, 1.5], [NaN, 1], [11.5, 1], [11, Infinity]]) {
+      assert.equal(reg.canPublishOverlayFrom('a', first, count), false);
+    }
+    reg.unregisterModel('a');
+    assert.equal(reg.canPublishOverlayFrom('a', 11), false);
+  });
+
+  it('checks the entire batch at the exact non-newest headroom boundary, including authored ids', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('a', 10);
+    reg.registerModel('later', 20);
+    reg.publishOverlayRange('a', 11, 1_000_009);
+    assert.equal(reg.canPublishOverlayFrom('a', 1_000_010), true);
+    assert.equal(reg.canPublishOverlayFrom('a', 1_000_010, 2), false);
+    assert.equal(reg.canPublishOverlayFrom('a', 11), false, 'published overlay ids cannot be reused');
+    reg.publishOverlayRange('a', 1_000_010, 1_000_010);
+    assert.equal(reg.canPublishOverlayFrom('a', 1_000_011), false);
+  });
+
+  it('bounds newest publication by its reserved headroom and the global safe limit', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('prior', 10);
+    const offset = reg.registerModel('a', 10);
+    const end = 1_000_010;
+    assert.equal(reg.canPublishOverlayFrom('a', 11, end - 10), true);
+    assert.equal(reg.canPublishOverlayFrom('a', 11, end - 9), false);
+    assert.equal(reg.previewOverlayGlobalId('a', 11, end, end), offset + end);
+    assert.equal(reg.getGlobalIdRange('a')?.end, offset + 10, 'preview does not publish');
+    reg.publishOverlayRange('a', 11, end);
+    assert.equal(reg.toGlobalId('a', end), offset + end);
+    assert.equal(reg.canPublishOverlayFrom('a', end + 1), false);
+    assert.throws(() => reg.publishOverlayRange('a', end + 1, end + 1), /not have enough safe entity IDs/);
+    const later = reg.registerModel('later', 1);
+    assert.equal(later, offset + end + 1);
+
+    const nearLimit = new FederationRegistry();
+    nearLimit.registerModel('limit', 1_999_999_999);
+    assert.equal(nearLimit.canPublishOverlayFrom('limit', 2_000_000_000), true);
+    assert.equal(nearLimit.canPublishOverlayFrom('limit', 2_000_000_000, 2), false);
+  });
+});
+
+describe('overlay allocation capacity with lazy publication', () => {
+  it('allows unpublished allocations without weakening publication contiguity', () => {
+    const registry = new FederationRegistry();
+    registry.registerModel('a', 10);
+    assert.equal(registry.hasOverlayCapacity('a', 12), true);
+    assert.equal(registry.canPublishOverlayFrom('a', 12), false);
+    assert.throws(() => registry.publishOverlayRange('a', 12, 12), /contigu/);
+    registry.registerModel('later', 10);
+    assert.equal(registry.hasOverlayCapacity('a', 1_000_010), true);
+    assert.equal(registry.hasOverlayCapacity('a', 1_000_011), false);
+    registry.publishOverlayRange('a', 11, 1_000_010);
+    assert.equal(registry.hasOverlayCapacity('a', 1_000_011), false);
+  });
+});
+
+// #10139: capacity cannot promise IDs that a subsequent reservation can take.
+it('caps newest allocator capacity at reserved headroom before a later model loads', () => {
+  const registry = new FederationRegistry();
+  registry.registerModel('A', 100);
+  assert.equal(registry.hasOverlayCapacity('A', 1_000_100), true);
+  assert.equal(registry.hasOverlayCapacity('A', 1_000_101), false);
+  registry.registerModel('B', 10);
+  assert.equal(registry.hasOverlayCapacity('A', 1_000_101), false);
+  registry.publishOverlayRange('A', 101, 1_000_100);
+  assert.equal(registry.toGlobalId('B', 0), 1_000_101);
+});
+
+it('registry publication and preview themselves report typed exhaustion, with contiguity first (#10139)', () => {
+  const registry = new FederationRegistry();
+  registry.registerModel('A', 100);
+  registry.registerModel('B', 10);
+  for (const action of [
+    () => registry.publishOverlayRange('A', 101, 1_000_101),
+    () => registry.previewOverlayGlobalId('A', 101, 1_000_101, 101),
+  ]) assert.throws(action, (error: unknown) => error instanceof Error && 'reason' in error
+    && error.reason === 'id-space-exhausted' && /not have enough safe entity IDs/i.test(error.message));
+  for (const action of [
+    () => registry.publishOverlayRange('A', 102, 1_000_101),
+    () => registry.previewOverlayGlobalId('A', 102, 1_000_101, 102),
+  ]) assert.throws(action, /contiguously/);
+});
+
+it('invalid overlay bounds and partly published bases are not capacity errors (#10139)', () => {
+  const registry = new FederationRegistry();
+  registry.registerModel('A', 100);
+  registry.reserveModel('partial', 100);
+  registry.publishRange('partial', 0, 50);
+  for (const [model, start, end] of [
+    ['A', 100, 101], ['A', 101, 100], ['A', 101.5, 102], ['A', 101, 102.5], ['partial', 51, 51],
+  ] as const) {
+    for (const action of [() => registry.publishOverlayRange(model, start, end),
+      () => registry.previewOverlayGlobalId(model, start, end, start)]) {
+      assert.throws(action, (error: unknown) => error instanceof Error && !('reason' in error)
+        && /Invalid overlay range/.test(error.message), `${model}: ${start}..${end}`);
+    }
+  }
+});
+
+it('extends source ownership below retained unpublished authored IDs (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('retained', 300);
+  assert.equal(reg.extendModel('retained', 500, 501), 500);
+  assert.throws(() => reg.toGlobalId('retained', 501), /not published/);
+  assert.equal(reg.canPublishOverlayFrom('retained', 501), true);
+  reg.publishOverlayRange('retained', 501, 501);
+  assert.equal(reg.toGlobalId('retained', 501), 501);
+});
+
+
+it('reserves an unused gap before retained creations without publishing them (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('retained', 300);
+  const laterOffset = reg.registerModel('later', 10);
+  const notifications: string[] = [];
+  reg.subscribe(modelId => { if (modelId === 'retained') notifications.push(String(reg.getGlobalIdRange(modelId)?.end)); });
+  assert.equal(reg.extendModel('retained', 990, 1001), 1000);
+  assert.deepEqual(notifications, ['1000'], 'source and reserved-unused ownership publish together');
+  assert.equal(reg.toGlobalId('retained', 1000), 1000);
+  assert.throws(() => reg.toGlobalId('retained', 1001), /not published/);
+  assert.equal(reg.canPublishOverlayFrom('retained', 1001, 5), true);
+  reg.publishOverlayRange('retained', 1001, 1005);
+  assert.equal(reg.toGlobalId('retained', 1005), 1005);
+  assert.equal(reg.toGlobalId('later', 0), laterOffset, 'the gap never aliases another model');
+});
+
+it('loads the source when a retained gap exceeds overlay capacity (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('retained', 300);
+  reg.registerModel('later', 10);
+  assert.equal(reg.extendModel('retained', 990, 1_000_302), 990);
+  assert.equal(reg.hasOverlayCapacity('retained', 1_000_303), false);
+  assert.throws(() => reg.toGlobalId('retained', 1_000_302), /not published/);
+});
+
+for (const first of [2_000_001, 2_100_001]) it(`clamps hydration with retained creations at ${first} (#10139)`, () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('x', 300);
+  const later = reg.registerModel('later', 10);
+  assert.equal(reg.extendModel('x', 2_000_000, first), 1_000_300);
+  assert.equal(reg.hasOverlayCapacity('x', first + 1), false);
+  assert.throws(() => reg.toGlobalId('x', first), /not published/);
+  assert.equal(reg.toGlobalId('later', 0), later);
+});
+
+it('refreshes a reserved gap idempotently and grows only below retained creations (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('x', 300);
+  assert.equal(reg.extendModel('x', 990, 1001), 1000);
+  assert.equal(reg.extendModel('x', 990, 1001), 1000);
+  assert.equal(reg.extendModel('x', 1000, 1001), 1000);
+  assert.throws(() => reg.extendModel('x', 1005, 1001), /unpublished overlay IDs/);
+  assert.equal(reg.canPublishOverlayFrom('x', 1001, 5), true);
+  reg.publishOverlayRange('x', 1001, 1005);
+  assert.throws(() => reg.extendModel('x', 1000, 1001), /overlay IDs/);
+});
+
+it('refuses retained creations already inside the registered source (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('x', 2000);
+  assert.throws(() => reg.extendModel('x', 2500, 1001), /unpublished overlay IDs/);
+  assert.equal(reg.getGlobalIdRange('x')?.end, 2000);
+});
+
+
+it('reserves a retained gap even when the reloaded source does not grow (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('retained', 300);
+  assert.equal(reg.extendModel('retained', 300, 1001), 1000);
+  assert.equal(reg.canPublishOverlayFrom('retained', 1001, 5), true);
+});
+
+
+it('no-op ownership refresh emits no notification (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('x', 300);
+  reg.extendModel('x', 990, 1001);
+  let changes = 0;
+  reg.subscribe(() => { changes++; });
+  reg.extendModel('x', 990, 1001);
+  assert.equal(changes, 0);
+  reg.extendModel('x', 1000, 1001);
+  assert.equal(changes, 1, 'the source watermark still changes within the owned gap');
+});
+
+it('registration listeners see the final retained-gap ownership once (#10139)', () => {
+  const reg = new FederationRegistry();
+  assert.throws(() => reg.registerModel('fractional', 1.5), /Invalid/, 'atomic registration still validates the source publication bound');
+  const observed: unknown[] = [];
+  reg.subscribe(id => { if (id) observed.push(reg.getGlobalIdRange(id)); });
+  reg.registerModel('x', 990, 1001);
+  assert.deepEqual(observed, [{ start: 0, end: 1000 }]);
+});
+
+it('duplicate registration with a retained view stays a no-op outside a published, overlay-free range (#10139)', () => {
+  const reg = new FederationRegistry();
+  const empty = reg.reserveModel('empty', 0);
+  assert.equal(reg.registerModel('empty', 0, 1001), empty, 'an unpublished reservation is not extended');
+  const published = reg.registerModel('published', 300);
+  reg.publishOverlayRange('published', 301, 301);
+  assert.equal(reg.registerModel('published', 300, 1001), published, 'an overlay-published range is not extended');
+  assert.equal(reg.getGlobalIdRange('published')!.end, published + 301);
+  const progressive = reg.reserveModel('progressive', 300);
+  reg.publishRange('progressive', 0, 300);
+  reg.registerModel('progressive', 300, 1001);
+  assert.equal(reg.getGlobalIdRange('progressive')!.end, progressive + 1000, 'the gap before retained creations is reserved');
+});
+
+it('a throwing range listener does not hide the change from later listeners (#10139)', () => {
+  const reg = new FederationRegistry();
+  reg.registerModel('x', 300);
+  const seen: string[] = [];
+  reg.subscribe(() => { throw new Error('first listener failed'); });
+  reg.subscribe(id => { if (id) seen.push(id); });
+  assert.throws(() => reg.extendModel('x', 400), /notification failed/);
+  assert.deepEqual(seen, ['x']);
 });

@@ -9,7 +9,7 @@
 //! ratchet budget (matching the `georef_tests.rs` split for test code):
 //! these functions are cohesive (all exist to turn a STEP
 //! `IfcCompoundPlaneAngleMeasure` list into signed decimal degrees) and are
-//! only ever called from `georef.rs::extract_from_site`.
+//! only ever called from `georef_site.rs::site_ref_location`.
 
 use crate::parser::StepListItems;
 use crate::schema_gen::DecodedEntity;

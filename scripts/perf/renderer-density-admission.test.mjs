@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import { requirePassedDensityReport, requireRendererDensityOracle, runRendererDensityControls } from './renderer-density-admission.mjs';
 
 function archived(name) {
-  return JSON.parse(gunzipSync(readFileSync(new URL(`./evidence/bounded-depth-readback-6881/${name}.json.gz`, import.meta.url))));
+  return JSON.parse(gunzipSync(readFileSync(new URL(`../../tests/fixtures/renderer-density-6881/${name}.json.gz`, import.meta.url))));
 }
 const complete = () => archived('renderer-same-render-oracles');
 

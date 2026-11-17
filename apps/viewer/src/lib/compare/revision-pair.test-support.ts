@@ -32,7 +32,8 @@ import type { RuleSetFile } from '@ifc-lite/rules';
 import type { FederatedModel } from '@/store';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
-import { recordGatheredModel, rememberFederationIdentity } from '@/lib/clash/federation-identity';
+import { rememberFederationIdentity } from '@/lib/clash/federation-identity';
+import { recordGatheredModel } from '@/lib/federation/federation-identity';
 import { runInformationCheck } from '@/lib/validation/run-information-check';
 import { buildEntityFingerprints } from './buildFingerprints';
 

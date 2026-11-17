@@ -228,7 +228,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
 }
 /// The left-most construction under a band's Intersection: the host's source,
 /// through any opening cuts or affine copies.
-fn host_curved<R: NumericalReceipt>(band: &RuntimeRealization<R>) -> bool {
+pub(super) fn host_curved<R: NumericalReceipt>(band: &RuntimeRealization<R>) -> bool {
     let mut node = band._inputs[0].as_deref();
     while let Some(host) = node {
         if let ReceiptEvidence::Construction(completion) = host.kind.evidence() {

@@ -281,6 +281,11 @@ function isWasmRuntimeCrashError(err: unknown, message: string): boolean {
  * wording its kind. It can never change any other answer.
  */
 export function classifyLoadError(err: unknown, context?: unknown): LoadErrorKind {
+  // #7955: the retained host names its failure; the message is only the engine's raw trap text.
+  const retained = errorNameOf(err) === 'RetainedHostError' ? (err as { code?: unknown }).code : undefined;
+  if (retained === 'out_of_memory') return 'out_of_memory';
+  if (retained === 'worker_crash') return 'geometry_worker_crash';
+  if (errorNameOf(err) === 'RetainedStallError') return 'geometry_stream_stalled';
   const message = messageOf(err);
   // Before broad memory/engine/file matchers: entry names are user-controlled
   // and may contain their keywords. Only complete parser refusals claim this

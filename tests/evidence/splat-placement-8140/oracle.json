@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "examples/gaussian-splat-spike/decode.mjs",
-  "mutation": "tests/evidence/splat-placement-8140/behaviour.oracle.patch",
-  "test": "examples/gaussian-splat-spike/test/reuse.test.mjs",
-  "why": "#8140: reverse-applying this behavioral mutation removes the declared -Y-up conversion while retaining the new decoder import seam; the in-memory real .splat placement invariant must fail without optional downloads."
-}

@@ -4,6 +4,9 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { IfcParser } from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { IfcCreator, addColumnToStore, readStoreyInventory, resolveSpatialAnchor } from '@ifc-lite/create';
 import {
   resolvePlacementChain,
   translateProduct,
@@ -61,6 +64,21 @@ function makeFixture() {
 
 const dataStoreStub = makeStubDataStore() as unknown as Parameters<typeof resolvePlacementChain>[0];
 
+/** #9352: default column moves use the real atomic editor, including when no top is bound. */
+async function unboundColumnFixture() {
+  const creator = new IfcCreator({ Name: 'Placement' });
+  creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
+  const bytes = new TextEncoder().encode(creator.toIfc().content);
+  const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+  const view = new MutablePropertyView(store.properties, 'm');
+  const editor = new StoreEditor(store, view);
+  const home = readStoreyInventory(store, view).storeys[0].expressId;
+  const { columnId } = addColumnToStore(editor, resolveSpatialAnchor(store, home, view), {
+    Position: [1, 2, 3], Width: 0.2, Depth: 0.2, Height: 1,
+  });
+  return { store, view, editor, columnId };
+}
+
 describe('placement-edit', () => {
   it('resolves the full chain for an overlay column', () => {
     const { point, axis, local, column } = makeFixture();
@@ -86,61 +104,40 @@ describe('placement-edit', () => {
     assert.strictEqual(resolvePlacementChain(dataStoreStub, view, editor, 200), null);
   });
 
-  it('translateProduct writes the new coordinates', () => {
-    const { point, axis, local, column } = makeFixture();
-    const editor = new StubStoreEditor([point, axis, local, column]);
-    const view = new StubView();
+  it('translateProduct writes the new coordinates', async () => {
+    const { store, view, editor, columnId } = await unboundColumnFixture();
     const result = translateProduct(
-      dataStoreStub,
-      view as unknown as Parameters<typeof translateProduct>[1],
-      editor as unknown as Parameters<typeof translateProduct>[2],
-      100,
+      store, view, editor, columnId,
       [0.5, -1, 2],
     );
     assert.ok(result.ok);
     assert.deepStrictEqual(result.newCoordinates, [1.5, 1, 5]);
     // Read back via a fresh resolve to confirm the overlay reflects the write.
     const chain = resolvePlacementChain(
-      dataStoreStub,
-      view as unknown as Parameters<typeof resolvePlacementChain>[1],
-      editor as unknown as Parameters<typeof resolvePlacementChain>[2],
-      100,
+      store, view, editor, columnId,
     );
     assert.ok(chain);
     assert.deepStrictEqual(chain.coordinates, [1.5, 1, 5]);
   });
 
-  it('translateProduct accumulates over multiple calls', () => {
-    const { point, axis, local, column } = makeFixture();
-    const editor = new StubStoreEditor([point, axis, local, column]);
-    const view = new StubView();
+  it('translateProduct accumulates over multiple calls', async () => {
+    const { store, view, editor, columnId } = await unboundColumnFixture();
     translateProduct(
-      dataStoreStub,
-      view as unknown as Parameters<typeof translateProduct>[1],
-      editor as unknown as Parameters<typeof translateProduct>[2],
-      100,
+      store, view, editor, columnId,
       [1, 0, 0],
     );
     const second = translateProduct(
-      dataStoreStub,
-      view as unknown as Parameters<typeof translateProduct>[1],
-      editor as unknown as Parameters<typeof translateProduct>[2],
-      100,
+      store, view, editor, columnId,
       [0, 1, 0],
     );
     assert.ok(second.ok);
     assert.deepStrictEqual(second.newCoordinates, [2, 3, 3]);
   });
 
-  it('setProductPosition replaces rather than adds', () => {
-    const { point, axis, local, column } = makeFixture();
-    const editor = new StubStoreEditor([point, axis, local, column]);
-    const view = new StubView();
+  it('setProductPosition replaces rather than adds', async () => {
+    const { store, view, editor, columnId } = await unboundColumnFixture();
     const result = setProductPosition(
-      dataStoreStub,
-      view as unknown as Parameters<typeof setProductPosition>[1],
-      editor as unknown as Parameters<typeof setProductPosition>[2],
-      100,
+      store, view, editor, columnId,
       [10, 20, 30],
     );
     assert.ok(result.ok);
@@ -231,11 +228,9 @@ describe('placement-edit', () => {
     assert.ok(Math.abs(state.refDirection[1] - 1) < 1e-9);
   });
 
-  it('rotateProductYaw refuses to act when RefDirection is implicit', () => {
-    // Avoids the orphan-on-undo problem: creating a fresh
-    // IfcDirection here without a batched-mutation primitive would
-    // leave it behind after undo. Refusing is the safer default
-    // until we have multi-entity atomic undo.
+  it('rotateProductYaw materialises an implicit Axis and RefDirection, then rotates (#8446)', () => {
+    // Parsed files routinely leave both directions as `$`; the editor writes
+    // the STEP defaults explicitly first, so the rotation has a target.
     const { point, axis, local, column } = makeFixture();
     const editor = new StubStoreEditor([point, axis, local, column]);
     const view = new StubView();
@@ -246,7 +241,16 @@ describe('placement-edit', () => {
       100,
       Math.PI / 4,
     );
-    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.ok, true);
+    // Fixture ids end at #100: Axis is #101, RefDirection #102.
+    assert.deepStrictEqual(axis.attributes, [97, '#101', '#102']);
+    assert.deepStrictEqual(editor.getNewEntity(101), { expressId: 101, type: 'IfcDirection', attributes: [[0, 0, 1]] });
+    const ref = editor.getNewEntity(102);
+    assert.strictEqual(ref?.type, 'IfcDirection');
+    const [x, y, z] = ref!.attributes[0] as number[];
+    assert.ok(Math.abs(x - Math.SQRT1_2) < 1e-9);
+    assert.ok(Math.abs(y - Math.SQRT1_2) < 1e-9);
+    assert.strictEqual(z, 0);
   });
 
   /**
@@ -544,18 +548,28 @@ describe('placement-edit', () => {
     }
   });
 
-  it('rotateProductYaw reports the implicit-RefDirection reason distinctly from the chain-resolution reason', () => {
+  it('a rotated implicit placement reads back as an explicit RefDirection at the new yaw', () => {
     const { point, axis, local, column } = makeFixture();
-    const editor = new StubStoreEditor([point, axis, local, column]) as unknown as Parameters<typeof rotateProductYaw>[2];
-    const view = new StubView() as unknown as Parameters<typeof rotateProductYaw>[1];
-    const result = rotateProductYaw(dataStoreStub, view, editor, 100, Math.PI / 4);
-    assert.strictEqual(result.ok, false);
-    if (!result.ok) {
-      assert.strictEqual(
-        result.reason,
-        'Entity has an implicit reference direction; rotation requires an explicit IfcDirection on its axis placement.',
-      );
-    }
+    const editor = new StubStoreEditor([point, axis, local, column]);
+    const view = new StubView();
+    const result = rotateProductYaw(
+      dataStoreStub,
+      view as unknown as Parameters<typeof rotateProductYaw>[1],
+      editor as unknown as Parameters<typeof rotateProductYaw>[2],
+      100,
+      Math.PI / 4,
+    );
+    assert.strictEqual(result.ok, true);
+    const state = resolveRotationState(
+      dataStoreStub,
+      view as unknown as Parameters<typeof resolveRotationState>[1],
+      editor as unknown as Parameters<typeof resolveRotationState>[2],
+      100,
+    );
+    assert.ok(state);
+    assert.strictEqual(state.axisDirectionId, 101);
+    assert.strictEqual(state.refDirectionId, 102);
+    assert.ok(Math.abs(state.yawZ - Math.PI / 4) < 1e-9);
   });
 
   it('translateProduct and setProductPosition report the chain-resolution reason', () => {

@@ -187,7 +187,11 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) for (const mm of [fa
     expectBox(meshBox(api, a.exportText(), column.columnId), box);
     expectBox(meshBox(api, new TextDecoder().decode(mini.bytes), column.columnId), box);
     const restored = await parse(a.exportText());
-    expect(gridPlacementDependents(restored, null, new Set([a.grid.gridId]))).toContain(column.columnId);
+    // IFC2X3 places one product per placement (#9209): the outer grid placement
+    // has two children, the first column and the nested grid, so both come free
+    // of it; the column's own one-child binding to the nested grid folds and stays.
+    const owner = schema === 'IFC2X3' ? nested.gridId : a.grid.gridId;
+    expect(gridPlacementDependents(restored, null, new Set([owner]))).toContain(column.columnId);
   });
 
   for (const branch of ['direct', 'sibling', 'intermediate'] as const) it.skipIf(!wasmAvailable)(`real WASM/export retain position, height and section heading through ${branch} frames`, async () => {
@@ -200,15 +204,24 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) for (const mm of [fa
     expect(column.type.toUpperCase()).toBe('IFCCOLUMN');
     expect(column.attributes[5]).toBe(result.placementId);
     const local = reader.entity(result.placementId)!;
-    expect(local.attributes[0]).toBe(result.gridPlacement.placementId);
-    const axis = reader.entity(refId(local.attributes[1])!)!;
-    expect(reader.entity(refId(axis.attributes[0])!)!.attributes[0]).toEqual([0, 0, .75 / a.scale]);
-    const heading = reader.entity(refId(axis.attributes[2])!)!.attributes[0] as number[];
-    expect(heading[0]).toBeCloseTo(.5, 10);
-    expect(heading[1]).toBeCloseTo(-Math.sqrt(3) / 2, 10);
-    const gridPlacement = reader.entity(result.gridPlacement.placementId)!;
-    expect(gridPlacement.attributes).toHaveLength(schema === 'IFC4X3' ? 3 : 2);
-    if (schema === 'IFC4X3') expect(gridPlacement.attributes[0]).toBe(a.grid.placementId);
+    if (schema === 'IFC2X3') {
+      // IFC2X3 places one product per placement (#9209) and its grid placement
+      // cannot carry a heading, so the column comes free: a plain placement in
+      // its grid's frame, the grid placement not written. The boxes below hold
+      // its position, height and heading.
+      expect(local.attributes[0]).toBe(a.grid.placementId);
+      expect(reader.entity(result.gridPlacement.placementId)).toBeFalsy();
+    } else {
+      expect(local.attributes[0]).toBe(result.gridPlacement.placementId);
+      const axis = reader.entity(refId(local.attributes[1])!)!;
+      expect(reader.entity(refId(axis.attributes[0])!)!.attributes[0]).toEqual([0, 0, .75 / a.scale]);
+      const heading = reader.entity(refId(axis.attributes[2])!)!.attributes[0] as number[];
+      expect(heading[0]).toBeCloseTo(.5, 10);
+      expect(heading[1]).toBeCloseTo(-Math.sqrt(3) / 2, 10);
+      const gridPlacement = reader.entity(result.gridPlacement.placementId)!;
+      expect(gridPlacement.attributes).toHaveLength(schema === 'IFC4X3' ? 3 : 2);
+      if (schema === 'IFC4X3') expect(gridPlacement.attributes[0]).toBe(a.grid.placementId);
+    }
     expect(reader.entity(result.relContainedId)!.attributes.slice(4)).toEqual([[result.columnId], a.anchor.storeyId]);
     expectBox(meshBox(api, text, result.columnId), expectedBox());
     // This is the actual viewer re-mesh payload, whose implicit owning-grid

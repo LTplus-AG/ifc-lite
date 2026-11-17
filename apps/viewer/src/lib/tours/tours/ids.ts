@@ -53,7 +53,7 @@ export const IDS_TOUR: TourDefinition = {
       prepare: showIdsSide,
       placement: 'left',
       title: 'Load a spec',
-      body: 'Click Load IDS File and pick a .ids file. No spec handy? Load the demo spec instead.',
+      body: 'Click Load IDS file and pick a .ids file. No spec handy? Load the demo spec instead.',
       action: {
         label: 'Load demo spec',
         // The demo spec is authored against the demo project; validating an

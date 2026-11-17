@@ -13,7 +13,7 @@
  * threaded in, so this file has no behaviour to test beyond wiring.
  */
 
-import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { DiffScope } from '@ifc-lite/diff';
@@ -118,22 +118,22 @@ export function CompareRunControls({
       </div>
 
       {baseModelId === headModelId && (
-        <p className="text-xs text-[#e0af68]">{t('comparePanel.runControls.pickDifferentModels')}</p>
+        <p className="text-xs text-warn">{t('comparePanel.runControls.pickDifferentModels')}</p>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex rounded-md border border-border overflow-hidden text-xs shrink-0">
           {SCOPES.map((s) => (
-            <button
+            <Button
               key={s.id}
+              type="button"
+              variant="toggle"
+              aria-pressed={scope === s.id}
               onClick={() => onScope(s.id)}
-              className={cn(
-                'px-2.5 py-1 transition-colors',
-                scope === s.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-              )}
+              className="h-auto rounded-none px-2.5 py-1 text-xs font-normal"
             >
               {t(s.labelKey)}
-            </button>
+            </Button>
           ))}
         </div>
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">

@@ -16,11 +16,11 @@ import type { CanvasNode } from '@/lib/flow/view-model';
 import { KIND_COLOR } from '@/lib/flow/view-model';
 
 const STATUS_CLASS: Record<string, string> = {
-  ok: 'bg-emerald-500/20 text-emerald-300',
-  memo: 'bg-sky-500/20 text-sky-300',
+  ok: 'bg-emerald-500/20 text-ok',
+  memo: 'bg-sky-500/20 text-info',
   noop: 'bg-zinc-500/20 text-zinc-300',
-  skipped: 'bg-amber-500/20 text-amber-300',
-  error: 'bg-red-500/20 text-red-300',
+  skipped: 'bg-amber-500/20 text-warn',
+  error: 'bg-red-500/20 text-danger',
 };
 
 function accessMark(p: PortDef): string {
@@ -52,7 +52,7 @@ function FlowNodeViewInner({ data, selected }: NodeProps<CanvasNode>) {
   const status = data.status;
   return (
     <div
-      className={`min-w-[150px] rounded border bg-card text-card-foreground shadow-sm ${selected ? 'border-[#7aa2f7]' : 'border-border'} ${data.known ? '' : 'border-dashed border-red-400'}`}
+      className={`min-w-[150px] rounded border bg-card text-card-foreground shadow-sm ${selected ? 'border-[#7aa2f7]' : 'border-border'} ${data.known ? '' : 'border-dashed border-danger-border'}`}
       data-flow-node={data.nodeId}
     >
       <div className="flex items-center gap-1 rounded-t border-b border-border bg-muted/40 px-2 py-1 text-2xs font-medium">

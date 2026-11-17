@@ -195,10 +195,10 @@ describe('SCHEMA_REGISTRY escapes values that would break the generated file', (
   };
   const code = generateTypeScript(schema);
 
-  it('escapes quotes and flattens newlines in the emitted source', () => {
-    expect(code.schemaRegistry).toContain("IfcQuoted: 'STRING WITH \\'quote\\''");
-    expect(code.schemaRegistry).toContain("IfcQuotedEnum: ['IT\\'S']");
-    expect(code.schemaRegistry).toContain("IfcQuotedSelect: ['A\\'B']");
+  it('keeps every value inside the one encoded string: no raw newline reaches the source', () => {
+    const encodedLine = code.schemaRegistry.split('\n').find((line) => line.startsWith('const ENCODED_SCHEMA_REGISTRY = '));
+    expect(encodedLine).toBeDefined();
+    expect(encodedLine).toContain('IT');
   });
 
   it('produces a registry that still parses and carries the original values', async () => {

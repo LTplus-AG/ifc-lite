@@ -14,6 +14,7 @@ import type { BCFTopic } from '@ifc-lite/bcf';
 import { loadApi } from '../../services/bcf-server-session.js';
 import { digestStrings, describeWithFooter } from '../bcf-drafts/draft-footer.js';
 import type { DraftBatch, DraftTopic } from '../bcf-drafts/draft-types.js';
+import { adaptTopicWrite, publishedTopicTypes, type PublicationServerRules, type TopicTypeChoice } from './outbox-server-rules.js';
 import { requeue } from './outbox-state.js';
 import type { BcfPublication, OutboxEntry, OutboxOperation, PublicationTarget } from './outbox-types.js';
 
@@ -28,6 +29,24 @@ export function ownedFields(dto: Readonly<Record<string, unknown>> | undefined):
     owned[field] = Array.isArray(value) ? [...value].map(String).sort() : value;
   }
   return owned;
+}
+
+/**
+ * Owned fields as the server stored them after a topic write: the response's
+ * value wherever it states a field (null included, which a server uses for a
+ * value it would not keep), the sent value only where the response omits it.
+ */
+export function confirmedOwnedFields(response: Readonly<Record<string, unknown>>, sent: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const stored: Record<string, unknown> = {};
+  for (const field of OWNED_FIELDS) stored[field] = Object.hasOwn(response, field) ? response[field] : sent[field];
+  return ownedFields(stored);
+}
+
+/** The owned fields a server DTO states, nulls included, for `confirmedOwnedFields` later. */
+export function statedOwnedFields(dto: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const stated: Record<string, unknown> = {};
+  for (const field of OWNED_FIELDS) if (Object.hasOwn(dto, field)) stated[field] = dto[field];
+  return stated;
 }
 
 export function sameOwnedFields(left: Readonly<Record<string, unknown>> | undefined, right: Readonly<Record<string, unknown>> | undefined): boolean {
@@ -75,8 +94,15 @@ export interface PublicationPlan {
   orphaned: string[];
 }
 
+export interface PlanOptions {
+  /** The server's departures from the BCF API (`publicationRules`). */
+  rules?: PublicationServerRules;
+  /** Server topic types chosen for draft types the server does not know. */
+  topicTypes?: TopicTypeChoice;
+}
+
 export async function planDraftPublication(batch: DraftBatch, existing: BcfPublication | undefined, rawTarget: PublicationTarget,
-  now = new Date()): Promise<PublicationPlan> {
+  now = new Date(), options: PlanOptions = {}): Promise<PublicationPlan> {
   const api = await loadApi();
   const target = normalizedTarget(rawTarget);
   const at = now.toISOString();
@@ -92,27 +118,37 @@ export async function planDraftPublication(batch: DraftBatch, existing: BcfPubli
     return { id: crypto.randomUUID(), operation, topicGuid, payload, digest: entryDigest(target, operation, topicGuid, payload),
       state: 'queued', attempts: 0, queuedAt: at, ...extra };
   };
-  const withPayload = (item: OutboxEntry, payload: Record<string, unknown>): OutboxEntry =>
-    ({ ...item, payload, digest: entryDigest(target, item.operation, item.topicGuid, payload) });
+  const withPayload = (item: OutboxEntry, payload: Record<string, unknown>, extra: Pick<OutboxEntry, 'withheld' | 'topicTypeFrom'>): OutboxEntry => {
+    const { withheld: _withheld, topicTypeFrom: _from, ...rest } = item;
+    return { ...rest, payload, digest: entryDigest(target, item.operation, item.topicGuid, payload), ...extra };
+  };
+  // A fresh choice wins; otherwise the types this publication already published draft types as.
+  const topicTypes: TopicTypeChoice = { ...publishedTopicTypes(entries), ...options.topicTypes };
 
   for (const topic of batch.topics) {
-    const write = { ...api.topicToApiWrite(topicForServer(batch, topic)) } as Record<string, unknown>;
+    const { write, withheld, mappedFrom } = adaptTopicWrite({ ...api.topicToApiWrite(topicForServer(batch, topic)) } as Record<string, unknown>,
+      options.rules ?? {}, topicTypes);
+    const kept = { ...(withheld ? { withheld } : {}), ...(mappedFrom ? { topicTypeFrom: mappedFrom } : {}) };
     let create = entries.find(item => item.operation === 'createTopic' && item.topicGuid === topic.guid);
     if (!create) {
-      create = entry('createTopic', topic.guid, write);
+      create = entry('createTopic', topic.guid, write, kept);
       entries.push(create);
     } else if (create.state === 'queued') {
       // Never sent: carry the latest reviewed fields instead of stale ones.
       const index = entries.indexOf(create);
-      create = entries[index] = withPayload(create, write);
+      create = entries[index] = withPayload(create, write, kept);
     } else if (create.state === 'done') {
       const published = [...entries].reverse().find(item => item.topicGuid === topic.guid && item.state === 'done'
         && (item.operation === 'updateTopic' || item.operation === 'createTopic'));
       const pending = entries.findIndex(item => item.operation === 'updateTopic' && item.topicGuid === topic.guid
         && item.state !== 'done' && item.state !== 'failed');
       if (!sameOwnedFields(published?.payload, write)) {
-        if (pending >= 0 && entries[pending].state === 'queued') entries[pending] = withPayload(entries[pending], write);
-        else if (pending < 0) entries.push(entry('updateTopic', topic.guid, write, { dependsOn: create.id, baseline: ownedFields(published?.payload) }));
+        if (pending >= 0 && entries[pending].state === 'queued') entries[pending] = withPayload(entries[pending], write, kept);
+        else if (pending < 0) entries.push(entry('updateTopic', topic.guid, write, { dependsOn: create.id,
+          baseline: published?.receipt?.fields ?? ownedFields(published?.payload), ...kept }));
+      } else if (pending >= 0 && entries[pending].state === 'queued') {
+        // Back to what the server already has (e.g. a refused plan before a topic type was chosen): the unsent update goes.
+        entries.splice(pending, 1);
       }
     }
     if (topic.viewpoint && !entries.some(item => item.operation === 'createViewpoint' && item.subject === topic.viewpoint?.guid)) {

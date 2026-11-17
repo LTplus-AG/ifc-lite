@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createModelMutationView } from '@/utils/model-mutation-view';
 /**
  * IDSCorrectionDialog — correct a failed IDS scalar-property requirement
  * for a chosen subset of failed entities (#3929).
@@ -48,7 +49,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
-import { configureMutationView } from '@/utils/configureMutationView';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import {
   inferValueType,
@@ -57,7 +57,6 @@ import {
   CorrectionValueError,
   type CorrectionApplyResult,
 } from '@/hooks/ids/idsCorrection';
-import { MutablePropertyView } from '@ifc-lite/mutations';
 import { scaleCorrectionForWrite } from '@/hooks/ids/idsCorrectionScale';
 import type { IDSSpecificationResult } from '@ifc-lite/ids';
 import { getCorrectableRequirements } from '@/hooks/ids/idsCorrectableRequirements';
@@ -153,8 +152,7 @@ export function IDSCorrectionDialog({
     // the Bulk Property Editor and PropertiesPanel use.
     let mutationView = getMutationView(modelId);
     if (!mutationView) {
-      mutationView = new MutablePropertyView(dataStore.properties || null, modelId);
-      configureMutationView(mutationView, dataStore);
+      mutationView = createModelMutationView(dataStore, modelId);
       registerMutationView(modelId, mutationView);
     }
 
@@ -330,8 +328,8 @@ export function IDSCorrectionDialog({
                         </span>
                         {result && (
                           result.applied
-                            ? <Check className="h-3.5 w-3.5 text-green-600 shrink-0" aria-label={t('idsPanel.correction.applied')} />
-                            : <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" aria-label={result.error} />
+                            ? <Check className="h-3.5 w-3.5 text-ok shrink-0" aria-label={t('idsPanel.correction.applied')} />
+                            : <AlertCircle className="h-3.5 w-3.5 text-danger shrink-0" aria-label={result.error} />
                         )}
                       </label>
                     );

@@ -193,7 +193,7 @@ describe('convergeFederationRtcFrame - load order and overlapping loads', () => 
   });
 
   it('never moves a raw point cloud loaded before the anchor', () => {
-    const cloud = model('P', 1, { ...geometry([]), pointClouds: [{ expressId: 1 }] } as unknown as GeometryResult);
+    const cloud = model('P', 1, { ...geometry([]), pointClouds: [{ expressId: 1, chunk: { pointCount: 0 } }] } as unknown as GeometryResult);
     const before = cloud.geometryResult!.coordinateInfo;
     seed([cloud, anchoredModel(2)]);
     convergeFederationRtcFrame();
@@ -238,6 +238,15 @@ describe('convergeFederationRtcFrame - spatial index', () => {
     convergeFederationRtcFrame();
     assert.deepStrictEqual(liveModel('A').geometryResult!.coordinateInfo.wasmRtcOffset, ANCHOR, 'sanity: A moved');
     assert.notStrictEqual(liveModel('A').ifcDataStore!.spatialIndex, stale, 'raycasts still read the pre-rebase index');
+  });
+
+  it('keeps the spatial index of a streamed scan off the anchor, which never moves (#10094)', () => {
+    const stale = { kept: true } as unknown as NonNullable<FederatedModel['ifcDataStore']>['spatialIndex'];
+    const scan = model('P', 1, { ...geometry([]), pointClouds: [{ expressId: 1, chunk: { pointCount: 0 } }] } as unknown as GeometryResult);
+    scan.ifcDataStore = { spatialIndex: stale } as unknown as FederatedModel['ifcDataStore'];
+    seed([scan, anchoredModel(2)]);
+    convergeFederationRtcFrame();
+    assert.strictEqual(liveModel('P').ifcDataStore!.spatialIndex, stale);
   });
 
   it('keeps the spatial index of a model that is already on the anchor', () => {

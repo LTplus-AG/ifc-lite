@@ -27,7 +27,7 @@ import { setRequestRemesh } from '../transaction.js';
 import type { CommandContext } from '../types.js';
 import { modelSnapSources } from '../snap-solve.js';
 import { GRID_PLACE } from './grid-place.js';
-import { axisCount, axisOffsets, resetGridSettings, withGridSettings, type GridPlaceGesture } from './grid-place-geometry.js';
+import { axisCount, axisOffsets, planGrid, resetGridSettings, withGridSettings, type GridPlaceGesture } from './grid-place-geometry.js';
 
 const at = (x: number, y: number, shift = false): SnapResult => ({ local: [x, y], winner: null, guides: [], locked: false, modifiers: { shift, alt: false } });
 const gesture = () => getCommandRuntime().gesture as GridPlaceGesture;
@@ -69,12 +69,21 @@ describe('axisOffsets (#6232 D3)', () => {
     assert.deepEqual(axisOffsets(13, 6), [0, 6, 12, 13]);
     assert.deepEqual(axisOffsets(4, 6), [0, 4]);
   });
+
+  it('a dragged extent ends on a whole bay rather than closing a sliver after it (#9095)', () => {
+    assert.deepEqual(axisOffsets(18.08, 6, true), [0, 6, 12, 18]);
+    assert.deepEqual(axisOffsets(18.59, 6, true), [0, 6, 12, 18], 'just under a tenth of the spacing');
+    assert.deepEqual(axisOffsets(18.61, 6, true), [0, 6, 12, 18, 18.61], 'a real short bay still closes');
+    assert.deepEqual(axisOffsets(0.4, 6, true), [0, 0.4], 'narrower than one bay: the far side still has an axis');
+    assert.deepEqual(axisOffsets(18.08, 6), [0, 6, 12, 18, 18.08], 'a typed extent is exact');
+  });
 });
 
 describe('axisCount (#6232 D3)', () => {
   it('counts what axisOffsets makes, without making it', () => {
-    for (const [extent, spacing] of [[12, 6], [13, 6], [4, 6], [10, 3], [0.7, 0.1]] as const) {
+    for (const [extent, spacing] of [[12, 6], [13, 6], [4, 6], [10, 3], [0.7, 0.1], [18.08, 6], [0.4, 6]] as const) {
       assert.equal(axisCount(extent, spacing), axisOffsets(extent, spacing).length, `${extent} at ${spacing}`);
+      assert.equal(axisCount(extent, spacing, true), axisOffsets(extent, spacing, true).length, `dragged ${extent} at ${spacing}`);
     }
   });
 });
@@ -116,6 +125,23 @@ describe('grid.place (#6232 D3)', () => {
     act(() => { commandPointerMove(at(3, 3)); commandPointerDown(at(3, 3)); });
     // 10 m at 5 m: 3 U axes; 6 m at 3 m: 3 V axes.
     assert.equal(live('IFCGRIDAXIS').length, 6);
+  });
+
+  it('a drag just past a whole bay writes no sliver; the same size typed keeps its closing axis (#9095)', () => {
+    const plan = () => planGrid(gesture(), 0);
+    click(0, 0);
+    act(() => { commandPointerMove(at(18.08, 12.04)); });
+    const dragged = plan();
+    assert.ok(dragged.ok);
+    assert.deepEqual([dragged.uAxes, dragged.vAxes], [4, 3], 'the bar reads 4 × 3, not 5 × 4');
+
+    act(() => { writeCommandField(index('width'), 18.08); });
+    const typed = plan();
+    assert.ok(typed.ok);
+    assert.deepEqual([typed.uAxes, typed.vAxes], [5, 3], 'only the typed side closes on its value');
+
+    act(() => { commandPointerMove(at(18.08, 12.04)); commandPointerDown(at(18.08, 12.04)); });
+    assert.deepEqual(tags(), { u: ['1', '2', '3', '4', '5'], v: ['A', 'B', 'C'] });
   });
 
   it('the ghost is one strip per axis of the grid that is written', () => {

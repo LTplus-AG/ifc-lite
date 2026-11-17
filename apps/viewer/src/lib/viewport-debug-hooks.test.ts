@@ -4,7 +4,8 @@
 
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Renderer } from '@ifc-lite/renderer';
+import type { Renderer, SceneSnapshot } from '@ifc-lite/renderer';
+import { tapSceneSnapshot, tappedSceneSnapshots } from './perf/sceneIdentityTap.js';
 import { clearViewportDebugHooks, installViewportDebugHooks } from './viewport-debug-hooks';
 
 afterEach(clearViewportDebugHooks);
@@ -36,4 +37,54 @@ it('#8413 frame observation reads only the renderer snapshot and clears on teard
   assert.equal((host.__ifc_lite_render_frame__ as () => unknown)(), frame);
   clearViewportDebugHooks();
   assert.equal(host.__ifc_lite_render_frame__, undefined);
+});
+
+// #8566: exercise the installed hook, not source strings. Vite's existing test
+// loader supplies this same mutable environment object to imported modules.
+for (const gate of [undefined, 'false', 'true', 'internal-unqualified']) {
+  it(`#8566 diagnostic color capture fails closed for gate ${String(gate)}`, async () => {
+    const host = globalThis as Record<string, unknown>;
+    const env = host.__VITE_ENV__ as Record<string, unknown>;
+    const previous = env.VITE_GAUSSIAN_SPLATS;
+    const calls: unknown[] = [];
+    try {
+      env.VITE_GAUSSIAN_SPLATS = gate;
+      const renderer = { captureColorFrame: async (diagnostic?: boolean) => {
+        calls.push(diagnostic);
+        // A coalesced ordinary frame has no second copy: never manufacture it.
+        return { width: 1, height: 1, rgba: new Uint8ClampedArray([1, 2, 3, 255]) };
+      } } as unknown as Renderer;
+      installViewportDebugHooks(renderer, () => ({ hiddenIds: new Set(), isolatedIds: null }), () => 0);
+      const hook = host.__ifc_lite_capture_color_diagnostic__ as (() => Promise<unknown>) | undefined;
+      if (gate === 'internal-unqualified') {
+        assert.equal(typeof hook, 'function'); assert.equal(await hook!(), null);
+        assert.deepEqual(calls, [true]);
+      } else { assert.equal(hook, undefined); assert.deepEqual(calls, []); }
+      clearViewportDebugHooks(); assert.equal(host.__ifc_lite_capture_color_diagnostic__, undefined);
+    } finally { env.VITE_GAUSSIAN_SPLATS = previous; }
+  });
+}
+
+it('#9990 viewport teardown drops old taps without letting pending hashes settle a new viewport', async () => {
+  const host = globalThis as Record<string, unknown>;
+  const saved = host.location;
+  host.location = { search: '?perf.sceneIdentity=1', href: 'http://x/?perf.sceneIdentity=1' };
+  const snapshot: SceneSnapshot = { policy: 'p', pieceCount: 0, nextSplitId: 0, sharedFrameOrigins: [], activeBuckets: [], batches: [] };
+  try {
+    tapSceneSnapshot('written', snapshot);
+    assert.equal(tappedSceneSnapshots().pending, 1);
+    clearViewportDebugHooks();
+    assert.deepEqual(tappedSceneSnapshots(), { snapshots: [], pending: 0 });
+    tapSceneSnapshot('adopted', snapshot);
+    assert.equal(tappedSceneSnapshots().pending, 1);
+    for (let i = 0; i < 50 && tappedSceneSnapshots().pending > 0; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    const current = tappedSceneSnapshots();
+    assert.equal(current.pending, 0, 'an old callback cannot decrement the new viewport counter');
+    assert.equal(current.snapshots.length, 1, 'old taps cannot reappear after the import resolves');
+    assert.equal(current.snapshots[0].kind, 'adopted');
+    assert.ok(current.snapshots[0].sig, 'the new viewport hash was completed');
+  } finally {
+    host.location = saved;
+    clearViewportDebugHooks();
+  }
 });

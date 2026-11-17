@@ -116,7 +116,7 @@ export function SetRuleEditor({ values, op, options, onChange }: SetRuleEditorPr
           {values.map((v) => (
             <span
               key={v}
-              className="inline-flex items-center gap-1 rounded bg-zinc-100 px-1.5 py-0.5 text-2xs font-mono dark:bg-zinc-800"
+              className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-2xs font-mono"
             >
               {v}
               <button

@@ -18,6 +18,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
+import { DisclosureSummary, DISCLOSURE_GROUP } from '@/components/ui/disclosure';
 import { toast } from '@/components/ui/toast';
 import { downloadFile } from '@/lib/export/download';
 import type { ContentCommitReceipt } from '@/lib/storage/content-library';
@@ -175,8 +176,8 @@ export function ContentStorageNotice({ status, retry, restore }: {
       const saved = await retry();
       if (!saved || !await retryContentImports()) toast.error(t('contentStorage.someUnsaved'));
     })}>{t('validationPanel.history.retrySave')}</Button>}
-    <details>
-      <summary className="cursor-pointer">{t('contentStorage.controls')}</summary>
+    <details className={DISCLOSURE_GROUP}>
+      <DisclosureSummary className="font-medium">{t('contentStorage.controls')}</DisclosureSummary>
       <div className="flex flex-wrap gap-1 py-1">
         <Button size="sm" variant="outline" disabled={busy || artifactsPending || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading || receiptsLoading || recipesLoading || preferencesLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
         {artifactsPending && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {

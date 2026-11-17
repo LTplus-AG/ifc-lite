@@ -129,6 +129,37 @@ describe('HudValueField (#5485)', () => {
     assert.deepEqual(values, [4, 7], 'typed drafts (incl. a digit typed elsewhere) commit');
   });
 
+  it('an edit opened on the shown value selects it; a digit typed elsewhere keeps its caret at the end (#9094)', () => {
+    let handle: HudValueFieldHandle | null = null;
+    const ui = render(<HudValueField ref={(h) => { handle = h; }} value={1.5} aria-label="Length" onChange={() => {}} />);
+    const selection = () => {
+      const input = ui.querySelector('input')!;
+      return [input.value, input.selectionStart, input.selectionEnd];
+    };
+
+    act(() => handle!.beginEdit());
+    assert.deepEqual(selection(), ['1.50', 0, 4], 'typing replaces the whole value');
+
+    press(ui.querySelector('input')!, 'Escape');
+    act(() => handle!.beginEdit('7'));
+    assert.deepEqual(selection(), ['7', 1, 1], 'the next digit lands after the first');
+
+    // Asked again while it is already open, the field still selects what it shows,
+    // though nothing else about the field changes.
+    press(ui.querySelector('input')!, 'Escape');
+    act(() => handle!.beginEdit());
+    ui.querySelector('input')!.setSelectionRange(4, 4);
+    assert.deepEqual(selection(), ['1.50', 4, 4], 'the caret moved away');
+    act(() => handle!.beginEdit());
+    assert.deepEqual(selection(), ['1.50', 0, 4]);
+
+    // Typing afterwards keeps the caret where the user's text put it: no selection is left pending.
+    type(ui.querySelector('input')!, '2');
+    ui.querySelector('input')!.setSelectionRange(1, 1);
+    type(ui.querySelector('input')!, '25');
+    assert.notDeepEqual(selection().slice(1), [0, 2], 'a later keystroke does not select the text');
+  });
+
   it('arrow keys step the value, and Shift steps by the shift multiplier', () => {
     const values: number[] = [];
     const ui = render(<Harness value={10} step={1} onChange={(v) => values.push(v)} />);

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { sectionExclusions, withSectionExclusions } from './section-exclusions.js';
+import { bindSectionExclusions, sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 /**
  * Sun shadow-map depth pre-pass (issue #2670, Phase 2a).
  *
@@ -274,7 +274,7 @@ export class ShadowPass {
       const d = draws[i];
       if (!drawable[i]) continue;
       pass.setPipeline(pipelines[d.kind]);
-      pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
+      bindSectionExclusions(pass, this.device, 1);
       pass.setBindGroup(0, this.drawBindGroup, [i * this.drawStride]);
       pass.setVertexBuffer(0, d.vertexBuffer);
       pass.setIndexBuffer(d.indexBuffer, 'uint32');

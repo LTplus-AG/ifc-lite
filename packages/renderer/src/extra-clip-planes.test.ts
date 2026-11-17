@@ -8,6 +8,9 @@ import {
   EXTRA_CLIP_FLOATS,
   MAX_EXTRA_CLIP_PLANES,
   extraClipWgsl,
+  extraClipWgslFor,
+  CAP_CLIP_FLOATS,
+  MAX_CAP_CLIP_PLANES,
   extraPlanesClip,
   packExtraClip,
 } from './extra-clip-planes.js';
@@ -55,6 +58,10 @@ describe('extra clip block layout (#7545)', () => {
     assert.match(extraClipWgsl, /planeInfo: vec4<u32>/);
     assert.doesNotMatch(extraClipWgsl, /\bmeta\b\s*:/, 'meta is a reserved WGSL keyword and failed to compile on a real GPU');
     assert.match(extraClipWgsl, /array<vec4<f32>, 7>/);
+    // An overlay block (#8696, #8767) is its own, sized for every cutting plane and the six box faces.
+    assert.equal(MAX_CAP_CLIP_PLANES, 1 + 7 + 6);
+    assert.equal(CAP_CLIP_FLOATS, 4 + 14 * 4);
+    assert.match(extraClipWgslFor(MAX_CAP_CLIP_PLANES), /array<vec4<f32>, 14>/);
   });
 
   it('writes count, flipped mask, normals and distances; no planes writes a zero count', () => {

@@ -43,7 +43,7 @@ const NONE_EXCLUDED: ReadonlySet<string> = new Set();
 function TargetLabel({ row, excluded }: { row: ClassifiedRequirement; excluded: boolean }) {
   const { t } = useTranslation();
   if (row.target !== 'unresolved') return <span className="rounded bg-primary/10 px-1 py-0.5 font-medium">{t(TARGET[row.target])}</span>;
-  return <span className="text-amber-700 dark:text-amber-400">
+  return <span className="text-warn">
     {row.reason === 'native' ? t('semanticAssist.unresolvedNative', { detail: row.detail ?? '' }) : t(UNRESOLVED[row.reason ?? 'span'])}
     {/* An excluded requirement reaches no draft, the document included. */}
     {!excluded && <>{' '}{t('semanticAssist.unresolvedListed')}</>}</span>;
@@ -150,7 +150,7 @@ export function RequirementDispatch({ proposal, review, passages, loadSchema = l
         <label htmlFor={`dispatch-${id}`} className="break-words"><span className="font-mono font-semibold">{id}</span> <TargetLabel row={row} excluded={excluded.has(id)} /></label>
       </li>;
     })}</ul>
-    {withdrawn && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('semanticAssist.draftsWithdrawn')}</p>}
+    {withdrawn && <p role="alert" className="rounded border border-warn-border bg-warn-surface p-2">{t('semanticAssist.draftsWithdrawn')}</p>}
     {!active && <Button size="sm" variant="outline" className="h-7" disabled={included === 0 && !proposal.unsupported.length}
       onClick={prepare}>{t('semanticAssist.prepareDrafts')}</Button>}
     {active && <>
@@ -158,7 +158,7 @@ export function RequirementDispatch({ proposal, review, passages, loadSchema = l
       {active.drafts.refused.map(({ target, detail }) => <p key={target} role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive break-words">
         {t(REFUSED[target], { detail })}</p>)}
       {/* A mixed load: the IDS draft checks the models of the versions it targets and says which it cannot. */}
-      {active.drafts.ids && loaded.unchecked > 0 && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">
+      {active.drafts.ids && loaded.unchecked > 0 && <p role="alert" className="rounded border border-warn-border bg-warn-surface p-2">
         {t('semanticAssist.idsSkipsModels', { count: loaded.unchecked })}</p>}
       {active.drafts.ids && <IdsDraftReview initial={active.drafts.ids} />}
       {active.drafts.rules && <RulesDraftReview initial={active.drafts.rules} />}

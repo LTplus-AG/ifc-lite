@@ -5,22 +5,33 @@
 import * as React from 'react';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { cn } from '@/lib/utils';
+import { useScrollStrip } from './use-scroll-strip';
 
 const Tabs = TabsPrimitive.Root;
 
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    className={cn(
-      'inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground',
-      className
-    )}
-    {...props}
-  />
-));
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> & {
+    /** A strip wider than its box scrolls sideways instead of overflowing:
+     *  no scrollbar, the edge that hides tabs fades, and the selected tab is
+     *  kept in view (#8802; see `use-scroll-strip.ts`). */
+    scrollable?: boolean;
+  }
+>(({ className, scrollable = false, ...props }, ref) => {
+  const { setStrip, fade } = useScrollStrip(scrollable, ref);
+  return (
+    <TabsPrimitive.List
+      ref={setStrip}
+      className={cn(
+        'inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground',
+        className
+      )}
+      data-scroll-strip={scrollable ? '' : undefined}
+      data-scroll-fade={fade}
+      {...props}
+    />
+  );
+});
 TabsList.displayName = TabsPrimitive.List.displayName;
 
 const TabsTrigger = React.forwardRef<

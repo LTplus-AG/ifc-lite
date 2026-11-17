@@ -69,6 +69,8 @@ export interface Mesh {
    *  report the representation item it hit. See {@link PickResult.geometryItemId}
    *  for when it is absent. */
   geometryItemId?: number;
+  /** A highlight merging many pieces (#9192), and what it covers. */
+  mergedSelection?: import('./selection-hydration.js').MergedSelectionCoverage;
 }
 
 /**
@@ -257,7 +259,7 @@ export interface RenderOptions {
    */
   isolatedIds?: Set<number> | null;
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
-  selectedIds?: Set<number>;      // Multi-selection support
+  selectedIds?: Set<number>;      // Multi-selection. Re-read in full on every frame at rest; while `isInteracting`, a same-size in-place edit of a Set past 32,768 ids is seen within a few frames (#9835)
   selectedItemId?: number;        // #4382: narrows selectedId's highlight to one representation item (geometryItemId); no effect on selectedIds
   /** `capHighlightKey(modelIndex, id)` → RGBA (0–1) painted over that element's section-cap polygons (selection / hover); compared by content each frame. */
   capHighlight?: ReadonlyMap<string, readonly [number, number, number, number]> | null;

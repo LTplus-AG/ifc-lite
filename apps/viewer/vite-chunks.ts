@@ -43,3 +43,34 @@ export const tslibChunkGroup = {
   includeDependenciesRecursively: false,
   test: /\/node_modules\/tslib\//,
 };
+
+/**
+ * The QuickJS runtime core, claimed before the recursive `sandbox` group can
+ * pull it in (#9200). Eager code imports a little of the sandbox
+ * (`SandboxAbortError`, the bridge schema), so the `sandbox` chunk is eager.
+ * The sandbox reaches `quickjs-emscripten-core`, whose index statically
+ * imports the ~50 KB runtime file; the recursive group put that file in the
+ * eager chunk although only a script run uses it. The index stays with the
+ * sandbox (eager code reaches it); the rest of the package and its FFI types
+ * load with the first script run.
+ */
+export const quickjsRuntimeChunkGroup = {
+  name: 'quickjs-runtime',
+  priority: 50,
+  includeDependenciesRecursively: false,
+  test: /\/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?(?:quickjs-emscripten-core\/dist\/(?!index\.mjs$)[^/]+\.mjs$|@jitl\/quickjs-ffi-types\/)/,
+};
+
+/**
+ * Vite's dynamic-import preload helper, claimed so it does not land in
+ * whichever vendor chunk reaches it first. It did: the hosted entry
+ * (`main-hosted.tsx`), whose only dynamic import is the viewer itself, pulled
+ * the 3 MB `exporters` chunk in statically just for this helper, which held
+ * back the configuration request it exists to start early.
+ */
+export const preloadHelperChunkGroup = {
+  name: 'preload-helper',
+  priority: 50,
+  includeDependenciesRecursively: false,
+  test: /vite\/preload-helper/,
+};

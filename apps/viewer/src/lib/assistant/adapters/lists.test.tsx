@@ -26,6 +26,7 @@ import { carryListRun, recordListRun } from '@/lib/lists/run-provenance';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { captureEvidence, evidenceIsCurrent } from '../evidence';
 import { cancelAssistant, useAssistant } from '../conversation';
+import { runPanelAction } from '@/test/panel-header.js';
 
 const SAMPLE = new URL('../../../../public/samples/building-architecture.ifc', import.meta.url);
 const initial = useViewerStore.getState();
@@ -73,6 +74,7 @@ test('#6833 lists: the Lists panel run is stamped, cited with units and native t
   const store = await parse();
   useViewerStore.setState({ ...fixtureModels(model('arch', store)), listDefinitions: [WALLS] });
   const ui = render(renderPanelBody('lists', () => undefined));
+  await waitFor(() => ui.querySelector(`button[aria-label="Run list ${WALLS.name}"]`) !== null, 'deferred Lists library mounted');
   const run = ui.querySelector(`button[aria-label="Run list ${WALLS.name}"]`);
   assert.ok(run, 'the library offers the saved list');
   click(run);
@@ -81,9 +83,8 @@ test('#6833 lists: the Lists panel run is stamped, cited with units and native t
   assert.ok(result);
   assert.ok(analysisStampOf(result), 'the panel stamps the run');
 
-  const button = ui.querySelector('button[aria-label="Discuss with AI"]');
-  assert.ok(button);
-  click(button);
+  // A header action, inline or in the shared header's More actions (#8802).
+  await runPanelAction(ui, 'Discuss with AI');
   const snapshot = useAssistant.getState().snapshot;
   assert.equal(snapshot?.source, 'lists');
   assert.ok(snapshot);

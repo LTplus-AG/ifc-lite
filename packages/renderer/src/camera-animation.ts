@@ -331,8 +331,8 @@ export class CameraAnimator {
   }
 
   /** Animate camera to position, target, and up vector (for orthogonal preset views). */
-  async animateToWithUp(endPos: Vec3, endTarget: Vec3, endUp: Vec3, duration = 500): Promise<void> {
-    if (duration <= 0) { this.reset(); applyImmediateCameraPose(this.state, endPos, endTarget, endUp, undefined, this.updateMatrices); return; }
+  async animateToWithUp(endPos: Vec3, endTarget: Vec3, endUp: Vec3, duration = 500, endOrthoSize?: number): Promise<void> {
+    if (duration <= 0) { this.reset(); applyImmediateCameraPose(this.state, endPos, endTarget, endUp, endOrthoSize, this.updateMatrices); return; }
     // Clear all velocities to prevent inertia from interfering with animation
     this.velocity.orbit.x = 0;
     this.velocity.orbit.y = 0;
@@ -346,8 +346,8 @@ export class CameraAnimator {
     this.animationEndPos = endPos;
     this.animationEndTarget = endTarget;
     this.animationEndUp = endUp;
-    this.animationStartOrthoSize = null;
-    this.animationEndOrthoSize = null;
+    this.animationStartOrthoSize = endOrthoSize !== undefined ? this.state.orthoSize : null;
+    this.animationEndOrthoSize = endOrthoSize ?? null;
     this.animationDuration = duration;
     this.animationStartTime = Date.now();
     this.animationEasing = this.easeOutCubic;

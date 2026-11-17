@@ -16,7 +16,7 @@
 //     --arm branch:/abs/checkout:/abs/engine [--arm base:/abs/checkout:/abs/engine] \
 //     --fixture /abs/model.ifc [--fixture ...] [--gpu swiftshader|hardware] [--headed]
 //
-// Report-only. A run is labelled exclusive only under an `ifc-fleet --kind benchmark` job
+// Report-only. A run is labelled exclusive only under an exclusive benchmark job
 // (IFC_WORKER_KIND) or with --exclusive-receipt ID; every other number says non-exclusive.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -62,12 +62,19 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
     await page.locator('#file-input-open').waitFor({ state: 'attached', timeout: 60000 });
     sampler = startSampler(null, { intervalMs: 100, profileDir: browser.profileDir, pss: true });
     await page.locator('#file-input-open').setInputFiles(fixture.path);
-    await page.waitForFunction(key => { const q = globalThis[key];
+    const loaded = page.waitForFunction(key => { const q = globalThis[key];
       if (q.errors.length || globalThis.__ifc_lite_viewer_store__.getState().error) return true;
       if (q.terminalMs === null) return false;
       return q.firstRetainedFrameMs === null ? performance.now() - q.terminalMs > 30000
         : q.settledFrameMs !== null || performance.now() - q.terminalMs > 4000; },
       PAGE_KEY, { timeout, polling: 100 });
+    // Marks only this branch handled: raceWithTimeout subscribes to `loaded` itself, so a page close or
+    // predicate error before the deadline still rejects with its own cause. The handler only absorbs
+    // the late rejection when the browser is closed after a Node-side timeout has already won.
+    loaded.catch(() => {});
+    // Playwright polls the predicate inside the page; a saturated renderer main thread (Holter, pre-flight
+    // 2026-11-01: still loading past 70 min) never lets its own timeout fire. Bound it from Node as well.
+    await raceWithTimeout(loaded, timeout, 'viewer load to terminal state');
     const memory = sampler.stop(); sampler = null;
     const m = await page.evaluate(key => ({ ...globalThis[key] }), PAGE_KEY);
     const state = await page.evaluate(readState);
@@ -77,6 +84,8 @@ export async function viewerSample({ arm, preview, fixture, round, options, expe
     const ua = await raceWithTimeout(userAgentMemory(page), 120000, 'measureUserAgentSpecificMemory');
     Object.assign(row, { gpuAdapter: adapter, softwareAdapter: isSoftwareAdapter(adapter), webgpuDeviceLosses: losses,
       userAgent: state.userAgent, hardwareConcurrency: state.hardwareConcurrency, crossOriginIsolated: state.crossOriginIsolated, loadTraceMilestonesMs: state.milestones,
+      pageWorkersCreated: m.workers.created, pageWorkersPeakLive: m.workers.peakLive, pageWorkersByScript: m.workers.byScript,
+      pageWorkersNote: 'dedicated workers the page thread constructed; workers started inside a worker are not observed; peakLive counts only terminate() calls',
       uaMemory: ua, uaMemoryBytes: ua.bytes, longTaskMs: m.longTaskMs, drawCallsAtFirstFrame: m.drawCallsAtFirstFrame,
       browserPeakHwmKiB: memory.maxIndividualHwmKiB, browserPeakConcurrentRssKiB: memory.maxObservedConcurrentRssKiB,
       browserPeakConcurrentPssKiB: memory.maxObservedConcurrentPssKiB, browserMemorySamples: memory.samples, pssCoverage: memory.pssCoverage,

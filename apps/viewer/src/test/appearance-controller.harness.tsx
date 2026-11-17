@@ -5,7 +5,7 @@
 /* This Source Code Form is subject to the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { act, StrictMode } from 'react';
+import { act, Profiler, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -87,7 +87,7 @@ class ControlledWorker implements AppearanceWorker {
 
 /** Shared by Node/HappyDOM and an isolated real-browser lab; never run in a user's model session. */
 export async function runAppearanceControllerScenario(
-  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion',
+  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion' | 'apply-selection' | 'apply-cancel-late' | 'apply-cancel-repreview' | 'apply-stale-repreview' | 'apply-error-persists' | 'apply-published-discard',
   imageBytes = controllerPng,
 ): Promise<{ scenario: string; requests: number; terminations: number; stages: number; nativeBitmaps: number }> {
   const initial = useViewerStore.getState();
@@ -108,6 +108,9 @@ export async function runAppearanceControllerScenario(
       }
     } });
   let stages = 0, nativeBitmaps = 0;
+  let collectCancellationNotices = false;
+  const cancellationNotices: string[] = [];
+  const cancellationAlerts: boolean[] = [];
   try {
     const source = new TextEncoder().encode(`ISO-10303-21;
 HEADER;
@@ -166,7 +169,12 @@ END-ISO-10303-21;`);
     setGlobalRendererRef({ current: renderer });
     const mount = async () => {
       root = createRoot(container);
-      await act(async () => { root!.render(<StrictMode><AppearancePanel /></StrictMode>); });
+      await act(async () => { root!.render(<StrictMode><Profiler id="appearance-controller" onRender={() => {
+        if (collectCancellationNotices) {
+          cancellationNotices.push(container.textContent ?? '');
+          cancellationAlerts.push(!!container.querySelector('[role=alert]'));
+        }
+      }}><AppearancePanel /></Profiler></StrictMode>); });
     };
     const unmount = async () => { await act(async () => { root?.unmount(); root = undefined; }); };
     const button = (label: string) => {
@@ -238,7 +246,146 @@ END-ISO-10303-21;`);
         await act(async () => { workers[0].complete(); });
         await until(() => !button('Apply').disabled, `preview never became ready: ${container.textContent}`);
         check(parts[0].textureBitmap?.width, 'real inventory decode did not reach the preview');
-        if (scenario === 'stale-version') {
+        if (scenario === 'apply-published-discard') {
+          // PR #9585: publication may finish in the same flush as Discard.
+          const version = useViewerStore.getState().mutationVersion;
+          let discarded = false;
+          const stop = useViewerStore.subscribe(state => {
+            if (!discarded && state.mutationVersion > version) {
+              discarded = true;
+              queueMicrotask(() => {
+                collectCancellationNotices = true;
+                button('Discard').click();
+              });
+            }
+          });
+          try {
+            await click('Apply');
+            await until(() => discarded, 'Apply never reached its publication boundary');
+            await advance(30);
+            check((useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0) === 2,
+              'Discard retroactively removed a committed appearance');
+            check(cancellationNotices.some(text => text.includes('Preview discarded.')), 'publication-boundary Discard was not shown');
+            check(!cancellationNotices.some(text => text.includes('Appearance applied.')), 'stale success overwrote the discard notice');
+          } finally { stop(); }
+          await act(async () => { useViewerStore.getState().undo(MODEL); });
+        } else if (scenario === 'apply-error-persists') {
+          // PR #9585 / r4524087920: settling alone must not hide a failed Apply.
+          let release!: () => void;
+          let preparations = 0;
+          const held = new Promise<void>(resolve => { release = resolve; });
+          const failure = 'Appearance fixture storage refused the write';
+          editor.prepareEntityOperations = async () => {
+            preparations++;
+            await held;
+            throw new Error(failure);
+          };
+          try {
+            await click('Apply');
+            check(preparations === 1, 'Apply never reached held IFC preparation');
+            await act(async () => { release(); });
+            await advance(600); // Beyond the preview debounce, after the run has settled.
+            check(container.querySelector('[role=alert]')?.textContent === failure,
+              `failed Apply error disappeared after settling: ${container.textContent}`);
+            check(workers.length === 1 && preparations === 1, 'settling a failed Apply started new preparation');
+            const mapping = container.querySelector<HTMLSelectElement>('select[aria-label="Texture mapping"]');
+            check(mapping && !mapping.disabled, 'failed Apply did not unlock settings');
+            await act(async () => {
+              mapping.value = 'box'; mapping.dispatchEvent(new window.Event('change', { bubbles: true }));
+            });
+            await until(() => !!workers[1]?.message, 'changing inputs after failure did not start a fresh preview');
+            check(!container.querySelector('[role=alert]'), 'a user input change retained the old Apply error');
+            await act(async () => { workers[1].complete(); });
+            await until(() => !button('Apply').disabled, 'user input change never restored a ready preview');
+            await click('Discard');
+          } finally { await act(async () => { release(); }); }
+        } else if (scenario === 'apply-stale-repreview') {
+          // PR #9585 B1: settling a failed Apply must revisit dependency changes skipped while busy.
+          const prepare = editor.prepareEntityOperations.bind(editor);
+          let release!: () => void;
+          let preparations = 0;
+          const held = new Promise<void>(resolve => { release = resolve; });
+          editor.prepareEntityOperations = async (operations, options) => {
+            preparations++;
+            await held;
+            return prepare(operations, options);
+          };
+          try {
+            await click('Apply');
+            check(preparations === 1, 'Apply never reached held IFC preparation');
+            await act(async () => { useViewerStore.getState().bumpMutationVersion(); });
+            await act(async () => { release(); });
+            await until(() => !!workers[1]?.message,
+              'a model change during Apply left the panel stuck instead of planning a new preview');
+            await act(async () => { workers[1].complete(); });
+            await until(() => !button('Apply').disabled, 'refreshed appearance preview did not enable Apply');
+            const failure = 'Appearance write failed after refreshing the model';
+            editor.prepareEntityOperations = async () => { throw new Error(failure); };
+            await click('Apply');
+            await advance(600);
+            check(container.querySelector('[role=alert]')?.textContent === failure,
+              'an earlier deferred model change hid a later Apply failure');
+            check(workers.length === 2, 'the deferred-input flag remained set after re-planning');
+            await click('Discard');
+          } finally { await act(async () => { release(); }); }
+        } else if (scenario === 'apply-cancel-repreview') {
+          const prepare = editor.prepareEntityOperations.bind(editor);
+          let release!: () => void;
+          let preparations = 0;
+          const held = new Promise<void>(resolve => { release = resolve; });
+          editor.prepareEntityOperations = async (operations, options) => { preparations++; await held; return prepare(operations, options); };
+          try {
+            await click('Apply');
+            await click('Discard');
+            const mapping = container.querySelector<HTMLSelectElement>('select[aria-label="Texture mapping"]');
+            check(mapping && !mapping.disabled, 'discard did not unlock appearance settings');
+            await act(async () => {
+              mapping.value = 'box'; mapping.dispatchEvent(new window.Event('change', { bubbles: true }));
+            });
+            await until(() => !!workers[1]?.message, 'Discard blocked a new preview while cancelled Apply was settling');
+            await act(async () => { workers[1].complete(); });
+            await until(() => !button('Apply').disabled, 'replacement preview never became ready');
+            await click('Apply');
+            check(preparations === 2, 'discarded Apply lease refused replacement preparation');
+            await click('Discard');
+          } finally { await act(async () => { release(); }); }
+          await advance(20);
+        } else if (scenario === 'apply-cancel-late') {
+          const prepare = editor.prepareEntityOperations.bind(editor);
+          let cancelled!: () => void;
+          const cancellation = new Promise<void>(resolve => { cancelled = resolve; });
+          editor.prepareEntityOperations = async (operations, options) => {
+            const result = await prepare(operations, options);
+            queueMicrotask(() => { collectCancellationNotices = true; button('Discard').click(); cancelled(); });
+            return result;
+          };
+          await act(async () => { button('Apply').click(); await cancellation; });
+          await advance(20);
+          check(cancellationNotices.some(text => text.includes('Preview discarded.')), 'Discard never rendered its cancellation notice');
+          check(!cancellationNotices.some(text => /Preparing IFC changes|Saving appearance/.test(text)), 'late commit progress replaced the discard notice');
+          check(!cancellationNotices.some(text => /aborted/i.test(text)), 'an obsolete Apply error replaced the discard notice');
+          check(!cancellationAlerts.some(Boolean), 'an obsolete Apply rendered an error alert after Discard');
+        } else if (scenario === 'apply-selection') {
+          let release!: () => void;
+          const held = new Promise<void>(resolve => { release = resolve; });
+          const prepare = editor.prepareEntityOperations.bind(editor);
+          let signal: AbortSignal | undefined, preparations = 0;
+          editor.prepareEntityOperations = async (operations, options) => {
+            preparations++; signal = options?.signal; await held; return prepare(operations, options);
+          };
+          await act(async () => { button('Apply').click(); button('Apply').click(); });
+          check(preparations === 1, 'same-tick Apply presses started overlapping preparations');
+          check(signal, 'Apply did not start detached preparation');
+          await act(async () => { useViewerStore.getState().setSelectedEntityId(25); });
+          const aborted = signal.aborted;
+          const preparingChanges = container.textContent?.includes('Preparing IFC changes') ?? false;
+          release();
+          check(!aborted, '3D selection aborted an owned Apply');
+          check(preparingChanges, 'selection replaced the owned Apply status with preview preparation');
+          await until(() => (useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0) === 2,
+            'Apply did not publish after changing selection');
+          await act(async () => { useViewerStore.getState().undo(MODEL); });
+        } else if (scenario === 'stale-version') {
           await act(async () => { useViewerStore.getState().bumpMutationVersion(); });
           check(button('Apply').disabled, 'stale revision left Apply enabled');
           await click('Apply');
@@ -259,12 +406,13 @@ END-ISO-10303-21;`);
         }
       }
     }
-    check(graph() === originalGraph, 'preview/cancellation changed exported IFC');
-    check(JSON.stringify(view.getMutations()) === originalHistory, 'preview/cancellation recorded IFC edits');
+    check(scenario === 'apply-selection' || scenario === 'apply-published-discard' || graph() === originalGraph, 'preview/cancellation changed exported IFC');
+    check(scenario === 'apply-selection' || scenario === 'apply-published-discard' || JSON.stringify(view.getMutations()) === originalHistory, 'preview/cancellation recorded IFC edits');
     check(parts[0].textureBitmap === undefined, 'cancelled preview still owns renderer appearance');
     await unmount();
     const retained = appearanceAssets.encoded(sourceId);
     check(retained.length === imageBytes.length && retained.every((byte, index) => byte === imageBytes[index]), 'panel close lost original image bytes');
+    if (scenario === 'apply-selection' || scenario === 'apply-published-discard') useViewerStore.getState().clearAllMutations();
     useViewerStore.getState().removeAppearanceSource(sourceId);
     check(appearanceAssets.get(sourceId) === undefined, 'removing the final source leaked a draft lease');
     check(allWorkers.every(worker => worker.terminations === 1), 'catalog or preview worker leaked after unmount');

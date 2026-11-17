@@ -94,7 +94,12 @@ impl GeometryRouter {
         // the source walk (which nests faceted-brep's rayon `par_iter`) runs
         // OUTSIDE any lock, so a lock is never held across a nested join (the
         // #1587 deadlock class).
+        //
+        // A cut frame reads RTC as zero, so a source walked under one is not
+        // lowered the way the caller's frame lowers it: no cache entry is
+        // read or written there (see `publish_mapped_source`).
         let cached: Option<Arc<Mesh>> = match &self.shared_mapped_item_cache {
+            _ if self.in_cut_frame() => None,
             Some(shared) => shared
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
@@ -118,7 +123,7 @@ impl GeometryRouter {
         let items_attr = representation
             .get(3)
             .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
-        budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
+        budget.materialize_items(representation.id, items_attr.as_list().unwrap_or(&[]))?;
         let items = decoder.resolve_ref_list(items_attr)?;
         Ok((source_id, MappedOccurrence::Source { representation, items, transform }))
     }
@@ -166,7 +171,7 @@ impl GeometryRouter {
     ) -> SourceResult<Vec<DecodedEntity>> {
         match representation.get(slot::IfcRepresentation::ITEMS.index()) {
             Some(items_attr) => {
-                budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
+                budget.materialize_items(representation.id, items_attr.as_list().unwrap_or(&[]))?;
                 Ok(decoder.resolve_ref_list(items_attr)?)
             }
             None => Ok(Vec::new()),
@@ -181,7 +186,13 @@ impl GeometryRouter {
     /// concurrent miss on the same source by another router rebuilds an
     /// identical source-coords mesh, so an overwrite is byte-identical. Brief
     /// lock only: the source walk ran outside it (no join held).
+    ///
+    /// Nothing is published from a cut frame: the source was walked with RTC
+    /// read as zero, and the cache key does not carry the frame.
     pub(crate) fn publish_mapped_source(&self, source_id: u32, parts: &[Mesh], truncated: bool) -> Result<()> {
+        if self.in_cut_frame() {
+            return Ok(());
+        }
         match (&self.shared_mapped_item_cache, parts) {
             (Some(shared), [source]) => {
                 // Mirror the item-dedup #1257 guard: a mapped source can contain

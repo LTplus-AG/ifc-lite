@@ -106,6 +106,31 @@ describe('acquireFileBuffer', () => {
     }
   });
 
+  it('yields to the event loop while it copies a large, fully buffered stream (pre-pixel lane, BWK)', async () => {
+    // Every chunk is already buffered, so each read resolves as a microtask: without yields the whole copy is
+    // one long main-thread task (BWK 327 MB: 250-300 ms), and a renderer device response or a cache lookup
+    // queued meanwhile waits for all of it.
+    const chunk = 1024 * 1024;
+    const chunks = 20;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let i = 0; i < chunks; i++) controller.enqueue(new Uint8Array(chunk).fill(i));
+        controller.close();
+      },
+    });
+    const file = { name: 'buffered.ifc', size: chunk * chunks, stream: () => stream } as unknown as File;
+    let queuedTaskRan = false;
+    let ranBeforeReadEnded = false;
+    setTimeout(() => { queuedTaskRan = true; }, 0);
+    const acquired = await __acquireFileBufferWithThreshold(file, TEST_THRESHOLD).then((result) => {
+      ranBeforeReadEnded = queuedTaskRan;
+      return result;
+    });
+    assert.equal(ranBeforeReadEnded, true, 'the read held the event loop until it finished');
+    assert.equal(acquired.view[0], 0);
+    assert.equal(acquired.view[chunk * chunks - 1], chunks - 1);
+  });
+
   it('rejects when the underlying stream errors', async () => {
     const fakeFile = {
       name: 'broken.bin',

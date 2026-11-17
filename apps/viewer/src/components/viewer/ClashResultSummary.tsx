@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import type { ClashSeverity } from '@ifc-lite/clash';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { ClashGroupStorage } from './ClashGroupStorage';
@@ -62,15 +62,17 @@ export function ClashResultSummary({
       {total > 0 && (
         <div className="mb-1.5 inline-flex overflow-hidden rounded-md border border-border text-2xs" title={t('clashGroups.viewTitle', { distance: clusterEpsilon })}>
           {(['pairs', 'issues', 'groups'] as const).filter((view) => !duplicateSetView || view !== 'issues').map((view) => (
-            <button
+            <Button
               key={view}
               type="button"
+              variant="toggle"
+              aria-pressed={effectiveView === view}
               onClick={() => setResultView(view)}
               disabled={view === 'issues' && !groupsAvailable}
-              className={cn('px-2 py-0.5', effectiveView === view ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+              className="h-auto rounded-none px-2 py-0.5 text-2xs font-normal"
             >
               {t(`clashGroups.view.${view}`)}
-            </button>
+            </Button>
           ))}
         </div>
       )}

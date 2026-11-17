@@ -137,6 +137,6 @@ describe('IDSPanel audit gate (#5123)', () => {
     });
     const ui = render(<IDSPanel />);
     assert.equal([...ui.querySelectorAll('button')].some((b) => b.textContent?.includes('Run Validation')), false);
-    assert.match(ui.textContent ?? '', /Load Different File/);
+    assert.match(ui.textContent ?? '', /Load a different file/);
   });
 });

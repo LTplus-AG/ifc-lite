@@ -117,12 +117,12 @@ describe('ViewportContainer localization (#4918 viewport/lighting slice)', () =>
     // state, so a regression that stops mounting this branch fails loudly
     // instead of the loop above silently skipping everything.
     const mustRender: Key[] = [
-      'viewportLighting.container.emptyState.title',
-      'viewportLighting.container.emptyState.tagline',
+      'viewportLighting.container.emptyState.heading',
+      'viewportLighting.container.emptyState.lead.firstVisit',
       'viewportLighting.container.emptyState.startBlank',
       'viewportLighting.container.emptyState.openFromCloud',
       'viewportLighting.container.emptyState.driveWithLlm',
-      'viewportLighting.container.emptyState.footerCaption',
+      'viewportLighting.container.emptyState.noModel.heading',
       'viewportLighting.container.emptyState.loadDemo.button',
       'viewportLighting.container.emptyState.layersDemo',
       'viewportLighting.container.emptyState.footer.discoverPrompt',

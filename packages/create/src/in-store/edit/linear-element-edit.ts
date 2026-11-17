@@ -176,6 +176,20 @@ export function resolveLinearElementChain(
     axisDirection = [ratios[0] / len, ratios[1] / len, ratios[2] / len];
   }
 
+  const body = readLinearBodyMeasures(dataStore, view, editor, expressId, lengthUnitScale);
+  if (!body) return null;
+  const m = (native: number) => fromNativeLength({ lengthUnitScale }, native);
+  const [sx, sy, sz] = chain.coordinates;
+  return { ...body, elementType, startPointId: chain.cartesianPointId,
+    startCoordinates: [m(sx), m(sy), m(sz)], axisDirection };
+}
+
+/** Read-only section and extrusion measures: a rigid grid placement changes
+ * neither. Keep the writable placement guard above strict (#9354). */
+export function readLinearBodyMeasures(
+  dataStore: IfcDataStore, view: MutablePropertyView, editor: StoreEditor,
+  expressId: number, lengthUnitScale = 1,
+): Pick<LinearElementEditChain, 'extrudedSolidId' | 'profileId' | 'depth' | 'profileWidth' | 'profileHeight' | 'profile' | 'lengthUnitScale'> | null {
   // Representation chain: same shape as walls but the length lives
   // on the extrusion depth, not the profile XDim.
   const elementAttrs = readAttributes(dataStore, view, editor, expressId);
@@ -240,12 +254,7 @@ export function resolveLinearElementChain(
   const [profileWidth, profileHeight] = profileSectionExtent(parsed);
 
   const m = (native: number) => fromNativeLength({ lengthUnitScale }, native);
-  const [sx, sy, sz] = chain.coordinates;
   return {
-    elementType,
-    startPointId: chain.cartesianPointId,
-    startCoordinates: [m(sx), m(sy), m(sz)],
-    axisDirection,
     extrudedSolidId: solidId,
     profileId,
     depth: m(depthRaw),

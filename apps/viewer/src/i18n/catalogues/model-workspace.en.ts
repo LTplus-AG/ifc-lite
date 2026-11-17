@@ -10,6 +10,7 @@ import type { TranslationValue } from '../types';
  * and unit symbols stay untranslated.
  */
 export const modelWorkspaceEn = {
+  'modelWorkspace.leave': 'Leave',
   'modelWorkspace.rail.aria': 'Model tools',
   'modelWorkspace.rail.hosted': 'Openings, doors and windows',
   'modelWorkspace.rail.circulation': 'Stairs and railings',
@@ -17,6 +18,7 @@ export const modelWorkspaceEn = {
   'modelWorkspace.tool.select': 'Select',
   'modelWorkspace.tool.wall': 'Wall',
   'modelWorkspace.tool.slab': 'Slab',
+  'modelWorkspace.tool.roof': 'Roof',
   'modelWorkspace.tool.column': 'Column',
   'modelWorkspace.tool.beam': 'Beam',
   'modelWorkspace.tool.split': 'Split',
@@ -31,6 +33,12 @@ export const modelWorkspaceEn = {
   'modelWorkspace.storey.listAria': 'Storeys',
   'modelWorkspace.storey.isolate': 'Show only this storey',
   'modelWorkspace.storey.showAll': 'Show all storeys',
+  'modelWorkspace.height.value': 'Plane {height} m',
+  'modelWorkspace.height.title': 'The height new elements land on, above the storey floor',
+  'modelWorkspace.height.field': 'Plane height',
+  'modelWorkspace.height.group': 'Drawing height above the storey floor',
+  'modelWorkspace.height.floor': 'Floor',
+  'modelWorkspace.height.topOfWalls': 'Top of walls {height} m',
   'modelWorkspace.noStorey.title': 'No storey to draw on',
   'modelWorkspace.noStorey.description': 'This model has no IfcBuildingStorey, so walls have no floor to stand on.',
   'modelWorkspace.plan.title': 'Plan',
@@ -49,5 +57,5 @@ export const modelWorkspaceEn = {
   'modelWorkspace.layout.plan': 'Plan',
   'modelWorkspace.layout.split': 'Split',
   'modelWorkspace.layout.3d': '3D',
-  'modelWorkspace.hint.onboarding': 'W wall · Shift+S slab · click an element to edit it · E leaves',
+  'modelWorkspace.hint.onboarding': 'W wall · Shift+S slab · click an element to edit it · M leaves',
 } as const satisfies Record<string, TranslationValue>;

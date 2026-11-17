@@ -1,0 +1,16 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const mutationPermissionFr = {
+  "mutationPermission.workflowRunning": "Attendez la fin du contrôle du workflow ou de la capture PDF, ou annulez le workflow",
+  "mutationPermission.editModeRequired": "Activez le mode Édition pour modifier ce modèle",
+  "mutationPermission.roleRequired": "La modification nécessite un accès éditeur dans cette session partagée",
+  "mutationPermission.switchedOff": "La modification n'est pas disponible dans cette visionneuse",
+  "mutationPermission.modelUnavailable": "Ce modèle ne contient aucune donnée IFC modifiable",
+  "mutationPermission.propertiesLoading": "Les propriétés du modèle sont encore en cours de chargement",
+  "mutationPermission.propertiesFailed": "Les propriétés du modèle n'ont pas pu être chargées : il ne peut pas être modifié",
+  "mutationPermission.idSpaceExhausted": "Ce modèle ne dispose pas d’assez d’identifiants d’entité sûrs pour les modifications dans cette session",
+} satisfies Catalogue;

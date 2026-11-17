@@ -322,12 +322,20 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     // assembly, which is why they are pass state and not phase locals.
     newGeorefLines: [],
     warnings: [],
+    georeferencingWarnings: [],
     slotFill: new Ifc2x3SlotFill(),
     ifc4Slots: new Ifc4SlotCheck(),
     enums: new EnumReconciliation(),
     withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
     styleFlatten: StyleFlatten.fromStore(dataStore, sourceSchema, schema),
   };
+  // Structural prepasses read source types and references, so only an unedited full export arms them.
+  // The schema pair is tested first: no other export reads the options here.
+  const pair = (sourceSchema === 'IFC2X3' && schema === 'IFC4') || (sourceSchema === 'IFC4' && schema === 'IFC2X3');
+  if (pair && (!mutationView || !applyMutations) && !options.visibleOnly && !options.deltaOnly && !options.subsetEntityIds
+    && !excludeGeometry && options.includeRelationships !== false) {
+    pass.enums.structural.fromStore(dataStore, sourceSchema, schema);
+  }
   // The same object, deliberately. See the file header.
   return pass;
 }

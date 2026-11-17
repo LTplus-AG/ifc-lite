@@ -21,6 +21,7 @@ import { buildPrompt } from './run-reviewer.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, MAX_SEARCH_KEYS, MAX_KEY_LENGTH, packBudgetFor, MAX_PROMPT_BYTES, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY, PROMPT_BASE_OVERHEAD_BYTES, promptEnvelopeBytes } from './build-context-pack.mjs';
 import { renderSiblingRow, SIBLING_ROW_JOIN_MARGIN } from './sibling-row.mjs';
+import { buildInput } from './build-review-input.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
   const patch = [
@@ -551,8 +552,9 @@ test('promptEnvelopeBytes AGREES with what buildPrompt actually renders', () => 
   // a third per-item section the prediction silently under-charges and nothing
   // fails -- one layer up from the bug this commit fixed.
   const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
-  const mk = (nFiles, nUnrev) => ({
+  const mk = (nFiles, nUnrev, nExcl = 0) => ({
     headSha: 'a'.repeat(40),
+    excluded: Array.from({ length: nExcl }, (_, i) => `tests/fixtures/generated/case-${i}.ifc`),
     files: Array.from({ length: nFiles }, (_, i) => ({
       path: `packages/some/nested/module/file-${i}.ts`,
       patch: '@@ -1,1 +1,2 @@\n+const x = 1;\n',
@@ -563,8 +565,8 @@ test('promptEnvelopeBytes AGREES with what buildPrompt actually renders', () => 
     })),
   });
   const bare = mk(1, 0);
-  for (const [nf, nu] of [[101, 0], [1, 100]]) {
-    const grown = mk(nf, nu);
+  for (const [nf, nu, ne] of [[101, 0, 0], [1, 100, 0], [1, 0, 5000]]) {
+    const grown = mk(nf, nu, ne);
     const actual =
       Buffer.byteLength(buildPrompt(rubric, grown), 'utf8') - Buffer.byteLength(buildPrompt(rubric, bare), 'utf8');
     const patchDelta = grown.files.reduce((n, f) => n + Buffer.byteLength(f.patch, 'utf8'), 0)
@@ -572,7 +574,7 @@ test('promptEnvelopeBytes AGREES with what buildPrompt actually renders', () => 
     const charged = promptEnvelopeBytes(grown) - promptEnvelopeBytes(bare);
     assert.ok(
       charged >= actual - patchDelta,
-      `${nf} files / ${nu} unreviewable: buildPrompt spent ${actual - patchDelta} bytes of structure, ` +
+      `${nf} files / ${nu} unreviewable / ${ne} excluded: buildPrompt spent ${actual - patchDelta} bytes of structure, ` +
         `promptEnvelopeBytes charged only ${charged}`,
     );
   }
@@ -944,4 +946,57 @@ test('the envelope charges an ESCAPED path as rendered, not as stored', () => {
     Buffer.byteLength(JSON.stringify(nasty.path), 'utf8') > Buffer.byteLength(nasty.path, 'utf8') + 2,
     'the fixture path must genuinely require escaping',
   );
+});
+
+test('#8876, #9027: a file the PR changed but the reviewer was NOT shown is never offered as an unchanged sibling', () => {
+  // #8876, #9027: `packages/wasm/pkg/ifc-lite.d.ts` is input-excluded, so it was
+  // missing from the changed set, and its BASE-tree text was served under "Sites
+  // this PR did NOT change". The reviewer then reported the PR as having left it
+  // stale, three times, on a file the PR did change. Built through buildInput so
+  // the test reads the same `changedPaths` the lane does: a too-large file and a
+  // rename's OLD path are changed in the same way and get the same filter.
+  const input = buildInput(
+    [
+      { filename: 'rust/wasm-bindings/src/api/export.rs', status: 'modified', changes: 1, patch: '@@ -1,1 +1,2 @@\n+  exportGlbNamedByGlobalId(x);\n' },
+      { filename: 'packages/wasm/pkg/ifc-lite.d.ts', status: 'modified', changes: 1, patch: '+x' },
+      { filename: 'packages/wasm/src/too-large.rs', status: 'modified', changes: 9 },
+      { filename: 'packages/export/src/new-name.ts', previous_filename: 'packages/export/src/old-name.ts', status: 'renamed', changes: 0 },
+    ],
+    'a'.repeat(40),
+  );
+  const grep = [
+    'HEAD:packages/wasm/pkg/ifc-lite.d.ts:707:  exportGlbNamedByGlobalId(x);',
+    'HEAD:packages/wasm/src/too-large.rs:9:  exportGlbNamedByGlobalId(x);',
+    'HEAD:packages/export/src/old-name.ts:3:  exportGlbNamedByGlobalId(x);',
+    'HEAD:packages/export/src/glb.ts:12:  exportGlbNamedByGlobalId(x);',
+  ].join('\n');
+  const exec = (_cmd, args) => (args[0] === 'grep' ? grep : '');
+  const pack = buildPack(input, { baseRef: 'HEAD', exec });
+  assert.deepEqual(pack.siblings.map((s) => s.path), ['packages/export/src/glb.ts']);
+
+  // Captured eval inputs predate `changedPaths`; the fallback still covers the buckets.
+  const { changedPaths: _drop, ...legacy } = input;
+  const legacyPack = buildPack(legacy, { baseRef: 'HEAD', exec });
+  // Only a rename's OLD path is unknowable without it.
+  assert.deepEqual(legacyPack.siblings.map((s) => s.path).sort(), ['packages/export/src/glb.ts', 'packages/export/src/old-name.ts']);
+});
+
+test('#8876: an EXCLUDED path filters siblings but never RANKS them', () => {
+  // A fixture `index.ts` added by the PR must not hand every other index.ts the
+  // same-basename twin bonus: six such decoys would fill the per-key cut of six
+  // and drop the real sibling, which only wins on path order among equals.
+  const input = buildInput(
+    [
+      { filename: 'packages/a/src/thing.ts', status: 'modified', changes: 1, patch: '@@ -1,1 +1,2 @@\n+  sharedHelperName(x);\n' },
+      { filename: 'packages/a/test/fixtures/index.ts', status: 'added', changes: 1, patch: '+x' },
+    ],
+    'a'.repeat(40),
+  );
+  const grep = [
+    'HEAD:packages/b-real/src/other.ts:1:  sharedHelperName(x);',
+    ...Array.from({ length: 6 }, (_, i) => `HEAD:packages/z${i}/index.ts:1:  sharedHelperName(x);`),
+  ].join('\n');
+  const exec = (_cmd, args) => (args[0] === 'grep' ? grep : '');
+  const pack = buildPack(input, { baseRef: 'HEAD', exec });
+  assert.ok(pack.siblings.some((h) => h.path === 'packages/b-real/src/other.ts'), JSON.stringify(pack.siblings.map((h) => h.path)));
 });

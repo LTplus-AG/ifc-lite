@@ -3,10 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Buffer } from 'node:buffer';
+import process from 'node:process';
 import { readPublicationRecord } from './bcf-publication-record.js';
-import { constants } from 'node:fs';
-import { link, lstat, mkdir, open, opendir, unlink } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { constants, type Stats } from 'node:fs';
+import { link, lstat, mkdir, open, opendir, readlink, unlink } from 'node:fs/promises';
+import { basename, dirname, join, parse, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { credentialFree, MAX_GENERATIONS, MAX_RECORD_BYTES, MAX_RECORDS, NATIVE_METADATA, record, refuse } from './bcf-publication-codec.js';
 import { epochOf, loadCheckEpoch, verifyCheckEpoch, type BcfCheckEpoch } from './bcf-publication-epochs.js';
@@ -28,6 +29,53 @@ type DirectoryIdentity = { dev: bigint; ino: bigint };
 type EpochReadBatch = { leaves: Map<string, DirectoryIdentity>; parents: Map<string, DirectoryIdentity> };
 const sameDirectory = (a: DirectoryIdentity, b: DirectoryIdentity) => a.dev === b.dev && a.ino === b.ino;
 const errorCode = (error: unknown) => record(error) ? error.code : undefined;
+
+const MAX_OUTBOX_DEPTH = 128;
+
+/** A symlinked ancestor is followed only when root or this user owns it (macOS /var and /tmp
+ * are root-owned): another user's link must not redirect immutable records into their tree.
+ * Without POSIX uids (Windows) ownership cannot be checked, so links stay refused there, as
+ * every symlinked ancestor was before. */
+const trustedLinkOwner = (uid: number, self = process.getuid?.()) => self !== undefined && (uid === 0 || uid === self);
+
+/** The configured namespace with its existing ancestors resolved. The leaf is not resolved:
+ * that would conceal a symlinked namespace, which prepare() must refuse. */
+async function canonicalNamespaceDirectory(absolute: string): Promise<string> {
+  const components = (path: string) => path.slice(parse(path).root.length).split(sep === '\\' ? /[\\/]+/ : /\/+/).filter(Boolean);
+  const leaf = basename(absolute);
+  let resolved = parse(absolute).root;
+  const pending = components(dirname(absolute)).map(part => ({ part, fromLink: false }));
+  let hops = 0;
+  // Same bound as prepare()'s ancestor walk: a path of MAX_OUTBOX_DEPTH components is refused.
+  const finish = (path: string) => {
+    if (components(path).length >= MAX_OUTBOX_DEPTH) refuse('configured outbox exceeds directory depth bound');
+    return path;
+  };
+  finish(absolute); // refuse an over-deep configured path before any I/O
+  while (pending.length) {
+    const { part, fromLink } = pending.shift()!;
+    if (part === '.') continue;
+    if (part === '..') { resolved = dirname(resolved); continue; }
+    const next = join(resolved, part);
+    let stat: Stats;
+    try { stat = await lstat(next); }
+    catch (error) {
+      if (errorCode(error) !== 'ENOENT') throw error;
+      if (fromLink) refuse('invalid publication ancestor');
+      return finish(join(next, ...pending.map(item => item.part), leaf));
+    }
+    if (stat.isSymbolicLink()) {
+      if (!trustedLinkOwner(stat.uid)) refuse('publication ancestor is a symlink owned by another user');
+      if (++hops > 40) refuse('publication ancestor has too many symlinks');
+      const target = await readlink(next);
+      const root = parse(target).root;
+      if (root) resolved = root;
+      pending.unshift(...components(target).map(part => ({ part, fromLink: true })));
+    } else if (stat.isDirectory()) resolved = next;
+    else refuse('invalid publication ancestor');
+  }
+  return finish(join(resolved, leaf));
+}
 export function entryOf(item: LoadedAttempt, sendFinished = false): NativeBcfPublicationEntry {
   const outcome = item.reconciled ?? item.outcome;
   const check = item.checks.at(-1)?.check;
@@ -39,26 +87,44 @@ export function entryOf(item: LoadedAttempt, sendFinished = false): NativeBcfPub
 
 /** Immutable fsynced v2 records. No receipt, capacity slot or predecessor is ever deleted. */
 export class BcfPublicationStore {
-  constructor(readonly directory: string) {}
-  private bucket(prefix: string) { return join(this.directory, 'v2', prefix); }
+  /** The configured outbox, made absolute against the cwd at construction. */
+  readonly directory: string;
+  private root?: string;
+  private resolving?: Promise<void>;
+  constructor(directory: string) { this.directory = resolve(directory); }
+  /** The outbox with its existing ancestors resolved once (e.g. macOS /var -> /private/var):
+   * one identity for every configured alias of a physical outbox, and the base of all I/O.
+   * Every public operation resolves it first; reading it earlier is a programming error. */
+  get identity(): string {
+    if (this.root === undefined) throw new Error('BcfPublicationStore used before its outbox was resolved');
+    return this.root;
+  }
+  /** Resolve once; concurrent callers share the walk, and a failed walk is retried next time. */
+  private async resolveRoot(): Promise<void> {
+    this.resolving ??= canonicalNamespaceDirectory(this.directory).then(
+      root => { this.root = root; },
+      error => { this.resolving = undefined; throw error; });
+    return this.resolving;
+  }
+  private bucket(prefix: string) { return join(this.identity, 'v2', prefix); }
   private path(digest: string) { return join(this.bucket(digest.slice(0, 2)), digest); }
   async prepare(): Promise<void> {
+    await this.resolveRoot();
     const ancestors: string[] = [];
-    for (let path = this.directory;; path = dirname(path)) {
-      if (ancestors.length >= 128) refuse('configured outbox exceeds directory depth bound');
+    for (let path = this.identity;; path = dirname(path)) {
       ancestors.push(path);
       if (dirname(path) === path) break;
     }
-    const firstCreated = await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    if (!(await lstat(this.directory)).isDirectory()) refuse('invalid namespace directory');
-    const entries = await opendir(this.directory);
+    const firstCreated = await mkdir(this.identity, { recursive: true, mode: 0o700 });
+    if (!(await lstat(this.identity)).isDirectory()) refuse('invalid namespace directory');
+    const entries = await opendir(this.identity);
     for await (const item of entries) {
       if (item.name !== 'v2' || !item.isDirectory()) {
         refuse('old flat publication layout: preserve this outbox; recover with its original build before selecting a new empty outbox');
       }
     }
-    await mkdir(join(this.directory, 'v2'), { recursive: true, mode: 0o700 });
-    await this.syncDirectory(join(this.directory, 'v2'));
+    await mkdir(join(this.identity, 'v2'), { recursive: true, mode: 0o700 });
+    await this.syncDirectory(join(this.identity, 'v2'));
     // Existing ancestors may have just been created by a different first-use writer.
     // Persist every parent entry before effects, not only the mkdir winner's subtree.
     if (firstCreated !== undefined && !ancestors.includes(firstCreated)) refuse('created namespace ancestor identity mismatch');
@@ -102,13 +168,14 @@ export class BcfPublicationStore {
     }
   }
   async publish(filename: string, value: unknown, secrets: readonly string[] = [], onLinked?: () => void): Promise<void> {
+    await this.resolveRoot();
     credentialFree(value, secrets);
     if (!/^[a-f0-9]{64}-[1-9][0-9]*\.(?:intent|outcome|owner-stopped|(?:check|checked)-[1-9][0-9]{0,15})\.json$/.test(filename)) refuse('invalid publication filename');
     const digest = filename.slice(0, 64);
     const bucket = this.bucket(digest.slice(0, 2));
     await mkdir(bucket, { recursive: true, mode: 0o700 });
     if (!(await lstat(bucket)).isDirectory()) refuse('invalid digest bucket');
-    await this.syncDirectory(join(this.directory, 'v2'));
+    await this.syncDirectory(join(this.identity, 'v2'));
     await reserveDigest(bucket, digest, (directory, file, value) => {
       credentialFree(value, secrets); return this.publishAt(directory, file, value, digest.slice(0, 2));
     },
@@ -159,6 +226,7 @@ export class BcfPublicationStore {
     return result;
   }
   async ensureEpoch(attempt: StoredBcfAttempt, previous?: StoredBcfCheck, secrets: readonly string[] = []): Promise<void> {
+    await this.resolveRoot();
     const nextId = String(Number(previous?.checkId ?? 0) + 1), epoch = epochOf(nextId);
     const expected: BcfCheckEpoch = { version: 1, id: attempt.id, digest: attempt.digest, epoch,
       ...(epoch > 1 ? { previous } : {}) };

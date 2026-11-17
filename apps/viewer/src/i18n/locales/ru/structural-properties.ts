@@ -14,6 +14,8 @@ export const structuralPropertiesRu = {
   "properties.structural.model": "Модель",
   "properties.structural.connections": "Соединения ({countDisplay})",
   "properties.structural.appliedLoads": "Приложенные нагрузки ({countDisplay})",
+  "properties.structural.analyticalItems": "Аналитические элементы ({countDisplay})",
+  "properties.structural.physicalElements": "Физические элементы ({countDisplay})",
   "properties.structural.noDofs": "(без степеней свободы)",
   "properties.structural.fixedDofs": {
     one: "{countDisplay} степень свободы зафиксирована",

@@ -15,5 +15,6 @@ export function placementMoved(state: ViewerState, previous: ViewerState): boole
 export function staleMeasurementIds(state: ViewerState): ReadonlySet<string> {
   return new Set([...state.placementStaleMeasurements,
     ...state.measurements.map((item) => item.id), ...state.polylineMeasurements.map((item) => item.id),
-    ...state.angleMeasurements.map((item) => item.id), ...state.radiusMeasurements.map((item) => item.id)]);
+    ...state.angleMeasurements.map((item) => item.id), ...state.radiusMeasurements.map((item) => item.id),
+    ...(state.measurePointLast ? [state.measurePointLast.id] : [])]);
 }

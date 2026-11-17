@@ -94,7 +94,7 @@ export function CompareImpactSection({ impact, navigation }: { impact: CompareIm
           const status = impact.sources[source];
           return [
             <dt key={`${source}-t`} className="text-muted-foreground">{t(`compareAnalysis.source.${source}`)}</dt>,
-            <dd key={`${source}-d`} className={cn((status === 'stale' || status === 'unverified') && 'text-amber-700 dark:text-amber-400')}>
+            <dd key={`${source}-d`} className={cn((status === 'stale' || status === 'unverified') && 'text-warn')}>
               {status === 'unavailable' ? t('compareAnalysis.status.unavailable')
                 : t(`compareAnalysis.status.${status}`, { count: impact.totals[source] })}
             </dd>,

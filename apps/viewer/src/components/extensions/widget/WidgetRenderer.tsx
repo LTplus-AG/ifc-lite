@@ -142,7 +142,7 @@ function RenderGroup({ node, ctx }: { node: GroupNode; ctx: WidgetRendererContex
 
 function RenderText({ node }: { node: TextNode; ctx: WidgetRendererContext }) {
   const variant = node.variant === 'heading' ? 'text-base font-semibold' : node.variant === 'caption' ? 'text-xs text-muted-foreground' : 'text-sm';
-  const tone = node.tone === 'error' ? 'text-destructive' : node.tone === 'warn' ? 'text-amber-600 dark:text-amber-400' : node.tone === 'success' ? 'text-emerald-600 dark:text-emerald-400' : node.tone === 'info' ? 'text-sky-600 dark:text-sky-400' : node.tone === 'muted' ? 'text-muted-foreground' : '';
+  const tone = node.tone === 'error' ? 'text-destructive' : node.tone === 'warn' ? 'text-warn' : node.tone === 'success' ? 'text-ok' : node.tone === 'info' ? 'text-info' : node.tone === 'muted' ? 'text-muted-foreground' : '';
   return <p className={cn(variant, tone)}>{node.text}</p>;
 }
 

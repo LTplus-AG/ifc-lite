@@ -2,11 +2,15 @@
 //! Ear partition for simple non-convex linear boundaries, never their hull.
 use super::{clipping::Edge, math::*, bounded_source::Clip};
 pub(super) type Plane=([f64;3],f64);
+const MAX_POINTS:usize=1024;
 pub(super) fn pieces(clip:&Clip)->Option<Vec<Vec<Plane>>> {
     let Some(edges)=&clip.edges else{return Some(vec![vec![clip.plane]]);};
+    // An arc becomes inscribed chords; the caller judges such a result as curved.
+    let scale=dot(vector(&clip.frame,[1.,0.,0.]),vector(&clip.frame,[1.,0.,0.])).sqrt();
+    let edges=super::section_net::polygonised(edges,scale)?;
     let mut points=Vec::new();
-    for edge in edges {let Edge::Line(a,_) =edge else{return None;};points.push(*a);}
-    if points.len()<3||points.len()>256{return None;}
+    for edge in &edges {let Edge::Line(a,_) =edge else{return None;};points.push(*a);}
+    if points.len()<3||points.len()>MAX_POINTS{return None;}
     let area=edges.iter().map(Edge::integral).sum::<f64>();
     if area<0.{points.reverse();}
     let triangles=triangles(points)?;
@@ -23,8 +27,8 @@ pub(super) fn pieces(clip:&Clip)->Option<Vec<Vec<Plane>>> {
 }
 fn cross2(a:[f64;2],b:[f64;2],c:[f64;2])->f64 {(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])}
 pub(super) fn triangles(mut p:Vec<[f64;2]>)->Option<Vec<[[f64;2];3]>> {
-    if p.len()<3 || p.len()>256{return None;}
-    let mut out=Vec::new();let mut budget=256*256*256;
+    if p.len()<3 || p.len()>MAX_POINTS{return None;}
+    let mut out=Vec::new();let mut budget=MAX_POINTS*MAX_POINTS*MAX_POINTS;
     while p.len()>3 {
         let mut ear=None;
         for i in 0..p.len() {

@@ -38,7 +38,7 @@ import type { CameraInternalState } from './camera-state.js';
 import { areFiniteNumbers, isUsableBounds, isUsableDistance } from './camera-guards.js';
 import { MathUtils, viewBasis } from './math.js';
 import { CAMERA_CONSTANTS } from './constants.js';
-import { centerOf, cornerOffsets, usableAspect } from './camera-fit-geometry.js';
+import { centerOf, cornerOffsets, orthoHalfHeightFor, usableAspect } from './camera-fit-geometry.js';
 import type { FramingBounds, ViewAxes } from './camera-fit-geometry.js';
 
 export { centerOf };
@@ -59,17 +59,6 @@ export interface ZoomExtentTarget extends FramingTarget {
 /** Largest edge length of a box. Local: only the two fits below measure it. */
 function maxExtentOf(min: Vec3, max: Vec3): number {
   return Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
-}
-
-/** Smallest half-height in model units that shows every corner of the box. */
-function orthoHalfHeightFor(bounds: FramingBounds, axes: ViewAxes, aspect: number): number {
-  let half = 0;
-  for (const corner of cornerOffsets(bounds)) {
-    const h = Math.abs(MathUtils.dot(corner, axes.right));
-    const v = Math.abs(MathUtils.dot(corner, axes.up));
-    half = Math.max(half, v, h / aspect);
-  }
-  return half;
 }
 
 /**

@@ -17,6 +17,7 @@ import { emitClippedProfile } from './element-split-slab.js';
 import { readAttributes } from './edit/placement-core.js';
 import { cloneElementMetadata } from './edit/metadata-clone.js';
 import { deriveSplitGlobalId, globalIdTakenIn, keepsFirstPiece, type GlobalIdScope } from './edit/split-guid.js';
+import { polygonPerimeter } from './base-quantities-measure.js';
 import { polygonArea as polyArea, pointInPolygon as pointInPoly } from './room-footprint-offset.js';
 import { roomAt, interiorPoint, roomOutline, type RoomBoundary, type RoomCandidate, type RoomLink } from './room-candidates.js';
 import type { LayoutFace, Pt } from './room-layout-core.js';
@@ -28,6 +29,8 @@ export interface NewRoom {
   Name: string;
   PredefinedType?: string;
   ObjectType?: string;
+  grossPerimeter?: number;
+  netPerimeter?: number;
   grossArea: number;
   netArea: number;
   derived: boolean;
@@ -56,28 +59,30 @@ export function createRoomsInStore(store: IfcDataStore, editor: StoreEditor, sto
       Profile: 'polygon', OuterCurve: room.outline, Position: [0, 0, room.z], Height: room.height, Name: room.Name,
       ...(room.PredefinedType !== undefined ? { PredefinedType: room.PredefinedType } : {}),
       ...(room.ObjectType ? { ObjectType: room.ObjectType } : room.derived ? { ObjectType: GENERATED_SPACE_OBJECTTYPE } : {}),
-      grossFloorArea: room.grossArea, netFloorArea: room.netArea,
+      grossFloorArea: room.grossArea, netFloorArea: room.netArea, grossPerimeter: room.grossPerimeter, netPerimeter: room.netPerimeter,
     }).spaceId);
   });
 }
 
-export function setRoomAreasInStore(editor: StoreEditor, id: number, areas: { grossArea: number; netArea: number }, height: number): void {
+export function setRoomAreasInStore(editor: StoreEditor, id: number, areas: { grossArea: number; netArea: number; grossPerimeter?: number; netPerimeter?: number }, height: number, lengthUnitScale = 1): void {
   const view = editor.getMutationView(), qto = 'Qto_SpaceBaseQuantities';
   view.setQuantity(id, qto, 'GrossFloorArea', areas.grossArea, QuantityType.Area);
   view.setQuantity(id, qto, 'NetFloorArea', areas.netArea, QuantityType.Area);
   view.setQuantity(id, qto, 'GrossVolume', areas.grossArea * height, QuantityType.Volume);
+  if (areas.grossPerimeter !== undefined) view.setQuantity(id, qto, 'GrossPerimeter', areas.grossPerimeter / lengthUnitScale, QuantityType.Length);
+  if (areas.netPerimeter !== undefined) view.setQuantity(id, qto, 'NetPerimeter', areas.netPerimeter / lengthUnitScale, QuantityType.Length);
 }
 
 /** Preserve root identity, placement, metadata and links while replacing only its profile. */
-export function rewriteRoomOutlineInStore(store: IfcDataStore, editor: StoreEditor, id: number, chain: RoomChain, outline: readonly Pt[], areas: { grossArea: number; netArea: number }): void {
+export function rewriteRoomOutlineInStore(store: IfcDataStore, editor: StoreEditor, id: number, chain: RoomChain, outline: readonly Pt[], areas: { grossArea: number; netArea: number; grossPerimeter?: number; netPerimeter?: number }): void {
   const ownership = editOwnershipRefusal(store, editor.getMutationView(), [chain.extrudedSolidId], new Set([id]));
   if (ownership) throw new Error(ownership);
   const origin = chain.placementOrigin;
   const emitted = emitClippedProfile(editor, outline, origin, chain.baseElevation - origin[2], getModelLengthUnitScale(store));
   editor.setPositionalAttribute(chain.extrudedSolidId, 0, `#${emitted.profile}`);
   editor.setPositionalAttribute(chain.extrudedSolidId, 1, `#${emitted.solidPosition}`);
-  editor.setPositionalAttribute(chain.extrudedSolidId, 2, `#${emitted.up}`);
-  setRoomAreasInStore(editor, id, areas, chain.thickness);
+  editor.setPositionalAttribute(chain.extrudedSolidId, 2, `#${emitted.direction}`);
+  setRoomAreasInStore(editor, id, areas, chain.thickness, getModelLengthUnitScale(store));
 }
 
 export function updateRoomOutlineInStore(store: IfcDataStore, editor: StoreEditor, id: number, boundary: RoomBoundary, roomsOn: (storeyId: number) => readonly RoomCandidate[]): RoomUpdate {
@@ -87,7 +92,7 @@ export function updateRoomOutlineInStore(store: IfcDataStore, editor: StoreEdito
     const room = roomAt(roomsOn(target.storeyId), interiorPoint(target.chain.footprint));
     if (!room) return { ok: false, reason: 'noRoom' };
     const outline = roomOutline(room, boundary);
-    rewriteRoomOutlineInStore(store, draft, id, target.chain, outline, room);
+    rewriteRoomOutlineInStore(store, draft, id, target.chain, outline, { ...room, grossPerimeter: polygonPerimeter(room.centre), netPerimeter: polygonPerimeter(room.inner) });
     return { ok: true, outline };
   });
 }
@@ -102,7 +107,7 @@ function dropCollinear(ring: readonly Pt[]): Pt[] {
 }
 const outlineOf = (face: LayoutFace, link: RoomLink) => dropCollinear(roomOutline(face, link.boundary));
 const ringKey = (ring: readonly Pt[]) => ring.map(p => `${p[0].toFixed(4)},${p[1].toFixed(4)}`).join(';');
-const areasOf = (face: LayoutFace) => ({ grossArea: polyArea(face.centre), netArea: polyArea(face.inner) });
+const areasOf = (face: LayoutFace) => ({ grossArea: polyArea(face.centre), netArea: polyArea(face.inner), grossPerimeter: polygonPerimeter(face.centre), netPerimeter: polygonPerimeter(face.inner) });
 function chainOf(store: IfcDataStore, editor: StoreEditor, id: number): RoomChain {
   const target = roomChainInStore(store, editor, id);
   if (!target.ok) throw new Error(`Room layout refuses unsupported ${target.reason} for #${id}`);
@@ -148,7 +153,7 @@ export function syncRoomLayoutInStore(store: IfcDataStore, editor: StoreEditor, 
       if (classification == null) draft.setPositionalAttribute(added, 9, null);
       rewriteRoomOutlineInStore(store, draft, link.expressId, chain, outlineOf(keptFace, link), areasOf(keptFace));
       cloneElementMetadata(store, view, draft, link.expressId, [added]);
-      setRoomAreasInStore(draft, added, areasOf(cutFace), chain.thickness);
+      setRoomAreasInStore(draft, added, areasOf(cutFace), chain.thickness, getModelLengthUnitScale(store));
       handled.add(kept.face).add(face.face);
       out.created.push(added); out.remesh.push(link.expressId, added);
     }

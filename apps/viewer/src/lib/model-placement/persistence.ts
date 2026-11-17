@@ -1,7 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { federationFrameInfo, realRtcAnchorOf } from '@ifc-lite/geometry/world-frame';
+import { realRtcAnchorOf } from '@ifc-lite/geometry/world-frame';
+import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import type { ModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
 import { spatialReferenceFromIfc } from '@/lib/geo/ifc-spatial-reference';
 import type { ViewerState } from '@/store';
@@ -50,7 +51,7 @@ function placementAnchor(state: ViewerState) {
  * (#4936 review). */
 export function placementFrameCoordinateInfo(state: ViewerState) {
   const anchor = placementAnchor(state);
-  return anchor?.coordinateInfo ?? federationFrameInfo(state.models.values(), state.geometryResult);
+  return anchor?.coordinateInfo ?? sharedRenderFrame(state.models.values(), state.geometryResult);
 }
 
 /**

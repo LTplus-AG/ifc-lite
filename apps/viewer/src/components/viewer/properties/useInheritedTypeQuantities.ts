@@ -17,6 +17,9 @@ export function useInheritedTypeQuantities(own: QuantitySet[], store: IfcDataSto
     // Unknown occurrence overrides cannot promote inherited defaults (#7379).
     if (ownCoverage === 'unavailable') return { quantities: own, status: 'unavailable' as const,
       reason: 'Occurrence quantity precedence is unavailable' };
+    // Synchronous, in render. On the store emitted at spatial-ready time a model past 65,536 typing
+    // and definition relationships refuses as still loading (#9192); the full store replaces
+    // `store` and this recomputes with the answer.
     const current = store?.source.byteLength && view && expressId !== undefined
       ? readCurrentTypeQuantities(store, expressId, view) : null;
     const quantities = withInheritedTypeQuantities(own, store, expressId, RelationshipType.DefinesByType,

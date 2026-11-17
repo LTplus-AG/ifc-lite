@@ -2,8 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! #7887: cache-independent logical admission, once per product. Root Items
-//! members and every mapped occurrence consume the shared walk allowance.
+//! #7887: cache-independent logical admission, once per product. Every mapped
+//! occurrence, every repeated root Items list and every reference repeated
+//! within a list consume the shared walk allowance (#9102).
 //! Completed roots survive exhaustion; the current root is atomic and is
 //! withheld, along with all later roots. No partially admitted source is meshed.
 
@@ -77,6 +78,7 @@ impl AdmittedProduct {
 pub(crate) struct AdmittedRoots {
     pub(crate) representations: Vec<(DecodedEntity, Vec<DecodedEntity>)>,
     pub(crate) items: u32,
+    pub(crate) seen: super::first_seen::FirstSeen,
 }
 
 pub(crate) fn admit_retained_product(

@@ -18,8 +18,8 @@ type PdfMessage = { key: TranslationKey; params?: TranslationParameters } | { te
 /** Fidelity-gated conversion (#4406): the canonical report decides whether the
  * page converts exactly. A partial page needs explicit acceptance of the listed
  * omissions before geometry is prepared; a raster-only page never converts. */
-export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, disabled }: {
-  referenceId: string; modelId: string; containerId?: number; Name: string; disabled: boolean;
+export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, disabled, onBusyChange }: {
+  referenceId: string; modelId: string; containerId?: number; Name: string; disabled: boolean; onBusyChange?: (busy: boolean) => void;
 }) {
   const { t } = useTranslation();
   const [tolerance, setTolerance] = useState('0.001');
@@ -30,6 +30,7 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
   const retained = useRef<PreparedPdfReferenceAnnotation | null>(null);
   const operation = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
+  useEffect(() => { onBusyChange?.(busy); return () => onBusyChange?.(false); }, [busy, onBusyChange]);
   const [message, setMessage] = useState<PdfMessage>(null), [error, setError] = useState(false);
   const models = useViewerStore(state => state.models), references = useViewerStore(state => state.appearanceReferences);
   const version = useViewerStore(state => state.mutationVersion), placement = useViewerStore(state => state.modelPlacement);

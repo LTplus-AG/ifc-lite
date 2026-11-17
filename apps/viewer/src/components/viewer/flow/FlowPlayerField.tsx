@@ -109,7 +109,7 @@ export function FlowPlayerField({ field, value, error, storeys, onChange }: Flow
       />
     );
   } else {
-    widget = <span className="text-red-400">{t('flowPanel.player.error.unknownKind', { kind: String(kind as string) })}</span>;
+    widget = <span className="text-danger">{t('flowPanel.player.error.unknownKind', { kind: String(kind as string) })}</span>;
   }
 
   const Container = kind === 'files' ? 'div' : 'label';
@@ -117,7 +117,7 @@ export function FlowPlayerField({ field, value, error, storeys, onChange }: Flow
     <Container className="block">
       <span className="text-muted-foreground">{field.input.label}</span>
       {widget}
-      {error && <div className="text-2xs text-red-400">{t(error.labelKey, error.params)}</div>}
+      {error && <div className="text-2xs text-danger">{t(error.labelKey, error.params)}</div>}
     </Container>
   );
 }

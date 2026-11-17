@@ -64,12 +64,13 @@ pub use extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
 pub use sectioned::SectionedSolidHorizontalProcessor;
 pub use structural_edge::IfcEdgeProcessor;
 pub use structural_face::IfcFaceSurfaceProcessor;
+pub(crate) use structural_face::{StructuralMemberFaceProcessor, MEMBER_FACE_TYPES};
 pub use surface::SurfaceOfLinearExtrusionProcessor;
 pub use swept::{
     RevolvedAreaSolidProcessor, SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor,
 };
 pub use tessellated::{PolygonalFaceSetProcessor, TriangulatedFaceSetProcessor};
 pub use texture::{
-    binary_textures_refused, build_texture_index, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, ResolvedTextureMap, TextureAttachment,
+    binary_textures_refused, build_texture_index, build_texture_index_with_vertex_lists, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, ResolvedTextureMap, TextureAttachment,
     TextureSource,
 };

@@ -10,6 +10,7 @@ import type { IfcStoreBase as IfcDataStore, PropertySet, QuantitySet } from '@if
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { QueryResultEntity } from './query-result-entity.js';
 import { matchesPsetFilter, matchesQsetFilter } from './property-filter.js';
+import { resolveEntityTypeName } from './resolve-type-name.js';
 
 export type ComparisonOperator = '=' | '!=' | '>' | '>=' | '<' | '<=' | 'contains' | 'startsWith';
 
@@ -17,15 +18,28 @@ export class EntityQuery {
   private store: IfcDataStore;
   private typeFilter: IfcTypeEnum[] | null;
   private idFilter: number[] | null;
+  private unmappedTypeNames: ReadonlySet<string>;
   private propertyFilters: Array<{ pset: string; prop: string; op: ComparisonOperator; value: any }> = [];
   private limitCount: number | null = null;
   private offsetCount: number = 0;
   private includeFlags: { geometry?: boolean; properties?: boolean; quantities?: boolean } = {};
   
-  constructor(store: IfcDataStore, types: IfcTypeEnum[] | null, ids: number[] | null = null) {
+  /**
+   * `unmappedTypeNames` are IFC class names that `IfcTypeEnum` has no member
+   * for (UPPERCASE). Each is answered from the Unknown bucket, narrowed to the
+   * entities whose own class is that name - the bucket alone also holds every
+   * other unmapped class in the file (#8671).
+   */
+  constructor(
+    store: IfcDataStore,
+    types: IfcTypeEnum[] | null,
+    ids: number[] | null = null,
+    unmappedTypeNames: readonly string[] = [],
+  ) {
     this.store = store;
     this.typeFilter = types;
     this.idFilter = ids;
+    this.unmappedTypeNames = new Set(unmappedTypeNames.map(n => n.toUpperCase()));
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -140,11 +154,22 @@ export class EntityQuery {
   
   private getCandidateIds(): number[] {
     if (this.idFilter) return [...this.idFilter];
-    if (this.typeFilter) {
+    if (this.typeFilter || this.unmappedTypeNames.size > 0) {
       const ids: number[] = [];
-      for (const typeEnum of this.typeFilter) {
+      // A Set, so a class named twice is read once.
+      const typeEnums = new Set(this.typeFilter ?? []);
+      for (const typeEnum of typeEnums) {
         // @raw-entity-enumeration-ok EntityQuery takes only a parsed store, with no mutation view; fluent bulk queries describe that source snapshot
         ids.push(...this.store.entities.getByType(typeEnum));
+      }
+      // A literal 'Unknown' already pushed the whole bucket, narrowed names included.
+      if (this.unmappedTypeNames.size > 0 && !typeEnums.has(IfcTypeEnum.Unknown)) {
+        // @raw-entity-enumeration-ok same parsed-store snapshot as above; narrowed per entity by its own class name
+        for (const id of this.store.entities.getByType(IfcTypeEnum.Unknown)) {
+          if (this.unmappedTypeNames.has(resolveEntityTypeName(this.store, id).toUpperCase())) {
+            ids.push(id);
+          }
+        }
       }
       return ids;
     }

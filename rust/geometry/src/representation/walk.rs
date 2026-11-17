@@ -29,8 +29,11 @@ mod engine_tests;
 pub enum NestedMaps {
     /// Descend into every mapped item, in list order, to `max_depth` levels
     /// (the mesh walks). `max_levels` independently caps mapped-level attempts
-    /// and materialized Items members across one walk. Every DAG occurrence
-    /// pays again; exhaustion reports [`WalkRefusal::Budget`] and stops globally.
+    /// and materialized Items members across one walk. Every mapped attempt
+    /// pays, since each expands a shared source. A first read of a distinct
+    /// Items list pays only for its repeated references (#9102); every
+    /// further read pays in full. Exhaustion reports [`WalkRefusal::Budget`]
+    /// and stops globally.
     Expand { max_depth: u32, max_levels: u32 },
     /// A nested map ends the walk with [`WalkRefusal::TooDeep`] and nothing
     /// after it is visited: the source is not shareable (don't-bake instancing).
@@ -142,6 +145,8 @@ struct Run<'a, V> {
     levels: u32,
     /// Items members admitted before allocating/decoding a list, per occurrence.
     items: u32,
+    /// Items lists this walk has read: a re-read pays in full (#9102).
+    seen: super::first_seen::FirstSeen,
 }
 
 impl RepresentationWalk {
@@ -191,6 +196,7 @@ impl RepresentationWalk {
             path: smallvec::SmallVec::new(),
             levels: 0,
             items: 0,
+            seen: Default::default(),
         };
         for rep in shape.select(element, self.select) {
             if run.visitor.shape_rep(rep) == Flow::Stop {
@@ -221,6 +227,7 @@ impl RepresentationWalk {
             path: smallvec::SmallVec::new(),
             levels: 0,
             items: roots.items,
+            seen: roots.seen,
         };
         for (rep, items) in roots.representations {
             if run.visitor.shape_rep(&rep) == Flow::Stop
@@ -270,6 +277,7 @@ impl RepresentationWalk {
             path: smallvec::SmallVec::new(),
             levels: 0,
             items: 0,
+            seen: Default::default(),
         };
         let Some(items) = self.root_items(&mut run, &rep, decoder)? else {
             return Ok(());
@@ -291,6 +299,7 @@ impl RepresentationWalk {
             path: smallvec::SmallVec::new(),
             levels: 0,
             items: 0,
+            seen: Default::default(),
         };
         self.execute(&mut run, engine::Task::Enter(item.clone()), decoder);
     }
@@ -310,6 +319,7 @@ impl RepresentationWalk {
             path: smallvec::SmallVec::new(),
             levels: 0,
             items: 0,
+            seen: Default::default(),
         };
         self.items(&mut run, Some(rep), items, decoder);
     }

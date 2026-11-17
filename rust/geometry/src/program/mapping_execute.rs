@@ -12,11 +12,11 @@ pub(super) fn source_reply<T>(
     result: SourceResult<T>,
     item_id: u32,
     budget: LogicalBudget,
-    reply: impl FnOnce(Result<T>) -> MappingValue,
+    reply: impl FnOnce(Result<T>, LogicalBudget) -> MappingValue,
 ) -> MappingValue {
     match result {
-        Ok(value) => reply(Ok(value)),
-        Err(SourceFailure::Content(error)) => reply(Err(error)),
+        Ok(value) => reply(Ok(value), budget),
+        Err(SourceFailure::Content(error)) => reply(Err(error), budget),
         Err(SourceFailure::Budget(refusal)) => MappingValue::Refused {
             item_id,
             refusal,
@@ -31,7 +31,8 @@ impl MappingControl<'_> {
         router: &GeometryRouter,
         decoder: &mut EntityDecoder,
     ) -> std::result::Result<MappingReply, ProgramError> {
-        let mut budget = self.budget;
+        self.budget.commit(); // the accepted state's first reads (#9102)
+        let mut budget = self.budget.clone();
         // Steps that keep their action in place: the accept consumes it.
         match &mut self.action {
             Action::Child(item, ChildControl::Item(control)) => {
@@ -53,7 +54,7 @@ impl MappingControl<'_> {
                     ),
                     representation.item().id,
                     budget,
-                    |items| MappingValue::SharedItems(items, budget),
+                    MappingValue::SharedItems,
                 ));
             }
             Action::StyledItems(pending) => {
@@ -62,9 +63,7 @@ impl MappingControl<'_> {
                     decoder,
                     &mut budget,
                 );
-                return Ok(source_reply(items, pending.item_id, budget, |items| {
-                    MappingValue::StyledItems(items, budget)
-                }));
+                return Ok(source_reply(items, pending.item_id, budget, MappingValue::StyledItems));
             }
             Action::Texture(item) => {
                 let item = item.item();
@@ -99,10 +98,8 @@ impl MappingControl<'_> {
                     return Ok(self.admit_retained_mapping(item, router, decoder, &mut budget));
                 }
                 let value = router.admit_mapped_occurrence(item, decoder, &mut budget);
-                source_reply(value, item.id, budget, |value| MappingValue::Entered {
-                    budget,
-                    item_id: item.id,
-                    value,
+                source_reply(value, item.id, budget, |value, budget| MappingValue::Entered {
+                    budget, item_id: item.id, value,
                 })
             }
             Action::EnterStyled(entering) => {
@@ -134,14 +131,14 @@ impl MappingControl<'_> {
                         ),
                         rep_map.id,
                         budget,
-                        |value| MappingValue::TypeMapEntered(value, budget),
+                        MappingValue::TypeMapEntered,
                     ));
                 }
                 source_reply(
                     router.admit_type_map(rep_map, decoder, &mut budget),
                     rep_map.id,
                     budget,
-                    |value| MappingValue::TypeMapEntered(value, budget),
+                    MappingValue::TypeMapEntered,
                 )
             }
             Action::Origin => {

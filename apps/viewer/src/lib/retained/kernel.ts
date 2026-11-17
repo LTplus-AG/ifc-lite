@@ -4,8 +4,9 @@
 
 /**
  * What `@ifc-lite/viewer-retained` exports, whichever file the build maps it
- * to: `index.ts` (VITE_RETAINED_GEOMETRY=on) or `off.ts` (default viewer,
- * viewer-embed). Types only, so the default graph gains no code from it.
+ * to: `index.ts` (VITE_RETAINED_GEOMETRY=on), `lazy.tsx` (`lazy`, the
+ * production opt-in) or `off.ts` (default viewer, viewer-embed). Types only,
+ * so the default graph gains no code from it.
  */
 
 import type { ComponentType } from 'react';

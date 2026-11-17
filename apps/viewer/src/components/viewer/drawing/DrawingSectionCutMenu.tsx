@@ -37,9 +37,11 @@ import {
 export interface DrawingSectionCutMenuProps {
   /** The live cut's label, exactly as the header already formats it. */
   cutLabel: string;
+  /** Visible trigger text when it should say more than `cutLabel` ("Cut plane: …"). */
+  displayLabel?: string;
 }
 
-export function DrawingSectionCutMenu({ cutLabel }: DrawingSectionCutMenuProps) {
+export function DrawingSectionCutMenu({ cutLabel, displayLabel }: DrawingSectionCutMenuProps) {
   const { t } = useTranslation();
   const { promptDialog } = useDialogs();
   const cuts = useSavedSectionCuts((s) => s.cuts);
@@ -60,10 +62,10 @@ export function DrawingSectionCutMenu({ cutLabel }: DrawingSectionCutMenuProps) 
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="ghost" size="sm" className="h-6 gap-1 px-1.5 text-xs text-muted-foreground tabular-nums"
+          variant="ghost" size="sm" className="h-6 min-w-0 gap-1 px-1.5 text-xs font-medium text-foreground tabular-nums"
           aria-label={t('section2d.savedCuts.menuLabel', { label: cutLabel })}
         >
-          <span className="truncate">{cutLabel}</span>
+          <span className="truncate">{displayLabel ?? cutLabel}</span>
           <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />
         </Button>
       </DropdownMenuTrigger>

@@ -7,7 +7,7 @@ version bumps and `Cargo.lock` updates never break a package build. Staleness is
 CI by `node scripts/build-imported-geometry.mjs --check`, which regenerates into a
 temporary directory and fails if any committed artifact differs.
 For regeneration, install the root pinned Rust toolchain and wasm target, then run
-`pnpm build:imported-geometry` from the root through fleet admission. 
+`pnpm build:imported-geometry` from the root.
 The generator provisions Linux x86_64 Binaryen 124 from the public Emscripten
 4.0.15 SDK release `b412b6307e541b93dd93f01b61181e15c17302ec`, also selected by
 the geometry-platform workflow's pinned emsdk checkout. It extracts only wasm2js,

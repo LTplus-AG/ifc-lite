@@ -17,6 +17,7 @@ import { createAlignCommandBackend } from '@ifc-lite/sdk';
 import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
 import { provideHeadlessAlignGeometry } from '../headless-backend-align.js';
 import { AnchorEntityReader } from '../../../create/src/in-store/resolve-anchor.js';
+import { canonicalQuantityIds, persistentQuantityIds } from '../test/canonical-quantity-ids.js';
 import { liveToolSession } from '../test/live-tool-session.js';
 
 const wasm = new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url), available = existsSync(wasm);
@@ -27,7 +28,7 @@ beforeAll(async () => {
 });
 const exportModel = (model: LoadedModel) => new StepExporter(model.store, model.backend.getMutationView() ?? undefined).export({ schema: model.store.schemaVersion ?? 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content;
 async function graph(model: LoadedModel) {
-  const store = await new IfcParser().parseColumnar(exportModel(model).slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(canonicalQuantityIds(exportModel(model), persistentQuantityIds(model))).buffer, { disableWorkerScan: true });
   const extractor = new EntityExtractor(store.source);
   return [...store.entityIndex.byId].map(([id, location]) => ({ id, ...extractor.extractEntity(location)! })).sort((a, b) => a.id - b.id);
 }
@@ -98,7 +99,9 @@ it.skipIf(!available)('#6232 distinct Align root shifts carry a joined neighbour
     const after = await extents(model, [1222,a,b,column]);
     expect(after.get(a)!.lo[0]).toBeCloseTo(after.get(1222)!.lo[0], 4);
     expect(after.get(column)!.lo[0]).toBeCloseTo(after.get(1222)!.lo[0], 4);
-    expect(after.get(b)!.lo[0]).not.toBeCloseTo(original.get(b)!.lo[0]);
+    // #9406: sliding a along its own axis leaves its infinite line and the
+    // intersection with b unchanged. Keep b on its own axis; extend a instead.
+    expect(after.get(b)).toEqual(original.get(b));
     const alreadyAligned = await graph(model);
     const conflicting = await call('edit_element_geometry', { operation: { kind: 'align', reference_id: 1222, express_ids: [a,b], mode: 'left' } });
     expect(conflicting.isError).toBe(true);

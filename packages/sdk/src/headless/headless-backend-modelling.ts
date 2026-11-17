@@ -6,10 +6,12 @@
  * Shared compound recording preserves every earlier overlay record for undo. */
 import { createModellingStoreBackend, createOrdinaryStoreBackend, resolveLiveOwnerHistoryId, type ModellingStoreModelResolver } from '../index.js';
 import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
+import { createStoreyStoreBackend } from '../store-storey-backend.js';
+import { withWallAutojoinIndex, type WallAutojoinIndex } from '@ifc-lite/create';
 
 export function createRecordedModellingBackend(resolve: ModellingStoreModelResolver) {
   type Methods = ReturnType<typeof createModellingStoreBackend> & ReturnType<typeof createOrdinaryStoreBackend>;
-  function record<T>(modelId: string, edit: (methods: Methods) => T, authoring = false): T {
+  function record<T>(modelId: string, edit: (methods: Methods) => T, authoring = false, wallIndex?: WallAutojoinIndex): T {
     const model = resolve(modelId);
     return recordCompoundMutation(model.mutationView, draft => {
       const resolveDraft = () => {
@@ -20,10 +22,31 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
           ownerHistoryId: authoring ? resolveLiveOwnerHistoryId(model.store, editor, draft) : model.ownerHistoryId,
         };
       };
-      return edit({ ...createModellingStoreBackend(resolveDraft), ...createOrdinaryStoreBackend(resolveDraft) });
+      return edit({ ...createModellingStoreBackend(resolveDraft), ...createOrdinaryStoreBackend(resolveDraft, wallIndex) });
     });
   }
+  // Storey dry runs read the live view; storey writes are one compound record each (#9013).
+  const storeyReads = createStoreyStoreBackend(resolve);
+  const storey = <K extends 'addStorey' | 'renameStorey' | 'editStorey' | 'deleteStorey' | 'setTopConstraint'>(name: K, modelOf: (...args: Parameters<NonNullable<Methods[K]>>) => string) =>
+    (...args: Parameters<NonNullable<Methods[K]>>): ReturnType<NonNullable<Methods[K]>> => record(modelOf(...args), methods => {
+      const method = methods[name] as ((...a: Parameters<NonNullable<Methods[K]>>) => ReturnType<NonNullable<Methods[K]>>) | undefined;
+      if (!method) throw new Error(`bim.store.${name} is not supported by this backend`);
+      return method(...args);
+    });
   return {
+    listStoreyLevels: storeyReads.listStoreyLevels,
+    suggestStorey: storeyReads.suggestStorey,
+    planStoreyEdit: storeyReads.planStoreyEdit,
+    planStoreyDelete: storeyReads.planStoreyDelete,
+    planAddStorey: storeyReads.planAddStorey,
+    setTopConstraint: storey('setTopConstraint', (ref) => ref.modelId),
+    addStorey: storey('addStorey', (modelId) => modelId),
+    renameStorey: storey('renameStorey', (ref) => ref.modelId),
+    editStorey: storey('editStorey', (modelId) => modelId),
+    deleteStorey: storey('deleteStorey', (ref) => ref.modelId),
+    mirrorElements: (...args: Parameters<NonNullable<Methods['mirrorElements']>>) => record(args[0], methods => methods.mirrorElements!(...args)),
+    addClassification: (...args: Parameters<NonNullable<Methods['addClassification']>>) => record(args[0], methods => methods.addClassification!(...args), true),
+    assignClassification: (...args: Parameters<NonNullable<Methods['assignClassification']>>) => record(args[0], methods => methods.assignClassification!(...args), true),
     transformElements: (...args: Parameters<NonNullable<Methods['transformElements']>>) => record(args[0], methods => {
       if (!methods.transformElements) throw new Error('Missing transformElements capability');
       return methods.transformElements(...args);
@@ -47,6 +70,10 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     copyElements: (...args: Parameters<NonNullable<Methods['copyElements']>>) => record(args[0], methods => {
       if (!methods.copyElements) throw new Error('Missing copy capability');
       return methods.copyElements(...args);
+    }),
+    copyToStoreys: (...args: Parameters<NonNullable<Methods['copyToStoreys']>>) => record(args[0], methods => {
+      if (!methods.copyToStoreys) throw new Error('Missing copy capability');
+      return methods.copyToStoreys(...args);
     }),
     duplicateElement: (...args: Parameters<NonNullable<Methods['duplicateElement']>>) => record(args[0].modelId, methods => {
       if (!methods.duplicateElement) throw new Error('Missing duplicate capability');
@@ -102,7 +129,10 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     addHostedDoor: (...args: Parameters<Methods['addHostedDoor']>) => record(args[0], methods => methods.addHostedDoor(...args)),
     addHostedWindow: (...args: Parameters<Methods['addHostedWindow']>) => record(args[0], methods => methods.addHostedWindow(...args)),
     joinWalls: (...args: Parameters<Methods['joinWalls']>) => record(args[0], methods => methods.joinWalls(...args)),
-    addWall: (...args: Parameters<Methods['addWall']>) => record(args[0], methods => methods.addWall(...args)),
+    addWall: (...args: Parameters<Methods['addWall']>) => {
+      const model = resolve(args[0]);
+      return withWallAutojoinIndex(model.store, model.mutationView, index => record(args[0], methods => methods.addWall(...args), false, index));
+    },
     addColumn: (...args: Parameters<Methods['addColumn']>) => record(args[0], methods => methods.addColumn(...args)),
     addSlab: (...args: Parameters<Methods['addSlab']>) => record(args[0], methods => methods.addSlab(...args)),
     addBeam: (...args: Parameters<Methods['addBeam']>) => record(args[0], methods => methods.addBeam(...args)),

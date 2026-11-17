@@ -22,6 +22,48 @@ fn kmz_altitude_mode(mode: Option<String>) -> ifc_lite_export::AltitudeMode {
     }
 }
 
+/// The one GLB export behind [`IfcAPI::export_glb`] and
+/// [`IfcAPI::export_glb_named_by_global_id`].
+#[allow(clippy::too_many_arguments)]
+fn glb(
+    content: &[u8],
+    include_metadata: bool,
+    hidden: &[u32],
+    isolated: Option<Vec<u32>>,
+    hidden_types_csv: String,
+    lit: Option<bool>,
+    emissive: Option<bool>,
+    name_by_global_id: bool,
+) -> Result<Vec<u8>, JsValue> {
+    let hidden_types = hidden_types_csv
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let opts = ifc_lite_export::GltfOptions::default()
+        .with_include_metadata(include_metadata)
+        .with_hidden(hidden.to_vec())
+        .with_isolated(isolated)
+        .with_hidden_types(hidden_types)
+        .with_lit(lit.unwrap_or(true))
+        .with_emissive(emissive.unwrap_or(false))
+        .with_name_by_global_id(name_by_global_id)
+        // Federation (modelId stamping) is a server-side concern; the viewer's
+        // wasm export path is single-model. Add a parameter here if/when the
+        // browser needs to federate.
+        .with_model_id(None)
+        // The viewer loads the GLB directly; quantization is a server/export-pipeline
+        // concern (KHR_mesh_quantization needs loader support the viewer doesn't wire).
+        .with_quantize(false)
+        // Stated rather than inherited from `setTessellationQuality`, so this
+        // export keeps emitting exactly what it emitted before. Whether an
+        // export should follow the density the viewer is displaying at is a
+        // separate question from whether a caller can name one.
+        .with_tessellation_quality(ifc_lite_export::TessellationQuality::Medium);
+    ifc_lite_export::try_export_glb(content, &opts)
+        .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
+}
+
 #[wasm_bindgen]
 impl IfcAPI {
     /// Export the render geometry in `content` as a binary **GLB** (`Uint8Array`).
@@ -64,32 +106,34 @@ impl IfcAPI {
         lit: Option<bool>,
         emissive: Option<bool>,
     ) -> Result<Vec<u8>, JsValue> {
-        let hidden_types = hidden_types_csv
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        let opts = ifc_lite_export::GltfOptions::default()
-            .with_include_metadata(include_metadata)
-            .with_hidden(hidden.to_vec())
-            .with_isolated(isolated)
-            .with_hidden_types(hidden_types)
-            .with_lit(lit.unwrap_or(true))
-            .with_emissive(emissive.unwrap_or(false))
-            // Federation (modelId stamping) is a server-side concern; the viewer's
-            // wasm export path is single-model. Add a parameter here if/when the
-            // browser needs to federate.
-            .with_model_id(None)
-            // The viewer loads the GLB directly; quantization is a server/export-pipeline
-            // concern (KHR_mesh_quantization needs loader support the viewer doesn't wire).
-            .with_quantize(false)
-            // Stated rather than inherited from `setTessellationQuality`, so this
-            // export keeps emitting exactly what it emitted before. Whether an
-            // export should follow the density the viewer is displaying at is a
-            // separate question from whether a caller can name one.
-            .with_tessellation_quality(ifc_lite_export::TessellationQuality::Medium);
-        ifc_lite_export::try_export_glb(content, &opts)
-            .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
+        glb(content, include_metadata, hidden, isolated, hidden_types_csv, lit, emissive, false)
+    }
+
+    /// [`IfcAPI::export_glb`], with each IFC element as one node directly under
+    /// the scene, named by its `GlobalId` and holding that element's part
+    /// nodes (#9011): for tools that identify objects by node name. Each
+    /// element node carries a copy of the scene root's translation and site
+    /// rotation, so every part keeps its world pose, and geometry, accessors
+    /// and materials are those `exportGlb` writes. An element without a usable
+    /// `GlobalId` keeps its own node, unnamed. Same parameters and the same
+    /// fail-closed `NO_RENDER_GEOMETRY` refusal as `exportGlb`.
+    ///
+    /// A sibling method rather than a trailing parameter on `exportGlb`: the
+    /// crate is published, and a new positional argument would break every
+    /// Rust caller of `export_glb`.
+    #[wasm_bindgen(js_name = exportGlbNamedByGlobalId)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn export_glb_named_by_global_id(
+        &self,
+        content: &[u8],
+        include_metadata: bool,
+        hidden: &[u32],
+        isolated: Option<Vec<u32>>,
+        hidden_types_csv: String,
+        lit: Option<bool>,
+        emissive: Option<bool>,
+    ) -> Result<Vec<u8>, JsValue> {
+        glb(content, include_metadata, hidden, isolated, hidden_types_csv, lit, emissive, true)
     }
 
     /// Assemble a **GLB** from already-produced meshes (the viewer's `MeshData`, flattened)

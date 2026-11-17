@@ -14,7 +14,8 @@
  * first; the render frame is always metres.
  */
 
-import { federationFrameInfo, ifcToViewerAxes, renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
+import { ifcToViewerAxes, renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
+import { frameCandidateModels, sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import type { ViewerState } from '@/store';
 import { SCENE_UNITS, type SceneUnit, type Vec3 } from './scene-actions';
 
@@ -35,7 +36,7 @@ type FrameState = Pick<ViewerState, 'models' | 'geometryResult'>;
 /** The frame coordinates are validated in, or null when no geometry bounds are known. */
 export function sceneFrame(state: FrameState): SceneFrame | null {
   let bounds: RenderBounds | null = null;
-  for (const model of state.models.values()) {
+  for (const model of frameCandidateModels(state.models.values())) {
     const b = model.geometryResult?.coordinateInfo?.shiftedBounds;
     if (!b || ![b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].every(Number.isFinite)) continue;
     bounds = bounds
@@ -49,7 +50,7 @@ export function sceneFrame(state: FrameState): SceneFrame | null {
   }
   if (!bounds) return null;
   const diagonal = Math.hypot(bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, bounds.max.z - bounds.min.z);
-  const offset = renderFrameWorldOffset(federationFrameInfo(state.models.values(), state.geometryResult));
+  const offset = renderFrameWorldOffset(sharedRenderFrame(state.models.values(), state.geometryResult));
   return { offset, bounds, tolerance: Math.max(1, diagonal * 0.1) };
 }
 

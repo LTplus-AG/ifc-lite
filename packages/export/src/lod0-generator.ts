@@ -7,10 +7,9 @@ import {
   extractLengthUnitScale,
   getAttributeNamesAcrossSchemas,
   scanIfcEntities,
+  getSchemaRegistryForVersion,
 } from '@ifc-lite/parser';
 import { isProperSubtypeOfAny, type HierarchyRegistry } from '@ifc-lite/codegen/schema-hierarchy';
-import * as IFC4_SCHEMA from '@ifc-lite/codegen/ifc4';
-import * as IFC4X3_SCHEMA from '@ifc-lite/codegen/ifc4x3';
 
 import type { EntityRef } from '@ifc-lite/parser';
 import { firstProjAxis, walkPlacementChain } from '@ifc-lite/data';
@@ -70,10 +69,18 @@ function findAttrIndex(typeName: string, attrName: string): number | null {
  * names an entity, not a schema version, so a type introduced in only one
  * schema must still be recognised when the other is in play.
  */
-const HIERARCHY_REGISTRIES: readonly HierarchyRegistry[] = [
-  IFC4_SCHEMA.SCHEMA_REGISTRY,
-  IFC4X3_SCHEMA.SCHEMA_REGISTRY,
-];
+//
+// The parser's registries, not `@ifc-lite/codegen/ifc4` / `/ifc4x3`: they are
+// byte-identical copies of the same generation (`scripts/check-codegen-sync.mjs`),
+// and reading the codegen copies put a second decode of each into every
+// bundle that loads this module, at load time. Built on first use.
+let hierarchyRegistries: readonly HierarchyRegistry[] | undefined;
+function getHierarchyRegistries(): readonly HierarchyRegistry[] {
+  if (hierarchyRegistries === undefined) {
+    hierarchyRegistries = [getSchemaRegistryForVersion('IFC4'), getSchemaRegistryForVersion('IFC4X3')];
+  }
+  return hierarchyRegistries;
+}
 
 /**
  * Is `typeUpper` a concrete `IfcMaterialDefinition` subtype (`IfcMaterial`,
@@ -91,7 +98,7 @@ const HIERARCHY_REGISTRIES: readonly HierarchyRegistry[] = [
  * `lod0-generator.material-membership.test.ts` for the equivalence proof.
  */
 export function isMaterialDefinition(typeUpper: string): boolean {
-  return isProperSubtypeOfAny(HIERARCHY_REGISTRIES, typeUpper, 'IfcMaterialDefinition');
+  return isProperSubtypeOfAny(getHierarchyRegistries(), typeUpper, 'IfcMaterialDefinition');
 }
 
 function isCandidateElementType(typeUpper: string): boolean {

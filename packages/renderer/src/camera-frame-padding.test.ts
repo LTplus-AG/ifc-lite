@@ -26,7 +26,7 @@ function state(mode: 'perspective' | 'orthographic'): CameraInternalState {
   const identity: Mat4 = { m: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) };
   return {
     camera, viewMatrix: MathUtils.lookAt(position, ORIGIN, camera.up), projMatrix: identity, viewProjMatrix: identity,
-    projectionMode: mode, orthoSize: 50, sceneBounds: null, orbitAnchorBounds: null,
+    projectionMode: mode, orthoSize: 50, sceneBounds: null, orbitAnchorBounds: null, lensShift: { x: 0, y: 0 },
   };
 }
 const distance = (p: Vec3) => Math.hypot(p.x, p.y, p.z);

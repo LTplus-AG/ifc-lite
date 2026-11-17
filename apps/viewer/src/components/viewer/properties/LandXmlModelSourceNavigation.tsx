@@ -111,7 +111,7 @@ function sourceRecordAt(document: LandXmlTinDocument, itemIndex: number): Naviga
 function Pager({ page, pages, setPage }: { page: number; pages: number; setPage(page: number): void }) {
   const { t } = useTranslation();
   if (pages <= 1) return null;
-  return <div className="flex items-center justify-between border-t border-zinc-200 px-3 py-2 text-xs dark:border-zinc-800">
+  return <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs">
     <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>{t('properties.landXmlSource.previous')}</button>
     <span>{t('properties.landXmlSource.page', { current: page + 1, total: pages })}</span>
     <button type="button" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>{t('properties.landXmlSource.next')}</button>
@@ -120,10 +120,10 @@ function Pager({ page, pages, setPage }: { page: number; pages: number; setPage(
 
 function RecordButton({ item, modelId, selected, onSelect }: { item: NavigationRecord; modelId: string; selected: LandXmlSourceRef | null; onSelect(ref: LandXmlSourceRef): void }) {
   const isSelected = selected?.modelId === modelId && selected.sourceId === item.sourceId;
-  return <button type="button" className={`flex w-full items-center gap-3 px-3 py-2 text-left text-xs ${isSelected ? 'bg-primary/10 text-primary' : 'text-zinc-700 dark:text-zinc-300'}`}
+  return <button type="button" className={`flex w-full items-center gap-3 px-3 py-2 text-left text-xs ${isSelected ? 'bg-primary/10 text-primary' : 'text-muted-foreground'}`}
     onClick={() => onSelect({ modelId, sourceId: item.sourceId })}>
     <span className="truncate">{item.label}</span>
-    {item.detail && <span className="ml-auto font-mono text-zinc-500">{item.detail}</span>}
+    {item.detail && <span className="ml-auto font-mono text-muted-foreground">{item.detail}</span>}
   </button>;
 }
 
@@ -200,7 +200,7 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
       <Pager page={page} pages={pages} setPage={setSurfacePage} />
     </NavigationSection>
     <NavigationSection title={t('properties.modelMetadata.sourceOverlays')}>
-      {overlays.length === 0 ? <div className="px-3 py-2 text-xs text-zinc-500">{t('properties.modelMetadata.noSourceOverlays')}</div> : overlays.map((overlay) => <RecordButton key={overlay.sourceId} item={overlay} modelId={modelId} selected={selected} onSelect={onSelect} />)}
+      {overlays.length === 0 ? <div className="px-3 py-2 text-xs text-muted-foreground">{t('properties.modelMetadata.noSourceOverlays')}</div> : overlays.map((overlay) => <RecordButton key={overlay.sourceId} item={overlay} modelId={modelId} selected={selected} onSelect={onSelect} />)}
       <Pager page={boundedOverlayPage} pages={overlayPages} setPage={setOverlayPage} />
     </NavigationSection>
     {pipeCount > 0 && <NavigationSection title={t('properties.modelMetadata.sourcePipeRecords')}>
@@ -208,7 +208,7 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
       <Pager page={boundedPipePage} pages={pipePages} setPage={setPipePage} />
     </NavigationSection>}
     <NavigationSection title={t('properties.landXmlSource.reviewRecords')}>
-      {records.length === 0 ? <div className="px-3 py-2 text-xs text-zinc-500">{t('properties.landXmlSource.noReviewRecords')}</div> : records.map((record) => <RecordButton key={record.sourceId} item={record} modelId={modelId} selected={selected} onSelect={onSelect} />)}
+      {records.length === 0 ? <div className="px-3 py-2 text-xs text-muted-foreground">{t('properties.landXmlSource.noReviewRecords')}</div> : records.map((record) => <RecordButton key={record.sourceId} item={record} modelId={modelId} selected={selected} onSelect={onSelect} />)}
       <Pager page={boundedRecordPage} pages={recordPages} setPage={setRecordPage} />
     </NavigationSection>
     {planRecords.total > 0 && <NavigationSection title={t('properties.modelMetadata.sourcePlanRecords')}>
@@ -216,7 +216,7 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
       <Pager page={boundedPlanPage} pages={planPages} setPage={setPlanPage} />
     </NavigationSection>}
     <NavigationSection title={t('properties.landXmlSource.diagnostics')}>
-      {diagnostics.length === 0 ? <div className="px-3 py-2 text-xs text-zinc-500">{t('properties.landXmlSource.noDiagnostics')}</div> : diagnostics.map((diagnostic, index) => <div key={`${diagnostic.sourceId ?? 'document'}:${diagnostic.code}:${index}`} className="px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+      {diagnostics.length === 0 ? <div className="px-3 py-2 text-xs text-muted-foreground">{t('properties.landXmlSource.noDiagnostics')}</div> : diagnostics.map((diagnostic, index) => <div key={`${diagnostic.sourceId ??'document'}:${diagnostic.code}:${index}`} className="px-3 py-2 text-xs text-warn">
         <span className="font-mono">{diagnostic.code}</span><span className="mx-1">—</span>{diagnostic.message}
       </div>)}
       <Pager page={boundedDiagnosticPage} pages={diagnosticPages} setPage={setDiagnosticPage} />
@@ -225,8 +225,8 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
 }
 
 function NavigationSection({ title, children }: { title: string; children: ReactNode }) {
-  return <div className="border-b border-zinc-200 dark:border-zinc-800">
-    <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50"><h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">{title}</h4></div>
-    <div className="divide-y divide-zinc-100 dark:divide-zinc-900">{children}</div>
+  return <div className="border-b border-border">
+    <div className="p-3 bg-muted"><h4 className="font-bold text-xs uppercase tracking-wide text-muted-foreground">{title}</h4></div>
+    <div className="divide-y divide-border">{children}</div>
   </div>;
 }

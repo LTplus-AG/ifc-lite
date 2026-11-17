@@ -9,7 +9,9 @@
  * command builds (or, with nothing running and nothing selected, the kind
  * built last), and the SELECTED element. With both, a pill switches between
  * them; a running command starts on its defaults, otherwise the selection
- * wins. Outside the Model workspace there is no target.
+ * wins. A running command that builds no kind (a grid, a stair, a move) has no
+ * defaults here, so it never shows the last kind's. Outside the Model workspace
+ * there is no target.
  *
  * Every write goes through `inspector-edits.ts`: one undo step each.
  */
@@ -21,6 +23,8 @@ import { fromGlobalIdFromModels } from '@/store/globalId';
 import { effectiveListTypeName } from '@/lib/lists/effective-provider-entities';
 import { elementStoreyId } from '@/lib/commands/modeling/workplane';
 import { authoredKindOf, commandKind, entityName, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
+import { getModelingCommand } from '@/lib/commands/modeling/registry';
+import type { TranslationKey } from '@/i18n';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 
 export type InspectorMode = 'defaults' | 'selection';
@@ -46,6 +50,8 @@ export interface InspectorTarget {
   readonly both: boolean;
   /** In the workspace with no command running and nothing selected: the last kind's defaults show. */
   readonly idle: boolean;
+  /** The label of a running command that builds no kind, with nothing selected: there is nothing to edit here. */
+  readonly kindlessCommand: TranslationKey | null;
   readonly setMode: (mode: InspectorMode) => void;
 }
 
@@ -89,8 +95,9 @@ export function useInspectorTarget(): InspectorTarget {
 
   const slabClass = useViewerStore((s) => s.authoringDefaults.slabClass);
   const beamClass = useViewerStore((s) => s.authoringDefaults.beamClass);
-  const running = commandKind(session?.activeCommandId, { slabClass, beamClass });
-  const defaultsKind = session ? running ?? (selection ? null : lastKind) : null;
+  const activeCommandId = session?.activeCommandId ?? null;
+  const running = commandKind(activeCommandId, { slabClass, beamClass });
+  const defaultsKind = session ? running ?? (selection || activeCommandId ? null : lastKind) : null;
   const [picked, setPicked] = useState<InspectorMode | null>(null);
   useEffect(() => setPicked(null), [selectedEntityId, session?.activeCommandId]);
   // "The kind built last": whatever the rail's command builds is next.
@@ -100,6 +107,7 @@ export function useInspectorTarget(): InspectorTarget {
   const mode: InspectorMode | null = both
     ? picked ?? (running ? 'defaults' : 'selection')
     : selection ? 'selection' : defaultsKind ? 'defaults' : null;
-  const idle = session !== null && running === null && selection === null;
-  return { inSession: session !== null, sessionModel, defaultsKind, selection, mode, both, idle, setMode: setPicked };
+  const idle = session !== null && activeCommandId === null && selection === null;
+  const kindlessCommand = session && activeCommandId && !running && !selection ? getModelingCommand(activeCommandId)?.labelKey ?? null : null;
+  return { inSession: session !== null, sessionModel, defaultsKind, selection, mode, both, idle, kindlessCommand, setMode: setPicked };
 }

@@ -13,11 +13,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const sourceRoot = fileURLToPath(new URL('../../', import.meta.url));
-const addedProduction = new Set(['scripts/lib/unused-locals-measure.mjs',
+const addedProduction = new Set(['scripts/lib/unused-locals-measure.mjs', 'scripts/lib/unused-locals-run.mjs',
   'scripts/lib/unused-locals-pool.mjs', 'scripts/lib/unused-locals-worker.mjs']);
 const sources = ['scripts/check-unused-locals.mjs', 'scripts/typecheck-tests.mjs', 'tsconfig.tests.base.json',
   'scripts/lib/is-main-entry.mjs', 'scripts/lib/unused-locals-classify.mjs',
-  'scripts/lib/unused-locals-measure.mjs', 'scripts/lib/unused-locals-pool.mjs', 'scripts/lib/unused-locals-worker.mjs'];
+  'scripts/lib/unused-locals-measure.mjs', 'scripts/lib/unused-locals-run.mjs', 'scripts/lib/unused-locals-pool.mjs', 'scripts/lib/unused-locals-worker.mjs'];
 
 async function workspace() {
   const root = await mkdtemp(join(tmpdir(), 'unused-locals-7546-'));

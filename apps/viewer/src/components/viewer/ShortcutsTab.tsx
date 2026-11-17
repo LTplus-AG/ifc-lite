@@ -9,8 +9,10 @@
  * formatted for the platform the viewer runs on.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useTranslation, type TranslationKey, type TranslationParameters } from '@/i18n';
-import { ALT_SHORTCUT_PANELS } from '@/lib/panels/registry';
+import { ALT_SHORTCUT_PANELS, altShortcutDigit } from '@/lib/panels/registry';
+import { isPanelAvailable } from '@/lib/panels/availability';
 import { isApplePlatform } from '@/lib/commands/chord';
 import {
   KEY_COMMANDS,
@@ -19,6 +21,7 @@ import {
   type KeyCommandCategory,
 } from '@/lib/commands/keyboard-commands';
 import { formatCommandKeys } from '@/lib/commands/shortcut-label';
+import { isKeyCommandAvailable } from '@/lib/commands/keyboard-command-features';
 
 interface ShortcutRow {
   readonly id: string;
@@ -36,10 +39,12 @@ function rowsByCategory(apple: boolean, gestureKeys: (row: (typeof POINTER_GESTU
     rows.set(category, list);
   };
   for (const command of KEY_COMMANDS) {
+    if (!isKeyCommandAvailable(command)) continue;
     push(command.category, {
       id: command.id,
       keys: formatCommandKeys(command, apple),
-      labelKey: command.labelKey,
+      // A host can switch off every bottom panel; the row then has no bottom clause.
+      labelKey: command.id === 'ui.openPanel' && !panelTitles.bottomPanels ? 'commands.ui.openPanelSideOnly' : command.labelKey,
       params: command.id === 'ui.openPanel' ? panelTitles : undefined,
     });
   }
@@ -55,9 +60,12 @@ function rowsByCategory(apple: boolean, gestureKeys: (row: (typeof POINTER_GESTU
 export function ShortcutsTab() {
   const { t } = useTranslation();
   const apple = isApplePlatform();
+  // Each panel keeps its digit when one before it is switched off, so the list
+  // names the digit instead of relying on position.
   const altPanelTitles = (bottom: boolean) => ALT_SHORTCUT_PANELS
-    .filter((panel) => (panel.region === 'bottom') === bottom)
-    .map((panel) => t(panel.titleKey)).join(', ');
+    .map((panel, position) => ({ panel, digit: altShortcutDigit(position) }))
+    .filter(({ panel }) => (panel.region === 'bottom') === bottom && isPanelAvailable(panel.id))
+    .map(({ panel, digit }) => t('commands.ui.openPanelEntry', { digit, panel: t(panel.titleKey) })).join(', ');
   const groups = rowsByCategory(apple, (gesture) => t(gesture.gestureKey, { mod: apple ? '⌘' : 'Ctrl' }),
     { sidePanels: altPanelTitles(false), bottomPanels: altPanelTitles(true) });
 
@@ -66,7 +74,7 @@ export function ShortcutsTab() {
       {/* Learn-more row: drives discovery to the marketing site and the github.io
           docs. Sits above the shortcut groups so it's the first thing users hunting
           for help see, without crowding the keyboard reference itself. */}
-      <div className="rounded border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      {isFeatureEnabled('help.product-links') && <div className="rounded border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{t('keyboardShortcuts.shortcuts.learnMore')}</span>
         <a
           href="https://ifclite.dev"
@@ -85,7 +93,7 @@ export function ShortcutsTab() {
         >
           {t('keyboardShortcuts.shortcuts.docsLink')}
         </a>
-      </div>
+      </div>}
       {groups.map(({ category, rows }) => (
         <div key={category}>
           <h3 className="text-sm font-medium text-muted-foreground mb-2">
@@ -96,10 +104,13 @@ export function ShortcutsTab() {
               <div
                 key={row.id}
                 data-shortcut-command={row.id}
-                className="flex items-center justify-between gap-3 py-1"
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-1"
               >
-                <span className="text-sm">{t(row.labelKey, row.params)}</span>
-                <kbd className="shrink-0 px-2 py-0.5 text-xs bg-muted rounded border font-mono">
+                {/* The label wraps first (its 10rem basis); only a chord
+                    list too long for a phone row moves under it,
+                    right-aligned, and wraps there (#8802). */}
+                <span className="grow basis-40 text-sm">{t(row.labelKey, row.params)}</span>
+                <kbd className="ml-auto px-2 py-0.5 text-xs bg-muted rounded border font-mono">
                   {row.keys}
                 </kbd>
               </div>

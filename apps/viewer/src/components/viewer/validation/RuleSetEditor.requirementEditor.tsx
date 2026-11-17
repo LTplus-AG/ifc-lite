@@ -16,6 +16,7 @@
  */
 
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import type { FilterRule } from '@ifc-lite/rules';
@@ -60,20 +61,18 @@ export function RequirementEditor({ requirement, onChange, models, schemaVersion
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="inline-flex self-start rounded border border-zinc-200 bg-white p-0.5 text-2xs dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="inline-flex self-start rounded border border-border bg-card p-0.5">
         {KINDS.map((k) => (
-          <button
+          <Button
             key={k}
             type="button"
+            variant="toggle"
+            size="segment"
+            aria-pressed={requirement.kind === k}
             onClick={() => k !== requirement.kind && onChange(blankRequirementOfKind(k))}
-            className={`rounded px-2 py-0.5 font-medium transition-colors ${
-              requirement.kind === k
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
           >
             {t(`validationEditor.requirementKind.${k}`)}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -145,7 +144,7 @@ export function RequirementEditor({ requirement, onChange, models, schemaVersion
             placeholder={t('validationEditor.unit.unitPlaceholder')}
             aria-label={t('validationEditor.unit.unitAriaLabel')}
             aria-invalid={requirement.unit.trim().length === 0}
-            className={`h-7 w-20 text-xs font-mono ${requirement.unit.trim().length === 0 ? 'border-red-500' : ''}`}
+            className={`h-7 w-20 text-xs font-mono ${requirement.unit.trim().length === 0 ? 'border-danger-border' : ''}`}
           />
         </div>
       )}
@@ -212,7 +211,7 @@ function AggregateFields({
       </label>
 
       {hasGroupBy && requirement.groupBy && (
-        <div className="flex flex-col gap-2 border-l-2 border-zinc-200 pl-3 dark:border-zinc-800">
+        <div className="flex flex-col gap-2 border-l-2 border-border pl-3">
           <SubjectPicker
             subject={requirement.groupBy.subject}
             onChange={(subject) => onChange({ ...requirement, groupBy: { ...requirement.groupBy!, subject } })}
@@ -247,18 +246,18 @@ function AggregateFields({
 function ScopeToggle({ value, onChange }: { value: 'perModel' | 'federation'; onChange: (v: 'perModel' | 'federation') => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-2xs dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="inline-flex rounded border border-border bg-card p-0.5">
       {(['federation', 'perModel'] as const).map((s) => (
-        <button
+        <Button
           key={s}
           type="button"
+          variant="toggle"
+          size="segment"
+          aria-pressed={value === s}
           onClick={() => onChange(s)}
-          className={`rounded px-2 py-0.5 font-medium transition-colors ${
-            value === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
         >
           {t(`validationEditor.unique.scope.${s}`)}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -267,18 +266,18 @@ function ScopeToggle({ value, onChange }: { value: 'perModel' | 'federation'; on
 function ValueTypeToggle({ value, onChange }: { value: 'number' | 'date'; onChange: (v: 'number' | 'date') => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-2xs dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="inline-flex rounded border border-border bg-card p-0.5">
       {(['number', 'date'] as const).map((v) => (
-        <button
+        <Button
           key={v}
           type="button"
+          variant="toggle"
+          size="segment"
+          aria-pressed={value === v}
           onClick={() => onChange(v)}
-          className={`rounded px-2 py-0.5 font-medium transition-colors ${
-            value === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
         >
           {t(`validationEditor.compare.valueType.${v}`)}
-        </button>
+        </Button>
       ))}
     </div>
   );

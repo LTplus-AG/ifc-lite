@@ -25,7 +25,7 @@ mod spatial_lookups;
 mod spatial_tree;
 
 use self::spatial_canonical_parent::resolve_aggregate_canonical_parents;
-use self::spatial_elevation::extract_elevation_if_storey;
+pub use self::spatial_elevation::extract_elevation_if_storey;
 use self::spatial_lookups::build_element_lookups;
 pub(super) use self::spatial_invariant::spatial_hierarchy_consistency_violations;
 #[cfg(test)]

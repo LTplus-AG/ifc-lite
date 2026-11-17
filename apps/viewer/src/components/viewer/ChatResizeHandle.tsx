@@ -39,7 +39,7 @@ export function ChatResizeHandle({ width, onWidthChange, onMouseDown }: ChatResi
       aria-valuemin={240}
       aria-valuemax={700}
       aria-valuenow={width}
-      className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 focus-visible:outline-2 focus-visible:outline-primary transition-colors cursor-col-resize shrink-0 h-full"
+      className="shell-splitter-v h-full focus-visible:outline-2 focus-visible:outline-primary"
     />
   );
 }

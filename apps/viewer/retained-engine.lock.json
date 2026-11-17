@@ -1,0 +1,10 @@
+{
+  "schema": "ifc-lite.retained-engine-lock/1",
+  "sourceTag": "v27.2.0",
+  "sourceCommit": "c748326ee07edccea8d5549e979ff92bf1817afd",
+  "url": "https://github.com/LTplus-AG/ifc-lite/releases/download/v27.2.0/ifc-lite-retained-engine-v27.2.0.tar.gz",
+  "archiveSha256": "0f4847cbb37f0927fe23b94db30c6987fb767638fe0c159705fc006913256bfe",
+  "archiveBytes": 6243990,
+  "engineManifestSha256": "42f1d5e82f56d73bd2d96652bb960ae810e8b0b1cd1861b835b6949cea173e7e",
+  "sdkRevision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05"
+}

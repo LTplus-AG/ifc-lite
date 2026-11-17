@@ -13,14 +13,14 @@ mod appearance_transfer;
 mod annotation_plane;
 mod captured_mesh;
 mod appearance_calibration;
-mod scan_outline;
-mod scan_registration;
-mod scan_proposals;
-mod scan_segmentation;
-mod pdf_vector;
+#[cfg(feature = "scan")] mod scan_outline;
+#[cfg(feature = "scan")] mod scan_registration;
+#[cfg(feature = "scan")] mod scan_proposals;
+#[cfg(feature = "scan")] mod scan_segmentation;
+#[cfg(feature = "pdf-vector")] mod pdf_vector;
 mod bool2d;
-mod clash;
-mod clash_solid;
+#[cfg(feature = "clash")] mod clash;
+#[cfg(feature = "clash")] mod clash_solid;
 mod csg_console;
 mod csg_diagnostics;
 mod diagnose;
@@ -30,18 +30,18 @@ mod content_caches;
 mod content_install;
 mod content_lazy;
 mod extrusion_definitions;
-mod export_data;
-mod export_dfjson;
-mod export_glb;
-mod export_hbjson;
-mod export_landxml;
-mod export_obj;
-mod export_step;
+#[cfg(feature = "export")] mod export_data;
+#[cfg(feature = "export")] mod export_dfjson;
+#[cfg(feature = "export")] mod export_glb;
+#[cfg(feature = "export")] mod export_hbjson;
+#[cfg(all(feature = "export", feature = "landxml"))] mod export_landxml;
+#[cfg(feature = "export")] mod export_obj;
+#[cfg(feature = "export")] mod export_step;
 mod extract_profiles;
 mod gpu_meshes;
 mod grid_lines;
-mod landxml;
-mod landxml_stream;
+#[cfg(feature = "landxml")] mod landxml;
+#[cfg(feature = "landxml")] mod landxml_stream;
 mod mesh_outline;
 mod overlay_frame;
 mod parsing;
@@ -50,6 +50,7 @@ mod parsing;
 mod retained_browser;
 mod pipeline_diagnostics;
 mod simplify;
+mod skip_voids;
 mod swept_disk_descriptions;
 mod space_plate;
 mod space_plate_input;
@@ -121,6 +122,7 @@ pub struct IfcAPI {
     /// full density. Default off ⇒ every cut runs (byte-identical to before). Applied
     /// to the per-batch `GeometryRouter` via `GeometryRouter::set_skip_small_cuts`.
     skip_small_cuts: std::sync::atomic::AtomicBool,
+    skip_voids: std::sync::atomic::AtomicBool,
 
     /// Distinct refused record identities for the current load; repeated reads
     /// and batches are unioned before publishing the diagnostics counter.
@@ -160,6 +162,7 @@ impl IfcAPI {
             ),
             tessellation_quality: std::sync::atomic::AtomicU8::new(TESSELLATION_QUALITY_MEDIUM),
             skip_small_cuts: std::sync::atomic::AtomicBool::new(false),
+            skip_voids: std::sync::atomic::AtomicBool::new(false),
             pipeline_refusals: std::sync::Mutex::default(),
             pipeline_omitted_type_records: std::sync::Mutex::default(),
             pipeline_diagnostics: std::sync::Mutex::new(

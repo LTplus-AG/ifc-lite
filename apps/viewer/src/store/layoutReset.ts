@@ -16,7 +16,7 @@
  */
 
 import { getViewerStoreApi } from './index.js';
-import { BOTTOM_STRIP_DEFAULT_HEIGHT, persistBottomStripHeight } from '@/lib/panels/bottom-strip-persistence';
+import { BOTTOM_STRIP_DEFAULT_HEIGHT, persistBottomStripDrawingHeight, persistBottomStripHeight } from '@/lib/panels/bottom-strip-persistence';
 import { forgetLayoutPreset } from './layout-preset-reset.js';
 
 /** The hierarchy pane's initial size in percent (`ViewerLayout`), and what a
@@ -40,5 +40,6 @@ export function resetLayout(store = getViewerStoreApi()): void {
   // a strip that is not mounted (the mobile layout) would otherwise reopen at
   // the height the reset was meant to discard (#5957).
   persistBottomStripHeight(BOTTOM_STRIP_DEFAULT_HEIGHT);
+  persistBottomStripDrawingHeight(null);
   state.bumpLayoutResetEpoch();
 }

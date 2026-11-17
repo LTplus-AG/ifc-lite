@@ -15,11 +15,13 @@
  * the tool is closed because finished measurements outlive the gesture.
  */
 
-import { useState } from 'react';
+import { consumeMeasurementDestination, useMeasurementDestination } from '@/lib/panels/measurement-destination';
+import { useEffect, useRef, useState } from 'react';
 import { Boxes, Crosshair, List, Ruler, Trash2, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ACTIVE_TAB_CLASS } from '@/components/ui/active-state';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslationKey } from '@/i18n/en';
@@ -41,7 +43,21 @@ const TABS: ReadonlyArray<{ id: PanelTab; labelKey: TranslationKey; titleKey: Tr
 export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
   const { confirmDialog } = useDialogs();
-  const [tab, setTab] = useState<PanelTab>('list');
+  const pointMode = useViewerStore((s) => s.activeTool === 'measure' && s.measureMode === 'point');
+  const destination = useMeasurementDestination();
+  const [tab, setTab] = useState<PanelTab>(destination.revision && destination.tab ? destination.tab : pointMode ? 'point' : 'list');
+  const previousPointMode = useRef(pointMode);
+  // Touch sequences expose Finish in List; explicit palette destinations win.
+  const sequenceOpen = useViewerStore((s) => s.pointerInput === 'touch' && (s.activePolyline !== null || s.activeRadius !== null));
+  const previousSequenceOpen = useRef(false);
+  useEffect(() => {
+    const requested = consumeMeasurementDestination(destination.revision);
+    if (requested) setTab(requested);
+    else if (sequenceOpen && !previousSequenceOpen.current) setTab('list');
+    else if (pointMode && !previousPointMode.current) setTab('point');
+    previousPointMode.current = pointMode;
+    previousSequenceOpen.current = sequenceOpen;
+  }, [destination, pointMode, sequenceOpen]);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const count = useViewerStore(
     (s) =>
@@ -86,7 +102,7 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
             key={id}
             value={id}
             title={t(titleKey)}
-            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
+            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${ACTIVE_TAB_CLASS}`}
           >
             <Icon className="h-3 w-3" />
             {t(labelKey)}

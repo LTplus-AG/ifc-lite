@@ -158,7 +158,8 @@ export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: Gant
           label={isPlaying ? t('schedule.toolbar.pause') : t('schedule.toolbar.play')}
           tooltip={isPlaying ? t('schedule.toolbar.pauseConstructionSequence') : t('schedule.toolbar.playConstructionSequence')}
           size="icon-sm"
-          variant={isPlaying ? 'default' : 'ghost'}
+          variant="toggle"
+          aria-pressed={isPlaying}
           onClick={togglePlay}
           disabled={!hasData}
         >
@@ -178,7 +179,8 @@ export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: Gant
           label={playbackLoop ? t('schedule.toolbar.disableLoop') : t('schedule.toolbar.enableLoop')}
           tooltip={playbackLoop ? t('schedule.toolbar.looping') : t('schedule.toolbar.oneShot')}
           size="icon-sm"
-          variant={playbackLoop ? 'default' : 'ghost'}
+          variant="toggle"
+          aria-pressed={playbackLoop}
           onClick={() => setLoop(!playbackLoop)}
         >
           {playbackLoop ? <Repeat className="h-4 w-4" /> : <Repeat2 className="h-4 w-4" />}

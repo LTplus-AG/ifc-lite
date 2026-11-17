@@ -35,6 +35,7 @@ import type { Clash, ClashResult } from '@ifc-lite/clash';
 import { CLASH_REVIEW_STATUSES, clashReviewKey } from '@ifc-lite/clash';
 import type { ClashExclusionRule } from '@/lib/clash/exclusions';
 import { ClashPanel } from './ClashPanel.js';
+import { findPanelAction, openPanelOverflow, runPanelAction } from '@/test/panel-header.js';
 
 // Guarded dynamic import (#4918 revert-oracle, same pattern as
 // Measure.i18n.test.tsx): reverting production hunks treats this brand-new
@@ -307,13 +308,15 @@ function assertStaticCoverage(english: Set<string>, after: Set<string>): void {
 }
 
 describe('ClashPanel localization (#4918)', { skip: !HAS_CATALOGUE && 'clash-panel.en.ts catalogue module not present (revert-oracle probe)' }, () => {
-  it('header, help disclosure, empty state (single model), and close', () => {
+  it('header, help disclosure, empty state (single model), and close', async () => {
     useViewerStore.setState({ models: new Map() });
     const container = render(<ClashPanel onClose={() => {}} />);
-    // Open the help disclosure so its four paragraphs are on screen.
-    const helpButton = [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'How clash detection works');
-    assert.ok(helpButton, 'help toggle button not found');
-    act(() => helpButton!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
+    // Open the help disclosure so its four paragraphs are on screen; the help
+    // toggle is a header action, inline or in More actions (#8802).
+    assert.ok(await findPanelAction(container, 'How clash detection works'), 'help toggle not found');
+    await runPanelAction(container, 'How clash detection works');
+    // Keep More actions open so the labels of the actions it holds are read too.
+    await openPanelOverflow(container);
 
     const english = chromeStrings(container);
     registerLocale(PSEUDO_LOCALE, PSEUDO);

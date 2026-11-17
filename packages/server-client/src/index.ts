@@ -29,6 +29,7 @@
  */
 
 export * from './client.js';
+export { assertProcessedModelHash, isProcessedModelRef, normalizeProcessedModelHash, processedModelSize, type ProcessedModelRef } from './processed-model.js';
 export * from './types.js';
 export { IfcServerError } from './server-error.js';
 export { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';

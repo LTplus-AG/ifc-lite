@@ -22,6 +22,8 @@ import type { RelayDeclaration } from '@ifc-lite/plugin-api';
 
 export const CONFIGURED_RELAY_ROUTES: ReadonlyMap<string, string> = new Map([
   ['/api/dalux', 'https://node1.field.dalux.com/service/api'],
+  // `api/buildagil.ts`: openCDE reads plus the token route that adds the client secret.
+  ['/api/buildagil', 'https://openapi.buildagil.com'],
 ]);
 
 /**

@@ -44,6 +44,13 @@ export interface CameraState {
   position: Vec3;
   target: Vec3;
   fov: number;
+  /**
+   * The camera's up vector. Optional: older peers omit it, and world Y is
+   * the fallback. A plan view looking straight down carries its screen
+   * orientation in a horizontal `up` alone, so without it a "jump to peer"
+   * cannot reproduce the plan's rotation.
+   */
+  up?: Vec3;
 }
 
 export interface PresenceState {

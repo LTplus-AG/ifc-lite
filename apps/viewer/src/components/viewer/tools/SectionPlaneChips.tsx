@@ -31,10 +31,15 @@ import { leaveAlignmentMode } from '@/lib/section/alignment-controller';
 import { useSectionPlaneSet } from './useSectionPlaneSet';
 import { useLiveTestId } from './SectionBarMeasure';
 
-const DIRECTIONS: ReadonlyArray<{ axis: SectionPlaneAxis; labelKey: 'sectionPlanes.addDown' | 'sectionPlanes.addFront' | 'sectionPlanes.addSide' }> = [
-  { axis: 'down', labelKey: 'sectionPlanes.addDown' },
-  { axis: 'front', labelKey: 'sectionPlanes.addFront' },
-  { axis: 'side', labelKey: 'sectionPlanes.addSide' },
+/** The same choices, and hover text, as the Add menu (#8672), so a direction means one thing everywhere. */
+const DIRECTIONS: ReadonlyArray<{
+  axis: SectionPlaneAxis;
+  labelKey: 'sectionPlanes.addDown' | 'sectionPlanes.addFront' | 'sectionPlanes.addSide';
+  titleKey: 'sectionPlanes.addDownTitle' | 'sectionPlanes.addFrontTitle' | 'sectionPlanes.addSideTitle';
+}> = [
+  { axis: 'down', labelKey: 'sectionPlanes.addDown', titleKey: 'sectionPlanes.addDownTitle' },
+  { axis: 'front', labelKey: 'sectionPlanes.addFront', titleKey: 'sectionPlanes.addFrontTitle' },
+  { axis: 'side', labelKey: 'sectionPlanes.addSide', titleKey: 'sectionPlanes.addSideTitle' },
 ];
 
 // A long name ends in an ellipsis (the whole name is the tooltip) instead of widening the bar.
@@ -116,16 +121,17 @@ export function SectionPlaneMenu({ plane, onRename }: { plane: SectionPlane; onR
         <DropdownMenuSeparator />
         {/* What this plane IS: a direction, or a picked face. Changing it keeps the plane's name and place in the set. */}
         <DropdownMenuLabel className="text-2xs">{t('sectionPlanes.menu.direction')}</DropdownMenuLabel>
-        {DIRECTIONS.map(({ axis, labelKey }) => (
+        {DIRECTIONS.map(({ axis, labelKey, titleKey }) => (
           <DropdownMenuCheckboxItem
             key={axis}
+            title={t(titleKey)}
             checked={!plane.custom && !plane.box && plane.axis === axis}
             onCheckedChange={() => { leaveAlignmentMode(); resetSectionToAxis(store.getState, axis); }}
           >
             {t(labelKey)}
           </DropdownMenuCheckboxItem>
         ))}
-        <DropdownMenuItem onSelect={() => { leaveAlignmentMode(); store.getState().setSectionPickMode(true); }}>{t('sectionPlanes.addFace')}</DropdownMenuItem>
+        <DropdownMenuItem title={t('sectionPlanes.addFaceTitle')} onSelect={() => { leaveAlignmentMode(); store.getState().setSectionPickMode(true); }}>{t('sectionPlanes.addFace')}</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => { store.getState().removeSectionPlane(plane.id); offerUndo(t); }}>{t('sectionPlanes.menu.remove')}</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => { store.getState().clearSectionPlanes(); offerUndo(t); }}>{t('sectionPlanes.menu.clearAll')}</DropdownMenuItem>

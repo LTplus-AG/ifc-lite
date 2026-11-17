@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/* #8042 packed public facade acceptance. Run only inside parent fleet admission.
+/* #8042 packed public facade acceptance.
  * No builds, dependency installs, registry access, source edits, or skipped cases.
  */
 import assert from 'node:assert/strict';

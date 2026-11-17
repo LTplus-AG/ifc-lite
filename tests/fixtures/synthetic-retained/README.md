@@ -91,12 +91,10 @@ Highest share profile-arc segment counts, so no false quality-variation test is
 provided. The source renderer does not resolve image URLs here; decoding the
 PNG in a test proves the sidecar pixels only, not engine sidecar loading.
 If the engine returns decoded RGBA, the test accepts it only with the correct
-2×2 dimensions and 16 bytes; it does not require loading to be absent. Run through
-fleet admission according to AGENTS.md:
+2×2 dimensions and 16 bytes; it does not require loading to be absent. Run:
 
 ```sh
-/home/louistrue/build-workers/ifc-fleet run --cwd /absolute/checkout -- \
-  cargo test --locked -p ifc-lite-processing --test issue_7955_synthetic -- --nocapture
+cargo test --locked -p ifc-lite-processing --test issue_7955_synthetic -- --nocapture
 ```
 
 Tests consume the JSON tolerance/oracle files, require the committed inputs,
@@ -157,8 +155,7 @@ path; do not widen the preregistered tolerance. This rationale was recorded befo
 F-C volume has a similar limitation: vertex displacement up to d above times
 22 m² surface area gives a first-order conservative error near 9e-6 m³, above
 its fixed 1e-6 m³ acceptance target. Neither target guarantees arbitrary f32
-rounding behaviour. Both passed once on pop-os at d0042c6654 (parent job
-bbf4324a); that observation is not a cross-platform bound. Preserve the targets
+rounding behaviour. Both passed once at d0042c6654; that observation is not a cross-platform bound. Preserve the targets
 and investigate a future failure's rounding path; do not widen after a failure.
 F-A cutter planes/bounds and F-B source coordinates are dyadic rationals exact
 in f32. Preserve that fixture property when using the 1e-6 m planar checks;
@@ -181,11 +178,10 @@ Until then J3 qualification is UNQUALIFIED. F-A native-query rows explicitly
 name the six separate control product ids and host #55 total. Control queries
 cannot qualify material bands derived from that host.
 
-Real edit/run/restore mutations can be submitted as a single admitted job:
+Real edit/run/restore mutations can be run as a single job:
 
 ```sh
-/home/louistrue/build-workers/ifc-fleet run --cwd /absolute/checkout -- \
-  python3 tests/fixtures/synthetic-retained/mutate.py --run
+python3 tests/fixtures/synthetic-retained/mutate.py --run
 ```
 
 `--list` is a lightweight, read-only plan check. The runner requires clean tracked
@@ -199,7 +195,7 @@ headers with or without a numeric thread id. Every transcript and the final
 printed to the worker log. Run `python3 tests/fixtures/synthetic-retained/mutate.py
 --self-test` for offline matcher regression tests; these also run automatically
 before `--run`. `mutation-failure-samples.json` contains contiguous panic/summary
-excerpts captured from the parent fleet run at 046b759b9d, with provenance hashes.
+excerpts captured from a run at 046b759b9d, with provenance hashes.
 The self-tests reject the wrong assertion even when the expected text occurs
 elsewhere in the output. An offline replay is not a new native mutation run.
 SIGTERM/interrupt stops the runner's Cargo process group before restoration;
@@ -216,7 +212,7 @@ layer thicknesses, arbitrary retained definition groups, invented cross-file
 semantic face keys, and changed native-query policy. The first three survive
 because host-total and separate control-solid checks cannot assert radial
 material membership. The latter three policies are not consumed by the engine
-assertions. These are planned expectations until a fleet mutation receipt exists. They expose untested
+assertions. These are planned expectations until a mutation run exists. They expose untested
 contracts and are reported separately, never as killed mutants. The suite also
 cannot establish smooth-normal correctness, relative opening/map-frame handling,
 internal-cap suppression, UV seams, engine sidecar loading, retained/Worker/

@@ -38,6 +38,7 @@ const { content } = creator.toIfc(); // IFC STEP text
 - Property sets, element quantities, materials, and colors
 - 4D scheduling entities: IfcWorkSchedule, IfcTask, IfcRelSequence
 - In-store builders (`addWallToStore`, `addSlabToStore`, ...) that emit elements into an existing parsed model
+- `addStructuralPointConnectionToStore` accepts boolean fixed/free or numeric spring stiffness in `BoundaryCondition`
 - `addOrdinaryElementInStore(editor, anchor, element)` commits the eight ordinary
   builders atomically. Its anchor can be resolved or supplied by a synchronous
   draft-editor callback so existing host preparation shares that transaction.

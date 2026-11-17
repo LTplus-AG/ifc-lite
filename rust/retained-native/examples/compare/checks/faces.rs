@@ -95,12 +95,13 @@ pub fn check(product: &ShapeOnlyProduct, sources: &AnalyticQuantitySources, tole
     results
 }
 
-/// #7955 ruling 3: the only missing key the comparison allows is a 2-4 mm side
-/// the kernel folded into a collinear neighbour of the same authored run
-/// (verified: dental_clinic #243 `#38165:side(0,8)`, 2.0 mm on y = 1.5074). The
-/// 1 nm slack only absorbs the rounding of the width's own arithmetic, so an
-/// authored 2.0 or 4.0 mm side is not lost a few ulps short of the bound.
-pub const MERGED_SIDE_WIDTH_M: std::ops::RangeInclusive<f64> = 0.002 - 1e-9..=0.004 + 1e-9;
+/// #7955 rulings 3, 16 and 21: the only missing line key the comparison allows is a 0.2-4 mm
+/// side the kernel folded into a collinear neighbour of the same authored run
+/// (verified: dental_clinic #243 `#38165:side(0,8)`, 2.0 mm on y = 1.5074; ISSUE_129
+/// #170114 `#170106:side(0,6)`, 0.831 mm; ISSUE_098 #807104, 0.236 mm). The 1 nm slack only
+/// absorbs the width's own rounding, so an authored 0.2 or 4.0 mm side is not lost a few ulps short.
+/// Ruling 19: an arc side of a run on one circle has no width window; the matching total decides.
+pub const MERGED_SIDE_WIDTH_M: std::ops::RangeInclusive<f64> = 0.0002 - 1e-9..=0.004 + 1e-9;
 
 /// Receiver assignments searched per run. Single-receiver sides cost nothing; only
 /// sides with a present neighbour on both ends double it (16 such sides).
@@ -111,13 +112,23 @@ pub const MAX_MERGE_CHOICES: usize = 1 << 16;
 /// area plus the areas it absorbed, within the frozen linear face-area limit.
 fn merges(run: &faces::CollinearRun, widest: &BTreeMap<&str, f64>, expected: &FaceAreas, actual: &BTreeMap<String, f64>, limit: f64) -> Vec<(usize, usize)> {
     let present = |i: usize| actual.contains_key(&run.keys[i]);
-    let absorbable = |i: usize| !present(i) && expected.contains_key(&run.keys[i]) && MERGED_SIDE_WIDTH_M.contains(&widest[run.keys[i].as_str()]);
+    let absorbable = |i: usize| !present(i) && expected.contains_key(&run.keys[i])
+        && (run.arcs || MERGED_SIDE_WIDTH_M.contains(&widest[run.keys[i].as_str()]));
     let missing: Vec<usize> = (0..run.keys.len()).filter(|&i| absorbable(i)).collect();
-    // Nearest present key on each side, skipping only other absorbable sides.
+    // Nearest present key on each side, skipping only other absorbable sides. A closed run (a
+    // whole circle) continues across its closing vertex; an open one ends at its own ends.
+    let n = run.keys.len();
     let candidates: Vec<Vec<usize>> = missing.iter().map(|&i| {
-        let left = (0..i).rev().find(|&j| !absorbable(j)).filter(|&j| present(j));
-        let right = (i + 1..run.keys.len()).find(|&j| !absorbable(j)).filter(|&j| present(j));
-        left.into_iter().chain(right).collect()
+        // Lazily: each search stops at the first side that is not absorbable.
+        let nearest = |mut side: Box<dyn Iterator<Item = usize>>| side.find(|&j| !absorbable(j)).filter(|&j| present(j));
+        let (left, right) = if run.closed {
+            (nearest(Box::new((1..n).map(|k| (i + n - k) % n))), nearest(Box::new((1..n).map(|k| (i + k) % n))))
+        } else {
+            (nearest(Box::new((0..i).rev())), nearest(Box::new(i + 1..n)))
+        };
+        let mut sides: Vec<usize> = left.into_iter().chain(right).collect();
+        sides.dedup();
+        sides
     }).collect();
     if missing.is_empty() || candidates.iter().any(Vec::is_empty) { return Vec::new(); }
     // Only a side between two present neighbours has a choice. Fail closed past
@@ -155,11 +166,13 @@ pub fn compare(expected: &FaceAreas, actual: &BTreeMap<String, f64>, runs: &[fac
         }
     }
     for run in runs {
-        for (i, into) in merges(run, &widest, &expected, actual, limit("linear")) {
+        // A curved side's area is chordal: it matches its source within the curved face limit.
+        for (i, into) in merges(run, &widest, &expected, actual, limit(if run.arcs { "curved" } else { "linear" })) {
             let (key, target) = (&run.keys[i], &run.keys[into]);
             let area = expected.remove(key).expect("absorbable keys are expected").area_m2;
             expected.get_mut(target).expect("receiving keys are expected").area_m2 += area;
-            merged.push(format!("{key} into {target} ({:.3} mm)", widest[run.keys[i].as_str()] * 1e3));
+            merged.push(if run.arcs { format!("{key} into {target} (arc on one circle)") }
+                else { format!("{key} into {target} ({:.3} mm)", widest[run.keys[i].as_str()] * 1e3) });
         }
     }
     let mut results = Vec::new();
@@ -168,7 +181,16 @@ pub fn compare(expected: &FaceAreas, actual: &BTreeMap<String, f64>, runs: &[fac
             gated: false, reason: Some(merged.join("; ")), ..Default::default() });
     }
     let mismatched = expected.keys().filter(|k| !actual.contains_key(*k)).count() + actual.keys().filter(|k| !expected.contains_key(*k)).count();
-    results.push(OracleResult { family: "faceKeys", value: mismatched as f64, limit: 0., pass: mismatched == 0, gated: true, ..Default::default() });
+    // Name the keys: an authored width, and whether the published total still holds the area.
+    let reason = (mismatched > 0).then(|| {
+        let width = |key: &str| widest.get(key).map_or(String::from("no run"), |w| format!("{:.3} mm", w * 1e3));
+        let lost: Vec<_> = expected.iter().filter(|(k, _)| !actual.contains_key(*k)).take(8)
+            .map(|(k, e)| format!("{k} ({}, {:.6} m2)", width(k), e.area_m2)).collect();
+        let extra: Vec<_> = actual.keys().filter(|k| !expected.contains_key(*k)).take(8).cloned().collect();
+        format!("missing [{}]; extra [{}]; total source {:.9} published {:.9} m2", lost.join(", "), extra.join(", "),
+            expected.values().map(|e| e.area_m2).sum::<f64>(), actual.values().sum::<f64>())
+    });
+    results.push(OracleResult { family: "faceKeys", value: mismatched as f64, limit: 0., pass: mismatched == 0, gated: true, reason, ..Default::default() });
     for (family, curved) in [("faceAreaLinear", false), ("faceAreaCurved", true)] {
         let worst = expected.iter().filter(|(_, e)| e.curved == curved)
             .map(|(k, e)| actual.get(k).map_or(f64::INFINITY, |a| (a - e.area_m2).abs() / e.area_m2)).fold(0., f64::max);

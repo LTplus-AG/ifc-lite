@@ -18,9 +18,9 @@ export const validationPanelEn = {
   'validationPanel.entry.rulesTitle': 'Information validation',
   'validationPanel.entry.rulesDescription': 'Author checks — uniqueness, totals, comparisons — the model must satisfy.',
   'validationPanel.entry.newRuleSet': 'New rule set',
-  'validationPanel.entry.openRuleSet': 'Open .rules.json',
+  'validationPanel.entry.openRuleSet': 'Open rule set',
   'validationPanel.entry.recent': 'Recent rule sets',
-  'validationPanel.entry.importIds': 'Import IDS as rules',
+  'validationPanel.entry.importIds': 'Import IDS',
 
   'validationPanel.toggle.ids': 'IDS validation',
   'validationPanel.toggle.rules': 'Information validation',

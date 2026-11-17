@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import { useViewerStore, type HierarchyMode } from '@/store';
 import type { TreeNode } from './types';
+import { usePresentationLayerReveal } from './usePresentationLayerReveal';
 import { matchesRevealTarget } from './revealGlobalId';
 
 /** The subset of a `useVirtualizer` instance this hook needs — narrow enough
@@ -12,6 +13,7 @@ import { matchesRevealTarget } from './revealGlobalId';
  *  `HierarchyPanel.tsx` without importing virtualizer generics here. */
 interface ScrollableVirtualizer {
   scrollToIndex: (index: number, opts?: { align?: 'auto' | 'start' | 'center' | 'end' }) => void;
+  getVirtualItems?: () => { index: number }[];
 }
 
 interface UseRevealSelectionParams {
@@ -25,6 +27,10 @@ interface UseRevealSelectionParams {
   storeysVirtualizer: ScrollableVirtualizer;
   modelsVirtualizer: ScrollableVirtualizer;
   virtualizer: ScrollableVirtualizer;
+  container?: RefObject<HTMLDivElement | null>;
+  setSearchQuery?: (query: string) => void;
+  searchQuery?: string;
+  groupingReady?: boolean;
 }
 
 /** First node across `storeysNodes`+`modelsNodes` (multi-model) or
@@ -84,8 +90,13 @@ export function useRevealSelection({
   isMultiModel,
   storeysVirtualizer,
   modelsVirtualizer,
-  virtualizer,
+  virtualizer, container, setSearchQuery, searchQuery, groupingReady,
 }: UseRevealSelectionParams): { markFromTreeClick: () => void } {
+  const fallbackContainer = useRef<HTMLDivElement | null>(null);
+  const requestedLayer = useViewerStore(s => s.pendingPresentationLayerReveal);
+  const selectionRevision = useViewerStore(s => s.selectionRevision);
+  const layerRequest = requestedLayer?.selectionRevision === selectionRevision ? requestedLayer : null;
+  usePresentationLayerReveal(filteredNodes, container ?? fallbackContainer, virtualizer, setSearchQuery, searchQuery, groupingReady);
   const findTargetId = useCallback((globalId: number) =>
     findAlreadyVisibleTargetId(isMultiModel, storeysNodes, modelsNodes, filteredNodes, globalId)
       ?? revealGlobalId(globalId),
@@ -100,7 +111,23 @@ export function useRevealSelection({
     fromTreeClickRef.current = { id: state.selectedEntityId, revision: state.selectionRevision };
   }, []);
 
-  const selectionRevision = useViewerStore((s) => s.selectionRevision);
+  const focusSelectionRef = useRef<{ id: number; revision: number; expiresAt: number } | null>(null);
+  const rendered = virtualizer.getVirtualItems?.().map(item => item.index).join(',');
+  useEffect(() => {
+    const previous = focusSelectionRef.current;
+    focusSelectionRef.current = null;
+    if (groupingMode !== 'presentation-layers' || layerRequest || selectedEntityId === null) return;
+    // An armed, unresolved focus transfer follows subsequent selection intents
+    // while metadata loads, even after the original layer request was retired.
+    if ((requestedLayer && !layerRequest) || (previous && Date.now() <= previous.expiresAt)) {
+      focusSelectionRef.current = { id: selectedEntityId, revision: selectionRevision,
+        expiresAt: previous?.expiresAt ?? Date.now() + 30_000 };
+    }
+  }, [requestedLayer, layerRequest, selectedEntityId, selectionRevision, groupingMode]);
+
+  useEffect(() => {
+    if (layerRequest) { pendingTargetRef.current = null; unresolvedRef.current = null; }
+  }, [layerRequest]);
 
   // Effect A: a selection was DISPATCHED (every dispatch bumps
   // `selectionRevision`, whether or not `selectedEntityId`'s value actually
@@ -112,7 +139,7 @@ export function useRevealSelection({
     fromTreeClickRef.current = undefined; // unconditional: even the null/deselect run consumes it
     pendingTargetRef.current = null;
     unresolvedRef.current = null;
-    if (selectedEntityId == null) return;
+    if (layerRequest || selectedEntityId == null) return;
     if (marked && marked.id === selectedEntityId && marked.revision === selectionRevision) return;
 
     const targetId = findTargetId(selectedEntityId);
@@ -128,7 +155,7 @@ export function useRevealSelection({
   // metadata arrivals cannot undo a user's later collapse or scroll position.
   useEffect(() => {
     const request = unresolvedRef.current;
-    if (!request || request.revision !== selectionRevision || request.mode !== groupingMode
+    if (layerRequest || !request || request.revision !== selectionRevision || request.mode !== groupingMode
       || request.globalId !== selectedEntityId || request.lookup === findTargetId) return;
     request.lookup = findTargetId;
     const targetId = findTargetId(request.globalId);
@@ -136,11 +163,12 @@ export function useRevealSelection({
       unresolvedRef.current = null;
       pendingTargetRef.current = targetId;
     }
-  }, [findTargetId, selectionRevision, groupingMode, selectedEntityId]);
+  }, [findTargetId, selectionRevision, groupingMode, selectedEntityId, layerRequest]);
 
   // Effect B: the rendered lists catch up (e.g. after Effect A expanded a
   // collapsed ancestor) — find the pending target's row and scroll to it.
   useEffect(() => {
+    if (layerRequest) return; // An explicit assignment reveal wins over product reveal.
     const targetId = pendingTargetRef.current;
     if (targetId == null) return;
 
@@ -164,7 +192,26 @@ export function useRevealSelection({
       virtualizer.scrollToIndex(index, { align: 'auto' });
       pendingTargetRef.current = null;
     }
-  }, [storeysNodes, modelsNodes, filteredNodes, isMultiModel, storeysVirtualizer, modelsVirtualizer, virtualizer]);
+  }, [storeysNodes, modelsNodes, filteredNodes, isMultiModel, storeysVirtualizer, modelsVirtualizer, virtualizer, layerRequest]);
+
+  // A newer selection replaces an explicit layer-focus intent, even if the
+  // selected product's row only arrives after the lazy tree finishes loading.
+  useEffect(() => {
+    const focus = focusSelectionRef.current;
+    if (!focus) return;
+    const latest = useViewerStore.getState();
+    if (latest.selectionRevision !== focus.revision || Date.now() > focus.expiresAt) { focusSelectionRef.current = null; return; }
+    // A raw stored request may outlive its revision until the layer effect clears it.
+    // Only a current layer intent can suppress this selection's focus.
+    if (latest.pendingPresentationLayerReveal?.selectionRevision === latest.selectionRevision) {
+      focusSelectionRef.current = null;
+      return;
+    }
+    const target = findAlreadyVisibleTargetId(isMultiModel, storeysNodes, modelsNodes, filteredNodes, focus.id);
+    const row = [...(container?.current?.querySelectorAll<HTMLElement>('[data-node-id]') ?? [])]
+      .find(element => element.dataset.nodeId === target);
+    if (row) { row.focus(); focusSelectionRef.current = null; }
+  }, [filteredNodes, modelsNodes, storeysNodes, isMultiModel, container, selectionRevision, rendered, requestedLayer]);
 
   return { markFromTreeClick };
 }

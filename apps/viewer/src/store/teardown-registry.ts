@@ -57,6 +57,7 @@ import { cameraTeardown } from './slices/cameraSlice.js';
 import { sectionTeardown } from './slices/sectionSlice.teardown.js';
 import { dataTeardown } from './slices/dataSlice.teardown.js';
 import { modelTeardown } from './slices/modelSlice.teardown.js';
+import { serverPropertiesTeardown } from './slices/serverPropertiesSlice.teardown.js';
 import { mutationTeardown } from './slices/mutationSlice.teardown.js';
 import { drawing2DTeardown } from './slices/drawing2DSlice.teardown.js';
 import { sheetTeardown } from './slices/sheetSlice.teardown.js';
@@ -72,6 +73,7 @@ import { compareRunsTeardown } from './slices/compareRunsSlice.js';
 import { scriptTeardown } from './slices/scriptSlice.teardown.js';
 import { chatTeardown } from './slices/chatSlice.teardown.js';
 import { cesiumTeardown } from './slices/cesiumSlice.teardown.js';
+import { siteContextTeardown } from './slices/siteContextSlice.js';
 import { globePlacementTeardown } from './slices/globePlacementSlice.teardown.js';
 import { scheduleTeardown } from './slices/scheduleSlice.teardown.js';
 import { playbackTeardown } from './slices/playbackSlice.js';
@@ -104,6 +106,7 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   sectionTeardown,
   dataTeardown,
   modelTeardown,
+  serverPropertiesTeardown,
   mutationTeardown,
   drawing2DTeardown,
   sheetTeardown,
@@ -119,6 +122,7 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   scriptTeardown,
   chatTeardown,
   cesiumTeardown,
+  siteContextTeardown,
   globePlacementTeardown,
   scheduleTeardown,
   playbackTeardown,

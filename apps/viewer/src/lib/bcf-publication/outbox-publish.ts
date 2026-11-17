@@ -6,7 +6,8 @@
 
 import type { DraftBatch } from '../bcf-drafts/draft-types.js';
 import { dispatchPublication, type DispatchOptions, type DispatchReport, type PublicationConnection } from './outbox-dispatch.js';
-import { draftPublicationId, planDraftPublication, type PublicationPlan } from './outbox-plan.js';
+import { draftPublicationId, planDraftPublication, type PlanOptions, type PublicationPlan } from './outbox-plan.js';
+import { publicationRules, type TopicTypeChoice } from './outbox-server-rules.js';
 import { mutatePublication, readPublication } from './outbox-store.js';
 import type { BcfPublication, PublicationTarget } from './outbox-types.js';
 
@@ -15,11 +16,12 @@ import type { BcfPublication, PublicationTarget } from './outbox-types.js';
  * tab changed the record while this one was planning, plan again from the
  * newer record rather than overwrite it. Null when storage refused.
  */
-export async function planAndStore(batch: DraftBatch, target: PublicationTarget, now = new Date()): Promise<{ plan: PublicationPlan; record: BcfPublication } | null> {
+export async function planAndStore(batch: DraftBatch, target: PublicationTarget, now = new Date(),
+  options: PlanOptions = {}): Promise<{ plan: PublicationPlan; record: BcfPublication } | null> {
   const id = draftPublicationId(batch.id, target);
   for (let attempt = 0; attempt < 5; attempt++) {
     const current = (await readPublication(id))?.record;
-    const plan = await planDraftPublication(batch, current, target, now);
+    const plan = await planDraftPublication(batch, current, target, now, options);
     let stale = false;
     const record = await mutatePublication(id, latest => {
       stale = (latest?.updatedAt ?? null) !== (current?.updatedAt ?? null);
@@ -31,8 +33,9 @@ export async function planAndStore(batch: DraftBatch, target: PublicationTarget,
 }
 
 export async function publishDraftBatch(batch: DraftBatch, target: PublicationTarget, connection: PublicationConnection,
-  options: DispatchOptions = {}): Promise<{ plan: PublicationPlan; report: DispatchReport } | null> {
-  const planned = await planAndStore(batch, target, options.now?.());
+  options: DispatchOptions & { topicTypes?: TopicTypeChoice } = {}): Promise<{ plan: PublicationPlan; report: DispatchReport } | null> {
+  const planned = await planAndStore(batch, target, options.now?.(),
+    { rules: publicationRules(connection), ...(options.topicTypes ? { topicTypes: options.topicTypes } : {}) });
   if (!planned) return null;
   return { plan: planned.plan, report: await dispatchPublication(planned.record.id, connection, options) };
 }

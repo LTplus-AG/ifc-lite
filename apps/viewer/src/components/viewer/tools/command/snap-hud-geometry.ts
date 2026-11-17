@@ -19,8 +19,8 @@ import type { Guide, SnapKind, SnapResult, Vec2 } from '@/lib/snap/types';
 
 type GuideRole = Guide['role'];
 
-/** Engine kind → glyph. `workplane` (a bare plane hit) gets none. */
-const GLYPH: Readonly<Record<SnapKind, SnapGlyphKind | null>> = {
+/** Engine kind → glyph. `workplane` is a point aimed through to the plane (#9201). */
+const GLYPH: Readonly<Record<SnapKind, SnapGlyphKind>> = {
   endpoint: 'endpoint',
   vertex: 'endpoint',
   midpoint: 'midpoint',
@@ -32,7 +32,7 @@ const GLYPH: Readonly<Record<SnapKind, SnapGlyphKind | null>> = {
   face: 'center',
   grid: 'grid',
   gridIntersection: 'grid',
-  workplane: null,
+  workplane: 'workplane',
 };
 
 export function glyphFor(snap: SnapResult | null): SnapGlyphKind | null {

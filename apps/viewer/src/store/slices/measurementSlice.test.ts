@@ -32,60 +32,12 @@ describe('MeasurementSlice', () => {
       assert.deepStrictEqual(state.measurements, []);
     });
 
-    it('should have null pending measure point', () => {
-      assert.strictEqual(state.pendingMeasurePoint, null);
-    });
-
     it('should have null active measurement', () => {
       assert.strictEqual(state.activeMeasurement, null);
     });
 
     it('should have snap enabled by default', () => {
       assert.strictEqual(state.snapEnabled, true);
-    });
-  });
-
-  describe('addMeasurePoint', () => {
-    it('should set pending measure point', () => {
-      const point = { x: 1, y: 2, z: 3, screenX: 0, screenY: 0 };
-      state.addMeasurePoint(point);
-      assert.deepStrictEqual(state.pendingMeasurePoint, point);
-    });
-  });
-
-  describe('completeMeasurement', () => {
-    it('should create measurement when pending point exists', () => {
-      const startPoint = { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 };
-      const endPoint = { x: 3, y: 4, z: 0, screenX: 0, screenY: 0 };
-
-      state.addMeasurePoint(startPoint);
-      state.completeMeasurement(endPoint);
-
-      assert.strictEqual(state.measurements.length, 1);
-      assert.deepStrictEqual(state.measurements[0].start, startPoint);
-      assert.deepStrictEqual(state.measurements[0].end, endPoint);
-      assert.strictEqual(state.measurements[0].distance, 5); // 3-4-5 triangle
-      assert.strictEqual(state.pendingMeasurePoint, null);
-    });
-
-    it('should not create measurement when no pending point', () => {
-      const endPoint = { x: 1, y: 1, z: 1, screenX: 0, screenY: 0 };
-      state.completeMeasurement(endPoint);
-      assert.strictEqual(state.measurements.length, 0);
-    });
-
-    it('should generate unique IDs for rapid measurements', () => {
-      const point1 = { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 };
-      const point2 = { x: 1, y: 0, z: 0, screenX: 0, screenY: 0 };
-
-      state.addMeasurePoint(point1);
-      state.completeMeasurement(point2);
-
-      state.addMeasurePoint(point1);
-      state.completeMeasurement(point2);
-
-      assert.strictEqual(state.measurements.length, 2);
-      assert.notStrictEqual(state.measurements[0].id, state.measurements[1].id);
     });
   });
 
@@ -139,6 +91,19 @@ describe('MeasurementSlice', () => {
       state.finalizeMeasurement();
       assert.strictEqual(state.measurements.length, 0);
     });
+
+    it('should generate unique IDs for rapid measurements', () => {
+      const point1 = { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 };
+      const point2 = { x: 1, y: 0, z: 0, screenX: 0, screenY: 0 };
+      for (let i = 0; i < 2; i++) {
+        state.startMeasurement(point1);
+        state.updateMeasurement(point2);
+        state.finalizeMeasurement();
+      }
+
+      assert.strictEqual(state.measurements.length, 2);
+      assert.notStrictEqual(state.measurements[0].id, state.measurements[1].id);
+    });
   });
 
   describe('cancelMeasurement', () => {
@@ -191,12 +156,11 @@ describe('MeasurementSlice', () => {
       state.updateMeasurement({ x: 1, y: 0, z: 0, screenX: 0, screenY: 0 });
       state.finalizeMeasurement();
 
-      state.addMeasurePoint({ x: 5, y: 5, z: 5, screenX: 0, screenY: 0 });
+      state.startMeasurement({ x: 5, y: 5, z: 5, screenX: 0, screenY: 0 });
 
       state.clearMeasurements();
 
       assert.deepStrictEqual(state.measurements, []);
-      assert.strictEqual(state.pendingMeasurePoint, null);
       assert.strictEqual(state.activeMeasurement, null);
     });
   });
@@ -212,6 +176,34 @@ describe('MeasurementSlice', () => {
       state.snapEnabled = false;
       state.toggleSnap();
       assert.strictEqual(state.snapEnabled, true);
+    });
+
+    const EDGE = { v0: { x: 0, y: 0, z: 0 }, v1: { x: 1, y: 0, z: 0 } };
+
+    it('turning snap off drops the lock, glyph and target but keeps the pending start (#8881)', () => {
+      state.startMeasurement({ x: 1, y: 2, z: 3, screenX: 10, screenY: 20 });
+      state.setEdgeLock(EDGE, 7, 0.5);
+      state.setSnapVisualization({ slidingDot: { t: 0.5 } });
+      state.setSnapTarget({ type: 'edge', position: { x: 0, y: 0, z: 0 } } as any);
+      const epoch = state.measureGestureEpoch;
+      state.toggleSnap();
+      assert.strictEqual(state.snapEnabled, false);
+      assert.strictEqual(state.edgeLockState.edge === null, true, 'the edge lock stayed');
+      assert.strictEqual(state.edgeLockState.lockStrength, 0);
+      assert.strictEqual(state.snapVisualization === null, true, 'the snap glyph stayed');
+      assert.strictEqual(state.snapTarget === null, true, 'the snap target stayed');
+      assert.strictEqual(state.activeMeasurement?.start.x, 1, 'the pending start was discarded');
+      assert.strictEqual(state.measureGestureEpoch, epoch, 'the gesture was reset');
+    });
+
+    it('turning snap on clears nothing', () => {
+      state.snapEnabled = false;
+      state.setEdgeLock(EDGE, 7, 0.5);
+      state.setSnapVisualization({ slidingDot: { t: 0.5 } });
+      state.toggleSnap();
+      assert.strictEqual(state.snapEnabled, true);
+      assert.strictEqual(state.edgeLockState.edge === EDGE, true);
+      assert.strictEqual(state.snapVisualization !== null, true);
     });
   });
 

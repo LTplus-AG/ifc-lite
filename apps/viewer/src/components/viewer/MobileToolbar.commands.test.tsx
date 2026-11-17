@@ -66,7 +66,8 @@ it('mobile commands keep their table ids and act on the selected federated model
   });
   render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /></BimReactContext.Provider>);
 
-  for (const id of ['file:open', 'file:add-model', 'tool:select', 'tool:measure', 'tool:section', 'view:home', 'view:fit', 'vis:show']) {
+  // Add model and Show all live in More since the 44px phone targets (#8802).
+  for (const id of ['file:open', 'tool:select', 'tool:measure', 'tool:section', 'view:home', 'view:fit']) {
     command(id);
   }
   click(command('tool:measure'));
@@ -75,12 +76,14 @@ it('mobile commands keep their table ids and act on the selected federated model
   assert.equal(fits, 1, 'the table routes Fit to the live camera callback');
 
   await openMore();
-  for (const id of ['ui:commands', 'tool:walk', 'vis:isolate', 'vis:hide', 'view:frame', 'view:projection', 'view:theme']) {
+  for (const id of ['file:add-model', 'ui:commands', 'tool:walk', 'vis:isolate', 'vis:hide', 'vis:show', 'view:frame', 'view:projection', 'view:theme']) {
     command(id);
   }
   click(command('vis:hide'));
   assert.deepEqual([...useViewerStore.getState().hiddenEntities], [secondWall], 'Hide affects only the second model selection');
   assert.equal(useViewerStore.getState().selectedEntityIds.size, 0);
+  // Hide closed the menu; Show all lives in More too (#8802).
+  await openMore();
   click(command('vis:show'));
   assert.equal(useViewerStore.getState().hiddenEntities.size, 0, 'Show all restores the hidden federated entity');
   const commandEvents = events.filter(({ event }) => event === 'command_executed')

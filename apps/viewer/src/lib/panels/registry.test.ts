@@ -120,3 +120,12 @@ describe('isBottomPanel', () => {
     }
   });
 });
+
+describe('rail glyphs (#8802 R1)', () => {
+  it('every workspace panel has its own icon, so two rail entries never look alike', () => {
+    const byIcon = new Map<unknown, string[]>();
+    for (const panel of WORKSPACE_PANELS) byIcon.set(panel.Icon, [...(byIcon.get(panel.Icon) ?? []), panel.id]);
+    const shared = [...byIcon.values()].filter((ids) => ids.length > 1);
+    assert.deepStrictEqual(shared, []);
+  });
+});

@@ -284,10 +284,14 @@ export function emitSurfaceStyle(
   const colour = editor.addEntity('IfcColourRgb', [
     null, { real: red }, { real: green }, { real: blue },
   ]);
-  const shading = editor.addEntity('IfcSurfaceStyleShading', [
-    `#${colour.expressId}`,
-    { real: roundTo(1 - alpha, TRANSPARENCY_DECIMALS) },
-  ]);
+  const transparency = { real: roundTo(1 - alpha, TRANSPARENCY_DECIMALS) };
+  // IFC2X3's IfcSurfaceStyleShading is the colour alone; transparency lives on
+  // its IfcSurfaceStyleRendering subtype there. IFC4 moved it up to the shading.
+  const shading = schemaVersion !== 'IFC2X3'
+    ? editor.addEntity('IfcSurfaceStyleShading', [`#${colour.expressId}`, transparency])
+    : alpha < 1
+      ? editor.addEntity('IfcSurfaceStyleRendering', [`#${colour.expressId}`, transparency, null, null, null, null, null, null, '.NOTDEFINED.'])
+      : editor.addEntity('IfcSurfaceStyleShading', [`#${colour.expressId}`]);
   const surfaceStyle = editor.addEntity('IfcSurfaceStyle', [
     name ?? null,
     '.BOTH.',

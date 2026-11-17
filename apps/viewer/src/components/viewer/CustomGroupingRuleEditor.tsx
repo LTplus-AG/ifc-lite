@@ -71,7 +71,7 @@ export function CustomGroupingRuleEditor({ rule, onChange }: { rule: CustomGroup
         />
       )}
       {unresolved && rule.grouping.name && (
-        <span role="alert" className="text-2xs text-amber-600 dark:text-amber-400">
+        <span role="alert" className="text-2xs text-warn">
           {'grouping' in unresolved
             ? t('customGrouping.unresolvedGrouping', { name: rule.grouping.name })
             : t('customGrouping.unresolvedGroups', { count: unresolved.groups.length, names: unresolved.groups.join(', ') })}

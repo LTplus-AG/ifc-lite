@@ -192,7 +192,7 @@ describe('advanced Filter tab — clicking a result row', () => {
 
     click(cell(container, 'Wall A'));
 
-    // The dialog overlay is `fixed inset-0 bg-black/80`; leaving it open is
+    // The dialog overlay is `fixed inset-0 bg-scrim/80`; leaving it open is
     // what made #2396 read as "the click does nothing".
     assert.equal(useViewerStore.getState().searchModalOpen, false);
   });
@@ -612,7 +612,7 @@ describe('advanced Filter tab — "Isolate in 3D" button', () => {
       entityCount: 1,
       parseTime: 0,
       source: new Uint8Array(0),
-      entityIndex: { byId: { ranges: new Uint32Array(0), index: new Map() }, byType: new Map([['IFCWALL', [42]]]) },
+      entityIndex: { byId: new Map(), byType: new Map([['IFCWALL', [42]]]) },
       strings,
       entities: builder.build(),
       properties: { count: 0 },
@@ -691,7 +691,7 @@ describe('advanced Filter tab — "Isolate in 3D" button', () => {
       entityCount: 1,
       parseTime: 0,
       source: new Uint8Array(0),
-      entityIndex: { byId: { ranges: new Uint32Array(0), index: new Map() }, byType: new Map([['IFCWALL', [42]]]) },
+      entityIndex: { byId: new Map(), byType: new Map([['IFCWALL', [42]]]) },
       strings,
       entities: builder.build(),
       properties: { count: 0 },

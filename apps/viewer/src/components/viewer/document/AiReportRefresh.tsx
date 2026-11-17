@@ -66,13 +66,13 @@ export function AiReportRefresh({ document, onChange }: { document: DocumentSpec
     <p className="text-muted-foreground">{t('aiReports.refreshHint')}</p>
     {!plan && <Button variant="outline" size="sm" className="h-7" onClick={refresh}><RefreshCw className="h-3 w-3 mr-1" aria-hidden="true" />{t('aiReports.refreshEvidence')}</Button>}
     {plan && <div className="space-y-2">
-      {plan.modelsChanged && <p role="note" className="rounded border border-amber-500/40 bg-amber-500/10 p-1.5">{t('aiReports.modelsChanged')}</p>}
+      {plan.modelsChanged && <p role="note" className="rounded border border-warn-border bg-warn-surface p-1.5">{t('aiReports.modelsChanged')}</p>}
       <ul className="space-y-0.5">{plan.claims.map(claim => <li key={claim.id}>{t('aiReports.refreshClaim', { id: claim.id,
         before: t(STATUS[claim.before]), after: t(STATUS[claim.after]),
         changed: claim.changes.filter(change => change.kind === 'changed').length, missing: claim.changes.filter(change => change.kind === 'missing').length })}</li>)}</ul>
       <p className="font-semibold">{t('aiReports.conflicts')}</p>
       {!plan.conflicts.length && <p className="text-muted-foreground">{t('aiReports.noConflicts')}</p>}
-      {plan.conflicts.map(conflict => <div key={conflict.blockId} className="rounded border border-amber-500/40 bg-amber-500/10 p-1.5 space-y-1" data-conflict={conflict.slot}>
+      {plan.conflicts.map(conflict => <div key={conflict.blockId} className="rounded border border-warn-border bg-warn-surface p-1.5 space-y-1" data-conflict={conflict.slot}>
         <p className="text-2xs text-muted-foreground">{t('aiReports.yourText')}</p>
         <p id={`${conflictId}-${conflict.blockId}`} className="whitespace-pre-wrap break-words">{conflict.current}</p>
         {conflict.regenerated !== null && <>

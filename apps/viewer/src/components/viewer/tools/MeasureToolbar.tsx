@@ -11,7 +11,7 @@
  */
 
 import { useCallback } from 'react';
-import { Globe, List, Magnet, Ruler, Trash2, X } from 'lucide-react';
+import { Crosshair, Globe, List, Magnet, Ruler, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { useViewerStore } from '@/store';
@@ -65,6 +65,11 @@ export function MeasureToolbar() {
   const modes: HudSegmentedOption<MeasureMode>[] = MEASURE_MODE_LABELS.map(([value, key]) => ({
     value,
     label: t(key),
+    // Point (#8770) wears the Measurements panel's Point-tab glyph, which
+    // carries the full coordinate readout this mode feeds.
+    ...(value === 'point'
+      ? { icon: <Crosshair aria-hidden className="h-3 w-3" />, title: t('measure.mode.pointTitle') }
+      : {}),
   }));
   const kinds: HudSegmentedOption<AngleKind>[] = ANGLE_KIND_LABELS.map(([value, key, hintKey]) => ({
     value,

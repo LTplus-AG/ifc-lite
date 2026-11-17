@@ -16,7 +16,7 @@ fn unavailable(family: &'static str) -> OracleResult {
 pub(super) fn check(product: &ShapeOnlyProduct, context: &SourceContext<'_>, t: &Value) -> Vec<OracleResult> {
     let expectation = match context.clips.expected(context.product_id) {
         Ok(Some(e))=>e, Ok(None)=>return Vec::new(),
-        Err(_)=>return vec![result("clipSourceReadable",f64::INFINITY,0.)],
+        Err(reason)=>{let mut gap=result("clipSourceReadable",f64::INFINITY,0.);gap.reason=Some(reason);return vec![gap];}
     };
     let layered = product.parts.iter().any(|p| p.layer.is_some());
     let groups: Vec<Vec<_>> = if layered { vec![product.parts.iter().collect()] }
@@ -55,7 +55,7 @@ pub(super) fn check(product: &ShapeOnlyProduct, context: &SourceContext<'_>, t: 
         } else if expected.mixed {
             results.push(unavailable("clipSectionMixedSubtree"));
         } else {
-            results.push(result("clipSectionAvailable",f64::INFINITY,0.));
+            let mut gap=result("clipSectionAvailable",f64::INFINITY,0.);gap.reason=expected.section_gap.clone();results.push(gap);
         }
     }
     if let Some(volume)=expectation.section_volume() {

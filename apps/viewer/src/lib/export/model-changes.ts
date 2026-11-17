@@ -136,7 +136,7 @@ function scheduleChangeCount(state: ChangesExportState): number {
 
 /** A model the STEP schedule splice can actually write into. */
 function isSpliceCapable(m: ResolvedModel | null): boolean {
-  return m != null && m.schemaVersion !== 'IFC5' && m.ifcDataStore != null;
+  return m != null && m.schemaVersion !== 'IFC5' && m.ifcDataStore != null && m.ifcDataStore.sourceKind !== 'tabular';
 }
 
 /**
@@ -362,8 +362,10 @@ export async function buildChangedArtifacts(
         });
       } else {
         const dataStore = await deps.resolveStepDataStore(entry.id);
-        if (!dataStore) {
-          skipped.push({ name: entry.name, reason: 'Model data is unavailable for export' });
+        // No store means no bytes at all; a tabular store's bytes are not STEP. Neither can take a splice.
+        if (!dataStore || dataStore.sourceKind === 'tabular') {
+          const reason = dataStore ? 'Model has no IFC STEP source to export changes into' : 'Model data is unavailable for export';
+          skipped.push({ name: entry.name, reason });
           continue;
         }
         artifact = await deps.exportStep(entry.id, dataStore, view, {

@@ -41,6 +41,7 @@ import { IDSPanel } from '../IDSPanel.js';
 import { ClashPanel } from '../ClashPanel.js';
 import { ComparePanel } from '../ComparePanel.js';
 import { BCFPanel } from '../BCFPanel.js';
+import { findPanelAction, runPanelAction } from '@/test/panel-header.js';
 
 installLayout();
 const initial = useViewerStore.getState();
@@ -637,12 +638,13 @@ describe('analysis-panel consistency matrix (#5834)', () => {
   });
 
   describe('13. Clear results drops the result and keeps the inputs', () => {
-    const clear = () => click(byLabel(resolve('analysisPanel.clearResults'))!);
-    for (const n of counts('IDS')) it(`IDS keeps the document, ${n} model(s)`, () => {
+    // A header action, inline or in the shared header's More actions (#8802).
+    const clear = () => runPanelAction(document.body, resolve('analysisPanel.clearResults'));
+    for (const n of counts('IDS')) it(`IDS keeps the document, ${n} model(s)`, async () => {
       seedIdsModels(n);
       useViewerStore.setState({ idsDocument, idsValidationReport: idsReport() });
       render(<IDSPanel />);
-      clear();
+      await clear();
       assert.equal(useViewerStore.getState().idsValidationReport, null);
       assert.equal(useViewerStore.getState().idsDocument, idsDocument);
       mark('clear results', 'IDS');
@@ -650,25 +652,25 @@ describe('analysis-panel consistency matrix (#5834)', () => {
     for (const n of counts('Clash')) it(`Clash keeps the detection settings, ${n} model(s)`, async () => {
       await clashWithResult(n);
       const mode = useViewerStore.getState().clashMode;
-      clear();
+      await clear();
       assert.equal(useViewerStore.getState().clashResult, null);
       assert.equal(useViewerStore.getState().clashMode, mode);
       mark('clear results', 'Clash');
     });
-    for (const n of counts('Compare')) it(`Compare keeps the A/B pair, ${n} models`, () => {
+    for (const n of counts('Compare')) it(`Compare keeps the A/B pair, ${n} models`, async () => {
       seedCompareModels(n);
       useViewerStore.setState({ compareResult: compareResult() });
       render(<ComparePanel />);
-      clear();
+      await clear();
       const s = useViewerStore.getState();
       assert.equal(s.compareResult, null);
       assert.deepEqual([s.compareBaseModelId, s.compareHeadModelId], ['A', 'B']);
       mark('clear results', 'Compare');
     });
-    it('BCF: n/a, topics are the user\'s work, not a computed result', () => {
+    it('BCF: n/a, topics are the user\'s work, not a computed result', async () => {
       seedBcf(1);
       render(<BCFPanel onClose={() => {}} />);
-      assert.equal(byLabel(resolve('analysisPanel.clearResults')), undefined);
+      assert.equal(await findPanelAction(document.body, resolve('analysisPanel.clearResults')), undefined);
       mark('clear results', 'BCF', 'n/a');
     });
   });

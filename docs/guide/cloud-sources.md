@@ -23,3 +23,31 @@ Deployment administrators configure the vendor applications on the cloud gateway
 The cloud session ends when the gateway restarts. Reconnect if IFClite reports that it expired. Autodesk refreshes its gateway session before Sign in, Sign out and other mutations, so idle expiry or a restart does not require reloading the viewer to reconnect or sign out. Unconfigured sources explain that an administrator needs to enable the application. Failed sign-out keeps the account visible so users can retry.
 
 Self-hosted deployments without `VITE_CLOUD_HOSTED=true` retain the direct SDK sign-in setup described in the [Dropbox package](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/source-dropbox/README.md) and [Microsoft Graph package](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/source-msgraph/README.md). Dalux currently uses the vendor's API credentials; hosted OAuth for Dropbox and Microsoft does not change that source.
+
+## Local OCI registry demo
+
+For a local sign-in, pull, edit and publish walkthrough, see the
+[local registry guide](local-registry.md).
+
+## Saving back to a source
+
+No source can be written to from the viewer yet, and the access IFClite requests stays read-only. The provider contract (`@ifc-lite/plugin-api`) now lets a provider declare `capabilities.writeBack` with the modes it supports and implement `uploadFile`:
+
+- `new-version` adds a revision to an existing file.
+- `new-file` creates a file with a new name, typically in the original's folder.
+- `new-location` creates a file in a different folder.
+
+`uploadFile` never overwrites. When the file has changed since it was loaded (`stale-base`), or the name is taken (`name-exists`), it returns a conflict instead of writing, so the host can offer a new name or a reload. Providers that omit `writeBack` stay read-only. `@ifc-lite/source-fixture` implements it for tests, and the Dalux provider implements it on Dalux's upload API (see the `@ifc-lite/source-dalux` README for its limits, including that in the browser it needs the relay upload routes from [#9524](https://github.com/LTplus-AG/ifc-lite/pull/9524)). The viewer's save action is tracked in [#9522](https://github.com/LTplus-AG/ifc-lite/issues/9522).
+
+### Dalux revision history
+
+The Dalux Versions panel combines revisions pinned by coordination version sets
+with the file’s current revision, including uploads not yet added to a set.
+Multiple sets pinning the same revision produce one row naming those sets.
+Historical rows sort by date, then numeric revision number for same-day ties.
+Unknown dates stay blank, and raw user IDs are not shown as names.
+
+The project sweep is cached for five minutes and reads fresh pins when rebuilt.
+A failed or undecodable set produces an explicit incomplete-history error with a
+short retry window. Projects with more than 250 version sets show an unavailable
+history error rather than a potentially misleading subset.

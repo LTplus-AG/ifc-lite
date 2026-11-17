@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { renderableCoordinates } from './renderable-coordinates.js';
 import type { Mesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { BoundingBox } from './scene-raycaster.js';
@@ -28,7 +29,7 @@ function yawEqual(a: ModelYaw | null, b: ModelYaw | null): boolean {
 
 /** Validate before storing an offset, including when no drawables exist yet. */
 export function assertModelTranslation(modelIndex: number, offset: Offset): void {
-  if (!Number.isSafeInteger(modelIndex) || modelIndex < 0 || offset.length !== 3 || !offset.every((value) => Number.isFinite(value) && Number.isFinite(Math.fround(value)))) {
+  if (!Number.isSafeInteger(modelIndex) || modelIndex < 0 || !renderableCoordinates(offset)) {
     throw new Error('Model translation requires a model index and three finite coordinates.');
   }
 }

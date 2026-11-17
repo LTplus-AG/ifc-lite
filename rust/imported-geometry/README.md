@@ -38,8 +38,7 @@ The generator refuses a different executable; qualifying another platform/tool
 requires an explicit pin update and output comparison. The environment variable
 is required outside the original provisioned host's discovery path.
 
-Run `pnpm build:imported-geometry` through `ifc-fleet run --cwd CHECKOUT -- ...`
-and the machine's project environment wrapper. Never nest admission. The generator
+Run `pnpm build:imported-geometry`. The generator
 records Rust compiler, command, lockfile, generator/source digests, translator
 version/checksum and both artifact digests. The small artifact disables SIMD for wasm2js and uses
 a 1 MiB stack; the full canonical WASM keeps its own build settings.

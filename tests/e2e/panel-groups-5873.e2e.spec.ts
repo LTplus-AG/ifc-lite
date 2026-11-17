@@ -13,12 +13,19 @@ test('#5873 groups the rail and ribbon panels around an authored IFC model', asy
   await page.goto('/?model=/samples/building-architecture.ifc');
   await loaded;
 
+  // A group heads its icons on the rail, or, once the rail is too short for
+  // every icon, the rail's overflow menu (#8802 R1).
   const rail = page.locator('[data-activity-bar]');
-  await expect(rail.locator('[data-panel-group="coordinate"]')).toHaveText('Coordinate');
-  await expect(rail.locator('[data-panel-group="check"]')).toHaveText('Check');
-  await expect(rail.locator('[data-panel-group="quantify"]')).toHaveText('Quantify');
-  await expect(rail.locator('[data-panel-group="automate"]')).toHaveText('Automate');
-  await expect(rail.locator('[data-panel-group="site"]')).toHaveText('Site');
+  const overflow = rail.locator('[data-rail-overflow]');
+  if (await overflow.count()) await overflow.click();
+  const overflowMenu = page.getByRole('menu');
+  for (const [group, label] of [
+    ['coordinate', 'Coordinate'], ['check', 'Check'], ['quantify', 'Quantify'], ['automate', 'Automate'], ['site', 'Site'],
+  ] as const) {
+    const heading = rail.locator(`[data-panel-group="${group}"]`).or(overflowMenu.locator(`[data-panel-group="${group}"]`));
+    await expect(heading.first()).toHaveText(label);
+  }
+  if (await overflow.count()) await page.keyboard.press('Escape');
 
   await page.getByRole('tab', { name: 'Analyze' }).click();
   const browserButton = page.getByRole('button', { name: 'Browse panels' });

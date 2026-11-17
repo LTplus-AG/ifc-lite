@@ -8,6 +8,8 @@
  * here, and each nested member is decoded back through it.
  */
 
+import type { MetadataReadView } from './effective-metadata-record.js';
+import { propertyRecord, propertyReference } from './current-property-record.js';
 import type { IfcEntity } from './types.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -215,10 +217,10 @@ export function resolveComplexPropertyValue(
     store: IfcDataStore,
     extractor: EntityExtractor,
     propEntity: IfcEntity,
-    budget: ComplexPropertyBudget = ComplexPropertyBudget.forInput(store.source?.length ?? 0)
+    budget: ComplexPropertyBudget = ComplexPropertyBudget.forInput(store.source?.length ?? 0), view?: MetadataReadView
 ): ParsedIfcPropertyValue {
     budget.startProperty();
-    return resolveComplex(store, extractor, propEntity, 0, budget);
+    return resolveComplex(store, extractor, propEntity, 0, budget, view);
 }
 
 function resolveComplex(
@@ -226,7 +228,7 @@ function resolveComplex(
     extractor: EntityExtractor,
     propEntity: IfcEntity,
     depth: number,
-    budget: ComplexPropertyBudget
+    budget: ComplexPropertyBudget, view?: MetadataReadView
 ): ParsedIfcPropertyValue {
     const attrs = propEntity.attributes || [];
     const usageName = typeof attrs[2] === 'string' ? attrs[2] : '';
@@ -252,25 +254,22 @@ function resolveComplex(
     const members: ExtractedProperty[] = [];
     let cut = false;
 
-    for (const ref of hasProperties) {
+    for (const raw of hasProperties) {
+        const ref = view ? propertyReference(raw) : raw;
         if (typeof ref !== 'number') continue;
         if (!budget.admitMember()) {
             cut = true;
             break;
         }
-        // @raw-entity-enumeration-ok complex-property parsing follows this source member reference, not an entity set
-        const nestedRef = store.entityIndex.byId.get(ref) ?? store.deferredEntityIndex?.get(ref);
-        if (!nestedRef) continue;
-        const nestedEntity = extractor.extractEntity(nestedRef);
+        const nestedEntity = propertyRecord(store, ref, view, extractor);
         if (!nestedEntity) continue;
-
         const nestedAttrs = nestedEntity.attributes || [];
         const nestedName = typeof nestedAttrs[0] === 'string' ? nestedAttrs[0] : '';
         const nestedParsed = nestedEntity.type.toUpperCase() === 'IFCCOMPLEXPROPERTY'
-            ? resolveComplex(store, extractor, nestedEntity, depth + 1, budget)
-            : parsePropertyValueWithComplex(store, extractor, nestedEntity, budget);
+            ? resolveComplex(store, extractor, nestedEntity, depth + 1, budget, view)
+            : parsePropertyValueWithComplex(store, extractor, nestedEntity, budget, view);
         if (nestedName) {
-            const unit = resolvePropertyUnit(store, extractor, nestedEntity.type, nestedAttrs, nestedParsed.dataType);
+            const unit = resolvePropertyUnit(store, extractor, nestedEntity.type, nestedAttrs, nestedParsed.dataType, view);
             members.push({
                 name: nestedName,
                 ...nestedParsed,

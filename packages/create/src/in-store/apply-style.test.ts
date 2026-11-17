@@ -322,6 +322,25 @@ describe('applyStylesInStore', () => {
     expect(assignment?.attributes[0]).toEqual([`#${result.surfaceStyleId}`]);
   });
 
+  it('writes the IFC2X3 shading as the colour alone, and transparency on IfcSurfaceStyleRendering', async () => {
+    const store = await parseFixture();
+    const shadingFor = (color: { red: number; green: number; blue: number; alpha?: number }) => {
+      const editor = makeEditor(store);
+      const [result] = applyStylesInStore(editor, store, [{ products: [100], color }], { schema: 'IFC2X3' });
+      const style = byId(editor).get(result.surfaceStyleId!);
+      return byId(editor).get(Number((style?.attributes[2] as string[])[0]!.replace('#', '')));
+    };
+    // IFC2X3 IfcSurfaceStyleShading declares SurfaceColour only.
+    const opaque = shadingFor({ red: 1, green: 1, blue: 0 });
+    expect(opaque?.type).toBe('IfcSurfaceStyleShading');
+    expect(opaque?.attributes).toHaveLength(1);
+    const rendering = shadingFor({ red: 0, green: 0, blue: 1, alpha: 0.25 });
+    expect(rendering?.type).toBe('IfcSurfaceStyleRendering');
+    expect(rendering?.attributes).toHaveLength(9);
+    expect(rendering?.attributes[1]).toEqual({ real: 0.75 });
+    expect(rendering?.attributes[8]).toBe('.NOTDEFINED.');
+  });
+
   it('garbage-collects a fully-replaced style chain across two calls', async () => {
     const store = await parseFixture();
     const editor = makeEditor(store);

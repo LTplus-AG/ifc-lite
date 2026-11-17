@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Per-controller logical work, independent of allocation/cancellation policy.
 //! Cache hits and placeholders pay attempts, but skip unmaterialized children.
+//! Every mapped attempt pays: it expands a shared source. A first Items read
+//! pays for its repeated references; a repeated one pays in full (#9102,
+//! `representation::first_seen`).
+use crate::representation::first_seen::FirstSeen;
 use crate::Error;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LogicalRefusal {
@@ -37,11 +42,19 @@ impl From<LogicalRefusal> for SourceFailure {
     }
 }
 
-#[derive(Clone, Copy)]
+/// The counters travel by value through speculative replies, and so do the
+/// list reads (#9102): an execution records them in `pending`, and only the
+/// accepted reply's budget folds them into `seen`, at the next [`commit`].
+/// A discarded reply therefore never turns a later first read into a repeat.
+///
+/// [`commit`]: LogicalBudget::commit
+#[derive(Clone)]
 pub(crate) struct LogicalBudget {
     limit: u32,
     maps: u32,
     items: u32,
+    seen: Arc<FirstSeen>,
+    pending: smallvec::SmallVec<[u32; 2]>,
 }
 impl Default for LogicalBudget {
     fn default() -> Self {
@@ -49,6 +62,8 @@ impl Default for LogicalBudget {
             limit: crate::representation::MAX_WALK_LEVELS,
             maps: 0,
             items: 0,
+            seen: Arc::default(),
+            pending: smallvec::SmallVec::new(),
         }
     }
 }
@@ -62,14 +77,35 @@ impl LogicalBudget {
         *used = next;
         Ok(())
     }
+    /// Fold this (accepted) budget's reads into `seen`. Every speculative copy
+    /// is taken after a commit, so `pending` holds at most one step's reads.
+    pub(crate) fn commit(&mut self) {
+        if !self.pending.is_empty() {
+            let seen = Arc::make_mut(&mut self.seen);
+            for rep in self.pending.drain(..) {
+                seen.insert(rep);
+            }
+        }
+    }
+    /// Enter a mapped item. Every attempt pays, distinct item or not: each one
+    /// expands a shared source, so it is the amplifier this meter bounds.
     pub(super) fn mapped_attempt(&mut self) -> std::result::Result<(), LogicalRefusal> {
         Self::debit(&mut self.maps, 1, self.limit)
     }
+    /// Materialize representation `rep`'s Items `members`. A repeated list
+    /// pays every member, and a first read every repeated reference within
+    /// it, all before anything is resolved (#9102).
     pub(crate) fn materialize_items(
         &mut self,
-        count: usize,
+        rep: u32,
+        members: &[ifc_lite_core::AttributeValue],
     ) -> std::result::Result<(), LogicalRefusal> {
-        Self::debit(&mut self.items, count, self.limit)
+        let charge = self.seen.price(&self.pending, rep, members);
+        Self::debit(&mut self.items, charge.cost, self.limit)?;
+        if !self.pending.contains(&charge.rep) {
+            self.pending.push(charge.rep);
+        }
+        Ok(())
     }
     #[cfg(test)]
     pub(super) fn with_limit(limit: u32) -> Self {
@@ -77,5 +113,10 @@ impl LogicalBudget {
             limit,
             ..Self::default()
         }
+    }
+    /// Test seam: make the next read of `rep`'s Items a repeat (#9102).
+    #[cfg(test)]
+    pub(super) fn mark_seen(&mut self, rep: u32) {
+        Arc::make_mut(&mut self.seen).insert(rep);
     }
 }

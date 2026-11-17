@@ -12,9 +12,9 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { Table2, Settings2 } from 'lucide-react';
+import { ArrowLeft, Plus, Settings2, Table2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
+import { PanelHeader } from '@/components/ui/panel-header';
 import { useViewerStore } from '@/store';
 import {
   summariseListRows,
@@ -25,8 +25,8 @@ import type { ListDefinition, ListGrouping } from '@/lib/lists';
 import { runListFederated } from '@/lib/lists/run-list';
 import { captureListRunModels, carryListRun, listResultGrouping, listRunDefinition, recordListRun } from '@/lib/lists/run-provenance';
 import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
-import { captureAnalysisStamp } from '@/hooks/useAnalysisStaleness';
-import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
+import { analysisStampOf, captureAnalysisStamp, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
+import { useAssistantAction } from '@/components/viewer/assistant/AssistantAction';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { useListProviders } from './useListProviders';
 import { ListBuilder } from './ListBuilder';
@@ -38,8 +38,14 @@ import { formatLocaleCount } from './formatLocaleCount';
 
 type PanelView = 'library' | 'builder' | 'results';
 
+/** An edit settles for this long before the open result runs again. */
+const AUTO_REFRESH_DELAY_MS = 200;
+/** A result that took longer than this to run is not re-run on every edit; it shows as out of date instead. */
+const AUTO_REFRESH_MAX_RUN_MS = 1000;
+
 export function ListPanel() {
   const { t, locale } = useTranslation();
+  const assistant = useAssistantAction();
   const [view, setView] = useState<PanelView>('library');
   const [editingList, setEditingList] = useState<ListDefinition | null>(null);
 
@@ -69,18 +75,20 @@ export function ListPanel() {
 
   const importInputRef = React.useRef<HTMLInputElement>(null);
   const listRunRef = React.useRef<AbortController | null>(null);
+  const refreshedFor = React.useRef('');
 
   // Providers + declared units per model, shared with document table blocks (#5142).
   const { pairs: modelProviderPairs, providers: allProviders, stores: allStores, modelUnits, hasData } = useListProviders();
   React.useEffect(() => () => listRunRef.current?.abort(), [modelProviderPairs]);
   const listModelIds = React.useMemo(() => modelProviderPairs.map((pair) => pair.modelId), [modelProviderPairs]);
 
-  const handleExecuteList = useCallback((definition: ListDefinition) => {
+  const handleExecuteList = useCallback((definition: ListDefinition, refresh = false) => {
     if (!hasData) return;
     listRunRef.current?.abort();
     const controller = new AbortController();
     listRunRef.current = controller;
-    const job = beginActivity({ kind: 'check', title: 'activityTray.job.list', panel: 'lists', subject: definition.name,
+    // A refresh of the open result is not a run the person started: it gets no Activity row.
+    const job = refresh ? null : beginActivity({ kind: 'check', title: 'activityTray.job.list', panel: 'lists', subject: definition.name,
       cancel: () => controller.abort() });
     let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
     let detail: string | undefined;
@@ -115,14 +123,33 @@ export function ListPanel() {
         outcome = 'failed';
         setListError(detail);
       } finally {
-        finishActivity(job, controller.signal.aborted ? 'cancelled' : outcome, detail ? { detail } : {});
+        if (job !== null) finishActivity(job, controller.signal.aborted ? 'cancelled' : outcome, detail ? { detail } : {});
         if (listRunRef.current === controller) {
+          // A provider swap (for example remeshing) cancels an unfinished run.
+          // It has not refreshed this state yet; allow the stale result to retry.
+          if (refresh && controller.signal.aborted) refreshedFor.current = '';
           listRunRef.current = null;
           setListExecuting(false);
         }
       }
     })(); });
   }, [hasData, modelProviderPairs, setActiveListId, setListResult, setListExecuting, setListError, t]);
+
+  // An open schedule follows the model (#9296): when an edit makes the shown result stale, it
+  // runs again shortly after, with the grouping on screen. Once per model state, so a run that
+  // fails is not retried in a loop; a list that took long to run waits for the person instead.
+  const stale = useAnalysisStaleness(analysisStampOf(listResult));
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const geometryContentVersion = useViewerStore((s) => s.geometryContentVersion);
+  React.useEffect(() => {
+    const definition = listResult ? listRunDefinition(listResult) : null;
+    const state = `${mutationVersion}:${geometryContentVersion}`;
+    if (view !== 'results' || !stale || !listResult || !definition || listExecuting || refreshedFor.current === state) return;
+    // Only a run known to have been quick: a missing or non-finite time is not one.
+    if (!(listResult.executionTime <= AUTO_REFRESH_MAX_RUN_MS)) return;
+    const timer = setTimeout(() => { refreshedFor.current = state; handleExecuteList(definition, true); }, AUTO_REFRESH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [view, stale, listResult, listExecuting, mutationVersion, geometryContentVersion, handleExecuteList]);
 
   const handleCreateNew = useCallback(() => {
     setEditingList(null);
@@ -205,52 +232,34 @@ export function ListPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b">
-        <div className="flex items-center gap-2">
-          <Table2 className="h-4 w-4" />
-          <span className="font-medium text-sm">
-            {view === 'library' && t('lists.panel.title')}
-            {view === 'builder' && (editingList ? t('lists.panel.editList') : t('lists.panel.newList'))}
-            {view === 'results' && t('lists.panel.results')}
+      <PanelHeader
+        icon={<Table2 />}
+        title={view === 'library' ? t('lists.panel.title') : view === 'builder'
+          ? (editingList ? t('lists.panel.editList') : t('lists.panel.newList')) : t('lists.panel.results')}
+        meta={view === 'results' && listResult && (
+          <span className="text-xs text-muted-foreground">
+            ({t('lists.panel.resultsSummary', {
+              count: listResult.totalCount,
+              countDisplay: formatLocaleCount(listResult.totalCount, locale),
+              ms: listResult.executionTime.toFixed(0),
+            })})
           </span>
-          {view === 'results' && listResult && (
-            <span className="text-xs text-muted-foreground">
-              ({t('lists.panel.resultsSummary', {
-                count: listResult.totalCount,
-                countDisplay: formatLocaleCount(listResult.totalCount, locale),
-                ms: listResult.executionTime.toFixed(0),
-              })})
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <AssistantAction />
-          {view === 'results' && (
-            <>
-              <IconButton
-                label={t('lists.panel.editConfiguration')}
-                size="icon-sm"
-                onClick={handleEditFromResults}
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-              </IconButton>
-              <IconButton
-                label={t('lists.panel.backToLists')}
-                size="icon-sm"
-                onClick={() => setView('library')}
-              >
-                <Table2 className="h-3.5 w-3.5" />
-              </IconButton>
-            </>
-          )}
-          {view === 'builder' && (
-            <Button variant="ghost" size="sm" onClick={() => setView('library')} className="text-xs h-7">
-              {t('lists.panel.cancel')}
-            </Button>
-          )}
-        </div>
-      </div>
+        )}
+        leading={view === 'builder' && (
+          <Button variant="ghost" size="sm" onClick={() => setView('library')} className="h-7 px-2 text-xs">
+            {t('lists.panel.cancel')}
+          </Button>
+        )}
+        actions={view === 'library' ? [
+          { id: 'list-new', label: t('lists.library.newList'), icon: <Plus className="h-4 w-4" />, disabled: !hasData, onSelect: handleCreateNew },
+          { id: 'list-import', label: t('lists.library.import'), icon: <Upload className="h-4 w-4" />, onSelect: () => importInputRef.current?.click() },
+          assistant,
+        ] : view === 'results' ? [
+          { id: 'list-edit', label: t('lists.panel.editConfiguration'), icon: <Settings2 className="h-4 w-4" />, onSelect: handleEditFromResults },
+          { id: 'list-back', label: t('lists.panel.backToLists'), icon: <ArrowLeft className="h-4 w-4" />, onSelect: () => setView('library') },
+          assistant,
+        ] : [assistant]}
+      />
 
       {/* Rendered over whichever view is active — #4317. */}
       {listError && <ListErrorBox message={listError} onDismiss={() => setListError(null)} />}
@@ -268,7 +277,6 @@ export function ListPanel() {
           onDuplicate={handleDuplicate}
           onDelete={handleDelete}
           onExport={handleExportDefinition}
-          onImport={() => importInputRef.current?.click()}
         />
       )}
 

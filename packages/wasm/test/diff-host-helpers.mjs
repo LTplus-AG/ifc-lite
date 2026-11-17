@@ -17,29 +17,28 @@ export async function engine(context) {
   return wasm;
 }
 
-// Staging oracle: independently built production TS from main 97d8add20710.
-// At the host-only layer the local public graph still has those algorithms.
-// At public cutover supply the independent build explicitly, never the facade
-// or the historical R124 private oracle. No implementation is copied here.
+// Independent oracle: production TS built from main 97d8add20710, before the
+// public facade cutover. packages/diff now is the facade, so it can never stand
+// in for this: run the parity checks only against an explicitly supplied build.
 export async function currentMainOracle(context) {
   const path = process.env.IFC_LITE_CURRENT_MAIN_DIFF_ORACLE;
-  const url = path ? pathToFileURL(path) : new URL('../../diff/dist/index.js', import.meta.url);
-  if (!existsSync(url)) {
-    // An explicitly requested oracle that is absent is a broken CI setup, not
-    // optional coverage: skipping would report the parity checks as passing.
-    if (path) throw new Error(`IFC_LITE_CURRENT_MAIN_DIFF_ORACLE is set but does not exist: ${path}`);
+  if (!path) {
     context.skip('TS production oracle missing; independently build main 97d8add20710 and set IFC_LITE_CURRENT_MAIN_DIFF_ORACLE to its dist/index.js');
     return;
   }
+  const url = pathToFileURL(path);
+  // An explicitly requested oracle that is absent is a broken CI setup, not
+  // optional coverage: skipping would report the parity checks as passing.
+  if (!existsSync(url)) throw new Error(`IFC_LITE_CURRENT_MAIN_DIFF_ORACLE is set but does not exist: ${path}`);
   const resolved = realpathSync(url);
   context.diagnostic(JSON.stringify({
-    oracle: 'current-main-production-TS', selection: path ? 'environment' : 'local-staging',
-    requested: path ?? url.href, resolved,
+    oracle: 'current-main-production-TS', selection: 'environment',
+    requested: path, resolved,
     entrySha256: createHash('sha256').update(readFileSync(resolved)).digest('hex'),
     expectedSourceCommit: '97d8add207104d5801c0c8d62e40fa7066e848f8',
   }));
   const api = await import(pathToFileURL(resolved).href);
-  assert.equal(api.initDiff, undefined, 'staging oracle must be independent TS production, before facade cutover');
+  assert.equal(api.initDiff, undefined, 'the oracle must be independent TS production, from before the facade cutover');
   for (const name of ['createIdentityMapSidecar', 'createLineageSidecar', 'validateLineageSidecar', 'rekeyByLineage']) {
     assert.equal(typeof api[name], 'function', name);
   }

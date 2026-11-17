@@ -82,7 +82,7 @@ export function PointCloudClasses() {
     <details className="flex flex-col gap-0.5">
       <summary className="text-2xs uppercase text-muted-foreground tracking-wider cursor-pointer select-none">
         {t('pointCloudClasses.summaryLabel')} {!allOn && (
-          <span className="text-2xs normal-case text-amber-500"> · {t('pointCloudClasses.visibleCount', { visible: visibleCount, total: present.length })}</span>
+          <span className="text-2xs normal-case text-active"> · {t('pointCloudClasses.visibleCount', { visible: visibleCount, total: present.length })}</span>
         )}
       </summary>
       {present.length === 0 ? (
@@ -112,7 +112,7 @@ export function PointCloudClasses() {
                   type="checkbox"
                   checked={visible}
                   onChange={() => toggle(classId)}
-                  className="accent-teal-600"
+                  className="accent-primary"
                   aria-label={t('pointCloudClasses.toggleAriaLabel', { label, classId })}
                 />
                 <span

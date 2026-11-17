@@ -38,7 +38,7 @@ export function FlowPreflight() {
     </div>
     {result && !current && <p className="text-muted-foreground">{t('flowAssistant.preflightStale')}</p>}
     {result && current && (result.ok
-      ? <p aria-live="polite" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2">{t('flowAssistant.preflightOk', { name: graph.name })}</p>
+      ? <p aria-live="polite" className="rounded border border-ok-border bg-ok-surface p-2">{t('flowAssistant.preflightOk', { name: graph.name })}</p>
       : <div role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 space-y-1">
         <p>{t('flowAssistant.preflightFailed')}</p>
         <ul className="list-disc pl-4">{result.problems.map((problem, index) => <li key={index} className="break-words">{t(problem.labelKey, problem.params)}</li>)}</ul>

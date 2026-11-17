@@ -4,8 +4,8 @@
 
 /**
  * The hierarchy panel's footer status strip: active storey/class/type-filter
- * chips with per-chip clear buttons when any filter is active, or an idle
- * hint otherwise. Both the multi-model and single-model layouts in
+ * chips with per-chip clear buttons when any filter is active, nothing
+ * otherwise. Both the multi-model and single-model layouts in
  * `HierarchyPanel.tsx` rendered this same block (only the idle hint's copy
  * and one text-color shade differed) — extracted verbatim (#5883 review:
  * kept HierarchyPanel under its module-size allowlist row rather than
@@ -13,6 +13,7 @@
  */
 
 import { Button } from '@/components/ui/button';
+import { FilterChip } from '@/components/ui/filter-chip';
 import { useTranslation } from '@/i18n';
 
 export interface HierarchyFooterStatusProps {
@@ -25,11 +26,6 @@ export interface HierarchyFooterStatusProps {
   clearClassFilter: () => void;
   clearIsolation: () => void;
   clearAllFilters: () => void;
-  /** The idle-state hint shown when no filter is active. */
-  idleHint: string;
-  /** Only the multi-model layout's idle hint used the slightly darker
-   *  `text-zinc-500` (vs. `text-zinc-600`) light-mode shade — preserved as-is. */
-  idleHintLightShade?: '500' | '600';
 }
 
 export function HierarchyFooterStatus({
@@ -42,54 +38,48 @@ export function HierarchyFooterStatus({
   clearClassFilter,
   clearIsolation,
   clearAllFilters,
-  idleHint,
-  idleHintLightShade = '600',
 }: HierarchyFooterStatusProps) {
   const { t } = useTranslation();
 
-  if (!hasActiveFilters) {
-    return (
-      <div className={`p-2 border-t-2 border-zinc-200 dark:border-zinc-800 text-2xs uppercase tracking-wide text-zinc-${idleHintLightShade} dark:text-zinc-500 text-center bg-zinc-50 dark:bg-black font-mono`}>
-        {idleHint}
-      </div>
-    );
-  }
+  // Idle, the strip used to pin a permanent "Click to select · Ctrl toggle"
+  // hint under the tree. Selection is discoverable from the rows themselves,
+  // so idle shows nothing and the tree gets the room (#8802).
+  if (!hasActiveFilters) return null;
 
+  // Active filters: a neutral strip with chips in the shared active state
+  // (#8802 R4), so the filter reads as a state that is on.
   return (
-    <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 bg-primary text-white dark:bg-primary">
-      <div className="flex items-center justify-between text-xs font-medium gap-2">
+    <div className="border-t border-border bg-muted/50 px-2 py-1.5">
+      <div className="flex items-center justify-between text-xs gap-2">
         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
           {selectedStoreys.size > 0 && (
-            <span className="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-2xs uppercase tracking-wide">
+            <FilterChip onClear={clearStoreySelection} clearLabel={t('hierarchy.panel.clearStoreyFilterAriaLabel')}>
               {t('hierarchy.panel.storeyCount', { count: selectedStoreys.size })}
-              <button onClick={clearStoreySelection} className="ml-0.5 opacity-60 hover:opacity-100 text-xs leading-none" aria-label={t('hierarchy.panel.clearStoreyFilterAriaLabel')}>&times;</button>
-            </span>
+            </FilterChip>
           )}
           {classFilter !== null && (
             <>
-              {selectedStoreys.size > 0 && <span className="text-2xs opacity-50">+</span>}
-              <span className="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-2xs uppercase tracking-wide">
+              {selectedStoreys.size > 0 && <span className="text-2xs text-muted-foreground">+</span>}
+              <FilterChip onClear={clearClassFilter} clearLabel={t('hierarchy.panel.clearClassFilterAriaLabel')}>
                 {classFilter.label}
-                <button onClick={clearClassFilter} className="ml-0.5 opacity-60 hover:opacity-100 text-xs leading-none" aria-label={t('hierarchy.panel.clearClassFilterAriaLabel')}>&times;</button>
-              </span>
+              </FilterChip>
             </>
           )}
           {isolatedEntities !== null && (
             <>
-              {(selectedStoreys.size > 0 || classFilter !== null) && <span className="text-2xs opacity-50">+</span>}
-              <span className="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-2xs uppercase tracking-wide">
+              {(selectedStoreys.size > 0 || classFilter !== null) && <span className="text-2xs text-muted-foreground">+</span>}
+              <FilterChip onClear={clearIsolation} clearLabel={t('hierarchy.panel.clearTypeFilterAriaLabel')}>
                 {typeIsolationLabel}
-                <button onClick={clearIsolation} className="ml-0.5 opacity-60 hover:opacity-100 text-xs leading-none" aria-label={t('hierarchy.panel.clearTypeFilterAriaLabel')}>&times;</button>
-              </span>
+              </FilterChip>
             </>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="opacity-70 text-2xs font-mono">{t('hierarchy.panel.escHint')}</span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <kbd className="rounded-sm border border-border px-1 font-mono text-2xs text-muted-foreground">{t('hierarchy.panel.escHint')}</kbd>
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 text-2xs uppercase border border-white/20 hover:bg-white/20 hover:text-white rounded-none px-2"
+            className="h-6 px-2 text-2xs"
             onClick={() => { clearStoreySelection(); clearAllFilters(); }}
           >
             {t('hierarchy.panel.clearAllButton')}

@@ -19,13 +19,21 @@ on:
         description: Serialized result or results from the caller's needs context.
         required: true
         type: string
+      detail:
+        description: Optional lane-specific findings for the issue body, such as the metrics over a ceiling.
+        required: false
+        default: ''
+        type: string
       dry_run:
         description: Exercise the reporter without changing issue state.
         required: false
         default: false
         type: boolean
 
+# Every caller must grant these too: a called workflow asking for more than its
+# caller allows fails at startup. `actions: read` lists the run's failed steps.
 permissions:
+  actions: read
   contents: read
   issues: write
 
@@ -44,6 +52,7 @@ jobs:
           WORKFLOW_NAME: ${{ inputs.workflow_name }}
           JOBS: ${{ inputs.jobs }}
           RESULT: ${{ inputs.result }}
+          DETAIL: ${{ inputs.detail }}
           DRY_RUN: ${{ inputs.dry_run }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: node scripts/report-scheduled-failure.mjs

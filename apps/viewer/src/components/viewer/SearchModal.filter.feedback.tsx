@@ -29,7 +29,7 @@ export function SelectorFeedbackList({ feedback }: { feedback: SelectorFeedback 
     <ul
       role="alert"
       className={`flex flex-col gap-0.5 text-2xs ${
-        feedback.tone === 'error' ? 'text-destructive' : 'text-amber-600 dark:text-amber-500'
+        feedback.tone === 'error' ? 'text-destructive' : 'text-warn'
       }`}
     >
       {feedback.lines.map((line) => (

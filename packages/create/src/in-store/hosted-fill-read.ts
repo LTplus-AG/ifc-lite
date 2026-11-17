@@ -135,7 +135,7 @@ function refId(value: unknown): number | null {
   return null;
 }
 
-const OPENING_TYPES = new Set(['IFCOPENINGELEMENT', 'IFCOPENINGSTANDARDCASE']);
+export const OPENING_TYPES = new Set(['IFCOPENINGELEMENT', 'IFCOPENINGSTANDARDCASE']);
 
 /**
  * Where an opening, or the door or window filling one, sits in its host.

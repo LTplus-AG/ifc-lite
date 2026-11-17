@@ -1,0 +1,45 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const extrusionInspectionIt = {
+  'properties.extrusion.heading': 'Origini di estrusione inserite',
+  'properties.extrusion.sourceNote': 'Parametri esatti di profilo ed estrusione IFC. Profondità, raggio e perimetro usano i metri o l’unità selezionata; le coordinate del profilo e le traslazioni dei sistemi di riferimento restano in metri. I profili sono geometria di origine, prima di posizionamento, aperture e altri tagli.',
+  'properties.extrusion.loading': 'Lettura delle origini di estrusione selezionate…',
+  'properties.extrusion.solid': 'IfcExtrudedAreaSolid #{id}',
+  'properties.extrusion.status': 'Stato',
+  'properties.extrusion.complete': 'Completo',
+  'properties.extrusion.unsupported': 'Non supportato',
+  'properties.extrusion.missingSource': 'La definizione di origine non è disponibile per questa occorrenza.',
+  'properties.extrusion.sourceModified': 'Origine modificata da CSG',
+  'properties.extrusion.modifiedHint': 'Il profilo inserito può differire dal risultato visibile.',
+  'properties.extrusion.yes': 'Sì',
+  'properties.extrusion.no': 'No',
+  'properties.extrusion.none': 'Nessuno',
+  'properties.extrusion.mappingPath': 'Percorso di mappatura',
+  'properties.extrusion.depth': 'Profondità',
+  'properties.extrusion.direction': 'Rapporti di ExtrudedDirection',
+  'properties.extrusion.position': 'Position del solido',
+  'properties.extrusion.profile': 'SweptArea',
+  'properties.extrusion.profileType': 'ProfileType',
+  'properties.extrusion.profilePosition': 'Position del profilo',
+  'properties.extrusion.placement': 'Posizionamento di origine',
+  'properties.extrusion.placementNote': 'Le traslazioni di profilo e solido sono convertite dalle unità del file IFC in metri. La traslazione nel mondo è in metri IFC assoluti con Z verso l’alto; gli spostamenti dell’origine di rendering del visualizzatore non sono applicati. I vettori degli assi includono la scala di mappatura.',
+  'properties.extrusion.profileFrame': 'Sistema di riferimento Position del profilo',
+  'properties.extrusion.solidFrame': 'Sistema di riferimento Position del solido',
+  'properties.extrusion.worldFrame': 'Dal sistema di origine al mondo',
+  'properties.extrusion.translation': 'Traslazione',
+  'properties.extrusion.xBasis': 'Colonna della base X',
+  'properties.extrusion.yBasis': 'Colonna della base Y',
+  'properties.extrusion.zBasis': 'Colonna della base Z',
+  'properties.extrusion.center': 'centro',
+  'properties.extrusion.radius': 'raggio',
+  'properties.extrusion.normal': 'normale',
+  'properties.extrusion.xAxis': 'asse x',
+  'properties.extrusion.loop': 'Contorno {index}',
+  'properties.extrusion.segments': 'segmenti',
+  'properties.extrusion.perimeter': 'Perimetro',
+  'properties.extrusion.signedArea': 'Area con segno',
+} satisfies Catalogue;

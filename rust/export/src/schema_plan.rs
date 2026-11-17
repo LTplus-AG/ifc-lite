@@ -67,6 +67,9 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
             && (BY_NAME_ATTR_REMAP_TYPES.contains(&entity_type) || (cto == "IFC2X3" && crate::schema_mep::ifc2x3_type(entity_type).is_some())) => {
             Adjust::ByName(src, tgt)
         }
+        // The name stays, but IFC4X3 puts the inherited `PlacementRelTo` first,
+        // so neither list is a positional prefix of the other (#9026 item 14).
+        (Some(src), Some(tgt)) if entity_type == crate::schema_grid_frames::GRID_PLACEMENT && src != tgt => Adjust::ByName(src, tgt),
         _ => Adjust::Keep,
     };
     Plan::Write { renamed, adjust }

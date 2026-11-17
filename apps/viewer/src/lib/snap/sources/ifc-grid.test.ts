@@ -15,7 +15,8 @@ import { glyphFor } from '@/components/viewer/tools/command/snap-hud-geometry';
 import { solveSnap } from '../solve.js';
 import { MODELING_SNAP_PROFILE } from '../rank.js';
 import type { SnapCandidate } from '../types.js';
-import { createIfcGridSource, gridAxisIntersections, type GridAxisLine } from './ifc-grid.js';
+import { gridAxisIntersections } from '@ifc-lite/create';
+import { createIfcGridSource, type GridAxisLine } from './ifc-grid.js';
 import { createLineworkSource } from './linework.js';
 import { query } from '@/test/snap-fixture.js';
 

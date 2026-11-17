@@ -5,7 +5,7 @@
 import { arrayCopyTransforms } from '@ifc-lite/create';
 import type { RemeshCause } from '@ifc-lite/export';
 import { joinedPartnersOf } from '@/store/slices/mutation-wall-joins';
-import type { createModellingStoreBackend } from '@ifc-lite/sdk';
+import { copiedElementRefs, type createModellingStoreBackend } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { normalizeMutationModelId } from './mutation-view.js';
 import { modelEditTarget, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
@@ -40,7 +40,8 @@ export function physicalMutationTracking(store: StoreApi): Pick<Methods,
     const undoBefore = store.getState().undoStacks.get(normalized)?.length ?? 0;
     const result = copyElements(writable, normalized, expressIds, transforms);
     completePhysicalEdit(store, normalized, undoBefore, result.meshed, 'created');
-    return result.copies.map(expressId => ({ modelId: normalized, expressId }));
+    // As headless: one ref per selected element per transform, with its copy notices (#9352).
+    return copiedElementRefs(normalized, result.selected);
   };
   return {
     copyElements: copy,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtemp, open, readFile, rm, stat, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { mkdtemp, open, readFile, realpath, rm, stat, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
@@ -95,6 +95,8 @@ it('#7955 shape-only OBJ transforms world f64 points to Y-up and keeps refusal o
 
 it('#7955 bad manifest hashes are fatal before engine imports or output writes', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'retained-digest-')); dirs.push(dir);
+  // validateEngine canonicalises; macOS tmpdir() sits under the /var -> /private/var symlink.
+  const canonicalDir = await realpath(dir);
   const paths = ['pkg-retained/ifc-lite.js', 'pkg-retained/ifc-lite_bg.wasm', 'pkg-retained/package.json',
     'smlib/node/client.mjs', 'smlib/node/worker.mjs', 'smlib/node/hooks.mjs', 'smlib/worker.mjs', 'smlib/module.mjs',
     'smlib/sweep.mjs', 'smlib/sweep-contract.mjs', 'smlib/contract.mjs',
@@ -112,7 +114,7 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
   }
   await writeFile(join(dir, 'engine-manifest.json'), JSON.stringify({ format: 'ifc-lite.retained-engine/1', sdk: { revision: '0'.repeat(40) }, capabilities: null, assets }));
   // PR #8299: dev/preview servers validate inert assets without executing engine code.
-  expect((await validateEngine(dir)).directory).toBe(dir);
+  expect((await validateEngine(dir)).directory).toBe(canonicalDir);
   // Refs #7955: an internally consistent inventory still requires the root notice.
   const manifestBytes = await readFile(join(dir, 'engine-manifest.json'));
   const withoutNotice = JSON.parse(manifestBytes.toString());
@@ -123,7 +125,7 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
   await writeFile(join(dir, 'THIRD_PARTY_NOTICES.txt'), content);
   await writeFile(join(dir, 'engine-manifest.json'), manifestBytes);
   vi.stubEnv('IFCLITE_RETAINED_ENGINE', dir);
-  expect((await exportKernel(['--kernel', 'retained'], 'obj'))?.directory).toBe(dir);
+  expect((await exportKernel(['--kernel', 'retained'], 'obj'))?.directory).toBe(canonicalDir);
   await writeFile(join(dir, paths[0]), 'tampered');
   await expect(exportCommand(['missing.ifc', '--format', 'obj', '--kernel', 'retained', '--retained-engine', dir,
     '--out', join(dir, 'out.obj'), '--retained-report', join(dir, 'report.json')])).rejects.toThrow(/hash mismatch/);

@@ -57,7 +57,10 @@ export async function removeScannerContainer(name: string): Promise<void> {
       ["rm", "--force", name],
       AbortSignal.timeout(10000),
     );
-    if (result.code === 0 || result.output.includes("No such container")) return;
+    // Docker CLIs word "already gone" differently ("Error response from daemon:
+    // No such container" vs the newer "error: no such container"). Only that
+    // exact not-found counts as removed; every other failure stays unverified.
+    if (result.code === 0 || /no such container/i.test(result.output)) return;
     throw new Error("scanner_cleanup_failed");
   } catch (error) {
     // Unavailable/interrupted Docker is also unverified removal. Callers retain

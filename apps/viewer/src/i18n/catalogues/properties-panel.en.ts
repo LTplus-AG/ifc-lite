@@ -17,6 +17,9 @@ import type { TranslationValue } from '../types';
  * of `properties.en.ts` (#5811) to keep both under the module-size rule.
  */
 export const propertiesPanelEn = {
+  'properties.panel.presentationLayersHeading': 'Presentation layers',
+  'properties.panel.presentationLayersLoadError': 'Unable to load presentation layers.',
+  'properties.panel.presentationLayersRetry': 'Retry',
   // PropertiesPanel: empty state
   'properties.panel.title': 'Properties',
   'properties.panel.findLabel': 'Find properties',
@@ -33,6 +36,10 @@ export const propertiesPanelEn = {
   'properties.panel.associatedTypeFallback': 'Type',
   'properties.panel.worldCoordinates': 'World',
   'properties.panel.worldCoordinatesDetails': 'details',
+  'properties.panel.positionLabel': 'Position',
+  'properties.panel.crsLabel': 'CRS',
+  'properties.panel.localCoordinates': 'Local',
+  'properties.panel.entityActionsLabel': 'Element actions',
   'properties.panel.sizeLabel': 'Size',
   'properties.panel.sizeDisplay': '{x} x {y} x {z}',
 

@@ -7,15 +7,15 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { setCollabEnabledOverride } from '@/lib/collab/config';
 import { useViewerStore } from '@/store';
-import { buildPanelCommands } from './commandPaletteCommandsPanels.js';
+import { buildCommandPaletteCommands } from './commandPaletteCommands.js';
 import { paletteSurfaceCommands, surfaceCommand, SURFACE_COMMANDS } from './surface-commands.js';
 import type { CommandPaletteBuildParams } from './commandPaletteCommandsTypes.js';
 
 const PANEL_IDS = [
-  'panel:script', 'panel:lists', 'panel:gantt', 'panel:charts', 'panel:flow',
+  'panel:error-report', 'panel:retained-report', 'panel:presentation', 'panel:script', 'panel:lists', 'panel:gantt', 'panel:charts', 'panel:flow',
   'panel:document', 'panel:drawing', 'panel:properties', 'panel:tree',
   'panel:assistant', 'panel:bcf', 'panel:ids', 'panel:idsStudio', 'panel:influx', 'panel:clash', 'panel:compare', 'panel:changes', 'panel:model', 'panel:review', 'panel:semantic', 'panel:changeSets',
-  'panel:cost', 'panel:chat', 'panel:lens', 'panel:layers', 'panel:sources',
+  'panel:cost', 'panel:chat', 'panel:lens', 'panel:layers', 'panel:sources', 'panel:agentBridge',
   'panel:zones', 'panel:loadReport', 'panel:pointclouds', 'panel:measurements',
   'panel:appearance', 'panel:collab', 'panel:extensions',
 ] as const;
@@ -40,7 +40,7 @@ describe('shared panel command homes (#5870)', () => {
     const definitions = SURFACE_COMMANDS.filter((command) => command.id.startsWith('panel:'));
     assert.deepEqual(definitions.map((command) => command.id), PANEL_IDS);
     assert.throws(() => surfaceCommand('panel:tree', 'ribbon'), /not registered for ribbon/,
-      'Tree collapse belongs to the palette and is never a ribbon command');
+      'Tree destination belongs to the palette and is never a ribbon command');
 
     const hidden = paletteSurfaceCommands({ canEditInSession: true, collabEnabled: false }, () => {})
       .filter((command) => command.id.startsWith('panel:'));
@@ -49,7 +49,7 @@ describe('shared panel command homes (#5870)', () => {
     assert.deepEqual(hidden.map((command) => command.id), PANEL_IDS.filter((id) => id !== 'panel:collab'));
     assert.deepEqual(available.map((command) => command.id), PANEL_IDS);
 
-    const rendered = buildPanelCommands(params()).filter((command) => command.id.startsWith('panel:'));
+    const rendered = buildCommandPaletteCommands(params()).filter((command) => command.id.startsWith('panel:'));
     assert.deepEqual(rendered.map((command) => command.id), hidden.map((command) => command.id),
       'the real palette builder renders every enabled table row exactly once');
     for (const row of rendered) {
@@ -63,8 +63,8 @@ describe('shared panel command homes (#5870)', () => {
   it('routes panel commands to the real right and bottom panel store actions', () => {
     useViewerStore.setState({ sidebarActivePanel: 'properties', ganttPanelVisible: false });
     const rows = paletteSurfaceCommands({ canEditInSession: true }, () => {}, {
-      activateRightPanel: (panel) => { useViewerStore.getState().toggleWorkspacePanel(panel, 'palette'); },
-      activateBottomPanel: (panel) => { useViewerStore.getState().toggleBottomPanel(panel, 'palette'); },
+      activateRightPanel: (panel) => { useViewerStore.getState().openPanelInHome(panel, 'palette'); },
+      activateBottomPanel: (panel) => { useViewerStore.getState().openPanelInHome(panel, 'palette'); },
     });
     const validation = rows.find((command) => command.id === 'panel:ids');
     const gantt = rows.find((command) => command.id === 'panel:gantt');

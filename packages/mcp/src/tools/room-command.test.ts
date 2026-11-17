@@ -10,6 +10,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { existingSpaceFootprintEntriesByStorey } from '@ifc-lite/create';
 import type { LoadedModel } from '../context.js';
 import type { CallToolResult } from '../protocol/index.js';
+import { canonicalQuantityIds, persistentQuantityIds } from '../test/canonical-quantity-ids.js';
 import { liveToolSession } from '../test/live-tool-session.js';
 
 const wasm = new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url), available = existsSync(wasm);
@@ -18,7 +19,7 @@ beforeAll(async () => {
   const runtime = await import('@ifc-lite/wasm');
   runtime.initSync({ module: readFileSync(wasm) });
 });
-const exported = (model: LoadedModel | null) => model ? new TextDecoder().decode(new StepExporter(model.store, model.backend.getMutationView() ?? undefined).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content) : undefined;
+const exported = (model: LoadedModel | null) => model ? canonicalQuantityIds(new StepExporter(model.store, model.backend.getMutationView() ?? undefined).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content, persistentQuantityIds(model)) : undefined;
 const outcome = (result: CallToolResult): RoomCommandResult => {
   expect(result.isError).not.toBe(true);
   expect(result.structuredContent).toHaveProperty('created');

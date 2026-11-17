@@ -10,7 +10,6 @@ The appearance consumer uses a bounded cumulative allocation allowance of 2 GiB 
 
 When available, the browser's `scheduler.postTask` schedules fresh background tasks, allowing pending user interaction to run ahead of preparation. The fallback is a host timer. This replaces `scheduler.yield()` continuations: the paired browser acceptance found that frames continued while trusted input could remain queued until Apply completed. Neither path replaces exact synchronous comparison of escaped SDK values: source/dependency guards, final installation and history/GPU publication still perform synchronous work. This slice therefore requires actual interaction measurement and does not claim a universal frame-time bound or completion of the responsiveness issue.
 
-Actual browser evidence is under `evidence/appearance/appearance-cooperative-apply-*`.
 The fresh measurement reached successful whole-model Apply; a separate functional
 journey completed keyboard Undo and Redo with the second federated wall untouched.
 Redo restored the exact ordered mesh-buffer fingerprint from Apply. The recorded
@@ -28,4 +27,4 @@ after the final synchronous phase; cancellation cannot interrupt that phase or
 undo an already completed command. The deterministic phase-triggered run proves
 the live UI cancellation path, not arbitrary input latency during the final fence.
 
-The follow-up [paired trusted-input acceptance](evidence/appearance/apply-responsiveness/README.md) compares the scheduling change with otherwise identical main sources and runtime. It covers viewport wheel input, real Discard input, retained model identity and sampled JavaScript memory. The final synchronous fence remains a visible limitation; preparation responsiveness is not a universal frame-time guarantee.
+The follow-up [paired trusted-input acceptance](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/appearance/apply-responsiveness/README.md) compares the scheduling change with otherwise identical main sources and runtime. It covers viewport wheel input, real Discard input, retained model identity and sampled JavaScript memory. The final synchronous fence remains a visible limitation; preparation responsiveness is not a universal frame-time guarantee.

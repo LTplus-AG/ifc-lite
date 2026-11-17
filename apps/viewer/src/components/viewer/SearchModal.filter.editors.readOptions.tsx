@@ -13,6 +13,7 @@
 import { useTranslation } from '@/i18n';
 import type { FilterRule } from '@ifc-lite/rules';
 import { cn } from '@/lib/utils';
+import { ACTIVE_BORDERED_STATE_CLASS } from '@/components/ui/active-state';
 import { InheritSelect } from './InheritSelect';
 import { MemberPathInput } from './MemberPathInput';
 
@@ -38,7 +39,7 @@ export function ReadOptionControls({ rule, onChange }: { rule: MeasureRule; onCh
         onClick={() => onChange({ ...rule, valueUnit: si ? undefined : 'si' })}
         className={cn(
           'h-7 rounded border px-1.5 text-2xs font-medium',
-          si ? 'border-primary bg-primary text-primary-foreground' : 'border-zinc-300 text-muted-foreground dark:border-zinc-700',
+          si ? ACTIVE_BORDERED_STATE_CLASS : 'border-border text-muted-foreground',
         )}
       >
         {t('searchModal.filterEditors.siUnits')}

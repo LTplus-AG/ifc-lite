@@ -16,11 +16,14 @@ import { join, relative } from 'node:path';
 
 // Same flag sets as playwright.config.ts (`swiftshader`) and the Pop hardware recipe
 // (headed Chrome on a PRIVATE Xvfb; headless loses the NVIDIA device on canvas present).
+// `hardware` asks for the high-performance adapter by default: the renderer calls `requestAdapter()` without a
+// preference, and on Pop's hybrid laptop (Intel iGPU + NVIDIA) Chrome's default flipped from NVIDIA (2026-11-01)
+// to the Intel iGPU (2026-11-04), so samples of one cohort could land on different GPUs. A no-op on one GPU.
 export const GPU_ARGS = {
   swiftshader: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader',
     '--disable-vulkan-surface', '--ignore-gpu-blocklist', '--enable-gpu'],
   hardware: ['--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan', '--use-angle=vulkan', '--enable-unsafe-webgpu',
-    '--ignore-gpu-blocklist', '--enable-gpu'],
+    '--ignore-gpu-blocklist', '--enable-gpu', '--use-webgpu-power-preference=default-high-performance'],
 };
 // tests/benchmark/gpu-health.ts DEVICE_LOSS_LOG_FORMATS (pinned by retained-qual-browser.test.mjs).
 export const DEVICE_LOSS_PATTERNS = [/\[WebGPU\] Device lost:.*\(reason: [\w-]+\)/,

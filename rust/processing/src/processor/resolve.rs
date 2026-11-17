@@ -343,7 +343,7 @@ fn filter_phase(
         &mut s.prepass.geometry_style_index,
         &s.prepass.indexed_colour_index,
     );
-    let (skipped_entity_ids, filtered_void_index) = apply_opening_filter(
+    let (skipped_entity_ids, mut filtered_void_index) = apply_opening_filter(
         &s.jobs,
         &s.prepass.void_index,
         &s.prepass.filling_by_opening,
@@ -360,6 +360,9 @@ fn filter_phase(
     // `Some(empty)` is part of the public filtering contract.
     if let Some(ids) = req.entity_ids.as_deref() {
         s.jobs.retain(|job| ids.contains(&job.id));
+    }
+    if req.skip_voids {
+        filtered_void_index.clear();
     }
     (skipped_entity_ids, filtered_void_index)
 }

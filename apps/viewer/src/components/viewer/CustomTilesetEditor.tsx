@@ -84,7 +84,7 @@ export function CustomTilesetEditor() {
       </div>
 
       {problem && (
-        <p role="alert" className="text-2xs leading-tight text-red-400">{problem}</p>
+        <p role="alert" className="text-2xs leading-tight text-danger">{problem}</p>
       )}
     </div>
   );

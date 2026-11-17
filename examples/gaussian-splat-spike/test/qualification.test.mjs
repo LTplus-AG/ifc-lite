@@ -81,3 +81,18 @@ for (const extension of ['ply', 'PLY']) test(`analytic SH3 ${extension} uses the
 test('corpus dispatch refuses unsupported formats rather than defaulting to splat (#8580)', async () => {
   await assert.rejects(decodeCorpusEntry({ path: 'gaussian/control.spz' }, new Uint8Array()), /Unsupported corpus format/);
 });
+
+
+test('SH3 headers with zero coefficients cannot qualify captured appearance (#8567)', async () => {
+  const bytes = qualificationPly({ batches: 1, perBatch: 1 });
+  const headerEnd = bytes.indexOf('end_header\n') + 'end_header\n'.length;
+  bytes.fill(0, headerEnd + 9 * 4, headerEnd + 54 * 4);
+  const entry = { path: 'gaussian/zero-sh3.ply', size: bytes.length, sha256: sha256(bytes),
+    gaussian: { count: 1, sh_degree: 3, nonzero_sh: false } };
+  await decodeCorpusEntry(entry, bytes);
+  await assert.rejects(decodeCorpusEntry({ ...entry, gaussian: { ...entry.gaussian, nonzero_sh: true } }, bytes),
+    /must contain captured nonzero coefficients/);
+  const nonzero = qualificationPly({ batches: 1, perBatch: 1 });
+  await assert.rejects(decodeCorpusEntry({ ...entry, sha256: sha256(nonzero) }, nonzero),
+    /expected published zero coefficients/);
+});

@@ -8,12 +8,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { StandaloneArtifactLibraries } from '@/lib/storage/artifact-backup.js';
-import {
-  RIBBON_COLLAPSED_STORAGE_KEY,
-  RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
-  UI_DEFAULTS,
-  type RibbonTabId,
-} from '../constants.js';
+import { RIBBON_COLLAPSED_STORAGE_KEY, RIBBON_CONTEXTUAL_TABS_STORAGE_KEY, UI_DEFAULTS, type RibbonTabId } from '../constants.js';
 import {
   createGeometryLoadSettings,
   geometryLoadSettingsInitialState,
@@ -21,14 +16,17 @@ import {
   type GeometryLoadSettingsState,
 } from './geometryLoadSettings.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
-import type { FederatedModel } from '../types.js';
+import type { FederatedModel, PointerInput } from '../types.js';
 import { hasRetainedShapeOnlyModel } from '../retainedGeometry.js';
+import { isToolAvailable } from '@/lib/features/tools.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
-import { applyThemeClasses, hasLoadedModel, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
+import { applyThemeClasses, hasLoadedModel, initialPointerInput, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
 import type { NavigationPreset } from '@/lib/navigation/presets.js';
+import type { WheelZoomSensitivity } from '@/lib/navigation/wheel-input.js';
+import { DESKTOP_FORM_FACTOR, type FormFactor } from '@/lib/layout/form-factor.js';
 import type { SelectedDirectrixSegment } from '@/lib/analytic/segment-selection.js';
-import { getInitialHierarchyMode, getInitialNavigationPreset, persistHierarchyMode, persistNavigationPreset } from './uiPreferences.js';
+import { getInitialHierarchyMode, getInitialNavigationPreset, getInitialWheelZoomSensitivity, persistHierarchyMode, persistNavigationPreset, persistWheelZoomSensitivity } from './uiPreferences.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
 export type { GeometryReloadReason } from './geometryLoadSettings.js';
@@ -97,7 +95,14 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   // State
   leftPanelCollapsed: boolean;
   rightPanelCollapsed: boolean;
+  /** Runtime only: an explicit panel action lifted that side's empty-start-screen
+   *  fold (`useEmptyStartFold.ts`) instead of writing the stored layout. */
+  startFoldLifted: { left: boolean; right: boolean };
   activeTool: string;
+  /** The input the viewport saw last, which words the Measure hint (#8879). */
+  pointerInput: PointerInput;
+  /** Note the input the viewport saw; a no-op when it is unchanged. */
+  setPointerInput: (input: PointerInput) => void;
   /**
    * Global edit mode. When `true`, all in-place editing affordances (inline
    * property/attribute editors, future geometry manipulators, georeference
@@ -110,6 +115,8 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   propertiesActiveTab: 'properties' | 'quantities' | 'bsdd' | 'raw-step';
   /** Active grouping tab shared by the Hierarchy panel and Ribbon. */
   hierarchyMode: HierarchyMode;
+  /** One-shot reveal of a presentation-layer header from the inspector (#9273). */
+  pendingPresentationLayerReveal: { nodeId: string; modelId: string; selectionRevision: number } | null;
   /** One-shot "scroll to + highlight + edit this property" request, armed by
    *  the bSDD add flow and consumed by the Properties panel. Null when idle. */
   pendingPropertyFocus: PropertyFocusTarget | null;
@@ -118,10 +125,14 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   pendingStandaloneArtifactImport: StandaloneArtifactLibraries | null;
   contentStorageActionBusy: boolean;
   theme: ThemeMode;
+  /** Derived: `formFactor.mode !== 'desktop'`, written only by `setFormFactor`. */
   isMobile: boolean;
+  /** The classified window (#9718), from `useMobileLayoutMode`. */
+  formFactor: FormFactor;
   hoverTooltipsEnabled: boolean;
   showPerformanceStats: boolean;
   navigationPreset: NavigationPreset;
+  wheelZoomSensitivity: WheelZoomSensitivity; // every view's wheel zoom, saved per browser (#9507)
   visualEnhancementsEnabled: boolean;
   /** Show exact authored swept-disk directrices for selected IFC products. */
   centrelineOverlayEnabled: boolean;
@@ -151,6 +162,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   // Actions
   setLeftPanelCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
+  setStartFoldLifted: (lifted: { left: boolean; right: boolean }) => void;
   setActiveTool: (tool: string, via?: import('@/lib/analytics-ui-events').ToolChangeVia) => void; // via: see withToolTelemetry (#5618)
   setEditEnabled: (enabled: boolean) => void;
   toggleEditEnabled: () => void;
@@ -163,10 +175,11 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   toggleTheme: () => void;
   /** Shift+click secret: toggle colorful mode on/off */
   toggleColorful: () => void;
-  setIsMobile: (isMobile: boolean) => void;
+  setFormFactor: (formFactor: FormFactor) => void;
   toggleHoverTooltips: () => void;
   setShowPerformanceStats: (enabled: boolean) => void;
   setNavigationPreset: (preset: NavigationPreset) => void;
+  setWheelZoomSensitivity: (sensitivity: WheelZoomSensitivity) => void;
   setVisualEnhancementsEnabled: (enabled: boolean) => void;
   setCentrelineOverlayEnabled: (enabled: boolean) => void;
   setSelectedDirectrixSegment: (segment: SelectedDirectrixSegment | null) => void;
@@ -201,19 +214,25 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   // Initial state
   leftPanelCollapsed: false,
   rightPanelCollapsed: false,
+  startFoldLifted: { left: false, right: false },
   activeTool: UI_DEFAULTS.ACTIVE_TOOL,
+  pointerInput: initialPointerInput(),
+  setPointerInput: (input) => { if (get().pointerInput !== input) set({ pointerInput: input }); },
   editEnabled: false,
   propertiesActiveTab: 'properties',
   hierarchyMode: getInitialHierarchyMode(),
+  pendingPresentationLayerReveal: null,
   pendingPropertyFocus: null,
   pendingArtifactEditor: null,
   pendingStandaloneArtifactImport: null,
   contentStorageActionBusy: false,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
+  formFactor: DESKTOP_FORM_FACTOR,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
   showPerformanceStats: initialShowPerformanceStats(),
   navigationPreset: getInitialNavigationPreset(),
+  wheelZoomSensitivity: getInitialWheelZoomSensitivity(),
   visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
   centrelineOverlayEnabled: false,
   selectedDirectrixSegment: null,
@@ -232,6 +251,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
   setRightPanelCollapsed: (rightPanelCollapsed) => set({ rightPanelCollapsed }),
+  setStartFoldLifted: (startFoldLifted) => set({ startFoldLifted }),
   setActiveTool: (activeTool) => {
     // Authoring tools require edit mode; entering one flips the global
     // toggle on so the rest of the UI (Properties panel, future
@@ -240,37 +260,35 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // Leaving 'measure' must discard any in-progress gesture — MeasureOverlay
     // only mounts while activeTool === 'measure' (ToolOverlays.tsx), so this
     // is the one place a stray drag/polyline sequence could be left stranded.
-    // Routed through measurementSlice's resetMeasureGesture instead of
-    // duplicating the clear here, keeping one place that knows what
-    // "in-progress gesture" means (see measurementSlice.ts's measureMode doc).
-    const leavingMeasure = get().activeTool === 'measure' && activeTool !== 'measure';
-    // Measuring snaps to meshes; a retained model's are shape-only (#7955 M2), so no entry point may open the tool.
+    // Entering it resets too, so a press begun in another tool places no
+    // Measure point on release (#8786).
+    // Routed through measurementSlice's resetMeasureGesture, the one place that knows
+    // what "in-progress gesture" means (see measurementSlice.ts's measureMode doc).
+    const crossingMeasure = (get().activeTool === 'measure') !== (activeTool === 'measure');
+    // A host may switch a tool off (lib/features). Measuring snaps to meshes; a retained model's are shape-only (#7955 M2).
     const { models } = get() as unknown as { models?: Map<string, FederatedModel> };
-    if (activeTool === 'measure' && models && hasRetainedShapeOnlyModel(models)) return;
+    if (!isToolAvailable(activeTool) || (activeTool === 'measure' && models && hasRetainedShapeOnlyModel(models))) return;
     if (AUTHORING_TOOLS.has(activeTool)) {
       // Collab role gate: in a shared session only editor/admin may
       // unlock authoring. Viewers/commenters can still pick read-only
       // tools, so we only block the authoring branch.
       const cross = get() as unknown as WorkspaceCrossSlice;
       if (cross.canCollabEdit && !cross.canCollabEdit()) return;
-      if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
+      if (crossingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
       // Authoring happens in the Model workspace; no editable model, no tool.
       if (cross.workspaceMode !== 'model' && cross.enterModelWorkspace && !cross.enterModelWorkspace()) return;
       set({ activeTool, editEnabled: true });
       return;
     }
-    if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
+    if (crossingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
     set({ activeTool });
   },
   setEditEnabled: (editEnabled) => {
-    // Edit mode is the Model workspace's (#6232): entering or leaving goes
-    // through the session slice, which keeps `editEnabled` in step (no
-    // editable model = no workspace = edit mode stays off). The bare flag is
-    // for a UISlice composed without the session slice.
+    // Data edits no longer need this flag (#9296). Turning edit mode on is
+    // for geometry and authoring, so it enters Model, which keeps the flag in
+    // step; the bare flag is for a UISlice composed without the session slice.
     const cross = get() as unknown as WorkspaceCrossSlice;
     if (editEnabled) {
-      // Collab role gate: only editor/admin (or single-user, role===null)
-      // may enter edit mode — the single chokepoint for every authoring surface.
       if (cross.canCollabEdit && !cross.canCollabEdit()) return;
       if (cross.enterModelWorkspace) cross.enterModelWorkspace();
       else set({ editEnabled: true });
@@ -292,13 +310,16 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     }));
   },
   toggleEditEnabled: () => {
-    get().setEditEnabled(!get().editEnabled);
+    const cross = get() as unknown as WorkspaceCrossSlice;
+    if (cross.workspaceMode === 'model') cross.exitModelWorkspace?.();
+    else if (cross.enterModelWorkspace) cross.enterModelWorkspace();
+    else get().setEditEnabled(!get().editEnabled);
   },
 
   setPropertiesActiveTab: (propertiesActiveTab) => set({ propertiesActiveTab }),
 
   setHierarchyMode: (mode) => {
-    set({ hierarchyMode: mode });
+    set({ hierarchyMode: mode, ...(mode !== 'presentation-layers' ? { pendingPresentationLayerReveal: null } : {}) });
     persistHierarchyMode(mode);
   },
 
@@ -330,7 +351,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     set({ theme: newTheme });
   },
 
-  setIsMobile: (isMobile) => set({ isMobile }),
+  setFormFactor: (formFactor) => set({ formFactor, isMobile: formFactor.mode !== 'desktop' }),
   toggleHoverTooltips: () => set((state) => ({ hoverTooltipsEnabled: !state.hoverTooltipsEnabled })),
   setShowPerformanceStats: (showPerformanceStats) => {
     persistShowPerformanceStats(showPerformanceStats);
@@ -339,6 +360,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   setNavigationPreset: (navigationPreset) => {
     persistNavigationPreset(navigationPreset);
     set({ navigationPreset });
+  },
+  setWheelZoomSensitivity: (wheelZoomSensitivity) => {
+    persistWheelZoomSensitivity(wheelZoomSensitivity);
+    set({ wheelZoomSensitivity });
   },
   setVisualEnhancementsEnabled: (visualEnhancementsEnabled) => set({ visualEnhancementsEnabled }),
   setCentrelineOverlayEnabled: (centrelineOverlayEnabled) => set({ centrelineOverlayEnabled }),

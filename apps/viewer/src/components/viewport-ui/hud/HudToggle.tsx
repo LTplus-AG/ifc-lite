@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface HudToggleProps {
@@ -32,7 +32,7 @@ export function HudToggle({ pressed, onPressedChange, icon, children, title, dis
       aria-label={rest['aria-label']}
       title={title}
       disabled={disabled}
-      onClick={onPressedChange}
+      onClick={(event) => { releasePointerFocus(event); onPressedChange(); }}
       className={cn(
         'inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40',
         pressed
@@ -45,6 +45,17 @@ export function HudToggle({ pressed, onPressedChange, icon, children, title, dis
       {children}
     </button>
   );
+}
+
+/**
+ * A pointer click hands focus back, so Enter still commits the running
+ * command after a bar toggle is clicked mid-gesture (#9233): the dispatcher
+ * lets a focused control keep Enter, and Chromium leaves focus on a clicked
+ * button. Keyboard activation (`detail === 0`) keeps focus where it is. The
+ * ribbon blurs on click for the same reason.
+ */
+export function releasePointerFocus(event: MouseEvent<HTMLElement>): void {
+  if (event.detail > 0) event.currentTarget.blur();
 }
 
 /** A thin vertical rule between control groups on a `HudToolbar`. Purely visual. */

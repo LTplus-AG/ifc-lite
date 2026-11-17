@@ -132,7 +132,7 @@ function buildStore(): IfcDataStore {
     entityCount: 1,
     parseTime: 0,
     source: new Uint8Array(0),
-    entityIndex: { byId: { ranges: new Uint32Array(0), index: new Map() }, byType: new Map([['IFCWALL', [42]]]) },
+    entityIndex: { byId: new Map(), byType: new Map([['IFCWALL', [42]]]) },
     strings,
     entities: builder.build(),
     properties: undefined,
@@ -295,7 +295,7 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
     seedPanelStore([]);
     const container = render(<ListPanel />);
 
-    const newListButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('New List'));
+    const newListButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('New list'));
     assert.ok(newListButton, 'expected a New List button');
     click(newListButton as Element);
 

@@ -22,10 +22,11 @@
 
 import type { BcfCommentDto, BcfTopicDto } from '@ifc-lite/bcf-api';
 import { parseDraftFooter } from '../bcf-drafts/draft-footer.js';
-import { commentMarker, ownedFields, sameOwnedFields } from './outbox-plan.js';
+import { commentMarker, ownedFields, sameOwnedFields, statedOwnedFields } from './outbox-plan.js';
 import { markDone, replaceEntry, requeue } from './outbox-state.js';
 import { mutatePublication, readPublication } from './outbox-store.js';
 import { sameTarget, type PublicationConnection } from './outbox-dispatch.js';
+import { publicationRules } from './outbox-server-rules.js';
 import type { BcfPublication, OutboxCandidate, OutboxCheck, OutboxEntry } from './outbox-types.js';
 
 /**
@@ -43,20 +44,61 @@ function withinWindow(date: string | null | undefined, entry: OutboxEntry, check
   return value >= start && value <= checkedAt.getTime() + WINDOW_MS;
 }
 
-async function allTopics(connection: PublicationConnection, projectId: string): Promise<BcfTopicDto[]> {
+const PAGE = 200;
+const MAX_PAGES = 250;
+
+/**
+ * Every topic of the project, and whether the list is known to be complete.
+ * Only a complete list may prove a create absent (absence allows a resend).
+ * A server that ignores `$skip` (profile `topicPaging: 'modified-date'`) is
+ * paged by `modified_date` instead, the way `@ifc-lite/bcf-api` pulls it:
+ * ascending, from the last page's latest date (inclusive; ties deduped).
+ * A short page proves nothing on either path (a server may cap `$top` below
+ * what was asked, #8656 review). Offset paging advances by what was served and
+ * ends at an empty page. By date, the list is complete only when a page from the last
+ * date brings nothing new, and not if that page was as full as the server
+ * serves and all one timestamp, where more ties may hide behind the cap.
+ */
+async function allTopics(connection: PublicationConnection, projectId: string): Promise<{ topics: BcfTopicDto[]; complete: boolean }> {
+  const byDate = publicationRules(connection).topicPaging === 'modified-date';
   const topics: BcfTopicDto[] = [];
   const seen = new Set<string>();
-  for (let skip = 0; skip < 50_000; skip += 200) {
-    const page = await connection.client.getTopics(projectId, { top: 200, skip });
-    const fresh = page.filter(topic => !seen.has(topic.guid));
+  let cursor: string | undefined;
+  let served = 0;
+  let skip = 0;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const batch = await connection.client.getTopics(projectId, byDate
+      ? { top: PAGE, orderby: 'modified_date asc', ...(cursor ? { filter: `modified_date ge ${cursor}` } : {}) }
+      : { top: PAGE, skip });
+    const fresh = batch.filter(topic => !seen.has(topic.guid));
     for (const topic of fresh) { seen.add(topic.guid); topics.push(topic); }
-    // A server ignoring $skip repeats its first page; stop instead of looping.
-    if (page.length < 200 || fresh.length === 0) break;
+    if (!byDate) {
+      // A short page proves nothing either (the server may cap `$top`): advance
+      // by what was served and stop at an empty page.
+      if (batch.length === 0) return { topics, complete: true };
+      // A page with nothing new (a server ignoring $skip) cannot go on.
+      if (fresh.length === 0) return { topics, complete: false };
+      skip += batch.length;
+      continue;
+    }
+    served = Math.max(served, batch.length);
+    if (batch.length === 0) return { topics, complete: true };
+    if (fresh.length === 0) {
+      // Only ties at the last date came back: nothing is newer, unless that page was full and all one timestamp.
+      const tiesOnly = batch.every(topic => topic.modified_date === cursor);
+      // A tie-only page as full as the most the server has served may be cut off by a cap of any size; not complete then
+      // (the check answers 'unavailable' and the coordinator decides, never a duplicate resend).
+      return { topics, complete: !(tiesOnly && batch.length >= served) };
+    }
+    const last = batch[batch.length - 1]?.modified_date;
+    if (!last || !Number.isFinite(Date.parse(last))) return { topics, complete: false };
+    cursor = last;
   }
-  return topics;
+  return { topics, complete: false };
 }
 
 const candidateOf = (item: BcfTopicDto | BcfCommentDto): OutboxCandidate => ({ guid: item.guid,
+  ...('topic_type' in item || 'title' in item ? { fields: statedOwnedFields(item as unknown as Record<string, unknown>) } : {}),
   ...('title' in item && item.title ? { title: item.title } : {}),
   ...('creation_author' in item && item.creation_author ? { author: item.creation_author } : {}),
   ...('author' in item && item.author ? { author: item.author } : {}),
@@ -75,7 +117,9 @@ export async function lookupEntry(connection: PublicationConnection, record: Bcf
   const projectId = record.target.projectId;
   const author = (value: string | null | undefined) => !record.target.userId || !value || value === record.target.userId;
   if (entry.operation === 'createTopic') {
-    const topics = await allTopics(connection, projectId);
+    const { topics, complete } = await allTopics(connection, projectId);
+    const listed = (check: OutboxCheck): OutboxCheck => check.result === 'absent' && !complete
+      ? { at, result: 'unavailable', candidates: [], note: 'The server topic list could not be read completely, so absence is not proven.' } : check;
     if (record.origin === 'draft') {
       const sent = parseDraftFooter(String(entry.payload.description ?? ''));
       const ours = topics.filter(topic => {
@@ -84,11 +128,11 @@ export async function lookupEntry(connection: PublicationConnection, record: Bcf
       });
       const strong = ours.filter(topic => author(topic.creation_author)).map(candidateOf);
       const weak = ours.filter(topic => !author(topic.creation_author)).map(candidateOf);
-      return verdict(strong, weak, at, weak.length ? 'Matching topics by another author need your decision.' : undefined);
+      return listed(verdict(strong, weak, at, weak.length ? 'Matching topics by another author need your decision.' : undefined));
     }
     const weak = topics.filter(topic => topic.title === entry.payload.title && author(topic.creation_author)
       && withinWindow(topic.creation_date, entry, now)).map(candidateOf);
-    return verdict([], weak, at, 'Flow writes carry no correlation marker; a title match is not proof.');
+    return listed(verdict([], weak, at, 'Flow writes carry no correlation marker; a title match is not proof.'));
   }
   const dependency = record.entries.find(item => item.id === entry.dependsOn);
   const topicGuid = entry.remoteTopicGuid ?? dependency?.receipt?.remoteGuid;
@@ -120,6 +164,18 @@ export async function lookupEntry(connection: PublicationConnection, record: Bcf
     'Flow comments carry no correlation marker; equal text is not proof.');
 }
 
+/**
+ * A recovered topic write's receipt keeps what the server stored (#8656): the
+ * update baseline must not fall back to the sent payload, or a field the
+ * server dropped reads as a remote conflict later. A found topic is the
+ * server's whole copy, so a field it leaves out is not stored, unlike a
+ * write response, which may echo less than it keeps; no sent value fills in.
+ */
+function recoveredFields(entry: OutboxEntry, candidate: OutboxCandidate | undefined): { fields?: Record<string, unknown> } {
+  if (!candidate?.fields || (entry.operation !== 'createTopic' && entry.operation !== 'updateTopic')) return {};
+  return { fields: ownedFields(candidate.fields) };
+}
+
 export type CheckOutcome = { ok: true; check: OutboxCheck; record: BcfPublication } | { ok: false; reason: 'unknown' | 'target' | 'state' | 'storage' };
 const CHECKABLE = new Set<OutboxEntry['state']>(['uncertain', 'blocked']);
 
@@ -136,7 +192,7 @@ export async function checkEntry(id: string, entryId: string, connection: Public
     if (!current || !latest || !CHECKABLE.has(latest.state)) return null;
     const checked = { ...latest, check };
     const settled = check.result === 'committed'
-      ? markDone(checked, { remoteGuid: check.candidates[0].guid, at: check.at, evidence: 'lookup' }) : checked;
+      ? markDone(checked, { remoteGuid: check.candidates[0].guid, at: check.at, evidence: 'lookup', ...recoveredFields(latest, check.candidates[0]) }) : checked;
     return replaceEntry(current, settled, check.at);
   });
   return record ? { ok: true, check, record } : { ok: false, reason: 'storage' };
@@ -149,7 +205,8 @@ export async function resolveWithCandidate(id: string, entryId: string, remoteGu
     const latest = current?.entries.find(item => item.id === entryId);
     applied = !!current && !!latest && CHECKABLE.has(latest.state) && !!latest.check?.candidates.some(item => item.guid === remoteGuid);
     return applied && current && latest
-      ? replaceEntry(current, markDone(latest, { remoteGuid, at: now.toISOString(), evidence: 'user-choice' }), now.toISOString()) : null;
+      ? replaceEntry(current, markDone(latest, { remoteGuid, at: now.toISOString(), evidence: 'user-choice',
+        ...recoveredFields(latest, latest.check?.candidates.find(item => item.guid === remoteGuid)) }), now.toISOString()) : null;
   });
   return applied ? record : null;
 }

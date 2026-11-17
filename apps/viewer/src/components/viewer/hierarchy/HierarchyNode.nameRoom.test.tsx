@@ -7,7 +7,7 @@
  * ("0…", "D.. A"), because every other part of the row was fixed-width and the
  * name was the only part that could shrink. The rules pinned here, on the
  * rendered row:
- *  - the indent step is 12 px per level, not 16;
+ *  - the indent step is 10 px per level (16 before #5394, 12 before #8802);
  *  - the visibility toggle overlays the type icon instead of reserving a slot
  *    of its own while invisible;
  *  - the element-count badge yields below an 18rem tree (container query);
@@ -54,8 +54,28 @@ function mountRow(node: TreeNode, nodeHidden = false): HTMLElement {
 }
 
 describe('HierarchyNode leaves the storey name room (#5394)', () => {
-  it('indents 12 px per level', () => {
-    assert.equal(mountRow(storey()).style.paddingLeft, `${3 * 12 + 8}px`);
+  it('indents 10 px per level', () => {
+    assert.equal(mountRow(storey()).style.paddingLeft, `${3 * 10 + 6}px`);
+  });
+
+  it('keeps the distinguishing end of a long name visible (#8802)', () => {
+    const name = 'house - outer wall - house right';
+    const row = mountRow(storey({ name, type: 'element', ifcType: 'IfcWall', hasChildren: false, storeyDisplayElevation: undefined, elementCount: undefined }));
+    const tail = [...row.querySelectorAll('span')].find((s) => s.textContent === ' house right');
+    assert.ok(tail, `the tail renders on its own: ${row.innerHTML}`);
+    assert.ok(tail.className.split(/\s+/).includes('shrink-0'), 'the tail never shrinks');
+    assert.ok(row.textContent?.includes(name), 'head and tail concatenate to the exact name');
+  });
+
+  it('keeps the distinguishing end of a long name visible beside a LongName too (#8802)', () => {
+    const name = 'house - outer wall - house right';
+    const row = mountRow(storey({ name, secondaryName: 'Exterior', type: 'element', ifcType: 'IfcWall', hasChildren: false, storeyDisplayElevation: undefined, elementCount: undefined }));
+    const tail = [...row.querySelectorAll('span')].find((s) => s.textContent === ' house right');
+    assert.equal(tail?.className.split(/\s+/).includes('shrink-0') ?? false, true, `the tail renders on its own and never shrinks: ${row.innerHTML}`);
+    const nameBox = tail?.parentElement;
+    assert.equal(nameBox?.textContent ?? null, name, 'head and tail concatenate to the exact name');
+    assert.equal(nameBox?.className.split(/\s+/).includes('shrink-0') ?? false, true, 'the Name keeps its width before the LongName');
+    assert.equal(nameBox?.nextElementSibling?.textContent ?? null, 'Exterior', 'the LongName follows the Name');
   });
 
   it('overlays the visibility toggle on the type icon rather than reserving a slot', () => {
@@ -89,5 +109,20 @@ describe('HierarchyNode leaves the storey name room (#5394)', () => {
     assert.ok(primary, 'the primary Name renders');
     assert.ok(!/max-w-\[\d+%\]/.test(primary.className), `no fractional cap: ${primary.className}`);
     assert.ok(primary.className.split(/\s+/).includes('shrink-0'), 'the Name keeps its width before the LongName');
+  });
+
+  it('keeps the IFC class suffix on an element that also carries a LongName (#8802)', () => {
+    const element = { type: 'element', ifcType: 'IfcWall', hasChildren: false, storeyDisplayElevation: undefined, elementCount: undefined } as const;
+    for (const secondaryName of [undefined, 'Exterior wall']) {
+      const row = mountRow(storey({ ...element, name: 'W-01', secondaryName }));
+      const suffix = row.querySelector('[data-hierarchy-class-suffix]');
+      const label = secondaryName ? 'with' : 'without';
+      assert.equal(suffix?.textContent ?? null, 'IfcWall', `the class suffix renders ${label} a LongName`);
+      const classes = suffix?.className.split(/\s+/) ?? [];
+      assert.equal(classes.includes('basis-0') && classes.includes('truncate'), true,
+        `the suffix takes only leftover room and truncates first ${label} a LongName: ${suffix?.className ?? ''}`);
+      assert.equal(suffix?.parentElement?.getAttribute('title')?.endsWith(' · IfcWall') ?? false, true,
+        `the row title names the class ${label} a LongName`);
+    }
   });
 });

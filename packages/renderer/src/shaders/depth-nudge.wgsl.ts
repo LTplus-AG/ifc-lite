@@ -24,8 +24,27 @@
  *
  * - Perspective (reverse-Z, infinite far): clip z is the constant `near` and
  *   NDC depth is `near / d`. Scaling clip z by `1 + k` divides the distance by
- *   `1 + k`, so the nudge is relative to the fragment's distance: under 3 mm
- *   at 10 m for the largest hash. Unchanged by #6729.
+ *   `1 + k`, so the nudge is relative to the fragment's distance. Scaling is
+ *   exact under interpolation, so the depth stays fixed-function: per MSAA
+ *   sample, with early depth rejection.
+ *
+ *   Ranking all 256 hashes one `1e-6` apart moved the highest hash
+ *   `2.55e-4 * d` toward the camera: 25 mm at 100 m, enough to draw a wall
+ *   over facade panels a centimetre in front of it (#7955). The hash is now
+ *   ranked into `PERSPECTIVE_DEPTH_NUDGE_LEVELS` levels instead, so no surface
+ *   moves more than `PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE * d`: 1.6 mm at
+ *   100 m, 2.3 mm at 150 m. Depth is float, so the noise between two
+ *   triangulations of one plane is relative too (about 2e-7 on NVIDIA up to 70
+ *   degrees), and a level of `PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL`, half the old
+ *   step, ranks coplanar faces at any distance. Two entities on the same level
+ *   (1 coplanar pair in 32) are left to draw order and depth noise, as two with
+ *   the same hash were before. 16 levels of the old step move surfaces as far
+ *   and tie twice as often.
+ *
+ *   Bounding the shift per fragment instead (`frag_depth`) wrote one depth per
+ *   pixel and aliased MSAA creases, or, per sample, shaded every sample: 1.5x
+ *   to 7x main-pass cost. A bound in the vertex stage is not exact under
+ *   interpolation; levels are.
  * - Orthographic: NDC depth is linear over the scene's bounding range
  *   (`computeOrthoNearFar`). Scaling clip z would shift a fragment by
  *   `k * z * range`: on a 1.5 km range about 20 cm mid-scene and nearly 40 cm
@@ -57,9 +76,6 @@
  *   left where it is, so nothing changes which side of a clip plane it is on.
  */
 
-/** Perspective: relative distance shift per hash step. */
-export const PERSPECTIVE_DEPTH_NUDGE_PER_STEP = 1e-6;
-
 /** Orthographic: NDC depth between adjacent hash levels, eight units of a 24-bit depth buffer. */
 export const ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL = 8 * 2 ** -24;
 
@@ -68,6 +84,18 @@ export const ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES = 0.025;
 
 /** Largest mesh hash (`zHash` is masked to 8 bits). */
 export const MAX_DEPTH_NUDGE_HASH = 255;
+
+/** Perspective: relative distance shift per hash level. */
+export const PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL = 5e-7;
+
+/** Perspective: the 8-bit hash keeps its top bits, `256 >> shift` levels. */
+export const PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT = 3;
+
+/** Perspective: number of nudge levels. */
+export const PERSPECTIVE_DEPTH_NUDGE_LEVELS = (MAX_DEPTH_NUDGE_HASH + 1) >> PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT;
+
+/** Perspective: the furthest any surface moves toward the camera, relative to its distance. */
+export const PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE = (PERSPECTIVE_DEPTH_NUDGE_LEVELS - 1) * PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL;
 
 /** Perspective: NDC lift for annotation lines and text; also the orthographic minimum. */
 export const PERSPECTIVE_OVERLAY_DEPTH_LIFT = 5e-5;
@@ -96,14 +124,15 @@ const projectionWgsl = `
 
 export const depthNudgeWgsl = `
         ${projectionWgsl}
-        const PERSPECTIVE_DEPTH_NUDGE_PER_STEP: f32 = ${PERSPECTIVE_DEPTH_NUDGE_PER_STEP};
+        const PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL: f32 = ${PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL};
+        const PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT: u32 = ${PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT}u;
 
         fn nudgedClipZ(clip: vec4<f32>, zHash: u32, viewProj: mat4x4<f32>) -> f32 {
           if (isOrthographicProjection(viewProj)) {
             let level = (zHash * orthographicNudgeLevels(viewProj)) >> 8u;
             return orthographicOffsetInsideDepthRange(clip, f32(level) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
           }
-          return clip.z * (1.0 + f32(zHash) * PERSPECTIVE_DEPTH_NUDGE_PER_STEP);
+          return clip.z * (1.0 + f32(zHash >> PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT) * PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL);
         }
 `;
 

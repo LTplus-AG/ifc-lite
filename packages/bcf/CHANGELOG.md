@@ -1,5 +1,11 @@
 # @ifc-lite/bcf
 
+## 5.2.1
+
+### Patch Changes
+
+- [#8166](https://github.com/LTplus-AG/ifc-lite/pull/8166) [`f0d5de0`](https://github.com/LTplus-AG/ifc-lite/commit/f0d5de0aabe911dc42461cc43e48c42065ea4a02) Thanks [@louistrue](https://github.com/louistrue)! - A BCF export no longer writes characters XML 1.0 forbids (a vertical tab pasted from a word processor, a backspace). They made markup.bcf not well-formed and other BCF tools refused the whole file; they are now dropped (with unpaired surrogates) when the text is escaped.
+
 ## 5.2.0
 
 ### Minor Changes

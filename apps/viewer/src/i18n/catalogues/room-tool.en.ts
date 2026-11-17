@@ -42,6 +42,7 @@ export const roomToolEn = {
   'roomTool.update.label': 'Update rooms',
   'roomTool.update.title': "Re-derive the selected rooms' outlines from the walls as they are now",
   'roomTool.update.noSelection': 'Select the rooms to update first',
+  'roomTool.update.unresolvedPlacement': 'Wall rotated. Rooms were not updated because the wall placement could not be read.',
   'roomTool.update.none': "None of the selected rooms could be updated: each must be a plan extrusion on a storey, inside walls",
   'roomTool.update.skipped': {
     one: '{countDisplay} selected room was left as it was: it is not a plan extrusion on a storey, or no walls enclose it',

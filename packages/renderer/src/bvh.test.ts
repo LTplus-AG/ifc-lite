@@ -88,7 +88,7 @@ function rayHitsAabb(ray: Ray, b: AABBLike): boolean {
   let tmin = -Infinity;
   let tmax = Infinity;
   for (const ax of ['x', 'y', 'z'] as const) {
-    if (Math.abs(ray.direction[ax]) < 0.0000001) {
+    if (ray.direction[ax] === 0) {
       if (ray.origin[ax] < b.min[ax] || ray.origin[ax] > b.max[ax]) return false;
     } else {
       const inv = 1 / ray.direction[ax];
@@ -223,6 +223,79 @@ describe('BVH', () => {
     // Every node has an Infinity/-Infinity AABB, so all rays prune to nothing.
     const ray: Ray = { origin: { x: 0, y: 0, z: 10 }, direction: { x: 0, y: 0, z: -1 } };
     assert.strictEqual(bvh.getMeshesForRay(ray, meshes).length, 0);
+    // An oblique ray slab-tests every axis, where an inverted box swaps to (-Inf, Inf).
+    const oblique: Ray = { origin: { x: 0, y: 0, z: 10 }, direction: { x: 0.6, y: 0.1, z: -0.79 } };
+    assert.strictEqual(bvh.getMeshesForRay(oblique, meshes).length, 0);
+  });
+
+  // The typed-array tree splits in place (#9504): a permutation bug would drop
+  // or repeat a mesh only on inputs large enough to recurse several levels.
+  it('returns each crossed mesh exactly once on a large random scene', () => {
+    let seed = 7;
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const meshes = Array.from({ length: 5000 }, (_, i) => {
+      const mesh = boxMesh(i, random() * 400, random() * 40, random() * 400, random() * 3);
+      if (i % 3 === 0) mesh.origin = [random() * 50, 0, random() * 50];
+      return mesh;
+    });
+    const world = (m: MeshData): AABBLike => {
+      const b = meshAabb(m), [x, y, z] = m.origin ?? [0, 0, 0];
+      return { min: { x: b.min.x + x, y: b.min.y + y, z: b.min.z + z }, max: { x: b.max.x + x, y: b.max.y + y, z: b.max.z + z } };
+    };
+    const boxes = meshes.map(world);
+    const bvh = new BVH();
+    bvh.build(meshes);
+    for (let r = 0; r < 200; r++) {
+      const v = { x: random() - 0.5, y: random() - 0.5, z: random() - 0.5 };
+      const length = Math.hypot(v.x, v.y, v.z);
+      const direction = r % 10 === 0 ? { x: 0, y: -1, z: 0 } : { x: v.x / length, y: v.y / length, z: v.z / length };
+      const ray: Ray = { origin: { x: random() * 400, y: 60, z: random() * 400 }, direction };
+      const candidates = bvh.getMeshesForRay(ray, meshes);
+      const unique = new Set(candidates);
+      assert.strictEqual(unique.size, candidates.length, `ray ${r} repeated a candidate`);
+      boxes.forEach((box, i) => {
+        if (rayHitsAabb(ray, box)) assert.ok(unique.has(i), `ray ${r} dropped mesh ${i}`);
+      });
+    }
+  });
+
+  it('rebuilds to empty, then returns every index again', () => {
+    const meshes = gridScene();
+    const bvh = new BVH();
+    bvh.build(meshes);
+    bvh.build([]);
+    const ray: Ray = { origin: { x: 100, y: 100, z: 100 }, direction: { x: 0, y: 0, z: 1 } };
+    assert.deepStrictEqual(
+      bvh.getMeshesForRay(ray, meshes).slice().sort((a, b) => a - b),
+      meshes.map((_, i) => i),
+    );
+  });
+
+  // #9512 review: a component below the old 1e-7 "parallel" cut-off was treated
+  // as zero, so a ray starting just outside a slab that it crosses far along the
+  // ray was pruned. Ground truth is analytic, not the slab-test copy above:
+  // at x = 2e6 the ray is at y = 0.45 - 2e6 * 5e-8 = 0.35, inside [-0.4, 0.4].
+  it('keeps a box a near-parallel ray crosses far along the ray', () => {
+    const far = boxMesh(1, 0, 0, 0);
+    far.origin = [2_000_000, 0, 0];
+    const meshes = [far];
+    const bvh = new BVH();
+    bvh.build(meshes);
+    const ray: Ray = { origin: { x: 0, y: 0.45, z: 0 }, direction: { x: 1, y: -5e-8, z: 0 } };
+    assert.deepStrictEqual(bvh.getMeshesForRay(ray, meshes), [0], 'the crossed far box was pruned');
+  });
+
+  // #9512 review: f32 spacing at 5e5 is 1/32, so round-to-nearest collapsed this
+  // centimetre box ([500000.005, 500000.015]) onto x = 500000 and rejected a
+  // ray straight through its middle.
+  it('keeps a narrow box at georeferenced coordinates', () => {
+    const narrow = boxMesh(1, 0, 0, 0, 0.005);
+    narrow.origin = [500_000.01, 0, 0];
+    const meshes = [narrow];
+    const bvh = new BVH();
+    bvh.build(meshes);
+    const ray: Ray = { origin: { x: 500_000.01, y: 0, z: 10 }, direction: { x: 0, y: 0, z: -1 } };
+    assert.deepStrictEqual(bvh.getMeshesForRay(ray, meshes), [0]);
   });
 
   // `MeshData.positions` are in the element's LOCAL frame; `MeshData.origin`
@@ -270,4 +343,18 @@ describe('BVH', () => {
       );
     });
   });
+});
+
+// #9512: analytic crossing at t=1 despite an overflowing reciprocal on Y.
+it('keeps nonzero subnormal directions in the BVH slab test (#9512)', () => {
+  const mesh = boxMesh(42, 1.5, 0.5, 0.5, 0.5);
+  const meshes = Array.from({ length: 101 }, () => mesh);
+  const bvh = new BVH();
+  bvh.build(meshes);
+  for (const sign of [-1, 1]) {
+    const ray: Ray = { origin: { x: 0, y: sign < 0 ? 1 : -1e-309, z: 0.5 },
+      direction: { x: 1, y: sign * 1e-309, z: 0 } };
+    // Positive ray enters Y=0 at t=1; negative ray starts on Y=1 and enters.
+    assert.ok(bvh.getMeshesForRay(ray, meshes).includes(0));
+  }
 });

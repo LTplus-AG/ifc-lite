@@ -126,6 +126,12 @@ impl GeometryRouter {
         }
     }
 
+    /// The model-wide mapped-source cache, absent in a cut frame: the frame
+    /// reads RTC as zero and the cache key does not carry it (`mapped_item`).
+    fn shared_mapped_cache(&self) -> Option<&super::SharedMappedItemCache> {
+        self.shared_mapped_item_cache.as_ref().filter(|_| !self.in_cut_frame())
+    }
+
     /// Whether a don't-bake occurrence must first mesh its source ONCE into the
     /// shared registry (source coords, pre-`MappingTarget`, pre-placement), so
     /// the streaming finalize can recover it in the (effectively unreachable)
@@ -133,7 +139,7 @@ impl GeometryRouter {
     /// registry there is nothing to recover from; callers that arm output
     /// instancing always enable it too.
     pub(crate) fn shared_mapped_source_needed(&self, source_id: u32) -> Result<bool> {
-        let Some(shared) = self.shared_mapped_item_cache.as_ref() else {
+        let Some(shared) = self.shared_mapped_cache() else {
             return Ok(false);
         };
         // A hit is coverage too (as in the mapped-item walk): refuse an
@@ -199,7 +205,7 @@ impl GeometryRouter {
         let Some(items_attr) = mapped_repr.get(3) else {
             return Ok(Vec::new());
         };
-        budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
+        budget.materialize_items(mapped_repr.id, items_attr.as_list().unwrap_or(&[]))?;
         // Historical shared-source content failures walk nothing; logical
         // refusal above must never enter this empty-content fallback.
         Ok(decoder.resolve_ref_list(items_attr).unwrap_or_default())
@@ -210,7 +216,7 @@ impl GeometryRouter {
     /// consistent with the per-occurrence walk (which also keeps going past a
     /// failed item), so the drop is recorded rather than the source withheld.
     pub(crate) fn publish_shared_mapped_source(&self, source_id: u32, mut parts: Vec<Mesh>) -> Result<()> {
-        let Some(shared) = self.shared_mapped_item_cache.as_ref() else {
+        let Some(shared) = self.shared_mapped_cache() else {
             return Ok(());
         };
         if parts.len() == 1

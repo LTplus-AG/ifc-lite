@@ -60,7 +60,7 @@ export function SourceWideSearch({ provider, ctx, onDownload, busy, downloadStat
     {provider.manifest.capabilities.projectsAreDiscoverableOnly && <p className="mt-1 text-xs text-muted-foreground">{t('sources.workspace.discoverable')}</p>}
     {submitted && <div className="mt-2">
       <Button size="sm" variant="ghost" onClick={() => { setSubmitted(''); setQuery(''); setError(null); setOpening(null); setRevisions(new Map()); setStartPending(false); paged.reset(); }}>{t('sources.workspace.clearResults')}</Button>
-      {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
       {(paged.loading || startPending) && <output className="flex items-center gap-2 text-xs"><Spinner size="sm" />{t('sources.workspace.searching')}</output>}
       {!paged.loading && !startPending && results.length === 0 && !error && <output className="block py-2 text-xs text-muted-foreground">{t(paged.hasMore ? 'sources.workspace.searchContinue' : 'sources.sourceFolderStep.noSearchResults')}</output>}
       <ul className="max-h-64 space-y-2 overflow-y-auto">

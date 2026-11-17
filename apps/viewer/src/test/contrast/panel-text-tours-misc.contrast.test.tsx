@@ -8,7 +8,7 @@
  * state where its text shows (TourStepCard with a gated, redocked step; the
  * Info dialog's Learn tab; ClashPanel with a result; a chunk-load failure;
  * RoomPanel and LayersPanel empty states; CustomizeSidebar with a hidden
- * panel; RibbonToolbar's File tab; the Visibility dropdown), located by the
+ * panel; RibbonToolbar's File tab command labels; the Visibility dropdown), located by the
  * text it paints, and measured against the backgrounds its ancestors paint.
  */
 
@@ -29,10 +29,11 @@ import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary.js';
 import { RoomPanel } from '@/components/viewer/RoomPanel.js';
 import { CustomizeSidebar } from '@/components/viewer/sidebar/CustomizeSidebar.js';
 import { RibbonToolbar } from '@/components/viewer/ribbon/RibbonToolbar.js';
+import { surfaceCommand } from '@/components/viewer/surface-commands';
 import { LayersPanel } from '@/components/viewer/layers/LayersPanel.js';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ClassVisibilityMenuContent } from '@/components/viewer/toolbar/ClassVisibilityMenu.js';
-import { closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
 import {
   assertRenderedTextClears,
   assertForcedClassReddens,
@@ -170,13 +171,21 @@ function mountCustomizeSidebar(): string {
   return snapshotRenderedDom(VIEWER_SHELL_SURFACE);
 }
 
-// ── RibbonGroup ──────────────────────────────────────────────────────────
-// Mounted through RibbonToolbar, whose root carries the real
-// `border-b bg-white dark:bg-black` surface (colorful's `.border-b.bg-white`
-// violet glass included). With no model loaded the contextual-tab hook shows
-// the File tab, expanded.
+// ── Ribbon command labels ────────────────────────────────────────────────
+// Mounted through RibbonToolbar, whose root carries the real `bg-panel`
+// shell surface. With no model loaded the contextual-tab hook shows the File
+// tab, expanded. This case used to measure the RibbonGroup caption row
+// ("Model", "Export"); #8802 R1 removed that row, so group names survive only
+// as the ARIA group name and in tooltips, and the ribbon's visible text is
+// each command's one-line label under its icon. The guarantee moves to those
+// labels: the File tab's enabled headline commands, resolved through the same
+// surface-command definitions the buttons render (Add model and Refresh are
+// disabled with no model, and disabled text is outside AA's scope).
 
-const RIBBON_GROUP_LABELS = [resolve('ribbon.file.modelGroup'), resolve('ribbon.file.exportGroup')];
+const RIBBON_COMMAND_LABELS = (['file:open', 'panel:sources'] as const).map((id) => {
+  const command = surfaceCommand(id, 'ribbon');
+  return resolve(command.ribbonLabelKey ?? command.labelKey);
+});
 
 function mountRibbon(): string {
   useViewerStore.setState({ ribbonTab: 'file', ribbonCollapsed: false });
@@ -202,7 +211,7 @@ function mountClassVisibilityMenu(): string {
 
 describe('tour and misc panel secondary text clears AA as rendered (#6205, #4792)', () => {
   for (const theme of THEMES) {
-    it(`TourStepCard docked-back notice, stuck hint, step count clear AA in ${theme}`, async () => {
+    it(`TourStepCard docked-back notice, stuck hint, step count clear AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountTourCard(), [
         resolve('tours.tourStepCard.redockedNotice'),
         resolve('tours.tourStepCard.stuckHint'),
@@ -210,35 +219,35 @@ describe('tour and misc panel secondary text clears AA as rendered (#6205, #4792
       ], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`LearnTab "X min" readout clears AA in ${theme}`, async () => {
+    it(`LearnTab "X min" readout clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountLearnTab(), LEARN_MINUTES, WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`ClashPanel active detection-mode label clears AA in ${theme}`, async () => {
+    it(`ClashPanel active detection-mode label clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountClashPanel(), [CLASH_MODE], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`ChunkErrorBoundary panel-tone error detail clears AA in ${theme}`, async () => {
+    it(`ChunkErrorBoundary panel-tone error detail clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountChunkError(), [resolve('viewerShell.chunkError.loadFailedDetail')], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`RoomPanel "Got an invite?" hint clears AA in ${theme}`, async () => {
+    it(`RoomPanel "Got an invite?" hint clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountRoomPanel(), [resolve('zonesPanel.roomPanel.inviteHint')], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`CustomizeSidebar "Hidden" section header clears AA in ${theme}`, async () => {
+    it(`CustomizeSidebar "Hidden" section header clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountCustomizeSidebar(), [resolve('shellChrome.customizeSidebar.hiddenSectionHeader')], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`RibbonGroup labels on the ribbon toolbar clear AA in ${theme}`, async () => {
-      await assertRenderedTextClears(theme, mountRibbon(), RIBBON_GROUP_LABELS, WCAG_AA_NORMAL_TEXT);
+    it(`ribbon command labels on the toolbar band clear AA in ${theme} (#8802: no group caption row)`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
+      await assertRenderedTextClears(theme, mountRibbon(), RIBBON_COMMAND_LABELS, WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`LayersPanel "drop .ifcx files anywhere" hint clears AA in ${theme}`, async () => {
+    it(`LayersPanel "drop .ifcx files anywhere" hint clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountLayersPanel(), [resolve('layersPanel.panel.dropHint')], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`ClassVisibilityMenu visible/total count clears AA in ${theme}`, async () => {
+    it(`ClassVisibilityMenu visible/total count clears AA in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       await assertRenderedTextClears(theme, mountClassVisibilityMenu(), [CLASS_COUNT], WCAG_AA_NORMAL_TEXT);
     });
   }
@@ -276,7 +285,7 @@ describe('the measurement catches the pre-#4792 classes on the real sites', () =
   ];
   for (const { site, oldClass, mount, text, host } of controls) {
     for (const theme of THEMES) {
-      it(`non-vacuousness: ${oldClass} on ${site} reddens in ${theme}`, async (t) => {
+      it(`non-vacuousness: ${oldClass} on ${site} reddens in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async (t) => {
         mount();
         const ratios = await assertForcedClassReddens(theme, text, oldClass, WCAG_AA_NORMAL_TEXT, host);
         t.diagnostic(ratios.map((r) => `${r.toFixed(2)}:1`).join(', '));

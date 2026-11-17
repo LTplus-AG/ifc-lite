@@ -59,6 +59,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { useTranslation } from '@/i18n';
 import { beginActivity, discardActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
+import { CaptureExportNotice } from './CaptureExportNotice';
 
 /** What one export run produced, rendered as the result `<Alert>`.
  * `warnings` are the exporter's own diagnostics, listed beneath it so a
@@ -233,6 +234,8 @@ export function ExportDialogShell({
 
       <div className={optionsClassName ?? 'grid gap-4 py-4 max-h-[70vh] overflow-y-auto'}>
         {content}
+
+        <CaptureExportNotice />
 
         {filenamePreview && (
           <p className="text-xs text-muted-foreground">

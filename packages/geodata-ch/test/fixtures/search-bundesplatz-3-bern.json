@@ -1,0 +1,42 @@
+{
+ "results": [
+  {
+   "attrs": {
+    "detail": "bundesplatz 3 3011 bern 351 bern ch be",
+    "featureId": "2242547_0",
+    "geom_st_box2d": "BOX(2600423.2569999993 1199521.109000001,2600423.2569999993 1199521.109000001)",
+    "label": "Bundesplatz 3 <b>3011 Bern</b>",
+    "lat": 46.946773529052734,
+    "lon": 7.444191932678223,
+    "num": 3,
+    "objectclass": "",
+    "origin": "address",
+    "rank": 7,
+    "x": 1199521.125,
+    "y": 2600423.25,
+    "zoomlevel": 10
+   },
+   "id": 1006923,
+   "weight": 7
+  },
+  {
+   "attrs": {
+    "detail": "bundesplatz 1 3011 bern 351 bern ch be",
+    "featureId": "1230564_0",
+    "geom_st_box2d": "BOX(2600472.4640000015 1199555.5089999996,2600472.4640000015 1199555.5089999996)",
+    "label": "Bundesplatz 1 <b>3011 Bern</b>",
+    "lat": 46.94708251953125,
+    "lon": 7.444838523864746,
+    "num": 1,
+    "objectclass": "",
+    "origin": "address",
+    "rank": 7,
+    "x": 1199555.5,
+    "y": 2600472.5,
+    "zoomlevel": 10
+   },
+   "id": 1265729,
+   "weight": 1
+  }
+ ]
+}

@@ -96,8 +96,11 @@ export function activate(target: HTMLElement, key: 'Enter' | ' ' = 'Enter'): voi
   act(() => {
     const down = new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
     const proceed = target.dispatchEvent(down);
-    target.dispatchEvent(new window.KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
-    if (proceed && target instanceof window.HTMLButtonElement) target.click();
+    // Enter's default action precedes keyup; Space activates on release (#9233).
+    const button = target instanceof window.HTMLButtonElement;
+    if (proceed && button && key === 'Enter') target.click();
+    const released = target.dispatchEvent(new window.KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
+    if (proceed && released && button && key === ' ') target.click();
   });
 }
 

@@ -142,6 +142,12 @@ const state = extractViewpointState(viewpoint);
 // state.coloredGuids - entities with color overrides
 ```
 
+In the viewer, opening a viewpoint restores its projection mode, camera up
+vector, and perspective field of view or orthographic view-to-world scale along
+with its position and viewing direction. A viewpoint stores a direction rather
+than a target distance, so the viewer keeps its current orbit distance when it
+rebuilds the target. The camera's aspect ratio still follows the viewport.
+
 A clipping plane comes back as a `position` percentage of the bounds you pass
 along its dominant axis, and it is not clamped: a location outside the bounds
 gives a position below 0 or above 100, so a cut above the model's top (a plan

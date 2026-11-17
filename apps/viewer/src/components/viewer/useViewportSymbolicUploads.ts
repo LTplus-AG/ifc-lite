@@ -15,15 +15,17 @@ function useLineUpload(
   channel: 'annotation' | 'alignment' | 'grid', vertices: RendererLineVertices,
   visible = true, countRef?: MutableRefObject<number>,
 ): void {
+  // IfcAnnotation lines are part of the model and clip with it (#8767); alignment and grid are reference layers.
+  const sectionClipped = channel === 'annotation';
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !initialized) return;
     const count = visible ? rendererLineVertexData(vertices).length / 3 : 0;
     const uploaded = uploadGuarded(`setLineOverlay:${channel}`,
-      () => renderer.setLineOverlay(channel, count === 0 ? null : vertices),
+      () => renderer.setLineOverlay(channel, count === 0 ? null : vertices, { sectionClipped }),
       () => renderer.setLineOverlay(channel, null));
     if (countRef) countRef.current = uploaded ? count : 0;
-  }, [rendererRef, initialized, epoch, channel, vertices, visible, countRef]);
+  }, [rendererRef, initialized, epoch, channel, vertices, visible, countRef, sectionClipped]);
 }
 
 /** CPU inputs stay owned by their source hooks; an epoch retries identical data after device recovery. */

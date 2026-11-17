@@ -346,3 +346,20 @@ describe('WebGPUDevice loss lifetime (#4885)', () => {
     assert.ok(warnings.some((line) => line.includes('replacement failed')));
   });
 });
+
+describe('WebGPUDevice adapter request bound (#9076)', () => {
+  it('rejects init() instead of hanging when requestAdapter() never settles', async (t) => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { gpu: { requestAdapter: () => new Promise(() => { /* a broken driver: never settles */ }) } },
+      configurable: true,
+    });
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const pending = Symbol('pending');
+    const init = new WebGPUDevice().init(makeCanvas()).then(() => 'resolved', (error: unknown) => error);
+    t.mock.timers.tick(10_000);
+    const outcome = await Promise.race([init, new Promise<typeof pending>((done) => setImmediate(() => done(pending)))]);
+    assert.notEqual(outcome, pending, 'init() must settle once the adapter request times out');
+    assert.ok(outcome instanceof Error, 'init() must reject, so callers can show the no-GPU error');
+    assert.match(outcome.message, /adapter request timed out/);
+  });
+});

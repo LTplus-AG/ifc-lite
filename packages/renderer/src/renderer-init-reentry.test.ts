@@ -316,7 +316,11 @@ describe('init() revokes readiness before it queues its body (#2448)', () => {
             'precondition: the harness is a fully initialised renderer, or the assertion below is vacuous',
         );
 
+        const gaussianGeneration = renderer.getGaussianReadiness().generation;
         void renderer.init();
+        // #8564: canonical ingestion observes the same synchronous revocation.
+        assert.strictEqual(renderer.getGaussianReadiness().state, 'initializing');
+        assert.ok(renderer.getGaussianReadiness().generation > gaussianGeneration);
 
         assert.strictEqual(
             renderer.isReady(),
@@ -352,6 +356,7 @@ describe('init() revokes readiness before it queues its body (#2448)', () => {
         assert.strictEqual(await whenReadyResolves(renderer), true, 'precondition: ready before destroy()');
 
         renderer.destroy();
+        assert.strictEqual(renderer.getGaussianReadiness().state, 'disposed', '#8564: teardown revokes Gaussian access');
 
         assert.strictEqual(
             await whenReadyResolves(renderer),
@@ -954,4 +959,27 @@ describe('a device loss revokes readiness (#2464 review)', () => {
         assert.strictEqual(await settleWhenReady(renderer), 'resolved', 'an ordinary ready renderer must resolve');
         assert.strictEqual(renderer.isReady(), true, 'and must still report itself ready');
     });
+});
+
+it('re-arms canvas size observation after destroy and init (lifecycle audit)', async () => {
+    const original = globalThis.ResizeObserver;
+    let observations = 0;
+    globalThis.ResizeObserver = class {
+        observe() { observations++; }
+        disconnect() {}
+        unobserve() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+        const renderer = new Renderer(makeCanvas());
+        renderer['initOnce'] = async () => undefined;
+        renderer.destroy();
+        const before = observations;
+        await renderer.init();
+        assert.strictEqual(observations, before + 1);
+        await renderer.init();
+        assert.strictEqual(observations, before + 1, 'live re-init must not duplicate the observer');
+        renderer.destroy();
+    } finally {
+        globalThis.ResizeObserver = original;
+    }
 });

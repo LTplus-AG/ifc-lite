@@ -4,21 +4,31 @@
 
 import { releaseReadbacks } from './picker-readbacks.js';
 
-/** Internal single-texel depth extraction for GPU point picking. */
+/**
+ * Internal single-texel depth extraction: GPU point picking, and the frame
+ * depth probe (`frame-depth-probe.ts`), which reads the multisampled main
+ * depth. A multisampled texel reports its nearest sample (reverse-Z: the
+ * largest), so an edge texel never reads deeper than the surface it touches.
+ */
 export class PickDepthSample {
   private readonly pipeline: GPUComputePipeline;
 
-  constructor(private readonly device: GPUDevice) {
+  constructor(private readonly device: GPUDevice, sampleCount = 1) {
+    const load = sampleCount > 1
+      ? `var d = 0.0;
+            for (var s = 0i; s < ${sampleCount}i; s++) { d = max(d, textureLoad(depth, vec2<i32>(texel), s)); }
+            result = d;`
+      : 'result = textureLoad(depth, vec2<i32>(texel), 0);';
     this.pipeline = device.createComputePipeline({
       layout: 'auto',
       compute: {
         module: device.createShaderModule({ code: `
-          @group(0) @binding(0) var depth: texture_depth_2d;
+          @group(0) @binding(0) var depth: ${sampleCount > 1 ? 'texture_depth_multisampled_2d' : 'texture_depth_2d'};
           @group(0) @binding(1) var<uniform> texel: vec2<u32>;
           @group(0) @binding(2) var<storage, read_write> result: f32;
           @compute @workgroup_size(1)
           fn main() {
-            result = textureLoad(depth, vec2<i32>(texel), 0);
+            ${load}
           }
         ` }),
         entryPoint: 'main',

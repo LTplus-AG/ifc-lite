@@ -22,6 +22,8 @@ pub struct ClipPart {
     pub section_volume: Option<f64>,
     pub curved: bool,
     pub mixed: bool,
+    /// Why `section_volume` is `None` for a part that is not mixed (#7955).
+    pub section_gap: Option<String>,
 }
 impl ClipPart {
     /// Independent host section with additional source-derived constraints (M4).
@@ -30,6 +32,13 @@ impl ClipPart {
         let mut planes: Vec<_> = self.planes.iter().map(Plane::equation).collect();
         planes.extend_from_slice(extra);
         section_volume(self.host.as_ref()?, &planes)
+    }
+    /// [`Self::volume_with_planes`], minus the product's opening cutters.
+    pub(super) fn net_volume_with_planes(&self, extra: &[([f64; 3], f64)], cuts: &[Vec<super::section_net::ConvexCut>]) -> Option<f64> {
+        if self.mixed { return None; }
+        let mut planes: Vec<_> = self.planes.iter().map(Plane::equation).collect();
+        planes.extend_from_slice(extra);
+        super::section_net::net_volume(self.host.as_ref()?, &planes, cuts)
     }
 }
 pub struct ClipExpectation { pub parts: Vec<ClipPart> }
@@ -80,7 +89,7 @@ fn part(mut current: DecodedEntity, mut world: Matrix4<f64>, sources: &AnalyticQ
                     // We walk outside-in: collected planes execute AFTER this
                     // subtree, so all remain valid constraints on its result.
                     // Its volume/curvature are unknown; expose that limitation.
-                    if !difference { return Ok(ClipPart { host:None, planes,host_volume:None,section_volume:None,curved:false,mixed:true }); }
+                    if !difference { return Ok(ClipPart { host:None, planes,host_volume:None,section_volume:None,curved:false,mixed:true,section_gap:None }); }
                     mixed = true;
                 }
                 current = reference(&current, slot::IfcBooleanResult::FIRST_OPERAND.index(), decoder)?;
@@ -107,7 +116,13 @@ fn part(mut current: DecodedEntity, mut world: Matrix4<f64>, sources: &AnalyticQ
                         .any(|s|!matches!(s,ifc_lite_geometry::analytic::AnalyticCurveSegment::Line{..})));
                 let host_volume = host.as_ref().and_then(|h| section_volume(h,&[]));
                 let section_volume = if mixed {None} else {host.as_ref().and_then(|h| section_volume(h,&planes.iter().map(Plane::equation).collect::<Vec<_>>()))};
-                return Ok(ClipPart {host,planes,host_volume,section_volume,curved,mixed});
+                let section_gap=match (&instance,&host) {
+                    _ if section_volume.is_some()||mixed=>None,
+                    (None,_)=>Some(format!("host_{}",current.ifc_type.name())),
+                    (Some(_),None)=>Some("host_source_incomplete".into()),
+                    _=>Some("section_integral".into()),
+                };
+                return Ok(ClipPart {host,planes,host_volume,section_volume,curved,mixed,section_gap});
             }
         }
     }
@@ -165,15 +180,21 @@ impl<'a> ClipOracle<'a> {
     pub fn new(model: &'a Arc<SourceBundle>, sources: &'a AnalyticQuantitySources) -> Self {
         Self { model, sources, openings: openings::index(model) }
     }
+    /// The product's filtered source openings as convex world cutters (M3 and M5 share them).
+    pub(super) fn opening_cutters(&self, product: u32) -> Result<(Vec<Vec<super::section_net::ConvexCut>>,bool), String> {
+        openings::cutters(self.model,self.sources,self.openings.get(&product).map_or(&[],Vec::as_slice))
+    }
     /// A supported outer plane always supplies kept-side and closure gates,
     /// including when a mixed subtree has no independent volume prediction.
     pub fn expected(&self, product: u32) -> Result<Option<ClipExpectation>, String> {
         let mut parts=source_parts(self.model,self.sources,product)?;
         if parts.iter().all(|p|p.planes.is_empty()) { return Ok(None); }
-        let cuts=openings::cutters(self.model,self.sources,self.openings.get(&product).map_or(&[],Vec::as_slice))?;
+        let (cuts,arcs)=self.opening_cutters(product)?;
         if !cuts.is_empty() {
             for part in &mut parts {
+                part.curved|=arcs;
                 part.section_volume=if part.mixed {None} else {part.host.as_ref().and_then(|h|openings::net_volume(h,&part.planes,&cuts))};
+                if part.section_volume.is_none()&&part.section_gap.is_none()&&!part.mixed {part.section_gap=Some("opening_net_volume".into());}
             }
         }
         Ok(Some(ClipExpectation {parts}))

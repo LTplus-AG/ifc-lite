@@ -4,6 +4,7 @@
 
 /** Live global and tool actions for the canonical keyboard table (#5841). */
 import { useEffect } from 'react';
+import { isPanelAvailable } from '@/lib/panels/availability';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { registerKeyboardCommand, type CommandRun } from '@/lib/commands/dispatcher';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
@@ -11,6 +12,8 @@ import { useViewerStore } from '@/store';
 import { showAllFromStore } from '@/store/homeView';
 import { orderedSectionPlanes } from '@/lib/section/section-plane-set';
 import { hideSelectionFromStore } from '@/store/hideSelection';
+import { finishOpenMeasureSequence } from '@/store/finishMeasureSequence';
+import { isGeometryRestoreHeld } from '@/lib/pick-gating';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
@@ -54,29 +57,15 @@ function rotateSelected(event: KeyboardEvent): boolean {
   return true;
 }
 
-function finishMeasurement(): boolean {
-  const state = useViewerStore.getState();
-  if (state.activePolyline) {
-    if (!state.finishPolyline(false)) {
-      void import('@/components/ui/toast').then(({ toast }) => toast.error('Polyline needs at least 2 points'));
-    }
-    return true;
-  }
-  if (state.activeRadius) {
-    if (!state.finishRadius()) {
-      void import('@/components/ui/toast').then(({ toast }) => toast.error('Radius needs at least 3 points'));
-    }
-    return true;
-  }
-  return false;
-}
-
 function cancelMeasurement(): boolean {
   const state = useViewerStore.getState();
-  if (state.activeMeasurement) { state.cancelMeasurement(); return true; }
-  if (state.activePolyline) { state.cancelPolyline(); return true; }
-  if (state.activeAngle) { state.cancelAngle(); return true; }
-  if (state.activeRadius) { state.cancelRadius(); return true; }
+  const inProgress = !!(state.activeMeasurement || state.activePolyline || state.activeAngle || state.activeRadius);
+  // Esc is a gesture reset in every mode, even with nothing placed yet: it drops the
+  // lock, the snap glyph and a press still held (#8786). It holds Esc only if it cancelled something.
+  state.resetMeasureGesture();
+  if (inProgress) return true;
+  // The hover preview alone does not hold Esc: it is cursor feedback, like the snap glyph.
+  if (state.measurePointLast) { state.clearMeasurePoint(); return true; }
   return false;
 }
 
@@ -100,12 +89,22 @@ function splitSelected(): void {
   state.startCommand('element.split');
 }
 
-function hideSelected(event: KeyboardEvent): boolean {
-  if (event.key === ' ') {
-    const tag = document.activeElement?.tagName;
-    if (tag === 'BUTTON' || tag === 'SELECT' || tag === 'A') return false;
-  }
+// A focused button keeps Space: the dispatcher yields it before any command runs (#9233).
+function hideSelected(): boolean {
   return hideSelectionFromStore();
+}
+
+/**
+ * The dispatcher yields Enter to a focused button (#9233), so Enter on Cancel
+ * in the Measurements list cancels rather than finishes (#9113); Enter from the
+ * canvas, the list or a row still finishes. A held Enter's repeats finish
+ * nothing: after the first press moves focus off a button (a delete hands it
+ * to the next row), a repeat must not finish the open sequence.
+ */
+function finishMeasurement(event: KeyboardEvent): boolean {
+  if (isGeometryRestoreHeld(useViewerStore.getState())) return true;
+  if (event.repeat) return false;
+  return finishOpenMeasureSequence();
 }
 
 function walkOwns(event: KeyboardEvent): boolean {
@@ -124,7 +123,8 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
   ['tool.annotate', () => { useViewerStore.getState().setActiveTool('annotate'); }],
   ['ui.openPanel', (event) => {
     const panel = workspacePanelForShortcutCode(event.code);
-    if (!panel) return false;
+    // A panel the host switched off leaves its Alt+digit to the browser.
+    if (!panel || !isPanelAvailable(panel)) return false;
     useViewerStore.getState().openPanelInHome(panel, 'shortcut');
   }],
   ['ui.toggleSidebar', () => { useViewerStore.getState().cycleSidebarMode(); }],

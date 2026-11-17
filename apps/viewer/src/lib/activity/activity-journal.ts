@@ -21,6 +21,7 @@
 import { create } from 'zustand';
 import type { TranslationKey } from '@/i18n';
 import { isAnalysisPanel, isWorkspacePanelId, type AnalysisPanelId } from '@/lib/panels/registry';
+import { isAbortError } from '@/lib/runs/abort';
 
 export type ActivityKind = 'load' | 'check' | 'export' | 'ai' | 'flow';
 export type ActivityOutcome = 'running' | 'completed' | 'partial' | 'failed' | 'cancelled' | 'interrupted';
@@ -116,8 +117,27 @@ export interface BeginActivity {
   id?: string;
 }
 
+/**
+ * The id this run's job is recorded under. A source id names the row, but a
+ * job still running under it belongs to an earlier run: replacing it would
+ * let that run's late finish, update or Cancel act on this one (J1). Such a
+ * begin gets its own id instead, and the earlier run keeps its row.
+ */
+function ownId(id: string): string {
+  const jobs = useActivityJournal.getState().jobs;
+  if (!jobs.some((job) => job.id === id && job.outcome === 'running')) return id;
+  let run = 2;
+  while (jobs.some((job) => job.id === `${id}#${run}`)) run++;
+  return `${id}#${run}`;
+}
+
+/**
+ * Start a job and return the handle every later update, finish and cancel
+ * for it must use: the returned id, not the source id passed in, which may
+ * have been taken by a run still in flight.
+ */
 export function beginActivity(input: BeginActivity, now = Date.now()): string {
-  const id = input.id ?? `${input.kind}-${now}-${++sequence}`;
+  const id = input.id === undefined ? `${input.kind}-${now}-${++sequence}` : ownId(input.id);
   if (input.cancel) cancellers.set(id, input.cancel);
   const job: ActivityJob = {
     id, kind: input.kind, title: input.title, startedAt: now, outcome: 'running',
@@ -165,7 +185,8 @@ export function finishActivity(
 /**
  * Record a user-started job that runs outside the recorders and the shared
  * export shell (an export dialog with its own runner): running while `run`
- * runs, completed when it resolves, failed with its message when it throws.
+ * runs, completed when it resolves, failed with its message when it throws,
+ * cancelled when what it throws is an abort.
  * The error is rethrown, so the host still reports it its own way.
  */
 export async function recordActivity<T>(input: BeginActivity, run: () => Promise<T>): Promise<T> {
@@ -175,7 +196,8 @@ export async function recordActivity<T>(input: BeginActivity, run: () => Promise
     finishActivity(id, 'completed');
     return result;
   } catch (error) {
-    finishActivity(id, 'failed', { detail: error instanceof Error ? error.message : String(error) });
+    if (isAbortError(error)) finishActivity(id, 'cancelled');
+    else finishActivity(id, 'failed', { detail: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }

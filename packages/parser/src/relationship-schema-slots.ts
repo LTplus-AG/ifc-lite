@@ -34,6 +34,9 @@ import {
     type SchemaVersionWithRegistry,
     type SchemaRegistry,
 } from './generated/schema-registry-by-version.js';
+import { CONCRETE_RELATIONSHIP_TYPES as CONCRETE_RELATIONSHIP_TYPES_IFC4 } from './generated/schema-registry.js';
+import { CONCRETE_RELATIONSHIP_TYPES as CONCRETE_RELATIONSHIP_TYPES_IFC4X3 } from './generated/ifc4x3/schema-registry.js';
+import { CONCRETE_RELATIONSHIP_TYPES as CONCRETE_RELATIONSHIP_TYPES_IFC2X3 } from './generated/ifc2x3/schema-registry.js';
 
 /** One relating/related attribute's position and cardinality. */
 export interface RelationshipSlot {
@@ -152,7 +155,22 @@ function computeSlotPlan(registry: SchemaRegistry, entityName: string): Relation
     return { relating, related };
 }
 
-const PLAN_CACHE = new Map<string, RelationshipSlotPlan | undefined>();
+/**
+ * What the byte reader (`extractRelFast`) needs per class: the two slots in
+ * the order they are written, and the position of the class's last declared
+ * attribute. A slot there must be followed by the record's own `)`, not by
+ * another value, or the record was misread (#9192).
+ */
+export interface RelationshipReadPlan {
+    slots: RelationshipSlotPlan;
+    /** The relating and related slots, sorted by attribute position. */
+    order: readonly [RelationshipReadSlot, RelationshipReadSlot];
+    /** Position of the last declared attribute, counted like `RelationshipSlot.index`. */
+    lastIndex: number;
+}
+export interface RelationshipReadSlot extends RelationshipSlot { relating: boolean }
+
+const PLAN_CACHE = new Map<string, RelationshipReadPlan | undefined>();
 
 /**
  * The relating/related attribute slots for a STEP relationship keyword
@@ -165,11 +183,19 @@ export function getRelationshipSlotPlan(
     typeUpper: string,
     schemaVersion?: SchemaVersionWithRegistry | string,
 ): RelationshipSlotPlan | undefined {
+    return getRelationshipReadPlan(typeUpper, schemaVersion)?.slots;
+}
+
+/** {@link getRelationshipSlotPlan} with what the byte reader checks the record against. */
+export function getRelationshipReadPlan(
+    typeUpper: string,
+    schemaVersion?: SchemaVersionWithRegistry | string,
+): RelationshipReadPlan | undefined {
     const cacheKey = `${schemaVersion ?? '*'}:${typeUpper}`;
     const cached = PLAN_CACHE.get(cacheKey);
     if (cached !== undefined || PLAN_CACHE.has(cacheKey)) return cached;
 
-    let plan: RelationshipSlotPlan | undefined;
+    let plan: RelationshipReadPlan | undefined;
     const versions = VERSIONS.includes(schemaVersion as SchemaVersionWithRegistry)
         ? [schemaVersion as SchemaVersionWithRegistry]
         : VERSIONS;
@@ -177,23 +203,32 @@ export function getRelationshipSlotPlan(
         const registry = getSchemaRegistryForVersion(version);
         const canonical = getCanonicalEntityName(registry, typeUpper);
         if (!canonical) continue;
-        plan = computeSlotPlan(registry, canonical);
-        if (plan) break;
+        const slots = computeSlotPlan(registry, canonical);
+        if (!slots) continue;
+        const relating = { ...slots.relating, relating: true };
+        const related = { ...slots.related, relating: false };
+        plan = {
+            slots,
+            order: relating.index < related.index ? [relating, related] : [related, relating],
+            lastIndex: (registry.entities[canonical]?.allAttributes?.length ?? 0) - 1 - ROOT_ATTR_COUNT,
+        };
+        break;
     }
     PLAN_CACHE.set(cacheKey, plan);
     return plan;
 }
 
-function isSubtypeOfIfcRelationship(registry: SchemaRegistry, name: string): boolean {
-    let cursor: SchemaRegistry['entities'][string] | undefined = registry.entities[name];
-    const seen = new Set<string>();
-    while (cursor && !seen.has(cursor.name)) {
-        if (cursor.name === 'IfcRelationship') return true;
-        seen.add(cursor.name);
-        cursor = cursor.parent ? registry.entities[cursor.parent] : undefined;
-    }
-    return false;
-}
+// Generated with each registry (`@ifc-lite/codegen`'s `concreteRelationshipTypes`,
+// the walk this module used to run over the decoded registries: every
+// non-abstract entity whose ancestry reaches `IfcRelationship`, in registry
+// order). Reading the lists decodes no registry; `scripts/check-codegen-sync.mjs`
+// keeps them in step with the schemas, and `relationship-schema-slots.test.ts`
+// runs the walk over the decoded registries as their oracle.
+const CONCRETE_TYPES_BY_VERSION: Record<SchemaVersionWithRegistry, readonly string[]> = {
+    IFC2X3: CONCRETE_RELATIONSHIP_TYPES_IFC2X3,
+    IFC4: CONCRETE_RELATIONSHIP_TYPES_IFC4,
+    IFC4X3: CONCRETE_RELATIONSHIP_TYPES_IFC4X3,
+};
 
 const CONCRETE_TYPES_CACHE = new Map<SchemaVersionWithRegistry, ReadonlySet<string>>();
 
@@ -202,12 +237,11 @@ const CONCRETE_TYPES_CACHE = new Map<SchemaVersionWithRegistry, ReadonlySet<stri
 export function getConcreteRelationshipTypes(version: SchemaVersionWithRegistry): ReadonlySet<string> {
     const cached = CONCRETE_TYPES_CACHE.get(version);
     if (cached) return cached;
-    const registry = getSchemaRegistryForVersion(version);
-    const result = new Set<string>();
-    for (const [name, meta] of Object.entries(registry.entities)) {
-        if (meta.isAbstract) continue;
-        if (isSubtypeOfIfcRelationship(registry, name)) result.add(name.toUpperCase());
+    if (!Object.prototype.hasOwnProperty.call(CONCRETE_TYPES_BY_VERSION, version)) {
+        // Unknown version: the registry lookup throws its usual error.
+        getSchemaRegistryForVersion(version);
     }
+    const result: ReadonlySet<string> = new Set(CONCRETE_TYPES_BY_VERSION[version]);
     CONCRETE_TYPES_CACHE.set(version, result);
     return result;
 }

@@ -13,7 +13,7 @@
  * Hosting (doors and windows). Every edit is one undo step.
  */
 
-import { useId, useMemo } from 'react';
+import { lazy, Suspense, useId, useMemo, useState } from 'react';
 import { ChevronRight, X } from 'lucide-react';
 import { EditElement } from '@/icons';
 import { Button } from '@/components/ui/button';
@@ -28,20 +28,60 @@ import { DefaultDimensions, SelectionDimensions, isStairSelection } from './Dime
 import { HostingSection } from './HostingSection';
 import { DefaultProfile, SelectionProfile, isProfileOwner } from './ProfileInspectorSection';
 import { KIND_LABEL } from './inspector-fields';
-import { LayersSection } from './LayersSection';
 import { TypeSection } from './TypeSection';
 import { renameElement } from './inspector-edits';
 import { useInspectorTarget, type InspectorSelection, type InspectorTarget } from './useInspectorTarget';
+import { MultiSelectionInspector } from './MultiSelectionInspector';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
+import { Spinner } from '@/components/ui/spinner';
+
+// The storey manager (#9013) and its write path load when it is first opened, not at boot.
+const StoreyManager = lazy(() => import('../model/storeys/StoreyManager').then((m) => ({ default: m.StoreyManager })));
+// The layer editor loads with its first use, off the eager bundle (#9296).
+const LayersSection = lazy(() => import('./LayersSection').then((m) => ({ default: m.LayersSection })));
+
+const MaterialSection = lazy(() => import('./MaterialSection').then(m => ({ default: m.MaterialSection })));
 
 const HOSTED: ReadonlySet<AuthoredElementKind> = new Set(['door', 'window']);
 
 export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
+  const managerOpen = useViewerStore((s) => s.storeyManagerOpen && s.session !== null);
+  const [tab, setTab] = useState<'storeys' | 'defaults'>('storeys');
+  if (!managerOpen) return <ModelInspectorBody onClose={onClose} />;
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="border-b border-border p-2">
+        <SegmentedControl label={t('modelInspector.panel.title')} size="sm" value={tab} onValueChange={setTab}
+          options={[{ value: 'storeys', label: t('storeyManager.title') }, { value: 'defaults', label: t('modelInspector.mode.defaults') }]} />
+      </div>
+      <div hidden={tab !== 'storeys'} className="min-h-0 flex-1">
+        <ChunkErrorBoundary label="Storey manager">
+          <Suspense fallback={<Spinner label={t('storeyManager.title')} />}>
+            <StoreyManager onBack={() => useViewerStore.getState().setStoreyManagerOpen(false)} />
+          </Suspense>
+        </ChunkErrorBoundary>
+      </div>
+      <div hidden={tab !== 'defaults'} className="min-h-0 flex-1">
+        <ModelInspectorBody onClose={onClose} forceDefaults />
+      </div>
+    </div>
+  );
+}
+
+function ModelInspectorBody({ onClose, forceDefaults = false }: { onClose?: () => void; forceDefaults?: boolean }) {
+  const { t } = useTranslation();
   const hasModel = useViewerStore((s) => s.models.size > 0);
+  const multiple = useViewerStore(s => s.session !== null && s.selectedEntityIds.size > 1);
   const canEdit = useViewerStore((s) => s.canCollabEdit());
   const enter = useViewerStore((s) => s.enterModelWorkspace);
-  const target = useInspectorTarget();
-  const { mode, selection, defaultsKind } = target;
+  const originalTarget = useInspectorTarget();
+  const lastKind = useViewerStore((s) => s.authoringDefaults.lastKind);
+  const defaultKind = originalTarget.defaultsKind ?? (originalTarget.kindlessCommand ? null : lastKind);
+  const target = forceDefaults && defaultKind ? { ...originalTarget, defaultsKind: defaultKind, mode: 'defaults' as const } : originalTarget;
+  const { mode, selection, defaultsKind, kindlessCommand } = target;
+
+  if (multiple && !forceDefaults) return <MultiSelectionInspector onClose={onClose} />;
 
   const title = mode === 'selection' && selection
     ? selection.storeyName
@@ -49,7 +89,9 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
       : t('modelInspector.header.selection', { ifcClass: selection.ifcClass, id: selection.expressId })
     : mode === 'defaults' && defaultsKind
       ? t('modelInspector.header.defaults', { kind: t(KIND_LABEL[defaultsKind]) })
-      : t('modelInspector.panel.title');
+      : kindlessCommand
+        ? t(kindlessCommand)
+        : t('modelInspector.panel.title');
 
   return (
     <div data-model-inspector data-inspector-mode={mode ?? undefined} className="flex h-full min-h-0 flex-col" aria-label={t('modelInspector.panel.title')}>
@@ -74,13 +116,15 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
                 {t('modelInspector.empty.enter')}
               </Button>
             </>
+          ) : kindlessCommand ? (
+            <p data-model-inspector-command className="max-w-[16rem] text-xs text-muted-foreground">{t('modelInspector.empty.command')}</p>
           ) : (
             <p data-model-inspector-idle className="max-w-[16rem] text-xs text-muted-foreground">{t('modelInspector.empty.idle')}</p>
           )}
         </div>
       ) : (
         <>
-          <InspectorToolbar target={target} />
+          {!forceDefaults && <InspectorToolbar target={target} />}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {mode === 'selection' && selection ? <SelectionBody key={`${selection.modelId}:${selection.expressId}`} selection={selection} /> : null}
             {mode === 'defaults' && defaultsKind && target.sessionModel ? (
@@ -138,15 +182,19 @@ function DefaultsBody({ kind, modelId, live }: { kind: AuthoredElementKind; mode
       <DefaultDimensions kind={kind} />
       {isProfileOwner(kind) && <DefaultProfile owner={kind} />}
       {AUTHORED_KINDS[kind].layers && (
-        <LayersSection
-          key={`${kind}:${layers ? layerPick?.expressId : 'none'}`}
-          modelId={modelId}
-          live={live}
-          kind={kind}
-          initial={layers ?? []}
-          typeId={typePick?.modelId === modelId ? typePick.expressId : null}
-          defaultThickness={authoringDim(defaults, kind, 'Thickness')}
-        />
+        <ChunkErrorBoundary label="Material layers">
+          <Suspense fallback={null}>
+            <LayersSection
+              key={`${kind}:${layers ? layerPick?.expressId : 'none'}`}
+              modelId={modelId}
+              live={live}
+              kind={kind}
+              initial={layers ?? []}
+              typeId={typePick?.modelId === modelId ? typePick.expressId : null}
+              defaultThickness={authoringDim(defaults, kind, 'Thickness')}
+            />
+          </Suspense>
+        </ChunkErrorBoundary>
       )}
     </>
   );
@@ -184,19 +232,24 @@ function SelectionBody({ selection }: { selection: InspectorSelection }) {
       {(kind !== null || isStairSelection(selection)) && <SelectionDimensions selection={selection} />}
       {isProfileOwner(kind) && <SelectionProfile selection={selection} owner={kind} />}
       {kind !== null && AUTHORED_KINDS[kind].layers && (
-        <LayersSection
-          // Re-seed the draft when the applied layers change, or (with none) the wall's thickness does.
-          key={`${expressId}:${layerSet?.layerSetId ?? `none:${thickness}`}`}
-          modelId={modelId}
-          live={live}
-          kind={kind}
-          elementId={expressId}
-          initial={layerSet?.layers ?? []}
-          inheritedFromType={layerSet?.via === 'type'}
-          typeId={typeId}
-          defaultThickness={thickness}
-        />
+        <ChunkErrorBoundary label="Material layers">
+          <Suspense fallback={null}>
+            <LayersSection
+              // Re-seed the draft when the applied layers change, or (with none) the wall's thickness does.
+              key={`${expressId}:${layerSet?.layerSetId ?? `none:${thickness}`}`}
+              modelId={modelId}
+              live={live}
+              kind={kind}
+              elementId={expressId}
+              initial={layerSet?.layers ?? []}
+              inheritedFromType={layerSet?.via === 'type'}
+              typeId={typeId}
+              defaultThickness={thickness}
+            />
+          </Suspense>
+        </ChunkErrorBoundary>
       )}
+      {(kind === 'slab' || kind === 'column') && !layerSet && <Suspense fallback={null}><MaterialSection modelId={modelId} elementId={expressId} live={live} /></Suspense>}
       {kind !== null && HOSTED.has(kind) && <HostingSection selection={selection} />}
     </>
   );

@@ -37,5 +37,7 @@ export interface PropertySet {
 
 export interface QuantitySet {
   name: string;
+  /** The `IfcElementQuantity`'s GlobalId, when the set came from a file. */
+  globalId?: string;
   quantities: ReturnType<typeof import('@ifc-lite/parser').extractQuantitiesOnDemand>[number]['quantities'];
 }

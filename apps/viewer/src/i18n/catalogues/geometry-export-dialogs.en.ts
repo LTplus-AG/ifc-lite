@@ -44,11 +44,11 @@ export const geometryExportDialogsEn = {
   'geometryExport.glb.selectModelPlaceholder': 'Select model',
   'geometryExport.glb.colorSourceLabel': 'Colour Source',
   'geometryExport.glb.colorSourceRendering': 'Rendering (apparent colour)',
-  'geometryExport.glb.colorSourceShading': 'Shading (SurfaceColour)',
+  'geometryExport.glb.colorSourceShading': 'Shading (DiffuseColour)',
   'geometryExport.glb.colorSourceRenderingHint':
-    'Uses IfcSurfaceStyleRendering.DiffuseColour when authored, otherwise SurfaceColour. Matches most IFC viewers.',
+    'Uses SurfaceColour, including a numeric DiffuseColour factor. A separate DiffuseColour RGB colour does not replace SurfaceColour.',
   'geometryExport.glb.colorSourceShadingHint':
-    'Uses the base SurfaceColour. Falls back to the rendering colour when no distinct DiffuseColour was authored.',
+    'Uses a separately authored, distinct DiffuseColour RGB colour; otherwise the apparent rendering colour.',
   'geometryExport.glb.outputLabel': 'Output',
   'geometryExport.glb.outputFormat': 'glTF Binary',
   'geometryExport.glb.fileExtension': '.glb',

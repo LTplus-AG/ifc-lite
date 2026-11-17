@@ -20,7 +20,7 @@ import { lowerFamily } from './lower.mjs';
 import { buildMeasured, frameMetricId, RATCHETED_FRAME_METRICS } from './measure-browser-frames.mjs';
 
 const HERE = fileURLToPath(new URL('./', import.meta.url));
-const FIXTURES = fileURLToPath(new URL('../../tests/evidence/frame-ratchet-6975/', import.meta.url));
+const FIXTURES = fileURLToPath(new URL('../../tests/fixtures/frame-ratchet-6975/', import.meta.url));
 // Snapshot from ac31b157a9, bound to the raw repeatability verdicts by
 // frame-ratchet-evidence.test.mjs. Mechanics must survive live lowering.
 const CEILINGS = loadCeilingFile(join(FIXTURES, 'browser-frames.json'));

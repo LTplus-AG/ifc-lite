@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #4381 — the real CRAS pair's transferred output (docs/architecture/evidence/
+ * #4381 — the real CRAS pair's transferred output (tests/fixtures/appearance/
  * scan-registration-cras/) reopens through ifc-lite's own reader with the wall
  * geometry unchanged and the atlas bound to it, survives IFCZIP packaging, and
  * reaches a fresh room guest with the same texture bytes and UVs.
@@ -27,7 +27,7 @@ import { roomSlotRef } from '../../collab/model-slot-ref.js';
 import { joiner, localIdOf, ownerShare } from '../../../test/collab-room-harness.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..', '..');
-const EVIDENCE = join(REPO_ROOT, 'docs', 'architecture', 'evidence', 'scan-registration-cras');
+const EVIDENCE = join(REPO_ROOT, 'tests', 'fixtures', 'appearance', 'scan-registration-cras');
 const WASM = join(REPO_ROOT, 'packages', 'wasm', 'pkg', 'ifc-lite_bg.wasm');
 const WALL_GUID = '1gsZ4XbYD0qRhfvwOUEK3Z'; // Basic Wall:(10cm) Drywall:969917, the corridor's east wall
 const TARGET = 'craslabbim-ifc4-tessellated.ifc';

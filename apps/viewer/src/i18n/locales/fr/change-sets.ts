@@ -1,0 +1,48 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const changeSetsFr = {
+  "changeSets.panel.title": "Jeux de modifications",
+  "changeSets.panel.close": "Fermer Jeux de modifications",
+  "changeSets.panel.count": {"one":"{count} jeu","other":"{count} jeux","many":"{count} jeux"},
+  "changeSets.panel.intro": "Les nouvelles modifications sont ajoutées au jeu actif. Exportez un jeu pour le partager sous forme de fichier.",
+  "changeSets.empty": "Aucun jeu de modifications pour le moment. Votre première modification en crée un automatiquement, ou créez-en un maintenant.",
+  "changeSets.noActive": "Aucun jeu de modifications actif. Votre prochaine modification en créera un automatiquement.",
+  "changeSets.defaultName": "Jeu de modifications {number}",
+  "changeSets.new": "Nouveau",
+  "changeSets.newTitle": "Nouveau jeu de modifications",
+  "changeSets.newDescription": "Nommez le jeu de modifications. Les nouvelles modifications y seront ajoutées.",
+  "changeSets.import": "Importer",
+  "changeSets.importFailed": "{file} n’est pas un fichier de jeu de modifications.",
+  "changeSets.importDone": "{name} importé.",
+  "changeSets.row.edits": {"one":"{count} modification","other":"{count} modifications","many":"{count} modifications"},
+  "changeSets.row.created": "Créé {time}",
+  "changeSets.row.active": "Actif",
+  "changeSets.row.setActive": "Activer",
+  "changeSets.row.activate": "Activer : {name}",
+  "changeSets.row.deactivate": "Actif : {name}. Appuyez pour cesser d’y recueillir les modifications",
+  "changeSets.row.show": "Afficher les modifications de {name}",
+  "changeSets.row.hide": "Masquer les modifications de {name}",
+  "changeSets.row.rename": "Renommer {name}",
+  "changeSets.row.export": "Exporter {name}",
+  "changeSets.row.discard": "Supprimer {name}",
+  "changeSets.renameTitle": "Renommer le jeu de modifications",
+  "changeSets.renameDescription": "Nouveau nom pour {name}.",
+  "changeSets.discardTitle": "Supprimer le jeu de modifications",
+  "changeSets.discardDescription": "Supprimer {name} et sa liste de {count} modifications ? Les modifications restent dans le modèle ; seule leur liste est supprimée.",
+  "changeSets.discardConfirm": "Supprimer",
+  "changeSets.contents.empty": "Ce jeu ne contient encore aucune modification.",
+  "changeSets.contents.entity": "{type} #{id}",
+  "changeSets.contents.modelLevel": "Modifications à l’échelle du modèle",
+  "changeSets.contents.select": "Sélectionner {entity} dans {model}",
+  "changeSets.contents.edits": {"one":"{count} modification","other":"{count} modifications","many":"{count} modifications"},
+  "changeSets.contents.created": "Créé",
+  "changeSets.contents.deleted": "Supprimé",
+  "changeSets.contents.retyped": "Classe modifiée",
+  "changeSets.rail.label": "Jeux de modifications",
+  "changeSets.rail.active": "Actif : {name}",
+  "changeSets.rail.none": "Aucun jeu de modifications actif",
+} satisfies Catalogue;

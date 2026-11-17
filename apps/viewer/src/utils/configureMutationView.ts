@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { configureAuthoredQuantityReader, refreshedBaseQuantitySets, withRefreshedBaseQuantities } from '@ifc-lite/create';
+import { isEditedQuantityRefreshEnabled } from '@/lib/quantities/edited-quantity-refresh';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import {
   getRawNamedAttributes,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
-  extractTypeEntityOwnProperties,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 
@@ -57,22 +57,6 @@ export function resolveBaseAttributeValue(
   }
 }
 
-const typeObjectByClass = new Map<string, boolean>();
-
-/**
- * Whether `typeName` is an IfcTypeObject subtype, whose own sets sit in
- * `HasPropertySets`. By schema ancestry, not by an "ends in Type" name test,
- * which missed IFC2X3's `IfcDoorStyle` / `IfcWindowStyle` (#5966).
- */
-function isTypeObjectClass(typeName: string): boolean {
-  let known = typeObjectByClass.get(typeName);
-  if (known === undefined) {
-    known = getInheritanceChainAcrossSchemas(typeName).includes('IfcTypeObject');
-    typeObjectByClass.set(typeName, known);
-  }
-  return known;
-}
-
 /**
  * The store each view's base readers were last pointed at by
  * {@link configureMutationView}. Weak, so it never keeps a view or a store
@@ -103,19 +87,18 @@ export function configureMutationView(
 ): void {
   baseStoreByView.set(mutationView, dataStore);
   if (dataStore.source?.length > 0) {
-    mutationView.setOnDemandExtractor((entityId: number) => {
-      const typeName = dataStore.entities?.getTypeName(entityId) ?? '';
-      if (isTypeObjectClass(typeName)) {
-        return extractTypeEntityOwnProperties(dataStore, entityId);
-      }
-      return extractPropertiesOnDemand(dataStore, entityId);
-    });
+    mutationView.setOnDemandExtractor((id, current = mutationView, occurrenceId = id) => extractPropertiesOnDemand(dataStore, id, current, occurrenceId));
   }
 
-  if (dataStore.onDemandQuantityMap && dataStore.source?.length > 0) {
-    mutationView.setQuantityExtractor((entityId: number) => {
-      return extractQuantitiesOnDemand(dataStore, entityId, mutationView);
+  if (dataStore.source?.length > 0) {
+    configureAuthoredQuantityReader(dataStore, mutationView, (entityId, view, occurrenceId) => {
+      const own = extractQuantitiesOnDemand(dataStore, entityId, view);
+      if (own.length === 0) return own;
+      // Opt-in (#9026): a loaded element's own set follows its edited geometry. A copy reads its source's sets as before.
+      return isEditedQuantityRefreshEnabled() && entityId === occurrenceId ? withRefreshedBaseQuantities(dataStore, view, entityId, own) : own;
     });
+    // The export writes a refreshed set as it writes an edited one, so the file says what the tab does.
+    mutationView.setQuantityBaseRevisions((view) => (isEditedQuantityRefreshEnabled() ? refreshedBaseQuantitySets(dataStore, view) : []));
   }
 
   mutationView.setAttributeExtractor((entityId: number, attrName: string) =>

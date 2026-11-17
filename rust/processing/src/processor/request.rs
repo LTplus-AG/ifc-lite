@@ -106,6 +106,8 @@ impl Default for Features {
 pub struct ProcessingRequest {
     /// Which window / door openings are cut and drawn.
     pub opening_filter: OpeningFilterMode,
+    /// Leave hosts uncut by IfcRelVoidsElement; authored booleans and fillings remain.
+    pub skip_voids: bool,
     /// Tessellation detail (#976). `Medium` is the historical output.
     pub quality: TessellationQuality,
     /// Slice material-layer walls into per-layer submeshes. Default false.
@@ -142,6 +144,12 @@ impl ProcessingRequest {
 
     pub fn opening_filter(mut self, mode: OpeningFilterMode) -> Self {
         self.opening_filter = mode;
+        self
+    }
+
+    /// Generate gross host geometry without changing emitted filling elements.
+    pub fn skip_voids(mut self, on: bool) -> Self {
+        self.skip_voids = on;
         self
     }
 
@@ -198,6 +206,7 @@ impl ProcessingRequest {
     pub fn from_streaming(opening_filter: OpeningFilterMode, options: StreamingOptions) -> Self {
         Self {
             opening_filter,
+            skip_voids: false,
             quality: options.tessellation_quality,
             layer_slicing: false,
             batching: Batching {

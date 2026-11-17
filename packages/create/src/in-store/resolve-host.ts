@@ -14,8 +14,9 @@
  * which the opening builder derives the default cut depth.
  */
 
+import { PART_TYPE } from './roof-plane-parts.js';
 import { firstProjAxis } from '@ifc-lite/data';
-import { axis2d, axis3d, applyFrame, composeFrame, contextDimension, pointOf, refId, num, transformBounds, unit, vec3, type Vec3, type Frame3 } from './host-geometry-frame.js';
+import { axis2d, axis3d, applyFrame, composeFrame, contextDimension, pointOf, refId, num, transformBounds, unit, vec3, type Vec3, type Frame3, type GeometryEntityReader } from './host-geometry-frame.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { HostAnchor, HostBounds, HostKind } from './anchor.js';
@@ -48,7 +49,17 @@ export function resolveHostAnchor(
     throw new Error(`resolveHostAnchor: host #${hostExpressId} has no IfcLocalPlacement to cut the opening in`);
   }
 
-  const storeyId = containingStorey(reader, hostExpressId);
+  let roofId: number | undefined;
+  if (host.attributes[4] === PART_TYPE) {
+    const owners = [...reader.ids('IFCRELAGGREGATES')].flatMap(id => {
+      const a = reader.entity(id)?.attributes, parent = refId(a?.[4]);
+      return a && parent !== null && Array.isArray(a[5]) && a[5].some(ref => refId(ref) === hostExpressId)
+        && reader.entity(parent)?.type.toUpperCase() === 'IFCROOF' ? [parent] : [];
+    });
+    if (owners.length !== 1) throw new Error('A roof plane opening requires one owning roof');
+    roofId = owners[0];
+  }
+  const storeyId = containingStorey(reader, roofId ?? hostExpressId);
   if (storeyId === null) {
     throw new Error(`resolveHostAnchor: host #${hostExpressId} is not contained in a spatial structure element (IfcRelContainedInSpatialStructure)`);
   }
@@ -56,7 +67,7 @@ export function resolveHostAnchor(
 
   const shapeId = refId(named(host, 'Representation', 6));
   const hostBounds = shapeId === null ? null : bodyBounds(reader, shapeId);
-  return { ...anchor, hostId: hostExpressId, hostKind, hostPlacementId, hostBounds };
+  return { ...anchor, hostId: hostExpressId, hostKind, hostPlacementId, hostBounds, ...(roofId === undefined ? {} : { roofId }) };
 }
 
 /**
@@ -207,7 +218,8 @@ function collectItemPoints(reader: AnchorEntityReader, itemId: number, out: Vec3
   return true;
 }
 
-function mappedItemFrame(reader: AnchorEntityReader, attrs: unknown[]): { items: number[]; frame: Frame3 } | null {
+/** `MappingTarget · MappingOrigin` of one IfcMappedItem and the mapped representation's items. */
+export function mappedItemFrame(reader: GeometryEntityReader, attrs: readonly unknown[]): { items: number[]; frame: Frame3 } | null {
   const mapId = refId(attrs[0]), targetId = refId(attrs[1]);
   const map = mapId === null ? null : reader.entity(mapId);
   const target = targetId === null ? null : reader.entity(targetId);

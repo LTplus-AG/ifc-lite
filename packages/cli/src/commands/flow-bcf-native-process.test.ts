@@ -20,8 +20,14 @@ import { LOCAL_BCF_PROJECT, LOCAL_BCF_TOKEN, startLocalBcfServer } from '../../.
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); });
 
-it.each([['topic', 'exact'], ['topic', 'trimmed'], ['topic', 'rewritten'], ['topic', 'omitted'],
-  ['comment', 'trimmed'], ['comment', 'omitted'], ['topic', 'foreign-owner'], ['topic', 'reused-pid']] as const)('kills a native host after retained %s commit (%s text), and blocks fresh-process duplicate (#7374)', async (operation, mode) => {
+// Each case asserts the killed sender's owner `alive` then `dead`, which needs a process
+// instance identity. `observedOwner` (flow-nodes bcf-publication-owner.ts) has one only on
+// Linux and Windows; elsewhere `ownerStatus` is `unknown` by design. Gated on platform, not on
+// a runtime probe, so a broken backend on Linux/Windows still fails loudly.
+const ownerIdentityPlatform = process.platform === 'linux' || process.platform === 'win32';
+
+it.skipIf(!ownerIdentityPlatform).each([['topic', 'exact'], ['topic', 'trimmed'], ['topic', 'rewritten'], ['topic', 'omitted'],
+  ['comment', 'trimmed'], ['comment', 'omitted'], ['topic', 'foreign-owner'], ['topic', 'reused-pid']] as const)('kills a native host after retained %s commit (%s text), and blocks fresh-process duplicate (#7374; needs Linux/Windows owner identity)', async (operation, mode) => {
   const peer = await startLocalBcfServer();
   cleanup.push(peer.close);
   const field = operation === 'comment' ? 'comment' : 'title';

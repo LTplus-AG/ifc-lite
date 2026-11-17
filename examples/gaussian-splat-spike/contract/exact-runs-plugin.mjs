@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { patchDepthConvention, publishedRendererHash } from '../depth-patch.mjs';
+import { patchDepthConvention, readPublishedRenderer } from '../depth-patch.mjs';
 
 // Research only: reuse the upstream sorter, buffers, shaders and draw loop.
 // Fail closed above the experiment's budget; never silently approximate order.
@@ -17,10 +17,7 @@ export function exactRunsPlugin(exact) {
         .replace('this.handle.destroy();', 'if (this.contractOwnsDevice) this.handle.destroy();'), map: null };
     }
     if (!id.replaceAll('\\', '/').endsWith('/splats/dist/splat-renderer.js')) return;
-    const original = await readFile(id, 'utf8');
-    if (createHash('sha256').update(original).digest('hex') !== publishedRendererHash) {
-      throw new Error('Unqualified upstream renderer revision');
-    }
+    const original = await readPublishedRenderer(id);
     let code = patchDepthConvention(original);
     // Upstream Model syncs attachment formats but not sample count. Reuse its
     // parameter path; no Gaussian shader change or new rasterizer is involved.

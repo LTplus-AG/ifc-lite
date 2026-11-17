@@ -7,6 +7,7 @@
  * Extracted from the Renderer class to use composition pattern.
  */
 
+import { resolveAnnotationPick, type AnnotationPickProvider } from './annotation-picking.js';
 import { Camera } from './camera.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { Scene } from './scene.js';
@@ -24,7 +25,7 @@ import { pickPieceKey, planPickMeshHydration } from './pick-mesh-budget.js';
  * snapshot of pickable nodes and the sizing to use for the splat picker.
  * Returning empty / null disables point-pick for this frame.
  */
-export type PointPickProvider = () =>
+export type PointPickProvider = (filter?: PickOptions) =>
   | { nodes: ReadonlyArray<PointPickNode>; sizing: PointPickSizing }
   | null;
 
@@ -42,6 +43,9 @@ export class PickingManager {
     private pickerEpoch = 0;
     private canvas: HTMLCanvasElement;
     private createMeshFromDataFn: (meshData: MeshData) => GpuUploadOutcome<void>;
+    private annotationPickProvider: AnnotationPickProvider | null = null;
+    setAnnotationPickProvider(provider: AnnotationPickProvider): void { this.annotationPickProvider = provider; }
+
     private pointPickProvider: PointPickProvider | null = null;
 
     constructor(
@@ -182,27 +186,21 @@ export class PickingManager {
             return null;
         }
 
+        const annotations = this.annotationPickProvider?.(x, y, viewport.width / viewport.scaleX, viewport.height / viewport.scaleY, options, clip) ?? null;
         if (this.prepareBatchedPick(options) === 'cpu') {
             const ray = this.camera.unprojectToRay(scaledX, scaledY, viewport.width, viewport.height);
             const hit = this.scene.raycast(ray.origin, ray.direction, options?.hiddenIds, options?.isolatedIds, clip);
-            if (!hit) return null;
-            // The CPU fallback is the COMMON path — anything over
-            // MAX_PICK_MESH_CREATION lands here — so it must report the picked
-            // item, not just its product. Carrying expressId/modelIndex only is
-            // how a pick silently degrades to product-level on a big model
-            // while looking identical to a genuine "no item here" (#2985).
-            //
-            // NOT full parity with the GPU path: `worldXYZ` is still omitted,
-            // as it was before #2985. `Scene.raycast` returns the hit distance
-            // and the world point is rayOrigin + t*rayDir, so it is computable
-            // here, but filling it in is a behaviour change (HoverTooltip shows
-            // a world coordinate only when the key is set, so today it is blank
-            // above the pick-mesh budget) and belongs to its own issue.
-            return {
+            if (!hit) return resolveAnnotationPick(annotations, null);
+            const result = {
                 expressId: hit.expressId,
                 modelIndex: hit.modelIndex,
                 ...(hit.geometryItemId !== undefined ? { geometryItemId: hit.geometryItemId } : {}),
             };
+            return resolveAnnotationPick(annotations, result, annotations ? {
+                x: ray.origin.x + hit.distance * ray.direction.x,
+                y: ray.origin.y + hit.distance * ray.direction.y,
+                z: ray.origin.z + hit.distance * ray.direction.z,
+            } : undefined);
         }
 
         let meshes = this.scene.getMeshes();
@@ -212,11 +210,8 @@ export class PickingManager {
         meshes = meshes.filter(mesh => isEntityVisible(mesh.expressId, options?.hiddenIds, options?.isolatedIds));
 
         const viewProj = this.camera.getViewProjMatrix().m;
-        const pointSnap = this.pointPickProvider?.() ?? null;
-        // Skip point picking when isolation excludes everything to keep
-        // existing visibility semantics (caller already filtered meshes
-        // accordingly; we don't filter point nodes here because per-asset
-        // visibility is binary and assets are tiny in count).
+        // The provider drops inline clouds the same filters hide from the draw (#10215).
+        const pointSnap = this.pointPickProvider?.(options) ?? null;
         const pointNodes = pointSnap?.nodes ?? undefined;
         const pointSizing = pointSnap?.sizing ?? undefined;
         // The point pass projects in this immutable RTE frame. Never decode a
@@ -241,7 +236,7 @@ export class PickingManager {
             && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot)) {
             return null;
         }
-        return result;
+        return resolveAnnotationPick(annotations, result);
     }
 
     /**
@@ -251,9 +246,8 @@ export class PickingManager {
      *
      * Rect coordinates are in CSS pixels; we scale to canvas pixels
      * the same way `pick()` does. Visibility filters from `options`
-     * are applied to meshes before the pass; point nodes are not
-     * filtered (per-asset visibility is binary and the asset count is
-     * tiny).
+     * are applied to meshes before the pass, and to inline point clouds
+     * by the point provider (#10215).
      *
      * Batched models take the same route as `pick()`: hydrate the
      * missing individual meshes when that is affordable, otherwise fall
@@ -300,7 +294,7 @@ export class PickingManager {
                 clip,
                 { cameraWorld: this.camera.getRelativeToEyeFrame().getCameraWorld() },
             );
-            const cpuPointSnap = this.pointPickProvider?.() ?? null;
+            const cpuPointSnap = this.pointPickProvider?.(options) ?? null;
             if (!cpuPointSnap || cpuPointSnap.nodes.length === 0) return boxHits;
 
             // Point-only pick pass. Meshes are deliberately `[]`: this branch runs
@@ -356,7 +350,7 @@ export class PickingManager {
         let meshes = this.scene.getMeshes();
         meshes = meshes.filter((m) => isEntityVisible(m.expressId, options?.hiddenIds, options?.isolatedIds));
         const viewProj = this.camera.getViewProjMatrix().m;
-        const pointSnap = this.pointPickProvider?.() ?? null;
+        const pointSnap = this.pointPickProvider?.(options) ?? null;
         const pointRteSnapshot = capturePointRteSnapshot(this.camera);
         const hits = await picker.pickRect(
             sx0, sy0, sx1, sy1,

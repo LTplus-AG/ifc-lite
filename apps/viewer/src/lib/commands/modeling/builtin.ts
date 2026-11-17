@@ -8,7 +8,8 @@
  * which every viewer mounts, and by tests that start a built-in command.
  */
 
-import { getModelingCommand, registerModelingCommand, setWorkplaneResolver } from './registry.js';
+import { getModelingCommand, registerModelingCommand, setRoofHeightResolver, setWorkplaneResolver } from './registry.js';
+import { topOfWalls } from './top-of-walls.js';
 import { buildStoreyWorkplane } from './workplane.js';
 import { BEAM_PLACE } from './commands/beam-place.js';
 import { COLUMN_PLACE } from './commands/column-place.js';
@@ -65,6 +66,8 @@ registerOnce(ELEMENT_ALIGN);
 registerOnce(CURTAINWALL_PLACE);
 registerOnce(GRID_PLACE);
 registerOnce(ELEMENT_TRIM_EXTEND);
+
+setRoofHeightResolver(topOfWalls);
 
 setWorkplaneResolver((s, modelId, spec) => (spec.kind === 'storey'
   ? buildStoreyWorkplane(s, modelId, spec.storeyId, spec.offset)

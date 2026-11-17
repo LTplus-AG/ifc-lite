@@ -9,6 +9,8 @@ import {
   Crosshair,
   Copy,
   Info,
+  Settings2,
+  GitCompare,
   Focus,
   ArrowUpDown,
   ChevronDown,
@@ -19,7 +21,6 @@ import {
   FolderPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
@@ -28,6 +29,8 @@ import type { SaveResult } from '@/lib/clash/persistence';
 import type { ClashExclusionKind } from '@/lib/clash/exclusions';
 import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
 import { useBCF } from '@/hooks/useBCF';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
+import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
 import { rerunClashRequest, rerunTooltip, runRequestOf } from '@/lib/clash/run-request';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import { useViewerStore } from '@/store';
@@ -36,11 +39,12 @@ import { ModelBadge } from './ModelBadge';
 import { ClashExportActions } from '@/components/viewer/clash/ClashExportActions';
 import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
 import { ClashRevisionCompareDialog } from '@/components/viewer/ClashRevisionCompareDialog';
-import { ClashSavedReportsDialog } from '@/components/viewer/ClashSavedReportsDialog';
+import { useClashSavedReportsAction } from '@/components/viewer/ClashSavedReportsDialog';
 import { ClashManualGroupDialog } from '@/components/viewer/ClashManualGroupDialog';
 import { useManualClashGroups } from '@/components/viewer/useManualClashGroups';
 import { ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
 import { ClashGroupHeaderWithActions } from '@/components/viewer/ClashGroupHeaderWithActions';
+import { ClashQualityGates } from './ClashQualityGates';
 import { ClashResultSummary, type ClashResultView } from '@/components/viewer/ClashResultSummary';
 import { ClashResultState } from '@/components/viewer/clash/ClashResultState';
 import { ResultAction, SelectionSummary } from '@/components/viewer/result/ResultAction';
@@ -314,7 +318,6 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
 
   // In-app BCF: create a topic from a clash without leaving the tool (#1279).
   const { createViewpointFromState, headerFilesForViewpoints } = useBCF();
-  const bcfProject = useViewerStore((s) => s.bcfProject);
   const bcfAuthor = useViewerStore((s) => s.bcfAuthor);
   const setBcfProject = useViewerStore((s) => s.setBcfProject);
   const addTopic = useViewerStore((s) => s.addTopic);
@@ -344,7 +347,15 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const clashSolidThicknessM = useViewerStore((s) => s.clashSolidThicknessM);
   const clashSolidRequiredM = useViewerStore((s) => s.clashSolidRequiredM);
   const [showHelp, setShowHelp] = useState(false);
-  const [creatingTopic, setCreatingTopic] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const savedReports = useClashSavedReportsAction();
+  // One BCF topic capture at a time across the clash and group actions (C-2):
+  // a same-tick double press is refused, and a capture that settles after the
+  // panel closed creates nothing.
+  const topicFlight = useAsyncRun();
+  const creatingTopic = topicFlight.busy;
+  const runTopic = topicFlight.start;
   // The whole detection-controls block is collapsible so the result list gets
   // vertical room: auto-open before the first run (discoverability), auto-collapse
   // once a result is on screen, with a manual override once the user toggles it.
@@ -516,7 +527,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     submitDialog: submitGroupDialog, removeGroup: removeManualGroup, dialogProps,
     removeMember: removeManualGroupMember, createBcfTopic: createBcfTopicForGroup,
   } = useManualClashGroups({
-    clashes: result?.clashes, visibleClashes, sortBy, focusMode, focusClashes, creatingTopic, setCreatingTopic,
+    clashes: result?.clashes, visibleClashes, sortBy, focusMode, focusClashes, runTopic,
     showGroups: showManualGroups,
   });
   const activeSections = effectiveResultView === 'issues'
@@ -581,42 +592,47 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
    * clash is framed + selected first so the captured viewpoint shows it.
    */
   const createBcfTopic = useCallback(async (): Promise<void> => {
-    if (!result || creatingTopic) return;
+    if (!result) return;
     const clash = selectedId ? result.clashes.find((c) => c.id === selectedId) ?? null : null;
-    setCreatingTopic(true);
-    try {
-      if (clash) {
-        focusClash(clash, focusMode);
-        // Wait for the camera move + a render before grabbing the snapshot.
-        // FRAME-WAIT-ALLOW(#2385): must NOT be raced against a timer — timing out
-        // would attach a pre-camera-move frame to the BCF topic. A hidden tab
-        // cannot present the moved camera at all, so bounding this buys nothing.
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await runTopic(async ({ isCurrent }) => {
+      try {
+        if (clash) {
+          focusClash(clash, focusMode);
+          // Wait for the camera move + a render before grabbing the snapshot.
+          // FRAME-WAIT-ALLOW(#2385): must NOT be raced against a timer — timing out
+          // would attach a pre-camera-move frame to the BCF topic. A hidden tab
+          // cannot present the moved camera at all, so bounding this buys nothing.
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        }
+        const title = clash
+          ? `Clash: ${clash.a.tag} × ${clash.b.tag}`
+          : `Clash report — ${total} ${total === 1 ? 'clash' : 'clashes'}`;
+        const description = clash
+          ? `${describeClash(clash)}\n${clash.a.name ?? clash.a.key} ↔ ${clash.b.name ?? clash.b.key}`
+          : `${total} ${total === 1 ? 'clash' : 'clashes'} detected across the loaded model(s).`;
+        const topic = createBCFTopic({ title, description, author: bcfAuthor, topicType: 'Clash', topicStatus: 'Open' });
+        // `focusClash` above paints the pair through the clash colour channel,
+        // not the selection (#1277/#1339); `createViewpointFromState` turns that
+        // into the viewpoint's found objects and colouring (#4806).
+        const captured = await captureViewpointForCreate(
+          () => createViewpointFromState({ includeSnapshot: true, includeSelection: true, includeHidden: true }),
+          isCurrent, t('bcf.panel.captureViewpointFailed'), 'clash');
+        if (!captured.ok) return;
+        const vp = captured.viewpoint;
+        // The panel closed while the viewpoint was captured: create nothing, not even the project.
+        if (!isCurrent()) return;
+        if (!useViewerStore.getState().bcfProject) setBcfProject(createBCFProject({ name: 'Clash report' }));
+        // Record the source model(s) the clash spans, as the BCF panel does (#1591).
+        const header = headerFilesForViewpoints(vp ? [vp] : [], topic.creationDate);
+        if (header.length > 0) topic.header = header;
+        addTopic(topic);
+        if (vp) addViewpoint(topic.guid, vp);
+        toast.success(t('clashTools.bcfTopic.created'), { label: t('clashTools.bcfTopic.open'), onClick: () => setBcfPanelVisible(true) });
+      } catch (err) {
+        console.error('[clash] BCF topic creation failed', err);
       }
-      if (!bcfProject) setBcfProject(createBCFProject({ name: 'Clash report' }));
-      const title = clash
-        ? `Clash: ${clash.a.tag} × ${clash.b.tag}`
-        : `Clash report — ${total} ${total === 1 ? 'clash' : 'clashes'}`;
-      const description = clash
-        ? `${describeClash(clash)}\n${clash.a.name ?? clash.a.key} ↔ ${clash.b.name ?? clash.b.key}`
-        : `${total} ${total === 1 ? 'clash' : 'clashes'} detected across the loaded model(s).`;
-      const topic = createBCFTopic({ title, description, author: bcfAuthor, topicType: 'Clash', topicStatus: 'Open' });
-      // `focusClash` above paints the pair through the clash colour channel,
-      // not the selection (#1277/#1339); `createViewpointFromState` turns that
-      // into the viewpoint's found objects and colouring (#4806).
-      const vp = await createViewpointFromState({ includeSnapshot: true, includeSelection: true, includeHidden: true });
-      // Record the source model(s) the clash spans, as the BCF panel does (#1591).
-      const header = headerFilesForViewpoints(vp ? [vp] : [], topic.creationDate);
-      if (header.length > 0) topic.header = header;
-      addTopic(topic);
-      if (vp) addViewpoint(topic.guid, vp);
-      toast.success(t('clashTools.bcfTopic.created'), { label: t('clashTools.bcfTopic.open'), onClick: () => setBcfPanelVisible(true) });
-    } catch (err) {
-      console.error('[clash] BCF topic creation failed', err);
-    } finally {
-      setCreatingTopic(false);
-    }
-  }, [result, creatingTopic, selectedId, focusClash, focusMode, bcfProject, setBcfProject, total, bcfAuthor, addTopic, createViewpointFromState, headerFilesForViewpoints, addViewpoint, setBcfPanelVisible, t]);
+    });
+  }, [result, runTopic, selectedId, focusClash, focusMode, setBcfProject, total, bcfAuthor, addTopic, createViewpointFromState, headerFilesForViewpoints, addViewpoint, setBcfPanelVisible, t]);
 
   /** Switch the focus mode and immediately re-apply it to the selected clash so
    *  the change is visible without re-clicking the row (#1275). */
@@ -714,18 +730,17 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         cancelLabel: t('clashPanel.cancel'),
       }}
       onClearResults={clearAll}
-      actions={(
+      actions={[
+        { id: 'clash-settings', label: t('clashTools.settings.title'), icon: <Settings2 className="h-4 w-4" />, onSelect: () => setSettingsOpen(true) },
+        savedReports.action,
+        { id: 'clash-revision-compare', label: t('clashTools.revisionCompare.triggerTooltip'), icon: <GitCompare className="h-4 w-4" />, onSelect: () => setCompareOpen(true) },
+        { id: 'clash-help', label: t('clashPanel.helpTooltip'), icon: <Info className="h-4 w-4" />, pressed: showHelp, onSelect: () => setShowHelp((v) => !v) },
+      ]}
+      dialogs={(
         <>
-          <IconButton
-            label={t('clashPanel.helpTooltip')}
-            className={cn('h-7 w-7', showHelp && 'text-primary')}
-            onClick={() => setShowHelp((v) => !v)}
-          >
-            <Info className="h-4 w-4" />
-          </IconButton>
-          <ClashSettingsDialog />
-          <ClashRevisionCompareDialog />
-          <ClashSavedReportsDialog />
+          <ClashSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+          <ClashRevisionCompareDialog open={compareOpen} onOpenChange={setCompareOpen} />
+          {savedReports.dialog}
         </>
       )}
       error={error}
@@ -763,16 +778,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex rounded-md border border-border overflow-hidden text-xs shrink-0">
                 {(['hard', 'clearance'] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    className={cn(
-                      'px-2.5 py-1 capitalize transition-colors',
-                      mode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                    )}
-                  >
+                  // The selected mode is the shared pressed state (#8802 R4), so
+                  // the panel's one solid primary stays "Detect all clashes".
+                  <Button key={m} type="button" variant="toggle" aria-pressed={mode === m} onClick={() => setMode(m)}
+                    className="h-auto rounded-none px-2.5 py-1 text-xs font-normal capitalize">
                     {m}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <label className="flex items-center gap-1 text-xs text-muted-foreground" title={t('clashPanel.tolLabelTooltip')}>
@@ -863,6 +874,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       })()}
 
       <ClashModelTagNotice />
+
+      <ClashQualityGates />
 
       {/* Summary */}
       {result && (
@@ -978,17 +991,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                   ['isolate', 'clashPanel.focusMode.isolateLabel', 'clashPanel.focusMode.isolateTooltip'],
                   ['ghost', 'clashPanel.focusMode.ghostLabel', 'clashPanel.focusMode.ghostTooltip'],
                 ] as [ClashFocusMode, TranslationKey, TranslationKey][]).map(([m, labelKey, tipKey]) => (
-                  <button
-                    key={m}
-                    title={t(tipKey)}
-                    onClick={() => changeFocusMode(m)}
-                    className={cn(
-                      'px-1.5 py-0.5 transition-colors',
-                      focusMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                    )}
-                  >
+                  <Button key={m} type="button" variant="toggle" aria-pressed={focusMode === m} title={t(tipKey)}
+                    onClick={() => changeFocusMode(m)} className="h-auto rounded-none px-1.5 py-0.5 text-xs font-normal">
                     {t(labelKey)}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -1192,11 +1198,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         >
           {!result && !running && (
             <AnalysisEmptyState
-              className="h-full"
-              icon={<Crosshair className="size-8" />}
+              align="start"
+              icon={<Crosshair />}
               title={t('clashPanel.empty.title')}
               description={modelCount <= 1 ? t('clashPanel.empty.singleModelHint') : t('clashPanel.empty.multiModelHint')}
-              hint={t('clashPanel.empty.hint')}
               loadDemo={loadDemoClashModel}
             />
           )}

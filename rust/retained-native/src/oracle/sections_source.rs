@@ -12,6 +12,7 @@ pub struct ExtrudedHost {
     pub(super) jacobian: f64,
 }
 impl ExtrudedHost {
+    pub(super) fn has_arcs(&self) -> bool { self.loops.iter().flat_map(|(_, edges)| edges).any(|e| matches!(e, Edge::Arc { .. })) }
     /// A single definition occurrence, read independently of retained cutters.
     /// The caller selects the original host definition for a modified product.
     pub fn from_sources(sources: &AnalyticQuantitySources, instance: &ExtrusionInstance) -> Option<Self> {

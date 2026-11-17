@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
 /**
  * Property Editor component for editing IFC property values inline.
  * Includes schema-aware property addition with IFC4 standard validation.
@@ -29,7 +30,7 @@ import type { PropertyValue } from '@ifc-lite/mutations';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { INLINE_VALUE_TYPES } from './property-editor-options';
 import { PropertyBooleanChoices } from './PropertyBooleanChoices';
-import type { InheritedSets } from '@/lib/properties/add-to-property-set';
+import { overrideInheritedProperty, type InheritedSets } from '@/lib/properties/add-to-property-set';
 
 import { NewPropertyDialog } from './property-editor-new-property-dialog';
 import { AddQuantityDialog } from './property-editor-quantity-dialog';
@@ -44,7 +45,7 @@ export { NewPropertyDialog, AddQuantityDialog, AddClassificationDialog, AddMater
 // tooltip, compact enough to leave room for the headline action. Exported:
 // the four dialog files above render this same trigger style.
 export const EDIT_TOOL_CLS =
-  'h-7 w-8 rounded-none border-0 bg-transparent text-zinc-500 shadow-none transition-colors hover:bg-indigo-500/10 hover:text-indigo-600 focus-visible:bg-indigo-500/10 dark:text-zinc-400 dark:hover:bg-indigo-400/15 dark:hover:text-indigo-300';
+  'h-7 w-8 rounded-none border-0 bg-transparent text-muted-foreground shadow-none transition-colors hover:bg-indigo-500/10 hover:text-indigo-600 focus-visible:bg-indigo-500/10 dark:hover:bg-indigo-400/15 dark:hover:text-indigo-300';
 
 interface PropertyEditorProps {
   modelId: string;
@@ -60,7 +61,10 @@ interface PropertyEditorProps {
 export interface PropertyEditScope {
   mode: 'type' | 'inherited';
   typeEntityName: string;
+  typeName: string;
   affectedCount: number;
+  /** For an inherited value: the selected occurrence, which can take an override of its own. */
+  occurrenceId?: number;
 }
 
 /**
@@ -111,6 +115,16 @@ export function PropertyEditor({
     onClose?.();
   }, [modelId, entityId, psetName, propName, value, valueType, setProperty, bumpMutationVersion, onClose, t]);
 
+  /** The inherited value stays on the type; the selected occurrence takes this one in its own set (#9296). */
+  const commitOverride = useCallback(() => {
+    const parsedValue = parseValue(value, valueType);
+    if (parsedValue === PARSE_INVALID || editScope?.occurrenceId === undefined) return;
+    const target = { modelId: modelId === 'legacy' ? '__legacy__' : modelId, occurrenceId: editScope.occurrenceId, typeId: entityId, typeName: editScope.typeName };
+    const done = overrideInheritedProperty(useViewerStore.getState(), target, psetName, { name: propName, value: parsedValue, type: valueType });
+    if (!done.ok) return void toast.error(t('propertyEditor.property.inheritedNotCopyable', { psetName, typeName: target.typeName, names: done.uncopyable.join(', ') }));
+    bumpMutationVersion(); setShowScopeConfirm(false); setIsEditing(false); onClose?.();
+  }, [modelId, entityId, psetName, propName, value, valueType, editScope, bumpMutationVersion, onClose, t]);
+
   const handleSave = useCallback(() => {
     // An unchanged value records nothing: no undo entry, no cleared redo (#5872).
     if (isUnchanged) { setShowScopeConfirm(false); setIsEditing(false); onClose?.(); return; }
@@ -157,14 +171,16 @@ export function PropertyEditor({
     }
   }, [handleSave, handleCancel, showScopeConfirm]);
 
-  const displayValue = formatDisplayValue(currentValue, t);
+  const attachment = psetName === 'IfcLite_StoreyAttachment'
+    ? storeyAttachmentDisplay(useViewerStore.getState(), modelId, entityId, currentValue, t, propName) : null;
+  const displayValue = attachment?.text ?? formatDisplayValue(currentValue, t);
 
   // Non-editing view: value with pen icon on right (always visible)
   if (!isEditing) {
     return (
       <div className="flex items-center gap-2 min-w-0">
         <button type="button"
-          className="font-mono text-zinc-900 dark:text-zinc-100 select-all break-words flex-1 min-w-0 cursor-text border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+          className="font-mono text-foreground select-all break-words flex-1 min-w-0 cursor-text border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
           onClick={() => setIsEditing(true)}
           title={t('propertyEditor.inline.clickToEdit')}
           aria-label={`${propName}: ${displayValue}`}
@@ -203,7 +219,7 @@ export function PropertyEditor({
               if (showScopeConfirm) setShowScopeConfirm(false);
             }}
             onKeyDown={handleKeyDown}
-            className="h-7 text-xs font-mono flex-1 bg-white dark:bg-zinc-900"
+            className="h-7 text-xs font-mono flex-1 bg-card"
             placeholder={t('propertyEditor.inline.enterValue')}
             type={valueType === PropertyValueType.Real || valueType === PropertyValueType.Integer ? 'number' : 'text'}
             step={valueType === PropertyValueType.Real ? 'any' : undefined}
@@ -213,34 +229,35 @@ export function PropertyEditor({
         {/* Action buttons */}
         <IconButton
           label={editScope && !showScopeConfirm && !isUnchanged ? t('propertyEditor.inline.reviewScope') : t('propertyEditor.inline.save')}
-          className="h-6 w-6 hover:bg-green-100 dark:hover:bg-green-900/30"
+          className="h-6 w-6 hover:bg-ok-surface"
           onClick={handleSave}
         >
-          <Check className="h-3.5 w-3.5 text-green-600" />
+          <Check className="h-3.5 w-3.5 text-ok" />
         </IconButton>
         <IconButton
           label={t('propertyEditor.inline.cancel')}
           className="h-6 w-6 hover:bg-zinc-200 dark:hover:bg-zinc-700"
           onClick={handleCancel}
         >
-          <X className="h-3.5 w-3.5 text-zinc-500" />
+          <X className="h-3.5 w-3.5 text-muted-foreground" />
         </IconButton>
         <IconButton
           label={t('propertyEditor.inline.delete')}
-          className="h-6 w-6 hover:bg-red-100 dark:hover:bg-red-900/30"
+          className="h-6 w-6 hover:bg-danger-surface"
           onClick={handleDelete}
         >
-          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+          <Trash2 className="h-3.5 w-3.5 text-danger" />
         </IconButton>
       </div>
 
       {/* Type selector - always visible */}
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-0.5 self-start rounded-md border p-0.5">
         {INLINE_VALUE_TYPES.map(({ type, labelKey }) => (
           <Button
             key={type}
-            variant={valueType === type ? 'default' : 'outline'}
+            variant="toggle"
             size="sm"
+            aria-pressed={valueType === type}
             className="h-5 px-2 text-2xs"
             onClick={() => {
               setValueType(type);
@@ -258,13 +275,13 @@ export function PropertyEditor({
       </div>
 
       {showScopeConfirm && editScope && (
-        <div className="border border-indigo-200 dark:border-indigo-800/60 bg-white/75 dark:bg-zinc-950/60 px-2.5 py-2 text-2xs">
-          <div className="font-medium text-zinc-900 dark:text-zinc-100">
+        <div className="border border-indigo-200 dark:border-indigo-800/60 bg-card/75 px-2.5 py-2 text-2xs">
+          <div className="font-medium text-foreground">
             {editScope.mode === 'type'
               ? t('propertyEditor.inline.scopeType', { typeEntityName: editScope.typeEntityName })
               : t('propertyEditor.inline.scopeInherited', { typeEntityName: editScope.typeEntityName })}
           </div>
-          <div className="mt-0.5 text-zinc-600 dark:text-zinc-400">
+          <div className="mt-0.5 text-muted-foreground">
             {t('propertyEditor.inline.scopeImpact', { count: editScope.affectedCount })}
           </div>
           <div className="mt-2 flex items-center gap-2">
@@ -276,6 +293,11 @@ export function PropertyEditor({
             >
               {t('propertyEditor.inline.applyToType')}
             </Button>
+            {editScope.mode === 'inherited' && editScope.occurrenceId !== undefined && (
+              <Button variant="outline" size="sm" className="h-6 rounded-none text-2xs uppercase tracking-wide" onClick={commitOverride}>
+                {t('propertyEditor.inline.overrideOnElement')}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -315,7 +337,7 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
   // entities, spaces, or materials.
   const canReassign = isReassignableElement(resolveReassignSchema(schemaVersion), entityType);
   return (
-    <div className="panel-container relative -mx-3 -mt-3 mb-3 flex flex-col gap-2 border-b border-zinc-200 bg-gradient-to-b from-zinc-50/80 to-transparent px-3 pb-2.5 pt-3 dark:border-zinc-800 dark:from-zinc-900/50">
+    <div className="panel-container relative -mx-3 -mt-3 mb-3 flex flex-col gap-2 border-b border-border bg-gradient-to-b from-zinc-50/80 to-transparent px-3 pb-2.5 pt-3 dark:from-zinc-900/50">
       {/* live-edit accent hairline */}
       <span
         aria-hidden
@@ -324,7 +346,7 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           {/* Data-enrichment cluster — one segmented control of icon keys */}
-          <div className="inline-flex items-center overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-zinc-200 divide-x divide-zinc-200 dark:bg-zinc-800/50 dark:ring-zinc-700 dark:divide-zinc-700">
+          <div className="inline-flex items-center overflow-hidden rounded-md bg-card shadow-sm ring-1 ring-zinc-200 divide-x divide-border dark:ring-zinc-700">
             <NewPropertyDialog
               modelId={modelId}
               entityId={entityId}

@@ -43,3 +43,16 @@ export function setWorkplaneResolver(resolver: WorkplaneResolver): void {
 export function resolveWorkplane(s: ViewerState, modelId: string, spec: WorkplaneSpec): Workplane | { refused: string } {
   return workplaneResolver(s, modelId, spec);
 }
+
+export type RoofHeightResolver = (s: ViewerState, modelId: string, storeyId: number) => number;
+
+let roofHeightResolver: RoofHeightResolver = () => 0;
+
+/** The height a roof is drawn at (`top-of-walls.ts`), through the same seam and for the same reason. */
+export function setRoofHeightResolver(resolver: RoofHeightResolver): void {
+  roofHeightResolver = resolver;
+}
+
+export function resolveRoofHeight(s: ViewerState, modelId: string, storeyId: number): number {
+  return roofHeightResolver(s, modelId, storeyId);
+}

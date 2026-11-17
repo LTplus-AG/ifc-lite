@@ -124,7 +124,7 @@ impl GeometryRouter {
         let items_attr = mapped_rep
             .get(slot::IfcRepresentation::ITEMS.index())
             .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
-        budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
+        budget.materialize_items(mapped_rep.id, items_attr.as_list().unwrap_or(&[]))?;
         let items = decoder.resolve_ref_list(items_attr)?;
         Ok((mapped_rep, items))
     }
@@ -181,6 +181,7 @@ impl GeometryRouter {
             // This is an existence predicate, not accumulated geometry. A
             // repeated map has the same dispatch answer on every path.
             if !visited.insert(id) { continue; }
+            budget.commit();
             let map = decoder.decode_by_id(id).ok()?;
             let (_, items) = self.admit_type_map(&map, decoder, &mut budget).ok()?;
             for item in items {

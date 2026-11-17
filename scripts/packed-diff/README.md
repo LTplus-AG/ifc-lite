@@ -3,18 +3,15 @@
 `scripts/diff-packed-node22.mjs` prepares a new, empty consumer in the OS temp
 directory, outside the source workspace, and tests **actual `pnpm pack`
 tarballs**. It never builds, installs, downloads, pushes, or edits a package.
-Run it under the parent's fleet reservation after preparation. This is a
+Run it after preparation. This is a
 bounded acceptance command, not a replacement for root Turbo tests, real IFC
 fixture parity, geometry acceptance, or performance qualification.
 
 ## Prerequisites
 
 - Clean committed checkout containing the completed #8042 facade and this runner.
-  The inspected baseline is `59f673a0` from
-  `/home/louistrue/dev/ifc-diff-completion` (the supplied combined path
-  `/home/louistrue/dev/ifc-diff-completion59f673a0` does not exist).
 - Parent has prepared artifacts through the root pnpm/Turbo build and the
-  repository's independent diff and full WASM build paths under fleet admission.
+  repository's independent diff and full WASM build paths.
   `packages/diff/dist`, `packages/wasm/pkg`, and `packages/wasm/pkg-diff` must be
   from that checkout/revision. No source transpilation or stale-artifact build
   fallback is attempted. Both full and diff WASM JS/binaries must be packed,
@@ -41,37 +38,21 @@ fixture parity, geometry acceptance, or performance qualification.
   against the actual prepared artifact, independently of that receipt.
 - A new absolute evidence directory outside the source checkout. Do not reuse
   a failed/uncertain output path: inspect its receipt and `result.json` first.
-  Do not nest this command inside another fleet admission if already admitted.
 
-Read-only discovery on this PC found and executed `--version` on the existing
-pnpm content-store binary below; it returned **v22.13.0**. This is a local cache
-path, not a guaranteed path on Pop. No installation or download was performed:
+## Command
 
-```sh
-NODE22=/home/louistrue/.local/share/pnpm/store/v10/files/10/f65ce27fb6a729d5d35b168506b3e211b9a8c7ac280eaea0a70dd1ef6cc537438d30abe724e49b2154ff3272fcf32996e911983313466303211a7d635f5c1d-exec
-"$NODE22" --version
-```
-
-## Admitted command
-
-Set `CHECKOUT`, `NODE22`, `PREP_RECEIPT`, and `EVIDENCE` to absolute paths on the
-chosen execution host; `STORAGE_TASK` is the parent's open owning storage task.
-Use this exact invocation **outside** an existing reservation:
+Set `NODE22`, `PREP_RECEIPT`, and `EVIDENCE` to absolute paths:
 
 ```sh
-~/build-workers/ifc-fleet run --cwd "$CHECKOUT" \
-  --storage-task "$STORAGE_TASK" --cpu 2 --memory 2 -- \
-  node scripts/diff-packed-node22.mjs \
+node scripts/diff-packed-node22.mjs \
   --node22 "$NODE22" --prep-receipt "$PREP_RECEIPT" --out "$EVIDENCE"
 ```
 
-The fleet-selected host must have those prerequisites and paths. For a
-parent-managed admitted preparation/acceptance group, the inner `node ...`
-command is the acceptance step; do not submit a second reservation. `--source
+`--source
 /absolute/prepared-checkout` can select a separately prepared clean checkout
 without modifying it. `--pnpm /absolute/pnpm` selects a provisioned pnpm launcher.
 The execution environment must still satisfy the repository root toolchain
-requirements. This preparation task submitted no fleet jobs.
+requirements.
 
 The runner packs `@ifc-lite/diff` and `@ifc-lite/wasm` with lifecycle scripts
 disabled, rejects tar links/devices/traversal, and extracts their real bytes into
@@ -134,7 +115,5 @@ receipt/closure rules for an unknown outcome; do not blindly resubmit.
 ## Harness validation
 
 `scripts/packed-diff.test.mjs` cross-checks frozen vectors against the private TS
-oracle without initializing WASM. CI's revert-oracle selector uses the focused
-`tests/evidence/packed-handle-8042/behaviour.oracle.patch` to show that corrupting a
-frozen expectation fails an assertion. This lightweight witness does not replace
+oracle without initializing WASM. This lightweight witness does not replace
 the admitted packed acceptance above.

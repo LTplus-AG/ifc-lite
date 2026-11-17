@@ -13,6 +13,7 @@
  * Split out of `StatusBar.tsx` to keep that module under its size budget,
  * the same reason `FlavorIndicator` is its own component there.
  */
+import { isPanelAvailable } from '@/lib/panels/availability';
 import { Presentation } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -24,6 +25,7 @@ export function StatusBarPresentationButton() {
   const basketViewCount = useViewerStore((s) => s.basketViews.length);
   const basketPresentationVisible = useViewerStore((s) => s.basketPresentationVisible);
   const toggleBottomPanel = useViewerStore((s) => s.toggleBottomPanel);
+  if (!isPanelAvailable('presentation')) return null;
 
   return (
     <button

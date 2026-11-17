@@ -18,9 +18,11 @@ const optional = (value: unknown, max: number) => value === undefined || isText(
 function receipt(value: unknown): OutboxReceipt | null {
   if (!isRecord(value) || !isText(value.remoteGuid, 200) || !isText(value.at, 40)
     || !['response', 'lookup', 'user-choice'].includes(String(value.evidence))
-    || value.topicActions !== undefined && !strings(value.topicActions)) return null;
+    || value.topicActions !== undefined && !strings(value.topicActions)
+    || value.fields !== undefined && !isRecord(value.fields)) return null;
   return { remoteGuid: value.remoteGuid, at: value.at, evidence: value.evidence as OutboxReceipt['evidence'],
-    ...(value.topicActions ? { topicActions: [...value.topicActions as string[]] } : {}) };
+    ...(value.topicActions ? { topicActions: [...value.topicActions as string[]] } : {}),
+    ...(value.fields !== undefined ? { fields: JSON.parse(JSON.stringify(value.fields)) as Record<string, unknown> } : {}) };
 }
 
 function failure(value: unknown): OutboxFailure | null {
@@ -31,9 +33,11 @@ function failure(value: unknown): OutboxFailure | null {
 }
 
 function candidate(value: unknown): OutboxCandidate | null {
-  if (!isRecord(value) || !isText(value.guid, 200) || !optional(value.title, 500) || !optional(value.author, 500) || !optional(value.date, 60)) return null;
+  if (!isRecord(value) || !isText(value.guid, 200) || !optional(value.title, 500) || !optional(value.author, 500) || !optional(value.date, 60)
+    || value.fields !== undefined && !isRecord(value.fields)) return null;
   return { guid: value.guid, ...(value.title !== undefined ? { title: value.title as string } : {}),
-    ...(value.author !== undefined ? { author: value.author as string } : {}), ...(value.date !== undefined ? { date: value.date as string } : {}) };
+    ...(value.author !== undefined ? { author: value.author as string } : {}), ...(value.date !== undefined ? { date: value.date as string } : {}),
+    ...(value.fields !== undefined ? { fields: JSON.parse(JSON.stringify(value.fields)) as Record<string, unknown> } : {}) };
 }
 
 function check(value: unknown): OutboxCheck | null {
@@ -52,7 +56,8 @@ export function decodeEntry(value: unknown): OutboxEntry | null {
     || !OUTBOX_STATES.includes(value.state as OutboxState) || !Number.isSafeInteger(value.attempts) || !isText(value.queuedAt, 40)
     || !optional(value.sentAt, 40) || value.force !== undefined && typeof value.force !== 'boolean'
     || value.blocked !== undefined && value.blocked !== 'imported' && value.blocked !== 'remote-conflict'
-    || value.baseline !== undefined && !isRecord(value.baseline)) return null;
+    || value.baseline !== undefined && !isRecord(value.baseline)
+    || value.withheld !== undefined && !isRecord(value.withheld) || !optional(value.topicTypeFrom, 200)) return null;
   const decodedReceipt = value.receipt === undefined ? undefined : receipt(value.receipt);
   const decodedFailure = value.failure === undefined ? undefined : failure(value.failure);
   const decodedCheck = value.check === undefined ? undefined : check(value.check);
@@ -72,6 +77,8 @@ export function decodeEntry(value: unknown): OutboxEntry | null {
     ...(value.blocked !== undefined ? { blocked: value.blocked } : {}), ...(decodedCheck ? { check: decodedCheck } : {}),
     ...(value.force !== undefined ? { force: value.force } : {}),
     ...(value.baseline !== undefined ? { baseline: JSON.parse(JSON.stringify(value.baseline)) as Record<string, unknown> } : {}),
+    ...(value.withheld !== undefined ? { withheld: JSON.parse(JSON.stringify(value.withheld)) as Record<string, unknown> } : {}),
+    ...(value.topicTypeFrom !== undefined ? { topicTypeFrom: value.topicTypeFrom as string } : {}),
   };
 }
 

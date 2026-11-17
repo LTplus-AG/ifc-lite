@@ -67,6 +67,5 @@ The SMLib-free witness runs with:
 node --test scripts/retained-compare/browser-metrics.test.mjs
 ```
 
-`tests/evidence/m2-d/oracle.json` registers the reverse-applied mutation that casts
-both world coordinates to f32 before comparison. The georeferenced one-ULP
-witness must fail under that mutation and pass after restoration.
+The georeferenced one-ULP witness must fail if both world coordinates are cast
+to f32 before comparison.

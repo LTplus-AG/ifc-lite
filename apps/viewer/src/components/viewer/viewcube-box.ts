@@ -13,11 +13,36 @@
 /** Edge length of the cube, in CSS px. */
 export const VIEW_CUBE_SIZE_PX = 72;
 
-/** Inset of the cube's box from the viewport's top and right edges, in CSS px. */
+/** Inset of the cube's box from the viewport's top edge, in CSS px. */
 export const VIEW_CUBE_INSET_PX = 24;
 
-/** Inset plus size: how far the cube reaches in from the top-right corner. */
+/**
+ * Inset of the cube's box from the viewport's right edge, in CSS px.
+ *
+ * Larger than the top inset because the cube is drawn rotated: at its resting
+ * isometric pose the silhouette reaches about 20px past the box sideways (a
+ * face diagonal is 1.41 of an edge, plus the 200px perspective) but only about
+ * 13px above it. At the same 24px on both sides the silhouette sat 4px from
+ * the right edge and read as clipped on a phone (#8802 R6). 8px more gives
+ * the right edge the same visible gap as the top.
+ */
+export const VIEW_CUBE_RIGHT_INSET_PX = VIEW_CUBE_INSET_PX + 8;
+
+/** Top inset plus size: how far the cube reaches down from the top edge. */
 export const VIEW_CUBE_REACH_PX = VIEW_CUBE_INSET_PX + VIEW_CUBE_SIZE_PX;
+
+/**
+ * The cube's top as CSS: its inset, or the screen's top system inset (status
+ * bar, Dynamic Island) where that is deeper, so the cube is never under it
+ * (#9718). Equal to `VIEW_CUBE_INSET_PX` wherever there is no inset.
+ */
+export const VIEW_CUBE_TOP = `max(${VIEW_CUBE_INSET_PX}px, env(safe-area-inset-top))`;
+
+/** `VIEW_CUBE_REACH_PX` as CSS, following `VIEW_CUBE_TOP` below a top system inset. */
+export const VIEW_CUBE_REACH = `calc(${VIEW_CUBE_TOP} + ${VIEW_CUBE_SIZE_PX}px)`;
+
+/** Right inset plus size: how far the cube reaches in from the right edge. */
+export const VIEW_CUBE_REACH_X_PX = VIEW_CUBE_RIGHT_INSET_PX + VIEW_CUBE_SIZE_PX;
 
 /** Width of the edge and corner bands on each face, in CSS px. */
 export const VIEW_CUBE_EDGE_BAND_PX = 16;

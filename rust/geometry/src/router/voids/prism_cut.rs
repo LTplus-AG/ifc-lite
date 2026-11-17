@@ -84,6 +84,8 @@ mod vertex_dedup;
 mod opening_prism;
 use opening_prism::prepare_prism;
 mod finish;
+mod reconsolidate;
+mod rim_refine;
 mod tjunction_close;
 mod planar_correction;
 #[cfg(test)]
@@ -98,7 +100,7 @@ pub(super) use planar_correction::correct_planar_overlap;
 
 /// `IFC_LITE_PRISM_CUT=0` disables the analytic prism-subtraction path (exact
 /// kernel for every host). Default ON; read once.
-pub(super) fn enabled() -> bool {
+pub(crate) fn enabled() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
     *ON.get_or_init(|| std::env::var("IFC_LITE_PRISM_CUT").as_deref() != Ok("0"))
 }

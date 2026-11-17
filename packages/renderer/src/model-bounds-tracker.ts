@@ -21,8 +21,8 @@
  *    clears the camera's bounds to `null`;
  *  - the overlay paths push only when the value is non-null, so an empty
  *    upload leaves the camera's previous bounds in place;
- *  - the public `setModelBounds()` does not push at all, and the section-plane
- *    branch of `render()` pushes a *separate* wrapper object.
+ *  - the public `setModelBounds()` does not push at all. Section rendering
+ *    uses transient bounds and never writes to this tracker.
  *
  * Folding the notification in here would have to pick one of those, which is a
  * behaviour change. The pairing therefore stays at the call site, and callers

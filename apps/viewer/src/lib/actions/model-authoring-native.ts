@@ -26,7 +26,7 @@ import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { alignElementsInStore, copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
-import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { createModellingStoreBackendWithoutStoreys, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { writeGridCreation } from './model-authoring-grid-native';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
@@ -294,7 +294,7 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
 }
 
 function draftMethods(dataStore: IfcDataStore, modelId: string, draft: StoreEditor): ModellingMethods {
-  return createModellingStoreBackend(() => ({
+  return createModellingStoreBackendWithoutStoreys(() => ({
     modelId, store: dataStore, editor: draft, mutationView: draft.getMutationView(),
     ownerHistoryId: resolveLiveOwnerHistoryId(dataStore, draft, draft.getMutationView()),
   }));

@@ -126,6 +126,15 @@ describe('collabSlice — stopCollab() racing an in-flight startCollab()', () =>
       sessionGated = resolve;
     });
     (globalThis as { __collabSessionGated?: () => void }).__collabSessionGated = sessionGated;
+    // The session's own (ungated) sync, captured before the hook gates it.
+    // Leave now disposes the in-flight session, and a provider disposed before
+    // its first sync may never settle it; waiting for that sync before Leave
+    // keeps the parked continuation resumable, which is what this test drives.
+    let ownSync: Promise<void> | null = null;
+    (globalThis as { __collabSessionCreated?: (session: { whenSynced: Promise<void> }) => void }).__collabSessionCreated =
+      (session) => {
+        ownSync = session.whenSynced;
+      };
 
     const s = buildCollabTestState();
 
@@ -186,6 +195,9 @@ describe('collabSlice — stopCollab() racing an in-flight startCollab()', () =>
       assert.equal(s.get().collabConnecting, true);
       assert.equal(s.get().collabSession, null, 'the tail set() has not run yet');
 
+      assert.ok(ownSync, 'the hook reported the created session');
+      await within(ownSync, GATE_TIMEOUT_MS, "the session's own sync");
+
       // The user clicks "Leave" in RoomPanel while still joining.
       s.get().stopCollab();
       assert.equal(s.get().collabRoomId, null, 'stopCollab cleared the room synchronously');
@@ -216,6 +228,7 @@ describe('collabSlice — stopCollab() racing an in-flight startCollab()', () =>
       assert.equal(s.get().collabRoomId, null, 'must not silently re-enter the abandoned room');
     } finally {
       s.get().collabSession?.dispose();
+      delete (globalThis as { __collabSessionCreated?: unknown }).__collabSessionCreated;
     }
   });
 });

@@ -14,6 +14,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSymbolicRichChannels } from './symbolic-rich-channels.js';
+import { getThemeClearColor } from '../utils/viewportUtils.js';
 import { buildParseResult, createEmptyFlatSymbolic, type ParseResult } from '../lib/overlay-parse/symbolic-parse.js';
 
 type Rgba = [number, number, number, number];
@@ -21,8 +22,8 @@ type Rgba = [number, number, number, number];
 /** The colour behind the overlay per theme: the WebGPU clear colours, and the
  *  colorful theme's CSS page backdrop (#dde3f0), which its transparent clear shows. */
 const BACKDROP = {
-  light: [0.96, 0.96, 0.97],
-  dark: [0.102, 0.106, 0.149],
+  light: getThemeClearColor('light').slice(0, 3),
+  dark: getThemeClearColor('dark').slice(0, 3),
   colorful: [0xdd / 255, 0xe3 / 255, 0xf0 / 255],
 } as const;
 

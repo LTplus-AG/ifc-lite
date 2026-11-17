@@ -21,7 +21,8 @@
 //! coordinates, where the GLB puts it, while every vertex stays small.
 //!
 //! Emission (`emit`) and lexical helpers (`fmt`) live in submodules; this file is the
-//! orchestration + the emittable-mesh gate.
+//! orchestration; the geometry pass and emittable-mesh gate are shared with the
+//! Rhino scene in `crate::scene_input`.
 
 mod emit;
 mod fmt;
@@ -34,6 +35,7 @@ use ifc_lite_processing::{InstanceRecord, MeshData};
 
 use crate::error::ExportError;
 use crate::ifc5::{project_name, spatial_children};
+use crate::scene_input::gather;
 use crate::model::{build_export_model, EntityRow};
 use emit::{emit_material, emit_prim, write_header, Ctx};
 use fmt::{color_key, fmt_matrix4d, Namer};
@@ -76,14 +78,14 @@ impl Default for UsdOptions {
 /// meshing pass.
 pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportError> {
     // Instancing-on when requested and every instance is safe; else the plain baked path.
-    let (result, use_instancing) = instance::gather(content, opts.instancing, opts.layer_slicing);
+    let input = gather(content, opts.instancing, opts.layer_slicing, None);
+    let result = &input.result;
 
-    // Emittable meshes: mirror the glTF `mesh_visible` sanity gate (drop the instanced
-    // type-library class, require matched non-empty triangulated buffers) and add the
-    // USD-specific guards — all-finite coordinates and in-range indices — so a
-    // degenerate mesh can never emit non-finite `point3f`/`normal3f` (an usda parse
-    // error) or an out-of-range `faceVertexIndices` (an usdchecker error).
-    let visible: Vec<&MeshData> = result.meshes.iter().filter(|m| mesh_emittable(m)).collect();
+    // Emittable meshes (`scene_input::mesh_emittable`): the glTF `mesh_visible` sanity
+    // gate plus all-finite coordinates and in-range indices, so a degenerate mesh can
+    // never emit non-finite `point3f`/`normal3f` (an usda parse error) or an
+    // out-of-range `faceVertexIndices` (an usdchecker error).
+    let visible: Vec<&MeshData> = input.emittable().collect();
 
     // Group full meshes by express id (an element may produce several submeshes), keeping a
     // first-appearance ORDER so the Unassigned bucket and output stay deterministic.
@@ -100,7 +102,7 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportErr
     }
 
     // De-baked instance occurrences (empty unless instancing is active + safe).
-    let instances: &[InstanceRecord] = if use_instancing { &result.instances } else { &[] };
+    let instances: &[InstanceRecord] = input.instances();
     let instances_by_id: HashMap<u32, &InstanceRecord> =
         instances.iter().map(|r| (r.express_id, r)).collect();
 
@@ -259,23 +261,6 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportErr
 
     out.push_str("}\n");
     Ok(out)
-}
-
-/// Emittable-mesh gate: the glTF `mesh_visible` geometry sanity (no instanced
-/// type-library duplicates, matched non-empty triangulated buffers) PLUS the
-/// USD-specific guards that keep the stage parseable/checkable: all-finite
-/// coordinates, a finite per-mesh origin, and every index within the vertex range.
-pub(super) fn mesh_emittable(m: &MeshData) -> bool {
-    // The shared from-bytes gate: no instanced type-library duplicates, whole
-    // triangles (so faceVertexCounts of all-3s sums to the index count, else
-    // usdchecker rejects the mesh), and finite coordinates and origin (the
-    // origin becomes a double3 translate; fmt would map a non-finite one to 0
-    // and silently mislocate the mesh).
-    if !crate::mesh_input::is_exportable(m) || m.normals.len() != m.positions.len() {
-        return false;
-    }
-    let vcount = (m.positions.len() / 3) as u32;
-    m.indices.iter().all(|&i| i < vcount)
 }
 
 #[cfg(test)]

@@ -64,6 +64,19 @@ function refusingCanvas() {
 }
 
 describe('createWebglCapabilityGate', () => {
+  for (const throws of [false, true]) {
+    it(`releases a context rejected by consumer validation (#9660, throws=${throws})`, () => {
+      const { canvas, released } = grantingCanvas();
+      const gate = createWebglCapabilityGate<Reason>({ attributes: ATTRS,
+        probeFailureReason: 'probe_no_context', label: 'test', validateContext: () => {
+          if (throws) throw new Error('lost during capability query');
+          return false;
+        } });
+      assert.equal(gate.probe(() => canvas).supported, false);
+      assert.equal(released(), 1, 'a rejected or throwing capability query still releases its context');
+    });
+  }
+
   it('asks for webgl2 with the exact attributes the consumer configured', () => {
     const gate = makeGate();
     const { canvas, asked } = grantingCanvas();

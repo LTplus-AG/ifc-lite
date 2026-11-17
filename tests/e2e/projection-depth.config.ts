@@ -9,7 +9,7 @@ export default defineConfig({
   testDir: '.',
   testMatch: process.env.DEPTH_WITNESS_VIEWER === '1'
     ? /(?:ortho-depth-nudge|reporter-6729)\.e2e\.spec\.ts/
-    : /(?:projection-depth|projection-texture|selection-mask-depth)\.e2e\.spec\.ts/,
+    : /(?:projection-depth|projection-texture|selection-mask-depth|perspective-distance-depth)\.e2e\.spec\.ts/,
   timeout: 300_000, workers: 1, fullyParallel: false, retries: 0,
   outputDir: '../../test-results/projection-depth',
   reporter: [['list'], ['json', { outputFile: '../../test-results/projection-depth-results.json' }]],

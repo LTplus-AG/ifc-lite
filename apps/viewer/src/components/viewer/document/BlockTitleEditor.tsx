@@ -39,7 +39,7 @@ export function BlockTitleEditor<T extends BlockTitle>({ block, onChange, placeh
         value={block.titleBackgroundColor} defaultValue="#ffffff"
         onChange={(titleBackgroundColor) => onChange({ ...block, titleBackgroundColor })} />
     </div>
-    {contrast.ratio < contrast.minimum && <output className="block text-xs text-amber-700 dark:text-amber-400" data-block-title-contrast>
+    {contrast.ratio < contrast.minimum && <output className="block text-xs text-warn" data-block-title-contrast>
       {t('document.block.titleLowContrast', { ratio: (Math.floor(contrast.ratio * 10) / 10).toFixed(1), minimum: contrast.minimum })}</output>}
   </div>;
 }

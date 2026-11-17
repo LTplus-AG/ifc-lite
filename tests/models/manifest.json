@@ -1097,6 +1097,624 @@
         "source_method": "capture",
         "metadata_url": "https://github.com/marcelpadilla/splats/blob/c3e5ec0a8ddb3ab26f28a067a29d272fe1a23411/data/textile_ball/meta.json"
       }
+    },
+    {
+      "path": "gaussian/delft-aula-library-v1.ply",
+      "size": 493823100,
+      "sha256": "c56b1a07559312fcf1c9ef150802995005b6e3b4f8cf0c501fb96cec5d5ca45a",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://osf.io/p3cw7/",
+          "version": "OSF file 73wq8 version 1",
+          "fetched_at": "2026-11-02",
+          "sha256": "c56b1a07559312fcf1c9ef150802995005b6e3b4f8cf0c501fb96cec5d5ca45a",
+          "artifacts": [
+            {
+              "path": "Aula-Library.ply",
+              "url": "https://osf.io/download/73wq8/?version=1",
+              "size": 493823100,
+              "sha256": "c56b1a07559312fcf1c9ef150802995005b6e3b4f8cf0c501fb96cec5d5ca45a"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Yu, Y. (2025). 3D Gaussian Splatting for Modern Architectural Heritage: Integrating UAV-Based Data Acquisition and Advanced Photorealistic 3D Techniques [Data set]. OSF. https://doi.org/10.17605/OSF.IO/P3CW7",
+          "evidence_url": "https://osf.io/download/kjtfb/?version=1",
+          "evidence_sha256": "ceb907f9b6e12cdfb8fa258b0f5be1fd828ef755a3bd854a0c37b4c55892e58d"
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "gaussian": {
+        "count": 1991216,
+        "sh_degree": 3,
+        "nonzero_sh": true,
+        "units": "Unknown reconstruction units; not survey calibrated",
+        "up_axis": "Unverified source frame; inspect before viewer placement",
+        "source_method": "Real UAV and ground RGB photography; publisher Postshot reconstruction; unmodified Gaussian PLY",
+        "metadata_url": "https://api.osf.io/v2/files/680786679faab7a7f7b7d175/"
+      }
+    },
+    {
+      "path": "gaussian/seem-kirke-v1.ply",
+      "size": 226795353,
+      "sha256": "9178c73620ac6dd1e18f4b91870d71b7e06ded83d4beb0344ba8aa90630ab228",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://superspl.at/scene/e832997f",
+          "version": "SuperSplat scene e832997f v1",
+          "sha256": "29d26ce46ef80eec801b41fe27f04c8d31a77aa929f25112d6cd0b10cbb02f65",
+          "fetched_at": "2026-11-02",
+          "artifacts": [
+            {
+              "path": "meta.json",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/meta.json",
+              "size": 10794,
+              "sha256": "29d26ce46ef80eec801b41fe27f04c8d31a77aa929f25112d6cd0b10cbb02f65"
+            },
+            {
+              "path": "means_l.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/means_l.webp",
+              "size": 2684042,
+              "sha256": "4af1a1be093c613ad48083bb206758d6001b109c30698a3d7a19e0468fb9acc9"
+            },
+            {
+              "path": "means_u.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/means_u.webp",
+              "size": 465414,
+              "sha256": "da31d2d59c8ecac55811da5a14d2c02f39eaed9edbfc996e5846ff271c5c8d86"
+            },
+            {
+              "path": "scales.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/scales.webp",
+              "size": 2662990,
+              "sha256": "7016723d4f6b14cd50772eed2c9606c3cbf13ee4a716aae80cf0ad33ed1c1964"
+            },
+            {
+              "path": "quats.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/quats.webp",
+              "size": 2717980,
+              "sha256": "b044c8876ed8ca5641ab36b3ba70cfa8d7c0ff05c5925eb29ff6e3450672bd16"
+            },
+            {
+              "path": "sh0.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/sh0.webp",
+              "size": 3321348,
+              "sha256": "c2bb729c7972291fd527895103ea161969f43342ef7995310c62105d15a3d1f9"
+            },
+            {
+              "path": "shN_centroids.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/shN_centroids.webp",
+              "size": 82,
+              "sha256": "860ee94ae09eb7c37ca5d0adbfefcb53a956ecedd6a1202936267f53601d5608"
+            },
+            {
+              "path": "shN_labels.webp",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/shN_labels.webp",
+              "size": 90,
+              "sha256": "08ff45f6153bdd3e11d656ff3387144382443caa285271052ed832571b9b181a"
+            },
+            {
+              "path": "settings.json",
+              "url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/settings.json",
+              "size": 671,
+              "sha256": "13a94d36f0d6e3af14f41c5e25755a86c53c6c0c63dc1cc5fe7d2f07d1e48956"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Seem Kirke, Danmark by Peter Rødsgaard Rasmussen (roedsgaard), https://superspl.at/scene/e832997f. CC BY 4.0. Converted from the published quantized SOG v1 to uncompressed PLY with @playcanvas/splat-transform 3.10.3; no geometry edits or calibration.",
+          "evidence_url": "https://superspl.at/scene/e832997f",
+          "evidence_sha256": "1cfa5628d3e9fa96c6cdff97dbdf2b6711cadbacfcecbaa4633b230558755c2f"
+        },
+        "modification": {
+          "status": "modified",
+          "description": "Offline splat-transform 3.10.3 (4f90012): splat-transform seem-kirke-v1/meta.json seem-kirke-v1.ply. Expands published quantized SOG to float PLY; retains 45 zero higher-order channels. Not lossless original captured PLY; no SOG launch support."
+        },
+        "no_customer_data": true
+      },
+      "gaussian": {
+        "count": 960991,
+        "sh_degree": 3,
+        "nonzero_sh": false,
+        "units": "Unknown reconstruction units; not survey calibrated",
+        "up_axis": "Source reconstruction frame; publisher camera is in its viewer frame, verify conversion before reuse",
+        "source_method": "DJI drone photographs, RealityScan alignment, LichtFeld Studio training; publisher SOG export splat-transform v2.0.6; offline PLY derivative v3.10.3",
+        "metadata_url": "https://d28zzqy0iyovbz.cloudfront.net/e832997f/v1/meta.json"
+      }
+    },
+    {
+      "path": "edinburgh/model.ifc",
+      "size": 47032,
+      "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://datashare.ed.ac.uk/items/25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "version": "DataShare item 25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "fetched_at": "2026-11-05",
+          "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740",
+          "artifacts": [
+            {
+              "path": "model.ifc",
+              "url": "https://datashare.ed.ac.uk/bitstreams/4b92736f-e0f3-41fc-8388-4336d621a4a9/download",
+              "size": 47032,
+              "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740"
+            },
+            {
+              "path": "cloud_coloured.e57",
+              "url": "https://datashare.ed.ac.uk/bitstreams/5926ee32-810b-46ab-91c4-9c51f284834a/download",
+              "size": 51633152,
+              "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
+          "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "alignment": {
+        "method": "Identity-frame offline numpy/Open3D, seed 8567, 50,000 scan points; IFC4X1 header substituted to IFC4 in memory for IfcOpenShell wall/slab tessellation only",
+        "wall_slab_band_lt_0_15m_fraction": 1.0,
+        "scan_to_ifc_wall_slab_band_median_m": 0.0051721930503845215,
+        "scan_to_nearest_splat_center_median_m": 0.01840291418321477,
+        "ifc_scan_aabb_iou": 0.860151926528336
+      }
+    },
+    {
+      "path": "edinburgh/cloud_coloured.e57",
+      "size": 51633152,
+      "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://datashare.ed.ac.uk/items/25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "version": "DataShare item 25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "fetched_at": "2026-11-05",
+          "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3",
+          "artifacts": [
+            {
+              "path": "model.ifc",
+              "url": "https://datashare.ed.ac.uk/bitstreams/4b92736f-e0f3-41fc-8388-4336d621a4a9/download",
+              "size": 47032,
+              "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740"
+            },
+            {
+              "path": "cloud_coloured.e57",
+              "url": "https://datashare.ed.ac.uk/bitstreams/5926ee32-810b-46ab-91c4-9c51f284834a/download",
+              "size": 51633152,
+              "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
+          "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
+        },
+        "modification": {
+          "status": "unmodified"
+        },
+        "no_customer_data": true
+      },
+      "alignment": {
+        "method": "Identity-frame offline numpy/Open3D, seed 8567, 50,000 scan points; IFC4X1 header substituted to IFC4 in memory for IfcOpenShell wall/slab tessellation only",
+        "wall_slab_band_lt_0_15m_fraction": 1.0,
+        "scan_to_ifc_wall_slab_band_median_m": 0.0051721930503845215,
+        "scan_to_nearest_splat_center_median_m": 0.01840291418321477,
+        "ifc_scan_aabb_iou": 0.860151926528336
+      }
+    },
+    {
+      "path": "edinburgh/scan-vox12mm.laz",
+      "size": 19686282,
+      "sha256": "c1f4932233dde4fb90ea0de7f5f647b69f4786e8217c2dac05b73b3a2281a57b",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://datashare.ed.ac.uk/items/25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "version": "DataShare item 25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "fetched_at": "2026-11-05",
+          "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3",
+          "artifacts": [
+            {
+              "path": "model.ifc",
+              "url": "https://datashare.ed.ac.uk/bitstreams/4b92736f-e0f3-41fc-8388-4336d621a4a9/download",
+              "size": 47032,
+              "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740"
+            },
+            {
+              "path": "cloud_coloured.e57",
+              "url": "https://datashare.ed.ac.uk/bitstreams/5926ee32-810b-46ab-91c4-9c51f284834a/download",
+              "size": 51633152,
+              "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
+          "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
+        },
+        "modification": {
+          "status": "modified",
+          "description": "12 mm voxel-averaged XYZ/RGB16 LAZ, LAS 1.4 point format 7; recipe: examples/gaussian-splat-spike/derive-edinburgh-triple.py"
+        },
+        "no_customer_data": true
+      },
+      "derivative_recipe": "examples/gaussian-splat-spike/derive-edinburgh-triple.py",
+      "point_count": 2899130,
+      "alignment": {
+        "method": "Identity-frame offline numpy/Open3D, seed 8567, 50,000 scan points; IFC4X1 header substituted to IFC4 in memory for IfcOpenShell wall/slab tessellation only",
+        "wall_slab_band_lt_0_15m_fraction": 1.0,
+        "scan_to_ifc_wall_slab_band_median_m": 0.0051721930503845215,
+        "scan_to_nearest_splat_center_median_m": 0.01840291418321477,
+        "ifc_scan_aabb_iou": 0.860151926528336
+      }
+    },
+    {
+      "path": "gaussian/edinburgh-scan-sh3.ply",
+      "size": 102469179,
+      "sha256": "de8072e003e67535ac522be5318abcf250040bc66dc3f387ad220349b07062c1",
+      "provenance": {
+        "source": {
+          "kind": "publisher-artifacts",
+          "page_url": "https://datashare.ed.ac.uk/items/25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "version": "DataShare item 25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4",
+          "fetched_at": "2026-11-05",
+          "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3",
+          "artifacts": [
+            {
+              "path": "model.ifc",
+              "url": "https://datashare.ed.ac.uk/bitstreams/4b92736f-e0f3-41fc-8388-4336d621a4a9/download",
+              "size": 47032,
+              "sha256": "d563b782a324d202f8e584d2a7c776508189e34d2b211b72eb13ea00d252f740"
+            },
+            {
+              "path": "cloud_coloured.e57",
+              "url": "https://datashare.ed.ac.uk/bitstreams/5926ee32-810b-46ab-91c4-9c51f284834a/download",
+              "size": 51633152,
+              "sha256": "683b9fdb72a2e803ded37bc8f30056396eed2e7529cbe68f5c14a15f48cf6eb3"
+            }
+          ]
+        },
+        "license": {
+          "spdx": "CC-BY-4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "attribution": "Valero, Enrique. (2021). Synthetic building [dataset]. Cyberbuild Lab, The University of Edinburgh. https://doi.org/10.7488/ds/2893. CC BY 4.0. LAZ and Gaussian PLY derived by ifc-lite from the published E57; changes are voxel averaging and scan-point Gaussian encoding.",
+          "evidence_url": "https://datashare.ed.ac.uk/bitstreams/d9f9b03e-4a7c-4beb-bdb4-e3756da1afe4/download",
+          "evidence_sha256": "b34e17103bfb246f2549fc82a279e6ba28834e0cb42f76a92efc14b72e3a3723",
+          "evidence_size": 17416
+        },
+        "modification": {
+          "status": "modified",
+          "description": "48 mm voxel-averaged scan points encoded as isotropic Gaussian SH3 PLY; 45 higher-order coefficients are zero. Recipe: examples/gaussian-splat-spike/derive-edinburgh-triple.py"
+        },
+        "no_customer_data": true
+      },
+      "derivative_recipe": "examples/gaussian-splat-spike/derive-edinburgh-triple.py",
+      "alignment": {
+        "method": "Identity-frame offline numpy/Open3D, seed 8567, 50,000 scan points; IFC4X1 header substituted to IFC4 in memory for IfcOpenShell wall/slab tessellation only",
+        "wall_slab_band_lt_0_15m_fraction": 1.0,
+        "scan_to_ifc_wall_slab_band_median_m": 0.0051721930503845215,
+        "scan_to_nearest_splat_center_median_m": 0.01840291418321477,
+        "ifc_scan_aabb_iou": 0.860151926528336
+      },
+      "gaussian": {
+        "count": 413176,
+        "sh_degree": 3,
+        "nonzero_sh": false,
+        "units": "metres, E57/IFC shared identity frame",
+        "up_axis": "Z",
+        "source_method": "Synthetic E57 point cloud; scan-derived isotropic Gaussian proxy, not photogrammetric training",
+        "metadata_url": "https://datashare.ed.ac.uk/items/25ab6e2f-f4d4-4c73-ac5d-2a5f0e77c7c4"
+      }
+    },
+    {
+      "path": "gaussian/qualification-32-batch-sh3.ply",
+      "size": 2041136,
+      "sha256": "ad8fb87d654f180aebf4f5d7cb66028fecf38ae05281820ee00048dce0e5436b",
+      "provenance": {
+        "source": {
+          "commit": "baecf8adf82c53038c61c83b7b225b586f09c2eb",
+          "blob_url": "https://github.com/LTplus-AG/ifc-lite/blob/baecf8adf82c53038c61c83b7b225b586f09c2eb/examples/gaussian-splat-spike/qualification-fixtures.mjs",
+          "sha256": "9b897542b8a54409129803c2388f9084edfa383b5d7a3c9c3735107e0b68656e",
+          "fetched_at": "2026-11-05"
+        },
+        "license": {
+          "spdx": "MPL-2.0",
+          "url": "https://www.mozilla.org/en-US/MPL/2.0/",
+          "attribution": "ifc-lite contributors, qualification-fixtures.mjs analytic 32-batch Gaussian control, generated for #8567."
+        },
+        "modification": {
+          "status": "modified",
+          "description": "Generated with qualificationPly({batches:32, perBatch:257}) from examples/gaussian-splat-spike/qualification-fixtures.mjs; deterministic 8,224-row SH3 PLY."
+        },
+        "no_customer_data": true
+      },
+      "derivative_recipe": "examples/gaussian-splat-spike/qualification-fixtures.mjs qualificationPly({batches:32,perBatch:257})",
+      "gaussian": {
+        "count": 8224,
+        "sh_degree": 3,
+        "nonzero_sh": true,
+        "units": "analytic unitless control, no survey calibration",
+        "up_axis": "analytic z",
+        "source_method": "Deterministic generated 32-batch depth-order witness",
+        "metadata_url": "https://github.com/LTplus-AG/ifc-lite/blob/baecf8adf82c53038c61c83b7b225b586f09c2eb/examples/gaussian-splat-spike/qualification-fixtures.mjs"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/E1--1-Allplan-Arch-Export.ifc",
+      "sha256": "a2bb623c147b0472774dbd77f65521d84be4b0af67ca2eee8d60be350cba2f8e",
+      "size": 18265,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ce2f40abd666280413fadad72162db9935336154/Examples/01--slab_on_columns/E1--1-Allplan-Arch-Export.ifc",
+        "commit": "ce2f40abd666280413fadad72162db9935336154"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/E1--3-Axis-Struc-Export.ifc",
+      "sha256": "5d60a74598b67646b28ba0b53d4b13d8e3c9ebc927a6907a5bb42869ed2dfc17",
+      "size": 99000,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ce2f40abd666280413fadad72162db9935336154/Examples/01--slab_on_columns/E1--3-Axis-Struc-Export.ifc",
+        "commit": "ce2f40abd666280413fadad72162db9935336154"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/house_basement_floor--Axis-Struc.ifc",
+      "sha256": "241a26f4cd2fd7aa75133f62acf182d6c073a9535daa620038c7b4010317c776",
+      "size": 1344702,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ce2f40abd666280413fadad72162db9935336154/Examples/99--miscellaneous/house_basement_floor--Axis-Struc.ifc",
+        "commit": "ce2f40abd666280413fadad72162db9935336154"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/little_steel_frame-3D--Axis-Struc.ifc",
+      "sha256": "a9d142521e424f6d602913321c6e2fb2d9e3d743b6532b1f8668fb85199eec23",
+      "size": 799381,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ab9168a32edeecf80718025070c02a3799a7a1ad/Examples/99--miscellaneous/little_steel_frame-3D--Axis-Struc.ifc",
+        "commit": "ab9168a32edeecf80718025070c02a3799a7a1ad"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/roof_truss--Axis-Struc.ifc",
+      "sha256": "d6ac5f73ad9e1cef8dd17adc3df878f9253f5dbb76c09e3cedb17c2c1e80bd10",
+      "size": 41822,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ce2f40abd666280413fadad72162db9935336154/Examples/99--miscellaneous/roof_truss--Axis-Struc.ifc",
+        "commit": "ce2f40abd666280413fadad72162db9935336154"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/simple_bottom_slab--Axis-Struc.ifc",
+      "sha256": "78a0b6be7fda08d61386354876a31e5295f5f0e5b449849c05da22b045e06c17",
+      "size": 53276,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ce2f40abd666280413fadad72162db9935336154/Examples/99--miscellaneous/simple_bottom_slab--Axis-Struc.ifc",
+        "commit": "ce2f40abd666280413fadad72162db9935336154"
+      }
+    },
+    {
+      "path": "structural/ifc_structuralanalysisview/steel-joint-modelled-with-shellelements--Axis-Struc.ifc",
+      "sha256": "1e05375f274709a53dd7b27b5428749ea049ae22e19ced88afc258a875d73239",
+      "size": 443584,
+      "upstream_file": {
+        "blob_url": "https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/blob/ab9168a32edeecf80718025070c02a3799a7a1ad/Examples/99--miscellaneous/steel-joint-modelled-with-shellelements--Axis-Struc.ifc",
+        "commit": "ab9168a32edeecf80718025070c02a3799a7a1ad"
+      }
+    },
+    {
+      "path": "structural/analysis-models/beam_01.ifc",
+      "sha256": "346685142c99c83ad42b74baad07388af13aa3200d11143bb0859c3b3fbfd33b",
+      "size": 8217,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/768952189d8531ef9a7d181b220a73968e75f6ea/ifcFiles/beam_01.ifc",
+        "commit": "768952189d8531ef9a7d181b220a73968e75f6ea"
+      }
+    },
+    {
+      "path": "structural/analysis-models/building_01.ifc",
+      "sha256": "8e08880c5deb5407f785649965dca129466ef21e4c34eb58a48edc23c5206f6b",
+      "size": 68522,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/768952189d8531ef9a7d181b220a73968e75f6ea/ifcFiles/building_01.ifc",
+        "commit": "768952189d8531ef9a7d181b220a73968e75f6ea"
+      }
+    },
+    {
+      "path": "structural/analysis-models/building_02.ifc",
+      "sha256": "635956b5ff320ada72befc4695bfae4d0517f292a38ef8e5562bf06ee680feac",
+      "size": 2023432,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/6af8a5414925e999f51f527c3e244274250bda32/ifcFiles/building_02.ifc",
+        "commit": "6af8a5414925e999f51f527c3e244274250bda32"
+      }
+    },
+    {
+      "path": "structural/analysis-models/cantilever_01.ifc",
+      "sha256": "d0f398aadfadd47ba924287d6eedc5956dece9c4f6ed46d8f52b89e97d2a762f",
+      "size": 9648,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/c4d1a39e0eeb32a6025f60a3986d70a75f3a1e58/ifcFiles/cantilever_01.ifc",
+        "commit": "c4d1a39e0eeb32a6025f60a3986d70a75f3a1e58"
+      }
+    },
+    {
+      "path": "structural/analysis-models/grid_of_beams.ifc",
+      "sha256": "57185d2e781d319774fbe2d200c5964a13bc0b68ea01adb930f09f6806ad894b",
+      "size": 15715,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad/ifcFiles/grid_of_beams.ifc",
+        "commit": "1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad"
+      }
+    },
+    {
+      "path": "structural/analysis-models/portal_01.ifc",
+      "sha256": "8e9bcab2c5b9d033f047d19cc2be82b1cad684cbf259b9d93a754d0f991be992",
+      "size": 15204,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/768952189d8531ef9a7d181b220a73968e75f6ea/ifcFiles/portal_01.ifc",
+        "commit": "768952189d8531ef9a7d181b220a73968e75f6ea"
+      }
+    },
+    {
+      "path": "structural/analysis-models/slab_01.ifc",
+      "sha256": "d9e0e850a3864ef4c00b71c472ff652722cbef7721ffebc76c1556c5a04f8e1d",
+      "size": 4503,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad/ifcFiles/slab_01.ifc",
+        "commit": "1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad"
+      }
+    },
+    {
+      "path": "structural/analysis-models/structure_01.ifc",
+      "sha256": "fac3fc541b6d8ff2068bd1a484aee2b0828ddac55c10c058c49f20f5061d5f58",
+      "size": 9829,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcOpenShell/analysis-models/blob/1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad/ifcFiles/structure_01.ifc",
+        "commit": "1e51add7d6648b011ff9c5d0802ecaccc1d4c6ad"
+      }
+    },
+    {
+      "path": "structural/ifctruss/tutorial-with-resutls.ifc",
+      "sha256": "4e8a3a1242cc4aa9b41e9038276fa9e26f8399b485a2b10446844cedcb951fe3",
+      "size": 7644,
+      "upstream_file": {
+        "blob_url": "https://github.com/IfcTruss/IfcTruss/blob/dbf2aad69f7c523a23cff338d419ee7145cc49fa/nbs/00_General/tutorial-with-resutls.ifc",
+        "commit": "dbf2aad69f7c523a23cff338d419ee7145cc49fa"
+      }
+    },
+    {
+      "path": "structural/puntal-alfa/portal-demo.ifc",
+      "sha256": "3e5c4033c527d0f77efa346ad063cae1288aeb4870a3deccd70a12860bb1df5b",
+      "size": 11427,
+      "upstream_file": {
+        "blob_url": "https://github.com/andrenon/puntal-alfa/blob/688fec48169efdce8a6d3ddcbfbb2a600ecbf451/demo/portal-demo.ifc",
+        "commit": "688fec48169efdce8a6d3ddcbfbb2a600ecbf451"
+      }
+    },
+    {
+      "path": "structural/geometrygym/shellandbeam.ifc",
+      "sha256": "c297b181ee22cbfe11391faf323b552fc0f479b5fe01d2aa7708d4766f6c76d1",
+      "size": 46365,
+      "upstream_file": {
+        "blob_url": "https://github.com/jmirtsch/GeometryGym/blob/9ffe44a9555dc128188b261c6f8cae808885a8df/Grasshopper/KarambaToIFC/shellandbeam.ifc",
+        "commit": "9ffe44a9555dc128188b261c6f8cae808885a8df"
+      }
+    },
+    {
+      "path": "structural/geometrygymifcexamples/surfaceMember.ifc",
+      "sha256": "5861fd258d3407116f0141d8b555626f1569cc45252695a107697b88286e618a",
+      "size": 5199,
+      "upstream_file": {
+        "blob_url": "https://github.com/GeometryGym/GeometryGymIFCExamples/blob/704df17aceeb229ba872d9ff699e20d9a5b36e13/ConsoleCreateSurfaceMember/surfaceMember.ifc",
+        "commit": "704df17aceeb229ba872d9ff699e20d9a5b36e13"
+      }
+    },
+    {
+      "path": "ifcopenshell/generated_structural_coverage_ifc2x3.ifc",
+      "sha256": "1b6251e19639906b99e7e12b0b9954e5eb2b73e5515a3ecab7ee21f26d2e25ab",
+      "size": 10374
+    },
+    {
+      "path": "ifcopenshell/generated_structural_coverage_ifc4.ifc",
+      "sha256": "6cacd4bc894507a1615bbb9771f266248665bc06a77a60249e61281ebb212c70",
+      "size": 11046
+    },
+    {
+      "path": "ifcopenshell/generated_structural_coverage_ifc4x3.ifc",
+      "sha256": "cfecbddd58aee33576d083a3dd786cdd0e0979c422e954337df3da552b9843b9",
+      "size": 11154
+    },
+    {
+      "path": "ifcopenshell/generated_structural_coverage_ifc4_reinforcement.ifc",
+      "sha256": "ff8860d43998ca921bae44e3e7710e97dde8eb3f656b5bb68cdb11be67f9ce47",
+      "size": 1281
+    },
+    {
+      "path": "modelling/saved-building.ifc",
+      "sha256": "ebc976fabf0edbb3d6511cfbc03cab660ec665e34f5e9ba0724746710ddd359d",
+      "size": 21455
+    },
+    {
+      "path": "rhino/mcneel-opennurbs/my_mesh_with_material.3dm",
+      "sha256": "d9080add559f8b54eee07ff12257bd88e1f45dfe01000668ad7516652a0900cb",
+      "size": 6505,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/opennurbs/blob/eb92af3ba1806b0a34a99aba0d3bda83e3d46083/example_files/V6/my_mesh_with_material.3dm",
+        "commit": "eb92af3ba1806b0a34a99aba0d3bda83e3d46083"
+      }
+    },
+    {
+      "path": "rhino/mcneel-rhino3dm/blocks.3dm",
+      "sha256": "1e428317489c7c22ee68fb93e119079c718a0ba44efa7c89efb10cf0d8491cb8",
+      "size": 3116711,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/rhino3dm/blob/f44a7887955d471ad3e52327a5a410a96aad7957/tests/models/blocks.3dm",
+        "commit": "f44a7887955d471ad3e52327a5a410a96aad7957"
+      }
+    },
+    {
+      "path": "rhino/mcneel-rhino3dm/file3dm_stuff.3dm",
+      "sha256": "e78ca005c86130953a5b4c0c44d068ae1d00665f4c0f6028edd3911a01d4ff88",
+      "size": 4013407,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/rhino3dm/blob/f44a7887955d471ad3e52327a5a410a96aad7957/tests/models/file3dm_stuff.3dm",
+        "commit": "f44a7887955d471ad3e52327a5a410a96aad7957"
+      }
+    },
+    {
+      "path": "rhino/mcneel-rhino3dm/mesh.3dm",
+      "sha256": "59e78629c5c19a5e04a195d746cd6b3981c504fcdcd76423ba507ec9e58e69b7",
+      "size": 111350,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/rhino3dm/blob/f44a7887955d471ad3e52327a5a410a96aad7957/tests/models/mesh.3dm",
+        "commit": "f44a7887955d471ad3e52327a5a410a96aad7957"
+      }
+    },
+    {
+      "path": "rhino/mcneel-rhino3dm/object_UserStrings.3dm",
+      "sha256": "717484749d0e7fb79b54d3861559a9748414328509ccecd90569bb42781421d9",
+      "size": 3112000,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/rhino3dm/blob/f44a7887955d471ad3e52327a5a410a96aad7957/tests/models/object_UserStrings.3dm",
+        "commit": "f44a7887955d471ad3e52327a5a410a96aad7957"
+      }
+    },
+    {
+      "path": "rhino/mcneel-rhino3dm/subd_creases.3dm",
+      "sha256": "98400d4d67b5c16fe92bf65898298ff8dd08166fe20499fe02a41c2970657eee",
+      "size": 11662,
+      "upstream_file": {
+        "blob_url": "https://github.com/mcneel/rhino3dm/blob/f44a7887955d471ad3e52327a5a410a96aad7957/tests/models/subd_creases.3dm",
+        "commit": "f44a7887955d471ad3e52327a5a410a96aad7957"
+      }
     }
   ]
 }

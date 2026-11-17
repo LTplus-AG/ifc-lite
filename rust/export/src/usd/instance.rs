@@ -12,108 +12,18 @@
 //! the reason `instanceable` is deliberately not used). Georeferenced ("site-local") models
 //! disable don't-bake upstream, so they fall back to the plain full-mesh path automatically.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Write;
 
-use ifc_lite_processing::{process, InstanceRecord, MeshData, ProcessingRequest, ProcessingResult};
+use ifc_lite_processing::{InstanceRecord, MeshData};
 
 use super::emit::{write_display_material, write_geometry_body};
 use super::fmt::{fmt_matrix4d, indent_str};
-use super::mesh_emittable;
+use crate::scene_input::transform_is_affine_finite;
 
 /// Prototype prim name for a template `express_id`.
 pub(super) fn proto_name(template_express_id: u32) -> String {
     format!("Proto_{template_express_id}")
-}
-
-/// Run the geometry pipeline with #1623 don't-bake instancing enabled and collect the
-/// result (unbounded batches, default `retain_emitted_meshes` so templates survive).
-pub(super) fn run_instanced(content: &[u8], layer_slicing: bool) -> ProcessingResult {
-    process(
-        content,
-        &ProcessingRequest::full_pass()
-            .instancing(true)
-            .layer_slicing(layer_slicing),
-        &mut (),
-    )
-}
-
-/// Choose the geometry result. Returns `(result, use_instancing)`.
-///
-/// When instancing is requested we run the don't-bake pass; if it produced instances AND
-/// every instance is safe to author (see [`all_instances_safe`]), we use it. Otherwise —
-/// instances present but any unsafe — we re-run the plain (all-baked) pass so nothing is
-/// dropped or misplaced. The extra pass is uncommon (a template failing the USD mesh gate,
-/// an f32-overflowed transform, or one of the ambiguous multi-record / multi-submesh /
-/// mixed-geometry shapes the single-prototype-per-id emitter can't represent); the common
-/// case is a single pass.
-pub(super) fn gather(content: &[u8], instancing: bool, layer_slicing: bool) -> (ProcessingResult, bool) {
-    if !instancing {
-        return (process(content, &ProcessingRequest::full_pass().layer_slicing(layer_slicing), &mut ()), false);
-    }
-    let r = run_instanced(content, layer_slicing);
-    if r.instances.is_empty() {
-        return (r, false); // no repetition — the result is already complete
-    }
-    if all_instances_safe(&r) {
-        (r, true)
-    } else {
-        (process(content, &ProcessingRequest::full_pass().layer_slicing(layer_slicing), &mut ()), false) // fallback: re-bake every occurrence
-    }
-}
-
-/// Gate that decides whether the id-keyed, one-prototype-per-template emitter can author
-/// this instanced result **without dropping or misplacing any geometry**. Every condition
-/// below is a shape the current single-occurrence-per-id / `meshes_by_id[tid].first()`
-/// emitter cannot represent faithfully; any hit sends [`gather`] to the always-correct
-/// baked path. This is the enforcement of the "can never drop geometry" contract in the
-/// module docs (the emitter itself assumes these hold).
-fn all_instances_safe(r: &ProcessingResult) -> bool {
-    // Emittable submeshes grouped by express id — the exact gate the exporter authors with.
-    let mut submesh_count: HashMap<u32, usize> = HashMap::new();
-    for m in r.meshes.iter().filter(|m| mesh_emittable(m)) {
-        *submesh_count.entry(m.express_id).or_default() += 1;
-    }
-    instances_authorable(
-        r.instances.iter().map(|rec| (rec.express_id, rec.template_express_id, rec.transform)),
-        &submesh_count,
-    )
-}
-
-/// Pure core of [`all_instances_safe`], factored out so the fallback conditions are unit
-/// testable without synthesizing a whole `ProcessingResult`. Given each occurrence's
-/// `(express_id, template_express_id, transform)` and the emittable-submesh count per
-/// express id, decide whether the id-keyed / one-prototype-per-template emitter can author
-/// them all with no dropped or misplaced geometry.
-pub(super) fn instances_authorable(
-    instances: impl IntoIterator<Item = (u32, u32, [f32; 16])>,
-    submesh_count: &HashMap<u32, usize>,
-) -> bool {
-    // `instances_by_id` is keyed by `express_id`, so a repeated id would be overwritten.
-    let mut seen_occurrence: HashSet<u32> = HashSet::new();
-    instances.into_iter().all(|(express_id, template_id, transform)| {
-        // A finite, affine transform (the authored `matrix4d` would otherwise misplace it).
-        transform_is_affine_finite(&transform)
-            // Exactly one record per element id.
-            && seen_occurrence.insert(express_id)
-            // The occurrence must NOT also own a full mesh: the emitter takes the instance
-            // branch OR the mesh branch, never both, so a mixed element loses its meshes.
-            && !submesh_count.contains_key(&express_id)
-            // The prototype is `meshes_by_id[tid].first()`, so the template must resolve to
-            // exactly ONE emittable submesh — else `.first()` is an ambiguous prototype for
-            // a template element that backs several maps.
-            && submesh_count.get(&template_id).copied() == Some(1)
-    })
-}
-
-/// True when `a` is finite and affine (bottom row ≈ (0,0,0,1)). A projective row would make
-/// the authored `matrix4d` misplace geometry (the reconstruction divides by w).
-fn transform_is_affine_finite(a: &[f32; 16]) -> bool {
-    a.iter().all(|v| v.is_finite())
-        && a[12].abs() < 1e-6
-        && a[13].abs() < 1e-6
-        && a[14].abs() < 1e-6
-        && (a[15] - 1.0).abs() < 1e-6
 }
 
 /// The occurrence's object-LOCAL → WORLD transform, authored as a USD `matrix4d` (4 rows).
@@ -124,7 +34,7 @@ fn transform_is_affine_finite(a: &[f32; 16]) -> bool {
 /// arithmetic is f64 (`A` widened, `origin` already f64); `A`'s translation is in the
 /// post-RTC frame so its f32 storage stays sub-mm even at national-grid extents.
 /// Returns `None` for a non-finite / non-affine `A` (callers must have gated via
-/// [`all_instances_safe`], so `None` never reaches emission on the instanced path).
+/// `scene_input::gather`'s safety gate, so `None` never reaches emission on the instanced path).
 pub(super) fn usd_transform_rows(a: &[f32; 16], origin: [f64; 3]) -> Option<[[f64; 4]; 4]> {
     if !transform_is_affine_finite(a) {
         return None;

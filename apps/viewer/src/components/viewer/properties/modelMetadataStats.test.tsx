@@ -97,10 +97,14 @@ function render(subject: FederatedModel): HTMLElement {
 }
 
 function statistic(container: HTMLElement, label: string): string | undefined {
+  // A key/value row (#8802): the value is the cell right after the label;
+  // a trailing copy slot may follow it.
   const row = [...container.querySelectorAll('div')].find((element) =>
     [...element.children].some((child) => child.textContent === label),
   );
-  return row?.lastElementChild?.textContent ?? undefined;
+  const cells = row ? [...row.children] : [];
+  const at = cells.findIndex((child) => child.textContent === label);
+  return at >= 0 ? cells[at + 1]?.textContent ?? undefined : undefined;
 }
 
 function unmountAll(): void {

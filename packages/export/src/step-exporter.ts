@@ -204,7 +204,7 @@ export class StepExporter {
     }
     collectModifications(pass, options, applyMutations, this.collectionContext());
     // Edited source style assignments reach the D57 flatten before any styled item is written (#7801).
-    pass.styleFlatten?.noteEdited(this.dataStore, (id, text) => { const t = applySourceLineMutations(this.mutationView, id, text, 'IFCPRESENTATIONSTYLEASSIGNMENT', pass.modifiedAttributes.get(id), pass.sourceSchema, pass.overlayActive).text; return t === text ? null : t; });
+    pass.styleFlatten?.noteEdited(this.dataStore, (id, text, type) => { const t = applySourceLineMutations(this.mutationView, id, text, type, pass.modifiedAttributes.get(id), pass.sourceSchema, pass.overlayActive).text; return t === text ? null : t; });
 
     // Which ids this export may still NAME, now that the collection phase has
     // decided which ids it is WRITING (#2475). Must stay here, between those
@@ -219,7 +219,7 @@ export class StepExporter {
     );
     // A deltaOnly export with nothing to say is already finished.
     if (omission.kind === 'short-circuit') return { result: omission.result };
-    const { isOmittedFromOutput, mayNameOmittedRefs } = omission;
+    const { isOmittedFromOutput, mayNameOmittedRefs } = omission; pass.styleFlatten?.retainGrids((id) => !isOmittedFromOutput(id));
 
     // The owner history an IFC2X3 downgrade reuses for `$` OwnerHistory slots
     // (#4686): the same surviving one the generated property sets fall back to.

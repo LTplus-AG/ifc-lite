@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useRef, useState, useEffect } from 'react';
+import { isFeatureEnabled } from '@/lib/features';
+import { useMemo } from 'react';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
 import { sameModelsExceptGeometry } from '@/lib/streaming-refresh';
 import { Boxes, CheckCircle2, AlertCircle, Layers } from 'lucide-react';
@@ -18,16 +19,16 @@ import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
 import { StatusBarPresentationButton } from './StatusBarPresentationButton';
 import { StatusBarWorkspaceChip } from './StatusBarWorkspaceChip';
+import { AgentBridgeStatusSlot } from '@/components/agent-bridge/AgentBridgeHost';
 import { ActivityTrayButton } from './activity/ActivityTray';
 import { FpsMemoryStats, TriangleCount } from './PerformanceStats';
-import { FlavorDialog } from '@/components/extensions/FlavorDialog';
-import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
+import { sharedEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects, createShapePredicate } from '@/lib/object-count';
-import type { AggregationRelationships } from '@/utils/aggregation';
+import { useLoadWindowHold } from '@/hooks/loadWindow';
+import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { EntityRef } from '@/store/types';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 import { isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import { effectiveContextType } from './EntityContextMenu.effective-selection';
@@ -59,17 +60,6 @@ export function StatusBar() {
   // `{!isMobile && <StatusBar />}`).
   const { storeyNames, objectCounts } = useViewportStatusSummary();
 
-  const [flavorDialogOpen, setFlavorDialogOpen] = useState(false);
-  /** Deep-link from Command Palette → "Manage flavors…". */
-  const flavorDialogRequested = useViewerStore((s) => s.flavorDialogRequested);
-  const setFlavorDialogRequested = useViewerStore((s) => s.setFlavorDialogRequested);
-  useEffect(() => {
-    if (flavorDialogRequested) {
-      setFlavorDialogOpen(true);
-      setFlavorDialogRequested(false);
-    }
-  }, [flavorDialogRequested, setFlavorDialogRequested]);
-
   // Every model whose objects this bar speaks for, paired with its own
   // geometry. Federated models each carry their own store and meshes; legacy
   // single-model mode has one pair on the top-level hook.
@@ -80,12 +70,19 @@ export function StatusBar() {
     () => ({ models, ifcDataStore, geometryResult }),
     [models, ifcDataStore, geometryResult],
   ), (held, next) => held.ifcDataStore === next.ifcDataStore && sameModelsExceptGeometry(held.models, next.models));
-  const countedModels = useMemo<CountedModel[]>(() => {
+  // A model that is loading is left out until the load settles (loadWindow.ts):
+  // its walk ran inside the drain and finalize that end the load. A model that
+  // had settled before keeps its count while another model loads.
+  const loadHold = useLoadWindowHold();
+  const { countedModels, heldModels } = useMemo<{ countedModels: CountedModel[]; heldModels: number }>(() => {
     const { models, ifcDataStore, geometryResult } = countSource;
     if (models.size > 0) {
       const out: CountedModel[] = [];
+      let held = 0;
       const resolveInModel = useViewerStore.getState().resolveGlobalIdInModel;
       for (const model of models.values()) {
+        // Held first: a model that is loading has no store yet, and must still show the dash, not a 0.
+        if (loadHold.isHeld(model.id)) { held++; continue; }
         if (!model.ifcDataStore) continue;
         const toLocalId = (id: number): number => {
           const ref = resolveInModel(model.id, id);
@@ -98,42 +95,34 @@ export function StatusBar() {
           geometryReady: model.geometryResult != null,
         });
       }
-      return out;
+      return { countedModels: out, heldModels: held };
     }
-    return ifcDataStore ? [{
+    if (loadHold.isHeld('legacy')) return { countedModels: [], heldModels: 1 };
+    if (!ifcDataStore) return { countedModels: [], heldModels: 0 };
+    return { countedModels: [{
       modelId: 'legacy',
       store: ifcDataStore,
       meshedIds: collectMeshedIds(geometryResult),
       geometryReady: geometryResult != null,
-    }] : [];
-  }, [countSource]);
+    }], heldModels: 0 };
+  }, [countSource, loadHold]);
+  // Nothing settled to count yet: a dash, never a provisional 0.
+  const countPending = heldModels > 0 && countedModels.length === 0;
 
   // PERF: `state.models` is a NEW Map on every streaming batch commit
   // (`appendGeometryBatch` in dataSlice.ts rebuilds it to swap one model's
   // geometryResult), so nothing memoised on it survives a stream. A model's
   // `ifcDataStore` identity IS stable across those commits, so the expensive
-  // half — the schema walk over the whole effective entity set — is cached
-  // per store, view and mutation version. Streaming only reruns the cheap
-  // mesh-set lookup; an edit invalidates the physical-id set.
-  const physicalIdsRef = useRef(new WeakMap<IfcDataStore, Map<string, {
-    view: MutablePropertyView | null; version: number; ids: Set<number>;
-  }>>());
+  // half — the schema walk over the whole effective entity set — is shared per
+  // store, view and mutation version with the viewport summary and the model
+  // metadata panel (NEW-4). Streaming only reruns the cheap mesh-set lookup;
+  // an edit invalidates the physical-id set.
   const physicalIdsByModel = useMemo(() => {
-    const result = new Map<string, Set<number>>();
+    const result = new Map<string, ReadonlySet<number>>();
     for (const { modelId, store } of countedModels) {
       const view = models.size > 0 ? mutationViews.get(modelId) ?? null
         : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
-      let byModel = physicalIdsRef.current.get(store);
-      if (!byModel) {
-        byModel = new Map();
-        physicalIdsRef.current.set(store, byModel);
-      }
-      let cached = byModel.get(modelId);
-      if (!cached || cached.view !== view || cached.version !== mutationVersion) {
-        cached = { view, version: mutationVersion, ids: collectEffectivePhysicalEntityIds(store, view) };
-        byModel.set(modelId, cached);
-      }
-      result.set(modelId, cached.ids);
+      result.set(modelId, sharedEffectivePhysicalEntityIds(store, view, mutationVersion));
     }
     return result;
   }, [countedModels, models.size, mutationViews, mutationVersion]);
@@ -141,8 +130,10 @@ export function StatusBar() {
     let total = 0;
     for (const { modelId, store, meshedIds, geometryReady } of countedModels) {
       const physicalIds = physicalIdsByModel.get(modelId) ?? new Set<number>();
+      const view = models.size > 0 ? mutationViews.get(modelId) ?? null
+        : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
       total += countShapedObjects(physicalIds, {
-        relationships: store.relationships as AggregationRelationships | undefined,
+        relationships: ownedAggregationRelationships(store, view),
         meshedIds,
         geometryReady,
       });
@@ -209,7 +200,7 @@ export function StatusBar() {
       let hasShape = predicates.get(modelId);
       if (!hasShape) {
         hasShape = createShapePredicate({
-          relationships: owner.store.relationships as AggregationRelationships | undefined,
+          relationships: ownedAggregationRelationships(owner.store, view),
           meshedIds: owner.meshedIds,
           geometryReady: owner.geometryReady,
         });
@@ -227,7 +218,7 @@ export function StatusBar() {
   }, [selectedStoreys, activeStorey, selectedEntities, countedModels, models, mutationViews, mutationVersion, physicalIdsByModel, totalObjects]);
 
   return (
-    <div className="h-7 px-3 border-t bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">
+    <div className="h-7 px-3 border-t border-divider bg-panel flex items-center justify-between text-xs text-muted-foreground">
       {/* Left: Status */}
       <div className="flex items-center gap-3">
         {/* A load error shows once, in the viewport's load-error card
@@ -238,12 +229,14 @@ export function StatusBar() {
           <span>{t('shellChrome.statusBar.ready')}</span>
         )}
         {/* Cancel: shown while a model load (#5849) or point-cloud stream
-            has published a canceller; the loading card uses the same selector. */}
+            has published a canceller; the loading card uses the same selector.
+            `h-6` keeps the 24px target minimum (WCAG 2.5.8, #5826) inside
+            the 28px bar; `py-0.5` on the 14px label made it 20px (#8802). */}
         {activeStreamCanceller && (
           <button
             type="button"
             onClick={() => activeStreamCanceller()}
-            className="px-2 py-0.5 rounded border border-destructive/40 text-destructive text-2xs uppercase tracking-wider hover:bg-destructive hover:text-destructive-foreground transition-colors"
+            className="inline-flex h-6 items-center px-2 rounded border border-destructive/40 text-destructive text-2xs uppercase tracking-wider hover:bg-destructive hover:text-destructive-foreground transition-colors"
             title={t('shellChrome.statusBar.cancelStreamTitle')}
           >
             {t('shellChrome.statusBar.cancelButton')}
@@ -288,8 +281,12 @@ export function StatusBar() {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-1.5">
           <Boxes className="h-3.5 w-3.5" />
-          <span>
-            {formatNumber(visibleElements)}
+          {/* A dash until the load settles, never a provisional 0. Tabular figures and a
+              minimum width wide enough for the dash and a typical count, so the
+              dash-to-number swap does not shift the bar; a long count (for example
+              "1 / 1,000,000") still widens it. */}
+          <span className="inline-block min-w-24 tabular-nums" data-testid="status-element-count" aria-busy={countPending || undefined}>
+            {countPending ? '—' : formatNumber(visibleElements)}
             {selectedStoreys.size > 0 && totalObjects !== visibleElements && (
               <span className="opacity-60"> / {formatNumber(totalObjects)}</span>
             )}
@@ -316,13 +313,13 @@ export function StatusBar() {
 
         <div className="flex items-center gap-1">
           {webgpu.checking ? (
-            <Spinner size="sm" className="text-zinc-400" />
+            <Spinner size="sm" className="text-muted-foreground" />
           ) : webgpu.supported ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-status-ok" />
           ) : (
-            <AlertCircle className="h-3.5 w-3.5 text-[#f7768e]" />
+            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
           )}
-          <span className={!webgpu.supported && !webgpu.checking ? 'text-[#f7768e]' : ''}>
+          <span className={!webgpu.supported && !webgpu.checking ? 'text-destructive' : ''}>
             {t(
               webgpu.checking
                 ? 'shellChrome.statusBar.webgpuChecking'
@@ -335,17 +332,18 @@ export function StatusBar() {
 
         <Separator orientation="vertical" className="h-3.5" />
 
+        <AgentBridgeStatusSlot />
         <StatusBarWorkspaceChip />
         <ActivityTrayButton />
         <StatusBarPresentationButton />
-        <Separator orientation="vertical" className="h-3.5" />
-        <FlavorIndicator onClick={() => setFlavorDialogOpen(true)} />
+        {isFeatureEnabled('automate.extensions') && <><Separator orientation="vertical" className="h-3.5" />
+          <FlavorIndicator onClick={() => useViewerStore.getState().setFlavorDialogRequested(true)} /></>}
 
         <Separator orientation="vertical" className="h-3.5" />
 
         <span className="opacity-60">{t('shellChrome.statusBar.appVersion', { version: __APP_VERSION__ })}</span>
 
-        <Separator orientation="vertical" className="h-3.5" />
+        {isFeatureEnabled('help.product-links') && <><Separator orientation="vertical" className="h-3.5" />
 
         <a
           href="https://ifclite.dev"
@@ -355,10 +353,9 @@ export function StatusBar() {
           aria-label={t('shellChrome.statusBar.ifcliteAriaLabel')}
         >
           {t('shellChrome.statusBar.ifcliteLinkLabel')}
-        </a>
+        </a></>}
       </div>
 
-      <FlavorDialog open={flavorDialogOpen} onClose={() => setFlavorDialogOpen(false)} />
     </div>
   );
 }

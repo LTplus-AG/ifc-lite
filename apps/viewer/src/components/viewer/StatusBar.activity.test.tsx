@@ -9,11 +9,12 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createBimContext } from '@ifc-lite/sdk';
-import { advance, cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render } from '@/test/render.js';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { ExtensionHostService } from '@/services/extensions/host.js';
 import { runModelRequest } from '@/lib/llm/request-service';
 import { createRootBudget } from '@/lib/llm/root-budget';
+import { activityListReady } from '@/test/activity-list';
 import { StatusBar } from './StatusBar.js';
 import { ShellStoreEffects } from './ShellStoreEffects.js';
 
@@ -44,7 +45,7 @@ test('the status-bar activity entry opens the outcome of an actual streamed assi
     .find(button => button.getAttribute('aria-label') === 'Activity');
   assert.ok(entry, 'the status bar exposes the Activity entry');
   click(entry);
-  for (let attempt = 0; attempt < 200 && !document.querySelector('[aria-label="Jobs"]'); attempt++) await advance(20);
+  await activityListReady();
   const jobs = document.querySelector('[aria-label="Jobs"]');
   assert.ok(jobs, 'the entry opens the shared job list');
   assert.match(jobs.textContent ?? '', /Assistant request/);

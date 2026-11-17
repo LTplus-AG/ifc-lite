@@ -492,13 +492,13 @@ fn issue_4406_strokes_refuse_collapsed_offsets_reversals_crossings_and_exhaustio
 fn issue_4406_actual_decoded_stroke_pages_preserve_analytic_areas() {
     let (source,_) = fixture();
     for (data,expected) in [
-        (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-1-request.json"),2.4),
-        (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-2-request.json"),2.54),
-        (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-3-request.json"),2.38),
-        (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-4-request.json"),19.36),
-        (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-5-request.json"),1.5768),
-        (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-6-request.json"),(1080.+36.*std::f64::consts::PI)/900.),
-        (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-7-request.json"),(2124.+9.*std::f64::consts::PI)/900.),
+        (include_str!("../../../../tests/fixtures/appearance/pdf-straight-stroke-annotations/page-1-request.json"),2.4),
+        (include_str!("../../../../tests/fixtures/appearance/pdf-straight-stroke-annotations/page-2-request.json"),2.54),
+        (include_str!("../../../../tests/fixtures/appearance/pdf-straight-stroke-annotations/page-3-request.json"),2.38),
+        (include_str!("../../../../tests/fixtures/appearance/pdf-straight-stroke-annotations/page-4-request.json"),19.36),
+        (include_str!("../../../../tests/fixtures/appearance/pdf-straight-stroke-annotations/page-5-request.json"),1.5768),
+        (include_str!("../../../../tests/fixtures/appearance/pdf-straight-stroke-annotations/page-6-request.json"),(1080.+36.*std::f64::consts::PI)/900.),
+        (include_str!("../../../../tests/fixtures/appearance/pdf-straight-stroke-annotations/page-7-request.json"),(2124.+9.*std::f64::consts::PI)/900.),
     ] {
         let request:PdfFillAnnotationRequest=serde_json::from_str(data).unwrap();
         let result=plan_pdf_fill_annotation(source.as_bytes(),&request).unwrap();

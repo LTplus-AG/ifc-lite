@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { configureAuthoredQuantityReader } from '@ifc-lite/create';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
-  extractTypeEntityOwnProperties,
   extractTypeEntityOwnQuantities,
   getInheritanceChainAcrossSchemas,
   type IfcDataStore,
@@ -29,10 +29,8 @@ export function configureSourceMutationView(store: IfcDataStore, view: MutablePr
     }
     return result;
   };
-  view.setOnDemandExtractor(id => isTypeObject(id)
-    ? extractTypeEntityOwnProperties(store, id)
-    : extractPropertiesOnDemand(store, id));
-  view.setQuantityExtractor(id => isTypeObject(id)
+  view.setOnDemandExtractor((id, current = view, occurrenceId = id) => extractPropertiesOnDemand(store, id, current, occurrenceId));
+  configureAuthoredQuantityReader(store, view, id => isTypeObject(id)
     ? extractTypeEntityOwnQuantities(store, id)
     : extractQuantitiesOnDemand(store, id));
 }

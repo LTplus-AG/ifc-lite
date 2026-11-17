@@ -57,15 +57,15 @@ export type OverlayToken = (typeof OVERLAY_TOKENS)[number];
 export type OverlayPalette = Readonly<Record<OverlayToken, string>>;
 
 /**
- * Light: Tokyo Night Day on the `#f5f5f7` clear colour.
- * Accent 3.7:1 (lines), ink 14.3:1, ink-muted 4.8:1 (the palette's `#6172b0`
- * measured 4.25:1, so it is mixed 10% toward the ink to clear text).
+ * Light: Tokyo Night Day on the `#e6e7ea` canvas (`--surface-canvas`).
+ * Accent 3.2:1 (lines), ink 12.6:1, ink-muted 5.0:1 (`#4f5e98`: the
+ * palette's `#6172b0` and the earlier `#5a6aa4` fall under 4.5:1 there).
  */
 const LIGHT: OverlayPalette = {
   'overlay-accent': '#2e7de9',
   'overlay-accent-soft': '#2e7de929',
   'overlay-ink': '#1f2335',
-  'overlay-ink-muted': '#5a6aa4',
+  'overlay-ink-muted': '#4f5e98',
   'overlay-halo': '#ffffff',
   'axis-x': '#f52a65',
   'axis-y': '#587539',
@@ -82,16 +82,16 @@ const LIGHT: OverlayPalette = {
 };
 
 /**
- * Dark: Tokyo Night on the `#1a1b26` clear colour.
- * Accent 6.8:1, ink 10.6:1, ink-muted 5.2:1 (the palette's `#737aa2` measured
- * 4.1:1; `#828bb8` is the chrome's own accessible muted foreground).
+ * Dark: Tokyo Night on the `#222326` canvas (`--surface-canvas`).
+ * Accent 6.2:1, ink 9.7:1, ink-muted 4.7:1 (the palette's `#737aa2` falls
+ * under 4.5:1; `#828bb8` clears it).
  */
 const DARK: OverlayPalette = {
   'overlay-accent': '#7aa2f7',
   'overlay-accent-soft': '#7aa2f72e',
   'overlay-ink': '#c0caf5',
   'overlay-ink-muted': '#828bb8',
-  'overlay-halo': '#1a1b26',
+  'overlay-halo': '#222326',
   'axis-x': '#f7768e',
   'axis-y': '#9ece6a',
   'axis-z': '#7dcfff',

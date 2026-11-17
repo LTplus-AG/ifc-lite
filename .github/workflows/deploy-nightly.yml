@@ -18,8 +18,8 @@ name: Nightly Vercel Deploy
 # `production` only ever moves forward: the ref update is unforced, which
 # GitHub rejects unless it is a fast-forward.
 #
-# Why this exists, and the measurements behind the cadence:
-# scripts/README-vercel-cost.md §3.
+# Why this exists: one production build per commit across three Vercel projects
+# dominated the build bill, so production advances at most once a day.
 
 on:
   schedule:

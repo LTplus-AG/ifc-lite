@@ -53,11 +53,10 @@ const SEVERITY: Record<ClashSeverity, { labelKey: TranslationKey; color: string 
 };
 const SEVERITIES: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
 
-interface ClashSettingsDialogProps {
-  trigger?: React.ReactNode;
-}
+/** Controlled from a panel header action (#8802), it renders no trigger of its own. */
+interface ClashSettingsDialogProps { open?: boolean; onOpenChange?: (open: boolean) => void }
 
-export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
+export function ClashSettingsDialog({ open, onOpenChange }: ClashSettingsDialogProps) {
   const { t } = useTranslation();
   const mode = useViewerStore((s) => s.clashMode);
   const tolerance = useViewerStore((s) => s.clashTolerance);
@@ -179,14 +178,12 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
   const enabledCount = useMemo(() => presets.filter((p) => p.enabled).length, [presets]);
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <IconButton label={t('clashTools.settings.title')} className="h-7 w-7">
-            <Settings2 className="h-4 w-4" />
-          </IconButton>
-        )}
-      </DialogTrigger>
+    <Dialog {...(open === undefined ? {} : { open, onOpenChange })}>
+      {open === undefined && (
+        <DialogTrigger asChild>
+          <IconButton label={t('clashTools.settings.title')} className="h-7 w-7"><Settings2 className="h-4 w-4" /></IconButton>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[540px] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

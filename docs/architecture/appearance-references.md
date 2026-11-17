@@ -79,6 +79,6 @@ promoted to PDF-backed records. This source ownership is used by the explicit PD
 model. Its native preview and creation guards are described in the
 [PDF annotation workflow](pdf-vector-annotations.md#registered-pdf-annotation-workflow).
 
-[Browser and lifetime evidence](evidence/pdf-reference-lineage/README.md) covers
+[Browser and lifetime evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-reference-lineage/README.md) covers
 catalog page changes, removal, retained original decoding, editing, history and
 registration export.

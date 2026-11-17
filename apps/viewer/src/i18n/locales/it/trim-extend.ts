@@ -1,0 +1,58 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const trimExtendIt = {
+  'trimExtend.label': 'Taglia/Estendi',
+  'trimExtend.tool': 'Taglia / Estendi',
+  'commands.model.trimExtend': 'Taglia o estendi fino a un limite (spazio di lavoro Modello)',
+  'commandPalette.tool.trimExtend.label': 'Taglia / Estendi',
+  'trimExtend.hint.boundary': 'Fai clic sul limite: un muro, una trave, il bordo di una soletta o una linea di griglia · Esc per uscire',
+  'trimExtend.hint.trim': 'Fai clic sulla parte di un muro o di una trave da accorciare fino al limite · tieni premuto Maiusc per estendere · Backspace sceglie un altro limite · Esc ricomincia',
+  'trimExtend.hint.extend': 'Fai clic sull’estremità di un muro o di una trave da allungare fino al limite · tieni premuto Maiusc per tagliare · Backspace sceglie un altro limite · Esc ricomincia',
+  'trimExtend.noTargets': 'Niente da tagliare o estendere qui: scegli un piano con muri o travi',
+  'trimExtend.needBoundary': 'Scegli prima un limite',
+  'trimExtend.needTarget': 'Fai clic su un muro o una trave da tagliare o estendere',
+  'trimExtend.refusedHere': 'Questo elemento non può essere tagliato o esteso qui: il motivo è indicato accanto',
+  'trimExtend.mode.label': 'Taglia o estendi',
+  'trimExtend.mode.trim': 'Taglia',
+  'trimExtend.mode.extend': 'Estendi',
+  'trimExtend.mode.trimTitle': 'Accorcia l’elemento fino al limite, rimuovendo il lato su cui fai clic (tieni premuto Maiusc per estendere)',
+  'trimExtend.mode.extendTitle': 'Allunga fino al limite l’estremità più vicina al clic (tieni premuto Maiusc per tagliare)',
+  'trimExtend.bar.boundary': 'Limite: {name}',
+  'trimExtend.bar.pickBoundary': 'Scegli un limite',
+  'trimExtend.bar.trim': 'Taglia {distance} m',
+  'trimExtend.bar.extend': 'Estendi {distance} m',
+  'trimExtend.bar.join': 'Giunzione {kind}',
+  'trimExtend.boundary.wall': 'Muro {name}',
+  'trimExtend.boundary.beam': 'Trave {name}',
+  'trimExtend.boundary.slab': 'Bordo della soletta {name}',
+  'trimExtend.boundary.grid': 'Linea di griglia',
+  'trimExtend.boundary.edge': 'Bordo',
+  'trimExtend.refused.wallBody': 'Impossibile tagliare o estendere: il nucleo di giunzione non riesce a leggere il corpo di questo muro',
+  'trimExtend.refused.vertical': 'Impossibile tagliare o estendere: un elemento verticale non ha un asse in pianta per raggiungere un limite',
+  'trimExtend.refused.parallel': 'Impossibile raggiungere il limite: l’elemento corre lungo di esso',
+  'trimExtend.refused.boundaryShort': 'Impossibile raggiungere il limite: termina prima che la linea dell’elemento lo incontri',
+  'trimExtend.refused.crossesInside': 'Attraversa già il limite: passa a Taglia (o tieni premuto Maiusc) per accorciarlo',
+  'trimExtend.refused.notReached': 'Si ferma prima del limite: passa a Estendi (o tieni premuto Maiusc) per allungarlo',
+  'trimExtend.refused.otherEnd': 'Il limite si trova oltre l’altra estremità: fai clic più vicino a quell’estremità per estenderlo',
+  'trimExtend.refused.tooShort': 'Tagliare qui lascerebbe meno della lunghezza minima',
+  'trimExtend.refused.alreadyThere': 'Termina già sul limite',
+  'trimExtend.refused.hosted': {
+    one: 'Tagliare qui rimuoverebbe {countDisplay} apertura, porta o finestra ospitata in questo muro',
+    many: 'Tagliare qui rimuoverebbe {countDisplay} aperture, porte o finestre ospitate in questo muro',
+    other: 'Tagliare qui rimuoverebbe {countDisplay} aperture, porte o finestre ospitate in questo muro',
+  },
+  'trimExtend.refused.hostedUnreadable': {
+    one: 'Impossibile stabilire dove si trova {countDisplay} apertura ospitata in questo muro, quindi il muro non viene tagliato',
+    many: 'Impossibile stabilire dove si trovano {countDisplay} aperture ospitate in questo muro, quindi il muro non viene tagliato',
+    other: 'Impossibile stabilire dove si trovano {countDisplay} aperture ospitate in questo muro, quindi il muro non viene tagliato',
+  },
+  'trimExtend.refused.join': 'Impossibile unire il muro al limite: {reason}',
+  'trimExtend.failed': 'Impossibile ridimensionare il muro: {reason}',
+  'trimExtend.done.trim': 'Tagliato: {name}',
+  'trimExtend.done.extend': 'Esteso: {name}',
+  'trimExtend.done.joined': 'unito al muro di limite',
+} satisfies Catalogue;

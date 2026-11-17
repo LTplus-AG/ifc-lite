@@ -157,13 +157,12 @@ fn layer_stages_are_send() {
 #[test]
 fn issue_7887_layer_gateway_admits_raw_items_before_probe_or_member_decode() {
     let cap = crate::representation::MAX_WALK_LEVELS as usize;
-    // Ignored slots still consume the full raw list allowance. The first
-    // referenced record would be rejected and counted if anyone decoded it.
-    let items = format!("#90,{}", vec!["$"; cap].join(","));
-    let source = format!(
-        "{}#90=IFCCARTESIANPOINT((1.E400,0.,0.));",
-        WALL.replace("(#6)", &format!("({items})"))
-    );
+    // Ignored slots still consume the raw list allowance. A first root read
+    // is free (#9102), so the body is listed twice: the repeat is one over.
+    let items = format!("#6,{}", vec!["$"; cap].join(","));
+    let source = WALL
+        .replace("(#6)", &format!("({items})"))
+        .replace("(#7)", "(#7,#7)");
     let mut decoder = EntityDecoder::new(&source).with_strict_reals();
     let element = decoder.decode_by_id(9).unwrap();
     let router = GeometryRouter::new();
@@ -184,8 +183,6 @@ fn issue_7887_layer_gateway_admits_raw_items_before_probe_or_member_decode() {
         0,
         "no malformed member was probed"
     );
-    assert!(decoder.get_cached(90).is_none());
-    assert!(decoder.get_cached(6).is_none());
     assert!(
         router.take_layer_slice_diag().is_empty(),
         "admission precedes layer eligibility diagnostics"
@@ -198,10 +195,14 @@ fn issue_7887_layer_gateway_admits_raw_items_before_probe_or_member_decode() {
     // The ordinary fallback now reports exactly one logical refusal, outside
     // any source-suppression scope, with the holding representation's type.
     let _scope = router.enter_unsupported_policy(false);
-    assert!(router
-        .process_element_with_submeshes(&element, &mut decoder)
-        .unwrap()
-        .is_empty());
+    assert_eq!(
+        router
+            .process_element_with_submeshes(&element, &mut decoder)
+            .unwrap()
+            .len(),
+        1,
+        "only the first, free read of the body renders"
+    );
     assert_eq!(
         router
             .take_unsupported_items()

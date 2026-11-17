@@ -66,35 +66,35 @@ const SEVERITY_TOKENS: Record<
   error: {
     labelKey: 'idsPanel.audit.severity.error',
     pluralLabelKey: 'idsPanel.audit.severity.errors',
-    dot: 'bg-red-500',
-    rail: 'border-l-red-500',
-    chipBg: 'bg-red-500/10',
-    chipFg: 'text-red-600 dark:text-red-400',
-    chipBorder: 'border-red-500/30',
+    dot: 'bg-danger-solid',
+    rail: 'border-l-danger-border',
+    chipBg: 'bg-danger-surface',
+    chipFg: 'text-danger',
+    chipBorder: 'border-danger-border',
     icon: <AlertCircle className="h-4 w-4" aria-hidden="true" />,
-    iconClass: 'text-red-500',
+    iconClass: 'text-danger',
   },
   warning: {
     labelKey: 'idsPanel.audit.severity.warning',
     pluralLabelKey: 'idsPanel.audit.severity.warnings',
-    dot: 'bg-amber-500',
-    rail: 'border-l-amber-500',
-    chipBg: 'bg-amber-500/10',
-    chipFg: 'text-amber-700 dark:text-amber-400',
-    chipBorder: 'border-amber-500/30',
+    dot: 'bg-warn-solid',
+    rail: 'border-l-warn-border',
+    chipBg: 'bg-warn-surface',
+    chipFg: 'text-warn',
+    chipBorder: 'border-warn-border',
     icon: <AlertTriangle className="h-4 w-4" aria-hidden="true" />,
-    iconClass: 'text-amber-500',
+    iconClass: 'text-warn',
   },
   info: {
     labelKey: 'idsPanel.audit.severity.note',
     pluralLabelKey: 'idsPanel.audit.severity.notes',
-    dot: 'bg-sky-400',
-    rail: 'border-l-sky-400',
-    chipBg: 'bg-sky-400/10',
-    chipFg: 'text-sky-600 dark:text-sky-400',
-    chipBorder: 'border-sky-400/30',
+    dot: 'bg-info-solid',
+    rail: 'border-l-info-border',
+    chipBg: 'bg-info-surface',
+    chipFg: 'text-info',
+    chipBorder: 'border-info-border',
     icon: <Info className="h-4 w-4" aria-hidden="true" />,
-    iconClass: 'text-sky-500',
+    iconClass: 'text-info',
   },
 };
 
@@ -168,7 +168,7 @@ export function IDSAuditSummary({
     return (
       <div
         className={cn(
-          'flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400',
+          'flex items-center gap-2 rounded-md border border-ok-border bg-ok-surface px-3 py-2 text-xs text-ok',
           'animate-fade-in-up',
           className
         )}

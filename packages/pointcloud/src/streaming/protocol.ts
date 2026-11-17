@@ -35,6 +35,19 @@ export type WorkerRequest =
       originOffset?: readonly [number, number, number];
     }
   | {
+      /** Restart an open source at a new stride and origin; answered by `opened` (#8777). */
+      kind: 'reopen';
+      requestId: number;
+      sourceId: number;
+      stride: number;
+      originOffset?: readonly [number, number, number];
+    }
+  | {
+      /** Abort an `open` that has not answered yet, so a long bounds scan stops (#8777). */
+      kind: 'abort-open';
+      targetRequestId: number;
+    }
+  | {
       kind: 'next';
       requestId: number;
       sourceId: number;

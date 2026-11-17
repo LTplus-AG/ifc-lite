@@ -79,7 +79,7 @@ export const checkAuthoringEn = {
   'checkAuthoring.textBlock': 'Text',
   'checkAuthoring.validationTable': 'Validation table',
   'checkAuthoring.allChecks': 'every check',
-  'checkAuthoring.liveRows': { one: 'live: {count} {rows} row now for {target}', other: 'live: {count} {rows} rows now for {target}' },
+  'checkAuthoring.liveRows': { one: 'live: {count} row now for {target} (selection: {rows})', other: 'live: {count} rows now for {target} (selection: {rows})' },
   'checkAuthoring.liveRuleMissing': '{target} is not in the current validation report',
   'checkAuthoring.liveEvidenceChanged': '{target} was drafted from a different validation report than the one shown now',
   'checkAuthoring.liveNoReport': 'no validation report is loaded; the table will show rows for {target} once one is run',

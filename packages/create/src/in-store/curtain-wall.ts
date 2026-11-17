@@ -37,6 +37,7 @@
  * plates); IFC2X3 has none on these classes; IFC5 is refused.
  */
 
+import { writeCurtainWallVGrid } from './curtain-wall-spec.js';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { assertFinitePoint3 } from '../ifc-creator-math.js';
@@ -47,6 +48,7 @@ import {
   emitLocalPlacement,
   emitRectangleProfile,
   emitRelContainedInSpatialStructure,
+  emitSurfaceStyle,
   ownerHistoryRef,
   productGuid,
 } from './_emit-helpers.js';
@@ -63,6 +65,8 @@ type Attrs = Parameters<StoreEditor['addEntity']>[1];
 
 const DEFAULT_MULLION: ProfileSection = { Type: 'Rectangle', XDim: 0.05, YDim: 0.15 };
 const DEFAULT_PANEL_THICKNESS = 0.024;
+/** A faint blue-grey float glass. */
+const DEFAULT_PANEL_GLAZING = { red: 0.62, green: 0.76, blue: 0.84, alpha: 0.28 };
 /** Widest bay the default U grid makes (metres). */
 const DEFAULT_MAX_BAY = 1.5;
 const EPS = 1e-9;
@@ -313,6 +317,9 @@ export function addCurtainWallToStore(
     return part('IfcMember', `Transom ${i + 1}`, placement, extrude(transomProfileId, snap(t.u1 - t.u0)), 'MULLION');
   });
   // Panels: one rectangle per clear width (shared between panels of the same width).
+  // Every panel carries the same glazing style, so the wall reads as glass here and
+  // in the exported file, as a hosted window does.
+  const glazing = emitSurfaceStyle(editor, registry.name, DEFAULT_PANEL_GLAZING, 'Curtain wall glazing');
   const panelProfiles = new Map<number, number>();
   const panelIds = layout.panels.map((p, i) => {
     const width = n(snap(p.u1 - p.u0));
@@ -322,13 +329,16 @@ export function addCurtainWallToStore(
       panelProfiles.set(width, profileId);
     }
     const placement = emitLocalPlacement(editor, placementId, [n(p.u0), 0, n(p.v0)]);
-    return part('IfcPlate', `Panel ${i + 1}`, placement, extrude(profileId, snap(p.v1 - p.v0)), 'CURTAIN_PANEL');
+    const solid = extrude(profileId, snap(p.v1 - p.v0));
+    editor.addEntity('IfcStyledItem', [`#${solid}`, [`#${glazing.styleRefId}`], null]);
+    return part('IfcPlate', `Panel ${i + 1}`, placement, solid, 'CURTAIN_PANEL');
   });
 
   const curtainWallId = editor.addEntity(
     'IfcCurtainWall',
     schemaAttributes(registry, 'IfcCurtainWall', curtainWallValues(`#${placementId}`), op) as Attrs,
   ).expressId;
+  writeCurtainWallVGrid(editor.getMutationView(), curtainWallId, params.VGrid ?? 1);
   const relAggregatesId = editor.addEntity('IfcRelAggregates', schemaAttributes(registry, 'IfcRelAggregates', {
     GlobalId: generateIfcGuid(anchor.guidRandom),
     OwnerHistory: owner,

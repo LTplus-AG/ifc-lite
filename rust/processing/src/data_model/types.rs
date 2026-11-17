@@ -35,6 +35,30 @@ pub struct DataModel {
     pub refused: Option<String>,
 }
 
+/// What [`extract_data_model_with`](super::extract_data_model_with) returns:
+/// the data model, plus the number of STEP instances the scan saw.
+///
+/// `total_entities` is NOT `model.entities.len()` whenever the table was
+/// narrowed (`DataModelEntities::Rooted`): over `various/O-S1-BWK-BIM
+/// architectural` a rooted table holds 211,716 rows for 4,411,807 instances.
+/// The parse routes' `DataModelStats.entity_count` describes the model, not
+/// the variant served (#6034); with the narrowing moved ahead of extraction
+/// (#9582) there is no "before" to read `entities.len()` from, so the count
+/// comes out of the scan alongside the model.
+///
+/// It lives here rather than on [`DataModel`] because `DataModel` is a
+/// published struct with all-public fields: a new field there breaks every
+/// downstream struct literal. This type is new and `#[non_exhaustive]`, so
+/// it can grow without that cost.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct DataModelExtraction {
+    /// The extracted data model, already narrowed to the requested variant.
+    pub model: DataModel,
+    /// STEP instances the scan saw, before any narrowing.
+    pub total_entities: usize,
+}
+
 /// Metadata for a single IFC entity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityMetadata {

@@ -89,6 +89,46 @@ pub fn with_terminal_scope<T>(
     result
 }
 
+/// Every [`stop`] in this process, from any thread. A caller that sees the
+/// same count before and after a pass knows no product in it was refused,
+/// cancelled or degraded by resource state, its own or an unrelated scope's
+/// (a rayon wait can run another caller's job under that caller's thread
+/// state). Only the count is shared; no stop state is.
+static STOP_EVENTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The number of [`stop`] calls so far in this process.
+pub fn stop_events() -> u64 {
+    STOP_EVENTS.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Whether this thread runs inside any lexical resource scope: an execution
+/// account, a source stop, a terminal domain or (retained builds) an owned
+/// stop observer. Work inside one can be refused or degraded by that scope's
+/// allowance, cancellation or earlier stop, so its output is not a function
+/// of its inputs alone.
+pub fn ambient_scope_active() -> bool {
+    let owned = {
+        #[cfg(any(
+            all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")),
+            feature = "retained-runtime"
+        ))]
+        {
+            owned::OWNED.with(|slot| slot.borrow().is_some())
+        }
+        #[cfg(not(any(
+            all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")),
+            feature = "retained-runtime"
+        )))]
+        {
+            false
+        }
+    };
+    owned
+        || CURRENT.with(|slot| slot.borrow().is_some())
+        || SOURCE_STOP.with(|slot| slot.borrow().is_some())
+        || TERMINAL.with(|slot| slot.get().is_some())
+}
+
 pub fn current_account() -> Option<ExecutionAccount> {
     CURRENT.with(|slot| slot.borrow().clone())
 }
@@ -164,6 +204,7 @@ pub fn charge(cost: Cost) -> Result<Reservation, ProgramStop> {
     }
 }
 pub fn stop(error: ProgramStop) -> ProgramStop {
+    STOP_EVENTS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     // A deadline is local to the product. Do not poison source, account, owned
     // or lexical terminal channels when a callback echoes its Cancelled value.
     #[cfg(feature = "retained-runtime")]

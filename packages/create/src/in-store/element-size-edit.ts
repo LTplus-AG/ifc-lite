@@ -89,11 +89,12 @@ function setSlabThickness(target: EditTarget, expressId: number, thickness: numb
   return { ok: true, remesh };
 }
 
-function setLinearSize(
+/** Read-only size and ownership checks shared with attachment previews. */
+export function planLinearSizeInStore(
   target: EditTarget,
   expressId: number,
   size: Extract<ElementSizePatch, { kind: 'linear' }>,
-): ElementSizeOutcome {
+): { readonly ok: true; readonly updates: readonly PositionalUpdate[] } | { readonly ok: false; readonly reason: string } {
   if (![size.length, size.width, size.cross].every(positive)) return { ok: false, reason: 'Length and section sizes must be greater than zero' };
   const scale = getModelLengthUnitScale(target.dataStore);
   const chain = resolveLinearElementChain(target.dataStore, target.view, target.editor, expressId, scale);
@@ -124,6 +125,12 @@ function setLinearSize(
   }
   const ownership = editOwnershipRefusal(target.dataStore, target.view, updates.map(update => update.entityId), expandAffectedSet(target.dataStore, target.view, [expressId], 'hostsChanged'));
   if (ownership) return { ok: false, reason: ownership };
-  for (const update of updates) target.editor.setPositionalAttribute(update.entityId, update.index, update.value);
-  return { ok: true, remesh: updates.length > 0 ? [expressId] : [] };
+  return { ok: true, updates };
+}
+
+function setLinearSize(target: EditTarget, expressId: number, size: Extract<ElementSizePatch, { kind: 'linear' }>): ElementSizeOutcome {
+  const plan = planLinearSizeInStore(target, expressId, size);
+  if (!plan.ok) return plan;
+  for (const update of plan.updates) target.editor.setPositionalAttribute(update.entityId, update.index, update.value);
+  return { ok: true, remesh: plan.updates.length > 0 ? [expressId] : [] };
 }

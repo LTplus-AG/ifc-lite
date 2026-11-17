@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """Real fixture edit/run/restore mutations of issue_7955_synthetic.
 
-Run --run inside ONE fleet admission, never nest fleet here. --list is read-only.
+--list is read-only.
 These are input/sidecar fault injections, not Rust kernel source mutants.
 Full cargo transcripts and a final JSON receipt go to the admitted worker log.
 """

@@ -4,7 +4,8 @@
 
 /**
  * Type objects on a loaded model (#6232): an `IfcElementType` subtype
- * (`IfcWallType`, `IfcSlabType`, `IfcDoorType`, ...) and its
+ * (`IfcWallType`, `IfcSlabType`, `IfcDoorType`, ...) or, for spaces, an
+ * `IfcSpatialElementType` subtype (`IfcSpaceType`), and its
  * `IfcRelDefinesByType` to the occurrences it types.
  *
  * The attribute layout is read from the target schema's registry, so the same
@@ -24,7 +25,7 @@ import type { ExistingRelatedList } from './cost.js';
 export type AuthoringAnchor = Pick<SpatialAnchor, 'ownerHistoryId' | 'schema' | 'guidRandom' | 'lengthUnitScale'>;
 
 export interface ElementTypeInStoreParams {
-  /** EXPRESS class of the type object, e.g. `'IfcWallType'`. Must be an IfcElementType subtype in the model's schema. */
+  /** EXPRESS class of the type object, e.g. `'IfcWallType'` or `'IfcSpaceType'`. Must be an IfcElementType or IfcSpatialElementType subtype in the model's schema. */
   Type: string;
   Name: string;
   Description?: string;
@@ -49,6 +50,9 @@ export interface ElementTypeBuildResult {
   typeId: number;
 }
 
+/** The type classes the builder writes: element types, and (IFC4+) spatial element types such as IfcSpaceType. */
+const TYPE_PRODUCT_ROOTS = ['IfcElementType', 'IfcSpatialElementType'];
+
 export function addElementTypeToStore(
   editor: StoreEditor,
   anchor: AuthoringAnchor,
@@ -59,8 +63,9 @@ export function addElementTypeToStore(
   const type = canonicalEntity(registry, params.Type);
   if (!type) throw new Error(`${op}: ${params.Type} does not exist in ${registry.name}`);
   const entity = registry.entities[type];
-  if (entity.isAbstract || !(entity.inheritanceChain ?? []).includes('IfcElementType')) {
-    throw new Error(`${op}: ${type} is not an instantiable IfcElementType subtype`);
+  // IfcSpaceType and the other spatial types are IfcSpatialElementType subtypes from IFC4 on, not element types.
+  if (entity.isAbstract || !TYPE_PRODUCT_ROOTS.some(root => (entity.inheritanceChain ?? []).includes(root))) {
+    throw new Error(`${op}: ${type} is not an instantiable IfcElementType subtype or IfcSpatialElementType subtype`);
   }
   if (typeof params.Name !== 'string' || params.Name.length === 0) throw new Error(`${op}: Name is required`);
 

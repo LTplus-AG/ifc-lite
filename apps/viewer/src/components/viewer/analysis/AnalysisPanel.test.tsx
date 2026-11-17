@@ -34,6 +34,7 @@ import { EVENT_LOAD_FILE } from '@/lib/tours/events';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import type { IDSDocument, IDSValidationReport } from '@ifc-lite/ids';
 import { IDSPanel } from '../IDSPanel.js';
+import { findPanelAction } from '@/test/panel-header.js';
 
 installLayout();
 const initial = useViewerStore.getState();
@@ -154,7 +155,7 @@ describe('AnalysisPanel scaffold, through the IDS panel (#5834)', () => {
   });
 
   for (const embedded of [false, true]) for (const modelCount of [1, 2] as const) {
-    it(`dims stale results without dimming shared actions (${embedded ? 'embedded' : 'standalone'}, ${modelCount} models) (#6690)`, () => {
+    it(`dims stale results without dimming shared actions (${embedded ? 'embedded' : 'standalone'}, ${modelCount} models) (#6690)`, async () => {
       seedModels(modelCount);
       useViewerStore.setState({ idsDocument: documentFixture, mutationVersion: 1, geometryContentVersion: 1 });
       useViewerStore.setState({ idsValidationReport: stampAnalysisReport(reportFor('model-a'), captureAnalysisStamp()) });
@@ -165,7 +166,8 @@ describe('AnalysisPanel scaffold, through the IDS panel (#5834)', () => {
       assert.ok(dimmed.some(region => region.textContent?.includes('Wall requirements')), 'old result cards dim');
       assert.ok(dimmed.some(region => region.textContent?.includes('Specifications Passed')), 'old summary dims');
       for (const label of ['Re-run validation', 'Clear results', 'Load New IDS', 'Unload IDS']) {
-        const control = byLabel(ui, label);
+        // The run slot is a button; the rest are header actions, inline or in More actions (#8802).
+        const control = byLabel(ui, label) ?? await findPanelAction(ui, label);
         assert.ok(control, `${label} remains available`);
         assert.ok(control.closest('.opacity-60') === null, `${label} is outside stale result regions`);
       }
@@ -251,7 +253,7 @@ describe('AnalysisPanel scaffold, through the IDS panel (#5834)', () => {
     });
   });
 
-  it('follows a live locale switch in the shared chrome', () => {
+  it('follows a live locale switch in the shared chrome', async () => {
     seedModels(1);
     useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFor('model-a') });
     const pseudo: Catalogue = Object.fromEntries(Object.entries(analysisPanelEn).map(([key, value]) => [key, `⟦${value}⟧`]));
@@ -259,8 +261,8 @@ describe('AnalysisPanel scaffold, through the IDS panel (#5834)', () => {
     const ui = render(<IDSPanel onClose={() => {}} />);
     act(() => setLocale('analysis-panel-pseudo'));
     assert.ok(byText(ui, '⟦Re-run⟧'), 'run slot');
-    assert.ok(byLabel(ui, '⟦Clear results⟧'), 'clear results');
     assert.ok(byLabel(ui, '⟦Close⟧'), 'close');
+    assert.ok(await findPanelAction(ui, '⟦Clear results⟧'), 'clear results');
     assert.ok(byLabel(ui, '⟦Choose export format⟧'), 'export chooser');
   });
 });

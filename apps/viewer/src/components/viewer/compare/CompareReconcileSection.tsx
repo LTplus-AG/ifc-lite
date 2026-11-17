@@ -171,7 +171,7 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
         </Suspense>
       </ChunkErrorBoundary>
       {outcome && (stale
-        ? <p aria-live="polite" className="text-amber-700 dark:text-amber-400">{t('compareAnalysis.reconcile.stale')}</p>
+        ? <p aria-live="polite" className="text-warn">{t('compareAnalysis.reconcile.stale')}</p>
         : <ReconcileOutcomeView outcome={outcome} />)}
     </div>
   );

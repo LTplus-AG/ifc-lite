@@ -73,7 +73,7 @@ mode, strict tools where the schema allows, eager input streaming, prompt
 caching (tools, then the frozen system prompt, then the run's context),
 `output_config.task_budget` and server-side refusal fallbacks. Turn
 `fallbacks`, `taskBudgets` or `eagerInputStreaming` off for a platform or
-proxy that rejects them. `@anthropic-ai/sdk` is an optional peer dependency.
+proxy that rejects them. `@anthropic-ai/sdk` is an optional peer dependency; the Anthropic adapter requires SDK 1.6 or later within the 1.x line.
 
 `openAiTransport({ apiKey, baseUrl })` from `@ifc-lite/ids-agent/openai`
 speaks OpenAI-compatible Chat Completions through the host's `fetch`.
@@ -111,6 +111,14 @@ created in the run.
 
 `createWorkerModelBridge(port)` / `serveModelBridge(port, impl)` carry a
 `ModelBridge` over a message port, so model data stays in a worker.
+Once `dispose()` has run, every pending and later call rejects
+(`bridge disposed`) instead of waiting for an answer. Pass
+`createWorkerModelBridge(port, { watchErrors: true })` when `port` is a
+`Worker` or `MessagePort`: the bridge then also treats the port's `error` and
+`messageerror` events as the worker dying, and every pending and later call
+rejects with the reason. It is opt-in because an adapter port that forwards
+every event to its `message` listener, whatever the type, would otherwise
+feed ordinary answers to the error handler.
 
 ## Stop conditions, receipts and privacy
 

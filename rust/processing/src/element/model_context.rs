@@ -58,6 +58,8 @@ pub struct ProductionModel {
     state: Arc<ModelState>,
     #[cfg(any(test, feature = "retained-runtime"))]
     source: Option<Arc<ifc_lite_core::SourceBundle>>,
+    #[cfg(feature = "retained-runtime")]
+    texture_vertex_lists: Arc<FxHashMap<u32, u32>>,
 }
 
 impl Default for ProductionModel {
@@ -75,6 +77,8 @@ impl ProductionModel {
         Self {
             #[cfg(any(test, feature = "retained-runtime"))]
             source: None,
+            #[cfg(feature = "retained-runtime")]
+            texture_vertex_lists: Arc::default(),
             state: Arc::new(ModelState {
                 load: NEXT_LOAD.fetch_add(1, Ordering::Relaxed),
                 source_epoch: AtomicU64::new(0),
@@ -97,6 +101,8 @@ impl ProductionModel {
             state: Arc::clone(&self.state),
             #[cfg(any(test, feature = "retained-runtime"))]
             source: self.source.clone(),
+            #[cfg(feature = "retained-runtime")]
+            texture_vertex_lists: Arc::clone(&self.texture_vertex_lists),
         })
     }
 
@@ -121,6 +127,8 @@ pub struct OwnedMeshProductionContext {
     state: Arc<ModelState>,
     #[cfg(any(test, feature = "retained-runtime"))]
     source: Option<Arc<ifc_lite_core::SourceBundle>>,
+    #[cfg(feature = "retained-runtime")]
+    texture_vertex_lists: Arc<FxHashMap<u32, u32>>,
 }
 
 impl OwnedMeshProductionContext {

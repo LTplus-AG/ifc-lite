@@ -134,7 +134,7 @@ export class BimSandboxHandle implements RuntimeSandboxHandle {
   private globals = new Map<string, string>();
   private disposed = false;
 
-  constructor(private sandbox: Sandbox) {}
+  constructor(private sandbox: Pick<Sandbox, 'eval' | 'dispose' | 'moduleRetired'>) {}
 
   setGlobal(name: string, value: unknown): void {
     if (this.disposed) throw new Error('Sandbox disposed.');
@@ -148,7 +148,9 @@ export class BimSandboxHandle implements RuntimeSandboxHandle {
     // serialisation crashes. The bridge has already installed `bim`
     // inside the QuickJS realm — synthesize ctx from that instead.
     if (name === '__ifclite_ctx__') {
-      this.globals.set(name, `globalThis.__ifclite_ctx__ = { bim: globalThis.bim };`);
+      // Invocation arguments are captured in the command's own source wrapper,
+      // never staged on this shared activation across awaits (#8947).
+      this.globals.set(name, 'globalThis.__ifclite_ctx__ = { bim: globalThis.bim };');
       return;
     }
     // Other globals (test args, synthetic-spec data) are JSON-safe;
@@ -209,7 +211,7 @@ export class BimSandboxHandle implements RuntimeSandboxHandle {
       const msg = err instanceof Error ? err.message : String(err);
       if (/Lifetime not alive|QuickJSUseAfterFree/i.test(msg)) {
         this.disposed = true;
-        try { this.sandbox.dispose(); } catch { /* already torn down */ }
+        try { this.sandbox.dispose(); } catch (disposeError) { console.warn('[sandbox-factory] dead sandbox teardown failed', disposeError); }
         throw new Error(
           'Sandbox was torn down between activate and run. Click Run again — the runtime will reactivate.',
         );

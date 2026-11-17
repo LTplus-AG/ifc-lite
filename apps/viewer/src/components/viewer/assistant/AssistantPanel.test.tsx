@@ -20,6 +20,8 @@ import { setGenerationLanguagePreference, useGenerationLanguagePreference } from
 import { setAssistantDraft } from '@/lib/assistant/composer-draft';
 import { useAssistantPlacement } from '@/lib/assistant/placement';
 import { summarizeClashes, type Clash } from '@ifc-lite/clash';
+import { findPanelAction, runPanelAction } from '@/test/panel-header.js';
+import { formFactorState } from '@/test/form-factor-state';
 
 const initial = useViewerStore.getState();
 const initialGenerationLanguage = useGenerationLanguagePreference.getState().language;
@@ -59,16 +61,18 @@ test('registered Clash and Data validation headers expose the actual contextual 
   useViewerStore.setState(fixtureModels(fixtureModel('m')));
   const clash = render(renderPanelBody('clash', () => undefined));
   // #8520: the registered panel mounts through React.lazy.
-  await waitFor(() => !!clash.querySelector('button[aria-label="Discuss with AI"]'), 'Clash panel mounted');
-  const discuss = clash.querySelector('button[aria-label="Discuss with AI"]');
-  assert.ok(discuss, 'Clash native header includes Discuss with AI');
-  click(discuss);
+  await waitFor(() => !!clash.querySelector('[data-panel-header]'), 'Clash panel mounted');
+  // The shared header (#8802) holds it inline or in its More actions menu.
+  assert.ok(await findPanelAction(clash, 'Discuss with AI'), 'Clash native header includes Discuss with AI');
+  await runPanelAction(clash, 'Discuss with AI');
   assert.equal(useAssistant.getState().snapshot?.source, 'clash');
   cleanup();
   setValidationSourceChoice('ids');
   const validation = render(renderPanelBody('validation', () => undefined));
+  // #9634: prove the real panel mounted before asserting an action is absent.
+  await waitFor(() => validation.querySelector('[data-validation-panel]') !== null, 'Data validation feature mounted');
   // No report is attached yet, so the source mismatch hides discussion.
-  assert.equal(validation.querySelector('button[aria-label="Discuss with AI"]'), null);
+  assert.equal(await findPanelAction(validation, 'Discuss with AI'), undefined);
   // #6833: the manual side discusses the manual checklist (human verdicts), not the IDS report.
   act(() => setValidationSourceChoice('manual'));
   const manual = validation.querySelector('button[aria-label="Discuss with AI"]');
@@ -208,7 +212,7 @@ test('#7053 language extensions survive portable conversation decoding and malfo
 
 test('#7053 a floating Assistant keeps Back to Clash when the native sidebar is collapsed', () => {
   useViewerStore.setState({ sidebarActivePanel: 'clash', sidebarMode: 'expanded', rightPanelCollapsed: false,
-    isMobile: false, floatingPanels: [], poppedOutIds: [] });
+    ...formFactorState(false), floatingPanels: [], poppedOutIds: [] });
   useAssistantPlacement.setState({ placement: 'floating', returnTarget: 'clash' });
   replaceEvidence(captureEvidence('clash'));
   const ui = render(<AssistantPanel />);

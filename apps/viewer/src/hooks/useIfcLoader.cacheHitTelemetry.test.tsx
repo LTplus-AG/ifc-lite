@@ -60,6 +60,8 @@ import {
 } from '@ifc-lite/data';
 import { BinaryCacheWriter, type CacheDataStore } from '@ifc-lite/cache';
 import type { TessellationQuality } from '@ifc-lite/geometry';
+import { settle } from '@/test/settle.js';
+import { advance } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { CACHE_SIZE_THRESHOLD } from '@/utils/ifcConfig.js';
@@ -234,17 +236,29 @@ async function captureCacheHitPayload(
 
   // Only this load's events: the first test drives two loads in one case, and
   // "exactly one cache hit" must be a statement about THIS one.
-  captured.length = 0;
+  const start = captured.length;
   await act(async () => {
     await hookApi!.loadFile(file, { kind: 'primary' }, loadOptions);
   });
 
-  const hits = captured.filter((p) => p.load_path === 'cache');
+  // Wait for this load's lazily delivered capture before checking its count.
+  const hasCacheHit = () => captured.slice(start).some((p) => p.load_path === 'cache');
+  const waitForCacheHit = async (): Promise<boolean> => {
+    const deadline = Date.now() + 2_000;
+    while (!hasCacheHit() && Date.now() < deadline) await advance(5);
+    return hasCacheHit();
+  };
+  await waitForCacheHit();
+  await act(async () => {
+    await settle('cache-hit telemetry delivery drained');
+  });
+  const loadEvents = captured.slice(start);
+  const hits = loadEvents.filter((p) => p.load_path === 'cache');
   assert.equal(
     hits.length,
     1,
     `expected exactly one cache-hit ifc_model_loaded event, got ${hits.length} `
-    + `(all captured load_paths: ${JSON.stringify(captured.map((p) => p.load_path))}). `
+    + `(all captured load_paths: ${JSON.stringify(loadEvents.map((p) => p.load_path))}). `
     + 'A count of 0 means the load never reached the cache-hit branch, so this '
     + 'test would prove nothing — fix the fixture, do not relax the assertion.',
   );

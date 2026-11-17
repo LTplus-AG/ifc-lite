@@ -171,11 +171,11 @@ export function SpecificationCard({
                     <Building2 className="h-3 w-3" />
                     {t('idsPanel.entities', { count: result.applicableCount, countDisplay: formatLocaleNumber(locale, result.applicableCount) })}
                   </span>
-                  <span className="text-green-600">{t('idsPanel.passedCount', {
+                  <span className="text-ok">{t('idsPanel.passedCount', {
                     count: result.passedCount,
                     countDisplay: formatLocaleNumber(locale, result.passedCount),
                   })}</span>
-                  <span className="text-red-600">{t('idsPanel.failedCount', {
+                  <span className="text-danger">{t('idsPanel.failedCount', {
                     count: result.failedCount,
                     countDisplay: formatLocaleNumber(locale, result.failedCount),
                   })}</span>
@@ -184,9 +184,9 @@ export function SpecificationCard({
                   <PassRateBar passRate={displayRate} />
                   {notChecked && <span className="text-xs text-muted-foreground">{t('manualValidation.verdict.unanswered')}</span>}
                 </div>
-                {isIDS && result.error !== undefined && <p className="mt-1 text-xs text-red-600">{result.error}</p>}
+                {isIDS && result.error !== undefined && <p className="mt-1 text-xs text-danger">{result.error}</p>}
                 {isIDS && result.cardinalityResult?.passed === false && (
-                  <p className="mt-1 text-xs text-red-600">{result.cardinalityResult.message}</p>
+                  <p className="mt-1 text-xs text-danger">{result.cardinalityResult.message}</p>
                 )}
                 {/* The breakdown names the units used by the IDS percentage. */}
                 {applicableChecks > 0 && (
@@ -204,7 +204,7 @@ export function SpecificationCard({
                     populated by IDS, so this line only appears for a
                     rule-set report that has one of these requirement kinds. */}
                 {(duplicateGroupCount > 0 || failedAggregateCount > 0) && (
-                  <div className="mt-1 text-xs text-red-600">
+                  <div className="mt-1 text-xs text-danger">
                     {duplicateGroupCount > 0 && t('validationPanel.setResult.duplicateGroupsSummary', {
                       count: duplicateGroupCount,
                       countDisplay: formatLocaleNumber(locale, duplicateGroupCount),

@@ -153,7 +153,7 @@ test('a report outline from validation evidence previews live table rows and sav
   const ui = render(<AssistantPanel />);
   await waitFor(() => !!ui.querySelector('section[aria-label="Review report outline"]'), 'the outline review mounts');
   const review = ui.querySelector<HTMLElement>('section[aria-label="Review report outline"]')!;
-  assert.match(review.textContent ?? '', new RegExp(`live: ${failed} failed rows? now for spec-1`));
+  assert.ok((review.textContent ?? '').includes(`live: ${failed} ${failed === 1 ? 'row' : 'rows'} now for spec-1 (selection: Failed entities)`));
   click(button(review, /Save as new document/));
   await waitFor(() => /Saved to the Documents library/.test(review.textContent ?? ''), 'the document saves');
   click(button(review, /Open in Documents/));
@@ -181,6 +181,6 @@ test('an outline bound to a specification is refused once another validation run
   const rerun = await run();
   act(() => useViewerStore.setState({ idsValidationReport: rerun }));
   assert.match(review.textContent ?? '', /spec-1 was drafted from a different validation report than the one shown now/);
-  assert.doesNotMatch(review.textContent ?? '', /live: \d+ failed rows? now for spec-1/, 'no rows are shown from the other report');
+  assert.doesNotMatch(review.textContent ?? '', /live: \d+ rows? now for spec-1 \(selection: Failed entities\)/, 'no rows are shown from the other report');
   assert.equal(button(review, /Save as new document/).disabled, true);
 });

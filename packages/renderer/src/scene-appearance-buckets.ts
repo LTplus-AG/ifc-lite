@@ -63,7 +63,10 @@ export class AppearanceBuckets {
     parts.forEach((part, index) => {
       const bucket = this.access.reverse().get(part);
       if (bucket) {
-        if (!bucket.batchedMesh || bucket.batchedMesh.gpuResident === false)
+        // The owned and rest batches are built from the CPU pieces, so a warm
+        // batch the budget evicted needs no rebuild of its own buffers first,
+        // which would only be freed again below (#9050, #9136, #9227).
+        if (!bucket.batchedMesh || (bucket.batchedMesh.gpuResident === false && bucket.meshData.length === 0))
           throw new Error('Appearance requires resident finalized geometry');
         const indices = grouped.get(bucket) ?? [];
         indices.push(index);

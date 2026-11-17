@@ -1,0 +1,50 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Weekly proof that test.yml's rust-semver install still works, since PRs only
+# install it when a crate version moved. Same composite action, then the full
+# gate, whose first act is the `cargo +stable semver-checks` probe. Between
+# releases no crate is compared, so this proves the install and the probe.
+
+name: Rust semver canary
+
+on:
+  schedule:
+    # Wednesday 06:37 UTC, a slot no other scheduled workflow uses.
+    - cron: '37 6 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-semver-canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: Rust semver canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust-semver
+      - name: Check crate semver against crates.io
+        run: node scripts/check-rust-semver.mjs
+
+  report-scheduled-failure:
+    needs: [canary]
+    if: always() && github.event_name == 'schedule' && needs.canary.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Rust semver canary
+      jobs: canary
+      result: canary=${{ needs.canary.result }}
+    permissions:
+      actions: read
+      contents: read
+      issues: write

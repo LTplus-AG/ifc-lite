@@ -47,11 +47,11 @@ async function records(content: string | Uint8Array) {
   const store = await parsed(content), extractor = new EntityExtractor(store.source);
   return [...store.entityIndex.byId].map(([id, ref]) => [id, extractor.extractEntity(ref)] as const).sort((a, b) => a[0] - b[0]);
 }
-// Only this fixture's exporter-generated Space Pset/Qto graph is compared by
+// This fixture's exporter-generated Space and authored base quantities are compared by
 // meaning. Repeated identical-state exports change these four synthetic GUIDs;
 // Undo also keeps the allocator monotonic. Every source/authored record retains
 // its exact id, GUID and attributes. Unknown helpers or associations fail.
-function metadataSnapshot(saved: Awaited<ReturnType<typeof records>>, known: ReadonlySet<number>, spaceId?: number) {
+function metadataSnapshot(saved: Awaited<ReturnType<typeof records>>, known: ReadonlySet<number>, spaceId?: number, authoredIds: readonly number[] = []) {
   const all = new Map(saved), generated = new Map(saved.filter(([id]) => !known.has(id)));
   const consumed = new Set<number>();
   const consume = (id: unknown) => {
@@ -63,33 +63,52 @@ function metadataSnapshot(saved: Awaited<ReturnType<typeof records>>, known: Rea
     return entity;
   };
   const metadata = [];
+  let spaceRecords = 0;
+  const quantityOwners = new Set<number>();
+  const quantityNames: Record<string, string> = { IFCWALL: 'Qto_WallBaseQuantities', IFCSLAB: 'Qto_SlabBaseQuantities', IFCROOF: 'Qto_RoofBaseQuantities', IFCCOLUMN: 'Qto_ColumnBaseQuantities', IFCBEAM: 'Qto_BeamBaseQuantities' };
   for (const [id, entity] of generated) {
     if (entity?.type !== 'IFCRELDEFINESBYPROPERTIES') continue;
     const relation = consume(id);
     expect(relation.attributes).toHaveLength(6);
     expect(relation.attributes[0]).toMatch(/^[0-9A-Za-z_$]{22}$/);
-    if (spaceId === undefined) throw new Error('Generated metadata has no authored Space owner');
-    expect(relation.attributes[4]).toEqual([spaceId]);
-    expect(all.get(spaceId)?.type).toBe('IFCSPACE');
+    const owners = relation.attributes[4];
+    if (!Array.isArray(owners) || owners.length !== 1 || typeof owners[0] !== 'number') throw new Error('Generated metadata has no single product owner');
+    const ownerId = owners[0], ownerType = all.get(ownerId)?.type ?? '';
+    const isSpace = ownerId === spaceId;
+    if (isSpace) expect(ownerType).toBe('IFCSPACE');
+    else {
+      // #9296: live headless base quantities also generate metadata for authored products.
+      expect(authoredIds).toContain(ownerId);
+      expect(quantityNames[ownerType]).toBeDefined();
+      quantityOwners.add(ownerId);
+    }
     const definition = consume(relation.attributes[5]);
     expect(definition.attributes[0]).toMatch(/^[0-9A-Za-z_$]{22}$/);
     const propertySet = definition.type === 'IFCPROPERTYSET';
-    expect(definition.type).toBe(propertySet ? 'IFCPROPERTYSET' : 'IFCELEMENTQUANTITY');
+    expect(definition.type).toBe(isSpace && propertySet ? 'IFCPROPERTYSET' : 'IFCELEMENTQUANTITY');
     expect(definition.attributes).toHaveLength(propertySet ? 5 : 6);
-    expect(definition.attributes[2]).toBe(propertySet ? 'Pset_SpaceCommon' : 'Qto_SpaceBaseQuantities');
+    expect(definition.attributes[2]).toBe(isSpace ? (propertySet ? 'Pset_SpaceCommon' : 'Qto_SpaceBaseQuantities') : quantityNames[ownerType]);
     const leafIds = definition.attributes.at(-1);
     if (!Array.isArray(leafIds)) throw new Error('Generated metadata has no property/quantity aggregate');
-    expect(leafIds).toHaveLength(propertySet ? 4 : 5);
+    if (isSpace) { expect(leafIds).toHaveLength(propertySet ? 4 : 6); spaceRecords += 2 + leafIds.length; }
+    else expect(leafIds.length).toBeGreaterThan(0);
     const leaves = leafIds.map(leafId => {
       const leaf = consume(leafId);
       expect(leaf.type).toMatch(propertySet ? /^IFCPROPERTYSINGLEVALUE$/ : /^IFCQUANTITY(AREA|LENGTH|VOLUME)$/);
       expect(leaf.attributes).toHaveLength(propertySet ? 4 : 5);
       return { type: leaf.type, attributes: leaf.attributes };
     }).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    // #9423: gross/net perimeters replace the old single Perimeter quantity.
+    if (isSpace && !propertySet) expect(Object.fromEntries(leaves.map(leaf => [leaf.attributes[0], leaf.attributes[3]])))
+      .toEqual({ GrossFloorArea: 12, NetFloorArea: 12, GrossPerimeter: 14, NetPerimeter: 14, Height: 3, GrossVolume: 36 });
     metadata.push({ relation: relation.attributes.slice(1, 5), type: definition.type,
+      GlobalId: isSpace ? undefined : definition.attributes[0], relationGlobalId: isSpace ? undefined : relation.attributes[0],
       definition: definition.attributes.slice(1, -1), leaves });
   }
-  expect(generated.size).toBe(spaceId !== undefined && all.has(spaceId) ? 13 : 0);
+  // #9355: an empty relation loop must not hide missing authored quantities.
+  const expectedOwners = authoredIds.filter(id => quantityNames[all.get(id)?.type ?? '']);
+  expect([...quantityOwners].sort((a,b) => a-b)).toEqual(expectedOwners.sort((a,b) => a-b));
+  expect(spaceRecords).toBe(spaceId !== undefined && all.has(spaceId) ? 14 : 0);
   expect(consumed.size).toBe(generated.size);
   return { count: saved.length, known: saved.filter(([id]) => known.has(id)),
     metadata: metadata.sort((a, b) => a.type.localeCompare(b.type)) };
@@ -173,7 +192,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 all ordinary methods on actual loaded back
         const before = await records(target.bim.export.ifc()), journal = target.backend.getMutationView()!.getMutations();
         const refs: EntityRef[] = [], sourceIds = before.map(([expressId]) => expressId);
         const knownIds = () => new Set([...sourceIds, ...target.backend.getMutationView()!.getNewEntities().map(entity => entity.expressId)]);
-        const snapshot = async () => metadataSnapshot(await records(target.bim.export.ifc()), knownIds(), refs[4]?.expressId);
+        const snapshot = async () => metadataSnapshot(await records(target.bim.export.ifc()), knownIds(), refs[4]?.expressId, refs.map(ref => ref.expressId));
         const snapshots = [metadataSnapshot(before, knownIds())];
         for (const kind of KINDS) {
           refs.push(kind.add(target.bim, target.id));
@@ -189,7 +208,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 all ordinary methods on actual loaded back
         expect(second.filter(([expressId]) => known.has(expressId))).toEqual(first.filter(([expressId]) => known.has(expressId)));
         expect(view.getNewEntities()).toEqual(overlay);
         expect(view.getMutations()).toEqual(history);
-        expect(metadataSnapshot(second, known, refs[4].expressId)).toEqual(metadataSnapshot(first, known, refs[4].expressId));
+        expect(metadataSnapshot(second, known, refs[4].expressId, refs.map(ref => ref.expressId))).toEqual(metadataSnapshot(first, known, refs[4].expressId, refs.map(ref => ref.expressId)));
         const generated = (saved: typeof first) => saved.filter(([expressId]) => !known.has(expressId));
         console.info('D5 identical-state repeated-export diagnostic', JSON.stringify({ models: count,
           recordCounts: [first.length, second.length], knownRecordCount: first.filter(([expressId]) => known.has(expressId)).length,

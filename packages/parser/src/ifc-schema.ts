@@ -10,9 +10,10 @@ import { getCanonicalEntityName, type SchemaEntityNameSnapshot } from './schema-
  * Do NOT hardcode entity types or attributes here; regenerate instead.
  */
 
-import { SCHEMA_REGISTRY, getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
+import { getSchemaRegistry, getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
 import { getSchemaRegistryForVersion } from './generated/schema-registry-by-version.js';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, IFC_DATA_TYPES, type IfcEntityInfo } from '@ifc-lite/data';
+import { schemaFromIdentifier } from './source-header.js';
+import { getEntitiesIfc2x3, getEntitiesIfc4Express, getEntitiesIfc4x3, getIfcDataTypes, type IfcEntityInfo } from '@ifc-lite/data';
 
 // Union map across every bundled IFC schema (2X3 + 4 + 4X3). The parser
 // has to categorize entities from ANY schema the user loads — so the
@@ -24,15 +25,23 @@ import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, IFC_DATA_TYPES
 // raw table carries alignment-extension entities IFC4 does not declare
 // (#5204), and folding them in made `isKnownType` answer `true` for names no
 // bundled schema has.
-const ENTITY_INFO_BY_UPPER: Map<string, IfcEntityInfo> = (() => {
-    const map = new Map<string, IfcEntityInfo>();
-    for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3]) {
-        for (const entity of list) {
-            map.set(entity.name.toUpperCase(), entity);
+//
+// Built on first use, not when this module loads: the three tables are
+// decoded on first use too, and a bundle that loads the parser need not pay
+// for them before it parses anything.
+let entityInfoByUpper: Map<string, IfcEntityInfo> | undefined;
+function getEntityInfoByUpper(): Map<string, IfcEntityInfo> {
+    if (entityInfoByUpper === undefined) {
+        const map = new Map<string, IfcEntityInfo>();
+        for (const list of [getEntitiesIfc2x3(), getEntitiesIfc4Express(), getEntitiesIfc4x3()]) {
+            for (const entity of list) {
+                map.set(entity.name.toUpperCase(), entity);
+            }
         }
+        entityInfoByUpper = map;
     }
-    return map;
-})();
+    return entityInfoByUpper;
+}
 
 // Aliases for entity names that appear in real STEP files but aren't in
 // the bundled EXPRESS schema exports — typically draft IFC4x3 additions
@@ -106,12 +115,22 @@ export function resolveEntityNameAlias(type: string): string {
 // None of the pin's 776 ENTITY names appears in any of these tables, so the
 // subtraction cannot change an IFC4 answer — and could not reject a pinned
 // class even if it did, because `isKnownType` falls back to `isKnownEntity`.
-const NON_ENTITY_NAMES_UPPER: ReadonlySet<string> = new Set([
-    ...IFC_DATA_TYPES.map(t => t.name.toUpperCase()),
-    ...Object.keys(SCHEMA_REGISTRY.types).map(n => n.toUpperCase()),
-    ...Object.keys(SCHEMA_REGISTRY.enums).map(n => n.toUpperCase()),
-    ...Object.keys(SCHEMA_REGISTRY.selects).map(n => n.toUpperCase()),
-]);
+// Built on first use: it reads the IFC4 pin's registry, which is decoded only
+// when something first asks (a bundle that loads this module but never asks
+// pays nothing for it).
+let nonEntityNamesUpper: ReadonlySet<string> | undefined;
+function getNonEntityNamesUpper(): ReadonlySet<string> {
+    if (nonEntityNamesUpper === undefined) {
+        const pin = getSchemaRegistry();
+        nonEntityNamesUpper = new Set([
+            ...getIfcDataTypes().map(t => t.name.toUpperCase()),
+            ...Object.keys(pin.types).map(n => n.toUpperCase()),
+            ...Object.keys(pin.enums).map(n => n.toUpperCase()),
+            ...Object.keys(pin.selects).map(n => n.toUpperCase()),
+        ]);
+    }
+    return nonEntityNamesUpper;
+}
 
 /**
  * Entity-metadata lookup across the bundled schema union (2X3 + 4 + 4X3) —
@@ -127,14 +146,14 @@ const NON_ENTITY_NAMES_UPPER: ReadonlySet<string> = new Set([
  */
 function getEntityInfoAcrossSchemas(type: string): IfcEntityInfo | undefined {
     const upper = type.toUpperCase();
-    if (NON_ENTITY_NAMES_UPPER.has(upper)) return undefined;
-    return ENTITY_INFO_BY_UPPER.get(upper);
+    if (getNonEntityNamesUpper().has(upper)) return undefined;
+    return getEntityInfoByUpper().get(upper);
 }
 
 function getInheritanceChainFromSchemaUnion(type: string): string[] | null {
     const upper = type.toUpperCase();
     const canonical = resolveEntityNameAlias(type);
-    const start = ENTITY_INFO_BY_UPPER.get(canonical.toUpperCase());
+    const start = getEntityInfoByUpper().get(canonical.toUpperCase());
     if (!start) return null;
     const chain: string[] = [];
     const seen = new Set<string>();
@@ -146,7 +165,7 @@ function getInheritanceChainFromSchemaUnion(type: string): string[] | null {
     while (cursor && !seen.has(cursor.name)) {
         chain.push(cursor.name);
         seen.add(cursor.name);
-        cursor = cursor.parent ? ENTITY_INFO_BY_UPPER.get(cursor.parent.toUpperCase()) : undefined;
+        cursor = cursor.parent ? getEntityInfoByUpper().get(cursor.parent.toUpperCase()) : undefined;
     }
     return chain;
 }
@@ -174,15 +193,45 @@ export function getAttributeNamesAcrossSchemas(type: string): string[] {
     const pinned = getAttributeNames(type);
     if (pinned.length > 0) return pinned;
     const canonical = resolveEntityNameAlias(type);
-    const info = ENTITY_INFO_BY_UPPER.get(canonical.toUpperCase());
+    const info = getEntityInfoByUpper().get(canonical.toUpperCase());
     return info ? [...info.attributes] : [];
+}
+
+/**
+ * The bundled registry family for a schema given either as a store's
+ * `schemaVersion` (`IFC4X3`) or as a FILE_SCHEMA identifier (`IFC4X3_ADD2`,
+ * `IFC2X3_TC1`). Stripping punctuation instead (`IFC4X3_ADD2` -> `IFC4X3ADD2`)
+ * matched no family, so those identifiers silently got IFC4 answers.
+ */
+function registryFamily(schema: string | undefined): 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined {
+    const family = schema === undefined ? undefined : schemaFromIdentifier(schema);
+    return family === 'IFC2X3' || family === 'IFC4' || family === 'IFC4X3' ? family : undefined;
+}
+
+// A finite name snapshot already validated its registry. Keep an enumerable
+// witness so repeated reads avoid recounting every class; removal/replacement
+// still goes through the original empty-registry guard and its diagnostic.
+const nameSnapshotRegistries = new WeakMap<SchemaEntityNameSnapshot, {
+    family: NonNullable<ReturnType<typeof registryFamily>>;
+    registry: SchemaEntityNameSnapshot['registry']; witness: string;
+}>();
+
+function registryForAttributeNames(family: NonNullable<ReturnType<typeof registryFamily>>, snapshot?: SchemaEntityNameSnapshot) {
+    const cached = snapshot && nameSnapshotRegistries.get(snapshot);
+    if (cached?.family === family && cached.registry === snapshot?.registry
+        && Object.prototype.propertyIsEnumerable.call(cached.registry.entities, cached.witness)) return cached.registry;
+    const registry = getSchemaRegistryForVersion(family);
+    if (snapshot?.registry === registry) {
+        nameSnapshotRegistries.set(snapshot, { family, registry, witness: Object.keys(registry.entities)[0]! });
+    }
+    return registry;
 }
 
 /** Attribute names in one model schema, falling back to the bundled union. */
 export function getAttributeNamesForSchema(type: string, schema: string | undefined, snapshot?: SchemaEntityNameSnapshot): string[] {
-    const normalized = schema?.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (normalized === 'IFC2X3' || normalized === 'IFC4' || normalized === 'IFC4X3') {
-        const registry = getSchemaRegistryForVersion(normalized);
+    const family = registryFamily(schema);
+    if (family) {
+        const registry = registryForAttributeNames(family, snapshot);
         const canonical = getCanonicalEntityName(registry, type, snapshot);
         const attributes = canonical ? registry.entities[canonical]?.allAttributes : undefined;
         if (attributes) return attributes.map(attribute => attribute.name);
@@ -197,10 +246,10 @@ export function getAttributeNamesForSchema(type: string, schema: string | undefi
  * predefined property set's attributes as properties, and this is their dataType.
  */
 export function getAttributeTypeForSchema(type: string, attribute: string, schema: string | undefined): string | undefined {
-    const normalized = schema?.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const family = registryFamily(schema);
     let attributes: ReadonlyArray<{ name: string; type: string }> | undefined;
-    if (normalized === 'IFC2X3' || normalized === 'IFC4' || normalized === 'IFC4X3') {
-        const registry = getSchemaRegistryForVersion(normalized);
+    if (family) {
+        const registry = getSchemaRegistryForVersion(family);
         const canonical = getCanonicalEntityName(registry, type);
         attributes = canonical ? registry.entities[canonical]?.allAttributes : undefined;
     }

@@ -18,6 +18,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::schema_grid_frames::{GridFrames, GRID, GRID_PLACEMENT, INTERSECTION};
 use crate::step_slot::split_top_level_args;
 
 const ASSIGNMENT: &str = "IFCPRESENTATIONSTYLEASSIGNMENT";
@@ -50,6 +51,9 @@ pub(crate) struct StyleFlatten {
     emptied: HashSet<u32>,
     /// The canonical source schema; empty when the export does not flatten.
     from: &'static str,
+    /// The other record this conversion rewrites from a pre-pass, on the same
+    /// hook (#9026 item 14). Read only by [`Self::for_export`].
+    grids: GridFrames,
 }
 
 /// `(type keyword, attribute text)` of a `#id=TYPE(attrs);` record.
@@ -120,7 +124,16 @@ impl StyleFlatten {
     pub(crate) fn for_export(content: &[u8], from: &str, to: &str) -> Self {
         let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
         let idle = Self { from: if Self::applies(from, to) { from } else { "" }, ..Self::default() };
-        Self::build(content, from, to).unwrap_or(idle)
+        let mut flat = Self::build(content, from, to).unwrap_or(idle);
+        if !flat.from.is_empty() {
+            flat.grids = GridFrames::scan(content);
+        }
+        flat
+    }
+
+    /// Which grids this export writes; see [`GridFrames::retain`].
+    pub(crate) fn retain_grids(&mut self, written: impl Fn(u32) -> bool) {
+        self.grids.retain(written);
     }
 
     /// `line`, flattened when it is a styled item naming an assignment;
@@ -171,6 +184,7 @@ impl StyleFlatten {
         for (id, text) in records {
             match split_record(text) {
                 Some((ty, _, _)) if ty.eq_ignore_ascii_case(ASSIGNMENT) => self.note(id, text),
+                Some((ty, _, _)) if ty.eq_ignore_ascii_case(GRID) || ty.eq_ignore_ascii_case(INTERSECTION) => self.grids.note(id, ty, text),
                 Some((ty, _, _)) if is_styled(self.from, ty) => self.note_styled(id, text),
                 _ => {}
             }
@@ -189,6 +203,7 @@ impl StyleFlatten {
         edits: &HashMap<u32, std::collections::BTreeMap<usize, String>>,
     ) {
         for (id, e) in edits {
+            self.grids.note_edits(*id, e);
             if let (true, Some(v)) = (self.members.contains_key(id), e.get(&0)) {
                 if let Some(m) = list_members(v) {
                     self.members.insert(*id, without_null_style(m));
@@ -305,6 +320,12 @@ impl StyleFlatten {
         let Some((ty, attrs, head)) = split_record(body) else { return Flat::Keep };
         let Some(mut args) = split_top_level_args(attrs) else { return Flat::Keep };
         let mut changed = false;
+        if !self.from.is_empty() && ty.eq_ignore_ascii_case(GRID_PLACEMENT) {
+            if let Some(lifted) = self.grids.lift(&args) {
+                args = lifted;
+                changed = true;
+            }
+        }
         if let Some(flat) = self.flattened(from, ty, &args) {
             if flat.is_empty() {
                 return Flat::Drop;

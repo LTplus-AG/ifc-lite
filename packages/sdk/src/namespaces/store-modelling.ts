@@ -5,7 +5,7 @@
 /** Loaded-model modelling methods of bim.store (#6232 D5). */
 import type {
   AlignMode, ElementTransformInput, ElementSplitRequest, ElementTrimExtendParams,
-  CopyTransform, CopyArrayParams,
+  CopyTransform, CopyArrayParams, MirrorElementsParams, ClassificationInStoreParams,
   HostedElementEdit, CurtainWallInStoreParams, GridInStoreParams, GridColumnBinding, ColumnInStoreParams, ProfiledColumnInStoreParams,
   HostedDoorInStoreParams, HostedWindowInStoreParams, OpeningInStoreParams, ElementTypeInStoreParams,
   MaterialInStoreParams, MaterialLayerSetInStoreParams, MaterialLayerSetUsageInStoreParams, WallJoinApplyOptions,
@@ -13,10 +13,29 @@ import type {
 } from '@ifc-lite/create';
 import type { RoomCommand, RoomCommandResult } from '../store-room-command.js';
 import type { BimBackend, EntityRef } from '../types.js';
+import type { CopiedElementRef } from '../store-copy-refs.js';
 import type { PhysicalSizePatch } from '../store-physical-types.js';
 
 export class StoreModellingNamespace {
   constructor(protected backend: BimBackend) {}
+
+  mirrorElements(modelId: string, ids: readonly number[], params: MirrorElementsParams): EntityRef[] {
+    const method = this.backend.store.mirrorElements;
+    if (!method) throw new Error('bim.store.mirrorElements: unavailable on this backend');
+    return method.call(this.backend.store, modelId, ids, params);
+  }
+
+  addClassification(modelId: string, params: ClassificationInStoreParams): EntityRef {
+    const method = this.backend.store.addClassification;
+    if (!method) throw new Error('bim.store.addClassification: unavailable on this backend');
+    return method.call(this.backend.store, modelId, params);
+  }
+
+  assignClassification(modelId: string, classificationId: number, objects: readonly number[]): EntityRef {
+    const method = this.backend.store.assignClassification;
+    if (!method) throw new Error('bim.store.assignClassification: unavailable on this backend');
+    return method.call(this.backend.store, modelId, classificationId, objects);
+  }
 
   async roomCommand(modelId: string, storeyId: number, command: RoomCommand): Promise<RoomCommandResult> {
     const method = this.backend.store.roomCommand;
@@ -60,11 +79,24 @@ export class StoreModellingNamespace {
     return method.call(this.backend.store, ref, params);
   }
 
-  /** Paste a dependency-pruned selection in storey-local metres/radians. */
-  copyElements(modelId: string, expressIds: readonly number[], transforms: readonly CopyTransform[]): EntityRef[] {
+  /**
+   * Paste a selection in storey-local metres/radians: one ref per selected element per transform, in
+   * selection order. A copy whose top could not follow its new storey is listed in `unattachedTops`.
+   */
+  copyElements(modelId: string, expressIds: readonly number[], transforms: readonly CopyTransform[]): CopiedElementRef[] {
     const method = this.backend.store.copyElements;
     if (!method) throw new Error('bim.store.copyElements: not available on this backend');
     return method.call(this.backend.store, modelId, expressIds, transforms);
+  }
+
+  /**
+   * Copy a selection onto each of `storeyIds` at the same plan position and height above the floor, as one
+   * atomic, undoable operation; returns the copies per storey. Attachments re-bind on each storey (#9296).
+   */
+  copyToStoreys(modelId: string, expressIds: readonly number[], storeyIds: readonly number[]): Array<{ storeyId: number; refs: CopiedElementRef[] }> {
+    const method = this.backend.store.copyToStoreys;
+    if (!method) throw new Error('bim.store.copyToStoreys: not available on this backend');
+    return method.call(this.backend.store, modelId, expressIds, storeyIds);
   }
 
   /** Duplicate with its hosted graph and a new GlobalId; offset is storey-local IFC XYZ metres. */
@@ -75,7 +107,7 @@ export class StoreModellingNamespace {
   }
 
   /** Linear spacing/fit or polar span, sharing the viewer's placement planner. */
-  arrayElements(modelId: string, expressIds: readonly number[], params: CopyArrayParams): EntityRef[] {
+  arrayElements(modelId: string, expressIds: readonly number[], params: CopyArrayParams): CopiedElementRef[] {
     const method = this.backend.store.arrayElements;
     if (!method) throw new Error('bim.store.arrayElements: not available on this backend');
     return method.call(this.backend.store, modelId, expressIds, params);

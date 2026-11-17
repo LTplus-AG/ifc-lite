@@ -96,7 +96,9 @@ export function DrawingPdfExportDialog({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{t('section2d.pdf.dialogTitle')}</DialogTitle>
-          <DialogDescription>{t('section2d.pdf.dialogDescription')}</DialogDescription>
+          <DialogDescription>
+            {t(usesSheetScale ? 'section2d.pdf.dialogDescriptionSheet' : 'section2d.pdf.dialogDescription')}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

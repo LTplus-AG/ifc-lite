@@ -25,6 +25,7 @@
 
 import { Layers3, ChevronsUpDown, SquareStack, Building2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { useFloorplanView } from '@/hooks/useFloorplanView';
@@ -46,25 +47,21 @@ const SHOW_MODES: Array<{
 
 export function StoreyDisplayControls() {
   const { t } = useTranslation();
-  const { availableStoreys, activateFloorplan } = useFloorplanView();
+  const { availableStoreys } = useFloorplanView();
   const levelDisplayMode = useViewerStore((s) => s.levelDisplayMode);
   const explodedGap = useViewerStore((s) => s.explodedGap);
   const setExplodedGap = useViewerStore((s) => s.setExplodedGap);
   const activeStorey = useViewerStore((s) => s.activeStorey);
 
-  // Nothing storey-related to offer without a storey at all.
-  if (availableStoreys.length < 1) return null;
-
-  // Stacked / Exploded / Solo only make sense with multiple storeys; Floorplan
-  // works for a single storey too (it replaced the toolbar Quick-Floorplan).
+  // Stacked / Exploded / Solo only make sense with multiple storeys. The
+  // Floorplan action lives in the section header (`StoreyFloorplanButton`),
+  // so a single-storey model gets no strip at all (#8802).
   const showModes = availableStoreys.length >= 2;
+  if (!showModes) return null;
 
   const activeInfo = activeStorey
     ? availableStoreys.find((s) => s.modelId === activeStorey.modelId && s.expressId === activeStorey.expressId) ?? null
     : null;
-  // Single-storey models have one obvious target, so floorplan it directly
-  // without first requiring a storey pick (matches the old Quick-Floorplan).
-  const floorplanTarget = activeInfo ?? (availableStoreys.length === 1 ? availableStoreys[0] : null);
 
   // One unified transition: Solo isolates the active/top storey via the storey
   // filter; Stacked / Exploded clear that isolation. No second channel to
@@ -74,12 +71,12 @@ export function StoreyDisplayControls() {
   const toggleExploded = () => applyLevelDisplayMode(isExploded ? 'stacked' : 'exploded');
 
   return (
-    <div className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 px-2 py-1.5">
+    <div className="border-b border-border px-2 py-1.5">
       <div className="flex items-center gap-1.5">
         {showModes && (
           <>
             {/* Related pair: Stacked / Solo (which storeys are shown). */}
-            <div className="inline-flex flex-1 rounded-md border border-zinc-200 dark:border-zinc-800 p-0.5">
+            <div className="inline-flex flex-1 rounded-md bg-muted p-0.5">
               {SHOW_MODES.map(({ key, labelKey, Icon, hintKey }) => {
                 // Solo is "active" whenever a storey is isolated; Stacked is the
                 // base view (also shown while Exploded, since Exploded lifts the
@@ -95,8 +92,8 @@ export function StoreyDisplayControls() {
                         className={cn(
                           'flex min-h-6 flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-2xs font-medium transition-colors',
                           pressed
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+                            ? 'bg-background text-card-foreground shadow-sm ring-1 ring-border'
+                            : 'text-muted-foreground hover:text-foreground',
                         )}
                       >
                         <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -120,8 +117,8 @@ export function StoreyDisplayControls() {
                   className={cn(
                     'inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border px-2 text-2xs font-medium transition-colors',
                     isExploded
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-zinc-200 dark:border-zinc-800 text-muted-foreground hover:bg-muted hover:text-foreground',
+                      ? 'border-primary bg-primary/15 text-foreground'
+                      : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
                   )}
                 >
                   <ChevronsUpDown className="h-3.5 w-3.5 shrink-0" />
@@ -132,27 +129,6 @@ export function StoreyDisplayControls() {
             </Tooltip>
           </>
         )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              disabled={!floorplanTarget}
-              aria-label={t('hierarchy.storeyControls.floorplanAriaLabel')}
-              onClick={() => floorplanTarget && activateFloorplan(floorplanTarget)}
-              className={cn(
-                'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-200 dark:border-zinc-800 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40',
-                !showModes && 'ml-auto',
-              )}
-            >
-              <Building2 className="h-3.5 w-3.5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {floorplanTarget
-              ? t('hierarchy.storeyControls.floorplanTooltip', { name: floorplanTarget.name })
-              : t('hierarchy.storeyControls.floorplanPickTooltip')}
-          </TooltipContent>
-        </Tooltip>
       </div>
 
       {showModes && isExploded && (
@@ -168,7 +144,7 @@ export function StoreyDisplayControls() {
               const next = e.currentTarget.valueAsNumber;
               if (Number.isFinite(next)) setExplodedGap(next);
             }}
-            className="w-16 rounded border border-zinc-300 bg-white px-1.5 py-0.5 font-mono text-2xs focus:outline-none focus:ring-1 focus:ring-primary dark:border-zinc-700 dark:bg-zinc-950"
+            className="w-16 rounded border border-input bg-background px-1.5 py-0.5 font-mono text-2xs focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <span>{t('hierarchy.storeyControls.gapUnitLabel')}</span>
         </label>
@@ -191,5 +167,37 @@ export function StoreyDisplayControls() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Floorplan of the active storey (or the only one), as a trailing action of the
+ * tree's section header. It folded in the old toolbar Quick-Floorplan.
+ */
+export function StoreyFloorplanButton() {
+  const { t } = useTranslation();
+  const { availableStoreys, activateFloorplan } = useFloorplanView();
+  const activeStorey = useViewerStore((s) => s.activeStorey);
+  if (availableStoreys.length < 1) return null;
+  const activeInfo = activeStorey
+    ? availableStoreys.find((s) => s.modelId === activeStorey.modelId && s.expressId === activeStorey.expressId) ?? null
+    : null;
+  // Single-storey models have one obvious target, so floorplan it directly
+  // without first requiring a storey pick (matches the old Quick-Floorplan).
+  const floorplanTarget = activeInfo ?? (availableStoreys.length === 1 ? availableStoreys[0] : null);
+  return (
+    <IconButton
+      label={t('hierarchy.storeyControls.floorplanAriaLabel')}
+      tooltip={floorplanTarget
+        ? t('hierarchy.storeyControls.floorplanTooltip', { name: floorplanTarget.name })
+        : t('hierarchy.storeyControls.floorplanPickTooltip')}
+      tooltipSide="bottom"
+      size="icon-xs"
+      className="h-6 w-6 text-muted-foreground"
+      disabled={!floorplanTarget}
+      onClick={() => floorplanTarget && activateFloorplan(floorplanTarget)}
+    >
+      <Building2 className="h-3.5 w-3.5" />
+    </IconButton>
   );
 }

@@ -119,9 +119,13 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const classFilter = useViewerStore((s) => s.classFilter);
+  // A retype changes the class a mesh is filtered by without touching the models (#10246).
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
   const projectionMode = useViewerStore((s) => s.projectionMode);
   const setProjectionMode = useViewerStore((s) => s.setProjectionMode);
 
@@ -150,8 +154,8 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
   const source = useMemo(
     () => (open ? readViewPdfSource(useViewerStore.getState()) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- these are invalidation triggers; the values are read from getState() above.
-    [open, models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility,
-      sectionPlane, selectedStoreys, classFilter, projectionMode],
+    [open, models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility, structuralViewMode,
+      sectionPlane, selectedStoreys, classFilter, projectionMode, mutationVersion, mutationViews],
   );
 
   const camera = source?.camera ?? null;

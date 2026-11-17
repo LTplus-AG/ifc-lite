@@ -19,8 +19,13 @@ export function buildHelp(version: string): string {
     info      <file.ifc>                          Model summary (schema, entities, storeys)
     query     <file.ifc> [--type T] [--json]      Query entities by type/properties/quantities
               [--select "IfcWall, Pset_WallCommon.FireRating=2HR"]  IfcOpenShell-style selector (classes union with --type; properties AND with --where)
+    structural <file.ifc> [--json]                Read analysis models, members, connections, loads, reactions and physical links
     props     <file.ifc> --id <N>                 All properties for a single entity
-    export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson|dfjson  Export data / geometry / energy model
+    export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjson|cityjson|cityjsonseq  Export data / geometry / energy / city model
+              3dm: --units source|meters|millimeters|centimeters|feet|inches
+                   --coordinates local|world --layers spatial-class|class|presentation
+                   --properties all|attributes|none --3dm-version 7|8
+                   --no-instancing --no-spaces --no-normals --layer-slicing
     schedule  <file.ifc> --type T --columns "H=path,..."  Tabular schedule of one class (csv/json/md/html)
               [--preset door|window|space|wall|material-takeoff]  default type+columns (flags override)
               [--where PsetName.Prop=Value] [--format csv|json|md|html]  path = attr | Pset.Prop | Qto.Qty
@@ -65,6 +70,22 @@ export function buildHelp(version: string): string {
     stats     <file.ifc>                          Auto-calculated model KPIs and health check
     mutate    <file.ifc> --id N --set P=V --out F  Modify properties/attributes and save
     generate-spaces <file.ifc> --out F           Derive IfcSpace from walls (slab/roof-aware height)
+    derive-structural <file.ifc> --out F         Derive a linked structural analysis model from beams, columns, slabs, walls
+    storey    <file.ifc> list|add|rename|edit|delete|constrain|copy  Author storeys; geometry follows ("storey --help" for actions)
+              list [--json]                       Storeys with elevation, floor-to-floor height and element count
+              add --from S [--below] | --name N --elevation M  Add a storey (from a neighbour: its naming and spacing)
+              rename --storey S --name N | edit --storey S --elevation M | --floor-height M
+              constrain --element ID --top fixed|storeyAbove|storey|slab|roof [--target ID]
+              copy --ids ID,... --to S [--to S ...]
+              delete --storey S [--move-to S | --delete-contents]  Each writes --out F; --dry-run writes nothing
+    georef    show|set|update|remove|check|fix <file.ifc>  Read, write, check and fix georeferencing ("georef --help")
+              show [--json]                       IfcMapConversion/IfcProjectedCRS (IFC2X3: ePSet_MapConversion), rotation, units
+              set --out F (--crs N|--epsg C) --map-unit U --eastings E --northings N --height H [--rotation DEG] [--replace]
+              update --out F [--eastings E ...] | remove --out F  Fail closed: nothing is guessed, nothing written on refusal
+              check [--json] [--fail-on L] [--allow-network]  Diagnose: finding codes, fixes, LoGeoRef; exit 1 on errors
+              fix --out F [--apply ID] [--value PATH=V] [--dry-run]  Apply the safe fixes, write F, check it again
+    site-context <file.ifc> --out F             Swiss terrain, parcel + neighbouring buildings around a georeferenced model as one GLB ("site-context --help")
+              [--centre E,N | --egrid CH...] [--radius M] [--layers terrain,parcel,buildings] [--resolution auto|M] [--json] [--offline] [--cache-dir D]
     ask       <file.ifc> "<question>"            Natural language BIM queries
     view      <file.ifc> [--port N]              Interactive 3D viewer in browser
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results
@@ -112,6 +133,8 @@ export function buildHelp(version: string): string {
     ifc-lite props model.ifc --id 42
     ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
     ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
+    ifc-lite export model.ifc --format glb --name-by-global-id --out model.glb
+    ifc-lite export model.ifc --format cityjson --out model.city.json
     ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Mark=Pset_DoorCommon.Reference"
     ifc-lite schedule model.ifc --type IfcWall --columns "Name,Qto_WallBaseQuantities.NetVolume" --where Pset_WallCommon.IsExternal=true --format json
     ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Fire=Pset_DoorCommon.FireRating, Area=Qto_DoorBaseQuantities.Area" --group-by Fire --sort "Area:desc" --subtotals "count, sum:Area"
@@ -171,6 +194,11 @@ export function buildHelp(version: string): string {
     ifc-lite mcp model.ifc --read-only
     ifc-lite mcp arch.ifc struct.ifc --federate
     ifc-lite mcp model.ifc --transport http --port 8765 --token abc
+    ifc-lite georef show model.ifc --json
+    ifc-lite georef check model.ifc
+    ifc-lite georef fix model.ifc --out fixed.ifc
+    ifc-lite georef set model.ifc --epsg 2056 --map-unit METRE --eastings 2600000 --northings 1200000 --height 400 --rotation 12.5 --out geo.ifc
+    ifc-lite site-context geo.ifc --radius 300 --layers terrain,parcel,buildings --out context.glb --json
     ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc
     ifc-lite ref create main
     ifc-lite layer publish delta.ifcx --base main --intent "Set fire ratings" --scope "model.mutate:Pset_FireSafety*@IfcWall"
@@ -271,6 +299,9 @@ export function buildCommandHelp(version: string, command: string): string | nul
     ``,
     ...rows,
     ...(command === 'export' ? [
+      '', '  CityJSON (--format cityjson|cityjsonseq):',
+      '    --scale STEP                 Vertex grid in output units (default 0.001)',
+      '    --blocks-only                Buildings as LoD0/LoD1 only; no room/element geometry',
       '', '  Experimental:',
       '    --kernel exact|retained       Geometry kernel (default: exact)',
       '    --retained-engine DIR        Staged engine; or IFCLITE_RETAINED_ENGINE (Node >=20.6)',

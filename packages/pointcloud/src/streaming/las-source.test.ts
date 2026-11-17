@@ -188,4 +188,81 @@ describe('LasStreamingSource', () => {
     ctrl.abort();
     await expect(src.open(ctrl.signal)).rejects.toThrow();
   });
+
+  describe('bounded strided read windows (#8773)', () => {
+    const headerSize = 227;
+    const recordLen = 20;
+
+    /** Records the byte length of every point-data read past the header. */
+    class ReadLogBlob extends Blob {
+      reads: number[] = [];
+      override slice(start?: number, end?: number, contentType?: string): Blob {
+        if ((start ?? 0) >= headerSize) this.reads.push((end ?? this.size) - (start ?? 0));
+        return super.slice(start, end, contentType);
+      }
+    }
+
+    async function decodeAll(blob: Blob, stride: number, windowBytes?: number): Promise<{ xs: number[]; counts: number[] }> {
+      const src = new LasStreamingSource(blob, { downsample: { stride }, windowBytes });
+      await src.open();
+      const xs: number[] = [];
+      const counts: number[] = [];
+      for (let chunk = await src.next(10); chunk; chunk = await src.next(10)) {
+        counts.push(chunk.pointCount);
+        for (let i = 0; i < chunk.pointCount; i++) xs.push(chunk.positions[i * 3]);
+      }
+      return { xs, counts };
+    }
+
+    it('emits the same chunks as one slab while never reading more than the window', async () => {
+      const rows = Array.from({ length: 100 }, (_, i) => ({ x: i, y: 1, z: 2 }));
+      const bytes = await buildLasFile(rows).arrayBuffer();
+      const oneSlab = await decodeAll(new Blob([bytes]), 3);
+      const windowed = new ReadLogBlob([bytes]);
+      // 7 records fit, rounded down to 6 so every window starts on a stride boundary.
+      const result = await decodeAll(windowed, 3, 7 * recordLen);
+
+      expect(result).toEqual(oneSlab);
+      expect(result.xs).toEqual(Array.from({ length: 34 }, (_, i) => i * 3));
+      expect(result.counts).toEqual([10, 10, 10, 4]);
+      expect(Math.max(...windowed.reads)).toBe(6 * recordLen);
+    });
+
+    it('reads at least one stride per window when the stride exceeds the window', async () => {
+      const rows = Array.from({ length: 20 }, (_, i) => ({ x: i, y: 0, z: 0 }));
+      const result = await decodeAll(buildLasFile(rows), 8, recordLen);
+      expect(result.xs).toEqual([0, 8, 16]);
+    });
+
+    it('stops between windows when aborted mid-chunk', async () => {
+      const rows = Array.from({ length: 40 }, (_, i) => ({ x: i, y: 0, z: 0 }));
+      const ctrl = new AbortController();
+      const blob = new ReadLogBlob([await buildLasFile(rows).arrayBuffer()]);
+      const src = new LasStreamingSource(blob, { downsample: { stride: 2 }, windowBytes: 6 * recordLen });
+      await src.open();
+      blob.reads = [];
+      const slice = blob.slice.bind(blob);
+      blob.slice = (start, end, contentType) => {
+        ctrl.abort();
+        return slice(start, end, contentType);
+      };
+      await expect(src.next(100, ctrl.signal)).rejects.toThrow(/Aborted/);
+      expect(blob.reads).toHaveLength(1);
+    });
+
+    it('ignores a non-finite window and decodes every selected record', async () => {
+      const rows = Array.from({ length: 12 }, (_, i) => ({ x: i + 1, y: 0, z: 0 }));
+      const result = await decodeAll(buildLasFile(rows), 3, Number.NaN);
+      expect(result.xs).toEqual([1, 4, 7, 10]);
+    });
+
+    it('rejects a body truncated inside a later window', async () => {
+      const rows = Array.from({ length: 40 }, (_, i) => ({ x: i + 1, y: 0, z: 0 }));
+      const full = await buildLasFile(rows).arrayBuffer();
+      const blob = new Blob([full.slice(0, headerSize + 25 * recordLen)]);
+      const src = new LasStreamingSource(blob, { downsample: { stride: 2 }, windowBytes: 6 * recordLen });
+      await src.open();
+      await expect(src.next(100)).rejects.toThrow(/truncated/);
+    });
+  });
 });

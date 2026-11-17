@@ -68,6 +68,11 @@ const FILE_ALLOWLIST = [
     names: ['--accent', '--paper', '--p'],
     reason: "Set via inline style on the referencing (or an ancestor) element, e.g. `style={{ ['--accent' as never]: ACCENT }}`, immediately before the matching `var(--accent)` read — a runtime style-prop writer, not a CSS-defined token.",
   },
+  {
+    file: 'apps/viewer/src/components/viewer/properties/location-map-ink.ts',
+    names: ['--map-pin-halo'],
+    reason: '`mapInkStyle()` in this file writes `--map-pin-halo` as an inline style on the LocationMap container (pointing at `var(--color-scrim)` or `var(--color-scrim-foreground)` by the basemap actually showing), and `PICKED_PIN_SVG` in the same file reads it for the picked pin outline. A runtime style-prop writer, not a CSS-defined token.',
+  },
 ];
 
 const PREFIX_ALLOWLIST = [

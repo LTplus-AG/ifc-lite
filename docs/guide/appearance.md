@@ -207,9 +207,6 @@ preview is also limited to 200,000 triangles. UVs must lie within `[0,1]`; tinte
 or translucent material factors must first be baked into the source image.
 Creation is available outside shared rooms; the saved IFC can then be shared.
 
-For implementation status, shared workflow boundaries and future scan/PDF options,
-see the [appearance roadmap](../architecture/appearance-roadmap.md).
-
 ## Appearance on evaluated occurrences
 
 Select an image or PDF page, choose the IFC scope, and enable **Convert supported
@@ -238,7 +235,7 @@ Models requiring CRS reprojection are excluded from this initial conversion path
 
 Some readers, including IfcOpenShell 0.8.2 with its default subtraction setting,
 incorrectly subtract Reference openings again; see the
-[independent interoperability evidence](../architecture/evidence/evaluated-openings/README.md).
+[independent interoperability evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/evaluated-openings/README.md).
 
 Native `planAppearance` and `planPageAppearance` requests accept
 `representationPolicy: "evaluatedOccurrence"`; the omitted policy is `"preserve"`.
@@ -348,7 +345,29 @@ or work allowance, reduce the chosen density or explicitly narrow the source
 extent, then preview again. The viewer never silently removes target triangles.
 
 The complete selected boulder capture is covered by the
-[full-target acceptance evidence](../architecture/evidence/mesh-transfer-full-target/README.md),
+[full-target acceptance evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/mesh-transfer-full-target/README.md),
 including export, fresh import, selection and an independent IFC reader. This
 known-derived control does not establish automatic alignment of unrelated scans
 and BIM models.
+
+## Download positioned scans
+
+Use **Download positioned file…** on a scan's model row, in the Point Clouds panel, or in the Local placement
+panel. Apply or cancel the placement preview before downloading. The original
+source is read at full resolution independently of the displayed sample.
+
+The result is binary PLY in project coordinates, Z up, with the active scan
+alignment and applied model translation baked in. Reopen it without the old
+placement settings. Supported decoded RGB, intensity, classification and valid
+normals are included when present. Missing RGB, intensity or classification in
+mixed scans is filled with zero. Other source fields, scan organization and
+CRS metadata are not retained. PLY conversion does not preserve the original
+LAS/LAZ/E57/PCD format. Display clipping, visibility and classification filters do
+not remove points from the download.
+
+The browser output limit is 256 MiB. Existing whole-file readers also impose
+export input limits: PCD/PTS/XYZ up to 16 MiB, LAZ up to 64 MiB, and PCD up to one
+million points / 64 MiB uncompressed records. Larger exports fail explicitly;
+no decimation or partial download is substituted. Progress and cancellation are
+available. Streaming LAS, PLY and E57 inputs do not have those whole-file input
+limits, but their output must still fit the browser limit.

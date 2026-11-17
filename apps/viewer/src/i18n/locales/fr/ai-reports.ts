@@ -1,0 +1,52 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const aiReportsFr = {
+  'aiReports.language': 'Langue du texte du rapport',
+  'aiReports.languageHint': 'Le texte du rapport est demandé dans cette langue. La langue de la visionneuse reste inchangée.',
+  'aiReports.draftWithAi': 'Rédiger un rapport avec l’IA',
+  'aiReports.requestPrompt': 'Rédige un texte de rapport sur ces preuves pour la revue de coordination, avec des affirmations de rapport typées. {instruction}',
+  'aiReports.languageMismatch': 'La réponse déclare la langue {declared}, et non la langue choisie {chosen}. Relancez la rédaction ou choisissez cette langue.',
+  'aiReports.claims': 'Affirmations vérifiées par rapport aux preuves capturées',
+  'aiReports.noClaims': 'Cette réponse ne contient aucune affirmation typée. Seules ses références de lignes ont été vérifiées ; vérifiez vous-même chaque énoncé.',
+  'aiReports.statusSupported': 'Étayé par les données',
+  'aiReports.statusUnverifiable': 'Invérifiable',
+  'aiReports.statusContradicted': 'Contredit',
+  'aiReports.claimEdited': 'Modifiée par vous',
+  'aiReports.editClaim': 'Modifier l’affirmation',
+  'aiReports.claimText': 'Texte de l’affirmation',
+  'aiReports.saveClaim': 'Utiliser le texte modifié',
+  'aiReports.cancelEdit': 'Annuler',
+  'aiReports.removeClaim': 'Supprimer l’affirmation',
+  'aiReports.contradictedBlocks': {
+    one: '{count} affirmation contredit les preuves capturées. Modifiez-la ou supprimez-la avant d’enregistrer.',
+    many: '{count} d’affirmations contredisent les preuves capturées. Modifiez-les ou supprimez-les avant d’enregistrer.',
+    other: '{count} affirmations contredisent les preuves capturées. Modifiez-les ou supprimez-les avant d’enregistrer.',
+  },
+  'aiReports.unknownCitation': '{citation} : absent des preuves capturées',
+  'aiReports.factLine': '{citation} {field} : valeur affirmée {claimed}',
+  'aiReports.reportRecord': 'Rapport IA · {language} · révision {revision} · preuves capturées le {capturedAt}',
+  'aiReports.blockOrigins': 'Blocs de texte : {generated} générés par l’IA, {edited} modifiés par des personnes.',
+  'aiReports.refreshEvidence': 'Actualiser les preuves',
+  'aiReports.refreshHint': 'Recapture la source native, revérifie chaque affirmation et régénère le texte IA non modifié. Vos modifications sont conservées, sauf si vous en décidez autrement ci-dessous.',
+  'aiReports.refreshClaim': '{id} : {before} → {after} ; {changed} modifiés, {missing} manquants',
+  'aiReports.conflicts': 'Blocs modifiés que l’actualisation changerait',
+  'aiReports.noConflicts': 'Aucun bloc modifié n’est concerné.',
+  'aiReports.replaceEdit': 'Remplacer ma modification par le texte régénéré',
+  'aiReports.removeEdit': 'Supprimer ce bloc modifié ; l’actualisation ne le génère plus',
+  'aiReports.yourText': 'Votre texte',
+  'aiReports.regeneratedText': 'Texte régénéré',
+  'aiReports.applyRefresh': 'Appliquer l’actualisation',
+  'aiReports.cancelRefresh': 'Abandonner l’actualisation',
+  'aiReports.refreshApplied': 'Preuves actualisées. Les faits modifiés et manquants sont signalés dans le document.',
+  'aiReports.originGenerated': 'Généré par l’IA',
+  'aiReports.originEdited': 'Texte IA modifié',
+  'aiReports.sourceUnsupported': 'Cette source de rapport ne peut pas être recapturée dans cette visionneuse.',
+  'aiReports.noNativeResult': 'Aucun résultat natif n’est disponible pour cette source. Exécutez-la dans son panneau, puis actualisez les preuves.',
+  'aiReports.analysisStale': 'Le résultat natif est obsolète : le modèle a changé après son exécution. Exécutez-la à nouveau dans son panneau, puis actualisez les preuves.',
+  'aiReports.documentChanged': 'Le document a changé pendant que l’actualisation était ouverte. Actualisez à nouveau les preuves.',
+  'aiReports.modelsChanged': 'Les modèles chargés diffèrent de ceux sur lesquels ce rapport a été rédigé. Les affirmations seront revérifiées par rapport aux modèles chargés.',
+} satisfies Catalogue;

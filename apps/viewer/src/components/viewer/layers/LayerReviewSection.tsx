@@ -12,13 +12,15 @@
  */
 
 import { trackExportCompleted } from '@/lib/analytics';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, MessageSquarePlus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useBCF } from '@/hooks/useBCF';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
+import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
 import {
   addTopicToProject,
   addViewpointToTopic,
@@ -63,7 +65,12 @@ function TopicRow({ topic, onSelect }: { topic: RegistryReviewTopic; onSelect: (
   );
 }
 
-export function LayerReviewSection({
+export function LayerReviewSection(props: { client: LayerRegistryClient; candidateId: string; refName: string }) {
+  const collabToken = useViewerStore(s => s.collabSelfToken);
+  return <CandidateReview key={JSON.stringify([props.candidateId, props.refName, collabToken])} {...props} />;
+}
+
+function CandidateReview({
   client,
   candidateId,
   refName,
@@ -82,7 +89,11 @@ export function LayerReviewSection({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [withViewpoint, setWithViewpoint] = useState(true);
-  const [busy, setBusy] = useState(false);
+  // One registry action at a time (C-2): a same-tick double press is refused
+  // before React re-renders the buttons disabled.
+  const flight = useAsyncRun();
+  const busy = flight.busy;
+  const runAction = flight.start;
 
   // The commented entity is the ACTIVE 3D selection (last-selected wins,
   // matching the selection slice), translated back to its composition
@@ -96,7 +107,9 @@ export function LayerReviewSection({
     return null;
   }, [activeEntityId, selectedEntityIds, pathToId]);
 
+  const refreshTicket = useRef(0);
   const refresh = useCallback(async () => {
+    const ticket = ++refreshTicket.current;
     try {
       const { reviews } = await client.listReviews();
       const latest = reviews
@@ -105,64 +118,70 @@ export function LayerReviewSection({
           (acc, r) => (acc === null || r.openedAt >= acc.openedAt ? r : acc),
           null,
         );
-      setReview(latest);
-    } catch {
+      if (ticket === refreshTicket.current) setReview(latest);
+    } catch (error) {
+      if (ticket !== refreshTicket.current) return;
+      console.warn('[layer review] Refresh failed', error);
       setReview(null);
     }
   }, [client, candidateId, refName]);
 
   useEffect(() => {
     void refresh();
+    return () => { refreshTicket.current++; };
   }, [refresh]);
 
-  const openReview = useCallback(async () => {
-    setBusy(true);
+  const openReview = useCallback(() => runAction(async ({ isCurrent }) => {
     try {
       // A freshly published local candidate is not on the registry yet;
       // the reviews route 404s unknown layer ids. Same push-first step
       // the preview/merge paths take (idempotent re-push).
       await ensureCandidateOnRegistry(client, await getBrowserLayerStore(), candidateId);
+      if (!isCurrent()) return;
       await client.openReview({ layer_id: candidateId, into: refName });
-      await refresh();
+      if (isCurrent()) await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
+      if (isCurrent()) toast.error(err instanceof Error ? err.message : String(err));
     }
-  }, [client, candidateId, refName, refresh]);
+  }), [runAction, client, candidateId, refName, refresh]);
 
   const postComment = useCallback(async () => {
     if (!review || !selectedPath || title.trim().length === 0) return;
-    setBusy(true);
-    try {
-      let viewpoint: Record<string, unknown> | undefined;
-      if (withViewpoint) {
-        const vp = await createViewpointFromState({
-          includeSnapshot: true,
-          includeSelection: true,
-          includeHidden: false,
+    await runAction(async ({ isCurrent }) => {
+      try {
+        let viewpoint: Record<string, unknown> | undefined;
+        if (withViewpoint) {
+          // A capture that fails or resolves null posts nothing (C-2, shared with the BCF creates).
+          const captured = await captureViewpointForCreate(
+            () => createViewpointFromState({ includeSnapshot: true, includeSelection: true, includeHidden: false }),
+            isCurrent, t('bcf.panel.captureViewpointFailed'), 'layer review');
+          if (!captured.ok) return;
+          const vp = captured.viewpoint;
+          // snapshotData is a Uint8Array (not JSON); the data-URL `snapshot`
+          // field carries the image across the wire instead.
+          const { snapshotData: _drop, ...serializable } = vp as BCFViewpoint & { snapshotData?: Uint8Array };
+          viewpoint = serializable as unknown as Record<string, unknown>;
+        }
+        // The section unmounted while the viewpoint was captured: post nothing.
+        if (!isCurrent()) return;
+        await client.postTopic(review.id, {
+          title: title.trim(),
+          ...(description.trim().length > 0 ? { description: description.trim() } : {}),
+          entity: selectedPath,
+          ...(viewpoint !== undefined ? { viewpoint } : {}),
         });
-        // snapshotData is a Uint8Array (not JSON); the data-URL `snapshot`
-        // field carries the image across the wire instead.
-        const { snapshotData: _drop, ...serializable } = vp as BCFViewpoint & { snapshotData?: Uint8Array };
-        viewpoint = serializable as unknown as Record<string, unknown>;
+        if (!isCurrent()) return;
+        setTitle('');
+        setDescription('');
+        await refresh();
+        if (isCurrent()) toast.success(t('layersPanel.review.postedToast'));
+      } catch (err) {
+        console.warn('[layer review] Posting the comment failed', err);
+        // A section that unmounted mid-post has nowhere to report it.
+        if (isCurrent()) toast.error(err instanceof Error ? err.message : String(err));
       }
-      await client.postTopic(review.id, {
-        title: title.trim(),
-        ...(description.trim().length > 0 ? { description: description.trim() } : {}),
-        entity: selectedPath,
-        ...(viewpoint !== undefined ? { viewpoint } : {}),
-      });
-      setTitle('');
-      setDescription('');
-      await refresh();
-      toast.success(t('layersPanel.review.postedToast'));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }, [review, selectedPath, title, description, withViewpoint, createViewpointFromState, client, refresh]);
+    });
+  }, [runAction, review, selectedPath, title, description, withViewpoint, createViewpointFromState, client, refresh, t]);
 
   const selectEntity = useCallback(
     (entity: string) => {
@@ -173,29 +192,29 @@ export function LayerReviewSection({
   );
 
   const exportBcf = useCallback(async () => {
-    if (!review || !(review.topics?.length)) return;
-    setBusy(true);
-    try {
-      const project = createBCFProject({ name: `review-${review.id.slice(0, 8)}` });
-      for (const t of review.topics) {
-        const topic = createBCFTopic({
-          title: t.title,
-          ...(t.description !== undefined ? { description: t.description } : {}),
-          author: t.author ?? 'anonymous',
-        });
-        topic.guid = t.guid;
-        topic.creationDate = t.createdAt;
-        addTopicToProject(project, topic);
-        if (t.viewpoint) addViewpointToTopic(topic, t.viewpoint as unknown as BCFViewpoint);
+    const topics = review?.topics;
+    if (!review || !topics?.length) return;
+    await runAction(async () => {
+      try {
+        const project = createBCFProject({ name: `review-${review.id.slice(0, 8)}` });
+        for (const t of topics) {
+          const topic = createBCFTopic({
+            title: t.title,
+            ...(t.description !== undefined ? { description: t.description } : {}),
+            author: t.author ?? 'anonymous',
+          });
+          topic.guid = t.guid;
+          topic.creationDate = t.createdAt;
+          addTopicToProject(project, topic);
+          if (t.viewpoint) addViewpointToTopic(topic, t.viewpoint as unknown as BCFViewpoint);
+        }
+        downloadBlob(await writeBCF(project), bcfExportFilename(`review-${review.id.slice(0, 8)}`));
+        trackExportCompleted({ format: 'bcfzip', surface: 'layer_review' });
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
       }
-      downloadBlob(await writeBCF(project), bcfExportFilename(`review-${review.id.slice(0, 8)}`));
-      trackExportCompleted({ format: 'bcfzip', surface: 'layer_review' });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }, [review]);
+    });
+  }, [runAction, review]);
 
   return (
     <div className="flex flex-col gap-1 rounded border bg-card/40 px-1.5 py-1">

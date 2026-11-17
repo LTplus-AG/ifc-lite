@@ -1,8 +1,14 @@
 {
   "name": "@ifc-lite/sdk",
-  "version": "9.6.0",
+  "version": "10.0.0",
   "description": "Scripting SDK for ifc-lite — the bim.* API for BIM automation",
   "type": "module",
+  "sideEffects": [
+    "./src/index.ts",
+    "./dist/index.js",
+    "./src/namespaces/store-structural.ts",
+    "./dist/namespaces/store-structural.js"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -36,6 +42,8 @@
     "@ifc-lite/drawing-2d": "workspace:^",
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",
+    "@ifc-lite/geo": "workspace:^",
+    "@ifc-lite/georef-check": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
@@ -49,6 +57,8 @@
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/wasm": "workspace:^",
     "@mergifyio/vitest": "^2026.10.11",
+    "apache-arrow": "^21.2.0",
+    "parquet-wasm": "^0.9.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"
   },

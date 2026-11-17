@@ -67,7 +67,7 @@ afterEach(() => {
 });
 
 /** The CLI's render-geometry formats; `gltf` is written as GLB. */
-const RENDER: Array<[cli: string, vector: string]> = [['obj', 'obj'], ['glb', 'glb'], ['gltf', 'glb'], ['usd', 'usd']];
+const RENDER: Array<[cli: string, vector: string]> = [['obj', 'obj'], ['glb', 'glb'], ['gltf', 'glb'], ['usd', 'usd'], ['3dm', 'usd']];
 /** CLI data formats the vectors cover. */
 const DATA: Array<[cli: string, vector: string]> = [['csv', 'csv'], ['json', 'json']];
 

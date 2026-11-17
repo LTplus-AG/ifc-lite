@@ -23,7 +23,14 @@ export async function decodeCorpusEntry(entry, bytes) {
     return data;
   };
   for (const name of ['x', 'y', 'z', 'opacity', 'f_dc_0', 'f_dc_1', 'f_dc_2', 'scale_0', 'scale_1', 'scale_2']) column(name);
-  for (let k = 0; k < 3 * ((entry.gaussian.sh_degree + 1) ** 2 - 1); k++) column(`f_rest_${k}`);
+  for (let k = 0; k < 3 * ((entry.gaussian.sh_degree + 1) ** 2 - 1); k++) {
+    const sh = column(`f_rest_${k}`);
+    if (entry.gaussian.nonzero_sh === true) {
+      assert.ok(sh.some(value => value !== 0), `f_rest_${k} must contain captured nonzero coefficients`);
+    } else if (entry.gaussian.nonzero_sh === false) {
+      assert.ok(sh.every(value => value === 0), `f_rest_${k} expected published zero coefficients`);
+    }
+  }
   const rotations = ['rot_0', 'rot_1', 'rot_2', 'rot_3'].map(column);
   for (let row = 0; row < table.numRows; row++) {
     const norm = Math.hypot(...rotations.map(values => values[row]));

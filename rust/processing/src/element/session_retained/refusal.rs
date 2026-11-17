@@ -114,6 +114,10 @@ impl RetainedExecutionError {
                 origin = Some(RefusalOrigin { site: "chordal_volume", entity: *entity, cause: "curved_volume_tolerance" });
                 Refusal::Incomplete
             }
+            Self::ClipSliver { entity } => {
+                origin = Some(RefusalOrigin { site: "clip_sliver", entity: *entity, cause: "material_beyond_clip_plane" });
+                Refusal::Incomplete
+            }
             Self::Recipe(ifc_lite_geometry::document::RetainedRefusal::UnsupportedSource(_)) => {
                 Refusal::OperationUnsupported
             }

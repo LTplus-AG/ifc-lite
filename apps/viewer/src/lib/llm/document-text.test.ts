@@ -37,7 +37,7 @@ test('#4177 extracts text through the real PDF.js parser', async () => {
     const task = pdf.getDocument({ data, enableXfa: false, stopAtErrors: true });
     return { promise: task.promise, destroy: () => task.destroy() };
   } };
-  const fixture = await readFile(new URL('../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.pdf', import.meta.url));
+  const fixture = await readFile(new URL('../../../../../tests/fixtures/appearance/pdf-fidelity-report/control-text-accepted.pdf', import.meta.url));
   const text = await extractPdfText(new Blob([fixture]), realBackend);
   assert.match(text, /^\[Page 1\]/);
   assert.match(text, /Visible text/);

@@ -27,6 +27,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { createContext, runInContext } from 'node:vm';
+import { BimSandboxHandle } from './sandbox-factory.js';
 
 import type {
   ActivationRecord,
@@ -101,6 +103,10 @@ function fakeSandbox(recordRanSource: (source: string) => void) {
       g.__ifclite_ctx__ = ctx;
       g.bim = (ctx as { bim?: unknown } | undefined)?.bim;
       try {
+        // Trusted fixture wrapper, executed to assert actual handler behavior.
+        // eslint-disable-next-line no-eval
+        // Execute only this trusted fixture through the real command wrapper.
+        // eslint-disable-next-line no-eval
         const value = await (0, eval)(source);
         return { value, logs: [], durationMs: 1 };
       } finally {
@@ -115,7 +121,7 @@ function fakeSandbox(recordRanSource: (source: string) => void) {
 
 function activationRecord(
   extensionId: string,
-  sandbox: ReturnType<typeof fakeSandbox>,
+  sandbox: ActivationRecord['sandbox'],
 ): ActivationRecord {
   return {
     extensionId,
@@ -150,6 +156,36 @@ function fixture(options: { handlerSource?: string; enabled?: boolean } = {}) {
 
   return { deps, fired };
 }
+
+it('#8947 overlapping commands keep their own arguments in one cached BimSandboxHandle', async () => {
+  const f = fixture({ handlerSource: 'async function run(ctx) { await Promise.resolve(); return ctx.args?.target ?? "none"; }' });
+  const realm = createContext({ bim: f.deps.sdk });
+  const sources: string[] = [];
+  let release: () => void = () => { throw new Error('evaluation gate not installed'); };
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const handle = new BimSandboxHandle({
+    moduleRetired: false,
+    dispose() {},
+    async eval(source) {
+      sources.push(source);
+      if (sources.length === 3) release();
+      await gate;
+      // Trusted fixture code at the evaluator boundary; the handle and wrapper
+      // are production code. All invocations share the same activation/realm.
+      const value: unknown = await runInContext(source, realm);
+      return { value, logs: [], durationMs: 0 };
+    },
+  });
+  f.deps.runtime.activate = async () => activationRecord('demo', handle);
+  const results = await Promise.all([
+    runExtensionCommand(f.deps, COMMAND_ID, 'demo', { target: 'A' }),
+    runExtensionCommand(f.deps, COMMAND_ID, 'demo', { target: 'B' }),
+    runExtensionCommand(f.deps, COMMAND_ID, 'demo'),
+  ]);
+  assert.deepStrictEqual(results.map(result => result?.value), ['A', 'B', 'none']);
+  assert.equal(sources.length, 3, 'each invocation executes once');
+  assert.equal((await runExtensionCommand(f.deps, COMMAND_ID, 'demo'))?.value, 'none');
+});
 
 /**
  * Two enabled extensions, `ext-a` and `ext-b`, BOTH declaring `COMMAND_ID`,
@@ -333,4 +369,65 @@ describe('runExtensionCommand', () => {
       /missing from bundle demo/,
     );
   });
+});
+
+// #8947: each awaited boundary can retire an invocation. Keep these tests on
+// the existing canonical entry so production reversion fails behaviorally.
+for (const boundary of ['storage', 'activation', 'event', 'context'] as const) {
+  it(`#8947 canonical command refuses retirement during ${boundary} without retry`, async () => {
+    const f = fixture();
+    let current = true;
+    let release!: () => void;
+    let entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const pause = async () => { entered(); await held; };
+    let runs = 0, activations = 0, deactivations = 0, contexts = 0;
+    const storage = f.deps.storage.listExtensions;
+    f.deps.storage.listExtensions = async () => {
+      if (boundary === 'storage') await pause();
+      return storage();
+    };
+    f.deps.runtime.activate = async () => {
+      activations++;
+      if (boundary === 'activation') await pause();
+      const sandbox = fakeSandbox(() => { runs++; });
+      const setGlobal = sandbox.setGlobal;
+      sandbox.setGlobal = async (name, value) => {
+        contexts++;
+        if (boundary === 'context') await pause();
+        await setGlobal(name, value);
+      };
+      return activationRecord('demo', sandbox);
+    };
+    f.deps.runtime.deactivate = async () => { deactivations++; };
+    const fire = f.deps.dispatcher.fire;
+    f.deps.dispatcher.fire = async event => {
+      if (boundary === 'event') await pause();
+      return fire(event);
+    };
+    f.deps.isCurrent = () => current;
+    const pending = runExtensionCommand(f.deps, COMMAND_ID, 'demo');
+    const refused = assert.rejects(pending, { name: 'CommandInvocationRetiredError' });
+    try {
+      await started; current = false; release(); await refused;
+      assert.equal(runs, 0);
+      assert.equal(deactivations, 0);
+      assert.equal(activations, boundary === 'storage' ? 0 : 1);
+      assert.equal(contexts, boundary === 'context' ? 1 : 0);
+      assert.equal(f.fired.length, boundary === 'storage' || boundary === 'activation' ? 0 : 1);
+    } finally { release(); await refused; }
+  });
+}
+
+it('#8947 retirement supersedes a dead-sandbox activation error without retry', async () => {
+  const f = fixture();
+  let current = true, deactivations = 0, activations = 0;
+  f.deps.isCurrent = () => current;
+  f.deps.runtime.activate = async () => {
+    activations++; current = false; throw new Error('Sandbox disposed');
+  };
+  f.deps.runtime.deactivate = async () => { deactivations++; };
+  await assert.rejects(runExtensionCommand(f.deps, COMMAND_ID, 'demo'), { name: 'CommandInvocationRetiredError' });
+  assert.equal(activations, 1); assert.equal(deactivations, 0); assert.deepEqual(f.fired, []);
 });

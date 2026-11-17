@@ -184,7 +184,7 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 
           value={subject.fact}
           onChange={(e) => onChange({ kind: 'modelFact', fact: e.target.value as ModelFact })}
           aria-label={t('validationEditor.subjectPicker.modelFactAriaLabel')}
-          className="h-7 rounded border border-zinc-300 bg-transparent px-1 text-xs font-mono dark:border-zinc-700"
+          className="h-7 rounded border border-border bg-transparent px-1 text-xs font-mono"
         >
           {MODEL_FACTS.map((fact) => <option key={fact} value={fact}>{fact}</option>)}
         </select>

@@ -99,7 +99,7 @@ export function ScanProposalReview({ run }: { run: ScanDetectionRun }) {
         <legend className="text-2xs text-muted-foreground">{t('scanToBim.filter.legend')}</legend>
         {present.map((cls) => (
           <label key={cls} className="flex items-center gap-2 text-xs">
-            <input type="checkbox" className="accent-teal-600" checked={filter.classes.includes(cls)} onChange={(e) => toggleClass(cls, e.target.checked)} />
+            <input type="checkbox" className="accent-primary" checked={filter.classes.includes(cls)} onChange={(e) => toggleClass(cls, e.target.checked)} />
             <span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: swatch(cls) }} />
             {t('scanToBim.filter.class', { label: t(CLASS_KEYS[cls]), count: formatLocaleNumber(locale, all.filter((p) => p.ifcClass === cls).length) })}
           </label>
@@ -107,7 +107,7 @@ export function ScanProposalReview({ run }: { run: ScanDetectionRun }) {
         <label className="flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">{t('scanToBim.filter.minConfidence')}</span>
           <input
-            type="range" min={0} max={100} step={5} className="flex-1 h-1 accent-teal-600"
+            type="range" min={0} max={100} step={5} className="flex-1 h-1 accent-primary"
             value={Math.round(filter.minConfidence * 100)}
             onChange={(e) => setFilter({ minConfidence: Number(e.target.value) / 100 })}
           />
@@ -136,7 +136,7 @@ export function ScanProposalReview({ run }: { run: ScanDetectionRun }) {
                   <span aria-hidden="true" className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: swatch(p.ifcClass) }} />
                   <span className="font-medium">{p.ifcClass}</span>
                   <span className="text-muted-foreground">{p.id}</span>
-                  {live.has(p.id) && <span className="rounded bg-teal-600 px-1 text-2xs text-white">{t('scanToBim.createdBadge')}</span>}
+                  {live.has(p.id) && <span data-scan-created="" className="rounded bg-ok-solid px-1 text-2xs text-solid-foreground">{t('scanToBim.createdBadge')}</span>}
                   <span className="ml-auto tabular-nums">{t('scanToBim.confidence', { value: percent(p.confidence) })}</span>
                 </div>
                 <span className="text-2xs text-muted-foreground">{size(p)}</span>
@@ -144,16 +144,16 @@ export function ScanProposalReview({ run }: { run: ScanDetectionRun }) {
                 <span className="text-2xs text-muted-foreground">
                   {t('scanToBim.fit', { rms: formatLocaleNumber(locale, p.fit.rmsMetres * 1000, { maximumFractionDigits: 1 }), points: formatLocaleNumber(locale, p.fit.inlierPoints) })}
                 </span>
-                <div className="flex gap-1">
+                <div className="flex gap-0.5 rounded-md border p-0.5">
                   <Button
-                    size="sm" variant={decision === 'accepted' ? 'default' : 'outline'} aria-pressed={decision === 'accepted'}
+                    size="sm" variant="toggle" aria-pressed={decision === 'accepted'}
                     aria-label={t('scanToBim.acceptOne', { id: p.id })}
                     onClick={() => decide([p.id], decision === 'accepted' ? null : 'accepted')}
                   >
                     {t('scanToBim.accept')}
                   </Button>
                   <Button
-                    size="sm" variant={decision === 'rejected' ? 'default' : 'outline'} aria-pressed={decision === 'rejected'}
+                    size="sm" variant="toggle" aria-pressed={decision === 'rejected'}
                     aria-label={t('scanToBim.rejectOne', { id: p.id })}
                     onClick={() => decide([p.id], decision === 'rejected' ? null : 'rejected')}
                   >

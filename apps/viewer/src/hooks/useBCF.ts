@@ -45,6 +45,7 @@ import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from './bcf/vie
 import { focusedClashComponents } from './bcf/focused-clash-components';
 import { activeSectionPlane, cardinalSectionFlipped, clearSectionCut, clippingSectionPlanes, showSectionCuts } from '@/store/section-active';
 import { SectionRestoreSession } from './bcf/section-restore';
+import { applyCameraState } from './bcf/apply-camera-state';
 
 // ============================================================================
 // Types
@@ -128,6 +129,11 @@ interface UseBCFResult {
 
 let globalCanvasRef: React.RefObject<HTMLCanvasElement | null> | null = null;
 let globalRendererRef: React.RefObject<Renderer | null> | null = null;
+const rendererRefListeners = new Set<() => void>();
+export function subscribeGlobalRenderer(listener: () => void): () => void {
+  rendererRefListeners.add(listener);
+  return () => { rendererRefListeners.delete(listener); };
+}
 
 /**
  * Set the global canvas reference (called by ViewportContainer)
@@ -141,6 +147,7 @@ export function setGlobalCanvasRef(ref: React.RefObject<HTMLCanvasElement | null
  */
 export function setGlobalRendererRef(ref: React.RefObject<Renderer | null>): void {
   globalRendererRef = ref;
+  for (const listener of rendererRefListeners) listener();
 }
 
 /**
@@ -172,21 +179,7 @@ export function getGlobalCanvas(): HTMLCanvasElement | null {
 export function clearGlobalRefs(): void {
   globalCanvasRef = null;
   globalRendererRef = null;
-}
-
-/** Apply extracted BCF camera state without touching selection, visibility, or section plane. */
-function applyCameraState(
-  renderer: Renderer,
-  camera: NonNullable<ReturnType<typeof extractViewpointState>['camera']>,
-  animate: boolean,
-): void {
-  const rendererCamera = renderer.getCamera();
-  if (animate) {
-    rendererCamera.animateTo(camera.position, camera.target, 300);
-  } else {
-    rendererCamera.setPosition(camera.position.x, camera.position.y, camera.position.z);
-    rendererCamera.setTarget(camera.target.x, camera.target.y, camera.target.z);
-  }
+  for (const listener of rendererRefListeners) listener();
 }
 
 // ============================================================================
@@ -272,7 +265,8 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       target,
       up, // Use actual camera up vector
       fov,
-      isOrthographic: false,
+      isOrthographic: camera.getProjectionMode() === 'orthographic',
+      orthoScale: camera.getOrthoSize() * 2,
       aspectRatio,
     };
   }, [getRenderer]);

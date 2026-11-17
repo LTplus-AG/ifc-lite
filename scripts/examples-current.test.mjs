@@ -17,6 +17,12 @@
  *    Packages PR (which bumps the workspace to a not-yet-published major) and
  *    the follow-up PR that moves the example once it is on npm. Two behind
  *    fails here, so the drift of #5538 cannot build up again;
+ *  - the same window holds against the release the pending changesets will
+ *    cut, not just today's workspace. An example one major behind is fine on
+ *    main until a changeset queues the next major; then the Version Packages
+ *    PR makes it two behind and fails the rule above on every update, so no
+ *    release can merge (#8761: data ^5.3.0 against a 7.0.0 release). Caught
+ *    here, the PR that queues the major moves the example instead;
  *  - `changeset version` must leave those ranges alone. It used to rewrite
  *    them to the just-bumped, unpublished majors without touching the
  *    lockfile, which broke `pnpm install --frozen-lockfile` on main (#5960).
@@ -91,18 +97,44 @@ const registryExamples = examples.filter(({ pkg }) =>
   ),
 );
 
-test('changeset version leaves the examples\' registry ranges alone (#5960)', async () => {
-  assert.ok(registryExamples.length > 0, 'expected at least one example on registry ranges');
-
-  // The same modules, config and package graph `changeset version` uses.
+/** The modules, config and package graph `changeset version` uses. */
+async function loadChangesets() {
   const cli = createRequire(realpathSync(join(root, 'node_modules/@changesets/cli/package.json')));
   const load = (name) => import(pathToFileURL(cli.resolve(name)).href);
   const { getPackages } = await load('@manypkg/get-packages');
   const { readConfig } = await load('@changesets/config');
   const { assembleReleasePlan } = await load('@changesets/assemble-release-plan');
-
+  const readChangesets = (await load('@changesets/read')).default;
   const packages = await getPackages(root);
   const { config, errors } = await readConfig(root, packages);
+  return { packages, config, errors, assembleReleasePlan, readChangesets };
+}
+
+test('the examples\' registry ranges survive the release the pending changesets cut (#8761)', async () => {
+  const { packages, config, assembleReleasePlan, readChangesets } = await loadChangesets();
+  const plan = assembleReleasePlan(await readChangesets(root), packages, config, undefined);
+  /** `@ifc-lite/<name>` -> the version the next Version Packages PR ships. */
+  const planned = new Map(plan.releases.map((release) => [release.name, release.newVersion]));
+
+  for (const { dir, pkg } of registryExamples) {
+    for (const [name, range] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies })) {
+      if (!workspaceVersions.has(name) || range.startsWith('workspace:')) continue;
+      const next = planned.get(name) ?? workspaceVersions.get(name);
+      const pinned = Number(/^[\^~]?(\d+)\./.exec(range)?.[1]);
+      assert.ok(
+        pinned === major(next) || pinned === major(next) - 1,
+        `${dir} depends on ${name}@${range}, but the pending changesets release ${name}@${next}, ` +
+          'so the Version Packages PR would fail the current-or-previous-major rule and could not merge. ' +
+          'Move the example to the latest published major (`npm view ' + name + ' version`) and refresh the lockfile.',
+      );
+    }
+  }
+});
+
+test('changeset version leaves the examples\' registry ranges alone (#5960)', async () => {
+  assert.ok(registryExamples.length > 0, 'expected at least one example on registry ranges');
+
+  const { packages, config, errors, assembleReleasePlan } = await loadChangesets();
   assert.deepEqual(errors ?? [], [], 'the changeset config should be valid');
   // Asserted directly as well: while every example range trails the workspace
   // by a major, changesets already skips them, so the release-plan probe

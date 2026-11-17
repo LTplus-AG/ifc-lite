@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- Themes itself (paper / dusk), so browsers must not force-darken it (#9718). -->
+<meta name="color-scheme" content="light dark" />
 <title>IFClite. Open, view, and work with IFC files. Right in the browser.</title>
 <meta name="description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, exact-arithmetic geometry verified against IfcOpenShell." />
 <meta name="keywords" content="IFC viewer, IFC file, BIM, openBIM, buildingSMART, IFC parser, web IFC, WebGPU, WASM, IFC.js alternative, BIM in browser" />
@@ -263,7 +265,7 @@
           <li>Drag-and-drop, hierarchy, props</li>
           <li>2D drawings &amp; section planes</li>
           <li>Runs from a CDN</li>
-          <li>Chrome / Edge / Firefox / Safari 18</li>
+          <li>Chrome / Edge / Firefox / Safari 26+</li>
         </ul>
         <a class="link mono" href="https://ifclite.dev/docs/guide/quickstart/" target="_blank" rel="noopener">→ Quick start</a>
       </div>

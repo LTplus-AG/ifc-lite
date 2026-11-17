@@ -1,0 +1,47 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const viewerShellIt = {
+  "viewerShell.localIfcMemory.title": "Questo modello potrebbe superare la memoria disponibile",
+  "viewerShell.localIfcMemory.continue": "Continua il caricamento",
+  "viewerShell.localIfcMemory.description": "Questo modello potrebbe richiedere circa {estimated} GiB di memoria. Il browser segnala al massimo 8 GiB, quindi la memoria disponibile potrebbe essere maggiore. Continuare su un dispositivo con memoria insufficiente può bloccare questa scheda. Annulla per interrompere il caricamento oppure usa un modello più piccolo o la CLI/il server nativi.",
+
+  "viewerShell.star.title": "Ti piace IFC Lite?",
+  "viewerShell.star.detail": "Una stella su GitHub aiuta gli altri a scoprire l’applicazione.",
+  "viewerShell.star.action": "Metti una stella su GitHub",
+  "viewerShell.star.dismiss": "Ignora definitivamente l’invito GitHub",
+  "viewerShell.chunkError.loadFailed": "Impossibile caricare il componente {label}",
+  "viewerShell.chunkError.crashed": "Il componente {label} ha smesso di funzionare",
+  "viewerShell.chunkError.loadFailedDetail": "Di solito significa che l'app è stata aggiornata mentre la scheda era aperta.",
+  "viewerShell.chunkError.crashedDetail": "Un errore imprevisto ne ha impedito la visualizzazione.",
+  "viewerShell.chunkError.reload": "Ricarica",
+  "viewerShell.staleDeployment.notice": "È disponibile una nuova versione del visualizzatore: ricarica per continuare.",
+  "viewerShell.staleDeployment.reopenPrompt": "Il visualizzatore è stato aggiornato a una nuova versione e ricaricato. Apri di nuovo {files} per continuare.",
+  "viewerShell.staleDeployment.reopenAction": "Apri file…",
+  "viewerShell.hostConfig.errorTitle": "Il visualizzatore non si è avviato",
+  "viewerShell.hostConfig.errorBody": "Non è stato possibile caricare le sue impostazioni, quindi non viene mostrato nulla. Ricarica la pagina. Se il problema si ripete, avvisa chi gestisce questo sito.",
+  "viewerShell.hostConfig.viewerLoadTitle": "Non è stato possibile caricare il visualizzatore",
+  "viewerShell.hostConfig.viewerLoadBody": "Non è stato possibile scaricare i suoi file di programma, quindi non viene mostrato nulla. Ricarica la pagina. Se il problema si ripete, avvisa chi gestisce questo sito.",
+  "viewerShell.hostConfig.errorDetail": "Dettaglio tecnico: {detail}",
+  "viewerShell.chunkLabel.appearancePanel": "Pannello Aspetto",
+  "viewerShell.chunkLabel.chartsPanel": "Pannello Grafici",
+  "viewerShell.chunkLabel.flowPanel": "Pannello Flusso",
+  "viewerShell.chunkLabel.drawingPanel": "Pannello Disegno",
+  "viewerShell.chunkLabel.documentPanel": "Pannello Documento",
+  "viewerShell.chunkLabel.presentationPanel": "Pannello Presentazione",
+  "viewerShell.chunkLabel.layersPanel": "Pannello Layer",
+  "viewerShell.chunkLabel.mcpPage": "Pagina MCP",
+  "viewerShell.chunkLabel.mcpPlayground": "Playground MCP",
+  "viewerShell.chunkLabel.rteGpuWitness": "Testimone GPU RTE",
+  "viewerShell.dialog.close": "Chiudi",
+  "viewerShell.dialog.confirmTitle": "Conferma l'azione",
+  "viewerShell.dialog.promptTitle": "Inserisci un valore",
+  "viewerShell.dialog.promptValue": "Valore",
+  "viewerShell.dialog.cancel": "Annulla",
+  "viewerShell.dialog.confirm": "Conferma",
+  "viewerShell.file.ifcxOverlayRequiresIfcx": "I file overlay IFCX non possono essere aggiunti ai modelli IFC4. Carica i file IFCX separatamente.",
+  "viewerShell.toast.dismiss": "Chiudi la notifica",
+} satisfies Catalogue;

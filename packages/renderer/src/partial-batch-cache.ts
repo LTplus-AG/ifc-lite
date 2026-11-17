@@ -59,21 +59,30 @@ export function dropPartialCacheForBatch(caches: PartialBatchCaches, batch: Batc
   // Deleting the CURRENT key during a Map iteration is well-defined (the
   // iterator skips removed entries) and nothing is added here, so no copy.
   for (const sourceBatchKey of caches.keys.keys()) {
-    if (!sourceBatchKey.startsWith(prefix)) continue;
+    // Exact or `prefix:` only: batch 12 must not take batch 125's slots.
+    if (sourceBatchKey !== prefix && !sourceBatchKey.startsWith(`${prefix}:`)) continue;
     releaseSlot(caches, sourceBatchKey);
   }
 }
 
 /**
- * Destroy + drop EVERY cached partial sub-batch. The render loop calls this on
+ * Destroy + drop EVERY cached partial sub-batch, except the slots in `keep`. The render loop calls this on
  * the transition back to "no filtering and no X-Ray", because these clones are
  * otherwise only freed on clear()/finalize/evict — so ~model-sized clone VRAM
  * would stay pinned until the next model reload. Safe to call between frames:
  * the previous frame is already submitted and WebGPU defers the free past
  * in-flight work.
  */
-export function dropAllPartialCaches(caches: PartialBatchCaches): void {
+export function dropAllPartialCaches(caches: PartialBatchCaches, keep?: ReadonlySet<string>): void {
   if (caches.batches.size === 0 && caches.keys.size === 0 && caches.versions.size === 0) return;
+  if (keep && keep.size > 0) {
+    // Stand-ins for evicted parents (#9227): keep those slots, free the rest.
+    for (const sourceBatchKey of caches.keys.keys()) if (!keep.has(sourceBatchKey)) releaseSlot(caches, sourceBatchKey);
+    const held = new Set(caches.keys.values());
+    for (const [cacheKey, batch] of caches.batches) if (!held.has(cacheKey)) { destroyGpuResources(batch); caches.batches.delete(cacheKey); }
+    for (const sourceBatchKey of caches.versions.keys()) if (!caches.keys.has(sourceBatchKey)) caches.versions.delete(sourceBatchKey);
+    return;
+  }
   for (const batch of caches.batches.values()) destroyGpuResources(batch);
   caches.batches.clear();
   caches.keys.clear();

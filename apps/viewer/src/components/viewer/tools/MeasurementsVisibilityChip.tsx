@@ -55,7 +55,7 @@ function MeasurementsChipBody() {
           icon: <Trash2 aria-hidden className="h-3 w-3" />,
         }}
       >
-        {t('measure.chip.label', { count: String(count) })}
+        {t('measure.chip.label', { count })}
       </HudChip>
     </HudItem>
   );

@@ -1,7 +1,7 @@
 # PDF vectors in the drawing canvas and 3D
 
 Implementation contract for [F8 / #4406](https://github.com/LTplus-AG/ifc-lite/issues/4406).
-The [pinned PDF investigation](evidence/pdf-vectors/README.md) establishes inputs
+The [pinned PDF investigation](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-vectors/README.md) establishes inputs
 and controls. Conversion is enabled for the qualified subset described below,
 gated by a fidelity report. This document records the implementation boundaries
 so the PDF adapter does not become a second drawing system or IFC writer.
@@ -23,7 +23,7 @@ identify it as write-side support; its presence does not prove that imported
 annotations render in 3D.
 
 The Rust router has no standalone registry processor for those three primitives.
-Product-scoped polygonal fill support is described in [the fill controls](evidence/annotation-fills/README.md);
+Product-scoped polygonal fill support is described in [the fill controls](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/annotation-fills/README.md);
 curves and text remain separate future geometry slices.
 It also deliberately omits type-level annotation/footprint geometry from the
 building body's 3D mesh. Do not globally enable every `Curve2D` or `FootPrint`
@@ -224,8 +224,8 @@ does not make omitted content recoverable. Evidence for the controlled
 categories and the real drawings, the MuPDF raster comparison confining every
 difference between page and output (native 3D meshes and reopened 2D fill
 areas) to the reported extents, and the browser journey through the report
-step are in [evidence/pdf-fidelity-report](evidence/pdf-fidelity-report/README.md).
-The [real floor-plan acceptance](evidence/pdf-real-vector-plan/README.md)
+step are in [evidence/pdf-fidelity-report](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-fidelity-report/README.md).
+The [real floor-plan acceptance](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-real-vector-plan/README.md)
 converts a permissively licensed complete architectural plan and compares its
 source raster with native 3D, reopened native 2D and an independent IFC reopen.
 
@@ -265,7 +265,7 @@ conservative: valid complex or tiny features may be refused. Final canonical mes
 coordinates must agree with the quantized contours within the requested metric
 tolerance; this transport check is distinct from original-path fidelity.
 
-The [two actual decoded PDF controls](evidence/pdf-fill-annotations/README.md)
+The [two actual decoded PDF controls](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-fill-annotations/README.md)
 exercise winding, holes, clipping and paint order with independent source raster
 and exported IFC checks. They do not establish universal conversion fidelity.
 The later qualified curve and solid-stroke slices below extend this same path;
@@ -281,7 +281,7 @@ original curve topology. A shared endpoint is allowed only with an explicit
 separating-line proof; a two-piece lens/closing chord has a separate sidedness
 proof. Exact monotone collinear controls may become their identical line.
 
-The [curved PDF evidence](evidence/pdf-curved-fill-annotations/README.md) includes
+The [curved PDF evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-curved-fill-annotations/README.md) includes
 an elliptical hole and a sheared ellipse, independent source-curve comparison,
 reported raster-support differences and exported IFC checks. Unsupported stroke,
 text, image, clipping and transparency semantics still refuse the whole page.
@@ -343,10 +343,10 @@ can create unsupported repeated crossings, in which case the whole plan refuses
 atomically rather than dropping either paint. Hairlines and curved strokes remain unsupported. Outlining
 produces visual filled vector geometry, not editable centreline/text semantics.
 Original-PDF raster and independent IFC evidence lives in
-[the solid-stroke evidence](evidence/pdf-straight-stroke-annotations/README.md)
-and [the dashed-stroke evidence](evidence/pdf-dashed-stroke-annotations/README.md).
+[the solid-stroke evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-straight-stroke-annotations/README.md)
+and [the dashed-stroke evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-dashed-stroke-annotations/README.md).
 Closed-path decoder, export and independent-reader evidence is tracked in
-[the closed-dash evidence](evidence/pdf-closed-dash-annotations/README.md).
+[the closed-dash evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-closed-dash-annotations/README.md).
 
 ## One lattice for the complete page
 
@@ -357,7 +357,7 @@ coordinates until final model-coordinate export. This prevents a floating
 roundtrip from inventing a tiny gap at an originally identical page boundary.
 The planner precharges initial pairwise qualification as well as every overlay;
 original page contours are capped at 1,024 vertices, with unchanged shared work
-and cumulative output bounds. See [registered original-page evidence](evidence/pdf-composition-lattice/README.md).
+and cumulative output bounds. See [registered original-page evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/pdf-composition-lattice/README.md).
 
 ## Registered PDF annotation workflow
 

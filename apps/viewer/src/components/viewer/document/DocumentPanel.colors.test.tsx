@@ -52,7 +52,7 @@ describe('Document text colours (#6492)', () => {
         renderSvg: () => '', capture: null, theme: DEFAULT_THEME, now: () => new Date(0), imageSize: async () => ({ w: 1, h: 1 }),
       });
       const ui = render(<DocumentPanel pdfSeams={seams} />);
-      await settle();
+      await documentPreviewReady({ root: ui });
       const editor = ui.querySelector('[data-block-editor="colour"]');
       assert.ok(editor);
       const textColor = editor.querySelector<HTMLInputElement>('input[aria-label="Text colour"]');

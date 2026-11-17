@@ -5,6 +5,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh, Mesh } from './types.js';
+import type { BatchUseFrames } from './residency.js';
 import { destroyInstancedTemplateGpu, type InstancedOccurrence, type InstancedTemplateCpu, type InstancedTemplateGPU } from './scene-instance-types.js';
 import { createInstancedRteDeltaStream, type InstancedRteDeltaStream } from './instanced-rte.js';
 import type { TexturedMesh } from './scene.js';
@@ -69,8 +70,9 @@ export interface SceneRecoveryHost {
   lastGhostAlpha: number;
   instancedDevice?: GPUDevice;
   cachedMaxBufferSize: number;
-  lastDrawnFrame: Map<number, number>;
+  lastDrawnFrame: Pick<BatchUseFrames, 'delete' | 'clear'>;
   residencyRestoreQueue: Set<string>;
+  subsetResidency: { clear(): void };
   meshDataMap: Map<number, MeshData[]>;
   colorOverrides: ReadonlyMap<number, readonly [number, number, number, number]> | null;
   appearanceAccessState?: unknown;
@@ -162,6 +164,7 @@ export function discardSceneGpuResourcesForRecovery(
   host.cachedMaxBufferSize = 0;
   host.lastDrawnFrame.clear();
   host.residencyRestoreQueue.clear();
+  host.subsetResidency.clear();
 }
 
 const bucketVertexBytes = (parts: readonly MeshData[]) => parts.reduce(

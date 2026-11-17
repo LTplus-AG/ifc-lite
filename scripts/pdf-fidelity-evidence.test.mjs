@@ -14,7 +14,7 @@ import { skipUnlessFilesExist } from './lib/host-preconditions.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const EVIDENCE_TOOL = join(ROOT, 'tools/texture-authoring/pdf-fidelity-evidence.mjs');
 const ORACLE_TOOL = join(ROOT, 'tools/texture-authoring/pdf-fidelity-oracle.py');
-const FIXTURE_DIR = join(ROOT, 'docs/architecture/evidence/pdf-closed-dash-annotations');
+const FIXTURE_DIR = join(ROOT, 'tests/fixtures/appearance/pdf-closed-dash-annotations');
 
 function runEvidence(control, output) {
   return spawnSync(process.execPath, [

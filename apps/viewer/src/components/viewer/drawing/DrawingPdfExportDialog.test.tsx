@@ -138,6 +138,44 @@ describe('DrawingPdfExportDialog (#5496)', () => {
     assert.deepEqual(calls, [undefined]);
   });
 
+  it('only asks the user to choose a scale when there is a scale to choose (#8663)', () => {
+    const headline = () => document.body.querySelector('[role="dialog"] p')?.textContent;
+    const chooser = 'Choose the scale the PDF is drawn at.';
+    const confirmation = 'The active sheet sets the scale and paper for this PDF.';
+
+    render(
+      <DrawingPdfExportDialog
+        open onOpenChange={() => {}} displayedScale={100}
+        sheetEnabled activeSheet={sheetFixture()}
+        onExport={() => {}}
+      />,
+    );
+    assert.equal(headline(), confirmation);
+    cleanup();
+
+    render(
+      <DrawingPdfExportDialog
+        open onOpenChange={() => {}} displayedScale={100}
+        sheetEnabled={false} activeSheet={null}
+        onExport={() => {}}
+      />,
+    );
+    assert.equal(headline(), chooser);
+    cleanup();
+
+    // A disabled sheet keeps its settings, but the export no longer uses them
+    // and the scale select is back, so the copy must follow the controls.
+    render(
+      <DrawingPdfExportDialog
+        open onOpenChange={() => {}} displayedScale={100}
+        sheetEnabled={false} activeSheet={sheetFixture()}
+        onExport={() => {}}
+      />,
+    );
+    assert.equal(headline(), chooser);
+    assert.ok(document.body.querySelector('[role="combobox"]'), 'the scale select must be offered');
+  });
+
   it('states the paper the PDF will use for both sheet and non-sheet mode', () => {
     render(
       <DrawingPdfExportDialog

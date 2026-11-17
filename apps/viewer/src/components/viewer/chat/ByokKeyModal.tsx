@@ -130,14 +130,14 @@ export function ByokKeyModal({
               className="flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:font-semibold"
             >
               {t('chatByok.provider.anthropic')}
-              {apiKeys.anthropicKey && <Check className="h-3 w-3 text-emerald-500" />}
+              {apiKeys.anthropicKey && <Check className="h-3 w-3 text-ok" />}
             </TabsTrigger>
             <TabsTrigger
               value="openai"
               className="flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:font-semibold"
             >
               {t('chatByok.provider.openai')}
-              {apiKeys.openaiKey && <Check className="h-3 w-3 text-emerald-500" />}
+              {apiKeys.openaiKey && <Check className="h-3 w-3 text-ok" />}
             </TabsTrigger>
           </TabsList>
 
@@ -280,7 +280,7 @@ function ProviderTab({ provider, savedKey, savedWorkspaceId = '', requestSource 
 function TrustBullet({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex items-start gap-2 text-muted-foreground">
-      <Check className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-emerald-500" />
+      <Check className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-ok" />
       <span>{children}</span>
     </li>
   );

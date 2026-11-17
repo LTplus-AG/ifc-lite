@@ -95,7 +95,7 @@
  * `finalizeModel` without first passing through that section — every GLB,
  * IFCX, or point-cloud federated add, not merely this test's fixture — hits
  * the same TDZ crash. It is thrown from the LAST statement in the federated
- * branch (`if (allInstancedShards.length > 0) { appendInstancedShards(...) }`,
+ * branch (`if (allInstancedShards.length > 0) { enqueueInstancedShards(...) }`,
  * useIfcLoader.ts:632-634), which runs AFTER `registerModelOffset`, the
  * `mesh.expressId` shift, and `addModel` have already completed — so the
  * model this test inspects already carries the correct (or incorrect, under

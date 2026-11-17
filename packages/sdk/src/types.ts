@@ -11,10 +11,9 @@
 
 import type { StructuralBackendMethods } from './structural-types.js';
 // Re-exported below via `export *`; imported by name because `BimBackend` uses it here.
-import type { ScheduleBackendMethods } from './schedule-types.js';
-import type { CostBackendMethods } from './cost-types.js';
+import type { ScheduleBackendMethods } from './schedule-types.js'; import type { CostBackendMethods } from './cost-types.js';
 import type { SpacesBackendMethods, StyleBackendMethods } from './backend-extension-types.js';
-import type { StoreAuthoringBackendMethods } from './store-authoring-types.js';
+import type { StoreAuthoringBackendMethods } from './store-authoring-types.js'; import type { TopConstraintParams } from './store-top-types.js';
 import type {
   BeamInStoreParams, ColumnInStoreParams, MemberInStoreParams,
   ProfiledBeamInStoreParams, ProfiledColumnInStoreParams, ProfiledMemberInStoreParams,
@@ -449,10 +448,10 @@ export interface AddElementCommonParams {
 
 /** Rectangular column parameters retain their public interface and inherit
  * the canonical geometry fields, including storey-local RefDirection. */
-export interface AddColumnInStoreParams extends AddElementCommonParams,
+export interface AddColumnInStoreParams extends AddElementCommonParams, TopConstraintParams,
   Pick<ColumnInStoreParams, 'Position' | 'Width' | 'Depth' | 'Height' | 'RefDirection'> {}
 
-export interface AddWallInStoreParams extends AddElementCommonParams {
+export interface AddWallInStoreParams extends AddElementCommonParams, TopConstraintParams {
   Start: [number, number, number];
   End: [number, number, number];
   Thickness: number;
@@ -480,7 +479,7 @@ export interface AddSlabPolygonParams extends AddElementCommonParams {
   Thickness: number;
 }
 
-export interface AddBeamInStoreParams extends AddElementCommonParams,
+export interface AddBeamInStoreParams extends AddElementCommonParams, TopConstraintParams,
   Pick<BeamInStoreParams, 'Start' | 'End' | 'Width' | 'Height'> {}
 
 export interface AddDoorInStoreParams extends AddElementCommonParams {
@@ -520,9 +519,9 @@ export interface AddSpacePolygonParams extends Omit<AddElementCommonParams, 'Tag
   LongName?: string;
 }
 
-export type AddRoofInStoreParams = AddRoofRectangleParams | AddRoofPolygonParams;
+export type AddRoofInStoreParams = AddRoofRectangleParams | AddRoofPolygonParams; type RoofFootprintFields = import('@ifc-lite/create').RoofFootprintFields;
 
-export interface AddRoofRectangleParams extends AddElementCommonParams {
+export interface AddRoofRectangleParams extends AddElementCommonParams, RoofFootprintFields {
   Position: [number, number, number];
   Width: number;
   Depth: number;
@@ -530,7 +529,7 @@ export interface AddRoofRectangleParams extends AddElementCommonParams {
   Profile?: 'rectangle';
 }
 
-export interface AddRoofPolygonParams extends AddElementCommonParams {
+export interface AddRoofPolygonParams extends AddElementCommonParams, RoofFootprintFields {
   Profile: 'polygon';
   OuterCurve: Array<[number, number]>;
   Position?: [number, number, number];
@@ -556,7 +555,7 @@ export interface AddPlatePolygonParams extends AddElementCommonParams {
   PredefinedType?: 'CURTAIN_PANEL' | 'SHEET' | 'USERDEFINED' | 'NOTDEFINED';
 }
 
-export interface AddMemberInStoreParams extends AddElementCommonParams,
+export interface AddMemberInStoreParams extends AddElementCommonParams, TopConstraintParams,
   Pick<MemberInStoreParams, 'Start' | 'End' | 'Width' | 'Height' | 'PredefinedType'> {}
 
 export interface StoreBackendMethods extends StoreAuthoringBackendMethods {
@@ -572,7 +571,7 @@ export interface StoreBackendMethods extends StoreAuthoringBackendMethods {
    * model on export.
    */
   addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams | ProfiledColumnInStoreParams): EntityRef;
-  addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef;
+  addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef & { notices?: string[] };
   addSlab(modelId: string, storeyExpressId: number, params: AddSlabInStoreParams): EntityRef;
   addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams | ProfiledBeamInStoreParams): EntityRef;
   addDoor(modelId: string, storeyExpressId: number, params: AddDoorInStoreParams): EntityRef;
@@ -679,8 +678,9 @@ export interface BimBackend {
   readonly structural?: StructuralBackendMethods;
   /** Space derivation — present only on local backends with store access. */
   readonly spaces?: SpacesBackendMethods;
-  /** Persistent colouring — present only on local backends with store access. */
+  /** Persistent colouring and georeferencing read/write — present only on local backends with store access. */
   readonly style?: StyleBackendMethods;
+  readonly georef?: import('./georef/types.js').GeoreferencingBackendMethods;
 
   /** Subscribe to viewer events */
   subscribe(event: BimEventType, handler: (data: unknown) => void): () => void;

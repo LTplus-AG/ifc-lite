@@ -151,16 +151,16 @@ export function CustomBasemapEditor() {
       </div>
 
       {problem && (
-        <p role="alert" className="text-2xs leading-tight text-red-400">{problem.message}</p>
+        <p role="alert" className="text-2xs leading-tight text-danger">{problem.message}</p>
       )}
       {probe?.status === 'blocked' && (
-        <p role="alert" className="text-2xs leading-tight text-red-400">{probe.message}</p>
+        <p role="alert" className="text-2xs leading-tight text-danger">{probe.message}</p>
       )}
       {/* CORS passed, but the server still refused the tile (401/403). Calm
           `role="status"` wording would read as reassurance for a basemap that
           will never draw, so an actionable probe result gets alert treatment. */}
       {probe?.status === 'ok' && probe.concerning && (
-        <p role="alert" className="text-2xs leading-tight text-amber-400">{probe.message}</p>
+        <p role="alert" className="text-2xs leading-tight text-warn">{probe.message}</p>
       )}
       {probe?.status === 'ok' && !probe.concerning && (
         <output className="block text-2xs leading-tight text-muted-foreground">

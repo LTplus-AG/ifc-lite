@@ -95,6 +95,16 @@ transfer keep each normal with the same position and colour row.
 
 Notes:
 
+- `streamPointCloud` refuses files over 4 GB by default only for formats
+  whose source reads the whole file (PCD, PTS, XYZ and LAZ). E57,
+  PLY and LAS decode from bounded byte windows, so their peak memory does
+  not grow with file size and they have no default ceiling. Pass
+  `maxFileSize` to set one for any format.
+- A PLY `open()` reads the whole body once for bounds. When the host then
+  downsamples or picks a local origin it calls the source's optional
+  `reopen()`, which keeps that scan, so the file is read twice in all: one
+  scan, one decode. Cancelling during `open()` reaches the worker and stops
+  the scan at its next 4 MiB window.
 - The inlined worker bundle is lazy-loaded — consumers that only call
   `decodeIfcxPointAttribute` (the non-worker decoder) don't pay the bytes.
 - LAZ decoding (`format: 'laz'`) pulls in `laz-perf`'s wasm at runtime via
@@ -199,3 +209,13 @@ GPU. Explicit `originOffset` takes precedence; the default remains unchanged.
 Opening may perform an extra decode pass for formats without header bounds.
 A local origin preserves nearby detail but cannot repair a source whose
 coordinates were already quantized or an extremely large spatial extent.
+
+`parsePcdHeader(bytes)` reads the bounded PCD header without decoding point data.
+The viewer export preflight uses its record count, stride and compression kind
+to reject oversized whole-file allocations before starting a reader.
+
+PLY readers preserve a single scalar `uchar`/`uint8` classification property.
+Other classification declarations (including float, list and duplicate fields)
+remain ignored so optional metadata does not prevent loading legacy geometry.
+Malformed ASCII byte-class values become class 0 (unclassified) rather than
+rejecting geometry or wrapping into another class. Valid byte classes are unchanged.

@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import { Raycaster, type Renderer, type Intersection } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { resolveEntityRef, resolveGlobalId, useViewerStore } from '@/store';
@@ -24,7 +25,8 @@ export function sourceLandmark(mesh: MeshData, hit: Intersection, meshOrdinal: n
 
 /** Resolve the visible owner, then query its retained raw pieces in stable order.
  * A BVH-filtered renderer meshIndex is not an original source-piece identity. */
-export function targetLandmark(session: ScanSession, renderer: Renderer, x: number, y: number): { point: ScanPoint; feature: string } {
+export function targetLandmark(session: ScanSession, renderer: Renderer, x: number, y: number): { point: ScanPoint; feature: string } | null {
+  if (refuseCaptureHeldPick(renderer)) return null;
   session.validate();
   if (renderer.hasActiveClipping()) throw new Error('Turn off section, terrain and box clipping before picking scan alignment landmarks.');
   const state = useViewerStore.getState();

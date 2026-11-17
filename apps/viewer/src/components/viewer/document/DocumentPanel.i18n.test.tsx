@@ -68,7 +68,7 @@ describe('DocumentPanel localization (#4918)', () => {
 
   it('translates the header chrome, the "Add block" menu, and falls back to English per missing key', async () => {
     const ui = render(<DocumentPanel />);
-    await settle();
+    await documentPreviewReady({ root: ui });
 
     assert.ok(ui.querySelector('select[aria-label="Document"]'));
     assert.equal(ui.textContent?.includes('Page'), true);
@@ -97,7 +97,7 @@ describe('DocumentPanel localization (#4918)', () => {
 
   it('shows the "no blocks yet" empty state translated once every seeded block is removed', async () => {
     const ui = render(<DocumentPanel />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     for (const button of ui.querySelectorAll('button[aria-label="Remove block"]')) click(button);
     await settle();
     assert.equal(ui.textContent?.includes('No blocks yet'), true);
@@ -123,7 +123,7 @@ describe('DocumentPanel localization (#4918)', () => {
     });
     act(() => setLocale('document-panel-x-export'));
     const ui = render(<><DocumentPanel pdfSeams={seams} /><Toaster /></>);
-    await settle();
+    await documentPreviewReady({ root: ui });
     // The seeded blank document's title block reads {IfcProject.Name}: unresolved with no model
     // loaded, so the export reports exactly one unresolved binding.
     click(ui.querySelector('[data-document-export]')!);

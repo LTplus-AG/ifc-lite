@@ -15,6 +15,7 @@ import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './
 import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from './export-schedule-splice.js';
 import { downloadFile, sanitizeFilename, buildExportFilename } from '../../lib/export/download.js';
+import { isFeatureEnabled } from '../../lib/features/index.js';
 import { resolveExportVisibility } from '../../store/exportVisibility.js';
 import { stripScheduleEntities } from './export-schedule-strip.js';
 
@@ -353,6 +354,9 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
       if (dataStore.schemaVersion === 'IFC5') {
         throw new Error('export.ifc: IFC5 export is not supported by STEP exporter, use IFC2X3/IFC4/IFC4X3 models');
       }
+      if (dataStore.sourceKind === 'tabular') {
+        throw new Error(`export.ifc: model '${modelId}' has no IFC STEP source for the STEP exporter`);
+      }
 
       const options = candidateOptions;
       const selectedExpressIds = refs ? new Set(refs.map(ref => ref.expressId)) : null;
@@ -583,6 +587,8 @@ function triggerDownload(content: string | Uint8Array, filename: string, mimeTyp
   if (typeof document === 'undefined') {
     throw new Error('download() requires a browser environment (document is unavailable)');
   }
+  // Scripts and extensions save files through here; a host can switch export off (`lib/features`).
+  if (!isFeatureEnabled('export.files')) throw new Error('Export is switched off in this viewer');
   downloadFile(content, filename, mimeType);
   trackExportCompleted({ format: 'other', surface: 'script' });
 }

@@ -17,6 +17,7 @@ import { readHostedFill, type HostedFillRead } from './hosted-fill-read.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { placedBodyExtent, resolveHostAnchor } from './resolve-host.js';
 import { assertHostedGlobalIdAvailable } from './hosted-global-id.js';
+import { typeHostedFillInStore } from './hosted-fill-type.js';
 
 export type HostedElementInStoreSpec =
   | { readonly kind: 'opening'; readonly params: OpeningInStoreParams }
@@ -142,6 +143,7 @@ export function addHostedElementInStore(
     const fill = spec.kind === 'door'
       ? addHostedDoorToStore(draft, host, spec.params)
       : addHostedWindowToStore(draft, host, spec.params);
+    typeHostedFillInStore(draft, store, view, host, spec.kind, fill.fillingId, spec.params);
     return { expressId: fill.fillingId, openingId: fill.opening.openingId, hostId };
   });
 }

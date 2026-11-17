@@ -127,3 +127,51 @@ describe('strict canonical stair edits (#6232)', () => {
     expect(next.NumberOfRisers).toBe(10);
   });
 });
+
+describe('stair refit to a new rise keeps identities (#9013)', () => {
+  for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) for (const mm of [false, true]) {
+    it(`${schema} ${mm ? 'millimetres' : 'metres'}: NumberOfRisers and RiserHeight change together`, async () => {
+      const { store, view, editor, built } = await fixture(schema, mm);
+      const next = create.editStairDimensionsInStore(store, editor, built.stairId, { NumberOfRisers: 12, RiserHeight: 2.4 / 12 });
+      expect(next.stairId).toBe(built.stairId);
+      expect(next.flightId).toBe(built.flightId);
+      expect(next.NumberOfRisers).toBe(12);
+      expect(next.NumberOfRisers * next.RiserHeight).toBeCloseTo(2.4, 8);
+      expect(next.TreadLength).toBeCloseTo(0.3, 8);
+      expect(create.readStairDimensions(store, built.flightId, view)).toEqual(next);
+      if (stairWasmAvailable) {
+        const text = new TextDecoder().decode(new StepExporter(store, view).export({ schema, applyMutations: true }).content);
+        const bounds = stairMeshBounds((await meshStairs(text)).get(built.flightId)!);
+        expect(bounds.max[2] - bounds.min[2]).toBeCloseTo(2.4, 4);
+      }
+    });
+  }
+
+  it('a replaced flight shape is removed once nothing uses it, so the export has no orphan shape (#9013 GPU walkthrough)', async () => {
+    const { store, view, editor, built, other } = await fixture('IFC4');
+    const orphans = () => {
+      const text = new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
+      const shapes = [...text.matchAll(/^#(\d+)=IFCPRODUCTDEFINITIONSHAPE\(/gm)].map((m) => m[1]);
+      return shapes.filter((id) => !new RegExp(`#${id}[,)]`).test(text.replace(new RegExp(`^#${id}=`, 'm'), '')));
+    };
+    // The fixture itself orphans the second stair's own shape when it points that flight at the first one's.
+    const before = orphans();
+    // The second stair's flight shares the first one's shape: the first refit must keep it.
+    create.editStairDimensionsInStore(store, editor, built.stairId, { NumberOfRisers: 12, RiserHeight: 0.2 });
+    expect(view.isDeleted(built.productShapeId)).toBe(false);
+    expect(orphans()).toEqual(before);
+    create.editStairDimensionsInStore(store, editor, other.stairId, { NumberOfRisers: 12, RiserHeight: 0.2 });
+    expect(view.isDeleted(built.productShapeId)).toBe(true);
+    // A refit, again: its own replaced shape goes too.
+    create.editStairDimensionsInStore(store, editor, built.stairId, { NumberOfRisers: 13, RiserHeight: 0.2 });
+    expect(orphans()).toEqual(before);
+  });
+
+  it('refuses a fractional riser count and writes nothing', async () => {
+    const { store, view, editor, built } = await fixture('IFC4');
+    const before = structuredClone(view.getMutations());
+    expect(() => create.editStairDimensionsInStore(store, editor, built.stairId, { NumberOfRisers: 11.5 }))
+      .toThrow('NumberOfRisers must be a whole number of risers');
+    expect(view.getMutations()).toEqual(before);
+  });
+});

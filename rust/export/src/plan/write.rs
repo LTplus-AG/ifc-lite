@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Writing a resolved plan: one pass over the source in file order, each
 //! record written as it is read and validated as it is written. Nothing the
-//! size of the output is held.
+//! size of the output is held, except an IFC2X3 DATA section, which is held
+//! to place one product per placement (#9209).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
@@ -50,6 +51,8 @@ pub(crate) fn write_output<W: Write>(
     let mut attribute_edits_refused = 0usize;
     let mut unapplied: Vec<ValidationFinding> = Vec::new();
     let mut written = 0usize;
+    // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
+    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut out, crate::schema_convert::targets_ifc2x3(schema));
 
     for (id, type_name, start, end) in index.records() {
         if removed.contains(&id) {
@@ -70,9 +73,9 @@ pub(crate) fn write_output<W: Write>(
             edited
         });
         let written_bytes = edited.as_deref().unwrap_or(bytes);
-        out.write_all(written_bytes)?;
+        body.write_all(written_bytes)?;
         let line = String::from_utf8_lossy(written_bytes);
-        out.write_all(b"\n")?;
+        body.write_all(b"\n")?;
         written += 1;
         type_upper.clear();
         type_upper.push_str(type_name);
@@ -80,11 +83,12 @@ pub(crate) fn write_output<W: Write>(
         validator.record(id, &type_upper, &line, |r| defined.contains(r));
     }
     for (id, text) in &appended {
-        out.write_all(text.as_bytes())?;
-        out.write_all(b"\n")?;
+        body.write_all(text.as_bytes())?;
+        body.write_all(b"\n")?;
         written += 1;
         validator.record(*id, &appended_type(text), text, |r| defined.contains(r));
     }
+    written = written.saturating_add_signed(body.finish()?);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
     out.flush()?;
 

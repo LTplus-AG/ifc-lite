@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -61,6 +61,11 @@ async function provision({ browser = false, cache = 'miss' } = {}) {
     writeFileSync(join(root, 'tests/models/manifest.json'), JSON.stringify({ version: 1,
       base_url: `http://127.0.0.1:${server.address().port}`, release_tag: 'test',
       files: [{ path: 'native.ifc', sha256: hash, size: fixture.length }] }));
+    writeFileSync(join(root, 'tests/models/README.md'), 'current\n');
+    const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
+    git('init', '--quiet');
+    git('add', 'tests/models');
+    git('-c', 'user.name=test', '-c', 'user.email=test@example.invalid', 'commit', '--quiet', '-m', 'tracked');
     const bin = join(root, 'bin'); mkdirSync(bin);
     // Only the external pnpm launcher is substituted. Fetch and SHA/size
     // verification execute the real canonical fixture CLI against the server.
@@ -82,6 +87,10 @@ async function provision({ browser = false, cache = 'miss' } = {}) {
         mkdirSync(path, { recursive: true });
         if (cache === 'hit') writeFileSync(join(path, 'native.ifc'), fixture);
         if (cache === 'corrupt') writeFileSync(join(path, 'native.ifc'), Buffer.alloc(fixture.length));
+        if (cache === 'stale-tracked') {
+          writeFileSync(join(path, 'native.ifc'), fixture);
+          writeFileSync(join(path, 'README.md'), 'older copy from the cache\n');
+        }
         continue;
       }
       if (!step.run) throw new Error(`unexpected enabled infrastructure action: ${step.uses}`);
@@ -89,7 +98,7 @@ async function provision({ browser = false, cache = 'miss' } = {}) {
         TASK_COMMAND_LOG: commands, PYTHON_MODE: 'none', RUST_MODE: 'false', BROWSER_MODE: browserInput });
       if (result.code !== 0) break;
     }
-    return { ...result, calls: (() => { try { return readFileSync(commands, 'utf8').trim().split('\n'); }
+    return { ...result, dirty: git('status', '--porcelain', '--untracked-files=no').trim(), calls: (() => { try { return readFileSync(commands, 'utf8').trim().split('\n'); }
       catch (error) { if (error.code === 'ENOENT') return []; throw error; } })(),
     bytes: (() => { try { return readFileSync(join(root, 'tests/models/native.ifc')); }
       catch (error) { if (error.code === 'ENOENT') return null; throw error; } })() };
@@ -109,6 +118,14 @@ test('#7231 Node-only oracle cache miss fetches and verifies manifested bytes wi
 test('#7231 Node-only oracle cache hit still verifies the restored fixture', async () => {
   const result = await provision({ cache: 'hit' });
   assert.equal(result.code, 0, result.output);
+  assert.deepEqual(result.calls, ['fixtures:check']);
+  assert.deepEqual(result.bytes, fixture);
+});
+
+test('a cache hit leaves tracked files as committed, because the oracle refuses a dirty tree', async () => {
+  const result = await provision({ cache: 'stale-tracked' });
+  assert.equal(result.code, 0, result.output);
+  assert.equal(result.dirty, '');
   assert.deepEqual(result.calls, ['fixtures:check']);
   assert.deepEqual(result.bytes, fixture);
 });

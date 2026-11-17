@@ -20,6 +20,8 @@ interface Rig {
   camera: Camera;
   /** Advance the frame clock and run pending frames. */
   frames(n: number, ms?: number): void;
+  /** Advance the clock without running a frame. */
+  advance(ms: number): void;
 }
 
 const rigs: FlyController[] = [];
@@ -43,6 +45,7 @@ function rig(extra: Pick<FlyControllerOptions, 'canFly' | 'onCancel'> = {}): Rig
   return {
     fly,
     camera,
+    advance(ms) { t += ms; },
     frames(n, ms = 16) {
       for (let i = 0; i < n; i++) {
         t += ms;
@@ -135,14 +138,60 @@ describe('createFlyController', () => {
     fly.begin();
     const before = camera.getTarget();
     fly.look(2, 0);
-    assert.notDeepEqual(camera.getTarget(), before, 'even a nudge turns the view');
+    assert.deepEqual(camera.getTarget(), before, 'a nudge within the slop leaves the view (and the menu pick) alone');
     fly.deferContextMenu();
     assert.equal(fly.end(), 'menu', 'a 2px twitch is still a click');
+
+    // Crossing the slop applies the held-back look too: one 6px look turns the
+    // view exactly as far as a 2px nudge followed by a 4px look.
+    const { fly: direct, camera: directCamera } = rig();
+    direct.begin();
+    direct.look(6, 0);
+    fly.begin();
+    fly.look(2, 0);
+    fly.look(4, 0);
+    const turned = camera.getTarget(), expected = directCamera.getTarget();
+    for (const axis of ['x', 'y', 'z'] as const) assert.ok(Math.abs(turned[axis] - expected[axis]) < 1e-9, `held look applied (${axis})`);
+    assert.notDeepEqual(turned, before, 'past the slop the view turns');
+    direct.end();
+    fly.end();
 
     fly.begin();
     fly.look(30, 10);
     fly.deferContextMenu();
     assert.equal(fly.end(), 'flew', 'a real look must not pop the menu on release');
+  });
+
+  it('a held press turns on a nudge at once: only a possible click holds the look back', () => {
+    const { fly, camera, frames } = rig();
+    fly.begin();
+    frames(20); // 320ms: held past the hold-to-fly time, so no menu is left to protect
+    const before = camera.getTarget();
+    fly.look(2, 0);
+    assert.notDeepEqual(camera.getTarget(), before, 'BUG: a held press swallowed a fine-aim nudge');
+    fly.end();
+  });
+
+  it('a held-back look is applied once the hold makes the press a gesture', () => {
+    const { fly, camera, frames } = rig();
+    fly.begin();
+    const before = camera.getTarget();
+    fly.look(4, 0); // within the slop: held back while it may still be a click
+    assert.deepEqual(camera.getTarget(), before);
+    frames(20); // held past the hold-to-fly time without moving again
+    assert.notDeepEqual(camera.getTarget(), before, 'BUG: the held look was dropped when the hold promoted the press');
+    fly.deferContextMenu();
+    assert.equal(fly.end(), 'flew');
+  });
+
+  it('a release past the hold deadline but before its frame still applies the held look', () => {
+    const { fly, camera, advance } = rig();
+    fly.begin();
+    const before = camera.getTarget();
+    fly.look(4, 0);
+    advance(300); // the deadline passed, but no frame has run since
+    assert.equal(fly.end(), 'flew');
+    assert.notDeepEqual(camera.getTarget(), before, 'BUG: the held look was dropped on a held release');
   });
 
   /** A stub canvas that records pointer-lock requests. */

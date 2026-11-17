@@ -22,8 +22,8 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { removeStairInStore } from '@ifc-lite/create';
-import type { createModellingStoreBackend, EntityRef } from '@ifc-lite/sdk';
+import { removeStairInStore, takeLayerThicknessOutcome } from '@ifc-lite/create';
+import type { createModellingStoreBackendWithoutStoreys, EntityRef, ModellingStoreBackendMethods } from '@ifc-lite/sdk';
 import { createStoreMutationTracker } from './store-adapter-cost.js';
 import { normalizeMutationModelId } from './mutation-view.js';
 import { editHostedFillIn, type HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
@@ -31,6 +31,8 @@ import type { StoreApi } from './types.js';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
+import { requestRemesh } from '@/lib/remesh/remesh-service';
+import { reportLayerFollow } from '@/lib/authoring/layer-follow-report';
 import { addCurtainWallIn, addGridIn } from '@/store/slices/mutation-curtain-grid';
 import { addGridColumnIn } from '@/store/slices/mutation-grid-column';
 import { addStairIn, addRailingIn } from '@/store/slices/mutation-stair-railing';
@@ -38,15 +40,18 @@ import { replaceElementIn } from '@/store/slices/mutation-element-replacement';
 import { alignMutationTracking } from './store-adapter-align.js';
 import { roomMutationTracking } from './store-adapter-room.js';
 import { physicalMutationTracking } from './store-adapter-physical.js';
+import { storeyMutationTracking } from './store-adapter-storey.js';
+import { mirrorClassificationMutationTracking } from './store-adapter-mirror-classification.js';
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 
-type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
+type ModellingMethods = ReturnType<typeof createModellingStoreBackendWithoutStoreys>;
 
+/** `methods` has no storey methods; the result takes them from `storeyMutationTracking` (#9200). */
 export function withModellingMutationTracking(
   methods: ModellingMethods,
   store: StoreApi,
   resolve: (modelId: string) => { editor: StoreEditor; dataStore: IfcDataStore } | null,
-): ModellingMethods {
+): ModellingStoreBackendMethods {
   const { create, relationship } = createStoreMutationTracker(store, resolve, 'modelling');
   const compound = <A extends [string, ...unknown[]]>(fn: (...args: A) => EntityRef) =>
     relationship((...args: A): EntityRef => {
@@ -62,8 +67,30 @@ export function withModellingMutationTracking(
       if ('error' in outcome) throw new Error(`bim.store.${op}: ${outcome.error}`);
       return { modelId: normalized, expressId: outcome.expressId };
     };
+  /**
+   * A typing or material assignment can re-size what it types through the
+   * backend (a layered type drives its occurrences' thickness), re-trimming
+   * joined walls and refitting generated rooms. The backend writes that on this
+   * model's editor; take it here so those elements re-mesh with the call and any
+   * occurrence that could not follow is named, as every viewer path does (#9296).
+   */
+  const layered = <A extends [string, number, number[]]>(fn: (...args: A) => EntityRef) =>
+    compound((...args: A): EntityRef => {
+      const ref = fn(...args);
+      const target = resolve(ref.modelId);
+      if (target) {
+        const outcome = takeLayerThicknessOutcome(target.editor);
+        if (outcome.remesh.length > 0) void requestRemesh(store.getState, ref.modelId, outcome.remesh, 'shape');
+        reportLayerFollow(store.getState(), ref.modelId, outcome);
+      }
+      return ref;
+    });
+  const addPlainMaterial = create('IFCMATERIAL', methods.addMaterial);
+  const addStyledMaterial = compound(methods.addMaterial);
   return {
+    ...mirrorClassificationMutationTracking(store),
     ...physicalMutationTracking(store),
+    ...storeyMutationTracking(store),
     ...roomMutationTracking(store),
     ...alignMutationTracking(store),
     editHostedElement(ref, patch) {
@@ -79,12 +106,12 @@ export function withModellingMutationTracking(
         last ? state.mutationBatchTags.get(last.id) ?? null : null, [...outcome.remesh], 'shape');
       return { modelId: normalized, expressId: ref.expressId };
     },
-    addCurtainWall(modelId, storeyExpressId, params) {
+    addCurtainWall(modelId, storeyExpressId, { TopConstraint, ...params }) {
       const normalized = normalizeMutationModelId(store.getState(), modelId);
       const setState = store.setState;
       if (!setState) throw new Error('bim.store.addCurtainWall: the adapter requires a writable store');
       const undoBefore = store.getState().undoStacks.get(normalized)?.length ?? 0;
-      const outcome = addCurtainWallIn({ ...store, setState }, normalized, storeyExpressId, params);
+      const outcome = addCurtainWallIn({ ...store, setState }, normalized, storeyExpressId, params, TopConstraint ?? 'auto');
       if ('error' in outcome) throw new Error(`bim.store.addCurtainWall: ${outcome.error}`);
       const state = store.getState();
       const stack = state.undoStacks.get(normalized) ?? [];
@@ -101,11 +128,11 @@ export function withModellingMutationTracking(
       if ('error' in outcome) throw new Error(`bim.store.addGrid: ${outcome.error}`);
       return { modelId: normalized, expressId: outcome.expressId };
     },
-    addColumnOnGrid(modelId, storeyExpressId, params, binding) {
+    addColumnOnGrid(modelId, storeyExpressId, { TopConstraint, ...params }, binding) {
       const normalized = normalizeMutationModelId(store.getState(), modelId);
       const setState = store.setState;
       if (!setState) throw new Error('bim.store.addColumnOnGrid: the adapter requires a writable store');
-      const outcome = addGridColumnIn({ ...store, setState }, normalized, storeyExpressId, params, binding);
+      const outcome = addGridColumnIn({ ...store, setState }, normalized, storeyExpressId, params, binding, TopConstraint ?? 'auto');
       if ('error' in outcome) throw new Error(`bim.store.addColumnOnGrid: ${outcome.error}`);
       return { modelId: normalized, expressId: outcome.expressId };
     },
@@ -171,12 +198,17 @@ export function withModellingMutationTracking(
       store.getState().pushCreateEntityUndo(ref.modelId, ref.expressId, params.Type.toUpperCase());
       return ref;
     }),
-    addMaterial: create('IFCMATERIAL', methods.addMaterial),
+    // A plain material is one record; a coloured one also writes its appearance
+    // chain (IfcMaterialDefinitionRepresentation and the style records), which a
+    // single CREATE_ENTITY undo would leave behind pointing at nothing. That one
+    // takes the compound fence the layer set already takes.
+    addMaterial: (modelId: string, params: Parameters<ModellingMethods['addMaterial']>[1]) =>
+      (params.Color === undefined ? addPlainMaterial : addStyledMaterial)(modelId, params),
     addMaterialLayerSetUsage: create('IFCMATERIALLAYERSETUSAGE', methods.addMaterialLayerSetUsage),
     // A layer set is several records; the assignments rewrite or remove
     // existing IfcRel* rows the objects move out of.
     addMaterialLayerSet: compound(methods.addMaterialLayerSet),
-    assignType: compound(methods.assignType),
-    assignMaterial: compound(methods.assignMaterial),
+    assignType: layered(methods.assignType),
+    assignMaterial: layered(methods.assignMaterial),
   };
 }

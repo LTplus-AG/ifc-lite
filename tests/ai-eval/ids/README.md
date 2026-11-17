@@ -1,8 +1,7 @@
 # IDS Studio evaluation datasets (P-08)
 
-Datasets for evaluating the IDS Studio agent. The plan is in
-`docs/architecture/ids-studio/03-architecture/06-ai-agent.md` §9; the code that
-reads and checks these files lives in `scripts/ai-eval/ids/`.
+Datasets for evaluating the IDS Studio agent. The code that reads and checks
+these files lives in `scripts/ai-eval/ids/`.
 
 | Set | File | Cases | What a case is |
 |---|---|---|---|
@@ -47,7 +46,6 @@ expected answer scores 100%.
 Every E2 description has `reviewed: false`. Before E2 numbers are published,
 someone has to review the descriptions by hand: check each one against its
 IDS, rewrite it in an information manager's wording, and set `reviewed: true`.
-This task is tracked in `docs/architecture/ids-studio/worklog/P-08.md`.
 
 ## Conventions in E2 descriptions
 

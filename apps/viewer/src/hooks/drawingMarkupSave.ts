@@ -95,6 +95,9 @@ import {
   consumeSuppressedSave,
 } from '@/store/slices/drawing2DSlice.persistence.js';
 import { getCachedHash } from './drawingMarkupRestorePrecedence.js';
+import { isPristineSectionPlane } from '@/lib/section/section-plane-set';
+import { absorbedEmbeddedMarkupFor, isAbsorbedEmbeddedMarkupDecided } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
+import type { SectionPlane } from '@/store/types';
 
 /**
  * The `SectionConfig` that produced the drawing currently on screen, if any.
@@ -162,6 +165,7 @@ let restoringModelId: string | null = null;
 
 /** Reset all save-path bookkeeping — call when no model is active at all. */
 export function resetSaveState(): void {
+  generatedCut = null;
   lastSectionConfig = null;
   lastSectionConfigModelId = null;
   pendingSectionConfigModelId = null;
@@ -170,6 +174,9 @@ export function resetSaveState(): void {
 
 /** Mark `modelId`'s restore as starting: its stale `sectionConfig` is cleared and saves for it are held off until {@link endRestore}. */
 export function beginRestore(modelId: string): void {
+  // A restore can mean a new file under the same model id: the last drawing's
+  // world-space cut no longer describes it.
+  generatedCut = null;
   lastSectionConfig = null;
   lastSectionConfigModelId = null;
   pendingSectionConfigModelId = null;
@@ -211,9 +218,13 @@ function persistFor(modelId: string): void {
     measure2DResults: s.measure2DResults,
     polygonArea2DResults: s.polygonArea2DResults,
     textAnnotations2D: s.textAnnotations2D,
+    tagAnnotations2D: s.tagAnnotations2D, ownerModelId: modelId,
     cloudAnnotations2D: s.cloudAnnotations2D,
+    dimensions2D: s.dimensions2D,
     drawing2DDisplayOptions: s.drawing2DDisplayOptions,
     sectionConfig: lastSectionConfigModelId === modelId ? lastSectionConfig : null,
+    // Undecided (an old entry's set, store not readable yet): left absent for the next restore.
+    absorbedEmbeddedMarkup: isAbsorbedEmbeddedMarkupDecided(modelId) ? [...absorbedEmbeddedMarkupFor(modelId)] : undefined,
   });
 }
 
@@ -232,6 +243,57 @@ export function notifyDrawing2DSectionConfig(modelId: string, config: SectionCon
   lastSectionConfigModelId = modelId;
   persistFor(modelId);
 }
+
+/**
+ * The cut the drawing on screen was generated for. The untouched placeholder
+ * plane is not a cut the user made: saving it let the next restore (a reload,
+ * or the viewport remounting at a layout breakpoint) turn it into a real,
+ * cutting plane A. And because the placeholder is a Down plane at 50 %, a Down
+ * cut added there (or cleared) moves nothing and generates no new drawing, so
+ * the save follows the plane's placeholder status here instead.
+ */
+let generatedCut: { modelId: string; config: SectionConfig; geometry: string } | null = null;
+const cutGeometry = (p: SectionPlane): string => JSON.stringify([p.axis, p.position, p.flipped, p.custom]);
+
+/** Save the cut a 2D drawing was just generated for, or no cut while the plane is the placeholder. */
+export function saveGeneratedSectionConfig(modelId: string, config: SectionConfig | null): void {
+  const plane = useViewerStore.getState().sectionPlane;
+  generatedCut = config ? { modelId, config, geometry: cutGeometry(plane) } : null;
+  notifyDrawing2DSectionConfig(modelId, isPristineSectionPlane(plane) ? null : config);
+}
+
+/** Forget the saved cut when the plane goes back to the placeholder; re-save the drawing's cut when the plane becomes a real cut without moving. */
+function followPlaceholderStatus(): void {
+  let wasPristine = isPristineSectionPlane(useViewerStore.getState().sectionPlane);
+  useViewerStore.subscribe((state) => {
+    const pristine = isPristineSectionPlane(state.sectionPlane);
+    if (pristine === wasPristine) return;
+    wasPristine = pristine;
+    // Back to the placeholder: whatever cut was saved is gone, wherever it was.
+    if (pristine) {
+      if (state.activeModelId) notifyDrawing2DSectionConfig(state.activeModelId, null);
+      return;
+    }
+    const cut = generatedCut;
+    if (!cut || cut.modelId !== state.activeModelId || cut.geometry !== cutGeometry(state.sectionPlane)) return;
+    notifyDrawing2DSectionConfig(cut.modelId, cut.config);
+  });
+}
+
+/**
+ * Counts `activeModelId` moves as the save subscription sees them, one per
+ * `set()`. The restore effect keys on this, not on the id: switches that leave
+ * and return to a model before React renders (A -> X -> A) commit as no id
+ * change, yet each one armed `restoringModelId`, and only the effect's
+ * `endRestore` disarms it.
+ */
+let activationEpoch = 0;
+const activationListeners = new Set<() => void>();
+export function subscribeModelActivations(listener: () => void): () => void {
+  activationListeners.add(listener);
+  return () => { activationListeners.delete(listener); };
+}
+export const modelActivationEpoch = (): number => activationEpoch;
 
 /** Registers the raw store subscription that saves on every persisted-field change. Idempotent — module-level, subscribed once regardless of how many components mount `useDrawing2DPersistence`. */
 let saveSubscriptionStarted = false;
@@ -253,12 +315,17 @@ export function ensureSaveSubscription(): void {
     // the PREVIOUS model and persist unchecked. Subscribing here instead
     // means the mark is live before any other code can observe the new
     // `activeModelId` at all.
-    if (modelId !== prev.activeModelId) restoringModelId = modelId;
+    if (modelId !== prev.activeModelId) {
+      restoringModelId = modelId;
+      activationEpoch++;
+      for (const listener of activationListeners) listener();
+    }
     const changed =
       state.measure2DResults !== prev.measure2DResults ||
       state.polygonArea2DResults !== prev.polygonArea2DResults ||
-      state.textAnnotations2D !== prev.textAnnotations2D ||
+      state.textAnnotations2D !== prev.textAnnotations2D || state.tagAnnotations2D !== prev.tagAnnotations2D ||
       state.cloudAnnotations2D !== prev.cloudAnnotations2D ||
+      state.dimensions2D !== prev.dimensions2D ||
       state.drawing2DDisplayOptions !== prev.drawing2DDisplayOptions;
     prev = state;
     if (!changed || !modelId) return;
@@ -289,4 +356,7 @@ export function ensureSaveSubscription(): void {
     if (suppressed) return;
     persistFor(modelId);
   });
+  // After the listener above, so a `set()` that moves `activeModelId` has armed
+  // `restoringModelId` before this one can save for that model.
+  followPlaceholderStatus();
 }

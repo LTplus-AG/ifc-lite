@@ -1,0 +1,52 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const aiReportsIt = {
+  'aiReports.language': 'Lingua del testo del rapporto',
+  'aiReports.languageHint': 'Il testo del rapporto viene richiesto in questa lingua. La lingua del visualizzatore resta invariata.',
+  'aiReports.draftWithAi': 'Redigi il rapporto con l’IA',
+  'aiReports.requestPrompt': 'Redigi un testo di rapporto su queste evidenze per la revisione di coordinamento, con affermazioni di rapporto tipizzate. {instruction}',
+  'aiReports.languageMismatch': 'La risposta dichiara come lingua {declared}, non la lingua scelta {chosen}. Redigi di nuovo o scegli quella lingua.',
+  'aiReports.claims': 'Affermazioni verificate rispetto alle evidenze acquisite',
+  'aiReports.noClaims': 'Questa risposta non contiene affermazioni tipizzate. Sono state verificate solo le citazioni di righe; verifica tu stesso ogni enunciato.',
+  'aiReports.statusSupported': 'Supportata dai dati',
+  'aiReports.statusUnverifiable': 'Non verificabile',
+  'aiReports.statusContradicted': 'Contraddetta',
+  'aiReports.claimEdited': 'Modificata da te',
+  'aiReports.editClaim': 'Modifica affermazione',
+  'aiReports.claimText': 'Testo dell’affermazione',
+  'aiReports.saveClaim': 'Usa il testo modificato',
+  'aiReports.cancelEdit': 'Annulla',
+  'aiReports.removeClaim': 'Rimuovi affermazione',
+  'aiReports.contradictedBlocks': {
+    one: '{count} affermazione contraddice le evidenze acquisite. Modificala o rimuovila prima di salvare.',
+    many: '{count} affermazioni contraddicono le evidenze acquisite. Modificale o rimuovile prima di salvare.',
+    other: '{count} affermazioni contraddicono le evidenze acquisite. Modificale o rimuovile prima di salvare.',
+  },
+  'aiReports.unknownCitation': '{citation}: non presente nelle evidenze acquisite',
+  'aiReports.factLine': '{citation} {field}: valore affermato {claimed}',
+  'aiReports.reportRecord': 'Rapporto IA · {language} · revisione {revision} · evidenze acquisite il {capturedAt}',
+  'aiReports.blockOrigins': 'Blocchi di testo: {generated} generati dall’IA, {edited} modificati da persone.',
+  'aiReports.refreshEvidence': 'Aggiorna le evidenze',
+  'aiReports.refreshHint': 'Riacquisisce l’origine nativa, riverifica ogni affermazione e rigenera il testo IA non modificato. Le tue modifiche vengono conservate, a meno che tu non scelga diversamente qui sotto.',
+  'aiReports.refreshClaim': '{id}: {before} → {after}; {changed} modificati, {missing} mancanti',
+  'aiReports.conflicts': 'Blocchi modificati che l’aggiornamento cambierebbe',
+  'aiReports.noConflicts': 'Nessun blocco modificato è interessato.',
+  'aiReports.replaceEdit': 'Sostituisci la mia modifica con il testo rigenerato',
+  'aiReports.removeEdit': 'Rimuovi questo blocco modificato; l’aggiornamento non lo genera più',
+  'aiReports.yourText': 'Il tuo testo',
+  'aiReports.regeneratedText': 'Testo rigenerato',
+  'aiReports.applyRefresh': 'Applica l’aggiornamento',
+  'aiReports.cancelRefresh': 'Scarta l’aggiornamento',
+  'aiReports.refreshApplied': 'Evidenze aggiornate. I fatti modificati e mancanti sono segnalati nel documento.',
+  'aiReports.originGenerated': 'Generato dall’IA',
+  'aiReports.originEdited': 'Testo IA modificato',
+  'aiReports.sourceUnsupported': 'Questa origine del rapporto non può essere riacquisita in questo visualizzatore.',
+  'aiReports.noNativeResult': 'Nessun risultato nativo disponibile per questa origine. Eseguila nel suo pannello, poi aggiorna le evidenze.',
+  'aiReports.analysisStale': 'Il risultato nativo non è aggiornato: il modello è cambiato dopo l’esecuzione. Eseguila di nuovo nel suo pannello, poi aggiorna le evidenze.',
+  'aiReports.documentChanged': 'Il documento è cambiato mentre l’aggiornamento era aperto. Aggiorna di nuovo le evidenze.',
+  'aiReports.modelsChanged': 'I modelli caricati differiscono da quelli su cui è stato redatto questo rapporto. Le affermazioni verranno riverificate rispetto ai modelli caricati.',
+} satisfies Catalogue;

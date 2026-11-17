@@ -4,12 +4,12 @@
 
 /** Static Tools palette family. The key-command table remains the chord source. */
 import {
-  AlignHorizontalJustifyStart, ArrowRightToLine, ArrowUpFromLine, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors, ScissorsLineDashed,
+  AlignHorizontalJustifyStart, ArrowRightToLine, ArrowUpFromLine, Crosshair, GitFork, MousePointer2, PenLine, PersonStanding, Ruler, Scissors, ScissorsLineDashed,
   Slice, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
-import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
-import { BeamIcon, ColumnIcon, CurtainWallIcon, DoorIcon, GridIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model/model-icons';
+import { launchModelCommand, launchSlabTool } from '@/lib/commands/modeling/keys-workspace';
+import { BeamIcon, ColumnIcon, CurtainWallIcon, DoorIcon, GridIcon, OpeningIcon, RoofIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model/model-icons';
 import { RailingIcon, StairIcon } from './model/stair-railing-icons';
 import { useViewerStore } from '@/store';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
@@ -52,7 +52,7 @@ export const TOOL_SURFACE_COMMANDS = [
   },
   {
     id: 'tool:section', labelKey: 'commandPalette.tool.section.label', ribbonLabelKey: 'ribbon.home.section',
-    searchLabel: 'Section', keywords: 'clip cut plane', category: 'Tools', icon: Scissors,
+    searchLabel: 'Section', keywords: 'clip cut plane', keywordsKey: 'commandPalette.paths.section', detailKey: 'commandPalette.paths.section', category: 'Tools', icon: Scissors,
     surfaces: paletteMobileRibbon, enabled: alwaysEnabled, shortcut: 'tool.section',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.sectionTool',
     run: () => { useViewerStore.getState().setActiveTool('section'); },
@@ -73,10 +73,17 @@ export const TOOL_SURFACE_COMMANDS = [
   },
   {
     id: 'tool:slab', labelKey: 'commandPalette.tool.slab.label',
-    searchLabel: 'Draw slabs', keywords: 'slab floor roof plate rectangle polygon draw model author build create',
+    searchLabel: 'Draw slabs', keywords: 'slab floor plate rectangle polygon draw model author build create',
     category: 'Tools', icon: SlabIcon, surfaces: paletteOnly, enabled: editable,
     shortcut: 'model.slab',
-    run: () => { launchModelCommand('slab.place'); },
+    run: () => { launchSlabTool('slab'); },
+  },
+  {
+    id: 'tool:roof', labelKey: 'commandPalette.tool.roof.label',
+    searchLabel: 'Draw roofs', keywords: 'roof top eaves rectangle polygon draw model author build create',
+    category: 'Tools', icon: RoofIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.roof',
+    run: () => { launchSlabTool('roof'); },
   },
   {
     id: 'tool:column', labelKey: 'commandPalette.tool.column.label',
@@ -118,6 +125,13 @@ export const TOOL_SURFACE_COMMANDS = [
     category: 'Tools', icon: GridIcon, surfaces: paletteOnly, enabled: editable,
     shortcut: 'model.grid',
     run: () => { launchModelCommand('grid.place'); },
+  },
+  {
+    // Derive the analytical model from the physical one, through the structural review (#9668).
+    id: 'model:derive-structural', labelKey: 'commandPalette.tool.deriveStructural.label',
+    searchLabel: 'Derive structural analysis model', keywords: 'analytical members nodes supports idealise beams columns slabs walls footings',
+    category: 'Tools', icon: GitFork, surfaces: paletteOnly, enabled: editable,
+    run: (context) => { context.openStructuralDerivation?.(); },
   },
   {
     id: 'tool:opening', labelKey: 'commandPalette.tool.opening.label',

@@ -176,7 +176,7 @@ test('assistant check drafts are dry-run natively and saved only after review', 
   await ask('Outline a validation report with live result tables');
   await expect(assistant).toContainText('2 sections · 1 requirement not checkable');
   const outline = assistant.getByRole('region', { name: 'Review report outline', exact: true });
-  await expect(outline).toContainText(`live: ${native[0].failed} failed row`);
+  await expect(outline).toContainText(`live: ${native[0].failed} ${native[0].failed === 1 ? 'row' : 'rows'} now for spec-0 (selection: Failed entities)`);
   await outline.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('assistant-p07-outline-review.png') });
   await outline.getByRole('button', { name: 'Save as new document', exact: true }).click();

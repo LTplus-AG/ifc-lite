@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { eventKey, isTextEntryElement, isTextEntryTarget } from './keyboard-event.js';
+import { eventKey, isPressableTarget, isTextEntryElement, isTextEntryTarget } from './keyboard-event.js';
 
 /**
  * Build a KeyboardEvent-shaped stub. The point of these helpers is exactly the
@@ -121,5 +121,24 @@ describe('isTextEntryElement', () => {
     );
     assert.equal(isTextEntryElement({ tagName: 'BUTTON', closest: () => null }), false);
     assert.equal(isTextEntryElement(null), false);
+  });
+});
+
+describe('isPressableTarget', () => {
+  /** A target whose `closest` answers for the selectors it is inside. */
+  const inside = (...matches: string[]) => eventOn({
+    closest: (selector: string) => (selector.split(',').some((s) => matches.includes(s.trim())) ? {} : null),
+  });
+
+  it('is true inside a button, a link, a summary or a role=button', () => {
+    for (const selector of ['button', 'a[href]', 'summary', '[role=button]']) {
+      assert.equal(isPressableTarget(inside(selector)), true, selector);
+    }
+  });
+
+  it('is false elsewhere, and for targets with no closest (window, null)', () => {
+    assert.equal(isPressableTarget(inside()), false);
+    assert.equal(isPressableTarget(eventOn(null)), false);
+    assert.equal(isPressableTarget(eventOn({})), false);
   });
 });

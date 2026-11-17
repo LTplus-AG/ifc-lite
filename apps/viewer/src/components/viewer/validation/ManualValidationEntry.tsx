@@ -7,8 +7,9 @@
  *  card on the Data validation panel's empty state. */
 
 import { useRef } from 'react';
-import { ClipboardList, FileJson, Plus, Upload } from 'lucide-react';
+import { ClipboardList, FileJson, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EntryHeading, ENTRY_ACTIONS, ENTRY_BUTTON } from './ValidationEntryHeading';
 import { useTranslation } from '@/i18n';
 import type { RecentChecklist } from '@/lib/validation/manual/recent-checklists';
 
@@ -32,18 +33,13 @@ export function ManualValidationEntry({ onNew, onOpenFile, onLoadRecent, recent,
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-1">
-        <ClipboardList className="h-4 w-4" />
-        <span className="font-medium text-sm">{t('manualValidation.entry.title')}</span>
-      </div>
-      <p className="text-xs text-muted-foreground mb-3">{t('manualValidation.entry.description')}</p>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5" onClick={onNew}>
+      <EntryHeading icon={<ClipboardList />} title={t('manualValidation.entry.title')} description={t('manualValidation.entry.description')} />
+      <div className={ENTRY_ACTIONS}>
+        <Button type="button" size="sm" variant="outline" className={ENTRY_BUTTON} onClick={onNew}>
           <Plus className="h-3.5 w-3.5" />
           {t('manualValidation.entry.new')}
         </Button>
-        <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => fileInputRef.current?.click()}>
-          <Upload className="h-3.5 w-3.5" />
+        <Button type="button" size="sm" variant="ghost" className={ENTRY_BUTTON} onClick={() => fileInputRef.current?.click()}>
           {t('manualValidation.entry.open')}
         </Button>
         <input
@@ -55,7 +51,7 @@ export function ManualValidationEntry({ onNew, onOpenFile, onLoadRecent, recent,
           onChange={(e) => { void handleFileSelect(e); }}
         />
       </div>
-      {error && <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
       {recent.length > 0 && (
         <div className="mt-3">
           <h4 className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">

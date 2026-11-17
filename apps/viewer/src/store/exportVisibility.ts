@@ -72,8 +72,10 @@
  */
 
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
+import { resolveViewHiddenEntities } from '../lib/visibility/structural-view';
 import { buildHiddenIfcTypes } from './typeVisibilityFilter.js';
 import { computeIsolationFilterSet } from './basketVisibleSet.js';
+import { localIdInOverlay } from './globalId.js';
 import type { useViewerStore } from './index.js';
 
 type ViewerStateSnapshot = ReturnType<typeof useViewerStore.getState>;
@@ -134,7 +136,7 @@ export function resolveExportVisibility(
   const legacy = isLegacyModel(state, modelId);
   const model = legacy ? undefined : state.models.get(modelId);
   const offset = model?.idOffset ?? 0;
-  const maxExpressId = model?.maxExpressId;
+  const view = state.mutationViews.get(legacy ? (state.activeModelId ?? modelId) : modelId) ?? null;
   const dataStore = getDataStoreForModel(state, modelId);
 
   const toGlobal = (localId: number): number => (legacy ? localId : localId + offset);
@@ -142,16 +144,15 @@ export function resolveExportVisibility(
     if (legacy) return globalId;
     const localId = globalId - offset;
     if (localId <= 0) return null;
-    if (maxExpressId !== undefined && localId > maxExpressId) return null;
+    // An element authored this session sits above the parse range, in the overlay.
+    if (model && localId > model.maxExpressId && localIdInOverlay(model, globalId, view ?? undefined) === null) return null;
     return localId;
   };
 
   // ---- hidden (denylist): union of every hide channel, GLOBAL space ----
-  const hiddenGlobal = new Set<number>();
-  for (const g of state.hiddenEntities) hiddenGlobal.add(g);
+  const hiddenGlobal = new Set(resolveViewHiddenEntities(state));
   for (const g of state.lensHiddenIds) hiddenGlobal.add(g);
   const hiddenTypes = buildHiddenIfcTypes(state.typeVisibility);
-  const view = state.mutationViews.get(legacy ? (state.activeModelId ?? modelId) : modelId) ?? null;
   for (const localId of collectHiddenIdsByType(dataStore, view, hiddenTypes)) {
     hiddenGlobal.add(toGlobal(localId));
   }

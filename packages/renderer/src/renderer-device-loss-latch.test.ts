@@ -364,10 +364,13 @@ describe('a latched loss stops the renderer reporting itself ready', () => {
     it('stops reporting ready once the frame latches the loss', () => {
         const h = makeReadyHarness();
         assert.strictEqual(h.renderer.isReady(), true, 'precondition: ready before the loss');
+        // #8564: IFC readiness must not imply Gaussian qualification.
+        assert.strictEqual(h.renderer.getGaussianReadiness().state, 'blocked');
 
         withQuietConsole(() => { h.renderer.render(); });
 
         assert.strictEqual(h.renderer.isDeviceLost(), true, 'precondition: the loss latched');
+        assert.strictEqual(h.renderer.getGaussianReadiness().state, 'lost');
         assert.strictEqual(
             h.renderer.isReady(),
             false,

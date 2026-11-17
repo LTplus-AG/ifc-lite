@@ -61,6 +61,9 @@ export interface SpaceRectangleParams {
   /** Gross (centreline) floor area in m² for the GrossFloorArea quantity +
    *  GrossVolume; defaults to the OuterCurve area when omitted. */
   grossFloorArea?: number;
+  /** Perimeters of the gross and net footprints in metres, when different from OuterCurve. */
+  grossPerimeter?: number;
+  netPerimeter?: number;
 }
 
 export interface SpacePolygonParams {
@@ -87,6 +90,9 @@ export interface SpacePolygonParams {
   /** Gross (centreline) floor area in m² for GrossFloorArea + GrossVolume;
    *  defaults to the OuterCurve area when omitted. */
   grossFloorArea?: number;
+  /** Perimeters of the gross and net footprints in metres, when different from OuterCurve. */
+  grossPerimeter?: number;
+  netPerimeter?: number;
 }
 
 export interface SpaceBuildResult {
@@ -227,7 +233,8 @@ export function addSpaceToStore(
   editor.addQuantitySet(spaceId, 'Qto_SpaceBaseQuantities', [
     { name: 'GrossFloorArea', value: grossArea, quantityType: 'AREA' },
     { name: 'NetFloorArea', value: params.netFloorArea ?? area, quantityType: 'AREA' },
-    { name: 'GrossPerimeter', value: n(perimeter), quantityType: 'LENGTH' },
+    { name: 'GrossPerimeter', value: n(params.grossPerimeter ?? perimeter), quantityType: 'LENGTH' },
+    { name: 'NetPerimeter', value: n(params.netPerimeter ?? perimeter), quantityType: 'LENGTH' },
     { name: 'Height', value: n(params.Height), quantityType: 'LENGTH' },
     { name: 'GrossVolume', value: grossArea * params.Height, quantityType: 'VOLUME' },
   ]);

@@ -14,7 +14,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ACTIVITY_LIMIT, ACTIVITY_STORAGE_KEY, activityCanceller, beginActivity, cancelActivity, clearFinishedActivity,
-  finishActivity, restoreActivityJournal, updateActivity, useActivityJournal,
+  finishActivity, recordActivity, restoreActivityJournal, updateActivity, useActivityJournal,
 } from './activity-journal.js';
 import { isCataloguedKey } from './activity-recorders.js';
 
@@ -125,5 +125,50 @@ describe('activity journal (U02, #6925)', () => {
     assert.equal(cancelled, 1);
     clearFinishedActivity();
     assert.deepEqual(useActivityJournal.getState().jobs.map((job) => job.id), [live]);
+  });
+});
+
+describe('activity journal outcomes belong to the run that started them (J1)', () => {
+  it('J1: a source id begun again while its job runs never lets the old run settle the new one', () => {
+    let oldCancels = 0;
+    let newCancels = 0;
+    const first = beginActivity({ kind: 'ai', title: 'activityTray.job.ai', id: 'req-7', cancel: () => { oldCancels++; } }, T0);
+    const second = beginActivity({ kind: 'ai', title: 'activityTray.job.ai', id: 'req-7', cancel: () => { newCancels++; } }, T0 + 1);
+    assert.notEqual(second, first, 'each run gets its own handle');
+
+    finishActivity(first, 'failed', { detail: 'old run' }, T0 + 2);
+    updateActivity(first, { phase: 'late phase from the old run' });
+    const byId = new Map(useActivityJournal.getState().jobs.map((job) => [job.id, job]));
+    assert.equal(byId.get(first)?.outcome, 'failed', 'the old run settles its own job');
+    assert.equal(byId.get(second)?.outcome, 'running', 'the new run is untouched');
+    assert.equal(byId.get(second)?.phase, undefined);
+
+    cancelActivity(second);
+    assert.deepEqual([oldCancels, newCancels], [0, 1], 'Cancel reaches the new run, not the old one');
+    finishActivity(second, 'completed', {}, T0 + 3);
+    assert.equal(useActivityJournal.getState().jobs.find((job) => job.id === second)?.outcome, 'completed');
+  });
+
+  it('J1: a source id begun again after its job finished still replaces that row', () => {
+    const first = beginActivity({ kind: 'ai', title: 'activityTray.job.ai', id: 'req-8' }, T0);
+    finishActivity(first, 'completed', {}, T0 + 1);
+    const second = beginActivity({ kind: 'ai', title: 'activityTray.job.ai', id: 'req-8' }, T0 + 2);
+    assert.equal(second, 'req-8');
+    assert.deepEqual(useActivityJournal.getState().jobs.map((job) => [job.id, job.outcome]), [['req-8', 'running']]);
+  });
+
+  it('J1: recordActivity records a user abort as cancelled, not failed, and still rethrows it', async () => {
+    const abort = new DOMException('The user aborted a request.', 'AbortError');
+    await assert.rejects(recordActivity({ kind: 'export', title: 'activityTray.job.export' }, async () => { throw abort; }), abort);
+    const [job] = useActivityJournal.getState().jobs;
+    assert.equal(job.outcome, 'cancelled');
+    assert.equal(job.detail, undefined, 'a cancel carries no failure message');
+  });
+
+  it('J1: recordActivity still records an ordinary error as failed with its message', async () => {
+    await assert.rejects(recordActivity({ kind: 'export', title: 'activityTray.job.export' }, async () => { throw new Error('disk full'); }));
+    const [job] = useActivityJournal.getState().jobs;
+    assert.equal(job.outcome, 'failed');
+    assert.equal(job.detail, 'disk full');
   });
 });

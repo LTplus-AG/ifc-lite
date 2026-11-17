@@ -75,6 +75,7 @@ function makeState(camera: Camera): CameraInternalState {
     // `null` is the "no tighter orbit anchor, fall back to sceneBounds" state
     // Camera itself starts in (camera.ts), which is what these tests exercise.
     orbitAnchorBounds: null,
+    lensShift: { x: 0, y: 0 },
   };
 }
 

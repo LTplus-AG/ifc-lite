@@ -8,14 +8,15 @@
  * constituent sets, and material lists.
  */
 
-import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, Layers } from 'lucide-react';
+import { CollapsibleContent } from '@/components/ui/collapsible';
+import { Layers } from 'lucide-react';
 import type { MaterialInfo } from '@ifc-lite/parser';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { EXPRESS_CATEGORY_ATTRIBUTE, EXPRESS_IS_VENTILATED_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { PersistentCollapsible } from './PersistentCollapsible';
 import { associationDisclosureId } from './associationDisclosureId';
+import { INSPECTOR_ROWS, INSPECTOR_SECTION, InspectorRow, InspectorSectionTrigger } from './inspector-ui';
 
 export const TYPE_LABEL_KEYS: Record<MaterialInfo['type'], TranslationKey> = {
   Material: 'properties.material.typeLabel.material',
@@ -32,19 +33,14 @@ export function MaterialCard({ material, sectionId }: { material: MaterialInfo; 
   const displayName = material.name || typeLabel;
 
   return (
-    <PersistentCollapsible id={sectionId ?? associationDisclosureId('material', material, [material], 0)} className="border-2 border-amber-200 dark:border-amber-800 bg-amber-50/20 dark:bg-amber-950/20 w-full max-w-full overflow-hidden">
-      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-amber-50 dark:hover:bg-amber-900/30 text-left transition-colors overflow-hidden">
-        <Layers className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-        <span className="font-bold text-xs text-amber-700 dark:text-amber-400 truncate flex-1 min-w-0">
-          {displayName}
-        </span>
-        <span className="text-2xs font-mono bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 shrink-0">
-          {typeLabel}
-        </span>
-        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
-      </CollapsibleTrigger>
+    <PersistentCollapsible id={sectionId ?? associationDisclosureId('material', material, [material], 0)} className={INSPECTOR_SECTION}>
+      <InspectorSectionTrigger
+        icon={<Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+        title={displayName}
+        trailing={<span className="shrink-0 pr-1 text-2xs text-muted-foreground">{typeLabel}</span>}
+      />
       <CollapsibleContent>
-        <div className="border-t-2 border-amber-200 dark:border-amber-800 divide-y divide-amber-100 dark:divide-amber-900/30">
+        <div className={INSPECTOR_ROWS}>
           {/* Direct material */}
           {material.type === 'Material' && (
             <>
@@ -62,40 +58,40 @@ export function MaterialCard({ material, sectionId }: { material: MaterialInfo; 
             <>
               {material.name && <MaterialRow label={t('properties.material.setName')} value={material.name} />}
               {material.layers.map((layer, i) => (
-                <div key={i} className="px-3 py-2 text-xs hover:bg-amber-50/50 dark:hover:bg-amber-900/20">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-amber-700 dark:text-amber-400">
+                <div key={i} className="px-3 py-1 text-xs">
+                  <div className="flex h-6 items-center gap-2">
+                    <span className="font-medium text-foreground">
                       {t('properties.material.layerN', { n: i + 1 })}
                     </span>
                     {layer.thickness !== undefined && (
-                      <span className="text-2xs font-mono bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-300">
+                      <span className="text-2xs font-mono tabular-nums text-muted-foreground">
                         {formatThickness(layer.thickness, locale)}
                       </span>
                     )}
                   </div>
-                  <div className="grid grid-cols-[minmax(60px,auto)_1fr] gap-x-2 gap-y-0.5 ml-2">
+                  <div className="inspector-kv inspector-kv-sub gap-x-2 gap-y-0.5">
                     {layer.materialName && (
                       <>
-                        <span className="text-zinc-400">{t('properties.material.materialLabel')}</span>
-                        <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{layer.materialName}</span>
+                        <span className="text-muted-foreground">{t('properties.material.materialLabel')}</span>
+                        <span className="text-foreground break-words">{layer.materialName}</span>
                       </>
                     )}
                     {layer.name && (
                       <>
-                        <span className="text-zinc-400">{EXPRESS_NAME_ATTRIBUTE}</span>
-                        <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{layer.name}</span>
+                        <span className="text-muted-foreground">{EXPRESS_NAME_ATTRIBUTE}</span>
+                        <span className="text-foreground break-words">{layer.name}</span>
                       </>
                     )}
                     {layer.category && (
                       <>
-                        <span className="text-zinc-400">{EXPRESS_CATEGORY_ATTRIBUTE}</span>
-                        <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{layer.category}</span>
+                        <span className="text-muted-foreground">{EXPRESS_CATEGORY_ATTRIBUTE}</span>
+                        <span className="text-foreground break-words">{layer.category}</span>
                       </>
                     )}
                     {layer.isVentilated && (
                       <>
-                        <span className="text-zinc-400">{EXPRESS_IS_VENTILATED_ATTRIBUTE}</span>
-                        <span className="font-mono text-amber-700 dark:text-amber-400">{t('properties.material.yes')}</span>
+                        <span className="text-muted-foreground">{EXPRESS_IS_VENTILATED_ATTRIBUTE}</span>
+                        <span className="text-foreground">{t('properties.material.yes')}</span>
                       </>
                     )}
                   </div>
@@ -109,29 +105,29 @@ export function MaterialCard({ material, sectionId }: { material: MaterialInfo; 
             <>
               {material.name && <MaterialRow label={t('properties.material.setName')} value={material.name} />}
               {material.profiles.map((profile, i) => (
-                <div key={i} className="px-3 py-2 text-xs hover:bg-amber-50/50 dark:hover:bg-amber-900/20">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-amber-700 dark:text-amber-400">
+                <div key={i} className="px-3 py-1 text-xs">
+                  <div className="flex h-6 items-center gap-2">
+                    <span className="font-medium text-foreground">
                       {t('properties.material.profileN', { n: i + 1 })}
                     </span>
                   </div>
-                  <div className="grid grid-cols-[minmax(60px,auto)_1fr] gap-x-2 gap-y-0.5 ml-2">
+                  <div className="inspector-kv inspector-kv-sub gap-x-2 gap-y-0.5">
                     {profile.materialName && (
                       <>
-                        <span className="text-zinc-400">{t('properties.material.materialLabel')}</span>
-                        <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{profile.materialName}</span>
+                        <span className="text-muted-foreground">{t('properties.material.materialLabel')}</span>
+                        <span className="text-foreground break-words">{profile.materialName}</span>
                       </>
                     )}
                     {profile.name && (
                       <>
-                        <span className="text-zinc-400">{EXPRESS_NAME_ATTRIBUTE}</span>
-                        <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{profile.name}</span>
+                        <span className="text-muted-foreground">{EXPRESS_NAME_ATTRIBUTE}</span>
+                        <span className="text-foreground break-words">{profile.name}</span>
                       </>
                     )}
                     {profile.category && (
                       <>
-                        <span className="text-zinc-400">{EXPRESS_CATEGORY_ATTRIBUTE}</span>
-                        <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{profile.category}</span>
+                        <span className="text-muted-foreground">{EXPRESS_CATEGORY_ATTRIBUTE}</span>
+                        <span className="text-foreground break-words">{profile.category}</span>
                       </>
                     )}
                   </div>
@@ -145,28 +141,28 @@ export function MaterialCard({ material, sectionId }: { material: MaterialInfo; 
             <>
               {material.name && <MaterialRow label={t('properties.material.setName')} value={material.name} />}
               {material.constituents.map((constituent, i) => (
-                <div key={i} className="px-3 py-2 text-xs hover:bg-amber-50/50 dark:hover:bg-amber-900/20">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-amber-700 dark:text-amber-400">
+                <div key={i} className="px-3 py-1 text-xs">
+                  <div className="flex h-6 items-center gap-2">
+                    <span className="font-medium text-foreground">
                       {constituent.name || t('properties.material.constituentN', { n: i + 1 })}
                     </span>
                     {constituent.fraction !== undefined && (
-                      <span className="text-2xs font-mono bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-300">
+                      <span className="text-2xs font-mono tabular-nums text-muted-foreground">
                         {formatLocaleNumber(locale, constituent.fraction * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
                       </span>
                     )}
                   </div>
-                  <div className="grid grid-cols-[minmax(60px,auto)_1fr] gap-x-2 gap-y-0.5 ml-2">
+                  <div className="inspector-kv inspector-kv-sub gap-x-2 gap-y-0.5">
                     {constituent.materialName && (
                       <>
-                        <span className="text-zinc-400">{t('properties.material.materialLabel')}</span>
-                        <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{constituent.materialName}</span>
+                        <span className="text-muted-foreground">{t('properties.material.materialLabel')}</span>
+                        <span className="text-foreground break-words">{constituent.materialName}</span>
                       </>
                     )}
                     {constituent.category && (
                       <>
-                        <span className="text-zinc-400">{EXPRESS_CATEGORY_ATTRIBUTE}</span>
-                        <span className="font-mono text-amber-700 dark:text-amber-400 break-words">{constituent.category}</span>
+                        <span className="text-muted-foreground">{EXPRESS_CATEGORY_ATTRIBUTE}</span>
+                        <span className="text-foreground break-words">{constituent.category}</span>
                       </>
                     )}
                   </div>
@@ -190,12 +186,7 @@ export function MaterialCard({ material, sectionId }: { material: MaterialInfo; 
 }
 
 function MaterialRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-amber-50/50 dark:hover:bg-amber-900/20">
-      <span className="text-zinc-500 dark:text-zinc-400 font-medium">{label}</span>
-      <span className="font-mono text-amber-700 dark:text-amber-400 select-all break-words">{value}</span>
-    </div>
-  );
+  return <InspectorRow label={label} value={value} />;
 }
 
 export function formatThickness(thickness: number, locale: string): string {

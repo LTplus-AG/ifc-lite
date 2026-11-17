@@ -8,8 +8,11 @@
  * Extracted from Viewport.tsx for reusability
  */
 
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
+import { shallow } from 'zustand/shallow';
 import { modelHiddenEntities } from '../lib/visibility/model-hidden-entities.js';
+import { resolveViewHiddenEntities, retypedClasses, withClassHiddenRetypes } from '../lib/visibility/structural-view.js';
+import { classFilterActive, type RetypedClasses } from '../store/typeVisibilityFilter.js';
 import { useViewerStore } from '../store/index.js';
 import { useStoreyContextVisibility } from './useStoreyContext.js';
 
@@ -39,14 +42,20 @@ export function useSelectionState() {
  * viewport draws it: model visibility and the workspace storey context folded in.
  */
 export function useVisibilityState() {
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const userHiddenEntities = useViewerStore((state) => state.hiddenEntities);
   const models = useViewerStore((state) => state.models);
   const geometryContentVersion = useViewerStore((state) => state.geometryContentVersion);
   const toGlobalId = useViewerStore((state) => state.toGlobalId);
-  const hiddenEntities = useMemo(
-    () => modelHiddenEntities(models, userHiddenEntities, toGlobalId),
-    [models, userHiddenEntities, toGlobalId, geometryContentVersion],
-  );
+  const typeVisibility = useViewerStore((state) => state.typeVisibility);
+  const hiddenEntities = useMemo(() => {
+    const masked = resolveViewHiddenEntities({ models, ifcDataStore, mutationViews, structuralViewMode,
+      hiddenEntities: modelHiddenEntities(models, userHiddenEntities, toGlobalId), toGlobalId });
+    return withClassHiddenRetypes({ models, ifcDataStore, mutationViews, toGlobalId }, masked, typeVisibility);
+  }, [models, userHiddenEntities, toGlobalId, geometryContentVersion, structuralViewMode, ifcDataStore, mutationVersion, mutationViews, typeVisibility]);
   const isolatedEntities = useViewerStore((state) => state.isolatedEntities);
   const userGhostExcept = useViewerStore((state) => state.ghostExceptEntities);
   // The Model workspace hides (or ghosts) the storeys above the one being
@@ -58,6 +67,27 @@ export function useVisibilityState() {
     isolatedEntities,
     ghostExceptEntities: ghostExcept,
   };
+}
+
+const NO_RETYPES: RetypedClasses = new Map();
+
+/** `retypedClasses` for the mesh filters. Keeps its identity until a retype
+ *  changes the contents, and stays empty while no class filter is active, so
+ *  edits that cannot move a mesh do not rebuild filtered meshes, drawings or caps. */
+export function useRetypedClasses(): RetypedClasses {
+  const active = useViewerStore((s) => classFilterActive(s.typeVisibility, s.structuralViewMode));
+  const models = useViewerStore((s) => s.models);
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const toGlobalId = useViewerStore((s) => s.toGlobalId);
+  const previous = useRef(NO_RETYPES);
+  return useMemo(() => {
+    if (!active) return NO_RETYPES;
+    const next = retypedClasses({ models, ifcDataStore, mutationViews, toGlobalId });
+    if (!shallow(previous.current, next)) previous.current = next;
+    return previous.current;
+  }, [active, models, ifcDataStore, mutationViews, mutationVersion, toGlobalId]);
 }
 
 /**
@@ -89,12 +119,9 @@ export function useToolState() {
 export function useMeasurementState() {
   // Basic measurement state
   const measurements = useViewerStore((state) => state.measurements);
-  const pendingMeasurePoint = useViewerStore((state) => state.pendingMeasurePoint);
   const activeMeasurement = useViewerStore((state) => state.activeMeasurement);
 
   // Measurement actions
-  const addMeasurePoint = useViewerStore((state) => state.addMeasurePoint);
-  const completeMeasurement = useViewerStore((state) => state.completeMeasurement);
   const startMeasurement = useViewerStore((state) => state.startMeasurement);
   const updateMeasurement = useViewerStore((state) => state.updateMeasurement);
   const finalizeMeasurement = useViewerStore((state) => state.finalizeMeasurement);
@@ -122,15 +149,12 @@ export function useMeasurementState() {
   return {
     // State
     measurements,
-    pendingMeasurePoint,
     activeMeasurement,
     snapEnabled,
     edgeLockState,
     measurementConstraintEdge,
 
     // Actions
-    addMeasurePoint,
-    completeMeasurement,
     startMeasurement,
     updateMeasurement,
     finalizeMeasurement,
@@ -235,8 +259,6 @@ export function useColorUpdateState() {
   const clearPendingMeshRemovals = useViewerStore((state) => state.clearPendingMeshRemovals);
   const pruneGeometryMeshes = useViewerStore((state) => state.pruneGeometryMeshes);
   const clearPendingMeshTranslations = useViewerStore((state) => state.clearPendingMeshTranslations);
-  const pendingInstancedShards = useViewerStore((state) => state.pendingInstancedShards);
-  const clearInstancedShards = useViewerStore((state) => state.clearInstancedShards);
   const pendingMeshRotations = useViewerStore((state) => state.pendingMeshRotations);
   const clearPendingMeshRotations = useViewerStore((state) => state.clearPendingMeshRotations);
 
@@ -246,14 +268,12 @@ export function useColorUpdateState() {
     pendingMeshRemovals,
     pendingMeshTranslations,
     pendingMeshRotations,
-    pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,
     pruneGeometryMeshes,
     clearPendingMeshTranslations,
     clearPendingMeshRotations,
-    clearInstancedShards,
   };
 }
 

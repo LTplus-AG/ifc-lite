@@ -34,7 +34,8 @@
 //!
 //! All arithmetic is plain `f64` — **no FMA, no transcendental tie-breaks**.
 //! Orientation and in-circle SIGN decisions use Shewchuk's adaptive exact
-//! predicates (`geometry_predicates::{orient2d, incircle}`), which are
+//! predicates (`geometry_predicates::orient2d`, and `incircle`'s bit-identical
+//! port with right-sized stage-B scratch, see `cdt/incircle.rs`), which are
 //! sign-exact and bit-identical across x86_64 / aarch64 / wasm. Every worklist
 //! is processed in a **canonical order** (point insertion in index order;
 //! refinement queues drained by sorted/lowest-index triangle), never via
@@ -62,6 +63,7 @@
 //! is not.
 
 mod enc_grid;
+mod incircle;
 mod insertion;
 mod predicates;
 
@@ -154,7 +156,7 @@ use crate::math::geom2d::orientation as orient;
 /// the CCW triangle `(a, b, c)`.
 #[inline]
 fn in_circle_sign(a: P2, b: P2, c: P2, d: P2) -> i32 {
-    let v = geometry_predicates::incircle(a, b, c, d);
+    let v = incircle::incircle(a, b, c, d);
     if v > 0.0 {
         1
     } else if v < 0.0 {

@@ -93,12 +93,13 @@ jobs:
           filters: |
             surface:
               - "rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc"
-              - "docs/architecture/evidence/issue-7292/**"
+              - "tools/ifcopenshell_reference/compare_surface.py"
+              - "tools/ifcopenshell_reference/finite_coverage.py"
               - "tools/ifcopenshell_reference/test_surface_coverage.py"
               - "tools/ifcopenshell_reference/reference_validation.py"
               - "tools/ifcopenshell_reference/reference_worker.py"
               - "tools/ifcopenshell_reference/test_reference_validation.py"
-              - "tools/ifcopenshell_reference/evidence/7723/**"
+              - "tools/ifcopenshell_reference/fixtures/7723/**"
               - "tools/ifcopenshell_reference/requirements.lock"
               - ".github/workflows/ifcopenshell-parity.yml"
             geometry:
@@ -177,10 +178,19 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5
         with:
           python-version: "3.12"
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+      # Restore-only: test.yml on main saves this exact tree. The fetch below
+      # then re-hashes every file and downloads only what is missing, so a
+      # release-CDN outage no longer fails the lane while the manifest is
+      # unchanged (#9329, #9342, #9351).
+      - name: Restore the fixture corpus from the main-branch cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch fixture corpus
         run: |
           pnpm install --frozen-lockfile --ignore-scripts
@@ -283,7 +293,7 @@ jobs:
         with:
           cache-prefix: cost-parity
       - if: steps.filter.outputs.cost == 'true'
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - if: steps.filter.outputs.cost == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -333,7 +343,7 @@ jobs:
       - uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: cost-parity-full
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -373,5 +383,6 @@ jobs:
       jobs: full, cost-full
       result: full=${{ needs.full.result }}, cost-full=${{ needs.cost-full.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

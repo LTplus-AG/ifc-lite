@@ -42,7 +42,7 @@ test('Bulk Selection edits three walls across two IFC models in one undo step (#
 
   // Bulk authoring is available through the viewer's Model workspace.
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  const modelWorkspace = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  const modelWorkspace = page.locator('[data-command-id="tool:edit-mode"]');
   await modelWorkspace.click();
   await expect(modelWorkspace).toHaveAttribute('aria-pressed', 'true');
 
@@ -69,7 +69,7 @@ test('Bulk Selection edits three walls across two IFC models in one undo step (#
   await dialog.getByPlaceholder('e.g., Pset_WallCommon').fill('Pset_BulkTargetWitness');
   await dialog.getByPlaceholder('e.g., FireRating').fill('Code');
   await dialog.getByPlaceholder('Value').fill('ONLY_THREE');
-  await page.screenshot({ path: 'docs/architecture/evidence/bulk-target-sources-5890/selection-two-models.png' });
+  await page.screenshot({ path: 'test-results/bulk-target-sources/selection-two-models.png' });
   await dialog.getByRole('button', { name: 'Apply to 3 entities' }).click();
   await expect(dialog.getByText('Success', { exact: true })).toBeVisible();
 

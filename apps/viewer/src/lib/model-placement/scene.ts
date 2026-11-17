@@ -5,11 +5,14 @@ import { modelIndices } from './model-indices.js';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
 import { fromRenderTranslation, type Translation } from './translation.js';
+import { gaussianModelBounds } from '@/hooks/ingest/gaussianAssets';
 
 
 export function modelBounds(modelId: string) {
   const state = useViewerStore.getState(), model = state.models.get(modelId);
   if (!model) return null;
+  // A capture frames by its Gaussian centres, never by an invented mesh box.
+  if (model.gaussianSplat) return gaussianModelBounds(model);
   const handle = model.pointCloudHandleId === undefined ? undefined : { id: model.pointCloudHandleId };
   return getGlobalRenderer()?.getModelPlacementBounds(modelIndices(state.models).get(modelId) ?? 0, handle) ?? null;
 }

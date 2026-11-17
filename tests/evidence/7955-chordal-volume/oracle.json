@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "rust/processing/src/element/session_retained/chordal.rs",
-  "mutation": "tests/evidence/7955-chordal-volume/behaviour.oracle.patch",
-  "test": "rust/processing/tests/retained_chordal_volume.rs",
-  "why": "Reverse application keeps the volume helpers and drops only the admission check, so the 8/16 mullion publishes through the controller; the SMLib-free mismatched-arc refusal witness must fail."
-}

@@ -5,12 +5,16 @@
 import type { Catalogue } from '../../registry';
 
 export const modelInspectorRu = {
+  "modelInspector.multipleModels": "Для совместного редактирования выберите элементы одной модели.",
+  'modelInspector.unavailable': 'Элемент недоступен',
+  'modelInspector.multiple': 'Выбрано элементов: {count}',
   "modelInspector.panel.title": "Инспектор модели",
   "modelInspector.close": "Закрыть инспектор модели",
   "modelInspector.empty.noSession": "Войдите в рабочую область модели для редактирования",
   "modelInspector.empty.enter": "Модель",
   "modelInspector.empty.noModel": "Сначала загрузите или запустите модель",
   "modelInspector.empty.idle": "Выберите инструмент на панели инструментов или выберите элемент",
+  "modelInspector.empty.command": "У этого инструмента здесь нет значений по умолчанию. Его параметры находятся на панели над областью просмотра.",
   "modelInspector.header.defaults": "По умолчанию · {kind}",
   "modelInspector.header.selection": "{ifcClass} #{id}",
   "modelInspector.header.selectionOnStorey": "{ifcClass} #{id} · {storey}",
@@ -70,5 +74,9 @@ export const modelInspectorRu = {
   "modelInspector.layers.defaultsHint": "Новые элементы получают эти слои.",
   "modelInspector.layers.needName": "Назовите каждый новый материал",
   "modelInspector.layers.needLayer": "Присвойте каждому слою толщину больше нуля",
+  "modelInspector.layers.typeScope": {"one": "Изменит {countDisplay} элемент этого типа вместе с примыканиями и созданными помещениями.", "few": "Изменит {countDisplay} элемента этого типа вместе с примыканиями и созданными помещениями.", "many": "Изменит {countDisplay} элементов этого типа вместе с примыканиями и созданными помещениями.", "other": "Изменит {countDisplay} элемента этого типа вместе с примыканиями и созданными помещениями."},
+  "modelInspector.layers.typeOwnLayers": {"one": "{countDisplay} использует другой набор слоёв или материал и сохраняет его.", "few": "{countDisplay} используют другой набор слоёв или материал и сохраняют его.", "many": "{countDisplay} используют другой набор слоёв или материал и сохраняют его.", "other": "{countDisplay} используют другой набор слоёв или материал и сохраняют его."},
+  "modelInspector.layers.notFollowed": {"one": "{countDisplay} элемент сохранил прежнюю форму:", "few": "{countDisplay} элемента сохранили прежнюю форму:", "many": "{countDisplay} элементов сохранили прежнюю форму:", "other": "{countDisplay} элемента сохранили прежнюю форму:"},
+  "modelInspector.layers.keptBody": "{name}: {reason}",
   "modelInspector.hosting.title": "Размещение в основе",
 } satisfies Catalogue;

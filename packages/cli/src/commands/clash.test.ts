@@ -485,6 +485,7 @@ describe('clash --matrix rule coverage (#2536)', () => {
         expect(payload.ruleCoverageOutcome).toBe('no-match');
         expect(payload.ruleCoverage).not.toBeNull();
         expect(payload.ruleCoverage!.every((c) => c.matchedA === 0 || c.matchedB === 0)).toBe(true);
+        expect(payload.ruleCoverage!.every((c) => !Object.hasOwn(c, 'matchedElements'))).toBe(true); // #9259 per-load members stay out of CLI JSON
 
         expect(humanOut).toContain('WARNING');
         expect(humanOut).toContain('did NOT run');

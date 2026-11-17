@@ -4,32 +4,40 @@
 
 /**
  * StructuralCard — surface `extractStructuralOnDemand`'s read model in the
- * Properties when the selected entity is itself an `IfcStructuralMember`
- * subtype (curve or surface). Mirrors `ScheduleCard`'s shape: a self-contained
- * card that renders nothing when there is nothing to show, so it is safe to
- * mount unconditionally next to the other property cards.
+ * Properties when the selection is a structural record: a member, connection,
+ * activity, load group or case, result group or analysis model. Mirrors
+ * `ScheduleCard`'s shape: a self-contained card that renders nothing when there
+ * is nothing to show, so it is safe to mount unconditionally next to the other
+ * property cards.
  *
- * Scope, per #4206 layer "properties card": list the member's analysis
- * model(s), the connections it is joined to (with their boundary condition,
- * when the file carries one), and the loads applied to it via its activities.
- * Nothing here edits structural data — this is a read surface, matching
- * layer 3 (`bim.structural`), which is read-only too.
+ * What it shows comes from `structuralCardSections` (one data-driven list of
+ * sections with EXPRESS attribute rows: the selection, then its applied load,
+ * boundary and connection conditions, member-end relationships and
+ * eccentricities). A member also lists its analysis model(s), the connections
+ * it is joined to and the loads applied to it, and either end of the
+ * physical-to-analytical link lists its counterparts. Nothing here edits
+ * structural data — this is a read surface, matching layer 3
+ * (`bim.structural`), which is read-only too.
  */
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Boxes, Anchor, ArrowDownToLine, TriangleAlert, ChevronDown } from 'lucide-react';
 import { formatLocaleNumber, localeCount, useTranslation, type TranslationKey } from '@/i18n';
-import { formatLocaleList } from '@/i18n/intlFormat';
-import { EXPRESS_PREDEFINED_TYPE_ATTRIBUTE, EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
+import { formatLocaleList, formatLocaleValueList } from '@/i18n/intlFormat';
+import { formatMeasureNumber, resolveMeasureDisplay, type UnitDisplay } from '@/lib/units/display';
 import type {
+  ProjectUnits,
   StructuralExtraction,
   StructuralConnectionInfo,
   StructuralActivityInfo,
   StructuralLoadInfo,
 } from '@ifc-lite/parser';
-import { selectedStructuralMember, structuralRelatedRows } from './selectedStructuralMember';
+import { structuralCardSubject, structuralRelatedRows } from './selectedStructuralMember';
+import { structuralCardSections, type StructuralCardRow, type StructuralCardSection } from './structural-card-model';
 import { PersistentCollapsible } from './PersistentCollapsible';
+import { RelItem } from './RelationshipsCard';
+import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_TITLE, INSPECTOR_COUNT, INSPECTOR_CHEVRON, INSPECTOR_SUBHEADING } from './inspector-ui';
 
 interface StructuralCardProps {
   /** Structural read model for the current model (or null if none/unextracted). */
@@ -39,85 +47,131 @@ interface StructuralCardProps {
   /** GUID-only fallback when no local EXPRESS identity is available; must be unique in this model. */
   selectedGlobalId?: string | null;
   sourceUnavailable?: boolean;
+  /** Name and IFC class of a model-local entity, for the counterpart rows. */
+  describeEntity?: (expressId: number) => { name?: string; type: string } | null;
+  /** Select a model-local entity: the jump to a counterpart. */
+  onSelectEntity?: (expressId: number) => void;
+  /** The store's `schemaVersion`: which EXPRESS attributes a record has. */
+  schemaVersion?: string;
+  /** The model's declared units; null when they cannot be read, and then no unit is printed. */
+  projectUnits?: ProjectUnits | null;
+  /** The user's display unit per unit type, as the property and quantity cards apply it. */
+  unitDisplayOverrides?: Record<string, string>;
 }
 
 export function StructuralCard({
   structuralData,
   selectedExpressId,
-  selectedGlobalId, sourceUnavailable = false,
+  selectedGlobalId, sourceUnavailable = false, describeEntity, onSelectEntity, schemaVersion, projectUnits = null,
+  unitDisplayOverrides = NO_OVERRIDES,
 }: StructuralCardProps) {
   const { t, locale } = useTranslation();
-  const member = useMemo(
-    () => selectedStructuralMember(structuralData, selectedExpressId, selectedGlobalId),
+  const subject = useMemo(
+    () => structuralCardSubject(structuralData, selectedExpressId, selectedGlobalId),
     [structuralData, selectedExpressId, selectedGlobalId],
   );
+  const member = subject?.member ?? null;
+  const counterparts = subject?.counterparts ?? null;
 
-  const related = useMemo(() => {
-    if (!member || !structuralData) return null;
-    return {
-      connections: structuralRelatedRows(structuralData.connections, member.connectionGlobalIds),
-      activities: structuralRelatedRows(structuralData.activities, member.activityGlobalIds),
-      models: structuralRelatedRows(structuralData.analysisModels, member.analysisModelGlobalIds),
-    };
-  }, [member, structuralData]);
-  if (!member || !related) return null;
+  const groupNames = useMemo(() => new Map(
+    [...(structuralData?.loadGroups ?? []), ...(structuralData?.resultGroups ?? [])]
+      .flatMap((group) => (group.name ? [[group.globalId, group.name] as const] : [])),
+  ), [structuralData]);
+  const related = useMemo(() => ({
+    connections: structuralRelatedRows(structuralData?.connections ?? [], member?.connectionGlobalIds ?? []),
+    activities: structuralRelatedRows(structuralData?.activities ?? [], member?.activityGlobalIds ?? []),
+    models: structuralRelatedRows(structuralData?.analysisModels ?? [], member?.analysisModelGlobalIds ?? []),
+  }), [member, structuralData]);
+  const sections = useMemo(
+    // A GUID-only selection whose GlobalId a member shares with another record names no record, but still the member.
+    () => (structuralData && subject ? structuralCardSections(structuralData, {
+      expressId: subject.record?.info.expressId ?? subject.member?.expressId ?? selectedExpressId, globalId: selectedGlobalId,
+    }, schemaVersion) : []),
+    [structuralData, subject, selectedExpressId, selectedGlobalId, schemaVersion],
+  );
+  if (!structuralData || !subject) return null;
+  const itemType = subject.record?.type ?? member?.type;
   const connections = related.connections.rows;
   const activities = related.activities.rows;
   const modelLabels = related.models.rows.flatMap(model => model.name ? [model.name] : []);
   const relatedUnavailable = related.connections.unavailable || related.activities.unavailable || related.models.unavailable;
+  const format = (row: StructuralCardRow) => formatCardValue(row, {
+    locale,
+    measure: (n, measure) => (projectUnits
+      ? resolveMeasureDisplay(n, measure, projectUnits, unitDisplayOverrides)
+      : { unit: null, converted: null }),
+    dropped: (reason) => t('properties.structural.configurationDropped', { name: reason }),
+    entity: (id) => describeEntity?.(id) ?? null,
+    group: (globalId) => groupNames.get(globalId) ?? globalId,
+  });
 
   return (
     <PersistentCollapsible
       id="structural"
-      className="border-2 border-violet-200 dark:border-violet-800 bg-violet-50/20 dark:bg-violet-950/20 w-full max-w-full overflow-hidden"
+      className={INSPECTOR_SECTION}
     >
-      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-violet-50 dark:hover:bg-violet-900/30 text-left transition-colors overflow-hidden">
-        <Boxes className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400 shrink-0" />
-        <span className="font-bold text-xs text-violet-700 dark:text-violet-400 truncate flex-1 min-w-0">
+      <CollapsibleTrigger className={INSPECTOR_TRIGGER}>
+        <Boxes className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className={INSPECTOR_TITLE}>
           {t('properties.structural.heading')}
         </span>
         {structuralData?.loadsTruncated && (
           <span
-            className="flex items-center gap-1 text-2xs font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0"
+            className="flex items-center gap-1 text-2xs font-medium bg-warn-surface px-1.5 py-0.5 border border-warn-border text-warn shrink-0"
             title={t('properties.structural.loadsTruncatedTooltip')}
           >
             <TriangleAlert className="h-2.5 w-2.5" aria-hidden />
             {t('properties.structural.truncatedBadge')}
           </span>
         )}
-        <span className="text-2xs font-mono bg-violet-100 dark:bg-violet-900/50 px-1.5 py-0.5 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 shrink-0">
-          {member.type.replace(/^Ifc/, '')}
-        </span>
-        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
+        {itemType && (
+          <span className={INSPECTOR_COUNT}>
+            {itemType.replace(/^Ifc/, '')}
+          </span>
+        )}
+        <ChevronDown className={INSPECTOR_CHEVRON} aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        {sourceUnavailable && <output className="block p-3 text-xs text-amber-700 dark:text-amber-300">{t('properties.structural.sourceUnavailable')}</output>}
-        {relatedUnavailable && <output className="block p-3 text-xs text-amber-700 dark:text-amber-300">{t('properties.structural.relatedUnavailable')}</output>}
-        <div className="border-t-2 border-violet-200 dark:border-violet-800 divide-y divide-violet-100 dark:divide-violet-900/30">
-          <div className="px-3 py-2 text-xs">
-            <div className="grid grid-cols-[minmax(70px,auto)_1fr] gap-x-2 gap-y-0.5 text-2xs">
-              {member.predefinedType && (
-                <>
-                  <span className="text-muted-foreground">{EXPRESS_PREDEFINED_TYPE_ATTRIBUTE}</span>
-                  <span className="font-mono text-foreground/90">{member.predefinedType}</span>
-                </>
-              )}
-              {member.thickness !== undefined && (
-                <>
-                  <span className="text-muted-foreground">{EXPRESS_THICKNESS_ATTRIBUTE}</span>
-                  <span className="font-mono text-foreground/90">{member.thickness}</span>
-                </>
-              )}
-              {modelLabels.length > 0 && (
-                <>
-                  <span className="text-muted-foreground">{t('properties.structural.model')}</span>
-                  <span className="text-foreground/90 truncate" title={modelLabels.join(', ')}>
-                    {modelLabels.join(', ')}
-                  </span>
-                </>
-              )}
+        {sourceUnavailable && <output className="block p-3 text-xs text-warn">{t('properties.structural.sourceUnavailable')}</output>}
+        {relatedUnavailable && <output className="block p-3 text-xs text-warn">{t('properties.structural.relatedUnavailable')}</output>}
+        <div className="pb-1">
+          {sections[0] && (
+            <div className="px-3 py-2 text-xs">
+              <SectionRows section={sections[0]} format={format}>
+                {modelLabels.length > 0 && (
+                  <>
+                    <span className="text-muted-foreground">{t('properties.structural.model')}</span>
+                    <span className="text-foreground/90 truncate" title={modelLabels.join(', ')}>
+                      {modelLabels.join(', ')}
+                    </span>
+                  </>
+                )}
+              </SectionRows>
+              {sections.slice(1).map((section, i) => (
+                // One resource can be held by two parents (both ends of a member share a condition): key by position.
+                <div key={`${i}:${section.via}:${section.expressId}`} className="mt-1.5" style={{ marginLeft: `${(section.depth - 1) * 0.5}rem` }}>
+                  <div className={INSPECTOR_SUBHEADING}>
+                    <span className="font-mono">{section.via}</span>
+                    <span> · {section.type}</span>
+                    <span className="font-mono"> #{section.expressId}</span>
+                  </div>
+                  <SectionRows section={section} format={format} />
+                </div>
+              ))}
             </div>
-          </div>
+          )}
+
+          {counterparts && (
+            <div className="px-3 py-2">
+              <div className={INSPECTOR_SUBHEADING}>
+                {t(counterparts.side === 'physical' ? 'properties.structural.physicalElements' : 'properties.structural.analyticalItems',
+                  localeCount(locale, counterparts.expressIds.length))}
+              </div>
+              {counterparts.expressIds.map((id) => (
+                <RelItem key={id} item={{ id, type: '', ...describeEntity?.(id) }} onSelect={onSelectEntity} />
+              ))}
+            </div>
+          )}
 
           {connections.length > 0 && (
             <div className="px-3 py-2 text-xs">
@@ -237,4 +291,67 @@ function formatDofs(components: Record<string, number | boolean>, t: Translate, 
     elastic > 0 ? label(elastic, 'properties.structural.elasticDofs') : null,
     free > 0 ? label(free, 'properties.structural.freeDofs') : null,
   ].filter((part): part is string => part !== null));
+}
+
+/** One section's rows as the card's two-column attribute grid; `children` adds rows after them. */
+function SectionRows({ section, format, children }: {
+  section: StructuralCardSection;
+  format: (row: StructuralCardRow) => string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(70px,auto)_1fr] gap-x-2 gap-y-0.5 text-2xs">
+      {section.rows.map((row) => {
+        const text = format(row);
+        return (
+          <div key={row.attribute} className="contents">
+            <span className="text-muted-foreground">{row.attribute}</span>
+            <span className="font-mono text-foreground/90 truncate" title={text}>{text}</span>
+          </div>
+        );
+      })}
+      {children}
+    </div>
+  );
+}
+
+const NO_OVERRIDES: Record<string, string> = {};
+
+interface CardValueFormat {
+  locale: string;
+  /** A number in its measure: the unit to print and the value converted to the user's display unit, if any. */
+  measure: (value: number, measure: string) => UnitDisplay;
+  /** Name and IFC class of a model-local entity. */
+  entity: (expressId: number) => { name?: string; type: string } | null;
+  /** Display name of a load or result group. */
+  group: (globalId: string) => string;
+  /** Why a load configuration slot carries no load. */
+  dropped: (reason: string) => string;
+}
+
+/** A row value as text: numbers in the locale with the measure's unit, references by id and class. */
+function formatCardValue(row: StructuralCardRow, f: CardValueFormat): string {
+  const { value } = row;
+  const { measure } = row;
+  // The unit depends on the measure alone, so any finite value resolves it.
+  const unit = measure ? f.measure(0, measure).unit : null;
+  const number = (n: number) => formatMeasureNumber(f.locale, (measure ? f.measure(n, measure).converted : null) ?? n);
+  const withUnit = (text: string) => (unit ? `${text} ${unit}` : text);
+  const reference = (id: number) => {
+    const target = f.entity(id);
+    return target ? `#${id} ${target.name || target.type}` : `#${id}`;
+  };
+  if (typeof value === 'number') return withUnit(number(value));
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+  if (typeof value === 'string') return value;
+  if ('ref' in value) return reference(value.ref);
+  if ('refs' in value) {
+    return formatLocaleValueList(f.locale, value.refs.map((ref) => (typeof ref === 'number' ? reference(ref) : f.dropped(ref.dropped))));
+  }
+  if ('globalId' in value) return f.group(value.globalId);
+  if ('globalIds' in value) return formatLocaleList(f.locale, value.globalIds.map(f.group));
+  const items = (value as readonly (number | readonly number[])[]).map((item) => (typeof item === 'number'
+    ? number(item)
+    : `(${formatLocaleValueList(f.locale, item.map(number))})`));
+  return withUnit(formatLocaleValueList(f.locale, items));
 }

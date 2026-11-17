@@ -57,6 +57,7 @@ import { formatExtensionDate } from './localized-date';
 
 interface CapabilityReviewProps {
   open: boolean;
+  busy?: boolean;
   summary: ExtensionInstallSummary;
   /** When supplied, render the capability diff vs the previously-granted set. */
   previousGrants?: readonly string[];
@@ -76,6 +77,7 @@ const APPROVE_PHRASE = 'approve';
 
 export function CapabilityReview({
   open,
+  busy = false,
   summary,
   previousGrants,
   previousVersion,
@@ -136,7 +138,7 @@ export function CapabilityReview({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) onCancel(); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <div className="flex items-center gap-2">
@@ -153,10 +155,10 @@ export function CapabilityReview({
         </DialogHeader>
 
         {summary.signed && summary.signature ? (
-          <div className="flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs">
-            <KeyRound className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+          <div className="flex items-start gap-2 rounded-md border border-ok-border bg-ok-surface px-3 py-2 text-xs">
+            <KeyRound className="h-4 w-4 text-ok mt-0.5 shrink-0" />
             <div className="min-w-0">
-              <div className="font-medium text-emerald-700 dark:text-emerald-400">
+              <div className="font-medium text-ok">
                 {t('extensionsPanels.capabilityReview.signatureVerifiedTitle')}
               </div>
               <div className="text-muted-foreground mt-0.5">
@@ -170,10 +172,10 @@ export function CapabilityReview({
             </div>
           </div>
         ) : (
-          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
-            <Unlock className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+          <div className="flex items-start gap-2 rounded-md border border-warn-border bg-warn-surface px-3 py-2 text-xs">
+            <Unlock className="h-4 w-4 text-warn mt-0.5 shrink-0" />
             <div>
-              <div className="font-medium text-amber-700 dark:text-amber-400">
+              <div className="font-medium text-warn">
                 {t('extensionsPanels.capabilityReview.unsignedTitle')}
               </div>
               <div className="text-muted-foreground mt-0.5">
@@ -184,15 +186,15 @@ export function CapabilityReview({
         )}
 
         {previousGrants && (newSinceUpgrade.size > 0 || droppedSinceUpgrade.length > 0) && (
-          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
-            <div className="font-medium text-amber-700 dark:text-amber-400">
+          <div className="rounded-md border border-warn-border bg-warn-surface px-3 py-2 text-xs">
+            <div className="font-medium text-warn">
               {t('extensionsPanels.capabilityReview.capabilityChangesSince', {
                 version: previousVersion ?? t('extensionsPanels.capabilityReview.previousVersionFallback'),
               })}
             </div>
             {newSinceUpgrade.size > 0 && (
               <div className="mt-1">
-                <span className="text-xs uppercase tracking-wide font-semibold text-amber-600">
+                <span className="text-xs uppercase tracking-wide font-semibold text-warn">
                   {t('extensionsPanels.capabilityReview.newLabel')}
                 </span>{' '}
                 {[...newSinceUpgrade].map((c) => (
@@ -204,7 +206,7 @@ export function CapabilityReview({
             )}
             {droppedSinceUpgrade.length > 0 && (
               <div className="mt-1">
-                <span className="text-xs uppercase tracking-wide font-semibold text-amber-600">
+                <span className="text-xs uppercase tracking-wide font-semibold text-warn">
                   {t('extensionsPanels.capabilityReview.droppedLabel')}
                 </span>{' '}
                 {droppedSinceUpgrade.map((c) => (
@@ -289,12 +291,12 @@ export function CapabilityReview({
         </Tabs>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onCancel}>
+          <Button variant="ghost" disabled={busy} onClick={onCancel}>
             <X className="mr-1 h-4 w-4" />
             {t('extensionsPanels.capabilityReview.cancelButton')}
           </Button>
           <Button
-            disabled={!canApprove}
+            disabled={busy || !canApprove}
             onClick={() => onApprove(Array.from(granted))}
           >
             <CheckCircle2 className="mr-1 h-4 w-4" />
@@ -308,8 +310,8 @@ export function CapabilityReview({
 
 function RiskIcon({ tier }: { tier: RiskTier }) {
   if (tier === 'red') return <ShieldAlert className="h-5 w-5 text-destructive" />;
-  if (tier === 'yellow') return <AlertTriangle className="h-5 w-5 text-amber-500" />;
-  return <CheckCircle2 className="h-5 w-5 text-emerald-500" />;
+  if (tier === 'yellow') return <AlertTriangle className="h-5 w-5 text-warn" />;
+  return <CheckCircle2 className="h-5 w-5 text-ok" />;
 }
 
 function RiskBadge({ tier }: { tier: RiskTier }) {
@@ -319,8 +321,8 @@ function RiskBadge({ tier }: { tier: RiskTier }) {
       className={cn(
         'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide',
         tier === 'red' && 'bg-destructive/20 text-destructive',
-        tier === 'yellow' && 'bg-amber-500/20 text-amber-600 dark:text-amber-400',
-        tier === 'green' && 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',
+        tier === 'yellow' && 'bg-amber-500/20 text-warn',
+        tier === 'green' && 'bg-emerald-500/20 text-ok',
       )}
     >
       {localizeRiskTier(tier, t)}

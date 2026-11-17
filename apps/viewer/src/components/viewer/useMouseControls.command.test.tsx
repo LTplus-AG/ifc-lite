@@ -56,6 +56,8 @@ describe('mounted 3D modelling gesture ownership (#6232)', () => {
     const state = useViewerStore.getState(), primary = state.models.get(MODEL_ID)!;
     const peer = { ...fixtureModel('peer', { idOffset: 1_000_000 }), ifcDataStore: primary.ifcDataStore };
     if (count === 2) useViewerStore.setState({ models: new Map([[MODEL_ID, primary], ['peer', peer]]) });
+    // One record per commit: a fixed-height wall records no storey attachment (#9013).
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'fixed' });
     useViewerStore.getState().startCommand('wall.place');
     const { canvas, camera } = canvasProbe();
     click(canvas, 10, 10);
@@ -187,6 +189,23 @@ describe('mounted 3D modelling gesture ownership (#6232)', () => {
     act(() => { useViewerStore.getState().startCommand('slab.place'); });
     await advance(30);
     assert.equal((getCommandRuntime().gesture as SlabPlaceGesture).cursor, null, 'new command has received no pointer input');
+  });
+
+  it('#10218 a room press taken before a restore hold and released during it does not stay grabbed', async (t) => {
+    if (!ensureRoomWasm(t)) return;
+    await ensureSpaceWasm(); setWallMeshes([...BOX, [[4, 0], [4, 5]]]);
+    useViewerStore.getState().startCommand('room.place');
+    await act(async () => { await runRoomAction('auto'); });
+    act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), mode: 'edit', edit: { tool: 'shape', hover: null, drag: null, cut: null, op: null } })); });
+    const { canvas } = canvasProbe(); event(canvas, 'pointerdown', 4, 5);
+    assert.ok(roomGesture().edit.drag, 'the press grabs the corner before any hold');
+    const models = new Map(useViewerStore.getState().models);
+    const [id, model] = [...models][0]!;
+    models.set(id, { ...model, geometryRestorePending: true });
+    act(() => useViewerStore.setState({ models }));
+    event(canvas, 'pointerup', 3, 5);
+    await advance(30);
+    assert.equal(roomGesture().edit.drag, null, 'the release during the hold ends the drag instead of leaving it grabbed');
   });
 
   it('drops a room press when the command changes, without clicking into its successor', async (t) => {

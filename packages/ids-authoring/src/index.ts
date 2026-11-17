@@ -6,8 +6,7 @@
  * @ifc-lite/ids-authoring — the headless IDS authoring core.
  *
  * Every authoring surface (UI, AI agent, imports, CLI, MCP) changes an IDS
- * only by dispatching the typed operations defined here. See
- * `docs/architecture/ids-studio/03-architecture/02-document-model-and-ops.md`.
+ * only by dispatching the typed operations defined here.
  */
 
 export { uuidv7, deriveId, isUuid, type Uuid, type UuidV7Source } from './uuid.js';
@@ -75,6 +74,7 @@ export { apply, OpApplyError, type ApplyResult } from './reducer/apply.js';
 
 // Grounding gate (IDS-021, IDS-022, IDS-023)
 export { checkOps } from './gate/check.js';
+export { rebaseRestriction } from './gate/values.js';
 export { createGateContext, type GateContext, type VersionTables } from './gate/context.js';
 export type { GateCode, GateCandidate, GateIssue, GateResult } from './gate/types.js';
 

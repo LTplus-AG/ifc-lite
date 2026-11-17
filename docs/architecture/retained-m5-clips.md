@@ -123,10 +123,10 @@ plane, verifies the adjacent events, and compares with its hand integral.
 ## CI scope of the real-corpus witness
 
 CI runs the synthetic three-chain witness (`m5_three_chain`), the committed
-FZK/issue_5314 corpus products and the lineage boundary. The BURKWIL beam
+FZK/issue_5314 corpus products and the lineage boundary. The beam
 #4548 witness needs a model that is not in the repository and CI does not
-download it. It runs locally with `IFCLITE_BURKWIL=<ifc>`; set
-`IFCLITE_REQUIRE_BURKWIL=1` to make an absent model fail instead of skip. It is
+download it. It runs locally with `IFCLITE_M5_BEAM_MODEL=<ifc>`; set
+`IFCLITE_REQUIRE_M5_BEAM_MODEL=1` to make an absent model fail instead of skip. It is
 therefore not in `tests/evidence/m5/witnesses.txt`.
 
 The native lane writes the M5 browser parity references to

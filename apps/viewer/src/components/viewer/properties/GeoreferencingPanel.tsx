@@ -47,6 +47,7 @@ import { TerrainHeightButton } from './georef-terrain-height-button';
 import { GeorefReadOnlyNotices, WellKnownTextRow, isReadOnlyCoordinateOperation } from './georef-notices';
 import { WorldViewSettings } from './world-view-settings';
 import { SiteContextSection } from '../site-context/SiteContextSection';
+import { FloodCheckSection } from '../site-context/FloodCheckSection';
 import { CrsAssumedBadge } from './crs-assumed-badge';
 
 // ── Main Panel ─────────────────────────────────────────────────────────
@@ -582,6 +583,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         modelName={modelId ? models.get(modelId)?.name : undefined} lengthUnitScale={lengthUnitScale} editable={editable}
         onApplyPosition={editable ? handleApplyPosition : undefined} />
       {modelId && <SiteContextSection modelId={modelId} />}
+      {modelId && <FloodCheckSection key={modelId} modelId={modelId} />}
     </div>
   );
 }

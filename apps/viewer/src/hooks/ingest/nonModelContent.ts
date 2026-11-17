@@ -72,9 +72,9 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const utf16 = utf16Encoding(bytes);
   const decode = (buffer: ArrayBuffer) => new TextDecoder(utf16 ?? 'utf-8').decode(buffer); // drops the BOM
   const headText = decode(first);
-  // Binary: a control byte (code point, for UTF-16) in the first 512; a headerless .splat can start with '<a '.
+  // Binary: a control byte in the first 512 (the first 256 code units, for UTF-16); a headerless .splat can start with '<a '.
   // Never under an IFC name, where the router sends everything to the STEP parser: judge it as text there.
-  const binary = !ifcName && (utf16 ? Array.from(headText.slice(0, 256), (c) => c.charCodeAt(0)).some(isControl) : bytes.subarray(0, 512).some(isControl));
+  const binary = !ifcName && (utf16 ? headHasControl(headText) : bytes.subarray(0, 512).some(isControl));
   const firstChar = headText.trimStart()[0] ?? '';
   const headLead = afterStepComments(headText);
   const headIsStep = headLead !== null && STEP_MARKER.test(headLead);
@@ -119,6 +119,10 @@ export function textStartsLikeStep(text: string): boolean {
 
 /** A C0 control other than tab, line feed, vertical tab, form feed or carriage return. */
 const isControl = (code: number) => code < 9 || (code > 13 && code < 32);
+function headHasControl(text: string): boolean {
+  for (let i = 0; i < Math.min(256, text.length); i++) if (isControl(text.charCodeAt(i))) return true;
+  return false;
+}
 
 function utf16Encoding(bytes: Uint8Array): 'utf-16le' | 'utf-16be' | null {
   return bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : null;

@@ -42,7 +42,7 @@ use std::ops::Range;
 
 pub(super) const MAGIC: [u8; 8] = *b"IFCLNRC\x01";
 /// Bump on any change to the byte layout or to what a section means.
-pub(super) const FORMAT_VERSION: u32 = 1;
+pub(super) const FORMAT_VERSION: u32 = 2;
 pub(super) const HEADER_LEN: usize = 200;
 const IDENTITY_END: usize = 168;
 const DIR_ENTRY_LEN: usize = 64;

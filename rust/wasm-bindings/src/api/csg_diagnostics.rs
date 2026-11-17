@@ -64,5 +64,6 @@ fn drain_diagnostics(
         WORST_HOSTS_LIMIT,
         drain.oversized_refs,
         &router.take_unsupported_items(),
+        router.take_budget_refusal_report(),
     )
 }

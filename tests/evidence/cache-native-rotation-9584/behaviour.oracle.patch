@@ -1,0 +1,11 @@
+diff --git a/rust/cache/src/pipeline.rs b/rust/cache/src/pipeline.rs
+--- a/rust/cache/src/pipeline.rs
++++ b/rust/cache/src/pipeline.rs
+@@ -157,6 +157,7 @@ fn to_cache_mesh(
+ ) -> CacheMesh {
+     let MeshData { mut positions, mut normals, mut origin, .. } = mesh;
+     if let Some(rotation) = rotation {
++        rotation.restore_in_place(&mut positions);
+         rotation.restore_in_place(&mut normals);
+         origin = rotation.point(origin);
+     }

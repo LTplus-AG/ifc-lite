@@ -340,7 +340,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
 
   // No georeferencing: the add row (or why it cannot be added) and the sections that need it (#10603).
   if (!hasData && !georef?.hasGeoreference) {
-    return <GeorefEmptyState georef={georef} modelId={modelId} editable={editable} schemaNotice={!canUseStandardGeoreferencing} onEpsgSelect={handleEpsgSelect} />;
+    return <GeorefEmptyState georef={georef} modelId={modelId} editable={editable === true} schemaNotice={!canUseStandardGeoreferencing} onEpsgSelect={handleEpsgSelect} />;
   }
 
   return (
@@ -571,7 +571,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         instancedModelRange={instancedModelRange}
         modelName={modelId ? models.get(modelId)?.name : undefined} lengthUnitScale={lengthUnitScale} editable={editable}
         onApplyPosition={editable ? handleApplyPosition : undefined} />
-      {modelId && <SiteContextSection modelId={modelId} editable={editable} />}
+      {modelId && <SiteContextSection modelId={modelId} editable={editable === true} />}
       {modelId && <FloodCheckSection key={modelId} modelId={modelId} />}
     </div>
   );

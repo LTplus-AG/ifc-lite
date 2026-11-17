@@ -135,6 +135,8 @@ export const appearanceReferenceOperations = [
         renderer = getGlobalRenderer();
       if (!source || JSON.stringify(source) !== i.expected_source || !renderer || (i.edit_reference_id && !editing))
         throw new Error('Reference source/edit identity or renderer changed.');
+      // Placed candidates hold no preview resources; only live previews count toward the cap.
+      for (const [token, row] of candidates(c)) if (row.placed) candidates(c).delete(token);
       if (candidates(c).size >= 32) throw new Error('Reference preview capacity reached.');
       const owner = { kind: 'draft' as const, id: crypto.randomUUID() },
         draftId = `agent-reference:${crypto.randomUUID()}`;

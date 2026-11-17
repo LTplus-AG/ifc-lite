@@ -59,7 +59,7 @@ interface SheetRaster {
  * scale bar only exist inside `generateSheetSVG` — SVG, Print and the
  * DXF-underlay path all render that exact string and the reporter confirmed
  * those are correct. Rather than re-deriving a second, independent sheet
- * layout for jsPDF's vector primitives (the "v1" PDF path below did exactly
+ * layout for jsPDF's vector primitives (the old "v1" PDF path did exactly
  * that and dropped the frame/scale bar entirely, and used
  * `displayOptions.scale` instead of the sheet's own scale), rasterize the
  * SAME svg the working exporters use so the PDF cannot drift from them.

@@ -8,6 +8,7 @@ import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
 import type { ToolHost } from '../types';
 import type { CapturedMeshSource } from '@/lib/appearance/create-captured-mesh';
+import { evictOldest } from './host-handles';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -124,7 +125,7 @@ export const appearanceCaptureOperations = [
         throw new Error('Unknown textured surface or triangle ordinal.');
       const capture = prepareCapturedRegion(i.source_model_id, mesh, i.triangles);
       capture.validate();
-      if (owned(c).size >= 32) throw new Error('Capture candidate capacity reached.');
+      evictOldest(owned(c), 32);
       const token = crypto.randomUUID();
       owned(c).set(token, {
         capture,

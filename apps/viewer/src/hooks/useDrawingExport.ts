@@ -164,12 +164,10 @@ export function createDrawingExport({
   // Georef inputs for the DXF export (PR #1871 review, P1): placement edits
   // applied in CesiumPlacementEditor live in `georefMutations` (per model
   // id), not in `ifcDataStore`, and in a federation the georef frame is the
-  // ANCHOR model's, not necessarily the legacy store's. Subscribe to the
-  // same store fields ViewportContainer's Cesium georef memo reads so
+  // ANCHOR model's, not necessarily the legacy store's. Read the same store
+  // fields ViewportContainer's Cesium georef memo reads so
   // `resolveDxfExportGeoreference` sees the identical inputs.
   const { models: storeModels, anchorModelIdOverride, georefMutations } = useViewerStore.getState();
-  // Georef edits replace the map, but subscribe to mutationVersion too so the
-  // dependency is explicit (matches ViewportContainer / useAnchorGeoreference).
 
   // One properties cache per export, shared by every cut polygon it styles.
   const cutPolygonStyleContext = (): CutPolygonStyleContext => ({

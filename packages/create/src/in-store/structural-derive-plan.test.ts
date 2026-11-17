@@ -243,16 +243,13 @@ describe('structural derivation plan (#9668)', () => {
     const beside = planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
       element('IfcColumn', { axis: [[13.5, 1, 0], [13.5, 1, 3]] }, { idealised: true })), { jointReach: 2 });
     expect(supportXs(beside)).toEqual([0, 6]);
-    // A wall standing on an Axis-only ground beam does not hold it, even with its base drawn 2 cm under the axis.
-    expect(supportXs(planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
-      element('IfcWall', { prism: box([7, -0.1, -0.02], 6, 0.2, [0, 0, 3]) }))))).toEqual([0, 6]);
-    // Whatever the tolerance: at 0.01 that wall still stands on the run, and at 0.5 a wall under the end still holds it.
-    expect(supportXs(planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
-      element('IfcWall', { prism: box([7, -0.1, -0.02], 6, 0.2, [0, 0, 3]) })), { tolerance: 0.01 }))).toEqual([0, 6]);
+    // Walls and slabs whose body reaches below the run hold it: under an Axis-only beam a wall founded 0.4 m down
+    // (at a large tolerance too) or one it frames into, a slab around it; under a beam with a body, a wall founded
+    // 2 cm under its soffit.
     expect(supportXs(planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
       element('IfcWall', { prism: box([11.9, -1, -0.4], 0.2, 2, [0, 0, 0.4]) })), { tolerance: 0.5 }))).toEqual([0, 6, 12]);
-    // That stricter test is for walls under an Axis-only beam only: a slab around one still holds it, and a beam
-    // with a body framing into a wall founded 2 cm under its soffit is held by it.
+    expect(supportXs(planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
+      element('IfcWall', { prism: box([11.9, -1, -1], 0.2, 2, [0, 0, 4]) }))))).toEqual([0, 6, 12]);
     expect(supportXs(planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
       element('IfcSlab', { prism: box([10, -1, -0.04], 4, 2, [0, 0, 0.15]) }))))).toEqual([0, 6, 12]);
     expect(supportXs(planStructuralDerivation(facts(element('IfcBeam', { prism: box([0, -0.15, -0.3], 12, 0.3, [0, 0, 0.3]) }),

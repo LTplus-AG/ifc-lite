@@ -928,7 +928,18 @@ ifc-lite mutate model.ifc --type IfcWall --where "Pset_WallCommon.IsExternal=tru
 
 ### `derive-structural` - Derive a structural analysis model
 
-Derive an `IfcStructuralAnalysisModel` from the physical model in the same file: beams, columns and members become curve members on their axis, slabs and walls become surface members on their mid-plane, member ends within the tolerance share a node, and footings or piles carry supports. Axes run through section centres, so a beam stops at a column face and a column top stops below the beam axis: a free member end moves along its own axis (never sideways) to meet another member's axis when that is within the joint reach, and a member met in its interior is split there. The report lists every moved end with the distance, and every end left free. When no footing carries a node, the nodes at the lowest level of the whole load-bearing structure become supports and the report flags them as guessed. A file that already has an analysis model is refused unless `--analysis-model-exists add`. Every member and node is linked to its physical element with `IfcRelAssignsToProduct`. Elements that already have a structural counterpart are skipped, so running it again writes nothing. Elements it cannot idealise (tessellated bodies, curved sweeps, non-rectangular walls) are skipped and listed with the reason. Works on IFC2X3, IFC4 and IFC4X3.
+Derive an `IfcStructuralAnalysisModel` from the physical model in the same file: beams, columns and members become curve members on their axis, slabs and walls become surface members on their mid-plane, member ends within the tolerance share a node, and footings or piles carry supports. Axes run through section centres, so a beam stops at a column face and a column top stops below the beam axis: a free member end moves along its own axis (never sideways) to meet another member's axis when that is within the joint reach, and a member met in its interior is split there. The report lists every moved end with the distance, and every end left free. When no footing carries a node, supports are guessed and the report flags them (rule below). A file that already has an analysis model is refused unless `--analysis-model-exists add`. Every member and node is linked to its physical element with `IfcRelAssignsToProduct`. Elements that already have a structural counterpart are skipped, so running it again writes nothing. Elements it cannot idealise (tessellated bodies, curved sweeps, non-rectangular walls) are skipped and listed with the reason. Works on IFC2X3, IFC4 and IFC4X3.
+
+Guessed supports:
+
+- They go at the lowest level of the whole load-bearing structure.
+- Flat members at that level join into runs; a lowest-level node with no flat member is a run of its own.
+- A bearing point is a node of a run where:
+  - a load-bearing member drawn down to the level rises;
+  - a load-bearing curve member already linked to a structural item rises from the level at the node, or just past it on the line of a flat member ending there, within the joint reach; or
+  - a load-bearing wall or slab, or a footing, reaches the flat member's underside there from below (one the beam frames into counts).
+- A run with at least two bearing points apart, not all on one line unless the run is, is supported only at them, so its overhangs stay cantilevers. Any other run is supported at every node.
+- A member drawn starting more than the tolerance above the lowest level, such as a post or a column drawn from a deep run's top face, rests on the run and does not by itself make its node a bearing point. Check guessed supports where columns stand on ground beams.
 
 ```bash
 ifc-lite derive-structural model.ifc --out analytical.ifc

@@ -54,6 +54,9 @@ export function derivedState<T>(
   const reads = new Map<string, Read>();
   const tracked = new Proxy(view, {
     get(target, name, receiver) {
+      // Derived readers must record point dependencies. A persistent inventory
+      // cursor could hide those reads and outlive this temporary proxy.
+      if (name === 'trackEntityChanges') return undefined;
       const member: unknown = Reflect.get(target, name, receiver);
       if (typeof member !== 'function') return member;
       if (name === 'getMutationRevision') return member.bind(target);

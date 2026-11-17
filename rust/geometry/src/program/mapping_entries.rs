@@ -55,7 +55,15 @@ impl<'a> MappingControl<'a> {
     }
 
     pub(in crate::program) fn type_map(rep_map: &'a DecodedEntity, textures: &'a FxHashMap<u32, ResolvedTextureMap>) -> Self {
-        Self { textures: Some(textures), rep_map: Some(Reached::Root(rep_map)), ..Self::new(Walk::TypeMap, Action::EnterTypeMap) }
+        Self { textures: Some(textures), rep_map: Some(TypeMapRoot::Borrowed(rep_map)), ..Self::new(Walk::TypeMap, Action::EnterTypeMap) }
     }
 
+}
+
+impl<'a> MappingControl<'a> {
+    pub(in crate::program) fn type_map_for_product(rep_map: &'a DecodedEntity,
+        textures: &'a FxHashMap<u32, ResolvedTextureMap>, product: &'a DecodedEntity) -> Self {
+        Self { rep_map: Some(TypeMapRoot::Product { map: rep_map, product }),
+            ..Self::type_map(rep_map, textures) }
+    }
 }

@@ -867,6 +867,54 @@ not only the byte total, and measure boot with each build in both A/B positions:
 shared host, position alone moved the result by about 15 ms. A group that claimed every
 QuickJS module also failed, because the one eager module in it made the whole group eager.
 
+## Work-budget refusal diagnostics (#9268)
+
+**Retained: detailed refusals behind cold error carriers.** Adding demand and
+budget identity enlarged the errors returned by per-attempt admission helpers.
+An owned four-byte slot token keeps logical detail in a synchronized registry
+accessed only on refusal; drop reclaims the slot, including across threads.
+The walk's demand payload stays boxed. Allocation occurs only on refusal. The walk
+keeps its existing Result types, with a compile-time bound against the decoder
+error carrier on both native and wasm32. Empty routers hold only a nullable
+pointer to the refusal log; the buffer, identity strings and refusal constructors
+are cold work. The public diagnostics remain complete and the work allowances
+stay unchanged. RTC geometry probing is outlined so its refusal handling cannot
+enlarge the loop that filters every model record. The native instruction comparison and output counts are recorded in
+PR #9386; this is cost containment, not an end-to-end worker-pool speedup claim.
+
+Verdict: **accepted performance exception, user-approved 2026-11-10**. The
+matched native instruction comparison retains a small fixed regression for the
+correct diagnostic, with identical output counts and a passing full functional
+suite (official job `29f590e6`, PR #9386). Four levers were tried: vector
+pre-sizing, the retained four-byte logical-refusal token, lazy aggregate
+diagnostic storage, and a diagnostic handle in existing padding. Restoring
+the logical Result and diagnostic/stat aggregates to main's sizes left equal
+growth-call counts and the same growth-helper self-cost increase. The attribution verdict is a fixed
+code-placement/compiler effect, rather than new refusal recording work on
+accepted items. The latter two aggregate experiments were rejected and
+reverted. Detailed numbers and attribution stay in the PR; this is an approved
+correctness trade-off, not an end-to-end speedup or a wall-clock claim.
+
+Lesson: refusal-only reporting can still affect successful work through error
+layout. Shrinking an entire Result can also change its optimized callers;
+contain the cold payload while preserving the common carrier, then check the
+compiled pipeline. A boxed logical error kept the unit Result pointer-sized but
+widened the intermediate Result carrying a u32; assertions now cover the token,
+the value Result and the unit Result against main's layouts. No registry access
+or identity construction occurs for accepted work.
+Type-product attribution fits inside the existing owned type-map root slot,
+with size/alignment assertions, rather than adding an owner field to every
+mapping controller. A persistent dedup set and capped details run only on
+refusal; retained transactions return their refusal without a second unread log.
+Occurrence attribution attaches the owning product only from the existing
+execution error arm. A second acceptance dispatcher, even with a lazy owner
+callback, regressed successful work; restore the original monomorphic acceptance
+path. A boxed execution error carries the refused transaction back to the
+product without changing the controller or successful Result sizes; only that
+cold error arm attaches identity. Instruction attribution also needs the
+allocation call graph: identical growth-call counts can still cost more when
+compiler inlining changes, outside the mapping controller itself.
+
 ## Georeference minimap waits for scene settlement (#9623)
 
 **Untimed diagnostic, pending scoreboard confirmation.** The minimap already
@@ -938,8 +986,139 @@ Mutation modules name their load-time encoder initializer explicitly so unused
 modules can be tree-shaken safely. Prepared-operation execution loads after the
 asynchronous action has copied its inputs and private checkpoints.
 
-Timing qualification and the F5 verdict are still pending; no measured scale
-acceptance is claimed by the structural guard alone.
+The residual candidate completed the full paired authoring cohort and the
+sustained default-heap witness, but its first post-fill wall insertion regressed
+at smaller sizes. Ordinary operation tracing located the long insertion in the
+process-wide attribute-barrier WeakMap, after session-wide garbage collection.
+Record-owned, non-enumerable metadata removes that shared insertion table while
+keeping shared accessors and detached clone semantics. The allocation regression
+asserts that observing new rows does not insert into a process-wide weak table.
+The corrected candidate still needs fresh timing qualification. The original
+F5 attempt stopped at its GPU prelaunch guard without collecting a timing sample;
+its target remains unmet. Do not treat the completed authoring cohort or a
+passing structural guard as a no-regression verdict.
+
+Lesson: reducing retained allocation does not by itself bound the next edit's
+latency; weak-table maintenance can charge an entire session to one insertion.
+
+The record-owned candidate preserved the sustained witness and the small-model
+wall insertion returned to the base range. Its original screen then stopped on
+consistent hosted-window regression, leaving larger authoring pairs and F5
+unrun. A paired ordinary allocation diagnostic found identical graph/journal
+cardinality but extra per-row serialization calls in `finishHistory`: the old
+path cloned the appended journal as one array. Clone only that appended batch
+at one boundary, preserving draft detachment and avoiding serialization setup
+per mutation. The batching correction remains unqualified until fresh
+acceptance; neither earlier candidate's samples qualify it.
+
+The batched candidate still stopped on the original hosted-window screen.
+Record metadata had extra installation calls, but bounded CPU attribution did
+not establish that as the cause: both sources used dictionary properties and
+attribute observation had the same sparse sample count. Do not trade away its
+clone or alias contracts on call counts alone. A cold engine-event diagnostic
+instead exposed additional deoptimizations in empty typed override lookup and
+the new proxy reference-slot dispatch. Empty override indexes need no typed
+lookup; the proxy already knows whether its base is an entity map. Those
+bounded corrections retain nonempty and unresolved-source candidates and still
+require timing qualification.
+
+The cold-path follow-up removed only the proxy dispatch deoptimization. The
+original session still had an unrelated source override, so its override index
+was not empty. The opening candidate path decoded that unrelated relationship
+and resolved schema attributes just to reject its class, unlike canonical
+source enumeration. Classify only the sparse source override domain through
+that canonical iterator first; retain missing class metadata conservatively,
+and do not enumerate the created bucket again. The real IFC regression locks
+out unrelated payload reads while retaining source retypes, deletion and
+unreadable-host refusal. The original bounded allocation diagnostic then
+matched base's clone count and graph/journal cardinality. Throughput remains
+unqualified until the unchanged acceptance protocol passes.
+
+
+The corrected source `7f4becc2` completed the original exclusive cohort
+`f81010cd`: all authoring pairs, the sustained default-heap witness, and all
+hardware F5 runs were recovered from the original receipt after a client-host
+shutdown. STEP/mesh/undo identities match the frozen base. Retained authoring
+memory is lower, selected joins stay bounded as unrelated openings grow, and
+the fixed-height planner's warm query avoids product payload reads; its cold
+index still reads the product inventory and required writes remain unchanged.
+
+**Verdict: improvements measured; overall acceptance not satisfied.** The small
+hosted-window insertion remains slower beyond the run's observed interquartile
+noise floor. Wall insertion and several larger-size cells have unresolved
+scatter, so neither an early-stop escape nor a median paired ratio establishes
+blanket no-regression acceptance. The original screen is a stop condition, not
+a slowdown allowance. A matching authoring A/A reference was not collected.
+
+Both sources fail the unchanged F5 edit-latency target. Load, orbit, five real
+edits and undos, hardware admission, fixture identity and mesh counts pass;
+the separate profile edit is excluded from those five timings. Existing phase
+measurements put most elapsed edit time after the mutation, through mesh
+replacement and drain. That localizes further investigation but does not
+identify a single rendering cause or waive the target. The issue's three
+residual mechanisms have supporting evidence; a full issue or row pass and
+push remain blocked. Do not rerun blindly or turn exit status into a verdict.
+
+Maintainer scope decision: the broader loaded-tower latency target is now
+tracked separately in #10535. This PR must still remove the small-session
+hosted-window slowdown and preserve the measured authoring gains under the
+original paired noise gate; the F5 failure is not relabelled as a pass.
+
+Preparation lesson: a viewer/typecheck build does not guarantee the CLI loader
+used by the external SDK worker exists. The preceding cohort failed before
+model creation, with no operations or fresh pairs. Repair only the missing
+generated CLI graph and check every required protocol artifact before another
+exclusive window; preserve that failed receipt instead of reusing its outputs.
+
+
+The singleton-journal correction stores one mutation identity directly and
+promotes only multi-row entity buckets to sets. A fail-first resource invariant
+locks the allocation bound, while promotion, indexed removal and exact order
+retain their contracts. The recovered final cohort `46a0ecd6` completed every
+original authoring pair and the branch's sustained default-heap witness.
+Its source and descendants finalized unchanged after a client interruption;
+no timing was replayed.
+
+**Scoped verdict: land the gains with an explicitly accepted small-session
+trade-off; the full noise gate did not pass.** The user accepted the remaining
+`session/1000/addHostedWindow` cost after the bounded correction failed.
+Follow-up [#10555](https://github.com/LTplus-AG/ifc-lite/issues/10555) tracks that
+fixed cost. F5 latency remains separately unmet in #10535; cold planning still
+builds its inventory with N+1 reads.
+
+Historical cohort `46a0ecd6` covered measured implementation `b8cd2415` versus
+captured main `80f01cc5`, including path-identical rebased/ledger head `a7882871`.
+Its gate was accepted for those trees only. The round-3 correctness fixes
+changed the timed mutation, relationship and planner paths, so the old gate
+does not cover those fixes.
+
+Original exclusive cohort `ca7d9f29` covers implementation `0e280a3f` and this
+final documentation-only head: production and test trees are unchanged from
+that implementation. All original pairs completed; 38 of 39 registered rows
+passed. Storey, join and planner gains held, memory was lower, and the fresh
+main default-heap witness exhausted its heap while the branch completed its
+sustained edit/export witness. This is an accepted scope trade-off, not a
+claim that all rows passed. The one failed row, 1K hosted-window insertion,
+was +4.26%; the same row improved approximately 13% at 10K and 31% at 50K.
+[The full original gate](https://github.com/LTplus-AG/ifc-lite/pull/10420#issuecomment-6931259750)
+retains source pins, pairs, identities and the unchanged noise-floor rule.
+
+One bounded empty-opening shortcut was tested in original exclusive row job
+`3ce943f6`. At 1K it measured 4.70 to 4.94 ms, about +0.24 ms per call, above
+its approximately 3.0% noise boundary; it did not recover the regression.
+That candidate (`bb492a5e`) is discarded and absent from this PR. Its evidence
+is preserved, not reused as a passing measurement of the retained code.
+[The bounded attempt](https://github.com/LTplus-AG/ifc-lite/pull/10420#issuecomment-6933690407)
+records the failed row and passing 10K guard separately.
+
+Lesson: ordinary profiles locate added fixed work in cold empty-opening
+discovery, reference-slot queries and temporary candidate collections. A
+shortcut removed countable query/allocation work but did not recover the 1K
+throughput, so the profile lead is not a complete causal explanation. Keep
+the accessor/alias, retained-draft journal and planner ownership correctness
+contracts; do not infer latency from allocation counts or relax the gate.
+The user explicitly accepted the small absolute cost to retain the broader
+gains, with further investigation bounded by #10555.
 
 ## First selection reads typing relationships from the graph (#9192)
 

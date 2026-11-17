@@ -4,7 +4,7 @@
 use super::super::inner::ProgramError;
 use super::{
     Action, ChildControl, Event, MappingControl, MappingOutput, MappingValue, Merged, Merging,
-    Place, Placeholder, Placing, Reached, Sink, Walk,
+    Place, Placeholder, Placing, Reached, Sink, TypeMapRoot, Walk,
 };
 use crate::router::mapped_item::MappedOccurrence;
 use crate::{Error, GeometryRouter, Result};
@@ -130,7 +130,7 @@ impl<'a> MappingControl<'a> {
         } = &reply
         {
             self.budget = budget.clone();
-            self.stop_logical(*item_id, *refusal, router);
+            self.stop_logical(*item_id, refusal, router);
             return;
         }
         if self.accept_retained_reply(&reply) { self.accept_retained(reply, router); return; }
@@ -304,7 +304,7 @@ impl<'a> MappingControl<'a> {
         )>,
         router: &GeometryRouter,
     ) -> Option<Event> {
-        match (value, self.rep_map.as_ref().map(Reached::item)) {
+        match (value, self.rep_map.as_ref().map(TypeMapRoot::item)) {
             (Ok((representation, items)), Some(rep_map)) => {
                 // Type maps select by reference, not 3D membership. Keep the
                 // canonical source diagnostic policy, including 2D sources.

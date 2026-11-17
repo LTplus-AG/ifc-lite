@@ -30,6 +30,7 @@ import { readStep } from '../tests/structural-coverage/lib/step.mjs';
 import { unwritten } from '../tests/structural-coverage/probes/index.mjs';
 import { SCENE, stepsFor } from '../tests/structural-coverage/probes/create-scene.mjs';
 import { compareFile, nonConforming, renamedNonConforming } from '../tests/structural-coverage/probes/convert.mjs';
+import { KINDS, LIMITS, markLimits } from '../tests/structural-coverage/limits.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATOR = join(ROOT, 'scripts/generate-structural-coverage-ledger.mjs');
@@ -107,6 +108,51 @@ test('runProbes: an applicable cell with no probe is an error, and a probe that 
   const cells = await runProbes(two, {}, [boom, ...covering]);
   assert.equal(cells.get('cap/docs-page').capability.status, 'error', 'error ranks above unwritten');
   assert.equal(cells.get(two[0].id).read.status, 'unwritten');
+});
+
+test('limits (#9668): label every problem or count it open, never change a score, and report a stale or false limit', () => {
+  const id = two[0].id;
+  const problems = ['a.ifc#1: lost', 'a.ifc#2: lost', 'b.ifc#3: Axis null'];
+  const limit = (extra = {}) => ({ row: id, level: 'convert', kind: 'schema', problem: /^a\.ifc#(\d+): lost$/, cite: 'no entity', holds: (f, m) => f.belowThree(Number(m[1])), ...extra });
+  // Not `ok`: check-source-text-assertions resolves every `assert.ok(...)` to a local `ok` by name.
+  const facts = { belowThree: (n) => n < 3 };
+  const fresh = (list = problems, status = 'partial') => {
+    const cells = cellsOf({ [id]: { convert: status } });
+    if (list) cells.get(id).convert.problems = list;
+    return cells;
+  };
+  const label = (limits, list = problems, f = facts, status = 'partial') => {
+    const cells = fresh(list, status);
+    return { issues: markLimits(cells, f, limits), cell: cells.get(id).convert };
+  };
+  const one = label([limit()]);
+  assert.deepEqual([one.issues, one.cell.limits], [[], { open: 1, by: [{ kind: 'schema', cite: 'no entity' }] }], 'the Axis problem stays open');
+  const policy = limit({ kind: 'policy', problem: /Axis null$/, holds: () => true });
+  assert.equal(label([limit(), policy]).cell.limits.open, 0);
+  assert.deepEqual(label([limit(), limit({ cite: 'same problems, second limit' })]).issues, [], 'two limits may label the same problem');
+  const false_ = label([limit()], problems, { belowThree: () => false });
+  assert.equal(false_.issues.length, 2, 'one issue per problem it matched, not also called stale');
+  assert.match(false_.issues.join(), /cited fact does not hold/);
+  assert.match(label([limit({ holds: () => { throw new Error('no such file'); } })]).issues.join(), /does not hold .*\(no such file\)/, 'a holds that throws is reported, not fatal');
+  assert.equal(false_.cell.limits, undefined, 'a false limit labels nothing');
+  assert.match(label([limit({ problem: /^c\.ifc/ })]).issues.join(), /labels no problem the probe reported \(partial\)/);
+  assert.match(label([limit()], [], facts, 'pass').issues.join(), /\(pass\)/, 'a cell that now passes reports its stale limit');
+  assert.match(label([limit()], null, facts, 'error').issues.join(), /\(error, no problem list\)/, 'a probe error is named, not hidden');
+  assert.match(label([limit({ row: 'IFC4/NoSuchRow' })]).issues.join(), /not a probed cell/);
+  const cells = fresh();
+  markLimits(cells, facts, [limit()]);
+  const labelled = score(two, cells);
+  assert.deepEqual([labelled.total, labelled.cells], [score(two, fresh()).total, score(two, fresh()).cells], 'a limit never changes a score');
+  assert.ok(labelled.rows[0].levels.convert.limits && !('problems' in labelled.rows[0].levels.convert), 'the summary keeps the label, not the problem list');
+});
+
+test('limits (#9668): each names a catalogue row, an applicable level, a kind and a citation', () => {
+  for (const l of LIMITS) {
+    assert.ok(byId.has(l.row), l.row);
+    assert.equal(notApplicable(byId.get(l.row), l.level), null, `${l.row} ${l.level}`);
+    assert.ok(Object.hasOwn(KINDS, l.kind), l.kind);
+    assert.ok(l.problem instanceof RegExp && typeof l.holds === 'function' && l.cite.length > 20, l.row);
+  }
 });
 
 test('ratchet: fails on a drop in the total, a row, a cell, a changed row set, or an offline run', () => {
@@ -290,6 +336,26 @@ test('convert (#9668): only the values the schemas force are excused, and only a
   const planar = (back) => compareFile(planarRow, planarFile, { there: planarThere, step: step(back) }, schemas).problems;
   assert.deepEqual(planar(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,.CONST.);`), [], 'CONST fills the invalid slot');
   assert.ok(planar(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,.BILINEAR.);`).some((why) => why.includes('ConstPredefinedType')), 'BILINEAR on the planar action is schema-invalid');
+});
+
+test('convert (#9668): an IFC4 stiffness false may come back as the zero measure IFC2X3 forces, and nothing else is excused', () => {
+  const step = (data) => stepFile('', '', data).step;
+  const slot = (name, type) => ({ name, type, optional: true });
+  // As slab_01.ifc #74: IfcBoolean in IfcModulusOfTranslationalSubgradeReactionSelect slots; a label slot is not one.
+  const attributes = [slot('Name', 'IfcLabel'), slot('X', 'IfcModulusOfTranslationalSubgradeReactionSelect'), slot('Y', 'IfcModulusOfTranslationalSubgradeReactionSelect'), slot('Z', 'IfcLabel')];
+  const registry = { entities: { IfcBoundaryEdgeCondition: { allAttributes: attributes, inheritanceChain: ['IfcBoundaryEdgeCondition'] } }, selects: {}, types: {}, enums: {} };
+  const row = { schema: 'IFC4', entity: 'IfcBoundaryEdgeCondition', rooted: false, attributes: attributes.map((a) => a.name), own: attributes.map((a) => a.name) };
+  const file = { path: 'e.ifc', step: step("#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),IFCBOOLEAN(.F.));") };
+  const problems = (back) => compareFile(row, file, { there: step(''), step: step(back) }, { own: { types: new Map(), registry } }).problems;
+  assert.deepEqual(problems('#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE(0.),IFCBOOLEAN(.F.));'), [],
+    'false and a zero stiffness are both free; IFC2X3 writes both as 0.');
+  for (const back of [
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE(5.),IFCBOOLEAN(.F.));',
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE(0.),IFCBOOLEAN(.F.),IFCBOOLEAN(.F.));',
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),$,IFCBOOLEAN(.F.));',
+    // Z is no stiffness SELECT, so 0 for false there is still a change.
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),0.);',
+  ]) assert.equal(problems(back).length, 1, `${back} must not hold`);
 });
 
 const stepFile = (path, sha256, data) => ({ path, sha256, step: readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n${data}\nENDSEC;END-ISO-10303-21;`) });

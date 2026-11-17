@@ -38,7 +38,7 @@ function roundTrip(ctx, file, schema) {
 
 const names = new WeakMap();
 /** STEP keyword -> registry entity name, built once per registry. */
-function entityName(registry, keyword) {
+export function entityName(registry, keyword) {
   if (!names.has(registry)) names.set(registry, new Map(Object.keys(registry.entities).map((n) => [n.toUpperCase(), n])));
   return names.get(registry).get(keyword);
 }
@@ -99,8 +99,8 @@ function slotMismatch(value, type, optional, registry, step) {
 /**
  * Records of `entity` in `intermediate` that do not conform to its schema, as
  * `registry` (a parser SchemaRegistry, typed) defines it: the entity is missing,
- * the attribute count differs, or a value does not fit its slot. Returns
- * `{ id, why }` per record.
+ * the attribute count differs, or values do not fit their slots. Returns
+ * `{ id, why }` per record, `why` naming every slot that does not fit.
  */
 export function nonConforming(intermediate, entity, registry) {
   assertAcyclicSelects(registry);
@@ -108,13 +108,16 @@ export function nonConforming(intermediate, entity, registry) {
   return intermediate.of(entity).flatMap((rec) => {
     if (!slots) return [{ id: rec.id, why: 'no such entity' }];
     if (rec.args.length !== slots.length) return [{ id: rec.id, why: `${rec.args.length} attributes, ${slots.length} expected` }];
-    for (const [i, slot] of slots.entries()) {
+    const whys = slots.flatMap((slot, i) => {
       const why = slotMismatch(rec.args[i], slot.type, slot.optional, registry, intermediate);
-      if (why) return [{ id: rec.id, why: `${slot.name}: ${why}` }];
-    }
-    return [];
+      return why ? [`${slot.name}: ${why}`] : [];
+    });
+    return whys.length ? [{ id: rec.id, why: whys.join(', ') }] : [];
   });
 }
+
+/** Every distinct `why` of `nonConforming` records, so no non-conformance hides behind another, and their ids. */
+const reasons = (list) => `${[...new Set(list.map((x) => x.why))].join('; ')} at ${list.map((x) => `#${x.id}`).join(', ')}`;
 
 /** The records of the row's entity a file contributes: every outcome counts this many as checked. */
 const sampleOf = (row, file) => file.step.of(row.entity).slice(0, MAX_RECORDS);
@@ -133,12 +136,23 @@ function tuple(row, record, step, types) {
  * PredefinedType to CONST (IFC4_ADD2_TC1.exp:9449, :9582). A non-constant action
  * coming back as the subtype is still a class change.
  */
-const CONSTANT_SUBTYPE = new Map([
+export const CONSTANT_SUBTYPE = new Map([
   ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALLINEARACTION'],
   ['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'],
 ]);
 
-const slotOf = (registry, keyword, name) => {
+/**
+ * IFC4's stiffness SELECTs of IfcBoolean and a measure (IFC4_ADD2_TC1.exp:2964,
+ * :2969, :2974, :3048, :3138, :3165). IFC2X3 holds each such boundary-condition
+ * value as a plain REAL where 0 means free and -1 rigid (IfcBoundaryNodeCondition
+ * and siblings, IFC2X3_TC1.exp), so IfcBoolean false and a zero measure, both
+ * free in IFC4, are one value there and the upgrade writes the zero measure. A
+ * false that comes back as 0 in one of these slots holds; true already comes back.
+ */
+const STIFFNESS_SELECTS = new Set(['IfcTranslationalStiffnessSelect', 'IfcRotationalStiffnessSelect', 'IfcWarpingStiffnessSelect',
+  'IfcModulusOfTranslationalSubgradeReactionSelect', 'IfcModulusOfRotationalSubgradeReactionSelect', 'IfcModulusOfSubgradeReactionSelect']);
+
+export const slotOf = (registry, keyword, name) => {
   const entity = entityName(registry, keyword);
   const slots = entity ? registry.entities[entity].allAttributes : [];
   const index = slots.findIndex((s) => s.name === name);
@@ -246,9 +260,12 @@ export function compareFile(row, file, { there, step: back }, schemas) {
     }
   } else {
     const pool = back.of(row.entity).map((r) => tuple(row, r, back, types));
+    // Whole-tuple `equal` compares string-only tuples as multisets, so it is kept before the per-slot check.
+    const stiffness = row.own.map((a) => STIFFNESS_SELECTS.has(slotOf(schemas.own.registry, row.entity.toUpperCase(), a)?.type));
+    const sameValue = (i, want, have) => equal(want, have) || (stiffness[i] && want === false && have === 0);
     for (const rec of sample) {
       const want = tuple(row, rec, file.step, types);
-      const at = pool.findIndex((t) => equal(t, want));
+      const at = pool.findIndex((t) => equal(t, want) || (t.length === want.length && t.every((have, i) => sameValue(i, want[i], have))));
       if (at === -1) problems.push(`${file.path}#${rec.id}: no ${row.entity} with its values came back`);
       else { pool.splice(at, 1); anyHeld = true; }
     }
@@ -275,17 +292,20 @@ export default {
         if (rt.error) { problems.push(`${file.path}: ${row.schema} -> ${OTHER[row.schema]} -> ${row.schema} threw: ${rt.error.message.split('\n')[0]}`); checked += sampleOf(row, file).length; continue; }
         const copied = nonConforming(rt.there, row.entity, schemas.other.registry);
         const renamed = row.rooted ? renamedNonConforming(row, file, rt.there, schemas.other) : [];
-        if (copied.length || renamed.length) {
-          problems.push(copied.length
-            ? `${file.path}: ${copied.length} of ${rt.there.count(row.entity)} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (e.g. ${copied[0].why})`
-            : `${file.path}: ${renamed.length} ${row.entity} record(s) became records that do not conform to ${OTHER[row.schema]} (e.g. #${renamed[0].id} ${renamed[0].why})`);
-          checked += sampleOf(row, file).length;
-          continue;
+        const conforms = !copied.length && !renamed.length;
+        if (copied.length) problems.push(`${file.path}: ${copied.length} of ${rt.there.count(row.entity)} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (${reasons(copied)})`);
+        if (renamed.length) problems.push(`${file.path}: ${renamed.length} ${row.entity} record(s) became records that do not conform to ${OTHER[row.schema]} (${reasons(renamed)})`);
+        // A file that does not conform earns no credit, but its values are still compared, so no loss hides behind it.
+        let r;
+        try {
+          r = compareFile(row, file, rt, schemas);
+        } catch (e) {
+          if (conforms) throw e;
+          r = { problems: [`${file.path}: the values could not be compared: ${e.message}`], anyHeld: false, checked: sampleOf(row, file).length };
         }
-        const r = compareFile(row, file, rt, schemas);
         problems.push(...r.problems);
         checked += r.checked;
-        anyHeld ||= r.anyHeld;
+        anyHeld ||= conforms && r.anyHeld;
       }
       out.set(row.id, { ...verdict(checked, problems, { anyHeld }), evidence: carriers.map((f) => f.path) });
     }

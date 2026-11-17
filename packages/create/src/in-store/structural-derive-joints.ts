@@ -79,6 +79,11 @@ export class SegmentGrid {
 
 interface Hit { j: number; t: number; target: Vec3; along: number; otherEnd: number | null }
 
+/** How far a free end may move to meet a member of this section. A set reach is never below the tolerance: an end within it already touches. */
+export function jointReachOf(tolerance: number, jointReach: number | null, section: number | null): number {
+  return jointReach !== null ? Math.max(tolerance, jointReach) : tolerance + (section ?? 0) / 2;
+}
+
 /**
  * Move free ends along their own axes to meet other members, split members met
  * inside. `supported` says whether a point already has a support (a footing):
@@ -91,8 +96,7 @@ export function joinEnds(
   jointReach: number | null,
   supported: (p: Vec3) => boolean,
 ): { pieces: Array<{ source: number; start: Vec3; end: Vec3 }>; extended: ExtendedEnd[] } {
-  // A set reach is never below the tolerance: an end within it already touches.
-  const reachOf = (section: number | null) => (jointReach !== null ? Math.max(tolerance, jointReach) : tolerance + (section ?? 0) / 2);
+  const reachOf = (section: number | null) => jointReachOf(tolerance, jointReach, section);
   const maxReach = lines.reduce((m, line) => Math.max(m, reachOf(line.section)), tolerance);
   const ends = lines.flatMap((line): Vec3[] => [[...line.start], [...line.end]]);
   const roots = clusterEnds(ends, tolerance);

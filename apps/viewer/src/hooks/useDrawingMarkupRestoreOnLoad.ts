@@ -64,6 +64,8 @@
  * suddenly injects the model's embedded markup over what the user just drew.
  */
 
+import { mergeRestoredMeasures, mergeRestoredDimensions } from '@/lib/export/drawing-annotation-restore';
+import { canReadDrawingAnnotations, restorableDrawingAnnotationRecords, restoredDrawingAnnotations } from '@/lib/export/drawing-annotations';
 import { useLoadWindowHold } from './loadWindow.js';
 import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -133,7 +135,7 @@ function markupFieldsEmpty(): boolean {
     s.polygonArea2DResults.length === 0 &&
     s.textAnnotations2D.length === 0 &&
     s.cloudAnnotations2D.length === 0 &&
-    s.dimensions2D.length === 0
+    s.dimensions2D.length === 0 && s.tagAnnotations2D.length === 0
   );
 }
 
@@ -150,6 +152,10 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
   if (restoredForModel.has(modelId)
     && restoredForModel.get(modelId)?.deref() === useViewerStore.getState().models.get(modelId)?.sourceFile) return;
   if (useViewerStore.getState().activeModelId !== modelId) return;
+  const state = useViewerStore.getState();
+  const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
+  // Do not mark a loading model attempted or request a parse until it is readable.
+  if (!canReadDrawingAnnotations(store)) return;
   if (!markupFieldsEmpty()) {
     // Something else (a user drawing) already populated this model's
     // fields — never overwrite it.
@@ -165,9 +171,7 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     // #9621: precedence gates the WRITE, not a candidate's worker request.
     // With overlays hidden this hook is the only parse producer. Keep it
     // parallel with the hash, while still skipping provably blank sources.
-    const state = useViewerStore.getState();
-    const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
-    if (requestParse && store && hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
+    if (requestParse && hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
       ensureParseFor([{ store, mutationView: state.getMutationView(modelId) ?? undefined }]);
     }
     if (!awaitingLocalStorageDecision.has(modelId)) {
@@ -186,11 +190,14 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     return;
   }
 
-  const state = useViewerStore.getState();
-  const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
-  if (!store) return;
+  const annotations = restoredDrawingAnnotations(store, modelId, state.getMutationView(modelId) ?? undefined);
   if (!hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
     markRestored(modelId);
+    if (annotations) {
+      absorbEmbeddedMarkup(modelId, restorableDrawingAnnotationRecords(store, state.getMutationView(modelId) ?? undefined).map(record => record.identity));
+      const { paperScale, ...fields } = annotations;
+      useViewerStore.setState({ ...fields, drawing2DDisplayOptions: { ...state.drawing2DDisplayOptions, scale: paperScale }, dimension2DUndo: [], dimension2DRedo: [] });
+    }
     return;
   }
   const result = restoreDrawingMarkupFromModel(modelId);
@@ -205,7 +212,8 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     result.polygonArea2DResults.length +
     result.textAnnotations2D.length +
     result.cloudAnnotations2D.length +
-    result.dimensions2D.length;
+    result.dimensions2D.length +
+    (annotations ? annotations.measure2DResults.length + annotations.dimensions2D.length + annotations.tagAnnotations2D.length : 0);
   if (total === 0) return;
 
   // Re-check immediately before writing: resolving `result` above is
@@ -215,12 +223,15 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
 
   // Before the write: the save subscription persists the set with it.
   absorbEmbeddedMarkup(modelId, restoredEmbeddedMarkupIdentities(modelId, result));
+  if (annotations) absorbEmbeddedMarkup(modelId, restorableDrawingAnnotationRecords(store, state.getMutationView(modelId) ?? undefined).map(record => record.identity));
   useViewerStore.setState({
-    measure2DResults: result.measure2DResults,
+    measure2DResults: mergeRestoredMeasures(result.measure2DResults, annotations?.measure2DResults ?? []),
     polygonArea2DResults: result.polygonArea2DResults,
     textAnnotations2D: result.textAnnotations2D,
     cloudAnnotations2D: result.cloudAnnotations2D,
-    dimensions2D: result.dimensions2D,
+    dimensions2D: mergeRestoredDimensions(result.dimensions2D, annotations?.dimensions2D ?? []),
+    ...(annotations ? { tagAnnotations2D: annotations.tagAnnotations2D, drawing2DPlane: annotations.drawing2DPlane,
+      drawing2DDisplayOptions: { ...state.drawing2DDisplayOptions, scale: annotations.paperScale } } : {}),
     dimension2DUndo: [],
     dimension2DRedo: [],
   });

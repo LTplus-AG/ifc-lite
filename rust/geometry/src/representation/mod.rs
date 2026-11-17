@@ -20,7 +20,7 @@ pub use structural::{mapped_item_representation_id, pds_representation_ids, prod
 pub(crate) mod unwrap;
 mod walk;
 pub use select::{meshed_representations, Select};
-pub use walk::{Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkRefusal, WalkVisitor, MAX_WALK_LEVELS};
+pub use walk::{Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkBudgetRefusal, WalkRefusal, WalkVisitor, MAX_WALK_LEVELS};
 
 pub(crate) use select::{
     effective_element_rep_type, effective_rep_type, is_body_representation,

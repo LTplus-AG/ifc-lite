@@ -31,6 +31,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'serverPropertiesRuns', // #9538 model-owned optional property polling
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
   'siteContextAbort', 'siteContextCategories', 'siteContextError', 'siteContextLastChoice', 'siteContextModels', 'siteContextProgress', 'siteContextRequest', 'siteContextStats', // site context: the fetch and its context models belong to the session
+  'floodCheck', 'floodColoursShown', // flood check: the screening result belongs to the session's checked model
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'documentPanelVisible', // #4594 documents: templates survive, the panel closes
   'flowPanelVisible', 'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow: graphs survive, the last run holds handles of the outgoing model
@@ -107,6 +108,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'structuralViewMode',
   'siteContextAbort', 'siteContextCategories', 'siteContextModels', 'siteContextProgress', 'siteContextRequest', // site context: every context-model record goes with the models, no category stays reported loaded, and a running fetch ends (#10481 review)
+  'floodCheck', // flood check: the result and its verdict colours go with the checked model
   'serverPropertiesRuns', // #9538 model-owned optional property polling
   'pendingPresentationLayerReveal', // #9273 one-shot layer reveal belongs to the outgoing model
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
@@ -240,6 +242,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'serverPropertiesRuns', // #9538 model-owned optional property polling
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
   'siteContextAbort', 'siteContextCategories', 'siteContextError', 'siteContextLastChoice', 'siteContextModels', 'siteContextProgress', 'siteContextRequest', 'siteContextStats', // site context: the fetch and its context models belong to the session
+  'floodCheck', 'floodColoursShown', // flood check: the screening result belongs to the session's checked model
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'authoringDefaults', // #6232 M2: type / layer-set picks name one model's entities; dimensions survive
   'documentPanelVisible', // #4594 documents

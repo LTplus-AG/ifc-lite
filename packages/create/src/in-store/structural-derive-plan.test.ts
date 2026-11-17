@@ -5,7 +5,7 @@
 // #9668: each derivation rule, positive and negative, on synthetic physical facts.
 import { describe, expect, it } from 'vitest';
 import { planStructuralDerivation } from './structural-derive-plan.js';
-import type { PhysicalElementFact, PrismFact, StructuralDerivationFacts, Vec3 } from './structural-derive-types.js';
+import type { PhysicalElementFact, PrismFact, StructuralDerivationFacts, StructuralDerivationPlan, Vec3 } from './structural-derive-types.js';
 
 /** Axis-aligned prism: a rectangle in XY at `base`, swept by `extrusion`. */
 function box(base: Vec3, x: number, y: number, extrusion: Vec3, outlineExact = true): PrismFact {
@@ -25,6 +25,10 @@ const column = (x: number, y: number, z0: number, z1: number, more: Partial<Phys
 /** A beam along X at height z, from x0 to x1, given by its Axis representation. */
 const beam = (x0: number, x1: number, y: number, z: number, more: Partial<PhysicalElementFact> = {}) =>
   element('IfcBeam', { axis: [[x0, y, z], [x1, y, z]] }, more);
+/** A curve element given by its Axis representation. */
+const line = (type: string, a: Vec3, b: Vec3) => element(type, { axis: [a, b] });
+/** The x of each support, ascending. */
+const supportXs = (plan: StructuralDerivationPlan) => plan.nodes.filter((n) => n.support).map((n) => +n.position[0].toFixed(6) + 0).sort((a, b) => a - b);
 const facts = (...elements: PhysicalElementFact[]): StructuralDerivationFacts => ({ elements, defaultStoreyId: 1, existingAnalysisModels: [] });
 
 describe('structural derivation plan (#9668)', () => {
@@ -145,6 +149,126 @@ describe('structural derivation plan (#9668)', () => {
     expect(supported.map((n) => n.position[2])).toEqual([0, 0.03]);
     expect(supported.every((n) => n.support?.guessed && n.support.basis === 'lowest-level' && n.support.type === 'fixed')).toBe(true);
     expect(plan.report.guessedSupports).toEqual(supported.map((n) => n.index));
+  });
+
+  it('guesses a flat tie to bear where rafters are drawn down to it, not under a post resting on it or at its overhang tips', () => {
+    // A king-post truss: the tie overhangs both heels, the rafters are drawn to the tie axis, the post from its top face.
+    const tie = line('IfcBeam', [-0.4, 0, 0], [6.4, 0, 0]);
+    const truss = [tie, line('IfcBeam', [0, 0, 0], [3, 0, 1.5]), line('IfcBeam', [6, 0, 0], [3, 0, 1.5])];
+    const plan = planStructuralDerivation(facts(...truss, line('IfcColumn', [3, 0, 0.15], [3, 0, 1.5])), { jointReach: 0.2 });
+    expect(plan.report.extendedEnds.map((e) => +e.distance.toFixed(9))).toEqual([0.15]); // the post's foot, moved onto the tie axis
+    const supports = plan.nodes.filter((n) => n.support).map((n) => n.position.map((v) => +v.toFixed(9) + 0));
+    expect(supports.sort((a, b) => a[0] - b[0])).toEqual([[0, 0, 0], [6, 0, 0]]);
+    // The overhang tips are cantilever ends now, not supports.
+    expect(plan.report.freeEnds.map((i) => +plan.nodes[i].position[0].toFixed(9)).sort((a, b) => a - b)).toEqual([-0.4, 6.4]);
+    // A post drawn down to the level bears like the rafters.
+    expect(planStructuralDerivation(facts(...truss, line('IfcColumn', [3, 0, 0], [3, 0, 1.5]))).report.counts.guessedSupports).toBe(3);
+  });
+
+  it('keeps every column drawn to the level as a bearing on a straight ground beam, and every node of a run its bearings do not hold, and a wall under a run', () => {
+    const grade = beam(0, 12, 0, 0);
+    const frame = planStructuralDerivation(facts(grade, column(0, 0, 0, 3), column(6, 0, 0, 3), column(12, 0, 0, 3), beam(0, 12, 0, 3)));
+    expect(supportXs(frame)).toEqual([0, 6, 12]);
+    // A mono-pitch truss: one rafter alone would leave the tie a mechanism, so every tie node bears.
+    const mono = planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [6, 0, 0]), line('IfcBeam', [0, 0, 0], [6, 0, 3]),
+      line('IfcColumn', [6, 0, 0.15], [6, 0, 3])), { jointReach: 0.2 });
+    expect(mono.report.counts.guessedSupports).toBe(2);
+    // An L of ground beams with two columns on one leg: pinned on one line, the other leg could turn, so every node bears.
+    const ell = planStructuralDerivation(facts(beam(0, 6, 0, 0), line('IfcBeam', [6, 0, 0], [6, 6, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3)));
+    expect(ell.report.counts.guessedSupports).toBe(3);
+    // Two close bearings first in node order do not set the line: the far bearing is on the line through the far pair.
+    const close = planStructuralDerivation(facts(line('IfcBeam', [-1, 0, 0], [12, 0, 0]), line('IfcBeam', [12, 0, 0], [12, 6, 0]),
+      column(0, 0, 0, 3), column(0.3, 0.012, 0, 3), column(12, 0, 0, 3)));
+    expect(close.nodes.filter((n) => n.support).map((n) => n.position.map((v) => +v.toFixed(1) + 0)))
+      .toEqual([[-1, 0, 0], [0, 0, 0], [0.3, 0, 0], [12, 0, 0], [12, 6, 0]]);
+    // A grade beam whose far end rests on a wall: the wall top is a bearing, so that end is no cantilever.
+    const ground = element('IfcBeam', { prism: box([0, -0.15, -0.15], 20, 0.3, [0, 0, 0.3]) });
+    const wall = element('IfcWall', { prism: box([19.9, -1, -3.15], 0.2, 2, [0, 0, 3]) });
+    const walled = planStructuralDerivation(facts(ground, line('IfcBeam', [0, 0, 0], [0, 6, 0]), wall,
+      column(0, 0, 0, 3), column(10, 0, 0, 3), column(0, 6, 0, 3)));
+    expect(walled.nodes.filter((n) => n.support).map((n) => n.position.map((v) => +v.toFixed(6) + 0)))
+      .toEqual(expect.arrayContaining([[20, 0, 0]]));
+    expect(walled.nodes.filter((n) => n.position[2] < 0.05 && !n.support)).toEqual([]);
+    // A wide, shallow grade beam: a wall 0.3 m under its underside does not hold it, however wide the beam.
+    const wide = element('IfcBeam', { prism: box([-1, -0.5, -0.1], 13, 1, [0, 0, 0.2]) });
+    const gap = element('IfcWall', { prism: box([11.9, -1, -3.4], 0.2, 2, [0, 0, 3]) });
+    const shallow = planStructuralDerivation(facts(wide, gap, column(0, 0, 0, 3), column(6, 0, 0, 3)));
+    expect(supportXs(shallow)).toEqual([0, 6]);
+    // A slab 0.1 m under that underside is no bearing either: the tolerance counts once.
+    const slabGap = element('IfcSlab', { prism: box([11, -1, -0.5], 2, 2, [0, 0, 0.3]) });
+    expect(supportXs(planStructuralDerivation(facts(wide, slabGap, column(0, 0, 0, 3), column(6, 0, 0, 3)), { tolerance: 0.06 }))).toEqual([0, 6]);
+    // A slab whose edge the run end sits on, and a slab thinner than the tolerance, both hold it.
+    const holdsEnd = (slab: PhysicalElementFact) => supportXs(planStructuralDerivation(facts(wide, slab, column(0, 0, 0, 3), column(6, 0, 0, 3))));
+    expect(holdsEnd(element('IfcSlab', { prism: box([10, -1, -0.4], 2, 2, [0, 0, 0.3]) }))).toEqual([0, 6, 12]);
+    expect(holdsEnd(element('IfcSlab', { prism: box([11, -1, -0.13], 2, 2, [0, 0, 0.03]) }))).toEqual([0, 6, 12]);
+    // The underside is the body's, not half its height under the axis: an axis 0.1 m above it, a thin slab touching it.
+    const offAxis = element('IfcBeam', { axis: [[-1, 0, 0], [12, 0, 0]], prism: box([-1, -0.1, -0.1], 13, 0.2, [0, 0, 0.4]) });
+    const thin = element('IfcSlab', { prism: box([11, -1, -0.13], 2, 2, [0, 0, 0.03]) });
+    expect(supportXs(planStructuralDerivation(facts(offAxis, thin, column(0, 0, 0, 3), column(6, 0, 0, 3))))).toEqual([0, 6, 12]);
+    // Where a deep and a shallow beam meet, a slab under the shallow one holds the node.
+    const deep = element('IfcBeam', { axis: [[0, 0, 0], [6, 0, 0]], prism: box([0, -0.15, -0.6], 6, 0.3, [0, 0, 0.8]) });
+    const shallowBeam = element('IfcBeam', { axis: [[6, 0, 0], [12, 0, 0]], prism: box([6, -0.15, -0.2], 6, 0.3, [0, 0, 0.4]) });
+    const slab = element('IfcSlab', { prism: box([6, -1, -0.5], 6.5, 2, [0, 0, 0.3]) });
+    expect(supportXs(planStructuralDerivation(facts(deep, shallowBeam, slab, column(0, 0, 0, 3), column(3, 0, 0, 3))))).toEqual([0, 3, 6, 12]);
+    // A wall drawn up into a pocket to the beam's axis holds its end too.
+    const pocket = element('IfcWall', { prism: box([11.9, -1, -3], 0.2, 2, [0, 0, 3]) });
+    expect(supportXs(planStructuralDerivation(facts(wide, pocket, column(0, 0, 0, 3), column(6, 0, 0, 3))))).toEqual([0, 6, 12]);
+    // A basement wall the beam frames into, rising past it, holds its end as well.
+    const basement = element('IfcWall', { prism: box([11.9, -1, -3], 0.2, 2, [0, 0, 6]) });
+    expect(supportXs(planStructuralDerivation(facts(wide, basement, column(0, 0, 0, 3), column(6, 0, 0, 3))))).toEqual([0, 6, 12]);
+    // A footing under the beam's underside holds its end, though the node lies outside it.
+    const deepGround = element('IfcBeam', { axis: [[0, 0, 0], [12, 0, 0]], prism: box([0, -0.15, -0.3], 12, 0.3, [0, 0, 0.3]) });
+    expect(supportXs(planStructuralDerivation(facts(deepGround, footingAt([11.5, -0.5, -1.3], [1, 1, 1]), column(0, 0, 0, 3), column(6, 0, 0, 3))))).toEqual([0, 6, 12]);
+    // A tapered body under a straight Axis: the soffit rises from -0.6 at x=-1 to -0.1 at x=12. A slab whose top
+    // is the soffit at x=12 holds that end; the probe there must use the local soffit, not the body's lowest z.
+    const tapered = element('IfcBeam', { axis: [[-1, 0, 0], [12, 0, 0]], prism: {
+      outline: [[-1, -0.15, -0.6], [12, -0.15, -0.1], [12, -0.15, 0.3], [-1, -0.15, 0.3]], extrusion: [0, 0.3, 0], outlineExact: true } });
+    const soffitSlab = element('IfcSlab', { prism: box([11, -1, -0.4], 2, 2, [0, 0, 0.3]) });
+    expect(supportXs(planStructuralDerivation(facts(tapered, soffitSlab, column(0, 0, 0, 3), column(6, 0, 0, 3))))).toEqual([0, 6, 12]);
+    // A column derived before still bears the run end it rises from.
+    const partial = planStructuralDerivation(facts(line('IfcBeam', [-1, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
+      column(12, 0, 0, 3, { idealised: true })));
+    expect(supportXs(partial)).toEqual([0, 6, 12]);
+    // A wall derived before, and a column derived before within the set joint reach, still hold the run ends.
+    const held = planStructuralDerivation(facts(line('IfcBeam', [-1, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
+      element('IfcWall', { prism: box([11.9, -1, -3.05], 0.2, 2, [0, 0, 3]) }, { idealised: true }),
+      element('IfcColumn', { axis: [[-1.15, 0, 0], [-1.15, 0, 3]] }, { idealised: true })), { jointReach: 0.2 });
+    expect(supportXs({ ...held, nodes: held.nodes.filter((n) => n.position[2] < 0.05) })).toEqual([-1, 0, 6, 12]);
+    // A slab derived before holds the run end, but not through its opening.
+    const slabUnder = (openings: PhysicalElementFact['openings']) => planStructuralDerivation(facts(line('IfcBeam', [-1, 0, 0], [12, 0, 0]),
+      column(0, 0, 0, 3), column(6, 0, 0, 3), element('IfcSlab', { prism: box([10, -2, -0.3], 4, 4, [0, 0, 0.3]), openings }, { idealised: true })));
+    expect(supportXs(slabUnder([]))).toEqual([0, 6, 12]);
+    expect(supportXs(slabUnder([{ expressId: 9001, name: 'hole', prism: box([11.5, -0.5, -0.4], 1, 1, [0, 0, 0.5]) }]))).toEqual([0, 6]);
+    // A column derived before beside the run, off the line of its members, holds nothing, however far the reach.
+    const beside = planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
+      element('IfcColumn', { axis: [[13.5, 1, 0], [13.5, 1, 3]] }, { idealised: true })), { jointReach: 2 });
+    expect(supportXs(beside)).toEqual([0, 6]);
+    // Walls and slabs whose body reaches below the run hold it: under an Axis-only beam a wall founded 0.4 m down
+    // (at a large tolerance too) or one it frames into, a slab around it; under a beam with a body, a wall founded
+    // 2 cm under its soffit.
+    expect(supportXs(planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
+      element('IfcWall', { prism: box([11.9, -1, -0.4], 0.2, 2, [0, 0, 0.4]) })), { tolerance: 0.5 }))).toEqual([0, 6, 12]);
+    expect(supportXs(planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
+      element('IfcWall', { prism: box([11.9, -1, -1], 0.2, 2, [0, 0, 4]) }))))).toEqual([0, 6, 12]);
+    expect(supportXs(planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
+      element('IfcSlab', { prism: box([10, -1, -0.04], 4, 2, [0, 0, 0.15]) }))))).toEqual([0, 6, 12]);
+    expect(supportXs(planStructuralDerivation(facts(element('IfcBeam', { prism: box([0, -0.15, -0.3], 12, 0.3, [0, 0, 0.3]) }),
+      element('IfcWall', { prism: box([11.9, -1, -0.32], 0.2, 2, [0, 0, 4]) }), column(0, 0, -0.15, 3), column(6, 0, -0.15, 3))))).toEqual([0, 6, 12]);
+    const standing = planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
+      element('IfcWall', { prism: box([7, -0.1, 0], 6, 0.2, [0, 0, 3]) })));
+    expect(supportXs(standing)).toEqual([0, 6]);
+    // A column derived before at one end of a short flat piece bears that end only.
+    const shortPiece = planStructuralDerivation(facts(line('IfcBeam', [-1, 0, 0], [12, 0, 0]), line('IfcBeam', [12, 0, 0], [13.5, 0, 0]),
+      column(0, 0, 0, 3), column(6, 0, 0, 3), element('IfcColumn', { axis: [[13.5, 0, 0], [13.5, 0, 3]] }, { idealised: true })), { jointReach: 2 });
+    expect(supportXs(shortPiece)).toEqual([0, 6, 13.5]);
+    // A flat beam derived before is no column: it bears no run end, whichever way its ends are stored.
+    for (const axis of [[[12, 0, 0], [20, 0, 0]], [[20, 0, 0], [12, 0, 0]]] as [Vec3, Vec3][]) {
+      const flat = planStructuralDerivation(facts(line('IfcBeam', [-1, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
+        element('IfcBeam', { axis }, { idealised: true })));
+      expect(supportXs(flat)).toEqual([0, 6]);
+    }
+    // A lone flat beam: nothing bears on it, both ends are supports.
+    expect(planStructuralDerivation(facts(beam(0, 6, 0, 0))).report.counts.guessedSupports).toBe(2);
   });
 
   it('connects an end that lands on a member interior by splitting that member, and reports ends resting on a surface member', () => {

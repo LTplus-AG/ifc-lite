@@ -76,12 +76,14 @@ describe('instanced mask vertex buffers match vs_instanced (#5745)', () => {
  * shader ignores, which WebGPU allows).
  */
 describe('every instanced pipeline reads the one shared layout (#6393)', () => {
-  function recordingGpu() {
+  function recordingGpu(popScope: () => Promise<GPUError | null> = () => Promise.resolve(null)) {
     const modules: string[] = [];
     const pipelines: { label?: string; code: string; vertex: GPUVertexState }[] = [];
     const gpu = new Proxy({} as Record<string | symbol, unknown>, {
       get(_t, prop) {
         switch (prop) {
+          case 'pushErrorScope': return () => {};
+          case 'popErrorScope': return popScope;
           case 'limits': return { minUniformBufferOffsetAlignment: 256 };
           case 'queue': return { writeBuffer() {} };
           case 'createShaderModule': return (d: GPUShaderModuleDescriptor) => { modules.push(d.code); return { code: d.code }; };
@@ -124,6 +126,28 @@ describe('every instanced pipeline reads the one shared layout (#6393)', () => {
     assert.equal(instanced?.vertex.buffers, INSTANCED_VERTEX_BUFFERS);
     assertFedBySharedLayout(shadowShaderSource, 'vs_shadow_instanced');
   });
+
+  for (const failure of ['validation', 'internal', 'rejection', 'none'] as const) {
+    it('does not enable instanced lane picks before checked pipeline readiness: ' + failure + ' (#10583)', async () => {
+      (globalThis as Record<string, unknown>).GPUTextureUsage ??= { RENDER_ATTACHMENT: 16, TEXTURE_BINDING: 4, COPY_SRC: 1 };
+      const scopes: { resolve(value: GPUError | null): void; reject(error: Error): void }[] = [];
+      const { gpu } = recordingGpu(() => new Promise((resolve, reject) => scopes.push({ resolve, reject })));
+      const picker = new Picker({ getDevice: () => gpu } as unknown as WebGPUDevice, 4, 4);
+      assert.equal(scopes.length, 4, 'separate instanced and lane validation/internal scopes');
+      scopes[2]!.resolve(null);
+      scopes[3]!.resolve(null);
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      assert.equal(picker.canPickLanes(false), true, 'flat lane validation has succeeded');
+      assert.equal(picker.canPickLanes(true), false, 'instanced readiness is still pending');
+      if (failure === 'rejection') scopes[0]!.reject(new Error('lost during instanced validation'));
+      else scopes[0]!.resolve(failure === 'validation' ? { message: 'invalid instanced pipeline' } as GPUError : null);
+      scopes[1]!.resolve(failure === 'internal' ? { message: 'internal instanced error' } as GPUError : null);
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      assert.equal(picker.canPickLanes(true), failure === 'none');
+      assert.equal(picker.canPickLanes(false), true, 'failed instanced validation does not disable flat lanes');
+      picker.destroy();
+    });
+  }
 
   it('the picker', () => {
     (globalThis as Record<string, unknown>).GPUTextureUsage ??= { RENDER_ATTACHMENT: 16, TEXTURE_BINDING: 4, COPY_SRC: 1 };

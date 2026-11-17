@@ -217,6 +217,8 @@ export const miscPanelsBEn = {
   'loadReportPanel.selectAndFrameTitle': 'Select and frame this entity',
   'loadReportPanel.entitySummary':
     '#{productId} {ifcType} — {csgFailures} failure(s), {openings} opening(s)',
+  // #9268: one work-budget refusal under its product; {budget} is the engine's meter name.
+  'loadReportPanel.budgetRefusal': '{budget}: limit {limit}, reached {reached}; source #{sourceId}',
   'loadReportPanel.tierSuffix': ' · tier {tier}',
   'loadReportPanel.fastModeSuffix': ' · fast mode',
   'loadReportPanel.affectedEntitiesLabel': 'Affected entities',

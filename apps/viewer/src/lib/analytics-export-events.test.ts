@@ -11,7 +11,7 @@ describe('export completion privacy contract (#5844)', () => {
   it('retains CityJSON and CityJSONSeq completion formats (#10607)', () => {
     for (const format of ['cityjson', 'cityjsonseq'] as const) {
       const properties = { format, surface: 'ribbon', size_kb: 1 };
-      assert.deepEqual(beforeSend({ event: 'export_completed', properties })?.properties, properties);
+      assert.deepEqual(beforeSend({ event: 'export_completed', properties: { ...properties } })?.properties, properties);
     }
   });
 

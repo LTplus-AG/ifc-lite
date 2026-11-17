@@ -18,6 +18,10 @@ import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { isStepSourceModel, resolveStepExportBytes } from './step-export-source';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
+type CityJsonEngine = Pick<typeof import('@ifc-lite/geometry'), 'exportCityJson' | 'cityJsonRefusalReason'>;
+/** Load both the facade and the separate export WASM only on demand. An object so tests can fail the load. */
+export const cityJsonEngine = { load: (): Promise<CityJsonEngine> => import('@ifc-lite/geometry') };
+
 /** STEP-based export: preserve the producer's local-coordinate fallback (#10607). */
 export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurface; trigger?: React.ReactNode }) {
   const { t } = useTranslation();
@@ -31,16 +35,21 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
     if (!modelList.some((m) => m.id === selectedId)) setSelectedId(modelList[0]?.id ?? '');
   }, [modelList, selectedId]);
   const model = modelList.find((m) => m.id === selectedId);
-  // Georeferencing added in this session is written into the exported bytes too, so it counts.
-  const sessionGeoref = useViewerStore((s) => (model ? s.georefMutations.get(model.id)?.mapConversion !== undefined : false));
-  const localCoordinates = useMemo(() => open && !!model && !sessionGeoref &&
-    (!model.ifcDataStore || !extractGeoreferencingOnDemand(model.ifcDataStore)?.hasGeoreference), [open, model, sessionGeoref]);
+  // resolveStepExportBytes does not apply session georeferencing edits, so the local notice stays keyed on the
+  // file and a separate notice says when such edits exist.
+  const sessionGeoref = useViewerStore((s) => {
+    const gm = model ? s.georefMutations.get(model.id) : undefined;
+    return !!gm && (Object.keys(gm.mapConversion ?? {}).length > 0 || Object.keys(gm.projectedCRS ?? {}).length > 0);
+  });
+  const localCoordinates = useMemo(() => open && !!model &&
+    (!model.ifcDataStore || !extractGeoreferencingOnDemand(model.ifcDataStore)?.hasGeoreference), [open, model]);
 
   async function handleExport(): Promise<ExportDialogShellResult> {
     if (!model) return { success: false, message: t('cityJsonExport.noSource') };
-    // Load both the facade and the separate export WASM only on demand.
-    const { exportCityJson, cityJsonRefusalReason } = await import('@ifc-lite/geometry');
+    let engine: CityJsonEngine | undefined;
     try {
+      engine = await cityJsonEngine.load();
+      const { exportCityJson } = engine;
       const bytes = await resolveStepExportBytes(model, getMutationView);
       const result = await exportCityJson(bytes, { sequence });
       const blob = new Blob([result.text], { type: sequence ? 'application/x-ndjson' : 'application/json' });
@@ -54,7 +63,8 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
       trackExportCompleted({ surface, format: sequence ? 'cityjsonseq' : 'cityjson', size_kb: Math.round(blob.size / 1024) });
       return { success: true, message, warnings: result.warnings };
     } catch (error) {
-      const reason = cityJsonRefusalReason(error);
+      // A failed chunk load has no refusal parser yet; it is still a failed export, not an escaped rejection.
+      const reason = engine?.cityJsonRefusalReason(error) ?? null;
       if (reason === null) console.error('CityJSON export failed:', error);
       return { success: false, message: t('cityJsonExport.failed', {
         reason: reason ?? (error instanceof Error ? error.message : t('geometryExport.shared.unknownError')),
@@ -76,6 +86,7 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
     exportDisabled={!model} onExport={handleExport} onOpenStateChange={setOpen}
   >{({ isExporting }) => <>
     {localCoordinates && <Alert><AlertDescription>{t('cityJsonExport.localNotice')}</AlertDescription></Alert>}
+    {sessionGeoref && <Alert><AlertDescription>{t('cityJsonExport.sessionGeorefNotice')}</AlertDescription></Alert>}
     {!model && <Alert><AlertDescription>{t('cityJsonExport.noSource')}</AlertDescription></Alert>}
     {modelList.length > 1 && <div className="space-y-2">
       <Label htmlFor="cityjson-model">{t('geometryExport.kmz.modelLabel')}</Label>

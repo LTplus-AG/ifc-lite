@@ -12,11 +12,11 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { render, cleanup, click, waitFor, advance } from '@/test/render';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { toast } from '@/components/ui/toast';
-import { CityJsonExportDialog } from './CityJsonExportDialog';
+import { CityJsonExportDialog, cityJsonEngine } from './CityJsonExportDialog';
 
 const wasm = new URL('../../../../../packages/wasm/pkg-rhino/ifc-lite-rhino_bg.wasm', import.meta.url);
 const skip = existsSync(wasm) ? false : 'Export WASM absent; run pnpm build:wasm';
-afterEach(() => { cleanup(); clearDownloads(); mock.restoreAll(); });
+afterEach(() => { cleanup(); clearDownloads(); mock.restoreAll(); useViewerStore.setState({ georefMutations: new Map() }); });
 function button(label: string) {
   const node = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
   assert.ok(node, `button ${label}`);
@@ -71,13 +71,30 @@ it('local fixture shows notice before export and surfaces producer warnings (#10
   assert.match(info[0], /not georeferenced/i);
 });
 
-it('georeferencing added in this session suppresses the local-coordinates notice (#10607 review)', { skip }, async () => {
-  useViewerStore.setState({ georefMutations: new Map([['m', { mapConversion: { eastings: 2_600_000, northings: 1_200_000 } }]]) });
-  await open('hello-wall.ifc');
+it('session georeferencing is not written, so both notices stay and the output stays local (#10607 review)', { skip }, async () => {
+  const blobs = await open('hello-wall.ifc');
   useViewerStore.setState({ georefMutations: new Map([['m', { mapConversion: { eastings: 2_600_000, northings: 1_200_000 } }]]) });
   await advance(1);
-  assert.equal(document.body.textContent?.includes('local coordinates, not map coordinates'), false);
-  useViewerStore.setState({ georefMutations: new Map() });
+  const text = () => document.body.textContent ?? '';
+  assert.ok(text().includes('local coordinates, not map coordinates'));
+  assert.ok(text().includes('Georeferencing changes made in this session are not included'));
+  click(button('Export'));
+  await waitFor(() => blobs.length === 1, 'CityJSON download');
+  assert.equal(JSON.parse(await blobs[0].text()).metadata.referenceSystem, undefined);
+});
+
+it('a failed geometry chunk load fails the export inline instead of escaping (#10607 review)', async () => {
+  // The subject is the catch path: the shell would rethrow an escaped rejection and render no inline result.
+  mock.method(cityJsonEngine, 'load', () => Promise.reject(new Error('Failed to fetch dynamically imported module')));
+  mock.method(console, 'error', () => {});
+  const model = { ...fixtureModel('m'), name: 'a.ifc', sourceFile: new File(['ISO-10303-21;'], 'a.ifc'), ifcDataStore: null };
+  useViewerStore.setState({ ...fixtureModels(model) });
+  render(<CityJsonExportDialog surface="ribbon" />);
+  click(button('Export CityJSON'));
+  await advance(1);
+  click(button('Export'));
+  await waitFor(() => document.body.textContent?.includes('CityJSON export failed: Failed to fetch dynamically imported module') === true, 'inline load failure');
+  assert.equal(downloadedNames().length, 0);
 });
 
 it('model without IfcBuilding shows the real refusal inline and never downloads (#10607)', { skip }, async () => {

@@ -85,6 +85,13 @@ pub(super) fn full_result() -> ProcessingResult {
             triangle_count: Some(12),
         }],
         unsupported_items_by_type: vec![ReasonCount { reason: "IfcFoo".into(), count: 1 }],
+        // Non-exhaustive outside its crate, so built from its serde form.
+        budget_refusals: vec![serde_json::from_value(serde_json::json!({
+            "budget": "mapped attempts", "limit": 3, "reached": 4, "sourceId": 8,
+            "productId": 10, "productType": "IfcWall", "GlobalId": "g10",
+        }))
+        .unwrap()],
+        total_budget_refusals: 17,
         ..Default::default()
     });
     let metadata = ModelMetadata {
@@ -172,6 +179,8 @@ fn fingerprint_sees_every_field() {
         ("refused input", |r| r.stats.refused_input_elements = 0),
         ("diagnostics", |r| r.stats.geometry_diagnostics.as_mut().unwrap().worst_hosts[0].bbox = None),
         ("point cache", |r| r.stats.point_cache_hits = 0),
+        ("budget refusals", |r| r.stats.geometry_diagnostics.as_mut().unwrap().budget_refusals.clear()),
+        ("budget refusal total", |r| r.stats.geometry_diagnostics.as_mut().unwrap().total_budget_refusals = 1),
     ];
     let base = result_fingerprint(&full_result(), false);
     for (name, mutate) in mutations {

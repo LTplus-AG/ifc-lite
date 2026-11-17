@@ -147,6 +147,7 @@ export const miscPanelsBDe = {
   'loadReportPanel.selectAndFrameTitle': 'Diese Entität auswählen und einpassen',
   'loadReportPanel.entitySummary':
     '#{productId} {ifcType} – {csgFailures} Fehler, {openings} Öffnung(en)',
+  'loadReportPanel.budgetRefusal': '{budget}: Grenze {limit}, erreicht {reached}; Quelle #{sourceId}',
   'loadReportPanel.tierSuffix': ' · Stufe {tier}',
   'loadReportPanel.fastModeSuffix': ' · schneller Modus',
   'loadReportPanel.affectedEntitiesLabel': 'Betroffene Entitäten',

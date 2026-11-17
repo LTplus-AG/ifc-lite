@@ -49,7 +49,7 @@ import { basename, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { writeDenseIfc } from './gen-dense-ifc.mjs';
-import { DIALOG_BUTTONS, GENERIC_MODEL_ERROR, MEMORY_WARNING, classify, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { DIALOG_BUTTONS, GENERIC_MODEL_ERROR, MEMORY_WARNING, classify, sampleCpuGeometry, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
 import { GPU_ARGS } from './retained-qual-browser.mjs';
 import { chromePids, memoryOf } from './scenoptic-bench-sampling.mjs';
 import { openAndWaitInteractive, openViewerPage, startViewerServer } from './viewer-load-probe.mjs';
@@ -105,6 +105,20 @@ const PAGE_PROBE = () => {
     openSpans: l ? l.spans.filter((sp) => sp.end === null).slice(0, 8).map((sp) => sp.name) : [] };
 };
 
+/** In page: the viewer's "CPU geometry held" walk (#10264 S0), or null on a viewer without the hook. */
+const CPU_GEOMETRY_PROBE = async () => {
+  const hook = globalThis.__ifc_lite_cpu_geometry_held__;
+  if (typeof hook !== 'function') return null;
+  const held = await hook();
+  const state = globalThis.__ifc_lite_viewer_store__?.getState();
+  const models = [...(state?.models?.values?.() ?? [])];
+  const results = models.length ? models.map(model => model.geometryResult) : [state?.geometryResult];
+  const triangles = results.reduce((sum, result) => sum + (result?.totalTriangles ?? 0), 0);
+  return { ...held, triangles };
+};
+/** Sample the walk every this many 2 s polls (it walks every mesh, so not every poll). */
+const CPU_GEOMETRY_EVERY = 5;
+
 /** Chrome process type of `pid` from its command line ('renderer', 'gpu-process', 'utility', 'browser'). */
 function processType(pid) {
   try { return /--type=([a-z-]+)/.exec(readFileSync(`/proc/${pid}/cmdline`, 'utf8'))?.[1] ?? 'browser'; } catch { return null; }
@@ -139,7 +153,7 @@ export async function runProbe(opts) {
     timedOut: false, warningShown: false, decision: 'none' };
   const peak = { pssMiB: 0, cgroupMiB: 0 };
   const unit = `oom-load-probe-${process.pid}-${Date.now()}`;
-  let last = null, context, sampler, cg = null, verdictReady = false;
+  let last = null, context, sampler, cg = null, verdictReady = false, lastPssMiB = null, polls = 0;
   try {
     let fixture = opts.fixture;
     if (!fixture) {
@@ -203,6 +217,7 @@ export async function runProbe(opts) {
       }
       types = now;
       peak.pssMiB = Math.max(peak.pssMiB, m.pssMiB);
+      lastPssMiB = m.pssMiB;
       if (cur !== null) peak.cgroupMiB = Math.max(peak.cgroupMiB, cur / MiB);
       log({ t: (Date.now() - t0) / 1000, pssMiB: Math.round(m.pssMiB), cgroupMiB: cur === null ? null : Math.round(cur / MiB), oomKill: kills });
     }, 500);
@@ -219,6 +234,12 @@ export async function runProbe(opts) {
         if (done || obs.pageCrashed || obs.pageClosed || obs.browserGone) return;
         const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 15000, () => null);
         if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
+        if (st && ++polls % CPU_GEOMETRY_EVERY === 0) {
+          const measurement = await sampleCpuGeometry(() => page.evaluate(CPU_GEOMETRY_PROBE), st.tris, 15000);
+          log({ t: (Date.now() - t0) / 1000, cpuGeometryMeasurement: measurement.status,
+            ...(measurement.held ? { cpuGeometryHeld: measurement.held } : { diagnosticError: measurement.error }),
+            pssMiB: lastPssMiB === null ? null : Math.round(lastPssMiB) });
+        }
         if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? GENERIC_MODEL_ERROR; return; }
         if (obs.decision === 'none') {
           // CSS role selectors, not getByRole: when another layer (e.g. a privacy banner) is open the
@@ -255,6 +276,19 @@ export async function runProbe(opts) {
       const notices = await withTimeout(page.evaluate(NOTICES).catch(() => null), 5000, () => null);
       Object.assign(obs, mergeFinalSnapshot(obs, st ? { error: st.error, modelStates: st.modelStates, warningVisible, notices } : (notices ? { notices } : null)));
       if (obs.interactive) last = { ...(await withTimeout(page.evaluate(PAGE_PROBE).catch(() => last), 5000, () => last)), interactive: true };
+      if (obs.interactive) {
+        // Settled figure next to summed process memory: a few sampler ticks after interactive so PSS reflects it.
+        await new Promise((r) => setTimeout(r, 3000));
+        const measurement = await sampleCpuGeometry(() => page.evaluate(CPU_GEOMETRY_PROBE), last?.tris ?? 0, 30000);
+        result.cpuGeometryMeasurement = measurement.status;
+        if (measurement.error) result.cpuGeometryError = measurement.error;
+        log({ t: (Date.now() - t0) / 1000, settled: true, cpuGeometryMeasurement: measurement.status, diagnosticError: measurement.error });
+        const held = measurement.held;
+        if (held) {
+          result.cpuGeometryHeld = { ...held, settledPssMiB: lastPssMiB === null ? null : Math.round(lastPssMiB) };
+          log({ t: (Date.now() - t0) / 1000, settled: true, cpuGeometryHeld: result.cpuGeometryHeld });
+        }
+      }
       await page.screenshot({ path: join(outDir, 'end.png'), timeout: 10000 }).catch(() => {});
     }
   } finally {

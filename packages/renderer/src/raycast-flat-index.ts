@@ -4,6 +4,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import { BVH } from './bvh.js';
+import { visitMeshArrays, type CpuGeometryVisitor } from './cpu-geometry-visit.js';
 import type { Ray } from './raycaster.js';
 import type { SceneContents } from './scene-contents.js';
 
@@ -131,6 +132,13 @@ export class RaycastFlatIndex {
     this.flat = null;
     this.bvhPieces = null;
     this.bvh.clear();
+  }
+
+  /** Diagnostic (#10264): the pieces this index still references and its BVH arrays. */
+  visitCpuGeometry(visit: CpuGeometryVisitor): void {
+    const pieces = new Set([...(this.flat?.pieces ?? []), ...(this.bvhPieces ?? [])]);
+    for (const piece of pieces) visitMeshArrays('pick.raycastIndex', piece, visit);
+    this.bvh.visitArrays((array) => visit('pick.bvh', array, 'other'));
   }
 
   /** Discarded engines must stop retaining a scene listener (#9512). */

@@ -13,10 +13,12 @@
  *   (`entity-visibility-table.ts`). No sub-batch is cut from the CPU copy of
  *   the geometry, so this keeps working once that copy is released.
  *
- * Classification reads the batch's entries (`expressIds`, one per piece). The
- * GPU test reads the vertex lane, so it hides a colour-merged piece's
- * secondary entities exactly where the entries cannot see them; a batch whose
- * entries are all hidden is still skipped whole.
+ * Classification reads primary entries (`expressIds`, one per piece), as
+ * before S2. Only partly visible batches test secondary vertex-lane ids. An
+ * all-visible primary list can therefore leave a hidden secondary drawn;
+ * an all-hidden list can drop a visible secondary. Only host-supplied foreign
+ * `MeshData.entityIds` reach this limitation; no in-tree producer emits them.
+ * #10653 tracks complete lane coverage before those producers or their release.
  */
 
 import { isEntityVisible } from './entity-visibility.js';

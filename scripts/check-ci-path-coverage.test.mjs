@@ -475,6 +475,12 @@ test('an `if:` that cannot be read throws instead of reading as "every path" (#1
   assert.throws(() => gatingFilters('    if: *anchor'), /not a plain string/);
 });
 
+/** The changes-filter globs that can start test.yml's revert-oracle job. */
+function revertOracleGlobs(workflowText) {
+  const oracle = splitJobs(workflowText).find((j) => j.id === 'revert-oracle');
+  return gatingFilters(oracle.text).flatMap((n) => parseFilterBlock(workflowText).get(n));
+}
+
 test('every real workflow job `if:` reads exactly as a YAML parser reads it', () => {
   // The `yaml` package is the oracle here; the checker itself stays
   // dependency-free. Whitespace is normalised because a literal `|` block
@@ -494,8 +500,10 @@ test('every real workflow job `if:` reads exactly as a YAML parser reads it', ()
   }
   assert.ok(compared > 50, `compared only ${compared} conditions`);
   // #10628's finding: past the first line, revert-oracle names its filters.
-  const oracle = splitJobs(readFileSync(join(dir, 'test.yml'), 'utf8')).find((j) => j.id === 'revert-oracle');
-  assert.ok(gatingFilters(oracle.text)?.includes('revert_oracle'), 'the tests/extensions gate is read');
+  const globs = revertOracleGlobs(readFileSync(join(dir, 'test.yml'), 'utf8'));
+  for (const path of ['tests/extensions/canaries/hello-canary/manifest.json', 'tests/perf-ratchets/bundle.json']) {
+    assert.ok(matchesAny(path, globs), `${path} triggers revert-oracle`);
+  }
 });
 
 test('an unreadable job `if:` is a NAMED failure of the check (#10628)', () => {

@@ -316,6 +316,33 @@ describe('inserting a storey re-binds relative attachments (#9296)', () => {
 });
 
 describe('a wall top attached to a slab underside (#9296)', () => {
+  it('#8452 a renamed target GUID invalidates a warm equal-delta attachment classification', async () => {
+    const s = await levels();
+    const slab = addOrdinaryElementInStore(s.editor, anchor(s, s.l2), { kind: 'slab', params: { Position: [0, 4, 3], Width: 5, Depth: 2, Thickness: 0.3, ExtrudedDirection: [0, 0, -1] } });
+    const under = wall(s, s.l2, 5, 3.4);
+    create.setTopConstraintInStore(s.store, s.editor, under, { kind: 'slab', slabId: slab });
+    const edit = { kind: 'floorHeight' as const, storeyId: s.l1, Height: 3.5 };
+    const plan = () => planStoreyLevelEdit(readStoreyInventory(s.store, s.view), edit, { dryRun: false });
+    expect(plan().notices.some(notice => notice.elementIds.includes(under))).toBe(false);
+    s.editor.setPositionalAttribute(slab, 0, '0000000000000000000002');
+    expect(plan().notices).toContainEqual(expect.objectContaining({ code: 'wallAttachmentUnresolved', elementIds: [under] }));
+  });
+
+  it('#8452 a new canonical GUID target invalidates a warm attachment storey pair', async () => {
+    const s = await levels();
+    const slab = (storey: number) => addOrdinaryElementInStore(s.editor, anchor(s, storey), { kind: 'slab', params: { Position: [0, 4, 3], Width: 5, Depth: 2, Thickness: 0.3, ExtrudedDirection: [0, 0, -1] } });
+    const first = slab(s.l2), later = slab(s.l3), under = wall(s, s.l2, 5, 3.4);
+    create.setTopConstraintInStore(s.store, s.editor, under, { kind: 'slab', slabId: first });
+    const edit = { kind: 'floorHeight' as const, storeyId: s.l2, Height: 3.5 };
+    const plan = () => planStoreyLevelEdit(readStoreyInventory(s.store, s.view), edit, { dryRun: false });
+    expect(plan().walls).toEqual([]);
+    const guid = new AnchorEntityReader(s.store, s.view).entity(first)!.attributes[0] as string;
+    s.editor.setPositionalAttribute(later, 0, guid);
+    // Existing target lookup resolves duplicate GUIDs in canonical creation order.
+    expect(create.readTopAttachment(readStoreyInventory(s.store, s.view), under)?.targetElementId).toBe(later);
+    expect(plan().walls).toContainEqual(expect.objectContaining({ wallId: under, targetStoreyId: s.l3 }));
+  });
+
   it('ends on the slab underside and follows it when the slab storey moves', async () => {
     const s = await levels();
     const slab = addOrdinaryElementInStore(s.editor, anchor(s, s.l2), { kind: 'slab', params: { Position: [0, 4, 0], Width: 5, Depth: 2, Thickness: 0.3, ExtrudedDirection: [0, 0, -1] } });

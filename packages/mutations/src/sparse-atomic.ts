@@ -12,8 +12,10 @@ export function runSparseAtomic<T>(view: MutablePropertyView, edit: (draft: Muta
   const access = cooperativeOverlay(view), revision = view.getMutationRevision();
   const nextExpressId = view.peekNextExpressId();
   const original = access.capture(), guard = guardMutableEntities(original);
+  let dispose: (() => void) | undefined;
   try {
     const transaction = sparseOverlay(original);
+    dispose = transaction.dispose;
     const draft = access.draft({ ...transaction.state });
     const result = edit(draft);
     if (result !== null && (typeof result === 'object' || typeof result === 'function')
@@ -27,7 +29,10 @@ export function runSparseAtomic<T>(view: MutablePropertyView, edit: (draft: Muta
     if (record && prepared.changed && !prepared.written.length) throw new Error('A compound edit must record its mutations');
     if (view.getMutationRevision() !== revision || view.peekNextExpressId() !== nextExpressId) throw new Error('The IFC overlay changed during a prepared transaction.');
     guard.validate();
-    access.publish(prepared.publish());
+    access.publish(prepared.publish(), prepared.changedIds);
     return { result, inverse: prepared.inverse, written: prepared.written };
-  } finally { guard.dispose(); }
+  } finally {
+    guard.dispose();
+    dispose?.();
+  }
 }

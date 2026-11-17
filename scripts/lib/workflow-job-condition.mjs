@@ -21,31 +21,32 @@ export function jobCondition(jobText, jobId = '(unnamed)') {
   const lines = jobText.split('\n');
   const at = lines.findIndex((l) => /^ {4}if:/.test(l));
   if (at === -1) return null;
-  // ` #` starts a comment after a block indicator or in a plain scalar; a
-  // quoted scalar keeps it, and GitHub expressions never contain one anyway.
-  const line = lines[at].replace(/^ {4}if:/, '').trim();
-  const head = /^['"]/.test(line) ? line : line.replace(/(?:^|\s+)#.*$/, '');
   const rest = [];
   for (const raw of lines.slice(at + 1)) {
     if (raw.trim() === '') continue;
     if (!/^ {5,}\S/.test(raw)) break; // a sibling key ends the scalar
     rest.push(raw.trim());
   }
-  const unreadable = (why) => new Error(`job ${jobId}: cannot read \`if: ${head}\` (${why})`);
-  if (/^[>|](?:[1-9]?[-+]?|[-+][1-9])$/.test(head) || head === '') {
+  const first = lines[at].replace(/^ {4}if:/, '').trim().replace(/^#.*$/, '');
+  const unreadable = (why) => new Error(`job ${jobId}: cannot read \`if: ${first}\` (${why})`);
+  // A block scalar's body is content, `#` included.
+  if (/^[>|](?:[1-9]?[-+]?|[-+][1-9])(?:\s+#.*)?$/.test(first)) {
     if (rest.length === 0) throw unreadable('empty block scalar');
     return rest.join(' ');
   }
-  const text = [head, ...rest].join(' ');
-  if (head.startsWith("'")) {
-    if (!/^'(?:[^']|'')*'$/.test(text)) throw unreadable('unterminated single-quoted scalar');
-    return text.slice(1, -1).replaceAll("''", "'");
-  }
-  if (head.startsWith('"')) {
-    // Escapes other than \" and \\ cannot appear in a sane condition; refuse them.
-    if (!/^"(?:[^"\\]|\\["\\])*"$/.test(text)) throw unreadable('unsupported double-quoted scalar');
-    return text.slice(1, -1).replace(/\\(["\\])/g, '$1');
-  }
-  if (/^[&*!%@`]/.test(head)) throw unreadable('anchor, alias, tag or reserved indicator');
-  return text;
+  // Flow scalars may start on the next line; ` #` after the value is a comment.
+  const parts = [first, ...rest].filter(Boolean);
+  if (parts.length === 0) throw unreadable('empty scalar');
+  const text = parts.join(' ');
+  const single = text.match(/^'((?:[^']|'')*)'(?:\s+#.*)?$/);
+  if (single) return single[1].replaceAll("''", "'");
+  // Escapes other than \" and \\ cannot appear in a sane condition; refuse them.
+  const double = text.match(/^"((?:[^"\\]|\\["\\])*)"(?:\s+#.*)?$/);
+  if (double) return double[1].replace(/\\(["\\])/g, '$1');
+  if (/^['"]/.test(text)) throw unreadable('unterminated or unsupported quoted scalar');
+  if (/^[&*!%@`]/.test(text)) throw unreadable('anchor, alias, tag or reserved indicator');
+  // A comment ends a plain scalar; one before its last line is not something to guess past.
+  const cut = parts.findIndex((l) => /\s#/.test(l));
+  if (cut !== -1 && cut < parts.length - 1) throw unreadable('comment inside a plain scalar');
+  return parts.join(' ').replace(/\s+#.*$/, '');
 }

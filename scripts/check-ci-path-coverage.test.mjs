@@ -416,8 +416,9 @@ test('gatingFilters: the no-op `edited` probe output is not a path filter', () =
 });
 
 test('gatingFilters reads a multi-line `if:` in full, not just its first line', () => {
-  // test.yml writes long conditions as block scalars; the filter terms sit on
-  // the second line or later. Reading only `if: >-` made the job look ungated.
+  // Found building #10628: test.yml writes long conditions as block scalars and
+  // the filter terms sit on the second line or later. Reading only `if: >-`
+  // made revert-oracle look ungated.
   const folded = [
     '    if: >-',
     "      github.event_name == 'pull_request' &&",
@@ -445,13 +446,26 @@ test('gatingFilters reads a multi-line `if:` in full, not just its first line', 
     'always()',
     'a trailing comment is not part of a plain scalar',
   );
+  assert.deepEqual(
+    gatingFilters("    if: needs.changes.outputs.rust == 'true' &&\n      github.event_name == 'x' # was needs.changes.outputs.docs == 'true'"),
+    ['rust'],
+    'a filter named in a comment on a continuation line does not gate the job',
+  );
+  assert.deepEqual(
+    gatingFilters("    if:\n      'needs.changes.outputs.docs == ''true'''"),
+    ['docs'],
+    'a quoted scalar starting on the next line is unquoted, not read as a block',
+  );
+  assert.equal(jobCondition("    if: 'a' # c"), 'a', 'comment after a single-quoted scalar');
+  assert.equal(jobCondition('    if: "a" # c'), 'a', 'comment after a double-quoted scalar');
 });
 
-test('an `if:` that cannot be read throws instead of reading as "every path"', () => {
+test('an `if:` that cannot be read throws instead of reading as "every path" (#10628)', () => {
   assert.throws(() => gatingFilters('    if: >-\n    runs-on: x'), /empty block scalar/);
-  assert.throws(() => gatingFilters('    if:\n    runs-on: x'), /empty block scalar/);
+  assert.throws(() => gatingFilters('    if:\n    runs-on: x'), /empty scalar/);
   assert.throws(() => gatingFilters("    if: 'needs.changes.outputs.docs\n    runs-on: x"), /unterminated/);
-  assert.throws(() => gatingFilters('    if: "a \\n b"'), /double-quoted/);
+  assert.throws(() => gatingFilters('    if: "a \\n b"'), /unsupported quoted/);
+  assert.throws(() => gatingFilters('    if: a # c\n      && b'), /comment inside a plain scalar/);
   assert.throws(() => gatingFilters('    if: *anchor'), /alias/);
 });
 
@@ -478,7 +492,7 @@ test('every real workflow job `if:` reads exactly as a YAML parser reads it', ()
   assert.deepEqual(gatingFilters(oracle.text), ['frontend', 'rust', 'perf_ratchet', 'revert_oracle']);
 });
 
-test('an unreadable job `if:` is a NAMED failure of the check', () => {
+test('an unreadable job `if:` is a NAMED failure of the check (#10628)', () => {
   const workflow = WORKFLOW(DEFAULT_FILTERS, DEFAULT_STEPS).replace(
     "    if: needs.changes.outputs.frontend == 'true'",
     '    if: >-\n',

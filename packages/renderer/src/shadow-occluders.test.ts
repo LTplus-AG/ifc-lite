@@ -14,7 +14,6 @@ import assert from 'node:assert';
 import {
   collectShadowOccluders,
   originModelMatrix,
-  classifyBatchVisibility,
   type ShadowOccluderSources,
 } from './shadow-occluders.js';
 import { ShadowPass } from './shadow-pass.js';
@@ -514,48 +513,40 @@ describe('ShadowPass clipping', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Phase 2b: per-element hide/isolate must not cast a phantom shadow.
+// Phase 2b / #10264 S2: per-element hide/isolate must not cast a phantom shadow.
 //
-// Batch geometry is filtered UPSTREAM (the renderer feeds the collector the
-// visible subset via classifyBatchVisibility); instanced geometry is filtered
-// in the depth shader via a per-occurrence flag, which requires the instanced
-// shadow pipeline to bind the flags lane. Both halves are pinned here.
+// A partly hidden batch casts its own buffers whole, marked for the shadow
+// fragment's visibility test; instanced geometry is filtered in the depth
+// shader via a per-occurrence flag, which requires the instanced shadow
+// pipeline to bind the flags lane. Both halves are pinned here.
 // ---------------------------------------------------------------------------
 
-describe('classifyBatchVisibility', () => {
-  it('is "all" when no filter is active (both nullish and empty-hidden)', () => {
-    assert.deepEqual(classifyBatchVisibility([1, 2, 3], undefined, undefined), { kind: 'all' });
-    assert.deepEqual(classifyBatchVisibility([1, 2, 3], new Set(), null), { kind: 'all' });
+describe('partly hidden batches cast whole under the GPU visibility test (#10264 S2)', () => {
+  const twoEntities = (): BatchedMesh => ({ ...flatBatch(1), expressIds: [101, 102] });
+
+  it('marks only a partly hidden batch for the fragment test', () => {
+    const [partly] = collectShadowOccluders({ batches: [twoEntities()], instanced: [], textured: [] }, { hiddenIds: new Set([102]) });
+    assert.equal(partly?.visibilityFiltered, true);
+    const [whole] = collectShadowOccluders({ batches: [twoEntities()], instanced: [], textured: [] }, { hiddenIds: new Set([7]) });
+    assert.equal(whole?.visibilityFiltered, undefined, 'a fully visible batch keeps the depth-only path');
+    assert.deepEqual(collectShadowOccluders({ batches: [twoEntities()], instanced: [], textured: [] }, { isolatedIds: new Set() }), []);
   });
 
-  it('is "none" when every element is hidden (a fully-hidden batch stops casting)', () => {
-    assert.deepEqual(classifyBatchVisibility([1, 2], new Set([1, 2]), undefined), { kind: 'none' });
-  });
-
-  it('is "partial" with the visible subset when some elements are hidden', () => {
-    const v = classifyBatchVisibility([1, 2, 3], new Set([2]), undefined);
-    assert.equal(v.kind, 'partial');
-    assert.deepEqual([...(v as { visibleIds: Set<number> }).visibleIds].sort(), [1, 3]);
-  });
-
-  it('treats isolate as an allowlist: an empty isolate set hides everything', () => {
-    assert.deepEqual(classifyBatchVisibility([1, 2], undefined, new Set()), { kind: 'none' });
-  });
-
-  it('is "all" when the isolate set covers every element', () => {
-    assert.deepEqual(classifyBatchVisibility([1, 2], undefined, new Set([1, 2])), { kind: 'all' });
-  });
-
-  it('narrows to the isolated subset when isolation is partial', () => {
-    const v = classifyBatchVisibility([1, 2, 3], undefined, new Set([2, 3]));
-    assert.equal(v.kind, 'partial');
-    assert.deepEqual([...(v as { visibleIds: Set<number> }).visibleIds].sort(), [2, 3]);
-  });
-
-  it('lets hiding win over isolation (an isolated-but-hidden element is excluded)', () => {
-    const v = classifyBatchVisibility([1, 2], new Set([1]), new Set([1, 2]));
-    assert.equal(v.kind, 'partial');
-    assert.deepEqual([...(v as { visibleIds: Set<number> }).visibleIds], [2]);
+  it('draws a marked batch through the fragment set without a clip, and clears stale clip flags', () => {
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
+    const pass = new ShadowPass(mockShadowDevice(dev), 1024);
+    const draws = collectShadowOccluders(
+      { batches: [twoEntities(), flatBatch(3)], instanced: [], textured: [] },
+      { hiddenIds: new Set([102]) },
+    );
+    const box = { min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] };
+    pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, draws, { box });
+    const rec = emptyRecord();
+    pass.render(mockEncoder(rec), { m: new Float32Array(16) }, draws);
+    assert.deepEqual(rec.drawPipelines, ['shadow-pipeline-vs_shadow_flat-clipped', 'shadow-pipeline-vs_shadow_flat']);
+    const words = new Uint32Array(dev.drawWrite!.buffer);
+    assert.deepEqual([words[29], words[64 + 29]], [1, 0], 'entity.y flags only the partly hidden draw');
+    assert.ok(dev.clipWrite!.every((v) => v === 0), 'the fragment set must not cut by last frame\'s box');
   });
 });
 

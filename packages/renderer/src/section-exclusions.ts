@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { PickClipState } from './pick-types.js';
+import { entityVisibilityWgsl } from './entity-visibility-table.js';
 
 /** All section planes are exempted together; the crop box remains independent (#8015). */
 export function entityClip(clip: PickClipState | null | undefined, id: number): PickClipState | null | undefined {
@@ -17,8 +18,10 @@ export function sectionExclusionImage(ids?: ReadonlySet<number> | null): Uint32A
   return image;
 }
 
-// One table per device submission, shared by colour, masks, shadow and picking.
-// Owners retain/release it; mask passes borrow it while the renderer is alive.
+// One group per device submission, shared by colour, masks, shadow and picking:
+// binding 0 the section exclusions, binding 1 the hide/isolate table
+// (entity-visibility-table.ts, #10264 S2). Owners retain/release it; mask
+// passes borrow it while the renderer is alive.
 const tables = new WeakMap<GPUDevice, SectionExclusions>();
 export function sectionExclusions(device: GPUDevice): SectionExclusions {
   let table = tables.get(device);
@@ -60,42 +63,70 @@ export function bindSectionExclusions(pass: GPUBindingCommandsMixin, device: GPU
 class SectionExclusions {
   readonly layout: GPUBindGroupLayout;
   buffer: GPUBuffer;
+  visibility: GPUBuffer;
   bindGroup: GPUBindGroup;
   private snapshot = new Set<number>();
   private owners = 0;
   private bytes = 4;
+  private visibilityBytes = 16;
+  private visibilityImage: Uint32Array | null = null;
+  private readonly limit: number;
   constructor(private device: GPUDevice) {
-    this.layout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }] });
-    this.buffer = this.allocate(4);
+    const storage = (binding: number): GPUBindGroupLayoutEntry => ({ binding, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } });
+    this.layout = device.createBindGroupLayout({ entries: [storage(0), storage(1)] });
+    this.limit = Math.min(device.limits?.maxStorageBufferBindingSize ?? 134217728, device.limits?.maxBufferSize ?? 268435456);
+    this.buffer = this.allocate('section-excluded-ids', 4);
+    this.visibility = this.allocate('entity-visibility', this.visibilityBytes); // zeroed = nothing hidden
     this.bindGroup = this.bind();
   }
   retain(): void { this.owners++; }
   release(): void {
-    if (--this.owners === 0) { this.buffer.destroy(); tables.delete(this.device); }
+    if (--this.owners === 0) { this.buffer.destroy(); this.visibility.destroy(); tables.delete(this.device); }
   }
-  private allocate(size: number): GPUBuffer {
-    return this.device.createBuffer({ label: 'section-excluded-ids', size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  private allocate(label: string, size: number): GPUBuffer {
+    return this.device.createBuffer({ label, size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   }
   private bind(): GPUBindGroup {
-    return this.device.createBindGroup({ layout: this.layout, entries: [{ binding: 0, resource: { buffer: this.buffer } }] });
+    return this.device.createBindGroup({ layout: this.layout, entries: [
+      { binding: 0, resource: { buffer: this.buffer } }, { binding: 1, resource: { buffer: this.visibility } },
+    ] });
   }
   update(ids?: ReadonlySet<number> | null): void {
     if (this.snapshot.size === (ids?.size ?? 0) && [...this.snapshot].every(id => ids?.has(id))) return;
     const image = sectionExclusionImage(ids);
-    const limit = Math.min(this.device.limits.maxStorageBufferBindingSize ?? 134217728, this.device.limits.maxBufferSize ?? 268435456);
-    if (image.byteLength > limit) throw new RangeError('Section exclusions exceed the GPU storage buffer limit');
+    if (image.byteLength > this.limit) throw new RangeError('Section exclusions exceed the GPU storage buffer limit');
     if (image.byteLength > this.bytes) {
       this.buffer.destroy(); this.bytes = image.byteLength;
-      this.buffer = this.allocate(this.bytes); this.bindGroup = this.bind();
+      this.buffer = this.allocate('section-excluded-ids', this.bytes); this.bindGroup = this.bind();
     }
     this.device.queue.writeBuffer(this.buffer, 0, image);
     this.snapshot = new Set(ids);
+  }
+  /**
+   * Make `image` (`entityVisibilityImage`) the hide/isolate table the next
+   * submission reads. An image already written is not uploaded again. Returns
+   * false, leaving the table unchanged, when the image exceeds the device's
+   * storage binding limit: the caller must then not draw anything that relies
+   * on the table, rather than draw hidden geometry.
+   */
+  writeVisibility(image: Uint32Array): boolean {
+    if (image === this.visibilityImage) return true;
+    if (image.byteLength > this.limit) return false;
+    if (image.byteLength > this.visibilityBytes) {
+      this.visibility.destroy(); this.visibilityBytes = image.byteLength;
+      this.visibility = this.allocate('entity-visibility', this.visibilityBytes); this.bindGroup = this.bind();
+    }
+    this.device.queue.writeBuffer(this.visibility, 0, image);
+    this.visibilityImage = image;
+    return true;
   }
 }
 
 /** Binary search is bounded by log2(count); the empty default reads just the count. */
 export const sectionExclusionsWgsl = `
 @group(3) @binding(0) var<storage, read> sectionExcludedIds: array<u32>;
+@group(3) @binding(1) var<storage, read> entityVisibility: array<u32>;
+${entityVisibilityWgsl}
 // Scene colour buckets are partitioned by 2^24 ID page. Reject an invalid anchor.
 fn sectionEntityFromLane(anchor: u32, lane: u32) -> u32 {
   return select(anchor + ((lane - anchor) & 0x00FFFFFFu), 0xFFFFFFFFu, anchor == 0xFFFFFFFFu);

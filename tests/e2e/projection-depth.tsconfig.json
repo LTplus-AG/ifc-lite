@@ -32,6 +32,7 @@
     "perspective-distance-depth.gpu.ts",
     "perspective-distance-depth.e2e.spec.ts",
     "gpu-batch-pick.config.ts",
-    "gpu-batch-pick.e2e.spec.ts"
+    "gpu-batch-pick.e2e.spec.ts",
+    "gpu-entity-visibility.e2e.spec.ts"
   ]
 }

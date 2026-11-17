@@ -68,8 +68,6 @@ name: PR review signal
 # its required-lane list from test.yml at read time regardless of which event
 # fired it.
 on:
-  merge_group:
-    types: [checks_requested]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -224,14 +222,3 @@ jobs:
             --self-name 'PR review signal' \
             --timeout-seconds 900 \
             --poll-seconds 30
-
-  # Merge-queue batches have no PR to inspect; the PR-level run already gated
-  # entry to the queue. This reports the required 'PR review signal' check so a
-  # batch can complete, instead of waiting forever on a check that never runs.
-  review-signal-merge-group:
-    name: PR review signal
-    if: github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - run: echo 'PR review signal - satisfied at PR level; nothing to check on a merge-queue batch'

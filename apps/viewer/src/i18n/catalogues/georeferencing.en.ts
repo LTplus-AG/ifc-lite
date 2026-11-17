@@ -120,6 +120,7 @@ export const georeferencingEn = {
   'properties.georef.setOrthogonalHeightTooltip': 'Set OrthogonalHeight to sampled terrain height ({value} m)',
   'properties.georef.setOrthogonalHeightTooltipViaSource': 'Set OrthogonalHeight to sampled terrain height ({value} m via {source})',
   "properties.georef.areaOfUse": "Area of use: longitude {west}° to {east}°, latitude {south}° to {north}°.",
+  "properties.georef.areaOfUseUnavailable": "Area of use unavailable.",
   "properties.georef.check.heading": "Georeferencing check",
   "properties.georef.check.running": "Checking…",
   "properties.georef.check.failed": "The check could not run.",

@@ -162,7 +162,9 @@ export default function GeorefDiagnosisSection({ modelId, editable, mapUnitScale
             <span className="leading-snug">
               <strong>{t('properties.georef.check.outsideAreaHeading', { code: String(outside.finding.evidence.epsg) })}</strong>{' '}
               {t('properties.georef.check.outsideAreaBody')}
-              {diagnosis?.outsideAreaOfUse && <> {formatAreaOfUse(t, locale, diagnosis.outsideAreaOfUse)}</>}
+              {diagnosis?.outsideAreaOfUse && <> {diagnosis.outsideAreaOfUse === 'unavailable'
+                ? t('properties.georef.areaOfUseUnavailable')
+                : formatAreaOfUse(t, locale, diagnosis.outsideAreaOfUse)}</>}
             </span>
           </div>
           {editable && outside.fix && <ul><FindingRow item={outside} onApply={() => apply(outside)} /></ul>}

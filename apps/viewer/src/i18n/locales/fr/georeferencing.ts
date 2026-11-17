@@ -122,6 +122,7 @@ export const georeferencingFr = {
   'properties.georef.setOrthogonalHeightTooltip': 'Régler OrthogonalHeight sur la hauteur du terrain échantillonnée ({value} m)',
   'properties.georef.setOrthogonalHeightTooltipViaSource': 'Régler OrthogonalHeight sur la hauteur du terrain échantillonnée ({value} m via {source})',
   "properties.georef.areaOfUse": "Zone d'utilisation : longitude {west}° à {east}°, latitude {south}° à {north}°.",
+  "properties.georef.areaOfUseUnavailable": "Zone d'utilisation indisponible.",
   "properties.georef.check.heading": "Vérification du géoréférencement",
   "properties.georef.check.running": "Vérification…",
   "properties.georef.check.failed": "La vérification n'a pas pu s'exécuter.",

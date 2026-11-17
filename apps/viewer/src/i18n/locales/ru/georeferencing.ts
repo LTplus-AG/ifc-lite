@@ -109,6 +109,7 @@ export const georeferencingRu = {
   "properties.georef.setOrthogonalHeightTooltip": "Установить OrthogonalHeight равным высоте рельефа по выборке ({value} м)",
   "properties.georef.setOrthogonalHeightTooltipViaSource": "Установить OrthogonalHeight равным высоте рельефа по выборке ({value} м через {source})",
   "properties.georef.areaOfUse": "Область применения: долгота от {west}° до {east}°, широта от {south}° до {north}°.",
+  "properties.georef.areaOfUseUnavailable": "Область применения недоступна.",
   "properties.georef.check.heading": "Проверка геопривязки",
   "properties.georef.check.running": "Проверка…",
   "properties.georef.check.failed": "Не удалось выполнить проверку.",

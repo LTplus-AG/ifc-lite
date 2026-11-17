@@ -70,8 +70,12 @@ export interface GeorefDiagnosis {
   report: GeorefCheckReport;
   /** Every finding, errors first, then warnings, then notes. */
   items: DiagnosisItem[];
-  /** The EPSG area of use of the CRS an `OUTSIDE_CRS_AREA` finding names. */
-  outsideAreaOfUse?: EpsgAreaOfUse;
+  /**
+   * The EPSG area of use of the CRS an `OUTSIDE_CRS_AREA` finding names:
+   * `'unavailable'` when the EPSG extents failed to load, absent when there is
+   * no such finding or EPSG records no area for the code.
+   */
+  outsideAreaOfUse?: EpsgAreaOfUse | 'unavailable';
 }
 
 function hasKeys(record: object | undefined): record is object {
@@ -188,13 +192,14 @@ export async function diagnoseModelGeoreference(
   items.sort((a, b) => SEVERITY_ORDER[a.finding.severity] - SEVERITY_ORDER[b.finding.severity]);
 
   const outside = items.find((item) => item.finding.code === 'OUTSIDE_CRS_AREA')?.finding.evidence.epsg;
-  let outsideAreaOfUse: EpsgAreaOfUse | undefined;
+  let outsideAreaOfUse: GeorefDiagnosis['outsideAreaOfUse'];
   if (typeof outside === 'number') {
     try {
       outsideAreaOfUse = await getEpsgAreaOfUse(outside);
     } catch (error) {
-      // The warning stands without the box; only its extent is missing.
+      // The warning stands; it says the box could not be loaded rather than omitting it.
       console.warn('[georef check] EPSG area of use unavailable', error);
+      outsideAreaOfUse = 'unavailable';
     }
   }
   return { report, items, ...(outsideAreaOfUse ? { outsideAreaOfUse } : {}) };

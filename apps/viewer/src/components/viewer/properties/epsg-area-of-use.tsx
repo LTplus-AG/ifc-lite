@@ -22,25 +22,36 @@ export function formatAreaOfUse(t: Translate, locale: string, area: Pick<EpsgAre
   return t('properties.georef.areaOfUse', { west: deg(area.west), east: deg(area.east), south: deg(area.south), north: deg(area.north) });
 }
 
-/** The primary area of use of an EPSG code; undefined while loading and for a code without one. */
-export function useEpsgAreaOfUse(code: string | number | undefined): EpsgAreaOfUse | undefined {
-  const [loaded, setLoaded] = useState<{ code: string | number; area: EpsgAreaOfUse | undefined }>();
+/** An EPSG code's primary area of use: `loading`, `ready` (`area` undefined when EPSG records none) or `unavailable` (the extents failed to load). */
+export type EpsgAreaOfUseState =
+  | { status: 'loading' }
+  | { status: 'ready'; area: EpsgAreaOfUse | undefined }
+  | { status: 'unavailable' };
+
+export function useEpsgAreaOfUse(code: string | number | undefined): EpsgAreaOfUseState {
+  const [loaded, setLoaded] = useState<{ code: string | number; state: EpsgAreaOfUseState }>();
   useEffect(() => {
     if (code === undefined) return;
     let live = true;
     getEpsgAreaOfUse(code).then(
-      (area) => { if (live) setLoaded({ code, area }); },
-      (error) => { console.warn('[EPSG Lookup] Area of use unavailable', error); },
+      (area) => { if (live) setLoaded({ code, state: { status: 'ready', area } }); },
+      (error) => {
+        console.warn('[EPSG Lookup] Area of use unavailable', error);
+        if (live) setLoaded({ code, state: { status: 'unavailable' } });
+      },
     );
     return () => { live = false; };
   }, [code]);
-  return loaded && loaded.code === code ? loaded.area : undefined;
+  return loaded && loaded.code === code ? loaded.state : { status: 'loading' };
 }
 
-/** One muted line with the code's area of use; nothing while it loads or when EPSG has none. */
+/** One muted line with the code's area of use, or that it could not be loaded; nothing while it loads or when EPSG has none. */
 export function EpsgAreaOfUseLine({ code }: { code: string }) {
   const { t, locale } = useTranslation();
-  const area = useEpsgAreaOfUse(code);
-  if (!area) return null;
-  return <div className="mt-0.5 text-xs text-muted-foreground truncate">{formatAreaOfUse(t, locale, area)}</div>;
+  const state = useEpsgAreaOfUse(code);
+  const text = state.status === 'unavailable' ? t('properties.georef.areaOfUseUnavailable')
+    : state.status === 'ready' && state.area ? formatAreaOfUse(t, locale, state.area)
+    : undefined;
+  if (!text) return null;
+  return <div className="mt-0.5 text-xs text-muted-foreground truncate">{text}</div>;
 }

@@ -107,7 +107,7 @@ it('applies a safe fix as one undo step, re-checks the edited model, and the exp
   assert.equal(extractGeoreferencingOnDemand(saved)?.mapConversion?.orthogonalHeight, 540, 'the exported file carries the fix');
 
   act(() => useViewerStore.getState().undo('m'));
-  assert.equal(useViewerStore.getState().georefMutations.get('m')?.mapConversion?.orthogonalHeight ?? 540000, 540000,
+  assert.equal(useViewerStore.getState().georefMutations.get('m')?.mapConversion?.orthogonalHeight, 540000,
     'one undo reverts the whole fix');
   assert.equal(await settled(host), '1 warning', 'and the check sees the authored value again');
 
@@ -138,7 +138,7 @@ it('warns when the map position lies outside the CRS area of use, with the EPSG 
 
   act(() => useViewerStore.getState().undo('m'));
   const undone = useViewerStore.getState().georefMutations.get('m')?.mapConversion;
-  assert.deepEqual([undone?.eastings ?? 1199650, undone?.northings ?? 2600000], [1199650, 2600000], 'one undo reverts both fields');
+  assert.deepEqual([undone?.eastings, undone?.northings], [1199650, 2600000], 'one undo reverts both fields');
   await settled(host);
   assert.ok(outsideAreaAlert(host), 'and the warning is back');
 });

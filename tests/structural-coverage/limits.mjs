@@ -30,8 +30,8 @@ export const KINDS = ['schema', 'policy', 'upstream'];
 
 /**
  * Whether IFC2X3 holds this IFC4 activity of `step` only as IfcProxy: IFC2X3 lacks the entity, and it is
- * neither a CONST action (CONSTANT_SUBTYPE) nor an action whose representation has an IfcShapeAspect,
- * which StructuralVarying may write as an IFC2X3 varying action.
+ * neither a CONST action (CONSTANT_SUBTYPE) nor an action whose representation has one IfcShapeAspect
+ * with a representation per load of its configuration, which StructuralVarying writes as an IFC2X3 varying action.
  */
 function proxied(f, step, act) {
   const name = act && f.name('IFC4', act.type);
@@ -41,21 +41,33 @@ function proxied(f, step, act) {
   const predefined = act.args.at(-1);
   if (predefined === null || predefined?.enum === 'CONST') return false;
   const shape = act.args[6]?.ref;
-  return shape === undefined || !step.of('IFCSHAPEASPECT').some((a) => a.args[4]?.ref === shape);
+  const aspects = shape === undefined ? [] : step.of('IFCSHAPEASPECT').filter((a) => a.args[4]?.ref === shape);
+  const values = step.get(act.args[7])?.args[1];
+  return !(aspects.length === 1 && Array.isArray(values) && aspects[0].args[0]?.length === values.length);
 }
 
 /** The source record a `<path>#<id>` problem names. */
 const recordOf = (f, m) => f.file(m[1]).get(Number(m[2]));
 
-// The probe lists every distinct non-conformance in the parentheses, so these match only when it is the one named.
-const IFC2X3_AXIS = /^(.+): \d+ of \d+ \w+ record\(s\) in the IFC4 file do not conform to IFC4 \(Axis: required value empty at #\d+(?:, #\d+)*\)$/;
-const OWNER_HISTORY = /^(.+): \d+ of \d+ \w+ record\(s\) in the IFC2X3 file do not conform to IFC2X3 \(OwnerHistory: required value empty at #\d+(?:, #\d+)*\)$/;
+/**
+ * A convert problem for records of a file that do not conform to the other schema with exactly `why`
+ * (the probe lists every distinct reason, then the ids): m[1] is the path, m[2] the count, m[3] the ids.
+ */
+const nonConformingOnly = (entity, schema, why) => new RegExp(`^(.+): (\\d+) of \\d+ ${entity} record\\(s\\) in the ${schema} file do not conform to ${schema} \\(${why} at (#\\d+(?:, #\\d+)*)\\)$`);
+const idsOf = (m) => m[3].split(', ').map((id) => Number(id.slice(1)));
+const IFC2X3_AXIS = nonConformingOnly('\\w+', 'IFC4', 'Axis: required value empty');
+const OWNER_HISTORY = nonConformingOnly('\\w+', 'IFC2X3', 'OwnerHistory: required value empty');
 const LOST = /^(.+)#(\d+): lost$/;
 
 const axisSchema = (entity, cite) => ({
   row: `IFC2X3/${entity}`, level: 'convert', kind: 'schema', problem: IFC2X3_AXIS, cite,
-  holds: (f, m) => f.required('IFC4', entity, 'Axis') && f.slot('IFC2X3', entity, 'Axis') === null
-    && f.file(m[1]).count('IFCRELASSOCIATESPROFILEPROPERTIES') === 0,
+  holds: (f, m) => {
+    const step = f.file(m[1]);
+    // No profile orientation names any of these records (IfcRelAssociates.RelatedObjects).
+    const oriented = new Set(step.of('IFCRELASSOCIATESPROFILEPROPERTIES').flatMap((rel) => (rel.args[4] ?? []).map((r) => r.ref)));
+    return f.required('IFC4', entity, 'Axis') && f.slot('IFC2X3', entity, 'Axis') === null
+      && idsOf(m).every((id) => step.get(id)?.type === entity.toUpperCase() && !oriented.has(id));
+  },
 });
 
 const reactionSchema = (entity, what) => ({
@@ -77,12 +89,12 @@ export const LIMITS = [
   axisSchema('IfcStructuralCurveMemberVarying', 'as IfcStructuralCurveMember: IFC4 requires the inherited Axis (IFC4_ADD2_TC1.exp:9423); the source has no profile orientation to fill it from'),
   {
     row: 'IFC4/IfcRelConnectsStructuralActivity', level: 'convert', kind: 'schema',
-    problem: /^(.+): (\d+) of \d+ IfcRelConnectsStructuralActivity record\(s\) in the IFC2X3 file do not conform to IFC2X3 \(RelatedStructuralActivity: reference to IfcProxy in IfcStructuralActivity at #\d+(?:, #\d+)*\)$/,
+    problem: nonConformingOnly('IfcRelConnectsStructuralActivity', 'IFC2X3', 'RelatedStructuralActivity: reference to IfcProxy in IfcStructuralActivity'),
     cite: 'IFC2X3 RelatedStructuralActivity : IfcStructuralActivity (IFC2X3_TC1.exp:6610); these relationships name curve and surface reactions and a non-constant curve action, which IFC2X3 can hold only as IfcProxy (their own rows)',
     holds: (f, m) => {
       const step = f.file(m[1]);
       const named = step.of('IFCRELCONNECTSSTRUCTURALACTIVITY').filter((rel) => proxied(f, step, step.get(rel.args[5])));
-      return named.length === Number(m[2]);
+      return named.map((rel) => rel.id).join() === idsOf(m).join();
     },
   },
   {
@@ -104,7 +116,7 @@ export const LIMITS = [
   },
   {
     row: 'IFC4/IfcStructuralCurveAction', level: 'convert', kind: 'schema', problem: LOST,
-    cite: 'IFC2X3 has no IfcStructuralCurveAction (IfcStructuralAction ONEOF, IFC2X3_TC1.exp:7230); its varying action has no PredefinedType (IFC2X3_TC1.exp:7312), so a LINEAR or POLYGONAL action cannot come back as such, and IfcStructuralLoadConfiguration.Locations has no IFC2X3 slot',
+    cite: 'IFC2X3 has no IfcStructuralCurveAction (IfcStructuralAction ONEOF, IFC2X3_TC1.exp:7230); its varying action has no PredefinedType (IFC2X3_TC1.exp:7312), so a LINEAR or POLYGONAL action cannot come back as such',
     holds: (f, m) => {
       const rec = recordOf(f, m);
       return rec?.type === 'IFCSTRUCTURALCURVEACTION' && !['NOTDEFINED', 'CONST'].includes(rec.args[11]?.enum)
@@ -123,10 +135,13 @@ export const LIMITS = [
   {
     row: 'IFC4/IfcStructuralLoadConfiguration', level: 'convert', kind: 'schema',
     problem: /^(.+)#(\d+): no IfcStructuralLoadConfiguration with its values came back$/,
-    cite: 'IFC2X3 has no IfcStructuralLoadConfiguration; it locates varying loads only by IfcShapeAspect representations (IFC2X3_TC1.exp:7314), so Locations (IFC4_ADD2_TC1.exp:9473) has no IFC2X3 slot',
+    cite: 'IFC2X3 has no IfcStructuralLoadConfiguration (IFC4_ADD2_TC1.exp:9470); it holds the loads only on a varying action, located by point representations of that action\'s own shape (IFC2X3_TC1.exp:7314). Each of these configurations has a Name, which nothing in IFC2X3 holds, or is applied by an action with no shape or by a curve reaction, which IFC2X3 lacks',
     holds: (f, m) => {
-      const rec = recordOf(f, m);
-      return rec?.type === 'IFCSTRUCTURALLOADCONFIGURATION' && Array.isArray(rec.args[2]) && !f.has('IFC2X3', 'IfcStructuralLoadConfiguration');
+      const step = f.file(m[1]);
+      const rec = step.get(Number(m[2]));
+      if (rec?.type !== 'IFCSTRUCTURALLOADCONFIGURATION' || f.has('IFC2X3', 'IfcStructuralLoadConfiguration')) return false;
+      const users = [...step.entities.values()].filter((e) => e.args[7]?.ref === rec.id && /^IFCSTRUCTURAL\w+(ACTION|REACTION)$/.test(e.type));
+      return rec.args[0] !== null || (users.length > 0 && users.every((u) => u.args[6] === null || (/REACTION$/.test(u.type) && !f.has('IFC2X3', f.name('IFC4', u.type)))));
     },
   },
   ownerHistoryPolicy('IFC4/IfcStructuralSurfaceMember'),
@@ -178,10 +193,16 @@ export function factsOf(ctx) {
     return slotOf(registry(schema), entity.toUpperCase(), attribute);
   };
   return {
-    has: (schema, entity) => known(entity) && Object.hasOwn(registry(schema).entities, entity),
+    has(schema, entity) {
+      known(entity);
+      return Object.hasOwn(registry(schema).entities, entity);
+    },
     name: (schema, keyword) => entityName(registry(schema), keyword),
     slot,
-    attributes: (schema, entity) => (known(entity) && registry(schema).entities[entity]?.allAttributes.map((x) => x.name)) ?? [],
+    attributes(schema, entity) {
+      known(entity);
+      return registry(schema).entities[entity]?.allAttributes.map((x) => x.name) ?? [];
+    },
     required: (schema, entity, attribute) => slot(schema, entity, attribute)?.optional === false,
     file(path) {
       const file = ctx.corpus.files.find((x) => x.path === path);
@@ -189,6 +210,11 @@ export function factsOf(ctx) {
       return file.step;
     },
   };
+}
+
+/** A limit's `holds`, or the error it threw. */
+function holds(limit, facts, match) {
+  try { return limit.holds(facts, match); } catch (e) { return e; }
 }
 
 /**
@@ -200,11 +226,6 @@ export function factsOf(ctx) {
  * problem (its cell passes, or the probe errored or changed its wording). Such
  * a limit labels nothing; the cell's status and points are untouched either way.
  */
-/** A limit's `holds`, or the error it threw. */
-function holds(limit, facts, match) {
-  try { return limit.holds(facts, match); } catch (e) { return e; }
-}
-
 export function markLimits(cells, facts, limits = LIMITS) {
   const issues = [];
   for (const [key, group] of Map.groupBy(limits, (l) => `${l.row} ${l.level}`)) {

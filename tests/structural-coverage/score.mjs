@@ -303,9 +303,9 @@ async function main(argv) {
       return 1;
     }
     console.log(`Ratchet OK against ${rel(check)}: total ${summary.total.score} >= ${baseline.total.score}, cells ${summary.cells.score} >= ${baseline.cells.score}, no row or cell dropped.`);
-    if (limitIssues.length) return 1;
   }
-  return 0;
+  // Out-of-date limits fail every complete run, so no baseline is frozen from one.
+  return limitIssues.length ? 1 : 0;
 }
 
 if (isMainEntry(import.meta.url)) process.exitCode = await main(process.argv.slice(2));

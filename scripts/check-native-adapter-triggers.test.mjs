@@ -8,8 +8,9 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { audit, BATCH_EXCLUDE, corpusJobProblems, crateClosure, eventPaths, jobBlock, pathDeps, workspaceDeps } from './check-native-adapter-triggers.mjs';
+import { audit, corpusJobProblems, crateClosure, eventPaths, jobBlock, pathDeps, workspaceDeps } from './check-native-adapter-triggers.mjs';
 import { parse as parseYaml } from 'yaml';
+import { BATCH_EXCLUDE, BATCH_KEEP } from './lib/native-adapter-batch.mjs';
 import { permissionBlocks, scan } from './lib/workflow-permissions.mjs';
 
 const REPO = join(import.meta.dirname, '..');
@@ -524,6 +525,10 @@ test('an exclusion the paths list no longer holds is reported', (context) => {
 test('a lane-run script added to BATCH_EXCLUDE is reported', () => {
   assert.equal(BATCH_EXCLUDE.includes('scripts/fixtures/*.mjs'), false);
   assert.ok(audit(REPO, [...BATCH_EXCLUDE, 'scripts/fixtures/*.mjs']).some((f) => f.includes('BATCH_EXCLUDE drops it from merge-queue batches')));
+});
+
+test('a BATCH_KEEP glob outside the paths list is reported', () => {
+  assert.ok(audit(REPO, BATCH_EXCLUDE, [...BATCH_KEEP, 'apps/other/**/*retained*']).some((f) => f.includes("BATCH_KEEP entry 'apps/other/**/*retained*'")));
 });
 
 test('a batch that edits what the decision reads runs the lane, whatever the edit says', (context) => {

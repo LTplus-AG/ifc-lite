@@ -8,9 +8,8 @@
 # change needs this evidence. It does not run on every push to main.
 # A merge-queue batch whose diff touches the native/retained engine also runs it,
 # through `workflow_call` from test.yml's `native-adapter` job, so a failure blocks the
-# merge via the required `Build + WASM + Rust + Node` aggregate. The batch decision
-# reads the paths below less BATCH_EXCLUDE in scripts/check-native-adapter-triggers.mjs
-# (--batch-decide), which drops CLI, packaging, viewer-host and corpus inputs.
+# merge via the required `Build + WASM + Rust + Node` aggregate. Which of the paths
+# below count for a batch: BATCH_EXCLUDE/BATCH_KEEP in scripts/lib/native-adapter-batch.mjs.
 name: Geometry platform (native adapter)
 
 on:
@@ -108,11 +107,6 @@ on:
       - 'scripts/cli-retained-engine/**'
       - 'scripts/retained-compare/**'
       - 'packages/cli/**'
-      # Narrower than the globs above so a merge-queue batch, which drops those
-      # (BATCH_EXCLUDE), still runs on retained code under them.
-      - 'packages/cli/src/retained/**'
-      - 'packages/cli/src/**/*retained*'
-      - 'rust/processing/**/*retained*'
       - 'packages/geometry/**'
       - 'packages/wasm/**'
       - 'scripts/*retained*'

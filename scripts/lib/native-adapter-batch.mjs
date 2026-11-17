@@ -4,8 +4,14 @@
 
 /**
  * Whether a merge-queue batch runs the SMLib native-adapter lane
- * (geometry-platform.yml): its paths list, less BATCH_EXCLUDE. The CLI and the
- * guard live in scripts/check-native-adapter-triggers.mjs.
+ * (geometry-platform.yml): its paths list, less BATCH_EXCLUDE, plus BATCH_KEEP.
+ * The lane takes over an hour, and the full list (the labelled-PR route's)
+ * sent unrelated batches through it (#10595: a CLI test and
+ * tests/models/manifest.json). FAILS CLOSED: an unreadable paths list, a
+ * checkout that is not the two-parent merge commit, an empty or unreadable
+ * diff, and any change to a file the decision reads (the workflow, the CLI
+ * and its imports, read from the batch's HEAD) all answer `run: true`. The
+ * CLI and the guard live in scripts/check-native-adapter-triggers.mjs.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -50,8 +56,15 @@ export const BATCH_EXCLUDE = [
   'LICENSE',
 ];
 
-/** On a batch, the paths list less `exclude`. */
-export const batchGlobs = (pr, exclude = BATCH_EXCLUDE) => pr.filter((g) => !exclude.includes(g));
+/** Retained code under an excluded glob, which a batch still runs on. Each must sit under a paths-list glob. */
+export const BATCH_KEEP = [
+  'packages/cli/src/retained/**',
+  'packages/cli/src/**/*retained*',
+  'rust/processing/**/*retained*',
+];
+
+/** On a batch, the paths list less `exclude`, plus `keep`. */
+export const batchGlobs = (pr, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) => [...pr.filter((g) => !exclude.includes(g)), ...keep];
 
 /** `entries` and every `scripts/` module they import, transitively; a missing file ends its branch. */
 export function scriptImports(root, entries) {
@@ -91,7 +104,8 @@ export function decideBatch(root, pr, decider) {
     if (changed.length === 0) return { run: true, reason: 'the batch diff is empty, which a real batch never is; running' };
     const own = changed.find((f) => decider.has(f));
     if (own) return { run: true, reason: `the batch changes ${own}, which this decision reads; running` };
-    hits = changed.filter((f) => matchesAny(f, batchGlobs(pr)));
+    const globs = batchGlobs(pr);
+    hits = changed.filter((f) => matchesAny(f, globs));
   } catch (err) {
     return { run: true, reason: `cannot decide (${err.message.split('\n')[0]}); running` };
   }

@@ -31,19 +31,12 @@
  * silently shrinking the closure.
  *
  * MERGE-QUEUE BATCHES. Nothing above ran the lane on a batch, so #8408 and
- * #8415 merged untested retained failures. A batch now runs it when its diff
- * touches `on.pull_request.paths` above, less BATCH_EXCLUDE: test.yml's
- * `changes` job runs `--batch-decide`, which writes `native_adapter=true|false`
- * to $GITHUB_OUTPUT, and test.yml's `native-adapter` job calls this workflow
- * with `batch: true` unless the answer is exactly `false`. BATCH_EXCLUDE drops
- * CLI, packaging, viewer-host, corpus and non-engine crate inputs, which sent
- * unrelated batches (#10595: a CLI test and tests/models/manifest.json)
- * through the hour-long lane. It FAILS CLOSED: an unreadable paths list, a
- * checkout that is not the two-parent merge commit, an empty or unreadable
- * diff, and any change to the workflow, this script or its imports (the lists
- * and the matcher, read from the batch's HEAD) all answer `true`. The decision
- * and the list live in scripts/lib/native-adapter-batch.mjs; the audit also
- * holds the wiring in test.yml.
+ * #8415 merged untested retained failures. test.yml's `changes` job runs
+ * `--batch-decide`, which writes `native_adapter=true|false` to
+ * $GITHUB_OUTPUT, and its `native-adapter` job calls this workflow with
+ * `batch: true` unless the answer is exactly `false`. Which paths count, and
+ * every way the decision fails closed, are in scripts/lib/native-adapter-batch.mjs.
+ * The audit holds the lists against `on.pull_request.paths` and the wiring in test.yml.
  *
  * `--root <dir>` points it at a mutated copy of the tree (see the test).
  */
@@ -54,9 +47,7 @@ import { fileURLToPath } from 'node:url';
 import { matchesAny } from './lib/ci-path-coverage.mjs';
 import { permissionBlocks, workflowAsks } from './lib/workflow-permissions.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { BATCH_EXCLUDE, batchGlobs, decideBatch, scriptImports } from './lib/native-adapter-batch.mjs';
-
-export { BATCH_EXCLUDE };
+import { BATCH_EXCLUDE, BATCH_KEEP, batchGlobs, decideBatch, scriptImports } from './lib/native-adapter-batch.mjs';
 
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
 const TEST_WORKFLOW = '.github/workflows/test.yml';
@@ -219,8 +210,8 @@ export function corpusJobProblems(text) {
   return out;
 }
 
-/** `exclude` stands in for BATCH_EXCLUDE (see the test). */
-export function audit(root, exclude = BATCH_EXCLUDE) {
+/** `exclude` and `keep` stand in for BATCH_EXCLUDE and BATCH_KEEP (see the test). */
+export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
   const failures = [];
   const wfPath = join(root, WORKFLOW);
   if (!existsSync(wfPath)) return [`${WORKFLOW} is missing`];
@@ -273,6 +264,10 @@ export function audit(root, exclude = BATCH_EXCLUDE) {
     for (const glob of exclude) {
       if (!pr.includes(glob)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE entry '${glob}' is not in on.pull_request.paths; drop it from scripts/lib/native-adapter-batch.mjs`);
     }
+    // A keep glob outside the list would make a batch run on a path no labelled PR can.
+    for (const glob of keep) {
+      if (!matchesAny(glob.replaceAll('**', 'x/x').replaceAll('*', 'x'), pr)) failures.push(`${WORKFLOW}: BATCH_KEEP entry '${glob}' is not under on.pull_request.paths`);
+    }
     for (const action of new Set([...text.matchAll(/^\s*(?:-\s*)?uses:\s*\.\/(\.github\/actions\/[^/\s]+)/gm)].map((m) => m[1]))) {
       if (!pr.includes(`${action}/**`)) failures.push(`${WORKFLOW}: local action ${action} is called by the job but not covered by on.pull_request.paths -- add '${action}/**'`);
     }
@@ -280,7 +275,7 @@ export function audit(root, exclude = BATCH_EXCLUDE) {
 
   if (pr) {
     // Every script the lane runs with `node scripts/...`, and its imports, must be able to trigger it, on a batch too.
-    const batch = batchGlobs(pr, exclude);
+    const batch = batchGlobs(pr, exclude, keep);
     for (const script of scriptImports(root, [...text.matchAll(/\bnode (scripts\/[\w./-]+\.mjs)/g)].map((m) => m[1]))) {
       if (!matchesAny(script, pr)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but is not covered by on.pull_request.paths`);
       else if (!matchesAny(script, batch)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but BATCH_EXCLUDE drops it from merge-queue batches`);

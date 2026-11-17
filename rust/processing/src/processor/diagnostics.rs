@@ -361,12 +361,18 @@ pub(super) fn warn_if_dropped(unsupported_items: &FxHashMap<String, u64>) {
 /// rather than the first sixteen to arrive: the same set, in the same order,
 /// whatever the scheduling. Still bounded, so memory does not grow per job.
 fn keep_budget_details(kept: &mut Vec<ifc_lite_geometry::BudgetRefusal>, more: Vec<ifc_lite_geometry::BudgetRefusal>) {
-    kept.extend(more);
-    kept.sort_by(|a, b| {
-        (a.product_id, a.source_id, &a.budget, a.limit, a.reached, &a.product_type, &a.global_id)
-            .cmp(&(b.product_id, b.source_id, &b.budget, b.limit, b.reached, &b.product_type, &b.global_id))
-    });
-    kept.truncate(16);
+    // A sorted insert into at most sixteen, not a sort: the wasm engine links
+    // this drain, and a slice sort costs it ~17 KB of generic sort code.
+    fn key(r: &ifc_lite_geometry::BudgetRefusal) -> (Option<u32>, u32, &str, u32, u64, Option<&str>, Option<&str>) {
+        (r.product_id, r.source_id, &r.budget, r.limit, r.reached, r.product_type.as_deref(), r.global_id.as_deref())
+    }
+    for refusal in more {
+        let at = kept.partition_point(|k| key(k) <= key(&refusal));
+        if at < 16 {
+            kept.insert(at, refusal);
+            kept.truncate(16);
+        }
+    }
 }
 
 #[cfg(test)]

@@ -32,7 +32,7 @@ function useEntityLabel(modelId: string, expressId: number): string {
 export function ElementLink({ modelId, expressId }: { modelId: string; expressId: number }) {
   const { t } = useTranslation();
   const label = useEntityLabel(modelId, expressId);
-  return <Button type="button" variant="link" size="sm" className={`h-auto p-0 font-normal ${TEXT_LINK_CLASS}`}
+  return <Button type="button" variant="link" size="sm" className={`inline h-auto whitespace-normal p-0 text-left font-normal ${TEXT_LINK_CLASS}`}
     title={t('structuralDerive.selectElement')} onClick={() => selectOnlyEntity({ modelId, expressId })}>{label}</Button>;
 }
 

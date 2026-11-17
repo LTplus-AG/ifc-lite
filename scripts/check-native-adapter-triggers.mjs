@@ -211,6 +211,9 @@ export function corpusJobProblems(text) {
 }
 
 /** `exclude` and `keep` stand in for BATCH_EXCLUDE and BATCH_KEEP (see the test). */
+/** A path inside `glob`, to test coverage with a matcher. */
+const probe = (glob) => glob.replaceAll('**', 'x/x').replaceAll('*', 'x');
+
 export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
   const failures = [];
   const wfPath = join(root, WORKFLOW);
@@ -258,15 +261,14 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
       }
     }
     for (const extra of EXTRA_GLOBS) {
-      const probe = extra.replace('/**', '/probe');
-      if (!matchesAny(probe, pr)) failures.push(`${WORKFLOW}: ${extra} is not covered by on.pull_request.paths`);
+      if (!matchesAny(probe(extra), pr)) failures.push(`${WORKFLOW}: ${extra} is not covered by on.pull_request.paths`);
     }
     for (const glob of exclude) {
       if (!pr.includes(glob)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE entry '${glob}' is not in on.pull_request.paths; drop it from scripts/lib/native-adapter-batch.mjs`);
     }
     // A keep glob outside the list would make a batch run on a path no labelled PR can.
     for (const glob of keep) {
-      if (!matchesAny(glob.replaceAll('**', 'x/x').replaceAll('*', 'x'), pr)) failures.push(`${WORKFLOW}: BATCH_KEEP entry '${glob}' is not under on.pull_request.paths`);
+      if (!matchesAny(probe(glob), pr)) failures.push(`${WORKFLOW}: BATCH_KEEP entry '${glob}' is not under on.pull_request.paths`);
     }
     const actions = new Set([...text.matchAll(/^\s*(?:-\s*)?uses:\s*\.\/(\.github\/actions\/[^/\s]+)/gm)].map((m) => m[1]));
     for (const action of actions) {
@@ -275,14 +277,10 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
     // The engine core a batch must never skip: the root crates, the native adapter, the Rust build inputs and the local actions.
     const batch = batchGlobs(pr, exclude, keep);
     for (const glob of [...ROOT_CRATES.map((dir) => `${dir}/**`), 'native/**', ...EXTRA_GLOBS, ...[...actions].map((a) => `${a}/**`)]) {
-      if (!matchesAny(glob.replace('/**', '/probe'), batch)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE drops ${glob}, which a merge-queue batch must always run on`);
+      if (!matchesAny(probe(glob), batch)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE drops ${glob}, which a merge-queue batch must always run on`);
     }
-  }
-
-  if (pr) {
-    // Every script the lane runs with `node [--test] scripts/...`, and its imports, must be able to trigger it, on a batch too.
-    const batch = batchGlobs(pr, exclude, keep);
-    for (const script of scriptImports(root, [...text.matchAll(/\bnode (?:--test )?(scripts\/[\w./-]+\.mjs)/g)].map((m) => m[1]))) {
+    // Every .mjs the lane runs with `node [--flags]`, and its scripts/ imports, must be able to trigger it, on a batch too.
+    for (const script of scriptImports(root, [...text.matchAll(/\bnode (?:--[\w-]+ )*([\w./-]+\.mjs)\b/g)].map((m) => m[1]))) {
       if (!matchesAny(script, pr)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but is not covered by on.pull_request.paths`);
       else if (!matchesAny(script, batch)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but BATCH_EXCLUDE drops it from merge-queue batches`);
     }

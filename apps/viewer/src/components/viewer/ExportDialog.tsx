@@ -525,8 +525,10 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
 
         const stepMsg = stepExportSummary({ entityCount: result.stats.entityCount, pendingChanges: modifiedCount, applyMutations, visibleOnly });
         exportedFormat = artifact.ext;
-        toast.success(stepMsg);
-        return { success: true, message: stepMsg };
+        const message = result.stats.warnings.length ? `${stepMsg} — ${t('exportDialog.warningsCount', { count: result.stats.warnings.length })}` : stepMsg;
+        if (result.stats.warnings.length) toast.info(message);
+        else toast.success(message);
+        return { success: true, message, warnings: result.stats.warnings, warningLimit: 5 };
       }
     } catch (error) {
       console.error('Export failed:', error);

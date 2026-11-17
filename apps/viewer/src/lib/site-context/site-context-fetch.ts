@@ -59,7 +59,7 @@ export async function loadSiteContext(options: LoadSiteContextOptions): Promise<
   });
   const started = performance.now();
   const drape = options.drapeImagery
-    ?? (async (modelId: string, signal: AbortSignal) => (await import('./site-context-imagery')).drapeSiteContextImagery(modelId, signal));
+    ?? (async (modelId: string, signal: AbortSignal) => (await import('./site-context-imagery')).drapeSiteContextTerrain(modelId, { imagery: true }, signal));
 
   // This run's identity is its controller: it writes only while it is the current run, so a
   // cancelled, replaced or detached run never touches a newer run's state (#10481 review).

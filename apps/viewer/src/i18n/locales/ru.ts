@@ -152,6 +152,7 @@ import { sweptDiskInspectionRu } from './ru/swept-disk-inspection';
 import { tableCorrectionsRu } from './ru/table-corrections';
 import { terrainImageryRu } from './ru/terrain-imagery';
 import { siteContextRu } from './ru/site-context';
+import { floodCheckRu } from './ru/flood-check';
 import { toursRu } from './ru/tours';
 import { trimExtendRu } from './ru/trim-extend';
 import { validationEditorRu } from './ru/validation-editor';
@@ -314,6 +315,7 @@ export default {
   ...tableCorrectionsRu,
   ...terrainImageryRu,
   ...siteContextRu,
+  ...floodCheckRu,
   ...toursRu,
   ...trimExtendRu,
   ...validationEditorRu,

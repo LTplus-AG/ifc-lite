@@ -73,14 +73,22 @@ const ROW = { met: '✅ met', partial: '◐ partial', missing: '❌ missing' };
 
 const KIND = { schema: 'out of reach (schema)', policy: 'policy-limited', upstream: 'upstream' };
 
-/** What keeps a cell from passing: its limit kinds when every problem is labelled (`tests/structural-coverage/limits.mjs`), else 'reachable'. */
-const reach = (c) => (c.limits?.open === 0 ? [...new Set(c.limits.by.map((l) => KIND[l.kind]))].join(', ') : 'reachable');
+/**
+ * What keeps a cell from passing: its limit kinds when every problem is labelled
+ * (`tests/structural-coverage/limits.mjs`), 'not written' or 'skip' for those statuses, else 'reachable'.
+ */
+function reach(c) {
+  if (c.status === 'unwritten') return 'not written';
+  if (c.status === 'skip') return 'skip';
+  return c.limits?.open === 0 ? [...new Set(c.limits.by.map((l) => KIND[l.kind]))].join(', ') : 'reachable';
+}
 
 /** The cell's limits with their citations, or ''. */
 function limitsNote(c) {
   if (!c.limits) return '';
-  const open = c.limits.open ? ` (${c.limits.open} problem(s) not labelled)` : '';
-  return `<br>${reach(c)}${open}: ${c.limits.by.map((l) => `${KIND[l.kind]}: ${l.cite}`).join('; ')}`;
+  const kinds = new Set(c.limits.by.map((l) => l.kind));
+  const cites = c.limits.by.map((l) => (c.limits.open || kinds.size > 1 ? `${KIND[l.kind]}: ${l.cite}` : l.cite)).join('; ');
+  return `<br>${reach(c)}${c.limits.open ? ` (${c.limits.open} problem(s) not labelled)` : ''}: ${cites}`;
 }
 
 function why(row) {

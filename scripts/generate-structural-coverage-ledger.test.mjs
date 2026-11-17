@@ -110,20 +110,35 @@ test('runProbes: an applicable cell with no probe is an error, and a probe that 
   assert.equal(cells.get(two[0].id).read.status, 'unwritten');
 });
 
-test('limits (#9668): label every problem or count it open, never change a score, and refuse a stale or false limit', () => {
+test('limits (#9668): label every problem or count it open, never change a score, and report a stale or false limit', () => {
   const id = two[0].id;
   const problems = ['a.ifc#1: lost', 'a.ifc#2: lost', 'b.ifc#3: Axis null'];
   const limit = (extra = {}) => ({ row: id, level: 'convert', kind: 'schema', problem: /^a\.ifc#(\d+): lost$/, cite: 'no entity', holds: (f, m) => f.ok(Number(m[1])), ...extra });
   const facts = { ok: (n) => n < 3 };
-  const fresh = (list = problems) => { const cells = cellsOf({ [id]: { convert: 'partial' } }); cells.get(id).convert.problems = list; return cells; };
-  const label = (limits, list = problems, f = facts) => markLimits(fresh(list), f, limits).get(id).convert;
-  assert.deepEqual(label([limit()]).limits, { open: 1, by: [{ kind: 'schema', cite: 'no entity' }] }, 'the Axis problem stays open');
-  assert.equal(label([limit(), limit({ kind: 'policy', problem: /Axis null$/, holds: () => true })]).limits.open, 0);
-  assert.throws(() => label([limit()], problems, { ok: () => false }), /cited fact does not hold/);
-  assert.throws(() => label([limit({ problem: /^c\.ifc/ })]), /matches no problem/, 'a limit nothing matches is stale');
-  assert.throws(() => label([limit()], []), /matches no problem/, 'so is one on a cell that now passes');
-  assert.throws(() => label([limit({ row: 'IFC4/NoSuchRow' })]), /not a probed cell/);
-  const labelled = score(two, markLimits(fresh(), facts, [limit()]));
+  const fresh = (list = problems, status = 'partial') => {
+    const cells = cellsOf({ [id]: { convert: status } });
+    if (list) cells.get(id).convert.problems = list;
+    return cells;
+  };
+  const label = (limits, list = problems, f = facts, status = 'partial') => {
+    const cells = fresh(list, status);
+    return { issues: markLimits(cells, f, limits), cell: cells.get(id).convert };
+  };
+  const one = label([limit()]);
+  assert.deepEqual([one.issues, one.cell.limits], [[], { open: 1, by: [{ kind: 'schema', cite: 'no entity' }] }], 'the Axis problem stays open');
+  const policy = limit({ kind: 'policy', problem: /Axis null$/, holds: () => true });
+  assert.equal(label([limit(), policy]).cell.limits.open, 0);
+  assert.deepEqual(label([limit(), limit({ cite: 'same problems, second limit' })]).issues, [], 'two limits may label the same problem');
+  const false_ = label([limit()], problems, { ok: () => false });
+  assert.match(false_.issues.join(), /cited fact does not hold/);
+  assert.equal(false_.cell.limits, undefined, 'a false limit labels nothing');
+  assert.match(label([limit({ problem: /^c\.ifc/ })]).issues.join(), /labels no problem the probe reported \(partial\)/);
+  assert.match(label([limit()], [], facts, 'pass').issues.join(), /\(pass\)/, 'a cell that now passes reports its stale limit');
+  assert.match(label([limit()], null, facts, 'error').issues.join(), /\(error, no problem list\)/, 'a probe error is named, not hidden');
+  assert.match(label([limit({ row: 'IFC4/NoSuchRow' })]).issues.join(), /not a probed cell/);
+  const cells = fresh();
+  markLimits(cells, facts, [limit()]);
+  const labelled = score(two, cells);
   assert.deepEqual([labelled.total, labelled.cells], [score(two, fresh()).total, score(two, fresh()).cells], 'a limit never changes a score');
   assert.ok(labelled.rows[0].levels.convert.limits && !('problems' in labelled.rows[0].levels.convert), 'the summary keeps the label, not the problem list');
 });

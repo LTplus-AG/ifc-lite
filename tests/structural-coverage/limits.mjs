@@ -17,7 +17,8 @@
  * `problem`, cites the schema slot, policy or record, and `holds(facts, match)`
  * re-checks that fact against the parser's typed schema registries and the
  * corpus file the problem names. A limit whose fact no longer holds, or that
- * matches no problem of its cell, is a harness error: remove or correct it.
+ * matches no problem of its cell, labels nothing and is reported; `--check`
+ * then fails until it is corrected or removed.
  *
  * EXPRESS line numbers: packages/codegen/schemas/IFC2X3_TC1.exp and IFC4_ADD2_TC1.exp.
  */
@@ -26,15 +27,21 @@ import { CONSTANT_SUBTYPE, entityName, slotOf } from './probes/convert.mjs';
 
 export const KINDS = ['schema', 'policy', 'upstream'];
 
-/** Whether IFC2X3 holds this IFC4 activity only as IfcProxy: it lacks the entity, unless a CONST action maps (CONSTANT_SUBTYPE). */
-const proxied = (f, act) => Boolean(act) && !f.has('IFC2X3', f.name('IFC4', act.type))
-  && !(CONSTANT_SUBTYPE.has(act.type) && act.args.at(-1)?.enum === 'CONST');
+/**
+ * Whether IFC2X3 holds this IFC4 activity of `step` only as IfcProxy: IFC2X3 lacks the entity, and it is
+ * neither a CONST action (CONSTANT_SUBTYPE) nor an action whose representation has an IfcShapeAspect,
+ * which StructuralVarying may write as an IFC2X3 varying action.
+ */
+const proxied = (f, step, act) => Boolean(act) && !f.has('IFC2X3', f.name('IFC4', act.type))
+  && !(CONSTANT_SUBTYPE.has(act.type) && (act.args.at(-1)?.enum === 'CONST'
+    || step.of('IFCSHAPEASPECT').some((a) => a.args[4]?.ref !== undefined && a.args[4].ref === act.args[6]?.ref)));
 
 /** The source record a `<path>#<id>` problem names. */
 const recordOf = (f, m) => f.file(m[1]).get(Number(m[2]));
 
-const IFC2X3_AXIS = /^(.+): \d+ of \d+ \w+ record\(s\) in the IFC4 file do not conform to IFC4 \(e\.g\. Axis: required value empty\)$/;
-const OWNER_HISTORY = /^(.+): \d+ of \d+ \w+ record\(s\) in the IFC2X3 file do not conform to IFC2X3 \(e\.g\. OwnerHistory: required value empty\)$/;
+// The probe lists every distinct non-conformance in the parentheses, so these match only when it is the one named.
+const IFC2X3_AXIS = /^(.+): \d+ of \d+ \w+ record\(s\) in the IFC4 file do not conform to IFC4 \(Axis: required value empty\)$/;
+const OWNER_HISTORY = /^(.+): \d+ of \d+ \w+ record\(s\) in the IFC2X3 file do not conform to IFC2X3 \(OwnerHistory: required value empty\)$/;
 const LOST = /^(.+)#(\d+): lost$/;
 
 const axisSchema = (entity, cite) => ({
@@ -62,12 +69,22 @@ export const LIMITS = [
   axisSchema('IfcStructuralCurveMemberVarying', 'as IfcStructuralCurveMember: IFC4 requires the inherited Axis (IFC4_ADD2_TC1.exp:9423); the source has no profile orientation to fill it from'),
   {
     row: 'IFC4/IfcRelConnectsStructuralActivity', level: 'convert', kind: 'schema',
-    problem: /^(.+): (\d+) of \d+ IfcRelConnectsStructuralActivity record\(s\) in the IFC2X3 file do not conform to IFC2X3 \(e\.g\. RelatedStructuralActivity: reference to IfcProxy in IfcStructuralActivity\)$/,
+    problem: /^(.+): (\d+) of \d+ IfcRelConnectsStructuralActivity record\(s\) in the IFC2X3 file do not conform to IFC2X3 \(RelatedStructuralActivity: reference to IfcProxy in IfcStructuralActivity\)$/,
     cite: 'IFC2X3 RelatedStructuralActivity : IfcStructuralActivity (IFC2X3_TC1.exp:6610); these relationships name curve and surface reactions and a non-constant curve action, which IFC2X3 can hold only as IfcProxy (their own rows)',
     holds: (f, m) => {
       const step = f.file(m[1]);
-      const named = step.of('IFCRELCONNECTSSTRUCTURALACTIVITY').filter((rel) => proxied(f, step.get(rel.args[5])));
+      const named = step.of('IFCRELCONNECTSSTRUCTURALACTIVITY').filter((rel) => proxied(f, step, step.get(rel.args[5])));
       return named.length === Number(m[2]);
+    },
+  },
+  {
+    row: 'IFC4/IfcRelConnectsStructuralActivity', level: 'convert', kind: 'schema',
+    problem: /^(.+)#(\d+): RelatedStructuralActivity "[^"]*", was "[^"]*"$/,
+    cite: 'the activity it names came back as another record because IFC2X3 held it only as IfcProxy (same cause as above)',
+    holds: (f, m) => {
+      const step = f.file(m[1]);
+      const rel = step.get(Number(m[2]));
+      return rel?.type === 'IFCRELCONNECTSSTRUCTURALACTIVITY' && proxied(f, step, step.get(rel.args[5]));
     },
   },
   {
@@ -106,7 +123,7 @@ export const LIMITS = [
   ownerHistoryPolicy('IFC4/IfcStructuralSurfaceMember'),
   {
     row: 'IFC4/IfcStructuralSurfaceMemberVarying', level: 'convert', kind: 'schema',
-    problem: /^(.+): \d+ of \d+ IfcStructuralSurfaceMemberVarying record\(s\) in the IFC2X3 file do not conform to IFC2X3 \(e\.g\. SubsequentThickness: required value empty\)$/,
+    problem: /^(.+): \d+ of \d+ IfcStructuralSurfaceMemberVarying record\(s\) in the IFC2X3 file do not conform to IFC2X3 \(SubsequentThickness: required value empty, VaryingThicknessLocation: required value empty\)$/,
     cite: 'IFC2X3 requires SubsequentThickness LIST [2:?] and VaryingThicknessLocation (IFC2X3_TC1.exp:7522, :7523), which IFC4 does not have (IFC4_ADD2_TC1.exp:9652); the source gives no Pset_StructuralSurfaceMemberVaryingThickness, so filling them would invent thicknesses',
     holds: (f, m) => f.required('IFC2X3', 'IfcStructuralSurfaceMemberVarying', 'SubsequentThickness')
       && f.slot('IFC4', 'IfcStructuralSurfaceMemberVarying', 'SubsequentThickness') === null
@@ -160,28 +177,29 @@ export function factsOf(ctx) {
  * Label the problems of each limited cell in `cells` (row id -> level -> cell,
  * from `runProbes`, whose `problems` is the full list the probe reported):
  * `cell.limits = { open, by: [{ kind, cite }] }`, where `open` counts the
- * problems no limit matched. Throws when a limit matches no problem of its cell
- * or its fact does not hold.
+ * problems no limit matched. Returns what is wrong with the limits themselves:
+ * one that names no probed cell, whose fact does not hold, or that matches no
+ * problem (its cell passes, or the probe errored or changed its wording). Such
+ * a limit labels nothing; the cell's status and points are untouched either way.
  */
 export function markLimits(cells, facts, limits = LIMITS) {
-  const groups = Map.groupBy(limits, (l) => `${l.row} ${l.level}`);
-  for (const [key, group] of groups) {
+  const issues = [];
+  for (const [key, group] of Map.groupBy(limits, (l) => `${l.row} ${l.level}`)) {
     const [row, level] = key.split(' ');
     const cell = cells.get(row)?.[level];
-    if (!cell) throw new Error(`limits: ${key} is not a probed cell`);
+    if (!cell) { issues.push(`${key} is not a probed cell`); continue; }
     const used = new Set();
-    let open = 0;
-    for (const problem of cell.problems ?? []) {
-      const hit = group.find((l) => {
-        const match = l.problem.exec(problem);
-        if (match && !l.holds(facts, match)) throw new Error(`limits: ${key} (${l.kind}): the cited fact does not hold for "${problem}"; correct or remove the limit`);
-        return Boolean(match);
-      });
-      if (hit) used.add(hit); else open++;
-    }
+    const labelled = (problem) => group.filter((l) => {
+      const match = l.problem.exec(problem);
+      if (!match) return false;
+      if (l.holds(facts, match)) { used.add(l); return true; }
+      issues.push(`${key} (${l.kind}): the cited fact does not hold for "${problem}"`);
+      return false;
+    }).length > 0;
+    const open = (cell.problems ?? []).filter((p) => !labelled(p)).length;
     const stale = group.filter((l) => !used.has(l));
-    if (stale.length) throw new Error(`limits: ${key} (${stale.map((l) => l.kind).join(', ')}) matches no problem the probe reported (${cell.status}); remove the limit`);
-    cell.limits = { open, by: group.map(({ kind, cite }) => ({ kind, cite })) };
+    if (stale.length) issues.push(`${key} (${stale.map((l) => l.kind).join(', ')}) labels no problem the probe reported (${cell.status}${cell.problems ? '' : ', no problem list'})`);
+    if (used.size) cell.limits = { open, by: [...used].map(({ kind, cite }) => ({ kind, cite })) };
   }
-  return cells;
+  return issues;
 }

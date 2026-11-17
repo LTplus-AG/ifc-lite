@@ -1,6 +1,6 @@
 # R12 final round
 
-Product source: main `75948a3d48` (R11). There are no product changes. R12 fixes the IFC2X3 coverage fixture generator and adds limits (`tests/structural-coverage/limits.mjs`), which label the problems no product change can fix. R0 to R11 are retained.
+Product source: main `75948a3d48` (R11). There are no product changes. R12 fixes the IFC2X3 coverage fixture generator, makes the convert probe report every loss of a non-conforming file, and adds limits (`tests/structural-coverage/limits.mjs`), which label the problems no product change can fix. R0 to R11 are retained.
 
 Rows: **109.5/119 -> 111/119** (met 100 -> 103, partial 19 -> 16, missing 0 -> 0). Cells: **760/774 -> 762/774**. Convert: 58.5/72 -> 60.5/72. All other level totals are unchanged. The online ratchet against R11 passes with no row or cell dropped.
 
@@ -8,7 +8,7 @@ Of the 16 cells not met: 12 out of reach (schema), 1 policy-limited, 1 upstream,
 
 ## Every changed cell
 
-The full summary comparison against R11 has three score changes and 15 cells that gain a `limits` label. No reason string changed.
+The full summary comparison against R11 has three score changes. Fifteen cells gain a `limits` label, and some convert reasons change wording (below). No other cell changes.
 
 | Row | Level | R11 -> R12 | Why |
 |---|---|---|---|
@@ -16,7 +16,12 @@ The full summary comparison against R11 has three score changes and 15 cells tha
 | IFC2X3/IfcStructuralPlanarActionVarying | convert | fail -> pass | Same fixture fix, for the planar action. |
 | IFC2X3/IfcRelConnectsStructuralActivity | convert | partial -> pass | Two of its relationships named the varying actions, which stayed IFC2X3 entities in the IFC4 file. They now name IFC4 curve and surface actions. |
 
-Cells that gain a label and keep their status and points: the 14 marked out of reach, policy-limited or upstream in the table below, plus IFC4/IfcStructuralCurveMember convert (its OwnerHistory problem is labelled policy and its `Axis` problem stays open).
+Cells that gain a label and keep their status and points: the 14 marked out of reach, policy-limited or upstream in the table below, plus IFC4/IfcStructuralCurveMember convert (its OwnerHistory problem is labelled policy and its three `Axis` problems stay open).
+
+## Probe correction (reason text only)
+
+`probes/convert.mjs`: a file whose intermediate records do not conform still earns no credit, but its values are now compared too, and the message lists every distinct non-conformance instead of the first record's first slot ("(e.g. ...)"). Before, a non-conformance hid any other loss in that file, so a limit labelling it could have called a reachable loss out of reach. Statuses and points cannot change: a non-conforming file never sets `anyHeld`. It surfaced two losses: the edge-curve file's `Axis` (#16, #25), and the IFC4 relationships #72, #77 and #78 coming back naming the re-upgraded proxies.
+
 
 ## Fixture
 
@@ -31,8 +36,8 @@ The surface member varying keeps passing: the R10 thickness carrier takes any as
 ## Regression evidence
 
 - `schema-converter-structural-varying.test.ts`, `converts the IFC2X3 coverage fixture varying actions both ways`: on the R11 fixture it fails (the upgrade leaves both actions as IFC2X3 entities); on the R12 fixture it passes, and both records come back byte for byte. Case B (the refusal) is unchanged and passes.
-- `scripts/generate-structural-coverage-ledger.test.mjs`, `limits (#9668): ...`: a limit labels only the problems it matches and counts the rest open; a limit whose fact does not hold, that matches nothing, that sits on a passing cell or names no cell throws; a labelled cell scores the same. A second test checks every limit names a catalogue row, an applicable level, a kind and a citation.
-- Every limit's fact is checked on the real corpus in each complete run. Writing the reaction check exposed an error of mine (it skipped the CONST curve and surface reactions as if they mapped like CONST actions); the check refused the run until it was fixed.
+- `scripts/generate-structural-coverage-ledger.test.mjs`, `limits (#9668): ...`: a limit labels only the problems it matches and counts the rest open; a limit whose fact does not hold, that matches nothing, that sits on a passing or errored cell or names no cell is reported (and `--check` fails after the ratchet, so a cell that improves is shown, not blocked by a harness error); a labelled cell scores the same. A second test checks every limit names a catalogue row, an applicable level, a kind and a citation.
+- Every limit's fact is checked on the real corpus in each complete run. Writing the reaction check exposed an error of mine (it skipped the CONST curve and surface reactions as if they mapped like CONST actions); the check reported it until it was fixed.
 
 ## The 19 R11 partial rows
 
@@ -44,11 +49,11 @@ The surface member varying keeps passing: the R10 thickness carrier takes any as
 | IFC2X3/IfcStructuralCurveConnection | convert | out of reach (schema) | IFC4 `Axis : IfcDirection` is required (IFC4_ADD2_TC1.exp:9415). The IFC2X3 entity declares no attribute (IFC2X3_TC1.exp:7277), and IFC2X3 gives a connection no orientation. |
 | IFC2X3/IfcStructuralCurveMember | convert | out of reach (schema) | IFC4 `Axis` is required (IFC4_ADD2_TC1.exp:9423); IFC2X3 has none (IFC2X3_TC1.exp:7281). The upgrade fills it from `IfcRelAssociatesProfileProperties.ProfileOrientation` (IFC2X3_TC1.exp:6548), as the roof truss shows, but the generated record has no profile orientation, so filling it would invent it. |
 | IFC2X3/IfcStructuralCurveMemberVarying | convert | out of reach (schema) | Same as the curve member. |
-| IFC4/IfcRelConnectsStructuralActivity | convert | out of reach (schema) | IFC2X3 `RelatedStructuralActivity : IfcStructuralActivity` (IFC2X3_TC1.exp:6610). Relationships #72, #77 and #78 name the LINEAR curve action and the curve and surface reactions, which IFC2X3 holds only as `IfcProxy`. |
+| IFC4/IfcRelConnectsStructuralActivity | convert | out of reach (schema) | IFC2X3 `RelatedStructuralActivity : IfcStructuralActivity` (IFC2X3_TC1.exp:6610). Relationships #72, #77 and #78 name the LINEAR curve action and the curve and surface reactions, which IFC2X3 holds only as `IfcProxy`; they come back naming the re-upgraded records. |
 | IFC4/IfcStructuralAnalysisModel | convert | out of reach (schema) | IFC2X3 has no `SharedPlacement` (IFC2X3_TC1.exp:7251). beam_01 #72 left it empty and slab_01 #19 set it; both give the same IFC2X3 file, so at most one can come back. The upgrade fills it, as IFC4 informal proposition 1 asks. |
 | IFC4/IfcStructuralCurveAction | convert | out of reach (schema) | No IFC2X3 curve action (IfcStructuralAction ONEOF, IFC2X3_TC1.exp:7230). The IFC2X3 varying action has no `PredefinedType` (:7312), so #51 and #317 (LINEAR) cannot come back LINEAR without turning NOTDEFINED ones LINEAR. Their configurations hold `Locations`, which IFC2X3 has no slot for, and #317 has no representation for an `IfcShapeAspect` to belong to. |
 | IFC4/IfcStructuralCurveConnection | convert | out of reach (schema) | `Axis` (IFC4_ADD2_TC1.exp:9415) has no IFC2X3 slot or carrier (IFC2X3_TC1.exp:7277). |
-| IFC4/IfcStructuralCurveMember | convert | policy-limited, and reachable | Task 1. `generated_structural_edge_curve.ifc` (2 of 2) has no `IfcOwnerHistory`: OPTIONAL in IFC4 (IFC4_ADD2_TC1.exp:8891), required in IFC2X3 (IFC2X3_TC1.exp:6905), never invented (#4686). With an owner history added in a scratch copy the records conform, but `Axis` still comes back empty. That `Axis` loss, and beam_01 #86's, is reachable: see Deferred. |
+| IFC4/IfcStructuralCurveMember | convert | policy-limited, and reachable | Task 1. `generated_structural_edge_curve.ifc` (2 of 2) has no `IfcOwnerHistory`: OPTIONAL in IFC4 (IFC4_ADD2_TC1.exp:8891), required in IFC2X3 (IFC2X3_TC1.exp:6905), never invented (#4686). The probe now also reports its `Axis` loss (#16, #25), as it would with an owner history added (checked in a scratch copy). Those and beam_01 #86's `Axis` are reachable: see Deferred. |
 | IFC4/IfcStructuralCurveMemberVarying | convert | reachable | #33 `Axis` is lost. See Deferred. |
 | IFC4/IfcStructuralCurveReaction | convert | out of reach (schema) | IFC2X3 IfcStructuralReaction is ONEOF(IfcStructuralPointReaction) (IFC2X3_TC1.exp:7480). |
 | IFC4/IfcStructuralLoadConfiguration | convert | out of reach (schema) | No IFC2X3 entity. IFC2X3 locates varying loads only by `IfcShapeAspect` representations (IFC2X3_TC1.exp:7314), so `Locations` (IFC4_ADD2_TC1.exp:9473), which all five records set, has no slot. |

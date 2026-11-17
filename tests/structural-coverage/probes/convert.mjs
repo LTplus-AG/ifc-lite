@@ -99,8 +99,8 @@ function slotMismatch(value, type, optional, registry, step) {
 /**
  * Records of `entity` in `intermediate` that do not conform to its schema, as
  * `registry` (a parser SchemaRegistry, typed) defines it: the entity is missing,
- * the attribute count differs, or a value does not fit its slot. Returns
- * `{ id, why }` per record.
+ * the attribute count differs, or values do not fit their slots. Returns
+ * `{ id, why }` per record, `why` naming every slot that does not fit.
  */
 export function nonConforming(intermediate, entity, registry) {
   assertAcyclicSelects(registry);
@@ -108,11 +108,11 @@ export function nonConforming(intermediate, entity, registry) {
   return intermediate.of(entity).flatMap((rec) => {
     if (!slots) return [{ id: rec.id, why: 'no such entity' }];
     if (rec.args.length !== slots.length) return [{ id: rec.id, why: `${rec.args.length} attributes, ${slots.length} expected` }];
-    for (const [i, slot] of slots.entries()) {
+    const whys = slots.flatMap((slot, i) => {
       const why = slotMismatch(rec.args[i], slot.type, slot.optional, registry, intermediate);
-      if (why) return [{ id: rec.id, why: `${slot.name}: ${why}` }];
-    }
-    return [];
+      return why ? [`${slot.name}: ${why}`] : [];
+    });
+    return whys.length ? [{ id: rec.id, why: whys.join(', ') }] : [];
   });
 }
 
@@ -289,17 +289,18 @@ export default {
         if (rt.error) { problems.push(`${file.path}: ${row.schema} -> ${OTHER[row.schema]} -> ${row.schema} threw: ${rt.error.message.split('\n')[0]}`); checked += sampleOf(row, file).length; continue; }
         const copied = nonConforming(rt.there, row.entity, schemas.other.registry);
         const renamed = row.rooted ? renamedNonConforming(row, file, rt.there, schemas.other) : [];
-        if (copied.length || renamed.length) {
+        const reasons = (list) => [...new Set(list.map((x) => x.why))].join('; ');
+        const conforms = !copied.length && !renamed.length;
+        if (!conforms) {
           problems.push(copied.length
-            ? `${file.path}: ${copied.length} of ${rt.there.count(row.entity)} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (e.g. ${copied[0].why})`
+            ? `${file.path}: ${copied.length} of ${rt.there.count(row.entity)} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (${reasons(copied)})`
             : `${file.path}: ${renamed.length} ${row.entity} record(s) became records that do not conform to ${OTHER[row.schema]} (e.g. #${renamed[0].id} ${renamed[0].why})`);
-          checked += sampleOf(row, file).length;
-          continue;
         }
+        // A file that does not conform earns no credit, but its values are still compared, so no loss hides behind it.
         const r = compareFile(row, file, rt, schemas);
         problems.push(...r.problems);
         checked += r.checked;
-        anyHeld ||= r.anyHeld;
+        anyHeld ||= conforms && r.anyHeld;
       }
       out.set(row.id, { ...verdict(checked, problems, { anyHeld }), evidence: carriers.map((f) => f.path) });
     }

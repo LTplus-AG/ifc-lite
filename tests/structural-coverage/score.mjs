@@ -273,6 +273,7 @@ async function main(argv) {
     if (baseline.offline) { console.error(`score: ${rel(check)} was scored offline (${baseline.absent?.length ?? 0} corpus file(s) absent); ${OFFLINE_REMEDY}`); return 2; }
   }
   let summary;
+  let limitIssues = [];
   try {
     const { rows, tables } = catalogue;
     const corpus = loadCorpus(ROOT, { offline: values.offline === true });
@@ -280,7 +281,7 @@ async function main(argv) {
     const ctx = { root: ROOT, rows, tables, corpus, pkgs, cache: new Map() };
     const cells = await runProbes(rows, ctx);
     // An offline run scores absent files as skip, so its problems are not the ones the limits name.
-    if (!corpus.absent.length) markLimits(cells, factsOf(ctx));
+    if (!corpus.absent.length) limitIssues = markLimits(cells, factsOf(ctx));
     summary = score(rows, cells, {
       offline: corpus.absent.length > 0,
       absent: corpus.absent.map((a) => a.path),
@@ -294,6 +295,7 @@ async function main(argv) {
   writeFileSync(out, serialize(summary));
   if (!values.quiet) print(summary);
   console.log(`Summary written to ${rel(out)}`);
+  if (limitIssues.length) console.error(`\nLimits out of date (tests/structural-coverage/limits.mjs); correct or remove them:\n  ${limitIssues.join('\n  ')}`);
   if (check) {
     const problems = ratchet(baseline, summary);
     if (problems.length) {
@@ -301,6 +303,7 @@ async function main(argv) {
       return 1;
     }
     console.log(`Ratchet OK against ${rel(check)}: total ${summary.total.score} >= ${baseline.total.score}, cells ${summary.cells.score} >= ${baseline.cells.score}, no row or cell dropped.`);
+    if (limitIssues.length) return 1;
   }
   return 0;
 }

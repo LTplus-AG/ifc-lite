@@ -24,7 +24,10 @@
  *     opt-in label `if`, the `labeled` type or the job-level per-PR concurrency;
  *   - the corpus is not its own scheduled/dispatch-only, sharded, bounded,
  *     judged job with a required aggregate, or the nightly failure reporter
- *     does not cover it.
+ *     does not cover it;
+ *   - the nightly route that covers what merge-queue batches skip loses its
+ *     coverage record, its range-carrying report or its bisect
+ *     (nightlyProblems in scripts/lib/native-adapter-nightly.mjs).
  *
  * Manifests are parsed by hand, so a shape this parser cannot read throws
  * (`[dependencies.foo]` sub-tables, multi-line inline tables) rather than
@@ -48,6 +51,9 @@ import { matchesAny } from './lib/ci-path-coverage.mjs';
 import { permissionBlocks, workflowAsks } from './lib/workflow-permissions.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { BATCH_EXCLUDE, BATCH_KEEP, batchGlobs, decideBatch, scriptImports } from './lib/native-adapter-batch.mjs';
+import { jobBlock, NIGHTLY_IF, nightlyProblems } from './lib/native-adapter-nightly.mjs';
+
+export { jobBlock };
 
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
 const TEST_WORKFLOW = '.github/workflows/test.yml';
@@ -158,13 +164,8 @@ export function eventPaths(text, event) {
   return paths;
 }
 
-const CORPUS_IF = "github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)";
-
-/** Text of one top-level job (from `  id:` to the next two-space key). */
-export function jobBlock(text, id) {
-  const m = text.match(new RegExp(`^ {2}${id}:\\n([\\s\\S]*?)(?=^ {2}[A-Za-z0-9_-]+:\\n|(?![\\s\\S]))`, 'm'));
-  return m ? m[1] : null;
-}
+// A bisect probe (native-adapter-bisect.yml) runs only the shards it names.
+const CORPUS_IF = `(inputs.bisect_sha && inputs.bisect_shards) || ${NIGHTLY_IF}`;
 
 /** The downloaded corpus lives in its own scheduled/dispatch job, sharded, with a required aggregate. */
 export function corpusJobProblems(text) {
@@ -179,9 +180,9 @@ export function corpusJobProblems(text) {
   const budget = corpus.match(/^ {4}timeout-minutes: (\d+)\s*$/m);
   if (!budget || Number(budget[1]) > 360) out.push(`${WORKFLOW}: native-corpus needs a literal timeout-minutes within GitHub's 360-minute limit`);
   if (!/^ {6}fail-fast: false\s*$/m.test(corpus)) out.push(`${WORKFLOW}: native-corpus matrix must set fail-fast: false so one slow shard does not hide the others`);
-  const matrix = corpus.match(/^ {8}shard: \[([0-9, ]+)\]\s*$/m);
+  const matrix = corpus.match(/^ {8}shard: \$\{\{ fromJSON\(inputs\.bisect_shards \|\| '\[([0-9, ]+)\]'\) \}\}\s*$/m);
   const shards = matrix ? matrix[1].split(',').map((s) => Number(s.trim())) : [];
-  if (shards.length === 0 || shards.some((s, i) => s !== i)) out.push(`${WORKFLOW}: native-corpus matrix shard must list 0..N-1 in order`);
+  if (shards.length === 0 || shards.some((s, i) => s !== i)) out.push(`${WORKFLOW}: native-corpus matrix shard must be \${{ fromJSON(inputs.bisect_shards || '[0, ..., N-1]') }}, listing 0..N-1 in order`);
   const select = corpus.match(/corpus-shards\.mjs shard [^\n]*--shards (\d+)/);
   if (shards.length > 0 && (!select || Number(select[1]) !== shards.length)) out.push(`${WORKFLOW}: the shard selection step's --shards must equal the matrix size (${shards.length})`);
   const compare = corpus.match(/id: compare\n([\s\S]*?)\n {6}(?:# |- )/);
@@ -203,8 +204,6 @@ export function corpusJobProblems(text) {
     }
     if (!/\[\[ "\$SHARDS_RESULT" == success \]\]/.test(result)) out.push(`${WORKFLOW}: native-corpus-result must fail when the matrix result is not success`);
   }
-  const reporter = jobBlock(text, 'report-scheduled-failure');
-  if (reporter !== null && !/^ {4}needs: \[native-adapter, native-corpus-result\]\s*$/m.test(reporter)) out.push(`${WORKFLOW}: report-scheduled-failure must need native-corpus-result so a corpus failure is reported`);
   const browser = jobBlock(text, 'browser-corpus');
   if (browser === null || !/^ {4}continue-on-error: true\s*$/m.test(browser)) out.push(`${WORKFLOW}: browser-corpus must exist and stay report-only (job-level continue-on-error)`);
   return out;
@@ -236,8 +235,8 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
 
   // The opt-in label gate must not silently vanish (it would put the lane back on every PR).
   const mainJob = jobBlock(text, 'native-adapter') ?? '';
-  if (!/^ {4}if: >-\s*\n\s+inputs\.batch == true \|\|\s*\n\s+github\.event_name != 'pull_request' \|\|\s*\n\s+\(contains\(github\.event\.pull_request\.labels\.\*\.name, 'ci:native-adapter'\) &&\s*\n\s+\(github\.event\.action != 'labeled' \|\| github\.event\.label\.name == 'ci:native-adapter'\)\)\s*$/m.test(mainJob)) {
-    failures.push(`${WORKFLOW}: the native-adapter job must keep its opt-in gate: a merge-queue batch call and non-PR events run, a PR only with the ci:native-adapter label (and only that label's event restarts it)`);
+  if (!/^ {4}if: >-\s*\n\s+\(!inputs\.bisect_sha \|\| inputs\.bisect_adapter\) && \(\s*\n\s+inputs\.batch == true \|\|\s*\n\s+github\.event_name != 'pull_request' \|\|\s*\n\s+\(contains\(github\.event\.pull_request\.labels\.\*\.name, 'ci:native-adapter'\) &&\s*\n\s+\(github\.event\.action != 'labeled' \|\| github\.event\.label\.name == 'ci:native-adapter'\)\)\)\s*$/m.test(mainJob)) {
+    failures.push(`${WORKFLOW}: the native-adapter job must keep its opt-in gate: a merge-queue batch call and non-PR events run, a PR only with the ci:native-adapter label (and only that label's event restarts it), a bisect probe only with bisect_adapter`);
   }
   if (!/^ {4}types: \[[^\]]*\blabeled\b[^\]]*\]\s*$/m.test(text.slice(text.indexOf('  pull_request:'), text.indexOf('  schedule:')))) {
     failures.push(`${WORKFLOW}: on.pull_request.types must include labeled so applying the label starts the job`);
@@ -292,6 +291,7 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
   if (browser !== null && !/pnpm fixtures[\s\S]*browser\.mjs/.test(browser)) failures.push(`${WORKFLOW}: browser-corpus must download the corpus (pnpm fixtures) before comparing; the checkout does not hold the models`);
   failures.push(...corpusJobProblems(text));
   if (!/^ {2}report-scheduled-failure:/m.test(text)) failures.push(`${WORKFLOW}: no report-scheduled-failure job for a failing nightly run`);
+  failures.push(...nightlyProblems(root, text));
   return failures;
 }
 

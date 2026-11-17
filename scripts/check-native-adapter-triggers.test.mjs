@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -19,8 +19,9 @@ const TEST_WORKFLOW = '.github/workflows/test.yml';
 function copyTree(context) {
   const root = mkdtempSync(join(tmpdir(), 'native-adapter-triggers-'));
   context.after(() => rmSync(root, { recursive: true, force: true }));
-  const files = ['Cargo.toml', WORKFLOW, TEST_WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/workflow-job-condition.mjs', 'scripts/lib/is-main-entry.mjs', 'scripts/lib/workflow-permissions.mjs', '.github/workflows/report-scheduled-failure.yml', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
-  for (const f of files) {
+  const files = ['Cargo.toml', WORKFLOW, TEST_WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/workflow-job-condition.mjs', 'scripts/lib/is-main-entry.mjs', 'scripts/lib/workflow-permissions.mjs', '.github/workflows/report-scheduled-failure.yml', '.github/workflows/native-adapter-bisect.yml', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
+  // The bisect workflow is optional so a revert of it reads as an audit failure, not a copy error.
+  for (const f of files.filter((file) => file !== '.github/workflows/native-adapter-bisect.yml' || existsSync(join(REPO, file)))) {
     mkdirSync(join(root, dirname(f)), { recursive: true });
     cpSync(join(REPO, f), join(root, f));
   }
@@ -164,7 +165,7 @@ test('running the corpus inside native-adapter again is reported', (context) => 
 
 test('a corpus job that runs on every PR, or has no literal budget, is reported', (context) => {
   const ungated = copyTree(context);
-  mutate(ungated, (t) => t.replace("    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120", "    runs-on: ubuntu-24.04\n    timeout-minutes: 120"));
+  mutate(ungated, (t) => t.replace("    if: (inputs.bisect_sha && inputs.bisect_shards) || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120", "    runs-on: ubuntu-24.04\n    timeout-minutes: 120"));
   assert.ok(audit(ungated).some((f) => f.includes('native-corpus must be gated')));
   const unbounded = copyTree(context);
   mutate(unbounded, (t) => t.replace('    timeout-minutes: 120\n    strategy:', '    timeout-minutes: 400\n    strategy:'));
@@ -196,11 +197,11 @@ test('a compare step that is fatal or unbounded, or an unjudged shard, is report
 
 test('an aggregate that does not need the matrix or ignores its result, and a reporter that ignores the corpus, are reported', (context) => {
   const root = copyTree(context);
-  mutate(root, (t) => t.replace('    needs: [native-corpus]\n', '    needs: []\n').replace('          [[ "$SHARDS_RESULT" == success ]]\n', '').replace('needs: [native-adapter, native-corpus-result]\n    if: always() && github.event_name', 'needs: [native-adapter]\n    if: always() && github.event_name'));
+  mutate(root, (t) => t.replace('    needs: [native-corpus]\n', '    needs: []\n').replace('          [[ "$SHARDS_RESULT" == success ]]\n', '').replace('needs: [nightly-range, native-adapter, native-corpus-result]\n    if: always() && github.event_name', 'needs: [nightly-range, native-adapter]\n    if: always() && github.event_name'));
   const failures = audit(root);
   assert.ok(failures.some((f) => f.includes('must need native-corpus')));
   assert.ok(failures.some((f) => f.includes('matrix result is not success')));
-  assert.ok(failures.some((f) => f.includes('report-scheduled-failure must need native-corpus-result')));
+  assert.ok(failures.some((f) => f.includes('report-scheduled-failure must need nightly-range, native-adapter and native-corpus-result')));
 });
 
 test('an aggregate that stops reporting the models left out of the corpus is reported', (context) => {
@@ -249,9 +250,9 @@ test('an if: always() on an earlier step does not satisfy the judge-step check',
 
 test('an unreadable matrix reports the real cause once, without a size-0 remedy', (context) => {
   const root = copyTree(context);
-  mutate(root, (t) => t.replace(/        shard: \[[0-9, ]+\]\n/, `        shard: \${{ fromJSON('[0,1]') }}\n`));
+  mutate(root, (t) => t.replace(/        shard: \$\{\{ fromJSON\(inputs\.bisect_shards \|\| '\[[0-9, ]+\]'\) \}\}\n/, `        shard: \${{ fromJSON('[0,1]') }}\n`));
   const failures = audit(root);
-  assert.ok(failures.some((f) => f.includes('matrix shard must list 0..N-1')));
+  assert.ok(failures.some((f) => f.includes('listing 0..N-1 in order')));
   assert.ok(!failures.some((f) => f.includes('(0)') || f.includes('exactly the matrix\'s 0')), failures.join('\n'));
 });
 
@@ -410,4 +411,47 @@ test('the call\'s own grant is the block at job level, and it must be readable',
   }
   // A trailing comment is not part of the call.
   assert.deepEqual(scan('jobs:\n  a:\n    uses: ./.github/workflows/x.yml # note\n', [], 'w').calls, ['.github/workflows/x.yml']);
+});
+
+// ------------------------------------------------------------ the nightly route (what covers #10619's excluded paths)
+
+test('a nightly route that loses its schedule, record, range-carrying report or bisect is reported', (context) => {
+  const cases = [
+    ['no schedule', (t) => t.replace("  schedule:\n    - cron: '30 2 * * *'\n", ''), 'on.schedule'],
+    ['corpus off the nightly', (t) => t.replace(" || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120", "\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120"), 'native-corpus must be gated'],
+    ['no record', (t) => t.replace(/  nightly-range:\n[\s\S]*?(?=\n {2}# One tracking issue)/, ''), 'no nightly-range job'],
+    ['record off main', (t) => t.replace("    if: github.ref == 'refs/heads/main' && (", "    if: (github.ref == 'refs/heads/main' || true) && ("), 'nightly-range must run on every full run'],
+    ['record behind the lane', (t) => t.replace('    name: Nightly coverage range\n', '    name: Nightly coverage range\n    needs: [native-adapter]\n'), 'must not need another job'],
+    ['shallow record', (t) => t.replace('          fetch-depth: 0\n          filter: blob:none\n      - name: Name the commits', '          filter: blob:none\n      - name: Name the commits'), 'fetch-depth: 0'],
+    ['report without the range', (t) => t.replace(`      detail: \${{ needs.nightly-range.outputs.detail }}\n`, ''), 'must pass the nightly-range detail'],
+    ['report without the label', (t) => t.replace('      labels: nightly-red\n', ''), 'labels: nightly-red'],
+    ['report ignores the record', (t) => t.replace("needs.nightly-range.result != 'success' || needs.native-adapter", 'needs.native-adapter'), 'must report a red nightly-range'],
+    ['renamed corpus aggregate', (t) => t.replace('    name: Native corpus result\n', '    name: Corpus result\n'), 'must keep the names the coverage record reads'],
+    ['renamed workflow', (t) => t.replace('name: Geometry platform (native adapter)\n', 'name: Geometry platform\n'), "its name must stay 'Geometry platform (native adapter)'"],
+  ];
+  const bisect = '.github/workflows/native-adapter-bisect.yml';
+  cases.push(...[
+    ['no trigger', (t) => t.replace("    workflows: ['Geometry platform (native adapter)']\n", "    workflows: ['Geometry platform']\n"), 'must start on workflow_run'],
+    ['probe at the wrong commit', (t) => t.replace(`      bisect_sha: \${{ needs.plan.outputs.probe }}\n`, ''), 'the probe job must call'],
+    ['probe under-granted', (t) => t.replace(`    with:\n      bisect_sha: \${{ needs.plan.outputs.probe }}\n      bisect_adapter: \${{ needs.plan.outputs.adapter == 'true' }}\n      bisect_shards: \${{ needs.plan.outputs.shards }}\n    # Everything geometry-platform.yml asks for, or GitHub refuses the run.\n    permissions:\n      actions: read\n      contents: read\n      issues: write\n`, `    with:\n      bisect_sha: \${{ needs.plan.outputs.probe }}\n    permissions:\n      contents: read\n`), 'must grant issues: write'],
+  ].map(([name, fn, expected]) => [name, fn, expected, bisect]));
+  for (const [name, fn, expected, file = WORKFLOW] of cases) {
+    const root = copyTree(context);
+    mutate(root, (t) => {
+      const out = fn(t);
+      assert.notEqual(out, t, `${name}: the mutation did not apply`);
+      return out;
+    }, file);
+    const failures = audit(root);
+    assert.ok(failures.some((f) => f.includes(expected)), `${name}: ${failures.join('\n')}`);
+  }
+  const gone = copyTree(context);
+  rmSync(join(gone, bisect));
+  assert.ok(audit(gone).some((f) => f.includes('native-adapter-bisect.yml is missing')));
+});
+
+test('a bisect probe that would run the adapter it was not asked for is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace('      (!inputs.bisect_sha || inputs.bisect_adapter) && (\n', '      (\n'));
+  assert.ok(audit(root).some((f) => f.includes('a bisect probe only with bisect_adapter')));
 });

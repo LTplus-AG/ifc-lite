@@ -104,7 +104,7 @@ test('binary extensions GitHub sends no patch for are excluded, not left to fall
 });
 
 test('real source is NOT excluded', () => {
-  for (const p of ['packages/export/src/step.ts', 'rust/geometry/src/lib.rs', 'scripts/check-x.mjs', 'tests/ai-eval/live-runs/20261015t113459/summary.json', 'apps/viewer/src/lib/agent-tools/operations/view.ts']) {
+  for (const p of ['packages/export/src/step.ts', 'rust/geometry/src/lib.rs', 'scripts/check-x.mjs', 'tests/ai-eval/live-runs/20261015t113459/summary.json', 'apps/viewer/src/lib/agent-tools/operations/view.ts', 'apps/viewer/src/lib/agent-tools/operations/generated/loaders.ts']) {
     assert.equal(isExcluded(p), false, `${p} must be reviewed`);
   }
 });

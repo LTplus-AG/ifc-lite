@@ -33,9 +33,11 @@ function distanceToLine(p: Vec3, a: Vec3, axis: Vec3): number {
   return length(sub(sub(p, a), scale(axis, dot(sub(p, a), axis) / dot(axis, axis))));
 }
 
-/** The lowest z of a surface member's body. */
-function bottomOf(member: PlannedSurfaceMember, normal: Vec3): number {
-  return Math.min(...member.boundary.map((q) => q[2])) - Math.abs(normal[2]) * member.thickness / 2;
+/** The lowest and highest z of a surface member's body. */
+function zRange(member: PlannedSurfaceMember, normal: Vec3): { bottom: number; top: number } {
+  const zs = member.boundary.map((q) => q[2]);
+  const half = Math.abs(normal[2]) * member.thickness / 2;
+  return { bottom: Math.min(...zs) - half, top: Math.max(...zs) + half };
 }
 
 /**
@@ -122,7 +124,7 @@ export function lowestLevelBearings(
     return foot[2] <= level + tolerance && head[2] > level + tolerance ? [{ foot, reach: jointReachOf(tolerance, jointReach, section) }] : [];
   });
   // Only a surface reaching below the level can hold a node at it.
-  const low = surfaces.map((surface) => ({ surface, bottom: bottomOf(surface.member, surface.normal) }))
+  const low = surfaces.map((surface) => ({ surface, ...zRange(surface.member, surface.normal) }))
     .filter(({ bottom }) => bottom < level + tolerance);
   for (const node of nodes) {
     const flats = flatAt.get(node.index);
@@ -141,7 +143,9 @@ export function lowestLevelBearings(
     // So does a footing whose top meets the underside, though the node itself is outside it.
     const held = () => flats.some(({ prism }) => {
       const z = prism ? Math.min(bodyUnderside(prism, p, tolerance), p[2]) : p[2];
-      return low.some(({ surface, bottom }) => bottom < z && surfaceAt([p[0], p[1], z], [surface], tolerance, tolerance) !== undefined)
+      // It holds when it reaches clearly below the soffit (a wall under it or framing into it) or lies wholly under
+      // it (a thin slab); a wall whose base is only drawn within the tolerance of the soffit stands on the run.
+      return low.some(({ surface, bottom, top }) => (bottom < z - tolerance || top <= z + tolerance) && surfaceAt([p[0], p[1], z], [surface], tolerance, tolerance) !== undefined)
         || footings.some(({ min, max }) => min[2] < z && max[2] >= z - tolerance
           && p[0] >= min[0] - tolerance && p[0] <= max[0] + tolerance && p[1] >= min[1] - tolerance && p[1] <= max[1] + tolerance);
     });

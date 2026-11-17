@@ -243,7 +243,9 @@ describe('structural derivation plan (#9668)', () => {
     const beside = planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
       element('IfcColumn', { axis: [[13.5, 1, 0], [13.5, 1, 3]] }, { idealised: true })), { jointReach: 2 });
     expect(supportXs(beside)).toEqual([0, 6]);
-    // A wall standing on an Axis-only ground beam does not hold it.
+    // A wall standing on an Axis-only ground beam does not hold it, even with its base drawn 2 cm under the axis.
+    expect(supportXs(planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
+      element('IfcWall', { prism: box([7, -0.1, -0.02], 6, 0.2, [0, 0, 3]) }))))).toEqual([0, 6]);
     const standing = planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
       element('IfcWall', { prism: box([7, -0.1, 0], 6, 0.2, [0, 0, 3]) })));
     expect(supportXs(standing)).toEqual([0, 6]);

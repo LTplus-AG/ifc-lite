@@ -42,4 +42,8 @@ export const floodCheckIt = {
   "floodCheck.legend.verdictCaveat": "Esposizione letta dalla carta dei pericoli pubblicata. Non una simulazione di inondazione.",
   "floodCheck.card.heading": "Verifica sommaria ruscellamento",
   "floodCheck.card.notInModel": "Dalla verifica eseguita in questa sessione; non scritto nel modello.",
+  "floodCheck.section.needsSwissGeoref": "Il controllo del ruscellamento richiede un modello IFC georeferenziato in Svizzera. Vedi Contesto del sito qui sopra per ciò che manca.",
+  "floodCheck.palette.label": "Controllo del ruscellamento superficiale",
+  "floodCheck.ribbon.label": "Ruscellamento",
+  "floodCheck.ribbon.tooltip": "Controlla porte, finestre e aperture vicine al suolo rispetto alla carta del deflusso superficiale",
 } satisfies Catalogue;

@@ -42,4 +42,8 @@ export const floodCheckFr = {
   "floodCheck.legend.verdictCaveat": "Exposition lue sur la carte d’aléa publiée. Pas une simulation d’inondation.",
   "floodCheck.card.heading": "Contrôle sommaire ruissellement",
   "floodCheck.card.notInModel": "Issu du contrôle lancé dans cette session ; non écrit dans le modèle.",
+  "floodCheck.section.needsSwissGeoref": "Le contrôle du ruissellement nécessite un modèle IFC géoréférencé en Suisse. Voir Contexte du site ci-dessus pour ce qui manque.",
+  "floodCheck.palette.label": "Contrôle du ruissellement",
+  "floodCheck.ribbon.label": "Ruissellement",
+  "floodCheck.ribbon.tooltip": "Contrôler les portes, fenêtres et ouvertures proches du sol par rapport à la carte de l’aléa ruissellement",
 } satisfies Catalogue;

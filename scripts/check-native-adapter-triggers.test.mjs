@@ -97,6 +97,8 @@ test('a lost per-PR group, a cancelling nightly or a workflow-level group are re
   assert.ok(audit(cancelsNightly).some((f) => f.includes('concurrency must be per-PR')));
   // A batch keyed on its PR number could be cancelled by, or cancel, a labelled run of the batch PR.
   const batchByNumber = copyTree(context);
+  // GitHub Actions expressions, replaced as written.
+  // eslint-disable-next-line no-template-curly-in-string
   mutate(batchByNumber, (t) => t.replace('geometry-platform-${{ !inputs.batch && github.event.pull_request.number || github.run_id }}', 'geometry-platform-${{ github.event.pull_request.number || github.run_id }}'));
   assert.ok(audit(batchByNumber).some((f) => f.includes('concurrency must be per-PR')));
   const workflowLevel = copyTree(context);

@@ -65,7 +65,8 @@ export const stepExportOperations = [
     for (const model of models) { hydrated.push({ model, dataStore: await ensureModelExportReady(model.id) }); current(); }
     const { inputs, portableByModel, skipped } = buildMergeInputs(hydrated, { applyMutations: i.apply_mutations, getMutationView: state.getMutationView });
     if (!inputs.length) throw new Error(`No native STEP input was writable: ${JSON.stringify(skipped)}`);
-    const visibilityFor = (id: string) => resolveExportVisibility(state, id);
+    const resolved = new Map<string, ReturnType<typeof resolveExportVisibility>>();
+    const visibilityFor = (id: string) => { let v = resolved.get(id); if (!v) { v = resolveExportVisibility(state, id); resolved.set(id, v); } return v; };
     const visibility = i.visible_only ? roomMergeVisibility(i.model_ids, portableByModel,
       id => visibilityFor(id).hiddenLocalIds, id => visibilityFor(id).isolatedLocalIds)
       : { hidden: new Map<string, Set<number>>(), isolated: new Map<string, Set<number> | null>() };

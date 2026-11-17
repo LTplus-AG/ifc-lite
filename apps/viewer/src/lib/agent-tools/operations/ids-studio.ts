@@ -125,7 +125,7 @@ export const idsOperations = [
   operation(meta('ids.document.bundle', 'Return the current native IDSZ bundle as base64, preserving node identities and sidecar metadata.'), emptySchema, async () => {
     const { exportIdsz } = await import('@/lib/ids-studio/export'); const written = exportIdsz(current().doc);
     if (!written.ok) throw new Error(written.error);
-    let binary = ''; for (const byte of written.content) binary += String.fromCharCode(byte);
+    let binary = ''; for (let i = 0; i < written.content.length; i += 0x8000) binary += String.fromCharCode(...written.content.subarray(i, i + 0x8000));
     return { filename: written.fileName, content_base64: btoa(binary), media_type: 'application/zip' };
   }),
   nativeOperation<{ format: 'ids' | 'idsz' }>({ ...meta('ids.document.export', 'Export the current IDS or IDSZ through the native writer as a host-owned artifact.', true), effects: ['artifact'], policy: { artifact: 'native-export' }, outputSchema: artifactOutput }, {

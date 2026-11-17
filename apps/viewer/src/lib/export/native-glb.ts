@@ -49,8 +49,9 @@ export async function produceNativeGlb(selectedModelId: string, selectedModel: {
           }
           return new Uint32Array(out);
         };
-        const hidden = visibleOnly ? (toLocal(resolveExportVisibility(state, selectedModelId).hiddenGlobalIds) ?? new Uint32Array()) : new Uint32Array();
-        const isolated = visibleOnly ? toLocal(resolveExportVisibility(state, selectedModelId).isolatedGlobalIds) : undefined;
+        const visibility = visibleOnly ? resolveExportVisibility(state, selectedModelId) : undefined;
+        const hidden = (visibility && toLocal(visibility.hiddenGlobalIds)) ?? new Uint32Array();
+        const isolated = visibility ? toLocal(visibility.isolatedGlobalIds) : undefined;
         const hiddenTypesCsv = visibleOnly
           ? [...buildHiddenIfcTypes(typeVisibility)].join(',')
           : '';
@@ -81,8 +82,9 @@ export async function produceNativeGlb(selectedModelId: string, selectedModel: {
             ? { modelId: federatedModel.id, idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
             : null,
         );
-        const globalHidden = visibleOnly ? resolveExportVisibility(state, selectedModelId).hiddenGlobalIds : undefined;
-        const globalIsolated = visibleOnly ? resolveExportVisibility(state, selectedModelId).isolatedGlobalIds : undefined;
+        const visibility = visibleOnly ? resolveExportVisibility(state, selectedModelId) : undefined;
+        const globalHidden = visibility?.hiddenGlobalIds;
+        const globalIsolated = visibility?.isolatedGlobalIds;
         const retyped = visibleOnly && classFilterActive(typeVisibility) ? retypedClasses(state) : undefined;
         // `globalIsolated` is `null` for "no filter" vs an empty-but-non-null `Set`
         // for "isolation active, matches nothing" (`resolveExportVisibility`) — a

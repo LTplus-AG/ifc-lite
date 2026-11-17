@@ -52,21 +52,11 @@ interface GLBExportDialogProps {
 export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
-  // Class-level visibility (IfcSpace / IfcOpeningElement / IfcSite) — these
-  // are off by default and live OUTSIDE the per-entity hidden set, so a
-  // visible-only export that only checks `hiddenEntities` would still ship
-  // openings the user never rendered (issue surfaced on the Revit door
-  // fixture where IfcOpeningElement #2438 leaked through).
-  // Subscribe to every visibility channel so the open dialog refreshes (#4328).
-  // The export resolver reads the live store again at click time.
   // Legacy single-model fallback so this dialog works before any
   // FederatedModel is registered (the common case for v1 users). Only
   // the geometryResult is needed — GLB export doesn't read the parsed
   // STEP store.
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
-  // Merge-layers suppresses multilayer-wall part meshes at load time (#540);
-  // the from-bytes exporter re-meshes with defaults and would resurrect them,
-  // exporting different model content than the user loaded.
 
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [colorSource, setColorSource] = useState<ColorSource>('rendering');

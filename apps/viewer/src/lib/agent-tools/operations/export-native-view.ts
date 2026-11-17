@@ -5,7 +5,7 @@ import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { captureViewportFrame } from '@/lib/viewport-capture';
-import { modelExportFilename, activeModelName } from '@/lib/export/download';
+import { modelExportFilename, activeModelName, dataUrlToBytes } from '@/lib/export/download';
 import { readViewPdfSource, readViewZoom, readCameraSnapshot } from '@/lib/export/view-pdf/view-pdf-export-source';
 import { deriveDisplayedScaleFactor, describePage } from '@/lib/export/view-pdf/view-pdf-scale';
 import { estimateViewPdfLayout, VIEW_PDF_MARGIN_MM } from '@/lib/export/view-pdf/view-pdf-page-estimate';
@@ -21,7 +21,7 @@ export const exportNativeViewOperations = [
   } satisfies JSONSchemaType<{ scope: 'current-view' }>, async (_, c) => {
     const s = useViewerStore.getState(); const check = nativeExportGuard(c, [...s.models.keys()]); check(); const renderer = getGlobalRenderer(); if (!renderer) throw new Error('Native viewport renderer is not ready.');
     const image = await captureViewportFrame(renderer, { read: canvas => canvas.toDataURL('image/png') }); check(); if (!image?.startsWith('data:image/png;base64,')) throw new Error('Native viewport did not produce a PNG.');
-    const binary = atob(image.slice(image.indexOf(',') + 1)); const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+    const bytes = dataUrlToBytes(image); if (!bytes) throw new Error('Native viewport did not produce a PNG.');
     return nativeArtifact(c, new Blob([bytes], { type: 'image/png' }), modelExportFilename(activeModelName(s), 'png', '_screenshot'), { scope: 'current-view' }, check);
   }),
   viewerOperation<{ scope: 'current-view'; scale_mode: 'displayed' | 'numerical'; scale: number; include_hidden_lines: boolean; render_mode: 'shaded' | 'lines'; include_scale_stamp: boolean }>(exportMetadata('exports.viewPdf', 'Await the toolbar to-scale current-view PDF producer with explicit displayed/numerical scale, shaded/line mode, hidden edges and scale stamp. Preserves current view visibility, all section cuts, native camera orientation and PDF page-size refusal; return actual PDF bytes plus native page/stroke/raster diagnostics.'), {

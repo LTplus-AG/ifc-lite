@@ -11,8 +11,10 @@ const code = (line) => line.replace(/(^|\s)#.*$/, '').trimEnd();
 // An anchor or tag before a key (`&p permissions:`, `!!str permissions:`).
 const PROPS = String.raw`(?:[&!]\S*\s+)*`;
 const HEAD = new RegExp(String.raw`^( *)(?:- +)?${PROPS}["']?permissions["']?\s*:\s*(.*)$`);
-// Any other way to write the key: in a flow mapping, as an explicit `? key`.
-const OTHER_KEY = /(?:^|[\s{,?])["']?permissions["']?\s*(?::|$)/;
+// The key written another way: inside a flow mapping, or as an explicit `? key`.
+const OTHER_KEY = /[{,]\s*["']?permissions["']?\s*:|^\s*(?:-\s+)?\?\s*["']?permissions\b/;
+// A local reusable workflow call, quoted or not.
+const USES = /^\s*(?:-\s+)?uses:\s*["']?\.\/(\.github\/workflows\/[^\s"'#]+\.ya?ml)["']?$/;
 
 /**
  * Every `permissions:` block in `text` as { indent, scopes: { scope: level } },
@@ -24,8 +26,14 @@ const OTHER_KEY = /(?:^|[\s{,?])["']?permissions["']?\s*(?::|$)/;
  * The tests hold it to a YAML parser on every workflow in the repo.
  */
 export function permissionBlocks(text, out, file) {
+  return scan(text, out, file).blocks;
+}
+
+/** The blocks, plus the local reusable workflows `text` calls (outside scripts). */
+function scan(text, out, file) {
   const lines = text.split('\n');
   const blocks = [];
+  const calls = [];
   let scalarIndent = -1;
   for (const [i, raw] of lines.entries()) {
     const line = code(raw);
@@ -34,7 +42,9 @@ export function permissionBlocks(text, out, file) {
       scalarIndent = -1;
     }
     if (line.trim() === '') continue;
-    if (/(?::|^\s*-)\s*[|>][-+0-9]*$/.test(line)) scalarIndent = indentOf(line);
+    if (new RegExp(String.raw`(?::|^\s*-)\s*${PROPS}[|>][-+0-9]*$`).test(line)) scalarIndent = indentOf(line);
+    const call = line.match(USES);
+    if (call) calls.push(call[1]);
     const head = line.match(HEAD);
     if (!head) {
       if (OTHER_KEY.test(line)) out.push(`${file}: cannot judge \`${line.trim()}\`; spell permissions out as a block`);
@@ -63,7 +73,7 @@ export function permissionBlocks(text, out, file) {
     }
     blocks.push({ indent, scopes });
   }
-  return blocks;
+  return { blocks, calls };
 }
 
 /**
@@ -71,15 +81,14 @@ export function permissionBlocks(text, out, file) {
  * down, those of each local reusable workflow it calls, since GitHub checks
  * every one when the run starts. An unreadable file is reported to `out`.
  */
-export function workflowAsks(root, file, out, seen = new Set()) {
+export function workflowAsks(root, file, out, text = null, seen = new Set()) {
   if (seen.has(file)) return [];
   seen.add(file);
   const path = join(root, file);
-  if (!existsSync(path)) {
+  if (text === null && !existsSync(path)) {
     out.push(`cannot read ${file}, a workflow the call reaches; its permissions go unjudged`);
     return [];
   }
-  const text = readFileSync(path, 'utf8');
-  const called = [...text.matchAll(/^ +uses: \.\/(\.github\/workflows\/[^\s#]+\.ya?ml)\s*$/gm)].map((m) => m[1]);
-  return [...permissionBlocks(text, out, file), ...called.flatMap((f) => workflowAsks(root, f, out, seen))];
+  const { blocks, calls } = scan(text ?? readFileSync(path, 'utf8'), out, file);
+  return [...blocks, ...calls.flatMap((f) => workflowAsks(root, f, out, null, seen))];
 }

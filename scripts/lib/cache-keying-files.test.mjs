@@ -119,6 +119,8 @@ test('a pattern is matched against the real files, a directory counting for all 
   // Reading a cache's result is not setting its key: a `cache-hit` flag from a `uses:` step is fine.
   assert.deepEqual(check({ [ROOT]: 'jobs: { a: { outputs: { wasm_cache_hit: "${{ steps.r.outputs.cache-hit }}" }, steps: [ { id: r, uses: actions/cache/restore@v4, with: { key: k, path: p } } ] } }' }).errors, []);
   assert.deepEqual(hashing('.GitHub/Workflows/A.yml'), ['.github/workflows/a.yml'], 'case-insensitive, like macOS and Windows runners');
+  // A repository not on the allowlist with no path may be this one by name.
+  assert.deepEqual(check({ [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: LTplus-AG/ifc-lite, ref: x } } ] } }' }).errors, []);
   // A literal other repository checked out with `path:` lands beside this one, which stays put.
   assert.deepEqual(check({ [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: emscripten-core/emsdk, path: emsdk } } ] } }' }).errors, []);
   // setup-node/setup-python `cache:` hashes a default lockfile glob.

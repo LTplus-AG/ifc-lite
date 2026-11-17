@@ -316,6 +316,10 @@ test('permissionBlocks reads every spelling of a block and fails closed on the r
   // A comment that looks like a block scalar opens nothing; anchors and tags are keys.
   assert.deepEqual(scopes('jobs:\n# usage: |\n  a: # note: >\n    permissions:\n      contents: write\n'), [{ contents: 'write' }]);
   assert.deepEqual(scopes('jobs:\n  a:\n    &p permissions:\n      issues: write\n  b:\n    !!str permissions:\n      actions: read\n'), [{ issues: 'write' }, { actions: 'read' }]);
+  // Step names and one-line commands that mention permissions are not keys.
+  assert.deepEqual(parse('jobs:\n  a:\n    steps:\n      - name: Check token permissions\n        run: echo "verify permissions: ok"\n').out, []);
+  // A tagged script is a script.
+  assert.deepEqual(parse('jobs:\n  a:\n    steps:\n      - run: !!str |\n          permissions:\n            issues: write\n').blocks, []);
   // A sequence-item script is skipped like a `run: |` one.
   assert.deepEqual(parse('jobs:\n  a:\n    with:\n      args:\n        - |\n          permissions:\n            issues: write\n').blocks, []);
   // A run script mentioning permissions is not a block.
@@ -370,6 +374,15 @@ test('the call\'s own grant is the block at job level, and it must be readable',
   writeFileSync(join(deep, '.github/workflows/deeper.yml'), 'permissions:\n  pull-requests: write\njobs:\n  loop:\n    uses: ./.github/workflows/report-scheduled-failure.yml\n');
   const deepFailures = audit(deep);
   assert.ok(deepFailures.some((f) => f.includes('must grant pull-requests: write')), deepFailures.join('\n'));
+  // A call with quotes and a trailing comment is followed; one inside a script is not.
+  const quoted = copyTree(context);
+  mutate(quoted, (t) => t.replace('    uses: ./.github/workflows/report-scheduled-failure.yml\n', '    uses: "./.github/workflows/report-scheduled-failure.yml" # nightly issue\n'));
+  mutate(quoted, (t) => t.replace('permissions:\n  actions: read\n', 'permissions:\n  pull-requests: write\n  actions: read\n'), '.github/workflows/report-scheduled-failure.yml');
+  const quotedFailures = audit(quoted);
+  assert.ok(quotedFailures.some((f) => f.includes('must grant pull-requests: write')), quotedFailures.join('\n'));
+  const scripted = copyTree(context);
+  mutate(scripted, (t) => `${t}  echo:\n    runs-on: x\n    steps:\n      - run: |\n          uses: ./.github/workflows/not-there.yml\n`, '.github/workflows/report-scheduled-failure.yml');
+  assert.equal(audit(scripted).some((f) => f.includes('not-there')), false);
 });
 
 const CLI = join(REPO, 'scripts/check-native-adapter-triggers.mjs');

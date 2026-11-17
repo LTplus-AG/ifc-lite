@@ -316,7 +316,7 @@ function batchWiringProblems(text, root) {
   }
   // The job's own grant sits at indent 4; nothing deeper stands in for it.
   const callerGrant = permissionBlocks(caller, out, TEST_WORKFLOW).find((b) => b.indent === 4)?.scopes ?? {};
-  for (const { scopes } of workflowAsks(root, WORKFLOW, out)) {
+  for (const { scopes } of workflowAsks(root, WORKFLOW, out, text)) {
     for (const [scope, level] of Object.entries(scopes)) {
       if (level !== 'none' && callerGrant[scope] !== level && callerGrant[scope] !== 'write') out.push(`${TEST_WORKFLOW}: the native-adapter call must grant ${scope}: ${level}; ${WORKFLOW} asks for it and GitHub refuses the whole Test run otherwise`);
     }

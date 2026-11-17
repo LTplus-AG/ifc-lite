@@ -20,7 +20,9 @@ Cells that gain a label and keep their status and points: the 14 marked out of r
 
 ## Probe correction (reason text only)
 
-`probes/convert.mjs`: a file whose intermediate records do not conform still earns no credit, but its values are now compared too, and the message lists every distinct non-conformance instead of the first record's first slot ("(e.g. ...)"). Before, a non-conformance hid any other loss in that file, so a limit labelling it could have called a reachable loss out of reach. Statuses and points cannot change: a non-conforming file never sets `anyHeld`. It surfaced two losses: the edge-curve file's `Axis` (#16, #25), and the IFC4 relationships #72, #77 and #78 coming back naming the re-upgraded proxies.
+`probes/convert.mjs`: a file whose intermediate records do not conform still earns no credit, but its values are now compared too, and the message lists every distinct non-conformance instead of the first record's first slot ("(e.g. ...)"). Before, a non-conformance hid any other loss in that file, so a limit labelling it could have called a reachable loss out of reach. Statuses and points cannot change: a non-conforming file never sets `anyHeld`. It surfaced two losses: the edge-curve file's `Axis` (#16, #25), and the IFC4 relationships #72, #77 and #78 coming back naming the re-upgraded proxies. The message now ends with the record ids. A compare that throws on a non-conforming file is reported as a problem of that file.
+
+`probes/render.mjs`: the missed-glyph problem names every missed record, not the first ("e.g. ..."), so the upstream limit matches exactly portal-demo #161 and #163. Reason text only.
 
 
 ## Fixture

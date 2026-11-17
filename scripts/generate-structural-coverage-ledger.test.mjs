@@ -130,7 +130,7 @@ test('limits (#9668): label every problem or count it open, never change a score
   assert.equal(label([limit(), policy]).cell.limits.open, 0);
   assert.deepEqual(label([limit(), limit({ cite: 'same problems, second limit' })]).issues, [], 'two limits may label the same problem');
   const false_ = label([limit()], problems, { ok: () => false });
-  assert.deepEqual(false_.issues.length, 2, 'one issue per problem it matched, not also called stale');
+  assert.equal(false_.issues.length, 2, 'one issue per problem it matched, not also called stale');
   assert.match(false_.issues.join(), /cited fact does not hold/);
   assert.match(label([limit({ holds: () => { throw new Error('no such file'); } })]).issues.join(), /does not hold .*\(no such file\)/, 'a holds that throws is reported, not fatal');
   assert.equal(false_.cell.limits, undefined, 'a false limit labels nothing');

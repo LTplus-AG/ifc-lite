@@ -116,8 +116,8 @@ export function nonConforming(intermediate, entity, registry) {
   });
 }
 
-/** Every distinct `why` of `nonConforming` records, so no non-conformance hides behind another. */
-const reasons = (list) => [...new Set(list.map((x) => x.why))].join('; ');
+/** Every distinct `why` of `nonConforming` records, so no non-conformance hides behind another, and their ids. */
+const reasons = (list) => `${[...new Set(list.map((x) => x.why))].join('; ')} at ${list.map((x) => `#${x.id}`).join(', ')}`;
 
 /** The records of the row's entity a file contributes: every outcome counts this many as checked. */
 const sampleOf = (row, file) => file.step.of(row.entity).slice(0, MAX_RECORDS);
@@ -296,7 +296,13 @@ export default {
         if (copied.length) problems.push(`${file.path}: ${copied.length} of ${rt.there.count(row.entity)} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (${reasons(copied)})`);
         if (renamed.length) problems.push(`${file.path}: ${renamed.length} ${row.entity} record(s) became records that do not conform to ${OTHER[row.schema]} (${reasons(renamed)})`);
         // A file that does not conform earns no credit, but its values are still compared, so no loss hides behind it.
-        const r = compareFile(row, file, rt, schemas);
+        let r;
+        try {
+          r = compareFile(row, file, rt, schemas);
+        } catch (e) {
+          if (conforms) throw e;
+          r = { problems: [`${file.path}: the values could not be compared: ${e.message}`], anyHeld: false, checked: sampleOf(row, file).length };
+        }
         problems.push(...r.problems);
         checked += r.checked;
         anyHeld ||= conforms && r.anyHeld;

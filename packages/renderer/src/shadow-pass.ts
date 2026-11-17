@@ -305,7 +305,7 @@ export class ShadowPass {
     const box = clip?.box;
     if (!section && !box && !clip?.extraPlanes?.length) {
       // The fragment set may still run for visibility: leave it nothing to cut.
-      if (this.clipFlags[12] !== 0) { this.clipScratch.fill(0); this.device.queue.writeBuffer(this.clipBuffer, 0, this.clipScratch); }
+      if (this.clipFlags[12] !== 0 || this.clipFlags[16] !== 0) { this.clipScratch.fill(0); this.device.queue.writeBuffer(this.clipBuffer, 0, this.clipScratch); }
       return false;
     }
 

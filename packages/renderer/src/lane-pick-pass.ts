@@ -125,6 +125,12 @@ export class LanePickPass {
     }, (err: unknown) => console.warn('[LanePickPass] could not confirm the batch pick pipelines; large models keep the CPU raycast:', err));
   }
 
+  /** Grow shared storage before any bind group referencing it enters the pick pass. */
+  prepareVisibility(input: LanePickInput): void {
+    const image = this.visibilityCache.resolve(input.hiddenIds, input.isolatedIds);
+    if (!sectionExclusions(this.device).writeVisibility(image)) throw new RangeError('Pick visibility ids exceed the GPU storage buffer limit');
+  }
+
   /**
    * Encode every draw of `input` into `pass`. Returns the number drawn. A draw
    * outside the snapshot's camera-relative envelope is skipped, exactly as the
@@ -138,9 +144,6 @@ export class LanePickPass {
   ): number {
     if (input.draws.length === 0) return 0;
     const slots = this.ensureSlots(input.draws.length);
-    // The shared table (group 3) the colour pass also reads; the pick's own sets are written first.
-    const image = this.visibilityCache.resolve(input.hiddenIds, input.isolatedIds);
-    if (!sectionExclusions(this.device).writeVisibility(image)) throw new RangeError('Pick visibility ids exceed the GPU storage buffer limit');
     const bindGroup = this.ensureBindGroup(slots);
     let current: LanePickLayout | null = null;
     let drawn = 0;

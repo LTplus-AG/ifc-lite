@@ -456,6 +456,25 @@ describe('ShadowPass clipping', () => {
     assert.equal(dev.clipWrite, null, 'clip uniform untouched when nothing is cut');
   });
 
+  it('clears extra-only clipping before a visibility-filtered shadow draw (#10636)', () => {
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
+    const pass = new ShadowPass(mockShadowDevice(dev), 1024);
+    const filtered = collectShadowOccluders(
+      { batches: [twoEntities()], instanced: [], textured: [] },
+      { hiddenIds: new Set([102]) },
+    );
+    pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, filtered,
+      { extraPlanes: [{ normal: [0, 0, 1], distance: 1 }] });
+    assert.ok(dev.clipWrite);
+    assert.notEqual(new Uint32Array(dev.clipWrite!.buffer)[16], 0);
+    dev.clipWrite = null;
+    pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, filtered, null);
+    assert.ok(dev.clipWrite, 'removing extra-only planes must rewrite the uniform');
+    const words = new Uint32Array(dev.clipWrite!.buffer);
+    assert.equal(words[12], 0);
+    assert.equal(words[16], 0);
+  });
+
   it('routes every path through a clipping pipeline when a section plane is on', () => {
     const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
     const rec = emptyRecord();

@@ -432,6 +432,7 @@ export class Picker {
     if (lanes && lanes.draws.length > 0 && (!this.lanePass || !pointRteSnapshot)) {
       throw new Error('Batch pick requested without its pipelines or an RTE snapshot; check canPickLanes first.');
     }
+    if (lanes) this.lanePass?.prepareVisibility(lanes);
     const targets = this.ensureTargets(width, height);
     // WebGPU texture views can't be reused after submit, so build fresh ones.
     const colorView = targets.color.createView();

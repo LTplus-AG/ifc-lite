@@ -89,7 +89,7 @@ interface Harness {
          * the render pass, so a test can assert command ORDER (e.g. that the
          * lighting environment is rebound at group(1) after the sky pass).
          */
-        commands: { op: string; index?: number; pipeline?: unknown; indexCount?: number; vertexBuffer?: unknown }[];
+        commands: { op: string; index?: number; pipeline?: unknown; bindGroup?: GPUBindGroupDescriptor; indexCount?: number; vertexBuffer?: unknown }[];
         /** label of every `beginRenderPass` in call order (so a test can assert
          *  the sun shadow depth pass IS or is NOT encoded). */
         passes: string[];
@@ -193,7 +193,7 @@ function makeHarness(): Harness {
                 return (pipeline: unknown) => { stats.commands.push({ op: 'setPipeline', pipeline }); };
             }
             if (prop === 'setBindGroup') {
-                return (index: number) => { stats.commands.push({ op: 'setBindGroup', index }); };
+                return (index: number, bindGroup: GPUBindGroupDescriptor) => { stats.commands.push({ op: 'setBindGroup', index, bindGroup }); };
             }
             if (prop === 'drawIndexed') {
                 return (indexCount: number) => {
@@ -276,7 +276,7 @@ function makeHarness(): Harness {
                 };
                 case 'createCommandEncoder': return () => encoder;
                 case 'createBuffer': return (desc: { size: number }) => makeBuffer(desc);
-                case 'createBindGroup': return () => ({});
+                case 'createBindGroup': return (descriptor: GPUBindGroupDescriptor) => descriptor;
                 case 'createTexture': return (desc: { label?: string; size: { width: number; height: number } }) => {
                     stats.createdTextures++;
                     stats.textures.push({ label: desc.label ?? '', width: desc.size.width, height: desc.size.height });
@@ -2007,6 +2007,30 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         assert.ok(h.pendingMaps() > 0, 'pick should be parked on the mapAsync readback');
         return { inflight };
     }
+
+    it('grows pick visibility before recording any shared bind group (#10636)', async () => {
+        const h = makeHarness();
+        const picker = installPicker(h);
+        await h.settle();
+        const device = h.renderer['device'].getDevice();
+        const table = sectionExclusions(device);
+        table.writeVisibility(new Uint32Array(4));
+        h.stats.commands.length = 0;
+        const buffer = device.createBuffer({ size: 256, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.INDEX });
+        await picker.pick(0, 0, 64, 64, [], new Float32Array(16),
+            undefined, undefined, [], null, h.renderer.getCamera().getRelativeToEyeFrame().snapshot(),
+            { draws: [{ layout: 'flat', vertexBuffer: buffer, indexBuffer: buffer, indexCount: 3, origin: [0, 0, 0], anchor: 0 }],
+              hiddenIds: new Set(Array.from({ length: 100 }, (_, i) => i + 100)) });
+        const groups = h.stats.commands.filter(command => command.op === 'setBindGroup' && command.index === 3);
+        assert.ok(groups.length > 0, 'the actual pick encoded the shared group');
+        for (const command of groups) for (const entry of command.bindGroup?.entries ?? []) {
+            if ('buffer' in entry.resource) {
+                const held = entry.resource.buffer as unknown as { destroyed: number };
+                assert.equal(held.destroyed, 0, 'no recorded bind group may reference a destroyed buffer');
+            }
+        }
+        picker.destroy();
+    });
 
     for (const kind of ['point', 'rectangle'] as const) {
         it(`suppresses a completed-map result after device loss and releases exactly once: ${kind} (#6881)`, async () => {

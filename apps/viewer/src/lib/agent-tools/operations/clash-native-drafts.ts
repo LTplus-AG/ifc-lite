@@ -55,7 +55,7 @@ export const clashDraftOperations = [
         { resolveManualClashGroups },
         { saveDraftBatch },
       ] = await Promise.all([
-        import('@/components/viewer/bcf/useBcfDraftActions'),
+        import('@/lib/bcf-drafts/current-run'),
         import('@/lib/bcf-drafts/draft-create'),
         import('@/lib/clash/group-workspace'),
         import('@/lib/clash/manual-groups'),

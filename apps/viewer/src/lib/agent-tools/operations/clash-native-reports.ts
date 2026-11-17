@@ -6,6 +6,7 @@ import { viewerOperation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
+import { evictOldest } from './host-handles';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -152,7 +153,7 @@ export const clashReportOperations = [
       const s = useViewerStore.getState(),
         report = s.savedClashReports.find((row) => row.id === i.id);
       if (!report) throw new Error('Unknown saved report.');
-      if (owned(c.host).size >= 32) throw new Error('Report deletion candidate capacity reached.');
+      evictOldest(owned(c.host), 32);
       const token = crypto.randomUUID();
       owned(c.host).set(token, { report, signature: preview.signature, action: s.deleteSavedClashReport });
       return out({ token, preview });

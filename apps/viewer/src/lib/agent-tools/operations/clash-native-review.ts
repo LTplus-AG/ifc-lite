@@ -4,7 +4,7 @@
 import { useViewerStore } from '@/store';
 import { viewerOperation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
-import { currentClash } from './clash-native';
+import { currentClashes } from './clash-native';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -106,7 +106,7 @@ export const clashReviewOperations = [
     async (i, c) => {
       const { manualClashMember } = await import('@/lib/clash/manual-groups');
       assertToolActive(c);
-      return out(i.clash_ids.map((id) => ({ id, member: manualClashMember(currentClash(i.run_seq, id)) })));
+      return out(currentClashes(i.run_seq, i.clash_ids).map((clash) => ({ id: clash.id, member: manualClashMember(clash) })));
     },
   ),
   viewerOperation<{ workspace_json: string; expected_library: string }>(

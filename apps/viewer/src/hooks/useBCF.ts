@@ -224,7 +224,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
    * references. Falls back to the single loaded model when nothing resolves, so
    * a lone-model topic still records its source file.
    */
-  const headerFilesForViewpoints = useCallback(headerFilesForNativeViewpoints, []);
+  const headerFilesForViewpoints = headerFilesForNativeViewpoints;
 
   /** Restore only the viewpoint camera (used by zoom-to-topic fallback). */
   const applyViewpointCamera = useCallback(

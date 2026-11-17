@@ -101,7 +101,8 @@ export const clashExportOperations = [
       if (s.clashRunSeq !== i.run_seq || !s.clashResult) throw new Error('No exact current native result.');
       const current = s.clashResult;
       const ids = i.clash_ids.length ? new Set(i.clash_ids) : undefined;
-      if (ids && i.clash_ids.some((id) => !current.clashes.some((clash) => clash.id === id)))
+      const known = ids ? new Set(current.clashes.map((clash) => clash.id)) : undefined;
+      if (known && i.clash_ids.some((id) => !known.has(id)))
         throw new Error('Unknown current finding in explicit export scope.');
       const config = {
         groupBy: i.groupBy,

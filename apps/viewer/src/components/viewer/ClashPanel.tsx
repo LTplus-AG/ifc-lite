@@ -110,9 +110,6 @@ function formatDistance(distance: number): string {
   return distance < 0 ? `−${Math.abs(distance).toFixed(3)}m` : `${distance.toFixed(3)}m`;
 }
 
-/** A plain-language description of what a clash is and why it was flagged (#1276). */
-
-
 /**
  * Per-clash review controls shown in an expanded row (#1468): a 3-way status
  * toggle plus an optional comment. Module-level (not nested in ClashPanel) so it

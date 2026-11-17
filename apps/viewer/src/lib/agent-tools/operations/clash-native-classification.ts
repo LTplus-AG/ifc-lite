@@ -9,6 +9,7 @@ import type { ClashGroupDraft } from '@/lib/assistant/clash-group-draft';
 import type { ClassifyPlan } from '@/lib/assistant/clash-classify-chunks';
 import type { EvidenceSnapshot } from '@/lib/assistant/evidence';
 import type { ClashGroupApplyPlan } from '@/lib/clash/group-apply';
+import { evictOldest } from './host-handles';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -80,7 +81,7 @@ export const clashClassificationOperations = [
       if (!s.clashResult) throw new Error('No current native clash result.');
       const plan = planClassification(s.clashResult.clashes),
         evidence = captureEvidence('clash');
-      if (reviews(c).size >= 32) throw new Error('Classification review capacity reached.');
+      evictOldest(reviews(c), 32);
       const token = crypto.randomUUID();
       reviews(c).set(token, { result: s.clashResult, plan, evidence, model: s.chatActiveModel });
       return out({
@@ -108,6 +109,7 @@ export const clashClassificationOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
+      review(c, i.token); // refuse an unknown token before loading the provider modules
       const [
         { runClassification, draftFromClassification },
         { CLASSIFY_ROOT_BUDGET, estimateClassification },

@@ -50,11 +50,18 @@ export async function clashRuntime(
   return createNativeClashRuntime(refs, { signal: c.signal, emit, publish: (write) => c.commit(write) });
 }
 export function currentClash(run_seq: number, id: string): Clash {
+  return currentClashes(run_seq, [id])[0];
+}
+/** Look up several clashes of the current run with one pass over the result. */
+export function currentClashes(run_seq: number, ids: readonly string[]): Clash[] {
   const s = useViewerStore.getState();
   if (s.clashRunSeq !== run_seq) throw new Error('Clash results changed. Inspect again.');
-  const clash = s.clashResult?.clashes.find((row) => row.id === id);
-  if (!clash) throw new Error('Unknown clash in the current native result.');
-  return clash;
+  const byId = new Map((s.clashResult?.clashes ?? []).map((row) => [row.id, row]));
+  return ids.map((id) => {
+    const clash = byId.get(id);
+    if (!clash) throw new Error('Unknown clash in the current native result.');
+    return clash;
+  });
 }
 export function clashSettings() {
   const s = useViewerStore.getState();
@@ -263,7 +270,7 @@ export const nativeClashOperations = [
     },
     async (i, c) => {
       const runtime = await clashRuntime(c);
-      const pairs = i.clash_ids.map((id) => currentClash(i.run_seq, id));
+      const pairs = currentClashes(i.run_seq, i.clash_ids);
       if (i.element !== 'pair' && pairs.length !== 1) throw new Error('Choose one clash for a single-element focus.');
       return out(
         c.commit(() => {

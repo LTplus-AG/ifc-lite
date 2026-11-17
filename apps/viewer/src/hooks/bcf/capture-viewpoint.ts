@@ -73,8 +73,9 @@ export async function captureNativeBcfViewpoint(renderer: Renderer | null, canva
   }
   selectedRefs.push(...(additionalSelectedRefs ?? []));
   const selectedGuids = resolveUniqueGlobalIds(selectedRefs, resolveCapturedRef);
+  const seenGuids = new Set(selectedGuids);
   for (const guid of opts.additionalSelectedGuids ?? []) {
-    if (!selectedGuids.includes(guid)) selectedGuids.push(guid);
+    if (!seenGuids.has(guid)) { seenGuids.add(guid); selectedGuids.push(guid); }
   }
   const emittedColoredGuids = new Set<string>();
   const coloredGuids = [

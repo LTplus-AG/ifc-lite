@@ -72,7 +72,7 @@ export interface BearingContext {
  */
 export function lowestLevelBearings(
   nodes: PlannedNode[],
-  members: ReadonlyArray<{ member: PlannedCurveMember; bottom: number | null }>,
+  members: ReadonlyArray<{ member: PlannedCurveMember; drawn: readonly [Vec3, Vec3]; bottom: number | null }>,
   { idealised, surfaces, footings, level, tolerance, jointReach }: BearingContext,
 ): number[] {
   const atLevel = (index: number) => nodes[index].position[2] <= level + tolerance;
@@ -84,8 +84,7 @@ export function lowestLevelBearings(
   const bearing = new Set<number>();
   /** The flat members ending at each node: their line, and their underside, where a wall or slab may stop. */
   const flatAt = new Map<number, Array<{ a: Vec3; b: Vec3; underside: number }>>();
-  // The type leaves the drawn axis optional (the planner always sets it); without it a member bears, as before.
-  for (const { member: { startNode, endNode, start, end, physicalAxis: drawn = [start, end] }, bottom } of members) {
+  for (const { member: { startNode, endNode, start, end }, drawn, bottom } of members) {
     const startLow = atLevel(startNode);
     const endLow = atLevel(endNode);
     if (startLow && endLow) {
@@ -124,7 +123,7 @@ export function lowestLevelBearings(
     // below it (under the beam, a pocket, or a wall the beam frames into); one starting above stands on the run.
     // So does a footing whose top meets the underside, though the node itself is outside it.
     const held = () => flats.some(({ underside: z }) =>
-      surfaceAt([p[0], p[1], z], low.filter(({ bottom }) => bottom < z).map(({ surface }) => surface), tolerance, tolerance)
+      low.some(({ surface, bottom }) => bottom < z && surfaceAt([p[0], p[1], z], [surface], tolerance, tolerance) !== undefined)
       || footings.some(({ min, max }) => min[2] < z && max[2] >= z - tolerance
         && p[0] >= min[0] - tolerance && p[0] <= max[0] + tolerance && p[1] >= min[1] - tolerance && p[1] <= max[1] + tolerance));
     if (onRising || held()) bearing.add(node.index);

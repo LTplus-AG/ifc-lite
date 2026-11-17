@@ -105,9 +105,8 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   const lines: Line[] = [];
   const surfaces: PlannedSurface[] = [];
   const footings: Array<{ element: PhysicalElementFact; min: Vec3; max: Vec3 }> = [];
-  // The lowest drawn end of the load-bearing curve members idealised before: part of the structure, not of this plan.
-  let idealisedLowest = Infinity;
-  // Their lines too: a column derived before still bears the run it rises from.
+  // The load-bearing curve members idealised before: part of the structure, not of this plan. They set the
+  // lowest level when drawn lower, and a column among them still bears the run it rises from.
   const idealisedLines: Array<{ start: Vec3; end: Vec3; section: number | null }> = [];
   const idealisedSurfaceElements: PhysicalElementFact[] = [];
   /** A surface member on the plate's mid-plane, or why it has none. Openings it cannot carry go to `skippedTo`. */
@@ -128,7 +127,6 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     }
     const line = role === 'curve' ? lineOf(element) : null;
     if (element.idealised && element.loadBearing !== false && line && !('issue' in line) && isLong(line)) {
-      idealisedLowest = Math.min(idealisedLowest, line.start[2], line.end[2]);
       idealisedLines.push(line);
     }
     // A wall or slab derived before still holds a run that rests on it.
@@ -220,11 +218,12 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   }
   if (usedFootings.size === 0 && nodes.length > 0) {
     // The lowest node after the joints, or a lower member idealised before.
+    const idealisedLowest = idealisedLines.reduce((low, line) => Math.min(low, line.start[2], line.end[2]), Infinity);
     const structureLowest = nodes.reduce((low, node) => Math.min(low, node.position[2]), idealisedLowest);
     // Only their openings, not the skips, matter for bearing.
     const idealisedSurfaces = idealisedSurfaceElements.map((element) => surfaceOf(element, 'assumed', []))
       .filter((surface): surface is PlannedSurface => !('issue' in surface));
-    const bearings = lowestLevelBearings(nodes, curveMembers.map((member, i) => ({ member, bottom: bodyBottom(pieces[i].element) })), {
+    const bearings = lowestLevelBearings(nodes, curveMembers.map((member, i) => ({ member, drawn: pieces[i].axis, bottom: bodyBottom(pieces[i].element) })), {
       idealised: idealisedLines, surfaces: [...surfaces, ...idealisedSurfaces], footings, level: structureLowest, tolerance, jointReach: resolved.jointReach,
     });
     for (const index of bearings) {

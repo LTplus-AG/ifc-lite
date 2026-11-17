@@ -168,7 +168,7 @@ describe('structural derivation plan (#9668)', () => {
   it('keeps every column drawn to the level as a bearing on a straight ground beam, and every node of a run its bearings do not hold, and a wall under a run', () => {
     const grade = beam(0, 12, 0, 0);
     const frame = planStructuralDerivation(facts(grade, column(0, 0, 0, 3), column(6, 0, 0, 3), column(12, 0, 0, 3), beam(0, 12, 0, 3)));
-    expect(frame.nodes.filter((n) => n.support).map((n) => +n.position[0].toFixed(9) + 0).sort((a, b) => a - b)).toEqual([0, 6, 12]);
+    expect(supportXs(frame)).toEqual([0, 6, 12]);
     // A mono-pitch truss: one rafter alone would leave the tie a mechanism, so every tie node bears.
     const mono = planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [6, 0, 0]), line('IfcBeam', [0, 0, 0], [6, 0, 3]),
       line('IfcColumn', [6, 0, 0.15], [6, 0, 3])), { jointReach: 0.2 });
@@ -227,7 +227,7 @@ describe('structural derivation plan (#9668)', () => {
     const held = planStructuralDerivation(facts(line('IfcBeam', [-1, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
       element('IfcWall', { prism: box([11.9, -1, -3.05], 0.2, 2, [0, 0, 3]) }, { idealised: true }),
       element('IfcColumn', { axis: [[-1.15, 0, 0], [-1.15, 0, 3]] }, { idealised: true })), { jointReach: 0.2 });
-    expect(held.nodes.filter((n) => n.support && n.position[2] < 0.05).map((n) => +n.position[0].toFixed(6) + 0).sort((a, b) => a - b)).toEqual([-1, 0, 6, 12]);
+    expect(supportXs({ ...held, nodes: held.nodes.filter((n) => n.position[2] < 0.05) })).toEqual([-1, 0, 6, 12]);
     // A slab derived before holds the run end, but not through its opening.
     const slabUnder = (openings: PhysicalElementFact['openings']) => planStructuralDerivation(facts(line('IfcBeam', [-1, 0, 0], [12, 0, 0]),
       column(0, 0, 0, 3), column(6, 0, 0, 3), element('IfcSlab', { prism: box([10, -2, -0.3], 4, 4, [0, 0, 0.3]), openings }, { idealised: true })));

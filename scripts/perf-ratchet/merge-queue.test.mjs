@@ -29,6 +29,8 @@ const CEILING_FILES = readdirSync(join(REPO_ROOT, 'tests/perf-ratchets'))
 
 /** @param {string} cond @param {{ labels: string[], draft: boolean, files: string[], head: string, statuses: string[], unresolvedThreads: number }} pr */
 function matches(cond, pr) {
+  if (cond?.or) return cond.or.some((c) => matches(c, pr));
+  if (cond?.and) return cond.and.every((c) => matches(c, pr));
   // @source-text-assertion-ok subject is the parsed config, evaluated as conditions
   const [, negated, kind, arg] = /^(-?)(draft$|label=|files~=|head=|status-success=|check-success=|#review-threads-unresolved=)(.*)$/.exec(cond) ?? [];
   if (!kind) throw new Error(`merge-queue.test.mjs cannot evaluate Mergify condition ${JSON.stringify(cond)}; teach matches() its meaning`);
@@ -59,7 +61,9 @@ function queueFor(pr) {
   assert.equal(rules[0].actions.queue.name, queues[0].name, 'the routing rule names the queue that admits the PR');
   return queues[0];
 }
-const READY = ['CLA', 'PR review signal'];
+/** Auto-merge queues a PR (#8526); its conditions gate entry, not staying in. */
+const entersQueue = (pr) => queueFor(pr) !== null && all(cfg.merge_protections_settings.auto_merge_conditions, pr);
+const READY = ['CLA', 'PR review signal', 'Review posted'];
 const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', statuses: READY, unresolvedThreads: 0, ...extra });
 const RELEASE = 'changeset-release/main';
 
@@ -116,8 +120,16 @@ test('no queue admits a PR whose CLA status is not green, so queue PRs only carr
 
 test('a labelled PR waits outside the queue until its review gate is green and its threads are resolved', () => {
   for (const files of [['apps/viewer/src/main.tsx'], ['tests/perf-ratchets/bundle.json']]) {
-    assert.ok(queueFor(pr(files)), 'ready: queued');
-    assert.equal(queueFor(pr(files, { statuses: ['CLA'] })), null, 'PR review signal not green yet');
-    assert.equal(queueFor(pr(files, { unresolvedThreads: 2 })), null, 'review threads still open');
+    assert.ok(entersQueue(pr(files)), 'ready: queued');
+    assert.equal(entersQueue(pr(files, { statuses: ['CLA', 'Review posted'] })), false, 'PR review signal not green yet');
+    assert.equal(entersQueue(pr(files, { statuses: ['CLA', 'PR review signal'] })), false, 'Claude review not posted yet');
+    assert.equal(entersQueue(pr(files, { unresolvedThreads: 2 })), false, 'review threads still open');
+  }
+  assert.ok(entersQueue(pr(['Cargo.toml'], { head: RELEASE, statuses: ['CLA'], unresolvedThreads: 1 })), 'the release PR has no review gate');
+});
+
+test('a thread opened on a queued PR does not dequeue it: the review gate is not a queue condition', () => {
+  for (const files of [['apps/viewer/src/main.tsx'], ['tests/perf-ratchets/bundle.json']]) {
+    assert.ok(queueFor(pr(files, { statuses: ['CLA'], unresolvedThreads: 3 })), JSON.stringify(files));
   }
 });

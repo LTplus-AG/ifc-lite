@@ -1575,6 +1575,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
 
 [[package]]
+name = "ifc-lite-cache"
+version = "28.3.0"
+dependencies = [
+ "ifc-lite-core",
+ "ifc-lite-geometry",
+ "ifc-lite-processing",
+ "ifc-lite-testkit",
+ "miniz_oxide 0.9.1",
+ "rayon",
+ "thiserror 2.0.21",
+ "twox-hash",
+]
+
+[[package]]
 name = "ifc-lite-clash"
 version = "29.3.0"
 

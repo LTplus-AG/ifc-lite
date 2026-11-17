@@ -369,6 +369,17 @@ jobs:
               - 'tests/fixtures/cli-retained/**'
               - 'tests/manifests/**'
               - '.github/workflows/test.yml'
+              # #9584: the native .ifclite writer's cross-language gate runs
+              # the TS reader/writer against it, so a TS-only format change
+              # must run it too (it needs cargo, which this filter arms).
+              - 'packages/cache/src/**'
+              - 'scripts/cache-native-conformance.mjs'
+              - 'scripts/lib/cache-native-*.mjs'
+              # Its oracles read the TS type/relationship tables, the TS
+              # parser and the committed samples, so a change to any runs it.
+              - 'packages/data/src/**'
+              - 'packages/parser/src/**'
+              - 'apps/viewer/public/samples/**'
             # AGENTS.md is the instruction file every agent reads, and
             # scripts/check-agents-md-size.mjs gates its size and line length.
             # It gets its OWN output rather than joining `frontend`: the gate is
@@ -925,6 +936,23 @@ jobs:
         env:
           VITE_BUNDLE_ANALYSIS: "1"
         run: pnpm build
+
+      # #9584: the native .ifclite writer (rust/cache) against @ifc-lite/cache.
+      # Self-reproducible bytes across RAYON_NUM_THREADS, scalar sections
+      # byte-identical to the TS writer's for the same model, geometry equal
+      # after inflating every chunk, and the TS reader's acceptance and
+      # refusals; then two independent oracles: the data model against a TS
+      # parse of the same IFC, the meshes and CoordinateInfo against the
+      # canonical processing output. Needs cargo (armed by the rust filter,
+      # which lists the TS cache sources and these scripts) and the packages
+      # built above; committed fixtures mean it never runs empty, and the
+      # catalogued ones fetched above must be present.
+      - name: Native .ifclite writer conformance against @ifc-lite/cache
+        if: needs.changes.outputs.rust == 'true'
+        timeout-minutes: 15
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: node scripts/cache-native-conformance.mjs
 
       # Keep the score ratchet in build, not node-tests (skipped by fast PRs).
       # This job has verified manifest fixtures and current workspace packages.

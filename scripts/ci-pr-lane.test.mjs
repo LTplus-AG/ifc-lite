@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { FAST_REDUCED_JOBS, FAST_SKIPPED_JOBS, FULL_LABEL, decideLane, laneFromOutput, verifyLane } from './ci-pr-lane.mjs';
+import { BATCH_BRANCH_PREFIX, FAST_REDUCED_JOBS, FAST_SKIPPED_JOBS, FULL_LABEL, decideLane, laneFromOutput, verifyLane } from './ci-pr-lane.mjs';
 import { matrixSkipAliases, parseWorkflowJobs } from './lib/pr-review-signal.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -331,7 +331,13 @@ test('test.yml hands the batch signal to the decision and to the queue-only lane
   assert.match(all.if, /steps\.lane\.outputs\.batch == 'true'/, 'a batch declares every area changed'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
   assert.match(all.if, /steps\.noop\.outputs\.noop != 'true'/, 'a no-op edit replay of a batch runs no lanes'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
   const filter = wf.jobs.changes.steps.find((s) => s.id === 'filter');
-  assert.match(filter.if, /steps\.lane\.outputs\.batch != 'true'/, 'a batch does not narrow lanes by path'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  assert.match(filter.if, /!\(steps\.lane\.outputs\.batch == 'true' \|\| startsWith\(github\.head_ref, 'mergify\/merge-queue\/'\)\)/, 'a batch does not narrow lanes by path'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  // The lane step is continue-on-error: if it writes nothing, the head ref
+  // still marks a batch, everywhere the job reads the signal.
+  const fallback = new RegExp(`startsWith\\(github\\.head_ref, '${BATCH_BRANCH_PREFIX.replaceAll('/', '\\/')}'\\)`);
+  for (const [where, expr] of [['output', wf.jobs.changes.outputs.batch], ['all', all.if], ['filter', filter.if], ['nativeadapter', wf.jobs.changes.steps.find((s) => s.id === 'nativeadapter').if]]) {
+    assert.match(expr, fallback, where);
+  }
 });
 
 test('Mergify cannot merge a batch unless full-lane jobs succeeded, and is label-scoped', () => {

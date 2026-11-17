@@ -654,7 +654,10 @@ test('WIRING: every job a lean run keeps is outside the path filter; every other
   for (const j of jobs.test.needs) {
     const job = jobs[j];
     const viaDeps = (job.needs ?? []).some?.((n) => n !== 'changes' && jobs[n] && pathGated(jobs[n]));
-    const leanSkips = pathGated(job) || viaDeps || /github\.event_name != 'pull_request'/.test(String(job.if ?? '')) || j === 'release-pr'; // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+    // A batch-only job (`batch == 'true' &&`) cannot run lean: lean needs head
+    // ref `changeset-release/main`, a queue batch is `mergify/merge-queue/*`.
+    const batchOnly = /^needs\.changes\.outputs\.batch == 'true' &&/.test(String(job.if ?? '')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
+    const leanSkips = pathGated(job) || viaDeps || batchOnly || /github\.event_name != 'pull_request'/.test(String(job.if ?? '')) || j === 'release-pr'; // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
     if (LEAN_KEPT_JOBS.includes(j)) assert.ok(j === 'release-pr' || !pathGated(job), `${j} is kept but path-gated`);
     else assert.ok(leanSkips, `${j} would still run in a lean run; add it to LEAN_KEPT_JOBS or gate it`);
   }

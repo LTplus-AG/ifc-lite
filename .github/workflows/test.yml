@@ -158,7 +158,13 @@ jobs:
       lane: ${{ steps.lane.outputs.lane || 'full' }}
       # `true` on a Mergify batch PR, which is the queue's full gate: it arrives as
       # `pull_request`, so the queue-only lanes below test this output as well.
-      batch: ${{ steps.lane.outputs.batch || 'false' }}
+      # The lane step is continue-on-error; if it writes nothing, the head ref
+      # (ci-pr-lane.mjs BATCH_BRANCH_PREFIX) still marks a batch, so a crash
+      # there cannot skip the queue-only lanes.
+      batch: ${{ steps.lane.outputs.batch || (startsWith(github.head_ref, 'mergify/merge-queue/') && 'true' || 'false') }}
+      # On a batch, `false` only when its diff touches none of the native
+      # adapter's trigger paths; anything else (empty included) runs it.
+      native_adapter: ${{ steps.nativeadapter.outputs.native_adapter }}
       # `lean` only on the release PR with CI_RELEASE_LANE=on
       # (scripts/ci-release-lane.mjs): the path filter is then withheld, so
       # every path-gated lane skips. Missing or garbled runs the filter.
@@ -317,11 +323,21 @@ jobs:
       # skips and the aggregate replays the recorded verdict. Mergify rewrites a batch
       # PR's body on every status change, and without this gate each rewrite re-ran
       # the whole suite on the same head (draft #9664: 3 full runs, 2 h to merge).
-      - if: (github.event_name == 'merge_group' || steps.lane.outputs.batch == 'true') && steps.noop.outputs.noop != 'true'
+      - if: (github.event_name == 'merge_group' || (steps.lane.outputs.batch == 'true' || startsWith(github.head_ref, 'mergify/merge-queue/'))) && steps.noop.outputs.noop != 'true'
         id: all
         run: for k in rust frontend geometry python plato docs agents_md license_headers perf_ratchet; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
+      # THE NATIVE ADAPTER ON A BATCH. The SMLib lane (geometry-platform.yml)
+      # takes about 49 minutes, so a batch runs it only when its diff touches
+      # that workflow's own `on.pull_request.paths`, read from the file rather
+      # than copied here. continue-on-error, and the `native-adapter` job below
+      # skips only on an explicit `false`, so a crash here runs the lane.
+      - name: Decide whether this batch runs the native adapter
+        id: nativeadapter
+        if: (steps.lane.outputs.batch == 'true' || startsWith(github.head_ref, 'mergify/merge-queue/')) && steps.noop.outputs.noop != 'true'
+        continue-on-error: true
+        run: node scripts/check-native-adapter-triggers.mjs --batch-decide
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        if: github.event_name != 'merge_group' && steps.lane.outputs.batch != 'true' && steps.noop.outputs.noop != 'true' && steps.release.outputs.lane != 'lean'
+        if: github.event_name != 'merge_group' && !(steps.lane.outputs.batch == 'true' || startsWith(github.head_ref, 'mergify/merge-queue/')) && steps.noop.outputs.noop != 'true' && steps.release.outputs.lane != 'lean'
         id: filter
         with:
           filters: |
@@ -4060,9 +4076,33 @@ jobs:
       - name: Check the examples' registry ranges against the workspace majors
         run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-name-pattern='found the examples|registry ranges target' scripts/examples-current.test.mjs
 
+  # The SMLib native adapter on a merge-queue batch whose diff it can observe
+  # (#8408 and #8415 merged untested failures while it ran only nightly or on
+  # labelled PRs). The job lives in geometry-platform.yml and is called, not
+  # copied; its corpus jobs and nightly reporter skip on this event. The
+  # aggregate below judges it: failure or cancellation blocks, skipped passes.
+  # PR pushes, `main` pushes (`batch` is false) and no-op edits never run it,
+  # so the push replay still skips only lanes the batch run executed.
+  native-adapter:
+    name: Native adapter (merge-queue batch)
+    needs: changes
+    if: needs.changes.outputs.batch == 'true' && needs.changes.outputs.noop != 'true' && needs.changes.outputs.native_adapter != 'false'
+    # GitHub checks nested permissions when the run starts, skipped jobs
+    # included, so this grants what geometry-platform.yml's nightly
+    # report-scheduled-failure job asks for (check-native-adapter-triggers.mjs
+    # holds the two together). The native-adapter job itself gets the callee's
+    # workflow-level `contents: read`.
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    uses: ./.github/workflows/geometry-platform.yml
+    with:
+      batch: true
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, scripts-tests, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet, release-pr]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, scripts-tests, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet, release-pr, native-adapter]
     # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
     if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
@@ -4190,6 +4230,7 @@ jobs:
             [silent-revert]="${{ needs.silent-revert.result }}"
             [native-instructions]="${{ needs.native-instructions.result }}"
             [perf-ratchet]="${{ needs.perf-ratchet.result }}"
+            [native-adapter]="${{ needs.native-adapter.result }}"
             [release-pr]="${{ needs.release-pr.result }}"
           )
           fail=0

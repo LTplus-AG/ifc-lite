@@ -177,9 +177,10 @@ export function score(rows, cells, meta = {}) {
       const rule = notApplicable(row, level);
       if (rule) { levels[level] = { applicable: false, rule }; continue; }
       const probed = cells.get(row.id)[level];
-      if (!probed) { levels[level] = probed; continue; }
-      const { problems: _full, ...cell } = probed;
-      levels[level] = cell;
+      if (probed) {
+        const { problems: _full, ...cell } = probed;
+        levels[level] = cell;
+      }
     }
     const head = row.kind === 'entity'
       ? { id: row.id, kind: row.kind, schema: row.schema, entity: row.entity, family: row.family }
@@ -306,7 +307,7 @@ async function main(argv) {
     }
     console.log(`Ratchet OK against ${rel(check)}: total ${summary.total.score} >= ${baseline.total.score}, cells ${summary.cells.score} >= ${baseline.cells.score}, no row or cell dropped.`);
   }
-  // Out-of-date limits fail every complete run, so no baseline is frozen from one.
+  // Out-of-date limits fail every complete run: a change that fixes a limited cell removes its limit too.
   return limitIssues.length ? 1 : 0;
 }
 

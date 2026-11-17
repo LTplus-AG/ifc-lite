@@ -22,7 +22,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENTITY_LEVELS, LEVELS, SCHEMAS, deriveCatalogue } from '../tests/structural-coverage/catalogue.mjs';
-import { KINDS as KIND } from '../tests/structural-coverage/limits.mjs';
+import { KINDS } from '../tests/structural-coverage/limits.mjs';
 import { SUMMARY_SCHEMA as SCHEMA, verifySummary } from '../tests/structural-coverage/score.mjs';
 
 const flag = (name) => { const i = process.argv.indexOf(name); return i !== -1 ? process.argv[i + 1] : null; };
@@ -72,7 +72,6 @@ const clip = (text, n) => (text.length > n ? `${text.slice(0, n - 1)}…` : text
 const icon = (c) => (c.applicable === false ? '–' : ICON[c.status] ?? '❌');
 const ROW = { met: '✅ met', partial: '◐ partial', missing: '❌ missing' };
 
-
 /**
  * What keeps a cell from passing: its limit kinds when every problem is labelled
  * (`tests/structural-coverage/limits.mjs`), 'not written', 'skip' or 'probe error' for those statuses, else 'reachable'.
@@ -81,14 +80,14 @@ function reach(c) {
   if (c.status === 'unwritten') return 'not written';
   if (c.status === 'skip') return 'skip';
   if (c.status === 'error') return 'probe error';
-  return c.limits?.open === 0 ? [...new Set(c.limits.by.map((l) => KIND[l.kind]))].join(', ') : 'reachable';
+  return c.limits?.open === 0 ? [...new Set(c.limits.by.map((l) => KINDS[l.kind]))].join(', ') : 'reachable';
 }
 
 /** The cell's limits with their citations, or ''. */
 function limitsNote(c) {
   if (!c.limits) return '';
   const kinds = new Set(c.limits.by.map((l) => l.kind));
-  const cites = c.limits.by.map((l) => (c.limits.open || kinds.size > 1 ? `${KIND[l.kind]}: ${l.cite}` : l.cite)).join('; ');
+  const cites = c.limits.by.map((l) => (c.limits.open || kinds.size > 1 ? `${KINDS[l.kind]}: ${l.cite}` : l.cite)).join('; ');
   return `<br>${reach(c)}${c.limits.open ? ` (${c.limits.open} problem(s) not labelled)` : ''}: ${cites}`;
 }
 

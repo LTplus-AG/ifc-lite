@@ -155,15 +155,28 @@ const SAFE_ACTIONS = ['label', 'assign', 'request_reviews', 'dismiss_reviews', '
 
 /**
  * Top-level .mergify.yml keys this module accounts for: the two rule lists
- * it reads in full, and three that cannot add a route (`merge_queue` holds
- * queue-wide settings such as `max_parallel_checks`). Any other (`extends`,
+ * it reads in full, and three that cannot add a route. Any other (`extends`,
  * `defaults`, `shared`, ...) can, and is not read: it refuses.
  */
 const KNOWN_TOP_KEYS = ['queue_rules', 'pull_request_rules', 'priority_rules', 'merge_protections_settings', 'merge_queue'];
 
-/** Top-level lines that are not exactly `<known key>:` (as readRules sees top level). */
+/** The one `merge_queue` setting known not to route; any other line under it is unknown. */
+const MERGE_QUEUE_LINE = /^ {2}max_parallel_checks:\s*\d+\s*(#.*)?$/;
+
+/**
+ * Top-level lines that are not exactly `<known key>:` (as readRules sees top
+ * level), and lines under `merge_queue` other than MERGE_QUEUE_LINE.
+ */
 function unknownTopLines(text) {
-  return String(text ?? '').split('\n').filter((l) => /^\S/.test(l) && !/^#/.test(l) && !KNOWN_TOP_KEYS.some((k) => isTopKey(l, k)));
+  let inMergeQueue = false;
+  return String(text ?? '').split('\n').filter((l) => {
+    if (/^\s*(#|$)/.test(l)) return false;
+    if (/^\S/.test(l)) {
+      inMergeQueue = isTopKey(l, 'merge_queue');
+      return !KNOWN_TOP_KEYS.some((k) => isTopKey(l, k));
+    }
+    return inMergeQueue && !MERGE_QUEUE_LINE.test(l);
+  });
 }
 
 const RELEASE_HEAD = `head=${RELEASE_HEAD_REF}`;

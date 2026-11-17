@@ -9,9 +9,10 @@
 # 60 hosted runners, so two overlapping runs already queue for runners; raise it
 # only with more runners.
 #
-# A labelled PR enters the queue only once it is ready: `PR review signal`
-# green and no unresolved review thread. The label can go on early; pulling it
-# to fix a finding aborts the run the PR is in.
+# A labelled PR (other than Version Packages) enters the queue only once it is
+# ready: `PR review signal` green and no unresolved review thread. The label can
+# go on early. Once queued, a push, a new thread or removing the label takes it
+# out again and its queue run is lost.
 #
 # Ceiling PRs (tests/perf-ratchets/*.json) keep their own queue, from when
 # batches landed untested commits (#8459, c306ff57d4).

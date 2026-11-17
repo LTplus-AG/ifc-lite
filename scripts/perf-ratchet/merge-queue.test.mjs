@@ -63,7 +63,7 @@ const READY = ['CLA', 'PR review signal'];
 const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', statuses: READY, unresolvedThreads: 0, ...extra });
 const RELEASE = 'changeset-release/main';
 
-test('a lowering PR like #8459 is queued alone, for every committed ceiling family', () => {
+test('a lowering PR like #8459 goes to the ceilings queue, for every committed ceiling family', () => {
   assert.ok(CEILING_FILES.length > 0, 'tests/perf-ratchets holds ceiling files');
   for (const file of CEILING_FILES) {
     assert.equal(queueFor(pr([file])).name, 'ceilings', file);
@@ -71,20 +71,20 @@ test('a lowering PR like #8459 is queued alone, for every committed ceiling fami
   assert.equal(queueFor(pr(CEILING_FILES)).name, 'ceilings', 'all families at once, as the daily job can propose');
 });
 
-test('a code PR that also edits a ceiling is queued alone too', () => {
+test('a code PR that also edits a ceiling goes to the ceilings queue too', () => {
   assert.equal(queueFor(pr(['apps/viewer/src/main.tsx', 'tests/perf-ratchets/bundle.json'])).name, 'ceilings');
 });
 
 test('ordinary PRs are queued one at a time too; drafts and unlabelled PRs are not queued', () => {
   // The Mergify plan refuses batch_size above 1 (#10506): any queue above it stops every queue.
-  for (const q of cfg.queue_rules) assert.equal(q.batch_size, 1, q.name);
+  for (const q of cfg.queue_rules) assert.equal(q.batch_size ?? 1, 1, q.name);
   assert.equal(queueFor(pr(['apps/viewer/src/main.tsx'])).name, 'default');
   assert.equal(queueFor(pr(['scripts/perf-ratchet/lower.mjs'])).name, 'default', 'the ratchet scripts are code, not ceilings');
   assert.equal(queueFor(pr(['tests/perf-ratchets/bundle.json'], { draft: true })), null);
   assert.equal(queueFor(pr(['tests/perf-ratchets/bundle.json'], { labels: [] })), null);
 });
 
-test('the Version Packages PR is queued alone, never batched with PRs carrying changesets (#8630)', () => {
+test('the Version Packages PR has its own queue, apart from PRs carrying changesets (#8630)', () => {
   const release = queueFor(pr(['.changeset/x.md', 'packages/parser/package.json', 'Cargo.toml'], { head: RELEASE }));
   assert.equal(release.name, 'release');
   assert.equal(queueFor(pr(['tests/perf-ratchets/bundle.json'], { head: RELEASE })).name, 'release', 'even if it ever touches a ceiling');

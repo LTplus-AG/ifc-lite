@@ -51,8 +51,9 @@ until it passes or each failure is explained. Report SKIPPED coverage too.
 **Push when ready.** Every push runs CI: verify locally or on the fleet first,
 not per intermediate commit. Merge: label `mergify-trial` (base `main`);
 it self-queues once `PR review signal` is green and no review thread is open.
-Label once and leave it: to fix a finding, push the fix. Never remove the label
-to pause a PR; each removal aborts the queue run it is in. No admin merge.
+Label once and leave it. A push or a new thread takes a queued PR out (its queue
+run is lost) and it re-enters by itself when ready again, so finish fixes before
+it queues; removing the label only adds another abort. No admin merge.
 
 ## IFC schema fidelity
 - User-facing APIs/exports/scripts use exact IFC EXPRESS names: PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.

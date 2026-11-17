@@ -207,7 +207,7 @@ for (const file of workflowFiles) {
   try {
     ({ triggersOnPr, paths: prPaths } = parseWorkflowPrPaths(text));
     if (!triggersOnPr) continue; // release/cron-only workflows gate nothing on a PR
-    jobs = splitJobs(text);
+    jobs = splitJobs(text).map((job) => ({ ...job, named: rel === FILTER_WORKFLOW ? gatingFilters(job.text, job.id) : null }));
   } catch (err) {
     console.error(`❌ check-ci-path-coverage: cannot read the triggers of ${rel} -- ${err.message}`);
     process.exit(1);
@@ -220,13 +220,12 @@ for (const file of workflowFiles) {
   jobCount += jobs.length;
 
   for (const job of jobs) {
-    const named = gatingFilters(job.text);
     let globs;
     if (rel === FILTER_WORKFLOW) {
-      if (named === null) {
+      if (job.named === null) {
         globs = prPaths; // may itself be null = everything
       } else {
-        const unknown = named.filter((n) => !filters.has(n));
+        const unknown = job.named.filter((n) => !filters.has(n));
         if (unknown.length > 0) {
           console.error(
             `❌ check-ci-path-coverage: job ${job.id} gates on unknown filter(s) ` +
@@ -234,7 +233,7 @@ for (const file of workflowFiles) {
           );
           process.exit(1);
         }
-        globs = named.flatMap((n) => filters.get(n));
+        globs = job.named.flatMap((n) => filters.get(n));
         if (prPaths !== null) {
           console.error(
             `❌ check-ci-path-coverage: ${rel} has BOTH on.pull_request.paths and ` +
@@ -472,7 +471,7 @@ function assertSelfCoverage() {
     return;
   }
   if (info.globs === null) return;
-  for (const own of [SELF, ALLOWLIST, 'scripts/lib/ci-path-coverage.mjs']) {
+  for (const own of [SELF, ALLOWLIST, 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/workflow-job-condition.mjs']) {
     if (!matchesAny(own, info.globs)) {
       fail(
         `${own} is this check’s own config and cannot trigger it -- the exact defect ` +

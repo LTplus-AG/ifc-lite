@@ -119,6 +119,7 @@ on:
       - 'scripts/lib/ci-path-coverage.mjs'
       - 'scripts/lib/native-adapter-batch.mjs'
       - 'scripts/lib/is-main-entry.mjs'
+      - 'scripts/lib/workflow-job-condition.mjs'
       - 'scripts/lib/workflow-permissions.mjs'
       # check-viewer-retained-free.mjs --lazy reads the startup graph with its eagerScripts().
       - 'scripts/perf-ratchet/measure-bundle.mjs'

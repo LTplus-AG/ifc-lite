@@ -460,7 +460,7 @@ describe('ShadowPass clipping', () => {
     const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
     const pass = new ShadowPass(mockShadowDevice(dev), 1024);
     const filtered = collectShadowOccluders(
-      { batches: [twoEntities()], instanced: [], textured: [] },
+      { batches: [{ ...flatBatch(1), expressIds: [101, 102] }], instanced: [], textured: [] },
       { hiddenIds: new Set([102]) },
     );
     pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, filtered,

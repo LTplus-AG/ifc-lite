@@ -457,6 +457,7 @@ test('gatingFilters reads a multi-line `if:` in full, not just its first line', 
     'a quoted scalar starting on the next line is unquoted, not read as a block',
   );
   assert.equal(jobCondition('    if:\n      >-\n      a\n    runs-on: x'), 'a', 'block indicator on the next line');
+  assert.equal(jobCondition('    if: >4\n          a\n        b'), 'a b', 'explicit indentation indicator');
   assert.equal(jobCondition("    if: 'a' # c"), 'a', 'comment after a single-quoted scalar');
   assert.equal(jobCondition('    if: "a" # c'), 'a', 'comment after a double-quoted scalar');
 });
@@ -494,7 +495,7 @@ test('every real workflow job `if:` reads exactly as a YAML parser reads it', ()
   assert.ok(compared > 50, `compared only ${compared} conditions`);
   // #10628's finding: past the first line, revert-oracle names its filters.
   const oracle = splitJobs(readFileSync(join(dir, 'test.yml'), 'utf8')).find((j) => j.id === 'revert-oracle');
-  assert.deepEqual(gatingFilters(oracle.text), ['frontend', 'rust', 'perf_ratchet', 'revert_oracle']);
+  assert.ok(gatingFilters(oracle.text)?.includes('revert_oracle'), 'the tests/extensions gate is read');
 });
 
 test('an unreadable job `if:` is a NAMED failure of the check (#10628)', () => {

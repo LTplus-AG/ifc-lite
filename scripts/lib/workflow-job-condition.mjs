@@ -37,7 +37,9 @@ export function jobCondition(jobText, jobId = '(unnamed)') {
   // its first is a YAML error, not something to fold in.
   if (BLOCK.test(first)) {
     if (body.length === 0) throw unreadable('empty block scalar');
-    if (body.some((l) => indent(l) < indent(body[0]))) throw unreadable('block scalar line under-indented');
+    // An explicit indentation indicator allows lines below the first's indent.
+    const explicit = /^[>|][-+]?[1-9]/.test(first);
+    if (!explicit && body.some((l) => indent(l) < indent(body[0]))) throw unreadable('block scalar line under-indented');
     return body.map((l) => l.trim()).join(' ');
   }
   // Flow scalars may start on the next line; ` #` after the value is a comment.

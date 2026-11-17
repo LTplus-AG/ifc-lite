@@ -653,9 +653,9 @@ jobs:
               - '.github/workflows/test.yml'
             # The perf-ratchet ceilings (#6959). Its own output so that the
             # daily lowering bot's PR, which touches ONLY
-            # tests/perf-ratchets/*.json, runs `build` (which measures) and the
-            # `perf-ratchet` gate without dragging the nine-job frontend lane
-            # along. Its scripts are under `scripts/**`, which `frontend`
+            # tests/perf-ratchets/*.json, runs `build` (which measures), the
+            # `perf-ratchet` gate and `revert-oracle` (which reads these files)
+            # without dragging the nine-job frontend lane along. Its scripts are under `scripts/**`, which `frontend`
             # already carries.
             perf_ratchet:
               - 'tests/perf-ratchets/**'

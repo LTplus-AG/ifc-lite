@@ -4,7 +4,7 @@
 import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { isToolAvailable } from '@/lib/features/tools';
-import { playNativePresentation, stopPresentationPlayback, presentationPlaybackState } from '@/lib/presentation/playback';
+import { playNativePresentation, stopPresentationPlayback, presentationPlaybackState, presentationStepMs } from '@/lib/presentation/playback';
 import { executeBasketSaveView } from '@/store/basket/basketCommands';
 import { activateBasketViewFromStore } from '@/store/basket/basketViewActivator';
 import { viewerOperation, emptySchema } from './contract';
@@ -42,7 +42,7 @@ export const analyticsPresentationOperations = [
   viewerOperation<{ view_ids: string[]; repetitions: number }>(metadata('presentation.play', 'presentation', 'Await a finite native saved-view sequence using the same playback service as Play All, with stop/signal cancellation and exact-view conflict checks. Completion follows native transition durations; camera callbacks have no separate settled acknowledgement.', ['view', 'selection', 'configuration'], { type: 'object', properties: { state: { type: 'string' }, current_view_id: { type: ['string', 'null'] }, played: { type: 'integer' }, error: { type: ['string', 'null'] } }, required: ['state', 'current_view_id', 'played', 'error'], additionalProperties: false }), {
     type: 'object', properties: { view_ids: { type: 'array', items: idSchema.properties.id, minItems: 1, maxItems: 100 }, repetitions: { type: 'integer', minimum: 1, maximum: 10 } }, required: ['view_ids', 'repetitions'], additionalProperties: false,
   } satisfies JSONSchemaType<{ view_ids: string[]; repetitions: number }>, async (i, c) => {
-    const duration = i.view_ids.reduce((total, id) => total + Math.max(150, Math.min(15000, saved(id).transitionMs ?? 700)) + 180, 0) * i.repetitions;
+    const duration = i.view_ids.reduce((total, id) => total + presentationStepMs(saved(id)), 0) * i.repetitions;
     if (duration > 120000) throw new Error('Choose a finite saved-view sequence lasting at most two minutes.'); checkpoint(c);
     return playNativePresentation(i.view_ids, { repetitions: i.repetitions, signal: c.signal, beforeActivate: apply => c.commit(apply) });
   }),

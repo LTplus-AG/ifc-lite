@@ -229,8 +229,6 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const duplicateLens = useViewerStore((s) => s.duplicateLens);
   const importLenses = useViewerStore((s) => s.importLenses);
   const exportLenses = useViewerStore((s) => s.exportLenses);
-  // Viewport's aggregation resolver (#2531): rule isolation runs a rule's
-  // matches through it so a geometry-less assembly isolates as its parts.
   // Rule-isolation ownership lives in the STORE (not component state/refs) so
   // a panel unmount/remount cannot strand an isolation it can no longer release.
   const lensRuleIsolation = useViewerStore((s) => s.lensRuleIsolation);

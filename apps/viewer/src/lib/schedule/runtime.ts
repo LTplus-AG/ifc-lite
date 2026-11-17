@@ -25,6 +25,7 @@ function localIdsToGlobal<T>(
   return out;
 }
 
+let untaskedCache: { meshes: readonly unknown[]; length: number; sourceModelId: string | null; ids: Set<number> } | null = null;
 function publishScheduleFrame(): void {
   const { animationEnabled, scheduleData, playbackTime, animationSettings, activeWorkScheduleId } = useViewerStore.getState();
     const store = useViewerStore.getState();
@@ -55,10 +56,17 @@ function publishScheduleFrame(): void {
       const sourceModel = sourceModelId ? fullModels.get(sourceModelId) : undefined;
       const meshes = sourceModel?.geometryResult?.meshes;
       if (meshes && meshes.length > 0) {
-        allLocalIds = new Set<number>();
-        for (const mesh of meshes) {
-          const ref = store.resolveGlobalIdFromModels(mesh.expressId);
-          if (ref?.modelId === sourceModelId) allLocalIds.add(ref.expressId);
+        // Every frame needs the same set; resolving each mesh again per frame is 100k+ lookups.
+        const cached = untaskedCache;
+        if (cached && cached.meshes === meshes && cached.length === meshes.length && cached.sourceModelId === sourceModelId) {
+          allLocalIds = cached.ids;
+        } else {
+          allLocalIds = new Set<number>();
+          for (const mesh of meshes) {
+            const ref = store.resolveGlobalIdFromModels(mesh.expressId);
+            if (ref?.modelId === sourceModelId) allLocalIds.add(ref.expressId);
+          }
+          untaskedCache = { meshes, length: meshes.length, sourceModelId, ids: allLocalIds };
         }
       }
     }

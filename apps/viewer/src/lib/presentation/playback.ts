@@ -4,6 +4,11 @@
 import { useSyncExternalStore } from 'react';
 import { useViewerStore } from '@/store';
 import { isToolAvailable } from '@/lib/features/tools';
+/** How long one saved view stays up during playback: its transition (clamped) plus a settle margin. */
+export function presentationStepMs(view: { transitionMs?: number | null }): number {
+  const t = view.transitionMs;
+  return (t && Number.isFinite(t) && t > 0 ? Math.max(150, Math.min(15000, Math.round(t))) : 700) + 180;
+}
 export interface PresentationPlaybackState { state: 'idle' | 'running' | 'succeeded' | 'cancelled' | 'failed'; current_view_id: string | null; played: number; error: string | null }
 let snapshot: PresentationPlaybackState = { state: 'idle', current_view_id: null, played: 0, error: null };
 let controller: AbortController | null = null;
@@ -47,8 +52,7 @@ export async function playNativePresentation(viewIds: readonly string[], options
       if (view.section?.plane.enabled && !isToolAvailable('section')) throw new Error('Section tools are disabled by the host.');
       const apply = () => activateBasketViewFromStore(view.id); if (options.beforeActivate) options.beforeActivate(apply); else apply();
       report({ current_view_id: view.id, played: final.played + 1 });
-      const duration = view.transitionMs && Number.isFinite(view.transitionMs) && view.transitionMs > 0 ? Math.max(150, Math.min(15000, Math.round(view.transitionMs))) : 700;
-      await delay(duration + 180, abort.signal);
+      await delay(presentationStepMs(view), abort.signal);
     }
     report({ state: 'succeeded' });
   } catch (error) {

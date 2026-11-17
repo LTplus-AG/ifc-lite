@@ -9,12 +9,7 @@ import { chartElementFields } from './chart-fields';
 import { resolveChartFilter } from './source-filter';
 import { chartCardDataset, chartCardSlice } from './card-aggregation';
 import { chartSourceContext, resolveChartSource, isRecordedChart } from './chart-source';
-import { buildElementsDataset } from './datasets/elements';
-import { buildClashDataset } from './datasets/clash';
-import { buildBcfDataset } from './datasets/bcf';
-import { buildScheduleDataset } from './datasets/schedule';
-import { buildIdsDataset } from './datasets/ids';
-import { buildCompareDataset } from './datasets/compare';
+import { chartDatasetFromState } from './datasets/from-state';
 
 /** Panel-equivalent source resolution, filters, scope and cross-chart slice; no mounted card needed. */
 export async function evaluateDashboardChart(dashboard: DashboardSpec, chartId: string, signal?: AbortSignal) {
@@ -22,13 +17,7 @@ export async function evaluateDashboardChart(dashboard: DashboardSpec, chartId: 
   const spec = dashboard.charts.find(chart => chart.id === chartId);
   if (!spec) throw new Error('Unknown chart in the requested dashboard.');
   const state = useViewerStore.getState();
-  const datasets = {
-    elements: () => buildElementsDataset(dashboard.scope, chartElementFields([spec]), state),
-    clash: () => buildClashDataset(state), bcf: () => buildBcfDataset(state),
-    schedule: () => buildScheduleDataset(state), ids: () => buildIdsDataset(state), compare: () => buildCompareDataset(state),
-  };
-  // This is an explicit closed dispatch over the canonical ChartSource union.
-  const source = resolveChartSource(spec, datasets[spec.source](), chartSourceContext(state));
+  const source = resolveChartSource(spec, chartDatasetFromState(spec.source, state, dashboard.scope, chartElementFields([spec])), chartSourceContext(state));
   if (source.status === 'missing') throw new Error('The chart references saved content that is no longer available.');
   const ids = await resolveChartFilter(evaluatorModelsFromState(state), spec.filter,
     (modelId, expressId) => toGlobalIdFromModels(state.models, modelId, expressId), {

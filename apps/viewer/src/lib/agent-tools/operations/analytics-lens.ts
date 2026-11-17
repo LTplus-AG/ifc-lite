@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
 import { evaluateNativeLens, applyNativeLensResult, clearLensOutput, syncNativeLensHidden } from '@/lib/lens/native-lens';
-import { ruleIsolationOwnsChannel } from '@/components/viewer/lens-visibility-ownership';
+import { releaseNativeLensRuleIsolation } from '@/lib/lens/native-controls';
 import { operation, viewerOperation, emptySchema } from './contract';
 import { metadata, idSchema, jsonSchema, removedSchema, checkpoint } from './analytics-common';
 function inspect() {
@@ -30,10 +30,8 @@ export const analyticsLensOperations = [
   }),
   viewerOperation(metadata('lens.clear', 'lens', 'Deactivate the lens and release only its owned color/hide/isolation state.', ['configuration', 'view'], output), emptySchema, (_, c) => {
     checkpoint(c); c.commit(() => {
-      const s = useViewerStore.getState(); s.setActiveLens(null); clearLensOutput(); syncNativeLensHidden();
-      const isolation = s.lensRuleIsolation;
-      if (isolation && ruleIsolationOwnsChannel(s.isolatedEntities, isolation.entityIds)) s.clearIsolation();
-      s.setLensRuleIsolation(null);
+      useViewerStore.getState().setActiveLens(null); clearLensOutput(); syncNativeLensHidden();
+      releaseNativeLensRuleIsolation();
     }); return inspect();
   }),
   viewerOperation<{ id: string }>(metadata('lens.delete', 'lens', 'Delete a saved native lens with explicit persistence-failure reporting.', ['configuration', 'view'], removedSchema), idSchema, (i, c) => {

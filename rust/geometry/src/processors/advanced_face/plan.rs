@@ -104,6 +104,7 @@ pub(crate) fn lower_face(
         ),
         "IFCBSPLINESURFACEWITHKNOTS" | "IFCRATIONALBSPLINESURFACEWITHKNOTS"
             if has_bounds(face)
+                && has_admissible_weights(&surface, &surface_type, decoder)
                 && super::bspline_parse::is_planar_control_net(&surface, decoder) =>
         {
             // A flat B-spline is its plane: triangulate its bounds, as for an
@@ -192,6 +193,27 @@ fn has_bounds(face: &DecodedEntity) -> bool {
     face.get(slot::IfcFaceSurface::BOUNDS.index())
         .and_then(|a| a.as_list())
         .is_some_and(|bounds| !bounds.is_empty())
+}
+
+/// Whether a rational surface's weights pass the checks the B-spline path
+/// applies (#10590): present, finite, positive and one per control point. The
+/// planar shortcut never reads the weights, so it must not admit a surface
+/// that path refuses; a face that fails here falls through to it and is
+/// refused there. A non-rational surface has no weights to check.
+fn has_admissible_weights(
+    surface: &DecodedEntity,
+    surface_type: &str,
+    decoder: &mut EntityDecoder,
+) -> bool {
+    if surface_type != "IFCRATIONALBSPLINESURFACEWITHKNOTS" {
+        return true;
+    }
+    let Ok(weights) = parse_rational_weights(surface) else {
+        return false;
+    };
+    super::bspline_parse::parse_control_points(surface, decoder)
+        .and_then(|net| super::bspline_parse::check_weights_match(&weights, &net))
+        .is_ok()
 }
 
 /// A curved B-spline face, tessellated over the surface's whole knot domain:

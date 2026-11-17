@@ -328,31 +328,80 @@ fn bspline_face_winds_along_su_cross_sv_and_same_sense_reverses_it() {
 /// trimmed slab faces) and bounded by a unit right triangle, wound
 /// counter-clockwise about +Z.
 fn trimmed_flat_bspline_face() -> String {
-    "#1=IFCADVANCEDFACE((#2),#10,.F.);#2=IFCFACEOUTERBOUND(#3,.T.);\n\
-    #3=IFCEDGELOOP((#21,#22,#23));\n\
-    #21=IFCORIENTEDEDGE(*,*,#51,.T.);#22=IFCORIENTEDEDGE(*,*,#52,.T.);#23=IFCORIENTEDEDGE(*,*,#53,.T.);\n\
-    #51=IFCEDGECURVE(#31,#32,$,.T.);#52=IFCEDGECURVE(#32,#33,$,.T.);#53=IFCEDGECURVE(#33,#31,$,.T.);\n\
-    #31=IFCVERTEXPOINT(#41);#32=IFCVERTEXPOINT(#42);#33=IFCVERTEXPOINT(#43);\n\
-    #41=IFCCARTESIANPOINT((0.,0.,5.));#42=IFCCARTESIANPOINT((1.,0.,5.));#43=IFCCARTESIANPOINT((0.,1.,5.));\n\
-    #10=IFCRATIONALBSPLINESURFACEWITHKNOTS(1,1,((#11,#12),(#13,#14)),.UNSPECIFIED.,.F.,.F.,.F.,(2,2),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.,((1.,1.),(1.,1.)));\n\
-    #11=IFCCARTESIANPOINT((-10.,-10.,5.));#12=IFCCARTESIANPOINT((10.,-10.,5.));\n\
-    #13=IFCCARTESIANPOINT((-10.,10.,5.));#14=IFCCARTESIANPOINT((10.,10.,5.));"
-        .to_string()
+    trimmed_flat_bspline_face_weighted("((1.,1.),(1.,1.))")
+}
+
+/// [`trimmed_flat_bspline_face`] with the given rational `WeightsData`.
+fn trimmed_flat_bspline_face_weighted(weights: &str) -> String {
+    format!(
+        "#1=IFCADVANCEDFACE((#2),#10,.F.);#2=IFCFACEOUTERBOUND(#3,.T.);\n\
+        #3=IFCEDGELOOP((#21,#22,#23));\n\
+        #21=IFCORIENTEDEDGE(*,*,#51,.T.);#22=IFCORIENTEDEDGE(*,*,#52,.T.);#23=IFCORIENTEDEDGE(*,*,#53,.T.);\n\
+        #51=IFCEDGECURVE(#31,#32,$,.T.);#52=IFCEDGECURVE(#32,#33,$,.T.);#53=IFCEDGECURVE(#33,#31,$,.T.);\n\
+        #31=IFCVERTEXPOINT(#41);#32=IFCVERTEXPOINT(#42);#33=IFCVERTEXPOINT(#43);\n\
+        #41=IFCCARTESIANPOINT((0.,0.,5.));#42=IFCCARTESIANPOINT((1.,0.,5.));#43=IFCCARTESIANPOINT((0.,1.,5.));\n\
+        #10=IFCRATIONALBSPLINESURFACEWITHKNOTS(1,1,((#11,#12),(#13,#14)),.UNSPECIFIED.,.F.,.F.,.F.,(2,2),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.,{weights});\n\
+        #11=IFCCARTESIANPOINT((-10.,-10.,5.));#12=IFCCARTESIANPOINT((10.,-10.,5.));\n\
+        #13=IFCCARTESIANPOINT((-10.,10.,5.));#14=IFCCARTESIANPOINT((10.,10.,5.));"
+    )
+}
+
+/// The bounded triangle's area and whether every triangle faces up.
+fn trimmed_area_facing_up(source: &str) -> (f32, bool) {
+    let mut decoder = EntityDecoder::new(source);
+    let face = decoder.decode_by_id(1).unwrap();
+    let plan = lower_face(&face, &mut decoder, TessellationQuality::Medium, None).unwrap();
+    let (positions, indices) = plan.evaluate().unwrap();
+    assert!(positions.chunks_exact(3).all(|p| p[2] == 5.));
+    let normals = triangle_normals(&positions, &indices);
+    let area = normals.iter().map(|n| n.norm() * 0.5).sum();
+    (area, normals.iter().all(|n| n.z > 0.))
 }
 
 #[test]
 fn flat_bspline_face_is_trimmed_by_its_bounds_and_faces_its_sense() {
-    let source = trimmed_flat_bspline_face();
-    let mut decoder = EntityDecoder::new(&source);
-    let face = decoder.decode_by_id(1).unwrap();
-    let plan = lower_face(&face, &mut decoder, TessellationQuality::Medium, None).unwrap();
-    let (positions, indices) = plan.evaluate().unwrap();
-    let normals = triangle_normals(&positions, &indices);
-    let area: f32 = normals.iter().map(|n| n.norm() * 0.5).sum();
+    let (area, up) = trimmed_area_facing_up(&trimmed_flat_bspline_face());
     assert!(
         (area - 0.5).abs() < 1e-5,
         "the bounded triangle, not the 20 x 20 patch: {area}"
     );
-    assert!(normals.iter().all(|n| n.z > 0.), "faces up: {normals:?}");
-    assert!(positions.chunks_exact(3).all(|p| p[2] == 5.));
+    assert!(up, "faces up");
+}
+
+/// #10590: valid non-uniform weights do not move a flat surface off its
+/// plane, so the face still trims to its bounds.
+#[test]
+fn flat_rational_bspline_face_with_valid_weights_trims_to_its_bounds() {
+    let (area, up) = trimmed_area_facing_up(&trimmed_flat_bspline_face_weighted(
+        "((1.,2.),(3.,0.5))",
+    ));
+    assert!((area - 0.5).abs() < 1e-5, "the bounded triangle: {area}");
+    assert!(up, "faces up");
+}
+
+/// #10590: the planar shortcut must not admit weights the B-spline path
+/// refuses (zero, negative, missing or not one per control point).
+#[test]
+fn flat_rational_bspline_face_with_invalid_weights_is_refused() {
+    for weights in [
+        "((1.,1.),(1.,0.))",
+        "((1.,1.),(1.,-1.))",
+        "((1.,$),(1.,1.))",
+        "((1.,1.),(1.))",
+        "$",
+    ] {
+        take_face_refused();
+        let source = trimmed_flat_bspline_face_weighted(weights);
+        let mut decoder = EntityDecoder::new(&source);
+        let face = decoder.decode_by_id(1).unwrap();
+        assert!(
+            lower_face(&face, &mut decoder, TessellationQuality::Medium, None).is_err(),
+            "weights {weights} must be refused"
+        );
+        assert_eq!(
+            take_face_refused(),
+            [IfcType::IfcAdvancedFace],
+            "weights {weights}: the refusal is noted"
+        );
+    }
 }

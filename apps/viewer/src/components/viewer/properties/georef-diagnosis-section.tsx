@@ -18,9 +18,10 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, ChevronRight, CircleAlert, Info, Stethoscope } from 'lucide-react';
+import { AlertTriangle, CircleAlert, Info, Stethoscope } from 'lucide-react';
 import type { GeorefFindingCode, Severity } from '@ifc-lite/sdk/georef-doctor';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
@@ -28,6 +29,7 @@ import { posthog } from '@/lib/analytics';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { diagnoseModelGeoreference, type DiagnosisItem, type GeorefDiagnosis } from '@/lib/geo/georef-diagnosis';
 import { formatAreaOfUse } from './epsg-area-of-use';
+import { INSPECTOR_COUNT, InspectorSectionTrigger } from './inspector-ui';
 
 export interface GeorefDiagnosisSectionProps {
   modelId: string;
@@ -166,26 +168,22 @@ export default function GeorefDiagnosisSection({ modelId, editable, mapUnitScale
           {editable && outside.fix && <ul><FindingRow item={outside} onApply={() => apply(outside)} /></ul>}
         </div>
       )}
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        disabled={listed.length === 0}
-        className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-muted text-left transition-colors disabled:hover:bg-transparent"
-      >
-        <ChevronRight className={`h-3 w-3 text-muted-foreground shrink-0 transition-transform ${open ? 'rotate-90' : ''} ${listed.length === 0 ? 'invisible' : ''}`} />
-        <Stethoscope className="h-3 w-3 text-muted-foreground shrink-0" />
-        <span className="text-xs font-semibold text-foreground flex-1">{t('properties.georef.check.heading')}</span>
-        <span className="text-xs text-muted-foreground" data-testid="georef-check-summary">{summary}</span>
-      </button>
-      {open && listed.length > 0 && (
-        <ul className="divide-y divide-border border-t border-border">
-          {listed.map((item, index) => {
-            const notice = panelNotice(item.finding.code, shownInPanel);
-            return <FindingRow key={`${item.finding.code}-${index}`} item={item} notice={notice} onApply={applyFor(item, notice)} />;
-          })}
-        </ul>
-      )}
+      <Collapsible open={open && listed.length > 0} onOpenChange={setOpen} disabled={listed.length === 0}>
+        <InspectorSectionTrigger
+          className="disabled:hover:bg-transparent"
+          icon={<Stethoscope className="h-3 w-3 text-muted-foreground shrink-0" />}
+          title={t('properties.georef.check.heading')}
+          trailing={<span className={INSPECTOR_COUNT} data-testid="georef-check-summary">{summary}</span>}
+        />
+        <CollapsibleContent>
+          <ul className="divide-y divide-border border-t border-border">
+            {listed.map((item, index) => {
+              const notice = panelNotice(item.finding.code, shownInPanel);
+              return <FindingRow key={`${item.finding.code}-${index}`} item={item} notice={notice} onApply={applyFor(item, notice)} />;
+            })}
+          </ul>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }

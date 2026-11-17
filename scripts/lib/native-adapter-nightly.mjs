@@ -23,6 +23,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
+import { jobCondition } from './workflow-job-condition.mjs';
 import { permissionBlocks, workflowAsks } from './workflow-permissions.mjs';
 
 export const WORKFLOW = '.github/workflows/geometry-platform.yml';
@@ -206,6 +207,22 @@ export function jobBlock(text, id) {
 const has = (block, line) => block.split('\n').some((l) => l.trim() === line);
 
 /**
+ * Whether a job's own `if:` (never a step's), read in any scalar form with whitespace collapsed, is `expected`.
+ * An unreadable gate is reported once, as itself, and not again as a wrong one.
+ */
+function gatedOn(block, id, expected, out) {
+  try {
+    return (jobCondition(block, id)?.replace(/\s+/g, ' ') ?? null) === expected;
+  } catch (err) {
+    out.push(`${WORKFLOW}: ${err.message}`);
+    return true;
+  }
+}
+
+/** The job's steps, each from its `- ` line; `gated` is whether the step has an `if:` of its own. */
+const steps = (block) => block.split(/^ {6}- /m).slice(1).map((text) => ({ text, gated: /^(?: {8})?if:/m.test(text) }));
+
+/**
  * The nightly route: what lets a path leave the merge-queue lane (#10619). A
  * scheduled run has no path filter, so it covers every path (BATCH_EXCLUDE's
  * included) as long as it runs the whole lane on main, keeps the coverage
@@ -218,19 +235,21 @@ export function nightlyProblems(root, text) {
   if (range === null) {
     out.push(`${WORKFLOW}: no nightly-range job; a red or missing night would drop the commits it did not cover`);
   } else {
-    if (!has(range, `if: github.ref == 'refs/heads/main' && (${NIGHTLY_IF})`)) out.push(`${WORKFLOW}: nightly-range must run on every full run of main, gated on exactly: github.ref == 'refs/heads/main' && (${NIGHTLY_IF})`);
+    if (!gatedOn(range, 'nightly-range', `github.ref == 'refs/heads/main' && (${NIGHTLY_IF})`, out)) out.push(`${WORKFLOW}: nightly-range must run on every full run of main, gated on exactly: github.ref == 'refs/heads/main' && (${NIGHTLY_IF})`);
     if (/^ {4}needs:/m.test(range)) out.push(`${WORKFLOW}: nightly-range must not need another job; it records the range even when the lane fails`);
-    // Some upload-artifact step of the job, however its keys are ordered, uploads the record under its name.
-    const uploads = range.split(/^ {6}- /m).filter((step) => /\buses: actions\/upload-artifact@/.test(step));
-    const recorded = uploads.some((step) => has(step, 'name: nightly-range') && has(step, `path: \${{ runner.temp }}/nightly-range.json`));
-    if (!/run: node scripts\/native-adapter-nightly\.mjs range --out "\$RUNNER_TEMP\/nightly-range\.json"/.test(range) || !recorded) {
-      out.push(`${WORKFLOW}: nightly-range must run scripts/native-adapter-nightly.mjs range and upload nightly-range.json as the nightly-range artifact (the bisect reads it)`);
+    // The range step and an upload of its record, however their keys are ordered, with no step-level gate to switch them off.
+    const all = steps(range);
+    const ranged = all.find((s) => /run: node scripts\/native-adapter-nightly\.mjs range --out "\$RUNNER_TEMP\/nightly-range\.json"/.test(s.text));
+    const upload = all.find((s) => /\buses: actions\/upload-artifact@/.test(s.text) && has(s.text, 'name: nightly-range') && has(s.text, `path: \${{ runner.temp }}/nightly-range.json`));
+    if (!ranged || ranged.gated || !upload || upload.gated) {
+      out.push(`${WORKFLOW}: nightly-range must run scripts/native-adapter-nightly.mjs range and upload nightly-range.json as the nightly-range artifact (the bisect reads it), neither step gated by its own if:`);
     }
-    if (!has(range, 'fetch-depth: 0')) out.push(`${WORKFLOW}: nightly-range needs fetch-depth: 0 to list the commits since the last green run`);
+    // On the checkout the range step reads, not just somewhere in the job.
+    if (!all.some((s) => /\buses: actions\/checkout@/.test(s.text) && has(s.text, 'fetch-depth: 0'))) out.push(`${WORKFLOW}: nightly-range needs fetch-depth: 0 on its checkout to list the commits since the last green run`);
   }
   const reporter = jobBlock(text, 'report-scheduled-failure') ?? '';
   if (!has(reporter, 'needs: [nightly-range, native-adapter, native-corpus-result]')) out.push(`${WORKFLOW}: report-scheduled-failure must need nightly-range, native-adapter and native-corpus-result`);
-  if (!has(reporter, "if: always() && github.event_name == 'schedule' && (needs.nightly-range.result != 'success' || needs.native-adapter.result != 'success' || needs.native-corpus-result.result != 'success')")) {
+  if (!gatedOn(reporter, 'report-scheduled-failure', "always() && github.event_name == 'schedule' && (needs.nightly-range.result != 'success' || needs.native-adapter.result != 'success' || needs.native-corpus-result.result != 'success')", out)) {
     out.push(`${WORKFLOW}: report-scheduled-failure must report a red nightly-range, native-adapter or native-corpus-result`);
   }
   if (!has(reporter, `detail: \${{ needs.nightly-range.outputs.detail }}`) || !has(reporter, `labels: ${NIGHTLY_LABEL}`)) {

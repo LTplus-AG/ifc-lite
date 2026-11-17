@@ -15,13 +15,16 @@ const REPO = join(import.meta.dirname, '..');
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
 const TEST_WORKFLOW = '.github/workflows/test.yml';
 
+const BISECT = '.github/workflows/native-adapter-bisect.yml';
+
 /** A tree with the real workflow and every crate manifest the closure reads. */
 function copyTree(context) {
   const root = mkdtempSync(join(tmpdir(), 'native-adapter-triggers-'));
   context.after(() => rmSync(root, { recursive: true, force: true }));
-  const files = ['Cargo.toml', WORKFLOW, TEST_WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/workflow-job-condition.mjs', 'scripts/lib/is-main-entry.mjs', 'scripts/lib/workflow-permissions.mjs', '.github/workflows/report-scheduled-failure.yml', '.github/workflows/native-adapter-bisect.yml', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
-  // The bisect workflow is optional so a revert of it reads as an audit failure, not a copy error.
-  for (const f of files.filter((file) => file !== '.github/workflows/native-adapter-bisect.yml' || existsSync(join(REPO, file)))) {
+  const files = ['Cargo.toml', WORKFLOW, TEST_WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/workflow-job-condition.mjs', 'scripts/lib/is-main-entry.mjs', 'scripts/lib/workflow-permissions.mjs', '.github/workflows/report-scheduled-failure.yml', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
+  // The bisect workflow is optional, so a revert of it reads as an audit failure, not a copy error.
+  if (existsSync(join(REPO, BISECT))) files.push(BISECT);
+  for (const f of files) {
     mkdirSync(join(root, dirname(f)), { recursive: true });
     cpSync(join(REPO, f), join(root, f));
   }
@@ -420,6 +423,15 @@ test('a nightly route that loses its schedule, record, range-carrying report or 
     ['no schedule', (t) => t.replace("  schedule:\n    - cron: '30 2 * * *'\n", ''), 'on.schedule'],
     ['corpus off the nightly', (t) => t.replace(" || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120", "\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120"), 'native-corpus must be gated'],
     ['no record', (t) => t.replace(/  nightly-range:\n[\s\S]*?(?=\n {2}# One tracking issue)/, ''), 'no nightly-range job'],
+    ['record gated only on a step', (t) => {
+      const job = t.slice(t.indexOf('  nightly-range:\n'));
+      const gateLine = job.split('\n').find((l) => l.startsWith('    if: '));
+      assert.ok(gateLine, 'nightly-range has a job-level if:');
+      return t.replace(`  nightly-range:\n    name: Nightly coverage range\n${gateLine}\n`, '  nightly-range:\n    name: Nightly coverage range\n').replace('      - name: Name the commits this run covers\n', `      - name: Name the commits this run covers\n        ${gateLine.trim()}\n`);
+    }, 'nightly-range must run on every full run'],
+    ['range step switched off', (t) => t.replace('      - name: Name the commits this run covers\n', '      - name: Name the commits this run covers\n        if: false\n'), 'neither step gated by its own if:'],
+    ['record upload switched off', (t) => t.replace('      - name: Keep the coverage record for the bisect\n', '      - name: Keep the coverage record for the bisect\n        if: false\n'), 'neither step gated by its own if:'],
+    ['full clone on another step', (t) => t.replace('          fetch-depth: 0\n          filter: blob:none\n      - name: Name the commits', '          filter: blob:none\n      - name: Name the commits').replace('      - name: Keep the coverage record for the bisect\n', '      - name: Other\n        uses: some/action@v1\n        with:\n          fetch-depth: 0\n      - name: Keep the coverage record for the bisect\n'), 'fetch-depth: 0 on its checkout'],
     ['record off main', (t) => t.replace("    if: github.ref == 'refs/heads/main' && (", "    if: (github.ref == 'refs/heads/main' || true) && ("), 'nightly-range must run on every full run'],
     ['record behind the lane', (t) => t.replace('    name: Nightly coverage range\n', '    name: Nightly coverage range\n    needs: [native-adapter]\n'), 'must not need another job'],
     ['record never uploaded', (t) => t.replace(`          path: \${{ runner.temp }}/nightly-range.json\n`, `          path: \${{ runner.temp }}/other.json\n`), 'upload nightly-range.json as the nightly-range artifact'],
@@ -431,12 +443,11 @@ test('a nightly route that loses its schedule, record, range-carrying report or 
     ['renamed corpus aggregate', (t) => t.replace('    name: Native corpus result\n', '    name: Corpus result\n'), 'must keep the names the coverage record reads'],
     ['renamed workflow', (t) => t.replace('name: Geometry platform (native adapter)\n', 'name: Geometry platform\n'), "its name must stay 'Geometry platform (native adapter)'"],
   ];
-  const bisect = '.github/workflows/native-adapter-bisect.yml';
   cases.push(...[
     ['no trigger', (t) => t.replace("    workflows: ['Geometry platform (native adapter)']\n", "    workflows: ['Geometry platform']\n"), 'must start on workflow_run'],
     ['probe at the wrong commit', (t) => t.replace(`      bisect_sha: \${{ needs.plan.outputs.probe }}\n`, ''), 'the probe job must call'],
     ['probe under-granted', (t) => t.replace(`    with:\n      bisect_sha: \${{ needs.plan.outputs.probe }}\n      bisect_adapter: \${{ needs.plan.outputs.adapter == 'true' }}\n      bisect_shards: \${{ needs.plan.outputs.shards }}\n    # Everything geometry-platform.yml asks for, or GitHub refuses the run.\n    permissions:\n      actions: read\n      contents: read\n      issues: write\n`, `    with:\n      bisect_sha: \${{ needs.plan.outputs.probe }}\n    permissions:\n      contents: read\n`), 'must grant issues: write'],
-  ].map(([name, fn, expected]) => [name, fn, expected, bisect]));
+  ].map(([name, fn, expected]) => [name, fn, expected, BISECT]));
   for (const [name, fn, expected, file = WORKFLOW] of cases) {
     const root = copyTree(context);
     mutate(root, (t) => {
@@ -448,8 +459,18 @@ test('a nightly route that loses its schedule, record, range-carrying report or 
     assert.ok(failures.some((f) => f.includes(expected)), `${name}: ${failures.join('\n')}`);
   }
   const gone = copyTree(context);
-  rmSync(join(gone, bisect));
+  rmSync(join(gone, BISECT));
   assert.ok(audit(gone).some((f) => f.includes('native-adapter-bisect.yml is missing')));
+});
+
+test('an equivalent nightly-range gate folded into a >- block still audits clean', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => {
+    const out = t.replace("    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true))\n", "    if: >-\n      github.ref == 'refs/heads/main' &&\n      (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true))\n");
+    assert.notEqual(out, t, 'the mutation did not apply');
+    return out;
+  });
+  assert.deepEqual(audit(root), []);
 });
 
 test('a bisect probe that would run the adapter it was not asked for is reported', (context) => {

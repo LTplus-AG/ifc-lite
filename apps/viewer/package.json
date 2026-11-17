@@ -131,7 +131,7 @@
     "@ifc-lite/semantic": "workspace:*",
     "@ifc-lite/source-autodesk": "workspace:^",
     "@ifc-lite/ids-agent": "workspace:^",
-    "@playcanvas/splat-transform": "3.11.2",
+    "@playcanvas/splat-transform": "3.10.3",
     "playcanvas": "2.24.1"
   },
   "devDependencies": {

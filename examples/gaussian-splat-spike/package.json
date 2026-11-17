@@ -15,7 +15,7 @@
     "@luma.gl/core": "9.4.2",
     "@luma.gl/webgpu": "9.4.2",
     "@luma.gl/splats": "9.4.2",
-    "@playcanvas/splat-transform": "3.11.2"
+    "@playcanvas/splat-transform": "3.10.3"
   },
   "devDependencies": {
     "vite": "^8.3.8",

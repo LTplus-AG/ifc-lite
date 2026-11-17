@@ -132,7 +132,7 @@
     "docs:api": "node scripts/docs/build-api-reference.mjs"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.14.0",
+    "@axe-core/playwright": "^4.13.0",
     "@changesets/changelog-github": "^1.0.1",
     "@changesets/cli": "^3.0.3",
     "@changesets/parse": "1.0.0",

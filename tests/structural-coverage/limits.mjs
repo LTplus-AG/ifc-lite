@@ -32,9 +32,12 @@ export const KINDS = ['schema', 'policy', 'upstream'];
  * neither a CONST action (CONSTANT_SUBTYPE) nor an action whose representation has an IfcShapeAspect,
  * which StructuralVarying may write as an IFC2X3 varying action.
  */
-const proxied = (f, step, act) => Boolean(act) && !f.has('IFC2X3', f.name('IFC4', act.type))
-  && !(CONSTANT_SUBTYPE.has(act.type) && (act.args.at(-1)?.enum === 'CONST'
-    || step.of('IFCSHAPEASPECT').some((a) => a.args[4]?.ref !== undefined && a.args[4].ref === act.args[6]?.ref)));
+function proxied(f, step, act) {
+  if (!act || f.has('IFC2X3', f.name('IFC4', act.type))) return false;
+  if (!CONSTANT_SUBTYPE.has(act.type)) return true;
+  const shape = act.args[6]?.ref;
+  return act.args.at(-1)?.enum !== 'CONST' && (shape === undefined || !step.of('IFCSHAPEASPECT').some((a) => a.args[4]?.ref === shape));
+}
 
 /** The source record a `<path>#<id>` problem names. */
 const recordOf = (f, m) => f.file(m[1]).get(Number(m[2]));

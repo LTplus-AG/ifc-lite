@@ -116,6 +116,9 @@ export function nonConforming(intermediate, entity, registry) {
   });
 }
 
+/** Every distinct `why` of `nonConforming` records, so no non-conformance hides behind another. */
+const reasons = (list) => [...new Set(list.map((x) => x.why))].join('; ');
+
 /** The records of the row's entity a file contributes: every outcome counts this many as checked. */
 const sampleOf = (row, file) => file.step.of(row.entity).slice(0, MAX_RECORDS);
 
@@ -289,12 +292,11 @@ export default {
         if (rt.error) { problems.push(`${file.path}: ${row.schema} -> ${OTHER[row.schema]} -> ${row.schema} threw: ${rt.error.message.split('\n')[0]}`); checked += sampleOf(row, file).length; continue; }
         const copied = nonConforming(rt.there, row.entity, schemas.other.registry);
         const renamed = row.rooted ? renamedNonConforming(row, file, rt.there, schemas.other) : [];
-        const reasons = (list) => [...new Set(list.map((x) => x.why))].join('; ');
         const conforms = !copied.length && !renamed.length;
         if (!conforms) {
           problems.push(copied.length
             ? `${file.path}: ${copied.length} of ${rt.there.count(row.entity)} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (${reasons(copied)})`
-            : `${file.path}: ${renamed.length} ${row.entity} record(s) became records that do not conform to ${OTHER[row.schema]} (e.g. #${renamed[0].id} ${renamed[0].why})`);
+            : `${file.path}: ${renamed.length} ${row.entity} record(s) became records that do not conform to ${OTHER[row.schema]} (${reasons(renamed)})`);
         }
         // A file that does not conform earns no credit, but its values are still compared, so no loss hides behind it.
         const r = compareFile(row, file, rt, schemas);

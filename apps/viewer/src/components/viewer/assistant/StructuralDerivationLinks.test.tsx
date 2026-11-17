@@ -42,6 +42,16 @@ async function seed(federated: boolean, bytes: Uint8Array = FRAME) {
   return seeded;
 }
 
+/** The model as edited, written out with the beam B1's axis raised 0.5 m: a derived member left behind. */
+function raisedBeam(dataStore: Parameters<typeof editedModelBytes>[0], view: Parameters<typeof editedModelBytes>[1]): Uint8Array {
+  const derived = new TextDecoder().decode(editedModelBytes(dataStore, view));
+  const moved = derived
+    .replace(/#60=IFCCARTESIANPOINT\(\(0\.,0\.,3\.\)\);/, '#60=IFCCARTESIANPOINT((0.,0.,3.5));')
+    .replace(/#61=IFCCARTESIANPOINT\(\(6\.,0\.,3\.\)\);/, '#61=IFCCARTESIANPOINT((6.,0.,3.5));');
+  assert.notEqual(moved, derived, 'the beam axis points were rewritten');
+  return new TextEncoder().encode(moved);
+}
+
 const globalId = (expressId: number) => toGlobalIdFromModels(useViewerStore.getState().models, SAMPLE_MODEL, expressId);
 
 for (const federated of [false, true]) {
@@ -120,15 +130,9 @@ test('#10605 an analysis model derived this session is reported consistent, with
 
 test('#10605 a physical element moved since derivation is listed as stale, and its row selects it', async () => {
   // Derive, export, then move the beam B1 up 0.5 m: its derived member and record stay where they were.
-  await seed(false);
-  const { dataStore, view } = { dataStore: useViewerStore.getState().models.get(SAMPLE_MODEL)!.ifcDataStore!, view: useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)! };
+  const { dataStore, view } = await seed(false);
   commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
-  const derived = new TextDecoder().decode(editedModelBytes(dataStore, view));
-  const moved = derived
-    .replace(/#60=IFCCARTESIANPOINT\(\(0\.,0\.,3\.\)\);/, '#60=IFCCARTESIANPOINT((0.,0.,3.5));')
-    .replace(/#61=IFCCARTESIANPOINT\(\(6\.,0\.,3\.\)\);/, '#61=IFCCARTESIANPOINT((6.,0.,3.5));');
-  assert.notEqual(moved, derived, 'the beam axis points were rewritten');
-  await seed(true, new TextEncoder().encode(moved));
+  await seed(true, raisedBeam(dataStore, view));
 
   const root = render(<StructuralDerivationReview origin="test" />);
   await waitFor(() => button(root, /Derive and review/)?.disabled === false, 'the structural write path loads');
@@ -166,10 +170,7 @@ test('#10605 with no readable axes (IFC5), "no findings" does not claim the move
   // A derived model whose beam has moved since, so a check that read the axes would report it stale.
   const first = await seed(false);
   commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
-  const moved = new TextDecoder().decode(editedModelBytes(first.dataStore, first.view))
-    .replace(/#60=IFCCARTESIANPOINT\(\(0\.,0\.,3\.\)\);/, '#60=IFCCARTESIANPOINT((0.,0.,3.5));')
-    .replace(/#61=IFCCARTESIANPOINT\(\(6\.,0\.,3\.\)\);/, '#61=IFCCARTESIANPOINT((6.,0.,3.5));');
-  const { dataStore } = await seed(false, new TextEncoder().encode(moved));
+  const { dataStore } = await seed(false, raisedBeam(first.dataStore, first.view));
   const review = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
   // The physical axes are read for every schema but IFC5 (the derivation itself refuses IFC5 up front).
   dataStore.schemaVersion = 'IFC5';

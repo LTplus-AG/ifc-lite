@@ -11,6 +11,7 @@
 import { Fragment, type ReactNode } from 'react';
 import { effectiveMetadataRecord } from '@ifc-lite/parser';
 import { Button } from '@/components/ui/button';
+import { TEXT_LINK_CLASS } from '@/components/ui/text-link';
 import type { TranslationKey } from '@/i18n/en';
 import type { TranslationParameters } from '@/i18n/types';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -31,7 +32,7 @@ function useEntityLabel(modelId: string, expressId: number): string {
 export function ElementLink({ modelId, expressId }: { modelId: string; expressId: number }) {
   const { t } = useTranslation();
   const label = useEntityLabel(modelId, expressId);
-  return <Button type="button" variant="link" size="sm" className="h-auto p-0 font-normal text-inherit underline decoration-dotted"
+  return <Button type="button" variant="link" size="sm" className={`h-auto p-0 font-normal ${TEXT_LINK_CLASS}`}
     title={t('structuralDerive.selectElement')} onClick={() => selectOnlyEntity({ modelId, expressId })}>{label}</Button>;
 }
 

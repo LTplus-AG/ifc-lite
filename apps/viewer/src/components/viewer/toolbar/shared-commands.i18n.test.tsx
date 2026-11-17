@@ -148,6 +148,7 @@ const NOT_RENDERED_IN_THIS_STATE: SharedKey[] = [
   'exportCommands.screenshot.notReady',
   'exportCommands.screenshot.failed',
   'classVisibility.pinnedDetail.descriptionIgnored',
+  'classVisibility.structuralGlyphs.maskedHint', // the structural view is not Physical-only
   'classVisibility.fastGeometry.descriptionExact',
   'exportCommands.csv.item.entities',
   'exportCommands.csv.item.properties',

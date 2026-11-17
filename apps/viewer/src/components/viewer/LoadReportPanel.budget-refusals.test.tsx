@@ -5,10 +5,11 @@ import { afterEach, it } from 'node:test';
 import { render, cleanup } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store/index.js';
-import { registerLocale, resolve, setLocale } from '@/i18n/registry.js';
+import { registerLocale, resolve, resolveEnglish, setLocale } from '@/i18n/registry.js';
 import { miscPanelsBDe } from '@/i18n/locales/de/misc-panels-b.js';
 import { miscPanelsBFr } from '@/i18n/locales/fr/misc-panels-b.js';
 import { miscPanelsBRu } from '@/i18n/locales/ru/misc-panels-b.js';
+import { miscPanelsBIt } from '@/i18n/locales/it/misc-panels-b.js';
 import { LoadReportPanel } from './LoadReportPanel.js';
 
 const initial = useViewerStore.getState();
@@ -17,7 +18,7 @@ afterEach(() => { cleanup(); setLocale('en'); useViewerStore.setState(initial); 
 // #9268: translated status/rows must not say Clean for a budget-only load.
 // Actions, like the existing CSG/drop actions, are report text in every locale.
 for (const [locale, catalogue] of [['en', {}], ['de', miscPanelsBDe],
-  ['fr', miscPanelsBFr], ['ru', miscPanelsBRu], ['it', {}]] as const) {
+  ['fr', miscPanelsBFr], ['ru', miscPanelsBRu], ['it', miscPanelsBIt]] as const) {
   it(`issue 9268 budget-only Load Report is visible in ${locale}`, () => {
     if (locale !== 'en') registerLocale(locale, catalogue);
     setLocale(locale);
@@ -37,8 +38,11 @@ for (const [locale, catalogue] of [['en', {}], ['de', miscPanelsBDe],
     assert.match(ui.textContent ?? '', /1 work budget refusal.*missing or incomplete/);
     assert.match(ui.textContent ?? '', /#100 IfcWall/);
     // The row says which allowance refused the product, its limit and demand, translated.
-    const line = resolve('loadReportPanel.budgetRefusal', { budget: 'walk Items members', limit: 4, reached: 5, sourceId: 170 });
+    const params = { budget: 'walk Items members', limit: 4, reached: 5, sourceId: 170 };
+    const line = resolve('loadReportPanel.budgetRefusal', params);
     assert.notEqual(line, 'loadReportPanel.budgetRefusal');
+    // A missing translation falls back to English everywhere, so require the locale's own.
+    if (locale !== 'en') assert.notEqual(line, resolveEnglish('loadReportPanel.budgetRefusal', params), `${locale} is untranslated`);
     assert.ok(ui.textContent?.includes(line), `${locale}: ${line}`);
   });
 }

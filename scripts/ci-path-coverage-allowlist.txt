@@ -33,6 +33,8 @@ scripts/ai-eval/check-ai-eval-invariants.mjs tests/* # same fragment; the real i
 scripts/fixtures/fetch-fixtures.test.mjs tests/* # `tests` fragment; the fetcher targets tests/models from its manifest
 scripts/docs/generate-docs-sections.mjs tests/extensions # `tests` prefix fragment; sdk-canary.yml carries tests/extensions/canaries/** in its own paths
 scripts/docs/generate-docs-sections.mjs tests/perf-ratchets # `tests` prefix fragment; the generator reads no perf-ratchet ceiling file (#6959)
+scripts/check-test-revert-oracle.mjs tests/extensions # `tests` fragment from the `observer` label (`'tests'`), not a read; a diff touching only this has no production change, so the oracle exits "not applicable"
+scripts/check-test-revert-oracle.mjs tests/perf-ratchets # same label fragment, not a read; a ceilings-only diff has no production change, so the oracle exits "not applicable"
 scripts/docs/check-package-readmes.test.mjs docs/** # `docs` fragment; the gate reads packages/*/README.md
 scripts/docs/check-package-readmes.test.mjs README.md # root README fragment; the gate reads per-package READMEs
 scripts/check-swallowed-push.test.mjs README.md # fragment from the harness's fixture root, not an input
@@ -114,7 +116,7 @@ scripts/check-ci-path-coverage.mjs apps/landing/bench-data.json # asserted about
 scripts/check-ci-path-coverage.test.mjs .github/* # `.github` prefix fragment from a fixture path, not read
 scripts/check-ci-path-coverage.test.mjs apps/landing/** # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs docs/** # quoted in an assertion, not read
-scripts/check-ci-path-coverage.test.mjs tests/extensions # quoted in an assertion, not read
+scripts/check-ci-path-coverage.test.mjs tests/extensions # `tests` prefix fragment expanded over the tree, not read
 scripts/check-ci-path-coverage.test.mjs tests/perf-ratchets # `tests` prefix fragment expanded over the tree, not read (#6959)
 scripts/check-agents-md-size.test.mjs README.md # a temp-fixture FILENAME inside the harness (a repo built in a tmpdir to prove a non-AGENTS.md file is ignored), not a path in this repository.
 scripts/smlib-browser-worker-probe.mjs tests/** # a subdirectory the probe creates inside its temp /smlib staging root (mkdir(join(root, 'tests'))), not a path in this repository; every file it reads is under native/smlib-adapter/browser, covered by native/**

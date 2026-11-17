@@ -10,7 +10,7 @@
 //! 4 GiB is refused rather than wrapped.
 
 use ifc_lite_processing::data_model::{
-    extract_data_model_with, DataModelEntities, DataModelOptions,
+    extract_data_model_with, DataModelEntities, DataModelExtraction, DataModelOptions,
 };
 
 use crate::buf::Buf;
@@ -28,7 +28,7 @@ use crate::{CacheError, CacheOptions, CacheStats};
 const EMPTY_TABLE: [u8; 16] = [0; 16];
 
 pub(crate) fn build(source: &[u8], options: &CacheOptions) -> Result<(Vec<u8>, CacheStats), CacheError> {
-    let model = extract_data_model_with(
+    let DataModelExtraction { model, total_entities, .. } = extract_data_model_with(
         source,
         DataModelOptions {
             entities: DataModelEntities::Rooted,
@@ -50,7 +50,7 @@ pub(crate) fn build(source: &[u8], options: &CacheOptions) -> Result<(Vec<u8>, C
     ];
 
     let mut stats = CacheStats {
-        entity_count: model.total_entities as u64,
+        entity_count: total_entities as u64,
         entity_rows: model.entities.len() as u64,
         ..CacheStats::default()
     };
@@ -96,7 +96,7 @@ pub(crate) fn build(source: &[u8], options: &CacheOptions) -> Result<(Vec<u8>, C
         flags,
         source_hash,
         schema: schema_byte(schema),
-        entity_count: model.total_entities as u32,
+        entity_count: total_entities as u32,
         total_vertices: stats.total_vertices as u32,
         total_triangles: stats.total_triangles as u32,
     };

@@ -78,3 +78,23 @@ fn issue_9584_omitting_the_hash_sets_bit_3_and_zeroes_it() {
     assert_eq!(stats.mesh_count, 0);
     assert_eq!(u16::from_le_bytes([bytes[29], bytes[30]]), 6, "no Geometry section");
 }
+
+#[test]
+fn issue_9584_entity_count_is_the_file_wide_scan_not_the_rooted_row_count() {
+    // `extract_data_model_with` returns the narrowed model beside the scan's
+    // own total. The Rooted variant drops five rows in six, so reading the
+    // header count off `model.entities.len()` would under-report the file by
+    // that margin -- and every other assertion here still passes when it does,
+    // because both numbers would move together. Pin the gap itself.
+    let source = sample("building-architecture.ifc");
+    let (bytes, stats) = build_cache(&source, CacheOptions::default()).unwrap();
+    assert!(
+        stats.entity_count > stats.entity_rows,
+        "Rooted narrowing must leave fewer rows ({}) than instances scanned ({})",
+        stats.entity_rows,
+        stats.entity_count,
+    );
+    let header_count = u32::from_le_bytes(bytes[17..21].try_into().unwrap());
+    assert_eq!(u64::from(header_count), stats.entity_count, "header carries the scan total");
+    assert_ne!(u64::from(header_count), stats.entity_rows, "header must not carry the row count");
+}

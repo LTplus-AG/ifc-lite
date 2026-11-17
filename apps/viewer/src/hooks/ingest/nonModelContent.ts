@@ -74,7 +74,7 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const headText = decode(first);
   // Binary: a control byte (code point, for UTF-16) in the first 512; a headerless .splat can start with '<a '.
   // Never under an IFC name, where the router sends everything to the STEP parser: judge it as text there.
-  const binary = !ifcName && (utf16 ? /[\u0000-\u0008\u000e-\u001f]/.test(headText.slice(0, 256)) : bytes.subarray(0, 512).some((b) => b < 9 || (b > 13 && b < 32)));
+  const binary = !ifcName && (utf16 ? Array.from(headText.slice(0, 256), (c) => c.charCodeAt(0)).some(isControl) : bytes.subarray(0, 512).some(isControl));
   const firstChar = headText.trimStart()[0] ?? '';
   const headLead = afterStepComments(headText);
   const headIsStep = headLead !== null && STEP_MARKER.test(headLead);
@@ -116,6 +116,9 @@ export function textStartsLikeStep(text: string): boolean {
   const lead = afterStepComments(text);
   return lead !== null && STEP_MARKER.test(lead);
 }
+
+/** A C0 control other than tab, line feed, vertical tab, form feed or carriage return. */
+const isControl = (code: number) => code < 9 || (code > 13 && code < 32);
 
 function utf16Encoding(bytes: Uint8Array): 'utf-16le' | 'utf-16be' | null {
   return bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : null;

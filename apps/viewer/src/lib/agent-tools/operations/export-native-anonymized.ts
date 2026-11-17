@@ -23,6 +23,7 @@ const schema = { type: 'object', properties: {
 async function prepare(i: Input, check: () => void) {
   const model = nativeExportTarget(i.target_model_id); const store = await ensureModelExportReady(model.id); check(); if (!store) throw new Error('Native anonymization source store is unavailable.');
   const view = useViewerStore.getState().getMutationView(model.id);
+  // @raw-entity-enumeration-ok native anonymization exports source records; overlay-created seeds are refused on this same line
   if (i.seed_ids.some(id => view?.hasNewEntity(id) || store.entityIndex.byId.get(id) === undefined)) throw new Error('Native anonymization reads source records; overlay-created or unknown seeds cannot be exported.');
   if (i.anonymize.propertySets && i.relations.IfcRelDefinesByProperties) throw new Error('Native property-set anonymization and source property-set expansion are coupled; turn expansion off or explicitly keep property sets.');
   const related = collectRelatedEntities(store, i.seed_ids, i.relations); const locked = lockedAnonymizedIds(related, i.seed_ids);

@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { EpsgLookupError } from './EpsgLookupError';
+import { EpsgAreaOfUseLine } from './epsg-area-of-use';
 
 import { MAX_STARTER_RESULTS, COMMON_CRS, getStarterResults, toDialogResult, writeRecentCode, type EpsgResult } from './epsg-lookup-results';
 export type { EpsgResult } from './epsg-lookup-results';
@@ -235,6 +236,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
                   {result.datum && <span className="shrink-0">{result.datum}</span>}
                   {result.unit && <span className="shrink-0">{result.unit}</span>}
                 </div>
+                <EpsgAreaOfUseLine code={result.code} />
               </button>
             ))}
           </div>

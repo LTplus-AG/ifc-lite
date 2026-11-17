@@ -22,6 +22,11 @@
       "import": "./dist/review.js",
       "default": "./dist/review.js"
     },
+    "./georef-doctor": {
+      "types": "./dist/georef-doctor.d.ts",
+      "import": "./dist/georef-doctor.js",
+      "default": "./dist/georef-doctor.js"
+    },
     "./headless": {
       "types": "./dist/headless.d.ts",
       "import": "./dist/headless.js",

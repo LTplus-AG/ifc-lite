@@ -49,6 +49,9 @@ const LONE = [
   // supplemental.json is hand-authored evidence (licence elections), so it stays reviewable.
   /^licenses\/retained\/(manifest\.json$|README\.md$|THIRD_PARTY_NOTICES\.txt$)/,
   /(^|\/)THIRD_PARTY_NOTICES\.txt$/,
+  // The viewer operation catalogue, written by `pnpm viewer:operations:update` from the
+  // operation modules; scripts/check-viewer-operations.mjs fails when it drifts.
+  /^apps\/viewer\/src\/lib\/agent-tools\/operations\/generated\//,
 ];
 
 export const EXCLUDED = [...LONE, ...BULK];

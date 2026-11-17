@@ -3,6 +3,7 @@
 # Mark generated files to exclude from language statistics
 packages/codegen/generated/** linguist-generated=true
 packages/parser/src/generated/** linguist-generated=true
+apps/viewer/src/lib/agent-tools/operations/generated/** linguist-generated=true
 # Mark schema files as vendored (not our code)
 packages/codegen/schemas/** linguist-vendored=true
 # Exclude dist/build output

@@ -34,6 +34,8 @@ export const visibilityReasonsFr = {
   'visibilityChips.modelHiddenSingleCount': 'Modèle masqué · {hidden} sur {total} modèle',
   'visibilityChips.typeVisibilityCount': 'Classes IFC masquées · {count}',
   'visibilityChips.hostTypesCount': 'Classes masquées par l’hôte · {count}',
+  'visibilityChips.structuralAnalyticalOnly': 'Analytique seul',
+  'visibilityChips.structuralPhysicalOnly': 'Physique seul',
   'visibilityChips.clearAriaLabel': 'Effacer : {reason}',
   'visibilityChips.keptTooltip': 'Tout afficher conserve ce réglage. Modifiez-le dans sa commande.',
   'visibilityChips.resetEverything': 'Tout réinitialiser',

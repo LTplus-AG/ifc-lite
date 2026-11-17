@@ -107,6 +107,7 @@ export const sharedCommandsRu = {
   "classVisibility.grids.description": "Конструктивные оси",
   "classVisibility.structuralGlyphs.label": "Опоры и нагрузки",
   "classVisibility.structuralGlyphs.description": "Символы расчётной модели",
+  'classVisibility.structuralGlyphs.maskedHint': 'Скрыты в виде только физической модели',
   "classVisibility.mergeLayers.label": "Объединение многослойных стен",
   "classVisibility.mergeLayers.description": "Отображать стены одним телом · при перезагрузке",
   "classVisibility.fastGeometry.label": "Быстрая геометрия",

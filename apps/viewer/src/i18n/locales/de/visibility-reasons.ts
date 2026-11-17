@@ -34,6 +34,8 @@ export const visibilityReasonsDe = {
   'visibilityChips.modelHiddenSingleCount': 'Modell ausgeblendet · {hidden} von {total} Modell',
   'visibilityChips.typeVisibilityCount': 'Ausgeblendete IFC-Klassen · {count}',
   'visibilityChips.hostTypesCount': 'Vom Host ausgeblendete Klassen · {count}',
+  'visibilityChips.structuralAnalyticalOnly': 'Nur analytisch',
+  'visibilityChips.structuralPhysicalOnly': 'Nur physisch',
   'visibilityChips.clearAriaLabel': '{reason} aufheben',
   'visibilityChips.keptTooltip': 'Alle anzeigen behält diese Einstellung bei. Ändern Sie sie im zugehörigen Steuerelement.',
   'visibilityChips.resetEverything': 'Alles zurücksetzen',

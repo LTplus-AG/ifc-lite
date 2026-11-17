@@ -215,7 +215,7 @@ const probe = (glob) => glob.replaceAll('**', 'x/x').replaceAll('*', 'x');
 
 /**
  * True when `globs` match all of `<dir>/**`, not one probe file in it (`rust/geometry/x/x` does not cover
- * `rust/geometry/**`). Other wildcards need the identical entry; `<dir>/**` with a wildcard in `<dir>` never is.
+ * `rust/geometry/**`). Other wildcards need the identical entry; an entry with a wildcard before `/**` never covers.
  */
 function coversAll(glob, globs) {
   if (!glob.endsWith('/**')) return /[*?]/.test(glob) ? globs.includes(glob) : matchesAny(glob, globs);

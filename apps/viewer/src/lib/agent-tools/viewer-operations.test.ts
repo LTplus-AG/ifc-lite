@@ -20,6 +20,8 @@ import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { resetFeaturesForTest } from '@/lib/features';
 import { createMainViewerToolHost } from './main-viewer-host';
 import { dispatchMainViewerTool } from './main-viewer-dispatch';
+import { viewerOperationCoverage } from './operations/coverage';
+import { WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { viewerOperations } from './operations/registry';
 import type { ToolHost } from './types';
 
@@ -247,6 +249,18 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
       const [a, b] = await Promise.all([inspect('viewport.pick', { x: 0.25, y: 0.5 }), inspect('viewport.pick', { x: 0.25, y: 0.5 })]);
       assert.equal(a.isError, false, a.text); assert.equal(b.isError, false, b.text);
     } finally { unregister(); }
+  });
+  it('audits every built-in panel, tool and export while retaining native boundaries', () => {
+    const report = viewerOperationCoverage();
+    assert.equal(report.panel_count, 35); assert.equal(report.all_controls_automatable, false);
+    assert.deepEqual(new Set(report.panels.map(panel => panel.id)), new Set(WORKSPACE_PANELS.map(panel => panel.id)));
+    assert.deepEqual(report.panels.flatMap(panel => panel.gaps.map(gap => `${panel.id}: ${gap}`)), []);
+    assert.deepEqual(report.tools.flatMap(tool => tool.gaps.map(gap => `${tool.id}: ${gap}`)), []);
+    assert.deepEqual(report.exports.flatMap(item => item.gaps.map(gap => `${item.id}: ${gap}`)), []);
+    assert.equal(report.complete, true);
+    assert.ok(report.panels.every(panel => panel.controls.length > 0));
+    assert.ok(report.panels.some(panel => panel.controls.some(control => control.classification === 'native-boundary')));
+    assert.ok(report.human_only.length > 0);
   });
   it('refuses overflow coordinates and incomplete closed perimeters', async () => {
     assert.equal((await execute('measurements.distance', { start: [0, 0, 0], end: [1e308, 0, 0] })).isError, true);

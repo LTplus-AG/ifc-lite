@@ -12,6 +12,10 @@ const executionSchema = { type: 'object', properties: {
 }, required: ['operation_id'] } satisfies AgentInputSchema;
 export const OPERATION_SPECS = {
   ...operationArtifactSpecs,
+  viewer_operation_coverage: {
+    description: 'Read machine-readable migration coverage for all 35 panels, finite viewport tools and non-panel controls. Lists actual implemented IDs, remaining gaps and specific human-only host boundaries. Partial coverage is never reported as complete.',
+    inputSchema: { type: 'object', properties: {} } satisfies AgentInputSchema, readOnly: true,
+  },
   viewer_operations: {
     description: 'Search native parameterized viewer operations. Bounded discovery, with exact runtime schemas on describe. Opening panels is separate. Operations currently cover native camera, section planes, visibility, selection, appearance, lighting, native authoring review, analysis, documents, exports, sources and workflow execution. Discovery does not execute operations.',
     inputSchema: { type: 'object', properties: {
@@ -44,6 +48,11 @@ function jobId(args: Record<string, unknown>) {
 }
 export const operationTools: Record<keyof typeof OPERATION_SPECS, AgentTool> = {
   ...operationArtifactTools,
+  viewer_operation_coverage: { needs: 'none', async run(_host, args) {
+    if (Object.keys(args).length) invalid('Coverage accepts no arguments.');
+    const { viewerOperationCoverage } = await import('./operations/coverage');
+    return output(viewerOperationCoverage());
+  } },
   viewer_operations: { needs: 'none', async run(_host, args) {
     if (Object.keys(args).some(key => !['query', 'operation_id', 'offset', 'limit'].includes(key))) invalid('Unknown discovery argument.');
     if (args.query !== undefined && (typeof args.query !== 'string' || args.query.length > 200)) invalid('Invalid query.');

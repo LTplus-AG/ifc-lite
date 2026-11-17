@@ -151,6 +151,20 @@ linked-record actions and runtime extension contributions. Extensions register
 versioned contracts through their existing capability host and are removed on
 uninstall; unreviewed extension metadata never becomes authority to bypass gates.
 
+## Implementation status
+
+The native operation gateway now contains feature-family adapters and a generated,
+metadata-only catalogue with lazy execution. The finite control audit maps the 35
+built-in panels, registered viewport tools and toolbar exports to concrete native
+bindings, presentation equivalents or explicit host boundaries. The generator
+rejects stale operation references; viewer tests check panel/tool coverage.
+
+See [viewer operations](../guide/viewer-operations.md) for the implemented protocol.
+An audit classified as complete is not a claim that browser prompts, approval
+steps, future extension internals or every renderer success path run unattended.
+Native GPU/source prerequisites and missing fixture evidence remain explicit.
+The phases below retain the design and acceptance criteria.
+
 ## Bounded implementation phases
 
 1. **Inventory and contracts.** Enumerate current panels, actual active tools,

@@ -34,6 +34,12 @@ export interface PickParityHit {
 export interface PickParityRow {
   x: number;
   y: number;
+  /**
+   * `renderer.pick` also answers annotation overlays (grid axes, symbolic
+   * lines) on the CPU; such a hit names an id that owns no mesh, so the mesh
+   * raycast has nothing to compare it with. Reported, kept out of mesh parity.
+   */
+  annotation: boolean;
   gpu: PickParityHit | null;
   cpu: PickParityHit | null;
   /** GPU world point to CPU hit point, metres; null unless both hit. */
@@ -49,7 +55,8 @@ export interface PickParityReport {
   /** Visible flat pieces: above 500, `pick` draws the batches instead of hydrating. */
   visiblePieces: number;
   rows: PickParityRow[];
-  rect?: { gpu: number[]; cpu: number[] };
+  /** The marquee's ids, and a click plus CPU raycast at every texel it covers. */
+  rect?: { gpu: number[]; texels: PickParityRow[] };
 }
 
 const hit = (h: { expressId: number; modelIndex?: number; geometryItemId?: number }, world?: { x: number; y: number; z: number }): PickParityHit => ({
@@ -82,22 +89,26 @@ export async function runPickParity(renderer: Renderer, request: PickParityReque
   const height = Math.max(1, Math.round(css.height));
   const toCssX = (texel: number) => (texel + 0.5) * (css.width / width);
   const toCssY = (texel: number) => (texel + 0.5) * (css.height / height);
-  const batches = renderer.getScene().getBatchedMeshes();
+  const scene = renderer.getScene();
+  const batches = scene.getBatchedMeshes();
   const before = hydrated(renderer);
+  const sample = async (tx: number, ty: number): Promise<PickParityRow> => {
+    const x = toCssX(tx), y = toCssY(ty);
+    const gpu = await renderer.pick(x, y, request.options);
+    const cpu = renderer.raycastScene(x, y, request.options)?.intersection ?? null;
+    const g = gpu?.worldXYZ;
+    return {
+      x, y,
+      annotation: gpu !== null && !scene.hasMeshData(gpu.expressId) && !scene.isInstancedEntity(gpu.expressId),
+      gpu: gpu ? hit(gpu, g) : null,
+      cpu: cpu ? hit(cpu, cpu.point) : null,
+      distanceMetres: g && cpu ? Math.hypot(g.x - cpu.point.x, g.y - cpu.point.y, g.z - cpu.point.z) : null,
+    };
+  };
   const rows: PickParityRow[] = [];
   for (let r = 0; r < request.rows; r++) {
     for (let c = 0; c < request.columns; c++) {
-      const x = toCssX(Math.floor(((c + 0.5) / request.columns) * width));
-      const y = toCssY(Math.floor(((r + 0.5) / request.rows) * height));
-      const gpu = await renderer.pick(x, y, request.options);
-      const cpu = renderer.raycastScene(x, y, request.options)?.intersection ?? null;
-      const g = gpu?.worldXYZ;
-      rows.push({
-        x, y,
-        gpu: gpu ? hit(gpu, g) : null,
-        cpu: cpu ? hit(cpu, cpu.point) : null,
-        distanceMetres: g && cpu ? Math.hypot(g.x - cpu.point.x, g.y - cpu.point.y, g.z - cpu.point.z) : null,
-      });
+      rows.push(await sample(Math.floor(((c + 0.5) / request.columns) * width), Math.floor(((r + 0.5) / request.rows) * height)));
     }
   }
   const report: PickParityReport = {
@@ -109,16 +120,13 @@ export async function runPickParity(renderer: Renderer, request: PickParityReque
   };
   if (request.rect) {
     // Texel bounds, as the picker floors them; CSS corners at those texel centres.
+    // Every texel inside is also clicked and raycast, so the marquee is checked
+    // texel by texel rather than as bare id sets (coincident surfaces tie).
     const { x0, y0, x1, y1 } = request.rect;
     const gpu = await renderer.pickRect(toCssX(x0), toCssY(y0), toCssX(x1), toCssY(y1), request.options);
-    const cpu = new Set<number>();
-    for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) {
-        const id = renderer.raycastScene(toCssX(x), toCssY(y), request.options)?.intersection.expressId;
-        if (id !== undefined) cpu.add(id);
-      }
-    }
-    report.rect = { gpu: [...gpu].sort((a, b) => a - b), cpu: [...cpu].sort((a, b) => a - b) };
+    const texels: PickParityRow[] = [];
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) texels.push(await sample(x, y));
+    report.rect = { gpu: [...gpu].sort((a, b) => a - b), texels };
   }
   return report;
 }

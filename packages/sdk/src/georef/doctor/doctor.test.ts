@@ -10,7 +10,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveCrs } from '@ifc-lite/geo';
 import { deriveSitePosition } from './site-derivation.js';
 import { openModel, type HeadlessModelSession } from '../../headless.js';
@@ -105,7 +105,12 @@ describe('the taught failure modes: check → fix where fixable → check again'
 });
 
 describe('a correct model', () => {
+  // The export header's FILE_NAME carries a wall-clock timestamp, so two exports
+  // a second apart differ by that alone: freeze Date for the byte comparison.
+  afterEach(() => { vi.useRealTimers(); });
+
   it.each(['clean-lv95-mm', 'clean-ifc2x3-epset', 'control-terrain-epsg3006'])('%s: no finding, nothing to apply, the export unchanged by fix()', async (name) => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-17T07:24:02Z') });
     const model = await open(fixture(name));
     try {
       const before = String(model.bim.export.ifc());

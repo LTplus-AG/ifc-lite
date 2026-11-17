@@ -40,6 +40,7 @@ import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
 import { seedableModelsInScope, shareRefusesEveryModel, shareScopeIsChoice, unshareableModelsInScope, type ShareScope } from '@/lib/collab/share-scope';
+import { useCollabShareReview } from '@/lib/collab/share-review';
 import { useShareRoomCreation } from './useShareRoomCreation';
 import { ShareScopeField } from './ShareScopeField';
 
@@ -75,6 +76,13 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   // The room is created only on an explicit "Create link": creating it
   // uploads the model (#5599), and its scope is fixed by the seed (#4444).
   const [scopeConfirmed, setScopeConfirmed] = useState(false);
+  const shareCandidate = useCollabShareReview(state => state.candidate);
+  useEffect(() => {
+    if (!open || !shareCandidate) return;
+    const state = useViewerStore.getState();
+    if (shareCandidate.mutationVersion !== state.mutationVersion || shareCandidate.geometryVersion !== state.geometryContentVersion || shareCandidate.roomId !== state.collabRoomId) { useCollabShareReview.setState({ candidate: null }); return; }
+    setScope(shareCandidate.scope); setRole(shareCandidate.role);
+  }, [open, shareCandidate]);
   const [link, setLink] = useState<string>('');
   // Room creation in flight (no room yet) / invite mint in flight.
   const [minting, setMinting] = useState(false);

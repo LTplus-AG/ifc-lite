@@ -4435,6 +4435,4741 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "clashOperations"
   },
   {
+    "id": "bcf.comments",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read a bounded native comment metadata/text page or one exact comment. Complete texts include their exact expected_comment edit guard; explicitly incomplete text can be inspected using bcf.readText. No viewpoint media is copied.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "comment_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "topic_id",
+        "offset",
+        "limit",
+        "comment_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string"
+        },
+        "comments": {
+          "type": "array",
+          "items": {}
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "topic_id",
+        "comments",
+        "page"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.viewpoints",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read bounded native viewpoint camera/media-availability/component-count metadata or one exact viewpoint. Screenshot and bitmap bodies remain in native state for application and ZIP export; they are never duplicated into metadata.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "viewpoint_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "topic_id",
+        "offset",
+        "limit",
+        "viewpoint_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string"
+        },
+        "viewpoints": {
+          "type": "array",
+          "items": {}
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "topic_id",
+        "viewpoints",
+        "page"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.readText",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read an exact bounded UTF-16 text segment from a native topic title/description or comment when metadata explicitly reports incomplete text. No trimming or normalization is applied; expected-value edits still compare complete native values.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "field": {
+          "type": "string",
+          "enum": [
+            "title",
+            "description",
+            "comment"
+          ]
+        },
+        "comment_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        }
+      },
+      "required": [
+        "topic_id",
+        "field",
+        "comment_id",
+        "offset",
+        "length"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "number"
+        },
+        "total_chars": {
+          "type": "number"
+        },
+        "next_offset": {}
+      },
+      "required": [
+        "text",
+        "offset",
+        "total_chars",
+        "next_offset"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.projectExtensions",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read a bounded page of one declared native project vocabulary for existing issue type/status/priority/label/assignee/stage controls.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "topicTypes",
+            "topicStatuses",
+            "priorities",
+            "topicLabels",
+            "users",
+            "stages"
+          ]
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "required": [
+        "kind",
+        "offset",
+        "limit"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "items": {}
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "kind",
+        "values",
+        "page"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "document.prepareReportRefresh",
+    "version": 1,
+    "owner": "document",
+    "description": "Prepare the native deterministic saved AI-report refresh against recaptured current source evidence under the compact SHA-256 revision from document.inspect/library. Returns a host-owned token and exact per-human-block conflict choices; no network generation or document write occurs.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_revision": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "document_id",
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "claims": {
+          "type": "array"
+        },
+        "conflicts": {
+          "type": "array"
+        },
+        "models_changed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "token",
+        "document_id",
+        "claims",
+        "conflicts",
+        "models_changed"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "document.applyReportRefresh",
+    "version": 1,
+    "owner": "document",
+    "description": "Apply one exact prepared native refresh. Only listed human-block conflict IDs may be replaced; all other human edits and deletions retain the native refresh semantics. Rechecks source freshness and exact document at durable admission, returns native CAS persistence outcome, and preserves a failed-save candidate for exact retry.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "replace_block_ids": {
+          "type": "array",
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "required": [
+        "token",
+        "replace_block_ids"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "saved": {
+          "type": "boolean"
+        },
+        "storage": {
+          "type": "object"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "saved",
+        "storage",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "document.discardReportRefresh",
+    "version": 1,
+    "owner": "document",
+    "description": "Discard only this host-owned native refresh preview. Does not alter a document or discard any staged unsaved native persistence evidence.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "discarded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "discarded"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.prepareReportDraft",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Prepare the actual native checked AI report from an exact completed native evidence conversation. Uses canonical fact/citation checking, generator block provenance and native language selection; returns a host-owned review token. No generic document import can substitute checked AI provenance.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "de",
+            "fr",
+            "it",
+            "es",
+            "nl",
+            "pt",
+            "da",
+            "sv",
+            "nb",
+            "fi",
+            "pl",
+            "cs"
+          ]
+        },
+        "expected_evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_answer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        }
+      },
+      "required": [
+        "name",
+        "language",
+        "expected_evidence_id",
+        "expected_answer"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "document_json": {
+          "type": "string"
+        },
+        "claims": {
+          "type": "array"
+        },
+        "contradicted_claim_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "historical": {
+          "type": "boolean"
+        },
+        "language": {
+          "type": "string"
+        },
+        "declared_language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "token",
+        "document_id",
+        "document_json",
+        "claims",
+        "contradicted_claim_ids",
+        "historical",
+        "language",
+        "declared_language"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.reviseReportDraftClaim",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Edit or remove one exact native checked report claim through the canonical reviewer reducer. Rechecks the current native conversation and returns the recomposed checked document, including any remaining contradicted claims.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_document_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 2000000
+        },
+        "claim_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "edit",
+            "remove"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "token",
+        "expected_document_json",
+        "claim_id",
+        "action",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "document_json": {
+          "type": "string"
+        },
+        "claims": {
+          "type": "array"
+        },
+        "contradicted_claim_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "historical": {
+          "type": "boolean"
+        },
+        "language": {
+          "type": "string"
+        },
+        "declared_language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "token",
+        "document_id",
+        "document_json",
+        "claims",
+        "contradicted_claim_ids",
+        "historical",
+        "language",
+        "declared_language"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.saveReportDraft",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Save the exact reviewed checked native AI-report candidate through saveReportDraft, retaining canonical citation/fact/provenance validation, discussion freshness and native document CAS persistence. Contradicted claims must first be edited or removed. Does not overwrite another document and never treats provider completion as report approval.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "reviewed_document_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 2000000
+        }
+      },
+      "required": [
+        "token",
+        "reviewed_document_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "saved": {
+          "type": "boolean"
+        },
+        "storage": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "document_id",
+        "saved",
+        "storage"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.discardReportDraft",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Discard this host-owned checked native report preview. Preserves any staged native document evidence from an earlier refused persistence attempt.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "discarded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "discarded"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.captureAttachments",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Explicitly capture the native selected-element ownership sidecar, compressed viewport screenshot and/or prepared native Room review for exactly one evidence conversation. Returns an opaque per-send attachment handle; no attachment is sent automatically.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "selection": {
+          "type": "boolean"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "room_candidate_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "room_model_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "evidence_id",
+        "selection",
+        "screenshot",
+        "room_candidate_id",
+        "room_model_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "attachment_id": {
+          "type": "string"
+        },
+        "evidence_id": {
+          "type": "string"
+        },
+        "selection_count": {
+          "type": "number"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "rooms": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "attachment_id",
+        "evidence_id",
+        "selection_count",
+        "screenshot",
+        "rooms"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.removeAttachments",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Discard one opaque native per-send attachment capture without sending it.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "removed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "removed"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.exportSidecar",
+    "version": 1,
+    "owner": "compare",
+    "description": "Export the native identity-map or lineage sidecar pinned to full source SHA-256 digests and authored key scheme, through the shared native serializer.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "identity-map",
+            "lineage"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.importSidecar",
+    "version": 1,
+    "owner": "compare",
+    "description": "Import reviewed identity-map entries only when native full-source digests, compared pair and authored key scheme match. Native ownership-aware identity admission reports every refused alias; rerun compare to publish the updated diff.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "refused": {
+          "type": "array",
+          "items": {}
+        },
+        "accepted": {
+          "type": "number"
+        },
+        "requires_rerun": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "refused",
+        "accepted",
+        "requires_rerun"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "review.exportWorkspace",
+    "version": 1,
+    "owner": "review",
+    "description": "Export native portable review decisions using the canonical backup codec, preserving unsaved review recovery evidence and statuses.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "review.importWorkspace",
+    "version": 1,
+    "owner": "review",
+    "description": "Import only review-workspace records from a canonical native backup. Native atomic conflict planning preserves differing originals under fresh identities; no assistant answer becomes a review decision implicitly.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "imported": {
+          "type": "number"
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "imported",
+        "storage"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.editDraftMembers",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Remove one exact native finding identity or split explicit members through the native ownership-aware draft reducer and viewpoint reframe, then await guarded durable save.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_modified_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "topic_guid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "remove",
+            "split"
+          ]
+        },
+        "member_identities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "batch_id",
+        "expected_modified_at",
+        "topic_guid",
+        "action",
+        "member_identities",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "batch": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "batch",
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.reconcileDraft",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Compare a draft with the exact current native clash run, apply one topic proposal or draft unplaced findings. Uses the native group ownership resolver and captured world frame; never silently moves findings held by another topic.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_modified_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "preview",
+            "apply-topic",
+            "draft-unplaced"
+          ]
+        },
+        "expected_run_digest": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "topic_guid": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "batch_id",
+        "expected_modified_at",
+        "action",
+        "expected_run_digest",
+        "topic_guid",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "proposal": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "proposal",
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.resolveOutbox",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Use native uncertain-outcome server checking, exact recorded candidate selection, absent-check requeue or remote-conflict overwrite/discard. This only changes durable recovery state; it never dispatches publication writes.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "publication_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "entry_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_entry_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "check",
+            "requeue",
+            "candidate",
+            "overwrite",
+            "discard"
+          ]
+        },
+        "candidate_guid": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "publication_id",
+        "entry_id",
+        "expected_entry_json",
+        "action",
+        "candidate_guid"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "saved": {
+          "type": "boolean"
+        },
+        "outcome": {}
+      },
+      "required": [
+        "saved",
+        "outcome"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.connect",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Use the existing native password/token/client-credentials connector and session token lifecycle. Secret inputs are not returned. Interactive OAuth stays with its native browser popup.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "password",
+            "token",
+            "client-credentials"
+          ]
+        },
+        "server_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        },
+        "username": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "password": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "token": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "client_id": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "client_secret": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "expected_account_json": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "mode",
+        "server_url",
+        "username",
+        "password",
+        "token",
+        "client_id",
+        "client_secret",
+        "expected_account_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "saved": {
+          "type": "boolean"
+        },
+        "connection": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "saved",
+        "connection"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.disconnect",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Clear one exact native BCF account through its existing credential teardown/change notification. Does not delete any server data.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_server_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        },
+        "expected_user_id": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "expected_server_url",
+        "expected_user_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "disconnected": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "disconnected"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.join",
+    "version": 1,
+    "owner": "collab",
+    "description": "Join an exact room with a supplied existing token using native role parsing, sync/reconstruction and teardown. Never accepts a caller-chosen role or returns credentials. A join that would publish local annotations waits for native approval.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "room_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "room_id",
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "room_id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.identity",
+    "version": 1,
+    "owner": "collab",
+    "description": "Edit the native local display identity and, when connected, its authorized presence record. Does not change account id, room token or role.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        }
+      },
+      "required": [
+        "name",
+        "color"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "color"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.prepareRoom",
+    "version": 1,
+    "owner": "collab",
+    "description": "Validate and prepare an exact native share scope/role for the real Share consent dialog. New room creation uploads models only after the native Create link approval; no token is returned.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "active",
+            "all"
+          ]
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "commenter",
+            "editor"
+          ]
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_geometry_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "scope",
+        "role",
+        "expected_mutation_version",
+        "expected_geometry_version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "candidate": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "seed_failure": {}
+      },
+      "required": [
+        "state",
+        "candidate",
+        "seed_failure"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.revokeInvite",
+    "version": 1,
+    "owner": "collab",
+    "description": "Revoke the last native share link with the current native admin token. Does not disclose either token.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_room_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "expected_room_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "revoked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "revoked"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.removePeer",
+    "version": 1,
+    "owner": "collab",
+    "description": "Use native room administration to disconnect an exact peer client id; server token authority remains authoritative.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_room_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "peer_client_id": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "expected_room_id",
+        "peer_client_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "removed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "removed"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.server",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read native BCF server connection identity and selected project without exposing access/refresh tokens or app credentials.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "connection": {}
+      },
+      "required": [
+        "connection"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.serverProjects",
+    "version": 1,
+    "owner": "bcf",
+    "description": "List BCF projects using the existing native connected provider and token lifecycle.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "read"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "projects": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "projects"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.pullProject",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Pull and hydrate one server project through native BCF synchronization. Replacing local topics requires the exact inspected current local project id.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "project_name": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "replace_project_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "project_id",
+        "project_name",
+        "replace_project_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "warnings": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "project",
+        "warnings"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.outbox",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read durable native BCF publication attempts, receipts, unknown outcomes and blocked entries.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "publications": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "publications"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.preparePublication",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Build the exact native draft publication plan and server preflight, then stage the real native Publish review. No remote writes are dispatched; returns waiting-for-approval with exact payloads and digest.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "topic_types": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "to": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "batch_id",
+        "project_id",
+        "topic_types"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "candidate": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "state",
+        "candidate"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.publish",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Present an already prepared exact publication candidate for the native Publish click. The bridge command grant cannot approve external BCF writes.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "candidate_id",
+        "digest"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.drafts",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Initialize and inspect native draft batches, topic/member identities and save status.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "batches": {
+          "type": "array",
+          "items": {}
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "batches",
+        "storage"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.editDraftTopic",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Edit an exact native draft topic through the native draft codec/reducer and await durable save.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_modified_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "topic_guid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "topic_type": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "priority": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "labels": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "assigned_to": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "batch_id",
+        "expected_modified_at",
+        "topic_guid",
+        "title",
+        "description",
+        "topic_type",
+        "status",
+        "priority",
+        "labels",
+        "assigned_to"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "batch": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "batch",
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.addDraftComment",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Add a local draft comment through the native draft reducer.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_modified_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "topic_guid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "comment": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "batch_id",
+        "expected_modified_at",
+        "topic_guid",
+        "comment"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "batch": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "batch",
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.deleteDraftTopic",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Delete one exact draft topic and preserve native membership invariants.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_modified_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "topic_guid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "batch_id",
+        "expected_modified_at",
+        "topic_guid"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "batch": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "batch",
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.mergeDraftTopics",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Merge explicit draft topics using the native ownership-aware merge reducer.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_modified_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "topic_guids": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "required": [
+        "batch_id",
+        "expected_modified_at",
+        "topic_guids"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "batch": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "batch",
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.exportDraft",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Export one native draft batch as a BCF ZIP with its native provenance footer and ownership checks.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.importDrafts",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read native BCF draft provenance, validate ownership and adopt imported batches without overwriting conflicting local evidence.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "imported": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "adopted": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "imported",
+        "adopted"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.exportReport",
+    "version": 1,
+    "owner": "compare",
+    "description": "Build CSV from the native comparison report serializer, including IFC fields, change classification and safe CSV escaping.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.saveReport",
+    "version": 1,
+    "owner": "compare",
+    "description": "Capture the current native comparison as immutable portable evidence and await durable storage.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.savedReports",
+    "version": 1,
+    "owner": "compare",
+    "description": "Initialize and read native saved comparison evidence and storage status.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "reports": {
+          "type": "array",
+          "items": {}
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "reports",
+        "storage"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.renameSavedReport",
+    "version": 1,
+    "owner": "compare",
+    "description": "Rename one native saved comparison without changing its evidence.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.deleteSavedReport",
+    "version": 1,
+    "owner": "compare",
+    "description": "Delete one exact saved comparison through the native CAS content library.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "deleted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "deleted"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.openSavedReport",
+    "version": 1,
+    "owner": "compare",
+    "description": "Focus one exact native immutable comparison report in its owning panel.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "opened": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "opened"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.identityDecision",
+    "version": 1,
+    "owner": "compare",
+    "description": "Record one explicit identity decision for the exact current native model pair and authored key scheme. Decisions remain pair-scoped; returns refused aliases and requires rerunning the comparison when the panel cache is absent.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "accept",
+            "reject",
+            "remove"
+          ]
+        },
+        "base_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "head_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "base": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "here": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "action",
+        "base_model_id",
+        "head_model_id",
+        "base",
+        "here",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "refused": {
+          "type": "array",
+          "items": {}
+        },
+        "accepted": {
+          "type": "array",
+          "items": {}
+        },
+        "rejected": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "action",
+        "refused",
+        "accepted",
+        "rejected"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.captureRun",
+    "version": 1,
+    "owner": "compare",
+    "description": "Hold the current native clash or validation run for cross-revision reconciliation; never reruns or fabricates a check.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "clash",
+            "validation"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.runs",
+    "version": 1,
+    "owner": "compare",
+    "description": "Read held native run captures and the current reconciliation result.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "runs": {
+          "type": "array",
+          "items": {}
+        },
+        "reconciliation": {}
+      },
+      "required": [
+        "runs",
+        "reconciliation"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.reconcile",
+    "version": 1,
+    "owner": "compare",
+    "description": "Reconcile two exact held native runs against the current comparison; reports native compatibility/refusal reasons and does not infer resolved from missing coverage.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "base_run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "head_run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "base_run_id",
+        "head_run_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "outcome"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.savedAnalysisRuns",
+    "version": 1,
+    "owner": "compare",
+    "description": "Initialize and inspect immutable native analysis-run evidence and save status.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "runs": {
+          "type": "array",
+          "items": {}
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "runs",
+        "storage"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.saveAnalysisRun",
+    "version": 1,
+    "owner": "compare",
+    "description": "Save one held native run through the portable source-identity codec and immutable analysis-run content library.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.bindSavedAnalysisRun",
+    "version": 1,
+    "owner": "compare",
+    "description": "Bind saved evidence only to exactly matching native model content/placement, returning all native refusal reasons instead of guessing model identities.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.deleteSavedAnalysisRun",
+    "version": 1,
+    "owner": "compare",
+    "description": "Delete one exact native immutable saved analysis run through its content library.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "deleted": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "deleted",
+        "id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.removeRun",
+    "version": 1,
+    "owner": "compare",
+    "description": "Remove one exact held run and invalidate reconciliation that depended on it.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "removed": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "removed"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.captureEvidence",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Capture one explicitly selected native evidence source and reset the assistant conversation using its native budget/provenance lifecycle.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "clash",
+            "duplicates",
+            "validation",
+            "manualChecklist",
+            "lens",
+            "bcf",
+            "compare",
+            "changes",
+            "changeSets",
+            "zones",
+            "placement",
+            "schedule",
+            "semantic",
+            "layerDiff",
+            "review",
+            "lists",
+            "charts",
+            "cost",
+            "measurements",
+            "drawingMeasurements",
+            "deviation",
+            "loadReport",
+            "selection",
+            "flow",
+            "flowRun",
+            "script",
+            "document"
+          ]
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "source"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.send",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Send one prompt against an exact native evidence snapshot using the already configured provider, credentials, entitlement and root budget. Awaits the actual streaming terminal response; cancellation aborts only this request.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000
+        },
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "attachment_id": {
+          "type": "string",
+          "nullable": true,
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "prompt",
+        "evidence_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "completed": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "error": {},
+        "messages": {
+          "type": "array",
+          "items": {}
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "completed",
+        "status",
+        "error",
+        "messages",
+        "budget"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.captureViewpoint",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Capture the live native camera, selection, visibility and clipping into a topic. Snapshots use the native GPU readback; missing renderer is an explicit host error.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "snapshot": {
+          "type": "boolean"
+        },
+        "selection": {
+          "type": "boolean"
+        },
+        "visibility": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "topic_id",
+        "snapshot",
+        "selection",
+        "visibility"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string"
+        },
+        "viewpoint": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "topic_id",
+        "viewpoint"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.applyViewpoint",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Apply a known BCF viewpoint through the exact native camera/section/selection/visibility transition.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "selection"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "viewpoint_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "animate": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "topic_id",
+        "viewpoint_id",
+        "animate"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.deleteViewpoint",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Delete an existing local viewpoint using the native topic deletion contracts.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "viewpoint_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "topic_id",
+        "viewpoint_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "deleted": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.read",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read bounded native project/topic metadata. Defaults to 20 topics with a 192 KiB page budget; use next_offset or topic_id, and bcf.comments/bcf.viewpoints for child pages. Screenshot/media bodies stay in native state for application and ZIP export. expected_modified is the exact native optimistic edit guard.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "nullable": true,
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "nullable": true,
+          "minimum": 1,
+          "maximum": 20
+        },
+        "topic_id": {
+          "type": "string",
+          "nullable": true,
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "project": {},
+        "page": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "author": {
+          "type": "string"
+        },
+        "author_complete": {
+          "type": "boolean"
+        },
+        "active_topic_id": {},
+        "overlay": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "project",
+        "page",
+        "author",
+        "author_complete",
+        "active_topic_id",
+        "overlay"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.createProject",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Create an empty local BCF project. Refuses to replace an existing project.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "project_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.createTopic",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Create a local issue using the native BCF topic factory. Does not publish remotely.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "guid": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "creationAuthor": {},
+        "comment_count": {
+          "type": "number"
+        },
+        "viewpoint_count": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "guid",
+        "title",
+        "creationAuthor",
+        "comment_count",
+        "viewpoint_count"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.comment",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Add a comment to an existing local BCF topic.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "comment": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "id",
+        "comment"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "guid": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "comment": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "guid",
+        "author",
+        "comment",
+        "date"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.deleteTopic",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Delete one local topic using the native deletion contract.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "deleted": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.selectTopic",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Select a known BCF topic for inspection.",
+    "needs": "viewer",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "guid": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "guid",
+        "title"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.overlay",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Set native BCF viewpoint markers visibility.",
+    "needs": "viewer",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "visible": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "visible"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.author",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Set the local author used for subsequent topics and comments.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "author": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "author"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.updateTopic",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Update local topic fields with an optimistic modification-date guard.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_modified": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "priority": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "assigned_to": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "id",
+        "expected_modified",
+        "title",
+        "description",
+        "status",
+        "priority",
+        "assigned_to"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "guid": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "modifiedDate": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "guid",
+        "title",
+        "modifiedDate"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.updateComment",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Edit a local BCF comment only if its current text still matches the inspected value.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "comment_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_comment": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "comment": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "topic_id",
+        "comment_id",
+        "expected_comment",
+        "comment"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string"
+        },
+        "comment_id": {
+          "type": "string"
+        },
+        "comment": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic_id",
+        "comment_id",
+        "comment"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.deleteComment",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Delete one inspected local comment using the native deletion contract and an expected-text guard.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "topic_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "comment_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_comment": {
+          "type": "string",
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "topic_id",
+        "comment_id",
+        "expected_comment"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "deleted": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.import",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Read a bounded BCF ZIP using the native archive safety checks. Requires the exact current project id (or empty for no project) before replacing local state.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "base64": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000000
+        },
+        "replace_project_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "base64",
+        "replace_project_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "topics": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "topics"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "bcf.export",
+    "version": 1,
+    "owner": "bcf",
+    "description": "Write the complete native BCF project, including all stored screenshots and media, through the native ZIP writer into a host-owned artifact.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.read",
+    "version": 1,
+    "owner": "compare",
+    "description": "Read current native comparison configuration and report.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "base_model_id": {},
+        "head_model_id": {},
+        "scope": {
+          "type": "string"
+        },
+        "excluded_types": {
+          "type": "array",
+          "items": {}
+        },
+        "match_by_content": {
+          "type": "boolean"
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "error": {},
+        "result": {}
+      },
+      "required": [
+        "base_model_id",
+        "head_model_id",
+        "scope",
+        "excluded_types",
+        "match_by_content",
+        "running",
+        "error",
+        "result"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.showUnchanged",
+    "version": 1,
+    "owner": "compare",
+    "description": "Set the native unchanged-entity overlay visibility channel.",
+    "needs": "viewer",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "show_unchanged": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "show_unchanged"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.run",
+    "version": 1,
+    "owner": "compare",
+    "description": "Run and publish a parameterized native comparison, including authored IFC key selection, report and viewport overlay. Uses the same publish function as the UI and never accepts identity suggestions automatically.",
+    "needs": "model",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "head_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "both",
+            "data",
+            "geometry"
+          ]
+        },
+        "excluded_types": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "match_by_content": {
+          "type": "boolean"
+        },
+        "key_property": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "head_model_id",
+        "scope",
+        "excluded_types",
+        "match_by_content",
+        "key_property"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "baseModelId": {
+          "type": "string"
+        },
+        "headModelId": {
+          "type": "string"
+        },
+        "baseName": {
+          "type": "string"
+        },
+        "headName": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "geometryUnavailable": {
+          "type": "boolean"
+        },
+        "diff": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "baseModelId",
+        "headModelId",
+        "baseName",
+        "headName",
+        "scope",
+        "geometryUnavailable",
+        "diff"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "compare.analyze",
+    "version": 1,
+    "owner": "compare",
+    "description": "Compare the targeted base model with a loaded head model through the native fingerprint/diff service. Returns the terminal analysis without altering panel configuration or review decisions.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "head_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "both",
+            "data",
+            "geometry"
+          ]
+        },
+        "excluded_types": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "match_by_content": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "head_model_id",
+        "scope",
+        "excluded_types",
+        "match_by_content"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "baseModelId": {
+          "type": "string"
+        },
+        "headModelId": {
+          "type": "string"
+        },
+        "baseName": {
+          "type": "string"
+        },
+        "headName": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "geometryUnavailable": {
+          "type": "boolean"
+        },
+        "diff": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "baseModelId",
+        "headModelId",
+        "baseName",
+        "headName",
+        "scope",
+        "geometryUnavailable",
+        "diff"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "review.read",
+    "version": 1,
+    "owner": "review",
+    "description": "Collect native coordination findings, coverage gaps, cards and decisions.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "cards": {
+          "type": "array",
+          "items": {}
+        },
+        "totals": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "runs": {
+          "type": "array",
+          "items": {}
+        },
+        "failed": {
+          "type": "array",
+          "items": {}
+        },
+        "workspace": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "facets": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "cards",
+        "totals",
+        "runs",
+        "failed",
+        "workspace",
+        "facets"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "review.openOriginal",
+    "version": 1,
+    "owner": "review",
+    "description": "Resolve an exact current finding to its original native evidence and select its native row; refuses missing evidence or disabled destination panels.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "selection",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "finding_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "finding_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "opened": {
+          "type": "boolean"
+        },
+        "finding_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "opened",
+        "finding_id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "review.filter",
+    "version": 1,
+    "owner": "review",
+    "description": "Filter native review cards by an explicit source, model, state or decision facet.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "facet": {
+          "type": "string",
+          "enum": [
+            "source",
+            "model",
+            "state",
+            "decision",
+            "discipline",
+            "storey",
+            "run"
+          ]
+        },
+        "values": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "maxLength": 20000
+          }
+        }
+      },
+      "required": [
+        "facet",
+        "values"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "cards": {
+          "type": "array",
+          "items": {}
+        },
+        "totals": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "failed": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "cards",
+        "totals",
+        "failed"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "review.draftTopics",
+    "version": 1,
+    "owner": "review",
+    "description": "Create native BCF drafts from exact current card keys. Drafts retain their native publication review; this does not publish or mark a human decision.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "card_keys": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        }
+      },
+      "required": [
+        "name",
+        "card_keys"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "review.createReport",
+    "version": 1,
+    "owner": "review",
+    "description": "Create a native document from exact current coordination cards and existing human decisions.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "card_keys": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        }
+      },
+      "required": [
+        "name",
+        "card_keys"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "saved"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
     "id": "lists.library",
     "version": 1,
     "owner": "lists",

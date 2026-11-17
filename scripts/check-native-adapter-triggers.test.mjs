@@ -409,8 +409,8 @@ const CLI = join(REPO, 'scripts/check-native-adapter-triggers.mjs');
 // A hook's GIT_DIR or GIT_INDEX_FILE would point git -C at the real repository.
 const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
 
-/** A repository whose HEAD is the PR merge commit of a branch that adds `add` and git-mv's `move` ([old, new] pairs); `merge: false` makes it a squash. */
-function batchRepo(context, { add = [], move = [], merge = true, workflow = readFileSync(join(REPO, WORKFLOW), 'utf8') } = {}) {
+/** A repository whose HEAD is the PR merge commit of a branch that adds `add`, git-mv's `move` ([old, new] pairs) and, with `dropOwnPath`, deletes the workflow's own entry from its paths list; `merge: false` makes it a squash. */
+function batchRepo(context, { add = [], move = [], dropOwnPath = false, merge = true, workflow = readFileSync(join(REPO, WORKFLOW), 'utf8') } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'native-adapter-batch-'));
   context.after(() => rmSync(root, { recursive: true, force: true }));
   const git = (...args) => {
@@ -429,6 +429,7 @@ function batchRepo(context, { add = [], move = [], merge = true, workflow = read
   git('commit', '-q', '-m', 'base');
   git('checkout', '-q', '-b', 'mergify/merge-queue/batch');
   for (const f of add) write(f, 'changed\n');
+  if (dropOwnPath) write(WORKFLOW, workflow.replace(`      - '${WORKFLOW}'\n`, ''));
   for (const [from, to] of move) {
     mkdirSync(join(root, dirname(to)), { recursive: true });
     git('mv', from, to);
@@ -463,6 +464,11 @@ test('a batch touching a path the lane observes runs it; docs, ceilings and chan
   const quiet = decide(batchRepo(context, { add: ['docs/guide/x.md', 'tests/perf-ratchets/viewer.json', '.changeset/a.md', 'AGENTS.md', 'scripts/ci-pr-lane.mjs'] }));
   assert.equal(quiet.status, 0, quiet.log);
   assert.equal(quiet.written, 'native_adapter=false\n', quiet.log);
+});
+
+test('a batch that edits the workflow runs the lane, even after dropping its own path', (context) => {
+  const d = decide(batchRepo(context, { dropOwnPath: true }));
+  assert.equal(d.written, 'native_adapter=true\n', d.log);
 });
 
 test('a file moved out of a watched directory counts by its old path', (context) => {

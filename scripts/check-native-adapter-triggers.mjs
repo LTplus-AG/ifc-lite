@@ -358,6 +358,9 @@ function batchDecision(root) {
     // --no-renames: a file moved out of a watched directory must count by its old path too.
     changed = gitPaths(root, ['diff', '--name-only', '--no-renames', parents[1], 'HEAD']);
     if (changed.length === 0) return { run: true, reason: 'the batch diff is empty, which a real batch never is; running' };
+    // The paths list is read from HEAD, so a batch that edits it could drop the
+    // very path it touches; any change to the workflow runs the lane.
+    if (changed.includes(WORKFLOW)) return { run: true, reason: `the batch changes ${WORKFLOW} itself; running` };
     hits = changed.filter((f) => matchesAny(f, globs));
   } catch (err) {
     return { run: true, reason: `cannot decide (${err.message.split('\n')[0]}); running` };

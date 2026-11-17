@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/cache",
-  "version": "3.7.4",
+  "version": "3.8.0",
   "description": "Binary cache format for IFC-Lite - fast model loading",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./chunk-inflate-pool": {
+      "types": "./dist/chunk-inflate-pool.d.ts",
+      "import": "./dist/chunk-inflate-pool.js",
+      "default": "./dist/chunk-inflate-pool.js"
     }
   },
   "scripts": {
@@ -50,6 +55,7 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "SPEC.md"
   ]
 }

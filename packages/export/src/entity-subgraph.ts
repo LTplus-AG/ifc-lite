@@ -17,8 +17,9 @@
  * overlay-created record reads here exactly as it will be saved.
  *
  * Express ids are preserved, overlay-allocated ones included, so the mesher's
- * output keys straight back onto the model. Styles are deliberately NOT in the
- * buffer: the caller sends the load-time style wire entries instead.
+ * output keys straight back onto the model. Geometry styles use the caller's
+ * load-time wire; material appearances travel with the effective subgraph so
+ * its pre-pass can refresh their colours after edits.
  */
 
 import { asSourceBytes, type IfcDataStore } from '@ifc-lite/parser';
@@ -30,17 +31,20 @@ import {
   filterHiddenRefsFromRelationshipLine,
   refGroupFromArg,
 } from './reference-collector.js';
-import { readStepSlots } from './step-argument-parser.js';
+import { readStepSlots, replaceStepArgument } from './step-argument-parser.js';
 import { applySourceLineMutations } from './step-attribute-mutations.js';
 import { effectiveCreatedRecord } from './effective-source-record.js';
 import { contextRootsFor } from './remesh-context-roots.js';
-import { gridReferenceContext } from './grid-reference-context.js';
+import { gridReferenceContext, stepReferenceReader } from './grid-reference-context.js';
 import { collectGridPlacementDependents } from './grid-placement-dependents.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
 export { remeshContextRoots } from './remesh-context-roots.js';
 
 const log = createLogger('EntitySubgraph');
+
+/** `IfcProduct.Representation`, the same slot in IFC2X3, IFC4 and IFC4X3. */
+const SITE_REPRESENTATION_SLOT = 6;
 
 export interface EntitySubgraphRequest {
   /** Elements to mesh. Tombstoned or unknown ids are skipped. */
@@ -91,8 +95,33 @@ export function serializeEntitySubgraph(
 
   const walkRoots = new Set<number>();
   const relationships = new Map<number, string>();
+  const shallowSites = new Map<number, string>();
   for (const id of [...req.targets, ...contextRoots]) {
-    if (!index.has(id) || relationships.has(id)) continue;
+    if (!index.has(id) || relationships.has(id) || shallowSites.has(id)) continue;
+    if (index.typeOf(id) === 'IFCSITE' && !req.targets.has(id)) {
+      // A context site is carried for its ObjectPlacement (the mesher cuts a
+      // host in its site placement's frame, #10435), not for its terrain:
+      // written with Representation `$`, and only its other refs walked.
+      // An unreadable site is refused with the subgraph (`unreadable`), never
+      // dropped: without it the host would be cut in another frame.
+      const line = writer.line(id);
+      if (line === null) {
+        writer.markUnreadable(id);
+        continue;
+      }
+      const slots = readStepSlots(line)?.slots;
+      const shallow = slots && replaceStepArgument(line, SITE_REPRESENTATION_SLOT, '$');
+      if (!slots || !shallow) {
+        writer.markUnreadable(id);
+        continue;
+      }
+      shallowSites.set(id, shallow);
+      slots.forEach((slot, at) => {
+        const ref = at === SITE_REPRESENTATION_SLOT ? undefined : refGroupFromArg(slot);
+        if (typeof ref === 'number') walkRoots.add(ref);
+      });
+      continue;
+    }
     if (!index.typeOf(id)?.startsWith('IFCREL')) {
       walkRoots.add(id);
       continue;
@@ -108,6 +137,15 @@ export function serializeEntitySubgraph(
 
   // Iterative (explicit queue + visited set), so cycles and long chains end.
   const walked = collectReferencedEntityIds(walkRoots, store.source, index);
+  // Material appearances are inverse references, not reachable from IfcMaterial.
+  // Include only definitions of materials reached by this remesh (#9296).
+  for (const id of index.byType.get('IFCMATERIALDEFINITIONREPRESENTATION') ?? []) {
+    const line = writer.line(id);
+    const slot = line === null ? undefined : readStepSlots(line)?.slots[3];
+    const material = slot === undefined ? undefined : refGroupFromArg(slot);
+    if (typeof material !== 'number' || !walked.has(material)) continue;
+    for (const child of collectReferencedEntityIds(new Set([id]), store.source, index)) walked.add(child);
+  }
   const owningGrid = gridReferenceContext(index, (id) => writer.line(id, false), schema);
   const expandedGrids = new Set<number>();
   // Set iteration visits newly added ids too. Each owning grid expands once,
@@ -128,6 +166,8 @@ export function serializeEntitySubgraph(
     const line = writer.line(id);
     if (line !== null) lines.set(id, line);
   }
+  // A site some other root reaches in full keeps its full line, terrain and all.
+  for (const [id, line] of shallowSites) if (!lines.has(id)) lines.set(id, line);
   const isAbsent = (ref: number): boolean => !lines.has(ref) && !relationships.has(ref);
   for (const [id, line] of relationships) {
     const narrowed = filterHiddenRefsFromRelationshipLine(line, isAbsent, schema);
@@ -152,6 +192,27 @@ export function gridPlacementDependents(
   const schema = (store.schemaVersion as IfcSchemaVersion | undefined) || 'IFC4';
   const writer = new LineWriter(store, view, index, schema);
   return collectGridPlacementDependents(index, (id) => writer.line(id, false), schema, gridIds);
+}
+
+/** Geometric slab parts of edited roofs, using the same effective records as
+ * mini STEP export. A saved roof may have no Body of its own (#9357). */
+export function roofPlaneDependents(
+  store: IfcDataStore, view: MutablePropertyView | null, roofIds: ReadonlySet<number>,
+): Set<number> {
+  const index = getEffectiveEntityIndex(store, view, true);
+  const schema = (store.schemaVersion as IfcSchemaVersion | undefined) || 'IFC4';
+  const writer = new LineWriter(store, view, index, schema);
+  const ref = stepReferenceReader(index, id => writer.line(id, false), schema);
+  const parts = new Set<number>();
+  for (const rel of index.byType.get('IFCRELAGGREGATES') ?? []) {
+    const parent = ref(rel, 'IFCRELAGGREGATES', 'RelatingObject');
+    if (typeof parent !== 'number' || !roofIds.has(parent) || index.typeOf(parent) !== 'IFCROOF') continue;
+    const children = ref(rel, 'IFCRELAGGREGATES', 'RelatedObjects');
+    if (Array.isArray(children)) for (const child of children) {
+      if (index.typeOf(child) === 'IFCSLAB') parts.add(child);
+    }
+  }
+  return parts;
 }
 
 function stepHeader(schema: IfcSchemaVersion): string {

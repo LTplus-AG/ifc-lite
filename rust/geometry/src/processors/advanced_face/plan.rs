@@ -20,6 +20,8 @@ pub(crate) struct FacePlan {
 pub(super) enum FaceGeometry {
     Empty,
     Planar(PlanarPlan),
+    /// A planar face of several disjoint outer-bound regions (#9945), meshed region by region.
+    PlanarRegions(Vec<PlanarPlan>),
     BSpline(BSplinePlan),
     Cylinder(CylinderPlan),
     Revolution(RevolutionPlan),
@@ -29,6 +31,16 @@ impl FaceGeometry {
         match self {
             Self::Empty => Ok((Vec::new(), Vec::new())),
             Self::Planar(plan) => plan.evaluate(),
+            Self::PlanarRegions(plans) => {
+                let (mut positions, mut indices) = (Vec::new(), Vec::new());
+                for plan in plans {
+                    let (region_positions, region_indices) = plan.evaluate()?;
+                    let offset = (positions.len() / 3) as u32;
+                    positions.extend(region_positions);
+                    indices.extend(region_indices.into_iter().map(|i| i + offset));
+                }
+                Ok((positions, indices))
+            }
             Self::BSpline(plan) => plan.evaluate(),
             Self::Cylinder(plan) => Ok(plan.evaluate()),
             Self::Revolution(plan) => Ok(plan.evaluate()),
@@ -151,4 +163,26 @@ pub(crate) fn lower_face(
         #[cfg(any(feature = "debug_geometry", feature = "observability"))]
         surface_type,
     })
+}
+
+/// A planar structural face (on an `IfcPlane`, or a bare `IfcFace`), one plan
+/// per region (`surfaces::lower_planar_regions`). GeometryGym writes bare
+/// faces, AxisVM faces of many disjoint outer bounds (#9668).
+pub(crate) fn lower_planar_regions(
+    face: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+    rtc_file_units: Option<(f64, f64, f64)>,
+) -> Result<Vec<FacePlan>> {
+    Ok(super::surfaces::lower_planar_regions(face, decoder, quality, rtc_file_units)?
+        .into_iter()
+        .map(|geometry| FacePlan {
+            geometry,
+            reverse: false,
+            #[cfg(any(feature = "debug_geometry", feature = "observability"))]
+            face_id: face.id,
+            #[cfg(any(feature = "debug_geometry", feature = "observability"))]
+            surface_type: format!("{} (planar region)", face.ifc_type.as_str().to_uppercase()),
+        })
+        .collect())
 }

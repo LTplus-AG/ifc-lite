@@ -1,0 +1,17 @@
+# The workflow and action files that can change a Test cache key. A push to main
+# that touches one of these, or this list, never replays an earlier verdict
+# (scripts/ci-push-replay.mjs): the caches they key are written only by a full
+# run on main. A directory entry ends in `/` and covers everything below it.
+#
+# scripts/lib/cache-keying-files.test.mjs keeps this list exact: it parses
+# test.yml, the reusable workflows and local actions it uses with a YAML parser
+# and fails when a cache key input can reach a workflow or action file that is
+# not listed here. If this file is missing or lists nothing, every workflow and
+# action file blocks a replay.
+.github/workflows/test.yml
+.github/actions/mergify-upload/
+.github/actions/setup-docs-api/
+.github/actions/setup-report-integration/
+.github/actions/setup-revert-oracle/
+.github/actions/setup-rust-semver/
+.github/actions/setup-wasm-build/

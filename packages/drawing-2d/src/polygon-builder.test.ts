@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { PolygonBuilder } from './polygon-builder.js';
+import { removeCollinearRingVertices } from './polygon-helpers.js';
 import { polygonSignedArea, isCounterClockwise } from './math.js';
 import type { CutSegment } from './types.js';
 
@@ -458,5 +459,30 @@ describe('PolygonBuilder — scale-aware weld tolerance (candidate b)', () => {
     expect(polygons).toHaveLength(1);
     // 5 distinct vertices: the split corner stays split, not welded into 4.
     expect(polygons[0].polygon.outer).toHaveLength(5);
+  });
+});
+
+describe('removeCollinearRingVertices', () => {
+  const p = (x: number, y: number) => ({ x, y });
+
+  it('drops a vertex on a straight edge and keeps corners', () => {
+    const ring = [p(0, 0), p(4.2624, 0), p(6, 0), p(6, 0.2), p(0, 0.2)];
+    expect(removeCollinearRingVertices(ring, 1e-6)).toEqual([p(0, 0), p(6, 0), p(6, 0.2), p(0, 0.2)]);
+  });
+
+  it('keeps a vertex that deviates by more than the tolerance (a fine arc)', () => {
+    const ring = [p(0, 0), p(1, 1e-5), p(2, 0), p(2, 1), p(0, 1)];
+    expect(removeCollinearRingVertices(ring, 1e-6)).toHaveLength(5);
+  });
+
+  it('keeps a backtracking spike even though it is collinear', () => {
+    // 0 -> 3 -> 2 along x: the vertex at x=3 lies on the line but not between neighbours.
+    const ring = [p(0, 0), p(3, 0), p(2, 0), p(2, 1), p(0, 1)];
+    expect(removeCollinearRingVertices(ring, 1e-6)).toHaveLength(5);
+  });
+
+  it('removes runs of split points, including across the ring start', () => {
+    const ring = [p(1, 0), p(2, 0), p(3, 0), p(3, 1), p(0, 1), p(0, 0)];
+    expect(removeCollinearRingVertices(ring, 1e-6)).toEqual([p(3, 0), p(3, 1), p(0, 1), p(0, 0)]);
   });
 });

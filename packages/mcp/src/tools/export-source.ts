@@ -9,7 +9,8 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
 /**
  * Run `fn` over the current model's IFC bytes for the wasm exporters: bake
- * pending edits through the same STEP exporter as export_ifc, otherwise prefer
+ * pending edits (mutations and georeferencing writes) through the same STEP
+ * exporter as export_ifc, otherwise prefer
  * the in-memory source and fall back to disk.
  *
  * Scoped rather than returning the buffer (#2183): each Rust exporter below
@@ -20,7 +21,7 @@ export async function withIfcBytes<T>(
   m: ReturnType<typeof resolveModel>,
   fn: (bytes: Uint8Array) => Promise<T>,
 ): Promise<T> {
-  if (m.backend.getMutationView()?.hasPendingChanges()) {
+  if (m.backend.hasPendingChanges()) {
     const content = m.bim.export.ifc(undefined, { includeMutations: true });
     return fn(typeof content === 'string' ? new TextEncoder().encode(content) : content);
   }

@@ -130,8 +130,8 @@ export function createStoreMutationTracker(
     }
     return result;
   };
-  const create = <A extends [string, ...unknown[]]>(ifcType: string, fn: (...args: A) => EntityRef) =>
-    tracked(fn, (_modelId, ref: EntityRef) => store.getState().pushCreateEntityUndo(ref.modelId, ref.expressId, ifcType));
+  const create = <A extends [string, ...unknown[]]>(ifcType: string | ((ref: EntityRef) => string), fn: (...args: A) => EntityRef) =>
+    tracked(fn, (_modelId, ref: EntityRef) => store.getState().pushCreateEntityUndo(ref.modelId, ref.expressId, typeof ifcType === 'function' ? ifcType(ref) : ifcType));
   // The backend itself reports a relationship rewrite only when the overlay
   // actually changed; the wrapper only mirrors.
   const relationship = <A extends [string, ...unknown[]], R>(fn: (...args: A) => R) => tracked(fn, () => {});

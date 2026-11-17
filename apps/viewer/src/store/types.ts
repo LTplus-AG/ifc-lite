@@ -307,7 +307,15 @@ export interface TypeVisibility {
    * grid lines only show for storeys near the cut.
    */
   ifcGrid: boolean;
+  /**
+   * Support and load glyphs of a structural analysis model (#9668). On by
+   * default; draws nothing for a model with no supports or loads. Like
+   * `ifcGrid`, a scene overlay rather than an IFC class, so it gates no mesh.
+   */
+  structuralGlyphs: boolean;
 }
+
+export type StructuralViewMode = 'both' | 'physical' | 'analytical';
 
 // ============================================================================
 // Camera Types
@@ -432,7 +440,7 @@ export interface CameraCallbacks {
 // ============================================================================
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
+import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference, PointCloudAsset } from '@ifc-lite/geometry';
 import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
 export type AuthoringOverlayChannel = 'command' | 'grids' | 'proposal' | 'scan'; // authoring ghost-mesh channels (#6232); 'proposal': reviewed AI authoring (P15A); 'scan': scan-to-BIM detections (#6894)
 /**
@@ -501,6 +509,11 @@ export interface PreAlignmentSnapshot {
    * path carries origins.
    */
   origins: ([number, number, number] | undefined)[];
+  /** Per inline point cloud, in `geometryResult.pointClouds` order: its origin
+   *  and chunk (by reference; alignment replaces chunks, never mutates them).
+   *  The RTC re-base and georeference alignment move clouds with the meshes
+   *  (#10029), so a restore that put back only the meshes would split the model. */
+  clouds?: { origin?: [number, number, number]; chunk: PointCloudAsset['chunk'] }[];
   /** The RTC/shift frame the positions are relative to, recovered before the
    *  new alignment is applied. */
   coordinateInfo: CoordinateInfo;
@@ -524,15 +537,17 @@ export interface PreAlignmentSnapshot {
   instancedGeometryAabbs: Map<number, EntityWorldAabb> | undefined;
 }
 export interface FederatedModel extends ModelLoadReportFields {
+  hasOverlayCapacity?: boolean; // false when the overlay range is exhausted; unset counts as capacity.
   id: string; // UUID generated on load.
-  /** Display name (filename by default, user can rename) */
-  name: string;
+  name: string; // Display name (filename by default, user can rename)
   sourceFingerprint?: string; // Durable identity for persisted model filters.
   sourceContentHash?: string; // Full-content identity for workspace placements.
+  sourceReadRefused?: boolean; // Explicit pre-acquisition refusal, distinct from a published load error (#10264).
   /** Parsed IFC data model */
   ifcDataStore: IfcDataStore | null;
   /** Non-IFC source semantics, kept outside the IFC data store by design; `terrainImagery` is imagery draped on it (#5942), provenance only. */
   landXmlDocument?: LandXmlTinDocument; terrainImagery?: import('../lib/terrain-imagery/drape-state.js').TerrainImageryDrape;
+  /** How container rows hide/show their subtree (a Rhino layer, #10214); absent: rows act on direct members. */ containerVisibility?: import('../lib/container-visibility').ContainerVisibilityPlan;
   /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
   sourceSchema?: LandXmlSchema;
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */
@@ -552,12 +567,9 @@ export interface FederatedModel extends ModelLoadReportFields {
   visible: boolean;
   /** UI collapse state in hierarchy panel */
   collapsed: boolean;
-  /** IFC schema version */
-  schemaVersion: SchemaVersion;
-  /** Load timestamp */
-  loadedAt: number;
-  /** Original file size in bytes */
-  fileSize: number;
+  schemaVersion: SchemaVersion; // IFC schema version
+  loadedAt: number; // Load timestamp
+  fileSize: number; // Original file size in bytes
   /** Original source handle used for explicit reload/reposition operations. */
   sourceFile?: ModelSourceFile;
   /**
@@ -572,13 +584,14 @@ export interface FederatedModel extends ModelLoadReportFields {
    * layers. Held in memory only; never serialized to cache.
    */
   sourceHandle?: FileSystemFileHandle;
-  /**
-   * ID offset for this model (from FederationRegistry)
+  /** A model the processing server already processed: opened by reference, so there are no source bytes and no `sourceFile`. */
+  processedModel?: import('@/lib/processed-model').ProcessedModelSource;
+  /** ID offset for this model (from FederationRegistry).
    * All mesh expressIds are globalIds = originalExpressId + idOffset
    * Use this to convert back to original IDs for property lookup
    */
   idOffset: number;
-  /** Maximum original expressId in this model (for range validation) */
+  /** Highest local expressId this model owns (reverse resolvers bound its global ids at `idOffset + maxExpressId`); after a later model's clamp, the published end, which can sit below the store's highest id. */
   maxExpressId: number;
   /** Unified ingest lifecycle state. */
   loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error';
@@ -590,6 +603,8 @@ export interface FederatedModel extends ModelLoadReportFields {
   metadataLoadState?: MetadataLoadState;
   /** True once the model is visibly interactive in the viewport. */
   interactiveReady?: boolean;
+  /** Cache hit that published its metadata at the reopen mark; geometry restore not yet finished (lib/geometry-restore-gate.ts). */
+  geometryRestorePending?: boolean;
   /** Cache state for the current load session. */
   cacheState?: 'none' | 'hit' | 'miss' | 'writing';
   /** Optional load error for this model. */

@@ -23,4 +23,5 @@ export const changesPanelRu = {
   "changesPanel.revertPermission": "Перед отменой изменений включите режим редактирования или запросите доступ к редактированию.",
   "changesPanel.revertSharedRoom": "Покиньте общую комнату, прежде чем отменять изменения. Комната пока не может синхронизировать это изменение.",
   "changesPanel.revertUnsupported": "Эту правку нельзя отменить с боковой панели. Используйте Отменить действие, если это последний шаг.",
+  "changesPanel.byAgent": "Локальный агент · {field}",
 } satisfies Catalogue;

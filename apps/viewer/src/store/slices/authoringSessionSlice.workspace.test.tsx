@@ -4,7 +4,7 @@
 
 /**
  * Model workspace entry / exit (charter #6232, WP2): edit mode is the
- * workspace — E, the ribbon's Model button and the status-bar chip all go
+ * workspace — M, the ribbon's Model button and the status-bar chip all go
  * through explicit workspace entry / exit. Entry honours the
  * collab gate and picks the storey (selection → first);
  * exit cancels the gesture in progress and drops authoring state.
@@ -103,13 +103,13 @@ describe('Model workspace entry / exit (#6232 WP2)', () => {
     assert.equal(useViewerStore.getState().editEnabled, true);
   });
 
-  it('E toggles the workspace; the status-bar chip names the storey and toggles it too', () => {
+  it('M toggles the workspace; the status-bar chip names the storey and toggles it too', () => {
     function Keys() { useKeyboardShortcuts(); return null; }
     render(<Keys />);
     const ui = render(<StatusBarWorkspaceChip />);
     const chip = ui.querySelector('[data-workspace-chip]') as HTMLButtonElement;
     assert.equal(chip.getAttribute('aria-pressed'), 'false');
-    press(document.body, 'e');
+    press(document.body, 'm');
     assert.equal(useViewerStore.getState().workspaceMode, 'model');
     assert.equal(chip.getAttribute('aria-pressed'), 'true');
     assert.equal(chip.textContent, 'Model · L0', 'no selection: the first storey');

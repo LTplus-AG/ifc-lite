@@ -104,6 +104,9 @@ export interface WorkerTraceHostOptions {
 export type WorkerTraceHost = ((data: unknown, run: () => Promise<void>) => Promise<void>) & {
   /** Drain finished work; optionally finish all open spans with the given name before a terminal event. */
   flush(completedSpan?: string): void;
+  /** Synchronous sub-stage spans; -1 and a no-op before tracing is enabled. */
+  begin(name: string): number;
+  end(token: number): void;
 };
 
 export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTraceHost {
@@ -148,6 +151,8 @@ export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTr
     }
   };
   return Object.assign(host, {
+    begin: (name: string) => recorder?.begin(name) ?? -1,
+    end: (token: number) => { recorder?.end(token); },
     flush: (completedSpan?: string) => {
       if (!recorder) return;
       if (completedSpan !== undefined) recorder.endNamed(completedSpan);

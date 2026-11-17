@@ -62,7 +62,7 @@ export function readHostedSlide(s: ViewerState, modelId: string, expressId: numb
   const fill = readHostedFill(dataStore, expressId, view);
   const host = fill ? readHost(s, modelId, fill.hostId) : null;
   const cut = fill ? placedBodyExtent(dataStore, fill.openingId, view) : null;
-  if (!fill || !host || !cut) return null;
+  if (!fill || !host || host.hostKind !== 'wall' || !cut) return null;
   const k = getModelLengthUnitScale(dataStore);
   const along = [cut.min[0] * k - fill.offset, cut.max[0] * k - fill.offset] as const;
   const up = [cut.min[2] * k, cut.max[2] * k] as const;

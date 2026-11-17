@@ -170,6 +170,7 @@ export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProp
         </div>
         {stamp.models && <div className="text-2xs text-neutral-600" data-report-model-scope>{t('validationPanel.history.models', { models: stamp.models })}</div>}
       </>}
+      {block.targetScope && <p className="text-2xs" role="note">{t('idsPanel.targetFilter.result', { countDisplay: block.targetScope.entityCount.toLocaleString(locale) })}</p>}
       {block.benchmarks && <ValidationBenchmark summary={block.summary} name={block.sourceName} paper notCheckedSpecifications={notCheckedIdsSpecifications(block)} requirementChecks={idsRequirementRing(block)} />}
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5">
         <Stat label={t('document.preview.idsReportChecked')} value={checked.toLocaleString(locale)} />

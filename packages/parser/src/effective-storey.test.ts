@@ -4,8 +4,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { IfcParser } from './index.js';
-import { effectiveStoreyId } from './effective-storey.js';
+import { effectiveStoreyId, effectiveStoreyResolver } from './effective-storey.js';
 import type { EffectiveSpatialContext } from './effective-spatial-members.js';
+import type { EffectiveRelationship } from './effective-relationship-overlay.js';
 
 const IFC = `ISO-10303-21;
 HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('m','2026',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
@@ -46,5 +47,22 @@ describe('effectiveStoreyId', () => {
       typeName: (id) => store.entities.getTypeName(id),
     };
     expect(effectiveStoreyId(store, 4, storeyDeleted)).toBeUndefined();
+  });
+
+  // #9668: the structural derivation resolves every element under one context.
+  it('resolves many products under one context with the edited relationships read once', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer as ArrayBuffer);
+    let reads = 0;
+    // An edit moves the wall from the storey into the space, which the storey aggregates.
+    const relationships: EffectiveRelationship[] = [{ relationshipId: 20, relationshipType: 'IfcRelContainedInSpatialStructure', relating: [4], related: [5] }];
+    const edited: EffectiveSpatialContext = {
+      relationships: { get relationships() { reads++; return relationships; }, supersededSourceIds: new Set([13]) },
+      isDeleted: () => false,
+      typeName: (id) => store.entities.getTypeName(id),
+    };
+    const storeyOf = effectiveStoreyResolver(store, edited);
+    expect([3, 4, 5].map(storeyOf)).toEqual([undefined, 3, 3]);
+    expect([3, 4, 5].map((id) => effectiveStoreyId(store, id, edited))).toEqual([undefined, 3, 3]);
+    expect(reads, 'one read for the resolver, one per effectiveStoreyId call').toBe(4);
   });
 });

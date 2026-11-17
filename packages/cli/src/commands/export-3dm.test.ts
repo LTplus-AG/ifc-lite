@@ -34,6 +34,30 @@ it('exports a real IFC wall to a readable 3dm with IFC identity', async () => {
     expect(doc!.objects().get(0).attributes().getUserString('IFC::GlobalId')).toBeTruthy();
   } finally { (doc as unknown as { delete(): void } | null)?.delete(); }
 }, 60000);
+// Import decision D3 (docs/architecture/rhino-3dm-export.md, "Layer user text"): the spatial
+// layers of a real Archicad model keep the identity a reader rebuilds the spatial tree from.
+it('stamps the spatial layers of FZK-Haus with their IFC identity', async () => {
+  const fzk = fileURLToPath(new URL('../../../../apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc', import.meta.url));
+  const out = join(tmp, 'fzk.3dm');
+  await exportCommand([fzk, '--format', '3dm', '--out', out]);
+  const rhino = await rhino3dm();
+  const doc = rhino.File3dm.fromByteArray(new Uint8Array(await readFile(out)));
+  expect(doc).not.toBeNull();
+  try {
+    const layers = doc!.layers();
+    const stamped = Object.fromEntries(Array.from({ length: layers.count }, (_, i) => layers.get(i))
+      .filter(l => l.userStringCount > 0)
+      .map(l => [l.fullPath, Object.fromEntries(l.getUserStrings() as unknown as [string, string][])]));
+    const building = 'Projekt-FZK-Haus::Gelaende::FZK-Haus';
+    expect(stamped).toEqual({
+      'Projekt-FZK-Haus': { 'IFC::GlobalId': '0lY6P5Ur90TAQnnnI6wtnb', 'IFC::Class': 'IfcProject' },
+      'Projekt-FZK-Haus::Gelaende': { 'IFC::GlobalId': '0KMpiAlnb52RgQuM1CwVfd', 'IFC::Class': 'IfcSite' },
+      [building]: { 'IFC::GlobalId': '2hQBAVPOr5VxhS3Jl0O47h', 'IFC::Class': 'IfcBuilding' },
+      [`${building}::Erdgeschoss`]: { 'IFC::GlobalId': '2eyxpyOx95m90jmsXLOuR0', 'IFC::Class': 'IfcBuildingStorey', 'IFC::Elevation': '0' },
+      [`${building}::Dachgeschoss`]: { 'IFC::GlobalId': '273g3wqLzDtfYIl7qqkgcO', 'IFC::Class': 'IfcBuildingStorey', 'IFC::Elevation': '2.7' },
+    });
+  } finally { (doc as unknown as { delete(): void } | null)?.delete(); }
+}, 60000);
 it('fails closed when an entity filter matches nothing', async () => {
   const out = join(tmp, 'missing.3dm');
   const exit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });

@@ -231,8 +231,10 @@ export function siblingStoreys(inventory: StoreyInventory, storeyId: number): St
 /** The storey directly above / below in elevation order within its building, or null. */
 export function storeyNeighbour(inventory: StoreyInventory, storeyId: number, direction: 1 | -1): StoreyRecord | null {
   const siblings = siblingStoreys(inventory, storeyId);
-  const index = siblings.findIndex((storey) => storey.expressId === storeyId);
-  return index < 0 ? null : siblings[index + direction] ?? null;
+  const own = siblings.find(storey => storey.expressId === storeyId);
+  if (!own) return null;
+  return (direction === 1 ? siblings : [...siblings].reverse()).find(storey =>
+    direction === 1 ? storey.elevation > own.elevation : storey.elevation < own.elevation) ?? null;
 }
 
 /** Floor-to-floor height in metres to the storey above, or null for the top storey. */

@@ -33,7 +33,30 @@ function bytes() {
 async function rows() {
   const parsed = await new IfcParser().parseColumnar(bytes().slice().buffer as ArrayBuffer, { disableWorkerScan: true });
   const extractor = new EntityExtractor(parsed.source);
-  return [...parsed.entityIndex.byId].map(([id, location]) => [id, extractor.extractEntity(location)] as const).sort((a, b) => a[0] - b[0]);
+  const records = [...parsed.entityIndex.byId].map(([id, location]) => [id, extractor.extractEntity(location)] as const);
+  // Export-only property records are allocated beyond the overlay's high-water
+  // mark, which intentionally does not rewind on Undo. Compare their complete
+  // graph using stable local names; keep every authored/source id exact (#9352).
+  const sets = records.filter(([, e]) => e?.type === 'IFCPROPERTYSET' && e.attributes[2] === 'IfcLite_CurtainWallLayout')
+    .sort((a, b) => String(a[1]!.attributes[0]).localeCompare(String(b[1]!.attributes[0])));
+  const aliases = new Map<number, number>();
+  for (const [index, [id, set]] of sets.entries()) {
+    aliases.set(id, -(index * 100 + 1));
+    const members = set!.attributes[4];
+    assert.ok(Array.isArray(members));
+    members.forEach((member, i) => { assert.equal(typeof member, 'number'); aliases.set(member as number, -(index * 100 + i + 2)); });
+    const relations = records.filter(([, e]) => e?.type === 'IFCRELDEFINESBYPROPERTIES' && e.attributes[5] === id);
+    assert.equal(relations.length, 1);
+    aliases.set(relations[0][0], -(index * 100 + 99));
+  }
+  return records.map(([id, entity]) => {
+    if (!entity || !aliases.has(id)) return [id, entity] as const;
+    const attributes = [...entity.attributes];
+    if (entity.type === 'IFCPROPERTYSET') attributes[4] = (attributes[4] as number[]).map(ref => aliases.get(ref)!);
+    if (entity.type === 'IFCRELDEFINESBYPROPERTIES') attributes[5] = aliases.get(attributes[5] as number)!;
+    const canonical = aliases.get(id)!;
+    return [canonical, { ...entity, expressId: canonical, attributes }] as const;
+  }).sort((a, b) => a[0] - b[0]);
 }
 const meshes = () => useViewerStore.getState().models.get(MODEL)!.geometryResult!.meshes;
 

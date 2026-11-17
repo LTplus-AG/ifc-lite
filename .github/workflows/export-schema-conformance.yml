@@ -71,6 +71,7 @@ on:
       # below grades it with the same validator plus the alignment checker, and
       # grades IfcCreator's own IFC4X3 output (#5351).
       - "packages/create/**"
+      - "tests/structural-coverage/probes/create-scene.mjs"
       # The rest of create's build closure (`turbo --filter='@ifc-lite/create^...'`,
       # measured with --dry-run) — the step below builds these, so a change to
       # any of them can break this job and must be able to trigger it.
@@ -199,6 +200,9 @@ jobs:
           MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
           MERGIFY_TEST_JOB_NAME: validate (landxml)
         run: pnpm --filter @ifc-lite/create exec vitest run src/landxml/ifcopenshell-conformance.test.ts
+
+      - name: Grade structural CREATE scenes against IfcOpenShell EXPRESS rules
+        run: pnpm test --filter=@ifc-lite/create -- src/in-store/structural-create-gaps.test.ts
 
       - name: Grade IfcCreator IFC4X3 output with IfcOpenShell
         env:

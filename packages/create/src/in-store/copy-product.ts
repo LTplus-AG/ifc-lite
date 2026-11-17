@@ -26,11 +26,13 @@
 
 import { cloneShape, type CopyShape } from './copy-shape.js';
 import { cloneEffectiveMetadata } from './edit/metadata-clone-effective.js';
+import { copyRoofPlaneParts } from './roof-plane-copy.js';
 import { iterateEffectiveEntityIds, type StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { duplicateInStore, type SourceAttributes } from './duplicate.js';
-import { resolveDuplicateSource, type DuplicateSourceScope } from './resolve-source.js';
+import type { DuplicateSourceScope } from './resolve-source.js';
+import { resolveCopySource } from './copy-metadata.js';
 import { copyDependentSteps, copiedProductWork } from './copy-dependent-walk.js';
 import { follow, gridCopyRefusal, placeOnStorey, type Placed } from './copy-placement.js';
 import { asRef, createStyleEntityReader, indexExistingStyles, refList } from './style-entity-reader.js';
@@ -209,7 +211,7 @@ export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: 
   const refusal = copyRefusal(ctx, sourceId);
   if (refusal) throw new Error(refusal);
   copiedProductWork(ctx, sourceId);
-  const source = resolveDuplicateSource(ctx.store, sourceId, ctx.editor, ctx.sourceScope);
+  const source = resolveCopySource(ctx, sourceId);
   const scale = source.lengthUnitScale && source.lengthUnitScale > 0 ? source.lengthUnitScale : 1;
   const native = (m: number) => m / scale;
   const [ox, oy, oz] = transform.offset ?? [0, 0, 0];
@@ -224,7 +226,13 @@ export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: 
   const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]), carriedBy: new Map(), boundToGrid: [], cameFree: [] };
   noteGridOutcome(acc, placed, copy.id);
   copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc, options.shape);
-  for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId]);
+  // Snapshot roots: roof copying appends plane parts to this map.
+  // eslint-disable-next-line unicorn/no-useless-spread
+  for (const [target, original] of [...acc.copiedFrom]) {
+    if (ctx.read(original)?.type.toUpperCase() !== 'IFCROOF') continue;
+    copyRoofPlaneParts(ctx.store, ctx.editor, original, target, acc.copiedFrom, ctx.guidRandom);
+  }
+  for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId], ctx.store);
   return {
     copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
     meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom, carriedBy: acc.carriedBy,
@@ -259,7 +267,7 @@ function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root
       continue;
     }
     const parentCopy = copies.get(step.parentId)!;
-    const source = resolveDuplicateSource(ctx.store, step.sourceId, ctx.editor, ctx.sourceScope);
+    const source = resolveCopySource(ctx, step.sourceId);
     const placed = follow(ctx, source, root, targetStoreyId, acc.placements, move);
     const copy = writeCopy(ctx, source, placed, step.kind === 'filling' ? targetStoreyId : null, shape);
     noteGridOutcome(acc, placed, copy.id);

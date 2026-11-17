@@ -19,7 +19,7 @@ import { useMemo } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import {
-  collectEffectivePhysicalEntityIds,
+  sharedEffectivePhysicalEntityIds,
   countPhysicalObjects,
   type PhysicalObjectCounts,
 } from '@/lib/physical-objects';
@@ -28,6 +28,7 @@ import { effectiveContextType } from '@/components/viewer/EntityContextMenu.effe
 import { effectiveAttribute } from '@/lib/document/effective-binding-fields';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
+import { useLoadWindowHold } from '@/hooks/loadWindow';
 
 export interface ViewportStatusSummary {
   /** Names of every selected storey, or `null` when none is selected. */
@@ -88,9 +89,13 @@ export function useViewportStatusSummary(): ViewportStatusSummary {
   const countView = models.size > 0
     ? (countModelId ? mutationViews.get(countModelId) : null)
     : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID);
+  // The whole-model walk waits while this model loads (loadWindow.ts); the
+  // hidden/ghosted counts it feeds are only shown when above zero. A model that
+  // had settled keeps its pill while another model loads.
+  const countHeld = useLoadWindowHold().isHeld(models.size > 0 ? countModelId ?? 'legacy' : 'legacy');
   const physicalIds = useMemo(
-    () => (ifcDataStore ? collectEffectivePhysicalEntityIds(ifcDataStore, countView) : new Set<number>()),
-    [ifcDataStore, countView, mutationVersion],
+    () => (ifcDataStore && !countHeld ? sharedEffectivePhysicalEntityIds(ifcDataStore, countView, mutationVersion) : new Set<number>()),
+    [ifcDataStore, countView, countHeld, mutationVersion],
   );
 
   const objectCounts = useMemo(

@@ -57,15 +57,15 @@ export function persistModelLayout(layout: ModelLayout): void {
 
 /** Show the Model inspector; returns what to restore on exit, or null when nothing was taken over. */
 export function showModelInspector(s: ViewerState): SidebarRestore | null {
-  if (s.isMobile || s.sidebarActivePanel === 'model') return null;
+  if (s.isMobile) return null;
   const restore: SidebarRestore = { panel: s.sidebarActivePanel, mode: s.sidebarMode };
   s.showWorkspacePanel('model');
   return restore;
 }
 
-/** Put the sidebar back, if it still shows the inspector the workspace opened. */
+/** Keep a panel picked inside Model, and always restore the pre-workspace sidebar mode. */
 export function restoreSidebar(get: () => ViewerState, restore: SidebarRestore | null): void {
-  if (!restore || get().sidebarActivePanel !== 'model') return;
-  get().showWorkspacePanel(restore.panel);
+  if (!restore) return;
+  if (get().sidebarActivePanel === 'model') get().showWorkspacePanel(restore.panel);
   if (restore.mode !== get().sidebarMode) get().setSidebarMode(restore.mode);
 }

@@ -61,7 +61,7 @@ pub(super) fn build_mesh_data(
         mesh.instance_meta.is_none() || mesh.welded_in_object_frame,
         "instance_meta set but welded_in_object_frame is false"
     );
-    let welded_uvs = if mesh.instance_meta.is_some() {
+    let welded_uvs = if mesh.instance_meta.is_some() || mesh.welded_in_object_frame {
         uvs
     } else {
         ifc_lite_geometry::mesh_weld::weld(&mut mesh, uvs)

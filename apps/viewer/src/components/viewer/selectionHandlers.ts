@@ -25,6 +25,8 @@ import { rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
+import { isGeometryRestoreHeld } from '@/lib/pick-gating';
+export { setViewportInteractionCursor } from './useViewportCursor.js';
 
 /** The click-driven Measure modes' point placement; also a touch tap's (#5856). */
 export function handleMeasureClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
@@ -52,6 +54,8 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   if (tool === 'pan' || tool === 'walk') {
     return;
   }
+  const storeState = useViewerStore.getState();
+  if (isGeometryRestoreHeld(storeState)) return;
   // Every tool below picks: not through a capture's frame (#9137).
   if (refuseCaptureHeldPick(renderer)) {
     ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null;

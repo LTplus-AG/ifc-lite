@@ -150,7 +150,8 @@ describe('ModelInspectorPanel (#6232 M2.5)', () => {
     assert.equal(input(root, 'Name').value, 'W1');
     assert.equal(input(root, 'Thickness in metres').value, '0.20');
     assert.equal(input(root, 'Height in metres').value, '3.00');
-    assert.equal(input(root, 'Length in metres').readOnly, true);
+    assert.equal(input(root, 'Length in metres').value, '4.00');
+    assert.equal(input(root, 'Length in metres').readOnly, false, 'a wall\'s length is typed here too (#9296)');
     const headings = [...root.querySelectorAll('h3')].map((h) => h.textContent);
     assert.deepEqual(headings, ['Type', 'Dimensions', 'Material layers']);
   });
@@ -296,4 +297,69 @@ describe('ModelInspectorPanel dimensions of slabs, columns and beams (#6232 C4)'
     assert.equal(undoDepth(), depth);
     assert.equal(input(root, 'Height in metres').value, '3.00');
   });
+});
+
+it('#9389 the multi-selection inspector names every element in one undo step', () => {
+  const second = s().addWall(MODEL_ID, STOREY, { Start: [0, 2, 0], End: [4, 2, 0], Thickness: 0.2, Height: 3, Name: 'W2' });
+  assert.ok('expressId' in second);
+  act(() => s().setSelectedEntityIds([wall, second.expressId].map(id => toGlobalIdFromModels(s().models, MODEL_ID, id))));
+  const ui = render(<ModelInspectorPanel />);
+  assert.match(ui.textContent ?? '', /2 selected elements/);
+  assert.match(ui.textContent ?? '', /W1/);
+  assert.match(ui.textContent ?? '', /W2/);
+  const name = input(ui, 'Name');
+  type(name, 'Shared');
+  blur(name);
+  const live = () => ({ dataStore: s().models.get(MODEL_ID)!.ifcDataStore!, view: s().mutationViews.get(MODEL_ID) });
+  assert.equal(entityName(live(), wall), 'Shared');
+  assert.equal(entityName(live(), second.expressId), 'Shared');
+  act(() => s().undo(MODEL_ID));
+  assert.equal(entityName(live(), wall), 'W1');
+  assert.equal(entityName(live(), second.expressId), 'W2');
+});
+
+it('#9389 a cross-model selection is inspectable but cannot make a shared edit across undo histories', () => {
+  const first = s().models.get(MODEL_ID)!;
+  const second = { ...first, id: 'second-model', idOffset: 1_000_000 };
+  act(() => useViewerStore.setState({ models: new Map([[MODEL_ID, first], [second.id, second]]) }));
+  act(() => s().setSelectedEntityIds([
+    toGlobalIdFromModels(s().models, MODEL_ID, wall),
+    toGlobalIdFromModels(s().models, second.id, 80),
+  ]));
+  const ui = render(<ModelInspectorPanel />);
+  assert.ok(ui.querySelector('[data-multi-selection-inspector]'));
+  assert.match(ui.textContent ?? '', /Select elements from one model/);
+  const name = input(ui, 'Name');
+  assert.equal(name.readOnly, true);
+  const depth = undoDepth();
+  type(name, 'Shared');
+  blur(name);
+  assert.equal(undoDepth(), depth);
+  assert.equal(entityName({ dataStore: first.ifcDataStore!, view: s().mutationViews.get(MODEL_ID) }, wall), 'W1');
+});
+
+it('#9389 an unreadable selected model cannot turn a cross-model Name edit into partial success', () => {
+  const first = s().models.get(MODEL_ID)!;
+  const second = { ...first, id: 'second-model', idOffset: 1_000_000 };
+  act(() => useViewerStore.setState({ models: new Map([[MODEL_ID, first], [second.id, second]]) }));
+  act(() => s().setSelectedEntityIds([
+    toGlobalIdFromModels(s().models, MODEL_ID, wall),
+    toGlobalIdFromModels(s().models, second.id, 80),
+  ]));
+  const ui = render(<ModelInspectorPanel />);
+  assert.equal(input(ui, 'Name').readOnly, true);
+  act(() => useViewerStore.setState({ models: new Map([[MODEL_ID, first], [second.id, { ...second, ifcDataStore: null }]]) }));
+  assert.match(ui.textContent ?? '', /2 selected elements/);
+  const rows = ui.querySelectorAll('[data-multi-selection-inspector] li');
+  assert.equal(rows.length, 2, '#9389 every selected element keeps a row when a model becomes unreadable');
+  assert.match(rows[0].textContent ?? '', /W1/);
+  assert.match(rows[1].textContent ?? '', /Unavailable element.*#80/);
+  assert.match(ui.textContent ?? '', /Select elements from one model/);
+  const name = input(ui, 'Name');
+  assert.equal(name.readOnly, true);
+  const depth = undoDepth();
+  type(name, 'Partial rename');
+  blur(name);
+  assert.equal(undoDepth(), depth);
+  assert.equal(entityName({ dataStore: first.ifcDataStore!, view: s().mutationViews.get(MODEL_ID) }, wall), 'W1');
 });

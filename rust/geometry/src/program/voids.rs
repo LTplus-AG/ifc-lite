@@ -4,10 +4,13 @@
 //! part (or sub-mesh) cut by an owned numerical execution whose diagnostics
 //! publish at accept, in part order.
 //!
-//! Opening and clip geometry are resolved in world coordinates, the frame
-//! every part is in once placement has been applied. Classifying once per
-//! host (not per sub-mesh) keeps a multi-layer wall with windows from
-//! re-running every opening's product pipeline per layer.
+//! The host is cut in the frame of its placement chain's root ([`CutFrame`]):
+//! host and openings resolve relative to that root, and the finished cut is
+//! placed into the world by it. The cut therefore does not depend on where
+//! the whole model sits. A host whose chain has no root that moves anything,
+//! or whose geometry arrived placed, is cut where it is. Classifying once per host
+//! (not per sub-mesh) keeps a multi-layer wall with windows from re-running
+//! every opening's product pipeline per layer.
 use super::inner::{ProgramError, ProgramStage};
 use super::product::{ProductControl, ProductOutput, ProductReply};
 use crate::mesh::SubMesh;
@@ -15,10 +18,13 @@ use crate::program::openings::execute::{execute, NumericalOutcome};
 use crate::program::openings::requests::OpeningReply;
 use crate::program::openings::{protocol, OpeningControl, OpeningOutput, OpeningPoll};
 use crate::router::processing::SourceHygiene;
+use crate::router::transforms::cut_frame::CutFrame;
 use crate::router::voids::hygiene::clean_void_output;
 use crate::router::voids::VoidContext;
 use crate::{GeometryRouter, Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
+
+mod frame;
 
 /// The cut host geometry: merged frame parts are cut in place; voided
 /// sub-meshes are collected anew, keeping only non-empty ones.
@@ -70,6 +76,9 @@ pub(super) struct VoidControl<'a> {
     host: &'a DecodedEntity,
     styled: bool,
     phase: Phase<'a>,
+    frame: CutFrame,
+    /// The world bounds of the part being cut, for its diagnostic.
+    part_bounds: Option<((f32, f32, f32), (f32, f32, f32))>,
 }
 
 impl<'a> VoidControl<'a> {
@@ -78,7 +87,7 @@ impl<'a> VoidControl<'a> {
     pub(super) fn merged(host: &'a DecodedEntity, ids: &'a [u32]) -> Self {
         let hygiene = if ids.is_empty() { SourceHygiene::Watertight } else { SourceHygiene::BooleanOperand };
         let product = ProductControl::merged(host, hygiene);
-        Self { host, styled: false, phase: Phase::Host(product, ids) }
+        Self { host, styled: false, phase: Phase::Host(product, ids), frame: CutFrame::Unchosen, part_bounds: None }
     }
 
     /// `host`'s per-item sub-meshes cut by the openings `ids`, or its uncut
@@ -88,9 +97,9 @@ impl<'a> VoidControl<'a> {
     pub(super) fn styled(host: &'a DecodedEntity, ids: &'a [u32], layered: Option<SubMeshCollection>) -> Self {
         let phase = match layered {
             Some(sub_meshes) => hosts_complete(host, ids, Ok(ProductOutput::Styled(sub_meshes))),
-            None => Phase::Host(ProductControl::styled(host, false, None, SourceHygiene::BooleanOperand), ids),
+            None => Phase::Host(frame::host_walk(host, true), ids),
         };
-        Self { host, styled: true, phase }
+        Self { host, styled: true, phase, frame: CutFrame::Unchosen, part_bounds: None }
     }
 
     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
@@ -109,6 +118,8 @@ impl<'a> VoidControl<'a> {
 
     pub(super) fn execute(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
         -> std::result::Result<VoidReply, ProgramError> {
+        self.choose_frame(router, decoder);
+        let _frame = self.frame.enter(router);
         let id = self.host.id;
         let styled = self.styled;
         match &mut self.phase {
@@ -122,7 +133,10 @@ impl<'a> VoidControl<'a> {
                 _ => return Err(ProgramError::StaleRequest),
             })),
             Phase::Cuts { context, step, .. } => match std::mem::replace(step, Cutting::Taken) {
-                Cutting::Cut(mesh) => Ok(VoidReply::Cut(execute(mesh, context, id, router.tessellation_quality()))),
+                Cutting::Cut(mesh) => {
+                    self.part_bounds = self.frame.outer_bounds(&mesh);
+                    Ok(VoidReply::Cut(execute(mesh, context, id, router.tessellation_quality())))
+                }
                 Cutting::Clean(mut mesh) => {
                     clean_cut(&mut mesh, styled);
                     Ok(VoidReply::Cleaned(mesh))
@@ -134,13 +148,22 @@ impl<'a> VoidControl<'a> {
     }
 
     pub(super) fn accept(&mut self, reply: VoidReply, router: &GeometryRouter) {
+        let frame = self.frame.enter(router);
+        self.accept_in_frame(reply, router);
+        drop(frame);
+        self.place(router);
+    }
+
+    fn accept_in_frame(&mut self, reply: VoidReply, router: &GeometryRouter) {
+        let (host_id, part_bounds) = (self.host.id, self.part_bounds.take());
+        let restate = part_bounds.map(|bounds| (bounds, router.recorded_host_bounds(host_id)));
         let phase = std::mem::replace(&mut self.phase, Phase::Taken);
         self.phase = match (phase, reply) {
             (Phase::Host(mut product, ids), VoidReply::Host(reply)) => {
                 product.accept(reply, router);
                 match product.take_result() {
                     None => Phase::Host(product, ids),
-                    Some(result) => hosts_complete(self.host, ids, result),
+                    Some(result) => self.hosts_walked(ids, result),
                 }
             }
             (Phase::Openings { mut control, hosts, .. }, VoidReply::Opening(reply)) => {
@@ -150,7 +173,12 @@ impl<'a> VoidControl<'a> {
             // Accept the geometry and publish its diagnostics once; a stop
             // keeps only the reached kernel failures, an unwind resumes.
             (Phase::Cuts { context, parts, id, .. }, VoidReply::Cut(outcome)) => match outcome.publish(router) {
-                Ok(mesh) => Phase::Cuts { context, parts, id, step: Cutting::Clean(mesh) },
+                Ok(mesh) => {
+                    if let Some((bounds, recorded)) = restate {
+                        router.restate_host_bounds(host_id, recorded, bounds);
+                    }
+                    Phase::Cuts { context, parts, id, step: Cutting::Clean(mesh) }
+                }
                 Err(error) => Phase::Complete(Err(error)),
             },
             (Phase::Cuts { context, parts, id, .. }, VoidReply::Cleaned(mesh)) => {
@@ -167,6 +195,22 @@ impl<'a> VoidControl<'a> {
     /// cut and cleaned in turn, with no phase or reply moved per step.
     pub(super) fn run(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
         -> std::result::Result<(), ProgramError> {
+        // A host that outgrows its root frame comes back unwalked, once.
+        loop {
+            self.choose_frame(router, decoder);
+            let frame = self.frame.enter(router);
+            self.run_in_frame(router, decoder)?;
+            drop(frame);
+            if !matches!(self.phase, Phase::Host(..)) {
+                break;
+            }
+        }
+        self.place(router);
+        Ok(())
+    }
+
+    fn run_in_frame(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
+        -> std::result::Result<(), ProgramError> {
         let (id, styled) = (self.host.id, self.styled);
         if let Phase::Host(product, _) = &mut self.phase {
             product.run(router, decoder)?;
@@ -174,7 +218,10 @@ impl<'a> VoidControl<'a> {
             let Phase::Host(_, ids) = std::mem::replace(&mut self.phase, Phase::Taken) else {
                 return Err(ProgramError::StaleRequest);
             };
-            self.phase = hosts_complete(self.host, ids, result);
+            self.phase = self.hosts_walked(ids, result);
+            if matches!(self.phase, Phase::Host(..)) {
+                return Ok(());
+            }
         }
         if matches!(self.phase, Phase::Openings { .. }) {
             let Phase::Openings { mut control, mut poll, hosts } = std::mem::replace(&mut self.phase, Phase::Taken)
@@ -210,11 +257,15 @@ impl<'a> VoidControl<'a> {
             self.phase = loop {
                 // Accept the geometry and publish its diagnostics once; a stop
                 // keeps only the reached kernel failures, an unwind resumes.
+                let restate = self.frame.outer_bounds(&mesh).map(|b| (b, router.recorded_host_bounds(id)));
                 let outcome = execute(mesh, &context, id, router.tessellation_quality());
                 let mut cut = match outcome.publish(router) {
                     Ok(cut) => cut,
                     Err(error) => break Phase::Complete(Err(error)),
                 };
+                if let Some((bounds, recorded)) = restate {
+                    router.restate_host_bounds(id, recorded, bounds);
+                }
                 clean_cut(&mut cut, styled);
                 keep_cut(&mut parts, part_id, cut);
                 match take_part(&mut parts) {

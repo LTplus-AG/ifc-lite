@@ -26,7 +26,7 @@ import type { Page } from 'playwright-core';
 import { registerLocale, setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { cleanup, render, waitFor } from '@/test/render.js';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage, type Theme } from '@/test/contrast/render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage, type Theme } from '@/test/contrast/render-harness.js';
 import { SettingsDialog } from './SettingsDialog.js';
 import type { SettingsSection } from '@/lib/settings/open-settings';
 
@@ -197,7 +197,7 @@ function probeTabs(page: Page): Promise<TabProbe> {
 }
 
 describe('Settings on a phone (#8802)', () => {
-  it('scrolls its body so the last General control can be reached', async () => {
+  it('scrolls its body so the last General control can be reached', { skip: CONTRAST_BROWSER_SKIP }, async () => {
     const html = await dialogHtml('general');
     for (const { width, height } of PHONES) {
       const probe = await withThemedPage('light', html, async (page) => {
@@ -213,7 +213,7 @@ describe('Settings on a phone (#8802)', () => {
     }
   });
 
-  it('keeps the body inside the dialog at short desktop heights (#8802 review)', async () => {
+  it('keeps the body inside the dialog at short desktop heights (#8802 review)', { skip: CONTRAST_BROWSER_SKIP }, async () => {
     const html = await dialogHtml('general');
     for (const { width, height } of SHORT_DESKTOPS) {
       const probe = await withThemedPage('light', html, async (page) => {
@@ -235,7 +235,7 @@ describe('Settings on a phone (#8802)', () => {
     assert.ok(height >= DESKTOP_FLOOR_PX, `a short section keeps the ${DESKTOP_FLOOR_PX}px desktop floor at 1280x800 (${height}px)`);
   });
 
-  it('shows its sections as one row of 44 px tabs with an obvious selection', async () => {
+  it('shows its sections as one row of 44 px tabs with an obvious selection', { skip: CONTRAST_BROWSER_SKIP }, async () => {
     for (const section of ['general', 'collaboration'] as const) {
       const html = await dialogHtml(section);
       for (const theme of THEMES) {

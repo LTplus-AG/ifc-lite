@@ -43,7 +43,7 @@ import { hasRetainedGeometryModel, RETAINED_EXACT_ONLY_REASON } from '@/store/re
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { downloadBlob, buildExportFilename, stripExtension } from '@/lib/export/download';
-import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
+import { isStepSourceModel, resolveStepExportBytes } from './step-export-source';
 import { useTranslation } from '@/i18n';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
@@ -60,12 +60,12 @@ export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
   const [selectedModelId, setSelectedModelId] = useState<string>('');
 
   // Only STEP-backed IFC models can be exported — USD is rebuilt from the
-  // source, not the tessellated geometry. `isUsdExportableModel` also excludes
+  // source, not the tessellated geometry. `isStepSourceModel` also excludes
   // cache-restored models (no `sourceFile`) and `.ifcx` (a separate exporter).
   const modelList = useMemo(
     () =>
       Array.from(models.values())
-        .filter(isUsdExportableModel)
+        .filter(isStepSourceModel)
         .map((m) => ({
           id: m.id,
           name: m.name,
@@ -100,7 +100,7 @@ export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
       // Mutation-aware, format-safe source resolution shared with the command
       // palette (regenerate edited STEP bytes, else the unwrapped store bytes,
       // else the raw file).
-      const bytes = await resolveUsdExportBytes(selectedModel, getMutationView);
+      const bytes = await resolveStepExportBytes(selectedModel, getMutationView);
 
       // A fresh processor is cheap: wasm-bindgen shares one module singleton, so
       // init() no-ops when the viewer already initialised the engine. It owns a

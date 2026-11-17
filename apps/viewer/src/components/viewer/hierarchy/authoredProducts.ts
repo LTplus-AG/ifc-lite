@@ -20,7 +20,7 @@ export function collectAuthoredProducts(
   mutationViews: ReadonlyMap<string, MutablePropertyView>,
   models: Map<string, FederatedModel>,
   legacyStore: IfcDataStore | null | undefined,
-  geometricIds: Set<number>,
+  geometricIds: ReadonlySet<number>,
 ): AuthoredProduct[] {
   const out: AuthoredProduct[] = [];
   const state = useViewerStore.getState();

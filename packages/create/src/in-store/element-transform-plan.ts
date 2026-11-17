@@ -26,7 +26,7 @@
 import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { expandAffectedSet } from '@ifc-lite/export';
+import { expandAffectedSet, gridPlacementDependents } from '@ifc-lite/export';
 import {
   IDENTITY_FRAME, applyFrame, frameInStorey, objectPlacementOf, placementAncestors, placementOrigin, uprightFrame,
   type PlacementReader, type PlanFrame,
@@ -82,16 +82,22 @@ const isOpening = (type: string) => IfcTypeEnumFromString(type) === IfcTypeEnum.
  * The moved set: each selected element and what moves with it, mapped to the
  * storey whose frame it is written in (the selected element's).
  */
-function movedSet(input: TransformPlanInput): Map<number, number | null> {
+function movedSet(input: TransformPlanInput, gridCarried: ReadonlySet<number>): Map<number, number | null> {
   const moved = new Map<number, number | null>();
   for (const id of input.selected) moved.set(id, input.storeyOf(id));
   for (const id of input.selected) {
     // A bare opening moves on its own: expanding it would take its host along.
-    if (isOpening(typeOf(input, id))) continue;
-    for (const dependent of expandAffectedSet(input.dataStore, input.view, [id], 'hostsChanged')) {
+    const type = typeOf(input, id);
+    if (isOpening(type)) continue;
+    const affected = expandAffectedSet(input.dataStore, input.view, [id], 'hostsChanged');
+    // A grid's placement closure also contains hosts. Expand those hosts in
+    // one batch so independently placed openings/fillings become move roots.
+    const bound = type === 'IFCGRID' ? [...affected].filter(dependent => gridCarried.has(dependent)) : [];
+    const dependents = bound.length ? expandAffectedSet(input.dataStore, input.view, [id, ...bound], 'hostsChanged') : affected;
+    for (const dependent of dependents) {
       // The walk also returns what is not placed (a material relationship the
       // parser has no type name for): only placed products move.
-      if (!moved.has(dependent) && placementOf(input, dependent) !== null) moved.set(dependent, moved.get(id) ?? null);
+      if (!moved.has(dependent) && (gridCarried.has(dependent) || placementOf(input, dependent) !== null)) moved.set(dependent, moved.get(id) ?? null);
     }
   }
   return moved;
@@ -105,7 +111,9 @@ function placementOf(input: Pick<TransformPlanInput, 'dataStore' | 'view'>, prod
 
 export function planElementTransform(input: TransformPlanInput): TransformPlan {
   const reader: PlacementReader = { dataStore: input.dataStore, view: input.view };
-  const moved = movedSet(input);
+  const grids = new Set(input.selected.filter(id => typeOf(input, id) === 'IFCGRID'));
+  const gridCarried = grids.size ? gridPlacementDependents(input.dataStore, input.view, grids) : new Set<number>();
+  const moved = movedSet(input, gridCarried);
   const placements = new Map<number, number>();
   for (const id of moved.keys()) {
     const placement = placementOf(input, id);
@@ -116,6 +124,10 @@ export function planElementTransform(input: TransformPlanInput): TransformPlan {
   const carried: number[] = [];
   const refused: TransformRefusal[] = [];
   for (const [expressId, storeyId] of moved) {
+    if (gridCarried.has(expressId)) {
+      carried.push(expressId);
+      continue;
+    }
     const placement = placementOf(input, expressId);
     if (placement === null) {
       refused.push({ expressId, reason: 'noPlacement' });

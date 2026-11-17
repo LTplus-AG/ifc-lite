@@ -112,4 +112,9 @@ export const miscPanelsADe = {
   "spaceMousePanel.copyFailedLabel": "Der Kopiervorgang ist fehlgeschlagen. Versuchen Sie es erneut",
   "spaceMousePanel.copyDeviceReportLabel": "Gerätebericht kopieren",
   "spaceMousePanel.reportHintMessage": "Wenn die Bewegung für Ihr Gerät falsch oder tot ist, kopieren Sie diesen Bericht und fügen Sie ihn in eine GitHub-Ausgabe ein, damit das Achsenlayout für Ihr Modell korrigiert werden kann.",
+  "spaceMousePanel.useDriverLabel": "3Dconnexion-Treiber verwenden",
+  "spaceMousePanel.useDriverHint": "Verbindet über den laufenden 3DxWare-Treiber statt über WebHID. Geschwindigkeit, Achsen und Navigationsmodus kommen dann aus Ihren 3Dconnexion-Einstellungen. Das 3Dconnexion-SDK wird nur geladen, solange diese Option aktiv ist.",
+  "spaceMousePanel.driverConnecting": "Verbindung zum 3Dconnexion-Treiber wird hergestellt…",
+  "spaceMousePanel.driverConnected": "Über den 3Dconnexion-Treiber verbunden",
+  "spaceMousePanel.driverUnavailable": "Der 3Dconnexion-Treiber ist nicht erreichbar, daher bleibt WebHID in Gebrauch. Prüfen Sie, ob 3DxWare 10 läuft.",
 } satisfies Catalogue;

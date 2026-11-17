@@ -137,3 +137,68 @@ test('the probe must report exactly one fixture', () => {
   const r = runReport(RUN, { probe: [...PROBE, ...PROBE] });
   assert.equal(r.status, 1, 'two probe results must fail');
 });
+
+// Own code only: libc's alignment-dependent instruction counts must not reach
+// the phases, while our own call sites (and so a change that calls libc more
+// often) still do.
+const LIBC = '/usr/lib/x86_64-linux-gnu/libc.so.6';
+/**
+ * A dump in which our scanner spends `body` Ir of its own, plus `callSite` Ir
+ * at the call site (argument setup, the call, the result test) for each of its
+ * `calls` calls into memcmp, which retire `memcmp` Ir inside libc. As callgrind
+ * writes it: the call-site cost is an ordinary cost line of the caller, and the
+ * line after `calls=` is the callee's inclusive cost.
+ */
+function splitDump(part, trigger, { body, memcmp, calls, callSite = 1 }) {
+  const own = body + calls * callSite;
+  return [
+    '# callgrind format', 'version: 1', 'cmd:  /x/perf_probe fixture.ifc --iters 1', `part: ${part}`,
+    `desc: Trigger: ${trigger}`, 'positions: line', 'events: Ir', `summary: ${own + memcmp}`, '',
+    'ob=(1) /x/target/profiling/examples/perf_probe', 'fl=(1) ???', 'fn=(1) ifc_lite_core::scan::next',
+    `0 ${body}`,
+    `1 ${calls * callSite}`,
+    `cob=(2) ${LIBC}`, 'cfi=(2) ???', 'cfn=(2) __memcmp_avx2_movbe', `calls=${calls} 0`, `1 ${memcmp}`,
+    '', 'ob=(2)', 'fl=(2)', 'fn=(2)', `0 ${memcmp}`, '', `totals: ${own + memcmp}`, '',
+  ].join('\n');
+}
+
+test('selfCosts splits own code from system libraries and counts the calls between them', async () => {
+  const { selfCosts, isSystemObject } = await import('./instructions-report.mjs');
+  assert.deepEqual(selfCosts(splitDump(1, 'x', { body: 500, memcmp: 4000, calls: 37 })), { own: 537, system: 4000, externalCalls: 37 });
+  for (const lib of [LIBC, '/lib64/ld-linux-x86-64.so.2', '/usr/lib/libgcc_s.so.1', '[vdso]', '/usr/libexec/valgrind/vgpreload_core-amd64-linux.so']) assert.ok(isSystemObject(lib), lib);
+  assert.ok(!isSystemObject('/x/target/profiling/examples/perf_probe'));
+  // Two position columns (`--dump-instr=yes`): Ir is the column after them.
+  const instr = 'positions: instr line\nevents: Ir\nob=(1) /x/perf_probe\nfn=(1) f\n0x10 3 70\n';
+  assert.deepEqual(selfCosts(instr), { own: 70, system: 0, externalCalls: 0 });
+});
+
+test('a layout-only change inside libc moves allObjects, not phases; more calls into libc move phases', () => {
+  const run = (memcmp, calls = 40) => {
+    const dir = mkdtempSync(join(tmpdir(), 'instructions-report-own-'));
+    try {
+      RUN.forEach(([name, ir], i) => {
+        const text = name === 'entity_scan_end' ? splitDump(i + 1, MARKER(name), { body: 600, memcmp, calls }) : dump(i + 1, MARKER(name), ir);
+        writeFileSync(join(dir, `callgrind.out.${i + 1}`), text);
+      });
+      writeFileSync(join(dir, 'callgrind.out'), dump(RUN.length + 1, 'Program termination', EXIT_IR));
+      writeFileSync(join(dir, 'probe.json'), JSON.stringify(PROBE));
+      const r = spawnSync(process.execPath, [CLI, '--dumps', join(dir, 'callgrind.out'), '--probe', join(dir, 'probe.json'), '--json'], { encoding: 'utf8', timeout: 10_000 });
+      assert.equal(r.status, 0, 'the report CLI must succeed');
+      return JSON.parse(r.stdout);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const base = run(4000);
+  const shifted = run(4310); // same calls, memcmp retired more instructions on other alignments
+  assert.equal(base.phases.entityScanIr, 640, 'scanner body 600 + 40 call sites of 1 Ir; memcmp itself excluded');
+  assert.deepEqual(shifted.phases, base.phases);
+  assert.equal(shifted.allObjects.entityScanIr - base.allObjects.entityScanIr, 310);
+  assert.equal(base.externalCalls.entityScanCalls, 40);
+  // Twice the calls, scanner body unchanged: the phase grows by exactly the
+  // 40 extra call sites, and none of memcmp's extra 4000 Ir reaches it.
+  const doubled = run(8000, 80);
+  assert.equal(doubled.phases.entityScanIr - base.phases.entityScanIr, 40);
+  assert.equal(doubled.allObjects.entityScanIr - base.allObjects.entityScanIr, 4040);
+  assert.equal(doubled.externalCalls.entityScanCalls, 80);
+});

@@ -1328,6 +1328,7 @@ pub use kmz::{ifc_angle_to_kml_heading, try_export_kmz_collada_from_meshes, KmzO
 pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 pub use step::{export_step, export_step_json, export_step_with_stats,
+               export_step_with_diagnostics, export_step_to_writer_with_diagnostics,
                AttrMutation, PropMutation, StepOptions, StepStats};
 // A `MutablePropertyView.exportMutations()` log, applied with byte parity to
 // the TypeScript `StepExporter` (#5941). `MutationLog::from_json` reads the log.
@@ -1412,7 +1413,15 @@ edited models through `StepExporter`, and its georeferencing edits are not
 applied (reported in `MergedStats::warnings`), as the TypeScript bake passes
 none.
 
-`export_step_with_stats` returns `StepStats`. `total` and `written` describe
+`export_step_with_diagnostics` returns `(String, StepStats, Vec<String>)`;
+`export_step_to_writer_with_diagnostics` streams the output and returns
+`(StepStats, Vec<String>)`. The warning list exposes named conversion losses.
+For example, downgrading an IFC4 point connection with
+`ConditionCoordinateSystem` reports that its restraint directions are not
+preserved. Inspect these warnings alongside the counters.
+
+`export_step_with_stats` retains its `(String, StepStats)` return type and
+counter-only contract. `total` and `written` describe
 the selected entity set. The remaining counters are validity or refusal
 signals that callers should inspect: `copies_refused` counts copy-on-write
 edits that were not emitted, `refused_refs` counts out-of-range STEP

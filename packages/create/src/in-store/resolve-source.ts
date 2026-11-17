@@ -218,6 +218,13 @@ function collectSourceAssociations(
   // not replayed onto the duplicate, one created this session (a type binding,
   // a material) is, and a queued edit to a relationship is what gets copied.
   const view = editor?.getMutationView() ?? null;
+  const deletedProperties = new Set<string>(), deletedQuantities = new Set<string>();
+  for (const change of view?.getEffectiveChanges(sourceId) ?? []) {
+    if (change.entityId !== sourceId || change.setName === undefined) continue;
+    if (change.kind === 'pset-deleted') deletedProperties.add(change.setName);
+    if (change.kind === 'qset-deleted') deletedQuantities.add(change.setName);
+  }
+
   const read = editor
     ? createStyleEntityReader(store, editor)
     : (id: number) => {
@@ -236,7 +243,14 @@ function collectSourceAssociations(
     // reference, a bare set or IFCPROPERTYSETDEFINITIONSET((...)) (#7681).
     // Every other Relating* slot is one reference.
     const relatingExpressIds = type.toUpperCase() === 'IFCRELDEFINESBYPROPERTIES'
-      ? propertyDefinitionsInModel(store, entity.attributes[5], view, asRef)
+      ? propertyDefinitionsInModel(store, entity.attributes[5], view, asRef).filter(id => {
+        // Logical deletion does not rewrite the raw relationship until export.
+        // A copy inherits the effective source, not its deleted saved sets (#9296).
+        const definition = read(id);
+        const name = definition?.attributes[2];
+        return typeof name !== 'string' || !(definition?.type.toUpperCase() === 'IFCELEMENTQUANTITY'
+          ? deletedQuantities : deletedProperties).has(name);
+      })
       : [asRef(entity.attributes[5])].filter((id): id is number => id !== null);
     const relatingExpressId = relatingExpressIds[0];
     // RelatingPropertyDefinition / RelatingType / etc. is required

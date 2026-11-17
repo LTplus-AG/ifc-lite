@@ -32,7 +32,8 @@ import {
 } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
 import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
-import { buildHiddenIfcTypes } from '@/store/typeVisibilityFilter';
+import { buildHiddenIfcTypes, classFilterActive, isMeshTypeVisible } from '@/store/typeVisibilityFilter';
+import { retypedClasses } from '@/lib/visibility/structural-view';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
@@ -65,10 +66,9 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
   // openings the user never rendered (issue surfaced on the Revit door
   // fixture where IfcOpeningElement #2438 leaked through).
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
-  // Not read directly below — `resolveExportVisibility` reads the live store
-  // snapshot at export time — but subscribed so the dialog re-renders when
-  // the Class tab filter, storey isolation, or a lens hides something while
-  // the dialog is open (#4328).
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
+  // Subscribe to every visibility channel so the open dialog refreshes (#4328).
+  // The export resolver reads the live store again at click time.
   const classFilter = useViewerStore((s) => s.classFilter);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds);
@@ -147,7 +147,7 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
   const getExportVisibility = useCallback(
     (modelId: string) => resolveExportVisibility(useViewerStore.getState(), modelId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
+    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, structuralViewMode, lensHiddenIds],
   );
 
   const getGlobalHiddenIds = useCallback(
@@ -240,7 +240,7 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
         );
         const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
         const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
-        const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;
+        const retyped = visibleOnly && classFilterActive(typeVisibility) ? retypedClasses(useViewerStore.getState()) : undefined;
         // `globalIsolated` is `null` for "no filter" vs an empty-but-non-null `Set`
         // for "isolation active, matches nothing" (`resolveExportVisibility`) — a
         // `.size > 0` check here would collapse the two and export the whole model
@@ -253,7 +253,7 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
             // origin; the from-bytes assembler excludes them (mesh_visible), as must this.
             if (m.geometryClass === GEOM_CLASS_INSTANCED_TYPE) return false;
             if (!visibleOnly) return true;
-            if (hiddenIfcTypes && m.ifcType && hiddenIfcTypes.has(m.ifcType)) return false;
+            if (!isMeshTypeVisible(m, typeVisibility, undefined, retyped)) return false;
             if (hasIsolation && !globalIsolated!.has(m.expressId)) return false;
             if (globalHidden && globalHidden.has(m.expressId)) return false;
             return true;
@@ -323,7 +323,7 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
     lit,
     colorSource,
     visibleOnly,
-    typeVisibility,
+    typeVisibility, structuralViewMode,
     getGlobalHiddenIds,
     getGlobalIsolatedIds,
     surface,

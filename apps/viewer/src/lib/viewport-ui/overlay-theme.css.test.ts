@@ -62,9 +62,15 @@ describe('overlay @theme bridge and z scale (#5483)', () => {
     const css = await compile();
     const root = declarationsOf(css, ':root');
     assert.deepEqual(
-      ['scene', 'hud', 'hud-popover', 'float', 'chrome', 'modal', 'toast'].map((k) => root.get(`--z-${k}`)),
-      ['10', '20', '30', '40', '50', '60', '70'],
+      ['scene', 'hud', 'hud-popover', 'float', 'toast', 'chrome', 'modal'].map((k) => root.get(`--z-${k}`)),
+      ['10', '20', '30', '40', '45', '50', '60'],
     );
+    // #9849: action toasts must clear viewport tools without covering the
+    // shared DialogContent/DialogOverlay primitives, which currently use z-50.
+    const toastLayer = Number(root.get('--z-toast'));
+    assert.ok(toastLayer > Number(root.get('--z-float')), 'toasts stay above viewport tools');
+    assert.ok(toastLayer < Number(declarationsOf(css, '.z-50').get('z-index')),
+      'modal content and scrims must stay above action toasts');
     assert.equal(declarationsOf(css, '.z-\\(--z-hud\\)').get('z-index'), 'var(--z-hud)');
     assert.equal(declarationsOf(css, '.z-\\(--z-toast\\)').get('z-index'), 'var(--z-toast)');
   });

@@ -32,7 +32,9 @@ const device = {
   limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
   createBuffer: (desc: GPUBufferDescriptor) => ({ size: desc.size, destroy() {} }),
   createBindGroup: () => ({}),
-  queue: { writeBuffer: () => {} },
+  // Finalize assembles a streamed bucket's batch from its fragments on the GPU.
+  createCommandEncoder: () => ({ copyBufferToBuffer() {}, finish: () => ({}) }),
+  queue: { writeBuffer: () => {}, submit() {} },
 } as unknown as GPUDevice;
 
 const pipeline = {

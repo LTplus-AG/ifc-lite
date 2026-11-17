@@ -16,7 +16,7 @@ import { exportModelStep } from '@/lib/export/model-step-export';
 import { mapStepSchema } from '@/lib/export/artifact-naming';
 import { modelExportFilename } from '@/lib/export/download';
 import { IonUploadError, ionAssetUrl, uploadToCesiumIon, type IonUploadPhase } from '@/lib/geo/cesium-ion-upload';
-import { listExportModels, resolveExportModel } from './export-model-selection';
+import { listIonExportModels, resolveExportModel } from './export-model-selection';
 import { preferredExportModelId } from './export-model-default';
 import { ExportDialogShell, type ExportDialogShellActivity, type ExportDialogShellResult } from './ExportDialogShell';
 
@@ -40,9 +40,7 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
   const [phase, setPhase] = useState<'serialize' | IonUploadPhase>();
   const controller = useRef<AbortController | null>(null);
   const mounted = useRef(true);
-  const modelList = useMemo(() => listExportModels(models, new Set(), legacyStore)
-    .filter(model => model.schemaVersion !== 'IFC5' && !model.sourceSchema
-      && (model.id === '__legacy__' || models.get(model.id)?.ifcDataStore)), [models, legacyStore]);
+  const modelList = useMemo(() => listIonExportModels(models, legacyStore), [models, legacyStore]);
   useEffect(() => {
     if (!modelList.some(model => model.id === selectedId)) {
       setSelectedId(preferredExportModelId(modelList.map(model => model.id), activeModelId));
@@ -68,7 +66,7 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
         return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
       }
       const model = resolveExportModel(state.models, selectedId, state.ifcDataStore, state.geometryResult);
-      if (!model?.ifcDataStore || model.schemaVersion === 'IFC5' || model.sourceSchema) {
+      if (!model?.ifcDataStore || model.schemaVersion === 'IFC5' || model.ifcDataStore.sourceKind === 'tabular' || model.sourceSchema) {
         return { success: false, message: t('ionUpload.noModel') };
       }
       // Preserve the invocation's export identity through asynchronous failures.

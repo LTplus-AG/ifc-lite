@@ -8,7 +8,8 @@
  * `addInstancedShard` (packages/renderer) has taken an owning `modelIndex`
  * since #2172, but the ONE call site — this hook's drain effect — never
  * forwarded it, and the loader only ever pushed the PRIMARY model's shard
- * bytes into `pendingInstancedShards` in the first place. A secondary
+ * bytes into the shard channel (then the store's `pendingInstancedShards`,
+ * now `instancedShardQueue`) in the first place. A secondary
  * (federated) model's repeated opaque occurrences therefore never reached
  * the scene: no instanced geometry rendered for anything but the primary.
  *
@@ -36,6 +37,7 @@ import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import { useGeometryStreaming, type UseGeometryStreamingParams } from './useGeometryStreaming.js';
 
 import { buildShardBytes } from '@/test/instanced-shard-fixture.js';
+import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 
 interface RecordedCall {
   modelIndex: number | undefined;
@@ -67,14 +69,12 @@ function baseParams(overrides: Partial<UseGeometryStreamingParams>): UseGeometry
     pendingMeshRemovals: null,
     pendingMeshTranslations: null,
     pendingMeshRotations: null,
-    pendingInstancedShards: null,
     clearPendingMeshColorUpdates: () => {},
     clearPendingColorUpdates: () => {},
     clearPendingMeshRemovals: () => {},
     pruneGeometryMeshes: () => {},
     clearPendingMeshTranslations: () => {},
     clearPendingMeshRotations: () => {},
-    clearInstancedShards: () => {},
     clearColorRef: { current: [1, 1, 1, 1] },
     ...overrides,
   };
@@ -97,7 +97,6 @@ describe('useGeometryStreaming — federated instanced-shard forwarding (#1912)'
     const ID_OFFSET = 5000;
     const params = baseParams({
       rendererRef: { current: renderer },
-      pendingInstancedShards: [{ modelId: 'model-b', bytes: buildShardBytes(RAW_ENTITY_ID) }],
       modelIdToIndex: new Map([['model-a', 0], ['model-b', 1]]),
       modelIdToOffset: new Map([['model-a', 0], ['model-b', ID_OFFSET]]),
     });
@@ -109,6 +108,10 @@ describe('useGeometryStreaming — federated instanced-shard forwarding (#1912)'
 
     await act(async () => {
       root.render(<Harness params={params} />);
+    });
+    await act(async () => {
+      enqueueInstancedShards('model-b', [buildShardBytes(RAW_ENTITY_ID)], instancedShardGeneration());
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     assert.equal(calls.length, 1, 'scene.addInstancedShard must be called for the secondary model\'s shard');

@@ -29,7 +29,7 @@ import { planElementTransform, type TransformPlan } from './plan.js';
 import { transformElementsInStore, describeTransformRefusal } from '../../../../../packages/create/src/in-store/element-transform-edit.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { modelEditTarget, readModelEditTarget, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
-import { alignElementsInStore, type ElementAlignParams, type PlanBox } from '@ifc-lite/create';
+import { mirrorElementsInStore, alignElementsInStore, type ElementAlignParams, type PlanBox } from '@ifc-lite/create';
 import type { Workplane } from '@/lib/commands/modeling/types';
 import { carryWallJoins } from './wall-join-carrier.js';
 
@@ -126,4 +126,23 @@ export function commitElementAlignment(tx: AuthoringTransaction, modelId: string
   }), tx.batchId);
   return { modelId, created: [], deleted: [], remesh: result.remesh,
     ...(result.hostsChanged ? { remeshCause: 'hostsChanged' as const } : {}), select: [params.reference, ...params.targets] };
+}
+
+/** Reflect through picked render-space points in each selected storey's frame. */
+export function commitElementMirror(tx: AuthoringTransaction, modelId: string, selected: readonly number[], axis: readonly [Vec3, Vec3], copy: boolean): CommitResult {
+  const target = modelEditTarget(tx.store, modelId);
+  if (!target) throw new Error('The model has no editable IFC data.');
+  const groups = new Map<number, number[]>();
+  for (const id of selected) {
+    const storey = elementStoreyId(tx.store, modelId, id);
+    if (storey === null) throw new Error('Mirror requires elements under a storey');
+    const ids = groups.get(storey) ?? [];
+    ids.push(id); groups.set(storey, ids);
+  }
+  const planes = new Map<number, (p: Vec3) => Vec2>();
+  const mirrored = recordModellingCommit(tx.api, modelId, editor => [...groups].flatMap(([storey, ids]) => {
+    const local = storeyLocal(tx.store, modelId, storey, planes);
+    return mirrorElementsInStore(target.dataStore, editor, ids, { axis: [local(axis[0]), local(axis[1])], copy });
+  }), tx.batchId);
+  return { modelId, created: copy ? mirrored : [], deleted: [], remesh: mirrored, remeshCause: 'hostsChanged', select: mirrored };
 }

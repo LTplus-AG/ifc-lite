@@ -137,7 +137,7 @@ export interface SelectScanBandParams {
    * pre-alignment coordinates while the 3D view draws it aligned. Omit for
    * an unaligned asset.
    */
-  model?: Float32Array;
+  model?: Float32Array | Float64Array;
   /**
    * Whether `model` already lands in the viewer render frame. The aligned
    * matrix does (the whole viewer shift is folded into its decode offset,
@@ -340,9 +340,9 @@ export function selectScanBand(params: SelectScanBandParams): ScanBandSelection 
   return { points, totalInBand, renderedCount: points.length, stride };
 }
 
-/** Every in-band point, undecimated, as flat drawing-space `[x0, y0, …]`:
- * the vector outline's input (#6871), which needs the full slab density. */
-export function collectScanBandPlaneXY(params: Omit<SelectScanBandParams, 'maxRendered'>): Float32Array {
+/** Every in-band point, undecimated, relative to a shared drawing-space anchor.
+ * The first in-band point supplies the f64 anchor unless given (#10094 item 2). */
+export function collectScanBandPlaneXY(params: Omit<SelectScanBandParams, 'maxRendered'>, anchor?: Point2D): { planeXY: Float32Array; anchor: Point2D } {
   const { sample, plane } = params;
   const { passesClassMask, readPoint, inBand } = bandReader(params);
   let n = 0;
@@ -352,14 +352,14 @@ export function collectScanBandPlaneXY(params: Omit<SelectScanBandParams, 'maxRe
   const out = new Float32Array(n * 2);
   let k = 0;
   for (let i = 0; i < sample.count && k < out.length; i++) {
-    if (!passesClassMask(i)) continue;
-    const rp = readPoint(i);
-    if (!inBand(rp)) continue;
+    const rp = passesClassMask(i) ? readPoint(i) : null;
+    if (!rp || !inBand(rp)) continue;
     const p = projectScanPoint(rp, plane);
-    out[k++] = p.x;
-    out[k++] = p.y;
+    anchor ??= p;
+    out[k++] = p.x - anchor.x;
+    out[k++] = p.y - anchor.y;
   }
-  return out;
+  return { planeXY: out, anchor: anchor ?? { x: 0, y: 0 } };
 }
 
 /**

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { useTranslation } from '@/i18n';
@@ -12,6 +13,8 @@ import { SettingsGroup, SettingsRow } from './SettingsGroup';
 export function AnalyticsConsentSection() {
   const { t } = useTranslation();
   const [optedOut, setOptedOut] = useState(isAnalyticsOptedOut);
+  // Nothing is sent when the host switched analytics off, so there is nothing to opt out of.
+  if (!isFeatureEnabled('privacy.analytics')) return null;
   return (
     <SettingsGroup title={t('settings.privacy.analyticsTitle')}>
       <p className="text-xs text-muted-foreground">{t('settings.privacy.analyticsDisclosure')}</p>

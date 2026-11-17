@@ -17,6 +17,7 @@ export const visibilityReasonsFr = {
   'visibilityReasons.modelHidden': 'Modèles masqués',
   'visibilityReasons.lens': 'Lentille active',
   'visibilityReasons.typeVisibility': 'Classes IFC masquées',
+  'visibilityReasons.structuralViewMode': 'Vue du modèle structurel',
   'visibilityReasons.typeViewMode': 'Vue des types',
   'visibilityReasons.hostTypes': 'Classes masquées par l’hôte',
   'visibilityReasons.section': 'Coupe',

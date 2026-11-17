@@ -4,6 +4,7 @@
 
 /** Combined Zustand store. Domain slices own their state and actions. */
 
+import { registerOverlayCapacity } from './overlay-capacity.js';
 import { registerWorkflowArtifactInvalidation } from '../lib/flow/artifact-lifetime.js';
 import { createAppearanceSlice, type AppearanceSlice } from './slices/appearanceSlice.js';
 import { create } from 'zustand';
@@ -16,6 +17,7 @@ import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, type CameraSlice } from './slices/cameraSlice.js';
 import { createSectionSlice, type SectionSlice } from './slices/sectionSlice.js';
 import { registerMutationViewStoreBinding } from './mutation-view-store-binding.js';
+import { peekViewerStore, registerViewerStore, type ViewerStoreApi } from './viewerStoreHandle.js';
 export { customPlaneCenter } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
 import { createDataSlice, type DataSlice } from './slices/dataSlice.js';
@@ -53,6 +55,7 @@ import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
 import { createGlobePlacementSlice, type GlobePlacementSlice } from './slices/globePlacementSlice.js';
 import { createSolarSlice, type SolarSlice } from './slices/solarSlice.js';
+import { createSiteContextSlice, type SiteContextSlice } from './slices/siteContextSlice.js';
 import { createEnvironmentSlice, type EnvironmentSlice } from './slices/environmentSlice.js';
 import { createScheduleSlice, type ScheduleSlice } from './slices/scheduleSlice.js';
 import { createPlaybackSlice, type PlaybackSlice } from './slices/playbackSlice.js';
@@ -95,7 +98,7 @@ export { resolveEntityRef, resolveGlobalId } from './resolveEntityRef.js';
 export { fromGlobalIdFromModels, toGlobalIdFromModels, toGlobalIdForRef } from './globalId.js';
 export type { ForwardModelMapLike } from './globalId.js';
 
-export type { Drawing2DState, Drawing2DStatus, Annotation2DTool, PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, SelectedAnnotation2D } from './slices/drawing2DSlice.js';
+export type { Drawing2DState, Drawing2DStatus, Annotation2DTool, PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, Dimension2D, SelectedAnnotation2D } from './slices/drawing2DSlice.js';
 
 export type { SheetState } from './slices/sheetSlice.js';
 export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from './slices/collabSlice.js';
@@ -177,7 +180,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice & GlobePlacementSlice &
-  SolarSlice &
+  SolarSlice & SiteContextSlice &
   EnvironmentSlice &
   ScheduleSlice &
   PlaybackSlice &
@@ -243,6 +246,7 @@ const createViewerStore = () => create<ViewerState>()(withStoreChurnCounters(wit
   ...createCesiumSlice(...args),
   ...createGlobePlacementSlice(...args),
   ...createSolarSlice(...args),
+  ...createSiteContextSlice(...args),
   ...createEnvironmentSlice(...args),
   ...createScheduleSlice(...args),
   ...createPlaybackSlice(...args),
@@ -266,19 +270,15 @@ const createViewerStore = () => create<ViewerState>()(withStoreChurnCounters(wit
   ...createViewerActions(...args),
 })))));
 
-const STORE_SINGLETON_KEY = '__ifc_lite_viewer_store__';
-const globalStoreRegistry = globalThis as typeof globalThis & {
-  [STORE_SINGLETON_KEY]?: ReturnType<typeof createViewerStore>;
-};
-
-export function getViewerStoreApi() {
-  const existing = globalStoreRegistry[STORE_SINGLETON_KEY];
+export function getViewerStoreApi(): ViewerStoreApi {
+  const existing = peekViewerStore();
   if (existing) return existing;
   const store = createViewerStore();
-  globalStoreRegistry[STORE_SINGLETON_KEY] = store;
+  registerViewerStore(store);
   registerSidebarExclusivity(store);
   registerHierarchyLeftSync(store);
   registerDrawingInspectorSheetSync(store);
+  registerOverlayCapacity(store);
   registerMutationViewStoreBinding(store); // views read their model's CURRENT store, not the partial one (#5672)
   registerOverlayThemeSync(store); // `--overlay-*` on <html> follow `theme` in every app that holds the store (#5490)
   registerWorkflowArtifactInvalidation(store);

@@ -48,6 +48,12 @@ export interface SpatialAnchor {
    * mesh looked right in-session because that one is built in metres).
    */
   lengthUnitScale?: number;
+  /** Lazily resolved SI factors for quantitative roof parts; manual anchors default to SI. */
+  getMeasureUnitScales?: () => {
+    readonly areaUnitScale: number;
+    readonly volumeUnitScale: number;
+    readonly planeAngleUnitScale: number;
+  };
   /**
    * Optional seeded randomness for the GlobalIds the builders emit
    * (`@ifc-lite/encoding`'s `RandomSource`: a `Math.random`-style
@@ -132,6 +138,8 @@ export interface HostBounds {
  */
 export interface HostAnchor extends SpatialAnchor {
   hostId: number;
+  /** Owning footprint roof when the host is one of its geometric slab planes. */
+  roofId?: number;
   hostKind: HostKind;
   /** The host's own IfcLocalPlacement; openings are placed relative to it. */
   hostPlacementId: number;

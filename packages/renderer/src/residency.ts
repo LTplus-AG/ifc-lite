@@ -57,6 +57,17 @@ export interface ColdGeometryProvider {
   ): Promise<import('@ifc-lite/geometry').MeshData[]>;
 }
 
+/** CPU bytes held by bucket meshData (positions + normals + indices): the host budget's measure. */
+export function residentCpuBytes(buckets: Iterable<{ meshData: readonly import('@ifc-lite/geometry').MeshData[] }>): number {
+  let total = 0;
+  for (const bucket of buckets) {
+    for (const md of bucket.meshData) {
+      total += md.positions.byteLength + md.normals.byteLength + md.indices.byteLength;
+    }
+  }
+  return total;
+}
+
 /**
  * Select batches to evict so `residentBytes` drops to `budgetBytes` or below.
  * `shells` must contain only ELIGIBLE batches (resident, bucket-owned, CPU

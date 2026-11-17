@@ -68,9 +68,7 @@ export function BCFServerConnectForm({
   const [clientSecret, setClientSecret] = useState('');
   // One sign-in at a time (C-2): a same-tick double press is refused before
   // it opens a second popup or registers a second client.
-  const connectFlight = useAsyncRun();
-  const busy = connectFlight.busy;
-  const runConnect = connectFlight.start;
+  const { busy, start: runConnect } = useAsyncRun();
   const [error, setError] = useState<string | null>(null);
 
   const preset = findBcfServerPreset(presetId);
@@ -103,7 +101,7 @@ export function BCFServerConnectForm({
     setError(null);
   }, []);
 
-  const handleConnect = useCallback(() => runConnect(async () => {
+  const handleConnect = useCallback(() => runConnect(async ({ signal, isCurrent }) => {
     let popup: Window | null = null;
     // Everything, validation included, is inside the try: useAsyncRun does not
     // rethrow, so an escaping throw would only reach the console.
@@ -126,17 +124,19 @@ export function BCFServerConnectForm({
         setError(t('bcf.serverConnect.popupBlocked'));
         return;
       }
+      signal.addEventListener('abort', () => popup?.close(), { once: true });
       setError(null);
       let config: BcfServerConfig;
       if (authMethod === 'password') {
-        config = await signInToBcfServer(serverUrl, username.trim(), password);
+        config = await signInToBcfServer(serverUrl, username.trim(), password, signal);
       } else if (authMethod === 'token') {
-        config = await signInWithToken(serverUrl, accessToken);
+        config = await signInWithToken(serverUrl, accessToken, signal);
       } else if (authMethod === 'oauth') {
         if (!popup) {
           throw new Error(t('bcf.serverConnect.popupBlocked'));
         }
         const preparation = await prepareBcfOAuth(serverUrl, {
+          signal,
           clientId: vendorApp?.clientId ?? clientId,
           // A build-time vendor app never has a secret in the browser: a
           // public client needs none, and a confidential one gets it added by
@@ -150,27 +150,32 @@ export function BCFServerConnectForm({
         });
         // Subscribe before navigating: BroadcastChannel does not buffer.
         const { waitForOAuthCallback } = await import('@ifc-lite/oauth-pkce');
+        if (!isCurrent()) return;
         const callback = waitForOAuthCallback({
+          signal,
           expectedState: preparation.state,
           timeoutMs: 5 * 60 * 1000,
           timeoutMessage: t('bcf.serverConnect.oauthTimeout'),
         });
         popup.location.href = preparation.authorizeUrl;
         const callbackUrl = await callback;
-        config = await completeBcfOAuth(preparation, callbackUrl);
+        if (!isCurrent()) return;
+        config = await completeBcfOAuth(preparation, callbackUrl, signal);
       } else {
         config = await signInWithClientCredentials(
           serverUrl,
           clientId.trim(),
           clientSecret.trim(),
+          signal,
         );
       }
+      if (!isCurrent()) return;
       setPassword('');
       setAccessToken('');
       setClientSecret('');
       onSignedIn(config);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (isCurrent()) setError(err instanceof Error ? err.message : String(err));
     } finally {
       // Inert when COOP already severed the handle or the page closed itself.
       popup?.close();

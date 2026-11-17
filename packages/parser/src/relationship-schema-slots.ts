@@ -34,6 +34,9 @@ import {
     type SchemaVersionWithRegistry,
     type SchemaRegistry,
 } from './generated/schema-registry-by-version.js';
+import { CONCRETE_RELATIONSHIP_TYPES as CONCRETE_RELATIONSHIP_TYPES_IFC4 } from './generated/schema-registry.js';
+import { CONCRETE_RELATIONSHIP_TYPES as CONCRETE_RELATIONSHIP_TYPES_IFC4X3 } from './generated/ifc4x3/schema-registry.js';
+import { CONCRETE_RELATIONSHIP_TYPES as CONCRETE_RELATIONSHIP_TYPES_IFC2X3 } from './generated/ifc2x3/schema-registry.js';
 
 /** One relating/related attribute's position and cardinality. */
 export interface RelationshipSlot {
@@ -215,16 +218,17 @@ export function getRelationshipReadPlan(
     return plan;
 }
 
-function isSubtypeOfIfcRelationship(registry: SchemaRegistry, name: string): boolean {
-    let cursor: SchemaRegistry['entities'][string] | undefined = registry.entities[name];
-    const seen = new Set<string>();
-    while (cursor && !seen.has(cursor.name)) {
-        if (cursor.name === 'IfcRelationship') return true;
-        seen.add(cursor.name);
-        cursor = cursor.parent ? registry.entities[cursor.parent] : undefined;
-    }
-    return false;
-}
+// Generated with each registry (`@ifc-lite/codegen`'s `concreteRelationshipTypes`,
+// the walk this module used to run over the decoded registries: every
+// non-abstract entity whose ancestry reaches `IfcRelationship`, in registry
+// order). Reading the lists decodes no registry; `scripts/check-codegen-sync.mjs`
+// keeps them in step with the schemas, and `relationship-schema-slots.test.ts`
+// runs the walk over the decoded registries as their oracle.
+const CONCRETE_TYPES_BY_VERSION: Record<SchemaVersionWithRegistry, readonly string[]> = {
+    IFC2X3: CONCRETE_RELATIONSHIP_TYPES_IFC2X3,
+    IFC4: CONCRETE_RELATIONSHIP_TYPES_IFC4,
+    IFC4X3: CONCRETE_RELATIONSHIP_TYPES_IFC4X3,
+};
 
 const CONCRETE_TYPES_CACHE = new Map<SchemaVersionWithRegistry, ReadonlySet<string>>();
 
@@ -233,12 +237,11 @@ const CONCRETE_TYPES_CACHE = new Map<SchemaVersionWithRegistry, ReadonlySet<stri
 export function getConcreteRelationshipTypes(version: SchemaVersionWithRegistry): ReadonlySet<string> {
     const cached = CONCRETE_TYPES_CACHE.get(version);
     if (cached) return cached;
-    const registry = getSchemaRegistryForVersion(version);
-    const result = new Set<string>();
-    for (const [name, meta] of Object.entries(registry.entities)) {
-        if (meta.isAbstract) continue;
-        if (isSubtypeOfIfcRelationship(registry, name)) result.add(name.toUpperCase());
+    if (!Object.prototype.hasOwnProperty.call(CONCRETE_TYPES_BY_VERSION, version)) {
+        // Unknown version: the registry lookup throws its usual error.
+        getSchemaRegistryForVersion(version);
     }
+    const result: ReadonlySet<string> = new Set(CONCRETE_TYPES_BY_VERSION[version]);
     CONCRETE_TYPES_CACHE.set(version, result);
     return result;
 }

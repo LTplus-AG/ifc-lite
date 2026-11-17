@@ -105,6 +105,14 @@ export function addOpeningToStore(
     `#${openingId}`,
   ]).expressId;
 
+  if (host.roofId !== undefined) {
+    // The cut is geometrically authoritative. Until measured, do not retain
+    // the explicit uncut plane or whole-roof net values (#9357 review).
+    const view = editor.getMutationView();
+    view.deleteQuantity(host.hostId, 'Qto_SlabBaseQuantities', 'NetArea');
+    view.deleteQuantity(host.hostId, 'Qto_SlabBaseQuantities', 'NetVolume');
+    view.deleteQuantity(host.roofId, 'Qto_RoofBaseQuantities', 'NetArea');
+  }
   return { openingId, shapeRepId, productShapeId, relVoidsId, ...geometry };
 }
 

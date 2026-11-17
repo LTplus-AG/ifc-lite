@@ -316,19 +316,19 @@ fn resolve_measure_with_unit(
         return None;
     }
 
+    // The factor is a multiple of its component unit: it must name an SI LENGTH unit (whose prefix is applied). An
+    // absent component, one that cannot be decoded, a non-length unit, or a conversion-based one (a chain of 66 feet)
+    // leaves the factor unstated.
+    let component_ref = measure.ref_at(slot::IfcMeasureWithUnit::UNIT_COMPONENT)?;
+    let component = decoder.decode_by_id(component_ref).ok()?;
+    if component.ifc_type != IfcType::IfcSIUnit
+        || !component.enum_at(slot::IfcSIUnit::UNIT_TYPE).is_some_and(|t| t.eq_ignore_ascii_case("LENGTHUNIT"))
+    {
+        return None;
+    }
     let mut component_scale = 1.0_f64;
-    if let Some(component_ref) = measure.ref_at(slot::IfcMeasureWithUnit::UNIT_COMPONENT) {
-        if let Ok(component) = decoder.decode_by_id(component_ref) {
-            if component.ifc_type == IfcType::IfcSIUnit {
-                if let Some(prefix_attr) = component.attr(slot::IfcSIUnit::PREFIX) {
-                    if !prefix_attr.is_null() {
-                        if let Some(prefix) = prefix_attr.as_enum() {
-                            component_scale = crate::units::get_si_prefix_multiplier(prefix);
-                        }
-                    }
-                }
-            }
-        }
+    if let Some(prefix) = component.attr(slot::IfcSIUnit::PREFIX).filter(|a| !a.is_null()).and_then(|a| a.as_enum()) {
+        component_scale = crate::units::get_si_prefix_multiplier(prefix);
     }
 
     Some(value * component_scale)
@@ -452,7 +452,7 @@ impl GeoRefExtractor {
             if entity.ifc_type == IfcType::IfcGeographicCRS {
                 parse_geographic_crs(entity, &mut georef);
             } else {
-                Self::parse_projected_crs(entity, decoder, &mut georef);
+                Self::parse_projected_crs(entity, decoder, &mut georef, &mut details);
             }
             details.well_known_text = well_known_text_for(decoder, entity.id, &candidates.well_known_texts);
         }
@@ -470,6 +470,8 @@ impl GeoRefExtractor {
         // it counts as no operation here.
         if !georef.has_georef() {
             if let Some(georef) = Self::extract_from_pset(decoder, entity_types)? {
+                // An ePSet MapUnit is a label: resolved when the label table knows it.
+                details.map_unit_resolved = georef.map_unit.as_deref().map(|l| crate::unit_labels::infer_map_unit_scale(l).is_some());
                 return Ok(Some((georef, details)));
             }
             return Self::extract_from_site(decoder, entity_types)
@@ -577,6 +579,7 @@ impl GeoRefExtractor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         georef: &mut GeoReference,
+        details: &mut GeoReferenceDetails,
     ) {
         // Index 0: Name (e.g., "EPSG:32632"). Blank reads as unset, the rule
         // the ePSet path applies: the viewer gates on a non-empty CRS name,
@@ -621,34 +624,47 @@ impl GeoRefExtractor {
         if let Some(unit_ref) = entity.ref_at(slot::IfcProjectedCRS::MAP_UNIT) {
             let mut unit_name = "METRE".to_string();
             let mut unit_scale = 1.0_f64;
+            let mut resolved = false;
             if let Ok(unit_entity) = decoder.decode_by_id(unit_ref) {
                 match unit_entity.ifc_type {
                     IfcType::IfcSIUnit => {
-                        // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
-                        if let Some(prefix_attr) = unit_entity.attr(slot::IfcSIUnit::PREFIX) {
-                            if !prefix_attr.is_null() {
-                                if let Some(prefix) = prefix_attr.as_enum() {
-                                    let multiplier =
-                                        crate::units::get_si_prefix_multiplier(prefix);
-                                    if (multiplier - 1.0).abs() > f64::EPSILON {
-                                        unit_scale = multiplier;
-                                        let prefix_upper = prefix.to_ascii_uppercase();
-                                        unit_name = if prefix_upper == "MILLI" {
-                                            "MILLIMETRE".to_string()
-                                        } else {
-                                            format!("{prefix_upper}METRE")
-                                        };
-                                    }
+                        // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name.
+                        // Resolved only for a METRE (a prefixed non-length unit is read as the default, unresolved).
+                        let metre = unit_entity
+                            .attr(slot::IfcSIUnit::NAME)
+                            .and_then(|n| n.as_enum())
+                            .is_some_and(|n| n.eq_ignore_ascii_case("METRE"));
+                        let prefix = unit_entity.attr(slot::IfcSIUnit::PREFIX).filter(|p| !p.is_null()).and_then(|p| p.as_enum());
+                        match prefix {
+                            None => resolved = metre,
+                            Some(prefix) => {
+                                let multiplier = crate::units::get_si_prefix_multiplier(prefix);
+                                if (multiplier - 1.0).abs() > f64::EPSILON {
+                                    unit_scale = multiplier;
+                                    let prefix_upper = prefix.to_ascii_uppercase();
+                                    unit_name = if prefix_upper == "MILLI" {
+                                        "MILLIMETRE".to_string()
+                                    } else {
+                                        format!("{prefix_upper}METRE")
+                                    };
+                                    resolved = metre;
                                 }
                             }
                         }
                     }
-                    IfcType::IfcConversionBasedUnit => {
+                    IfcType::IfcConversionBasedUnit | IfcType::IfcConversionBasedUnitWithOffset => {
                         // IFCCONVERSIONBASEDUNIT: [0] Dimensions, [1] UnitType,
-                        // [2] Name, [3] ConversionFactor (IfcMeasureWithUnit)
+                        // [2] Name, [3] ConversionFactor (IfcMeasureWithUnit);
+                        // the …WITHOFFSET subtype adds [4] ConversionOffset.
+                        // Only a zero offset is a ratio scale; any other stays
+                        // at the METRE default (TS parity:
+                        // packages/parser/src/georef-projected-crs.ts).
+                        let zero_offset = unit_entity.ifc_type != IfcType::IfcConversionBasedUnitWithOffset
+                            || unit_entity.real_at(slot::IfcConversionBasedUnitWithOffset::CONVERSION_OFFSET) == Some(0.0);
                         let name = unit_entity
                             .string_at(slot::IfcConversionBasedUnit::NAME)
                             .map(|n| n.trim_matches('\'').trim().to_ascii_uppercase());
+                        let declared = resolve_measure_with_unit(decoder, &unit_entity);
                         // The name table first (it carries the exact defined
                         // ratios of FOOT, INCH, YARD and MILE; the US survey
                         // foot is NOT in it, so a conversion-based 'US SURVEY
@@ -657,13 +673,19 @@ impl GeoRefExtractor {
                         let scale = name
                             .as_deref()
                             .and_then(crate::units::get_conversion_based_unit_factor)
-                            .or_else(|| {
-                                resolve_measure_with_unit(decoder, &unit_entity)
-                            });
-                        if let Some(scale) = scale {
+                            .or(declared);
+                        if let Some(scale) = scale.filter(|_| zero_offset) {
                             if scale.is_finite() && scale > 0.0 {
                                 unit_scale = scale;
                                 if let Some(name) = name {
+                                    // The name only identifies the unit when the factor the file declares is the one that
+                                    // name means (the label table, else the conversion table): a survey foot named FOOT, a
+                                    // metre declared as 0.3048, or a missing, zero or negative factor is not a reading.
+                                    let expected = crate::unit_labels::infer_map_unit_scale(&name)
+                                        .or_else(|| crate::units::get_conversion_based_unit_factor(&name));
+                                    resolved = declared.is_some_and(|d| {
+                                        d.is_finite() && d > 0.0 && expected.is_none_or(|e| (d - e).abs() / e <= 1e-7)
+                                    });
                                     unit_name = name;
                                 }
                             }
@@ -674,6 +696,7 @@ impl GeoRefExtractor {
             }
             georef.map_unit = Some(unit_name);
             georef.map_unit_scale = Some(unit_scale);
+            details.map_unit_resolved = Some(resolved);
         }
     }
 

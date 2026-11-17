@@ -7,6 +7,10 @@
     "value": "{title} ({subject}): {status}",
     "reason": "activityTray.announceSubject: Announcement joins the supplied title, optional subject and already resolved status; punctuation adds no English wording."
   },
+  "agentBridge.panel.duration": {
+    "value": "{ms} ms",
+    "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
+  },
   "alignmentSection.axisFallback": {
     "value": "IfcAlignment #{id}",
     "reason": "alignmentSection.axisFallback: IfcAlignment is the exact IFC entity name; the hash introduces the supplied entity identifier."
@@ -323,6 +327,10 @@
     "value": "SpaceMouse",
     "reason": "commandPalette.view.spacemouse.label: SpaceMouse is the device product name, shared across the palette, ribbon, settings and panel."
   },
+  "commands.ui.openPanelEntry": {
+    "value": "{digit} {panel}",
+    "reason": "Runtime placeholders only (the Alt shortcut digit and a panel title, each already localized); no English prose."
+  },
   "compareAnalysis.reconcile.runLabel": {
     "value": "{time} · {models}",
     "reason": "compareAnalysis.reconcile.runLabel: Run label joins a supplied time and model summary with a middle dot."
@@ -494,6 +502,10 @@
   "exportCommands.pdf.label": {
     "value": "PDF",
     "reason": "exportCommands.pdf.label: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "exportCommands.rhino.label": {
+    "value": "Rhino (.3dm)",
+    "reason": "exportCommands.rhino.label: Product name and canonical file extension on the export choice; translating it would rename the interoperable format."
   },
   "exportCommands.usd.label": {
     "value": "USD",
@@ -1259,6 +1271,14 @@
     "value": "{run}: {reasons}",
     "reason": "reviewWorkspace.runIncomplete: Run label and supplied reasons are separated by a colon."
   },
+  "rhinoExport.version.7": {
+    "value": "Rhino 7",
+    "reason": "rhinoExport.version.7: Product name and version number; required for exact product recognition when choosing the archive version."
+  },
+  "rhinoExport.version.8": {
+    "value": "Rhino 8",
+    "reason": "rhinoExport.version.8: Product name and version number; required for exact product recognition when choosing the archive version."
+  },
   "ribbon.commandsShortcut": {
     "value": "Ctrl+K",
     "reason": "ribbon.commandsShortcut: Literal keyboard shortcut notation; modifier names and the shortcut key identify physical commands."
@@ -1551,6 +1571,10 @@
     "value": "{storey} ({elevation} m)",
     "reason": "Runtime storey names and formatted elevations use the same metre symbol and punctuation in Italian."
   },
+  "structuralGlyphs.tooltip": {
+    "value": "{kind} · {entity}",
+    "reason": "Composition of interpolated model values, symbols, units or shared Italian words; no English sentence is embedded."
+  },
   "tableChanges.matchTypeTag": {
     "value": "Tag",
     "reason": "tableChanges.matchTypeTag: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
@@ -1590,6 +1614,14 @@
   "viewportLighting.container.emptyState.footer.discoverLink": {
     "value": "ifclite.dev →",
     "reason": "viewportLighting.container.emptyState.footer.discoverLink: Exact project/service link label; domain and GitHub/npm service names are not localized."
+  },
+  "viewportLighting.container.emptyState.formats.gltf": {
+    "value": "glTF",
+    "reason": "Format family name on the welcome card: glTF is the exact product spelling of the format and is not localized."
+  },
+  "viewportLighting.container.emptyState.formats.ifc": {
+    "value": "IFC",
+    "reason": "Format family name on the welcome card: IFC is the schema acronym and is not localized in any language."
   },
   "viewportLighting.container.emptyState.scene.metres": {
     "value": "{value} m",
@@ -1694,5 +1726,21 @@
   "zonesPanel.zoneRow.baseYLabel": {
     "value": "Base (Y)",
     "reason": "zonesPanel.zoneRow.baseYLabel: Base is also the Italian noun for the base position or comparison baseline; any axis notation is unchanged."
+  },
+  "viewportLighting.container.emptyState.formats.rhino": {
+    "value": "Rhino",
+    "reason": "Format family name on the welcome card: Rhino is the product name of the authoring tool behind .3dm and is not localized in any language."
+  },
+  "agentBridge.panel.editChange": {
+    "value": "{entity} · {field}: {before} → {after}",
+    "reason": "Placeholders and symbols only (middle dot, colon, arrow); no English prose."
+  },
+  "siteContext.card.imageryGsd": {
+    "value": "{gsd} m per pixel",
+    "reason": "Italian uses the same wording « per pixel » for a ground sample distance; placeholder and unit symbol only otherwise."
+  },
+  "siteContext.section.radiusValue": {
+    "value": "{radius} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
   }
 }

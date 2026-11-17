@@ -16,6 +16,7 @@ import {
     withGeoreferenceFallbacks,
     type GeoreferenceInfo,
 } from './georef-extractor.js';
+import { extractGeoreferenceCandidates, type GeoreferenceCandidates } from './georef-candidates.js';
 import { oncePerStore } from './on-demand-cache.js';
 
 /**
@@ -40,7 +41,49 @@ export function extractGeoreferencingOnDemand(store: IfcDataStore): Georeference
     return oncePerStore(store, 'georef', () => computeGeoreferencingOnDemand(store));
 }
 
+/**
+ * Every georeferencing source the store's file carries, losers included (see
+ * {@link extractGeoreferenceCandidates}). Unlike
+ * {@link extractGeoreferencingOnDemand} this always scans the property sets
+ * for the IFC2x3 ePSets, because a diagnosis wants them even when the IFC4
+ * entities win; so it is not memoized and does not belong on a render path.
+ * Null when the store has no STEP source to read.
+ */
+export function extractGeoreferenceCandidatesOnDemand(store: IfcDataStore): GeoreferenceCandidates | null {
+    const loaded = loadGeorefEntities(store);
+    if (!loaded) return null;
+    loadGeorefPropertySets(store, loaded);
+    return extractGeoreferenceCandidates(loaded.entities, loaded.typeMap);
+}
+
 function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {
+    const loaded = loadGeorefEntities(store);
+    if (!loaded) return null;
+
+    // IFC2x3 fallback: models without IfcMapConversion store georeferencing in
+    // ePSet_MapConversion / ePSet_ProjectedCRS property sets. Those aren't
+    // loaded by loadGeorefEntities, so the ePSet fallback had nothing to read and the model fell
+    // back to the legacy IfcSite EPSG:4326 (wrong CRS). Only scan property sets
+    // when the IFC4 result claims nothing, the extractor's own fallback rule: a
+    // refused IfcMapConversion beside a nameless CRS takes the fallbacks too, and
+    // gating on the conversion's presence reported the site there instead of the
+    // ePSet (#4695). Only the georef ePSets + their values are pulled in.
+    const ifc4 = extractIfc4Georeferencing(loaded.entities, loaded.typeMap);
+    if (!ifc4.hasGeoreference) loadGeorefPropertySets(store, loaded);
+
+    if (loaded.entities.size === 0) return null;
+
+    return withGeoreferenceFallbacks(ifc4, loaded.entities, loaded.typeMap);
+}
+
+interface LoadedGeorefEntities {
+    extractor: EntityExtractor;
+    entities: Parameters<typeof extractIfc4Georeferencing>[0];
+    typeMap: Map<string, number[]>;
+}
+
+/** The georef entity types and what they reference, keyed the way the georef extractor reads them. */
+function loadGeorefEntities(store: IfcDataStore): LoadedGeorefEntities | null {
     if (!store.source?.length || !store.entityIndex) return null;
 
     const source = store.source;
@@ -112,17 +155,16 @@ function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | 
                 }
 
                 // For IfcProjectedCRS, also resolve the MapUnit reference (attribute [6])
-                // so the georef extractor can determine the actual unit scale
+                // so the georef extractor can determine the actual unit scale.
+                // Two hops past the unit: an IfcConversionBasedUnit carries its
+                // scale in IfcMeasureWithUnit -> IfcSIUnit. Pulling in only the
+                // unit itself left `resolveMeasureWithUnit` nothing to read, so a
+                // conversion-based unit outside the name table (ifc-lite's own
+                // `US SURVEY FOOT`) read back as the METRE default: a silent
+                // 3.28x error in the map position.
                 if (typeName === 'IFCPROJECTEDCRS' && entity.attributes) {
                     const mapUnitAttr = entity.attributes[6];
-                    const mapUnitRefId = typeof mapUnitAttr === 'number' ? mapUnitAttr : null;
-                    if (mapUnitRefId && !entityMap.has(mapUnitRefId)) {
-                        const unitRef = byId.get(mapUnitRefId);
-                        if (unitRef) {
-                            const unitEntity = extractor.extractEntity(unitRef);
-                            if (unitEntity) entityMap.set(mapUnitRefId, unitEntity);
-                        }
-                    }
+                    include(typeof mapUnitAttr === 'number' ? mapUnitAttr : null, 2);
                 }
             }
         }
@@ -141,60 +183,56 @@ function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | 
         }
     }
 
-    // IFC2x3 fallback: models without IfcMapConversion store georeferencing in
-    // ePSet_MapConversion / ePSet_ProjectedCRS property sets. Those aren't
-    // loaded above, so the ePSet fallback had nothing to read and the model fell
-    // back to the legacy IfcSite EPSG:4326 (wrong CRS). Only scan property sets
-    // when the IFC4 result claims nothing, the extractor's own fallback rule: a
-    // refused IfcMapConversion beside a nameless CRS takes the fallbacks too, and
-    // gating on the conversion's presence reported the site there instead of the
-    // ePSet (#4695). Only the georef ePSets + their values are pulled in.
-    const entities = entityMap as Parameters<typeof extractIfc4Georeferencing>[0]; // same shape as IfcEntity
-    const ifc4 = extractIfc4Georeferencing(entities, typeMap);
-    if (!ifc4.hasGeoreference) {
-        const psetIds = byType.get('IFCPROPERTYSET');
-        if (psetIds?.length) {
-            const georefPsetIds: number[] = [];
-            const childIds = new Set<number>();
-            for (const id of psetIds) {
-                const ref = byId.get(id);
-                if (!ref) continue;
-                if (source.isResident && !mayContainGeorefName(source.slice(ref.byteOffset, ref.byteOffset + ref.byteLength))) continue;
-                const entity = extractor.extractEntity(ref);
-                if (!entity?.attributes) continue;
-                // IfcPropertySet: Name (2), HasProperties (4)
-                const name = typeof entity.attributes[2] === 'string'
-                    ? (entity.attributes[2] as string).toLowerCase()
-                    : '';
-                if (name !== 'epset_mapconversion' && name !== 'epset_projectedcrs') continue;
-                entityMap.set(id, entity);
-                georefPsetIds.push(id);
-                const props = entity.attributes[4];
-                if (Array.isArray(props)) {
-                    for (const propRef of props) {
-                        const propId = typeof propRef === 'number' ? propRef : null;
-                        if (propId === null || childIds.has(propId)) continue;
-                        // Property atoms may be deferred on huge files (not in
-                        // the primary byId index) — fall back like refFromStore.
-                        const childRef = byId.get(propId) ?? store.deferredEntityIndex?.get(propId);
-                        if (!childRef) continue;
-                        const child = extractor.extractEntity(childRef);
-                        if (child) {
-                            entityMap.set(propId, child);
-                            childIds.add(propId);
-                        }
-                    }
+    return {
+        extractor,
+        entities: entityMap as LoadedGeorefEntities['entities'], // same shape as IfcEntity
+        typeMap,
+    };
+}
+
+/** Pull the `ePSet_MapConversion` / `ePSet_ProjectedCRS` sets and their values into `loaded`. */
+function loadGeorefPropertySets(store: IfcDataStore, loaded: LoadedGeorefEntities): void {
+    const source = store.source;
+    if (!source?.length || !store.entityIndex) return;
+    const { byId, byType } = store.entityIndex;
+    const { extractor, entities: entityMap, typeMap } = loaded;
+    const psetIds = byType.get('IFCPROPERTYSET');
+    if (!psetIds?.length) return;
+    const georefPsetIds: number[] = [];
+    const childIds = new Set<number>();
+    for (const id of psetIds) {
+        const ref = byId.get(id);
+        if (!ref) continue;
+        if (source.isResident && !mayContainGeorefName(source.slice(ref.byteOffset, ref.byteOffset + ref.byteLength))) continue;
+        const entity = extractor.extractEntity(ref);
+        if (!entity?.attributes) continue;
+        // IfcPropertySet: Name (2), HasProperties (4)
+        const name = typeof entity.attributes[2] === 'string'
+            ? (entity.attributes[2] as string).toLowerCase()
+            : '';
+        if (name !== 'epset_mapconversion' && name !== 'epset_projectedcrs') continue;
+        entityMap.set(id, entity);
+        georefPsetIds.push(id);
+        const props = entity.attributes[4];
+        if (Array.isArray(props)) {
+            for (const propRef of props) {
+                const propId = typeof propRef === 'number' ? propRef : null;
+                if (propId === null || childIds.has(propId)) continue;
+                // Property atoms may be deferred on huge files (not in
+                // the primary byId index) — fall back like refFromStore.
+                const childRef = byId.get(propId) ?? store.deferredEntityIndex?.get(propId);
+                if (!childRef) continue;
+                const child = extractor.extractEntity(childRef);
+                if (child) {
+                    entityMap.set(propId, child);
+                    childIds.add(propId);
                 }
-            }
-            if (georefPsetIds.length) {
-                typeMap.set('IfcPropertySet', georefPsetIds);
             }
         }
     }
-
-    if (entityMap.size === 0) return null;
-
-    return withGeoreferenceFallbacks(ifc4, entities, typeMap);
+    if (georefPsetIds.length) {
+        typeMap.set('IfcPropertySet', georefPsetIds);
+    }
 }
 
 /**

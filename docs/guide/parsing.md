@@ -1,5 +1,14 @@
 # Parsing IFC Files
 
+The browser geometry engine requires each IFC source to be smaller than 2 GiB
+(2,147,483,648 bytes). Smaller sources may still exhaust available memory.
+`assertWasmSourceSize(byteLength)` throws `WasmSourceSizeError` at or above
+`WASM_SOURCE_BYTE_LIMIT`; all three are exported by `@ifc-lite/parser`.
+The parser skips whole-source WASM scans at that same boundary. Compact entity
+indexes reject byte offsets or lengths outside the unsigned 32-bit range instead
+of wrapping them. These checks do not raise the browser engine's capacity.
+
+
 Complete guide to parsing IFC files with IFClite, covering both IFC4 (STEP) and IFC5 (IFCX) formats.
 
 ## Overview
@@ -250,6 +259,13 @@ console.log(`Description: ${attrs.description}`);
 itself. Properties defined once on the element's `IfcTypeProduct` — where
 `Pset_*Common` usually lives — come from `extractTypePropertiesOnDemand`.
 
+For a modelling session, pass its mutation view as the optional third argument
+to either extractor. The read follows current `HasPropertySets` and
+`IfcRelDefinesByProperties` records, including raw authored properties, edited
+members and deleted relationships. Without a view, extraction reads the saved
+model. SDK `bim.properties()` and `bim.typeProperties()` use the session view
+automatically, including explicitly empty type names.
+
 Combine them with `mergeInheritedPropertySets`. IFC inherits **per property, not
 per property set**: an occurrence and its type routinely both carry a set of the
 same name holding different properties, so replacing the whole set on a name
@@ -320,7 +336,7 @@ if (result.format === 'ifcx') {
 }
 
 // Or detect format manually
-const format = detectFormat(buffer);  // 'ifc', 'ifcx', 'glb', or 'unknown'
+const format = detectFormat(buffer);  // 'ifc', 'ifcx', 'glb', '3dm', or 'unknown'
 ```
 
 ### `.ifcZIP` Containers
@@ -998,3 +1014,12 @@ If an explicit native unit is present but cannot be resolved, the collected
 quantity retains `explicitUnitUnresolved: true`; its scale is unavailable
 (`NaN`), rather than silently inheriting a project scale. Consumers must not
 publish that raw value as a physical SI measurement.
+
+Structural reads via `extractStructuralOnDemand` preserve IFC2X3 action
+references (`CausedBy`, `VaryingAppliedLoadLocation`, ordered
+`SubsequentAppliedLoads`) and varying surface-member values
+(`SubsequentThickness`, `VaryingThicknessLocation`). The analysis model exposes
+`OrientationOf2DPlane` and IFC4+ `SharedPlacement`. These reference fields use
+model-local express ids; attributes the schema does not declare are
+`undefined`. Repeated subsequent-load references remain repeated, in station
+order.

@@ -47,14 +47,14 @@ export function extractClassificationsOnDemand(
     view?: ClassificationReadView,
 ): ClassificationInfo[] {
     if (view?.isDeleted(entityId)) return [];
-    const overlayEdges = view ? classificationEdges(store, view) : null;
+    const overlayEdges = view ? classificationEdges(store, view, entityId) : null;
     const effectiveEdges = store.source?.length ? overlayEdges : null;
     const baseId = view?.resolveBaseEntityId?.(entityId) ?? entityId;
     const subjects = baseId === entityId ? [entityId] : [entityId, baseId];
     let classRefIds: number[] | undefined;
 
     if (effectiveEdges) {
-        classRefIds = subjects.flatMap(id => effectiveEdges.references.get(id) ?? []);
+        classRefIds = subjects.flatMap(id => classificationEdges(store, view!, id, entityId).references.get(id) ?? []);
     } else if (store.onDemandClassificationMap) {
         classRefIds = subjects.flatMap(id => store.onDemandClassificationMap?.get(id) ?? []);
     } else if (store.relationships) {
@@ -65,11 +65,11 @@ export function extractClassificationsOnDemand(
 
     // Also check type-level classifications via IfcRelDefinesByType
     if (effectiveEdges || store.relationships) {
-        const typeIds = effectiveEdges ? subjects.flatMap(id => effectiveEdges.types.get(id) ?? []) : store.relationships?.getRelated(baseId, RelationshipType.DefinesByType, 'inverse') ?? [];
+        const typeIds = effectiveEdges ? subjects.flatMap(id => classificationEdges(store, view!, id, entityId).types.get(id) ?? []) : store.relationships?.getRelated(baseId, RelationshipType.DefinesByType, 'inverse') ?? [];
         for (const typeId of typeIds) {
             let typeClassRefs: number[] | undefined;
             if (effectiveEdges) {
-                typeClassRefs = effectiveEdges.references.get(typeId);
+                typeClassRefs = classificationEdges(store, view!, typeId, entityId).references.get(typeId);
             } else if (store.onDemandClassificationMap) {
                 typeClassRefs = store.onDemandClassificationMap.get(typeId);
             } else {

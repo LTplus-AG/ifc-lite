@@ -143,10 +143,10 @@ export function resolveLengthUnit(
   projectId?: number,
   onDiagnostic?: (message: string) => void
 ): ResolvedLengthUnit {
-  // A format with no IfcProject to read (IFCX) stated its scale up front: still `default` (the file declares
-  // none), but with no reason, so it is neither warned about nor reported as a diagnostic on every call.
+  // A format with no IfcProject to read stated its scale up front, with the source its reader gave (IFCX:
+  // `default`, the file declares none). No reason, so it is neither warned about nor reported on every call.
   const stated = declaredLengthUnitScale(entityIndex);
-  if (stated !== undefined) return { scale: stated, source: 'default' };
+  if (stated !== undefined) return stated;
 
   // Find IFCPROJECT
   // @raw-entity-enumeration-ok source parser selects the file's IfcProject to establish its declared units

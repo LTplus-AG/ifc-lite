@@ -74,8 +74,8 @@ on:
       - '.github/workflows/benchmark.yml'
   schedule:
     # Weekly, Thursday 04:53 UTC -- a slot no other weekly lane uses
-    # (determinism Mon 03:17, xmatch Tue 05:23, wide-arithmetic Wed 04:29,
-    # moonshot Sun 06:41). Catches baseline drift on a quiet main.
+    # (determinism Mon 03:17, xmatch Tue 05:23, moonshot Sun 06:41).
+    # Catches baseline drift on a quiet main.
     - cron: '53 4 * * 4'
   workflow_dispatch:
     inputs:

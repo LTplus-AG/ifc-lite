@@ -4,6 +4,7 @@
 
 /** Live global and tool actions for the canonical keyboard table (#5841). */
 import { useEffect } from 'react';
+import { isPanelAvailable } from '@/lib/panels/availability';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { registerKeyboardCommand, type CommandRun } from '@/lib/commands/dispatcher';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
@@ -12,6 +13,7 @@ import { showAllFromStore } from '@/store/homeView';
 import { orderedSectionPlanes } from '@/lib/section/section-plane-set';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { finishOpenMeasureSequence } from '@/store/finishMeasureSequence';
+import { isGeometryRestoreHeld } from '@/lib/pick-gating';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
@@ -100,6 +102,7 @@ function hideSelected(): boolean {
  * to the next row), a repeat must not finish the open sequence.
  */
 function finishMeasurement(event: KeyboardEvent): boolean {
+  if (isGeometryRestoreHeld(useViewerStore.getState())) return true;
   if (event.repeat) return false;
   return finishOpenMeasureSequence();
 }
@@ -120,7 +123,8 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
   ['tool.annotate', () => { useViewerStore.getState().setActiveTool('annotate'); }],
   ['ui.openPanel', (event) => {
     const panel = workspacePanelForShortcutCode(event.code);
-    if (!panel) return false;
+    // A panel the host switched off leaves its Alt+digit to the browser.
+    if (!panel || !isPanelAvailable(panel)) return false;
     useViewerStore.getState().openPanelInHome(panel, 'shortcut');
   }],
   ['ui.toggleSidebar', () => { useViewerStore.getState().cycleSidebarMode(); }],

@@ -65,6 +65,7 @@ export interface EntityTable {
   /** Override the displayed class (additive; original columnar type intact).
    *  `null` clears it. Does NOT re-bucket `getByType`/`typeIndices`. */
   setTypeOverride(expressId: number, typeName: string | null): void;
+  /** Drops every override above, e.g. when the edits behind them are discarded. Optional. */ clearTypeOverrides?(): void;
 
   /** Get expressId by IFC GlobalId string (22-char GUID). Returns -1 if not found. */
   getExpressIdByGlobalId(globalId: string): number;
@@ -366,6 +367,7 @@ export function entityTableFromColumns(
       // to those case-sensitive name predicates.
       else typeOverrides.set(id, normalizeIfcUpperCase(typeName.toUpperCase()));
     },
+    clearTypeOverrides: () => { if (typeOverrides.size > 0) { typeRevision++; typeOverrides.clear(); } },
 
     getExpressIdByGlobalId: (gid) => globalIdToExpressId.get(gid) ?? -1,
   };

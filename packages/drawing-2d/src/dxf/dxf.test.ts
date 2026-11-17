@@ -159,6 +159,38 @@ describe('DXF parser', () => {
     expect(t.height).toBeCloseTo(0.25);
   });
 
+  it('keeps Aligned (72=3) and Fit (72=5) TEXT at its start point 10, left-aligned', () => {
+    for (const hJust of [3, 5]) {
+      const text =
+        pairsToText(...HEADER_MM) +
+        entitiesSection(
+          [0, 'TEXT'], [8, 'notes'], [10, 1000], [20, 2000], [40, 250], [1, 'Fitted'],
+          [72, hJust], [11, 5000], [21, 2000],
+        );
+      const t = layerByName(importDxf(text), 'notes').texts[0];
+      // Point 11 is where the stretched text ends; anchoring there left-aligned
+      // would start the label where it should finish.
+      expect(t.position.x).toBeCloseTo(1);
+      expect(t.position.y).toBeCloseTo(2);
+      expect(t.align).toBe('left');
+      expect(t.valign).toBe('baseline');
+    }
+  });
+
+  it('centres Middle (72=4, 73=0) TEXT both ways on its alignment point', () => {
+    const text =
+      pairsToText(...HEADER_MM) +
+      entitiesSection(
+        [0, 'TEXT'], [8, 'notes'], [10, 1000], [20, 2000], [40, 250], [1, 'Middle'],
+        [72, 4], [73, 0], [11, 3000], [21, 4000],
+      );
+    const t = layerByName(importDxf(text), 'notes').texts[0];
+    expect(t.position.x).toBeCloseTo(3);
+    expect(t.position.y).toBeCloseTo(4);
+    expect(t.align).toBe('center');
+    expect(t.valign).toBe('middle');
+  });
+
   it('parses MTEXT chunks and strips inline formatting', () => {
     const text = entitiesSection(
       [0, 'MTEXT'],
@@ -461,6 +493,100 @@ describe('consolidated additions (SPLINE, SOLID, lineweight, valign, unit heuris
     expect(t1.valign).toBe('top');
     expect(t2.align).toBe('center');
     expect(t2.valign).toBe('bottom');
+  });
+
+  it('parses MTEXT line spacing factor (44), clamped, defaulting to 1', () => {
+    const mtext = (...extra: Array<[number, number | string]>) =>
+      [[0, 'MTEXT'], [8, 'n'], [10, 0], [20, 0], [40, 1], [1, 'a\\Pb'], ...extra] as Array<[number | string, number | string]>;
+    const underlay = importDxf(entitiesSection(
+      ...mtext([44, 2]), ...mtext(), ...mtext([44, 10]), ...mtext([44, 0.01]), ...mtext([44, 'x']), ...mtext([44, '2oops']),
+    ));
+    expect(layerByName(underlay, 'n').texts.map((t) => t.lineSpacingFactor)).toEqual([2, 1, 4, 0.25, 1, 1]);
+  });
+
+  it('stretches aligned (72=3) and fit (72=5) TEXT between points 10 and 11', () => {
+    const text = (hJust: number) => [
+      [0, 'TEXT'], [8, 't'], [10, 0], [20, 0], [11, 0], [21, 6], [40, 1], [1, 'abcd'], [72, hJust], [73, 0],
+    ] as Array<[number | string, number | string]>;
+    const [aligned, fit] = layerByName(importDxf(entitiesSection(...text(3), ...text(5))), 't').texts;
+    // Natural width: 4 glyphs * 0.6 em * height = 2.4; span = 6, rotated 90°.
+    expect(aligned.dirX).toBeCloseTo(0, 9);
+    expect(aligned.dirY).toBeCloseTo(1, 9);
+    expect(aligned.height).toBeCloseTo(2.5, 9);
+    expect(aligned.widthScale).toBeUndefined();
+    expect(fit.height).toBe(1);
+    expect(fit.widthScale).toBeCloseTo(2.5, 9);
+    // Both carry the exact span so measuring renderers need not trust the estimate.
+    expect(aligned.fitWidth).toBeCloseTo(6, 9);
+    expect(fit.fitWidth).toBeCloseTo(6, 9);
+    // Aligned reaches the span by scaling height with width; fit stretches width only.
+    expect(aligned.fitUniform).toBe(true);
+    expect(fit.fitUniform).toBeUndefined();
+    expect(aligned.position).toEqual({ x: 0, y: 0 });
+    expect(fit.position).toEqual({ x: 0, y: 0 });
+  });
+
+  it('scales fitWidth through the same transform as the text height', () => {
+    // Large extents make the importer assume millimetres (unitScale 0.001).
+    const underlay = importDxf(entitiesSection(
+      [0, 'LINE'], [8, '0'], [10, 0], [20, 0], [11, 25000], [21, 12000],
+      [0, 'TEXT'], [8, 't'], [10, 0], [20, 0], [11, 6], [21, 0], [40, 1], [1, 'abcd'], [72, 5], [73, 0],
+    ));
+    const [fit] = layerByName(underlay, 't').texts;
+    expect(underlay.unitScale).toBe(0.001);
+    expect(fit.height).toBeCloseTo(0.001, 12);
+    expect(fit.fitWidth).toBeCloseTo(0.006, 12);
+  });
+
+  it('measures fitWidth along the transformed baseline under non-uniform INSERT scale', () => {
+    const text = pairsToText(
+      [0, 'SECTION'], [2, 'BLOCKS'], [0, 'BLOCK'], [2, 'label'], [10, 0], [20, 0],
+      [0, 'TEXT'], [8, 't'], [10, 0], [20, 0], [11, 1], [21, 0], [40, 1], [1, 'ab'], [72, 5], [73, 0],
+      [0, 'ENDBLK'], [0, 'ENDSEC'],
+    ) + entitiesSection([0, 'INSERT'], [8, 't'], [2, 'label'], [10, 0], [20, 0], [41, 2], [42, 1]);
+    const [fit] = layerByName(importDxf(text), 't').texts;
+    // (0,0)→(1,0) scaled 2× in X lands on x=2; the determinant estimate would give √2.
+    expect(fit.fitWidth).toBeCloseTo(2, 9);
+  });
+
+  it('fits aligned TEXT horizontally once a non-uniform INSERT changes its aspect', () => {
+    const block = (sx: number, sy: number) => pairsToText(
+      [0, 'SECTION'], [2, 'BLOCKS'], [0, 'BLOCK'], [2, 'label'], [10, 0], [20, 0],
+      [0, 'TEXT'], [8, 't'], [10, 0], [20, 0], [11, 1], [21, 0], [40, 1], [1, 'ab'], [72, 3], [73, 0],
+      [0, 'ENDBLK'], [0, 'ENDSEC'],
+    ) + entitiesSection([0, 'INSERT'], [8, 't'], [2, 'label'], [10, 0], [20, 0], [41, sx], [42, sy]);
+    expect(layerByName(importDxf(block(2, 2)), 't').texts[0].fitUniform).toBe(true);
+    const stretched = layerByName(importDxf(block(2, 1)), 't').texts[0];
+    expect(stretched.fitUniform).toBeFalsy();
+    // An X-only scale stretches along the baseline and leaves the glyph height alone.
+    const unscaled = layerByName(importDxf(block(1, 1)), 't').texts[0];
+    expect(stretched.height).toBeCloseTo(unscaled.height, 9);
+    // Plain TEXT in the same INSERT is widened by the X stretch.
+    const plain = pairsToText(
+      [0, 'SECTION'], [2, 'BLOCKS'], [0, 'BLOCK'], [2, 'w'], [10, 0], [20, 0],
+      [0, 'TEXT'], [8, 'p'], [10, 0], [20, 0], [40, 1], [1, 'ab'], [41, 0.5],
+      [0, 'ENDBLK'], [0, 'ENDSEC'],
+    ) + entitiesSection([0, 'INSERT'], [8, 'p'], [2, 'w'], [10, 0], [20, 0], [41, 2], [42, 1]);
+    const widened = layerByName(importDxf(plain), 'p').texts[0];
+    expect(widened.widthScale).toBeCloseTo(1, 9);
+    expect(widened.height).toBeCloseTo(1, 9);
+  });
+
+  it('counts the fit end point in the extent and unit heuristic', () => {
+    const underlay = importDxf(entitiesSection(
+      [0, 'TEXT'], [8, 't'], [10, 0], [20, 0], [11, 6000], [21, 0], [40, 100], [1, 'abcd'], [72, 5], [73, 0],
+    ));
+    // A 6000-unit span trips the >5000 millimetre heuristic, so it is 6 m, not 6000 m.
+    expect(underlay.unitScale).toBe(0.001);
+    expect(underlay.bounds.max.x).toBeCloseTo(6, 9);
+  });
+
+  it('honours the relative X scale (41) on plain TEXT', () => {
+    const underlay = importDxf(entitiesSection(
+      [0, 'TEXT'], [8, 'w'], [10, 0], [20, 0], [40, 1], [1, 'ab'], [41, 0.5],
+      [0, 'TEXT'], [8, 'w'], [10, 0], [20, 0], [40, 1], [1, 'ab'],
+    ));
+    expect(layerByName(underlay, 'w').texts.map((t) => t.widthScale)).toEqual([0.5, undefined]);
   });
 
   it('prefers a layer true colour (420) over its ACI colour for BYLAYER entities', () => {

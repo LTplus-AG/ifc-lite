@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelWorkspaceDe = {
+  'modelWorkspace.leave': 'Verlassen',
   "modelWorkspace.rail.aria": "Modellwerkzeuge",
   "modelWorkspace.rail.hosted": "Öffnungen, Türen und Fenster",
   "modelWorkspace.rail.circulation": "Treppen und Geländer",
@@ -51,5 +52,5 @@ export const modelWorkspaceDe = {
   "modelWorkspace.layout.plan": "Grundriss",
   "modelWorkspace.layout.split": "Geteilt",
   "modelWorkspace.layout.3d": "3D",
-  "modelWorkspace.hint.onboarding": "W Wand · Shift+S Decke · Bauteil zum Bearbeiten anklicken · E beendet",
+  "modelWorkspace.hint.onboarding": "W Wand · Shift+S Decke · Bauteil zum Bearbeiten anklicken · M beendet",
 } satisfies Catalogue;

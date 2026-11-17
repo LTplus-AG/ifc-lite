@@ -40,6 +40,8 @@ export interface Tier1IndexRecord {
   progress?: number;
   /** Diagnostic message when status === 'error'. */
   error?: string;
+  /** What this record was built (or is building) from: its store's entity table. A store replaced under the same id rebuilds. */
+  source?: object;
 }
 
 /**

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 export { createCostStoreBackend, type CostStoreModelResolution, type CostStoreModelResolver } from './cost-store-backend.js';
 export { createStructuralStoreBackend, type StructuralStoreModelResolver } from './store-structural-backend.js';
+export { createStructuralDerivationStoreBackend, type StructuralDerivationStoreBackendMethods } from './store-structural-derive.js';
 export { createModellingStoreBackend, type ModellingStoreModelResolver } from './store-modelling-backend.js';
 export { createModellingStoreBackendWithoutStoreys } from './store-modelling-backend-without-storeys.js';
 export { copiedElementRefs, type CopiedElementRef, type CopyUnattachedTopNotice } from './store-copy-refs.js';

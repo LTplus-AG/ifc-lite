@@ -47,38 +47,41 @@ fn face_area(triangles: &[Triangle], axis: usize, coordinate: f64, sign: f64) ->
     }).map(|&t| triangle_area(t)).sum()
 }
 
+/// Whether the manifold gate rejects the cut of `ids`, so the box-cut
+/// fallback's pin applies rather than the default bar.
+fn gate_rejects(ids: &[u32]) -> bool {
+    cfg!(feature = "csg_manifold_gate") && ids != [45545]
+}
+
 /// Areas the window's four jamb/head/sill faces must have, in the order
 /// `x = 4.5`, `x = 5.2`, `z = 1.3`, `z = 2.7`, plus the 11 mm reveal floor.
 /// The default bar: the opening cuts all 274 mm of the wall.
-#[cfg(not(feature = "csg_manifold_gate"))]
-fn expected_window(_ids: &[u32]) -> ([f64; 4], f64) {
-    ([0.3836, 0.3836, 0.1918, 0.1918], 0.116)
-}
-
-// #7980 (#3440): under `csg_manifold_gate` the exact cut of host #6305 is
-// REJECTED, so the bar above cannot hold and is REPLACED here by the measured
-// fallback, the #098 reveal-wall pattern. The host is three authored items
-// whose shared interface faces are emitted on both sides, so the UN-cut mesh
-// already carries 6 undirected edges used four times (2 fwd + 2 rev), and the
-// cut adds more along the opening rim (`NonManifoldRejected { over_used: 16 }`
-// for #45545). The gate reads every over-used edge as a defect and the router
-// falls back to the #635 AABB box-cut, which removes the material but emits no
-// jamb faces. What survives is only the 262 mm core item's own end faces
-// (0.262 x 1.4 = 0.3668, 0.262 x 0.7 = 0.1834) where an earlier opening of the
-// subset was cut; for #45545 alone just the x = 5.2 one. With all three
-// openings the reveal floor also halves. Exempting balanced over-use in the
-// gate was measured and rejected: it is the doubled-coincident-shell blind
-// spot the gate exists to catch, and it moves `issue_098_v5c`'s gated reading.
-// `csg_topology_gate` alone accepts the cut and keeps the default bar. A
-// different number here means the gate or the fallback moved and the gated
-// result needs re-measuring, not re-pinning; when the fallback is fixed, this
-// arm should go and the default bar apply to every build.
-#[cfg(feature = "csg_manifold_gate")]
+///
+/// #7980 (#3440): under `csg_manifold_gate` the exact cut of host #6305 with
+/// two or three of its openings is REJECTED, and the bar is REPLACED by the
+/// measured fallback, the #098 reveal-wall pattern. The host is three authored
+/// items whose shared interface faces are emitted on both sides, so the UN-cut
+/// mesh already carries 6 undirected edges used four times (2 fwd + 2 rev),
+/// and the cut adds more along the opening rim. The gate reads every over-used
+/// edge as a defect and the router falls back to the #635 AABB box-cut, which
+/// removes the material but emits no jamb faces. What survives is only the
+/// 262 mm core item's own end faces (0.262 x 1.4 = 0.3668, 0.262 x 0.7 =
+/// 0.1834) where an earlier opening of the subset was cut. Exempting balanced
+/// over-use in the gate was measured and rejected: it is the
+/// doubled-coincident-shell blind spot the gate exists to catch. Since the cut
+/// runs in the frame of the site placement, #45545 alone passes the gate
+/// (it read `NonManifoldRejected { over_used: 16 }` before) and meets the
+/// default bar, and with all three openings the reveal floor keeps its full
+/// 0.116 m2 (it halved before). `csg_topology_gate` alone accepts the cut and
+/// keeps the default bar. A different number here means the gate or the
+/// fallback moved and the gated result needs re-measuring, not re-pinning;
+/// when the fallback is fixed, the gated arm should go.
 fn expected_window(ids: &[u32]) -> ([f64; 4], f64) {
+    if !gate_rejects(ids) {
+        return ([0.3836, 0.3836, 0.1918, 0.1918], 0.116);
+    }
     match ids {
-        [45545] => ([0.0, 0.3668, 0.0, 0.0], 0.116),
-        [6347, 45545] => ([0.3668, 0.3668, 0.1834, 0.1834], 0.116),
-        [6347, 6378, 45545] => ([0.3668, 0.3668, 0.1834, 0.1834], 0.0571),
+        [6347, 45545] | [6347, 6378, 45545] => ([0.3668, 0.3668, 0.1834, 0.1834], 0.116),
         _ => unreachable!("no gated measurement for {ids:?}"),
     }
 }
@@ -86,7 +89,7 @@ fn expected_window(ids: &[u32]) -> ([f64; 4], f64) {
 /// Assertion message for a face area, naming the gated fallback when the
 /// expectation is a pin rather than the real bar.
 fn area_message(ids: &[u32], what: &str, area: f64, expected: f64) -> String {
-    let pinned = if cfg!(feature = "csg_manifold_gate") {
+    let pinned = if gate_rejects(ids) {
         " (known csg_manifold_gate fallback, #7980: a different number means the gate \
          or the fallback moved and must be re-measured, not re-pinned)"
     } else {
@@ -139,15 +142,18 @@ fn issue_6940_rvt01_6305_window_cuts_outer_render() {
         let interior: f64 = triangles.iter().copied().map(area_inside_window).sum();
         assert!(interior < 1e-8, "window {ids:?} contains {interior} m² of spurious surface");
         #[cfg(feature = "csg_manifold_gate")]
-        assert!(
-            failures.get(&6305).is_some_and(|f| f.iter().any(|f| matches!(
+        {
+            let rejected = failures.get(&6305).is_some_and(|f| f.iter().any(|f| matches!(
                 f.reason,
                 crate::diagnostics::BoolFailureReason::NonManifoldRejected { .. }
-            ))),
-            "{ids:?}: the pinned fallback below assumes the manifold gate rejects \
-             the cut; it no longer does ({failures:?}), so the default bar may \
-             now hold under the gate: re-measure (#7980)"
-        );
+            )));
+            assert_eq!(
+                rejected,
+                gate_rejects(&ids),
+                "{ids:?}: the manifold gate's verdict moved ({failures:?}); the pins below \
+                 assume the old one: re-measure (#7980)"
+            );
+        }
         let (window, reveal_floor) = expected_window(&ids);
         // Exterior, reveal floor and both sides of the material interfaces.
         for (t, sign, expected) in [

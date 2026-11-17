@@ -33,11 +33,13 @@ import proj4 from 'proj4';
 import { lookupEpsgByCode, loadEpsgIndexDatasetVersion } from '../src/epsg-index.js';
 
 /**
- * Mirror the datum-shift fallback the viewer applies at runtime in
- * `apps/viewer/src/lib/geo/reproject.ts`. The bundled proj4 for some CRSs
- * (e.g. EPSG:27700 / OSGB36) references browser-unavailable grid files —
- * those need to be stripped and replaced with a +towgs84 approximation
- * before proj4js can run them. Keep this table in sync with reproject.ts.
+ * A subset of the datum-shift fallback `@ifc-lite/geo` applies at runtime
+ * (`DATUM_TOWGS84` in `packages/geo/src/sanitize-proj4.ts`; it cannot be
+ * imported here because `@ifc-lite/geo` depends on this package). The bundled
+ * proj4 for some CRSs (e.g. EPSG:27700 / OSGB36) references browser-unavailable
+ * grid files — those need to be stripped and replaced with a +towgs84
+ * approximation before proj4js can run them. Keep these entries equal to
+ * their counterparts there.
  */
 const DATUM_TOWGS84_FALLBACK: Record<string, string> = {
   'osgb 1936': '+towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489',

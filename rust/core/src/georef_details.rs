@@ -26,6 +26,10 @@ pub struct GeoReferenceDetails {
     /// Trimmed `IfcWellKnownText.WellKnownText` attached to the selected CRS.
     /// When present, this is the authoritative definition, even without a name.
     pub well_known_text: Option<String>,
+    /// Whether the CRS `MapUnit` was READ (its declared factor is the one its name means) or is a fallback nobody may
+    /// carry into a write: the METRE default of an unreadable unit, or a name whose declared factor disagrees (a survey
+    /// foot named FOOT). `None` when no MapUnit is authored. The TS twin's `mapUnitResolved`.
+    pub map_unit_resolved: Option<bool>,
 }
 
 impl GeoReferenceDetails {

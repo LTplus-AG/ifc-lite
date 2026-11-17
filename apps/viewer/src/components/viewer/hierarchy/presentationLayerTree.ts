@@ -21,7 +21,7 @@ export function buildPresentationLayerTree(
   models: Map<string, FederatedModel>,
   legacyStore: IfcDataStore | null | undefined,
   expansion: ExpansionLookup,
-  geometricIds: Set<number>,
+  geometricIds: ReadonlySet<number>,
   geometryReadyModelIds: ReadonlySet<string>,
   overlay?: TreeOverlay,
   grouping: LayerGrouping = 'none',
@@ -58,7 +58,8 @@ export function buildPresentationLayerTree(
       return groups.length ? groups : [{ key: 'unclassified', name: unclassified }];
     };
     const productRows = new Map<number, TreeNode>();
-    const layers = resolvePresentationLayers(store, view).sort((a, b) =>
+    // The index is shared by every build of this model's tree: order a copy.
+    const layers = [...resolvePresentationLayers(store, view)].sort((a, b) =>
       names.compare(a.Name, b.Name) || a.expressId - b.expressId);
     for (const layer of layers) {
       const id = `presentation-layer-${modelId}-${layer.expressId}`;

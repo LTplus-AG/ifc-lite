@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import PROJ_ORACLE from './__fixtures__/proj-oracle.json' with { type: 'json' };
+import PROJ_ORACLE from '../../test/proj-oracle.js';
 import { computeCesiumModelOrigin } from './cesium-bridge.js';
 import { effectiveMapConversionForGeometry } from './map-absolute.js';
 import { resolveProjection } from './reproject.js';

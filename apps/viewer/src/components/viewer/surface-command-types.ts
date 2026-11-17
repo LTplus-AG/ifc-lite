@@ -30,6 +30,8 @@ export interface SurfaceCommandContext {
   openActivity?: () => void;
   refreshModels?: () => Promise<void>;
   openShareDialog?: () => void;
+  startBlank?: () => void;
+  loadRecovery?: import('@/hooks/loadRecoveryActions').LoadRecoveryBinding;
   /** The context menu owns the current entity and supplies its target-specific action. */
   contextAction?: () => void;
   /** Explicit focus return target for the selected-entity destination. */
@@ -40,6 +42,8 @@ export interface SurfaceCommandContext {
   openBulkProperties?: (launcher?: HTMLElement | null) => void;
   openImportData?: (launcher?: HTMLElement | null) => void;
   openClassFilter?: (launcher?: HTMLElement | null) => void;
+  /** The structural derivation's review dialog (#9668). */
+  openStructuralDerivation?: (launcher?: HTMLElement | null) => void;
 }
 
 export interface SurfaceCommandState {

@@ -19,7 +19,7 @@
 
 import { prepareEntityOperations } from './prepare-entity-operations.js';
 import { highestExistingExpressId, rescanHighestExpressId } from './express-id-watermark.js';
-import { sourceEntityRef, storeHasSourceEntity } from './source-entity-index.js';
+import { sourceEntityData, sourceEntityRef, storeHasSourceEntity } from './source-entity-index.js';
 import type { EntityOperation, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import { IFC_ENTITY_NAMES, QuantityType, PropertyValueType } from '@ifc-lite/data';
@@ -302,6 +302,11 @@ export class StoreEditor {
   /** The live overlay this editor writes to, for effective read boundaries. */
   getMutationView(): MutablePropertyView {
     return this.view;
+  }
+
+  /** One source record's bytes and rebased span for read-only integrity checks. */
+  getSourceEntityData(expressId: number): { source: Uint8Array; ref: EntityRef } | null {
+    return sourceEntityData(this.store, expressId);
   }
 
   /** The schema declared by the loaded model, if the store exposes it. */

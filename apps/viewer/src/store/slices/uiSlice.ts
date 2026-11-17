@@ -8,12 +8,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { StandaloneArtifactLibraries } from '@/lib/storage/artifact-backup.js';
-import {
-  RIBBON_COLLAPSED_STORAGE_KEY,
-  RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
-  UI_DEFAULTS,
-  type RibbonTabId,
-} from '../constants.js';
+import { RIBBON_COLLAPSED_STORAGE_KEY, RIBBON_CONTEXTUAL_TABS_STORAGE_KEY, UI_DEFAULTS, type RibbonTabId } from '../constants.js';
 import {
   createGeometryLoadSettings,
   geometryLoadSettingsInitialState,
@@ -23,11 +18,13 @@ import {
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
 import type { FederatedModel, PointerInput } from '../types.js';
 import { hasRetainedShapeOnlyModel } from '../retainedGeometry.js';
+import { isToolAvailable } from '@/lib/features/tools.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 import { applyThemeClasses, hasLoadedModel, initialPointerInput, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
 import type { NavigationPreset } from '@/lib/navigation/presets.js';
 import type { WheelZoomSensitivity } from '@/lib/navigation/wheel-input.js';
+import { DESKTOP_FORM_FACTOR, type FormFactor } from '@/lib/layout/form-factor.js';
 import type { SelectedDirectrixSegment } from '@/lib/analytic/segment-selection.js';
 import { getInitialHierarchyMode, getInitialNavigationPreset, getInitialWheelZoomSensitivity, persistHierarchyMode, persistNavigationPreset, persistWheelZoomSensitivity } from './uiPreferences.js';
 
@@ -128,7 +125,10 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   pendingStandaloneArtifactImport: StandaloneArtifactLibraries | null;
   contentStorageActionBusy: boolean;
   theme: ThemeMode;
+  /** Derived: `formFactor.mode !== 'desktop'`, written only by `setFormFactor`. */
   isMobile: boolean;
+  /** The classified window (#9718), from `useMobileLayoutMode`. */
+  formFactor: FormFactor;
   hoverTooltipsEnabled: boolean;
   showPerformanceStats: boolean;
   navigationPreset: NavigationPreset;
@@ -175,7 +175,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   toggleTheme: () => void;
   /** Shift+click secret: toggle colorful mode on/off */
   toggleColorful: () => void;
-  setIsMobile: (isMobile: boolean) => void;
+  setFormFactor: (formFactor: FormFactor) => void;
   toggleHoverTooltips: () => void;
   setShowPerformanceStats: (enabled: boolean) => void;
   setNavigationPreset: (preset: NavigationPreset) => void;
@@ -228,6 +228,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   contentStorageActionBusy: false,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
+  formFactor: DESKTOP_FORM_FACTOR,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
   showPerformanceStats: initialShowPerformanceStats(),
   navigationPreset: getInitialNavigationPreset(),
@@ -261,13 +262,12 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // is the one place a stray drag/polyline sequence could be left stranded.
     // Entering it resets too, so a press begun in another tool places no
     // Measure point on release (#8786).
-    // Routed through measurementSlice's resetMeasureGesture instead of
-    // duplicating the clear here, keeping one place that knows what
-    // "in-progress gesture" means (see measurementSlice.ts's measureMode doc).
+    // Routed through measurementSlice's resetMeasureGesture, the one place that knows
+    // what "in-progress gesture" means (see measurementSlice.ts's measureMode doc).
     const crossingMeasure = (get().activeTool === 'measure') !== (activeTool === 'measure');
-    // Measuring snaps to meshes; a retained model's are shape-only (#7955 M2), so no entry point may open the tool.
+    // A host may switch a tool off (lib/features). Measuring snaps to meshes; a retained model's are shape-only (#7955 M2).
     const { models } = get() as unknown as { models?: Map<string, FederatedModel> };
-    if (activeTool === 'measure' && models && hasRetainedShapeOnlyModel(models)) return;
+    if (!isToolAvailable(activeTool) || (activeTool === 'measure' && models && hasRetainedShapeOnlyModel(models))) return;
     if (AUTHORING_TOOLS.has(activeTool)) {
       // Collab role gate: in a shared session only editor/admin may
       // unlock authoring. Viewers/commenters can still pick read-only
@@ -351,7 +351,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     set({ theme: newTheme });
   },
 
-  setIsMobile: (isMobile) => set({ isMobile }),
+  setFormFactor: (formFactor) => set({ formFactor, isMobile: formFactor.mode !== 'desktop' }),
   toggleHoverTooltips: () => set((state) => ({ hoverTooltipsEnabled: !state.hoverTooltipsEnabled })),
   setShowPerformanceStats: (showPerformanceStats) => {
     persistShowPerformanceStats(showPerformanceStats);

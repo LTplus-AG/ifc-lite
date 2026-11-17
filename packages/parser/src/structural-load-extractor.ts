@@ -17,8 +17,9 @@
 
 import type { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
-import { getAttributeNames, getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
-import { asBoolean, asNumber, asRef, asString } from './structural-step-values.js';
+import { getEntityRefFromStore } from './columnar-parser-root-attributes.js';
+import { getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
+import { asBoolean, asNumber, asRef, asString, attributeNamesFor } from './structural-step-values.js';
 
 /** Attributes that every load/condition carries from its supertype, not a component. */
 const NAME_ATTR = 'Name';
@@ -56,6 +57,9 @@ export interface StructuralLoadInfo {
    * the parametric locations they apply at, as {@link StructuralLoadConfigurationInfo}.
    */
   configuration?: StructuralLoadConfigurationInfo;
+  /** Ordered reinforcement measures, in the file's two or three directions; absent for other resources. */
+  SurfaceReinforcement1?: number[];
+  SurfaceReinforcement2?: number[];
 }
 
 /**
@@ -273,19 +277,32 @@ function readLoad(
       expressId,
       type,
       name: asString(attrs[0]),
-      components: readNumericComponents(type, attrs),
+      components: readNumericComponents(type, attrs, store.schemaVersion),
+      ...(type === 'IfcSurfaceReinforcementArea' ? reinforcementLists(attrs) : {}),
     },
     truncated: false,
   };
+}
+
+/** Keep reinforcement direction indices intact; never compact a malformed list. */
+function reinforcementLists(attrs: unknown[]): Pick<StructuralLoadInfo, 'SurfaceReinforcement1' | 'SurfaceReinforcement2'> {
+  const out: Pick<StructuralLoadInfo, 'SurfaceReinforcement1' | 'SurfaceReinforcement2'> = {};
+  for (const [key, index] of [['SurfaceReinforcement1', 1], ['SurfaceReinforcement2', 2]] as const) {
+    const raw = attrs[index];
+    if (!Array.isArray(raw)) continue;
+    const values = raw.map(asNumber);
+    if (values.every((value): value is number => value !== undefined)) out[key] = values;
+  }
+  return out;
 }
 
 /**
  * Every attribute the registry names for `type`, except the inherited `Name`,
  * that the record carries a finite number for.
  */
-function readNumericComponents(type: string, attrs: unknown[]): Record<string, number> {
+export function readNumericComponents(type: string, attrs: unknown[], schema: string | undefined): Record<string, number> {
   const components: Record<string, number> = {};
-  const names = getAttributeNames(type);
+  const names = attributeNamesFor(type, schema);
   for (let i = 0; i < names.length; i++) {
     const attrName = names[i];
     if (attrName === NAME_ATTR) continue;
@@ -297,7 +314,7 @@ function readNumericComponents(type: string, attrs: unknown[]): Record<string, n
 
 function sourceLoadRecord(extractor: EntityExtractor, store: IfcDataStore, id: number): { record?: { type: string; attrs: unknown[] }; dropped: 'unresolved' | 'unreadable' } {
   // @raw-entity-enumeration-ok bounded source reference walk needs this STEP byte span for EntityExtractor
-  const ref = store.entityIndex.byId.get(id);
+  const ref = getEntityRefFromStore(store, id);
   if (!ref) return { dropped: 'unresolved' as const };
   const entity = extractor.extractEntity(ref);
   return { record: entity ? { type: entity.type, attrs: entity.attributes ?? [] } : undefined, dropped: 'unreadable' as const };
@@ -316,7 +333,7 @@ export function extractBoundaryCondition(
   if (type !== 'IfcBoundaryCondition' && !getInheritanceChain(type).includes('IfcBoundaryCondition')) return undefined;
   const attrs = entity.attrs;
   const components: Record<string, number | boolean> = {};
-  const names = getAttributeNames(type);
+  const names = attributeNamesFor(type, store.schemaVersion);
   for (let i = 0; i < names.length; i++) {
     const attrName = names[i];
     if (attrName === NAME_ATTR) continue;

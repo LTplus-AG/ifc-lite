@@ -16,7 +16,8 @@ use super::super::advanced_face::{lower_face, FacePlan};
 use super::super::diagnostic_capture;
 use super::super::helpers::FaceData;
 use super::faceted::FacetedBrepProcessor;
-use super::surface_model::{read_simple_face_bounds, trace_capped_face};
+use super::super::helpers::PointMemo;
+use super::surface_model::{read_simple_face_bounds_memo, trace_capped_face};
 use crate::{construction::ConstructionReports, Error, Mesh, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
@@ -69,6 +70,9 @@ pub(super) fn lower(
         rtc_file_units,
         terminal_collection_error: None,
     };
+    // Faces of one model share their CartesianPoints; read each once per
+    // lowering. Scoped to this call and this decoder (see `PointMemo`).
+    let mut points = PointMemo::default();
     for collection_ref in collections {
         let Some(collection_id) = collection_ref.as_entity_ref() else {
             plan.terminal_collection_error =
@@ -81,7 +85,7 @@ pub(super) fn lower(
         };
         for face_id in face_ids {
             let (face, source_reports) =
-                diagnostic_capture::capture(|| lower_entry(face_id, decoder, quality, rtc_file_units));
+                diagnostic_capture::capture(|| lower_entry(face_id, decoder, quality, rtc_file_units, &mut points));
             plan.faces.push(FaceEntry {
                 face,
                 source_reports,
@@ -96,24 +100,33 @@ fn lower_entry(
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
     rtc_file_units: Option<(f64, f64, f64)>,
+    points: &mut PointMemo,
 ) -> Option<SurfaceFace> {
-    // Decode the face entity to check its type: some exporters use
-    // IfcAdvancedFace here, which requires surface processing.
-    let face = decoder.decode_by_id(face_id).ok()?;
-    if face.ifc_type == IfcType::IfcAdvancedFace {
-        // A capped B-spline curve EDGE (#4901) inside a still-OK face is
-        // deliberately NOT drained here: the router owns the single
-        // authoritative drain, and the captured report is replayed in order.
-        return Some(match lower_face(&face, decoder, quality, rtc_file_units) {
-            Ok(plan) => SurfaceFace::Advanced { face_id, plan },
-            Err(error) => SurfaceFace::RefusedAdvanced { face_id, error: error.to_string() },
-        });
-    }
+    // Only the face's type is read from its decode: some exporters use
+    // IfcAdvancedFace here, which requires surface processing. A plain
+    // `IFCFACE((..))` record is proven an `IfcFace` from its bytes, so the
+    // decode (and its allocations) is skipped for it; it would decode to the
+    // same type and could not fail.
+    let face_type = if decoder.is_plain_face(face_id) {
+        IfcType::IfcFace
+    } else {
+        let face = decoder.decode_by_id(face_id).ok()?;
+        if face.ifc_type == IfcType::IfcAdvancedFace {
+            // A capped B-spline curve EDGE (#4901) inside a still-OK face is
+            // deliberately NOT drained here: the router owns the single
+            // authoritative drain, and the captured report is replayed in order.
+            return Some(match lower_face(&face, decoder, quality, rtc_file_units) {
+                Ok(plan) => SurfaceFace::Advanced { face_id, plan },
+                Err(error) => SurfaceFace::RefusedAdvanced { face_id, error: error.to_string() },
+            });
+        }
+        face.ifc_type
+    };
     let bound_ids = decoder.get_entity_ref_list_fast(face_id)?;
-    let (outer, holes) = read_simple_face_bounds(&face.ifc_type, bound_ids, decoder)?;
+    let (outer, holes) = read_simple_face_bounds_memo(&face_type, bound_ids, decoder, points)?;
     let outer = outer.filter(|points| points.len() >= 3)?;
     Some(SurfaceFace::Simple {
-        face_type: face.ifc_type,
+        face_type,
         outer,
         holes,
     })

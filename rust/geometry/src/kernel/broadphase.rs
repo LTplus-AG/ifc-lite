@@ -131,6 +131,17 @@ impl Bvh {
         Self::from_boxes(tris.iter().map(tri_aabb))
     }
 
+    /// [`Self::build`] with the conservative pad raised to at least `min_pad`.
+    /// A larger pad only admits more candidates, never fewer, so every query
+    /// stays a superset of the brute-force scan; callers use it when their
+    /// query segments reach coordinates larger than this tree's own diagonal
+    /// covers (see `BComponents::inside`).
+    pub(crate) fn build_with_min_pad(tris: &[Tri], min_pad: f64) -> Bvh {
+        let mut bvh = Self::build(tris);
+        bvh.pad = bvh.pad.max(min_pad);
+        bvh
+    }
+
     /// Index already conservative finite boxes; queries add no padding.
     pub(crate) fn from_aabbs(boxes: &[Aabb]) -> Bvh {
         Self::from_boxes(boxes.iter().copied())

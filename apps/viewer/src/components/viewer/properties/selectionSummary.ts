@@ -127,7 +127,7 @@ export function summarizeSelection(
     const properties = new Map<string, string>();
     for (const pset of data.psets) {
       for (const prop of pset.properties) {
-        properties.set(`${pset.name}\u0000${prop.name}`, propertyDisplayValue(prop, projectUnits, unitDisplayOverrides, unitContext.available).full);
+        properties.set(`${pset.name}\u0000${prop.name}`, propertyDisplayValue(prop, projectUnits, unitDisplayOverrides, unitContext.available, locale).full);
       }
     }
     propertyValues.push(properties);

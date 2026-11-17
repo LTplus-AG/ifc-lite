@@ -35,12 +35,10 @@ struct BvhNode {
 }
 
 struct DeviationParams {
-  // Per-asset model matrix (column-major) applied to each chunk-space
-  // point BEFORE the BVH query. The BVH triangles live in WORLD (viewer)
-  // space; a point cloud aligned via IfcMapConversion (issue #1804)
-  // stores decode-shifted residual positions and carries its world
-  // placement in this matrix — identical to the splat shader's
-  // uniforms.model. Identity for unaligned assets.
+  // Per-asset model matrix (column-major), with the shared f64 anchor
+  // subtracted from its translation BEFORE f32 upload (#10094 item 1).
+  // Both transformed points and BVH triangles use this same local frame;
+  // distances and normals are unchanged by the common translation.
   model: mat4x4<f32>,
   pointCount: u32,
   pointStrideF32: u32,    // floats between successive points in positions buffer
@@ -143,8 +141,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
   let posOff = pi * params.pointStrideF32 + params.positionOffsetF32;
   let rawP = vec3<f32>(positions[posOff], positions[posOff + 1u], positions[posOff + 2u]);
-  // World-space point: same transform the splat vertex shader applies,
-  // so deviations are measured in the frame the user actually sees.
+  // Anchor-relative point, in the same local frame as the BVH triangles.
   let p = (params.model * vec4<f32>(rawP, 1.0)).xyz;
 
   // Best squared distance across all triangles. Stored squared so

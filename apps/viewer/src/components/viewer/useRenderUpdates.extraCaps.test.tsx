@@ -95,6 +95,18 @@ describe('the other cutting planes\' caps reach the renderer (#7545)', () => {
     assert.equal(upload.polygons, 1);
   });
 
+  it('holds section cap uploads during geometry restore and recomputes them at release', () => {
+    const b = twoPlanes();
+    const { uploads, renderer } = recordingRenderer();
+    act(() => useViewerStore.setState({ models: new Map([['restore', { geometryRestorePending: true }]]) as never }));
+    render(<Probe renderer={renderer} />);
+    act(() => cutFor(b));
+    assert.equal(uploads.filter((upload) => upload.planeId === b).length, 0);
+
+    act(() => useViewerStore.setState({ models: new Map([['restore', { geometryRestorePending: false }]]) as never }));
+    assert.equal(uploads.filter((upload) => upload.planeId === b).length, 1);
+  });
+
   it('places a plane\'s cap over the plane\'s OWN axis, not the active plane\'s', () => {
     const b = twoPlanes(); // A (down, active: range along Y), B (front, inactive: range along Z)
     const { uploads, renderer } = recordingRenderer();

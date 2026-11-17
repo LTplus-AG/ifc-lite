@@ -21,6 +21,8 @@ export function isGaussianFixturePath(path) {
 }
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
+// File types an `upstream_file` entry may pin: fetched from the author's repository, never re-hosted.
+const UPSTREAM_FILE_EXT = /\.(ifc|3dm)$/i;
 const COMMIT_RE = /^[a-f0-9]{40}$/;
 const CAPABILITY_STATES = new Set(['rendered', 'preserved-only', 'unsupported', 'refused']);
 
@@ -274,6 +276,25 @@ export function validateManifest(manifest) {
           invalid(errors, `${where}.upstream_archive.size`, 'must be a positive archive size of at most 200 MB');
         }
         requireText(archive.member, `${where}.upstream_archive.member`, errors);
+      }
+    }
+    // An unlicensed upstream IFC is fetched from its pinned blob and never
+    // uploaded; the entry's own sha256 and size are the source bytes.
+    if (entry.upstream_file !== undefined) {
+      const file = entry.upstream_file;
+      if (!isObject(file)) {
+        invalid(errors, `${where}.upstream_file`, 'must be an object');
+      } else {
+        const kind = UPSTREAM_FILE_EXT.exec(entry.path)?.[1].toLowerCase();
+        if (!kind) invalid(errors, `${where}.path`, 'upstream files support IFC and Rhino .3dm files only');
+        if (entry.upstream_archive !== undefined) invalid(errors, `${where}.upstream_file`, 'cannot be combined with upstream_archive');
+        if (!isText(file.commit) || !COMMIT_RE.test(file.commit)) {
+          invalid(errors, `${where}.upstream_file.commit`, 'must be a 40-character lowercase Git commit');
+        }
+        requirePinnedGitHubBlobUrl(file.blob_url, file.commit, `${where}.upstream_file.blob_url`, errors);
+        if (!isText(file.blob_url) || UPSTREAM_FILE_EXT.exec(file.blob_url)?.[1].toLowerCase() !== (kind ?? 'ifc')) {
+          invalid(errors, `${where}.upstream_file.blob_url`, kind === '3dm' ? 'must name a .3dm file' : 'must name an IFC file');
+        }
       }
     }
     // The root manifest remains v1 while the historical IFC catalogue awaits

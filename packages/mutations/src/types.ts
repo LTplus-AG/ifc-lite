@@ -9,41 +9,9 @@
 import type { MutationType } from './mutation-type.js';
 import type { PropertyValueType, PropertySet, QuantitySet, IfcAttributeValue as CanonicalIfcAttributeValue } from '@ifc-lite/data';
 
-/**
- * IFC STEP attribute value, as produced by `EntityExtractor.extractEntity()`.
- *
- * Mirrors the parser's `IfcAttributeValue` to keep `@ifc-lite/mutations` free
- * of a `@ifc-lite/parser` dependency (parser → ifcx → mutations would cycle).
- *
- * The extra `{ real: number }` and `{ typed: { type, value } }` variants are
- * WRITE-ONLY markers (never produced by extraction). `{ real }` forces STEP
- * REAL serialization with a decimal point for whole numbers (`5.` not `5`).
- * `{ typed }` forces a type-qualified value `IFC<TYPE>(<value>)` for a SELECT
- * member that is a defined type (`IFCBOOLEAN(.T.)`) or the `IfcValue` family;
- * it generalizes `{ real }`. See `@ifc-lite/data`'s `IfcAttributeValue` for the
- * full contract (kept in sync here to avoid a package cycle).
- */
-export type IfcAttributeValue =
-  | string
-  | number
-  | boolean
-  | null
-  | { real: number }
-  | { typed: { type: string; value: string | number | boolean | number[] } }
-  | IfcAttributeValue[];
-
-/**
- * Compile-time drift guard (no runtime footprint): this mirror MUST stay
- * structurally identical to the canonical `@ifc-lite/data` `IfcAttributeValue`
- * — the two are hand-duplicated only to keep the documented parser-cycle
- * boundary. If they diverge, `MutuallyAssignable` resolves to `false`, which
- * violates `AssertTrue`'s `extends true` constraint and fails the build.
- */
-type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
-type AssertTrue<T extends true> = T;
-type _IfcAttributeValueMirrorInSync = AssertTrue<
-  MutuallyAssignable<IfcAttributeValue, CanonicalIfcAttributeValue>
->;
+/** Canonical STEP values live in data, avoiding the parser -> mutations cycle.
+ * Sharing the alias also keeps write-only literal/REAL/SELECT markers in sync. */
+export type IfcAttributeValue = CanonicalIfcAttributeValue;
 
 /** Property value types supported by mutations */
 export type PropertyValue = string | number | boolean | null | PropertyValue[];
@@ -335,6 +303,8 @@ export interface MutationEntityByIdIndex {
  * Minimal `IfcDataStore` shape consumed by `StoreEditor`.
  */
 export interface MutationStoreShape {
+  /** Bounded reads from a resident or paged source; never requires materialization. */
+  source?: { readonly byteLength: number; slice(start: number, end: number): Uint8Array } | null;
   /** IFC schema identifier of the loaded model, when the source provides it. */
   schemaVersion?: string;
   entityIndex: {

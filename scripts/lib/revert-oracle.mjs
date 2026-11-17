@@ -159,14 +159,14 @@ export function detectRunner(testScript, files) {
   return null;
 }
 
-/** Flags that must survive from the package's own test script. */
+/** Flags that must survive from the package's own test script. A `$var` value cannot expand here (no shell; node would ignore it and run files in parallel), so --test-concurrency falls back to 1, apps/viewer's serial default (#3061, #9791); any other such flag is dropped. */
 export function extractNodeFlags(script) {
   const flags = [];
   const paired = /(--import|--tsconfig|--conditions|--loader|--require)[\s=]+(\S+)/g;
   let m;
   while ((m = paired.exec(script)) !== null) flags.push(m[1], m[2].replace(/^["']|["']$/g, ''));
   const standalone = /--(test-concurrency|test-timeout|test-force-exit|experimental-[\w-]+)(=\S+)?/g;
-  while ((m = standalone.exec(script)) !== null) flags.push(`--${m[1]}${m[2] ?? ''}`);
+  while ((m = standalone.exec(script)) !== null) { if (!m[2]?.includes('$')) flags.push(`--${m[1]}${m[2] ?? ''}`); else if (m[1] === 'test-concurrency') flags.push('--test-concurrency=1'); }
   return flags;
 }
 

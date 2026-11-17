@@ -135,7 +135,7 @@ jobs:
   assert.deepEqual(prJobs(text), ['real']);
 });
 
-test('CI redesign step 5: the CSG accept gates are JUDGED, not exempt, and the exemption list is empty', () => {
+test('CI redesign step 5: the CSG accept gates are JUDGED, not exempt, and only the advisory viewer sample is', () => {
   // The one entry `UNJUDGED_BY_DESIGN` ever had was `csg-accept-gates`, an
   // advisory PR lane. It moved off the PR lane and into the aggregate's
   // `needs:` + results map (blocking in the merge queue and on push to main);
@@ -150,7 +150,11 @@ test('CI redesign step 5: the CSG accept gates are JUDGED, not exempt, and the e
   assert.ok(agg.needs.includes('rust-full'), 'rust-full (the moved feature legs) must be a dependency of the aggregate');
   assert.ok(agg.judged.includes('rust-full'), 'rust-full must be judged by the results map');
   assert.ok(!('csg-accept-gates' in UNJUDGED_BY_DESIGN), 'a judged job must not also be exempt');
-  assert.deepEqual(Object.keys(UNJUDGED_BY_DESIGN), [], 'no lane is advisory by design any more');
+  // The one exemption: a budget-capped SAMPLE of the viewer suite on fast-lane
+  // PRs (scripts/ci-viewer-select.mjs). Its pass certifies nothing and the
+  // merge queue runs every shard. Adding another entry is a decision; make it
+  // here, not by loosening this line.
+  assert.deepEqual(Object.keys(UNJUDGED_BY_DESIGN), ['viewer-tests-selected']);
 });
 
 test('every exemption carries a stated reason', () => {

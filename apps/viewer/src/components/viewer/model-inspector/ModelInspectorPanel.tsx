@@ -31,6 +31,7 @@ import { KIND_LABEL } from './inspector-fields';
 import { TypeSection } from './TypeSection';
 import { renameElement } from './inspector-edits';
 import { useInspectorTarget, type InspectorSelection, type InspectorTarget } from './useInspectorTarget';
+import { MultiSelectionInspector } from './MultiSelectionInspector';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -38,6 +39,8 @@ import { Spinner } from '@/components/ui/spinner';
 const StoreyManager = lazy(() => import('../model/storeys/StoreyManager').then((m) => ({ default: m.StoreyManager })));
 // The layer editor loads with its first use, off the eager bundle (#9296).
 const LayersSection = lazy(() => import('./LayersSection').then((m) => ({ default: m.LayersSection })));
+
+const MaterialSection = lazy(() => import('./MaterialSection').then(m => ({ default: m.MaterialSection })));
 
 const HOSTED: ReadonlySet<AuthoredElementKind> = new Set(['door', 'window']);
 
@@ -69,6 +72,7 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
 function ModelInspectorBody({ onClose, forceDefaults = false }: { onClose?: () => void; forceDefaults?: boolean }) {
   const { t } = useTranslation();
   const hasModel = useViewerStore((s) => s.models.size > 0);
+  const multiple = useViewerStore(s => s.session !== null && s.selectedEntityIds.size > 1);
   const canEdit = useViewerStore((s) => s.canCollabEdit());
   const enter = useViewerStore((s) => s.enterModelWorkspace);
   const originalTarget = useInspectorTarget();
@@ -76,6 +80,8 @@ function ModelInspectorBody({ onClose, forceDefaults = false }: { onClose?: () =
   const defaultKind = originalTarget.defaultsKind ?? (originalTarget.kindlessCommand ? null : lastKind);
   const target = forceDefaults && defaultKind ? { ...originalTarget, defaultsKind: defaultKind, mode: 'defaults' as const } : originalTarget;
   const { mode, selection, defaultsKind, kindlessCommand } = target;
+
+  if (multiple && !forceDefaults) return <MultiSelectionInspector onClose={onClose} />;
 
   const title = mode === 'selection' && selection
     ? selection.storeyName
@@ -243,6 +249,7 @@ function SelectionBody({ selection }: { selection: InspectorSelection }) {
           </Suspense>
         </ChunkErrorBoundary>
       )}
+      {(kind === 'slab' || kind === 'column') && !layerSet && <Suspense fallback={null}><MaterialSection modelId={modelId} elementId={expressId} live={live} /></Suspense>}
       {kind !== null && HOSTED.has(kind) && <HostingSection selection={selection} />}
     </>
   );

@@ -140,6 +140,23 @@ describe('a tap\'s compatibility click is dropped within the tap slop (#9091)', 
 });
 
 describe('a mouse or trackpad press near a touch long press keeps its context menu (#9087)', () => {
+  it('#10218 does not open a long-press menu for a touch that began during restore', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    useViewerStore.setState({ models: new Map([['restore', { geometryRestorePending: true }]]) as never });
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    useViewerStore.setState({ models: new Map([['restore', { geometryRestorePending: false }]]) as never });
+    await act(async () => { mock.timers.tick(600); await flushPick(); });
+    assert.equal(menus.length, 0, 'the long press opened a menu after its restore hold cleared');
+
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    useViewerStore.setState({ models: new Map() });
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await act(async () => { mock.timers.tick(600); await flushPick(); });
+    assert.equal(menus.length, 1, 'an unheld touch should still open its long-press menu');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+  });
+
   it('a trackpad right-click next to a finger still held opens the viewer menu', async () => {
     const { canvas, menus } = rig('select', 42);
     act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));

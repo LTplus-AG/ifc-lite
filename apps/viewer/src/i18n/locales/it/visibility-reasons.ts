@@ -17,6 +17,7 @@ export const visibilityReasonsIt = {
   'visibilityReasons.modelHidden': 'Modelli nascosti',
   'visibilityReasons.lens': 'Lente attiva',
   'visibilityReasons.typeVisibility': 'Classi IFC nascoste',
+  'visibilityReasons.structuralViewMode': 'Vista del modello strutturale',
   'visibilityReasons.typeViewMode': 'Vista per tipi',
   'visibilityReasons.hostTypes': 'Classi nascoste dalla pagina ospitante',
   'visibilityReasons.section': 'Taglio di sezione',

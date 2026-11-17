@@ -19,6 +19,7 @@
 
 import React from 'react';
 import {
+  ArrowDownToLine,
   Box,
   BoxSelect,
   Boxes,
@@ -89,6 +90,7 @@ export function useVisibleClassCount(): { visible: number; total: number } {
     typeVisibility.site,
     typeVisibility.ifcAnnotations,
     typeVisibility.ifcGrid,
+    typeVisibility.structuralGlyphs,
   ];
   return { visible: toggles.filter(Boolean).length, total: toggles.length };
 }
@@ -234,6 +236,13 @@ export function ClassVisibilityControls({ inMenu = false, onNavigate }: { inMenu
         description={t('classVisibility.grids.description')}
         checked={typeVisibility.ifcGrid}
         onChange={() => toggleTypeVisibility('ifcGrid')}
+      />
+      <ClassVisibilityRow
+        icon={<ArrowDownToLine className="h-4 w-4 shrink-0 text-status-ok" />}
+        label={t('classVisibility.structuralGlyphs.label')}
+        description={t('classVisibility.structuralGlyphs.description')}
+        checked={typeVisibility.structuralGlyphs}
+        onChange={() => toggleTypeVisibility('structuralGlyphs')}
       />
 
       <Separator className="my-1" />

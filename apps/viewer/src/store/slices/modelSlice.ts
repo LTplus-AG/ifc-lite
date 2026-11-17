@@ -2,13 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { discardOverlappingRetainedEdits, discardUnchangedMutationViews } from '@/utils/model-mutation-view';
+import { refreshModelOverlayCapacity } from '../overlay-capacity.js';
+
 /**
- * Model state slice for multi-model federation
- *
- * Uses FederationRegistry for bulletproof ID handling:
- * - Each model gets a unique ID offset at load time
- * - All meshes use globalIds (originalExpressId + offset)
- * - No ID collisions possible between models
+ * Model state slice: FederationRegistry offsets keep model global IDs unique.
  */
 
 import type { StateCreator } from 'zustand';
@@ -26,6 +24,7 @@ import { isolateModelsPatch, modelFieldPatch, modelsVisibilityPatch } from './mo
 import { upsertModelPatch } from './modelSlice.upsert.js';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { endChartVisibilityPresentation } from '@/lib/charts/visibility-ownership';
+import { resetStructuralModeWithoutData } from '@/lib/visibility/structural-view';
 import { toPublishedGlobalIdFromState } from '../federation-overlay-publication.js';
 
 export interface ModelSlice {
@@ -198,7 +197,9 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     const model = state.models.get(modelId);
     if (!model) return {};
 
-    const updatedModel = { ...model, ...patch };
+    const merged = { ...model, ...patch };
+    const updatedModel = patch.ifcDataStore !== undefined || patch.maxExpressId !== undefined
+      ? refreshModelOverlayCapacity(merged, state.mutationViews.get(modelId)) : merged;
     const newModels = new Map(state.models);
     newModels.set(modelId, updatedModel);
 
@@ -381,13 +382,12 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // through `withVisibilityOwnershipInvalidation`.
     const state = get();
     set(viewerTeardown(modelRemovedScope(state, modelId), state));
-    releaseRemovedModelSession(modelId);
+    releaseRemovedModelSession(modelId); resetStructuralModeWithoutData(get()); // #9957
   },
 
   clearAllModels: () => {
-    // Full federation teardown: any IDS report now references an unloaded
-    // model, so drop it too (removeModel's per-model cleanup never runs here).
-    // Same for the cloud-source provenance tags — every tagged model is gone.
+    discardUnchangedMutationViews(get());
+    // Drop IDS reports and source tags: every referenced model is unloaded.
     const crossClear = get() as unknown as {
       clearIdsValidationReport?: () => void;
       clearSourceTags?: () => void;
@@ -564,7 +564,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
 
   // Federation Registry helpers
   registerModelOffset: (modelId: string, maxExpressId: number) => {
-    return federationRegistry.registerModel(modelId, maxExpressId);
+    return federationRegistry.registerModel(modelId, maxExpressId, discardOverlappingRetainedEdits(get(), modelId, maxExpressId));
   },
 
   toGlobalId: (modelId: string, expressId: number) => toPublishedGlobalIdFromState(federationRegistry, get(), modelId, expressId),

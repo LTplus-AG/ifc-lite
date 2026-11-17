@@ -7,6 +7,7 @@
  * open / add / refresh, the exporter fleet, and link-based sharing.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import React from 'react';
 import { AddFile, CloudSources, Loading, OpenFile, SaveFederationSetup, Refresh, Share, CollabsRoom } from '@/icons';
 import { useViewerStore } from '@/store';
@@ -15,7 +16,7 @@ import { isCollabEnabled } from '@/lib/collab/config';
 import { useTranslation } from '@/i18n';
 import type { FileCommands } from '../../toolbar/useFileCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
-import { surfaceCommand } from '../../surface-commands';
+import { surfaceCommand } from '../../surface-command-registry';
 import { RibbonExportGroup } from './RibbonExportGroup';
 import { RIBBON_EXPORT_ICONS } from './ribbon-export-icons';
 import {
@@ -100,9 +101,13 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
         ))}
       </RibbonGroup>
 
-      <RibbonGroupDivider />
+      {isFeatureEnabled('export.files') && (
+        <>
+          <RibbonGroupDivider />
 
-      <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
+          <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
+        </>
+      )}
 
       {collabEnabled && (
         <>

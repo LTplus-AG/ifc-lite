@@ -20,6 +20,7 @@
  * generic so file size + cognitive scope stay manageable.
  */
 
+import { attachedKind } from '../storey/storey-attached.js';
 import { refreshTopAttachmentsInStore } from '../top-attachment-refresh.js';
 import { EntityExtractor, resolveEffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -262,18 +263,22 @@ export function translateProduct(
   }
   const next = translatedCoordinates(chain.coordinates, delta);
   if (!next) return { ok: false, reason: 'Placement translation overflow: derived coordinates must be finite' };
-  const follows = /^(IFCROOF|IFCSLAB|IFCSLABSTANDARDCASE|IFCSLABELEMENTEDCASE|IFCWALL|IFCWALLSTANDARDCASE|IFCWALLELEMENTEDCASE)$/.test(editor.getEntityType?.(expressId)?.toUpperCase() ?? '');
+  const type = editor.getEntityType?.(expressId)?.toUpperCase() ?? '';
+  const follows = /^(IFCROOF|IFCSLAB|IFCSLABSTANDARDCASE|IFCSLABELEMENTEDCASE)$/.test(type) || attachedKind(type) !== null;
   // A transform batch refits once after every root has its final placement.
   if (!follows || options.refreshAttachedTops === false) {
     editor.setPositionalAttribute(chain.cartesianPointId, 0, next);
     return { ok: true, oldCoordinates: chain.coordinates, newCoordinates: next };
   }
   try {
-    const remesh = editor.runAtomic(draft => {
+    const fitted = editor.runAtomic(draft => {
       draft.setPositionalAttribute(chain.cartesianPointId, 0, next);
-      return refreshTopAttachmentsInStore({ dataStore, view: draft.getMutationView(), editor: draft }, [expressId], [expressId]);
+      const remesh = refreshTopAttachmentsInStore({ dataStore, view: draft.getMutationView(), editor: draft }, [expressId], [expressId]);
+      const final = resolvePlacementChain(dataStore, draft.getMutationView(), draft, expressId);
+      if (!final) throw new Error('The translated placement cannot be read after fitting its attached top');
+      return { newCoordinates: final.coordinates, remesh };
     });
-    return { ok: true, oldCoordinates: chain.coordinates, newCoordinates: next, remesh };
+    return { ok: true, oldCoordinates: chain.coordinates, ...fitted };
   } catch (error) { return { ok: false, reason: error instanceof Error ? error.message : String(error) }; }
 }
 

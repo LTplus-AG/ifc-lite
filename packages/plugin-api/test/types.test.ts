@@ -15,6 +15,11 @@ import type {
   ListOptions,
   ConnectionTestResult,
   SourceTag,
+  ProviderCapabilities,
+  UploadOptions,
+  UploadResult,
+  UploadTarget,
+  WriteBackMode,
 } from '../src/index.js';
 
 describe('plugin-api types', () => {
@@ -76,5 +81,23 @@ describe('plugin-api types', () => {
     expectTypeOf<PluginManifest>().toHaveProperty('permissions');
     expectTypeOf<PluginManifest>().toHaveProperty('preferences');
     expectTypeOf<PluginManifest>().toHaveProperty('contributes');
+  });
+
+  it('write-back is optional and additive', () => {
+    expectTypeOf<FileSourceProvider['uploadFile']>().toEqualTypeOf<
+      | ((
+          ctx: PluginContext,
+          target: UploadTarget,
+          bytes: ArrayBuffer,
+          options?: UploadOptions,
+        ) => Promise<UploadResult>)
+      | undefined
+    >();
+    expectTypeOf<ProviderCapabilities['writeBack']>().toEqualTypeOf<readonly WriteBackMode[] | undefined>();
+  });
+
+  it('UploadResult narrows on ok', () => {
+    const narrow = (r: UploadResult) => (r.ok ? r.revision.id : r.conflict.kind);
+    expectTypeOf(narrow).returns.toEqualTypeOf<string>();
   });
 });

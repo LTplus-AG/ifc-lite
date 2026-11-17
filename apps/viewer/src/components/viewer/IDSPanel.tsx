@@ -22,6 +22,7 @@ import { useIDS } from '@/hooks/useIDS';
 import { useViewerStore } from '@/store';
 import { endIdsRowFocusPresentation } from '@/lib/ids/visibility-ownership';
 import { IDSCorrectionDialog, getCorrectableRequirements } from './IDSCorrectionDialog';
+import { IDSTargetFilter } from './IDSTargetFilter';
 import { useTranslation } from '@/i18n';
 import { IDSPanelResults } from './IDSPanelResults';
 import { IDSPanelStates, idsProgressState } from './IDSPanelStates';
@@ -196,6 +197,7 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
     >
       <div className="flex-1 min-h-0 flex flex-col">
         {!report && <DefinitionLibraryToolbar kind="ids" onImport={handleLoadIdsClick} />}
+        {document && <IDSTargetFilter modelId={pendingModelId ?? reportModelId ?? undefined} />}
         <IDSPanelStates
           ids={ids}
           fileInputRef={fileInputRef}

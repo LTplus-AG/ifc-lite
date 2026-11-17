@@ -1,0 +1,22 @@
+--- a/apps/viewer/src/lib/model-triangle-counts.ts
++++ b/apps/viewer/src/lib/model-triangle-counts.ts
+@@ -11,7 +11,7 @@
+   const model = state.models.get(modelId);
+   const complete = model
+     ? !model.geometryRestorePending && (
+-      model.geometryLoadState !== undefined ? !!model.geometryResult
++      model.geometryLoadState !== undefined ? model.geometryLoadState === 'complete'
+         : model.loadState !== undefined ? model.loadState === 'complete' : !!model.geometryResult)
+     : state.models.size === 0 && !!state.geometryResult;
+   if (!complete || !counts || hasPendingInstancedShards(modelId)) return false;
+--- a/apps/viewer/src/hooks/useSceneTriangleCounts.ts
++++ b/apps/viewer/src/hooks/useSceneTriangleCounts.ts
+@@ -6,7 +6,7 @@
+ 
+ export function readSceneTriangleCounts(): ReadonlyMap<number, number> | null {
+   const scene = getGlobalRenderer()?.getScene();
+-  return scene ? scene.getTriangleCounts?.() ?? null : null;
++  return scene?.isTriangleCountReplayComplete?.() ? scene.getTriangleCounts?.() ?? null : null;
+ }
+ function subscribe(listener: () => void): () => void {
+   let releaseScene: (() => void) | undefined;

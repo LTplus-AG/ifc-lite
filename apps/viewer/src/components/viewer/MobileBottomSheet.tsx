@@ -11,10 +11,14 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useTranslation } from '@/i18n';
 import { capturePointer } from '@/lib/pointer-capture';
+import { useViewerStore } from '@/store';
+import { mobileCommandPlacement } from '@/lib/layout/form-factor';
 
 /**
  * Tracks the gap between the layout viewport (innerHeight) and the visual
  * viewport: how tall the iOS Safari URL bar overlay (or virtual keyboard) is.
+ * Pinch zoom is not an overlay: zoomed in, the gap is just the page below the
+ * zoomed view, and the mobile shell (which pads by this) must not shrink.
  */
 export function useVisualViewportBottomInset(): number {
   const [inset, setInset] = useState(0);
@@ -22,7 +26,7 @@ export function useVisualViewportBottomInset(): number {
     const vv = window.visualViewport;
     if (!vv) return;
     const update = () => {
-      const gap = window.innerHeight - vv.height - vv.offsetTop;
+      const gap = vv.scale > 1.01 ? 0 : window.innerHeight - vv.height - vv.offsetTop;
       setInset(Math.max(0, Math.round(gap)));
     };
     update();
@@ -40,20 +44,29 @@ export function useVisualViewportBottomInset(): number {
  * Mobile bottom sheet with three snap states (dismissed / default / expanded).
  * Drag the handle: down to shrink/dismiss, up to enlarge. Velocity-based flicks
  * cross thresholds instantly; otherwise the sheet snaps to the closest state.
- * `bottomInset` lifts the sheet above the iOS Safari URL bar overlay.
+ *
+ * It sits at the bottom of the mobile viewport area, which already stops above
+ * the iOS Safari URL bar overlay (`ViewerLayout`). Its content keeps clear of
+ * the system insets (#9718) on the edges it shares with the screen: the sides,
+ * except the one the landscape command rail covers, and the bottom, unless the
+ * command bar sits under it and owns the home indicator's inset.
  */
 export function MobileBottomSheet({
   title,
   onClose,
-  bottomInset,
   children,
+  pane,
 }: {
   title: ReactNode;
-  onClose: () => void;
-  bottomInset: number;
+  onClose?: () => void;
   children: ReactNode;
+  /** Restyle the same mounted frame and scroll container when docked. */
+  pane?: 'side-pane' | 'segment';
 }) {
   const { t } = useTranslation();
+  const placement = useViewerStore((s) => mobileCommandPlacement(s.formFactor));
+  // A cover screen is short: the sheet opens at half its height, so the model stays in view.
+  const defaultFraction = useViewerStore((s) => (s.formFactor.mode === 'cover' ? 0.5 : 0.6));
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startY: number; startT: number; startHeight: number; active: boolean }>({
     startY: 0,
@@ -64,14 +77,28 @@ export function MobileBottomSheet({
 
   const SPRING = 'height 220ms cubic-bezier(0.2, 0, 0, 1)';
 
+  // The snap the sheet rests at. A resize (keyboard, URL bar, a fold, a
+  // form-factor change) re-applies THIS snap at the new size rather than
+  // resetting to the default, so an expanded sheet stays expanded while typing.
+  const snapRef = useRef<'default' | 'expanded'>('default');
+
+  // Snap heights are shares of the area the sheet lives in (the mobile
+  // viewport, which already stops above the command bar and the iOS URL bar
+  // overlay), not of the window: on a 360x400 cover screen the window
+  // includes the bar, so a window share left the model under half the view
+  // and let the expanded sheet push its handle out of the area (#9718).
   const getSnapPoints = useCallback(() => {
-    const h = window.visualViewport?.height ?? window.innerHeight;
+    // Only a sheet with no area yet (not mounted) falls back to the window. A
+    // zero-height area mid-transition is a real size: the observer below
+    // re-applies the snap once the area has its new height.
+    const area = sheetRef.current?.parentElement;
+    const h = area ? area.clientHeight : (window.visualViewport?.height ?? window.innerHeight);
     return {
       collapsed: 0,
-      defaultH: Math.round(h * 0.6),
+      defaultH: Math.round(h * defaultFraction),
       expanded: Math.round(h * 0.92),
     };
-  }, []);
+  }, [defaultFraction]);
 
   const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -110,16 +137,18 @@ export function MobileBottomSheet({
 
     // Velocity-driven decisions take precedence over position.
     if (upwardVelocity > 0.5) {
+      snapRef.current = 'expanded';
       snapTo(expanded);
       return;
     }
     if (upwardVelocity < -0.5) {
       // Downward flick: from expanded → default, from default → dismiss.
       if (dragRef.current.startHeight >= expanded - 8) {
+        snapRef.current = 'default';
         snapTo(defaultH);
       } else {
         snapTo(collapsed);
-        window.setTimeout(onClose, 200);
+        window.setTimeout(() => onClose?.(), 200);
       }
       return;
     }
@@ -135,26 +164,50 @@ export function MobileBottomSheet({
       if (Math.abs(currentHeight - t.h) < Math.abs(currentHeight - closest.h)) closest = t;
     }
     snapTo(closest.h);
-    if (closest.state === 'collapsed') window.setTimeout(onClose, 200);
+    if (closest.state === 'collapsed') window.setTimeout(() => onClose?.(), 200);
+    else snapRef.current = closest.state;
   }, [getSnapPoints, onClose]);
 
-  // Initial height = default snap. Recompute when viewport changes (URL bar collapses).
+  // Opens at the default snap; afterwards every resize of the area re-applies
+  // the snap it rests at, at the area's new size, so it never outgrows it.
   useEffect(() => {
     const sheet = sheetRef.current;
     if (!sheet) return;
-    const { defaultH } = getSnapPoints();
-    sheet.style.height = `${defaultH}px`;
-  }, [getSnapPoints]);
+    if (pane) {
+      sheet.style.height = '';
+      dragRef.current.active = false;
+      return;
+    }
+    const apply = () => {
+      if (dragRef.current.active) return;
+      const { defaultH, expanded } = getSnapPoints();
+      sheet.style.height = `${snapRef.current === 'expanded' ? expanded : defaultH}px`;
+    };
+    apply();
+    const area = sheet.parentElement;
+    if (!area || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(apply);
+    observer.observe(area);
+    return () => observer.disconnect();
+  }, [getSnapPoints, pane]);
 
   return (
     <div
       ref={sheetRef}
-      className="absolute inset-x-0 flex flex-col bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300"
-      style={{ bottom: `${bottomInset}px` }}
+      data-mobile-sheet={pane ? undefined : ''}
+      data-mobile-pane={pane}
+      role={pane ? 'region' : undefined}
+      aria-label={pane && typeof title === 'string' ? title : undefined}
+      className={pane ? 'flex min-h-0 flex-1 flex-col bg-background' : 'pointer-events-auto absolute inset-x-0 bottom-0 flex flex-col bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300'}
+      style={pane ? undefined : {
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: placement === 'side-rail' ? undefined : 'env(safe-area-inset-right)',
+        paddingBottom: placement === 'side-rail' ? 'env(safe-area-inset-bottom)' : undefined,
+      }}
     >
       {/* Drag affordance — generously sized for touch */}
       <div
-        className="grid place-items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none select-none"
+        className={pane ? 'hidden' : 'grid place-items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none select-none'}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -164,8 +217,25 @@ export function MobileBottomSheet({
       >
         <div className="w-10 h-1.5 rounded-full bg-muted-foreground/40" />
       </div>
-      <div className="flex items-center justify-between px-4 pb-2 shrink-0">
-        <span className="font-semibold text-sm">{title}</span>
+      <MobilePanelHeader title={title} onClose={onClose} className={pane ? 'pt-2 border-b' : undefined} />
+      <div data-mobile-panel-scroll className="flex-1 min-h-0 overflow-auto overscroll-contain border-t">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A mobile panel's title row and close button, shared by the bottom sheet and
+ * the docked pane (`MobilePanelHost`). Without `onClose` (the Panels list shown
+ * inline in a fold's control segment) there is nothing to close.
+ */
+export function MobilePanelHeader({ title, onClose, className }: { title: ReactNode; onClose?: () => void; className?: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className={`flex items-center justify-between px-4 pb-2 shrink-0 ${className ?? ''}`}>
+      <span className="font-semibold text-sm">{title}</span>
+      {onClose && (
         <button
           className="p-2 -mr-2 hover:bg-muted rounded-full active:bg-muted/80 touch-manipulation"
           onClick={onClose}
@@ -175,10 +245,7 @@ export function MobileBottomSheet({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
-      </div>
-      <div className="flex-1 min-h-0 overflow-auto overscroll-contain border-t">
-        {children}
-      </div>
+      )}
     </div>
   );
 }

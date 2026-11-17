@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/pointcloud",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Point cloud decoders and types for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,6 +19,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/geo": "workspace:^",
     "@ifc-lite/wasm-lifecycle": "workspace:^",
     "laz-perf": "^0.0.7"
   },

@@ -5,7 +5,8 @@
 import { registryProxy } from './registry-proxy.ts';
 import { viewerAliases } from './vite-aliases';
 import { collectPackageVersions } from './vite-package-versions';
-import { legacyManualChunk, quickjsRuntimeChunkGroup, tslibChunkGroup } from './vite-chunks';
+import { bundleAnalysis } from './vite-bundle-analysis';
+import { legacyManualChunk, preloadHelperChunkGroup, quickjsRuntimeChunkGroup, tslibChunkGroup } from './vite-chunks';
 import { defineConfig, loadEnv } from 'vite';
 import { retainedEngine } from './vite-plugins/retained-engine';
 import react from '@vitejs/plugin-react';
@@ -18,6 +19,7 @@ import path from 'path';
 import fs from 'fs';
 import { cesiumStaticAssets } from './vite-plugins/cesium-assets';
 import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
+import { viewerHostConfig } from './vite-plugins/viewer-host-config';
 // Same allowlist the production relay uses, so dev and prod cannot disagree
 // about which Dalux node a request reaches (#2792).
 import { daluxRelayRoute } from './vite-plugins/dalux-relay';
@@ -205,6 +207,7 @@ export default defineConfig(({ mode }) => {
   } as const;
   return {
   plugins: [
+    ...(process.env.VITE_BUNDLE_ANALYSIS === '1' ? [bundleAnalysis()] : []),
     retainedEngine(retained),
     react(),
     Icons({
@@ -235,6 +238,8 @@ export default defineConfig(({ mode }) => {
     // at app start is wrapped again.
     cesiumStaticAssets(),
     oauthCallbackRoutes(),
+    // features.json beside index.html, and the hosted entry when a config URL is set.
+    viewerHostConfig(),
     // Dalux's API sends no CORS headers, so it must go through a same-origin
     // relay. Dev runs the SAME handler production does (#2792), rather than a
     // second proxy config that can drift from it.
@@ -341,6 +346,7 @@ export default defineConfig(({ mode }) => {
             },
             tslibChunkGroup,
             quickjsRuntimeChunkGroup,
+            preloadHelperChunkGroup,
             {
               name: legacyManualChunk,
               priority: 0,
@@ -358,6 +364,11 @@ export default defineConfig(({ mode }) => {
       'quickjs-emscripten',
       '@jitl/quickjs-wasmfile-release-asyncify',
       'esbuild-wasm',
+      // Pre-bundling missed it at startup and found it on the first model load,
+      // then reloaded the page mid-session (dev only; validation-colors e2e).
+      // Excluded, not included: the browser entry is one ESM file whose wasm the
+      // worker locates by URL, as with the emscripten builds above.
+      'rhino3dm',
       // maplibre-gl v6 resolves its worker as a SIBLING FILE of its own module:
       //
       //   new URL(`./maplibre-gl-worker.mjs`, import.meta.url)

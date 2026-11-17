@@ -31,6 +31,7 @@ import type {
 } from './parser.worker.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 import { makeAbortError } from './abort-error.js';
+import { parserWorkerSupported, spawnParserWorker, takeSpareParserWorker } from './spare-parser-worker.js';
 import { NOOP_LOAD_TRACE, accountWorkerMessages, enableWorkerTrace, isTraceSpansMessage, type LoadTrace } from '@ifc-lite/load-trace';
 
 export interface WorkerParserOptions extends ParseOptions {
@@ -97,10 +98,7 @@ export class WorkerParser {
    * so no `TextDecoder` probe is needed here.
    */
   static isSupported(): boolean {
-    if (typeof Worker === 'undefined') return false;
-    if (typeof SharedArrayBuffer === 'undefined') return false;
-    const coi = (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated;
-    return coi !== false;
+    return parserWorkerSupported();
   }
 
   constructor(options: { workerUrl?: URL | string } = {}) {
@@ -134,7 +132,7 @@ export class WorkerParser {
         // Caller-supplied URLs are honored as-is.
         worker = this.workerUrl !== null
           ? new Worker(this.workerUrl, { type: 'module' })
-          : new Worker(new URL('./parser.worker.ts', import.meta.url), { type: 'module' });
+          : (takeSpareParserWorker() ?? spawnParserWorker());
       } catch (err) {
         reject(new Error(`Failed to spawn parser worker: ${err instanceof Error ? err.message : String(err)}`));
         return;

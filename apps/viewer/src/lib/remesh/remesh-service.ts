@@ -280,7 +280,7 @@ async function remesh(
   const model = state.models.get(modelId);
   const store = model?.ifcDataStore;
   if (!model || !store) return { status: 'stale' };
-  if (!store.source || store.source.byteLength === 0 || isIfcxDataStore(store)) return refuse(modelId, 'noSource');
+  if (!store.source || store.source.byteLength === 0 || isIfcxDataStore(store) || store.sourceKind === 'tabular') return refuse(modelId, 'noSource');
   const frame = loadRtcFrame(model);
   if (!frame) return refuse(modelId, 'noFrame');
   const view = state.mutationViews.get(modelId) ?? null;

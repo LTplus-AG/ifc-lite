@@ -233,3 +233,15 @@ export {
   type StoreyDeleteMode, type StoreyDeletePlan, type StoreySuggestion,
   type StoreyRefusal, type StoreyRefusalCode, type StoreyNotice,
 } from './in-store/storey/index.js';
+
+export { addStructuralPlanarActionToStore, addStructuralSurfaceActionToStore, type StructuralSurfaceActionInStoreParams, type StructuralSurfaceActionBuildResult } from './in-store/structural-surface-action.js';
+export { addStructuralPointReactionToStore, addStructuralCurveReactionToStore, addStructuralSurfaceReactionToStore, type StructuralPointReactionInStoreParams, type StructuralCurveReactionInStoreParams, type StructuralSurfaceReactionInStoreParams, type StructuralReactionBuildResult } from './in-store/structural-reaction.js';
+export { addStructuralResultGroupToStore, type StructuralResultGroupInStoreParams, type StructuralResultGroupBuildResult } from './in-store/structural-result-group.js';
+
+export { editStructuralEntityInStore, type StructuralEntityEdit } from './in-store/structural-edit.js';
+export { removeStructuralEntityInStore } from './in-store/structural-remove.js';
+
+export { addStructuralLoadToStore, type StructuralLoadInStoreParams } from './in-store/structural-load.js';
+export { addStructuralCurveActionToStore, type StructuralCurveActionInStoreParams } from './in-store/structural-curve-action.js';
+export { connectStructuralElementInStore } from './in-store/structural-physical-link.js';
+export type { StructuralMemberConnectionOptions } from './in-store/_structural-connection-options.js';

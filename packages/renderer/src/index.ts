@@ -28,3 +28,4 @@ export * from './renderer.js';
 export { PointCloudRenderer };
 export { PointRenderPipeline } from './pointcloud/point-pipeline.js';
 export { computeDeviationStatistics, computeDeviationStatisticsAsync, countWithinToleranceAsync, deviationHistogramAsync, summarizeDeviationAssetsAsync } from './deviation/deviation-statistics.js';
+export { isRenderablePointCloud } from './renderable-coordinates.js';

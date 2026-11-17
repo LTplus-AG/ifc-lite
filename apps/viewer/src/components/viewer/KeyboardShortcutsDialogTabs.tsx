@@ -10,9 +10,12 @@
  * before the split — this is a pure extraction.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Package, ShieldCheck, ExternalLink } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+// Only the constant: the attribution module imports nothing from the SDK.
+import { THREEDCONNEXION_ATTRIBUTION } from '@/lib/spacemouse-driver/attribution';
 
 const GITHUB_URL = 'https://github.com/LTplus-AG/ifc-lite';
 
@@ -62,14 +65,14 @@ export function PrivacyBanner() { // exported for ViewportWelcomeCard.privacy.te
         <div className="mt-1.5 ml-1 space-y-1 text-xs text-muted-foreground">
           <p>
             {t('keyboardShortcuts.privacy.intro')}{' '}
-            <a
+            {isFeatureEnabled('help.product-links') ? <a
               href="https://webassembly.org/"
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-foreground transition-colors"
             >
               {t('keyboardShortcuts.privacy.wasmLink')}
-            </a>
+            </a> : t('keyboardShortcuts.privacy.wasmLink')}
             {' '}{t('keyboardShortcuts.privacy.outro')}
           </p>
           <p className="text-2xs italic">
@@ -95,42 +98,45 @@ export function AboutTab() {
 
       {/* Links */}
       <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-1.5 text-xs">
-        <a
-          href="https://ifclite.dev"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t('keyboardShortcuts.about.homepageLink')}
-          <ExternalLink className="h-3 w-3" />
-        </a>
-        <a
-          href="https://ifclite.dev/docs/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t('keyboardShortcuts.about.docsLink')}
-          <ExternalLink className="h-3 w-3" />
-        </a>
-        <a
-          href={GITHUB_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <GithubIcon className="h-3.5 w-3.5" />
-          {t('keyboardShortcuts.about.githubLink')}
-        </a>
-        <a
-          href={`${GITHUB_URL}/issues`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t('keyboardShortcuts.about.reportIssueLink')}
-          <ExternalLink className="h-3 w-3" />
-        </a>
+        {/* A host can switch links out of the viewer off (`lib/features`). */}
+        {isFeatureEnabled('help.product-links') && <>
+          <a
+            href="https://ifclite.dev"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {t('keyboardShortcuts.about.homepageLink')}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+          <a
+            href="https://ifclite.dev/docs/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {t('keyboardShortcuts.about.docsLink')}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <GithubIcon className="h-3.5 w-3.5" />
+            {t('keyboardShortcuts.about.githubLink')}
+          </a>
+          <a
+            href={`${GITHUB_URL}/issues`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {t('keyboardShortcuts.about.reportIssueLink')}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </>}
         <span className="text-muted-foreground">{t('keyboardShortcuts.about.license')}</span>
       </div>
 
@@ -154,6 +160,13 @@ export function AboutTab() {
 
       {/* Privacy & Security */}
       <PrivacyBanner />
+
+      {/* Required by the 3Dconnexion SDK licence (section 2) while the opt-in
+          driver integration ships (#9131): verbatim and in English, so it is
+          deliberately not a translation key. */}
+      <p lang="en" className="pt-2 border-t text-2xs leading-snug text-muted-foreground">
+        {THREEDCONNEXION_ATTRIBUTION}
+      </p>
 
       {/* Package Versions */}
       {packageVersions.length > 0 && (

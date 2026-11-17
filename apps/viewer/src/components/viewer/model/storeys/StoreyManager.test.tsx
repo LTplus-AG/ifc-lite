@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { advance, cleanup, click, press, render, type, waitFor } from '@/test/render.js';
-import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession, fixtureStep } from '@/test/modeling-session-fixture';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { requiredModule } from '@/i18n/__tests__/required-module';
@@ -27,7 +27,9 @@ import { Toaster } from '@/components/ui/toast';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
 import { reviewStoreyInsertion, commitStoreyInsertion } from './insert-storey';
 import { PropertyValueType } from '@ifc-lite/data';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { readStoreyInventory } from '@ifc-lite/create';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { toGlobalIdFromModels } from '@/store/globalId';
 
 let restore: () => void = () => {};
@@ -242,7 +244,7 @@ describe('storey manager (#9013)', () => {
     assert.ok(view.getNewEntity(later.expressId), 'the later wall is still authored');
     assert.equal(view.isDeleted(later.expressId), false, 'the later wall stays');
     assert.equal(rows(ui).length, 1, 'the storey stays deleted');
-    await waitFor(() => (document.body.textContent ?? '').includes('Not undone: later edits came after this deletion'), 'the toast says why');
+    await waitFor(() => (document.body.textContent ?? '').includes('Not undone: later edits came after this edit'), 'the toast says why');
   });
 
   it('deletion choices opened in one model are not offered for another model with the same storey ids (#9037 review)', async () => {
@@ -356,7 +358,11 @@ describe('storey manager (#9013)', () => {
   });
 });
 
-it('#9334 insertion distinguishes explicit wall resizes from relative top updates and undoes as one step', async () => {
+for (const upperFloorZ of [0, 3]) it(`#9334/#9352 insertion reports physical resizes and undoes as one step (floor Z=${upperFloorZ})`, async () => {
+  // This review must describe the actual floor frame, including an Elevation/placement mismatch.
+  await seedModelingSession({ step: fixtureStep({}).replace('#51=IFCLOCALPLACEMENT($,#42);',
+    `#51=IFCLOCALPLACEMENT($,#52);\n#52=IFCAXIS2PLACEMENT3D(#53,$,$);\n#53=IFCCARTESIANPOINT((0.,0.,${upperFloorZ}.));`) });
+  useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY });
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });
   assert.ok('expressId' in wall);
@@ -376,18 +382,20 @@ it('#9334 insertion distinguishes explicit wall resizes from relative top update
   await waitFor(() => !!ui.querySelector('[data-storey-insertion]'), 'the first-click insertion review loads');
   assert.match(ui.querySelector('[data-storey-insertion]')?.textContent ?? '', /Floor-to-floor stays 3.00 m. Storeys shifted: 1/);
   const impact = ui.querySelector('[data-storey-impact-summary]')?.textContent ?? '';
-  assert.match(impact, /resizes 1 wall(?: ·|$)/, 'the explicit GUID-bound wall really stretches');
-  assert.match(impact, /Updates 1 wall top(?: ·|$)/, 'only the relative top rebinds without a final resize');
+  assert.match(impact, new RegExp(`resizes ${upperFloorZ === 3 ? 1 : 2} walls?(?: ·|$)`), 'the review counts actual final resizes');
+  if (upperFloorZ === 3) assert.match(impact, /updates 1 wall top(?: ·|$)/, 'the aligned relative top rebinds without a final resize');
+  else assert.doesNotMatch(impact, /updates \d+ wall top/, 'the offset relative wall also resizes');
   const confirm = [...ui.querySelectorAll('button')].find(b => b.textContent === 'Insert storey')!;
   click(confirm);
   await waitFor(() => rows(ui).length === 3, 'inserted floor appears');
   assert.deepEqual(elevations(), [0, 3, 6]);
   assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, wall.expressId)?.height, 6, 'the explicitly bound wall follows its shifted target');
-  assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, relative.expressId)?.height, 3, 'the relative top rebinds at its original height');
+  assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, relative.expressId)?.height, 6 - upperFloorZ, 'the relative top preserves its physical offset from the followed floor');
   assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'drawing plane stays on L0');
   act(() => useViewerStore.getState().undo(MODEL_ID));
   assert.deepEqual(elevations(), [0, 3], 'one Undo restores both the shifted storey and the insertion');
   assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, wall.expressId)?.height, 3, 'Undo also restores the resized wall');
+  assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, relative.expressId)?.height, 3, 'Undo restores the relative wall too');
 });
 
 it('#9334 a first-click insertion that finishes loading after session replacement does nothing', async () => {
@@ -468,4 +476,83 @@ it('#9334 a refused insertion rolls back the preceding floor-height edit', () =>
   assert.equal(result.ok, false);
   assert.deepEqual(elevations(), [0, 3]);
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0, depth);
+});
+
+it('#9389 insertion renumbers numbered neighbours atomically and Undo restores their names', () => {
+  const review = reviewStoreyInsertion(MODEL_ID, STOREY, n => `Level ${n}`)!;
+  assert.equal(review.params.Name, 'L1');
+  const result = commitStoreyInsertion(MODEL_ID, review);
+  assert.equal(result.ok, true);
+  assert.deepEqual(modelStoreys(useViewerStore.getState(), MODEL_ID).map(s => s.name), ['L0', 'L1', 'L2']);
+  act(() => useViewerStore.getState().undo(MODEL_ID));
+  assert.deepEqual(modelStoreys(useViewerStore.getState(), MODEL_ID).map(s => s.name), ['L0', 'L1']);
+});
+it('#9389 a header add clears a visible insertion review and its diagram', async () => {
+  const ui = await mount();
+  click(rows(ui)[1].querySelector('[aria-label="Insert storey above L0"]')!);
+  await waitFor(() => !!ui.querySelector('[data-storey-insertion]'), 'review opened');
+  assert.ok(ui.querySelector('[data-storey-strip-inserted]'));
+  assert.ok(ui.querySelector('[data-storey-strip-move]'));
+  click([...ui.querySelectorAll('button')].find(b => b.textContent?.includes('Add storey above'))!);
+  await waitFor(() => !ui.querySelector('[data-storey-insertion]'), 'structural edit clears review');
+  assert.equal(ui.querySelector('[data-storey-strip-inserted]'), null);
+});
+
+it('#9389 structural add and level edits offer one-step Undo from their toasts', async () => {
+  const { StoreyManager } = await import('./StoreyManager');
+  const ui = render(<><StoreyManager onBack={() => {}} /><Toaster /></>);
+  for (const dismiss of ui.querySelectorAll('[aria-label="Dismiss notification"]')) click(dismiss);
+  await waitFor(() => rows(ui).length === 2, 'rows loaded');
+  click([...ui.querySelectorAll('button')].find(b => b.textContent?.includes('Add storey above'))!);
+  await waitFor(() => rows(ui).length === 3, 'added');
+  const undo = () => [...ui.querySelectorAll('button')].filter(b => b.textContent === 'Undo').at(-1)!;
+  click(undo());
+  await waitFor(() => rows(ui).length === 2, 'toast Undo removes added storey');
+  for (const dismiss of ui.querySelectorAll('[aria-label="Dismiss notification"]')) click(dismiss);
+  const height = field(rows(ui)[1], 'height');
+  edit(height, '4.00'); press(height, 'Enter');
+  await waitFor(() => elevations()[1] === 4, 'height committed');
+  click(undo());
+  await waitFor(() => elevations()[1] === 3, 'toast Undo restores height and storeys together');
+});
+
+it('#9389 insertion preserves custom storey names', () => {
+  act(() => {
+    commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'rename', storeyId: STOREY, Name: 'Lobby' });
+    commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'rename', storeyId: UPPER_STOREY, Name: 'Roof' });
+  });
+  const review = reviewStoreyInsertion(MODEL_ID, STOREY, n => `Level ${n}`)!;
+  assert.deepEqual(review.renames, []);
+  assert.equal(commitStoreyInsertion(MODEL_ID, review).ok, true);
+  assert.deepEqual(modelStoreys(useViewerStore.getState(), MODEL_ID).map(level => level.name), ['Lobby', 'Level 3', 'Roof']);
+});
+
+it('#9389 insertion preserves mixed number widths without merging distinct names', () => {
+  const added = commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'L01', Elevation: 6, referenceStoreyId: UPPER_STOREY } });
+  assert.equal(added.ok, true);
+  const review = reviewStoreyInsertion(MODEL_ID, STOREY, n => `Level ${n}`)!;
+  assert.equal(commitStoreyInsertion(MODEL_ID, review).ok, true);
+  const names = modelStoreys(useViewerStore.getState(), MODEL_ID).map(level => level.name);
+  assert.deepEqual(names, ['L0', 'L1', 'L2', 'L02']);
+  assert.equal(new Set(names).size, names.length);
+  act(() => useViewerStore.getState().undo(MODEL_ID));
+  assert.deepEqual(modelStoreys(useViewerStore.getState(), MODEL_ID).map(level => level.name), ['L0', 'L1', 'L01']);
+});
+
+
+it('#9352 inserting below tied storeys chooses a strictly lower floor and commits its reviewed elevation', async () => {
+  const tiedResult = commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Tied', Elevation: 4, referenceStoreyId: UPPER_STOREY } });
+  assert.equal(tiedResult.ok, true);
+  const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+  const tied = readStoreyInventory(target.dataStore, target.view).storeys.find(row => row.Name === 'Tied')!.expressId;
+  const editor = new StoreEditor(target.dataStore, target.view);
+  const upperPlacement = readStoreyInventory(target.dataStore, target.view).reader.entity(UPPER_STOREY)!.attributes[5];
+  assert.ok(typeof upperPlacement === 'string' || typeof upperPlacement === 'number');
+  editor.setPositionalAttribute(tied, 5, upperPlacement);
+  editor.setPositionalAttribute(tied, 9, { real: 3 });
+  const review = reviewStoreyInsertion(MODEL_ID, tied, n => `Level ${n}`, 'below')!;
+  assert.equal(review.params.referenceStoreyId, STOREY);
+  assert.equal(review.params.Elevation, 3);
+  assert.equal(commitStoreyInsertion(MODEL_ID, review).ok, true);
+  assert.deepEqual(elevations(), [0, 3, 6, 6]);
 });

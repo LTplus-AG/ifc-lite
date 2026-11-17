@@ -6,7 +6,7 @@ import type { IfcDataStore, MapConversion, ProjectedCRS } from '@ifc-lite/parser
 import { ifcToViewerAxes } from './coordinate-frame';
 import { viewerPointToProjected } from './pick-to-geo';
 import { resolveProductOriginMeters } from './product-origin';
-import { isGeographicProj4 } from './proj4-utils';
+import { isGeographicProj4 } from '@ifc-lite/geo/proj4';
 import { reprojectPointToLatLon, resolveProjection, type LatLon } from './reproject';
 
 export interface SiteLocationReference {

@@ -66,9 +66,11 @@ describe('complete CoordinateInfo cache transport (#7239)', () => {
       meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: capturedInfo,
     }, source);
     const reader = new BinaryCacheReader();
-    expect(reader.readHeader(cache).version).toBe(27);
+    expect(reader.readHeader(cache).version).toBe(28);
     expect(reader.validate(cache, source)).toBe(true);
-    expect((await reader.read(cache)).geometry?.coordinateInfo).toEqual(capturedInfo);
+    const restored = await reader.read(cache);
+    expect(restored.geometry?.coordinateInfo).toEqual(capturedInfo);
+    expect(restored.dataStore?.selectionRelationshipIndex).toEqual(store.selectionRelationshipIndex);
   });
 
   it('leaves missing pre-v24 metadata unknown without consuming the next field', () => {

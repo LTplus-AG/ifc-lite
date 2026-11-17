@@ -26,6 +26,7 @@ export const propertyEditorIt = {
     "many": "{count} occorrenze potrebbero riflettere l'aggiornamento salvo sovrascrittura locale."
   },
   "propertyEditor.inline.applyToType": "Applica al tipo",
+  "propertyEditor.inline.overrideOnElement": "Sovrascrivi su questo elemento",
   "propertyEditor.inline.keepEditing": "Continua a modificare",
   "propertyEditor.valueType.string": "Stringa",
   "propertyEditor.valueType.label": "Etichetta",
@@ -91,6 +92,10 @@ export const propertyEditorIt = {
   "propertyEditor.material.trigger": "Aggiungi materiale",
   "propertyEditor.material.title": "Aggiungi materiale",
   "propertyEditor.material.description": "Assegna un materiale a questo {entityType}.",
+  "propertyEditor.material.picker": "Materiale",
+  "propertyEditor.material.colourHex": "Colore del materiale in esadecimale",
+  "propertyEditor.material.colour": "Colore del materiale",
+  "propertyEditor.material.colourHint": "Il colore si applica ai nuovi materiali. I nomi esistenti mantengono il loro aspetto salvato.",
   "propertyEditor.material.name": "Nome del materiale",
   "propertyEditor.material.namePlaceholder": "es. Calcestruzzo C30/37",
   "propertyEditor.material.category": "Categoria",

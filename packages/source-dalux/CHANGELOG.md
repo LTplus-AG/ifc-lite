@@ -1,5 +1,25 @@
 # @ifc-lite/source-dalux
 
+## 0.5.0
+
+### Minor Changes
+
+- [#8648](https://github.com/LTplus-AG/ifc-lite/pull/8648) [`da1cf63`](https://github.com/LTplus-AG/ifc-lite/commit/da1cf63ff43962081b3826895cc427de8b1068da) Thanks [@bruadam](https://github.com/bruadam)! - `DaluxBuildProvider` now implements `listRevisions`, so the viewer's file-browser "Versions" panel works for Dalux files. `capabilities.revisionHistory` flips from `false` to `true` to match.
+  
+  Dalux has no endpoint that lists a file's revisions directly — only "fetch this exact revision's content" if you already have its id. Version sets are the way in: `GET /2.1/projects/{p}/version_sets` plus `GET /3.0/.../version_sets/{vs}/files` enumerate every revision a project's snapshots pinned, and sweeping them (new `commit-index.ts`) reconstructs each file's history from that.
+  
+  A history row is a file revision, not a version set: two sets pinning the same revision collapse into one row carrying both set names. The current revision is included even when no set pins it. Rows order by numeric revision number first (highest first), then date, sweep position and revision ID. Missing dates stay blank; raw user IDs are omitted. Incomplete or oversized sweeps are reported as unavailable rather than presented as a complete history.
+
+- [#9526](https://github.com/LTplus-AG/ifc-lite/pull/9526) [`dbb660f`](https://github.com/LTplus-AG/ifc-lite/commit/dbb660fecb80156fa194656005d5c4cfb2eed3ae) Thanks [@bruadam](https://github.com/bruadam)! - The Dalux provider implements `uploadFile` and declares `writeBack: ['new-version', 'new-file', 'new-location']`. It uses Dalux's three-step upload (slot, 4 MiB parts with `Content-Range`, the most the same-origin relay accepts, finalize with `fileId` for a new revision or `folderId` for a new file). It reports `stale-base` and `name-exists` conflicts before sending any bytes, refuses published and shared file areas, refuses folders that require file properties, and carries a file's existing properties onto its new revision. In the browser it needs the relay's upload routes ([#9524](https://github.com/LTplus-AG/ifc-lite/issues/9524)). Part of [#9522](https://github.com/LTplus-AG/ifc-lite/issues/9522).
+
+### Patch Changes
+
+- [#8648](https://github.com/LTplus-AG/ifc-lite/pull/8648) [`da1cf63`](https://github.com/LTplus-AG/ifc-lite/commit/da1cf63ff43962081b3826895cc427de8b1068da) Thanks [@bruadam](https://github.com/bruadam)! - The Dalux revision-history cache now evicts expired project indexes and keeps at most eight, so reopening the browser no longer accumulates full indexes. A pinned label survives a current-file response without `version`, and a newer pinned revision is listed before stale current metadata.
+
+- [#8647](https://github.com/LTplus-AG/ifc-lite/pull/8647) [`ad55253`](https://github.com/LTplus-AG/ifc-lite/commit/ad552530fcf6e4105bb283ee680865b1723fb361) Thanks [@bruadam](https://github.com/bruadam)! - Keep revision-index cache entries scoped to their API client, retry incomplete reads with fresh version-set pins, and use the first valid file timestamp. Project histories beyond the bounded sweep are explicitly incomplete instead of presenting an arbitrary subset as complete.
+- Updated dependencies [[`dbb660f`](https://github.com/LTplus-AG/ifc-lite/commit/dbb660fecb80156fa194656005d5c4cfb2eed3ae)]:
+  - @ifc-lite/plugin-api@0.6.0
+
 ## 0.4.1
 
 ### Patch Changes

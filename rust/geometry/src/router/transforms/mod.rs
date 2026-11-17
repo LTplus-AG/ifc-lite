@@ -4,6 +4,7 @@
 
 //! Placement and transformation: axis placement parsing, coordinate transforms, RTC offset.
 
+pub(crate) mod cut_frame;
 pub(crate) mod mapped;
 mod mesh_world;
 pub(crate) use mesh_world::{WorldFrame, LARGE_MAPPED_ORIGIN_M};
@@ -33,14 +34,16 @@ static LOCAL_FRAME_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::At
 /// SAME flag state (wasm defaults ON, native defaults OFF below), so the two
 /// targets' outputs are comparable byte-for-byte.
 pub fn local_frame_set_enabled_override(v: Option<bool>) {
-    LOCAL_FRAME_OVERRIDE.store(
-        match v {
-            None => -1,
-            Some(false) => 0,
-            Some(true) => 1,
-        },
-        std::sync::atomic::Ordering::Relaxed,
-    );
+    crate::output_policy::mutate(|| {
+        LOCAL_FRAME_OVERRIDE.store(
+            match v {
+                None => -1,
+                Some(false) => 0,
+                Some(true) => 1,
+            },
+            std::sync::atomic::Ordering::Release,
+        )
+    });
 }
 
 /// Whether per-element local-frame vertex precision is enabled.
@@ -54,7 +57,7 @@ pub fn local_frame_set_enabled_override(v: Option<bool>) {
 /// in. Env/cfg default read once and cached. An explicit per-router policy takes
 /// precedence; otherwise [`local_frame_set_enabled_override`] selects this fallback.
 pub(crate) fn local_frame_enabled() -> bool {
-    match LOCAL_FRAME_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+    match LOCAL_FRAME_OVERRIDE.load(std::sync::atomic::Ordering::Acquire) {
         0 => return false,
         1 => return true,
         _ => {}
@@ -107,7 +110,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<ObjectPlacement> {
-        let Some(mut transform) = placement::resolve_object_placement(element, decoder)? else {
+        let Some(mut transform) = self.placement_in_frame(element, decoder)? else {
             return Ok(ObjectPlacement { transform: Matrix4::identity(), placed: false });
         };
         self.scale_transform(&mut transform);
@@ -184,7 +187,7 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Matrix4<f64>> {
-        Ok(placement::resolve_object_placement(element, decoder)?.unwrap_or_else(Matrix4::identity))
+        Ok(self.placement_in_frame(element, decoder)?.unwrap_or_else(Matrix4::identity))
     }
 
     /// Exact counterpart to `resolve_scaled_placement`: refuses a world

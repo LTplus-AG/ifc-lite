@@ -26,6 +26,8 @@ import { watchLoadSupersession } from './modelLoadCanceller.js';
 import { showLoadError } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { markLoadIntent } from '@/lib/load-intent';
+import { pageUrlModelAllowed } from '@/lib/processed-model';
 
 export function useModelUrlAutoload(): void {
   // The loader and federation hooks subscribe to actions only; `useIfc()` also
@@ -67,6 +69,8 @@ export function useModelUrlAutoload(): void {
 
     let resolvedUrl: URL | null = null;
     const attempt = async () => {
+      if (!pageUrlModelAllowed('model')) return; // a host asked for its own model; checked again on Retry
+      markLoadIntent(); // the model is fetched before the load starts
       // Replay-safe (a fetch, no gesture): Retry on the unsupported card may
       // re-run it after the re-check. This effect never reaches the guard
       // while the check is still running; it waits for the check instead.

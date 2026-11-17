@@ -12,6 +12,10 @@
 mod test_support;
 
 mod adjacency;
+// CityJSON 2.0 writer: compiled only with the default-on `cityjson` feature
+// (the module gates itself with an inner `#![cfg]`), which the default engine
+// wasm, built without default features, does not enable.
+mod cityjson;
 mod collada;
 mod collada_document;
 mod collada_fmt;
@@ -59,6 +63,11 @@ mod rooms;
 pub mod rooted_type;
 mod scene_input;
 mod schema_convert;
+mod schema_structural;
+mod schema_structural_diagnostics;
+mod schema_structural_axes;
+mod schema_structural_links;
+mod schema_structural_varying;
 mod schema_mep;
 mod schema_detect;
 mod schema_ifc2x3_body;
@@ -95,6 +104,8 @@ mod xml_text;
 /// The STEP string-literal escaper; `escape`'s docs say why it is public.
 pub use step_text::escape as escape_step_string;
 
+#[cfg(feature = "cityjson")]
+pub use cityjson::{try_export_cityjson, CityJsonExport, CityJsonOptions, CityJsonRefusal};
 pub use collada::try_export_collada_from_meshes;
 pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use dfjson::DfjsonStats;
@@ -167,7 +178,8 @@ pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 #[cfg(feature = "parquet-bos")]
 pub use parquet_bos::{export_bos, ParquetBosOptions};
 pub use step::{
-    export_step, export_step_to_writer, export_step_with_stats, AttrMutation, CopyOnWriteMutation,
+    export_step, export_step_to_writer, export_step_with_stats, export_step_with_diagnostics,
+    export_step_to_writer_with_diagnostics, AttrMutation, CopyOnWriteMutation,
     PropMutation, StepOptions, StepStats,
 };
 pub use step_json::export_step_json;

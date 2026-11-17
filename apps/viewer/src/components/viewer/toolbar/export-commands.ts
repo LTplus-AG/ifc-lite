@@ -36,6 +36,7 @@ import { GLBExportDialog } from '../GLBExportDialog';
 import { KmzExportDialog } from '../KmzExportDialog';
 import { EnergyModelExportDialog } from '../EnergyModelExportDialog';
 import { UsdExportDialog } from '../UsdExportDialog';
+import { RhinoExportCommand } from '../RhinoExportCommand';
 import { LandXmlTerrainExportCommand } from '../LandXmlTerrainExportCommand';
 import { PdfViewExportDialog } from '../PdfViewExportDialog';
 
@@ -200,6 +201,19 @@ export const EXPORT_COMMANDS = [
     emphasis: 'small',
   },
   {
+    // Rhino .3dm, rebuilt from the STEP bytes like USD; the two 3D scene
+    // formats share a stack, and energy + terrain move to the next one.
+    id: '3dm',
+    kind: 'dialog',
+    Dialog: RhinoExportCommand,
+    labelKey: 'exportCommands.rhino.label',
+    menuLabelKey: 'exportCommands.rhino.menuLabel',
+    tooltipKey: 'exportCommands.rhino.tooltip',
+    requires: 'model',
+    group: 2,
+    emphasis: 'small',
+  },
+  {
     id: 'energy',
     kind: 'dialog',
     Dialog: EnergyModelExportDialog,
@@ -207,7 +221,7 @@ export const EXPORT_COMMANDS = [
     menuLabelKey: 'exportCommands.energy.menuLabel',
     tooltipKey: 'exportCommands.energy.tooltip',
     requires: 'model',
-    group: 2,
+    group: 2.5,
     emphasis: 'small',
   },
   {
@@ -221,7 +235,7 @@ export const EXPORT_COMMANDS = [
     menuLabelKey: 'exportCommands.landxmlTerrain.menuLabel',
     tooltipKey: 'exportCommands.landxmlTerrain.tooltip',
     requires: 'dataStore',
-    group: 2,
+    group: 2.5,
     emphasis: 'small',
   },
   {

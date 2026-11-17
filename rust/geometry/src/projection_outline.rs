@@ -80,12 +80,30 @@ fn axis_coord(p: [f64; 3], axis: ProjectionAxis) -> f64 {
     }
 }
 
-/// Threshold below which a projected triangle is treated as degenerate
-/// (edge-on to the view) and skipped. It is compared against the 2D cross
-/// product, which is TWICE the triangle's area, so in drawing metres² it
-/// drops triangles under 0.5e-8 — generous enough to drop f32 slivers, small
-/// enough to keep real footprints.
-const DEGENERATE_AREA: f64 = 1.0e-8;
+/// Smallest doubled projected area (the 2D cross product, m²) a triangle may
+/// have and still be outlined.
+///
+/// Positions arrive as f32, whose spacing at the far end of building scale
+/// (a few hundred metres from the origin) is about 3e-5 m. A triangle whose
+/// cross product is under the square of that spacing is no bigger than one
+/// representable step in each direction, so it is rounding residue or a face
+/// seen edge-on, not footprint. A real 1 mm feature is a thousand times
+/// larger (1e-6), so nothing drawable is near this bound.
+const DEGENERATE_AREA: f64 = 1e-9;
+
+/// Smallest height-to-longest-edge ratio a projected triangle may have and
+/// still be outlined.
+///
+/// An absolute area bound cannot catch a long collinear triangle: f32
+/// rounding lifts its middle vertex off the line by about 1e-7 of the
+/// coordinate magnitude, and multiplied by a ten-metre edge that is far more
+/// area than a real millimetre-sized facet has. Shape separates the two. The
+/// thinnest triangle a building model legitimately holds is about 1 mm
+/// across a 100 m span, a ratio of 1e-5; rounding residue sits near 1e-7.
+/// The bound is placed between them, a decade clear of each. Slivers below
+/// it add no visible area and are the needles that make the polygon union
+/// stall.
+const SLIVER_ASPECT: f64 = 1e-6;
 
 /// Maximum number of triangles to feed into the i_overlay union. A mesh with
 /// more valid projected triangles is refused with [`NoOutline::OverBudget`]
@@ -166,17 +184,20 @@ pub fn mesh_outline_2d(
         let a1 = project(p1, axis, flipped);
         let a2 = project(p2, axis, flipped);
 
-        // Signed area in (u, v); skip degenerate, force CCW so i_overlay's
-        // NonZero fill unions (mixed winding would cancel triangles instead).
+        // Twice the signed area in (u, v); skip degenerate, force CCW so
+        // i_overlay's NonZero fill unions (mixed winding would cancel
+        // triangles instead).
         let area = (a1[0] - a0[0]) * (a2[1] - a0[1]) - (a2[0] - a0[0]) * (a1[1] - a0[1]);
         if area.abs() < DEGENERATE_AREA {
             continue;
         }
-        // Skip near-collinear triangles (high aspect ratio) that stress i_overlay.
-        let max_edge_sq = ((a1[0]-a0[0]).powi(2) + (a1[1]-a0[1]).powi(2))
-            .max((a2[0]-a1[0]).powi(2) + (a2[1]-a1[1]).powi(2))
-            .max((a0[0]-a2[0]).powi(2) + (a0[1]-a2[1]).powi(2));
-        if max_edge_sq > 0.0 && area.abs() / max_edge_sq.sqrt() < 1.0e-6 {
+        // height / longest = area / longest², kept as a product so a
+        // zero-length edge needs no special case.
+        let longest_sq = [(a0, a1), (a1, a2), (a2, a0)]
+            .iter()
+            .map(|(p, q)| (q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2))
+            .fold(0.0, f64::max);
+        if area.abs() < SLIVER_ASPECT * longest_sq {
             continue;
         }
         let path: Vec<[f64; 2]> = if area >= 0.0 {
@@ -201,7 +222,7 @@ pub fn mesh_outline_2d(
         return Err(NoOutline::Empty);
     }
 
-    // Single triangle -> its own outline (skip the union round-trip).
+    // One triangle is its own outline; i_overlay needs a clip to union.
     let shapes: Vec<Vec<Vec<[f64; 2]>>> = if clip.is_empty() {
         vec![subject.clone()]
     } else {

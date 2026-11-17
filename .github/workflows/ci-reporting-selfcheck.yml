@@ -14,7 +14,6 @@ on:
       - '.github/workflows/determinism.yml'
       - '.github/workflows/export-schema-conformance.yml'
       - '.github/workflows/ifcopenshell-parity.yml'
-      - '.github/workflows/wide-arithmetic.yml'
       - '.github/workflows/xmatch-fixture.yml'
       - 'scripts/check-workflow-report-paths.mjs'
       - 'scripts/check-workflow-report-paths.test.mjs'

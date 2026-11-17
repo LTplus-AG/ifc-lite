@@ -6,10 +6,13 @@ import { useSyncExternalStore } from 'react';
 
 /** The active toolbar’s one file hook, never a second loader (#8947). */
 export interface MountedFileHost {
+  /** Component lifetime, independent of refreshed file callbacks. */
+  readonly owner?: object;
   openFiles: () => void;
   addModel: () => void;
   refreshModels: () => Promise<void>;
   openShareDialog?: () => void;
+  startBlank?: () => void;
 }
 let current: MountedFileHost | null = null;
 const listeners = new Set<() => void>();

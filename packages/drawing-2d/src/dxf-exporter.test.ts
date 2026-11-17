@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { exportToDXF } from './dxf-exporter.js';
+import { exportToDXF, isDxfDimensionExportable } from './dxf-exporter.js';
 import { parseDxf } from './dxf/parser.js';
 import {
   DEFAULT_SECTION_CONFIG,
@@ -182,6 +182,66 @@ describe('DXFExporter', () => {
     expect(polylines[0].vertices[1].x).toBeCloseTo(10);
   });
 
+  it('re-emits uniform (aligned) text as Aligned (72=3)', () => {
+    const aligned = underlay();
+    aligned.layers[0].texts = [
+      { position: { x: 1, y: 2 }, text: 'Al', height: 1, dirX: 1, dirY: 0, align: 'left', valign: 'baseline', fitWidth: 4, fitUniform: true },
+    ];
+    const dxf = exportToDXF(emptyDrawing(), {
+      underlays: [{ underlay: aligned, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
+    });
+    expect(dxf).toContain('72\n3\n');
+    expect(dxf).not.toContain('72\n5\n');
+    // A transform that stretches one axis changes the aspect: re-emit as Fit, not Aligned.
+    const stretched = exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: 2 * p.x, y: p.y }),
+      underlays: [{ underlay: aligned, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
+    });
+    expect(stretched).toContain('72\n5\n');
+    expect(stretched).not.toContain('72\n3\n');
+    // Stretching the axis across the baseline scales the glyph height with it.
+    const tall = parseDxf(exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: p.x, y: 2 * p.y }),
+      underlays: [{ underlay: aligned, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
+    })).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    expect(tall[0].height).toBeCloseTo(2, 6);
+    // Plain text through a stretching transform is widened (group 41) by the stretch.
+    const plain = underlay();
+    plain.layers[0].texts = [
+      { position: { x: 1, y: 2 }, text: 'W', height: 1, dirX: 1, dirY: 0, align: 'left', valign: 'baseline', widthScale: 0.25 },
+    ];
+    const [wide] = parseDxf(exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: 2 * p.x, y: p.y }),
+      underlays: [{ underlay: plain, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
+    })).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    expect(wide.widthScale).toBeCloseTo(0.5, 6);
+    // A uniformly scaling transform scales the glyph height with the geometry.
+    const [big] = parseDxf(exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: 2 * p.x, y: 2 * p.y }),
+      underlays: [{ underlay: plain, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 } }],
+    })).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    expect(big.height).toBeCloseTo(2, 6);
+  });
+
+  it('re-emits aligned/fit text as Fit (72=5) so CAD spans the exact fitWidth', () => {
+    const fit = underlay();
+    fit.layers[0].texts = [
+      { position: { x: 1, y: 2 }, text: 'Fit', height: 1, dirX: 0, dirY: 1, align: 'left', valign: 'baseline', widthScale: 3, fitWidth: 4 },
+    ];
+    const dxf = exportToDXF(emptyDrawing(), {
+      underlays: [{ underlay: fit, placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 2 } }],
+    });
+    expect(dxf).toContain('72\n5\n');
+    // The estimated width factor (group 41) is replaced by the second point.
+    expect(dxf.slice(dxf.indexOf('\n0\nTEXT\n'))).not.toMatch(/\n41\n/);
+    const [text] = parseDxf(dxf).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    // Span 4 scaled by the placement (2) along the baseline.
+    expect(text.fitWidth).toBeCloseTo(8, 6);
+    // The fitted end point is part of the header extent: the placed anchor (2,4) + 8 along +Y.
+    const extMax = dxf.slice(dxf.indexOf('$EXTMAX'), dxf.indexOf('$EXTMAX') + 80).split('\n');
+    expect(Number(extMax[4])).toBeCloseTo(12, 6);
+  });
+
   it('stacks multi-line underlay text along the rotated text direction, with placement-scaled height (PR #1871 review)', () => {
     // Under a rotated placement the second line must follow the text's own
     // "down" direction (local -Y mapped through the placement), not shift
@@ -208,15 +268,38 @@ describe('DXFExporter', () => {
     // (svg-exporter.ts's underlay mapping, dxfUnderlayMath.ts's
     // worldToDrawing) applies by negating Y, calling `applyDxfPlacement`,
     // then negating back for a world-space (+Y up) output. Local
-    // second-line anchor (0, -2.6): negate Y -> (0, 2.6), scale by 2 ->
-    // (0, 5.2), rotate 90 deg CCW-as-seen-on-plan (applyDxfPlacement:
-    // x' = x c + y s, y' = -x s + y c) -> (5.2, 0), negate Y back -> (5.2, 0).
+    // second-line anchor (0, -10/3): negate Y -> (0, 10/3), scale by 2 ->
+    // (0, 20/3), rotate 90 deg CCW-as-seen-on-plan (applyDxfPlacement:
+    // x' = x c + y s, y' = -x s + y c) -> (20/3, 0), negate Y back -> (20/3, 0).
     expect(texts[1].text).toBe('B');
-    expect(texts[1].x).toBeCloseTo(5.2);
+    expect(texts[1].x).toBeCloseTo(20 / 3);
     expect(texts[1].y).toBeCloseTo(0);
     // Glyph height follows the placement scale, like the SVG exporter.
     expect(texts[0].height).toBeCloseTo(4);
     expect(texts[1].height).toBeCloseTo(4);
+  });
+
+  it('anchors a multi-line underlay text block by its vertical attachment, along rotated text', () => {
+    // DXF anchors the whole block: bottom grows up from the point (last line
+    // on it), middle centres on it, top grows down. Lines stack across the
+    // text's own direction (AutoCAD pitch: 5/3 of the height at factor 1), so a 90° label stacks along world X.
+    const at = (valign: 'top' | 'middle' | 'bottom', dirX: number, dirY: number) => {
+      const multi = underlay();
+      multi.layers[0].texts = [
+        { position: { x: 10, y: 20 }, text: 'A\nB\nC', height: 1, dirX, dirY, align: 'left', valign },
+      ];
+      return parseDxf(exportToDXF(emptyDrawing(), { underlays: [{ underlay: multi }] })).entities
+        .filter((e): e is DxfTextEntity => e.kind === 'text');
+    };
+    const bottom = at('bottom', 1, 0);
+    expect(bottom.map((t) => t.text)).toEqual(['A', 'B', 'C']);
+    expect(bottom.map((t) => t.y)).toEqual([20 + 10 / 3, 20 + 5 / 3, 20].map((y) => expect.closeTo(y, 5)));
+    expect(at('middle', 1, 0).map((t) => t.y)).toEqual([20 + 5 / 3, 20, 20 - 5 / 3].map((y) => expect.closeTo(y, 5)));
+    expect(at('top', 1, 0).map((t) => t.y)).toEqual([20, 20 - 5 / 3, 20 - 10 / 3].map((y) => expect.closeTo(y, 5)));
+    // Rotated 90° (reading up): "down" across the baseline is world +X.
+    const rotated = at('bottom', 0, 1);
+    expect(rotated.map((t) => t.x)).toEqual([10 - 10 / 3, 10 - 5 / 3, 10].map((x) => expect.closeTo(x, 5)));
+    expect(rotated.map((t) => t.y)).toEqual([20, 20, 20].map((y) => expect.closeTo(y, 5)));
   });
 
   it('applies underlay placement offset/rotation in the same sense as every other DxfPlacement consumer (world Y-up, not mirrored)', () => {
@@ -304,4 +387,59 @@ describe('DXFExporter', () => {
     expect(polys[0].vertices.map((v) => [v.x, v.y])).toEqual([[100, 50], [104, 50], [104, 53]]);
     expect(dxf).toContain('2\nSCAN-OUTLINE\n');
   });
+});
+
+describe('DXFExporter textLayers', () => {
+  it('writes TEXT on its own layer, through coordinateTransform, with the angle measured after it', () => {
+    // A y-mirroring transform, as the plan export's toWorld applies.
+    const dxf = exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: p.x + 100, y: -p.y }),
+      textLayers: [{
+        name: 'DIMENSIONS-TEXT',
+        color: '#000000',
+        texts: [
+          { position: { x: 1, y: 2 }, text: '4262', height: 0.25, direction: { x: 1, y: 1 }, hAlign: 'center', vAlign: 'middle' },
+          { position: { x: 0, y: 0 }, text: 'flat', height: 0.125 },
+        ],
+      }],
+    });
+    const texts = parseDxf(dxf).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    expect(texts).toHaveLength(2);
+    expect(texts.every((t) => t.layer === 'DIMENSIONS-TEXT')).toBe(true);
+    expect([texts[0].x, texts[0].y, texts[0].height, texts[0].text]).toEqual([101, -2, 0.25, '4262']);
+    expect([texts[0].hAlign, texts[0].vAlign]).toEqual(['center', 'middle']);
+    // (1, 1) in drawing space is (1, -1) after the mirror: -45°.
+    expect(texts[0].rotationDeg).toBeCloseTo(-45, 9);
+    expect([texts[1].rotationDeg, texts[1].hAlign, texts[1].vAlign]).toEqual([0, 'left', 'baseline']);
+  });
+
+  it('keepUpright turns text that would read upside down or top to bottom in the output frame', () => {
+    const angle = (direction: { x: number; y: number }, keepUpright: boolean) => {
+      const dxf = exportToDXF(emptyDrawing(), {
+        textLayers: [{ name: 'T', color: '#000000', texts: [{ position: { x: 0, y: 0 }, text: 'x', height: 1, direction, keepUpright }] }],
+      });
+      return parseDxf(dxf).entities.filter((e): e is DxfTextEntity => e.kind === 'text')[0].rotationDeg;
+    };
+    expect(angle({ x: -1, y: 0 }, false)).toBeCloseTo(180, 9);
+    expect(angle({ x: -1, y: 0 }, true)).toBeCloseTo(0, 9);
+    expect(angle({ x: 0, y: -1 }, true)).toBeCloseTo(90, 9);
+    expect(angle({ x: 0, y: 1 }, true)).toBeCloseTo(90, 9);
+    expect(angle({ x: 1, y: -1 }, true)).toBeCloseTo(-45, 9);
+  });
+});
+
+it('rejects invalid shared dimension graphics with the preflight predicate (#10020)', () => {
+  const point = { x: 0, y: 0 };
+  const valid = { lines: [[{ x: 0, y: 0 }, { x: 5, y: 0 }]] as [typeof point, typeof point][],
+    ticks: [], text: { at: { x: 2.5, y: 0.2 }, angle: 0, heightM: 0.3, value: 'valid' } };
+  const rejected = [
+    { ...valid, lines: [[point, point]] as [typeof point, typeof point][] },
+    ...[0, -1, NaN, Infinity].map(heightM => ({ ...valid, text: { ...valid.text, heightM } })),
+    { ...valid, text: { ...valid.text, at: { x: NaN, y: 0 } } },
+  ];
+  expect(isDxfDimensionExportable(valid)).toBe(true);
+  for (const dim of rejected) expect(isDxfDimensionExportable(dim)).toBe(false);
+  const entities = parseDxf(exportToDXF(emptyDrawing(), { dimensions: [...rejected, valid] })).entities;
+  expect(entities.filter(e => e.kind === 'text')).toHaveLength(1);
+  expect(entities.filter(e => e.kind === 'line')).toHaveLength(1);
 });

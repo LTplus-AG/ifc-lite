@@ -17,6 +17,7 @@ The `bim` object (a `BimContext`) groups its capabilities into namespaces, plus 
 | `bim.create` | Create IFC elements from scratch |
 | `bim.export` | Export to CSV, JSON, IFC/STEP, HBJSON, DFJSON |
 | `bim.clash` | Run clash rules and the discipline matrix |
+| `bim.georef` | Read and write georeferencing (IfcProjectedCRS + IfcMapConversion; IFC2X3 ePSet convention), fail-closed — see [Georeferencing](#georeferencing) |
 | `bim.cost` | Read and evaluate IFC 5D cost schedules, items, values, and quantities |
 | `bim.structural` | Read-only access to IFC structural analysis data (analysis models, members, connections, activities, load/result groups) |
 | `bim.ids` | IDS validation; `bim.ids.authoring` opens, edits (through grounded operations), lints and writes IDS documents |
@@ -287,6 +288,41 @@ Use `model.capability('store.roomCommand')` before offering a backend operation.
 
 The CLI and MCP compose the shared `@ifc-lite/sdk/headless` implementation. Query reads, pending mutations, standard exports, and model identity checks share one implementation. CLI-specific authoring, schedules, spaces, and energy exports remain host adapters; explicit aliases preserve its existing model-ID spellings.
 
+## Georeferencing
+
+`bim.georef` reads and writes a model's georeferencing on headless contexts (`openModel`, the CLI, MCP). IFC4 and IFC4X3 get `IfcProjectedCRS` + `IfcMapConversion` (IFC4X3 with `FactorX/Y/Z`: `IfcMapConversionScaled`); IFC2X3 gets the `ePSet_MapConversion` / `ePSet_ProjectedCRS` property sets on IfcSite (updates preserve an existing host). A write is held in the session and lands in the file with the next `bim.export.ifc()`.
+
+```typescript
+import { readFile, writeFile } from 'node:fs/promises';
+import { openModel } from '@ifc-lite/sdk/headless';
+
+const model = await openModel(await readFile('model.ifc'));
+try {
+  const result = model.bim.georef.set({
+    ProjectedCRS: { Name: 'EPSG:2056', GeodeticDatum: 'CH1903+', VerticalDatum: 'LN02', MapUnit: 'METRE' },
+    MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400, Scale: 1 },
+    rotationDegrees: 12.5,
+  });
+  console.log(result.mapUnit, result.notes);
+  model.bim.georef.update({ MapConversion: { OrthogonalHeight: 401 } });
+  console.log(model.bim.georef.get().MapConversion);
+  await writeFile('georeferenced.ifc', model.bim.export.ifc());
+} finally {
+  model.close();
+}
+```
+
+Writes fail closed and throw a `GeoreferencingError` whose `code` says why and whose `missing` names the inputs that would let it proceed:
+
+- No CRS, map unit, scale or factor is assumed. `ProjectedCRS.MapUnit` must be given, or come from an IfcProjectedCRS of the same `Name` being replaced or updated whose unit the reader resolved (`result.mapUnit.source` says which); the writer supports metres with any SI prefix, `FOOT` and `US SURVEY FOOT`.
+- A model without an `IfcGeometricRepresentationContext` (the map conversion's `SourceCRS`) is refused; for IFC2X3, a model without exactly one IfcSite.
+- `set` on a georeferenced model is refused unless `replace: true`, which removes the existing map conversions, CRSs and their `IfcWellKnownText` and writes one map conversion (for the 3D `Model` context); `result.notes` names any other context that loses its conversion.
+- Contradictions are refused: an angle and an `XAxisAbscissa`/`XAxisOrdinate` vector that disagree, half a vector, factors outside FILE_SCHEMA `IFC4X3` / `IFC4X3_ADD2`, unknown keys, factors on a plain `IfcMapConversion` (use `set` with `replace`), or an `update` that renames the CRS while keeping the old datum or unit.
+
+`get()` reports EXPRESS attribute names plus `rotationDegrees`, `source`, `storage` and `pending`. `readGeoreferencing(store)` gives the same shape for a parsed store without a session. `set`/`update` leave IfcSite `RefLatitude`/`RefLongitude` untouched and say so in `notes`; `setSite({ RefLatitude, RefLongitude, RefElevation })` writes them (decimal degrees, written as `IfcCompoundPlaneAngleMeasure`; RefElevation in project length units), as one undo step.
+
+`check()`, `planFixes()` and `fix()` are the georeferencing doctor: what is wrong, which fixes the write API can apply, and applying them. See [Georeferencing](georeferencing.md).
+
 ## Embedding programmatically
 
 Host adapters can reuse the live-overlay query implementation from `@ifc-lite/sdk/headless`: `createQueryAdapter` accepts the parsed store, model ID and getters for the current pending overlay and mutation view. `overlayFromView` derives that overlay from an existing `MutablePropertyView`. CLI and MCP consume these SDK-owned readers, so source records, queued creations, deletions, retypes and relationships share one query implementation. No renderer or geometry runtime is initialized by the read adapter.
@@ -468,3 +504,92 @@ Non-IDS saved report kinds retain their original records but expose `unsupported
 Headless SDK sessions (including CLI and MCP) derive wall, slab, roof, column and beam base quantities from live session-authored geometry. Read them with `bim.quantities(ref)`; `bim.export.ifc` includes the same values in IFC4, IFC2X3 and IFC4X3. Existing loaded quantity sets retain precedence and are not refreshed.
 
 Custom mutation-view hosts can call `configureAuthoredQuantityReader(dataStore, mutationView)` from `@ifc-lite/create` to install the same source-first reader. An optional third argument supplies the host's source quantity reader. User quantity edits and deletions apply above these derived values.
+
+### Structural surfaces and connections
+
+The in-store create API provides `addStructuralSurfaceMemberToStore`,
+`addStructuralCurveConnectionToStore`, and `addStructuralSurfaceConnectionToStore`.
+The SDK exposes them as `bim.store.addStructuralSurfaceMember`,
+`bim.store.addStructuralCurveConnection`, and `bim.store.addStructuralSurfaceConnection`,
+each taking `(modelId, storeyExpressId, params)`, like the existing curve member builder.
+The SDK backend and direct builders support IFC2X3, IFC4 and IFC4X3.
+Each `bim.store` method throws on a backend that does not implement it.
+
+Surface builders take `Boundary`, an ordered list of at least three distinct,
+coplanar points in storey-local metres that does not cross itself. Points off the
+plane by up to a millionth of the face size (never less than 1 µm) are snapped onto it. They write planar
+`Face` topology whose normal follows the boundary's winding.
+The member also accepts `PredefinedType` and optional positive `Thickness` in metres.
+Curve connections take `Start` and `End` and write `Edge` topology, with optional
+`Axis` for IFC4 or `AxisDirection` for IFC4X3: the connection's local z direction in
+storey coordinates, not parallel to the edge. It defaults to storey up, or +X for an
+edge within about 2.5 degrees of vertical. IFC2X3 has neither axis attribute and
+refuses either parameter.
+
+Connections accept `BoundaryCondition`: edge conditions use
+`TranslationalStiffnessByLengthX/Y/Z` and `RotationalStiffnessByLengthX/Y/Z`;
+face conditions use `TranslationalStiffnessByAreaX/Y/Z`. Components accept numbers
+in the model's stiffness units or booleans (`true` fixed, `false` free).
+IFC2X3 emits plain measures under its `LinearStiffness*` attribute names,
+using -1 and 0 for fixed and free. IFC4 and IFC4X3 emit typed SELECT members.
+Use the existing structural relationship builders to connect and group the items.
+
+
+Structural members accept `Type: 'IfcStructuralCurveMemberVarying'` or
+`Type: 'IfcStructuralSurfaceMemberVarying'` on their existing builders.
+IFC2X3 varying surfaces also require `SubsequentThickness` (at least two positive
+thicknesses in metres) and `VaryingThicknessLocation` (an existing `IfcShapeAspect` id).
+The builder copies the aspect and its point representations into the new member
+without re-parenting the original. The aspect must supply one representation per
+thickness value, including the initial thickness. Referenced point resources stay shared.
+These two attributes are refused in IFC4 and IFC4X3, where they do not exist.
+Point connections accept `BoundaryCondition.WarpingStiffness` to emit
+`IfcBoundaryNodeConditionWarping`, with the same fixed/free/measure convention.
+
+`connectStructuralMemberToConnectionInStore` accepts an optional options argument
+following its random source. The SDK's `bim.store.connectStructuralMemberToConnection`
+accepts the same options after the two endpoint ids. `AdditionalConditions` chooses
+`IfcFailureConnectionCondition` or `IfcSlippageConnectionCondition` using `Type` and
+exact EXPRESS component names; unknown condition attributes are refused before mutation.
+`ConnectionConstraint` supplies `PointOnRelatingElement`,
+optional `PointOnRelatedElement`, and `EccentricityInX/Y/Z` in native model units;
+it emits `IfcConnectionPointEccentricity` and `IfcRelConnectsWithEccentricity`.
+The relationship owns these fresh resources. In IFC2X3,
+`bim.store.connectStructuralElement(modelId, RelatingElement, RelatedStructuralMember)`
+creates the physical-to-analytical link; other schemas refuse it.
+
+Point reactions accept `AppliedLoad.Type` of `IfcStructuralLoadSingleForceWarping`
+(with `WarpingMoment`) or `IfcStructuralLoadSingleDisplacementDistortion`
+(with `Distortion`), alongside their inherited components in native model units.
+IFC2X3 linear and planar action builders accept `VaryingAppliedLoadLocation`
+(an existing `IfcShapeAspect` id) and `SubsequentAppliedLoads` (existing load ids).
+Linear actions require at least one subsequent load; planar actions require two.
+Their SDK methods forward these options unchanged. IFC4+ refuses these attributes.
+
+In IFC4 and IFC4X3, `bim.store.addStructuralLoad(modelId, params)` authors reusable
+resources. `Type: 'IfcStructuralLoadConfiguration'` takes nonempty `Values` (existing
+load/result ids), and optional `Locations` (one or two native length coordinates per
+value). `Type: 'IfcSurfaceReinforcementArea'` takes `SurfaceReinforcement1/2`
+(two or three nonnegative native length values) and/or nonnegative `ShearReinforcement`.
+`bim.store.addStructuralCurveAction(modelId, params)` accepts an `AppliedLoad` id,
+including a configuration, and an optional `PredefinedType` such as `LINEAR`.
+The direct equivalents are `addStructuralLoadToStore` and
+`addStructuralCurveActionToStore`. References supplied to these builders are borrowed.
+
+
+Varying action station aspects must contain one shape representation per load,
+including the initial `AppliedLoad`. IFC2X3 varying surfaces require the initial
+`Thickness` as well as their subsequent thicknesses. Configuration `Locations`
+must be unique. Curve actions enforce the distribution's sample shape: `LINEAR`
+uses two samples, `POLYGONAL` at least three, and `DISCRETE` at least two;
+every curve-action configuration uses matching, ascending one-dimensional locations
+and a single load type, including omitted, `NOTDEFINED`, or `USERDEFINED` distributions.
+Curve actions accept linear-force and temperature loads; point-force and
+point-displacement samples require `DISCRETE` configurations. Planar-force and
+reinforcement resources cannot be used as curve loads. `CONST`, `SINUS`, and `PARABOLA` accept
+individual loads rather than configurations.
+
+For direct action builders borrowing imported configurations or station aspects,
+or the varying surface builder copying an imported thickness aspect,
+pass the parsed source store as the optional fourth argument so validation reads
+source attributes and pending edits together. SDK methods provide it automatically.

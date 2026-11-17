@@ -217,3 +217,10 @@ checks do not permit release. Token presence is not proof of visibility: `--conf
 MPL-2.0
 
 Semantic datasets use the same shared profile and provider engine as the viewer. Run `ifc-lite semantic --help` for `validate`, `query`, `assets`, and authenticated HTTPS `serve`; see the [headless semantic guide](https://ifclite.dev/docs/guide/semantic-headless/).
+
+### Structural analysis
+
+`ifc-lite structural model.ifc` reports structural collection counts. Add
+`--json` for analysis models, members, connections, loads with applied values,
+load groups/cases, reactions, result groups and physical links. This is read-only.
+See the [structural guide](https://ifclite.dev/docs/guide/structural-analysis/).

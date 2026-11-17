@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
+import type { GaussianRowSource } from './gaussian-rows.js';
 import type { GaussianComposition, GaussianCompositionMode, GaussianCompositionReport } from './gaussian-composition.js';
 
 /**
@@ -14,9 +15,26 @@ export interface GaussianSplatPlacement {
   readonly matrix: Float64Array | readonly number[];
 }
 
-/** One normalized capture. Ownership of `attributes` transfers to the renderer on a successful add. */
+/**
+ * One normalized capture. Ownership of `attributes` transfers to the renderer on a
+ * successful add: it keeps no copy of its own and reads them again for every
+ * re-placement, repack and device recovery (#9018), so they must stay unmodified.
+ */
 export interface GaussianSplatAssetInput {
   readonly attributes: NormalizedGaussianAttributes;
+  readonly placement: GaussianSplatPlacement;
+  /** The caller's reserved federation slot; used only for the scene model translation and ownership. */
+  readonly modelIndex: number;
+  readonly visible?: boolean;
+}
+
+/**
+ * One capture given as a re-readable row source instead of resident arrays (#9018):
+ * the renderer keeps no CPU copy and reads the rows again, in bounded chunks, for
+ * every re-placement, repack and device recovery.
+ */
+export interface GaussianSplatRowsInput {
+  readonly rows: GaussianRowSource;
   readonly placement: GaussianSplatPlacement;
   /** The caller's reserved federation slot; used only for the scene model translation and ownership. */
   readonly modelIndex: number;
@@ -72,7 +90,7 @@ export interface GaussianSplatStats {
 
 /** The internal adapter surface reachable through `Renderer.gaussianSplats`. */
 export interface GaussianSplatApi {
-  add(input: GaussianSplatAssetInput, options: GaussianSplatAddOptions): Promise<GaussianSplatHandle>;
+  add(input: GaussianSplatAssetInput | GaussianSplatRowsInput, options: GaussianSplatAddOptions): Promise<GaussianSplatHandle>;
   remove(handle: GaussianSplatHandle): boolean;
   setVisible(handle: GaussianSplatHandle, visible: boolean): boolean;
   setPlacement(handle: GaussianSplatHandle, placement: GaussianSplatPlacement): Promise<boolean>;

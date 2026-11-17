@@ -147,6 +147,9 @@ export interface SpecificationResult {
 
 /** Complete validation report, generalised over its source. */
 export interface ValidationReport {
+  /** Present when a host deliberately restricted the candidate population.
+   * A subset pass is not a whole-model compliance claim (#10371). */
+  targetScope?: { kind: 'subset'; entityCount: number };
   /** What produced this report */
   source: ValidationSource;
   /** Information about every validated model */

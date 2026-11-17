@@ -11,6 +11,7 @@
  * without importing each other.
  */
 
+import { bcfFetch } from './bcf-server-fetch.js';
 import { saveBcfServerConfig } from './bcf-server-config.js';
 import { bcfServerProfile, userIdFromAccessToken } from './bcf-server-profiles.js';
 import type { BcfServerConfig } from './bcf-server-config.js';
@@ -19,9 +20,9 @@ export function loadApi() {
   return import('@ifc-lite/bcf-api');
 }
 
-async function currentUserId(baseUrl: string, accessToken: string): Promise<string> {
+async function currentUserId(baseUrl: string, accessToken: string, signal?: AbortSignal): Promise<string> {
   const api = await loadApi();
-  const client = new api.BcfApiClient({ baseUrl, getAccessToken: () => accessToken });
+  const client = new api.BcfApiClient({ baseUrl, getAccessToken: () => accessToken, fetchFn: bcfFetch(signal) });
   return (await client.getCurrentUser()).id;
 }
 
@@ -33,11 +34,12 @@ export async function completeSignIn(
   baseUrl: string,
   token: { access_token: string; refresh_token?: string; expires_in?: number },
   appCredentials?: { clientId: string; clientSecret: string; tokenRelay?: string },
+  signal?: AbortSignal,
 ): Promise<BcfServerConfig> {
   // A profiled server without `current-user` (buildagil) names the account in its token.
   const userId = bcfServerProfile(baseUrl)?.identityFromToken
     ? userIdFromAccessToken(token.access_token)
-    : (await currentUserId(baseUrl, token.access_token));
+    : (await currentUserId(baseUrl, token.access_token, signal));
   const config: BcfServerConfig = {
     serverUrl: baseUrl,
     userId,
@@ -50,6 +52,7 @@ export async function completeSignIn(
     projectId: '',
     projectName: '',
   };
+  signal?.throwIfAborted();
   saveBcfServerConfig(config);
   return config;
 }

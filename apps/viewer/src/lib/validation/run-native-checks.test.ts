@@ -10,6 +10,10 @@ import { parseIDS } from '@ifc-lite/ids';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { Rule, type RuleSetFile } from '@ifc-lite/rules';
+import { scopedIdsAccessor } from '@/lib/ids/scoped-accessor';
+import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
+import { validateIdsReportBlock } from '@ifc-lite/sdk/review';
+import { buildReportJSON, buildReportHTML } from '@/hooks/ids/idsExportService';
 import { runIdsCheck } from './run-ids-check';
 import { runInformationCheck } from './run-information-check';
 
@@ -137,4 +141,30 @@ describe('shared native check execution (#6612)', () => {
     controller.abort();
     await assert.rejects(runInformationCheck({ ruleSet, models: [{ id: 'M', store: dataStore }], reportModels: models, signal: controller.signal, onProgress: () => assert.fail('cancelled check emitted progress') }), { name: 'AbortError' });
   });
+});
+
+it('IDS scopes candidate scans while preserving referenced property definitions (#10371)', async () => {
+  const { dataStore, mutationView } = await fixture();
+  const input = { document, modelId: 'M', dataStore, mutationView, locale: 'en' as const, models };
+  const scoped = scopedIdsAccessor(createDataAccessor(dataStore, 'M', mutationView), [100]);
+  assert.equal(scoped.getPropertyValue(100, 'Pset_WallCommon', 'FireRating')?.value, 'NONE', 'referenced pset and property entities remain readable outside the subset');
+  const empty = await runIdsCheck({ ...input, entityIds: [] });
+  assert.equal(empty.report.summary.totalEntitiesChecked, 0, 'an empty subset never becomes the whole model');
+  const selected = await runIdsCheck({ ...input, entityIds: [100] });
+  assert.equal(selected.report.summary.totalEntitiesChecked, 1, 'the entity-facet type fast path respects the subset');
+  assert.equal(selected.report.summary.totalEntitiesFailed, 1);
+  assert.deepEqual(selected.report.targetScope, { kind: 'subset', entityCount: 1 });
+  assert.deepEqual(selected.snapshot.targetScope, { kind: 'subset', entityCount: 1 });
+  assert.deepEqual(buildReportJSON(selected.report).targetScope, { kind: 'subset', entityCount: 1 });
+  assert.match(buildReportHTML(selected.report, 'en'), /Filtered population: 1 candidates/);
+  const invalidScopeErrors: Parameters<typeof validateIdsReportBlock>[2] = [];
+  validateIdsReportBlock({ ...selected.snapshot, targetScope: { kind: 'subset', entityCount: -1 } }, 'report', invalidScopeErrors);
+  assert.ok(invalidScopeErrors.some(error => error.path === 'report.targetScope'), 'portable readers reject an invalid scope qualifier');
+  selected.report.targetScope!.entityCount = 999;
+  assert.equal(selected.snapshot.targetScope?.entityCount, 1, 'saved evidence does not share mutable scope metadata');
+  mutationView.setProperty(100, 'Pset_WallCommon', 'FireRating', 'F90', PropertyValueType.String);
+  const corrected = await runIdsCheck({ ...input, entityIds: [100] });
+  assert.equal(corrected.report.summary.totalEntitiesPassed, 1, 'property definitions outside the candidate set still resolve');
+  const nonexistent = await runIdsCheck({ ...input, entityIds: [999999] });
+  assert.equal(nonexistent.report.summary.totalEntitiesChecked, 0);
 });

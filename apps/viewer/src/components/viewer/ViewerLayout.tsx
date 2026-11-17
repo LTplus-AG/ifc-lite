@@ -8,35 +8,33 @@ import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
-import { MobileToolbar } from './MobileToolbar';
+import { MobileSearchInline } from './MobileSearchInline';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { StatusBar } from './StatusBar';
 import { FlavorDialogHost } from '@/components/extensions/FlavorDialogHost';
+import { AgentBridgeHost } from '@/components/agent-bridge/AgentBridgeHost';
 import { ViewportContainer } from './ViewportContainer';
 import { ModelToolRail } from './model/ModelToolRail';
 import { ModelWorkspaceSplit } from './model/ModelWorkspaceSplit';
-import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
+import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { SettingsDialogHost } from './settings/SettingsDialog';
 import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { ShellStoreEffects } from './ShellStoreEffects';
-import { selectHasModelsLoaded } from '@/hooks/model-presence';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
-import { MobileBottomSheet, useVisualViewportBottomInset } from './MobileBottomSheet';
-import { MobilePanelLauncher } from './MobilePanelLauncher';
-import { MobilePanelSheet } from './MobilePanelSheet';
+import { MobileShell } from './MobileShell';
 import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { ExtensionKeyboardBindings } from '@/components/extensions/ExtensionKeyboardBindings';
 import { useModelUrlAutoload } from '@/hooks/useModelUrlAutoload';
+import { useProcessedModelAutoload } from '@/hooks/useProcessedModelAutoload';
 import { useArtifactDeepLink } from '@/hooks/useArtifactDeepLink';
 import { useViewerStore } from '@/store';
-import { isCollabEnabled } from '@/lib/collab/config';
+import { joinRoomFromPageUrl } from '@/lib/collab/deep-link-join';
 import { toast } from '@/components/ui/toast';
-import { parseRoleFromToken } from '@/lib/collab/share-link';
 import { EntityContextMenu } from './EntityContextMenu';
 import { AnonymizedExportDialog } from './anonymized-export/AnonymizedExportDialog';
 import { useDuplicateShortcut } from './useDuplicateShortcut';
@@ -94,24 +92,17 @@ export function ViewerLayout() {
 
   // ?model=<URL> autoload (#5851, load errors shown) and ?panel=/artifact deep links (#6927).
   useModelUrlAutoload();
+  useProcessedModelAutoload(); // ?processed=<sha256>: a result the processing server already holds
   useArtifactDeepLink();
 
-  // Deep-link collaboration join: a share link is `?room=…&t=…`. The recipient
-  // joins the room; with seed-into-room the model hydrates from the Y.Doc, so
-  // no `?model=` is needed. Guarded so StrictMode's double-invoke can't join twice,
-  // and wrapped so a throw can't tear down the layout (uncaught throws unmount the canvas).
+  // Deep-link collaboration join (`?room=…&t=…`). Guarded so StrictMode's double-invoke
+  // can't join twice, and wrapped so a throw can't tear down the layout (uncaught throws unmount the canvas).
   const collabJoinDoneRef = useRef(false);
   useEffect(() => {
     if (collabJoinDoneRef.current) return;
-    if (!isCollabEnabled()) return;
+    collabJoinDoneRef.current = true;
     try {
-      const params = new URLSearchParams(window.location.search);
-      const roomId = params.get('room');
-      if (!roomId) return;
-      const token = params.get('t') ?? undefined;
-      collabJoinDoneRef.current = true;
-      const role = (token && parseRoleFromToken(token)) || 'viewer';
-      void useViewerStore.getState().startCollab({ roomId, role, token });
+      joinRoomFromPageUrl(window.location.search, useViewerStore.getState);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[collab] deep-link join failed:', err);
@@ -143,27 +134,15 @@ export function ViewerLayout() {
 
   useEffect(() => {
     const openCommandPalette = () => setCommandPaletteOpen(true);
-    // With a `detail.tab` the event is a deep link (e.g. the Learn hub) and
-    // always opens; without it, it keeps its legacy toggle semantics.
-    const showShortcuts = (e: Event) => {
-      const tab = (e as CustomEvent<{ tab?: InfoDialogTab } | undefined>).detail?.tab;
-      if (tab) shortcutsDialog.openTab(tab);
-      else shortcutsDialog.toggle();
-    };
-
     window.addEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
-    window.addEventListener('ifc-lite:show-shortcuts', showShortcuts);
     return () => {
       window.removeEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
-      window.removeEventListener('ifc-lite:show-shortcuts', showShortcuts);
     };
-  }, [shortcutsDialog]);
+  }, []);
 
   const isMobile = useViewerStore((s) => s.isMobile);
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
-  const rightPanelCollapsed = useViewerStore((s) => s.rightPanelCollapsed);
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
-  const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
   // Which bottom panel the flags say is open (table precedence), and whether
   // it is actually docked here rather than floating / popped out.
   const bottomFlags = useBottomPanelFlags();
@@ -240,15 +219,6 @@ export function ViewerLayout() {
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Keep overlays inside the visible viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the
-  // URL bar area, so `bottom: 0` lands behind it; visualViewport.height excludes it.
-  const bottomViewportInset = useVisualViewportBottomInset();
-
-  // Hide mobile floating buttons when the empty-state "Load IFC" card shows.
-  // A boolean selector, not `useIfc()`: that hook subscribes to `models` and
-  // `geometryResult`, so every geometry update re-rendered the whole layout (#6232).
-  const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);
-
   // Mobile/desktop mode; collapses the panels only when ENTERING mobile (#5837).
   useMobileLayoutMode();
 
@@ -272,8 +242,8 @@ export function ViewerLayout() {
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
         <SettingsDialogHost />
         <FlavorDialogHost />
+        <AgentBridgeHost />
         <ConfirmDialogHost />
-        {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
         <HoverTooltip />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen}
@@ -287,9 +257,9 @@ export function ViewerLayout() {
             no trigger of its own) has a mounted dialog regardless of whether the export toolbar
             dropdown is open. Same persistent host pattern as `FlavorDialogHost`; `toolbar/export-commands.ts` owns the `trigger` one. */}
         <AnonymizedExportDialog surface="context_menu" />
-        {/* The compact mobile controls and the desktop ribbon share command homes. */}
+        {/* The compact mobile controls (below or beside the viewport) and the desktop ribbon share command homes. */}
         {isMobile
-          ? <MobileToolbar />
+          ? <MobileSearchInline />
           : <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />}
         <WorkspaceMigrationNotice />
 
@@ -389,47 +359,8 @@ export function ViewerLayout() {
           </div>
         )}
 
-        {/* Main Content Area - Mobile Layout */}
-        {isMobile && (
-          <div className="flex-1 min-h-0 relative overflow-hidden">
-            {/* Full-screen Viewport */}
-            <div className="h-full w-full">
-              <ViewportContainer />
-            </div>
-
-            {/* Backdrop overlay when sheet is open */}
-            {(!leftPanelCollapsed || !rightPanelCollapsed) && (
-              <button type="button" aria-label={t('shellChrome.layout.closePanelsAriaLabel')}
-                className="absolute inset-0 z-30 border-0 bg-scrim/40 p-0 animate-in fade-in duration-200"
-                onClick={() => {
-                  setLeftPanelCollapsed(true);
-                  setRightPanelCollapsed(true);
-                }}
-              />
-            )}
-
-            {/* Mobile Bottom Sheet - Hierarchy */}
-            {!leftPanelCollapsed && (
-              <MobileBottomSheet
-                title={t('shellChrome.layout.hierarchyLabel')}
-                bottomInset={bottomViewportInset}
-                onClose={() => setLeftPanelCollapsed(true)}
-              >
-                <HierarchyPanel />
-              </MobileBottomSheet>
-            )}
-
-            {/* Mobile Bottom Sheet — whichever single panel is open (`MobilePanelSheet`). */}
-            <MobilePanelSheet bottomInset={bottomViewportInset} analysisExtension={activeAnalysisExtension ?? null} />
-
-            {/* Mobile Panels button: one entry point to every panel, Hierarchy and
-                Properties included (#5853, #8802 R6). Hidden in the empty state so the
-                "Load IFC" card stays unobstructed. */}
-            {leftPanelCollapsed && rightPanelCollapsed && hasModelsLoaded && (
-              <MobilePanelLauncher bottomInset={bottomViewportInset} />
-            )}
-          </div>
-        )}
+        {/* Main Content Area - Mobile Layout: the viewport with the commands and panels placed by the form factor (#9718). */}
+        {isMobile && <MobileShell analysisExtension={activeAnalysisExtension ?? null} />}
 
         {/* Extension dock.bottom slot — collapses to nothing when no
             extension contributes here. */}

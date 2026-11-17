@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as notices from './retained-notices.mjs';
 
 const { renderNotices, inventoryInputs, checkNotices } = notices;
@@ -515,4 +516,12 @@ test('Refs #7955 MIT default retains mandatory Unicode and bundled terms', () =>
     assert.equal(resolved.election, election);
   }
   assert.doesNotThrow(() => notices.resolveElections([policyComponent('Public domain / CC0-1.0 dedication in source')], [], () => ''));
+});
+
+// #9246: distribution metadata must observe the actual lockfile and shipped
+// copies, in addition to the fixture-level generator tests above.
+test('#9246 shipped notice bundles match the repository locked Cargo closure', () => {
+  const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+  assert.doesNotThrow(() => checkNotices(repositoryRoot),
+    'the current locked dependencies, preserved texts and distributed notices must agree');
 });

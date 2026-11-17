@@ -20,7 +20,8 @@
  * second error path.
  */
 
-import { useCallback } from 'react';
+import { useMemo } from 'react';
+import { bindLoadRecovery } from './loadRecoveryActions';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 
@@ -36,21 +37,9 @@ export interface LoadErrorCardState {
 }
 
 export function useLoadErrorCard(): LoadErrorCardState {
-  const { error, lastLoadRetry, setError, setLastLoadRetry } = useViewerStore(useShallow((s) => ({
-    error: s.error,
-    lastLoadRetry: s.lastLoadRetry,
-    setError: s.setError,
-    setLastLoadRetry: s.setLastLoadRetry,
+  const { error, lastLoadRetry, loadErrorSeq } = useViewerStore(useShallow((s) => ({
+    error: s.error, lastLoadRetry: s.lastLoadRetry, loadErrorSeq: s.loadErrorSeq,
   })));
-
-  const retry = useCallback(() => {
-    lastLoadRetry?.();
-  }, [lastLoadRetry]);
-
-  const dismiss = useCallback(() => {
-    setError(null);
-    setLastLoadRetry(null);
-  }, [setError, setLastLoadRetry]);
-
-  return { error, canRetry: lastLoadRetry !== null, retry, dismiss };
+  const actions = useMemo(() => bindLoadRecovery(), [error, lastLoadRetry, loadErrorSeq]);
+  return { error, canRetry: lastLoadRetry !== null, retry: actions.retry, dismiss: actions.dismiss };
 }

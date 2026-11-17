@@ -265,9 +265,12 @@ export class ExportedModel {
   parts(ref, deep = false) {
     const refs = [typeof ref === 'number' ? ref : ref.expressId];
     if (deep) {
-      const q = this.probe.bim;
+      const q = this.probe.bim, seen = new Set(refs);
       for (let i = 0; i < refs.length; i++) {
-        for (const child of q.decomposes({ modelId: this.probe.M, expressId: refs[i] })) refs.push(child.ref.expressId);
+        for (const child of q.decomposes({ modelId: this.probe.M, expressId: refs[i] })) {
+          const id = child.ref.expressId;
+          if (!seen.has(id)) { seen.add(id); refs.push(id); }
+        }
       }
     }
     const out = [];

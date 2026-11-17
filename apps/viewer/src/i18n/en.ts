@@ -103,7 +103,9 @@ import { settingsEn } from './catalogues/settings.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
 import { landXmlEn } from './catalogues/landxml.en';
 import { landXmlTerrainExportEn } from './catalogues/landxml-terrain-export.en';
+import { rhinoExportEn } from './catalogues/rhino-export.en';
 import { terrainImageryEn } from './catalogues/terrain-imagery.en';
+import { siteContextEn } from './catalogues/site-context.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
 import { placementPanelEn } from './catalogues/placement-panel.en';
@@ -256,6 +258,7 @@ export const en = {
   ...landXmlEn,
   ...landXmlTerrainExportEn,
   ...terrainImageryEn,
+  ...siteContextEn,
   ...structuralPropertiesEn,
   ...appearancePanelEn,
   ...appearancePickersEn,
@@ -314,6 +317,7 @@ export const en = {
   ...zonesPanelEn,
   ...dataConnectorEn,
   ...geometryExportDialogsEn,
+  ...rhinoExportEn,
   ...miscPanelsBEn,
   ...viewportLightingEn,
   ...miscPanelsAEn,

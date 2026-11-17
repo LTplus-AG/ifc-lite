@@ -25,7 +25,8 @@
 import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { gridPlacementDependents, remeshContextRoots } from './entity-subgraph.js';
+import { gridPlacementDependents, remeshContextRoots, roofPlaneDependents } from './entity-subgraph.js';
+import { REMESH_CONTEXT_TYPES } from './remesh-context-roots.js';
 
 export type RemeshCause = 'shape' | 'created' | 'hostsChanged';
 
@@ -56,6 +57,11 @@ export function expandAffectedSet(
   for (const id of expressIds) if (isLive(store, view, id)) targets.add(id);
   if (targets.size === 0) return targets;
 
+  // Roof geometry belongs to its slab parts for every cause, including a
+  // shape-only edit and a reopened model without a mutation view (#9357).
+  if ([...targets].some(id => typeOf(store, view, id) === 'IFCROOF')) {
+    for (const part of roofPlaneDependents(store, view, targets)) targets.add(part);
+  }
   const out = new Set(targets);
   if ([...targets].some((id) => typeOf(store, view, id) === 'IFCGRID')) {
     for (const id of gridPlacementDependents(store, view, targets)) out.add(id);
@@ -64,7 +70,7 @@ export function expandAffectedSet(
   const openingTargets = [...targets].some((id) => IfcTypeEnumFromString(typeOf(store, view, id) ?? '') === IfcTypeEnum.IfcOpeningElement);
   for (const id of context) {
     const type = typeOf(store, view, id);
-    if (!type || type === 'IFCPROJECT' || type.startsWith('IFCREL')) continue;
+    if (!type || (REMESH_CONTEXT_TYPES as readonly string[]).includes(type) || type.startsWith('IFCREL')) continue;
     if (cause !== 'shape') {
       out.add(id);
       continue;

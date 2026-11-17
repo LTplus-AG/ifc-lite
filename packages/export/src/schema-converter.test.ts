@@ -8,9 +8,9 @@ import {
   convertEntityType,
   convertStepLine,
   needsConversion,
-  describeConversion,
   type IfcSchemaVersion,
 } from './schema-converter.js';
+import { describeConversion } from './schema-conversion-description.js';
 
 describe('schema-converter', () => {
   // ─── convertEntityType ──────────────────────────────────────────────────

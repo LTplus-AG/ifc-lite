@@ -10,10 +10,9 @@
 # Seeded by G4 (#7697). Re-seed aid: see the module docs of function_length_ratchet.rs.
 
    154 apps/server/src/routes/parse/cached_replay.rs replay_entries
-   255 apps/server/src/routes/parse/parquet.rs parse_parquet
-   182 apps/server/src/routes/parse/parquet_optimized.rs parse_parquet_optimized
-   340 apps/server/src/routes/parse/parquet_stream.rs parse_parquet_stream
-   159 rust/processing/src/data_model/mod.rs extract_data_model
+   254 apps/server/src/routes/parse/parquet.rs parse_parquet
+   181 apps/server/src/routes/parse/parquet_optimized.rs parse_parquet_optimized
+   329 apps/server/src/routes/parse/parquet_stream.rs parse_parquet_stream
    299 rust/processing/src/data_model/spatial.rs build_spatial_hierarchy
    200 apps/server/src/services/parquet_mesh_tables.rs build_mesh_tables
    308 apps/server/src/services/parquet_optimized.rs serialize_to_parquet_optimized
@@ -49,7 +48,7 @@
    161 rust/geometry/src/router/voids/prism_cut/caps.rs build_face_cap
    233 rust/geometry/src/router/voids/prism_cut/cut.rs cut_prism
    185 rust/geometry/src/router/voids/prism_cut/detect.rs detect_prism
-   297 rust/geometry/src/router/voids/prism_cut/driver.rs Execution::try_prism_cut
+   295 rust/geometry/src/router/voids/prism_cut/driver.rs Execution::try_prism_cut
    197 rust/geometry/src/router/voids/synthesis.rs Execution::extend_opening_along_direction
    163 rust/geometry/src/router/voids/synthesis/membrane.rs GeometryRouter::remove_internal_membrane
    269 rust/geometry/src/simplify/cavities.rs drop_enclosed_cavities

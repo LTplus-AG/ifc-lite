@@ -229,3 +229,32 @@ function materialColour(text: string, materialId: number): string[] | null {
   next = record(next ? refs(next[2])[0] : undefined); // IfcColourRgb($, r, g, b)
   return next?.[1] === 'IFCCOLOURRGB' ? next[2].split(',').slice(1).map((v) => Number(v).toFixed(4)) : null;
 }
+
+
+for (const kind of ['door', 'window'] as const) {
+  it(`#9352 SDK ${kind} type attributes distinguish an enumeration from matching free text before and after reopen`, async () => {
+    let { bim, S, storey, exported } = await session();
+    const wall = S.addWall('m', storey, { Start: [0, 20, 0], End: [8, 20, 0], Thickness: .2, Height: 3 });
+    const enumeration = kind === 'door' ? 'REVOLVING' : 'DOUBLE_PANEL_VERTICAL';
+    const field = kind === 'door' ? 'OperationType' : 'PartitioningType';
+    const typeClass = kind === 'door' ? 'IfcDoorType' : 'IfcWindowType';
+    const a = kind === 'door'
+      ? S.addHostedDoor('m', wall.expressId, { Offset: 2, Width: .9, Height: 2.1, OperationType: enumeration })
+      : S.addHostedWindow('m', wall.expressId, { Offset: 2, Sill: .5, Width: .9, Height: 2.1, PartitioningType: enumeration });
+    const b = kind === 'door'
+      ? S.addHostedDoor('m', wall.expressId, { Offset: 5, Width: .9, Height: 2.1, OperationType: enumeration.toLowerCase() })
+      : S.addHostedWindow('m', wall.expressId, { Offset: 5, Sill: .5, Width: .9, Height: 2.1, PartitioningType: enumeration.toLowerCase() });
+    const check = () => {
+      const types = [a, b].map(ref => bim.query().byType(typeClass).toArray().find(type =>
+        bim.related(type.ref, 'IfcRelDefinesByType', 'forward').some(row => row.ref.expressId === ref.expressId))!.ref);
+      expect(types[0].expressId).not.toBe(types[1].expressId);
+      const attribute = (i: number, name: string) => bim.attributes(types[i]).find(row => row.name === name)?.value;
+      expect(String(attribute(0, field)).replace(/\./g, '')).toBe(enumeration);
+      expect(String(attribute(1, field)).replace(/\./g, '')).toBe('USERDEFINED');
+      expect(attribute(1, `UserDefined${field}`)).toBe(enumeration.toLowerCase());
+    };
+    check();
+    ({ bim } = await session(new TextEncoder().encode(exported())));
+    check();
+  });
+}

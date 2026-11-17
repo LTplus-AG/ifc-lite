@@ -66,6 +66,7 @@ export function relayTokenFetch(relay: string): FetchLike {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(payload),
+      ...(init?.signal ? { signal: init.signal } : {}),
       credentials: 'same-origin',
       redirect: 'error',
     });

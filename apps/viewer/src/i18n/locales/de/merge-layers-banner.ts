@@ -10,4 +10,5 @@ export const mergeLayersBannerDe = {
   'mergeLayersBanner.subtitle': 'Laden Sie das Modell neu, um die neue Einstellung anzuwenden.',
   'mergeLayersBanner.reloadButton': 'Neu laden',
   'mergeLayersBanner.dismissAriaLabel': 'Hinweis zum Neuladen schließen',
+  'mergeLayersBanner.serverProcessed': 'Dieses Modell wurde auf dem Server verarbeitet. Geometrie-Einstellungen beim Laden ändern es nicht.',
 } satisfies Catalogue;

@@ -12,10 +12,12 @@ const ROLLBACK = Symbol('storey dry run');
  * session overlay for every storey plan; the ordinary transaction stages only
  * what the edit touches and discards it on the way out.
  */
-export function dryRunTransaction(view: MutablePropertyView, edit: (draft: MutablePropertyView) => void): void {
+export function dryRunTransaction<T>(view: MutablePropertyView, edit: (draft: MutablePropertyView) => T): T {
+  let result!: T;
   try {
-    view.runAtomic((draft) => { edit(draft); throw ROLLBACK; });
+    view.runAtomic((draft) => { result = edit(draft); throw ROLLBACK; });
   } catch (error) {
     if (error !== ROLLBACK) throw error;
   }
+  return result;
 }

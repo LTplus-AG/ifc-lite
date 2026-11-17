@@ -358,10 +358,18 @@ test('the call\'s own grant is the block at job level, and it must be readable',
   // A local reusable workflow the callee calls is held to the same grant.
   const nested = copyTree(context);
   mutate(nested, (t) => t.replace('permissions:\n  actions: read\n', 'permissions:\n  pull-requests: write\n  actions: read\n'), '.github/workflows/report-scheduled-failure.yml');
-  assert.ok(audit(nested).some((f) => f.includes('must grant pull-requests: write')), audit(nested).join('\n'));
+  const nestedFailures = audit(nested);
+  assert.ok(nestedFailures.some((f) => f.includes('must grant pull-requests: write')), nestedFailures.join('\n'));
   const missing = copyTree(context);
   rmSync(join(missing, '.github/workflows/report-scheduled-failure.yml'));
-  assert.ok(audit(missing).some((f) => f.includes('cannot read .github/workflows/report-scheduled-failure.yml')), audit(missing).join('\n'));
+  const missingFailures = audit(missing);
+  assert.ok(missingFailures.some((f) => f.includes('cannot read .github/workflows/report-scheduled-failure.yml')), missingFailures.join('\n'));
+  // Two levels down, and a cycle ends.
+  const deep = copyTree(context);
+  mutate(deep, (t) => `${t}  again:\n    uses: ./.github/workflows/deeper.yml\n`, '.github/workflows/report-scheduled-failure.yml');
+  writeFileSync(join(deep, '.github/workflows/deeper.yml'), 'permissions:\n  pull-requests: write\njobs:\n  loop:\n    uses: ./.github/workflows/report-scheduled-failure.yml\n');
+  const deepFailures = audit(deep);
+  assert.ok(deepFailures.some((f) => f.includes('must grant pull-requests: write')), deepFailures.join('\n'));
 });
 
 const CLI = join(REPO, 'scripts/check-native-adapter-triggers.mjs');

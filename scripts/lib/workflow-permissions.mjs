@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 const indentOf = (line) => line.length - line.trimStart().length;
 // The line without a comment: a `#` at the start or after whitespace.
 const code = (line) => line.replace(/(^|\s)#.*$/, '').trimEnd();
@@ -61,4 +64,22 @@ export function permissionBlocks(text, out, file) {
     blocks.push({ indent, scopes });
   }
   return blocks;
+}
+
+/**
+ * The scopes a call of `file` must grant: its own blocks and, all the way
+ * down, those of each local reusable workflow it calls, since GitHub checks
+ * every one when the run starts. An unreadable file is reported to `out`.
+ */
+export function workflowAsks(root, file, out, seen = new Set()) {
+  if (seen.has(file)) return [];
+  seen.add(file);
+  const path = join(root, file);
+  if (!existsSync(path)) {
+    out.push(`cannot read ${file}, a workflow the call reaches; its permissions go unjudged`);
+    return [];
+  }
+  const text = readFileSync(path, 'utf8');
+  const called = [...text.matchAll(/^ +uses: \.\/(\.github\/workflows\/[^\s#]+\.ya?ml)\s*$/gm)].map((m) => m[1]);
+  return [...permissionBlocks(text, out, file), ...called.flatMap((f) => workflowAsks(root, f, out, seen))];
 }

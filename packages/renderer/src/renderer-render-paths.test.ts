@@ -2113,7 +2113,32 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         picker.destroy();
     });
 
+    it('overlapping picks wait for their own visibility capacity (#10636)', async () => {
+        const h = makeHarness();
+        const picker = installPicker(h);
+        await h.settle();
+        const frame = h.renderer.getCamera().getRelativeToEyeFrame().snapshot();
+        const pick = (count: number) => picker.pick(0, 0, 64, 64, [], new Float32Array(16),
+            undefined, undefined, [], null, frame,
+            { draws: [], hiddenIds: new Set(Array.from({ length: count }, (_, i) => i + 100)) });
+        await Promise.all([pick(20_000), pick(40_000)]);
+        assert.ok(h.stats.mapAsync >= 2, 'both picks reach their readback instead of throwing on the second growth');
+        picker.destroy();
+    });
+
     for (const kind of ['point', 'rectangle'] as const) {
+        it(`does not allocate after teardown during the initial await: ${kind} (#10636)`, async () => {
+            const h = makeHarness();
+            const picker = installPicker(h);
+            const inflight = kind === 'point'
+                ? picker.pick(0, 0, 64, 64, [], new Float32Array(16))
+                : picker.pickRect(0, 0, 8, 8, 64, 64, [], new Float32Array(16));
+            picker.destroy();
+            const allocations = h.stats.createdBuffers.length;
+            assert.deepEqual(await inflight, kind === 'point' ? null : new Set());
+            assert.equal(h.stats.createdBuffers.length, allocations, 'teardown must not be followed by fresh pick allocations');
+        });
+
         it(`suppresses a completed-map result after device loss and releases exactly once: ${kind} (#6881)`, async () => {
             const h = makeHarness();
             const picker = await warm(h, installPicker(h));

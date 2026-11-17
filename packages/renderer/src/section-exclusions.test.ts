@@ -151,7 +151,11 @@ it('treats a rejected scope or a throwing createBuffer as a failed growth, and f
   assert.equal(second.visibilityPending, null);
   assert.equal(second.writeVisibility(big), false, 'not retried for the same image');
   throwing.setThrow(false);
-  assert.equal(second.writeVisibility(idsImage(20_000)), false, 'a new image may try again');
+  const beforeRetry = throwing.buffers.length;
+  assert.equal(second.writeVisibility(idsImage(20_000)), false, 'equal contents are still rejected');
+  assert.equal(second.visibilityPending, null);
+  assert.equal(throwing.buffers.length, beforeRetry, 'a fresh array does not retry the same rejected state');
+  assert.equal(second.writeVisibility(idsImage(20_001)), false, 'changed contents may try again');
   second.release(); // the last owner leaves while the growth is pending
   await throwing.settleAll(null);
   assert.equal(throwing.buffers.at(-1)!.destroyed, 1, 'a candidate confirmed after release is destroyed, not bound');

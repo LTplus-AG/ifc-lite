@@ -203,9 +203,11 @@ export class Picker {
    * `renderPickPass` throw, as an over-limit image does.
    */
   private async settleLaneVisibility(lanes: LanePickInput | undefined): Promise<boolean> {
-    if (this.destroyed || this.readbacks.deviceLost) return false;
-    if (!lanes || !this.lanePass || this.lanePass.writeVisibility(lanes)) return true;
-    await sectionExclusions(this.device).visibilityPending;
+    while (!this.destroyed && !this.readbacks.deviceLost) {
+      if (!lanes || !this.lanePass || this.lanePass.writeVisibility(lanes)) return true;
+      const pending = sectionExclusions(this.device).visibilityPending;
+      if (!pending || !(await pending)) break;
+    }
     return !this.destroyed && !this.readbacks.deviceLost;
   }
 
@@ -247,7 +249,7 @@ export class Picker {
     pointRteSnapshot?: RelativeToEyeSnapshot,
     lanes?: LanePickInput,
   ): Promise<PickResult | null> {
-    if (!(await this.settleLaneVisibility(lanes))) return null;
+    if (!(await this.settleLaneVisibility(lanes)) || this.destroyed || this.readbacks.deviceLost) return null;
     // Border clicks and pointer-captured drags use the same clamped ID/depth texel.
     const sampleX = Math.max(0, Math.min(width - 1, Math.floor(x)));
     const sampleY = Math.max(0, Math.min(height - 1, Math.floor(y)));
@@ -353,7 +355,7 @@ export class Picker {
     pointRteSnapshot?: RelativeToEyeSnapshot,
     lanes?: LanePickInput,
   ): Promise<Set<number>> {
-    if (!(await this.settleLaneVisibility(lanes))) return new Set();
+    if (!(await this.settleLaneVisibility(lanes)) || this.destroyed || this.readbacks.deviceLost) return new Set();
     // Normalise + clip rect to texture bounds.
     const lx = Math.max(0, Math.floor(Math.min(x0, x1)));
     const ly = Math.max(0, Math.floor(Math.min(y0, y1)));

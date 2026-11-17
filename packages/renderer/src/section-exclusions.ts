@@ -146,7 +146,8 @@ class SectionExclusions {
    * bound buffer is written at once.
    */
   private growVisibility(image: Uint32Array): void {
-    if (this.visibilityGrowth || image === this.visibilityFailed) return;
+    if (this.visibilityGrowth || image === this.visibilityFailed
+      || (image.length === this.visibilityFailed?.length && image.every((word, i) => word === this.visibilityFailed![i]))) return;
     const device = this.device;
     let size = Math.max(16, this.visibilityBytes);
     while (size < image.byteLength) size *= 2; // geometric, so a growing set reallocates rarely

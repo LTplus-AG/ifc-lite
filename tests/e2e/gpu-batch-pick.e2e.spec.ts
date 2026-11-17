@@ -235,7 +235,10 @@ test('C20-Institute: click, hover, marquee, hide, isolate and section match the 
     const s = (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState();
     s.clearIsolation();
     s.setSectionPlaneAxis('down');
-    s.setSectionPlanePosition(40);
+    // 43 %, not 40 %: at 40 % the plane lies exactly on the 2.70 m slab tops,
+    // where the GPU's f32 discard and the CPU test split a coplanar face (a tie
+    // on the cut itself, recorded in the PR evidence).
+    s.setSectionPlanePosition(43);
     s.setSectionPlaneEnabled(true);
   });
   await settleFrames(page);

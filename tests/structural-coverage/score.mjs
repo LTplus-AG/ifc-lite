@@ -307,8 +307,8 @@ async function main(argv) {
     }
     console.log(`Ratchet OK against ${rel(check)}: total ${summary.total.score} >= ${baseline.total.score}, cells ${summary.cells.score} >= ${baseline.cells.score}, no row or cell dropped.`);
   }
-  // Out-of-date limits fail every complete run (a fixed cell, a changed problem text or a citation that
-  // no longer holds), so no baseline is frozen and no change lands with a wrong label.
+  // Out-of-date limits (a fixed cell, a changed problem text, a citation that no longer holds) fail the
+  // run, so CI rejects a change that leaves a wrong label. The summary is still written, for inspection.
   return limitIssues.length ? 1 : 0;
 }
 
